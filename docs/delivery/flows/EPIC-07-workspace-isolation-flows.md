@@ -7,22 +7,22 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan. Owns the main checkout and is usually sitting on a branch when a run starts |
-| **karvand** | The local daemon: orchestrator, ledger, workspace manager |
+| Actor                 | Description                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Operator**          | The engineer driving DeFlow. Owns the main checkout and is usually sitting on a branch when a run starts          |
+| **DeFlowd**           | The local daemon: orchestrator, ledger, workspace manager                                                         |
 | **Workspace Manager** | The `packages/workspace` component — the `Git` wrapper, worktree lifecycle, conflict probes, the integration loop |
-| **`Git` wrapper** | `packages/workspace/src/git.ts`. The single chokepoint over `execa`; the only place `git` is invoked |
-| **Repository** | A real git repository in a temp directory, created by the `makeRepo()` fixture |
-| **Provider agent** | A `karvan-mock-agent` subprocess whose `cwd` is a worktree. It commits, leaves files dirty, or hangs, on script |
-| **Reaper** | The daemon-boot routine that reaps orphaned processes, releases stale locks and prunes worktrees |
+| **`Git` wrapper**     | `packages/workspace/src/git.ts`. The single chokepoint over `execa`; the only place `git` is invoked              |
+| **Repository**        | A real git repository in a temp directory, created by the `makeRepo()` fixture                                    |
+| **Provider agent**    | A `DeFlow-mock-agent` subprocess whose `cwd` is a worktree. It commits, leaves files dirty, or hangs, on script   |
+| **Reaper**            | The daemon-boot routine that reaps orphaned processes, releases stale locks and prunes worktrees                  |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'karvan-'))
-  And KARVAN_KEEP_TMP is honoured so a failed worktree survives for post-mortem
+  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'DeFlow-'))
+  And DeFlow_KEEP_TMP is honoured so a failed worktree survives for post-mortem
   And a repository created by "git init -b main" inside that directory
   And every git invocation in the fixture carries
       GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null,
@@ -39,40 +39,40 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-07-S1 | Happy path: the wrapper treats exit codes as data and enforces the version floor | KAR-07.1 | Happy path |
-| EPIC-07-S2 | `worktree add --force` is refused before a process is spawned | KAR-07.1 | Failure |
-| EPIC-07-S3 | The corruption `--force` would have created, demonstrated on raw git | KAR-07.1 | Edge case |
-| EPIC-07-S4 | Default-branch writes refused across every argument shape | KAR-07.1 | Failure |
-| EPIC-07-S5 | Flat branch names, and an integration branch that can coexist with them | KAR-07.3 | Happy path |
-| EPIC-07-S6 | Regression: the PRD's hierarchical scheme cannot hold an integration branch | KAR-07.3 | Failure |
-| EPIC-07-S7 | Ref-name validation across the verified reject set | KAR-07.3 | Edge case |
-| EPIC-07-S8 | The `-n` trap: a valid ref name that git parses as a flag | KAR-07.3 | Edge case |
-| EPIC-07-S9 | Write node gets a locked worktree on its own branch, locked atomically | KAR-07.2 | Happy path |
-| EPIC-07-S10 | Read node gets a locked detached worktree | KAR-07.2 | Happy path |
-| EPIC-07-S11 | The same branch in two worktrees, and the error string that is not what the blogs say | KAR-07.2 | Failure |
-| EPIC-07-S12 | The main checkout counts as an occupant, so the operator's own branch is blocked | KAR-07.2 | Failure |
-| EPIC-07-S13 | Porcelain `-z` parsing, including a lock reason and a path with a space | KAR-07.2 | Edge case |
-| EPIC-07-S14 | Git is the authority: the operator removes a worktree by hand | KAR-07.2 | Recovery |
-| EPIC-07-S15 | Removal happy path: unlock, then remove | KAR-07.2 | Happy path |
-| EPIC-07-S16 | A locked worktree refuses removal and needs the double force | KAR-07.2 | Edge case |
-| EPIC-07-S17 | A dirty worktree blocks removal, and the WIP salvage commit that unblocks it | KAR-07.4 | Recovery |
-| EPIC-07-S18 | Gitignored files do not block removal | KAR-07.4 | Edge case |
-| EPIC-07-S19 | `.worktreeinclude` copies gitignored config, and only that | KAR-07.5 | Happy path |
-| EPIC-07-S20 | Package-manager-native sharing, and the symlink that must never exist | KAR-07.5 | Edge case |
-| EPIC-07-S21 | Setup runs once and is cached on the lockfile hash | KAR-07.5 | Happy path |
-| EPIC-07-S22 | The disk estimate shown before a fan-out is authorized | KAR-07.5 | Happy path |
-| EPIC-07-S23 | `merge-tree` reports a clean merge with no side effects at all | KAR-07.6 | Happy path |
-| EPIC-07-S24 | `merge-tree` returns exit 1 with conflicted paths, and the pipe that destroys the signal | KAR-07.6 | Failure |
-| EPIC-07-S25 | Two parallel write nodes are serialized on the first detected conflict | KAR-07.6 | Concurrency |
-| EPIC-07-S26 | The integration loop re-sorts the queue after every merge | KAR-07.7 | Happy path |
-| EPIC-07-S27 | A conflicting merge spawns a narrow resolution node | KAR-07.7 | Failure |
-| EPIC-07-S28 | A gate failure between merges halts the loop with the queue intact | KAR-07.7 | Failure |
-| EPIC-07-S29 | Boot reaping runs reap → unlock → prune, in that order | KAR-07.8 | Recovery |
-| EPIC-07-S30 | A stale conflict probe is re-probed, never trusted | KAR-07.6 | Edge case |
-| EPIC-07-S31 | The PID-reuse guard: a live PID that is not our process | KAR-07.8 | Failure |
-| EPIC-07-S32 | Prunable worktrees, and the locked one with a live owner that must be left alone | KAR-07.8 | Recovery |
+| Scenario    | Title                                                                                    | Verifies | Type        |
+| ----------- | ---------------------------------------------------------------------------------------- | -------- | ----------- |
+| EPIC-07-S1  | Happy path: the wrapper treats exit codes as data and enforces the version floor         | KAR-07.1 | Happy path  |
+| EPIC-07-S2  | `worktree add --force` is refused before a process is spawned                            | KAR-07.1 | Failure     |
+| EPIC-07-S3  | The corruption `--force` would have created, demonstrated on raw git                     | KAR-07.1 | Edge case   |
+| EPIC-07-S4  | Default-branch writes refused across every argument shape                                | KAR-07.1 | Failure     |
+| EPIC-07-S5  | Flat branch names, and an integration branch that can coexist with them                  | KAR-07.3 | Happy path  |
+| EPIC-07-S6  | Regression: the PRD's hierarchical scheme cannot hold an integration branch              | KAR-07.3 | Failure     |
+| EPIC-07-S7  | Ref-name validation across the verified reject set                                       | KAR-07.3 | Edge case   |
+| EPIC-07-S8  | The `-n` trap: a valid ref name that git parses as a flag                                | KAR-07.3 | Edge case   |
+| EPIC-07-S9  | Write node gets a locked worktree on its own branch, locked atomically                   | KAR-07.2 | Happy path  |
+| EPIC-07-S10 | Read node gets a locked detached worktree                                                | KAR-07.2 | Happy path  |
+| EPIC-07-S11 | The same branch in two worktrees, and the error string that is not what the blogs say    | KAR-07.2 | Failure     |
+| EPIC-07-S12 | The main checkout counts as an occupant, so the operator's own branch is blocked         | KAR-07.2 | Failure     |
+| EPIC-07-S13 | Porcelain `-z` parsing, including a lock reason and a path with a space                  | KAR-07.2 | Edge case   |
+| EPIC-07-S14 | Git is the authority: the operator removes a worktree by hand                            | KAR-07.2 | Recovery    |
+| EPIC-07-S15 | Removal happy path: unlock, then remove                                                  | KAR-07.2 | Happy path  |
+| EPIC-07-S16 | A locked worktree refuses removal and needs the double force                             | KAR-07.2 | Edge case   |
+| EPIC-07-S17 | A dirty worktree blocks removal, and the WIP salvage commit that unblocks it             | KAR-07.4 | Recovery    |
+| EPIC-07-S18 | Gitignored files do not block removal                                                    | KAR-07.4 | Edge case   |
+| EPIC-07-S19 | `.worktreeinclude` copies gitignored config, and only that                               | KAR-07.5 | Happy path  |
+| EPIC-07-S20 | Package-manager-native sharing, and the symlink that must never exist                    | KAR-07.5 | Edge case   |
+| EPIC-07-S21 | Setup runs once and is cached on the lockfile hash                                       | KAR-07.5 | Happy path  |
+| EPIC-07-S22 | The disk estimate shown before a fan-out is authorized                                   | KAR-07.5 | Happy path  |
+| EPIC-07-S23 | `merge-tree` reports a clean merge with no side effects at all                           | KAR-07.6 | Happy path  |
+| EPIC-07-S24 | `merge-tree` returns exit 1 with conflicted paths, and the pipe that destroys the signal | KAR-07.6 | Failure     |
+| EPIC-07-S25 | Two parallel write nodes are serialized on the first detected conflict                   | KAR-07.6 | Concurrency |
+| EPIC-07-S26 | The integration loop re-sorts the queue after every merge                                | KAR-07.7 | Happy path  |
+| EPIC-07-S27 | A conflicting merge spawns a narrow resolution node                                      | KAR-07.7 | Failure     |
+| EPIC-07-S28 | A gate failure between merges halts the loop with the queue intact                       | KAR-07.7 | Failure     |
+| EPIC-07-S29 | Boot reaping runs reap → unlock → prune, in that order                                   | KAR-07.8 | Recovery    |
+| EPIC-07-S30 | A stale conflict probe is re-probed, never trusted                                       | KAR-07.6 | Edge case   |
+| EPIC-07-S31 | The PID-reuse guard: a live PID that is not our process                                  | KAR-07.8 | Failure     |
+| EPIC-07-S32 | Prunable worktrees, and the locked one with a live owner that must be left alone         | KAR-07.8 | Recovery    |
 
 ---
 
@@ -84,8 +84,8 @@ Background:
 Feature: One git chokepoint whose exit codes are values
 
   Scenario: A non-zero exit is returned, not thrown
-    Given a repository with branches "karvan/r1__a" and "karvan/r1__b" that edit the same line of "f.txt"
-    When the Git wrapper runs ["merge-tree", "--write-tree", "--name-only", "-z", "karvan/r1__a", "karvan/r1__b"]
+    Given a repository with branches "DeFlow/r1__a" and "DeFlow/r1__b" that edit the same line of "f.txt"
+    When the Git wrapper runs ["merge-tree", "--write-tree", "--name-only", "-z", "DeFlow/r1__a", "DeFlow/r1__b"]
     Then the call resolves rather than rejecting
     And the result is { exitCode: 1 } with a non-empty stdout
     And no exception was constructed
@@ -98,7 +98,7 @@ Feature: One git chokepoint whose exit codes are values
 
   Scenario Outline: The git version floor
     Given a stub "git" on PATH whose "--version" prints "git version <version>"
-    When karvan doctor runs the workspace checks
+    When DeFlow doctor runs the workspace checks
     Then the outcome is "<outcome>"
     And the message contains "<mentions>"
 
@@ -117,9 +117,9 @@ Feature: One git chokepoint whose exit codes are values
 ```
 
 **Notes:** `reject: false` is the single most consequential line in the wrapper. `git merge-tree`
-uses exit code **1** to mean *conflict* — a normal, expected result — and an exception-throwing
+uses exit code **1** to mean _conflict_ — a normal, expected result — and an exception-throwing
 wrapper destroys that signal before [EPIC-07-S24](#epic-07-s24--merge-tree-returns-exit-1-with-conflicted-paths-and-the-pipe-that-destroys-the-signal)
-can read it. `SSH_AUTH_SOCK` is deliberately *kept* here and deliberately *dropped* for agents
+can read it. `SSH_AUTH_SOCK` is deliberately _kept_ here and deliberately _dropped_ for agents
 ([EPIC-08-S18](./EPIC-08-safety-model-flows.md)); the agent never pushes, the wrapper does.
 
 ---
@@ -156,7 +156,7 @@ Feature: The forbidden-argument assertion
 ```
 
 **Notes:** "Zero git invocations recorded" is the observable that matters — it proves the assertion
-runs *before* `execa`, not in an error handler afterwards. A rule enforced by convention decays; a
+runs _before_ `execa`, not in an error handler afterwards. A rule enforced by convention decays; a
 rule enforced by a throw in the one chokepoint does not. `--force` is permitted only on
 `worktree remove`, which [EPIC-07-S16](#epic-07-s16--a-locked-worktree-refuses-removal-and-needs-the-double-force)
 and [EPIC-07-S17](#epic-07-s17--a-dirty-worktree-blocks-removal-and-the-wip-salvage-commit-that-unblocks-it) rely on.
@@ -173,7 +173,7 @@ Feature: Why the rule exists
   Scenario: Raw git happily creates two worktrees on one branch
     Given a repository on branch "main" with a branch "feature"
     And a worktree at "<tmp>/wt-a" created with "git worktree add <tmp>/wt-a feature"
-    When raw git — bypassing the Karvan wrapper — runs
+    When raw git — bypassing the DeFlow wrapper — runs
          "git worktree add --force <tmp>/wt-b feature"
     Then the command exits 0
     And "git worktree list" shows two entries, both annotated "[feature]"
@@ -185,7 +185,7 @@ Feature: Why the rule exists
     And a "workspace.branch_occupied" event names "<tmp>/wt-a" as the occupying path
 ```
 
-**Notes:** **Verified 2026-08-02 on git 2.43.** This scenario is the *justification* test — it
+**Notes:** **Verified 2026-08-02 on git 2.43.** This scenario is the _justification_ test — it
 exists so a future contributor who wonders why `--force` is banned can read the failure rather than
 the comment. It is the only scenario in this file that calls raw git deliberately; keep it in one
 place and label it, or someone will copy the pattern.
@@ -210,13 +210,13 @@ Feature: F5.5 enforced mechanically, not documented
       | args                                                          | outcome |
       | ["push","origin","main"]                                      | refused |
       | ["push","origin","HEAD:main"]                                 | refused |
-      | ["push","--force","origin","karvan/r1__n1"]                   | refused |
-      | ["push","-f","origin","karvan/r1__n1"]                        | refused |
-      | ["branch","-f","main","karvan/r1__n1"]                        | refused |
+      | ["push","--force","origin","DeFlow/r1__n1"]                   | refused |
+      | ["push","-f","origin","DeFlow/r1__n1"]                        | refused |
+      | ["branch","-f","main","DeFlow/r1__n1"]                        | refused |
       | ["update-ref","refs/heads/main","<oid>"]                      | refused |
-      | ["push","--force-with-lease","origin","karvan/r1__n1"]        | allowed |
-      | ["push","origin","karvan/int/r1"]                             | allowed |
-      | ["commit","-m","karvan: WIP salvage"]                         | allowed |
+      | ["push","--force-with-lease","origin","DeFlow/r1__n1"]        | allowed |
+      | ["push","origin","DeFlow/int/r1"]                             | allowed |
+      | ["commit","-m","DeFlow: WIP salvage"]                         | allowed |
 
   Scenario: Default-branch resolution falls back when there is no remote
     Given a repository with no remote configured
@@ -231,8 +231,8 @@ Feature: F5.5 enforced mechanically, not documented
     And ["push","origin","main"] is allowed, because "main" is an ordinary branch here
 ```
 
-**Notes:** The last scenario is the one that catches a hardcoded `'main'`. F5.5 says *never write to
-the default branch*, and the default branch is a property of the repository, not a string constant.
+**Notes:** The last scenario is the one that catches a hardcoded `'main'`. F5.5 says _never write to
+the default branch_, and the default branch is a property of the repository, not a string constant.
 
 ---
 
@@ -245,16 +245,16 @@ Feature: Flat branch naming (D13)
 
   Scenario: Names are composed and validated once
     When nodeBranch("r1", "n1") is called
-    Then it returns "karvan/r1__n1"
-    And integrationBranch("r1") returns "karvan/int/r1"
+    Then it returns "DeFlow/r1__n1"
+    And integrationBranch("r1") returns "DeFlow/int/r1"
     And each composed name was passed through "git check-ref-format --branch" exactly once
     And a second call for the same name reads the cached result and spawns no git process
 
   Scenario: The integration branch coexists with node branches on a real repository
     Given a repository on "main"
-    When karvand creates "karvan/int/r1" from the base ref
-    And then creates "karvan/r1__n1", "karvan/r1__n2" and "karvan/r1__n3"
-    Then all four branches exist in "git branch --list 'karvan/*'"
+    When DeFlowd creates "DeFlow/int/r1" from the base ref
+    And then creates "DeFlow/r1__n1", "DeFlow/r1__n2" and "DeFlow/r1__n3"
+    Then all four branches exist in "git branch --list 'DeFlow/*'"
     And creating them in the reverse order also succeeds
 ```
 
@@ -271,27 +271,27 @@ scheme that only works in one creation order is not fixed, it is lucky.
 Feature: Why D13 overrides PRD F5.1
 
   Scenario: A run-level branch cannot exist beneath a node-level branch
-    Given a repository where "git branch karvan/r1/n1" has succeeded
-    When raw git runs "git branch karvan/r1"
+    Given a repository where "git branch DeFlow/r1/n1" has succeeded
+    When raw git runs "git branch DeFlow/r1"
     Then it exits non-zero
     And stderr contains
-        "fatal: cannot lock ref 'refs/heads/karvan/r1': 'refs/heads/karvan/r1/n1' exists"
-    And stderr contains "cannot create 'refs/heads/karvan/r1'"
+        "fatal: cannot lock ref 'refs/heads/DeFlow/r1': 'refs/heads/DeFlow/r1/n1' exists"
+    And stderr contains "cannot create 'refs/heads/DeFlow/r1'"
 
   Scenario: And the reverse order fails symmetrically
-    Given a repository where "git branch karvan/r1" has succeeded
-    When raw git runs "git branch karvan/r1/n1"
+    Given a repository where "git branch DeFlow/r1" has succeeded
+    When raw git runs "git branch DeFlow/r1/n1"
     Then it exits non-zero
-    And stderr names a ref conflict on "refs/heads/karvan/r1"
+    And stderr names a ref conflict on "refs/heads/DeFlow/r1"
 
-  Scenario: Karvan's own generator can never produce the failing shape
+  Scenario: DeFlow's own generator can never produce the failing shape
     When nodeBranch is called for 200 random valid (runId, nodeId) pairs
     Then no returned name contains more than two "/" characters
     And no returned name is a prefix of another returned name followed by "/"
 ```
 
 **Notes:** **Verified 2026-08-02, git 2.43.** This is the highest-value regression test in the epic.
-The hierarchical scheme *works* right up until the merge phase of a real run, where it fails as an
+The hierarchical scheme _works_ right up until the merge phase of a real run, where it fails as an
 inexplicable git error hours in. A test that pins the failure is what stops someone "simplifying"
 the naming back to what the PRD says.
 
@@ -347,7 +347,7 @@ Feature: check-ref-format is necessary and not sufficient
     When it is passed without a "--" separator
     Then git interprets it as an option and the command's behaviour is not what the caller intended
 
-  Scenario: Karvan closes the hole at two levels
+  Scenario: DeFlow closes the hole at two levels
     When nodeBranch is asked for a nodeId of "-n"
     Then it throws UnsafeRefError at the domain layer, before any composition
     And every call site that passes a generated name to git is asserted to use either a "--"
@@ -372,11 +372,11 @@ Feature: Worktree creation for a write node
     Given a run "r1" with a write node "n1" and base ref "main"
     When the Workspace Manager provisions the worktree
     Then exactly one git invocation is recorded, and its argv is
-         ["worktree","add","--lock","--reason","karvan run=r1 node=n1",
-          "-b","karvan/r1__n1","<tmp>/.karvan/worktrees/r1__n1","main"]
+         ["worktree","add","--lock","--reason","DeFlow run=r1 node=n1",
+          "-b","DeFlow/r1__n1","<tmp>/.DeFlow/worktrees/r1__n1","main"]
     And no separate "worktree lock" invocation appears anywhere in the create path
-    And "git worktree list --porcelain -z" reports the new entry with a "branch refs/heads/karvan/r1__n1"
-        record and a "locked karvan run=r1 node=n1" record
+    And "git worktree list --porcelain -z" reports the new entry with a "branch refs/heads/DeFlow/r1__n1"
+        record and a "locked DeFlow run=r1 node=n1" record
     And a "workspace.worktree_created" event carries the path, the branch and the base ref
 
   Scenario: A locked worktree is immune to prune
@@ -387,7 +387,7 @@ Feature: Worktree creation for a write node
 ```
 
 **Notes:** The atomicity assertion — one invocation, no separate `lock` — is the whole scenario.
-Create-then-lock races with Karvan's own reaper across a daemon restart, and the window is small
+Create-then-lock races with DeFlow's own reaper across a daemon restart, and the window is small
 enough that it will only ever fail in production. Lock-immunity-to-prune is why `--lock` is the
 crash-safety primitive rather than a side-channel lockfile that can desync from git's own view.
 
@@ -403,10 +403,10 @@ Feature: Detached worktrees for read-only nodes
   Scenario: No branch is created, and branch uniqueness never applies
     Given a run "r1" with a read node "n2"
     When the Workspace Manager provisions the worktree
-    Then the argv is ["worktree","add","--detach","--lock","--reason","karvan run=r1 node=n2",
+    Then the argv is ["worktree","add","--detach","--lock","--reason","DeFlow run=r1 node=n2",
                       "<path>","main"]
     And the argv contains no "-b"
-    And "git branch --list 'karvan/r1__n2'" returns empty
+    And "git branch --list 'DeFlow/r1__n2'" returns empty
 
   Scenario: Two read nodes on the same base ref both succeed
     Given read nodes "n2" and "n3" both based on "main"
@@ -416,8 +416,8 @@ Feature: Detached worktrees for read-only nodes
     And neither creation attempt produced a "workspace.branch_occupied" event
 ```
 
-**Notes:** `--detach` is chosen for intent as much as for mechanism: it says *this node is not going
-to produce a branch*, and it sidesteps the entire branch-uniqueness class in
+**Notes:** `--detach` is chosen for intent as much as for mechanism: it says _this node is not going
+to produce a branch_, and it sidesteps the entire branch-uniqueness class in
 [EPIC-07-S11](#epic-07-s11--the-same-branch-in-two-worktrees-and-the-error-string-that-is-not-what-the-blogs-say)
 for free.
 
@@ -430,7 +430,7 @@ for free.
 ```gherkin
 Feature: Branch uniqueness
 
-  Scenario: Karvan refuses before git is asked
+  Scenario: DeFlow refuses before git is asked
     Given a worktree at "<tmp>/wt-a" checked out on branch "feature"
     When the Workspace Manager is asked to provision another worktree on "feature"
     Then no "worktree add" invocation is recorded
@@ -482,15 +482,15 @@ Feature: The occupant is usually the operator
     When raw git runs "git worktree add <tmp>/wt main"
     Then stderr equals "fatal: 'main' is already used by worktree at '<tmp>/repo'"
 
-  Scenario: Karvan's own branches never hit this
-    Given node branches are generated as "karvan/<runId>__<nodeId>"
+  Scenario: DeFlow's own branches never hit this
+    Given node branches are generated as "DeFlow/<runId>__<nodeId>"
     When 20 write nodes across 4 runs are provisioned against base ref "main"
     Then every worktree is created successfully
     And no "workspace.branch_occupied" event is emitted
 ```
 
 **Notes:** **Verified 2026-08-02.** This — not agent-versus-agent collision — is the common
-real-world hit, and it lands on the *very first run*. The third scenario states the design that
+real-world hit, and it lands on the _very first run_. The third scenario states the design that
 makes it a non-event in practice: nodes get generated branch names and take `main` only as a base
 ref, never as a checkout target. The error path exists for the case where a plan or a human names a
 branch explicitly.
@@ -507,13 +507,13 @@ Feature: worktree list is read one way only
   Scenario: Every record type round-trips
     Given a captured "git worktree list --porcelain -z" output containing
           a main checkout, a branch worktree, a detached worktree,
-          a locked worktree whose reason is "karvan run=r1 node=n1",
+          a locked worktree whose reason is "DeFlow run=r1 node=n1",
           and a prunable worktree
     When the porcelain parser reads it
     Then it yields five entries
-    And the branch entry carries branch "refs/heads/karvan/r1__n1" and detached false
+    And the branch entry carries branch "refs/heads/DeFlow/r1__n1" and detached false
     And the detached entry carries detached true and no branch
-    And the locked entry carries locked true and lockReason "karvan run=r1 node=n1"
+    And the locked entry carries locked true and lockReason "DeFlow run=r1 node=n1"
     And the prunable entry carries prunable true with its reason string
 
   Scenario: A worktree path containing a space
@@ -529,7 +529,7 @@ Feature: worktree list is read one way only
 
 **Notes:** `-z` is what makes paths-with-spaces and multi-word lock reasons safe; the non-porcelain
 form is a human display format and parsing it is a latent bug waiting for a user with a space in
-their home directory. Git 2.45 is the *preferred* floor precisely because `--porcelain -z` on
+their home directory. Git 2.45 is the _preferred_ floor precisely because `--porcelain -z` on
 `worktree list` stabilized there.
 
 ---
@@ -542,16 +542,16 @@ their home directory. Git 2.45 is the *preferred* floor precisely because `--por
 Feature: SQLite is an index over git, never the source of truth
 
   Scenario: A manual removal reconciles cleanly
-    Given karvand has three worktrees provisioned and three rows in the "worktrees" projection table
+    Given DeFlowd has three worktrees provisioned and three rows in the "worktrees" projection table
     When the operator runs "git worktree remove <path-of-second>" in their own terminal
-    And karvand refreshes the projection from "git worktree list --porcelain -z"
+    And DeFlowd refreshes the projection from "git worktree list --porcelain -z"
     Then the projection contains two rows
     And a "workspace.reconciled" event names the removed path
     And no error is raised and no run is failed
 
   Scenario: A manual rm -rf leaves a prunable entry, and that is also reconciled
     When the operator runs "rm -rf <path-of-third>" without telling git
-    And karvand refreshes the projection
+    And DeFlowd refreshes the projection
     Then the third entry is present with prunable true
     And it is scheduled for pruning at the next reap rather than being treated as live
 
@@ -561,8 +561,8 @@ Feature: SQLite is an index over git, never the source of truth
     And it does not query the "worktrees" table
 ```
 
-**Notes:** *"The moment a user runs `git worktree remove` by hand — and they will — a
-SQLite-authoritative design is wrong and does not know it."* The third scenario is the one that
+**Notes:** _"The moment a user runs `git worktree remove` by hand — and they will — a
+SQLite-authoritative design is wrong and does not know it."_ The third scenario is the one that
 keeps the design honest over time: the projection exists for the UI, not for decisions.
 
 ---
@@ -581,11 +581,11 @@ Feature: Clean worktree removal
          ["worktree","unlock","<path>"] then ["worktree","remove","<path>"]
     And neither invocation contains "--force"
     And the directory no longer exists
-    And the node's branch "karvan/r1__n1" still exists with its commits intact
+    And the node's branch "DeFlow/r1__n1" still exists with its commits intact
     And a "workspace.worktree_removed" event carries the path and the branch tip OID
 
   Scenario: The branch survives removal, because the branch is the output
-    When "git log --oneline karvan/r1__n1" runs after removal
+    When "git log --oneline DeFlow/r1__n1" runs after removal
     Then the node's commits are listed
 ```
 
@@ -604,7 +604,7 @@ merges.
 Feature: Locked removal
 
   Scenario: Plain remove refuses a locked worktree
-    Given a worktree locked with reason "karvan run=r1 node=n1"
+    Given a worktree locked with reason "DeFlow run=r1 node=n1"
     When raw git runs "git worktree remove <path>"
     Then it exits non-zero
     And stderr contains "cannot remove a locked working tree"
@@ -653,17 +653,17 @@ Feature: Never discard an agent's work
          a "workspace.worktree_removed" event
     And the git invocations are, in order:
          ["status","--porcelain=v2","-z"], ["add","-A"],
-         ["commit","-m","karvan: WIP salvage"], ["worktree","remove","--force","<path>"]
+         ["commit","-m","DeFlow: WIP salvage"], ["worktree","remove","--force","<path>"]
 
   Scenario: The work is recoverable from the branch alone
-    When "git show karvan/r1__n1" runs after removal
-    Then the salvage commit's subject is "karvan: WIP salvage"
+    When "git show DeFlow/r1__n1" runs after removal
+    Then the salvage commit's subject is "DeFlow: WIP salvage"
     And its diff contains the modification to "src/a.ts" and the whole of "src/new.ts"
 
   Scenario: A crash between capture and commit leaves the worktree intact
     Given the daemon is SIGKILLed after the "workspace.dirty_on_remove" event is durable
       and before the commit
-    When karvand restarts
+    When DeFlowd restarts
     Then the worktree still exists and is still dirty
     And no "--force" removal happened
     And the salvage sequence restarts from the status capture
@@ -671,7 +671,7 @@ Feature: Never discard an agent's work
   Scenario: A dirty detached read worktree has no branch to commit to
     Given a detached read-node worktree with an untracked file
     When the Workspace Manager removes it
-    Then the salvage commit lands on a new branch "karvan/salvage/r1__n2"
+    Then the salvage commit lands on a new branch "DeFlow/salvage/r1__n2"
     And the removal then proceeds with "--force"
 ```
 
@@ -797,7 +797,7 @@ Feature: Layer 2 — dependency sharing
 
 **Notes:** **Hard rule:** never symlink a shared `node_modules` across worktrees — two agents
 running installs concurrently against one tree corrupts it, and it defeats the isolation the
-worktree exists to provide. The one safe shared target is the *store*, which pnpm already does
+worktree exists to provide. The one safe shared target is the _store_, which pnpm already does
 correctly. **Unverified (A5-10):** `pnpm.io/git-worktrees` 403'd during research; the store-sharing
 mechanism is long-standing and safe, but do not write a pnpm config key into docs without
 re-fetching that page.
@@ -812,7 +812,7 @@ re-fetching that page.
 Feature: Layer 3 — workspace.setup with a content-keyed marker
 
   Background:
-    Given karvan.config.ts declares
+    Given DeFlow.config.ts declares
           workspace.setup = "pnpm install --frozen-lockfile && pnpm build:deps"
       and workspace.setupCacheKey = ["pnpm-lock.yaml"]
     And a fake "pnpm" shim on the tmp PATH that appends its argv to a log file
@@ -842,7 +842,7 @@ Feature: Layer 3 — workspace.setup with a content-keyed marker
     And the worktree is removed by the ordinary clean-removal path
 ```
 
-**Notes:** The marker is keyed on file *content*, not on a timestamp or a boolean, so a lockfile
+**Notes:** The marker is keyed on file _content_, not on a timestamp or a boolean, so a lockfile
 that changes and changes back is correctly a cache hit. The last scenario matters more than it
 looks: a node whose dependencies did not install will burn a full agent turn discovering it, which
 is exactly the wasted quota this layer exists to prevent.
@@ -880,7 +880,7 @@ Feature: Tell the operator what a fan-out costs before they approve it
 
 **Notes:** **Verified:** a 300 KB `.git` served a 24 KB worktree with no object duplication — the
 object store is shared, so only the working tree is multiplied. The point of surfacing the number is
-behavioural: *a user who is told "this plan will use 14 GB" migrates to pnpm on their own.*
+behavioural: _a user who is told "this plan will use 14 GB" migrates to pnpm on their own._
 
 ---
 
@@ -892,10 +892,10 @@ behavioural: *a user who is told "this plan will use 14 GB" migrates to pnpm on 
 Feature: merge-tree as a read-only probe (D14)
 
   Scenario: A clean merge
-    Given branches "karvan/r1__a" and "karvan/r1__b" editing different files
-    When mergeTree(git, "karvan/r1__a", "karvan/r1__b") runs
+    Given branches "DeFlow/r1__a" and "DeFlow/r1__b" editing different files
+    When mergeTree(git, "DeFlow/r1__a", "DeFlow/r1__b") runs
     Then the underlying invocation is
-         ["merge-tree","--write-tree","--name-only","-z","karvan/r1__a","karvan/r1__b"]
+         ["merge-tree","--write-tree","--name-only","-z","DeFlow/r1__a","DeFlow/r1__b"]
     And the exit code is 0
     And the result is { clean: true, paths: [] }
 
@@ -915,8 +915,8 @@ Feature: merge-tree as a read-only probe (D14)
     And it is NOT reported as a conflict
 ```
 
-**Notes:** *"Side effects: **None.** Touches neither the index nor any working tree — safe to run
-against live worktrees at any moment."* That property is what makes a *continuous* probe possible;
+**Notes:** _"Side effects: **None.** Touches neither the index nor any working tree — safe to run
+against live worktrees at any moment."_ That property is what makes a _continuous_ probe possible;
 the second scenario is the test that stops a future refactor reaching for `git merge` and quietly
 breaking every running agent.
 
@@ -930,9 +930,9 @@ breaking every running agent.
 Feature: The conflict signal is the exit code
 
   Scenario: Conflict reported as exit 1 with paths
-    Given branches "karvan/r1__a" and "karvan/r1__b" both editing the same line of "f.txt"
-    And "karvan/r1__b" also editing "g.txt", which "karvan/r1__a" does not touch
-    When mergeTree(git, "karvan/r1__a", "karvan/r1__b") runs
+    Given branches "DeFlow/r1__a" and "DeFlow/r1__b" both editing the same line of "f.txt"
+    And "DeFlow/r1__b" also editing "g.txt", which "DeFlow/r1__a" does not touch
+    When mergeTree(git, "DeFlow/r1__a", "DeFlow/r1__b") runs
     Then the exit code is 1
     And the result is { clean: false, paths: ["f.txt"] }
     And "g.txt" is absent from paths, because it merged cleanly
@@ -943,7 +943,7 @@ Feature: The conflict signal is the exit code
     And mergeTree drops it before returning paths
 
   Scenario: Without --name-only the output carries the info block
-    When raw git runs "git merge-tree --write-tree karvan/r1__a karvan/r1__b"
+    When raw git runs "git merge-tree --write-tree DeFlow/r1__a DeFlow/r1__b"
     Then stdout contains "Auto-merging f.txt"
     And stdout contains "CONFLICT (content): Merge conflict in f.txt"
     And the exit code is still 1
@@ -953,7 +953,7 @@ Feature: The conflict signal is the exit code
     When the probe output is piped through another command in a shell
     Then "$?" reports the exit status of the last command in the pipeline, not of merge-tree
     And the conflict is indistinguishable from a clean merge
-    And Karvan therefore captures the exit code directly from execa with reject: false,
+    And DeFlow therefore captures the exit code directly from execa with reject: false,
         and no code path in packages/workspace pipes a git invocation
 ```
 
@@ -981,7 +981,7 @@ Feature: Conflict as a scheduling input, not a merge-time surprise
     Given "n1" started at T0 and "n2" started at T1, where T1 > T0
     And both have committed edits to the same line of "src/a.ts"
     When the conflict probe runs after "n2" commits
-    Then a conflict_probe row exists for (r1, karvan/r1__n1, karvan/r1__n2)
+    Then a conflict_probe row exists for (r1, DeFlow/r1__n1, DeFlow/r1__n2)
          with clean 0, path_count 1 and paths_json ["src/a.ts"]
     And "n2" is moved to blocked
     And a "node.blocked" event names "n1" as the conflicting counterpart and lists "src/a.ts"
@@ -1000,8 +1000,8 @@ Feature: Conflict as a scheduling input, not a merge-time surprise
     And all five complete within 500 ms on the fixture repository
 ```
 
-**Notes:** This is the refinement over F5.2: *start write nodes in parallel and serialize on the
-FIRST DETECTED conflict*. Most declared overlaps never actually conflict — two agents editing
+**Notes:** This is the refinement over F5.2: _start write nodes in parallel and serialize on the
+FIRST DETECTED conflict_. Most declared overlaps never actually conflict — two agents editing
 different functions in one file merge fine — so static serialization throws away real parallelism.
 Declared scope is retained only to refuse the identical-single-file case.
 
@@ -1015,7 +1015,7 @@ Declared scope is retained only to refuse the identical-single-file case.
 Feature: Sequential, lowest-overlap-first integration
 
   Background:
-    Given a run "r1" whose integration branch "karvan/int/r1" was created from "main" at run start
+    Given a run "r1" whose integration branch "DeFlow/int/r1" was created from "main" at run start
     And four completed node branches n1..n4
     And conflict counts against the integration branch of n1:0, n2:2, n3:1, n4:0
 
@@ -1025,7 +1025,7 @@ Feature: Sequential, lowest-overlap-first integration
     And n1 precedes n4 because it completed first
 
   Scenario: After each merge, every remaining branch is re-probed and the queue re-sorted
-    When n1 is merged into "karvan/int/r1"
+    When n1 is merged into "DeFlow/int/r1"
     Then probes are re-run for n2, n3 and n4 against the new integration tip
     And a "workspace.merge_queue_reordered" event carries
         { before: ["n4","n3","n2"], after: ["n3","n4","n2"] } when the new counts are n3:0, n4:1, n2:2
@@ -1033,14 +1033,14 @@ Feature: Sequential, lowest-overlap-first integration
 
   Scenario: A gate runs against the integration branch between merges
     When each merge completes
-    Then the run's verification gate is invoked against "karvan/int/r1"
+    Then the run's verification gate is invoked against "DeFlow/int/r1"
     And the gate verdict is recorded before the next merge begins
 
   Scenario: Merges are --no-ff and name their provenance
     When all four branches have merged
-    Then "git log --merges --oneline karvan/int/r1" lists four merge commits
+    Then "git log --merges --oneline DeFlow/int/r1" lists four merge commits
     And each merge commit message contains "run=r1" and the merged "node=<nodeId>"
-    And "git diff main..karvan/int/r1" contains every node's changes
+    And "git diff main..DeFlow/int/r1" contains every node's changes
 ```
 
 **Notes:** Re-sorting is not an optimization. A merge changes every remaining branch's conflict
@@ -1059,8 +1059,8 @@ this observable in the run timeline instead of being an invisible internal decis
 Feature: Conflicts get a dedicated, tightly-scoped node
 
   Scenario: The resolution node's shape
-    Given the merge of "karvan/r1__n2" into "karvan/int/r1" conflicts on "src/a.ts"
-    When Karvan handles the conflict
+    Given the merge of "DeFlow/r1__n2" into "DeFlow/int/r1" conflicts on "src/a.ts"
+    When DeFlow handles the conflict
     Then a resolution node is inserted into the plan via a PlanPatch whose reason names the conflict
     And the node's permission level is "worktree"
     And the node's cwd is the integration worktree, not a node worktree
@@ -1079,8 +1079,8 @@ Feature: Conflicts get a dedicated, tightly-scoped node
     And the assembled packet is snapshot-tested with the normalizing serializer
 ```
 
-**Notes:** *"Never let an agent auto-resolve blind, and never hand a resolver the whole
-repository."* The intent summaries are the piece a text-only merge tool structurally cannot supply
+**Notes:** _"Never let an agent auto-resolve blind, and never hand a resolver the whole
+repository."_ The intent summaries are the piece a text-only merge tool structurally cannot supply
 and a human reviewer would always ask for — and they are available only because the blackboard
 retained intent. This is a narrow, cheap, high-succeeding node shape, which is why conflicts are
 affordable rather than run-ending.
@@ -1096,7 +1096,7 @@ Feature: A failed gate stops integration rather than compounding it
 
   Scenario: Halt, do not continue merging
     Given the merge queue is [n3, n4, n2] and n3 has just merged
-    When the verification gate against "karvan/int/r1" returns verdict "fail"
+    When the verification gate against "DeFlow/int/r1" returns verdict "fail"
     Then no further merge is attempted
     And a "gate.evaluated" event records the verdict with its evidence findings
     And the remaining queue [n4, n2] is readable from the ledger projection
@@ -1109,12 +1109,12 @@ Feature: A failed gate stops integration rather than compounding it
 
   Scenario: The integration branch is never pushed to the default branch
     When the run completes, successfully or not
-    Then no invocation pushes "karvan/int/r1" to the default branch
+    Then no invocation pushes "DeFlow/int/r1" to the default branch
     And the run's output is the integration branch itself
 ```
 
-**Notes:** The second scenario is the subtle one: the recorded queue is a record of *what is left*,
-not of *what order to use*. Resuming with a stale order would reintroduce exactly the staleness
+**Notes:** The second scenario is the subtle one: the recorded queue is a record of _what is left_,
+not of _what order to use_. Resuming with a stale order would reintroduce exactly the staleness
 [EPIC-07-S26](#epic-07-s26--the-integration-loop-re-sorts-the-queue-after-every-merge) exists to
 remove.
 
@@ -1128,13 +1128,13 @@ remove.
 Feature: Daemon-boot recovery of orphaned worktrees
 
   Background:
-    Given karvand spawned a detached "bash -c 'sleep 300'" as node n1's agent
+    Given DeFlowd spawned a detached "bash -c 'sleep 300'" as node n1's agent
     And persisted { runId: "r1", nodeId: "n1", pid, pgid, startedAt, procStartTime } to SQLite
-    And n1's worktree is locked with reason "karvan run=r1 node=n1"
+    And n1's worktree is locked with reason "DeFlow run=r1 node=n1"
 
   Scenario: The full recovery on restart
-    Given karvand was SIGKILLed
-    When karvand starts again over the same .karvan directory
+    Given DeFlowd was SIGKILLed
+    When DeFlowd starts again over the same .DeFlow directory
     Then for the non-terminal row it compares the recorded procStartTime with the live process's
          start time (/proc/<pid>/stat field 22 on Linux, "ps -o lstart= -p <pid>" on macOS)
     And on a match it sends process.kill(-pgid, 'SIGKILL')
@@ -1176,9 +1176,9 @@ rather than a coincidence.
 Feature: Both tips are stored so staleness is detectable
 
   Scenario: A row whose tips no longer match is stale
-    Given a conflict_probe row for (r1, karvan/r1__a, karvan/r1__b) with
+    Given a conflict_probe row for (r1, DeFlow/r1__a, DeFlow/r1__b) with
           a_commit "aaa…" and b_commit "bbb…" and clean 1
-    When branch "karvan/r1__a" advances to "ccc…"
+    When branch "DeFlow/r1__a" advances to "ccc…"
     And the scheduler reads the conflict state for that pair
     Then the row is classified stale
     And a fresh probe is run before any scheduling decision is taken
@@ -1237,8 +1237,8 @@ Feature: Never kill a stranger
     And the row is marked terminal and the worktree cleaned up
 ```
 
-**Notes:** *"PIDs are recycled, and killing a stranger's process because you reused a number is an
-unrecoverable class of bug."* The grep assertion is deliberate — `kill(pid, 0)` is the obvious,
+**Notes:** _"PIDs are recycled, and killing a stranger's process because you reused a number is an
+unrecoverable class of bug."_ The grep assertion is deliberate — `kill(pid, 0)` is the obvious,
 idiomatic, wrong answer, and it will be reached for by anyone who has not read this scenario.
 Recycling is most likely after exactly the events this code exists to survive: a long laptop suspend
 or a machine restart.
@@ -1277,7 +1277,7 @@ Feature: Prune the dead, never the living
 ```
 
 **Notes:** "Adopt rather than kill" in the second scenario is what makes a daemon restart during a
-long run survivable — `detached: true` means the agent genuinely outlived karvand, and the correct
+long run survivable — `detached: true` means the agent genuinely outlived DeFlowd, and the correct
 response to a healthy orphan is to reattach to its output, not to destroy an hour of work. The
 adoption path itself belongs to [EPIC-06](../epics/EPIC-06-orchestrator.md); this scenario asserts
 only that the reaper leaves it alone.

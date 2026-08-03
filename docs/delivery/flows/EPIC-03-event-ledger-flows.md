@@ -7,22 +7,22 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan — runs `npx karvan up`, and occasionally runs it twice |
-| **karvand** | The local daemon. In several scenarios there are two of them, or an older and a newer build |
-| **Ledger** | `@karvan/ledger` — the write connection, the read connections, the migration runner, the blob store |
-| **Reducer** | `reduce(state, event)` in `@karvan/core` — pure, total, no I/O |
-| **Provider agent** | A `@karvan/mock-agent` subprocess on a temp `PATH`, writing to `io_chunk` and to its own side-effect log |
-| **SSE consumer** | A browser tab or the CLI, holding a `seq` cursor across a reconnect |
-| **CI** | The `test` matrix and the `crash-fuzz` project, on `ubuntu-26.04` and `macos-26`, Node 24 and 26 |
+| Actor              | Description                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Operator**       | The engineer driving DeFlow — runs `npx DeFlow up`, and occasionally runs it twice                       |
+| **DeFlowd**        | The local daemon. In several scenarios there are two of them, or an older and a newer build              |
+| **Ledger**         | `@DeFlow/ledger` — the write connection, the read connections, the migration runner, the blob store      |
+| **Reducer**        | `reduce(state, event)` in `@DeFlow/core` — pure, total, no I/O                                           |
+| **Provider agent** | A `@DeFlow/mock-agent` subprocess on a temp `PATH`, writing to `io_chunk` and to its own side-effect log |
+| **SSE consumer**   | A browser tab or the CLI, holding a `seq` cursor across a reconnect                                      |
+| **CI**             | The `test` matrix and the `crash-fuzz` project, on `ubuntu-26.04` and `macos-26`, Node 24 and 26         |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a data directory created with fs.mkdtemp under os.tmpdir() with the prefix "karvan-"
-  And KARVAN_KEEP_TMP is honoured so a failed run's ledger survives for post-mortem
+  Given a data directory created with fs.mkdtemp under os.tmpdir() with the prefix "DeFlow-"
+  And DeFlow_KEEP_TMP is honoured so a failed run's ledger survives for post-mortem
   And the ledger is a FILE-BACKED SQLite database at <dataDir>/ledger.db — never ":memory:"
   And it is opened with journal_mode=WAL, synchronous=NORMAL, busy_timeout=5000,
       foreign_keys=ON, wal_autocheckpoint=1000, journal_size_limit=67108864, cache_size=-32000
@@ -37,38 +37,38 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-03-S1 | Open, migrate, append, reopen | KAR-03.1, KAR-03.2, KAR-03.3 | Happy path |
-| EPIC-03-S2 | PRAGMAs are applied in order and WAL persists | KAR-03.1 | Happy path |
-| EPIC-03-S3 | A second writer gets `SQLITE_BUSY`, readers do not | KAR-03.1 | Edge case |
-| EPIC-03-S4 | `STRICT` refuses a TEXT value in an INTEGER column | KAR-03.1 | Failure |
-| EPIC-03-S5 | A migration takes a compacted backup before it runs | KAR-03.2 | Happy path |
-| EPIC-03-S6 | A failing migration rolls back completely | KAR-03.2 | Failure |
-| EPIC-03-S7 | A ledger newer than the binary refuses to open | KAR-03.2, KAR-03.5 | Failure |
-| EPIC-03-S8 | Pruning reuses a sequence number without `AUTOINCREMENT` | KAR-03.3 | Failure |
-| EPIC-03-S9 | A rolled-back transaction burns a sequence value | KAR-03.3 | Edge case |
-| EPIC-03-S10 | Two runs interleave in one global event table | KAR-03.3 | Concurrency |
-| EPIC-03-S11 | Agent output reaches `io_chunk` and never the reducer | KAR-03.4, KAR-03.5 | Happy path |
-| EPIC-03-S12 | Control-plane replay stays fast beside a huge data plane | KAR-03.4 | Performance |
-| EPIC-03-S13 | The SSE tail query is served by the covering index | KAR-03.4 | Performance |
-| EPIC-03-S14 | An open cursor held across a stream blows the WAL to 82.6 MB | KAR-03.4 | Failure |
-| EPIC-03-S15 | The reducer is pure, total and clock-free | KAR-03.5 | Happy path |
-| EPIC-03-S16 | An older karvand replays a ledger written by a newer one | KAR-03.5, KAR-03.8 | Recovery |
-| EPIC-03-S17 | Upcasters run on the way into the reducer | KAR-03.5 | Happy path |
-| EPIC-03-S18 | The checkpoint is committed with the events it covers | KAR-03.6 | Happy path |
-| EPIC-03-S19 | A `checkpoint_version` bump forces a full replay to the same state | KAR-03.6 | Recovery |
-| EPIC-03-S20 | A corrupted checkpoint cannot corrupt state | KAR-03.6 | Failure |
-| EPIC-03-S21 | The operator runs `karvan up` in two terminals | KAR-03.7 | Failure |
-| EPIC-03-S22 | A daemon that bypassed the flock is fenced by `daemon_epoch` | KAR-03.7 | Concurrency |
-| EPIC-03-S23 | The epoch is bumped on start and stamped on every write | KAR-03.7 | Happy path |
-| EPIC-03-S24 | `kill -9` mid-append, reopen, integrity intact | KAR-03.8 | Recovery |
-| EPIC-03-S25 | `synchronous = NORMAL` survives a crash and is honest about power loss | KAR-03.1, KAR-03.8 | Edge case |
-| EPIC-03-S26 | Crash-fuzz: no effect executed twice, state matches, integrity ok | KAR-03.8 | Recovery |
-| EPIC-03-S27 | Checkpointed start and cold start agree exactly | KAR-03.6, KAR-03.8 | Recovery |
-| EPIC-03-S28 | A payload over 256 KiB spills to the blob store | KAR-03.9 | Happy path |
-| EPIC-03-S29 | The same evidence across three attempts is one blob | KAR-03.9 | Edge case |
-| EPIC-03-S30 | Control-plane event volume is measured, not assumed | KAR-03.4 | Happy path |
+| Scenario    | Title                                                                  | Verifies                     | Type        |
+| ----------- | ---------------------------------------------------------------------- | ---------------------------- | ----------- |
+| EPIC-03-S1  | Open, migrate, append, reopen                                          | KAR-03.1, KAR-03.2, KAR-03.3 | Happy path  |
+| EPIC-03-S2  | PRAGMAs are applied in order and WAL persists                          | KAR-03.1                     | Happy path  |
+| EPIC-03-S3  | A second writer gets `SQLITE_BUSY`, readers do not                     | KAR-03.1                     | Edge case   |
+| EPIC-03-S4  | `STRICT` refuses a TEXT value in an INTEGER column                     | KAR-03.1                     | Failure     |
+| EPIC-03-S5  | A migration takes a compacted backup before it runs                    | KAR-03.2                     | Happy path  |
+| EPIC-03-S6  | A failing migration rolls back completely                              | KAR-03.2                     | Failure     |
+| EPIC-03-S7  | A ledger newer than the binary refuses to open                         | KAR-03.2, KAR-03.5           | Failure     |
+| EPIC-03-S8  | Pruning reuses a sequence number without `AUTOINCREMENT`               | KAR-03.3                     | Failure     |
+| EPIC-03-S9  | A rolled-back transaction burns a sequence value                       | KAR-03.3                     | Edge case   |
+| EPIC-03-S10 | Two runs interleave in one global event table                          | KAR-03.3                     | Concurrency |
+| EPIC-03-S11 | Agent output reaches `io_chunk` and never the reducer                  | KAR-03.4, KAR-03.5           | Happy path  |
+| EPIC-03-S12 | Control-plane replay stays fast beside a huge data plane               | KAR-03.4                     | Performance |
+| EPIC-03-S13 | The SSE tail query is served by the covering index                     | KAR-03.4                     | Performance |
+| EPIC-03-S14 | An open cursor held across a stream blows the WAL to 82.6 MB           | KAR-03.4                     | Failure     |
+| EPIC-03-S15 | The reducer is pure, total and clock-free                              | KAR-03.5                     | Happy path  |
+| EPIC-03-S16 | An older DeFlowd replays a ledger written by a newer one               | KAR-03.5, KAR-03.8           | Recovery    |
+| EPIC-03-S17 | Upcasters run on the way into the reducer                              | KAR-03.5                     | Happy path  |
+| EPIC-03-S18 | The checkpoint is committed with the events it covers                  | KAR-03.6                     | Happy path  |
+| EPIC-03-S19 | A `checkpoint_version` bump forces a full replay to the same state     | KAR-03.6                     | Recovery    |
+| EPIC-03-S20 | A corrupted checkpoint cannot corrupt state                            | KAR-03.6                     | Failure     |
+| EPIC-03-S21 | The operator runs `DeFlow up` in two terminals                         | KAR-03.7                     | Failure     |
+| EPIC-03-S22 | A daemon that bypassed the flock is fenced by `daemon_epoch`           | KAR-03.7                     | Concurrency |
+| EPIC-03-S23 | The epoch is bumped on start and stamped on every write                | KAR-03.7                     | Happy path  |
+| EPIC-03-S24 | `kill -9` mid-append, reopen, integrity intact                         | KAR-03.8                     | Recovery    |
+| EPIC-03-S25 | `synchronous = NORMAL` survives a crash and is honest about power loss | KAR-03.1, KAR-03.8           | Edge case   |
+| EPIC-03-S26 | Crash-fuzz: no effect executed twice, state matches, integrity ok      | KAR-03.8                     | Recovery    |
+| EPIC-03-S27 | Checkpointed start and cold start agree exactly                        | KAR-03.6, KAR-03.8           | Recovery    |
+| EPIC-03-S28 | A payload over 256 KiB spills to the blob store                        | KAR-03.9                     | Happy path  |
+| EPIC-03-S29 | The same evidence across three attempts is one blob                    | KAR-03.9                     | Edge case   |
+| EPIC-03-S30 | Control-plane event volume is measured, not assumed                    | KAR-03.4                     | Happy path  |
 
 ---
 
@@ -224,7 +224,7 @@ Feature: Pre-migration backup
 ```
 
 **Notes:** **Measured 2026-08-02: `VACUUM INTO` took 1007 ms for a 193 MB database**, versus 1633 ms
-for `db.backup()` — faster *and* it produces a compacted copy. That is a completely acceptable safety
+for `db.backup()` — faster _and_ it produces a compacted copy. That is a completely acceptable safety
 net for a local daemon, and it doubles as the one-command "attach my ledger to this bug report",
 which matters a lot when you are the only engineer on the project.
 
@@ -269,8 +269,8 @@ the recovery mechanism, and it is cheap enough to take unconditionally.
 Feature: Downgrade safety at the schema layer
 
   Scenario: a schema from the future is not guessed at
-    Given a ledger whose PRAGMA user_version is 9 
-    And a karvand binary whose highest shipped migration id is 7
+    Given a ledger whose PRAGMA user_version is 9
+    And a DeFlowd binary whose highest shipped migration id is 7
     When openLedger is called
     Then it throws LedgerTooNew
     And the message names both 9 and 7 and points at the pre-migrate-*.db files
@@ -284,7 +284,7 @@ Feature: Downgrade safety at the schema layer
 ```
 
 **Notes:** These two mechanisms have to be understood as a pair. The reducer ignoring unknown `kind`
-values is what makes a *payload*-level downgrade safe; there is no equivalent for a table that has
+values is what makes a _payload_-level downgrade safe; there is no equivalent for a table that has
 gained a column, because a write from the older binary would violate a constraint it does not know
 about. Failing loudly with a message naming the backup is the honest behaviour, and it is the
 scenario a user hits after trying a nightly build.
@@ -322,7 +322,7 @@ Feature: AUTOINCREMENT is mandatory
 ```
 
 **Notes:** **Verified 2026-08-02.** This is the single most important regression test in the epic and
-it costs ten lines. `seq` is the identity of an event *outside* the database — the SSE frame `id` a
+it costs ten lines. `seq` is the identity of an event _outside_ the database — the SSE frame `id` a
 browser tab persisted before a reload, the `last_seq` in a checkpoint row, the cursor a frontend
 store holds across a reconnect. Run pruning is not in M1, but it will be added because a 193 MB
 ledger is real, and the third scenario is why this must be right before then rather than after. The
@@ -375,12 +375,12 @@ Feature: One global ledger keyed by run_id
 
   Scenario: there is exactly one database file
     Then <dataDir> contains ledger.db and no per-run *.db file
-    And the run directory .karvan/runs/<runId>/ contains exports only — plan/, nodes/, report.html —
+    And the run directory .DeFlow/runs/<runId>/ contains exports only — plan/, nodes/, report.html —
         and is never read back to reconstruct state
 ```
 
 **Notes:** [16-repo-layout §7.2](../../16-repo-layout.md) records this as a deliberate deviation from
-the PRD §9.4 sketch, which put `ledger.db` under `.karvan/runs/<runId>/`. The schema is keyed by
+the PRD §9.4 sketch, which put `ledger.db` under `.DeFlow/runs/<runId>/`. The schema is keyed by
 `run_id` throughout, cross-run features (project memory, plan templates, the cross-run dashboard,
 FTS5 retrieval over prior runs) need one queryable store, and a per-run database would put a binary
 WAL-journalled file inside a git repository.
@@ -408,7 +408,7 @@ Feature: The control-plane / data-plane split
 
   Scenario: the reducer structurally cannot read io_chunk
     Then reduce()'s parameter type is (RunState, Event)
-    And packages/core has no dependency on @karvan/ledger or better-sqlite3
+    And packages/core has no dependency on @DeFlow/ledger or better-sqlite3
     And an architecture test asserts both
 ```
 
@@ -442,7 +442,7 @@ Feature: Replay performance without snapshotting
 **Notes:** **Measured 2026-08-02** on `better-sqlite3@13.0.2` with WAL + `synchronous = NORMAL`:
 500,000 events in one combined table is **193 MB**, a full scan is **416 ms**, and the control-plane
 subset of 10,000 rows reduces to state in **29 ms**. In the shipped schema the isolation is achieved
-*physically* by the table split rather than by a partial index, which is strictly better — there is
+_physically_ by the table split rather than by a partial index, which is strictly better — there is
 no index to get wrong and no `kind` predicate to keep in sync. The CI budget is set at ~3× the
 measured figure so it catches a regression without flaking on a slow shared runner; roadmap **A1-1**
 notes those numbers came from Linux, likely overlayfs, so the macOS budget is set from M0-S5's
@@ -553,7 +553,7 @@ gate in microseconds.
 
 ---
 
-## EPIC-03-S16 — An older karvand replays a ledger written by a newer one
+## EPIC-03-S16 — An older DeFlowd replays a ledger written by a newer one
 
 **Verifies:** KAR-03.5, KAR-03.8 · **Type:** Recovery · **Automated at:** integration
 
@@ -561,13 +561,13 @@ gate in microseconds.
 Feature: Downgrade tolerance — the single forward-compatibility mechanism
 
   Background:
-    Given a ledger written by a newer karvand for run "run_20260802T141133Z_9f2a1c"
+    Given a ledger written by a newer DeFlowd for run "run_20260802T141133Z_9f2a1c"
     And it contains 1,800 events of known kinds
     And it also contains 40 events of kind "node.sandbox.escalated", which this binary has never heard of
     And PRAGMA user_version is unchanged, so the schema is compatible
 
   Scenario: the daemon starts and serves
-    When the older karvand starts over that data directory
+    When the older DeFlowd starts over that data directory
     Then it does not throw
     And it does not enter a crash loop
     And it binds its port and serves the run
@@ -594,7 +594,7 @@ Feature: Downgrade tolerance — the single forward-compatibility mechanism
 
 **Notes:** This is the mandated downgrade scenario and it is the entire reason
 [04-domain-model §9.2](../../04-domain-model.md) rule 2 says "not throw, not log-and-throw, not
-`assertNever`". A user who installs a newer `karvand`, starts a run, then downgrades must get a
+`assertNever`". A user who installs a newer `DeFlowd`, starts a run, then downgrades must get a
 daemon that skips what it does not understand rather than one that refuses to open the ledger. The
 aggregate-log clause is deliberate: an error line per skipped event during a 40-node replay is its
 own denial of service. Note the pairing with [EPIC-03-S7](#epic-03-s7--a-ledger-newer-than-the-binary-refuses-to-open):
@@ -689,12 +689,12 @@ Feature: The checkpoint is a pure optimisation
 
   Scenario: the two paths agree on an unchanged version
     Given the same ledger and a matching CHECKPOINT_VERSION
-    When state is computed once via the checkpoint path and once with KARVAN_NO_CHECKPOINT=1
+    When state is computed once via the checkpoint path and once with DeFlow_NO_CHECKPOINT=1
     Then the two states are deeply equal
     And this assertion runs for every fixture in test/fixtures/runs/
 
   Scenario: the whole suite passes with the cache disabled
-    When the integration and crash-fuzz projects run with KARVAN_NO_CHECKPOINT=1
+    When the integration and crash-fuzz projects run with DeFlow_NO_CHECKPOINT=1
     Then every test passes
 ```
 
@@ -739,7 +739,7 @@ prevent, but belt and braces are cheap here.
 
 ---
 
-## EPIC-03-S21 — The operator runs `karvan up` in two terminals
+## EPIC-03-S21 — The operator runs `DeFlow up` in two terminals
 
 **Verifies:** KAR-03.7 · **Type:** Failure · **Automated at:** e2e
 
@@ -747,11 +747,11 @@ prevent, but belt and braces are cheap here.
 Feature: Single-instance lease
 
   Scenario: the second daemon fails fast and says why
-    Given karvand is running with pid 4711 against data directory <dataDir>
-    And it holds an exclusive flock on <dataDir>/karvan.lock
-    When the operator runs "npx karvan up" in a second terminal against the same data directory
+    Given DeFlowd is running with pid 4711 against data directory <dataDir>
+    And it holds an exclusive flock on <dataDir>/DeFlow.lock
+    When the operator runs "npx DeFlow up" in a second terminal against the same data directory
     Then the second process exits non-zero within 1 second
-    And stderr reads "karvand is already running (pid 4711) — data dir <dataDir>"
+    And stderr reads "DeFlowd is already running (pid 4711) — data dir <dataDir>"
     And there is no stack trace and no raw EWOULDBLOCK
     And the second process did NOT bind a port
     And the second process did NOT open the ledger for writing
@@ -762,17 +762,17 @@ Feature: Single-instance lease
     And a test asserts the ordering by instrumenting each step
 
   Scenario: a SIGKILLed daemon releases the lock
-    Given karvand is killed with SIGKILL
-    When a new karvand starts against the same data directory
+    Given DeFlowd is killed with SIGKILL
+    When a new DeFlowd starts against the same data directory
     Then it acquires the lock without manual cleanup
     And no stale-pid file has to be removed by hand
 ```
 
 **Notes:** This is the mandated two-daemons scenario. "It's a single-user local daemon, so locking is
-unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx karvan up`
-in two terminals, and it happens the first week.** SQLite protects the *database* (a second
+unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx DeFlow up`
+in two terminals, and it happens the first week.** SQLite protects the _database_ (a second
 connection's `BEGIN IMMEDIATE` returns `SQLITE_BUSY`, verified) but does absolutely nothing to stop
-two schedulers interleaving *effect execution*: both reduce the same ledger, both derive the same
+two schedulers interleaving _effect execution_: both reduce the same ledger, both derive the same
 ready set, both spawn the same agent, both burn tokens, and both commit to the same branch. The
 "did not spawn a probe" clause matters — a second daemon that gets far enough to probe providers has
 already changed the world before failing. The third scenario relies on the kernel releasing `flock`
@@ -832,7 +832,7 @@ Feature: daemon_epoch bookkeeping
 
   Scenario: monotonic across boots
     Given a fresh data directory
-    When karvand boots three times in sequence
+    When DeFlowd boots three times in sequence
     Then the persisted epoch reads 1, then 2, then 3
     And the read-increment-persist is atomic — a crash between read and persist cannot produce a duplicate epoch
 
@@ -924,7 +924,7 @@ Feature: Stating what the durability setting does and does not buy
 
 **Notes:** The architecture is explicit that this document "says so rather than pretending WAL means
 invulnerable". Roadmap **A1-1** records that all benchmarks ran in a Linux container, likely over
-overlayfs; macOS APFS uses `F_FULLFSYNC` and is typically slower. The *relative* shape (FULL is
+overlayfs; macOS APFS uses `F_FULLFSYNC` and is typically slower. The _relative_ shape (FULL is
 20–25× more expensive per commit; batching gives ~7×) should hold, but the absolute setting is picked
 from numbers measured on the machine that will run it.
 
@@ -938,16 +938,16 @@ from numbers measured on the machine that will run it.
 Feature: The test that proves the thesis
 
   Background:
-    Given karvan-mock-agent and the fake exec-shim agent are symlinked onto a temp PATH
+    Given DeFlow-mock-agent and the fake exec-shim agent are symlinked onto a temp PATH
     And each fake binary appends {runId, nodeId, attempt, idempotencyKey} to a side-effect log file on every invocation
     And the mock agents run with --seed so the pre-crash side is deterministic
     And the kill point is seeded from $GITHUB_RUN_ID so a CI failure reproduces from the log
     And the harness snapshots the SSE-projected state on EVERY event before the kill
 
   Scenario Outline: kill, restart, assert four invariants
-    Given karvand is started over a fresh .karvan/ with a scripted multi-node run
+    Given DeFlowd is started over a fresh .DeFlow/ with a scripted multi-node run
     When the harness sleeps <interval> and sends SIGKILL to the daemon
-    And karvand is restarted over the same .karvan/ directory
+    And DeFlowd is restarted over the same .DeFlow/ directory
     Then the fake agents' side-effect log contains no duplicate idempotencyKey
     And the effect journal contains no ikey in state 'done' twice
     And the reduced state equals the pre-crash projection at the last durably-written seq
@@ -964,7 +964,7 @@ Feature: The test that proves the thesis
   Scenario: a wedge is a failure, not a timeout
     Given the restarted run neither completes nor fails within the scripted budget
     Then the test fails with the run's last 20 events and the reduced state attached
-    And KARVAN_KEEP_TMP=1 plus actions/upload-artifact preserve the ledger for post-mortem
+    And DeFlow_KEEP_TMP=1 plus actions/upload-artifact preserve the ledger for post-mortem
 ```
 
 **Notes:** "Everything else in the durability design is theory until this test is green." Two details
@@ -987,7 +987,7 @@ Feature: Two paths, one answer
   Scenario Outline: every recorded fixture agrees on both paths
     Given the ledger fixture "<fixture>"
     When state is computed with the checkpoint cache enabled
-    And state is computed again with KARVAN_NO_CHECKPOINT=1
+    And state is computed again with DeFlow_NO_CHECKPOINT=1
     Then the two RunStates are deeply equal
     And both match the committed file snapshot for that fixture
 
@@ -1008,7 +1008,7 @@ Feature: Two paths, one answer
 
 **Notes:** These six fixtures are the same corpus the UI's entire test and dev story runs on
 ([testing strategy §12](../../14-testing-strategy.md)) — a recorded ledger is simultaneously a test
-fixture, a dev-mode data source and a demo, and `karvan replay <fixture>` serves one over the same
+fixture, a dev-mode data source and a demo, and `DeFlow replay <fixture>` serves one over the same
 HTTP + SSE contract as a live run. Asserting both computation paths against them here means the UI's
 fixtures are validated by the ledger's own suite before a single view is built.
 
@@ -1115,7 +1115,7 @@ Feature: Instrumenting the assumption that removed snapshotting
 control-plane events per 40-node run, and per-tool-call events could be 10–100× that. Instrumenting
 from M1 is how that gets discovered by measurement rather than by a nine-hour run getting slow to
 open. Because the `checkpoint_version` guard already exists, adding real snapshots later would be
-additive rather than a rewrite — and if file *size* becomes the concern first, the cheaper move is
+additive rather than a rewrite — and if file _size_ becomes the concern first, the cheaper move is
 putting `io_chunk` in a second SQLite file via `ATTACH`.
 
 ---

@@ -8,17 +8,17 @@ F6.7 (semantic retrieval over a run's own artifacts and prior runs) is **P1**, n
 implementation in 2026 is embeddings plus a vector index, and for this corpus that reflex is wrong on
 the merits as well as on the timing.
 
-**What Karvan's corpus actually is**: stack traces, test output, diffs, file paths, symbol names,
-error codes, commit messages, gate verdicts. Overwhelmingly *exact-match* territory — BM25's
+**What DeFlow's corpus actually is**: stack traces, test output, diffs, file paths, symbol names,
+error codes, commit messages, gate verdicts. Overwhelmingly _exact-match_ territory — BM25's
 strongest suit and dense retrieval's weakest. The 2026 hybrid-search literature is consistent that
 embeddings conflate identifiers differing by a few characters, which is catastrophic exactly where
 it matters: `getUserById` and `getUsersById` are not the same function, and a retriever that thinks
 they are will hand an agent the wrong context with high confidence.
 
-Karvan also already has git, ripgrep and the file tree, and the vendor CLIs ship excellent repo
-search of their own. Retrieval here is over *Karvan's* artifacts, not over the user's codebase.
+DeFlow also already has git, ripgrep and the file tree, and the vendor CLIs ship excellent repo
+search of their own. Retrieval here is over _DeFlow's_ artifacts, not over the user's codebase.
 
-And the infrastructure argument is decisive under NF6 (`npx karvan up`, no database server, no
+And the infrastructure argument is decisive under NF6 (`npx DeFlow up`, no database server, no
 Docker for the core). **Verified 2026-08-02** on Node 22.22.2: `better-sqlite3@13.0.2` bundles
 **SQLite 3.53.4 compiled with `ENABLE_FTS5`**; `CREATE VIRTUAL TABLE ... USING fts5(...)` works, and
 `bm25()` ranking with `ORDER BY rank` returns sensible results. Zero extra dependencies, zero build
@@ -58,22 +58,25 @@ target adapter's declared `maxContext` — default 50%, never above 60%. Full de
 ## Consequences
 
 ### Positive
+
 - **Zero marginal dependency cost.** FTS5 is already in the binary already being shipped. NF6 is
   satisfied outright, with no model download and no first-run latency.
 - BM25 is the right ranker for a corpus of identifiers, paths and error strings — this is not a
   compromise made for simplicity, it is the better retriever for this data.
 - Fully offline (NF1), fully deterministic, and testable with no network and no model.
-- `karvan doctor` can report FTS5 availability in one line.
+- `DeFlow doctor` can report FTS5 availability in one line.
 
 ### Negative
+
 - **No semantic recall.** A query phrased differently from the indexed text will miss. "The bit that
   handles logging in" will not retrieve `authenticateSession`. This is a real capability gap and it
   is accepted for M1 on the grounds that F6.7 is P1 and the gap has not been measured yet.
 - Query quality falls on the caller. A node asking for context must produce reasonable keywords.
 
 ### Neutral
+
 - Run events stay in the global ledger (every table keyed by `run_id`), with cross-run project memory
-  in a separate `.karvan/memory/project.db`, so retention and GC have different lifecycles. The FTS
+  in a separate `.DeFlow/memory/project.db`, so retention and GC have different lifecycles. The FTS
   index follows the same split.
 
 ## Alternatives considered
@@ -87,7 +90,7 @@ target adapter's declared `maxContext` — default 50%, never above 60%. Full de
   [ADR 0007](./0007-better-sqlite3-over-node-sqlite.md) rejected libSQL, and vectors are not a
   reason to reopen it.
 - **`fastembed`.** Rejected as the future embedding path: last published December 2025 and it pulls
-  native `@anush008/tokenizers` bindings, a cross-platform install hazard for `npx karvan up`.
+  native `@anush008/tokenizers` bindings, a cross-platform install hazard for `npx DeFlow up`.
 
 ## Revisit when
 
@@ -113,4 +116,5 @@ When that trigger fires, upgrade **in cost order**, and stop at the first step t
 There is a decent chance step 1 is where this stops.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

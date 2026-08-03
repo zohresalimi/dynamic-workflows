@@ -1,18 +1,18 @@
 # Provider adapter layer
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
 
 ---
 
-This is the highest-churn layer in Karvan and the one where the research most sharply contradicted the
+This is the highest-churn layer in DeFlow and the one where the research most sharply contradicted the
 assumptions in the PRD. Everything below marked **Verified 2026-08-02** was established by installing
 the package, probing the live binary, or reading the shipped `dist/`. Everything else is marked
 **Unverified** and must not be built on without a spike.
 
-The layer lives in `@karvan/adapters` (see [repo layout](./16-repo-layout.md)). It has exactly one job:
+The layer lives in `@DeFlow/adapters` (see [repo layout](./16-repo-layout.md)). It has exactly one job:
 turn five heterogeneous vendor binaries into one internal event vocabulary, without ever holding a
 credential (AR-1).
 
@@ -20,20 +20,20 @@ credential (AR-1).
 
 ## 1. Three adapter paths, and which is default
 
-| Path | Status | When used | PRD |
-|---|---|---|---|
-| **ACP client** | **Default.** The primary and preferred path. | Any agent reachable over the Agent Client Protocol, natively or through a first-party adapter. Today that is all five target vendors. | F3.1 |
-| **CLI exec shim** | Documented fallback, retained permanently — not a temporary bridge. | Agents with no ACP path (Cursor, Goose, Aider), and as a degraded mode when an ACP adapter is broken by a vendor release. | F3.2 |
-| **Direct API SDK** | Opt-in only, never a default. | The user explicitly supplies their own API key (personal or company), or points at a local Ollama/vLLM endpoint for offline work. | F3.3 |
+| Path               | Status                                                              | When used                                                                                                                             | PRD  |
+| ------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| **ACP client**     | **Default.** The primary and preferred path.                        | Any agent reachable over the Agent Client Protocol, natively or through a first-party adapter. Today that is all five target vendors. | F3.1 |
+| **CLI exec shim**  | Documented fallback, retained permanently — not a temporary bridge. | Agents with no ACP path (Cursor, Goose, Aider), and as a degraded mode when an ACP adapter is broken by a vendor release.             | F3.2 |
+| **Direct API SDK** | Opt-in only, never a default.                                       | The user explicitly supplies their own API key (personal or company), or points at a local Ollama/vLLM endpoint for offline work.     | F3.3 |
 
-The ordering is not a preference, it is a consequence. Under ACP, Karvan sits in the path of every
+The ordering is not a preference, it is a consequence. Under ACP, DeFlow sits in the path of every
 file access and every command execution as the implementer of `fs/*` and `terminal/*`, which is what
 makes the permission ladder a single pure function rather than an N-vendors × M-levels flag matrix
 (see [workspace and safety](./09-workspace-and-safety.md)). The exec shim gives up that mediation and
 falls back to per-vendor flags; that is the real cost of the fallback, not the parsing.
 
 The direct-API path exists because AR-1 §5.3 requires it as a first-class alternative, but it inverts
-the credential posture: on that path Karvan *does* handle a key the user handed it. It is therefore
+the credential posture: on that path DeFlow _does_ handle a key the user handed it. It is therefore
 gated behind explicit per-provider configuration, it is never selected by auto-detection, and the UI
 must label runs that used it. No package versions for this path were verified on 2026-08-02 —
 **Unverified**, and it is scoped to M2, not M1.
@@ -55,16 +55,16 @@ must label runs that used it. No package versions for this path were verified on
 Zed Industries, repo `github.com/agentclientprotocol/typescript-sdk`. **Zero runtime dependencies**;
 a single peer dependency `zod ^3.25.0 || ^4.0.0`, which is compatible with the MCP SDK's zod peer.
 One package implements both the client and the agent side, which is what makes
-[`@karvan/mock-agent`](#13-the-mock-agent-f37-d17) cheap to build.
+[`@DeFlow/mock-agent`](#13-the-mock-agent-f37-d17) cheap to build.
 
 **Do not use `@zed-industries/agent-client-protocol`.** **Verified 2026-08-02:** deprecated at v0.4.5
-with the npm message *"This package has been renamed to @agentclientprotocol/sdk. Please migrate to
-continue receiving updates."* The project also moved GitHub orgs from `zed-industries` to
+with the npm message _"This package has been renamed to @agentclientprotocol/sdk. Please migrate to
+continue receiving updates."_ The project also moved GitHub orgs from `zed-industries` to
 `agentclientprotocol`. Any tutorial, cached answer, or note older than roughly late 2025 names the
 dead package.
 
-The exact pin (not `^1.3.0`) is warranted: this package went 0.4.5 → 1.3.0 *and* changed npm scope
-*and* changed GitHub org inside about ten months.
+The exact pin (not `^1.3.0`) is warranted: this package went 0.4.5 → 1.3.0 _and_ changed npm scope
+_and_ changed GitHub org inside about ten months.
 
 Subpath exports, **verified** from `package.json`: `.`, `./experimental/v2`,
 `./experimental/http-client`, `./experimental/ws-client`, `./experimental/server`,
@@ -79,7 +79,7 @@ agents:
 - `PROTOCOL_VERSION` is the **integer `1`**, not a date string. All five probed agents returned
   `protocolVersion: 1`.
 - Package/release version numbers (`v1.3.0`, `v0.13.6`, …) are artefact versions and are explicitly
-  *not* the compatibility signal. Wire compatibility is determined solely by the negotiated
+  _not_ the compatibility signal. Wire compatibility is determined solely by the negotiated
   `protocolVersion`.
 
 > **Do not share a version-negotiation helper between ACP and MCP.** ACP's `protocolVersion` is an
@@ -88,13 +88,13 @@ agents:
 Transport construction:
 
 ```ts
-import * as acp from '@agentclientprotocol/sdk'
-import { Readable, Writable } from 'node:stream'
+import * as acp from "@agentclientprotocol/sdk";
+import { Readable, Writable } from "node:stream";
 
 const stream = acp.ndJsonStream(
   Writable.toWeb(child.stdin),
   Readable.toWeb(child.stdout),
-)
+);
 ```
 
 ### 2.3 The builder API and the `nextUpdate()` pull loop
@@ -104,37 +104,44 @@ Use the modern builder API. The legacy `ClientSideConnection` class is still exp
 builder.
 
 ```ts
-const result = await acp.client({ name: 'karvan', version: '0.1.0' })
-  .onRequest(acp.methods.client.session.requestPermission, ctx => brokerPermission(ctx.params))
-  .onRequest(acp.methods.client.fs.readTextFile,  ctx => fsService.readText(ctx.params))
-  .onRequest(acp.methods.client.fs.writeTextFile, ctx => fsService.writeText(ctx.params))
-  .connectWith(stream, async ctx => {
+const result = await acp
+  .client({ name: "DeFlow", version: "0.1.0" })
+  .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
+    brokerPermission(ctx.params),
+  )
+  .onRequest(acp.methods.client.fs.readTextFile, (ctx) =>
+    fsService.readText(ctx.params),
+  )
+  .onRequest(acp.methods.client.fs.writeTextFile, (ctx) =>
+    fsService.writeText(ctx.params),
+  )
+  .connectWith(stream, async (ctx) => {
     const init = await ctx.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
         terminal: true,
       },
-    })
-    await persistCapabilities(provider, init)      // §6
+    });
+    await persistCapabilities(provider, init); // §6
 
-    return ctx.buildSession(worktreePath).withSession(async session => {
-      session.prompt(packet.text)
+    return ctx.buildSession(worktreePath).withSession(async (session) => {
+      session.prompt(packet.text);
       for (;;) {
-        const m = await session.nextUpdate()        // PULL-based, not a callback
-        if (m.kind === 'stop') return m.response    // { stopReason }
-        await ledger.append(toKarvanEvent(m.notification))   // safe to await here
+        const m = await session.nextUpdate(); // PULL-based, not a callback
+        if (m.kind === "stop") return m.response; // { stopReason }
+        await ledger.append(toDeFlowEvent(m.notification)); // safe to await here
       }
-    })
-  })
+    });
+  });
 ```
 
 **`session.nextUpdate()` is the single most important API detail in this document.** It is a pull
 loop, not a callback registration, and that difference is load-bearing for durability:
 
-1. **Natural backpressure.** Karvan does not request the next frame until it has finished with the
+1. **Natural backpressure.** DeFlow does not request the next frame until it has finished with the
    current one. The reader stalls, the OS pipe fills at 64 KiB, and the agent blocks in `write()`.
-2. **A legal place to `await` the SQLite append.** The event must be durable before Karvan asks for
+2. **A legal place to `await` the SQLite append.** The event must be durable before DeFlow asks for
    more; the ledger is the source of truth for resume (see [durable execution](./05-durable-execution.md)).
    A callback-style `Client.sessionUpdate` handler gives you nowhere to do this — awaiting inside a
    flowing-mode handler buffers the rest of the stream in RAM. See §11.
@@ -146,31 +153,51 @@ If you take one thing from this layer into the implementation, take the pull loo
 **Verified 2026-08-02** from `dist/schema/index.js` (`CLIENT_METHODS`, `AGENT_METHODS`,
 `PROTOCOL_METHODS`).
 
-| Method | Karvan must implement? | Notes |
-|---|---|---|
-| `session/request_permission` | **Mandatory** | The permission ladder's entry point. Auto-answered from policy; escalates to the UI only for gated categories. |
-| `session/update` | **Mandatory** | The streaming notification channel. Consumed via `nextUpdate()`. |
-| `fs/read_text_file`, `fs/write_text_file` | Optional — gated on `clientCapabilities.fs` | Only called if Karvan advertises them. |
-| `terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, `terminal/release` | Optional — gated on `clientCapabilities.terminal` | Only called if Karvan advertises `terminal: true`. |
-| `mcp/connect`, `mcp/message`, `mcp/disconnect` | Not implemented at M1 | Requires `mcpCapabilities.acp`, which **no agent advertises** (§7). |
-| `elicitation/create`, `elicitation/complete` | Not implemented at M1 | |
+| Method                                                                                              | DeFlow must implement?                            | Notes                                                                                                          |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `session/request_permission`                                                                        | **Mandatory**                                     | The permission ladder's entry point. Auto-answered from policy; escalates to the UI only for gated categories. |
+| `session/update`                                                                                    | **Mandatory**                                     | The streaming notification channel. Consumed via `nextUpdate()`.                                               |
+| `fs/read_text_file`, `fs/write_text_file`                                                           | Optional — gated on `clientCapabilities.fs`       | Only called if DeFlow advertises them.                                                                         |
+| `terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, `terminal/release` | Optional — gated on `clientCapabilities.terminal` | Only called if DeFlow advertises `terminal: true`.                                                             |
+| `mcp/connect`, `mcp/message`, `mcp/disconnect`                                                      | Not implemented at M1                             | Requires `mcpCapabilities.acp`, which **no agent advertises** (§7).                                            |
+| `elicitation/create`, `elicitation/complete`                                                        | Not implemented at M1                             |                                                                                                                |
 
-Agent methods Karvan calls: `initialize`, `authenticate`, `session/{new,load,prompt,cancel,set_mode,
+Agent methods DeFlow calls: `initialize`, `authenticate`, `session/{new,load,prompt,cancel,set_mode,
 set_config_option,list,delete,fork,resume,close}`, `providers/{list,set,disable}`, `logout`, `nes/*`,
 `document/did*`, plus `$/cancel_request` at the protocol level.
 
 Relevant types, **verified** from `dist/schema/types.gen.d.ts`:
 
 ```ts
-type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'
-type RequestPermissionOutcome = { outcome: 'cancelled' } | { outcome: 'selected'; optionId: string }
-type ToolKind = 'read'|'edit'|'delete'|'move'|'search'|'execute'|'think'|'fetch'|'switch_mode'|'other'
-type ToolCallLocation = { path: string; line?: number }
-type NewSessionRequest = { cwd: string; additionalDirectories?: string[]; mcpServers: McpServer[] }
+type PermissionOptionKind =
+  | "allow_once"
+  | "allow_always"
+  | "reject_once"
+  | "reject_always";
+type RequestPermissionOutcome =
+  | { outcome: "cancelled" }
+  | { outcome: "selected"; optionId: string };
+type ToolKind =
+  | "read"
+  | "edit"
+  | "delete"
+  | "move"
+  | "search"
+  | "execute"
+  | "think"
+  | "fetch"
+  | "switch_mode"
+  | "other";
+type ToolCallLocation = { path: string; line?: number };
+type NewSessionRequest = {
+  cwd: string;
+  additionalDirectories?: string[];
+  mcpServers: McpServer[];
+};
 ```
 
 `ToolKind` maps almost one-to-one onto the permission ladder, and `ToolCallLocation.path` gives
-path-scope enforcement *at request time* rather than as post-hoc detection (F5.3).
+path-scope enforcement _at request time_ rather than as post-hoc detection (F5.3).
 
 ### 2.5 Cancellation semantics
 
@@ -204,7 +231,7 @@ and drops `session/load` and `session/set_mode` from the agent side.
 > handlers.
 
 ```
-@karvan/daemon/src/services/
+@DeFlow/daemon/src/services/
   fs-service.ts         path resolution, workspace-root enforcement, ladder check, ledger events
   terminal-service.ts   allowlist, pty lifecycle, ring buffer, blob spilling, ledger events
   fronts/acp-fs.ts        ~15 lines: unwrap ACP params -> fsService -> wrap ACP result
@@ -231,15 +258,15 @@ machine — installed from npm, raw ndjson probe, responses captured.
 
 ### 4.1 Native ACP — spawn the vendor binary directly
 
-| Vendor | Package @ version | Spawn |
-|---|---|---|
-| Gemini CLI | `@google/gemini-cli@0.53.1` | `<abs>/gemini --acp` |
-| GitHub Copilot CLI | `@github/copilot@1.0.77` | `<abs>/copilot --acp` |
-| OpenCode | `opencode-ai@1.18.11` | `<abs>/opencode acp --cwd <worktree>` |
+| Vendor             | Package @ version           | Spawn                                 |
+| ------------------ | --------------------------- | ------------------------------------- |
+| Gemini CLI         | `@google/gemini-cli@0.53.1` | `<abs>/gemini --acp`                  |
+| GitHub Copilot CLI | `@github/copilot@1.0.77`    | `<abs>/copilot --acp`                 |
+| OpenCode           | `opencode-ai@1.18.11`       | `<abs>/opencode acp --cwd <worktree>` |
 
-Notes: Gemini's `--experimental-acp` still exists but `--help` marks it *"(deprecated, use --acp
-instead)"* — use `--acp` and fall back to `--experimental-acp` only if argv parsing fails. Copilot's
-help text for the flag reads *"Start as Agent Client Protocol server"*. OpenCode's is a **subcommand,
+Notes: Gemini's `--experimental-acp` still exists but `--help` marks it _"(deprecated, use --acp
+instead)"_ — use `--acp` and fall back to `--experimental-acp` only if argv parsing fails. Copilot's
+help text for the flag reads _"Start as Agent Client Protocol server"_. OpenCode's is a **subcommand,
 not a flag**.
 
 ### 4.2 Adapter required — Claude Code and Codex do NOT speak ACP
@@ -247,10 +274,10 @@ not a flag**.
 **Verified absent** from `claude --help` (v2.1.220) and `codex --help` (v0.146.0) — grepped, zero
 hits. The PRD's §4.7 claim that these speak ACP is **contradicted as stated**.
 
-| Vendor | Adapter package @ version | Bin | Spawn |
-|---|---|---|---|
-| Claude Code 2.1.220 | `@agentclientprotocol/claude-agent-acp@0.64.1` | `claude-agent-acp` | `<abs>/claude-agent-acp` |
-| Codex CLI 0.146.0 | `@agentclientprotocol/codex-acp@1.1.9` | `codex-acp` | `CODEX_PATH=<abs>/codex <abs>/codex-acp` |
+| Vendor              | Adapter package @ version                      | Bin                | Spawn                                    |
+| ------------------- | ---------------------------------------------- | ------------------ | ---------------------------------------- |
+| Claude Code 2.1.220 | `@agentclientprotocol/claude-agent-acp@0.64.1` | `claude-agent-acp` | `<abs>/claude-agent-acp`                 |
+| Codex CLI 0.146.0   | `@agentclientprotocol/codex-acp@1.1.9`         | `codex-acp`        | `CODEX_PATH=<abs>/codex <abs>/codex-acp` |
 
 Both adapters were published **2026-08-02** — the same day they were probed. Very actively maintained.
 Both live under the same official `agentclientprotocol` GitHub org as the spec, so they are
@@ -266,7 +293,7 @@ with an explicit rename notice.
 > capability row, and pass it to the adapter explicitly (`CODEX_PATH`, or argv). Never let the adapter
 > search `PATH`.
 
-karvand's `PATH` at daemon-start time differs from the user's login shell — a daemon started by a
+DeFlowd's `PATH` at daemon-start time differs from the user's login shell — a daemon started by a
 login item, a systemd unit, or `npx` inherits a different environment than an interactive terminal.
 This is a silent, machine-specific failure that presents as "works for me".
 
@@ -274,7 +301,7 @@ This is a silent, machine-specific failure that presents as "works for me".
 
 **Verified 2026-08-02:** `claude-agent-acp` returned `"authMethods": []` in its `initialize` response
 — it is already authenticated from the user's existing Claude Code credential store and needs nothing
-from Karvan. That is AR-1 working exactly as intended.
+from DeFlow. That is AR-1 working exactly as intended.
 
 Copilot returned an `authMethods` entry carrying an `_meta["terminal-auth"]` block with the literal
 `{command, args}` to run for login. **Surface that to the user as a shell command to run themselves.
@@ -287,13 +314,13 @@ Never run it on their behalf and never capture its output** (AR-1, NF2).
 Measured live from each agent's `initialize` response on 2026-08-02.
 `agentCapabilities.sessionCapabilities` and `mcpCapabilities`:
 
-| adapter | ver | loadSession | resume | fork | list | close | delete | additionalDirectories | mcp.http | mcp.sse | mcp.acp |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| `claude-agent-acp` | 0.64.1 | yes | **YES** | YES | yes | yes | yes | yes | yes | yes | no |
-| `codex-acp` | 1.1.9 | yes | **YES** | no | yes | yes | yes | yes | yes | `false` | `false` |
-| `opencode acp` | 1.18.11 | yes | **YES** | YES | yes | yes | no | no | yes | yes | no |
-| `copilot --acp` | 1.0.77 | yes | **no** | no | yes | no | no | no | yes | yes | no |
-| `gemini --acp` | 0.53.1 | yes | **no** | **no** | no | no | no | no | yes | yes | no |
+| adapter            | ver     | loadSession | resume  | fork   | list | close | delete | additionalDirectories | mcp.http | mcp.sse | mcp.acp |
+| ------------------ | ------- | ----------- | ------- | ------ | ---- | ----- | ------ | --------------------- | -------- | ------- | ------- |
+| `claude-agent-acp` | 0.64.1  | yes         | **YES** | YES    | yes  | yes   | yes    | yes                   | yes      | yes     | no      |
+| `codex-acp`        | 1.1.9   | yes         | **YES** | no     | yes  | yes   | yes    | yes                   | yes      | `false` | `false` |
+| `opencode acp`     | 1.18.11 | yes         | **YES** | YES    | yes  | yes   | no     | no                    | yes      | yes     | no      |
+| `copilot --acp`    | 1.0.77  | yes         | **no**  | no     | yes  | no    | no     | no                    | yes      | yes     | no      |
+| `gemini --acp`     | 0.53.1  | yes         | **no**  | **no** | no   | no    | no     | no                    | yes      | yes     | no      |
 
 Gemini returned **no `sessionCapabilities` key at all** — only `loadSession: true`. Copilot returned
 `sessionCapabilities: { list: {} }` and nothing else.
@@ -306,7 +333,7 @@ Gemini returned **no `sessionCapabilities` key at all** — only `loadSession: t
 **Two of five providers cannot resume at all.** A run must survive crash, restart and laptop sleep for
 hours to days (NF4, F4.2). Therefore:
 
-> **Karvan's own SQLite ledger is the sole source of truth for a run.** Every prompt Karvan sends must
+> **DeFlow's own SQLite ledger is the sole source of truth for a run.** Every prompt DeFlow sends must
 > be reconstructible from that log alone. `session/resume` is a **token-cost optimisation**, never the
 > durability mechanism.
 
@@ -315,13 +342,19 @@ from a hardcoded table:
 
 ```ts
 interface ResumeStrategy {
-  resume(runId: RunId, nodeId: NodeId, ctx: AgentCtx): Promise<SessionHandle>
+  resume(runId: RunId, nodeId: NodeId, ctx: AgentCtx): Promise<SessionHandle>;
 }
 
-class ResumeNative implements ResumeStrategy { /* session/resume; skip re-sending context */ }
-class ResumeByReplay implements ResumeStrategy { /* session/new + replay packet from the ledger */ }
+class ResumeNative implements ResumeStrategy {
+  /* session/resume; skip re-sending context */
+}
+class ResumeByReplay implements ResumeStrategy {
+  /* session/new + replay packet from the ledger */
+}
 
-const strategy = caps.session.resume ? new ResumeNative() : new ResumeByReplay()
+const strategy = caps.session.resume
+  ? new ResumeNative()
+  : new ResumeByReplay();
 ```
 
 `ResumeByReplay` is needed anyway for the CLI exec shim path, so building it costs nothing extra —
@@ -340,7 +373,7 @@ and **dedupe on your own event ids, not the agent's**.
 
 ## 6. Capability manifests: derived, never hardcoded (F3.5, F3.6)
 
-Karvan already performs `initialize`. Persist its **full** response.
+DeFlow already performs `initialize`. Persist its **full** response.
 
 ```sql
 CREATE TABLE provider_capabilities (
@@ -354,8 +387,8 @@ CREATE TABLE provider_capabilities (
 ) STRICT;
 ```
 
-Every routing decision reads that row: *can I resume? can I fork? is `terminal` supported? does it
-take `mcpCapabilities.acp`? does it advertise `mediatedExecution`?* The planner (F2.7) must not
+Every routing decision reads that row: _can I resume? can I fork? is `terminal` supported? does it
+take `mcpCapabilities.acp`? does it advertise `mediatedExecution`?_ The planner (F2.7) must not
 schedule a node onto an adapter that cannot honour its requirements, and "cannot" is defined by this
 row, not by a constant in the source.
 
@@ -378,7 +411,7 @@ not a clean error; it is a subtly corrupted context that poisons the rest of a m
 
 ## 7. MCP host (D9)
 
-Karvan exposes workflow-level tools — read a `Fact`, pull an artifact by handle, propose a `PlanPatch`
+DeFlow exposes workflow-level tools — read a `Fact`, pull an artifact by handle, propose a `PlanPatch`
 — to every agent regardless of vendor.
 
 **Verified 2026-08-02:** `@modelcontextprotocol/sdk@1.30.0`, published 2026-07-27,
@@ -402,25 +435,27 @@ serverId}` | `McpServerStdio` (`{name, command, args, env}` — the **untagged d
 - That leaves stdio and Streamable HTTP; stdio avoids binding a port.
 
 ```ts
-mcpServers: [{
-  name: 'karvan',
-  command: process.execPath,                    // the exact node running karvand
-  args: [karvanMcpEntry, '--socket', socketPath, '--run', runId],
-  env: [{ name: 'KARVAN_RUN_TOKEN', value: oneTimeToken }],
-}]
+mcpServers: [
+  {
+    name: "DeFlow",
+    command: process.execPath, // the exact node running DeFlowd
+    args: [DeFlowMcpEntry, "--socket", socketPath, "--run", runId],
+    env: [{ name: "DeFlow_RUN_TOKEN", value: oneTimeToken }],
+  },
+];
 ```
 
-Injecting via `session/new` is the ACP-native way to give an agent Karvan-specific tools **without
-touching the user's global MCP config**. That matters: Karvan must never mutate the user's vendor CLI
+Injecting via `session/new` is the ACP-native way to give an agent DeFlow-specific tools **without
+touching the user's global MCP config**. That matters: DeFlow must never mutate the user's vendor CLI
 configuration.
 
-### 7.2 The `karvan-mcp` bin
+### 7.2 The `DeFlow-mcp` bin
 
-Ship `karvan-mcp` as a **second bin in the same published `karvan` package** (see
+Ship `DeFlow-mcp` as a **second bin in the same published `DeFlow` package** (see
 [repo layout](./16-repo-layout.md)). It is a thin shim: `StdioServerTransport` on one side, a **Unix
-domain socket** (named pipe on Windows) back to karvand on the other.
+domain socket** (named pipe on Windows) back to DeFlowd on the other.
 
-**Use a UDS, not a TCP port.** karvand is already local, and a UDS gets filesystem permissions for
+**Use a UDS, not a TCP port.** DeFlowd is already local, and a UDS gets filesystem permissions for
 free instead of needing a loopback auth scheme. See [security model](./15-security-model.md).
 
 Server API, **verified** from `dist/esm/server/mcp.d.ts`: `new McpServer(info, opts)`,
@@ -439,10 +474,10 @@ workflow tools, push the change rather than requiring a new session.
 `pkce-challenge`, `zod-to-json-schema`, `cross-spawn`, `raw-body`, `express-rate-limit`.
 
 For a stdio-only server nearly all of that is dead weight that still lands in `node_modules` and slows
-`npx karvan up` (NF6).
+`npx DeFlow up` (NF6).
 
 > **Mitigation: import only the deep subpaths** — `@modelcontextprotocol/sdk/server/mcp.js` and
-> `@modelcontextprotocol/sdk/server/stdio.js` — so nothing HTTP-related is *loaded* at runtime. If
+> `@modelcontextprotocol/sdk/server/stdio.js` — so nothing HTTP-related is _loaded_ at runtime. If
 > install size becomes a real problem, vendoring a ~200-line stdio-only MCP server is a viable later
 > move.
 
@@ -453,14 +488,14 @@ layer is free.
 
 **Unresolved contradiction.** The official MCP blog states all four Tier-1 SDKs support the 2026-07-28
 spec revision as of release day. But **verified 2026-08-02**: the latest published
-`@modelcontextprotocol/sdk` is 1.30.0, published 2026-07-27 — *one day before* the spec release — and
+`@modelcontextprotocol/sdk` is 1.30.0, published 2026-07-27 — _one day before_ the spec release — and
 its `LATEST_PROTOCOL_VERSION = '2025-11-25'` with
 `SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25','2025-06-18','2025-03-26','2024-11-05','2024-10-07']`.
 Grepping the whole `dist/` for the string `2026-07-28` returns **zero hits**. There is no `next` or
 `beta` dist-tag.
 
 Re-check before building anything that depends on the new stateless core, `Mcp-Method` / `Mcp-Name`
-routing headers, or the removal of `Mcp-Session-Id`. **Karvan's stdio transport is unaffected either
+routing headers, or the removal of `Mcp-Session-Id`. **DeFlow's stdio transport is unaffected either
 way**, which is a further argument for it.
 
 ---
@@ -526,7 +561,7 @@ Resume: `codex exec resume [SESSION_ID] [PROMPT]` or `codex exec resume --last`.
 > **Churn warning.** `--full-auto` is **not** in `codex exec --help` any more. Use `-s` plus the
 > bypass flag.
 
-Also available: `codex mcp-server` (Codex *as* an MCP server over stdio) and
+Also available: `codex mcp-server` (Codex _as_ an MCP server over stdio) and
 `codex app-server --listen stdio://|unix://|ws://IP:PORT`.
 
 ### 8.3 Gemini, Copilot, OpenCode
@@ -542,12 +577,12 @@ Also available: `codex mcp-server` (Codex *as* an MCP server over stdio) and
 
 **Copilot CLI 1.0.77** (`@github/copilot`): `-p/--prompt <text>`; `--output-format text|json` —
 **note: `json` only, there is no `stream-json`**; `--stream on|off`; `-s/--silent`; `--session-id
-<id>`; `--continue`; `--allow-all-tools` (help text: *"required for non-interactive mode"*, env
+<id>`; `--continue`; `--allow-all-tools` (help text: _"required for non-interactive mode"_, env
 `COPILOT_ALLOW_ALL`); `--allow-tool` / `--deny-tool` / `--allow-url` / `--deny-url`;
 `--allow-all-paths` / `--allow-all-urls` / `--allow-all`; `--add-dir`; `-C <directory>`;
 `--additional-mcp-config <json|@file>`; `--disable-builtin-mcps`;
 `--log-level none|error|warning|info|debug|all`; `--max-ai-credits`; `--secret-env-vars` (strips named
-vars from child envs **and** redacts them from output — worth mirroring in Karvan, see F5.9);
+vars from child envs **and** redacts them from output — worth mirroring in DeFlow, see F5.9);
 `--share` / `--share-gist`; `--autopilot`.
 
 > A shim that assumes a uniform `stream-json` across vendors **will break on Copilot**.
@@ -560,12 +595,12 @@ JSON — genuinely useful as a durable snapshot hook.
 
 ### 8.4 Could not verify — treat as unconfirmed
 
-| Agent | Status |
-|---|---|
-| **Cursor** | **Unverified.** Not installable from npm in a usable form: the npm name `cursor-agent` resolves to v1.0.3 last published **2025-01-10**, stale and almost certainly unrelated to Cursor's real CLI (distributed via an install script). Docs indicate `cursor-agent -p --output-format text\|json\|stream-json`, plus `--trust`, `--model`, `--resume`, and NDJSON "similar to Claude Code". Could not run it. **No ACP support found.** |
-| **Goose** | **Unverified.** Rust binary, not on npm. Docs indicate `goose run "<prompt>"` headless with text/json/stream-json output and resume via `--resume` / `-n <name>` / `--session-id <YYYYMMDD_hhmmss>` / `--path` / `--fork` / `--edit`. The project moved to the Linux Foundation and the canonical GitHub org appears to have changed — itself a churn risk. |
-| **Aider** | **Unverified.** Not on npm (PyPI `aider-chat`). Release cadence has clearly slowed; sources conflict between "0.86.2, Feb 2026" and "last tag v0.86.0, Aug 2025" and this could not be resolved. No ACP support. **Recommendation: drop Aider from the v1 provider list.** |
-| **Antigravity / `agy`** | **Unverified.** No first-party ACP. A community adapter `shubzkothekar/antigravity-acp` exists (Bun-based, ~29 stars, updated 2026-07-30). Not production-grade. |
+| Agent                   | Status                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cursor**              | **Unverified.** Not installable from npm in a usable form: the npm name `cursor-agent` resolves to v1.0.3 last published **2025-01-10**, stale and almost certainly unrelated to Cursor's real CLI (distributed via an install script). Docs indicate `cursor-agent -p --output-format text\|json\|stream-json`, plus `--trust`, `--model`, `--resume`, and NDJSON "similar to Claude Code". Could not run it. **No ACP support found.** |
+| **Goose**               | **Unverified.** Rust binary, not on npm. Docs indicate `goose run "<prompt>"` headless with text/json/stream-json output and resume via `--resume` / `-n <name>` / `--session-id <YYYYMMDD_hhmmss>` / `--path` / `--fork` / `--edit`. The project moved to the Linux Foundation and the canonical GitHub org appears to have changed — itself a churn risk.                                                                              |
+| **Aider**               | **Unverified.** Not on npm (PyPI `aider-chat`). Release cadence has clearly slowed; sources conflict between "0.86.2, Feb 2026" and "last tag v0.86.0, Aug 2025" and this could not be resolved. No ACP support. **Recommendation: drop Aider from the v1 provider list.**                                                                                                                                                               |
+| **Antigravity / `agy`** | **Unverified.** No first-party ACP. A community adapter `shubzkothekar/antigravity-acp` exists (Bun-based, ~29 stars, updated 2026-07-30). Not production-grade.                                                                                                                                                                                                                                                                         |
 
 ### 8.5 A legitimate scope cut
 
@@ -596,10 +631,10 @@ is the most safety-critical code in the daemon and the logic should stay explici
 also `execa`'s counterintuitive kill semantics, documented in
 [workspace and safety](./09-workspace-and-safety.md).)
 
-### 9.2 A pty only for Karvan's own `terminal/*`
+### 9.2 A pty only for DeFlow's own `terminal/*`
 
-A pty **is** needed for Karvan's implementation of the ACP `terminal/*` client methods: when the agent
-asks Karvan to run a shell command, many build tools change behaviour without a TTY (colour, progress
+A pty **is** needed for DeFlow's implementation of the ACP `terminal/*` client methods: when the agent
+asks DeFlow to run a shell command, many build tools change behaviour without a TTY (colour, progress
 bars, `isatty` gating).
 
 Use **`@lydell/node-pty`**, not `node-pty`. **Verified empirically:**
@@ -607,7 +642,7 @@ Use **`@lydell/node-pty`**, not `node-pty`. **Verified empirically:**
 - `node-pty@1.1.0` (2026-07-16) has `scripts.install: "node scripts/prebuild.js || node-gyp rebuild"`
   — it downloads a prebuild and **falls back to compiling**. In a toolchain-less environment the
   prebuild fetch failed, `node-gyp rebuild` failed outright, and the package was left uninstallable.
-  That directly breaks `npx karvan up` (NF6).
+  That directly breaks `npx DeFlow up` (NF6).
 - `@lydell/node-pty@1.2.0-beta.14` (2026-07-26) installed in **514 ms with zero compilation**, using
   npm-native per-platform `optionalDependencies`
   (`@lydell/node-pty-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-arm64,win32-x64}`). Runtime
@@ -623,24 +658,29 @@ than failing installation.
 **Verified by measurement, not inference.** A bash script that backgrounds two children was spawned
 both ways, with real PGIDs observed via `ps -o pid=,stat=,pgid=`:
 
-| | Result |
-|---|---|
-| `detached: false` (Node's default) | The grandchildren's PGID was **karvand's own process group**. `child.kill('SIGTERM')` killed only bash; both grandchildren remained in state `S`, running. And you *cannot* group-kill, because signalling that group would kill karvand itself. |
-| `detached: true` | Grandchildren's PGID equalled `child.pid`, and `process.kill(-child.pid, 'SIGTERM')` terminated the entire subtree. |
+|                                    | Result                                                                                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `detached: false` (Node's default) | The grandchildren's PGID was **DeFlowd's own process group**. `child.kill('SIGTERM')` killed only bash; both grandchildren remained in state `S`, running. And you _cannot_ group-kill, because signalling that group would kill DeFlowd itself. |
+| `detached: true`                   | Grandchildren's PGID equalled `child.pid`, and `process.kill(-child.pid, 'SIGTERM')` terminated the entire subtree.                                                                                                                              |
 
 This is wrong in most tutorials and the non-detached case is actively dangerous.
 
 ### 9.4 Three-stage cancellation (F4.4, F5.7)
 
 ```ts
-const child = spawn(bin, args, { detached: true, stdio: ['pipe','pipe','pipe'], cwd, env })
+const child = spawn(bin, args, {
+  detached: true,
+  stdio: ["pipe", "pipe", "pipe"],
+  cwd,
+  env,
+});
 
 // 1. protocol level — lets the agent flush final session/updates
-await session.cancel()                          // await stopReason 'cancelled'
+await session.cancel(); // await stopReason 'cancelled'
 // 2. process group, graceful
-process.kill(-child.pid, 'SIGTERM')
+process.kill(-child.pid, "SIGTERM");
 // 3. after ~5s grace
-process.kill(-child.pid, 'SIGKILL')
+process.kill(-child.pid, "SIGKILL");
 ```
 
 Stage 1 matters: it is the only stage that produces a clean transcript. Keep the `nextUpdate()` loop
@@ -648,7 +688,7 @@ running through it (§2.5).
 
 ### 9.5 The consequence: orphan reaping
 
-`detached: true` means **the agent survives karvand's death.** That is not optional to handle.
+`detached: true` means **the agent survives DeFlowd's death.** That is not optional to handle.
 
 Persist `{runId, nodeId, pid, pgid, started_at, binary_sha256}` in SQLite at spawn. On daemon boot,
 for every non-terminal row, reap the orphan — but **guard against PID reuse by comparing process start
@@ -672,12 +712,12 @@ never depend on it directly. Windows is deferred to M3 (NF5) and the POSIX resul
 **Verified hazard.** `@agentclientprotocol/sdk`'s `LineBuffer` (`dist/line-buffer.js`) has **no
 maximum line length**. Reading the implementation: `push()` accumulates chunks into a private
 `#pending` array and only emits when it finds a `0x0a` byte. An agent that never emits a newline —
-buggy, wedged, or emitting one enormous tool result — grows that array until karvand OOMs.
+buggy, wedged, or emitting one enormous tool result — grows that array until DeFlowd OOMs.
 
-karvand is a long-lived daemon supervising runs for days. This is a real availability bug, not a
+DeFlowd is a long-lived daemon supervising runs for days. This is a real availability bug, not a
 theoretical one.
 
-**Measured scale, 2026-08-02:** a *trivial* `claude -p "say ok"` turn emitted a single **16,024-byte**
+**Measured scale, 2026-08-02:** a _trivial_ `claude -p "say ok"` turn emitted a single **16,024-byte**
 JSON line (the `system/commands_changed` frame). Real turns that read a large file or capture a test
 log routinely produce multi-megabyte single lines. Environment defaults measured on the same machine:
 Node stream `highWaterMark` = **65536** bytes; Linux `/proc/sys/fs/pipe-max-size` = **1048576**.
@@ -706,7 +746,7 @@ queue** — Node will happily buffer hundreds of MB while you await SQLite.
 
 **3. Spill large payloads out of the event log.** For any single event payload over ~**256 KiB**
 (typically `tool_call_update` content and `terminal/output`), write the bytes to
-`~/.karvan/blobs/<sha256[0:2]>/<sha256>` and store only `{sha256, bytes, mime, head, tail}` in SQLite —
+`~/.DeFlow/blobs/<sha256[0:2]>/<sha256>` and store only `{sha256, bytes, mime, head, tail}` in SQLite —
 head and tail being the first and last ~2 KiB so the UI can render a preview without touching disk.
 
 Content-addressing deduplicates repeated identical outputs, which is very common (the same failing
@@ -741,7 +781,7 @@ What does exist and is useful:
 - **`@agentclientprotocol/sdk/schema/schema.json`** — the machine-readable wire schema, **verified to
   contain 262 `$defs`**. This is the conformance oracle.
 - **`acpx`** (npm, v0.13.0; repo `openclaw/acpx`, ~3.1k stars, updated 2026-08-02) — a headless CLI
-  ACP client. Useful for manually smoke-testing a provider without booting karvand.
+  ACP client. Useful for manually smoke-testing a provider without booting DeFlowd.
 - **`venikman/ACP-inspector`** — a third-party ACP traffic debugger/validator. Unvetted; a reference,
   not a dependency.
 
@@ -758,16 +798,16 @@ against real agents nightly behind an `@live` tag. See [testing strategy](./14-t
 
 Required assertions:
 
-| # | Assertion |
-|---|---|
-| 1 | `initialize` returns `protocolVersion === 1` |
-| 2 | `session/new` returns a `sessionId` |
-| 3 | A trivial prompt yields ≥1 `agent_message_chunk`, then a `PromptResponse` with `stopReason === 'end_turn'` |
-| 4 | `session/cancel` mid-turn yields `stopReason === 'cancelled'` — **and the client tolerates `session/update` notifications arriving *after* the cancel** |
-| 5 | A permission request round-trips; a client-side cancel produces `RequestPermissionOutcome { outcome: 'cancelled' }` |
-| 6 | **Capability honesty** — call a method the agent did *not* advertise and assert JSON-RPC `-32601` |
-| 7 | Malformed JSON line → structured adapter error, session torn down, no daemon crash |
-| 8 | Oversized frame → `FrameTooLarge`, `killTree()`, no OOM (§10) |
+| #   | Assertion                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `initialize` returns `protocolVersion === 1`                                                                                                            |
+| 2   | `session/new` returns a `sessionId`                                                                                                                     |
+| 3   | A trivial prompt yields ≥1 `agent_message_chunk`, then a `PromptResponse` with `stopReason === 'end_turn'`                                              |
+| 4   | `session/cancel` mid-turn yields `stopReason === 'cancelled'` — **and the client tolerates `session/update` notifications arriving _after_ the cancel** |
+| 5   | A permission request round-trips; a client-side cancel produces `RequestPermissionOutcome { outcome: 'cancelled' }`                                     |
+| 6   | **Capability honesty** — call a method the agent did _not_ advertise and assert JSON-RPC `-32601`                                                       |
+| 7   | Malformed JSON line → structured adapter error, session torn down, no daemon crash                                                                      |
+| 8   | Oversized frame → `FrameTooLarge`, `killTree()`, no OOM (§10)                                                                                           |
 
 Assertion 6 is the one that catches a lying capability manifest, which is the single input the entire
 routing layer trusts (§6).
@@ -787,25 +827,25 @@ Replay is a `Stream` implementation reading the file, asserting outgoing frames 
 JSON-RPC `id` and `_meta`**. Keying the directory on the **exact** agent version means a version bump
 produces a visible new directory rather than silently invalidating old goldens.
 
-Do both layers of assertion: raw frames for conformance, plus a snapshot of the *normalised* Karvan
+Do both layers of assertion: raw frames for conformance, plus a snapshot of the _normalised_ DeFlow
 event vocabulary for regression. Snapshotting only the normalised form is less brittle but also less
 sensitive — it will not catch an upstream change your normaliser happens to swallow.
 
-`karvan doctor` is the natural home for running Layer B against the user's actually-installed CLI
+`DeFlow doctor` is the natural home for running Layer B against the user's actually-installed CLI
 versions (F3.4, F3.6).
 
 ---
 
 ## 12. Direct API SDK path (F3.3)
 
-When the user supplies their own key, Karvan uses it for that provider. Three rules, all following
+When the user supplies their own key, DeFlow uses it for that provider. Three rules, all following
 from AR-1 §5.3:
 
 1. **Never auto-selected.** A provider only enters this path through explicit configuration naming the
-   key source. Detection of an ambient key is *not* consent to use it.
+   key source. Detection of an ambient key is _not_ consent to use it.
 2. **Auth-shadowing must be surfaced loudly** (F3.8). `ANTHROPIC_API_KEY` present in the environment
    silently shadows subscription auth in Claude Code. The failure mode is "you thought you were on
-   your subscription and you were being billed". `karvan doctor` must detect and report this, and the
+   your subscription and you were being billed". `DeFlow doctor` must detect and report this, and the
    run header in the UI must show which auth mode each node used.
 3. **Runs on this path are labelled in the ledger**, because their cost accounting (F9.1) is real
    currency rather than subscription quota, and the two must not be summed into one number.
@@ -817,29 +857,29 @@ Scoped to M2. See [roadmap](./17-roadmap.md).
 
 ## 13. The mock agent (F3.7, D17)
 
-`@karvan/mock-agent` is a **first-class shipped package**, not a test helper. It exposes a bin
-`karvan-mock-agent`, implemented with the *agent* side of the same SDK (`acp.agent({…})` mirrors
+`@DeFlow/mock-agent` is a **first-class shipped package**, not a test helper. It exposes a bin
+`DeFlow-mock-agent`, implemented with the _agent_ side of the same SDK (`acp.agent({…})` mirrors
 `acp.client({…})`), driven by a declarative script file. No network, no credentials, no tokens.
 
-It deliberately does **not** depend on `@karvan/core` — if it did, a bug in the domain model could be
+It deliberately does **not** depend on `@DeFlow/core` — if it did, a bug in the domain model could be
 mirrored on both sides of the wire and cancel itself out.
 
 Ten required behaviours:
 
-| # | Behaviour |
-|---|---|
-| 1 | Emit a `plan` update, then N `agent_message_chunk`s at a scripted cadence |
-| 2 | Emit `tool_call` → `tool_call_update` transitions covering every status value |
-| 3 | Issue `session/request_permission` and behave differently per chosen option, including the `cancelled` outcome |
-| 4 | Call back into the client: `fs/read_text_file`, `fs/write_text_file`, `terminal/create` + `terminal/output` + `terminal/wait_for_exit` + `terminal/kill` + `terminal/release` |
-| 5 | **Hang forever mid-turn** — exercises cancellation, timeouts, laptop-sleep recovery |
-| 6 | **`process.exit(1)` mid-turn** — exercises crash recovery and orphan reaping (§9.5) |
-| 7 | Emit a malformed JSON line, and a valid-JSON-but-schema-invalid frame |
-| 8 | Emit a **single 10 MB line** — exercises the framing cap (§10.2) |
-| 9 | **Advertise a configurable `agentCapabilities` block** |
-| 10 | Honour `--seed` for all ids and timestamps, so runs are byte-reproducible |
+| #   | Behaviour                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Emit a `plan` update, then N `agent_message_chunk`s at a scripted cadence                                                                                                     |
+| 2   | Emit `tool_call` → `tool_call_update` transitions covering every status value                                                                                                 |
+| 3   | Issue `session/request_permission` and behave differently per chosen option, including the `cancelled` outcome                                                                |
+| 4   | Call back into the client: `fs/read_text_file`, `fs/write_text_file`, `terminal/create` + `terminal/output` + `terminal/wait_for_exit` + `terminal/kill` + `terminal/release` |
+| 5   | **Hang forever mid-turn** — exercises cancellation, timeouts, laptop-sleep recovery                                                                                           |
+| 6   | **`process.exit(1)` mid-turn** — exercises crash recovery and orphan reaping (§9.5)                                                                                           |
+| 7   | Emit a malformed JSON line, and a valid-JSON-but-schema-invalid frame                                                                                                         |
+| 8   | Emit a **single 10 MB line** — exercises the framing cap (§10.2)                                                                                                              |
+| 9   | **Advertise a configurable `agentCapabilities` block**                                                                                                                        |
+| 10  | Honour `--seed` for all ids and timestamps, so runs are byte-reproducible                                                                                                     |
 
-Also ship `karvan-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
+Also ship `DeFlow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
 session becomes a mock provider for free.
 
 > **Item 9 is the one people skip and regret.** It turns the uneven capability matrix of §5 from an
@@ -864,7 +904,7 @@ collapses a multi-hour scenario into milliseconds and makes the whole daemon dev
 - **Do not lean on `session/resume` for durability.** Two of five providers cannot resume.
 - **Do not use `session/load` as a substitute for `resume`.** It replays the whole history at you as
   notifications and will flood a days-long run.
-- **Do not spawn agents with `detached: false`.** Grandchildren land in karvand's own process group and
+- **Do not spawn agents with `detached: false`.** Grandchildren land in DeFlowd's own process group and
   cannot be group-killed.
 - **Do not use `child.stdout.on('data', asyncHandler)`.** Flowing mode plus an awaited SQLite write is
   an unbounded RAM queue.
@@ -881,7 +921,7 @@ collapses a multi-hour scenario into milliseconds and makes the whole daemon dev
   from the client entirely.
 - **Do not assume a uniform `stream-json`.** Copilot offers `text|json` only.
 - **Do not run `-p --output-format stream-json` without `--verbose`** on Claude Code.
-- **Do not let an adapter search `PATH`.** karvand's `PATH` is not the user's login shell's `PATH`.
+- **Do not let an adapter search `PATH`.** DeFlowd's `PATH` is not the user's login shell's `PATH`.
 - **Do not resume a session across a vendor version change** without explicit opt-in.
 - **Do not go looking for the official ACP conformance kit.** It does not exist.
 
@@ -889,16 +929,16 @@ collapses a multi-hour scenario into milliseconds and makes the whole daemon dev
 
 ## 15. Open risks
 
-| Risk | Status |
-|---|---|
-| **End-to-end ACP cycle unproven.** `initialize` was verified live against all five agents, but a full `session/new` → `session/prompt` → `session/update` → cancel cycle was **not** completed against each (it consumes vendor credits and needs each vendor's auth). Streaming, permission-prompt and cancellation semantics are read from the spec and SDK types, not observed end to end. | **This is the riskiest unverified assumption in the layer. Close it in M0.** |
-| **ACP v2 timing.** Schema is shipped but named `unstable`; no announced timeline. If v2 stabilises during the build, fs/terminal move to MCP. | Mitigated by the two-fronts split (§3). |
-| **MCP SDK version skew.** SDK 1.30.0 declares `LATEST_PROTOCOL_VERSION = '2025-11-25'` despite the blog claiming 2026-07-28 support. | Re-check. stdio is unaffected. |
-| **Capability matrix staleness.** Snapshot of 2026-08-02; two of the five versions were published that same day. | Mitigated by §6 — it is a fixture, not a constant. |
-| **`@lydell/node-pty` is `1.2.0-beta.14`,** a beta of a community fork. | Pin exactly; optional dependency; no-TTY fallback. |
-| **Cursor, Goose, Aider flags are documentation-only.** | Verify by installing before committing to an adapter. Recommend dropping Aider. |
-| **Anthropic metering of third-party agent paths.** A search result claimed that as of 2026-06-15 ACP / Agent SDK / `claude -p` usage meters against a *separate* Agent SDK credit pool distinct from interactive Claude Code usage. Could not be corroborated from a primary Anthropic source. | **Unverified.** Materially affects Claude-adapter economics; confirm directly before designing cost models around it (F9.4). |
-| **Windows process-tree termination untested.** The POSIX `detached:true` + `process.kill(-pid)` result does not transfer. | Verify when Windows work begins (M3, NF5). |
+| Risk                                                                                                                                                                                                                                                                                                                                                                                          | Status                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **End-to-end ACP cycle unproven.** `initialize` was verified live against all five agents, but a full `session/new` → `session/prompt` → `session/update` → cancel cycle was **not** completed against each (it consumes vendor credits and needs each vendor's auth). Streaming, permission-prompt and cancellation semantics are read from the spec and SDK types, not observed end to end. | **This is the riskiest unverified assumption in the layer. Close it in M0.**                                                 |
+| **ACP v2 timing.** Schema is shipped but named `unstable`; no announced timeline. If v2 stabilises during the build, fs/terminal move to MCP.                                                                                                                                                                                                                                                 | Mitigated by the two-fronts split (§3).                                                                                      |
+| **MCP SDK version skew.** SDK 1.30.0 declares `LATEST_PROTOCOL_VERSION = '2025-11-25'` despite the blog claiming 2026-07-28 support.                                                                                                                                                                                                                                                          | Re-check. stdio is unaffected.                                                                                               |
+| **Capability matrix staleness.** Snapshot of 2026-08-02; two of the five versions were published that same day.                                                                                                                                                                                                                                                                               | Mitigated by §6 — it is a fixture, not a constant.                                                                           |
+| **`@lydell/node-pty` is `1.2.0-beta.14`,** a beta of a community fork.                                                                                                                                                                                                                                                                                                                        | Pin exactly; optional dependency; no-TTY fallback.                                                                           |
+| **Cursor, Goose, Aider flags are documentation-only.**                                                                                                                                                                                                                                                                                                                                        | Verify by installing before committing to an adapter. Recommend dropping Aider.                                              |
+| **Anthropic metering of third-party agent paths.** A search result claimed that as of 2026-06-15 ACP / Agent SDK / `claude -p` usage meters against a _separate_ Agent SDK credit pool distinct from interactive Claude Code usage. Could not be corroborated from a primary Anthropic source.                                                                                                | **Unverified.** Materially affects Claude-adapter economics; confirm directly before designing cost models around it (F9.4). |
+| **Windows process-tree termination untested.** The POSIX `detached:true` + `process.kill(-pid)` result does not transfer.                                                                                                                                                                                                                                                                     | Verify when Windows work begins (M3, NF5).                                                                                   |
 
 ---
 

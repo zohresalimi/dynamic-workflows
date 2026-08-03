@@ -10,10 +10,10 @@ Durable execution has two established models:
   recovery the engine re-executes that code from the top, feeding recorded results back at each
   step boundary, so the implicit control flow is reconstructed. This is powerful and it is how you
   get durability out of arbitrary imperative programs.
-- **Checkpoint-and-memoize** (DBOS, Inngest's step model). Each step's *result* is journaled. On
+- **Checkpoint-and-memoize** (DBOS, Inngest's step model). Each step's _result_ is journaled. On
   recovery you do not re-execute orchestration logic; you look up what already happened.
 
-Replay's one real benefit is reconstructing implicit control flow from code. Karvan does not have
+Replay's one real benefit is reconstructing implicit control flow from code. DeFlow does not have
 implicit control flow: [ADR 0005](./0005-plan-as-data-not-code.md) makes the plan an explicit,
 persisted, content-addressed document. The control flow is already on disk.
 
@@ -22,9 +22,9 @@ code and creates the classic "cannot change workflow code while runs are in flig
 Temporal's `patched()` and Inngest's machinery, where step IDs must be SHA-1 hashes of
 human-readable names with a `:n` suffix appended per repeat occurrence, plus a `ctx.stack.stack`
 array whose sole purpose is detecting that the code changed mid-run. All of that exists to solve a
-problem Karvan does not have.
+problem DeFlow does not have.
 
-Karvan's runs last hours to days, on a laptop, developed by one person who will be restarting the
+DeFlow's runs last hours to days, on a laptop, developed by one person who will be restarting the
 daemon constantly. "Cannot upgrade the engine while a run is in flight" would be a daily obstruction.
 
 The performance argument for replay-style optimisation also does not hold here. **Verified
@@ -37,9 +37,11 @@ replay of 10,000 rows takes **29 ms**, and a full scan of 500,000 rows takes **4
 function, and an effect journal with idempotency keys.**
 
 ```ts
-export function reduce(s: RunState, e: Event): RunState;      // pure, total, ignores unknown kinds
-export function decide(s: RunState, now: number): Command[];  // pure: what should happen next
-export interface EffectRunner { run(c: Command, ctx: EffectCtx): Promise<Event[]> }  // impure shell
+export function reduce(s: RunState, e: Event): RunState; // pure, total, ignores unknown kinds
+export function decide(s: RunState, now: number): Command[]; // pure: what should happen next
+export interface EffectRunner {
+  run(c: Command, ctx: EffectCtx): Promise<Event[]>;
+} // impure shell
 ```
 
 Nine primitives, all load-bearing, nothing else needed:
@@ -49,9 +51,9 @@ Nine primitives, all load-bearing, nothing else needed:
    delete, **verified 2026-08-02**, which silently corrupts every persisted SSE cursor the moment
    run pruning is added).
 2. A deterministic reducer that is pure, total, and **ignores unknown `kind` values** — forward
-   compatibility for a user who downgrades karvand.
+   compatibility for a user who downgrades DeFlowd.
 3. `decide()` separated from execution, so the whole scheduler is unit-testable with zero I/O (NF9).
-4. Step boundary = one node attempt, journaled as `node.started` (written *before* the side effect) →
+4. Step boundary = one node attempt, journaled as `node.started` (written _before_ the side effect) →
    `node.progress*` → `node.completed | node.failed`. The pre-effect record is what makes
    at-least-once recovery possible at all.
 5. Idempotency key `(run_id, node_id, attempt, effect_ordinal)` (F4.3).
@@ -60,8 +62,8 @@ Nine primitives, all load-bearing, nothing else needed:
    restart short-circuits on a `done` record.
 8. Two-layer versioning: an event envelope carrying `kind` + `v:int` with a read-time upcaster
    chain; plan versioning is free because plans are immutable documents referenced by hash.
-9. Fencing: `flock` on `~/.karvan/karvan.lock` plus a `daemon_epoch` bumped on every start, with
-   stale-epoch writes rejected — because running `npx karvan up` in two terminals is very common.
+9. Fencing: `flock` on `~/.DeFlow/DeFlow.lock` plus a `daemon_epoch` bumped on every start, with
+   stale-epoch writes rejected — because running `npx DeFlow up` in two terminals is very common.
 
 The schema splits the small control-plane `event` table from the high-volume `io_chunk` table. That
 split is what makes snapshotting unnecessary: a 40-node multi-hour run produces on the order of 2k
@@ -72,7 +74,8 @@ measured numbers and the effect-type reconciliation table, is in
 ## Consequences
 
 ### Positive
-- **karvand is upgradeable mid-run.** This is the headline consequence. There is no determinism
+
+- **DeFlowd is upgradeable mid-run.** This is the headline consequence. There is no determinism
   constraint on engine code, so the only compatibility surface is the event schema, which is
   versioned explicitly with an upcaster chain. Every `node --watch` restart during development
   exercises F4.2 for free.
@@ -86,6 +89,7 @@ measured numbers and the effect-type reconciliation table, is in
   callback after **1 ms** with only a `TimeoutOverflowWarning` — a 30-day wait becoming instant.
 
 ### Negative
+
 - We own the correctness. There is no vendor to blame for a durability bug, which raises the bar on
   the crash-fuzz test suite ([14-testing-strategy.md](../14-testing-strategy.md)).
 - **The window between an effect landing in the world and its `done` row committing is irreducible.**
@@ -93,11 +97,12 @@ measured numbers and the effect-type reconciliation table, is in
   design claiming otherwise is lying.
 - `reconcile()` can legitimately return `unknown`, and there is no correct automatic action. The
   human gate for that case must exist from day one rather than being bolted on.
-- `attempt` in the idempotency key means a retry deliberately produces a *new* key and *will*
+- `attempt` in the idempotency key means a retry deliberately produces a _new_ key and _will_
   re-execute. Crash-resume (same attempt, memoise) and failure-retry (new attempt, re-execute) are
   genuinely different operations and the reducer must distinguish them.
 
 ### Neutral
+
 - `synchronous=NORMAL` protects against process crash, not power loss. **Verified 2026-08-02**:
   SIGKILL mid-write at ~45k committed rows, reopen, all 45,339 rows present,
   `PRAGMA integrity_check` = `ok`. `FULL` costs ~23× throughput (979 vs 22,982 ev/s). For a laptop
@@ -125,11 +130,12 @@ Either of these is measured, not anticipated:
    per-run snapshot rows keyed by `(run_id, seq)`, keeping the `checkpoint_version` guard. This does
    not change the model, only the cache.
 2. **Users want to write imperative TypeScript workflows.** That is the one thing replay genuinely
-   buys, and it would be added as a *second execution mode over the same ledger* — not retrofitted.
+   buys, and it would be added as a _second execution mode over the same ledger_ — not retrofitted.
    That needs a superseding ADR, and ADR 0005 would need superseding too.
 
 Not a trigger: multi-machine orchestration. That would first require reopening AR-1
 ([ADR 0003](./0003-never-hold-provider-credentials.md)).
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

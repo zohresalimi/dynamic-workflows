@@ -7,28 +7,28 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan — approves queued patches, receives the run when the policy engine or the circuit breaker hands it back, and is the only proposer the breaker does not block |
-| **karvand** | The local daemon: orchestrator tick loop, Planner, policy engine, MCP host, Workspace Manager |
-| **Planner agent** | A `karvan-mock-agent` subprocess receiving exactly three inputs — the pinned `TaskSpec`, the recon facts, the probed capability list — and returning a `PlanGraph` as structured output |
-| **Proposing node** | Any node in the run. `agent` nodes propose through the `karvan.propose_plan_patch` MCP tool; `scheduler` proposes reroutes; `human` proposes rescues |
-| **Policy engine** | `decidePatch(patch, state)` — a **pure function** in `@karvan/core` over the patch's `policy` block and the reduced `RunState` |
-| **Validator** | `validatePlan(plan, spec, caps)` — pure, returns a `Diagnostic[]`, never throws past `PlanCycleError` |
-| **Churn circuit breaker** | [EPIC-06](../epics/EPIC-06-orchestrator.md)'s detector over a 20-attempt sliding window. This epic **reads** its state; it does not implement it |
-| **`provider_capabilities`** | The SQLite table populated by a real ACP `initialize` probe. The 2026-08-02 matrix is a committed **fixture**, never a constant |
-| **Ledger** | The file-backed SQLite database — `event`, `plan`, `run`, `node_wake`, `effect` |
-| **Git** | The real `git` binary, used here only for `check-ref-format` |
+| Actor                       | Description                                                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator**                | The engineer driving DeFlow — approves queued patches, receives the run when the policy engine or the circuit breaker hands it back, and is the only proposer the breaker does not block |
+| **DeFlowd**                 | The local daemon: orchestrator tick loop, Planner, policy engine, MCP host, Workspace Manager                                                                                            |
+| **Planner agent**           | A `DeFlow-mock-agent` subprocess receiving exactly three inputs — the pinned `TaskSpec`, the recon facts, the probed capability list — and returning a `PlanGraph` as structured output  |
+| **Proposing node**          | Any node in the run. `agent` nodes propose through the `DeFlow.propose_plan_patch` MCP tool; `scheduler` proposes reroutes; `human` proposes rescues                                     |
+| **Policy engine**           | `decidePatch(patch, state)` — a **pure function** in `@DeFlow/core` over the patch's `policy` block and the reduced `RunState`                                                           |
+| **Validator**               | `validatePlan(plan, spec, caps)` — pure, returns a `Diagnostic[]`, never throws past `PlanCycleError`                                                                                    |
+| **Churn circuit breaker**   | [EPIC-06](../epics/EPIC-06-orchestrator.md)'s detector over a 20-attempt sliding window. This epic **reads** its state; it does not implement it                                         |
+| **`provider_capabilities`** | The SQLite table populated by a real ACP `initialize` probe. The 2026-08-02 matrix is a committed **fixture**, never a constant                                                          |
+| **Ledger**                  | The file-backed SQLite database — `event`, `plan`, `run`, `node_wake`, `effect`                                                                                                          |
+| **Git**                     | The real `git` binary, used here only for `check-ref-format`                                                                                                                             |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a git repository on branch "main"
+  Given a DeFlow workspace initialised in a git repository on branch "main"
   And an approved TaskSpec exists at specHash H with acceptance criteria AC-1 … AC-n
   And the ledger is a FILE-BACKED SQLite database — ":memory:" only where "Automated at: unit"
       names a pure function or a pure projection
-  And karvan-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
+  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
       invocation passes --seed
   And provider_capabilities is seeded from the committed 2026-08-02 probe fixture:
       | adapter            | version | session.resume | session.fork | session.list |
@@ -41,7 +41,7 @@ Background:
   And no test calls vi.useFakeTimers() while a mock-agent child process is alive
   And the normalising snapshot serializer is registered, so plan snapshots do not churn on ids,
       hashes, timestamps and absolute paths
-  And branch names are FLAT: karvan/<runId>__<nodeId>
+  And branch names are FLAT: DeFlow/<runId>__<nodeId>
 ```
 
 > Three rules bind this whole file. **Capabilities are read from the probed row, never from a
@@ -52,39 +52,39 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-11-S1 | Happy path: three inputs compile to `PlanGraph` v1 | KAR-11.1 | Happy path |
-| EPIC-11-S2 | The planner sees the spec, the recon facts and the capability list — and nothing else | KAR-11.1 | Edge case |
-| EPIC-11-S3 | A prose plan is refused; there is no extraction fallback | KAR-11.1 | Failure |
-| EPIC-11-S4 | `planHash` is canonical, key-order independent, and not `ohash` | KAR-11.1 | Edge case |
-| EPIC-11-S5 | A planner failure gets one retry with diagnostics, then a human | KAR-11.1 | Failure |
-| EPIC-11-S6 | **An undeclared read fails validation before a token is spent** | KAR-11.2 | Failure |
-| EPIC-11-S7 | Cycles, orphan writes and the severity distinction | KAR-11.2 | Edge case |
-| EPIC-11-S8 | **A node scheduled onto an adapter that cannot honour it is refused** | KAR-11.2 | Failure (outline) |
-| EPIC-11-S9 | `NO_RESUME` is soft unless the node declares `requiresResume` | KAR-11.2 | Edge case |
-| EPIC-11-S10 | Node ids are validated by real git, then by a stricter charset | KAR-11.2 | Failure |
-| EPIC-11-S11 | Criteria coverage: an unverified criterion fails the plan | KAR-11.2 | Failure |
-| EPIC-11-S12 | Validation runs on every patched plan, not only on v1 | KAR-11.2 | Failure |
-| EPIC-11-S13 | Happy path: an agent proposes a patch through the MCP tool | KAR-11.3 | Happy path |
-| EPIC-11-S14 | Plans are never mutated; every version stays addressable | KAR-11.3 | Edge case |
-| EPIC-11-S15 | Application is atomic with the event append | KAR-11.3 | Recovery (crash-fuzz) |
-| EPIC-11-S16 | `PATCH_STALE`: a stale base is rejected and never rebased | KAR-11.3 | Failure |
-| EPIC-11-S17 | `split-node` and `abandon-branch` retire ids; nothing is ever renamed | KAR-11.3 | Edge case |
-| EPIC-11-S18 | A patch that fails revalidation is rejected whole | KAR-11.3, KAR-11.2 | Failure |
-| EPIC-11-S19 | **Auto-applied: read-only analysis** | KAR-11.4 | Happy path |
-| EPIC-11-S20 | **Queued for approval: the patch adds write capability** | KAR-11.4 | Happy path |
-| EPIC-11-S21 | **Rejected: replan depth exceeded** | KAR-11.4 | Failure |
-| EPIC-11-S22 | Ordered evaluation, first match wins, and the `default` arm is `approve` | KAR-11.4 | Edge case |
-| EPIC-11-S23 | **The churn circuit-breaker trip stops replanning rather than causing more of it** | KAR-11.4 | Failure |
-| EPIC-11-S24 | The policy table is hashed into the run manifest | KAR-11.4 | Edge case |
-| EPIC-11-S25 | Tainted downstream nodes are flagged, never auto-re-run | KAR-11.4 | Failure |
-| EPIC-11-S26 | Every version retained, deduplicated and inspectable on disk | KAR-11.5 | Happy path |
-| EPIC-11-S27 | The plan diff is field-level, and the reason is verbatim | KAR-11.5 | Happy path |
-| EPIC-11-S28 | A rejected patch is still part of the history | KAR-11.5 | Edge case |
-| EPIC-11-S29 | Quota reroute onto a capability superset auto-applies and is visible | KAR-11.6 | Happy path |
-| EPIC-11-S30 | A reroute onto a weaker adapter is not equivalent and is not auto | KAR-11.6 | Edge case |
-| EPIC-11-S31 | **No healthy provider: suspend on a durable row, never `setTimeout`** | KAR-11.6 | Failure (footgun) |
+| Scenario    | Title                                                                                 | Verifies           | Type                  |
+| ----------- | ------------------------------------------------------------------------------------- | ------------------ | --------------------- |
+| EPIC-11-S1  | Happy path: three inputs compile to `PlanGraph` v1                                    | KAR-11.1           | Happy path            |
+| EPIC-11-S2  | The planner sees the spec, the recon facts and the capability list — and nothing else | KAR-11.1           | Edge case             |
+| EPIC-11-S3  | A prose plan is refused; there is no extraction fallback                              | KAR-11.1           | Failure               |
+| EPIC-11-S4  | `planHash` is canonical, key-order independent, and not `ohash`                       | KAR-11.1           | Edge case             |
+| EPIC-11-S5  | A planner failure gets one retry with diagnostics, then a human                       | KAR-11.1           | Failure               |
+| EPIC-11-S6  | **An undeclared read fails validation before a token is spent**                       | KAR-11.2           | Failure               |
+| EPIC-11-S7  | Cycles, orphan writes and the severity distinction                                    | KAR-11.2           | Edge case             |
+| EPIC-11-S8  | **A node scheduled onto an adapter that cannot honour it is refused**                 | KAR-11.2           | Failure (outline)     |
+| EPIC-11-S9  | `NO_RESUME` is soft unless the node declares `requiresResume`                         | KAR-11.2           | Edge case             |
+| EPIC-11-S10 | Node ids are validated by real git, then by a stricter charset                        | KAR-11.2           | Failure               |
+| EPIC-11-S11 | Criteria coverage: an unverified criterion fails the plan                             | KAR-11.2           | Failure               |
+| EPIC-11-S12 | Validation runs on every patched plan, not only on v1                                 | KAR-11.2           | Failure               |
+| EPIC-11-S13 | Happy path: an agent proposes a patch through the MCP tool                            | KAR-11.3           | Happy path            |
+| EPIC-11-S14 | Plans are never mutated; every version stays addressable                              | KAR-11.3           | Edge case             |
+| EPIC-11-S15 | Application is atomic with the event append                                           | KAR-11.3           | Recovery (crash-fuzz) |
+| EPIC-11-S16 | `PATCH_STALE`: a stale base is rejected and never rebased                             | KAR-11.3           | Failure               |
+| EPIC-11-S17 | `split-node` and `abandon-branch` retire ids; nothing is ever renamed                 | KAR-11.3           | Edge case             |
+| EPIC-11-S18 | A patch that fails revalidation is rejected whole                                     | KAR-11.3, KAR-11.2 | Failure               |
+| EPIC-11-S19 | **Auto-applied: read-only analysis**                                                  | KAR-11.4           | Happy path            |
+| EPIC-11-S20 | **Queued for approval: the patch adds write capability**                              | KAR-11.4           | Happy path            |
+| EPIC-11-S21 | **Rejected: replan depth exceeded**                                                   | KAR-11.4           | Failure               |
+| EPIC-11-S22 | Ordered evaluation, first match wins, and the `default` arm is `approve`              | KAR-11.4           | Edge case             |
+| EPIC-11-S23 | **The churn circuit-breaker trip stops replanning rather than causing more of it**    | KAR-11.4           | Failure               |
+| EPIC-11-S24 | The policy table is hashed into the run manifest                                      | KAR-11.4           | Edge case             |
+| EPIC-11-S25 | Tainted downstream nodes are flagged, never auto-re-run                               | KAR-11.4           | Failure               |
+| EPIC-11-S26 | Every version retained, deduplicated and inspectable on disk                          | KAR-11.5           | Happy path            |
+| EPIC-11-S27 | The plan diff is field-level, and the reason is verbatim                              | KAR-11.5           | Happy path            |
+| EPIC-11-S28 | A rejected patch is still part of the history                                         | KAR-11.5           | Edge case             |
+| EPIC-11-S29 | Quota reroute onto a capability superset auto-applies and is visible                  | KAR-11.6           | Happy path            |
+| EPIC-11-S30 | A reroute onto a weaker adapter is not equivalent and is not auto                     | KAR-11.6           | Edge case             |
+| EPIC-11-S31 | **No healthy provider: suspend on a durable row, never `setTimeout`**                 | KAR-11.6           | Failure (footgun)     |
 
 ---
 
@@ -103,7 +103,7 @@ Feature: Plan compilation (F2.2)
   Scenario: the planner returns a schema-valid graph
     When the planner node runs
     Then the returned document was read from the result envelope's structured_output field
-    And it validates against .karvan/schemas/karvan.plangraph.v1.json with Ajv
+    And it validates against .DeFlow/schemas/DeFlow.plangraph.v1.json with Ajv
         (strict: true, allErrors: true)
     And every node carries id, type, deps, reads, writes, pathScopes, permission, returns
         { schemaId, maxTokens } and retry.maxAttempts
@@ -113,7 +113,7 @@ Feature: Plan compilation (F2.2)
   Scenario: the graph is persisted content-addressed and on disk
     Then a row exists in plan(hash, run_id, created_at, doc) whose hash equals
         sha256(canonicalJson(doc))
-    And .karvan/runs/<runId>/plan/v1.json contains the same document
+    And .DeFlow/runs/<runId>/plan/v1.json contains the same document
     And "plan.proposed" { version: 1, planHash, graph, by: 'planner' } was appended in the SAME
         transaction as the plan row insert
     And run.plan_hash points at that hash
@@ -125,8 +125,8 @@ Feature: Plan compilation (F2.2)
 ```
 
 **Notes:** The third scenario is not speculative instrumentation. [06 §6](../../06-planning-and-replanning.md)
-is explicit that *"which model plans?"* is **Unverified — a proposal with a measurement plan
-attached, not a finding"*, and the plan is to join these fields against the cross-run dashboard's
+is explicit that _"which model plans?"_ is \*_Unverified — a proposal with a measurement plan
+attached, not a finding"_, and the plan is to join these fields against the cross-run dashboard's
 gate first-pass rate and replans-per-run. Recording them now costs a field; adding them later costs
 an upcaster.
 
@@ -160,11 +160,11 @@ Feature: No implicit context inheritance for the planner (F6.1)
     And any plan naming it fails validation with PROVIDER_NOT_PROBED
 ```
 
-**Notes:** *"Do not let the planner see another node's transcript. It gets the spec, the recon output
-and the capability list. F6.1 exists so that the edges in the plan graph mean something"*
+**Notes:** _"Do not let the planner see another node's transcript. It gets the spec, the recon output
+and the capability list. F6.1 exists so that the edges in the plan graph mean something"_
 ([06 §8](../../06-planning-and-replanning.md)). The second scenario is the guard against the most
 tempting shortcut in the epic — a constant matrix, which
-[06 §2.2](../../06-planning-and-replanning.md) says *"will be wrong within a month"* and which the
+[06 §2.2](../../06-planning-and-replanning.md) says _"will be wrong within a month"_ and which the
 measured 2026-08-02 probe already contradicts in two places.
 
 ---
@@ -173,7 +173,7 @@ measured 2026-08-02 probe already contradicts in two places.
 
 **Verifies:** KAR-11.1 · **Type:** Failure · **Automated at:** integration
 
-```gherkin
+````gherkin
 Feature: The plan is data, not prose (F2.1)
 
   Scenario: markdown with a fenced JSON block
@@ -193,11 +193,11 @@ Feature: The plan is data, not prose (F2.1)
     Given the resolved adapter's probed row reports structuredOutput false
     Then the planner node is refused with 'adapter.capability-missing' before it is spawned
     And no tokens were spent
-```
+````
 
-**Notes:** *"Do not accept a prose plan. Enforce the schema at the adapter boundary with
+**Notes:** _"Do not accept a prose plan. Enforce the schema at the adapter boundary with
 `--json-schema` / `--output-schema`. A regex over prose is how the planner layer starts breaking on
-every CLI update"* ([06 §8](../../06-planning-and-replanning.md)). The third scenario keeps the
+every CLI update"_ ([06 §8](../../06-planning-and-replanning.md)). The third scenario keeps the
 refusal cheap: the check is on the probed row, so it costs a table read rather than a spawned
 process.
 
@@ -230,10 +230,10 @@ Feature: The plan document is content-addressed
     And planHash for the committed fixture graph equals the committed golden hex string
 ```
 
-**Notes:** [06 §2.3](../../06-planning-and-replanning.md): *"Do not use `ohash` for this hash. Its
+**Notes:** [06 §2.3](../../06-planning-and-replanning.md): _"Do not use `ohash` for this hash. Its
 stable-key-ordering behaviour is confirmed, but its README only promises 'best efforts' at stable
 serialisation — acceptable for change detection, not for a value that is a primary key in the `plan`
-table and is referenced by `run.plan_hash` across karvand versions."* `ohash` remains fine for "did
+table and is referenced by `run.plan_hash` across DeFlowd versions."_ `ohash` remains fine for "did
 this object change since last render" in the UI.
 
 ---
@@ -264,8 +264,8 @@ Feature: Validation diagnostics are events, not exceptions (06 §3.5)
     And the failed attempts remain visible in the ledger
 ```
 
-**Notes:** *"A failing v1 goes back to the planner once with the diagnostics as input; a second
-failure escalates to a `human` node with the diagnostics rendered"*
+**Notes:** _"A failing v1 goes back to the planner once with the diagnostics as input; a second
+failure escalates to a `human` node with the diagnostics rendered"_
 ([06 §3.5](../../06-planning-and-replanning.md)). Two attempts, not three: an unbounded planner
 retry loop is the same failure shape the churn breaker exists to stop, arriving earlier.
 
@@ -309,8 +309,8 @@ Feature: Reachability of declared reads (F6.2, 06 §3.1)
     Then a READ_UNREACHABLE diagnostic names "analyse-b"
 ```
 
-**Notes:** *"An undeclared read is a plan validation failure before a single token is spent. At 40
-nodes the transitive closure is free; do not optimise it"*
+**Notes:** _"An undeclared read is a plan validation failure before a single token is spent. At 40
+nodes the transitive closure is free; do not optimise it"_
 ([06 §3.1](../../06-planning-and-replanning.md)). The empty side-effect log is the observable form of
 "before a token is spent" — the fake binaries each append `{runId, nodeId, attempt, idempotencyKey}`
 on every invocation, so "nothing ran" is a file assertion rather than an inference.
@@ -344,10 +344,10 @@ Feature: Two more checks for free from the same walk
     Then no plan row is committed
 ```
 
-**Notes:** *"Cycle detection. `topoSort` throwing is the check"* — one implementation, not two, so a
+**Notes:** _"Cycle detection. `topoSort` throwing is the check"_ — one implementation, not two, so a
 graph that is acyclic for the validator and cyclic for the scheduler cannot exist. The orphan-write
-severity is a deliberate product call: *"it is usually a leftover from a patch, occasionally
-deliberate."*
+severity is a deliberate product call: _"it is usually a leftover from a patch, occasionally
+deliberate."_
 
 ---
 
@@ -377,16 +377,16 @@ Feature: Adapter capability checks at plan time (F3.5, F5.4)
     Given a node requires permission 'worktree'
     And the adapter cannot express anything above 'read'
     Then the plan is refused with PERMISSION_UNSUPPORTED
-    And Karvan did NOT schedule the node at 'read' and hope
-    And Karvan did NOT silently escalate the adapter to 'full'
+    And DeFlow did NOT schedule the node at 'read' and hope
+    And DeFlow did NOT silently escalate the adapter to 'full'
 
   Scenario: the 0.6 ceiling comes from the packet-assembly policy
     Then PACKET_EXCEEDS_BUDGET fires at estimatePacketTokens(node) > caps.maxContext * 0.6
     And the estimate used is the calibrated one, not the raw tokenizer count
 ```
 
-**Notes:** This is F5.4's *"where a provider cannot express the requested level, Karvan **refuses to
-schedule** rather than silently escalating"*, moved to plan time where it costs nothing
+**Notes:** This is F5.4's _"where a provider cannot express the requested level, DeFlow **refuses to
+schedule** rather than silently escalating"_, moved to plan time where it costs nothing
 ([06 §3.2](../../06-planning-and-replanning.md)). The `copilot --acp` row is not hypothetical: **two
 of the five probed adapters cannot resume a session at all**, and Gemini returned no
 `sessionCapabilities` key whatsoever. A planner assuming a uniform surface schedules nodes that
@@ -419,11 +419,11 @@ Feature: Resume is an optimisation, never the durability mechanism
     Then no NO_RESUME diagnostic is emitted for either node
 ```
 
-**Notes:** *"`NO_RESUME` is a soft error: a node that merely benefits from resume falls back to
+**Notes:** _"`NO_RESUME` is a soft error: a node that merely benefits from resume falls back to
 replay-from-ledger (the `ResumeByReplay` strategy). It is a hard error only for nodes that declare
-`requiresResume`"* ([06 §3.2](../../06-planning-and-replanning.md)). This is the same claim
-[01 §](../../01-architecture-overview.md) makes structurally: *"Karvan's own ledger is the sole
-source of truth for a run, and every prompt must be reconstructible from it alone."*
+`requiresResume`"_ ([06 §3.2](../../06-planning-and-replanning.md)). This is the same claim
+[01 §](../../01-architecture-overview.md) makes structurally: _"DeFlow's own ledger is the sole
+source of truth for a run, and every prompt must be reconstructible from it alone."_
 
 ---
 
@@ -439,7 +439,7 @@ Feature: Identifier validation (06 §3.3, D13)
 
   Scenario: git is the authority on ref names
     When the validator checks node id "impl-checkout" for run "r1"
-    Then it ran: git check-ref-format "refs/heads/karvan/r1__impl-checkout"
+    Then it ran: git check-ref-format "refs/heads/DeFlow/r1__impl-checkout"
     And the exit code was 0
     And git's own rules were not reimplemented in TypeScript
 
@@ -451,9 +451,9 @@ Feature: Identifier validation (06 §3.3, D13)
       | id                    | why                                   |
       | impl:checkout         | git check-ref-format non-zero          |
       | impl checkout         | git check-ref-format non-zero          |
-      | Impl-Checkout         | Karvan charset /^[a-z0-9][a-z0-9._-]{0,62}$/ |
-      | -impl                 | Karvan charset (leading separator)     |
-      | <a 70-character id>   | Karvan charset (length)                |
+      | Impl-Checkout         | DeFlow charset /^[a-z0-9][a-z0-9._-]{0,62}$/ |
+      | -impl                 | DeFlow charset (leading separator)     |
+      | <a 70-character id>   | DeFlow charset (length)                |
 
   Scenario: duplicates are rejected case-insensitively
     Given a plan containing node ids "recon" and "Recon"
@@ -461,16 +461,16 @@ Feature: Identifier validation (06 §3.3, D13)
     And the reason names case-insensitive filesystems, since the id is also a directory name
 
   Scenario: the PRD's nested branch scheme stays dead
-    Given a plan whose branch names would be karvan/<runId>/<nodeId>
-    And the run also needs a run-level integration branch karvan/<runId>
+    Given a plan whose branch names would be DeFlow/<runId>/<nodeId>
+    And the run also needs a run-level integration branch DeFlow/<runId>
     Then the scheme is refused
-    And the reason states that git refs are files in a directory tree, so karvan/r1 cannot be both
+    And the reason states that git refs are files in a directory tree, so DeFlow/r1 cannot be both
         a file and a directory
 ```
 
-**Notes:** [06 §3.3](../../06-planning-and-replanning.md) and D13. *"This catches the entire class of
+**Notes:** [06 §3.3](../../06-planning-and-replanning.md) and D13. _"This catches the entire class of
 'the run died at node 31 because the id had a colon in it' three seconds after the planner
-returns."* The last scenario is a permanent regression test — the PRD's `karvan/<run-id>/<node-id>`
+returns."_ The last scenario is a permanent regression test — the PRD's `DeFlow/<run-id>/<node-id>`
 scheme is a **verified bug** and it is exactly the kind of thing that gets reintroduced by someone
 tidying up branch names.
 
@@ -508,9 +508,9 @@ Feature: Every acceptance criterion reaches a gate (F7.4, 06 §3.4)
 ```
 
 **Notes:** The last scenario is the one that distinguishes this check from
-[EPIC-10](../epics/EPIC-10-task-intake.md)'s. EPIC-10 forces the *spec author* to name a gate;
-EPIC-11 forces the *plan* to contain one. *"A criterion nothing checks is a lie on the acceptance
-board"* ([06 §3.4](../../06-planning-and-replanning.md)).
+[EPIC-10](../epics/EPIC-10-task-intake.md)'s. EPIC-10 forces the _spec author_ to name a gate;
+EPIC-11 forces the _plan_ to contain one. _"A criterion nothing checks is a lie on the acceptance
+board"_ ([06 §3.4](../../06-planning-and-replanning.md)).
 
 ---
 
@@ -542,9 +542,9 @@ Feature: The patch that bites is the one at node 27 of 40
     Then v4 is committed and run.plan_hash advances
 ```
 
-**Notes:** *"Do not skip validation on patched plans. v1 validation is the obvious case; the patch
+**Notes:** _"Do not skip validation on patched plans. v1 validation is the obvious case; the patch
 that adds a node reading a key nothing writes is the one that actually bites, because it happens at
-node 27 of 40"* ([06 §8](../../06-planning-and-replanning.md)). The structural assertion in the
+node 27 of 40"_ ([06 §8](../../06-planning-and-replanning.md)). The structural assertion in the
 second scenario is what keeps this true after six months of edits, when someone adds a "quick" second
 write path.
 
@@ -558,13 +558,13 @@ write path.
 Feature: Runtime plan mutation (F2.4)
 
   Background:
-    Given Karvan's stdio MCP server is injected into the agent session via session/new's mcpServers
-    And it exposes the tool karvan.propose_plan_patch
+    Given DeFlow's stdio MCP server is injected into the agent session via session/new's mcpServers
+    And it exposes the tool DeFlow.propose_plan_patch
 
   Scenario: a recon node proposes three read-only analysis nodes
-    When the agent calls karvan.propose_plan_patch with an insert-nodes patch carrying
+    When the agent calls DeFlow.propose_plan_patch with an insert-nodes patch carrying
         reason "recon found @acme/ui, @acme/forms and @acme/charts also import the v2 API"
-    Then the input is validated against karvan.planpatch.v1 at the tool boundary
+    Then the input is validated against DeFlow.planpatch.v1 at the tool boundary
     And "plan.patch.proposed" { patch } is appended
     And the policy engine is invoked with the patch and the reduced RunState
     And on an auto decision, "plan.patched" { version, fromHash, toHash, patchId, decision }
@@ -586,10 +586,10 @@ Feature: Runtime plan mutation (F2.4)
     And the reason is stored verbatim when valid, never summarised anywhere in the pipeline
 ```
 
-**Notes:** *"The tool takes the patch as structured input validated against the same schema, so a
-malformed proposal fails at the tool boundary rather than in the policy engine"*
+**Notes:** _"The tool takes the patch as structured input validated against the same schema, so a
+malformed proposal fails at the tool boundary rather than in the policy engine"_
 ([06 §4.1](../../06-planning-and-replanning.md)). The verbatim `reason` is load-bearing for F10.2:
-*"why is there a step here that I didn't ask for?"* must be answerable in one click, and the answer
+_"why is there a step here that I didn't ask for?"_ must be answerable in one click, and the answer
 is the sentence the proposer wrote.
 
 ---
@@ -618,8 +618,8 @@ Feature: Immutable, content-addressed plan documents
     Then it receives the byte-identical document, not a reconstruction
 ```
 
-**Notes:** *"Do not mutate a plan row in place. Ever. The scrubber, replay, and every 'why' question
-depend on old versions being byte-identical to what actually ran"*
+**Notes:** _"Do not mutate a plan row in place. Ever. The scrubber, replay, and every 'why' question
+depend on old versions being byte-identical to what actually ran"_
 ([06 §8](../../06-planning-and-replanning.md)). This is also why the storage argument is stated
 explicitly in the architecture — so nobody optimises the thing that makes the marquee feature
 possible.
@@ -638,7 +638,7 @@ Feature: A crash mid-apply never leaves a torn state
     And the crash-fuzz harness includes a kill point inside patch application
 
   Scenario: kill -9 during patch application
-    When karvand is killed with SIGKILL at a random point inside the apply transaction
+    When DeFlowd is killed with SIGKILL at a random point inside the apply transaction
     And a fresh engine is constructed over the SAME database file
     Then PRAGMA integrity_check returns 'ok'
     And the ledger holds EITHER the old plan and no plan.patched event
@@ -660,8 +660,8 @@ Feature: A crash mid-apply never leaves a torn state
 
 **Notes:** The third scenario connects to a **verified** measurement in
 [04 §1.2](../../04-domain-model.md): with a plain `INTEGER PRIMARY KEY` the sequence number is
-*reused* after a delete, which silently corrupts every persisted SSE cursor. `AUTOINCREMENT` is
-mandatory, and the streaming contract is always *"resume from strictly greater than `n`"*.
+_reused_ after a delete, which silently corrupts every persisted SSE cursor. `AUTOINCREMENT` is
+mandatory, and the streaming contract is always _"resume from strictly greater than `n`"_.
 
 ---
 
@@ -693,8 +693,8 @@ Feature: Optimistic concurrency on basePlanHash
     Then the new proposal is evaluated normally
 ```
 
-**Notes:** *"Do not attempt automatic rebasing — the proposer had a reason based on a graph that no
-longer exists"* ([06 §4.2](../../06-planning-and-replanning.md)). A rebase would silently apply that
+**Notes:** _"Do not attempt automatic rebasing — the proposer had a reason based on a graph that no
+longer exists"_ ([06 §4.2](../../06-planning-and-replanning.md)). A rebase would silently apply that
 reason to a graph it was never about, which is a much more expensive failure than asking the proposer
 to look again.
 
@@ -731,11 +731,11 @@ Feature: The stable-NodeId invariant (04 §1.1)
 ```
 
 **Notes:** Two subsystems break silently if ids move: the effect journal's idempotency key
-`(runId, nodeId, attempt, ordinal)` — *"if a node's id changes between the `pending` effect row being
+`(runId, nodeId, attempt, ordinal)` — _"if a node's id changes between the `pending` effect row being
 written and the daemon restarting, the memoised result is orphaned and the side effect runs twice.
-There is no way to detect this after the fact"* — and the scrubber, where *"a renamed node renders as
+There is no way to detect this after the fact"_ — and the scrubber, where _"a renamed node renders as
 a delete plus an insert, which is exactly the wrong story to tell about a plan that was merely
-edited."*
+edited."_
 
 ---
 
@@ -765,9 +765,9 @@ Feature: A failing patch is never partially applied
     And the Operator can correct and resubmit it
 ```
 
-**Notes:** *"A failing **patch** is rejected outright — never partially applied"*
+**Notes:** _"A failing **patch** is rejected outright — never partially applied"_
 ([06 §3.5](../../06-planning-and-replanning.md)). The second scenario matters because the two checks
-answer different questions: the policy engine asks *should we?* and the validator asks *can we?*, and
+answer different questions: the policy engine asks _should we?_ and the validator asks _can we?_, and
 a `yes` to the first can never substitute for the second.
 
 ---
@@ -858,8 +858,8 @@ Feature: The patch policy engine, approval path
     And revalidation ran before the commit
 ```
 
-**Notes:** *"The run does not stall on it if other branches are runnable — the patch is pending, not
-the run"* ([06 §4.3](../../06-planning-and-replanning.md)). Ordering matters here as much as the
+**Notes:** _"The run does not stall on it if other branches are runnable — the patch is pending, not
+the run"_ ([06 §4.3](../../06-planning-and-replanning.md)). Ordering matters here as much as the
 outcome: asserting `ruleId: 'escalates-permission'` rather than merely `decision: 'approve'` is what
 catches a rule table that has been reordered or evaluated as a set.
 
@@ -899,10 +899,10 @@ Feature: The patch policy engine, rejection path
     And NF10 holds: every UI state traces to a specific ledger event
 ```
 
-**Notes:** *"Do not let a rejected patch be silent. No event means no UI, and 'the run silently
-decided not to do the thing it decided to do' is unanswerable"*
+**Notes:** _"Do not let a rejected patch be silent. No event means no UI, and 'the run silently
+decided not to do the thing it decided to do' is unanswerable"_
 ([06 §8](../../06-planning-and-replanning.md)). The second scenario is the humane part of the design
-— a depth-4 replan is refused *by policy*, not forbidden, and the human override is the escape hatch
+— a depth-4 replan is refused _by policy_, not forbidden, and the human override is the escape hatch
 that keeps the rule from being a wall.
 
 ---
@@ -937,11 +937,11 @@ Feature: The rule table is ordered, declarative and closed
     And the function read nothing from disk
 ```
 
-**Notes:** *"The default arm is `approve`, not `auto`. Anything the rules do not recognise goes to a
-human"* ([06 §4.3](../../06-planning-and-replanning.md)). The execution-boundary scenario encodes
+**Notes:** _"The default arm is `approve`, not `auto`. Anything the rules do not recognise goes to a
+human"_ ([06 §4.3](../../06-planning-and-replanning.md)). The execution-boundary scenario encodes
 F5.6 and, behind it, the Kiro/AWS incident from [PRD §4.5](../../prd.md): approved specs and reviewed
-designs did not prevent an agent from deleting a production environment, *"because nothing reviewed
-the moment of action."*
+designs did not prevent an agent from deleting a production environment, _"because nothing reviewed
+the moment of action."_
 
 ---
 
@@ -995,15 +995,15 @@ Feature: Interaction with no-progress detection (F4.7, 06 §7)
     And each rejected patch has its own plan.patched with decision 'rejected'
 ```
 
-**Notes:** [06 §7](../../06-planning-and-replanning.md) calls this *"the sharpest edge in the whole
-design, and getting it backwards is expensive"*. The failure it prevents is intuitive to build and
-wrong: *"a churning run's instinct is to replan. That is exactly the behaviour to stop. Three
+**Notes:** [06 §7](../../06-planning-and-replanning.md) calls this _"the sharpest edge in the whole
+design, and getting it backwards is expensive"_. The failure it prevents is intuitive to build and
+wrong: _"a churning run's instinct is to replan. That is exactly the behaviour to stop. Three
 consecutive replans with no completed nodes is not a plan that needs a fourth revision; it is a plan
 built on a false premise, and the only thing that can supply the missing premise is the person who
-wrote the spec."* The first scenario's second Then clause — that `evaluateRules` was never reached —
+wrote the spec."_ The first scenario's second Then clause — that `evaluateRules` was never reached —
 is the one that catches the natural mis-ordering, because a system that checks the rules first and
 the breaker second will happily auto-apply analysis patches during a trip and still pass a test that
-only asserts the final decision on a *rejected-anyway* patch.
+only asserts the final decision on a _rejected-anyway_ patch.
 
 ---
 
@@ -1015,7 +1015,7 @@ only asserts the final decision on a *rejected-anyway* patch.
 Feature: Mid-run config edits do not silently change the rules
 
   Scenario: the table is pinned at run start
-    Given .karvan/config.yaml declares policy.patch with the default rules
+    Given .DeFlow/config.yaml declares policy.patch with the default rules
     When the run starts
     Then the sha256 of the canonicalised rule table is recorded in the run manifest
 
@@ -1030,12 +1030,12 @@ Feature: Mid-run config edits do not silently change the rules
     Then its manifest records the new hash and its patches are judged by the new thresholds
 
   Scenario: a missing policy.patch block uses the documented defaults
-    Given .karvan/config.yaml has no policy.patch key
+    Given .DeFlow/config.yaml has no policy.patch key
     Then the eight default rules are in effect and their hash is recorded
 ```
 
-**Notes:** *"Lives in `.karvan/config.yaml` under `policy.patch` and is hashed into the run manifest
-so mid-run edits do not silently change the rules"*
+**Notes:** _"Lives in `.DeFlow/config.yaml` under `policy.patch` and is hashed into the run manifest
+so mid-run edits do not silently change the rules"_
 ([06 §4.3](../../06-planning-and-replanning.md)). Surfacing the mismatch rather than ignoring it
 matters: an operator who edits the config expecting it to take effect and gets no signal will assume
 the engine is broken.
@@ -1072,9 +1072,9 @@ Feature: fact.invalidated routes through the policy engine, not around it
     Then it goes through decidePatch like any other patch
 ```
 
-**Notes:** *"Do not auto-re-run them. Flag them, surface them in the approval queue, and let the patch
+**Notes:** _"Do not auto-re-run them. Flag them, surface them in the approval queue, and let the patch
 policy engine decide. Automatic re-running on invalidation is a very efficient way to build a loop
-that never terminates"* ([06 §7](../../06-planning-and-replanning.md), and
+that never terminates"_ ([06 §7](../../06-planning-and-replanning.md), and
 [04 §5.2](../../04-domain-model.md)). It pairs with S23: both are cases where the reflexive automated
 response is the one that burns the budget.
 
@@ -1090,7 +1090,7 @@ Feature: Plan version retention (F2.6, NF8)
   Scenario: three patches produce four versions
     When three patches are applied to a 40-node plan
     Then the plan table holds four rows
-    And .karvan/runs/<runId>/plan/ holds v1.json, v2.json, v3.json and v4.json
+    And .DeFlow/runs/<runId>/plan/ holds v1.json, v2.json, v3.json and v4.json
     And each file is the byte-identical document of its row
 
   Scenario: content addressing deduplicates for free
@@ -1108,7 +1108,7 @@ Feature: Plan version retention (F2.6, NF8)
 ```
 
 **Notes:** The storage numbers are stated in [06 §5](../../06-planning-and-replanning.md)
-specifically *"so nobody is tempted to prune"* — a 40-node plan is ~30 KB, a target 1–4-replan run is
+specifically _"so nobody is tempted to prune"_ — a 40-node plan is ~30 KB, a target 1–4-replan run is
 under 200 KB, and a 12-version run is under half a megabyte. Retention is not a nice-to-have: it is
 what makes F10.2 possible at all.
 
@@ -1157,9 +1157,9 @@ Feature: GET /api/runs/:id/plans/diff (the scrubber's server-side contract)
 **Notes:** `rfc6902@5.3.0` — **not** `fast-json-patch`, which last shipped in 2022
 ([11 §7.4](../../11-api-and-realtime.md)). The `unionLayoutKey` clause exists because
 [06 §5](../../06-planning-and-replanning.md) records that the elkjs `layerChoiceConstraint` /
-`positionChoiceConstraint` recipe *"does **not** work as commonly written"*, so the load-bearing
-design is *"lay the union graph out once, then per version show, hide and restyle nodes against the
-fixed coordinates"* — which needs a stable key from the server and nothing else.
+`positionChoiceConstraint` recipe _"does **not** work as commonly written"_, so the load-bearing
+design is _"lay the union graph out once, then per version show, hide and restyle nodes against the
+fixed coordinates"_ — which needs a stable key from the server and nothing else.
 
 ---
 
@@ -1186,9 +1186,9 @@ Feature: The history explains what did NOT happen
     And its ops can be rendered against the base plan without being applied
 ```
 
-**Notes:** [06 §5](../../06-planning-and-replanning.md) states the full answer explicitly: *"who
+**Notes:** [06 §5](../../06-planning-and-replanning.md) states the full answer explicitly: _"who
 proposed it, why, what the estimate was, which policy rule fired, and whether a human approved
-it."* The third scenario is what turns *"the run wanted to do X and was not allowed to"* from a log
+it."_ The third scenario is what turns _"the run wanted to do X and was not allowed to"_ from a log
 line into a view.
 
 ---
@@ -1226,8 +1226,8 @@ Feature: Provider re-routing recorded as a patch (F3.9, NF7)
     Then no code path changes a node's provider without producing a PlanPatch
 ```
 
-**Notes:** *"The scheduler does not silently swap providers… so the swap appears in the visualisation
-— which is the entire point of F3.9's wording"*
+**Notes:** _"The scheduler does not silently swap providers… so the swap appears in the visualisation
+— which is the entire point of F3.9's wording"_
 ([06 §4.4](../../06-planning-and-replanning.md)). The `rate_limit_event` frame shape is **verified
 2026-08-02**, so the parser is tested against a committed fixture rather than an assumed schema.
 
@@ -1265,7 +1265,7 @@ Feature: capabilitySuperset is computed, not assumed
 
 **Notes:** The Examples table is drawn directly from the 2026-08-02 measurement, where `codex-acp`
 advertises `fork: no`, `copilot --acp` advertises no resume, and `gemini --acp` advertises no
-`session.list` at all. *"A reroute onto a weaker adapter is not equivalent and is not auto"*
+`session.list` at all. _"A reroute onto a weaker adapter is not equivalent and is not auto"_
 ([06 §4.4](../../06-planning-and-replanning.md)) — and the last scenario is the proof that the
 implementation reads the row rather than the table in this document.
 
@@ -1297,7 +1297,7 @@ Feature: NF7 degradation is implemented by a durable wake row
     And it did NOT fire after 1 ms with a TimeoutOverflowWarning
 
   Scenario: the wait survives everything a timer would not
-    When karvand is killed with SIGKILL and restarted over the same directory
+    When DeFlowd is killed with SIGKILL and restarted over the same directory
     Then the node_wake row is still present with the same wake_at
     And the node still wakes at resetsAt
     Given the laptop sleeps across the wake time
@@ -1310,10 +1310,10 @@ Feature: NF7 degradation is implemented by a durable wake row
 ```
 
 **Notes:** Three verified facts collide here.
-[06 §4.4](../../06-planning-and-replanning.md): *"Never use `setTimeout` for this: Node's maximum
+[06 §4.4](../../06-planning-and-replanning.md): _"Never use `setTimeout` for this: Node's maximum
 timer delay is `2^31-1 ms`, and passing `2**31` **fires the callback after 1 ms** with only a
 `TimeoutOverflowWarning`. **Verified 2026-08-02.** Timers also do not fire during laptop sleep and do
-not survive a restart."* A four-hour quota wait is well inside the 2^31 ms limit, which is exactly
+not survive a restart."_ A four-hour quota wait is well inside the 2^31 ms limit, which is exactly
 why this bug survives casual testing and detonates on the first genuinely long wait.
 
 ---

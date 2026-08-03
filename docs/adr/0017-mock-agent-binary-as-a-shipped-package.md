@@ -4,7 +4,7 @@
 
 ## Context
 
-Karvan's core competence is spawning external processes, speaking a wire protocol to them over
+DeFlow's core competence is spawning external processes, speaking a wire protocol to them over
 pipes, and surviving when they misbehave. The failure modes it exists to handle — crash mid-turn,
 hang forever, laptop sleep, a malformed frame, a 10 MB single line, an agent that advertises no
 resume capability — are precisely the ones you cannot reproduce on demand against a real vendor CLI.
@@ -16,13 +16,13 @@ get tested.
 
 The usual answer is to mock the module: stub `child_process.spawn` and return scripted output. That
 tests the mock. It does not test the ndjson framing, the backpressure behaviour, the frame-size cap,
-the timeout, the process-group kill, or the parser. Every one of those is where Karvan's bugs will
+the timeout, the process-group kill, or the parser. Every one of those is where DeFlow's bugs will
 actually live.
 
-The research also produced a specific reason the fake must be a *binary*: **verified 2026-08-02**,
+The research also produced a specific reason the fake must be a _binary_: **verified 2026-08-02**,
 `detached: true` is mandatory for agent processes, because with `detached: false` the grandchildren's
-PGID is **karvand's own process group** — `child.kill('SIGTERM')` kills only the direct child, both
-grandchildren survive, and you cannot group-kill without killing karvand. With `detached: true`,
+PGID is **DeFlowd's own process group** — `child.kill('SIGTERM')` kills only the direct child, both
+grandchildren survive, and you cannot group-kill without killing DeFlowd. With `detached: true`,
 `process.kill(-child.pid, 'SIGTERM')` terminates the whole subtree. There is no way to test that
 against a mocked module; it requires real processes with real process groups.
 
@@ -32,8 +32,8 @@ exclude `Z`-state processes, or it reports a false negative. That test needs a r
 
 ## Decision
 
-**`@karvan/mock-agent` is a first-class package exposing a real binary (`karvan-mock-agent`),
-implemented with the *agent* side of `@agentclientprotocol/sdk` and driven by a declarative script
+**`@DeFlow/mock-agent` is a first-class package exposing a real binary (`DeFlow-mock-agent`),
+implemented with the _agent_ side of `@agentclientprotocol/sdk` and driven by a declarative script
 file. It ships; it is not a test helper.**
 
 It must reproduce, deterministically and on demand:
@@ -52,7 +52,7 @@ It must reproduce, deterministically and on demand:
    everything-on profile can be simulated without installing either.
 10. `--seed`, so all ids and timestamps are byte-reproducible.
 
-Plus `karvan-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
+Plus `DeFlow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
 session becomes a mock provider for free.
 
 **Item 9 is the one people skip and regret.** It turns the uneven capability matrix from
@@ -63,11 +63,11 @@ session becomes a mock provider for free.
 
 - **F3.7 makes a mock provider a product requirement**, not a testing convenience. ODW ships one and
   the PRD names it as a strength worth adopting outright.
-- **`karvan doctor` and the F3.4 conformance suite run on the user's machine**, not just in CI. The
+- **`DeFlow doctor` and the F3.4 conformance suite run on the user's machine**, not just in CI. The
   battery — structured output, streaming, permission refusal, timeout, cancellation, non-zero exit,
   malformed output, token accounting — needs a known-good reference implementation present at
   runtime to have something to compare a real adapter against.
-- **The replay harness is the demo tool.** `karvan replay <fixture.jsonl>` lets all nine P0 views be
+- **The replay harness is the demo tool.** `DeFlow replay <fixture.jsonl>` lets all nine P0 views be
   developed, demonstrated and regression-tested with no credentials, no cost and no waiting — and it
   is the answer to PRD §15.4's "how do you present this internally". A tool that only exists in
   `devDependencies` cannot do that.
@@ -80,6 +80,7 @@ executable on a temporary `PATH`, never a mocked `spawn`. Both are described in
 ## Consequences
 
 ### Positive
+
 - **A multi-hour scenario collapses into milliseconds**, and the whole daemon becomes developable
   offline on a laptop with zero credentials.
 - The recovery paths that are the entire point of event sourcing become testable, which is the
@@ -87,10 +88,11 @@ executable on a temporary `PATH`, never a mocked `spawn`. Both are described in
 - The permission ladder, path-scope enforcement, command allowlist and gate logic all become fast
   unit tests with no vendor CLI installed
   ([ADR 0013](./0013-delegate-sandboxing-to-vendor-clis.md)).
-- Crash-fuzz in CI becomes cheap: spawn karvand, `kill -9` at a random point in a scripted run,
+- Crash-fuzz in CI becomes cheap: spawn DeFlowd, `kill -9` at a random point in a scripted run,
   restart, assert no effect executed twice and `PRAGMA integrity_check` is `ok`.
 
 ### Negative
+
 - **It is a second ACP implementation to maintain**, on the agent side rather than the client side,
   and it must track protocol changes alongside the client. Bounded by using the same SDK, whose
   `acp.agent({...})` mirrors `acp.client({...})`.
@@ -101,6 +103,7 @@ executable on a temporary `PATH`, never a mocked `spawn`. Both are described in
   produces a visible new directory rather than silently invalidating old goldens.
 
 ### Neutral
+
 - It is deterministic by construction (`--seed`), which is what makes ledger snapshots stable enough
   to commit as fixtures.
 
@@ -127,7 +130,7 @@ Two checkable triggers:
    no `conformance/`, `compliance/` or `tests/` directory, and `@agentclientprotocol/conformance`,
    `acp-conformance` and `@agentclientprotocol/test-kit` all 404 on npm. (Be warned: web search
    asserts one exists — that is a conflation with an unrelated academic "Agent Control Protocol".)
-   If a real one ships, the *behavioural* half of the mock's job may be replaceable; the
+   If a real one ships, the _behavioural_ half of the mock's job may be replaceable; the
    pathological-case half (hang, mid-turn crash, 10 MB frame, fake capability profiles) almost
    certainly will not be.
 2. **ACP v2 lands** ([ADR 0004](./0004-acp-first-adapter-layer.md)'s trigger). v2 removes `fs/*` and
@@ -136,4 +139,5 @@ Two checkable triggers:
    validate a protocol nobody speaks.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

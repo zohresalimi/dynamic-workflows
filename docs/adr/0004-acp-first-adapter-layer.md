@@ -6,7 +6,7 @@
 
 The adapter layer is the highest-churn surface in the system, and Open Dynamic Workflow's version of
 it (bespoke shell-argument shims per vendor) is the PRD's gap G7. The churn is not hypothetical —
-three concrete breakages are visible in the *current* release set. **Verified 2026-08-02**, by
+three concrete breakages are visible in the _current_ release set. **Verified 2026-08-02**, by
 reading each installed binary's own `--help`:
 
 - Claude Code 2.1.220: `--permission-prompt-tool` is gone (grepped, zero hits).
@@ -19,20 +19,20 @@ JSON over a child's stdin/stdout, explicitly modelled on LSP, turning N×M agent
 into N+M. An ACP client gets sessions, streaming updates, permission negotiation, and client-provided
 filesystem and terminal access from every ACP-speaking agent through one integration.
 
-It also fits AR-1 exactly: the agent process holds the credential, Karvan only speaks JSON-RPC to it
+It also fits AR-1 exactly: the agent process holds the credential, DeFlow only speaks JSON-RPC to it
 over a pipe ([ADR 0003](./0003-never-hold-provider-credentials.md)).
 
 **The load-bearing finding is not what the naive assumption suggests.** Running a real `initialize`
-handshake against each binary on 2026-08-02 showed that the two most important agents do *not* speak
+handshake against each binary on 2026-08-02 showed that the two most important agents do _not_ speak
 ACP themselves, while three lesser ones do:
 
-| Vendor | How you actually reach it | Verified |
-|---|---|---|
-| Gemini CLI `@google/gemini-cli@0.53.1` | `gemini --acp` (native) | 2026-08-02 |
-| GitHub Copilot CLI `@github/copilot@1.0.77` | `copilot --acp` (native) | 2026-08-02 |
-| OpenCode `opencode-ai@1.18.11` | `opencode acp` (native, subcommand not flag) | 2026-08-02 |
-| **Claude Code** | **`@agentclientprotocol/claude-agent-acp@0.64.1`** (first-party adapter; no native ACP in `claude --help`) | 2026-08-02 |
-| **Codex CLI** | **`@agentclientprotocol/codex-acp@1.1.9`** (first-party adapter; no native ACP in `codex --help`) | 2026-08-02 |
+| Vendor                                      | How you actually reach it                                                                                  | Verified   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------- |
+| Gemini CLI `@google/gemini-cli@0.53.1`      | `gemini --acp` (native)                                                                                    | 2026-08-02 |
+| GitHub Copilot CLI `@github/copilot@1.0.77` | `copilot --acp` (native)                                                                                   | 2026-08-02 |
+| OpenCode `opencode-ai@1.18.11`              | `opencode acp` (native, subcommand not flag)                                                               | 2026-08-02 |
+| **Claude Code**                             | **`@agentclientprotocol/claude-agent-acp@0.64.1`** (first-party adapter; no native ACP in `claude --help`) | 2026-08-02 |
+| **Codex CLI**                               | **`@agentclientprotocol/codex-acp@1.1.9`** (first-party adapter; no native ACP in `codex --help`)          | 2026-08-02 |
 
 Both adapters live under the same official `agentclientprotocol` GitHub org as the spec, and both
 were published on 2026-08-02 — actively maintained. They supersede the deprecated
@@ -43,20 +43,20 @@ advertised by claude-agent-acp, codex-acp and opencode, and **not** by Copilot o
 
 ## Decision
 
-**Karvan is an ACP client. `@agentclientprotocol/sdk` is pinned at exactly `1.3.0`, targeting wire
-`protocolVersion: 1`.** Exact pinning, not caret: this package went 0.4.5 → 1.3.0 *and* changed npm
-scope *and* changed GitHub org inside about ten months.
+**DeFlow is an ACP client. `@agentclientprotocol/sdk` is pinned at exactly `1.3.0`, targeting wire
+`protocolVersion: 1`.** Exact pinning, not caret: this package went 0.4.5 → 1.3.0 _and_ changed npm
+scope _and_ changed GitHub org inside about ten months.
 
 Concretely:
 
 - **Spawn plan is per-vendor and derived from the probe, not from a table in the docs.** Three
   vendors get the binary directly; Claude Code and Codex get their first-party adapter binary, with
-  the vendor binary's **absolute** path passed explicitly (e.g. `CODEX_PATH`) — karvand's `PATH` at
+  the vendor binary's **absolute** path passed explicitly (e.g. `CODEX_PATH`) — DeFlowd's `PATH` at
   daemon-start differs from the user's login shell.
 - **Capability manifests are derived from the `initialize` response and persisted**, never
   hardcoded (AR-5). Resume is two strategies behind one interface — `ResumeNative` where the agent
   advertises `session.resume`, `ResumeByReplay` where it does not — selected at runtime.
-- **Vendor session resume is an optimisation, never the durability mechanism.** Karvan's own ledger
+- **Vendor session resume is an optimisation, never the durability mechanism.** DeFlow's own ledger
   is the sole source of truth; every prompt must be reconstructible from it alone
   ([ADR 0006](./0006-journaled-dag-state-machine-not-deterministic-replay.md)).
 - **CLI exec shims are retained permanently as a parallel path, not a temporary bridge** (F3.2). The
@@ -69,31 +69,34 @@ Concretely:
   Control Protocol". What does exist is the shipped `schema/schema.json` (262 `$defs`), which is the
   conformance oracle for F3.4.
 
-Karvan also hosts an MCP stdio server injected via ACP `session/new`, so workflow-level tools reach
+DeFlow also hosts an MCP stdio server injected via ACP `session/new`, so workflow-level tools reach
 every vendor ([ADR 0013](./0013-delegate-sandboxing-to-vendor-clis.md) explains why that boundary
 matters for safety).
 
 ## Consequences
 
 ### Positive
+
 - One client implementation covers five of six target vendors, with permission prompts, fs/terminal
   delegation, streaming and cancellation already specified (F3.1).
-- Karvan sits in the path of every `fs/*` and `terminal/*` call, which is what makes the permission
+- DeFlow sits in the path of every `fs/*` and `terminal/*` call, which is what makes the permission
   ladder (F5.4) one policy function instead of an N-vendors × M-levels matrix
   ([09-workspace-and-safety.md](../09-workspace-and-safety.md)).
 - The whole safety model becomes unit-testable with zero vendor CLIs installed, because a fake ACP
-  *agent* is ~150 lines ([ADR 0017](./0017-mock-agent-binary-as-a-shipped-package.md)).
+  _agent_ is ~150 lines ([ADR 0017](./0017-mock-agent-binary-as-a-shipped-package.md)).
 
 ### Negative
+
 - Two extra pinned dependencies (`claude-agent-acp`, `codex-acp`) sit between us and our two most
   important providers. They are adapters, not first-party vendor code, and must be covered by the
   conformance suite and version-pinned.
 - Two of five probed agents cannot resume, so `ResumeByReplay` is not optional.
 - The SDK's `LineBuffer` has **no maximum line length** (**verified 2026-08-02** by reading
-  `dist/line-buffer.js`) — an agent that never emits a newline will OOM a long-lived daemon. Karvan
+  `dist/line-buffer.js`) — an agent that never emits a newline will OOM a long-lived daemon. DeFlow
   interposes its own 8 MiB frame cap upstream of `ndJsonStream()`.
 
 ### Neutral
+
 - Cursor, Goose and Aider could not be verified and stay on the shim path or out of scope. Aider is
   deprioritised.
 
@@ -119,7 +122,7 @@ v2's `CLIENT_METHODS` **drops `fs/read_text_file`, `fs/write_text_file`, `termin
 filesystem and terminal access move onto MCP. It also renames `authenticate` → `auth/login`,
 `logout` → `auth/logout`, and drops `session/load` and `session/set_mode` agent-side.
 
-That relocates two of the four things a client must implement, and both are where Karvan's
+That relocates two of the four things a client must implement, and both are where DeFlow's
 permission enforcement lives. So the fs and terminal logic is written **now** as a transport-neutral
 service with two thin fronts — one wired to v1's ACP client methods, one exposed as MCP tools — with
 no business logic (path sandboxing, workspace-root enforcement, output capture, blob spilling) in
@@ -130,4 +133,5 @@ the shim path can be de-emphasised) **or ships a competitor** (ACP fragments, an
 becomes load-bearing). Track quarterly.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

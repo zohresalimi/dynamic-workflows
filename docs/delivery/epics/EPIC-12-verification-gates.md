@@ -1,24 +1,24 @@
 # EPIC-12: Verification gates and the repair loop
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-12-verification-gates-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-12 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W8a (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~15 days across 6 stories — **at the ceiling of the solo-build guidance, see Risks** |
-| **Depends on** | EPIC-02 (`NodeResult`, the verdict and finding types — [04-domain-model §7](../../04-domain-model.md)), EPIC-07 (worktrees, branches, `merge-tree` conflict probe), EPIC-08 (path-scope violations are gate input), EPIC-09 (packet assembly, pinning, the pin-integrity check, handoff validation), EPIC-10 (every gate is judged against the `specHash` minted there), EPIC-11 (plan validation is where criteria coverage is enforced), EPIC-06 (node attempts, retry caps, the churn breaker) |
-| **Blocks** | EPIC-15 (the gate and verdict service functions its read endpoints mount), EPIC-17 (KAR-17.6 diff surface with inline verdicts, KAR-17.7 acceptance criteria board) |
-| **PRD requirements** | F7.1, F7.2, F7.3, F7.4, F7.5, F7.6 (P1), F7.7 (P1), F1.5, F6.9, F5.3 (violation reporting consumed here), NF8, NF10 |
-| **Architecture** | [10-verification-gates.md](../../10-verification-gates.md) (all sections), [06-planning-and-replanning.md §3.4, §4.3, §7](../../06-planning-and-replanning.md), [04-domain-model.md §7](../../04-domain-model.md) |
+|                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-12                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Workstream**       | W8a (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Size**             | ~15 days across 6 stories — **at the ceiling of the solo-build guidance, see Risks**                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Depends on**       | EPIC-02 (`NodeResult`, the verdict and finding types — [04-domain-model §7](../../04-domain-model.md)), EPIC-07 (worktrees, branches, `merge-tree` conflict probe), EPIC-08 (path-scope violations are gate input), EPIC-09 (packet assembly, pinning, the pin-integrity check, handoff validation), EPIC-10 (every gate is judged against the `specHash` minted there), EPIC-11 (plan validation is where criteria coverage is enforced), EPIC-06 (node attempts, retry caps, the churn breaker) |
+| **Blocks**           | EPIC-15 (the gate and verdict service functions its read endpoints mount), EPIC-17 (KAR-17.6 diff surface with inline verdicts, KAR-17.7 acceptance criteria board)                                                                                                                                                                                                                                                                                                                               |
+| **PRD requirements** | F7.1, F7.2, F7.3, F7.4, F7.5, F7.6 (P1), F7.7 (P1), F1.5, F6.9, F5.3 (violation reporting consumed here), NF8, NF10                                                                                                                                                                                                                                                                                                                                                                               |
+| **Architecture**     | [10-verification-gates.md](../../10-verification-gates.md) (all sections), [06-planning-and-replanning.md §3.4, §4.3, §7](../../06-planning-and-replanning.md), [04-domain-model.md §7](../../04-domain-model.md)                                                                                                                                                                                                                                                                                 |
 
 ## Goal
 
-At the end of this epic Karvan can answer *"has the requested outcome been achieved?"* mechanically
+At the end of this epic DeFlow can answer _"has the requested outcome been achieved?"_ mechanically
 rather than rhetorically. Every acceptance criterion in the pinned `TaskSpec` is provably reachable
 from at least one gate or is explicitly marked unverifiable; gates run cheapest-first and
 short-circuit, so no money is spent reviewing code that does not typecheck; a review gate is
@@ -30,7 +30,7 @@ all three verdicts attached.
 
 ## Why this matters
 
-PRD §3.2 rates *"no verification concept"* (G9) as **High**: in ODW, "did this actually work?" has
+PRD §3.2 rates _"no verification concept"_ (G9) as **High**: in ODW, "did this actually work?" has
 to be hand-coded inside a loop callback, and there is no independent-validator pattern at all. The
 SDD literature surveyed in PRD §4.5 converges on exactly four answers — criteria before code, the
 author cannot be the judge, surgical fix loops, hard build gates — and this epic is all four made
@@ -47,12 +47,12 @@ nothing. Four ways that happens, all designed against here:
   (**verified 2026-08-02**), and forking is the obvious-looking way to give the reviewer "context".
   A fork inherits the producer's reasoning wholesale and voids F7.2 entirely. §3.2's scheduling
   precondition exists to make it impossible rather than discouraged.
-- **False precision.** *"THE system SHALL display an error within 200ms"* has the grammar of a test
+- **False precision.** _"THE system SHALL display an error within 200ms"_ has the grammar of a test
   and none of the machinery, and a reviewer that read a `setError` call will mark it satisfied.
   Forcing every criterion to name a gate or write the word `unverifiable` and a reason removes an
   entire class of false confidence for ten seconds of authoring cost.
-- **The agent fixing the check instead of the code.** `.karvan/gates/**` is in the protected path
-  set, so a repair node that edits an assertion fails on path scope *before* its verdict is
+- **The agent fixing the check instead of the code.** `.DeFlow/gates/**` is in the protected path
+  set, so a repair node that edits an assertion fails on path scope _before_ its verdict is
   considered. [§9.1](../../10-verification-gates.md) is explicit that this — not a human clicking
   past a red gate — is the classic way a verification system dies.
 
@@ -73,14 +73,14 @@ no board at all.
 - The deterministic gate runner: `run`, `cwd: worktree | repo`, `timeout`, `effect: pure`,
   `permission`, `expect.exitCode`, `severityFloor`, and the seven `findings.parser` values
   (`tsc`, `eslint-json`, `biome-json`, `vitest-json`, `junit-xml`, `jsonl`, `none`).
-- The structural tier's *wiring*: consuming EPIC-07's `merge-tree --write-tree` probe as
+- The structural tier's _wiring_: consuming EPIC-07's `merge-tree --write-tree` probe as
   `rule: 'merge/conflict'` findings and EPIC-08's path-scope diff as
   `rule: 'scope/undeclared-write'` warnings, plus the three promotion-to-`error` cases.
 - Independent adversarial review: reviewer provider routing, the total fallback rule when only one
   provider is installed, `assertIndependentReview` and its two `SchedulingRefused` codes, and the
   reviewer's packet contract (pinned spec + diff + deterministic and structural output, and
   explicitly **not** the producer's transcript).
-- `Verdict` and `Finding` authored in Zod 4.4.3, emitted to `.karvan/schemas/verdict.schema.json`
+- `Verdict` and `Finding` authored in Zod 4.4.3, emitted to `.DeFlow/schemas/verdict.schema.json`
   via `z.toJSONSchema()`, passed natively with `--json-schema` / `--output-schema`, validated with
   Ajv 8.20.0 (`strict: true`, `allErrors: true`) plus `ajv-formats@3.0.1` against JSON Schema
   2020-12.
@@ -94,7 +94,7 @@ no board at all.
 - The surgical repair loop: one `Finding` per fix node, regression-test-first ordering, the cap of
   3 matching `maxAttemptsPerNode`, attempt N+1 receiving previous **verdicts** and not transcripts,
   and the escalation to `human.requested` with all three diffs and all three verdicts.
-- Custom gate discovery from `.karvan/gates/*.{yaml,yml}`, the `gates.loaded` event carrying the
+- Custom gate discovery from `.DeFlow/gates/*.{yaml,yml}`, the `gates.loaded` event carrying the
   sha256 of every discovered file, and the mid-run divergence path.
 - Evidence spilling: any payload over ~256 KiB to the content-addressed blob store, with
   `{ sha256, bytes, mime, head, tail }` and ~2 KiB head/tail previews.
@@ -108,24 +108,24 @@ no board at all.
   execution boundary — [EPIC-08](./EPIC-08-safety-model.md) KAR-08.3 and KAR-08.7. Gate commands
   run under that boundary unchanged; this epic does not implement it.
 - Packet assembly, pinned segments, the `pin.integrity_violated` mechanism and prohibition
-  rewriting — [EPIC-09](./EPIC-09-context-memory.md). This epic *asserts on* them for the reviewer
+  rewriting — [EPIC-09](./EPIC-09-context-memory.md). This epic _asserts on_ them for the reviewer
   packet; it does not build them.
 - Plan validation's plumbing (diagnostics-as-events, the one-retry-then-escalate loop) —
   [EPIC-11](./EPIC-11-dynamic-planning.md) KAR-11.2. This epic contributes one rule to it.
 - The patch policy engine — [EPIC-11](./EPIC-11-dynamic-planning.md) KAR-11.4. The repair loop
-  *proposes* patches through it; the rule table lives there.
+  _proposes_ patches through it; the rule table lives there.
 - The churn circuit breaker and `maxAttemptsPerNode` — [EPIC-06](./EPIC-06-orchestrator.md)
   KAR-06.8. This epic asserts the interaction, and owns the repair loop's own cap.
 - `human` gates, the approval queue and escalation — [EPIC-13](./EPIC-13-human-in-the-loop.md).
-  A `needs-human` verdict *opens* a human node; EPIC-13 owns what happens next.
+  A `needs-human` verdict _opens_ a human node; EPIC-13 owns what happens next.
 - `GET /api/runs/:id/gates`, `/findings?file=`, `/criteria` and `/diff` —
   [EPIC-15](./EPIC-15-daemon-api.md) KAR-15.6. This epic defines the projections those endpoints
   serve.
 - Rendering: inline verdicts on the diff, stale-finding margins, the criteria board —
   [EPIC-17](./EPIC-17-p0-views.md) KAR-17.6 and KAR-17.7.
-- `karvan doctor`'s gate-hygiene report is *specified* in KAR-12.6 and *shipped* by
+- `DeFlow doctor`'s gate-hygiene report is _specified_ in KAR-12.6 and _shipped_ by
   [EPIC-18](./EPIC-18-cli-packaging.md) KAR-18.4, which owns the `doctor` command.
-- OTel `execute_tool <gateId>` spans and the `karvan.gate.verdict` attribute — F10.12 is P1/M2.
+- OTel `execute_tool <gateId>` spans and the `DeFlow.gate.verdict` attribute — F10.12 is P1/M2.
   The attribute name is fixed here so M2 does not have to rename it.
 
 ## Definition of Ready (epic level)
@@ -143,7 +143,7 @@ no board at all.
       Gemini-shaped profile (no `session.resume`, no `session.list`), so "only one provider is
       capable" is a 40 ms unit test rather than an uninstall.
 - [ ] The `Verdict` and `Finding` types from
-      [04-domain-model.md §7](../../04-domain-model.md) are landed in `@karvan/core` (EPIC-02
+      [04-domain-model.md §7](../../04-domain-model.md) are landed in `@DeFlow/core` (EPIC-02
       KAR-02.7) with `outcome`, `weakened`, `criteria[]` and `evidence: Handle[]` present.
 - [ ] A decision is recorded on the four-names reconciliation in KAR-12.4 — spec-side `verifiedBy`,
       spec-side computed `coveredByGates`, plan-side `GateNode.criteria`, gate-file-side
@@ -179,13 +179,13 @@ no board at all.
 
 ### KAR-12.1 — Deterministic gate runner
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-06 KAR-06.4 (effect reconciliation), EPIC-07 KAR-07.2, EPIC-08 KAR-08.3 |
-| **PRD** | F7.1, F5.3, NF8 |
+|                 |                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                             |
+| **Priority**    | P0                                                                                                                      |
+| **Size**        | M                                                                                                                       |
+| **Depends on**  | EPIC-06 KAR-06.4 (effect reconciliation), EPIC-07 KAR-07.2, EPIC-08 KAR-08.3                                            |
+| **PRD**         | F7.1, F5.3, NF8                                                                                                         |
 | **Verified by** | EPIC-12-S1, EPIC-12-S2, EPIC-12-S3, EPIC-12-S4, EPIC-12-S5, EPIC-12-S6, EPIC-12-S7, EPIC-12-S8, EPIC-12-S9, EPIC-12-S10 |
 
 **As** the orchestrator, **I want** the cheap, unarguable checks to run first and stop the sequence
@@ -196,14 +196,14 @@ This is [§1](../../10-verification-gates.md) and [§2](../../10-verification-ga
 literally. A gate is a `PlanGraph` node of type `gate` that emits a typed `Verdict`; the four
 classes are ordered `deterministic → structural → adversarial → human` and the first `fail` stops
 the rest. The economics argument is the design argument: there is no point paying a model to review
-code that does not compile, and the resulting review is *actively worse* — a reviewer looking at
+code that does not compile, and the resulting review is _actively worse_ — a reviewer looking at
 broken code spends its attention on the breakage and misses the design problem you needed it to
 find.
 
 Two properties are load-bearing beyond ordering. **Gates are `effect: pure`** — a gate that mutates
 the repository cannot be re-run to confirm a fix, which is its entire job, so `mutating` is a
 definition-load error rather than a runtime surprise. And **the milestone rule has two halves**: a
-`pass` verdict must exist, *and* it must be recorded at a `seq` after the last write to the paths in
+`pass` verdict must exist, _and_ it must be recorded at a `seq` after the last write to the paths in
 its scope. The second half is what stops a stale green carrying a milestone, and it is exactly the
 shape a run drifts into when a repair loop touches files after the gate ran.
 
@@ -233,7 +233,7 @@ default, the F5.6 deny list unchanged, and the same `terminal/create` mediation 
 6. `expect.exitCode` is compared as a value: a gate whose command exits 3 against
    `expect: { exitCode: 0 }` produces `outcome: 'fail'`, and a gate declaring
    `expect: { exitCode: 1 }` treats exit 1 as `pass`.
-7. A gate whose command cannot be executed at all — binary not found, non-zero exit *before* any
+7. A gate whose command cannot be executed at all — binary not found, non-zero exit _before_ any
    parseable output, or the `timeout` elapsing — produces `outcome: 'needs-human'`, not `'fail'`.
    Its own tooling failing is not the work being wrong, and conflating the two sends work into a
    repair loop no amount of repair will fix.
@@ -252,20 +252,20 @@ default, the F5.6 deny list unchanged, and the same `terminal/create` mediation 
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `decide()` over a hand-built `RunState` with three gate nodes returns commands in ladder order | Ordering is incidental to insertion order |
-| 2 | unit | With a `fail` verdict recorded for the deterministic gate, `decide()` returns **no** command for the adversarial gate | Short-circuit is not implemented |
-| 3 | unit | `reduce()` leaves the milestone unadvanced when the `pass` verdict's `seq` precedes the last write event's `seq` | The milestone rule checks only for a `pass` |
-| 4 | unit | Table-driven `expect.exitCode` matrix over `{0,1,3} × {expect 0, expect 1}` | Exit codes are compared with truthiness |
-| 5 | unit | Each parser against a captured fixture of real `tsc`, `oxlint --format=json`, `biome --reporter=json`, `vitest --reporter=json` and JUnit XML output | Parsers are written against invented shapes |
-| 6 | unit | `severityFloor` matrix: `{error, warning, info} findings × {error, warning} floor` → expected `outcome` | The floor is applied at render time rather than at verdict time |
-| 7 | integration | Real gate definition, real `pnpm exec tsc --noEmit` in a real worktree with a real type error: `outcome: 'fail'`, findings anchored to the real file | The runner shells out through a mock |
-| 8 | integration | A gate whose `run` names a binary that does not exist → `outcome: 'needs-human'`, not `'fail'` | Tooling failure is conflated with work failure |
-| 9 | integration | A gate whose command sleeps past `timeout: 5s` → `needs-human`, process group killed, `Z`-state processes excluded from the kill assertion | The timeout kills the direct child only |
-| 10 | integration | A 5 MB test log spills to `artifacts/<sha>/`; the `gate.evaluated` payload is < 256 KiB; three attempts produce one blob | Evidence is inlined into the event |
-| 11 | integration | `effect: mutating` in a discovered gate file → `GATE_MUST_BE_PURE` at load, before any node is scheduled | The check is at run time, or absent |
-| 12 | e2e | A two-node run where the deterministic gate fails: the ledger contains no `node.scheduled` for the review gate and the total `costUsd` is unchanged | The ladder is advisory |
+| #   | Level       | Test                                                                                                                                                 | Red when                                                        |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | unit        | `decide()` over a hand-built `RunState` with three gate nodes returns commands in ladder order                                                       | Ordering is incidental to insertion order                       |
+| 2   | unit        | With a `fail` verdict recorded for the deterministic gate, `decide()` returns **no** command for the adversarial gate                                | Short-circuit is not implemented                                |
+| 3   | unit        | `reduce()` leaves the milestone unadvanced when the `pass` verdict's `seq` precedes the last write event's `seq`                                     | The milestone rule checks only for a `pass`                     |
+| 4   | unit        | Table-driven `expect.exitCode` matrix over `{0,1,3} × {expect 0, expect 1}`                                                                          | Exit codes are compared with truthiness                         |
+| 5   | unit        | Each parser against a captured fixture of real `tsc`, `oxlint --format=json`, `biome --reporter=json`, `vitest --reporter=json` and JUnit XML output | Parsers are written against invented shapes                     |
+| 6   | unit        | `severityFloor` matrix: `{error, warning, info} findings × {error, warning} floor` → expected `outcome`                                              | The floor is applied at render time rather than at verdict time |
+| 7   | integration | Real gate definition, real `pnpm exec tsc --noEmit` in a real worktree with a real type error: `outcome: 'fail'`, findings anchored to the real file | The runner shells out through a mock                            |
+| 8   | integration | A gate whose `run` names a binary that does not exist → `outcome: 'needs-human'`, not `'fail'`                                                       | Tooling failure is conflated with work failure                  |
+| 9   | integration | A gate whose command sleeps past `timeout: 5s` → `needs-human`, process group killed, `Z`-state processes excluded from the kill assertion           | The timeout kills the direct child only                         |
+| 10  | integration | A 5 MB test log spills to `artifacts/<sha>/`; the `gate.evaluated` payload is < 256 KiB; three attempts produce one blob                             | Evidence is inlined into the event                              |
+| 11  | integration | `effect: mutating` in a discovered gate file → `GATE_MUST_BE_PURE` at load, before any node is scheduled                                             | The check is at run time, or absent                             |
+| 12  | e2e         | A two-node run where the deterministic gate fails: the ledger contains no `node.scheduled` for the review gate and the total `costUsd` is unchanged  | The ladder is advisory                                          |
 
 **Notes / risks** — the structural tier's two producers live in other epics; this story owns only
 the ordering, the verdict construction and the promotion rules from
@@ -277,13 +277,13 @@ cross-reference between two producers and belongs where both are already in hand
 
 ### KAR-12.2 — Independent adversarial review gate
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-12.1, KAR-12.3, EPIC-05 KAR-05.1, EPIC-05 KAR-05.2, EPIC-09 KAR-09.2 |
-| **PRD** | F7.2, F6.1, NF7 |
+|                 |                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                               |
+| **Priority**    | P0                                                                                        |
+| **Size**        | M                                                                                         |
+| **Depends on**  | KAR-12.1, KAR-12.3, EPIC-05 KAR-05.1, EPIC-05 KAR-05.2, EPIC-09 KAR-09.2                  |
+| **PRD**         | F7.2, F6.1, NF7                                                                           |
 | **Verified by** | EPIC-12-S11, EPIC-12-S12, EPIC-12-S13, EPIC-12-S14, EPIC-12-S15, EPIC-12-S16, EPIC-12-S17 |
 
 **As** the operator, **I want** a review gate that cannot be the agent that wrote the work and is
@@ -307,13 +307,13 @@ this story ships, evaluated over the probed capability rows at `decide()` time:
    `AdapterRequirement[]` — `structuredOutput`, the node's `permission` level present in
    `caps.permissionLevels`, and `estimatePacketTokens(node) <= caps.maxContext * 0.6`.
 2. **Preferred.** If `C \ {producer.provider}` is non-empty, route to its highest-ranked member by
-   `policy.review.providerOrder` in `.karvan/config.yaml`, falling back to probe order. No
+   `policy.review.providerOrder` in `.DeFlow/config.yaml`, falling back to probe order. No
    `weakened` marker.
 3. **Fallback — the single-provider case.** If `C \ {producer.provider}` is empty **and**
    `producer.provider ∈ C`, route to the producer's provider on a **new session**
    (`session/new`, never `fork`, never `resume`) and stamp `weakened: 'same-provider'` on the
    verdict. The session precondition is checked in this branch exactly as in the others — the
-   fallback weakens the *provider* dimension only, never the session one.
+   fallback weakens the _provider_ dimension only, never the session one.
 4. **Refusal.** If `C` is empty, the gate does not run and does not silently pass: it emits
    `gate.evaluated` with `outcome: 'needs-human'` and opens a human node. NF7 says one provider
    being unavailable degrades the plan; it does not say a degraded plan may fabricate a verdict.
@@ -336,12 +336,12 @@ primed to accept it.
    `review.resume?.kind === 'fork'` or `review.resume?.of === producer.id`, **including** when the
    producer's provider is the only one installed. Forking is never the fallback.
 4. The assertion runs at the last point before the reviewer receives any input, on both adapter
-   paths, and the story states which point that is: on the **CLI shim path** Karvan mints the uuid
+   paths, and the story states which point that is: on the **CLI shim path** DeFlow mints the uuid
    and passes `--session-id <uuid>`, so the check runs before spawn; on the **ACP path** the id is
    only known when `session/new` returns, so the check runs after `session/new` and before
    `session/prompt`. In neither case does the reviewer see a prompt before the check has passed.
 5. Claude Code and Gemini CLI honour a client-chosen `--session-id <uuid>` verbatim in every emitted
-   frame (**verified 2026-08-02**), so Karvan asserts on the uuid it minted rather than parsing one
+   frame (**verified 2026-08-02**), so DeFlow asserts on the uuid it minted rather than parsing one
    back out; a frame carrying a different session id fails the node with a typed error.
 6. With two capable providers probed, the reviewer's `node.scheduled` event carries a `provider`
    different from the producer's, and the verdict has no `weakened` field.
@@ -362,18 +362,18 @@ primed to accept it.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `assertIndependentReview` throws `REVIEW_SESSION_NOT_INDEPENDENT` on equal ids and returns void on differing ids | The function does not exist |
-| 2 | unit | Table over `resume: {kind:'fork'}`, `{of: producerId}`, `{kind:'native-if-available'}` → refuse, refuse, admit | Only the session-id half is checked |
-| 3 | unit | `pickReviewer()` over a synthetic capability table: two providers → other provider, no `weakened`; one → same provider + `weakened:'same-provider'`; zero → `needs-human` | The routing rule is a preference expressed in prose |
-| 4 | unit | `pickReviewer()` with a capable-but-unhealthy second provider excludes it and takes the fallback branch | Health is not part of the candidate set |
-| 5 | integration | Two `karvan-mock-agent` binaries on PATH under different names, `--capabilities` differing: reviewer's `node.scheduled.provider` differs from producer's | Provider preference is not applied |
-| 6 | integration | One mock agent on PATH: the run completes, the verdict carries `weakened: 'same-provider'`, and the two `node.started` events carry different session ids | The fallback silently drops the marker, or reuses the session |
-| 7 | integration | A plan hand-patched to give the reviewer the producer's session id: the ledger contains `node.failed` with the `SchedulingRefused` code and the transport log contains zero `session/prompt` frames for that node | The refusal happens after the prompt is sent |
-| 8 | integration | Mock agent scripted to emit a *different* `--session-id` than the one supplied → node fails with a typed error | Karvan trusts the frames |
-| 9 | integration | The reviewer's `context.built` manifest asserted against a golden file snapshot with the normalising serializer | The producer's transcript leaks in through a default |
-| 10 | e2e | Full run: implement node fails typecheck → repair → typecheck passes → review runs on the other provider → `pass` | The ladder and the routing do not compose |
+| #   | Level       | Test                                                                                                                                                                                                              | Red when                                                      |
+| --- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 1   | unit        | `assertIndependentReview` throws `REVIEW_SESSION_NOT_INDEPENDENT` on equal ids and returns void on differing ids                                                                                                  | The function does not exist                                   |
+| 2   | unit        | Table over `resume: {kind:'fork'}`, `{of: producerId}`, `{kind:'native-if-available'}` → refuse, refuse, admit                                                                                                    | Only the session-id half is checked                           |
+| 3   | unit        | `pickReviewer()` over a synthetic capability table: two providers → other provider, no `weakened`; one → same provider + `weakened:'same-provider'`; zero → `needs-human`                                         | The routing rule is a preference expressed in prose           |
+| 4   | unit        | `pickReviewer()` with a capable-but-unhealthy second provider excludes it and takes the fallback branch                                                                                                           | Health is not part of the candidate set                       |
+| 5   | integration | Two `DeFlow-mock-agent` binaries on PATH under different names, `--capabilities` differing: reviewer's `node.scheduled.provider` differs from producer's                                                          | Provider preference is not applied                            |
+| 6   | integration | One mock agent on PATH: the run completes, the verdict carries `weakened: 'same-provider'`, and the two `node.started` events carry different session ids                                                         | The fallback silently drops the marker, or reuses the session |
+| 7   | integration | A plan hand-patched to give the reviewer the producer's session id: the ledger contains `node.failed` with the `SchedulingRefused` code and the transport log contains zero `session/prompt` frames for that node | The refusal happens after the prompt is sent                  |
+| 8   | integration | Mock agent scripted to emit a _different_ `--session-id` than the one supplied → node fails with a typed error                                                                                                    | DeFlow trusts the frames                                      |
+| 9   | integration | The reviewer's `context.built` manifest asserted against a golden file snapshot with the normalising serializer                                                                                                   | The producer's transcript leaks in through a default          |
+| 10  | e2e         | Full run: implement node fails typecheck → repair → typecheck passes → review runs on the other provider → `pass`                                                                                                 | The ladder and the routing do not compose                     |
 
 **Notes / risks** — A0-9 is live here: the capability matrix is a snapshot against five specific
 versions, two of which were published the same day they were probed. The mitigation is already the
@@ -385,14 +385,14 @@ the fixture row, never on the vendor name.
 
 ### KAR-12.3 — Typed verdicts with evidence
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-02 KAR-02.8 (schema emission), EPIC-05 KAR-05.1, EPIC-09 KAR-09.9 (handoff validation and the bounded repair) |
-| **PRD** | F7.3, F6.9, F6.4, F7.7 |
-| **Verified by** | EPIC-12-S18, EPIC-12-S19, EPIC-12-S20, EPIC-12-S21, EPIC-12-S22, EPIC-12-S23 |
+|                 |                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                                        |
+| **Priority**    | P0                                                                                                                 |
+| **Size**        | M                                                                                                                  |
+| **Depends on**  | EPIC-02 KAR-02.8 (schema emission), EPIC-05 KAR-05.1, EPIC-09 KAR-09.9 (handoff validation and the bounded repair) |
+| **PRD**         | F7.3, F6.9, F6.4, F7.7                                                                                             |
+| **Verified by** | EPIC-12-S18, EPIC-12-S19, EPIC-12-S20, EPIC-12-S21, EPIC-12-S22, EPIC-12-S23                                       |
 
 **As** the diff surface and the repair loop, **I want** every verdict to be a validated object with
 stable, blob-anchored findings, **so that** a finding can be attached to a line, deduplicated across
@@ -402,7 +402,7 @@ attempts, counted, and traced to an acceptance criterion.
 cannot be attached to a diff line (F7.7), cannot be deduplicated across repair attempts, cannot be
 counted for the gate first-pass rate, and cannot drive the surgical repair loop. The schema is
 enforced **at the adapter boundary, not by prompt**: authored in Zod 4.4.3, emitted with
-`z.toJSONSchema()` to `.karvan/schemas/verdict.schema.json` so it is inspectable on disk (NF8),
+`z.toJSONSchema()` to `.DeFlow/schemas/verdict.schema.json` so it is inspectable on disk (NF8),
 passed natively — Claude Code takes `--json-schema <schema>` and returns the parsed object in the
 result envelope's `structured_output`; Codex takes `--output-schema <FILE>` (**verified
 2026-08-02**) — and validated with Ajv 8.20.0 (`strict: true`, `allErrors: true`) plus
@@ -419,14 +419,14 @@ trusting the annotations within about ten minutes.
 
 **Acceptance criteria**
 
-1. `.karvan/schemas/verdict.schema.json` is written on run creation from `z.toJSONSchema()` and
+1. `.DeFlow/schemas/verdict.schema.json` is written on run creation from `z.toJSONSchema()` and
    declares `$schema: "https://json-schema.org/draft/2020-12/schema"`. The file on disk is what is
    passed to `--json-schema` / `--output-schema`; there is no second in-memory copy.
 2. An agent-produced verdict that fails Ajv validation fails the node with
    `contract.schema-invalid`, and the failure's `detail` carries the full `allErrors` list, not the
    first error.
 3. A result envelope whose subtype is `error_max_structured_output_retries` maps to
-   `agent.schema-repair-exhausted` and Karvan performs **no** further repair attempt of its own —
+   `agent.schema-repair-exhausted` and DeFlow performs **no** further repair attempt of its own —
    retrying over the top of the vendor's own retry is explicitly forbidden.
 4. `returns.maxTokens` for gate nodes is 600. A serialised `structured_output` exceeding it emits
    `handoff.oversize { budget: 600, actual, repairAttempted: false }`, then exactly one bounded
@@ -448,23 +448,23 @@ trusting the annotations within about ten minutes.
 9. Deterministic gates produce the same `Verdict` shape as adversarial ones — the diff surface,
    the criteria board and the repair loop each have exactly one shape to read.
 10. Every recorded verdict validates against the emitted schema in a CI check that reads
-    `.karvan/schemas/verdict.schema.json` from disk, so a Zod edit that changes the wire shape fails
+    `.DeFlow/schemas/verdict.schema.json` from disk, so a Zod edit that changes the wire shape fails
     the build rather than the next run.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `z.toJSONSchema(Verdict)` snapshot to `__snapshots__/verdict.schema.json` with the normalising serializer | The schema is hand-written and drifts from the type |
-| 2 | unit | Ajv `strict: true` compiles the emitted schema without warnings | The Zod output uses a keyword `strict` rejects |
-| 3 | unit | `findingId()` stability table: same inputs → same id; changed `rule` → different id; message with an embedded line number normalises to the same id | The id includes the raw message |
-| 4 | unit | Validation of six malformed verdicts (missing `criteria`, prose in `findings`, bad `severity`, absent `blobSha`, `outcome: 'ok'`, extra property) each produce the expected Ajv error path | Validation is `try { JSON.parse }` |
-| 5 | unit | A verdict with a criterion missing from `criteria[]` materialises it as `unverifiable` | Omission defaults to satisfied, or throws |
-| 6 | integration | Mock agent scripted to return a 900-token verdict: `handoff.oversize` then one re-prompt then `contract.handoff-oversize`; assert the stored payload is byte-identical to what the agent sent | Karvan truncates to fit |
-| 7 | integration | Mock agent scripted to emit the `error_max_structured_output_retries` subtype → `agent.schema-repair-exhausted`, and exactly one `node.started` for that attempt | Karvan retries the vendor's retry |
-| 8 | integration | Real `--json-schema` argv construction asserted against the fake exec-shim agent's recorded argv, including the absolute schema path | The flag is built from a relative path that breaks under a different `cwd` |
-| 9 | integration | Two attempts against a file edited between them: attempt-1 findings carry the old `blobSha` and project as `stale: true` | Findings are anchored to line numbers only |
-| 10 | contract | Every `gate.evaluated` payload in the `gate-failure-repair` fixture validates against the on-disk schema | The fixture predates a schema change and nobody noticed |
+| #   | Level       | Test                                                                                                                                                                                          | Red when                                                                   |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| 1   | unit        | `z.toJSONSchema(Verdict)` snapshot to `__snapshots__/verdict.schema.json` with the normalising serializer                                                                                     | The schema is hand-written and drifts from the type                        |
+| 2   | unit        | Ajv `strict: true` compiles the emitted schema without warnings                                                                                                                               | The Zod output uses a keyword `strict` rejects                             |
+| 3   | unit        | `findingId()` stability table: same inputs → same id; changed `rule` → different id; message with an embedded line number normalises to the same id                                           | The id includes the raw message                                            |
+| 4   | unit        | Validation of six malformed verdicts (missing `criteria`, prose in `findings`, bad `severity`, absent `blobSha`, `outcome: 'ok'`, extra property) each produce the expected Ajv error path    | Validation is `try { JSON.parse }`                                         |
+| 5   | unit        | A verdict with a criterion missing from `criteria[]` materialises it as `unverifiable`                                                                                                        | Omission defaults to satisfied, or throws                                  |
+| 6   | integration | Mock agent scripted to return a 900-token verdict: `handoff.oversize` then one re-prompt then `contract.handoff-oversize`; assert the stored payload is byte-identical to what the agent sent | DeFlow truncates to fit                                                    |
+| 7   | integration | Mock agent scripted to emit the `error_max_structured_output_retries` subtype → `agent.schema-repair-exhausted`, and exactly one `node.started` for that attempt                              | DeFlow retries the vendor's retry                                          |
+| 8   | integration | Real `--json-schema` argv construction asserted against the fake exec-shim agent's recorded argv, including the absolute schema path                                                          | The flag is built from a relative path that breaks under a different `cwd` |
+| 9   | integration | Two attempts against a file edited between them: attempt-1 findings carry the old `blobSha` and project as `stale: true`                                                                      | Findings are anchored to line numbers only                                 |
+| 10  | contract    | Every `gate.evaluated` payload in the `gate-failure-repair` fixture validates against the on-disk schema                                                                                      | The fixture predates a schema change and nobody noticed                    |
 
 **Notes / risks** — A4-2 is open: `structured_output`'s presence on **every** success case is
 unconfirmed empirically, and F6.9 depends on it. Plan for the honest degradation now — if the field
@@ -477,18 +477,18 @@ explicitly forbids, and it breaks on the next CLI release.
 
 ### KAR-12.4 — Acceptance-criteria traceability
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-12.3, EPIC-10 KAR-10.4 (spec pinning), EPIC-11 KAR-11.2 (plan validation) |
-| **PRD** | F7.4, F1.5, F10.8 |
-| **Verified by** | EPIC-12-S24, EPIC-12-S25, EPIC-12-S26, EPIC-12-S27, EPIC-12-S28 |
+|                 |                                                                               |
+| --------------- | ----------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                   |
+| **Priority**    | P0                                                                            |
+| **Size**        | S                                                                             |
+| **Depends on**  | KAR-12.3, EPIC-10 KAR-10.4 (spec pinning), EPIC-11 KAR-11.2 (plan validation) |
+| **PRD**         | F7.4, F1.5, F10.8                                                             |
+| **Verified by** | EPIC-12-S24, EPIC-12-S25, EPIC-12-S26, EPIC-12-S27, EPIC-12-S28               |
 
 **As** the operator, **I want** every acceptance criterion in the pinned spec to reach at least one
 gate — or be explicitly marked unverifiable with a reason — **so that** the criteria board is the
-literal answer to *"has the requested outcome been achieved?"* rather than a list of things nobody
+literal answer to _"has the requested outcome been achieved?"_ rather than a list of things nobody
 checked.
 
 This story is about **totality**. The mapping criterion → gate must be total across the criteria
@@ -501,12 +501,12 @@ The relation currently has **four names across three documents**, and shipping f
 relation is how it goes out of sync in month two. This story reconciles them and the reconciliation
 is part of the deliverable:
 
-| Name | Where | Direction | Authority |
-|---|---|---|---|
-| `AcceptanceCriterion.verifiedBy: GateId[]` | `TaskSpec`, authored | criterion → gate | **Author's declaration.** The thing the framing interview asks for |
-| `AcceptanceCriterion.coveredByGates: NodeId[]` | `TaskSpec`, computed | criterion → plan node | **Derived by plan validation.** Never authored by hand |
-| `GateNode.criteria: CriterionId[]` | `PlanGraph` | gate node → criterion | Planner's declaration; what the reviewer is told to judge |
-| `satisfies: [AC-3, AC-7]` | `.karvan/gates/*.yaml` | gate definition → criterion | Repo author's declaration for a reusable gate |
+| Name                                           | Where                  | Direction                   | Authority                                                          |
+| ---------------------------------------------- | ---------------------- | --------------------------- | ------------------------------------------------------------------ |
+| `AcceptanceCriterion.verifiedBy: GateId[]`     | `TaskSpec`, authored   | criterion → gate            | **Author's declaration.** The thing the framing interview asks for |
+| `AcceptanceCriterion.coveredByGates: NodeId[]` | `TaskSpec`, computed   | criterion → plan node       | **Derived by plan validation.** Never authored by hand             |
+| `GateNode.criteria: CriterionId[]`             | `PlanGraph`            | gate node → criterion       | Planner's declaration; what the reviewer is told to judge          |
+| `satisfies: [AC-3, AC-7]`                      | `.DeFlow/gates/*.yaml` | gate definition → criterion | Repo author's declaration for a reusable gate                      |
 
 The validation rule over them: for every criterion `c` in the pinned spec, either `c.unverifiable`
 is `true` **with a non-empty `reason`**, or there exists an active `gate` node `g` in the plan with
@@ -548,17 +548,17 @@ the gate is re-run. That is what catches a spec edited mid-run, which
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `validateCriteriaCoverage(plan, spec)` returns `CRITERION_UNCOVERED` for an uncovered criterion and `[]` for a fully covered one | The rule does not exist |
-| 2 | unit | `unverifiable: true, reason: ''` → `CRITERION_UNVERIFIABLE_NO_REASON` | The flag alone is accepted |
-| 3 | unit | The same walk populates `coveredByGates` with plan node ids, not gate definition ids | The two id spaces are conflated |
-| 4 | unit | `satisfies: [AC-99]` against a spec with AC-1..AC-8 → `GATE_UNKNOWN_CRITERION` | Unknown ids are ignored |
-| 5 | unit | Criteria projection over a hand-built verdict list: one satisfied, one unsatisfied, one unverifiable, one void by `specHash` | Void verdicts count |
-| 6 | unit | A patch abandoning the last covering gate → validation error, patch rejected | Validation runs on v1 only |
-| 7 | integration | File-backed ledger: edit the spec mid-run → new `specHash` → the prior `pass` verdict is void and the gate re-runs | Verdicts are trusted regardless of `specHash` |
-| 8 | integration | `run.completed.criteriaSatisfied` equals the projection's satisfied set for the `gate-failure-repair` fixture | The summary is computed independently and drifts |
-| 9 | e2e | A run whose spec contains one uncovered criterion refuses to start; `POST /api/runs/:id/spec/approve` returns the diagnostic | The failure surfaces only in logs |
+| #   | Level       | Test                                                                                                                             | Red when                                         |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | unit        | `validateCriteriaCoverage(plan, spec)` returns `CRITERION_UNCOVERED` for an uncovered criterion and `[]` for a fully covered one | The rule does not exist                          |
+| 2   | unit        | `unverifiable: true, reason: ''` → `CRITERION_UNVERIFIABLE_NO_REASON`                                                            | The flag alone is accepted                       |
+| 3   | unit        | The same walk populates `coveredByGates` with plan node ids, not gate definition ids                                             | The two id spaces are conflated                  |
+| 4   | unit        | `satisfies: [AC-99]` against a spec with AC-1..AC-8 → `GATE_UNKNOWN_CRITERION`                                                   | Unknown ids are ignored                          |
+| 5   | unit        | Criteria projection over a hand-built verdict list: one satisfied, one unsatisfied, one unverifiable, one void by `specHash`     | Void verdicts count                              |
+| 6   | unit        | A patch abandoning the last covering gate → validation error, patch rejected                                                     | Validation runs on v1 only                       |
+| 7   | integration | File-backed ledger: edit the spec mid-run → new `specHash` → the prior `pass` verdict is void and the gate re-runs               | Verdicts are trusted regardless of `specHash`    |
+| 8   | integration | `run.completed.criteriaSatisfied` equals the projection's satisfied set for the `gate-failure-repair` fixture                    | The summary is computed independently and drifts |
+| 9   | e2e         | A run whose spec contains one uncovered criterion refuses to start; `POST /api/runs/:id/spec/approve` returns the diagnostic     | The failure surfaces only in logs                |
 
 **Notes / risks** — this is the smallest story in the epic and the one the whole PRD claim rests on.
 Resist making it a report. The value is entirely in it being a **hard validation failure before
@@ -569,14 +569,14 @@ gates" failure mode one layer up.
 
 ### KAR-12.5 — The surgical repair loop
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-12.1, KAR-12.3, EPIC-11 KAR-11.3, EPIC-11 KAR-11.4, EPIC-06 KAR-06.5, EPIC-06 KAR-06.8 |
-| **PRD** | F7.5, F4.5, F4.7, F2.4, F2.5 |
-| **Verified by** | EPIC-12-S29, EPIC-12-S30, EPIC-12-S31, EPIC-12-S32, EPIC-12-S33, EPIC-12-S34, EPIC-12-S35 |
+|                 |                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                |
+| **Priority**    | P0                                                                                         |
+| **Size**        | L                                                                                          |
+| **Depends on**  | KAR-12.1, KAR-12.3, EPIC-11 KAR-11.3, EPIC-11 KAR-11.4, EPIC-06 KAR-06.5, EPIC-06 KAR-06.8 |
+| **PRD**         | F7.5, F4.5, F4.7, F2.4, F2.5                                                               |
+| **Verified by** | EPIC-12-S29, EPIC-12-S30, EPIC-12-S31, EPIC-12-S32, EPIC-12-S33, EPIC-12-S34, EPIC-12-S35  |
 
 **As** the operator, **I want** a gate failure to produce one narrow fix node per finding that
 writes a failing regression test before it writes a fix, capped at three attempts and then escalated
@@ -622,7 +622,7 @@ loop must stop, not accelerate.
    names, and a handle to the failing command's output artifact. It contains no other finding and
    no producer transcript — asserted on the `context.built` manifest.
 4. The fix node's ordering is observable, not merely instructed: the node's first commit on
-   `karvan/<runId>__<nodeId>` adds or modifies a test file and the gate re-run at that commit
+   `DeFlow/<runId>__<nodeId>` adds or modifies a test file and the gate re-run at that commit
    **fails**; the second commit makes it pass. A fix node whose first commit already passes the gate
    is recorded with `repair.no_failing_test` and routed to a human, because a repair that cannot be
    expressed as a failing test is a signal, not a shortcut.
@@ -639,7 +639,7 @@ loop must stop, not accelerate.
 9. Five occurrences of the same `(node_id, request_hash)` inside the sliding window trip the churn
    breaker: `run.needs_human { reason: 'churn' }` is appended, and the next repair patch is neither
    auto-applied nor silently dropped — it appears in the approval queue.
-10. A fix node that writes to `.karvan/gates/**` or to a test file the plan marked as a contract
+10. A fix node that writes to `.DeFlow/gates/**` or to a test file the plan marked as a contract
     fails on path scope with `severity: 'error'` **before** its verdict is considered — the
     classic failure is not a human overriding a gate, it is an agent "fixing" the check.
 11. Every repair attempt's diff, verdict and finding-id delta (`fixed`, `introduced`, `remaining`)
@@ -648,20 +648,20 @@ loop must stop, not accelerate.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `repairPatchesFor(verdict)` returns one patch node per finding at/above the floor, zero for `needs-human` | Findings are batched into one node |
-| 2 | unit | Attempt-3 exhaustion returns a `human.requested` command, not a fourth fix command | The cap is off by one |
-| 3 | unit | `findingDelta(v1, v2)` over stable ids returns `{ fixed, introduced, remaining }` | Deltas are computed by message equality |
-| 4 | unit | Churn window: the same `(node_id, request_hash)` six times → breaker trips, `decide()` returns no auto-apply command | The breaker counts attempts rather than request hashes |
-| 5 | integration | Real repo, real failing `tsc`: one fix node per error, node ids contain the finding ids | Node identity is positional |
-| 6 | integration | Mock agent scripted to commit a test then a fix: the gate re-run at HEAD~1 fails and at HEAD passes | The ordering is prompt-only |
-| 7 | integration | Mock agent scripted to commit only a fix: `repair.no_failing_test` and a human node | The shortcut is accepted |
-| 8 | integration | The gate set re-runs from the deterministic tier — assert the order of `node.scheduled` events after the fix completes | Only the failed gate re-runs |
-| 9 | integration | Attempt-2 packet golden snapshot contains verdict-derived findings and no transcript segment | Context leaks through the resume strategy |
-| 10 | integration | A repair patch at `full` permission in a `worktree` run lands in the approval queue; the ledger shows `plan.patch.proposed` and no `plan.patched { decision: 'auto' }` | The repair path bypasses the policy engine |
-| 11 | integration | A fix node attempting to write `.karvan/gates/typecheck.yaml` produces a `scope/undeclared-write` finding at `severity: 'error'` and the node fails before `gate.evaluated` | The protected set is advisory |
-| 12 | e2e | The `gate-failure-repair` fixture is produced end to end by a real run: fail → fix → pass, and is exported to `test/fixtures/runs/gate-failure-repair/ledger.db` | The fixture is hand-authored and drifts from the engine |
+| #   | Level       | Test                                                                                                                                                                        | Red when                                                |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1   | unit        | `repairPatchesFor(verdict)` returns one patch node per finding at/above the floor, zero for `needs-human`                                                                   | Findings are batched into one node                      |
+| 2   | unit        | Attempt-3 exhaustion returns a `human.requested` command, not a fourth fix command                                                                                          | The cap is off by one                                   |
+| 3   | unit        | `findingDelta(v1, v2)` over stable ids returns `{ fixed, introduced, remaining }`                                                                                           | Deltas are computed by message equality                 |
+| 4   | unit        | Churn window: the same `(node_id, request_hash)` six times → breaker trips, `decide()` returns no auto-apply command                                                        | The breaker counts attempts rather than request hashes  |
+| 5   | integration | Real repo, real failing `tsc`: one fix node per error, node ids contain the finding ids                                                                                     | Node identity is positional                             |
+| 6   | integration | Mock agent scripted to commit a test then a fix: the gate re-run at HEAD~1 fails and at HEAD passes                                                                         | The ordering is prompt-only                             |
+| 7   | integration | Mock agent scripted to commit only a fix: `repair.no_failing_test` and a human node                                                                                         | The shortcut is accepted                                |
+| 8   | integration | The gate set re-runs from the deterministic tier — assert the order of `node.scheduled` events after the fix completes                                                      | Only the failed gate re-runs                            |
+| 9   | integration | Attempt-2 packet golden snapshot contains verdict-derived findings and no transcript segment                                                                                | Context leaks through the resume strategy               |
+| 10  | integration | A repair patch at `full` permission in a `worktree` run lands in the approval queue; the ledger shows `plan.patch.proposed` and no `plan.patched { decision: 'auto' }`      | The repair path bypasses the policy engine              |
+| 11  | integration | A fix node attempting to write `.DeFlow/gates/typecheck.yaml` produces a `scope/undeclared-write` finding at `severity: 'error'` and the node fails before `gate.evaluated` | The protected set is advisory                           |
+| 12  | e2e         | The `gate-failure-repair` fixture is produced end to end by a real run: fail → fix → pass, and is exported to `test/fixtures/runs/gate-failure-repair/ledger.db`            | The fixture is hand-authored and drifts from the engine |
 
 **Notes / risks** — this is the largest story in the epic and the one most likely to grow. The
 temptation is to make the fix node smarter. Resist it: every capability added to the fix node is a
@@ -670,19 +670,19 @@ the whole design, and both are enforceable from ledger data.
 
 ---
 
-### KAR-12.6 — Custom gate discovery from `.karvan/gates/`
+### KAR-12.6 — Custom gate discovery from `.DeFlow/gates/`
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P1 |
-| **Size** | S |
-| **Depends on** | KAR-12.1, KAR-12.4 |
-| **PRD** | F7.6 |
+|                 |                                                    |
+| --------------- | -------------------------------------------------- |
+| **Status**      | Not started                                        |
+| **Priority**    | P1                                                 |
+| **Size**        | S                                                  |
+| **Depends on**  | KAR-12.1, KAR-12.4                                 |
+| **PRD**         | F7.6                                               |
 | **Verified by** | EPIC-12-S36, EPIC-12-S37, EPIC-12-S38, EPIC-12-S39 |
 
-**As** an engineer with a repo that already knows how to check itself, **I want** Karvan to discover
-gate definitions from `.karvan/gates/*.{yaml,yml}` and hash them into the run manifest, **so that**
+**As** an engineer with a repo that already knows how to check itself, **I want** DeFlow to discover
+gate definitions from `.DeFlow/gates/*.{yaml,yml}` and hash them into the run manifest, **so that**
 my project's real checks become real gates and nobody can weaken one mid-run without it showing.
 
 F7.6 is P1, but this story is in M1 scope for a reason that is not scope creep: the anti-drift
@@ -699,7 +699,7 @@ mechanism rather than two.
 
 **Acceptance criteria**
 
-1. Every `.karvan/gates/*.yaml` and `*.yml` file is discovered at run creation, parsed, validated
+1. Every `.DeFlow/gates/*.yaml` and `*.yml` file is discovered at run creation, parsed, validated
    against the gate-definition schema, and a `gates.loaded` event is appended carrying
    `{ id, path, sha256 }` for each — including the built-ins, whose `path` names the recon source.
 2. A definition failing schema validation names the file, the field and the line, and prevents the
@@ -707,34 +707,34 @@ mechanism rather than two.
 3. Editing a gate file after `gates.loaded` produces, at the next evaluation of that gate, a
    `needs-human` verdict with reason `gate-definition-diverged` carrying both hashes. The gate does
    **not** run against the new definition and does not run against the cached one either.
-4. `cwd: repo` requires an explicit opt-in in `.karvan/config.yaml`; without it a definition
+4. `cwd: repo` requires an explicit opt-in in `.DeFlow/config.yaml`; without it a definition
    declaring `cwd: repo` fails load with `GATE_REPO_CWD_NOT_PERMITTED`. `worktree` is the default
    and needs no opt-in.
 5. `findings.parser: jsonl` with `path: $.violations` extracts Finding-shaped objects from a custom
    producer's output and produces the same `Finding` shape as a built-in parser, including a
    computed stable `id`.
 6. A gate that is defined but was never evaluated in the last N runs is reported by
-   `karvan doctor` — a gate nothing schedules is decoration. This story specifies the projection and
+   `DeFlow doctor` — a gate nothing schedules is decoration. This story specifies the projection and
    its threshold; EPIC-18 mounts the command.
 7. Gate first-pass rate is exposed per gate id as a projection over `gate.evaluated`, so both tails
    are visible: below 40% the plan or the spec is wrong; at 100% the gate is either testing nothing
    or being written to.
-8. `.karvan/gates/**` is asserted to be in the protected path set — a test in this story fails if
+8. `.DeFlow/gates/**` is asserted to be in the protected path set — a test in this story fails if
    EPIC-08's protected set ever stops containing it, because everything in
    [§9.1](../../10-verification-gates.md) rests on that one rule.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Gate-definition schema round-trip over the two worked examples from §2 (`typecheck.yaml`, `bundle-budget.yaml`) | The schema is looser than the documented examples |
-| 2 | unit | `cwd: repo` without the config opt-in → `GATE_REPO_CWD_NOT_PERMITTED` | `cwd` is unvalidated |
-| 3 | unit | `jsonl` parser with `path: $.violations` over a captured custom-producer output | The path expression is ignored |
-| 4 | integration | Real `.karvan/gates/` directory with three files: `gates.loaded` carries three sha256 values matching `sha256sum` on disk | The hash is computed over parsed YAML rather than bytes |
-| 5 | integration | Edit a gate file mid-run, evaluate: `needs-human` with `gate-definition-diverged` and both hashes | Divergence is a warning, or the gate silently uses the new file |
-| 6 | integration | Malformed YAML in one of three files → run refuses to start naming that file | Bad files are skipped |
-| 7 | unit | The protected-path assertion: `isProtected('.karvan/gates/typecheck.yaml') === true` | EPIC-08's set drifted |
-| 8 | integration | First-pass-rate projection over a fixture with 3 passes and 4 fails per gate returns 0.43 for that gate | The metric is computed over all gates jointly |
+| #   | Level       | Test                                                                                                                      | Red when                                                        |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | unit        | Gate-definition schema round-trip over the two worked examples from §2 (`typecheck.yaml`, `bundle-budget.yaml`)           | The schema is looser than the documented examples               |
+| 2   | unit        | `cwd: repo` without the config opt-in → `GATE_REPO_CWD_NOT_PERMITTED`                                                     | `cwd` is unvalidated                                            |
+| 3   | unit        | `jsonl` parser with `path: $.violations` over a captured custom-producer output                                           | The path expression is ignored                                  |
+| 4   | integration | Real `.DeFlow/gates/` directory with three files: `gates.loaded` carries three sha256 values matching `sha256sum` on disk | The hash is computed over parsed YAML rather than bytes         |
+| 5   | integration | Edit a gate file mid-run, evaluate: `needs-human` with `gate-definition-diverged` and both hashes                         | Divergence is a warning, or the gate silently uses the new file |
+| 6   | integration | Malformed YAML in one of three files → run refuses to start naming that file                                              | Bad files are skipped                                           |
+| 7   | unit        | The protected-path assertion: `isProtected('.DeFlow/gates/typecheck.yaml') === true`                                      | EPIC-08's set drifted                                           |
+| 8   | integration | First-pass-rate projection over a fixture with 3 passes and 4 fails per gate returns 0.43 for that gate                   | The metric is computed over all gates jointly                   |
 
 **Notes / risks** — the hash must be over **file bytes**, not over the parsed object. A parsed-object
 hash normalises away comments, key order and whitespace, which means a reviewer's "temporarily
@@ -744,15 +744,15 @@ loosen this" comment edit is invisible — and the whole point is that a mid-run
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **~15 days is at the ceiling of the solo-build guidance**, and KAR-12.5 is the story most likely to grow past its L. | High | KAR-12.6 is P1 and is the designated slip: its only M1-critical element is the manifest hash shape, which is one field on `gates.loaded`. Ship that field in KAR-12.1 if the epic runs long, and defer discovery, the divergence path and the doctor report to M2. |
-| **A4-2 — `structured_output` presence on every success is unconfirmed.** F7.3 and F6.9 both rest on it. | High | Answered by M0-S1. The fallback is honest degradation: absent field → `contract.schema-invalid` and `structuredOutput: false` on the capability row. **Never** a prose fallback parser. |
-| **A0-3 — whether ACP surfaces token usage at all is unverified.** `Verdict.cost.tokens` degrades to absent on the ACP path if it does not. | Medium | `tokenAccounting: 'exact' \| 'estimated' \| 'none'` on the capability row (EPIC-05), and KAR-12.3 AC-8 requires absence rather than zero. A fabricated cost on a verdict is worse than a gap. |
-| **A4-1 — Claude Code's result subtypes were decoded from one shipping bundle** (2.1.220) with no compatibility guarantee, and `error_max_structured_output_retries` is one of them. | Medium | The mapping lives in the adapter conformance suite (EPIC-05 KAR-05.7), so drift is caught by `doctor` rather than by a failed three-hour run. |
-| **The four-name reconciliation in KAR-12.4 could be deferred and then shipped wrong.** Four names for one relation in three documents is how a schema goes out of sync. | Medium | It is a Definition-of-Ready item, not a story task. Decide before anything writes `coveredByGates` to disk. |
-| **Gates that exist but are not treated as real gates** — the social failure mode, which no code change fixes. | Medium | The five mechanisms in [§9.1](../../10-verification-gates.md) are distributed across KAR-12.1 (no override in the data model), KAR-12.5 (agent cannot edit the check), KAR-12.6 (manifest hash, doctor report, first-pass rate). Track the first-pass-rate metric from the first real run; both tails are informative. |
-| **The structural tier depends on two other epics' producers** (EPIC-07's `merge-tree`, EPIC-08's path-scope diff), so EPIC-12 can be blocked by either. | Medium | The ladder is testable with stubbed structural producers at unit level, so KAR-12.1 and KAR-12.2 can proceed while EPIC-07 KAR-07.6 lands. Only the integration tests block. |
+| Risk                                                                                                                                                                                | Severity | Mitigation                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **~15 days is at the ceiling of the solo-build guidance**, and KAR-12.5 is the story most likely to grow past its L.                                                                | High     | KAR-12.6 is P1 and is the designated slip: its only M1-critical element is the manifest hash shape, which is one field on `gates.loaded`. Ship that field in KAR-12.1 if the epic runs long, and defer discovery, the divergence path and the doctor report to M2.                                                     |
+| **A4-2 — `structured_output` presence on every success is unconfirmed.** F7.3 and F6.9 both rest on it.                                                                             | High     | Answered by M0-S1. The fallback is honest degradation: absent field → `contract.schema-invalid` and `structuredOutput: false` on the capability row. **Never** a prose fallback parser.                                                                                                                                |
+| **A0-3 — whether ACP surfaces token usage at all is unverified.** `Verdict.cost.tokens` degrades to absent on the ACP path if it does not.                                          | Medium   | `tokenAccounting: 'exact' \| 'estimated' \| 'none'` on the capability row (EPIC-05), and KAR-12.3 AC-8 requires absence rather than zero. A fabricated cost on a verdict is worse than a gap.                                                                                                                          |
+| **A4-1 — Claude Code's result subtypes were decoded from one shipping bundle** (2.1.220) with no compatibility guarantee, and `error_max_structured_output_retries` is one of them. | Medium   | The mapping lives in the adapter conformance suite (EPIC-05 KAR-05.7), so drift is caught by `doctor` rather than by a failed three-hour run.                                                                                                                                                                          |
+| **The four-name reconciliation in KAR-12.4 could be deferred and then shipped wrong.** Four names for one relation in three documents is how a schema goes out of sync.             | Medium   | It is a Definition-of-Ready item, not a story task. Decide before anything writes `coveredByGates` to disk.                                                                                                                                                                                                            |
+| **Gates that exist but are not treated as real gates** — the social failure mode, which no code change fixes.                                                                       | Medium   | The five mechanisms in [§9.1](../../10-verification-gates.md) are distributed across KAR-12.1 (no override in the data model), KAR-12.5 (agent cannot edit the check), KAR-12.6 (manifest hash, doctor report, first-pass rate). Track the first-pass-rate metric from the first real run; both tails are informative. |
+| **The structural tier depends on two other epics' producers** (EPIC-07's `merge-tree`, EPIC-08's path-scope diff), so EPIC-12 can be blocked by either.                             | Medium   | The ladder is testable with stubbed structural producers at unit level, so KAR-12.1 and KAR-12.2 can proceed while EPIC-07 KAR-07.6 lands. Only the integration tests block.                                                                                                                                           |
 
 ---
 

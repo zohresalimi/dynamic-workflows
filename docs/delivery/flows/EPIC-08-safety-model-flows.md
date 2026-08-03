@@ -7,73 +7,73 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan. Answers gates, opts in to `full`, and is the person the frequency argument in §10.5 is about |
-| **karvand** | The local daemon. Here specifically: the ACP **client**, the policy function, `buildChildEnv()` and `killTree()` |
-| **Policy function** | `decidePermission(level, request, scope)` in `@karvan/core` — pure, no I/O, no vendor CLI |
-| **Provider agent** | `karvan-mock-agent` or the fake exec-shim agent, spawned detached with `cwd` set to a worktree. It calls back into the client for every file access and every command |
-| **Vendor CLI sandbox** | Claude Code's Seatbelt/bubblewrap or Codex's Landlock+seccomp — enforcement Karvan configures and does not reimplement |
-| **Process tree** | A real `bash -c 'sleep 300 & sleep 300 & sleep 300; wait'` and its grandchildren |
+| Actor                  | Description                                                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator**           | The engineer driving DeFlow. Answers gates, opts in to `full`, and is the person the frequency argument in §10.5 is about                                             |
+| **DeFlowd**            | The local daemon. Here specifically: the ACP **client**, the policy function, `buildChildEnv()` and `killTree()`                                                      |
+| **Policy function**    | `decidePermission(level, request, scope)` in `@DeFlow/core` — pure, no I/O, no vendor CLI                                                                             |
+| **Provider agent**     | `DeFlow-mock-agent` or the fake exec-shim agent, spawned detached with `cwd` set to a worktree. It calls back into the client for every file access and every command |
+| **Vendor CLI sandbox** | Claude Code's Seatbelt/bubblewrap or Codex's Landlock+seccomp — enforcement DeFlow configures and does not reimplement                                                |
+| **Process tree**       | A real `bash -c 'sleep 300 & sleep 300 & sleep 300; wait'` and its grandchildren                                                                                      |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'karvan-'))
+  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'DeFlow-'))
   And a git worktree at "<tmp>/wt" which is the node's scope root
   And "<tmp>/bin" prepended to PATH with the mock agent symlinked in under a vendor name
-  And karvand holds the resolved ABSOLUTE path to that binary, never relying on PATH at spawn time
+  And DeFlowd holds the resolved ABSOLUTE path to that binary, never relying on PATH at spawn time
   And no vendor CLI is installed, no credential is present and no network is reachable
   And every child is spawned by packages/proc/src/spawn.ts with detached: true
   And every child env is constructed by buildChildEnv() and by nothing else
   And no test in this file uses vi.useFakeTimers() while a child process is alive
 ```
 
-> Almost every scenario below is a **unit** test. That is the point of ACP-first: because Karvan is
+> Almost every scenario below is a **unit** test. That is the point of ACP-first: because DeFlow is
 > the client, it implements `session/request_permission`, `fs/read_text_file`, `fs/write_text_file`,
 > `terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill` and
-> `terminal/release`, so the whole safety model is one function in Karvan's own code
+> `terminal/release`, so the whole safety model is one function in DeFlow's own code
 > ([§8.1](../../09-workspace-and-safety.md)). The scenarios that genuinely need a process — the kill
 > switch, environment scrubbing observed from the child's side, the sandbox argv — say so.
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-08-S1 | The ladder across four levels: `fs/write_text_file` | KAR-08.1 | Happy path |
-| EPIC-08-S2 | The ladder across four levels: `terminal/create` | KAR-08.1 | Happy path |
-| EPIC-08-S3 | `mediatedExecution: false` refuses scheduling above `read` | KAR-08.1 | Failure |
-| EPIC-08-S4 | `full` is an explicit per-run opt-in a patch cannot acquire | KAR-08.1 | Edge case |
-| EPIC-08-S5 | Routine permission requests are auto-answered without a human | KAR-08.1 | Happy path |
-| EPIC-08-S6 | `cancelled` is an outcome, not an error | KAR-08.1 | Edge case |
-| EPIC-08-S7 | Path escape by `..` traversal | KAR-08.2 | Failure |
-| EPIC-08-S8 | Path escape by a symlink pointing outside the worktree | KAR-08.2 | Failure |
-| EPIC-08-S9 | Absolute paths, and `additionalDirectories` left empty | KAR-08.2 | Failure |
-| EPIC-08-S10 | A `read` node cannot exfiltrate through `fs/read_text_file` | KAR-08.2 | Failure |
-| EPIC-08-S11 | `ToolCallLocation.path` rejects an out-of-scope write at request time | KAR-08.2, KAR-08.7 | Edge case |
-| EPIC-08-S12 | An allowlisted command runs free inside the worktree | KAR-08.3 | Happy path |
-| EPIC-08-S13 | A command not on the allowlist routes to a human gate | KAR-08.3 | Failure |
-| EPIC-08-S14 | The cheap syntactic second layer | KAR-08.3 | Failure |
-| EPIC-08-S15 | The gate budget: 200 gates is worse than no gate | KAR-08.3 | Edge case |
-| EPIC-08-S16 | The Kiro control: ambient authority removed from the child environment | KAR-08.4 | Failure |
-| EPIC-08-S17 | The allowlist keeps exactly what the vendor binary needs | KAR-08.4 | Happy path |
-| EPIC-08-S18 | `SSH_AUTH_SOCK` dropped for agents, kept for the `Git` wrapper | KAR-08.4 | Edge case |
-| EPIC-08-S19 | A declared variable at `worktree+net`, recorded by name only | KAR-08.4 | Happy path |
-| EPIC-08-S20 | Sandbox policy injected inline; the operator's own config untouched | KAR-08.5 | Happy path |
-| EPIC-08-S21 | `failIfUnavailable` and `allowUnsandboxedCommands`, or the ladder is decorative | KAR-08.5 | Failure |
-| EPIC-08-S22 | Version-gated sandbox keys fail closed | KAR-08.5 | Failure |
-| EPIC-08-S23 | The credential deny list the vendor does not ship | KAR-08.5 | Edge case |
-| EPIC-08-S24 | The ladder mapped onto both vendors' sandboxes | KAR-08.5 | Happy path |
-| EPIC-08-S25 | Never nest a sandbox around a CLI that already sandboxes | KAR-08.5 | Edge case |
-| EPIC-08-S26 | The kill switch stops a whole process tree | KAR-08.6 | Happy path |
-| EPIC-08-S27 | The zombie false-negative | KAR-08.6 | Failure |
-| EPIC-08-S28 | Positive-pid regression: grandchildren survive, reparented to PID 1 | KAR-08.6 | Failure |
-| EPIC-08-S29 | A kill that did not take is an event, not a silent condition | KAR-08.6 | Failure |
-| EPIC-08-S30 | A path-scope violation is a warning, not a gate | KAR-08.7 | Edge case |
-| EPIC-08-S31 | Auth shadowing: the key is stripped and the fact is recorded | KAR-08.8 | Failure |
-| EPIC-08-S32 | Auth shadowing: the explicit API-key path is recorded too | KAR-08.8 | Happy path |
-| EPIC-08-S33 | The five AR-1 audit checks | KAR-08.4 | Recovery |
+| Scenario    | Title                                                                           | Verifies           | Type       |
+| ----------- | ------------------------------------------------------------------------------- | ------------------ | ---------- |
+| EPIC-08-S1  | The ladder across four levels: `fs/write_text_file`                             | KAR-08.1           | Happy path |
+| EPIC-08-S2  | The ladder across four levels: `terminal/create`                                | KAR-08.1           | Happy path |
+| EPIC-08-S3  | `mediatedExecution: false` refuses scheduling above `read`                      | KAR-08.1           | Failure    |
+| EPIC-08-S4  | `full` is an explicit per-run opt-in a patch cannot acquire                     | KAR-08.1           | Edge case  |
+| EPIC-08-S5  | Routine permission requests are auto-answered without a human                   | KAR-08.1           | Happy path |
+| EPIC-08-S6  | `cancelled` is an outcome, not an error                                         | KAR-08.1           | Edge case  |
+| EPIC-08-S7  | Path escape by `..` traversal                                                   | KAR-08.2           | Failure    |
+| EPIC-08-S8  | Path escape by a symlink pointing outside the worktree                          | KAR-08.2           | Failure    |
+| EPIC-08-S9  | Absolute paths, and `additionalDirectories` left empty                          | KAR-08.2           | Failure    |
+| EPIC-08-S10 | A `read` node cannot exfiltrate through `fs/read_text_file`                     | KAR-08.2           | Failure    |
+| EPIC-08-S11 | `ToolCallLocation.path` rejects an out-of-scope write at request time           | KAR-08.2, KAR-08.7 | Edge case  |
+| EPIC-08-S12 | An allowlisted command runs free inside the worktree                            | KAR-08.3           | Happy path |
+| EPIC-08-S13 | A command not on the allowlist routes to a human gate                           | KAR-08.3           | Failure    |
+| EPIC-08-S14 | The cheap syntactic second layer                                                | KAR-08.3           | Failure    |
+| EPIC-08-S15 | The gate budget: 200 gates is worse than no gate                                | KAR-08.3           | Edge case  |
+| EPIC-08-S16 | The Kiro control: ambient authority removed from the child environment          | KAR-08.4           | Failure    |
+| EPIC-08-S17 | The allowlist keeps exactly what the vendor binary needs                        | KAR-08.4           | Happy path |
+| EPIC-08-S18 | `SSH_AUTH_SOCK` dropped for agents, kept for the `Git` wrapper                  | KAR-08.4           | Edge case  |
+| EPIC-08-S19 | A declared variable at `worktree+net`, recorded by name only                    | KAR-08.4           | Happy path |
+| EPIC-08-S20 | Sandbox policy injected inline; the operator's own config untouched             | KAR-08.5           | Happy path |
+| EPIC-08-S21 | `failIfUnavailable` and `allowUnsandboxedCommands`, or the ladder is decorative | KAR-08.5           | Failure    |
+| EPIC-08-S22 | Version-gated sandbox keys fail closed                                          | KAR-08.5           | Failure    |
+| EPIC-08-S23 | The credential deny list the vendor does not ship                               | KAR-08.5           | Edge case  |
+| EPIC-08-S24 | The ladder mapped onto both vendors' sandboxes                                  | KAR-08.5           | Happy path |
+| EPIC-08-S25 | Never nest a sandbox around a CLI that already sandboxes                        | KAR-08.5           | Edge case  |
+| EPIC-08-S26 | The kill switch stops a whole process tree                                      | KAR-08.6           | Happy path |
+| EPIC-08-S27 | The zombie false-negative                                                       | KAR-08.6           | Failure    |
+| EPIC-08-S28 | Positive-pid regression: grandchildren survive, reparented to PID 1             | KAR-08.6           | Failure    |
+| EPIC-08-S29 | A kill that did not take is an event, not a silent condition                    | KAR-08.6           | Failure    |
+| EPIC-08-S30 | A path-scope violation is a warning, not a gate                                 | KAR-08.7           | Edge case  |
+| EPIC-08-S31 | Auth shadowing: the key is stripped and the fact is recorded                    | KAR-08.8           | Failure    |
+| EPIC-08-S32 | Auth shadowing: the explicit API-key path is recorded too                       | KAR-08.8           | Happy path |
+| EPIC-08-S33 | The five AR-1 audit checks                                                      | KAR-08.4           | Recovery   |
 
 ---
 
@@ -115,9 +115,9 @@ Feature: One policy function decides every file write, for every vendor
     And the reason is NOT "path-escape", because the level decided before the path did
 ```
 
-**Notes:** The last row of the table is the one people get wrong. `full` is *"allow within the
-worktree"* in [§8.1](../../09-workspace-and-safety.md) — not "allow anything". `full` relaxes the
-*command* and *network* rows, and the run-level opt-in is what the operator is consenting to; the
+**Notes:** The last row of the table is the one people get wrong. `full` is _"allow within the
+worktree"_ in [§8.1](../../09-workspace-and-safety.md) — not "allow anything". `full` relaxes the
+_command_ and _network_ rows, and the run-level opt-in is what the operator is consenting to; the
 worktree containment on `fs/*` stays. The second scenario pins the ordering of the two checks so
 that a `read` node's denial reason is stable and renderable rather than depending on which path it
 happened to try.
@@ -132,7 +132,7 @@ happened to try.
 Feature: One policy function decides every command execution
 
   Background:
-    Given the repository allowlist from karvan.config.ts is
+    Given the repository allowlist from DeFlow.config.ts is
           ["git","pnpm","npm","node","pytest","make","cargo","go","tsc","eslint"]
     And the read-only subset is ["git status","git log","git diff","ls","cat"]
 
@@ -169,7 +169,7 @@ Feature: One policy function decides every command execution
 ([EPIC-08-S14](#epic-08-s14--the-cheap-syntactic-second-layer)) is orthogonal to the ladder — it
 forces a gate on identity- and infrastructure-boundary operations regardless of level, because
 that is where [§10.5](../../09-workspace-and-safety.md) says human gates belong. `full` means "the
-provider allows it", not "Karvan stops looking".
+provider allows it", not "DeFlow stops looking".
 
 ---
 
@@ -202,8 +202,8 @@ Feature: One capability bit replaces an N-vendors × M-levels flag matrix
 **Notes:** This is the narrowing of F5.4. As literally written — inspect each vendor's flags and
 refuse where the vendor cannot express the level — F5.4 is a permanent flag-churn maintenance
 burden, which is the PRD's own G7 gap reintroduced inside the safety layer. Under ACP it is
-near-moot: Karvan enforces the level itself regardless of what the vendor can express, so the only
-question left is whether the adapter routes `fs/*` and `terminal/*` through Karvan at all. One
+near-moot: DeFlow enforces the level itself regardless of what the vendor can express, so the only
+question left is whether the adapter routes `fs/*` and `terminal/*` through DeFlow at all. One
 boolean, on the manifest.
 
 ---
@@ -233,10 +233,10 @@ Feature: full never arrives by accident
     And the node inspector renders the level alongside the provider and CLI version
 ```
 
-**Notes:** *"Defending the user against themselves at `full` is explicitly out of scope"*
+**Notes:** _"Defending the user against themselves at `full` is explicitly out of scope"_
 ([security model §6.1](../../15-security-model.md)) — which is exactly why the opt-in must be
 deliberate, visible and un-acquirable by a patch. ODW's docs state honestly that
-`dangerously-full-access` is not a sandbox; Karvan says the same thing in the same words, at the
+`dangerously-full-access` is not a sandbox; DeFlow says the same thing in the same words, at the
 moment of opt-in rather than only in a document.
 
 ---
@@ -246,19 +246,19 @@ moment of opt-in rather than only in a document.
 **Verifies:** KAR-08.1 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: Karvan answers the agent from the policy table
+Feature: DeFlow answers the agent from the policy table
 
   Scenario: An in-scope edit is approved with no human involvement
     Given a node at level "worktree" whose scope includes "src/**"
     When the mock agent sends session/request_permission for a tool of kind "edit"
          with ToolCallLocation.path "<tmp>/wt/src/a.ts"
-    Then karvand responds within the same turn with
+    Then DeFlowd responds within the same turn with
          { outcome: "selected", optionId: "<the allow_once option>" }
     And no "human.requested" event is appended
     And the operator's approval queue is unchanged
 
-  Scenario: The four option kinds Karvan offers are schema-valid
-    When karvand constructs the option list for a permission request
+  Scenario: The four option kinds DeFlow offers are schema-valid
+    When DeFlowd constructs the option list for a permission request
     Then the option kinds are drawn from
          "allow_once" | "allow_always" | "reject_once" | "reject_always"
     And the outgoing frame validates against the vendored ACP schema.json with ajv
@@ -270,7 +270,7 @@ Feature: Karvan answers the agent from the policy table
 
 **Notes:** **Verified 2026-08-02** from the shipped `@agentclientprotocol/sdk@1.3.0` type
 definitions (`PROTOCOL_VERSION = 1`). Auto-responding is not a convenience — it is what makes the
-gates that *do* fire meaningful. See
+gates that _do_ fire meaningful. See
 [EPIC-08-S15](#epic-08-s15--the-gate-budget-200-gates-is-worse-than-no-gate).
 
 ---
@@ -285,20 +285,20 @@ Feature: RequestPermissionOutcome has two shapes and both are normal
   Scenario: The cancelled outcome
     Given a node at level "worktree" awaiting an operator decision on a gated command
     When the run is cancelled while the permission request is outstanding
-    Then karvand responds { outcome: "cancelled" } to the agent
+    Then DeFlowd responds { outcome: "cancelled" } to the agent
     And the node transitions to cancelled, not failed
     And no Error object is constructed anywhere on that path
     And the agent's prompt response carries stopReason "cancelled"
 
   Scenario: The selected outcome with a rejection
     When the operator chooses the reject_once option
-    Then karvand responds { outcome: "selected", optionId: "<reject_once>" }
+    Then DeFlowd responds { outcome: "selected", optionId: "<reject_once>" }
     And the agent continues its turn rather than exiting
     And a "permission.denied" event records the option chosen and who chose it
 
   Scenario: The client keeps accepting trailing updates after a cancel
     When session/cancel is sent
-    Then karvand continues to accept session/update notifications the agent flushes afterwards
+    Then DeFlowd continues to accept session/update notifications the agent flushes afterwards
     And the reader does not deadlock
 ```
 
@@ -334,14 +334,14 @@ Feature: Containment is checked on the resolved path
   Scenario: Harmless dot segments inside the worktree are allowed
     When the agent calls fs/write_text_file for "src/./sub/../a.ts"
     Then the decision is allow
-    And the path karvand actually writes to is the resolved "<tmp>/wt/src/a.ts"
+    And the path DeFlowd actually writes to is the resolved "<tmp>/wt/src/a.ts"
 
   Scenario: The written path is the resolved one, never the requested one
     Then no code path passes the agent's raw string to the filesystem
 ```
 
 **Notes:** The last scenario is the quiet one that matters: deciding on the resolved path and then
-*writing* the raw string reintroduces the entire class. Resolve once, decide on the result, write
+_writing_ the raw string reintroduces the entire class. Resolve once, decide on the result, write
 the result.
 
 ---
@@ -383,7 +383,7 @@ Feature: realpath, not just resolve
 
 **Notes:** The second scenario is the one a `path.resolve()`-only implementation fails, and it is
 trivially reachable — the agent creates the symlink itself with an allowed in-scope write, then
-writes through it. The last scenario is why the check resolves the deepest *existing* ancestor: a
+writes through it. The last scenario is why the check resolves the deepest _existing_ ancestor: a
 naive `realpath` on a not-yet-created file throws, and the tempting fix is to skip the check for new
 files, which reopens the hole.
 
@@ -406,7 +406,7 @@ Feature: Nothing outside the worktree is even nominally in scope
     Then the decision is allow
 
   Scenario: session/new declares no additional directories at read or worktree
-    When karvand sends session/new for a node at level "read"
+    When DeFlowd sends session/new for a node at level "read"
     Then the request's cwd is the node's worktree path
     And "additionalDirectories" is present and equal to []
     And the frame validates against the vendored ACP schema
@@ -420,7 +420,7 @@ Feature: Nothing outside the worktree is even nominally in scope
 
 **Notes:** `NewSessionRequest` is `{ cwd, additionalDirectories?, mcpServers }` — **verified from
 the shipped types**. Leaving `additionalDirectories` empty is defence in depth: even a vendor that
-honours it and bypasses Karvan's mediation has been told nothing else is in scope. The
+honours it and bypasses DeFlow's mediation has been told nothing else is in scope. The
 case-sensitivity clause is the same A5-7 family as EPIC-07's id normalization; getting it backwards
 in either direction is a bug.
 
@@ -475,7 +475,7 @@ Feature: Reject before it happens, not diff after it happened
     Given a write node at level "worktree" whose declared pathScope is ["src/**"]
     When the mock agent sends session/request_permission for a tool of kind "edit"
          with ToolCallLocation { path: "<tmp>/wt/infra/main.tf" }
-    Then karvand responds with the reject_once option
+    Then DeFlowd responds with the reject_once option
     And a "permission.denied" event records
         { reason: "scope-violation", requested: "infra/main.tf", declared: ["src/**"] }
     And "<tmp>/wt/infra/main.tf" is unchanged on disk
@@ -495,7 +495,7 @@ Feature: Reject before it happens, not diff after it happened
 
 **Notes:** `ToolCallLocation` is `{ path: string, line?: number }` — **verified from the shipped
 types**. This is the improvement over F5.3 called out in [§6.3](../../09-workspace-and-safety.md):
-Karvan rejects the write *before it happens*, with a reason the UI can render, rather than diffing
+DeFlow rejects the write _before it happens_, with a reason the UI can render, rather than diffing
 at completion and calling it a gate failure. The third scenario is the honest fallback for adapters
 that do not populate it, and it is why KAR-08.7 still exists.
 
@@ -554,7 +554,7 @@ Feature: Default deny, then ask
 
   Scenario: The operator rejects
     When the operator rejects the request
-    Then karvand responds with the reject_once option
+    Then DeFlowd responds with the reject_once option
     And no process is spawned
     And the agent may continue its turn
 
@@ -586,9 +586,9 @@ Feature: High-signal syntactic checks force a gate even for allowlisted binaries
 
     Examples:
       | binary    | command                                          | decision |
-      | git       | git push --force origin karvan/r1__n1            | gate     |
-      | git       | git push -f origin karvan/r1__n1                 | gate     |
-      | git       | git push --force-with-lease origin karvan/r1__n1 | allow    |
+      | git       | git push --force origin DeFlow/r1__n1            | gate     |
+      | git       | git push -f origin DeFlow/r1__n1                 | gate     |
+      | git       | git push --force-with-lease origin DeFlow/r1__n1 | allow    |
       | git       | git reset --hard HEAD~1                          | allow    |
       | git       | git reset --hard -- /etc                         | gate     |
       | rm        | rm -rf /                                         | gate     |
@@ -619,8 +619,8 @@ Feature: High-signal syntactic checks force a gate even for allowlisted binaries
         and gated if that binary is not allowlisted
 ```
 
-**Notes:** *"Do **not** attempt real static analysis of shell strings. It is undecidable and gives
-false confidence."* The `rm -r` rule is a **depth** rule — a path of two segments or fewer — not a
+**Notes:** _"Do **not** attempt real static analysis of shell strings. It is undecidable and gives
+false confidence."_ The `rm -r` rule is a **depth** rule — a path of two segments or fewer — not a
 list of dangerous paths, because the list is infinite and the depth is not. The
 `--force-with-lease` row exists so that the safe form is not collateral damage; gating it would
 train the operator to approve force-pushes, which is precisely backwards.
@@ -635,7 +635,7 @@ train the operator to approve force-pushes, which is precisely backwards.
 Feature: Gate frequency is a design constraint, asserted in CI
 
   Scenario: A representative run produces no gates
-    Given a fixture repository whose karvan.config.ts allowlist covers its actual verbs
+    Given a fixture repository whose DeFlow.config.ts allowlist covers its actual verbs
     And a scripted run performing 30 commands and 40 file writes at level "worktree"
     When the run completes
     Then exactly zero "human.requested" events were appended
@@ -652,9 +652,9 @@ Feature: Gate frequency is a design constraint, asserted in CI
     And it is distinguishable in the approval queue without scrolling
 ```
 
-**Notes:** *"A gate that fires 200 times in a run is auto-clicked, and is worse than no gate — it
+**Notes:** _"A gate that fires 200 times in a run is auto-clicked, and is worse than no gate — it
 manufactures the habit of approving without reading, and it makes the one gate that mattered
-indistinguishable from the 199 that did not."* Turning that into a CI assertion is what stops the
+indistinguishable from the 199 that did not."_ Turning that into a CI assertion is what stops the
 allowlist from being quietly narrowed by someone being cautious. Human gates belong at the
 network-egress and identity boundary, not at the command boundary.
 
@@ -668,7 +668,7 @@ network-egress and identity boundary, not at the command boundary.
 Feature: The control that would actually have prevented the Kiro incident
 
   Background:
-    Given karvand's own process environment contains
+    Given DeFlowd's own process environment contains
           AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_PROFILE,
           GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_PROJECT,
           KUBECONFIG, DATABASE_URL, TF_TOKEN_app_terraform_io,
@@ -679,10 +679,10 @@ Feature: The control that would actually have prevented the Kiro incident
     And a fake agent binary that prints process.env as JSON and exits 0
 
   Scenario: None of it reaches the agent
-    When karvand spawns the agent for a node at level "worktree"
+    When DeFlowd spawns the agent for a node at level "worktree"
     And the harness reads the JSON the CHILD printed
     Then every variable listed in the Background is absent from the child's environment
-    And the assertion is made on what the child received, not on what karvand constructed
+    And the assertion is made on what the child received, not on what DeFlowd constructed
 
   Scenario: A successful prompt injection reaches no credential
     Given the agent is scripted to run an allowlisted command that echoes its environment
@@ -700,9 +700,9 @@ Feature: The control that would actually have prevented the Kiro incident
 AWS's Kiro agent deleted a production environment during a Cost Explorer task, causing a ~13-hour
 outage; Amazon's own rebuttal attributes it to **misconfigured access controls**, stating Kiro
 requests authorization before acting but that the engineer's elevated permissions bypassed those
-checks. *"A gate you can bypass with ambient authority is theatre. Removing the authority ranks
-above adding the gate."* Amazon's framing is contested, and it is also the most useful part of the
-story, because "misconfigured access controls" is a control Karvan can implement whereas "the AI
+checks. _"A gate you can bypass with ambient authority is theatre. Removing the authority ranks
+above adding the gate."_ Amazon's framing is contested, and it is also the most useful part of the
+story, because "misconfigured access controls" is a control DeFlow can implement whereas "the AI
 decided badly" is not. This test file names the incident in its describe block so the reason
 survives future refactors.
 
@@ -723,10 +723,10 @@ Feature: buildChildEnv() starts from {} and adds
 
   Scenario: HOME is kept, and that is AR-1 working
     Then HOME is present, because the vendor binary needs it to find its own credential store
-    And karvand itself never opens anything under it
+    And DeFlowd itself never opens anything under it
 
-  Scenario: PATH comes from the login shell, not from karvand
-    Given karvand was started by a launch agent whose PATH lacks /opt/homebrew/bin
+  Scenario: PATH comes from the login shell, not from DeFlowd
+    Given DeFlowd was started by a launch agent whose PATH lacks /opt/homebrew/bin
     When buildChildEnv() runs
     Then the child's PATH is the login-shell PATH resolved once at daemon start
     And it is not process.env.PATH
@@ -739,10 +739,10 @@ Feature: buildChildEnv() starts from {} and adds
   Scenario: Vendor config-dir variables pass through only when the user set them
     Given the user set CLAUDE_CONFIG_DIR
     Then it is present in the child environment unmodified
-    And when the user did not set it, karvand does not invent one
+    And when the user did not set it, DeFlowd does not invent one
 ```
 
-**Notes:** `PATH` is the one people are surprised by: karvand's `PATH` at daemon start differs from
+**Notes:** `PATH` is the one people are surprised by: DeFlowd's `PATH` at daemon start differs from
 the user's login shell, which is why [testing strategy §3.3](../../14-testing-strategy.md) also
 insists on spawning by resolved absolute path. Both controls exist because either alone leaves a
 "works in my terminal, fails as a daemon" failure mode.
@@ -757,11 +757,11 @@ insists on spawning by resolved absolute path. Both controls exist because eithe
 Feature: Two environment builders, deliberately different
 
   Scenario: The agent never gets the forwarded ssh agent
-    Given SSH_AUTH_SOCK is present in karvand's environment
+    Given SSH_AUTH_SOCK is present in DeFlowd's environment
     When buildChildEnv() constructs an agent environment at any level
     Then SSH_AUTH_SOCK is absent
 
-  Scenario: Karvan's own git invocations do get it
+  Scenario: DeFlow's own git invocations do get it
     When gitChildEnv() constructs the environment for a git push
     Then SSH_AUTH_SOCK is present
 
@@ -776,8 +776,8 @@ Feature: Two environment builders, deliberately different
     And even if approved, the child has no SSH_AUTH_SOCK and cannot authenticate as the user
 ```
 
-**Notes:** *"The agent never pushes; the `Git` wrapper does. Separating the two means an agent
-cannot use the user's forwarded ssh agent to reach any host the user can."* Two defences stacked
+**Notes:** _"The agent never pushes; the `Git` wrapper does. Separating the two means an agent
+cannot use the user's forwarded ssh agent to reach any host the user can."_ Two defences stacked
 deliberately — the allowlist gate and the missing socket — because the allowlist is per-repo
 configuration and configuration drifts.
 
@@ -792,7 +792,7 @@ Feature: The allowlist is per-node, not global
 
   Scenario: A node that legitimately needs a registry token declares it
     Given a node at level "worktree+net" whose config declares env ["NPM_TOKEN"]
-    And NPM_TOKEN is present in karvand's environment
+    And NPM_TOKEN is present in DeFlowd's environment
     When the agent is spawned
     Then NPM_TOKEN is present in the child's environment
     And an "env.declared" event records { node: "n1", name: "NPM_TOKEN" }
@@ -812,7 +812,7 @@ Feature: The allowlist is per-node, not global
     Then zero matches are found
 ```
 
-**Notes:** The declaration being a *rendered ledger fact* is the point. A credential that reaches an
+**Notes:** The declaration being a _rendered ledger fact_ is the point. A credential that reaches an
 agent should be visible in the run report as a decision someone made, not as something that happened
 to be in the environment — that is the difference between granted authority and ambient authority.
 
@@ -828,7 +828,7 @@ Feature: Per-node policy without mutating the user's vendor configuration
   Scenario: The policy arrives on the command line
     Given a node at level "worktree" routed to Claude Code
     And a fake "claude" shim on the tmp PATH that writes its argv to a file
-    When karvand spawns the agent
+    When DeFlowd spawns the agent
     Then the argv contains "--settings" followed by a single JSON string argument
     And that JSON parses and equals the golden policy for level "worktree"
 
@@ -850,8 +850,8 @@ Feature: Per-node policy without mutating the user's vendor configuration
     And a change to it appears as a readable diff in a pull request
 ```
 
-**Notes:** *"The crucial integration fact: the CLI accepts `--settings '<inline JSON>'`."* That one
-capability is what makes per-node policy compatible with AR-1 and with "Karvan must not mutate the
+**Notes:** _"The crucial integration fact: the CLI accepts `--settings '<inline JSON>'`."_ That one
+capability is what makes per-node policy compatible with AR-1 and with "DeFlow must not mutate the
 user's vendor CLI configuration". The `Fs`-recording-double scenario is audit check 3 from
 [security model §1.2](../../15-security-model.md), reused here for free — run the whole mock-agent
 suite against it and the entire daemon is covered, not just the code someone remembered to test.
@@ -945,8 +945,8 @@ Feature: Detect the CLI version and degrade explicitly, never silently
 granularity — `credentials` ≥ 2.1.187, `mask` ≥ 2.1.199, `filesystem.disabled` ≥ 2.1.216, classifier
 routing ≥ 2.1.218, `strictAllowlist` ≥ 2.1.219 — and an unknown key is ignored rather than
 rejected, so the failure mode is a policy the operator believes is in force and is not.
-*"Karvan must detect the CLI version and degrade the ladder explicitly or fail closed — never
-silently."*
+_"DeFlow must detect the CLI version and degrade the ladder explicitly or fail closed — never
+silently."_
 
 ---
 
@@ -957,12 +957,12 @@ silently."*
 ```gherkin
 Feature: Claude Code's default read policy is more permissive than people assume
 
-  Scenario: The default permits what Karvan must deny
+  Scenario: The default permits what DeFlow must deny
     Given no sandbox.credentials.files entry is configured
     Then the vendor CLI's default read policy permits reading "~/.aws/credentials" and "~/.ssh/"
     And there is no built-in credential deny list
 
-  Scenario: Karvan populates it explicitly
+  Scenario: DeFlow populates it explicitly
     When the policy for any non-full level is generated
     Then sandbox.credentials.files denies at least
          "~/.aws/credentials", "~/.ssh/**", "~/.config/gh/**", "~/Library/Keychains/**"
@@ -970,7 +970,7 @@ Feature: Claude Code's default read policy is more permissive than people assume
     And sandbox.credentials.envVars is populated with the never-implicit families from EPIC-08-S16
 
   Scenario: Defence in depth, not duplication
-    Then the same paths are ALSO denied by Karvan's own fs mediation (EPIC-08-S10)
+    Then the same paths are ALSO denied by DeFlow's own fs mediation (EPIC-08-S10)
     And a test documents that the two layers are independent, because the vendor layer belongs
         to someone else's release cycle
 
@@ -980,9 +980,9 @@ Feature: Claude Code's default read policy is more permissive than people assume
         named variables from child environments AND redacts them from output
 ```
 
-**Notes:** *"Assume the vendor sandbox protects credentials by default"* is on the pitfalls list for
+**Notes:** _"Assume the vendor sandbox protects credentials by default"_ is on the pitfalls list for
 a reason. Scrubbing at `spawn()` covers the agent process; it does not cover a command the agent
-runs that inherits from somewhere else, or a process the agent spawns after Karvan has stopped
+runs that inherits from somewhere else, or a process the agent spawns after DeFlow has stopped
 watching. Defence in depth is the right posture here **precisely because the enforcement points
 belong to someone else's release cycle.**
 
@@ -1013,14 +1013,14 @@ Feature: One ladder, two vendor dialects
          writable_roots, network_access, exclude_tmpdir_env_var, exclude_slash_tmp
     And writable_roots contains exactly the node's worktree path
 
-  Scenario: A level Karvan cannot express on a given vendor is refused, not approximated
+  Scenario: A level DeFlow cannot express on a given vendor is refused, not approximated
     Given a vendor with no equivalent of the requested level
     Then the node is refused scheduling with a typed reason
     And no nearest-neighbour level is substituted
 ```
 
 **Notes:** The Codex keys are **verified from the Rust source**
-(`codex-rs/protocol/src/protocol.rs`), which is why they are safe to hardcode where the *flag*
+(`codex-rs/protocol/src/protocol.rs`), which is why they are safe to hardcode where the _flag_
 surface is not. **A5-6:** `AskForApproval` now has a `Granular` variant and `on-failure` is merely
 an alias for `on-request` — actively churning, and a direct argument for driving Codex over ACP
 rather than flags.
@@ -1032,7 +1032,7 @@ rather than flags.
 **Verifies:** KAR-08.5 · **Type:** Edge case · **Automated at:** unit
 
 ```gherkin
-Feature: Karvan owns policy and mediation; the vendor owns enforcement (D12)
+Feature: DeFlow owns policy and mediation; the vendor owns enforcement (D12)
 
   Scenario Outline: Sandbox strategy selection
     Given a provider "<provider>"
@@ -1049,21 +1049,21 @@ Feature: Karvan owns policy and mediation; the vendor owns enforcement (D12)
       | opencode    | wrap with @anthropic-ai/sandbox-runtime   |
 
   Scenario: Never both
-    Then no provider is assigned both a vendor sandbox and a Karvan-authored wrapper
+    Then no provider is assigned both a vendor sandbox and a DeFlow-authored wrapper
     And a unit test asserts the strategy set is a partition, not an overlay
 
   Scenario: sandbox-runtime is pinned exactly
     Then the dependency is "@anthropic-ai/sandbox-runtime": "0.0.67" with no range
     And a comment records that it is 0.0.x and its API is treated as unstable
 
-  Scenario: No Karvan-authored bwrap or Seatbelt profile exists at all
+  Scenario: No DeFlow-authored bwrap or Seatbelt profile exists at all
     When the repository is searched for bubblewrap or sandbox-exec profile authoring
     Then zero hits are found outside the sandbox-runtime dependency
 ```
 
-**Notes:** *"bubblewrap fails inside an unprivileged container and needs `enableWeakerNestedSandbox`,
-which Anthropic warns considerably weakens security. Wrapping a sandboxing CLI in a Karvan-authored
-profile turns a working sandbox into a broken one."* The narrow exception is
+**Notes:** _"bubblewrap fails inside an unprivileged container and needs `enableWeakerNestedSandbox`,
+which Anthropic warns considerably weakens security. Wrapping a sandboxing CLI in a DeFlow-authored
+profile turns a working sandbox into a broken one."_ The narrow exception is
 `@anthropic-ai/sandbox-runtime` for CLIs with no native sandbox — never as a second layer around one
 that has one. For that case it is also strictly better than a container and fully NF6-compatible,
 since it needs no Docker at all.
@@ -1085,10 +1085,10 @@ Feature: One control stops every child process in a run
 
   Scenario: The escalation ladder, in order
     When the operator triggers the kill switch
-    Then karvand first sends the protocol-level session/cancel (or ACP terminal/kill)
+    Then DeFlowd first sends the protocol-level session/cancel (or ACP terminal/kill)
     And the agent is given the chance to flush its final session/update notifications
     And the prompt response carries stopReason "cancelled"
-    And karvand then calls process.kill(-child.pid, 'SIGTERM')
+    And DeFlowd then calls process.kill(-child.pid, 'SIGTERM')
     And waits a 5 second grace period driven by the injected Clock
     And escalates to process.kill(-child.pid, 'SIGKILL') if the group is not empty
     And waits 2 seconds before reporting
@@ -1113,10 +1113,10 @@ Feature: One control stops every child process in a run
 
 **Notes:** `detached: true` is **mandatory**. **Verified 2026-08-02:** a child spawning two
 grandchildren showed all four processes sharing `pgid = child.pid`. Non-detached is worse than
-useless — the only process group containing the grandchildren would be karvand's own, so
+useless — the only process group containing the grandchildren would be DeFlowd's own, so
 group-signalling it would kill the daemon. The final scenario exists because execa's
-`forceKillAfterDelay` *"does not work when the subprocess is terminated by calling `subprocess.kill()`
-with a specific signal"*, and Karvan always passes an explicit signal, so there is **no automatic
+`forceKillAfterDelay` _"does not work when the subprocess is terminated by calling `subprocess.kill()`
+with a specific signal"_, and DeFlow always passes an explicit signal, so there is **no automatic
 escalation** — the timer must be hand-written.
 
 ---
@@ -1198,10 +1198,10 @@ Feature: The regression test that stops anyone simplifying the kill path
 
 **Notes:** **Verified 2026-08-02.** This scenario exists to fail loudly the day someone replaces
 `process.kill(-pid, sig)` with the tidier-looking `child.kill(sig)`. execa's own documentation says
-`subprocess.kill()` *"only sends a signal to that subprocess, not to any process it might have
-spawned itself"* — tree termination there needs `killDescendants`, a different option entirely.
-Karvan does not rely on any of it: *the most safety-critical code in the daemon should not depend on
-three options whose documented behaviour contradicts their names.*
+`subprocess.kill()` _"only sends a signal to that subprocess, not to any process it might have
+spawned itself"_ — tree termination there needs `killDescendants`, a different option entirely.
+DeFlow does not rely on any of it: _the most safety-critical code in the daemon should not depend on
+three options whose documented behaviour contradicts their names._
 
 ---
 
@@ -1234,7 +1234,7 @@ Feature: Honest reporting when the kill switch fails
          reconcile in the ledger, so a run is never "cancelled" with live children
 ```
 
-**Notes:** *"A kill that did not take is an event, not a silent condition."* The idempotence
+**Notes:** _"A kill that did not take is an event, not a silent condition."_ The idempotence
 scenario carries the PID-reuse guard forward from
 [EPIC-07-S31](./EPIC-07-workspace-isolation-flows.md): by the time a second kill runs, the pgid may
 belong to someone else entirely, and signalling it is the same unrecoverable class of bug.
@@ -1278,7 +1278,7 @@ Feature: F5.3 demoted to a plan-time prediction (D14)
 ```
 
 **Notes:** Path scopes stay useful and stay in the plan; they just stop being the thing merges depend
-on. The reason the demotion is safe is that ACP gave Karvan something better for the enforcement
+on. The reason the demotion is safe is that ACP gave DeFlow something better for the enforcement
 half — `ToolCallLocation.path` rejects at request time
 ([EPIC-08-S11](#epic-08-s11--toolcalllocationpath-rejects-an-out-of-scope-write-at-request-time)) —
 so this warning path is the honest fallback for adapters that do not populate it, not the primary
@@ -1294,7 +1294,7 @@ control.
 Feature: You should never learn your auth mode from a bill
 
   Scenario: A shadowing variable is stripped and reported
-    Given ANTHROPIC_API_KEY is present in karvand's environment
+    Given ANTHROPIC_API_KEY is present in DeFlowd's environment
     And a node configured for subscription auth on Claude Code
     When the agent is spawned
     Then ANTHROPIC_API_KEY is absent from the child environment
@@ -1303,7 +1303,7 @@ Feature: You should never learn your auth mode from a bill
     And the run manifest records provider.auth_mode "subscription"
 
   Scenario Outline: The shadowing set is data, not code
-    Given "<variable>" is present in karvand's environment
+    Given "<variable>" is present in DeFlowd's environment
     Then it is detected as auth-shadowing for provider "<provider>"
 
     Examples:
@@ -1313,7 +1313,7 @@ Feature: You should never learn your auth mode from a bill
       | GEMINI_API_KEY    | gemini      |
       | GOOGLE_API_KEY    | gemini      |
 
-  Scenario: karvan doctor reports it before a run is ever started
+  Scenario: DeFlow doctor reports it before a run is ever started
     When doctor runs with ANTHROPIC_API_KEY set
     Then it reports the provider, the variable name, the auth mode that will actually be used,
          and how to change it
@@ -1327,8 +1327,8 @@ Feature: You should never learn your auth mode from a bill
 
 **Notes:** **Verified 2026-08-02:** `@agentclientprotocol/claude-agent-acp@0.64.1` returned
 `"authMethods": []` — it is already authenticated from the user's own credential store and needs
-nothing from Karvan. The failure this scenario prevents is the silent one: *"the user thinks they
-are on their subscription; they are being billed per token."* The invariant is that the effective
+nothing from DeFlow. The failure this scenario prevents is the silent one: _"the user thinks they
+are on their subscription; they are being billed per token."_ The invariant is that the effective
 auth mode of every provider is a recorded, rendered fact.
 
 ---
@@ -1342,7 +1342,7 @@ Feature: API keys are a first-class alternative, never the default
 
   Scenario: The user deliberately selects the key path
     Given the provider config for this run selects auth mode "api_key"
-    And ANTHROPIC_API_KEY is present in karvand's environment
+    And ANTHROPIC_API_KEY is present in DeFlowd's environment
     When the agent is spawned
     Then ANTHROPIC_API_KEY IS present in the child environment
     And the run manifest records provider.auth_mode "api_key"
@@ -1355,20 +1355,20 @@ Feature: API keys are a first-class alternative, never the default
   Scenario: Copilot's terminal-auth block is surfaced, never executed
     Given Copilot CLI's initialize response contains an authMethods entry whose
           _meta["terminal-auth"] carries a literal { command, args } to run for login
-    When karvand handles it
+    When DeFlowd handles it
     Then the command is rendered to the operator as a shell command to run themselves
     And the spawn chokepoint recorded zero invocations of it
     And its output is never captured
 
   Scenario: AR-1 is not softened by the key path
-    Then Karvan still reads no vendor token file
-    And the key came from the environment the user configured, not from anything Karvan stored
+    Then DeFlow still reads no vendor token file
+    And the key came from the environment the user configured, not from anything DeFlow stored
 ```
 
-**Notes:** AR-1 is about Karvan never *appropriating* a subscription credential, not about refusing
-a key the user deliberately handed over. The Copilot scenario is the sharp edge: *"running a
+**Notes:** AR-1 is about DeFlow never _appropriating_ a subscription credential, not about refusing
+a key the user deliberately handed over. The Copilot scenario is the sharp edge: _"running a
 vendor's login flow on the user's behalf, even without storing the result, is the first step onto
-the wrong side of AR-1."* Print it; let the user run it.
+the wrong side of AR-1."_ Print it; let the user run it.
 
 ---
 
@@ -1397,7 +1397,7 @@ Feature: An architectural rule that cannot be checked in five minutes decays
          "**/.aws/credentials", "**/.ssh/**" or "**/Library/Keychains/**"
 
   Scenario: The no-provider-SDK test
-    When the production dependency closure of the "karvan" package is enumerated
+    When the production dependency closure of the "DeFlow" package is enumerated
     Then it contains no "@anthropic-ai/sdk", no "openai" and no "@google/generative-ai"
     And the direct-API adapter is a separate optional entry point, so inlining it fails this test
 
@@ -1413,9 +1413,9 @@ Feature: An architectural rule that cannot be checked in five minutes decays
 ```
 
 **Notes:** The threat actor these checks defend against is named explicitly in the security model's
-own table: **a future Karvan contributor** whose well-meaning pull request adds
-`process.env.ANTHROPIC_API_KEY` to a child environment "so the adapter works". *"Conventions decay
-under time pressure. The five checks belong in CI."* They live in this epic because four of the five
+own table: **a future DeFlow contributor** whose well-meaning pull request adds
+`process.env.ANTHROPIC_API_KEY` to a child environment "so the adapter works". _"Conventions decay
+under time pressure. The five checks belong in CI."_ They live in this epic because four of the five
 are assertions about the spawn boundary this epic owns.
 
 ---

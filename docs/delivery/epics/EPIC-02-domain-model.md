@@ -1,30 +1,30 @@
 # EPIC-02: Domain model and schemas
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-02-domain-model-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-02 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W0 (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~12 days across 10 stories |
-| **Depends on** | EPIC-01 |
-| **Blocks** | EPIC-03, EPIC-04, EPIC-05, EPIC-06, EPIC-09, EPIC-10, EPIC-11, EPIC-12, EPIC-15, EPIC-16 |
+|                      |                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-02                                                                                            |
+| **Status**           | Not started                                                                                        |
+| **Priority**         | P0                                                                                                 |
+| **Milestone**        | M1                                                                                                 |
+| **Workstream**       | W0 (see [roadmap §2.2](../../17-roadmap.md))                                                       |
+| **Size**             | ~12 days across 10 stories                                                                         |
+| **Depends on**       | EPIC-01                                                                                            |
+| **Blocks**           | EPIC-03, EPIC-04, EPIC-05, EPIC-06, EPIC-09, EPIC-10, EPIC-11, EPIC-12, EPIC-15, EPIC-16           |
 | **PRD requirements** | F1.2, F1.3, F1.5, F2.1, F2.3, F2.4, F2.5, F4.1, F4.3, F6.2, F6.3, F6.4, F6.9, F7.3, F7.4, NF8, NF9 |
-| **Architecture** | [04-domain-model.md](../../04-domain-model.md) |
+| **Architecture**     | [04-domain-model.md](../../04-domain-model.md)                                                     |
 
 ## Goal
 
-At the end of this epic `@karvan/core` exports every type the rest of the system speaks — `TaskSpec`,
+At the end of this epic `@DeFlow/core` exports every type the rest of the system speaks — `TaskSpec`,
 `PlanGraph`, `PlanPatch`, `Fact`, `ContextPacket`, `Verdict`, `NodeResult`, `NodeFailure` and the
 `Event` union — authored once as Zod 4 schemas, with the TypeScript types derived by `z.infer` and
-the JSON Schemas derived by `z.toJSONSchema()` and written to `.karvan/schemas/`. Alongside the
+the JSON Schemas derived by `z.toJSONSchema()` and written to `.DeFlow/schemas/`. Alongside the
 types come the three invariants everything else leans on: a `NodeId` that is stable for the life of
 a run, a canonical JSON encoder that produces content hashes stable across daemon versions, and an
-event envelope whose `kind`/`v` pair lets an older `karvand` read a newer ledger without corrupting
+event envelope whose `kind`/`v` pair lets an older `DeFlowd` read a newer ledger without corrupting
 it.
 
 ## Why this matters
@@ -35,7 +35,7 @@ failures are being designed out. First, hand-written interfaces drifting from th
 validators — Zod-as-source-of-truth with a CI drift check is the answer, because
 [04-domain-model §0](../../04-domain-model.md) is blunt that hand-sync "never survives contact with
 a real codebase". Second, a moving `NodeId`: the effect journal keys idempotency on
-`(runId, nodeId, attempt, ordinal)` and there is *no way to detect after the fact* that a renamed
+`(runId, nodeId, attempt, ordinal)` and there is _no way to detect after the fact_ that a renamed
 node caused a side effect to run twice. Third, a reducer that throws on an event kind it does not
 recognise, which turns a version downgrade into an unopenable ledger — the single
 forward-compatibility mechanism in the whole system lives in one `default: return state` branch.
@@ -50,7 +50,7 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
   `NodeFailure`, and the `Event` union with its envelope.
 - The canonical JSON encoder and the `planHash` / `specHash` / `contentHash` derivations built on it.
 - The upcaster registry and the `upcast(kind, v, payload)` entry point.
-- `z.toJSONSchema()` emission to `.karvan/schemas/<schemaId>.json`, the `Ajv2020` validator factory,
+- `z.toJSONSchema()` emission to `.DeFlow/schemas/<schemaId>.json`, the `Ajv2020` validator factory,
   and the CI check that proves emitted schemas and Zod schemas cannot drift.
 - Pure declaration-level validation helpers (`readsAreSatisfiable`, `patchIsWellFormed`) that the
   planner and policy engine call.
@@ -58,7 +58,7 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
 **Out of scope:**
 
 - `reduce()` itself and any state projection — [EPIC-03](./EPIC-03-event-ledger.md), KAR-03.5. This
-  epic ships the *events*, not the fold.
+  epic ships the _events_, not the fold.
 - Full `PlanGraph` semantic validation (cycle detection, gate-coverage of every criterion, provider
   resolvability) — [EPIC-11](./EPIC-11-dynamic-planning.md), KAR-11.2. Only the schema-level and
   reachability-level checks land here.
@@ -66,8 +66,8 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
   ships the mandatory `policy` block those rules read.
 - Assembling a `ContextPacket` and `render(segments)` — [EPIC-09](./EPIC-09-context-memory.md).
   This epic ships the shape, not the builder.
-- Persisting anything. `@karvan/core` has no dependency capable of I/O; the schema *files* are
-  written by a build script in this epic, and by `karvan init` in
+- Persisting anything. `@DeFlow/core` has no dependency capable of I/O; the schema _files_ are
+  written by a build script in this epic, and by `DeFlow init` in
   [EPIC-18](./EPIC-18-cli-packaging.md), KAR-18.1.
 - The blob spill for oversized payloads — the rule is stated in the envelope's docs here, the
   mechanism is [EPIC-03](./EPIC-03-event-ledger.md), KAR-03.9.
@@ -104,13 +104,13 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
 
 ### KAR-02.1 — Identifier types and the stable-nodeId invariant
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | — |
-| **PRD** | F4.3, F2.6, NF10 |
+|                 |                                                            |
+| --------------- | ---------------------------------------------------------- |
+| **Status**      | Ready                                                      |
+| **Priority**    | P0                                                         |
+| **Size**        | S                                                          |
+| **Depends on**  | —                                                          |
+| **PRD**         | F4.3, F2.6, NF10                                           |
 | **Verified by** | EPIC-02-S1, EPIC-02-S2, EPIC-02-S3, EPIC-02-S4, EPIC-02-S5 |
 
 **As** the engine author, **I want** every identifier to be a branded string with a validated format
@@ -148,14 +148,14 @@ collection is re-derived after a replan.
 **Test plan (TDD)** — write these tests first, in this order, and watch each fail before writing
 the implementation.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `NodeIdSchema.safeParse` over a table of 12 accept/reject inputs | The schema is `z.string()` with no regex |
-| 2 | unit | Two `RunId`s minted 1 s apart compare in order with `<` | The format puts the random suffix before the timestamp |
-| 3 | unit | `path.basename(path.join(tmp, runId)) === runId` for 100 generated ids | A separator or reserved character leaks into the format |
-| 4 | unit | `mapChildId` over a shuffled collection returns an identical id set | Ids are derived from index |
-| 5 | unit | `allocate(id)` twice on a registry seeded with a retired id throws `NodeIdReused` | Retirement is not tracked, only lifecycle is set |
-| 6 | unit | `ikey()` output round-trips through `parseIkey()` for ordinals 0–100 | The separator is not escaped and a nodeId containing `/` corrupts the key |
+| #   | Level | Test                                                                              | Red when                                                                  |
+| --- | ----- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1   | unit  | `NodeIdSchema.safeParse` over a table of 12 accept/reject inputs                  | The schema is `z.string()` with no regex                                  |
+| 2   | unit  | Two `RunId`s minted 1 s apart compare in order with `<`                           | The format puts the random suffix before the timestamp                    |
+| 3   | unit  | `path.basename(path.join(tmp, runId)) === runId` for 100 generated ids            | A separator or reserved character leaks into the format                   |
+| 4   | unit  | `mapChildId` over a shuffled collection returns an identical id set               | Ids are derived from index                                                |
+| 5   | unit  | `allocate(id)` twice on a registry seeded with a retired id throws `NodeIdReused` | Retirement is not tracked, only lifecycle is set                          |
+| 6   | unit  | `ikey()` output round-trips through `parseIkey()` for ordinals 0–100              | The separator is not escaped and a nodeId containing `/` corrupts the key |
 
 **Notes / risks** — The `'index'` variant of `itemIdFrom` exists in the architecture and must be
 shipped, but its own docs call `value-hash` "the safe default". Encode that as a schema default, not
@@ -165,13 +165,13 @@ as advice in prose.
 
 ### KAR-02.2 — TaskSpec schema with acceptance criteria and failure modes
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-02.1, KAR-02.9 |
-| **PRD** | F1.2, F1.3, F1.5, F7.4 |
+|                 |                        |
+| --------------- | ---------------------- |
+| **Status**      | Not started            |
+| **Priority**    | P0                     |
+| **Size**        | S                      |
+| **Depends on**  | KAR-02.1, KAR-02.9     |
+| **PRD**         | F1.2, F1.3, F1.5, F7.4 |
 | **Verified by** | EPIC-02-S6, EPIC-02-S7 |
 
 **As** an operator, **I want** the `TaskSpec` to be a validated document with testable acceptance
@@ -180,7 +180,7 @@ than a prose brief that drifts.
 
 Implements [04-domain-model §2](../../04-domain-model.md#2-taskspec-f12-f13-f15). Ships
 `AcceptanceCriterion` (with the three `check` variants: `command` / `gate` / `manual`),
-`FailureMode`, and `TaskSpec` with `schemaId: 'karvan.taskspec.v1'`. The load-bearing detail is
+`FailureMode`, and `TaskSpec` with `schemaId: 'DeFlow.taskspec.v1'`. The load-bearing detail is
 `specHash`: sha256 of the canonicalised spec **excluding `approvedBy`**, so re-approving an
 unchanged spec does not change its identity while editing one word does. Also ships the
 `pinnedSegmentsOf(spec, node)` selector that names which fields compile into `pinned: true`
@@ -204,26 +204,26 @@ not of the packet builder that consumes it.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Parse a fixture spec from `test/fixtures/specs/vue3-migration.json`, assert `.success` | The schema does not exist |
-| 2 | unit | `expect(() => TaskSpecSchema.parse({...spec, acceptanceCriteria: []})).toThrow()` | Emptiness is allowed |
-| 3 | unit | `specHash(a) === specHash({...a, approvedBy: {...}})` | The hash is over the whole object |
-| 4 | unit | `specHash(a) === specHash(shuffleKeys(a))` | Hashing uses `JSON.stringify` instead of the canonical encoder |
-| 5 | unit | `toMatchFileSnapshot('__snapshots__/taskspec-pinned.json')` on `pinnedSegmentsOf` | The selector returns a different field set than F1.5 names |
-| 6 | unit | A `check.kind` outside the three literals fails with a path of `acceptanceCriteria[0].check.kind` | The union is loose |
+| #   | Level | Test                                                                                              | Red when                                                       |
+| --- | ----- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | unit  | Parse a fixture spec from `test/fixtures/specs/vue3-migration.json`, assert `.success`            | The schema does not exist                                      |
+| 2   | unit  | `expect(() => TaskSpecSchema.parse({...spec, acceptanceCriteria: []})).toThrow()`                 | Emptiness is allowed                                           |
+| 3   | unit  | `specHash(a) === specHash({...a, approvedBy: {...}})`                                             | The hash is over the whole object                              |
+| 4   | unit  | `specHash(a) === specHash(shuffleKeys(a))`                                                        | Hashing uses `JSON.stringify` instead of the canonical encoder |
+| 5   | unit  | `toMatchFileSnapshot('__snapshots__/taskspec-pinned.json')` on `pinnedSegmentsOf`                 | The selector returns a different field set than F1.5 names     |
+| 6   | unit  | A `check.kind` outside the three literals fails with a path of `acceptanceCriteria[0].check.kind` | The union is loose                                             |
 
 ---
 
 ### KAR-02.3 — PlanGraph and the seven node types
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-02.1, KAR-02.9 |
-| **PRD** | F2.1, F2.3, F5.3, F5.4, F6.2, F6.4 |
+|                 |                                                  |
+| --------------- | ------------------------------------------------ |
+| **Status**      | Not started                                      |
+| **Priority**    | P0                                               |
+| **Size**        | M                                                |
+| **Depends on**  | KAR-02.1, KAR-02.9                               |
+| **PRD**         | F2.1, F2.3, F5.3, F5.4, F6.2, F6.4               |
 | **Verified by** | EPIC-02-S4, EPIC-02-S9, EPIC-02-S10, EPIC-02-S11 |
 
 **As** the planner, **I want** the plan to be a validated, content-addressed JSON document with
@@ -266,32 +266,32 @@ KAR-11.2.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Parse `test/fixtures/plans/seven-types.json`; `toMatchFileSnapshot` the parsed graph | No schema; or the serialiser is not registered and the snapshot churns |
-| 2 | unit | Scenario-outline over 7 node types × 8 required `NodeBase` fields, each omission rejected | `NodeBase` fields are optional |
-| 3 | unit | `PlanNodeSchema.safeParse({type:'agent', gate:{…}})` fails on the discriminator | A plain `z.union` is used instead of `z.discriminatedUnion` |
-| 4 | unit | `readsAreSatisfiable` on a 12-node fixture with one dangling read returns exactly that pair | The walk checks direct deps only, not all ancestors |
-| 5 | unit | `readsAreSatisfiable` accepts `finding/*` against `finding/auth-uses-jwt` | Prefix matching is not implemented |
-| 6 | unit | `planHash(parse(serialize(g))) === g.planHash` | The hash includes `planHash`, or key order leaks in |
-| 7 | unit | `mapChildId` ids are stable when the `over` collection is shuffled | `itemIdFrom` defaults to `'index'` |
+| #   | Level | Test                                                                                        | Red when                                                               |
+| --- | ----- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 1   | unit  | Parse `test/fixtures/plans/seven-types.json`; `toMatchFileSnapshot` the parsed graph        | No schema; or the serialiser is not registered and the snapshot churns |
+| 2   | unit  | Scenario-outline over 7 node types × 8 required `NodeBase` fields, each omission rejected   | `NodeBase` fields are optional                                         |
+| 3   | unit  | `PlanNodeSchema.safeParse({type:'agent', gate:{…}})` fails on the discriminator             | A plain `z.union` is used instead of `z.discriminatedUnion`            |
+| 4   | unit  | `readsAreSatisfiable` on a 12-node fixture with one dangling read returns exactly that pair | The walk checks direct deps only, not all ancestors                    |
+| 5   | unit  | `readsAreSatisfiable` accepts `finding/*` against `finding/auth-uses-jwt`                   | Prefix matching is not implemented                                     |
+| 6   | unit  | `planHash(parse(serialize(g))) === g.planHash`                                              | The hash includes `planHash`, or key order leaks in                    |
+| 7   | unit  | `mapChildId` ids are stable when the `over` collection is shuffled                          | `itemIdFrom` defaults to `'index'`                                     |
 
 **Notes / risks** — `returns.maxTokens`' 500–2000 band is **Unverified** (roadmap A4-6): it traces
 to Anthropic's multi-agent research system and practitioner consensus, not a controlled study. Ship
-1500 as a named constant, record oversize rate per node type from M1, and tune from Karvan's own
+1500 as a named constant, record oversize rate per node type from M1, and tune from DeFlow's own
 data. Do not write the number into three files.
 
 ---
 
 ### KAR-02.4 — PlanPatch and its policy-relevant fields
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-02.3 |
-| **PRD** | F2.4, F2.5, F3.9 |
+|                 |                                                  |
+| --------------- | ------------------------------------------------ |
+| **Status**      | Not started                                      |
+| **Priority**    | P0                                               |
+| **Size**        | S                                                |
+| **Depends on**  | KAR-02.3                                         |
+| **PRD**         | F2.4, F2.5, F3.9                                 |
 | **Verified by** | EPIC-02-S2, EPIC-02-S3, EPIC-02-S12, EPIC-02-S13 |
 
 **As** the patch policy engine, **I want** every proposed patch to arrive with a complete, mandatory
@@ -327,26 +327,26 @@ runtime.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Table over the 6 `policy` fields, each deleted in turn, each rejected | `policy` is `.optional()` or its fields are |
-| 2 | unit | `patchIsWellFormed` against a graph containing an `abandoned` node whose id the patch reuses | Retired ids are not consulted |
-| 3 | unit | `split-node` fixture missing `derivedFrom` is rejected | The relationship is documented but not enforced |
-| 4 | unit | A hand-built `replace-provider` carrying an extra `id` key fails under `strict()` | The op schemas allow unknown keys |
-| 5 | unit | `PatchDecisionSchema.parse({decision:'rejected', by:'policy'})` throws | `rule` is optional |
-| 6 | unit | `toMatchInlineSnapshot` of the three-op fixture used by the scrubber test corpus | — |
+| #   | Level | Test                                                                                         | Red when                                        |
+| --- | ----- | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 1   | unit  | Table over the 6 `policy` fields, each deleted in turn, each rejected                        | `policy` is `.optional()` or its fields are     |
+| 2   | unit  | `patchIsWellFormed` against a graph containing an `abandoned` node whose id the patch reuses | Retired ids are not consulted                   |
+| 3   | unit  | `split-node` fixture missing `derivedFrom` is rejected                                       | The relationship is documented but not enforced |
+| 4   | unit  | A hand-built `replace-provider` carrying an extra `id` key fails under `strict()`            | The op schemas allow unknown keys               |
+| 5   | unit  | `PatchDecisionSchema.parse({decision:'rejected', by:'policy'})` throws                       | `rule` is optional                              |
+| 6   | unit  | `toMatchInlineSnapshot` of the three-op fixture used by the scrubber test corpus             | —                                               |
 
 ---
 
 ### KAR-02.5 — Fact, provenance and the blackboard vocabulary
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-02.1 |
-| **PRD** | F6.3, F6.7, F10.4 |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-02.1                              |
+| **PRD**         | F6.3, F6.7, F10.4                     |
 | **Verified by** | EPIC-02-S14, EPIC-02-S15, EPIC-02-S16 |
 
 **As** the blackboard, **I want** facts to be typed, provenanced and schema-validated with a small
@@ -380,26 +380,26 @@ this story pairs with KAR-02.8.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Table of 10 `(kind, key)` pairs, 6 accept / 4 reject | Kind and key are validated independently |
-| 2 | unit | `FactSchema.parse` on an `ext:` key with `kind: 'finding'` throws | The `ext` prefix is not cross-checked |
-| 3 | unit | Grep test: no export from `packages/core/src/fact.ts` whose name matches `/^(set\|write\|update)/` | A mutator was added |
-| 4 | unit | `supersedes: self.id` rejected | Self-reference is unchecked |
-| 5 | unit | Sorting a shuffled fact array by the exported comparator orders by `atEvent`, and still does when `at` timestamps run backwards (laptop sleep) | The comparator reads `at` |
+| #   | Level | Test                                                                                                                                           | Red when                                 |
+| --- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 1   | unit  | Table of 10 `(kind, key)` pairs, 6 accept / 4 reject                                                                                           | Kind and key are validated independently |
+| 2   | unit  | `FactSchema.parse` on an `ext:` key with `kind: 'finding'` throws                                                                              | The `ext` prefix is not cross-checked    |
+| 3   | unit  | Grep test: no export from `packages/core/src/fact.ts` whose name matches `/^(set\|write\|update)/`                                             | A mutator was added                      |
+| 4   | unit  | `supersedes: self.id` rejected                                                                                                                 | Self-reference is unchecked              |
+| 5   | unit  | Sorting a shuffled fact array by the exported comparator orders by `atEvent`, and still does when `at` timestamps run backwards (laptop sleep) | The comparator reads `at`                |
 
 ---
 
 ### KAR-02.6 — ContextPacket and typed segments
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-02.1, KAR-02.9 |
-| **PRD** | F6.1, F6.2, F6.6, F10.3, F10.5 |
-| **Verified by** | EPIC-02-S17, EPIC-02-S18 |
+|                 |                                |
+| --------------- | ------------------------------ |
+| **Status**      | Not started                    |
+| **Priority**    | P0                             |
+| **Size**        | S                              |
+| **Depends on**  | KAR-02.1, KAR-02.9             |
+| **PRD**         | F6.1, F6.2, F6.6, F10.3, F10.5 |
+| **Verified by** | EPIC-02-S17, EPIC-02-S18       |
 
 **As** the node inspector and the context-budget chart, **I want** a packet to be an addressable
 array of typed segments with per-segment token counts, **so that** "what did this node actually
@@ -432,29 +432,29 @@ array and not a string: four P0 requirements are literally unsatisfiable against
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `packetTotalsAreConsistent` on a hand-built 6-segment packet, then on one with a doctored total | Totals are trusted, not checked |
-| 2 | unit | `pinned && compactable` rejected; `!pinned && !compactable` accepted | The rule is implemented as an equivalence |
-| 3 | unit | `budget.fraction: 0.7` rejected with a message naming 0.6 | The cap is a comment |
-| 4 | unit | `pinnedDigests` mismatch against a segment's `contentHash` rejected | The digests are a separate free-form array |
-| 5 | unit | `TokenCountSchema.parse({estimated: 10})` throws on missing `method` | `method` has a default |
-| 6 | unit | `renderOrderOf` golden file over a packet with two pinned and one `history.summary` | Order is insertion order |
+| #   | Level | Test                                                                                            | Red when                                   |
+| --- | ----- | ----------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 1   | unit  | `packetTotalsAreConsistent` on a hand-built 6-segment packet, then on one with a doctored total | Totals are trusted, not checked            |
+| 2   | unit  | `pinned && compactable` rejected; `!pinned && !compactable` accepted                            | The rule is implemented as an equivalence  |
+| 3   | unit  | `budget.fraction: 0.7` rejected with a message naming 0.6                                       | The cap is a comment                       |
+| 4   | unit  | `pinnedDigests` mismatch against a segment's `contentHash` rejected                             | The digests are a separate free-form array |
+| 5   | unit  | `TokenCountSchema.parse({estimated: 10})` throws on missing `method`                            | `method` has a default                     |
+| 6   | unit  | `renderOrderOf` golden file over a packet with two pinned and one `history.summary`             | Order is insertion order                   |
 
 ---
 
 ### KAR-02.7 — The Event union, envelope versioning and upcasters
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-02.2, KAR-02.3, KAR-02.4, KAR-02.5, KAR-02.6, KAR-02.10 |
-| **PRD** | F4.1, F4.4, F6.6, F9.1, NF9, NF10 |
+|                 |                                                                 |
+| --------------- | --------------------------------------------------------------- |
+| **Status**      | Not started                                                     |
+| **Priority**    | P0                                                              |
+| **Size**        | M                                                               |
+| **Depends on**  | KAR-02.2, KAR-02.3, KAR-02.4, KAR-02.5, KAR-02.6, KAR-02.10     |
+| **PRD**         | F4.1, F4.4, F6.6, F9.1, NF9, NF10                               |
 | **Verified by** | EPIC-02-S19, EPIC-02-S20, EPIC-02-S21, EPIC-02-S22, EPIC-02-S23 |
 
-**As** a user who upgrades and then downgrades `karvand`, **I want** every event to carry `kind` and
+**As** a user who upgrades and then downgrades `DeFlowd`, **I want** every event to carry `kind` and
 an integer `v` with a read-time upcaster chain, **so that** an older daemon skips what it does not
 understand instead of refusing to open my ledger.
 
@@ -494,15 +494,15 @@ at read time. Events are **never rewritten on disk**.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `parseEvent({kind:'future.thing', v:1, …})` returns `unknown-kind` | A `z.discriminatedUnion` throws on the unknown discriminant |
-| 2 | unit | Two-hop upcast v1→v3 asserted with `toMatchInlineSnapshot` | Chaining stops after one hop |
-| 3 | unit | `upcast` called twice returns deep-equal values; input object is not mutated | An upcaster mutates in place |
-| 4 | unit | `assertUpcasterChainsComplete()` throws for a registry with a hole at `('gate.evaluated', 2)` | Chain completeness is assumed |
-| 5 | unit | `context.compacted` `partial` + `after: 4000` rejected | The discriminator is decorative |
-| 6 | unit | Property test: for every registered upcaster, `target.safeParse(up(fixture)).success` | An upcaster produces a payload its own target schema rejects |
-| 7 | unit | Every event kind in §9's table has a schema — a table-driven test over the exported `kind` list | A kind was added to the docs and not the code |
+| #   | Level | Test                                                                                            | Red when                                                     |
+| --- | ----- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1   | unit  | `parseEvent({kind:'future.thing', v:1, …})` returns `unknown-kind`                              | A `z.discriminatedUnion` throws on the unknown discriminant  |
+| 2   | unit  | Two-hop upcast v1→v3 asserted with `toMatchInlineSnapshot`                                      | Chaining stops after one hop                                 |
+| 3   | unit  | `upcast` called twice returns deep-equal values; input object is not mutated                    | An upcaster mutates in place                                 |
+| 4   | unit  | `assertUpcasterChainsComplete()` throws for a registry with a hole at `('gate.evaluated', 2)`   | Chain completeness is assumed                                |
+| 5   | unit  | `context.compacted` `partial` + `after: 4000` rejected                                          | The discriminator is decorative                              |
+| 6   | unit  | Property test: for every registered upcaster, `target.safeParse(up(fixture)).success`           | An upcaster produces a payload its own target schema rejects |
+| 7   | unit  | Every event kind in §9's table has a schema — a table-driven test over the exported `kind` list | A kind was added to the docs and not the code                |
 
 **Notes / risks** — This is the biggest single story in the epic and the one with the most fixtures.
 The ~40 payload schemas are individually trivial; the risk is that they are written without a test
@@ -510,25 +510,25 @@ per kind and the §9 table quietly diverges. Test 7 is the defence and should be
 
 ---
 
-### KAR-02.8 — JSON Schema emission to `.karvan/schemas/`
+### KAR-02.8 — JSON Schema emission to `.DeFlow/schemas/`
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-02.2, KAR-02.3, KAR-02.5, KAR-02.7 |
-| **PRD** | F6.9, NF8, F3.5 |
+|                 |                                                                 |
+| --------------- | --------------------------------------------------------------- |
+| **Status**      | Not started                                                     |
+| **Priority**    | P0                                                              |
+| **Size**        | M                                                               |
+| **Depends on**  | KAR-02.2, KAR-02.3, KAR-02.5, KAR-02.7                          |
+| **PRD**         | F6.9, NF8, F3.5                                                 |
 | **Verified by** | EPIC-02-S14, EPIC-02-S15, EPIC-02-S24, EPIC-02-S25, EPIC-02-S26 |
 
-**As** an agent and as a human reading a run directory, **I want** every Karvan schema on disk as
+**As** an agent and as a human reading a run directory, **I want** every DeFlow schema on disk as
 JSON Schema 2020-12, generated from the Zod source of truth and proven in CI to match it, **so that**
 vendor CLIs can validate structured output natively and NF8 is satisfied without a second
 hand-maintained artefact.
 
 Implements [04-domain-model §0](../../04-domain-model.md#0-how-these-types-are-defined). Ships:
 a `pnpm schemas:emit` script that walks the registry of `(schemaId, zodSchema)` pairs and writes
-`.karvan/schemas/<schemaId>.json` via `z.toJSONSchema()`; a `pnpm schemas:check` that regenerates
+`.DeFlow/schemas/<schemaId>.json` via `z.toJSONSchema()`; a `pnpm schemas:check` that regenerates
 into a temp dir and fails on any diff; and `makeValidator(schemaId)` building an `Ajv2020` instance
 from `ajv/dist/2020` configured `{ strict: true, allErrors: true }` with `ajv-formats`. 2020-12 is
 not arbitrary — it is the dialect MCP tool `inputSchema` defaults to, so the MCP host and the F6.9
@@ -545,9 +545,9 @@ take a JSON Schema file (**Verified 2026-08-02**).
    Zod schema is edited without re-emitting. This is a CI job, not a hook.
 3. Every emitted schema compiles under `Ajv2020` with `strict: true` — no `strictTypes` warnings, no
    unknown keywords. A Zod construct that emits something Ajv-strict rejects fails the check.
-4. `makeValidator('karvan.finding.v1')` validates a conforming fact value and, for a
+4. `makeValidator('DeFlow.finding.v1')` validates a conforming fact value and, for a
    non-conforming one, returns all errors (`allErrors: true`) with JSON Pointer paths.
-5. A `Fact` whose `schemaId` is not present in `.karvan/schemas/` is rejected at acceptance with
+5. A `Fact` whose `schemaId` is not present in `.DeFlow/schemas/` is rejected at acceptance with
    `unknown-schema-id`, naming the id — this is what makes the `ext:` namespace safe.
 6. `schemaId` versioning is append-only: a test asserts that no file already present in the
    repository's committed `schemas/` fixture directory has changed content; a change requires a new
@@ -558,15 +558,15 @@ take a JSON Schema file (**Verified 2026-08-02**).
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Snapshot `z.toJSONSchema(TaskSpecSchema)` to `__snapshots__/karvan.taskspec.v1.json` | Emission produces draft-07 shape, or `$schema` is absent |
-| 2 | integration | Run `schemas:emit` into a tmpdir, diff against the committed dir, assert empty | The check compares mtimes rather than content |
-| 3 | integration | Deliberately add a field to `FactSchema`; assert `schemas:check` exits 1 and names `karvan.fact.v1` | The check does not run over every registered id |
-| 4 | unit | `new Ajv2020({strict:true}).compile(emitted)` for every emitted file, table-driven | A Zod construct emits `unevaluatedProperties` or a keyword Ajv-strict refuses |
-| 5 | unit | `makeValidator` returns ≥2 errors for a value with two violations | `allErrors` is false |
-| 6 | contract | A recorded Claude Code invocation with `--json-schema .karvan/schemas/karvan.finding.v1.json` against `@karvan/mock-agent --replay` accepts the file | The emitted file is not a standalone document (uses `$ref` to a sibling) |
-| 7 | unit | Git-tracked `schemas/` fixture content hash table, one row per shipped id | A `.v1` was edited in place |
+| #   | Level       | Test                                                                                                                                                 | Red when                                                                      |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 1   | unit        | Snapshot `z.toJSONSchema(TaskSpecSchema)` to `__snapshots__/DeFlow.taskspec.v1.json`                                                                 | Emission produces draft-07 shape, or `$schema` is absent                      |
+| 2   | integration | Run `schemas:emit` into a tmpdir, diff against the committed dir, assert empty                                                                       | The check compares mtimes rather than content                                 |
+| 3   | integration | Deliberately add a field to `FactSchema`; assert `schemas:check` exits 1 and names `DeFlow.fact.v1`                                                  | The check does not run over every registered id                               |
+| 4   | unit        | `new Ajv2020({strict:true}).compile(emitted)` for every emitted file, table-driven                                                                   | A Zod construct emits `unevaluatedProperties` or a keyword Ajv-strict refuses |
+| 5   | unit        | `makeValidator` returns ≥2 errors for a value with two violations                                                                                    | `allErrors` is false                                                          |
+| 6   | contract    | A recorded Claude Code invocation with `--json-schema .DeFlow/schemas/DeFlow.finding.v1.json` against `@DeFlow/mock-agent --replay` accepts the file | The emitted file is not a standalone document (uses `$ref` to a sibling)      |
+| 7   | unit        | Git-tracked `schemas/` fixture content hash table, one row per shipped id                                                                            | A `.v1` was edited in place                                                   |
 
 **Notes / risks** — Test 6 depends on the mock agent (EPIC-04) and on a recording; until EPIC-04
 lands, run it as `manual` against the developer's installed CLI and mark it explicitly as such in
@@ -575,15 +575,15 @@ the spec name. Do not let it become a story-blocking dependency on EPIC-04 — t
 
 ---
 
-### KAR-02.9 — Canonical JSON encoding and content hashes *(added)*
+### KAR-02.9 — Canonical JSON encoding and content hashes _(added)_
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | — |
-| **PRD** | F2.1, F2.6, NF9, NF10 |
+|                 |                        |
+| --------------- | ---------------------- |
+| **Status**      | Ready                  |
+| **Priority**    | P0                     |
+| **Size**        | S                      |
+| **Depends on**  | —                      |
+| **PRD**         | F2.1, F2.6, NF9, NF10  |
 | **Verified by** | EPIC-02-S6, EPIC-02-S8 |
 
 **As** the plan store and the scrubber, **I want** one canonical JSON encoder that I own, **so that**
@@ -613,20 +613,20 @@ over it, plus `planHash`, `specHash` and `contentHash` as thin named wrappers.
 5. Non-ASCII strings are emitted identically under both NFC and the input's own normalisation — the
    encoder does not normalise, and this is documented, so a hash is a hash of the bytes given.
 6. `ohash` appears nowhere in `packages/core`; a lint rule enforces it. Its use for UI change
-   detection in `@karvan/web` is unaffected.
+   detection in `@DeFlow/web` is unaffected.
 7. `planHash` excludes the `planHash` field; `specHash` excludes `approvedBy`. Both exclusions are
    implemented by an explicit omit list, not by deleting from a copy at three call sites.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Property test over 200 generated nested objects: `canonical(shuffle(o)) === canonical(o)` | Sorting is shallow |
-| 2 | unit | `{a: undefined, b: null}` → `{"b":null}` | `undefined` becomes `null` |
-| 3 | unit | Table of 6 unsupported values, each throwing with a path | Values are coerced by `JSON.stringify` |
-| 4 | unit | Circular object throws `CanonicalJsonCycle` rather than `RangeError` | No cycle detection |
-| 5 | unit | `sha256Hex(canonical(planFixture))` matches a committed golden hex string | The hash changed and nobody noticed — this is the cross-version stability test |
-| 6 | unit | Grep test: `ohash` not imported under `packages/core/src` | — |
+| #   | Level | Test                                                                                      | Red when                                                                       |
+| --- | ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 1   | unit  | Property test over 200 generated nested objects: `canonical(shuffle(o)) === canonical(o)` | Sorting is shallow                                                             |
+| 2   | unit  | `{a: undefined, b: null}` → `{"b":null}`                                                  | `undefined` becomes `null`                                                     |
+| 3   | unit  | Table of 6 unsupported values, each throwing with a path                                  | Values are coerced by `JSON.stringify`                                         |
+| 4   | unit  | Circular object throws `CanonicalJsonCycle` rather than `RangeError`                      | No cycle detection                                                             |
+| 5   | unit  | `sha256Hex(canonical(planFixture))` matches a committed golden hex string                 | The hash changed and nobody noticed — this is the cross-version stability test |
+| 6   | unit  | Grep test: `ohash` not imported under `packages/core/src`                                 | —                                                                              |
 
 **Notes / risks** — Test 5's committed golden is the whole point of the story: if a refactor changes
 that hex string, every `plan` row in every existing ledger has just been orphaned. Treat a change to
@@ -634,15 +634,15 @@ that golden as a migration, not a test update.
 
 ---
 
-### KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy *(added)*
+### KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy _(added)_
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-02.1 |
-| **PRD** | F4.5, F7.3, F9.1, NF10 |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-02.1                              |
+| **PRD**         | F4.5, F7.3, F9.1, NF10                |
 | **Verified by** | EPIC-02-S18, EPIC-02-S27, EPIC-02-S28 |
 
 **As** the scheduler and the node inspector, **I want** every failure to be a value in a closed
@@ -663,7 +663,7 @@ the union, with unmapped throws becoming `{ reason: 'internal' }` and the stack 
 1. `NodeFailureReason` is a string-literal union containing exactly the 30 reasons in §8, verified
    by a table-driven test against a committed list. No `enum` — `erasableSyntaxOnly: true` forbids
    it and a union round-trips through JSON.
-2. `class` (`transient` / `permanent` / `gate`) is a required field on `NodeFailure` and is *not*
+2. `class` (`transient` / `permanent` / `gate`) is a required field on `NodeFailure` and is _not_
    derivable from `reason`: the same reason appears in the test corpus with two different classes
    (`provider.unavailable` transient for a rate-limited vendor, permanent for an uninstalled binary).
 3. `toNodeFailure(new Error('boom'), ctx)` returns `reason: 'internal'`, `class: 'permanent'`, a
@@ -682,14 +682,14 @@ the union, with unmapped throws becoming `{ reason: 'internal' }` and the stack 
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Committed 30-row reason table compared to the exported union | A reason was added to one and not the other |
-| 2 | unit | `provider.unavailable` fixtures with both classes both parse | `class` is computed from `reason` |
-| 3 | unit | `effect.reconcile-unknown` + `class: 'transient'` rejected | The refinement is missing |
-| 4 | unit | Round-trip deep-equality over the full corpus | A `Handle` or `EventSeq` brand breaks serialisation |
-| 5 | unit | `toNodeFailure` on a thrown string, a thrown object, `undefined`, and an `AggregateError` | Only `Error` is handled |
-| 6 | unit | `sumUsage(vendorReported, estimated)` returns a pair, not a number | The sources are silently mixed |
+| #   | Level | Test                                                                                      | Red when                                            |
+| --- | ----- | ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| 1   | unit  | Committed 30-row reason table compared to the exported union                              | A reason was added to one and not the other         |
+| 2   | unit  | `provider.unavailable` fixtures with both classes both parse                              | `class` is computed from `reason`                   |
+| 3   | unit  | `effect.reconcile-unknown` + `class: 'transient'` rejected                                | The refinement is missing                           |
+| 4   | unit  | Round-trip deep-equality over the full corpus                                             | A `Handle` or `EventSeq` brand breaks serialisation |
+| 5   | unit  | `toNodeFailure` on a thrown string, a thrown object, `undefined`, and an `AggregateError` | Only `Error` is handled                             |
+| 6   | unit  | `sumUsage(vendorReported, estimated)` returns a pair, not a number                        | The sources are silently mixed                      |
 
 ---
 
@@ -703,13 +703,13 @@ green early makes every subsequent story cheaper.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| **The §9 event table and the code diverge.** Forty payload schemas is enough that one gets added to the docs and not the registry. | KAR-02.7 test 7: a table-driven test over the exported kind list, written first. |
-| **`returns.maxTokens`' 500–2000 band is Unverified** (roadmap A4-6) — practitioner consensus, no controlled study. | Ship 1500 as one named constant, per-node-type override, and instrument oversize rate from M1. Do not design a budget mechanism around the number. |
-| **A canonical-encoder refactor silently orphans every `plan` row.** | The committed golden hex in KAR-02.9 test 5, and a written rule that changing it is a migration. |
+| Risk                                                                                                                                                                  | Mitigation                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The §9 event table and the code diverge.** Forty payload schemas is enough that one gets added to the docs and not the registry.                                    | KAR-02.7 test 7: a table-driven test over the exported kind list, written first.                                                                                                                   |
+| **`returns.maxTokens`' 500–2000 band is Unverified** (roadmap A4-6) — practitioner consensus, no controlled study.                                                    | Ship 1500 as one named constant, per-node-type override, and instrument oversize rate from M1. Do not design a budget mechanism around the number.                                                 |
+| **A canonical-encoder refactor silently orphans every `plan` row.**                                                                                                   | The committed golden hex in KAR-02.9 test 5, and a written rule that changing it is a migration.                                                                                                   |
 | **Zod 4's `z.toJSONSchema()` may emit constructs `Ajv2020` in strict mode refuses** for some schema shapes (e.g. certain `z.discriminatedUnion` or `z.record` forms). | KAR-02.8 criterion 3 catches it at emit time; the fallback is to restrict the Zod constructs used in schemas that must round-trip, and that restriction is cheap to apply now and expensive later. |
-| **Two added stories (02.9, 02.10) expand the epic beyond the skeleton.** | Both are strictly required by [04-domain-model.md](../../04-domain-model.md) §3/§7/§8 and by KAR-02.7's dependencies; both are `S`. Total epic remains ~12 days, inside the ~15-day guidance. |
+| **Two added stories (02.9, 02.10) expand the epic beyond the skeleton.**                                                                                              | Both are strictly required by [04-domain-model.md](../../04-domain-model.md) §3/§7/§8 and by KAR-02.7's dependencies; both are `S`. Total epic remains ~12 days, inside the ~15-day guidance.      |
 
 ---
 

@@ -1,20 +1,20 @@
 # EPIC-13: Human-in-the-loop and approvals
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-13-human-in-the-loop-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-13 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W8b (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~11 days across 4 stories |
-| **Depends on** | EPIC-06 (durable wake times, pause/resume as events, the 1 Hz ticker), EPIC-03 (the ledger and the reducer), EPIC-08 (the permission policy function whose escalations arrive here) |
-| **Blocks** | EPIC-15 (the human endpoints mount this epic's service functions), EPIC-17 (the approval surfaces) · EPIC-12 consumes the queue — a `needs-human` verdict is only useful if something answers it — but is not gated on this epic starting, which is why EPIC-12 does not list it in `Depends on` |
-| **PRD requirements** | F8.1, F8.2, F8.3, F4.4, F4.8, F5.4, F5.6, NF4, NF10 |
-| **Architecture** | [10-verification-gates.md §1, §9.1](../../10-verification-gates.md), [11-api-and-realtime.md §2, §6, §7.5, §11](../../11-api-and-realtime.md), [05-durable-execution.md §10.1, §10.4, §9.3](../../05-durable-execution.md), [09-workspace-and-safety.md §8.2, §10](../../09-workspace-and-safety.md) |
+|                      |                                                                                                                                                                                                                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-13                                                                                                                                                                                                                                                                                              |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                          |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                   |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                   |
+| **Workstream**       | W8b (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                        |
+| **Size**             | ~11 days across 4 stories                                                                                                                                                                                                                                                                            |
+| **Depends on**       | EPIC-06 (durable wake times, pause/resume as events, the 1 Hz ticker), EPIC-03 (the ledger and the reducer), EPIC-08 (the permission policy function whose escalations arrive here)                                                                                                                  |
+| **Blocks**           | EPIC-15 (the human endpoints mount this epic's service functions), EPIC-17 (the approval surfaces) · EPIC-12 consumes the queue — a `needs-human` verdict is only useful if something answers it — but is not gated on this epic starting, which is why EPIC-12 does not list it in `Depends on`     |
+| **PRD requirements** | F8.1, F8.2, F8.3, F4.4, F4.8, F5.4, F5.6, NF4, NF10                                                                                                                                                                                                                                                  |
+| **Architecture**     | [10-verification-gates.md §1, §9.1](../../10-verification-gates.md), [11-api-and-realtime.md §2, §6, §7.5, §11](../../11-api-and-realtime.md), [05-durable-execution.md §10.1, §10.4, §9.3](../../05-durable-execution.md), [09-workspace-and-safety.md §8.2, §10](../../09-workspace-and-safety.md) |
 
 ## Goal
 
@@ -30,17 +30,17 @@ guess.
 
 ## Why this matters
 
-PRD §3.2 lists *"no human-in-the-loop"* (G11) as a **Medium** gap in ODW, and that rating
-understates it for Karvan specifically, because three P0 mechanisms elsewhere in the system
+PRD §3.2 lists _"no human-in-the-loop"_ (G11) as a **Medium** gap in ODW, and that rating
+understates it for DeFlow specifically, because three P0 mechanisms elsewhere in the system
 terminate here and nowhere else:
 
 - **`reconcile()` can return `'unknown'` and there is no correct automatic action.** Retrying might
   double-apply a migration; skipping might drop the work. Both are wrong in some cases and neither
-  is detectable. [05 §9.3](../../05-durable-execution.md) says to *design the human gate for this
-  case on day one rather than bolting it on*, and A1-5 rates it **High**. That gate is this epic.
+  is detectable. [05 §9.3](../../05-durable-execution.md) says to _design the human gate for this
+  case on day one rather than bolting it on_, and A1-5 rates it **High**. That gate is this epic.
 - **There is no override flag in the verification data model.** The only path past a failing gate is
   a `human` node whose response is a ledger event with an identity and a timestamp
-  ([10 §9.1](../../10-verification-gates.md)). If the human path does not work, the *only* thing
+  ([10 §9.1](../../10-verification-gates.md)). If the human path does not work, the _only_ thing
   EPIC-12 can do with a red gate is stop the run.
 - **Budget ceilings pause rather than fail** (F4.6), and the churn breaker transitions the run to
   `needs_human` rather than continuing (F4.7). Both produce a run that is alive, cheap and waiting —
@@ -62,7 +62,7 @@ failure". **Verified 2026-08-02.**
 
 - `HumanNode` execution: `prompt`, `options[{ id, label, effect }]` with effects
   `approve | reject | edit | inject`, and `deadline { wakeAt, onTimeout: 'fail' | 'escalate' |
-  'default', default? }`.
+'default', default? }`.
 - `human.requested` / `human.responded` events, and the `node.suspended { until: { kind: 'human' } }`
   lifecycle around them.
 - Durable suspension via a `node_wake` row with `reason: 'human_gate'`, resumed by the 1 Hz ticker,
@@ -76,11 +76,11 @@ failure". **Verified 2026-08-02.**
 - The `runs=*` global topic on the SSE stream carrying `human.requested` without dragging every
   `node.progress` frame from every run into an idle tab.
 - `POST /api/runs/:id/nodes/:nodeId/respond`, `GET /api/approvals`,
-  `POST /api/runs/:id/interject` and `POST /api/runs/:id/patches/:patchId/decide` as *handlers on
-  the daemon's core service*, with their `ifLastSeq` optimistic-concurrency behaviour and their
+  `POST /api/runs/:id/interject` and `POST /api/runs/:id/patches/:patchId/decide` as _handlers on
+  the daemon's core service_, with their `ifLastSeq` optimistic-concurrency behaviour and their
   `409` codes (`stale_cursor`, `patch_already_decided`, `run_not_pausable`).
 - Interjection: `mode: 'next-turn' | 'pause-and-inject'`, the `delivery: 'queued' | 'delivered' |
-  'unsupported'` response, the `202` (never an error) for `unsupported`, and the guidance's entry
+'unsupported'` response, the `202` (never an error) for `unsupported`, and the guidance's entry
   into the next context packet as an attributed segment.
 - Permission escalation: which `session/request_permission` calls are auto-answered from the policy
   table and which reach the Operator; the context payload an escalation carries; the four
@@ -96,17 +96,17 @@ failure". **Verified 2026-08-02.**
   is exercised through its service function, which is the same code path.
 - The permission policy function itself, the command allowlist, path scoping and environment
   scrubbing — [EPIC-08](./EPIC-08-safety-model.md). This epic owns only what happens when that
-  function returns *"ask the human"*.
+  function returns _"ask the human"_.
 - Verdicts, gates and the repair loop — [EPIC-12](./EPIC-12-verification-gates.md). A `needs-human`
   verdict is an input to the queue here.
 - The patch policy engine's rule table — [EPIC-11](./EPIC-11-dynamic-planning.md) KAR-11.4. This
-  epic surfaces and decides queued patches; it does not decide *which* patches queue.
+  epic surfaces and decides queued patches; it does not decide _which_ patches queue.
 - Budget ceilings and the churn breaker — [EPIC-14](./EPIC-14-cost-governance.md) and
   [EPIC-06](./EPIC-06-orchestrator.md). Both feed the queue.
 - The approval queue **UI**, the notification badge and the inspector deep links —
   [EPIC-17](./EPIC-17-p0-views.md). This epic defines the projection they render.
 - Desktop, Slack and email notifications (F8.4) — P1, M2.
-- Steering without stopping (F8.5) as a *guaranteed* capability — P1 and adapter-dependent. The
+- Steering without stopping (F8.5) as a _guaranteed_ capability — P1 and adapter-dependent. The
   `delivery: 'unsupported'` branch is in scope precisely so M1 is honest about not having it.
 - The interactive PTY WebSocket at `/api/pty/:runId/:nodeId` — [EPIC-15](./EPIC-15-daemon-api.md).
   Typing into a live `node-pty` is the one thing that genuinely needs keystroke latency; textual
@@ -121,7 +121,7 @@ failure". **Verified 2026-08-02.**
       start — a human gate that does not survive a restart is not a human gate.
 - [ ] The `HumanNode` type from [04 §3.2](../../04-domain-model.md) and the `human.requested` /
       `human.responded` envelopes from [04 §9](../../04-domain-model.md) are landed in
-      `@karvan/core`.
+      `@DeFlow/core`.
 - [ ] A decision is recorded on the `human.interjected` event kind (see KAR-13.3 notes): the API
       contract returns a `seq` from `POST /interject`, so an event must exist, and the Event union
       in EPIC-02 KAR-02.7 needs the slot before this epic writes to it.
@@ -141,7 +141,7 @@ failure". **Verified 2026-08-02.**
       **one** `node_wake` row, and resumes to the same reduced state — asserted against a file-backed
       ledger reopened by a fresh engine, not against an in-process object.
 - [ ] `kill -9` on the daemon while a `human` node is pending, followed by a restart over the same
-      `.karvan/` directory, leaves the node still pending, still in the approval queue, and still
+      `.DeFlow/` directory, leaves the node still pending, still in the approval queue, and still
       answerable — with no duplicate `human.requested` event.
 - [ ] A grep for `setTimeout` in `packages/core` and `packages/daemon/src/scheduler` returns hits
       only for the ticker's own sleep hint, and CI fails otherwise.
@@ -157,13 +157,13 @@ failure". **Verified 2026-08-02.**
 
 ### KAR-13.1 — Blocking human nodes with cheap suspension
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-06 KAR-06.6, EPIC-06 KAR-06.7, EPIC-03 KAR-03.8 |
-| **PRD** | F8.1, F4.8, F4.4, NF4 |
+|                 |                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                |
+| **Priority**    | P0                                                                                                         |
+| **Size**        | M                                                                                                          |
+| **Depends on**  | EPIC-06 KAR-06.6, EPIC-06 KAR-06.7, EPIC-03 KAR-03.8                                                       |
+| **PRD**         | F8.1, F4.8, F4.4, NF4                                                                                      |
 | **Verified by** | EPIC-13-S1, EPIC-13-S2, EPIC-13-S3, EPIC-13-S4, EPIC-13-S5, EPIC-13-S6, EPIC-13-S7, EPIC-13-S8, EPIC-13-S9 |
 
 **As** the Operator, **I want** a `human` node to block its branch indefinitely at effectively zero
@@ -198,7 +198,7 @@ boolean on an object satisfies none of.
    resumes on the **same attempt** — no new idempotency key is minted, because a human gate is not a
    retry.
 4. Killing the daemon with `SIGKILL` while the node is pending and restarting over the same
-   `.karvan/` directory leaves the node pending, its `node_wake` row intact, exactly one
+   `.DeFlow/` directory leaves the node pending, its `node_wake` row intact, exactly one
    `human.requested` event in the ledger, and the node answerable. `PRAGMA integrity_check` returns
    `ok`.
 5. Wall-clock movement does not affect the gate. A test that moves the injected clock backwards
@@ -223,19 +223,19 @@ boolean on an object satisfies none of.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `setTimeout(fn, 2**31)` fires in under 10 ms — the footgun, asserted | Nobody believes the comment |
-| 2 | unit | `decide()` over a state with an admitted `human` node returns a suspend command carrying a `node_wake` write, not a timer | The wait is a timer |
-| 3 | unit | `decide()` still admits a sibling node whose deps are satisfied while a `human` node is suspended | Suspension is treated as a run-level pause |
-| 4 | unit | `deadline.onTimeout` table over `fail`/`escalate`/`default`, plus `default` naming an unknown option → validation error | The timeout paths are one branch |
-| 5 | integration | File-backed ledger, `TestClock` advanced six hours: one `node_wake` row, no events in the interval, node still suspended | The wait is in memory |
-| 6 | integration | `human.requested` + `node.suspended` + `node_wake` written in one transaction, asserted by a rollback injection | They are three statements |
-| 7 | integration | `SIGKILL` mid-suspension → reopen with a fresh engine over the same file → node pending, one `human.requested`, `integrity_check` ok | `:memory:` was used, or state lived in the process |
-| 8 | integration | Clock moved backwards by two hours mid-wait → wake still fires at the recorded `wake_at`, ordering asserted on `seq` | Logic compares timestamps |
-| 9 | integration | Second `respond` returns 409 with the original body; one `human.responded` in the ledger | The handler is not idempotent |
-| 10 | integration | Option effect matrix over `approve`/`reject`/`edit`/`inject`, with `edit` payload validated against `returns.schemaId` | `edit` accepts anything |
-| 11 | e2e | Real daemon on an ephemeral port: a `human` node blocks, an approval is submitted over HTTP, the run advances | The engine and the API disagree about the node's state |
+| #   | Level       | Test                                                                                                                                 | Red when                                               |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| 1   | unit        | `setTimeout(fn, 2**31)` fires in under 10 ms — the footgun, asserted                                                                 | Nobody believes the comment                            |
+| 2   | unit        | `decide()` over a state with an admitted `human` node returns a suspend command carrying a `node_wake` write, not a timer            | The wait is a timer                                    |
+| 3   | unit        | `decide()` still admits a sibling node whose deps are satisfied while a `human` node is suspended                                    | Suspension is treated as a run-level pause             |
+| 4   | unit        | `deadline.onTimeout` table over `fail`/`escalate`/`default`, plus `default` naming an unknown option → validation error              | The timeout paths are one branch                       |
+| 5   | integration | File-backed ledger, `TestClock` advanced six hours: one `node_wake` row, no events in the interval, node still suspended             | The wait is in memory                                  |
+| 6   | integration | `human.requested` + `node.suspended` + `node_wake` written in one transaction, asserted by a rollback injection                      | They are three statements                              |
+| 7   | integration | `SIGKILL` mid-suspension → reopen with a fresh engine over the same file → node pending, one `human.requested`, `integrity_check` ok | `:memory:` was used, or state lived in the process     |
+| 8   | integration | Clock moved backwards by two hours mid-wait → wake still fires at the recorded `wake_at`, ordering asserted on `seq`                 | Logic compares timestamps                              |
+| 9   | integration | Second `respond` returns 409 with the original body; one `human.responded` in the ledger                                             | The handler is not idempotent                          |
+| 10  | integration | Option effect matrix over `approve`/`reject`/`edit`/`inject`, with `edit` payload validated against `returns.schemaId`               | `edit` accepts anything                                |
+| 11  | e2e         | Real daemon on an ephemeral port: a `human` node blocks, an approval is submitted over HTTP, the run advances                        | The engine and the API disagree about the node's state |
 
 **Notes / risks** — the six-hour scenario must run against a **file-backed** database. `:memory:`
 cannot be reopened after a simulated crash, which is the one property that matters most here
@@ -247,13 +247,13 @@ deadlocks for the full 30 s timeout in CI. Advance the injected `Clock`.
 
 ### KAR-13.2 — The cross-run approval queue
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-13.1, EPIC-03 KAR-03.5, EPIC-11 KAR-11.4, EPIC-12 KAR-12.3 |
-| **PRD** | F8.3, NF10 |
+|                 |                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                               |
+| **Priority**    | P0                                                                                        |
+| **Size**        | M                                                                                         |
+| **Depends on**  | KAR-13.1, EPIC-03 KAR-03.5, EPIC-11 KAR-11.4, EPIC-12 KAR-12.3                            |
+| **PRD**         | F8.3, NF10                                                                                |
 | **Verified by** | EPIC-13-S10, EPIC-13-S11, EPIC-13-S12, EPIC-13-S13, EPIC-13-S14, EPIC-13-S15, EPIC-13-S16 |
 
 **As** the Operator, **I want** one surface listing everything waiting on me across every run,
@@ -269,16 +269,16 @@ deep-link to that event's node.
 
 Eight things can wait on a human, and the queue is not useful unless it carries all of them:
 
-| Kind | Source event | What the Operator decides |
-|---|---|---|
-| `human-node` | `human.requested` | Choose an option (F8.1) |
-| `patch` | `plan.patch.proposed` with a `queued` decision | Approve or reject (F2.5) |
-| `gate-needs-human` | `gate.evaluated` with `outcome: 'needs-human'` | Judge, or accept a red gate explicitly |
-| `reconcile-unknown` | `node.failed` with `effect.reconcile-unknown` | *"It ran"* or *"it didn't"* — no automatic answer exists |
-| `budget` | `budget.exceeded` | Raise the ceiling or stop (F4.6 pauses, never fails) |
-| `churn` | `run.needs_human { reason: 'churn' }` | Change the approach, or stop |
-| `tainted` | `fact.invalidated` with a non-empty `taints` list | Re-run, abandon or accept the stale input |
-| `permission` | an escalated `session/request_permission` (KAR-13.4) | Allow or reject, once or always |
+| Kind                | Source event                                         | What the Operator decides                                |
+| ------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
+| `human-node`        | `human.requested`                                    | Choose an option (F8.1)                                  |
+| `patch`             | `plan.patch.proposed` with a `queued` decision       | Approve or reject (F2.5)                                 |
+| `gate-needs-human`  | `gate.evaluated` with `outcome: 'needs-human'`       | Judge, or accept a red gate explicitly                   |
+| `reconcile-unknown` | `node.failed` with `effect.reconcile-unknown`        | _"It ran"_ or _"it didn't"_ — no automatic answer exists |
+| `budget`            | `budget.exceeded`                                    | Raise the ceiling or stop (F4.6 pauses, never fails)     |
+| `churn`             | `run.needs_human { reason: 'churn' }`                | Change the approach, or stop                             |
+| `tainted`           | `fact.invalidated` with a non-empty `taints` list    | Re-run, abandon or accept the stale input                |
+| `permission`        | an escalated `session/request_permission` (KAR-13.4) | Allow or reject, once or always                          |
 
 The transport detail that makes this cheap is the `runs=*` topic. One SSE connection per tab is an
 architecture constraint, not a tuning knob — HTTP/1.1 caps concurrent connections per origin at
@@ -295,7 +295,7 @@ frame into an idle tab.
    or summary, the creating `seq`, and an age.
 2. All eight kinds in the table above appear in the queue, and each carries enough to decide without
    a second request: a patch item carries `estimate { costUsdDelta, blastRadiusFiles, maxPermission,
-   replanDepth }` and the `reason`; a `reconcile-unknown` item carries the effect row and both
+replanDepth }` and the `reason`; a `reconcile-unknown` item carries the effect row and both
    reconciliation hashes; a `gate-needs-human` item carries the verdict's findings and the reason.
 3. The queue is computed from reduced state with no auxiliary table. Deleting the projection cache
    and replaying the ledger produces an identical queue — asserted by a snapshot comparison.
@@ -319,21 +319,21 @@ frame into an idle tab.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `approvalsProjection(state)` over a hand-built multi-run state returns all eight kinds, ordered by creating `seq` | The projection knows about human nodes only |
-| 2 | unit | Each kind's item carries its decision payload — table-driven over the eight | Items are `{ runId, nodeId }` stubs and the UI has to re-fetch |
-| 3 | unit | Replaying the ledger from `seq` 0 produces a queue identical to the cached projection | The queue is accumulated rather than derived |
-| 4 | integration | Two concurrent runs on one file-backed ledger, one pending item each: one `GET /approvals` returns both | The endpoint is per-run |
-| 5 | integration | `SIGKILL` with three items pending → restart → the same three items, same creating `seq`s, no duplicates | Pending state lived in memory |
-| 6 | integration | A stream opened with `runs=*` receives `human.requested` and zero `node.progress` frames while a noisy run streams output | The topic filter is not applied server-side |
-| 7 | integration | Approve a patch with a stale `ifLastSeq` after the policy timer auto-applied it → `409 stale_cursor`, nothing applied | Optimistic concurrency is missing |
-| 8 | integration | Decide an already-decided patch → `409 patch_already_decided` with the original decision | The second decision overwrites the first |
-| 9 | integration | Resolving an item removes it and the removal arrives on the same connection | The client has to poll |
-| 10 | e2e | Two runs on a real daemon; the queue drives both to completion from one connection | Per-panel connections were reintroduced |
+| #   | Level       | Test                                                                                                                      | Red when                                                       |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | unit        | `approvalsProjection(state)` over a hand-built multi-run state returns all eight kinds, ordered by creating `seq`         | The projection knows about human nodes only                    |
+| 2   | unit        | Each kind's item carries its decision payload — table-driven over the eight                                               | Items are `{ runId, nodeId }` stubs and the UI has to re-fetch |
+| 3   | unit        | Replaying the ledger from `seq` 0 produces a queue identical to the cached projection                                     | The queue is accumulated rather than derived                   |
+| 4   | integration | Two concurrent runs on one file-backed ledger, one pending item each: one `GET /approvals` returns both                   | The endpoint is per-run                                        |
+| 5   | integration | `SIGKILL` with three items pending → restart → the same three items, same creating `seq`s, no duplicates                  | Pending state lived in memory                                  |
+| 6   | integration | A stream opened with `runs=*` receives `human.requested` and zero `node.progress` frames while a noisy run streams output | The topic filter is not applied server-side                    |
+| 7   | integration | Approve a patch with a stale `ifLastSeq` after the policy timer auto-applied it → `409 stale_cursor`, nothing applied     | Optimistic concurrency is missing                              |
+| 8   | integration | Decide an already-decided patch → `409 patch_already_decided` with the original decision                                  | The second decision overwrites the first                       |
+| 9   | integration | Resolving an item removes it and the removal arrives on the same connection                                               | The client has to poll                                         |
+| 10  | e2e         | Two runs on a real daemon; the queue drives both to completion from one connection                                        | Per-panel connections were reintroduced                        |
 
 **Notes / risks** — the `ifLastSeq` requirement is not theoretical. Patches are auto-applied on a
-policy timer (F2.5), so *"the panel went stale while the Operator read it"* is the normal case, not
+policy timer (F2.5), so _"the panel went stale while the Operator read it"_ is the normal case, not
 an exotic one ([11 §11](../../11-api-and-realtime.md)). The `409` is a feature: it is how the UI
 learns to re-render rather than silently applying a decision to a world that moved.
 
@@ -341,13 +341,13 @@ learns to re-render rather than silently applying a decision to a world that mov
 
 ### KAR-13.3 — Interjection into a running node
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-13.1, EPIC-05 KAR-05.1, EPIC-05 KAR-05.2, EPIC-09 KAR-09.2 |
-| **PRD** | F8.2, F8.5 (P1, honestly degraded), F4.4 |
+|                 |                                                                 |
+| --------------- | --------------------------------------------------------------- |
+| **Status**      | Not started                                                     |
+| **Priority**    | P0                                                              |
+| **Size**        | M                                                               |
+| **Depends on**  | KAR-13.1, EPIC-05 KAR-05.1, EPIC-05 KAR-05.2, EPIC-09 KAR-09.2  |
+| **PRD**         | F8.2, F8.5 (P1, honestly degraded), F4.4                        |
 | **Verified by** | EPIC-13-S17, EPIC-13-S18, EPIC-13-S19, EPIC-13-S20, EPIC-13-S21 |
 
 **As** the Operator watching a node go the wrong way, **I want** to hand it a correction without
@@ -400,17 +400,17 @@ node received. It is not silently prepended to a prompt where nobody can find it
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | The interject service returns `unsupported` for a capability row without steering, `queued` for one with it, both with a `202`-shaped result | `unsupported` throws |
-| 2 | unit | Interjecting a suspended `human` node returns the typed "use respond" error | The two paths overlap |
-| 3 | unit | Two interjections before the next turn both appear in the assembled packet, in `seq` order | The second overwrites the first |
-| 4 | integration | Mock agent scripted to accept mid-turn steering: `delivered`, and the text appears in the next `session/prompt` frame | Delivery is assumed rather than observed |
-| 5 | integration | Mock agent with steering disabled via `--capabilities`: `202 unsupported`, no frame sent, projection shows undelivered | The daemon pretends |
-| 6 | integration | `pause-and-inject` on a live node: `node.suspended`, packet rebuilt with the segment, resume with the same `ikey`, no re-executed effect | Resume mints a new attempt |
-| 7 | integration | Golden packet snapshot containing the `human`-provenance segment | Guidance is spliced into a prompt string |
-| 8 | integration | Node completes between read and post with a stale `ifLastSeq` → `409 stale_cursor`, nothing appended | The write lands on a finished node |
-| 9 | e2e | Real daemon: a run is interjected mid-node and completes; the ledger shows one `human.interjected` and no cancellation | The run is discarded and restarted |
+| #   | Level       | Test                                                                                                                                         | Red when                                 |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 1   | unit        | The interject service returns `unsupported` for a capability row without steering, `queued` for one with it, both with a `202`-shaped result | `unsupported` throws                     |
+| 2   | unit        | Interjecting a suspended `human` node returns the typed "use respond" error                                                                  | The two paths overlap                    |
+| 3   | unit        | Two interjections before the next turn both appear in the assembled packet, in `seq` order                                                   | The second overwrites the first          |
+| 4   | integration | Mock agent scripted to accept mid-turn steering: `delivered`, and the text appears in the next `session/prompt` frame                        | Delivery is assumed rather than observed |
+| 5   | integration | Mock agent with steering disabled via `--capabilities`: `202 unsupported`, no frame sent, projection shows undelivered                       | The daemon pretends                      |
+| 6   | integration | `pause-and-inject` on a live node: `node.suspended`, packet rebuilt with the segment, resume with the same `ikey`, no re-executed effect     | Resume mints a new attempt               |
+| 7   | integration | Golden packet snapshot containing the `human`-provenance segment                                                                             | Guidance is spliced into a prompt string |
+| 8   | integration | Node completes between read and post with a stale `ifLastSeq` → `409 stale_cursor`, nothing appended                                         | The write lands on a finished node       |
+| 9   | e2e         | Real daemon: a run is interjected mid-node and completes; the ledger shows one `human.interjected` and no cancellation                       | The run is discarded and restarted       |
 
 **Notes / risks** — the API contract returns a `seq` from `POST /interject`, so an event must exist;
 this story names it `human.interjected` (v1) and contributes the payload and its upcaster slot to
@@ -423,38 +423,38 @@ writes to it, which is why it is a Definition-of-Ready item rather than a task.
 
 ### KAR-13.4 — Permission escalation requests reaching the operator
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-13.1, KAR-13.2, EPIC-08 KAR-08.1, EPIC-08 KAR-08.3, EPIC-05 KAR-05.1 |
-| **PRD** | F5.4, F5.6, F8.1, F8.3 |
+|                 |                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                               |
+| **Priority**    | P0                                                                                        |
+| **Size**        | M                                                                                         |
+| **Depends on**  | KAR-13.1, KAR-13.2, EPIC-08 KAR-08.1, EPIC-08 KAR-08.3, EPIC-05 KAR-05.1                  |
+| **PRD**         | F5.4, F5.6, F8.1, F8.3                                                                    |
 | **Verified by** | EPIC-13-S22, EPIC-13-S23, EPIC-13-S24, EPIC-13-S25, EPIC-13-S26, EPIC-13-S27, EPIC-13-S28 |
 
 **As** the Operator, **I want** the small number of permission requests that actually need me to
 arrive with the command, the resolved path, the rule that matched and the node's declared scope,
-**so that** I can decide in five seconds and am not trained to click *allow* by a stream of requests
+**so that** I can decide in five seconds and am not trained to click _allow_ by a stream of requests
 I did not need to see.
 
-Karvan is the ACP **client**, so it implements `session/request_permission` and sits in the path of
+DeFlow is the ACP **client**, so it implements `session/request_permission` and sits in the path of
 every file access and every command execution
-([09 §8](../../09-workspace-and-safety.md)). **Karvan auto-responds to routine requests from the
+([09 §8](../../09-workspace-and-safety.md)). **DeFlow auto-responds to routine requests from the
 policy table — no human in the loop — and escalates to the Operator only for the gated categories.**
-That split is the story: a system that asks about everything is a system whose *allow* button gets
+That split is the story: a system that asks about everything is a system whose _allow_ button gets
 pressed reflexively, which is exactly the ambient-authority failure the Kiro incident turned on.
 [09 §10.5](../../09-workspace-and-safety.md) is explicit that **human gates belong at the
 network-egress and identity boundary, not at the command boundary**.
 
 An escalation is a `human` node like any other — same suspension, same queue, same
 `human.responded` — with a payload built for a five-second decision: the `command`, `args`, `cwd`
-and the *resolved* path (post-`realpath`, so a symlink pointing outside the worktree is visible as
+and the _resolved_ path (post-`realpath`, so a symlink pointing outside the worktree is visible as
 what it is), the `ToolCallLocation.path` the agent supplied, which policy rule matched and why, the
 node's `permission` level and declared `pathScopes`, and the node's brief.
 
 The four `PermissionOptionKind` values — `allow_once`, `allow_always`, `reject_once`,
 `reject_always` (**verified 2026-08-02** from `@agentclientprotocol/sdk@1.3.0`) — are the options
-Karvan offers back, and `{outcome: 'cancelled'}` is a first-class `RequestPermissionOutcome`, not an
+DeFlow offers back, and `{outcome: 'cancelled'}` is a first-class `RequestPermissionOutcome`, not an
 error. The `_always` variants scope to the run, never to the machine: a decision made about one
 agent's session must not silently authorise a different run tomorrow.
 
@@ -477,7 +477,7 @@ agent's session must not silently authorise a different run tomorrow.
    protocol error, the cancellation is recorded, and the agent's turn ends per the adapter's
    contract.
 6. An escalation inherits the `HumanNode.deadline` semantics. On expiry with
-   `onTimeout: 'default'`, Karvan answers with the declared default option — which for an escalation
+   `onTimeout: 'default'`, DeFlow answers with the declared default option — which for an escalation
    is `reject_once` — and records `human.responded { by: 'policy' }`. Leaving an agent session open
    indefinitely is not free, and a silent hang is a worse answer than a recorded refusal.
 7. An adapter whose capability row reports `mediatedExecution: false` is **refused scheduling** for
@@ -492,19 +492,19 @@ agent's session must not silently authorise a different run tomorrow.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | The policy function's escalate/auto decision, table-driven over the four ladder levels × the gated categories | Everything escalates, or nothing does |
-| 2 | unit | The escalation payload builder produces command, args, cwd, resolved path, matched rule, node permission and pathScopes | The payload is a message string |
-| 3 | unit | `_always` decisions are stored run-scoped and are absent from a second run's state | The decision persists to config |
-| 4 | integration | Mock agent scenario 3: twenty in-scope `fs/read_text_file` calls → zero `human.requested` events | Routine calls reach the Operator |
-| 5 | integration | Mock agent requests `terminal/create` for `curl https://example.com` at `worktree` level → escalation with the matched rule named | Egress is auto-denied silently, or auto-allowed |
-| 6 | integration | A symlinked path resolving outside the worktree → the payload shows the `realpath` target | Only the requested path is shown |
-| 7 | integration | Option-kind matrix: a second matching request after `allow_always` is auto-answered; after `allow_once` it prompts again | `_always` is not implemented |
-| 8 | integration | Mock agent scripted to produce `{outcome: 'cancelled'}` → recorded, node not failed with a protocol error | Cancellation is an exception |
-| 9 | integration | Deadline expiry with `onTimeout: 'default'` → `reject_once` recorded with `by: 'policy'` | The escalation waits forever |
-| 10 | integration | `mediatedExecution: false` capability row → node refused scheduling with a typed error | The adapter is silently escalated |
-| 11 | integration | `SIGKILL` with an escalation outstanding → restart → node failed with the lost-session reason, queue item gone, new attempt scheduled | The queue holds a request nothing can answer |
+| #   | Level       | Test                                                                                                                                  | Red when                                        |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 1   | unit        | The policy function's escalate/auto decision, table-driven over the four ladder levels × the gated categories                         | Everything escalates, or nothing does           |
+| 2   | unit        | The escalation payload builder produces command, args, cwd, resolved path, matched rule, node permission and pathScopes               | The payload is a message string                 |
+| 3   | unit        | `_always` decisions are stored run-scoped and are absent from a second run's state                                                    | The decision persists to config                 |
+| 4   | integration | Mock agent scenario 3: twenty in-scope `fs/read_text_file` calls → zero `human.requested` events                                      | Routine calls reach the Operator                |
+| 5   | integration | Mock agent requests `terminal/create` for `curl https://example.com` at `worktree` level → escalation with the matched rule named     | Egress is auto-denied silently, or auto-allowed |
+| 6   | integration | A symlinked path resolving outside the worktree → the payload shows the `realpath` target                                             | Only the requested path is shown                |
+| 7   | integration | Option-kind matrix: a second matching request after `allow_always` is auto-answered; after `allow_once` it prompts again              | `_always` is not implemented                    |
+| 8   | integration | Mock agent scripted to produce `{outcome: 'cancelled'}` → recorded, node not failed with a protocol error                             | Cancellation is an exception                    |
+| 9   | integration | Deadline expiry with `onTimeout: 'default'` → `reject_once` recorded with `by: 'policy'`                                              | The escalation waits forever                    |
+| 10  | integration | `mediatedExecution: false` capability row → node refused scheduling with a typed error                                                | The adapter is silently escalated               |
+| 11  | integration | `SIGKILL` with an escalation outstanding → restart → node failed with the lost-session reason, queue item gone, new attempt scheduled | The queue holds a request nothing can answer    |
 
 **Notes / risks** — A5-1 sits underneath this story: Claude Code's sandbox settings are version-gated
 at fine granularity (`credentials` ≥ 2.1.187, `mask` ≥ 2.1.199, `filesystem.disabled` ≥ 2.1.216,
@@ -518,14 +518,14 @@ Operator can see which enforcement was actually in effect when they decide.
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **The HTTP surface belongs to EPIC-15, which depends on EPIC-11.** If EPIC-15 slips, this epic's handlers have no transport. | Medium | Every handler is written as a service function first and exercised through it, which is the same code path EPIC-15 mounts. The `karvan` CLI (EPIC-18) can also drive them. Only the e2e rows in the test plans block on EPIC-15. |
-| **A1-5 — `reconcile()` returning `'unknown'` has no correct automatic action**, and this epic is where the product answer lives. | High | The `reconcile-unknown` queue kind is a first-class item in KAR-13.2 with the effect row and both reconciliation hashes attached. If it turns out to be common in practice, the escalation is a content-addressed overlay — large complexity, and explicitly not pre-built ([05 §9.3](../../05-durable-execution.md)). |
-| **Alert fatigue: escalate too much and the *allow* button becomes reflexive**, which is precisely the ambient-authority failure F5.6 exists to prevent. | High | KAR-13.4 AC-1 makes it measurable rather than a matter of taste: twenty routine in-scope reads must produce zero `human.requested` events. Track escalations per run as a metric from the first real run and treat a rise as a policy-table bug. |
-| **F8.5 steering is adapter-dependent and may be unsupported on every installed adapter at M1.** | Medium | `delivery: 'unsupported'` with a `202` is the designed-in honest degradation, and `pause-and-inject` always works. The risk is only that the nicer mode is unavailable, not that interjection is. |
-| **A permission escalation ties up a live agent session** for as long as the Operator is away, and vendor sessions may time out on their own. | Medium | KAR-13.4 AC-6 gives escalations a deadline defaulting to `reject_once`, and AC-8 defines the restart path. Both are worse than an infinitely patient agent and better than a run that silently wedges. |
-| **Two mechanisms for "tell the run something"** — `respond` and `interject` — could overlap confusingly. | Low | KAR-13.3 AC-7 makes interjecting a suspended `human` node a typed error naming the correct call. |
+| Risk                                                                                                                                                    | Severity | Mitigation                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The HTTP surface belongs to EPIC-15, which depends on EPIC-11.** If EPIC-15 slips, this epic's handlers have no transport.                            | Medium   | Every handler is written as a service function first and exercised through it, which is the same code path EPIC-15 mounts. The `DeFlow` CLI (EPIC-18) can also drive them. Only the e2e rows in the test plans block on EPIC-15.                                                                                       |
+| **A1-5 — `reconcile()` returning `'unknown'` has no correct automatic action**, and this epic is where the product answer lives.                        | High     | The `reconcile-unknown` queue kind is a first-class item in KAR-13.2 with the effect row and both reconciliation hashes attached. If it turns out to be common in practice, the escalation is a content-addressed overlay — large complexity, and explicitly not pre-built ([05 §9.3](../../05-durable-execution.md)). |
+| **Alert fatigue: escalate too much and the _allow_ button becomes reflexive**, which is precisely the ambient-authority failure F5.6 exists to prevent. | High     | KAR-13.4 AC-1 makes it measurable rather than a matter of taste: twenty routine in-scope reads must produce zero `human.requested` events. Track escalations per run as a metric from the first real run and treat a rise as a policy-table bug.                                                                       |
+| **F8.5 steering is adapter-dependent and may be unsupported on every installed adapter at M1.**                                                         | Medium   | `delivery: 'unsupported'` with a `202` is the designed-in honest degradation, and `pause-and-inject` always works. The risk is only that the nicer mode is unavailable, not that interjection is.                                                                                                                      |
+| **A permission escalation ties up a live agent session** for as long as the Operator is away, and vendor sessions may time out on their own.            | Medium   | KAR-13.4 AC-6 gives escalations a deadline defaulting to `reject_once`, and AC-8 defines the restart path. Both are worse than an infinitely patient agent and better than a run that silently wedges.                                                                                                                 |
+| **Two mechanisms for "tell the run something"** — `respond` and `interject` — could overlap confusingly.                                                | Low      | KAR-13.3 AC-7 makes interjecting a suspended `human` node a typed error naming the correct call.                                                                                                                                                                                                                       |
 
 ---
 

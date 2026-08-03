@@ -7,29 +7,29 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan — pauses, cancels, and resolves the `needs_human` gate |
-| **karvand** | The local daemon. In several scenarios there is an old life and a new life, separated by `kill -9` |
-| **Scheduler** | `decide(state, now) -> Command[]` in `@karvan/core` — pure, total, no I/O, no clock of its own |
-| **Reducer** | `reduce(state, event) -> RunState` in `@karvan/core` — the only thing that produces state |
-| **EffectRunner** | `@karvan/orchestrator`'s imperative shell — the only place effects happen |
-| **Ticker** | The ~1 Hz loop draining `node_wake` and calling `decide()` |
-| **Provider agent** | A `karvan-mock-agent` subprocess on a temp `PATH`, spawned `{ detached: true }`, appending `{runId, nodeId, attempt, idempotencyKey}` to its own side-effect log on every invocation |
-| **Repository** | A real `git` working copy in a tmpdir, with `GIT_CONFIG_GLOBAL=/dev/null` and forced identity env |
-| **Ledger** | The file-backed SQLite database from [EPIC-03](../epics/EPIC-03-event-ledger.md) — `event`, `effect`, `node_wake`, `run` |
-| **CI** | The `integration`, `e2e` and `crash-fuzz` projects on `ubuntu-26.04` and `macos-26`, Node 24 and 26 |
+| Actor              | Description                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Operator**       | The engineer driving DeFlow — pauses, cancels, and resolves the `needs_human` gate                                                                                                   |
+| **DeFlowd**        | The local daemon. In several scenarios there is an old life and a new life, separated by `kill -9`                                                                                   |
+| **Scheduler**      | `decide(state, now) -> Command[]` in `@DeFlow/core` — pure, total, no I/O, no clock of its own                                                                                       |
+| **Reducer**        | `reduce(state, event) -> RunState` in `@DeFlow/core` — the only thing that produces state                                                                                            |
+| **EffectRunner**   | `@DeFlow/orchestrator`'s imperative shell — the only place effects happen                                                                                                            |
+| **Ticker**         | The ~1 Hz loop draining `node_wake` and calling `decide()`                                                                                                                           |
+| **Provider agent** | A `DeFlow-mock-agent` subprocess on a temp `PATH`, spawned `{ detached: true }`, appending `{runId, nodeId, attempt, idempotencyKey}` to its own side-effect log on every invocation |
+| **Repository**     | A real `git` working copy in a tmpdir, with `GIT_CONFIG_GLOBAL=/dev/null` and forced identity env                                                                                    |
+| **Ledger**         | The file-backed SQLite database from [EPIC-03](../epics/EPIC-03-event-ledger.md) — `event`, `effect`, `node_wake`, `run`                                                             |
+| **CI**             | The `integration`, `e2e` and `crash-fuzz` projects on `ubuntu-26.04` and `macos-26`, Node 24 and 26                                                                                  |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a git repository on branch "main"
+  Given a DeFlow workspace initialised in a git repository on branch "main"
   And the ledger is a FILE-BACKED SQLite database at <dataDir>/ledger.db — never ":memory:"
   And all six tables exist from migration 0001 and are declared STRICT
   And "seq" is INTEGER PRIMARY KEY AUTOINCREMENT, so sequence numbers have gaps and every
       consumer resumes from "strictly greater than my cursor"
-  And karvan-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn
+  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn
   And every mock agent runs with --seed so the pre-crash side of any run is deterministic
   And time enters the engine through the injected Clock port — never Date.now() or setTimeout
   And the run's scheduling policy is: globalAgentSlots 3, repo write lock 1, worktree lock 1
@@ -45,39 +45,39 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-06-S1 | Happy path: the ready set admits an unblocked node | KAR-06.1 | Happy path |
-| EPIC-06-S2 | `decide()` is pure — no clock, no I/O, no mutation | KAR-06.1 | Happy path |
-| EPIC-06-S3 | Five reasons a node is withheld from the ready set | KAR-06.1 | Edge case |
-| EPIC-06-S4 | Global agent slots cap admission at three | KAR-06.1, KAR-06.2 | Edge case |
-| EPIC-06-S5 | Two write nodes contend for the repository lock | KAR-06.2 | Concurrency |
-| EPIC-06-S6 | The repo lock survives a restart because it lives in the ledger | KAR-06.2, KAR-06.9 | Recovery |
-| EPIC-06-S7 | One agent per worktree, always | KAR-06.2 | Concurrency |
-| EPIC-06-S8 | Happy path: intent, act, record | KAR-06.3 | Happy path |
-| EPIC-06-S9 | The ordinal comes from the reducer's view, not a runtime counter | KAR-06.3 | Failure |
-| EPIC-06-S10 | A patch lands under a journaled effect and the hash catches it | KAR-06.3 | Failure |
-| EPIC-06-S11 | A `done` row short-circuits the effect after a restart | KAR-06.3, KAR-06.9 | Recovery |
-| EPIC-06-S12 | Reconciliation per effect type | KAR-06.4 | Recovery |
-| EPIC-06-S13 | The `Karvan-Effect-Id` trailer makes a commit structurally idempotent | KAR-06.4 | Recovery |
-| EPIC-06-S14 | An orphaned `.karvan-<ikey>.tmp` sibling means redo | KAR-06.4 | Recovery |
-| EPIC-06-S15 | `reconcile()` returns `unknown` and there is no correct automatic action | KAR-06.4 | Failure (known hole) |
-| EPIC-06-S16 | The irreducible window between the effect landing and the `done` row | KAR-06.4, KAR-06.9 | Failure (known hole) |
-| EPIC-06-S17 | Crash-resume memoises; failure-retry re-executes | KAR-06.3, KAR-06.5 | Edge case (known hole) |
-| EPIC-06-S18 | Error class drives retry, fail or gate | KAR-06.5 | Failure |
-| EPIC-06-S19 | Full jitter spreads a correlated rate-limit retry storm | KAR-06.5 | Edge case |
-| EPIC-06-S20 | `node.failed` and the `node_wake` row commit together | KAR-06.5, KAR-06.6 | Failure |
-| EPIC-06-S21 | A 30-day gate written with `setTimeout` fires after 1 ms | KAR-06.6 | Failure |
-| EPIC-06-S22 | A six-hour human gate across laptop sleep costs one row | KAR-06.6 | Happy path |
-| EPIC-06-S23 | Pause is an event, so it survives a restart | KAR-06.7 | Recovery |
-| EPIC-06-S24 | Cancel escalates through three stages; zombies are not survivors | KAR-06.7 | Failure |
-| EPIC-06-S25 | Killing by bare pid after a restart kills the operator's editor | KAR-06.7, KAR-06.9 | Failure (known hole) |
-| EPIC-06-S26 | The stall detector reports and never auto-kills | KAR-06.8 | Edge case |
-| EPIC-06-S27 | The churn breaker trips on the same work redone five times | KAR-06.8 | Failure |
-| EPIC-06-S28 | Three replans with no completed-node increase trip the breaker | KAR-06.8 | Failure |
-| EPIC-06-S29 | Crash-fuzz: SIGKILL at a random point, restart, four invariants | KAR-06.9 | Recovery |
-| EPIC-06-S30 | Orphaned detached agents keep burning tokens after the daemon dies | KAR-06.9 | Failure |
-| EPIC-06-S31 | A budget ceiling pauses the run instead of failing it | KAR-06.5 | Edge case |
+| Scenario    | Title                                                                    | Verifies           | Type                   |
+| ----------- | ------------------------------------------------------------------------ | ------------------ | ---------------------- |
+| EPIC-06-S1  | Happy path: the ready set admits an unblocked node                       | KAR-06.1           | Happy path             |
+| EPIC-06-S2  | `decide()` is pure — no clock, no I/O, no mutation                       | KAR-06.1           | Happy path             |
+| EPIC-06-S3  | Five reasons a node is withheld from the ready set                       | KAR-06.1           | Edge case              |
+| EPIC-06-S4  | Global agent slots cap admission at three                                | KAR-06.1, KAR-06.2 | Edge case              |
+| EPIC-06-S5  | Two write nodes contend for the repository lock                          | KAR-06.2           | Concurrency            |
+| EPIC-06-S6  | The repo lock survives a restart because it lives in the ledger          | KAR-06.2, KAR-06.9 | Recovery               |
+| EPIC-06-S7  | One agent per worktree, always                                           | KAR-06.2           | Concurrency            |
+| EPIC-06-S8  | Happy path: intent, act, record                                          | KAR-06.3           | Happy path             |
+| EPIC-06-S9  | The ordinal comes from the reducer's view, not a runtime counter         | KAR-06.3           | Failure                |
+| EPIC-06-S10 | A patch lands under a journaled effect and the hash catches it           | KAR-06.3           | Failure                |
+| EPIC-06-S11 | A `done` row short-circuits the effect after a restart                   | KAR-06.3, KAR-06.9 | Recovery               |
+| EPIC-06-S12 | Reconciliation per effect type                                           | KAR-06.4           | Recovery               |
+| EPIC-06-S13 | The `DeFlow-Effect-Id` trailer makes a commit structurally idempotent    | KAR-06.4           | Recovery               |
+| EPIC-06-S14 | An orphaned `.DeFlow-<ikey>.tmp` sibling means redo                      | KAR-06.4           | Recovery               |
+| EPIC-06-S15 | `reconcile()` returns `unknown` and there is no correct automatic action | KAR-06.4           | Failure (known hole)   |
+| EPIC-06-S16 | The irreducible window between the effect landing and the `done` row     | KAR-06.4, KAR-06.9 | Failure (known hole)   |
+| EPIC-06-S17 | Crash-resume memoises; failure-retry re-executes                         | KAR-06.3, KAR-06.5 | Edge case (known hole) |
+| EPIC-06-S18 | Error class drives retry, fail or gate                                   | KAR-06.5           | Failure                |
+| EPIC-06-S19 | Full jitter spreads a correlated rate-limit retry storm                  | KAR-06.5           | Edge case              |
+| EPIC-06-S20 | `node.failed` and the `node_wake` row commit together                    | KAR-06.5, KAR-06.6 | Failure                |
+| EPIC-06-S21 | A 30-day gate written with `setTimeout` fires after 1 ms                 | KAR-06.6           | Failure                |
+| EPIC-06-S22 | A six-hour human gate across laptop sleep costs one row                  | KAR-06.6           | Happy path             |
+| EPIC-06-S23 | Pause is an event, so it survives a restart                              | KAR-06.7           | Recovery               |
+| EPIC-06-S24 | Cancel escalates through three stages; zombies are not survivors         | KAR-06.7           | Failure                |
+| EPIC-06-S25 | Killing by bare pid after a restart kills the operator's editor          | KAR-06.7, KAR-06.9 | Failure (known hole)   |
+| EPIC-06-S26 | The stall detector reports and never auto-kills                          | KAR-06.8           | Edge case              |
+| EPIC-06-S27 | The churn breaker trips on the same work redone five times               | KAR-06.8           | Failure                |
+| EPIC-06-S28 | Three replans with no completed-node increase trip the breaker           | KAR-06.8           | Failure                |
+| EPIC-06-S29 | Crash-fuzz: SIGKILL at a random point, restart, four invariants          | KAR-06.9           | Recovery               |
+| EPIC-06-S30 | Orphaned detached agents keep burning tokens after the daemon dies       | KAR-06.9           | Failure                |
+| EPIC-06-S31 | A budget ceiling pauses the run instead of failing it                    | KAR-06.5           | Edge case              |
 
 ---
 
@@ -144,16 +144,16 @@ Feature: NF9 enforced by a package boundary
     And the lint rule that enforces this names each banned identifier explicitly
 
   Scenario: the core cannot perform I/O
-    When the resolved dependency graph of @karvan/core is walked
+    When the resolved dependency graph of @DeFlow/core is walked
     Then it contains no "node:fs", "node:child_process", "node:net", "node:dgram"
         or "better-sqlite3", transitively
-    And importing @karvan/core in a process where fs.readFileSync is patched to throw
+    And importing @DeFlow/core in a process where fs.readFileSync is patched to throw
         completes without throwing
 ```
 
 **Notes:** The architecture states the corollary as a hard rule: anything nondeterministic goes
 through a port — time via `Clock`, randomness via a seeded generator, ids via an injected factory —
-and *an import of `node:fs` inside `@karvan/core` means the design has already broken*. The fourth
+and _an import of `node:fs` inside `@DeFlow/core` means the design has already broken_. The fourth
 scenario turns that sentence into a test, which is the only version of it that survives six months.
 
 ---
@@ -232,7 +232,7 @@ Feature: Bounded concurrency
     And equals 0
 
   Scenario: the slot count is state, not a constant
-    Given .karvan/config.yaml sets globalAgentSlots to 5 and the daemon is restarted
+    Given .DeFlow/config.yaml sets globalAgentSlots to 5 and the daemon is restarted
     When decide() is called with three nodes already running
     Then 2 further StartNode commands are returned
     And the three in-flight nodes are untouched
@@ -286,7 +286,7 @@ Feature: Serialise writes, parallelise reads (F5.2)
     And "git status --porcelain" between them is stable
 ```
 
-**Notes:** PRD §13 rates *parallel write agents produce incompatible work* as **High**, and the
+**Notes:** PRD §13 rates _parallel write agents produce incompatible work_ as **High**, and the
 mitigation is exactly this lock plus worktree isolation. The fourth scenario is the one that catches
 a lock that is computed correctly and then not actually respected at the effect boundary — a
 surprisingly common shape of bug, because the unit test passes.
@@ -303,7 +303,7 @@ Feature: Locks are events, not a JavaScript Map
   Scenario: an unreleased lock is still held after kill -9
     Given "impl-auth" acquired the repo lock and node.lock.acquired is in the ledger
     And no matching node.lock.released exists
-    When the daemon is killed with SIGKILL and restarted over the same .karvan directory
+    When the daemon is killed with SIGKILL and restarted over the same .DeFlow directory
     Then reduce() reports the repo lock as held by "impl-auth"
     And "impl-router" is still withheld on the first post-restart tick
 
@@ -320,9 +320,9 @@ Feature: Locks are events, not a JavaScript Map
     And the only reader of lock state is reduce()
 ```
 
-**Notes:** This is the scenario the architecture argues for directly: *an in-memory lock evaporates
+**Notes:** This is the scenario the architecture argues for directly: _an in-memory lock evaporates
 on restart, and the first thing that happens after a crash is that you resume several nodes at once
-— precisely when you need the lock most.* The third scenario exists because the in-memory version is
+— precisely when you need the lock most._ The third scenario exists because the in-memory version is
 so much easier to write that it will be written unless something fails when it is.
 
 ---
@@ -336,7 +336,7 @@ Feature: Per-worktree exclusive lock
 
   Scenario: two nodes assigned the same worktree serialise
     Given nodes "fix-1" and "fix-2" both assigned worktree
-          ".karvan/wt/run_20260802T141133Z_9f2a1c__implement"
+          ".DeFlow/wt/run_20260802T141133Z_9f2a1c__implement"
     When both are ready and decide() is called
     Then exactly one AcquireLock with lock "worktree" and that path as the key is returned
     And only that node is started
@@ -391,9 +391,9 @@ Feature: The write-ahead effect journal
     And the mock agent's side-effect log still contains exactly one line
 ```
 
-**Notes:** *"The pre-effect record is the thing that makes at-least-once recovery possible at all.
+**Notes:** _"The pre-effect record is the thing that makes at-least-once recovery possible at all.
 Without it, a crash between 'started work' and 'finished work' is indistinguishable from 'never
-started'."* Asserting the side-effect log is **empty** at the intent point is the only way to prove
+started'."_ Asserting the side-effect log is **empty** at the intent point is the only way to prove
 the ordering — asserting the row exists proves nothing about when.
 
 ---
@@ -428,9 +428,9 @@ Feature: Ordinal derivation across a restart
 ```
 
 **Notes:** This is the single subtlest bug in the whole epic and it fails only after a crash, which
-means it fails only in production if it is not tested here. *"A runtime counter resets to zero when
+means it fails only in production if it is not tested here. _"A runtime counter resets to zero when
 the process restarts, so the second effect of an interrupted attempt would come back as ordinal 0
-and collide with the first."* The collision is silent: `ON CONFLICT DO NOTHING` reads the first
+and collide with the first."_ The collision is silent: `ON CONFLICT DO NOTHING` reads the first
 effect's `done` row and memoises **the wrong result**.
 
 ---
@@ -464,8 +464,8 @@ Feature: request_hash guards a live effect against a plan edit
     And a descriptor with an explicit "undefined" field hashes equal to one omitting it
 ```
 
-**Notes:** *"Without the hash you would happily return the memoised result of the old operation as if
-it were the new one."* Use the project's own canonical JSON encoder here, never `ohash` — `ohash`
+**Notes:** _"Without the hash you would happily return the memoised result of the old operation as if
+it were the new one."_ Use the project's own canonical JSON encoder here, never `ohash` — `ohash`
 promises only "best efforts" at stable serialisation, which is adequate for change detection in the
 UI and inadequate for a value that gates whether a side effect re-runs.
 
@@ -503,7 +503,7 @@ Feature: F4.2 at effect granularity — completed work is never re-executed
 **Notes:** The four branches of `durable()` are four genuinely different real situations and the
 third scenario is the one people collapse into the crash case. A `pending` row from the current
 epoch means another in-process caller is mid-flight; calling `reconcile()` there would probe the
-world for an effect that is *currently happening*, which is both wasteful and wrong.
+world for an effect that is _currently happening_, which is both wasteful and wrong.
 
 ---
 
@@ -534,9 +534,9 @@ Feature: reconcile() answers "did this already happen out there?"
       | shell (mutating) | the hash matches the AFTER hash                        | done        | memoise the journaled result                  |
       | shell (mutating) | the hash matches neither                               | unknown     | escalate — see EPIC-06-S15                    |
       | git (worktree)   | the worktree path already exists                       | done        | "already exists" is a SUCCESS, not an error   |
-      | git (commit)     | git log --grep finds the Karvan-Effect-Id trailer      | done        | memoise the found sha                         |
+      | git (commit)     | git log --grep finds the DeFlow-Effect-Id trailer      | done        | memoise the found sha                         |
       | git (commit)     | the trailer is absent from the branch                  | not-started | re-commit with the same trailer               |
-      | file             | a <target>.karvan-<ikeyHash>.tmp sibling exists        | not-started | unlink the tmp and redo                       |
+      | file             | a <target>.DeFlow-<ikeyHash>.tmp sibling exists        | not-started | unlink the tmp and redo                       |
       | file             | no tmp and the target's content hash matches           | done        | memoise                                       |
       | file             | no tmp and the target's content hash differs           | unknown     | escalate — see EPIC-06-S15                    |
 
@@ -563,7 +563,7 @@ ledger always reconstructs the prompt.
 
 ---
 
-## EPIC-06-S13 — The `Karvan-Effect-Id` trailer makes a commit structurally idempotent
+## EPIC-06-S13 — The `DeFlow-Effect-Id` trailer makes a commit structurally idempotent
 
 **Verifies:** KAR-06.4 · **Type:** Recovery · **Automated at:** integration
 
@@ -574,19 +574,19 @@ Feature: Making git idempotent instead of journaling around it
     Given a real git repository created with
         git init -b main, GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null
         and forced GIT_AUTHOR_* / GIT_COMMITTER_* identity
-    And a worktree at ".karvan/wt/run_20260802T141133Z_9f2a1c__implement"
-        on branch "karvan/run_20260802T141133Z_9f2a1c__implement"
+    And a worktree at ".DeFlow/wt/run_20260802T141133Z_9f2a1c__implement"
+        on branch "DeFlow/run_20260802T141133Z_9f2a1c__implement"
 
   Scenario: a commit carries its ikey as a trailer
     When the git effect commits
     Then the command is
-        git commit -m "<subject>" -m "Karvan-Effect-Id: <ikey>"
-    And "git log -1 --format=%B" contains the line "Karvan-Effect-Id: <ikey>"
+        git commit -m "<subject>" -m "DeFlow-Effect-Id: <ikey>"
+    And "git log -1 --format=%B" contains the line "DeFlow-Effect-Id: <ikey>"
 
   Scenario: reconcile finds a commit that landed before the crash
     Given the commit succeeded and the daemon died before markDone
     When the daemon restarts and reconcile runs for that ikey
-    Then "git log --grep=\"Karvan-Effect-Id: <ikey>\" --format=%H -1" returns one sha
+    Then "git log --grep=\"DeFlow-Effect-Id: <ikey>\" --format=%H -1" returns one sha
     And reconcile returns "done" with that sha as the memoised result
     And "git rev-list --count HEAD" is unchanged — no second commit was made
 
@@ -603,16 +603,16 @@ Feature: Making git idempotent instead of journaling around it
     And the assertion names the argument it refused
 ```
 
-**Notes:** The branch scheme is the flat `karvan/<runId>__<nodeId>` (D13). The PRD's original
-slashed form `karvan/<run-id>/<node-id>` is a **verified bug** — git cannot have
-`refs/heads/karvan/r1` be both a file and a directory, which blocks any run-level integration
+**Notes:** The branch scheme is the flat `DeFlow/<runId>__<nodeId>` (D13). The PRD's original
+slashed form `DeFlow/<run-id>/<node-id>` is a **verified bug** — git cannot have
+`refs/heads/DeFlow/r1` be both a file and a directory, which blocks any run-level integration
 branch. The real error string for a branch collision is `already used by worktree at`, **not** "is
 already checked out at", which is what most blog posts claim; the third scenario keeps those two
 outcomes distinguishable, because conflating them turns a genuine collision into a silent success.
 
 ---
 
-## EPIC-06-S14 — An orphaned `.karvan-<ikey>.tmp` sibling means redo
+## EPIC-06-S14 — An orphaned `.DeFlow-<ikey>.tmp` sibling means redo
 
 **Verifies:** KAR-06.4 · **Type:** Recovery · **Automated at:** integration
 
@@ -621,13 +621,13 @@ Feature: Atomic file writes with the ikey in the temp filename
 
   Scenario: the write sequence
     When the file effect writes <target>
-    Then the sequence is: open "<target>.karvan-<ikeyHash>.tmp", write, fsync(fd), close,
+    Then the sequence is: open "<target>.DeFlow-<ikeyHash>.tmp", write, fsync(fd), close,
         rename(tmp, target), fsync(directory fd)
     And the temp path's dirname equals the target's dirname
     And the temp path does NOT start with os.tmpdir()
 
   Scenario: crash before the rename
-    Given a "<target>.karvan-<ikeyHash>.tmp" file exists and the target does not
+    Given a "<target>.DeFlow-<ikeyHash>.tmp" file exists and the target does not
     When reconcile runs after a restart
     Then it returns "not-started"
     And the orphaned tmp file is unlinked before perform() re-runs
@@ -696,8 +696,8 @@ Feature: The escalation designed on day one, not bolted on
 ```
 
 **Notes:** This is roadmap risk **A1-5**, rated **High**, and roadmap §7's second new open question:
-*"What is the correct human action when effect reconciliation returns `unknown`? There is no correct
-automatic one."* Retrying might double-apply; skipping might drop the work; both are wrong in some
+_"What is the correct human action when effect reconciliation returns `unknown`? There is no correct
+automatic one."_ Retrying might double-apply; skipping might drop the work; both are wrong in some
 cases and neither is detectable. A migration that half-ran is not a thing to guess about. The
 escalation beyond this — running every mutating node copy-on-write against a content-addressed
 overlay, diffing, then applying — is large complexity that still does not help with network effects,
@@ -748,7 +748,7 @@ Feature: The honest floor of the whole design
     And the rest of the ledger stays at synchronous = NORMAL
 ```
 
-**Notes:** *"Every design that claims exactly-once side effects against git and a shell is lying."*
+**Notes:** _"Every design that claims exactly-once side effects against git and a shell is lying."_
 The measured price of the alternative is why `NORMAL` is the default: **979 ev/s at
 `synchronous = FULL` versus 22,982 ev/s at `NORMAL`**, roughly a **23×** penalty, so `FULL` is
 applied per-transaction around genuinely irreversible effects rather than globally. And `NORMAL`
@@ -794,9 +794,9 @@ Feature: Two operations that look identical and are not
     And the resume shows as a continuation of the existing attempt with no new node.started
 ```
 
-**Notes:** [05-durable-execution §9.2](../../05-durable-execution.md): *"`attempt` is part of the
+**Notes:** [05-durable-execution §9.2](../../05-durable-execution.md): _"`attempt` is part of the
 key, so a retry mints a new key by construction. That is intentional, but it means crash-resume and
-failure-retry are genuinely different operations."* The reason this needs its own scenario rather
+failure-retry are genuinely different operations."_ The reason this needs its own scenario rather
 than a comment is that the code paths converge — both arrive at `durable()` — and the only thing
 that distinguishes them is a number inside a string. A test that asserts both ikeys and both
 side-effect-log shapes is the cheapest possible guard.
@@ -845,7 +845,7 @@ Feature: Classification happens at construction, not at render time
     And it is visible in the plan-evolution scrubber rather than happening silently
 ```
 
-**Notes:** *"`class` is not derived from `reason` at render time"* is the rule the third scenario
+**Notes:** _"`class` is not derived from `reason` at render time"_ is the rule the third scenario
 enforces mechanically. The `reroute` case matters for F3.9 — automatic re-routing to a healthy
 provider is recorded as a `PlanPatch` precisely so it shows up in the visualisation, because a
 silent provider swap is exactly the kind of thing that makes a run's cost profile inexplicable
@@ -879,13 +879,13 @@ Feature: Backoff with full jitter
     Given the seeded generator is initialised with seed 42
     When attempts 1 through 6 are computed
     Then the delays equal the recorded golden sequence exactly
-    And Math.random is never called inside @karvan/core
+    And Math.random is never called inside @DeFlow/core
 ```
 
-**Notes:** Full jitter rather than equal jitter or none, *"because the common failure here is
+**Notes:** Full jitter rather than equal jitter or none, _"because the common failure here is
 correlated: several nodes hit the same vendor rate limit at the same moment, and you do not want
-them retrying in lockstep and re-tripping it."* The architecture writes the formula with
-`Math.random()` as shorthand; copying that literally into `@karvan/core` breaks NF9 and makes the
+them retrying in lockstep and re-tripping it."_ The architecture writes the formula with
+`Math.random()` as shorthand; copying that literally into `@DeFlow/core` breaks NF9 and makes the
 third scenario impossible to write, which is why the third scenario exists.
 
 ---
@@ -920,8 +920,8 @@ Feature: One transaction, or the backoff is a lie
     And exactly one StartNode is returned then, at attempt 2
 ```
 
-**Notes:** *"Split them and a restart inside the backoff window either loses the delay (immediate
-retry storm) or double-counts the attempt."* The second scenario's final line is a deliberate
+**Notes:** _"Split them and a restart inside the backoff window either loses the delay (immediate
+retry storm) or double-counts the attempt."_ The second scenario's final line is a deliberate
 reminder of EPIC-03's contract: a rolled-back transaction burns `AUTOINCREMENT` values, so **sequence
 numbers have gaps**, and every consumer must resume from strictly-greater-than rather than assuming
 `cursor + 1`.
@@ -961,8 +961,8 @@ Feature: Why durable wake rows exist at all
 ```
 
 **Notes:** **Verified 2026-08-02.** The first scenario is a regression test against Node itself, kept
-because the failure it describes is invisible: *"a 30-day human gate implemented with `setTimeout`
-fires instantly and nothing in your logs says 'durability failure'."* Below the ceiling it is no
+because the failure it describes is invisible: _"a 30-day human gate implemented with `setTimeout`
+fires instantly and nothing in your logs says 'durability failure'."_ Below the ceiling it is no
 better — timers do not fire during laptop sleep and do not survive a restart at all.
 
 ---
@@ -1007,8 +1007,8 @@ Feature: Long suspension (F4.8) and NF4
 **Notes:** The payoff the architecture claims is real and worth stating in the suite: a six-hour
 human gate, laptop sleep across that gate, crash-and-restart mid-wait, and retry backoff are **the
 same mechanism** — one code path exercised constantly instead of four exercised rarely. The
-non-monotonic-clock scenario guards §9.6: *"any logic that compares two timestamps to decide what
-happened first is a bug waiting for a daylight-saving transition."*
+non-monotonic-clock scenario guards §9.6: _"any logic that compares two timestamps to decide what
+happened first is a bug waiting for a daylight-saving transition."_
 
 ---
 
@@ -1046,8 +1046,8 @@ Feature: Pause, resume and cancel are events, never in-memory flags (F4.4)
     And the paused interval is renderable as a gap in the Gantt
 ```
 
-**Notes:** *"Because they are events, pause survives a restart, appears in the timeline, and is
-auditable — a flag on an object satisfies none of those."* The aggressive mode, in which in-flight
+**Notes:** _"Because they are events, pause survives a restart, appears in the timeline, and is
+auditable — a flag on an object satisfies none of those."_ The aggressive mode, in which in-flight
 nodes are suspended rather than allowed to finish, is the same event with a different payload and
 should not become a second code path.
 
@@ -1103,7 +1103,7 @@ Feature: The kill switch's scheduling contract (F5.7)
 **Notes:** Both traps are **Verified**. The positive-pid form killed only the direct child and left
 both grandchildren alive; only the negative form killed everything — and agent CLIs spawn their own
 subprocess trees (git, node, ripgrep) that `child.kill()` would leave running. The zombie
-false-negative *"costs hours"*: after a successful group SIGKILL `ps` still lists the grandchildren
+false-negative _"costs hours"_: after a successful group SIGKILL `ps` still lists the grandchildren
 in state `Z` awaiting reaping by init, and reaping is prompt under launchd and systemd but can lag
 badly inside containers — so this bites hardest in CI, where an intermittently-failing kill-switch
 test is the least welcome kind of flake.
@@ -1189,13 +1189,13 @@ Feature: The progress watermark (F4.7)
     And the watermark advanced on the completion
 ```
 
-**Notes:** The elegance here *"falls out of the schema for free"*: agent stdout lives in `io_chunk`
+**Notes:** The elegance here _"falls out of the schema for free"_: agent stdout lives in `io_chunk`
 and never touches the reducer, so megabytes of output accomplishing nothing does not advance the
 watermark, and eight minutes of silence before a real transition does not falsely trip it. And the
-deliberate restraint — **do not auto-kill** — is a design decision, not an omission: *"a legitimately
+deliberate restraint — **do not auto-kill** — is a design decision, not an omission: _"a legitimately
 long build, a large test suite and a wedged agent look identical from here, and killing a 40-minute
 integration run because it was quiet for 10 minutes is a worse failure than the one being
-prevented."*
+prevented."_
 
 ---
 
@@ -1235,8 +1235,8 @@ Feature: The churn circuit breaker
         the (node_id, request_hash, attempt, seq) tuples that produced the trip
 ```
 
-**Notes:** *"The same work being redone with the same inputs, which is the literal definition of a
-livelock."* M = 20 and N = 5 are practitioner defaults mirroring what the agent-runtime ecosystem
+**Notes:** _"The same work being redone with the same inputs, which is the literal definition of a
+livelock."_ M = 20 and N = 5 are practitioner defaults mirroring what the agent-runtime ecosystem
 converged on during 2026 — sliding-window tool-call dedup with small consecutive-no-progress
 thresholds — not measured values. Emitting the window contents in the detail is what makes the first
 few real trips tunable rather than mysterious. The M1 metric is **runs abandoned due to runaway loop
@@ -1280,8 +1280,8 @@ Feature: The planner rearranging deck chairs
 ```
 
 **Notes:** The replan detector is the schedule lever named in the epic's Risks — it can ship after
-the `(node_id, request_hash)` detector if the epic runs long. The hard caps exist *"to bound the
-blast radius of a detector bug, not as the primary mechanism"*, which is why the third scenario
+the `(node_id, request_hash)` detector if the epic runs long. The hard caps exist _"to bound the
+blast radius of a detector bug, not as the primary mechanism"_, which is why the third scenario
 tests them with the detectors switched off.
 
 ---
@@ -1294,7 +1294,7 @@ tests them with the detectors switched off.
 Feature: The test that proves the thesis
 
   Background:
-    Given karvand is started as a child process with mock agents on a temp PATH
+    Given DeFlowd is started as a child process with mock agents on a temp PATH
     And a scripted multi-node run with a known expected duration
     And every mock agent runs with --seed so the pre-crash side is deterministic
     And each fake binary appends {runId, nodeId, attempt, idempotencyKey} to a side-effect log
@@ -1305,7 +1305,7 @@ Feature: The test that proves the thesis
     Given the run has been executing for a random interval within its expected duration,
           seeded from $GITHUB_RUN_ID so a failure is reproducible from the log
     When the daemon is killed with <signal>
-    And karvand is restarted over the same .karvan directory
+    And DeFlowd is restarted over the same .DeFlow directory
     Then no idempotencyKey appears twice in the side-effect log
     And the reduced state equals the pre-crash projection at the last durably-written seq
     And PRAGMA integrity_check returns "ok"
@@ -1334,12 +1334,12 @@ Feature: The test that proves the thesis
     And no StartNode command is issued before reconciliation has completed
 
   Scenario: failures are diagnosable in CI
-    Given KARVAN_KEEP_TMP=1 is set
+    Given DeFlow_KEEP_TMP=1 is set
     When an iteration fails
-    Then actions/upload-artifact captures /tmp/karvan-* including the ledger
+    Then actions/upload-artifact captures /tmp/DeFlow-* including the ledger
 ```
 
-**Notes:** *"Everything else in the durability design is theory until this test is green."* The
+**Notes:** _"Everything else in the durability design is theory until this test is green."_ The
 shape was already run against SQLite during the research pass and passed — **45,339 rows recovered
 after SIGKILL, `integrity_check` ok** — so the harness is cheap to build and known to be worth
 building. Assertion (a) is a duplicate-key check on a text file rather than an inference, which is
@@ -1355,14 +1355,14 @@ why the fake binaries' side-effect log is a hard requirement on EPIC-04 rather t
 Feature: Orphan reaping on boot
 
   Scenario: the orphan really does survive
-    Given a mock agent is running as a detached child of karvand
-    When karvand is killed with SIGKILL
+    Given a mock agent is running as a detached child of DeFlowd
+    When DeFlowd is killed with SIGKILL
     Then the agent process is STILL RUNNING
     And it has been reparented to ppid 1
     And it continues consuming CPU — in the real case, tokens
 
   Scenario: the reaper finds and kills it
-    When karvand restarts
+    When DeFlowd restarts
     Then it reads the journaled (pid, process_start_time) pairs for the prior epoch
     And for each pair whose live process matches BOTH values it issues
         process.kill(-pid, "SIGTERM") followed by the escalation ladder
@@ -1380,12 +1380,12 @@ Feature: Orphan reaping on boot
     Then the reaper records a no-op reap and does not fail startup
 ```
 
-**Notes:** §9.4 is blunt about why this matters: agents are spawned `{ detached: true }`, so *"when
-karvand dies they are reparented to init and keep running and keep burning tokens"*. The first
+**Notes:** §9.4 is blunt about why this matters: agents are spawned `{ detached: true }`, so _"when
+DeFlowd dies they are reparented to init and keep running and keep burning tokens"_. The first
 scenario asserting the orphan survives is not padding — it is the precondition that makes the rest
 meaningful, and it is the assertion that fails if someone changes the spawn options to
 non-detached, which would be worse than useless because then the only process group containing the
-grandchildren is karvand's own.
+grandchildren is DeFlowd's own.
 
 ---
 
@@ -1422,8 +1422,8 @@ Feature: Hitting a ceiling is a gate, not a permanent failure (F4.6, F9.2)
         because estimated figures carry a known 15-20% undercount on Claude prose
 ```
 
-**Notes:** *"Hitting a budget ceiling is deliberately a `gate`, not a `permanent` failure: the run
-pauses for a human decision rather than dying with hours of work half-done."* This epic owns only
+**Notes:** _"Hitting a budget ceiling is deliberately a `gate`, not a `permanent` failure: the run
+pauses for a human decision rather than dying with hours of work half-done."_ This epic owns only
 the classification and the pause; the accounting, the pre-flight estimate and the ceiling values
 belong to [EPIC-14](../epics/EPIC-14-cost-governance.md). The fourth scenario is here rather than
 there because the failure it prevents — a ceiling firing at the wrong time because vendor-reported

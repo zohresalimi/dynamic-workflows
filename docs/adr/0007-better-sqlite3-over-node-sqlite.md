@@ -10,7 +10,7 @@ produced two contradictory recommendations, and resolving the conflict is the su
 record.**
 
 - **Area 2 (tooling) recommended `node:sqlite`.** Its entire rationale was install ergonomics: zero
-  native compilation means `npx karvan up` never runs node-gyp, which is the number-one install
+  native compilation means `npx DeFlow up` never runs node-gyp, which is the number-one install
   failure class for a solo-maintained tool (NF6).
 - **Area 1 (durability) recommended `better-sqlite3@13.0.2`** and **disproved area 2's premise by
   measurement**.
@@ -27,7 +27,7 @@ The premise is what broke. **Verified 2026-08-02**, by installing and unpacking 
 So the historical "native module install pain" objection no longer applies, and with it area 2's
 only argument.
 
-The case *against* `node:sqlite` is separately decisive for software distributed by `npx`:
+The case _against_ `node:sqlite` is separately decisive for software distributed by `npx`:
 
 - It is still **Stability 1.2 (Release Candidate)** on Node 24 and Node 26 — not Stable (2).
 - **Its API changed inside the 24.x LTS line.** `createTagStore` in 24.9.0, `setAuthorizer` in
@@ -48,7 +48,7 @@ is irrelevant at these volumes and is not a reason to choose either way.
 
 **Use `better-sqlite3@13.0.2` (caret-pinned, per the pin policy in
 [02-tech-stack.md](../02-tech-stack.md)) with `@types/better-sqlite3@^9.6.0`, behind a ~60-line
-`Db` port interface in `@karvan/core`, implemented in `@karvan/ledger`.**
+`Db` port interface in `@DeFlow/core`, implemented in `@DeFlow/ledger`.**
 
 ```ts
 export interface Stmt<R = unknown> {
@@ -65,7 +65,7 @@ export interface Db {
 ```
 
 **The port is the point.** Both drivers are synchronous with near-identical shapes, so the future
-swap is a one-file change. Nothing outside `@karvan/ledger`'s driver module imports `better-sqlite3`
+swap is a one-file change. Nothing outside `@DeFlow/ledger`'s driver module imports `better-sqlite3`
 directly, and a lint rule enforces it. This is what makes the decision reversible rather than
 permanent, which is the only honest posture toward a package that is one Node release away from
 being the obvious choice.
@@ -82,12 +82,14 @@ Connection setup, migrations on `PRAGMA user_version`, and the measured schema d
 ## Consequences
 
 ### Positive
+
 - One prebuilt native dependency that installs in a second and never rebuilds. NF6 preserved.
 - SQL behaviour is pinned to SQLite 3.53.4 rather than inherited from the user's Node build.
 - FTS5 is available with no extension loading, no build flag, no extra dependency.
 - Tauri 2 (the M3 shell) sidecars a normal Node process, so the same prebuilds apply.
 
 ### Negative
+
 - A 27 MB native dependency in `node_modules`, versus zero for `node:sqlite`.
 - Types are not bundled (`types` field absent). `@types/better-sqlite3@9.6.0` is actively maintained
   but its major lags the package major — verify it types `db.explain()` and `stmt.toString()`, both
@@ -96,17 +98,18 @@ Connection setup, migrations on `PRAGMA user_version`, and the measured schema d
   broken, and Electron v43+ on Linux needs glibc ≥ 2.41.
 
 ### Neutral
-- We give up a 5–15% throughput advantage that does not matter at Karvan's write volumes.
+
+- We give up a 5–15% throughput advantage that does not matter at DeFlow's write volumes.
 
 ## Alternatives considered
 
 - **`node:sqlite`.** The area-2 recommendation. Rejected on RC status and intra-LTS API drift, as
   above. It is the presumptive future winner; hence the port and the explicit revisit trigger.
 - **`@libsql/client@0.17.4`.** Rejected: async API, and it drags in the `libsql` native module plus
-  `@libsql/hrana-client` network machinery for a Turso sync story Karvan does not need.
+  `@libsql/hrana-client` network machinery for a Turso sync story DeFlow does not need.
 - **`@tursodatabase/database@0.7.2`** (the Rust rewrite, ex-Limbo). Rejected: 0.x with six releases
   in eight days. Far too volatile for the component that holds the durability guarantee.
-- **`bun:sqlite`.** Rejected: requires the Bun runtime, incompatible with `npx karvan up` on Node,
+- **`bun:sqlite`.** Rejected: requires the Bun runtime, incompatible with `npx DeFlow up` on Node,
   and AR-1 already forces us onto the user's Node install.
 - **`node-sqlite3-wasm@0.8.60`.** Documented as a pure-JS escape hatch for exotic platforms only.
   WAL over a WASM VFS is not something to bet durability on.
@@ -116,7 +119,7 @@ Connection setup, migrations on `PRAGMA user_version`, and the measured schema d
 **Both** conditions hold — not either:
 
 1. **`node:sqlite` reaches Stability 2 (Stable)**, and
-2. **Node 26 is Karvan's minimum supported version** (i.e. Node 24 has left Active LTS and we have
+2. **Node 26 is DeFlow's minimum supported version** (i.e. Node 24 has left Active LTS and we have
    dropped it from `engines`).
 
 At that point the intra-LTS API drift argument expires, the `Db` port makes the switch a one-file
@@ -127,4 +130,5 @@ Independent secondary trigger: if better-sqlite3 ever reintroduces an install sc
 platform from `prebuilds/`, that removes the reason it won and forces this record open early.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

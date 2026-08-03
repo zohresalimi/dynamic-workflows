@@ -7,24 +7,24 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan — cancels a run, approves a version-change override, reads the failure |
-| **karvand** | The local daemon. Here specifically: the ACP client, the provider registry, the transport guard and the MCP host |
-| **Provider agent** | A vendor binary or ACP adapter reached as a detached child process over ndjson on stdin/stdout |
-| **Mock agent** | `karvan-mock-agent` standing in for any provider, with a selectable capability profile (EPIC-04) |
-| **Ledger** | The file-backed SQLite `event`, `io_chunk`, `effect` and `provider_capabilities` tables |
-| **karvan-mcp** | The stdio MCP shim the agent spawns, talking back to karvand over a Unix domain socket |
+| Actor              | Description                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **Operator**       | The engineer driving DeFlow — cancels a run, approves a version-change override, reads the failure               |
+| **DeFlowd**        | The local daemon. Here specifically: the ACP client, the provider registry, the transport guard and the MCP host |
+| **Provider agent** | A vendor binary or ACP adapter reached as a detached child process over ndjson on stdin/stdout                   |
+| **Mock agent**     | `DeFlow-mock-agent` standing in for any provider, with a selectable capability profile (EPIC-04)                 |
+| **Ledger**         | The file-backed SQLite `event`, `io_chunk`, `effect` and `provider_capabilities` tables                          |
+| **DeFlow-mcp**     | The stdio MCP shim the agent spawns, talking back to DeFlowd over a Unix domain socket                           |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a git repository on branch "main"
-  And a real file-backed SQLite ledger at "<tmp>/.karvan/karvan.db" opened with
+  Given a DeFlow workspace initialised in a git repository on branch "main"
+  And a real file-backed SQLite ledger at "<tmp>/.DeFlow/DeFlow.db" opened with
       PRAGMA journal_mode=WAL, synchronous=NORMAL, busy_timeout=5000
   And the mock agent binary is on PATH, symlinked under the vendor name under test
-  And karvand holds the resolved ABSOLUTE path to every provider binary
+  And DeFlowd holds the resolved ABSOLUTE path to every provider binary
   And every agent is spawned with { detached: true, stdio: ['pipe','pipe','pipe'] }
   And time enters the engine through an injected Clock port
   And no fake timers are installed while a child process is alive
@@ -37,43 +37,43 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-05-S1 | Happy path: a full prompt cycle through the ACP client | KAR-05.1 | Happy path |
-| EPIC-05-S2 | `protocolVersion` is the integer 1, and a mismatch fails cleanly | KAR-05.1 | Failure |
-| EPIC-05-S3 | The pull loop awaits the durable append before asking for more | KAR-05.1, KAR-05.4 | Edge case |
-| EPIC-05-S4 | Cancel mid-turn: the tail is flushed before the process dies | KAR-05.1, KAR-05.9 | Recovery |
-| EPIC-05-S5 | A permission request round-trips, including a cancelled outcome | KAR-05.1 | Edge case |
-| EPIC-05-S6 | The probe persists the entire `initialize` response | KAR-05.2 | Happy path |
-| EPIC-05-S7 | Probed capability rows across the five verified adapters | KAR-05.2 | Edge case |
-| EPIC-05-S8 | A version bump writes a new row, never an update | KAR-05.2 | Edge case |
-| EPIC-05-S9 | A node is refused scheduling before a process is spawned | KAR-05.2 | Failure |
-| EPIC-05-S10 | Spawn strategy per vendor | KAR-05.3 | Happy path |
-| EPIC-05-S11 | The adapter never searches PATH | KAR-05.3 | Failure |
-| EPIC-05-S12 | Gemini's deprecated flag fallback, exactly once | KAR-05.3 | Edge case |
-| EPIC-05-S13 | A single 10 MB line trips the 8 MiB cap | KAR-05.4 | Failure |
-| EPIC-05-S14 | A wedged agent that never emits a newline | KAR-05.4 | Failure |
-| EPIC-05-S15 | The cap boundary, from both sides | KAR-05.4 | Edge case |
-| EPIC-05-S16 | Payloads over 256 KiB spill to content-addressed blobs | KAR-05.4 | Happy path |
-| EPIC-05-S17 | Identical output across three retries deduplicates | KAR-05.4 | Edge case |
-| EPIC-05-S18 | `terminal/output` is ring-buffered and truncation is honest | KAR-05.4 | Edge case |
-| EPIC-05-S19 | Resume strategy selected from the probed row | KAR-05.5 | Recovery |
-| EPIC-05-S20 | A vendor version change invalidates a resume | KAR-05.5 | Failure |
-| EPIC-05-S21 | `session/load` is not a substitute for `session/resume` | KAR-05.5 | Edge case |
-| EPIC-05-S22 | MCP injected through `session/new`, user config untouched | KAR-05.6 | Happy path |
-| EPIC-05-S23 | A workflow tool call reaches karvand over the UDS | KAR-05.6 | Happy path |
-| EPIC-05-S24 | A new phase unlocks tools without a new session | KAR-05.6 | Edge case |
-| EPIC-05-S25 | Layer A: every recorded frame validates against `schema.json` | KAR-05.7 | Happy path |
-| EPIC-05-S26 | Layer B: the behavioural contract over adapters | KAR-05.7 | Happy path |
-| EPIC-05-S27 | An agent advertising a capability it does not honour | KAR-05.7, KAR-05.2 | Failure |
-| EPIC-05-S28 | A golden recording keyed on the exact agent version | KAR-05.7 | Edge case |
-| EPIC-05-S29 | Exec shim: per-vendor invocation and envelope | KAR-05.8 | Edge case |
-| EPIC-05-S30 | Detached spawn and the process group | KAR-05.9 | Edge case |
-| EPIC-05-S31 | Three-stage cancellation and the zombie false negative | KAR-05.9 | Failure |
-| EPIC-05-S32 | Orphan reaping on boot with the PID-reuse guard | KAR-05.9 | Recovery |
-| EPIC-05-S33 | The direct API adapter stays inert without an explicit opt-in | KAR-05.10 | Happy path |
-| EPIC-05-S34 | A supplied key never reaches disk | KAR-05.10 | Failure |
-| EPIC-05-S35 | An unmediated adapter is refused write-capable work | KAR-05.10 | Edge case |
+| Scenario    | Title                                                            | Verifies           | Type       |
+| ----------- | ---------------------------------------------------------------- | ------------------ | ---------- |
+| EPIC-05-S1  | Happy path: a full prompt cycle through the ACP client           | KAR-05.1           | Happy path |
+| EPIC-05-S2  | `protocolVersion` is the integer 1, and a mismatch fails cleanly | KAR-05.1           | Failure    |
+| EPIC-05-S3  | The pull loop awaits the durable append before asking for more   | KAR-05.1, KAR-05.4 | Edge case  |
+| EPIC-05-S4  | Cancel mid-turn: the tail is flushed before the process dies     | KAR-05.1, KAR-05.9 | Recovery   |
+| EPIC-05-S5  | A permission request round-trips, including a cancelled outcome  | KAR-05.1           | Edge case  |
+| EPIC-05-S6  | The probe persists the entire `initialize` response              | KAR-05.2           | Happy path |
+| EPIC-05-S7  | Probed capability rows across the five verified adapters         | KAR-05.2           | Edge case  |
+| EPIC-05-S8  | A version bump writes a new row, never an update                 | KAR-05.2           | Edge case  |
+| EPIC-05-S9  | A node is refused scheduling before a process is spawned         | KAR-05.2           | Failure    |
+| EPIC-05-S10 | Spawn strategy per vendor                                        | KAR-05.3           | Happy path |
+| EPIC-05-S11 | The adapter never searches PATH                                  | KAR-05.3           | Failure    |
+| EPIC-05-S12 | Gemini's deprecated flag fallback, exactly once                  | KAR-05.3           | Edge case  |
+| EPIC-05-S13 | A single 10 MB line trips the 8 MiB cap                          | KAR-05.4           | Failure    |
+| EPIC-05-S14 | A wedged agent that never emits a newline                        | KAR-05.4           | Failure    |
+| EPIC-05-S15 | The cap boundary, from both sides                                | KAR-05.4           | Edge case  |
+| EPIC-05-S16 | Payloads over 256 KiB spill to content-addressed blobs           | KAR-05.4           | Happy path |
+| EPIC-05-S17 | Identical output across three retries deduplicates               | KAR-05.4           | Edge case  |
+| EPIC-05-S18 | `terminal/output` is ring-buffered and truncation is honest      | KAR-05.4           | Edge case  |
+| EPIC-05-S19 | Resume strategy selected from the probed row                     | KAR-05.5           | Recovery   |
+| EPIC-05-S20 | A vendor version change invalidates a resume                     | KAR-05.5           | Failure    |
+| EPIC-05-S21 | `session/load` is not a substitute for `session/resume`          | KAR-05.5           | Edge case  |
+| EPIC-05-S22 | MCP injected through `session/new`, user config untouched        | KAR-05.6           | Happy path |
+| EPIC-05-S23 | A workflow tool call reaches DeFlowd over the UDS                | KAR-05.6           | Happy path |
+| EPIC-05-S24 | A new phase unlocks tools without a new session                  | KAR-05.6           | Edge case  |
+| EPIC-05-S25 | Layer A: every recorded frame validates against `schema.json`    | KAR-05.7           | Happy path |
+| EPIC-05-S26 | Layer B: the behavioural contract over adapters                  | KAR-05.7           | Happy path |
+| EPIC-05-S27 | An agent advertising a capability it does not honour             | KAR-05.7, KAR-05.2 | Failure    |
+| EPIC-05-S28 | A golden recording keyed on the exact agent version              | KAR-05.7           | Edge case  |
+| EPIC-05-S29 | Exec shim: per-vendor invocation and envelope                    | KAR-05.8           | Edge case  |
+| EPIC-05-S30 | Detached spawn and the process group                             | KAR-05.9           | Edge case  |
+| EPIC-05-S31 | Three-stage cancellation and the zombie false negative           | KAR-05.9           | Failure    |
+| EPIC-05-S32 | Orphan reaping on boot with the PID-reuse guard                  | KAR-05.9           | Recovery   |
+| EPIC-05-S33 | The direct API adapter stays inert without an explicit opt-in    | KAR-05.10          | Happy path |
+| EPIC-05-S34 | A supplied key never reaches disk                                | KAR-05.10          | Failure    |
+| EPIC-05-S35 | An unmediated adapter is refused write-capable work              | KAR-05.10          | Edge case  |
 
 ---
 
@@ -87,7 +87,7 @@ Feature: One client drives any ACP agent
   Scenario: A node's turn runs end to end
     Given a run "r1" with a single agent node "n1" and a worktree at "<tmp>/wt/n1"
     And the provider row for "mock" advertises the "claude" capability profile
-    When karvand schedules "n1"
+    When DeFlowd schedules "n1"
     Then a "node.scheduled" event is appended with provider "mock" and the node's permission level
     And the agent is spawned from the stored absolute path
     And an "initialize" request is sent carrying
@@ -95,7 +95,7 @@ Feature: One client drives any ACP agent
     And no "mcp" or "elicitation" client capability is advertised at M1
     And a "node.started" event is appended carrying binary { path, version, sha256 }
         BEFORE any side effect
-    When the client sends "session/new" with cwd "<tmp>/wt/n1" and the karvan mcpServers entry
+    When the client sends "session/new" with cwd "<tmp>/wt/n1" and the DeFlow mcpServers entry
     Then the returned sessionId is recorded against the node
     When the client sends "session/prompt" with the assembled context packet
     Then each agent_message_chunk becomes one appended event, in arrival order, ordered by seq
@@ -148,7 +148,7 @@ Feature: Version negotiation
 **Notes:** ACP's `protocolVersion` is an **integer**; MCP's is a **date string** (`'2025-11-25'`). They look
 similar, they are not, and a shared helper is the obvious mistake. The `"2025-11-25"` example is there
 precisely to make that mistake fail a test. Package versions (`v1.3.0`, `v0.13.6`) are artefact versions and
-are explicitly *not* the compatibility signal.
+are explicitly _not_ the compatibility signal.
 
 ---
 
@@ -183,7 +183,7 @@ Feature: Backpressure through nextUpdate()
 **Notes:** This is the single most important API detail in the layer. `session.nextUpdate()` is a **pull
 loop, not a callback registration**. It gives natural backpressure — the reader stalls, the OS pipe fills at
 64 KiB (measured `highWaterMark`, 2026-08-02) and the agent blocks in `write()` — and it is the only legal
-place to `await` the SQLite append, because the event must be durable before Karvan asks for more. With
+place to `await` the SQLite append, because the event must be durable before DeFlow asks for more. With
 `.on('data')` plus an `async` handler you are in flowing mode with an **unbounded in-memory queue**; Node
 will happily buffer hundreds of MB while you await SQLite.
 
@@ -237,7 +237,7 @@ Feature: session/request_permission reaches the client
     Given the mock agent's scenario issues session/request_permission for a
           ToolKind "execute" with a ToolCallLocation path inside the worktree
     When the turn runs
-    Then karvand's registered handler is invoked with the request params
+    Then DeFlowd's registered handler is invoked with the request params
     And the handler returns a RequestPermissionOutcome
     And the agent's subsequent behaviour matches the returned optionId
 
@@ -259,7 +259,7 @@ Feature: session/request_permission reaches the client
     And both delegate to fs-service.ts / terminal-service.ts
 ```
 
-**Notes:** The policy itself is EPIC-08. What this scenario locks down is the *shape*: transport-neutral
+**Notes:** The policy itself is EPIC-08. What this scenario locks down is the _shape_: transport-neutral
 services with two thin fronts, and **no business logic in the ACP handlers**. ACP v2 deletes `fs/*` and
 `terminal/*` from the client entirely and pushes them onto MCP; when that lands you re-point the MCP front
 and delete the ACP one. The split is about an hour of work now and avoids rewriting the most
@@ -276,7 +276,7 @@ Feature: Capability manifests are derived, never hardcoded
 
   Scenario: A probe writes one row and one event
     Given no row exists in provider_capabilities for provider "mock"
-    When karvand probes the provider
+    When DeFlowd probes the provider
     Then the agent is spawned, sent initialize, and terminated
     And no session/new request was ever sent, so the probe costs no quota
     And exactly one row is inserted into provider_capabilities with
@@ -300,7 +300,7 @@ Feature: Capability manifests are derived, never hardcoded
     And every routing query reads provider_capabilities
 ```
 
-**Notes:** Persisting the response *unmodified* is what lets a future Karvan answer a question nobody thought
+**Notes:** Persisting the response _unmodified_ is what lets a future DeFlow answer a question nobody thought
 to ask today. The vendor documentation implies a different matrix than the one that was measured, and a
 hardcoded table **will be wrong within a month** — two of the five versions in the 2026-08-02 snapshot were
 published the same day they were probed.
@@ -316,7 +316,7 @@ Feature: The capability matrix as measured
 
   Scenario Outline: Each adapter's row answers the routing questions
     Given the mock agent runs with "--capabilities <profile>"
-    When karvand probes it and stores the row
+    When DeFlowd probes it and stores the row
     Then canResume(row) is <resume>
     And canFork(row) is <fork>
     And canList(row) is <list>
@@ -341,7 +341,7 @@ Feature: The capability matrix as measured
     And the three are distinguishable in the node inspector
 
   Scenario: Two of five cannot resume
-    When karvand summarises the probed rows
+    When DeFlowd summarises the probed rows
     Then exactly two of the five profiles report canResume false
     And those two are routed to ResumeByReplay by EPIC-05-S19
 ```
@@ -353,7 +353,7 @@ It is a **test fixture to re-probe, never a hardcoded constant**. Gemini returne
 `sessionCapabilities` key at all**, only `loadSession: true`; Copilot returned
 `sessionCapabilities: { list: {} }` and nothing else. Collapsing absent, empty and explicitly-`false` into
 one falsy answer is how a router concludes an agent can do something it cannot — hence the second scenario
-asserting the *reason*, not just the boolean.
+asserting the _reason_, not just the boolean.
 
 ---
 
@@ -366,21 +366,21 @@ Feature: Capability history survives an upgrade
 
   Scenario: Re-probing an unchanged binary is a no-op
     Given a row exists for ("mock", "1.0.0", "<sha>")
-    When karvand probes the same binary again
+    When DeFlowd probes the same binary again
     Then the table still has exactly one row for that provider
     And probed_at is updated but caps_json is unchanged
 
   Scenario: A version bump inserts a second row
     Given a row exists for ("mock", "1.0.0", "<shaA>")
     When the binary is replaced and reports version "1.1.0" with sha "<shaB>"
-    And karvand probes it
+    And DeFlowd probes it
     Then the table has two rows
     And the ("mock","1.0.0","<shaA>") row is byte-identical to before
     And two "provider.probed" events exist in the ledger
 
   Scenario: A rebuilt binary at the same version is also a new row
     Given the reported version stays "1.1.0" but the sha256 changes
-    When karvand probes it
+    When DeFlowd probes it
     Then a third row is inserted
     And this is what catches a locally-patched or partially-installed binary
 ```
@@ -423,9 +423,9 @@ Feature: Admission control from the probed row
     And the run is NOT silently escalated to a broader permission level
 ```
 
-**Notes:** The capability row is *the single input the entire routing layer trusts*. Refusing before spawn
+**Notes:** The capability row is _the single input the entire routing layer trusts_. Refusing before spawn
 is what makes an unschedulable node a plan-time fact rather than an hour-three surprise. The second scenario
-encodes F5.4's rule directly: where a provider cannot express the requested level, Karvan **refuses to
+encodes F5.4's rule directly: where a provider cannot express the requested level, DeFlow **refuses to
 schedule** rather than silently escalating — ODW's binary permission model is the documented hazard being
 avoided.
 
@@ -440,7 +440,7 @@ Feature: The verified provider table, encoded once
 
   Scenario Outline: Each vendor is invoked its own way
     Given the provider "<vendor>" resolved to absolute path "<abs>"
-    When karvand spawns it for node "n1" with worktree "<wt>"
+    When DeFlowd spawns it for node "n1" with worktree "<wt>"
     Then the spawned command is "<command>"
     And the spawned argv is "<argv>"
     And the child env contains "<env>"
@@ -480,14 +480,14 @@ both published 2026-08-02, both under the same official GitHub org as the spec. 
 Feature: Absolute paths only
 
   Scenario: A daemon-shaped environment still finds the binary
-    Given karvand's own PATH is "/usr/bin:/bin", as under a launchd or systemd unit
+    Given DeFlowd's own PATH is "/usr/bin:/bin", as under a launchd or systemd unit
     And the provider row's binary_path is "<tmp>/bin/claude-agent-acp"
-    When karvand spawns the provider
+    When DeFlowd spawns the provider
     Then the child starts and completes initialize
 
   Scenario: A missing binary is a typed failure, not a raw errno
     Given the provider row's binary_path points at a deleted file
-    When karvand spawns the provider
+    When DeFlowd spawns the provider
     Then a "node.failed" event is appended with reason "adapter.spawn-failed"
     And failure.message is one human-readable line naming the vendor
     And failure.detail includes the attempted absolute path
@@ -502,7 +502,7 @@ Feature: Absolute paths only
         that does not start with "/" or come from a capability row
 ```
 
-**Notes:** karvand's `PATH` at daemon-start differs from the user's login shell — a daemon started by a login
+**Notes:** DeFlowd's `PATH` at daemon-start differs from the user's login shell — a daemon started by a login
 item, a systemd unit or `npx` inherits a different environment than an interactive terminal. This is a
 silent, machine-specific failure that presents as "works for me", which is the worst kind to debug over a
 GitHub issue.
@@ -518,13 +518,13 @@ Feature: Surviving a deprecation window
 
   Scenario: --acp is tried first
     Given the mock stands in for gemini and accepts "--acp"
-    When karvand spawns it
+    When DeFlowd spawns it
     Then the argv contains "--acp" and not "--experimental-acp"
     And no retry occurs
 
   Scenario: A fallback happens once and is recorded
     Given the mock stands in for gemini and exits with an argv-parse error on "--acp"
-    When karvand spawns it
+    When DeFlowd spawns it
     Then exactly one retry occurs, with "--experimental-acp"
     And an event records that the deprecated flag was used, with the vendor version
     And the operator sees a warning in the run header
@@ -535,8 +535,8 @@ Feature: Surviving a deprecation window
     And exactly two spawn attempts were made in total
 ```
 
-**Notes:** Gemini's `--experimental-acp` still exists but `--help` marks it *"(deprecated, use --acp
-instead)"*. The bounded single retry is the point: an unbounded fallback loop against a churning flag surface
+**Notes:** Gemini's `--experimental-acp` still exists but `--help` marks it _"(deprecated, use --acp
+instead)"_. The bounded single retry is the point: an unbounded fallback loop against a churning flag surface
 turns a clear failure into a slow one. Recording that the deprecated path was taken is what makes the
 monthly `--help` diff actionable.
 
@@ -565,8 +565,8 @@ Feature: The frame-size guard
 
 **Notes:** **Verified hazard.** `@agentclientprotocol/sdk`'s `LineBuffer` (`dist/line-buffer.js`) has **no
 maximum line length**: `push()` accumulates chunks into a private `#pending` array and only emits on finding
-a `0x0a`. karvand is a long-lived daemon supervising runs for days, so this is a real availability bug, not a
-theoretical one. Measured scale: a *trivial* `claude -p "say ok"` turn emitted a single **16,024-byte** JSON
+a `0x0a`. DeFlowd is a long-lived daemon supervising runs for days, so this is a real availability bug, not a
+theoretical one. Measured scale: a _trivial_ `claude -p "say ok"` turn emitted a single **16,024-byte** JSON
 line, and real turns that read a large file or capture a test log routinely produce multi-megabyte single
 lines. The cap must be **upstream of the SDK** — bolting it onto the parsed frame is too late, because the
 buffer has already grown.
@@ -582,7 +582,7 @@ Feature: The case a frame-size cap alone does not cover
 
   Scenario: 64 KiB every 10 ms, forever, with no 0x0a
     Given the mock agent runs the "noNewline" scenario
-    When karvand reads the stream
+    When DeFlowd reads the stream
     Then zero complete frames are ever emitted by the SDK's LineBuffer
     And the byte counter still fires at 8388608 bytes since the last newline
     And the session is aborted with reason "adapter.frame-too-large"
@@ -598,7 +598,7 @@ Feature: The case a frame-size cap alone does not cover
 ```
 
 **Notes:** This is the scenario the naive implementation misses. If the guard measures the size of a
-*completed frame*, an agent that never completes one is invisible to it — and that is precisely the wedged
+_completed frame_, an agent that never completes one is invisible to it — and that is precisely the wedged
 or buggy agent the guard exists for. The second scenario is the necessary complement: a counter that never
 resets would abort legitimate long-running turns.
 
@@ -613,7 +613,7 @@ Feature: 8 MiB exactly
 
   Scenario Outline: The boundary is asserted from both directions
     Given the mock emits a single line of <bytes> bytes followed by a newline
-    When karvand reads the stream
+    When DeFlowd reads the stream
     Then the outcome is "<outcome>"
 
   Examples:
@@ -642,9 +642,9 @@ Feature: Keeping the event log small enough to replay
 
   Scenario: A large tool_call_update spills
     Given the mock emits a tool_call_update whose content is 300 KiB
-    When karvand appends the event
+    When DeFlowd appends the event
     Then the bytes are written to
-         "~/.karvan/blobs/<sha256[0:2]>/<sha256>"
+         "~/.DeFlow/blobs/<sha256[0:2]>/<sha256>"
     And the event row stores only { sha256, bytes, mime, head, tail }
     And head is at most 2 KiB from the start
     And tail is at most 2 KiB from the end
@@ -680,7 +680,7 @@ Feature: Content addressing earns its keep
     Given node "n1" fails and is retried twice, for three attempts in total
     And each attempt captures the byte-identical 400 KiB test-failure log
     When all three attempts have completed
-    Then exactly one file exists under ~/.karvan/blobs/
+    Then exactly one file exists under ~/.DeFlow/blobs/
     And three event rows reference the same sha256
     And the total bytes on disk are ~400 KiB, not ~1.2 MiB
 
@@ -690,7 +690,7 @@ Feature: Content addressing earns its keep
 ```
 
 **Notes:** Three retry attempts producing the same failing test log is not a contrived case — it is the
-*common* case in a repair loop, which is why content addressing pays for itself immediately rather than
+_common_ case in a repair loop, which is why content addressing pays for itself immediately rather than
 eventually.
 
 ---
@@ -705,7 +705,7 @@ Feature: Capping the agent's own terminal polling
   Scenario: A noisy build is bounded on the way in
     Given the agent calls terminal/create for a command emitting 5 MB with a progress bar
     And the agent polls terminal/output
-    When karvand answers
+    When DeFlowd answers
     Then the returned buffer is at most 1 MiB
     And the response reports truncation explicitly using the schema's truncation field
     And the full output is still available as a spilled blob handle
@@ -776,7 +776,7 @@ Feature: Two strategies behind one interface
 **Notes:** **Two of five providers cannot resume**, so `ResumeByReplay` is the durability path for 40% of the
 matrix and must be exercised on every commit — which is only affordable because KAR-04.4 makes a Gemini-shaped
 profile a flag rather than an installed, authenticated CLI. The governing rule:
-**Karvan's own SQLite ledger is the sole source of truth for a run; every prompt Karvan sends must be
+**DeFlow's own SQLite ledger is the sole source of truth for a run; every prompt DeFlow sends must be
 reconstructible from that log alone; `session/resume` is a token-cost optimisation, never the durability
 mechanism.** The final scenario is the guard against someone "helpfully" special-casing a vendor when a
 capability probe returns something surprising.
@@ -841,22 +841,22 @@ Feature: loadSession is universally true and semantically different
   Scenario: If load is used, the flood is bounded and deduped
     Given a diagnostic path deliberately issues session/load
     And the agent replays 400 historical session/update notifications
-    When karvand processes them
-    Then deduplication is keyed on Karvan's OWN event ids, not the agent's
+    When DeFlowd processes them
+    Then deduplication is keyed on DeFlow's OWN event ids, not the agent's
     And the ledger gains zero duplicate rows for events already appended
     And a warning event records how many notifications were discarded
 
   Scenario: A days-long run is protected
     Given a run with 20,000 prior session/update notifications
     When session/load is attempted
-    Then karvand refuses with a typed error naming the notification count
+    Then DeFlowd refuses with a typed error naming the notification count
     And the run continues via ResumeByReplay
 ```
 
 **Notes:** `loadSession` is `true` on all five probed adapters, which makes it a tempting substitute. It is
 not one: `session/load` **streams the entire conversation history back at you as `session/update`
 notifications** while `session/resume` does not. For a days-long run it will flood you. Deduping on the
-agent's ids rather than Karvan's is the specific trap — the agent's ids are not stable across a reconnect.
+agent's ids rather than DeFlow's is the specific trap — the agent's ids are not stable across a reconnect.
 
 ---
 
@@ -868,18 +868,18 @@ agent's ids rather than Karvan's is the specific trap — the agent's ids are no
 Feature: Workflow tools without mutating the user's environment
 
   Scenario: The stdio variant is chosen
-    When karvand sends session/new
-    Then params.mcpServers[0] has name "karvan"
+    When DeFlowd sends session/new
+    Then params.mcpServers[0] has name "DeFlow"
     And it has NO "type" discriminant — it is the untagged stdio variant
     And command === process.execPath
-    And args contain the karvan-mcp entry, "--socket <path>" and "--run <runId>"
-    And env contains a KARVAN_RUN_TOKEN valid only for this run
+    And args contain the DeFlow-mcp entry, "--socket <path>" and "--run <runId>"
+    And env contains a DeFlow_RUN_TOKEN valid only for this run
 
   Scenario: The user's global MCP configuration is never written
     Given the fixture's stand-in vendor config files are hashed before the run
     When a full run completes
     Then every vendor config file hashes identically afterwards
-    And no file under the fixture's HOME was created or modified by karvand
+    And no file under the fixture's HOME was created or modified by DeFlowd
 
   Scenario: The transport choice is justified by the probes
     Then no adapter uses the { type: "acp", serverId } McpServer variant
@@ -898,22 +898,22 @@ capability flag**, so all five agents accept it. The elegant "tunnel MCP over th
 true by a single agent, and codex-acp explicitly returned `acp: false`. Legacy HTTP+SSE is officially
 deprecated as of the 2026-07-28 MCP spec with a 12-month offramp, so it must not be built on even though it
 still ships in SDK 1.30.0. The root-import ban is about weight: the SDK pulls `express`, `hono`, `cors`,
-`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx karvan up`.
+`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx DeFlow up`.
 
 ---
 
-## EPIC-05-S23 — A workflow tool call reaches karvand over the UDS
+## EPIC-05-S23 — A workflow tool call reaches DeFlowd over the UDS
 
 **Verifies:** KAR-05.6 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: karvan-mcp as a thin shim
+Feature: DeFlow-mcp as a thin shim
 
   Scenario: A tool round-trips
-    Given the agent has spawned karvan-mcp from the session/new mcpServers entry
-    And karvan-mcp has connected to karvand over a Unix domain socket
-    When the agent calls the "karvan.readFact" tool with a key
-    Then the request crosses the UDS to karvand
+    Given the agent has spawned DeFlow-mcp from the session/new mcpServers entry
+    And DeFlow-mcp has connected to DeFlowd over a Unix domain socket
+    When the agent calls the "DeFlow.readFact" tool with a key
+    Then the request crosses the UDS to DeFlowd
     And a "fact.read" event is appended naming the calling node
     And the tool result returns to the agent with a value matching the outputSchema
 
@@ -922,19 +922,19 @@ Feature: karvan-mcp as a thin shim
     And no TCP port was bound for MCP
 
   Scenario: A bad token is refused
-    Given karvan-mcp presents a token from a different run
+    Given DeFlow-mcp presents a token from a different run
     When it connects
     Then the connection is refused
-    And karvand logs the refusal with the presented run id
+    And DeFlowd logs the refusal with the presented run id
     And no tool is served
 
   Scenario: The shim dies with its agent
     When the agent process is killed
-    Then karvan-mcp observes stdin close and exits within 2 seconds
+    Then DeFlow-mcp observes stdin close and exits within 2 seconds
     And the socket file is released
 ```
 
-**Notes:** A UDS rather than a TCP port because karvand is already local: filesystem permissions come free
+**Notes:** A UDS rather than a TCP port because DeFlowd is already local: filesystem permissions come free
 instead of needing a loopback auth scheme. The shim exiting on stdin close is what keeps a killed agent from
 leaving a socket holder behind — otherwise every crashed node leaks a process.
 
@@ -951,7 +951,7 @@ Feature: sendToolListChanged
     Given the agent's session was created during the "analysis" phase
     And only read-oriented workflow tools were registered
     When the plan advances and the node enters the "implementation" phase
-    Then karvand calls sendToolListChanged()
+    Then DeFlowd calls sendToolListChanged()
     And the agent receives a notifications/tools/list_changed frame
     And a subsequent tools/list returns the newly available tools
     And no new ACP session was created
@@ -990,7 +990,7 @@ Feature: Schema conformance, every commit
     And the message names the file, the line number and the failing JSON pointer
 
   Scenario: The mock agent's own frames validate
-    Given a run against karvan-mock-agent with KARVAN_RECORD=1
+    Given a run against DeFlow-mock-agent with DeFlow_RECORD=1
     When Layer A validates the produced recording
     Then every frame validates
     And the mock therefore cannot emit a frame no real agent could
@@ -1077,16 +1077,16 @@ Feature: Capability honesty
 
   Scenario: Advertised resume, unimplemented resume
     Given the mock runs with "--capabilities claude --dishonest-capabilities session.resume"
-    And karvand has probed it and stored a row where canResume is true
+    And DeFlowd has probed it and stored a row where canResume is true
     When a node is resumed and ResumeNative sends session/resume
     Then the agent answers with JSON-RPC error code -32601
-    And karvand appends a "node.failed" event with reason "adapter.capability-missing"
+    And DeFlowd appends a "node.failed" event with reason "adapter.capability-missing"
     And failure.detail names the advertised capability and the method that failed
     And conformance assertion 6 fails for that adapter, naming session.resume
 
   Scenario Outline: Dishonesty across the routing-relevant capabilities
     Given the agent advertises "<capability>" and refuses "<method>"
-    When karvand exercises it
+    When DeFlowd exercises it
     Then a -32601 is observed and reported as a conformance failure
 
   Examples:
@@ -1097,12 +1097,12 @@ Feature: Capability honesty
     | additionalDirectories | session/new    |
 
   Scenario: A dishonest adapter does not silently downgrade
-    Then karvand does NOT fall back to ResumeByReplay on the first -32601
+    Then DeFlowd does NOT fall back to ResumeByReplay on the first -32601
     And the failure is surfaced, because a capability row that lies about one
         thing cannot be trusted about the rest
 ```
 
-**Notes:** Assertion 6 *is* the one that catches a lying capability manifest, **which is the single input the
+**Notes:** Assertion 6 _is_ the one that catches a lying capability manifest, **which is the single input the
 entire routing layer trusts**. The last scenario encodes a deliberate product decision: an automatic
 fallback would paper over the dishonesty and let a broken adapter keep making routing promises it cannot
 keep. Fail, tell the operator, and let re-routing be an explicit `PlanPatch` (EPIC-11).
@@ -1117,7 +1117,7 @@ keep. Fail, tell the operator, and let re-routing be an explicit `PlanPatch` (EP
 Feature: Version-keyed goldens make churn visible
 
   Scenario: Recording during a real capture
-    Given KARVAN_RECORD=1 and an authenticated claude-agent-acp at 0.64.1
+    Given DeFlow_RECORD=1 and an authenticated claude-agent-acp at 0.64.1
     When `pnpm test:record` runs the "simple-edit" case
     Then recordings/claude-agent-acp@0.64.1/simple-edit.ndjson is written
     And each line has the shape {"t": <msOffset>, "dir": "in"|"out", "msg": { ... }}
@@ -1133,7 +1133,7 @@ Feature: Version-keyed goldens make churn visible
   Scenario: Both layers of assertion run per recording
     When the suite replays a recording
     Then raw frames are asserted against schema.json (Layer A)
-    And the NORMALISED Karvan event vocabulary is asserted against a file snapshot
+    And the NORMALISED DeFlow event vocabulary is asserted against a file snapshot
     And the snapshot passes through the normalising serializer so timestamps, ULIDs,
         durations, absolute paths, ports and worktree names are stable
 
@@ -1143,7 +1143,7 @@ Feature: Version-keyed goldens make churn visible
 ```
 
 **Notes:** Keying on the **exact** version means a bump produces a visible new directory rather than silently
-invalidating old goldens. Snapshotting *only* the normalised form is less brittle and also less sensitive —
+invalidating old goldens. Snapshotting _only_ the normalised form is less brittle and also less sensitive —
 it will not catch an upstream change your normaliser happens to swallow — hence both layers. Registering the
 serializer before the first snapshot is written is non-negotiable: otherwise every snapshot churns on every
 run and the mechanism becomes noise you learn to `-u` past, which is worse than having no snapshots.
@@ -1159,7 +1159,7 @@ Feature: The CLI fallback, where vendors stop resembling each other
 
   Scenario Outline: Each vendor's headless invocation
     Given the fake exec-shim agent is symlinked as "<vendor>"
-    When karvand invokes the shim for a read-only node
+    When DeFlowd invokes the shim for a read-only node
     Then the argv is "<argv>"
     And the parsed output produces the internal event vocabulary
 
@@ -1220,7 +1220,7 @@ targets. If it is cut, these scenarios are cut with it and F3.2 is knowingly unm
 Every flag above was read from the installed binary's own `--help` on 2026-08-02. Three churn warnings are
 already live: Claude's `--permission-prompt-tool` is gone from `--help`, `codex exec --full-auto` is gone,
 and Gemini's `--allowed-tools` is marked `[DEPRECATED: Use Policy Engine instead]`. The real cost of this
-path is not the parsing — it is that Karvan stops sitting in front of every file access and command
+path is not the parsing — it is that DeFlow stops sitting in front of every file access and command
 execution, which is why the last scenario refuses rather than degrades.
 
 ---
@@ -1241,10 +1241,10 @@ Feature: detached: true is mandatory
 
   Scenario: The non-detached case is actively dangerous
     Given the same agent spawned with detached: false
-    Then the grandchildren's pgid equals karvand's OWN process group
+    Then the grandchildren's pgid equals DeFlowd's OWN process group
     And child.kill('SIGTERM') terminates only the direct child
     And both grandchildren remain in state S
-    And signalling that group would kill karvand itself
+    And signalling that group would kill DeFlowd itself
     And this scenario exists so nobody "simplifies" the spawn options
 
   Scenario: The spawn options are enforced structurally
@@ -1305,11 +1305,11 @@ Feature: The kill switch, and verifying it honestly
     And five "node.completed" events record result.status 'cancelled'
 ```
 
-**Notes:** **Verified false negative.** After a *successful* group SIGKILL, `ps` still lists the
+**Notes:** **Verified false negative.** After a _successful_ group SIGKILL, `ps` still lists the
 grandchildren in state `Z` with `ppid=1`. A naive "did the kill work?" assertion concludes the group kill
 failed when it did not — and this costs hours, because zombie reaping is prompt under launchd and systemd but
 **can lag badly inside containers**, so it bites hardest in exactly the environment where you cannot attach a
-debugger. Asserting that the *unfiltered* count is non-zero is what proves the filter is doing real work
+debugger. Asserting that the _unfiltered_ count is non-zero is what proves the filter is doing real work
 rather than passing vacuously.
 
 ---
@@ -1319,12 +1319,12 @@ rather than passing vacuously.
 **Verifies:** KAR-05.9 · **Type:** Recovery · **Automated at:** integration
 
 ```gherkin
-Feature: detached: true means the agent survives karvand's death
+Feature: detached: true means the agent survives DeFlowd's death
 
   Scenario: A live orphan is reaped
     Given a process row for r1/n1 with a pid that is still running
     And its recorded started_at matches the live process's start time
-    When karvand boots
+    When DeFlowd boots
     Then killTree(pid) is called for that process group
     And the row is marked terminal
     And an event records that an orphan was reaped
@@ -1332,7 +1332,7 @@ Feature: detached: true means the agent survives karvand's death
   Scenario: The PID-reuse guard
     Given a process row whose pid now belongs to an UNRELATED process
     And the recorded started_at does not match that process's start time
-    When karvand boots
+    When DeFlowd boots
     Then no signal is sent to that pid
     And the row is discarded as a PID reuse
     And the discard is logged with both start times
@@ -1350,7 +1350,7 @@ Feature: detached: true means the agent survives karvand's death
   Scenario: A dead orphan's worktree lock is released
     Given a process row whose pid no longer exists
     And that node held a locked git worktree
-    When karvand boots
+    When DeFlowd boots
     Then `git worktree unlock` is run for that worktree
     And the row is marked terminal
 
@@ -1361,7 +1361,7 @@ Feature: detached: true means the agent survives karvand's death
     And no POSIX code path silently no-ops
 ```
 
-**Notes:** `detached: true` means the agent survives karvand's death, and that is **not optional to handle**.
+**Notes:** `detached: true` means the agent survives DeFlowd's death, and that is **not optional to handle**.
 Trusting a bare PID across a reboot is how an orphan reaper kills an unrelated user process, which is the
 kind of bug that ends a tool's credibility in one incident. Windows has no process groups — the path there is
 `taskkill /PID <pid> /T /F`, the POSIX result does **not** transfer, and it was not tested. `tree-kill@1.2.2`
@@ -1383,19 +1383,19 @@ subscription and are being charged per token. Presence of a key is not consent.
 Feature: Direct API adapter opt-in
 
   Background:
-    Given a Karvan workspace initialised in a git repository
+    Given a DeFlow workspace initialised in a git repository
     And no vendor agent CLI is installed on PATH
 
   Scenario: A key in the environment does not enable a provider
     Given the environment contains ANTHROPIC_API_KEY with a valid-looking value
-    And ".karvan/config.yaml" contains no "providers.anthropic.directApi" key
-    When the operator runs "karvan doctor"
+    And ".DeFlow/config.yaml" contains no "providers.anthropic.directApi" key
+    When the operator runs "DeFlow doctor"
     Then the direct API adapter is reported as "unconfigured"
     And the provider registry offers no anthropic provider
     And planning a run fails validation with "no adapter satisfies node requirements"
 
   Scenario: An explicit opt-in enables it
-    Given ".karvan/config.yaml" contains:
+    Given ".DeFlow/config.yaml" contains:
       """
       providers:
         anthropic:
@@ -1404,16 +1404,16 @@ Feature: Direct API adapter opt-in
             keyEnv: ANTHROPIC_API_KEY
       """
     And the environment contains ANTHROPIC_API_KEY
-    When the operator runs "karvan doctor"
+    When the operator runs "DeFlow doctor"
     Then the direct API adapter is reported as "configured and reachable"
     And the capability manifest has a row for it with "mediatedExecution: false"
     And that row declares "tokenAccounting: 'exact'"
     And the reported key value is masked in every line of doctor's output
 
   Scenario: Opted in but the key is absent
-    Given the opt-in is present in ".karvan/config.yaml"
+    Given the opt-in is present in ".DeFlow/config.yaml"
     And ANTHROPIC_API_KEY is not set in the environment
-    When the operator runs "karvan doctor"
+    When the operator runs "DeFlow doctor"
     Then the adapter is reported as "configured but failing"
     And the reason names the missing environment variable
     And the run is not started
@@ -1428,7 +1428,7 @@ Feature: Direct API adapter opt-in
 
 **Verifies:** KAR-05.10 · **Type:** Failure · **Automated at:** integration
 
-This is the scenario that keeps AR-1 true in practice rather than in prose. Karvan may hold a key in
+This is the scenario that keeps AR-1 true in practice rather than in prose. DeFlow may hold a key in
 memory for the duration of a call; it may never write one down. The test is mechanical and should stay
 mechanical — a sentinel value and a grep over the entire on-disk footprint of a completed run.
 
@@ -1437,7 +1437,7 @@ Feature: Supplied credentials are never persisted
 
   Background:
     Given the direct API adapter is opted in for a stub provider
-    And the key is the sentinel value "sk-KARVAN-SENTINEL-d41d8cd98f00b204"
+    And the key is the sentinel value "sk-DeFlow-SENTINEL-d41d8cd98f00b204"
     And a local HTTP stub stands in for the provider API
 
   Scenario: A completed run leaves no trace of the key
@@ -1452,13 +1452,13 @@ Feature: Supplied credentials are never persisted
 
   Scenario: The key is absent from a crash artefact
     Given the same plan
-    When karvand is SIGKILLed mid-request
+    When DeFlowd is SIGKILLed mid-request
     And the daemon restarts and replays the ledger
     Then searching the entire state directory for the sentinel returns no matches
     And the interrupted node is resumable
 ```
 
-**Notes:** run the sweep over the *whole* state directory, not a list of files you expect to be risky —
+**Notes:** run the sweep over the _whole_ state directory, not a list of files you expect to be risky —
 the point of a sentinel test is to catch the write you did not anticipate. The crash variant exists
 because a half-written request buffer is precisely where a naive implementation leaks.
 
@@ -1469,7 +1469,7 @@ because a half-written request buffer is precisely where a naive implementation 
 **Verifies:** KAR-05.10 · **Type:** Edge case · **Automated at:** unit
 
 The permission ladder is enforced at the ACP `fs/*` and `terminal/*` boundary. A direct API adapter has
-no such boundary — there is no subprocess whose file access Karvan mediates. So the ladder cannot be
+no such boundary — there is no subprocess whose file access DeFlow mediates. So the ladder cannot be
 enforced for it, and the narrowed "refuse to schedule" rule is exactly right: one capability bit, not a
 per-vendor flag matrix.
 

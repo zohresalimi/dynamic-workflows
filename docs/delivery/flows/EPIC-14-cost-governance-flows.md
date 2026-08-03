@@ -7,27 +7,27 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan. Sets ceilings, answers a budget pause, raises a ceiling and resumes |
-| **karvand** | The local daemon: scheduler, ledger, reducer, 1 Hz ticker |
-| **Accountant** | `packages/cost` — normalises vendor usage into `TokenUsage`, appends `budget.consumed`, projects the rollups |
-| **Estimator** | `packages/cost/src/estimate.ts` — the pure pre-flight function over Tier-2 counts and the calibration factor |
-| **Scheduler** | `decide(state, now)` — evaluates ceilings before admission, writes `node_wake` rows |
-| **Provider agent** | A `karvan-mock-agent` subprocess on a temp `PATH`, or the `packages/testkit` fake exec-shim agent when a vendor-shaped `stream-json` / JSONL envelope is what is under test |
-| **Patch policy engine** | [EPIC-11](../epics/EPIC-11-dynamic-planning.md) KAR-11.4 — reads `estimate.costUsdDelta` and `elapsedBudgetFraction` |
-| **Capability manifest** | The persisted probe result carrying `tokenAccounting` and `tokenEstimateFactor` per (provider, model) |
+| Actor                   | Description                                                                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator**            | The engineer driving DeFlow. Sets ceilings, answers a budget pause, raises a ceiling and resumes                                                                            |
+| **DeFlowd**             | The local daemon: scheduler, ledger, reducer, 1 Hz ticker                                                                                                                   |
+| **Accountant**          | `packages/cost` — normalises vendor usage into `TokenUsage`, appends `budget.consumed`, projects the rollups                                                                |
+| **Estimator**           | `packages/cost/src/estimate.ts` — the pure pre-flight function over Tier-2 counts and the calibration factor                                                                |
+| **Scheduler**           | `decide(state, now)` — evaluates ceilings before admission, writes `node_wake` rows                                                                                         |
+| **Provider agent**      | A `DeFlow-mock-agent` subprocess on a temp `PATH`, or the `packages/testkit` fake exec-shim agent when a vendor-shaped `stream-json` / JSONL envelope is what is under test |
+| **Patch policy engine** | [EPIC-11](../epics/EPIC-11-dynamic-planning.md) KAR-11.4 — reads `estimate.costUsdDelta` and `elapsedBudgetFraction`                                                        |
+| **Capability manifest** | The persisted probe result carrying `tokenAccounting` and `tokenEstimateFactor` per (provider, model)                                                                       |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a real git repository on branch "main"
+  Given a DeFlow workspace initialised in a real git repository on branch "main"
   And the repository was created by "git init -b main" with
       GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null and forced identity env
   And the ledger is a file-backed SQLite database opened with
       "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000"
-  And "karvan-mock-agent" is symlinked onto a temp PATH under the vendor binary names the run uses
+  And "DeFlow-mock-agent" is symlinked onto a temp PATH under the vendor binary names the run uses
   And the fixture corpus under "test/fixtures/streams/" contains a Claude Code "result" envelope
       with populated modelUsage, a "rate_limit_event" frame carrying resetsAt, a "result" with
       subtype "error_max_budget_usd", and a Codex "turn.completed" with usage
@@ -43,39 +43,39 @@ Background:
 > ([testing strategy §7](../../14-testing-strategy.md)). And **the injected `Clock`** is what makes a
 > six-hour wall-clock ceiling and a four-hour quota suspension cost microseconds — while
 > `vi.useFakeTimers()` with a live child process deadlocks, which matters because every scenario here
-> is *about* time *around* a subprocess.
+> is _about_ time _around_ a subprocess.
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-14-S1 | Happy path: a completed node's spend lands as `budget.consumed` with provenance | KAR-14.1 | Happy path |
-| EPIC-14-S2 | Vendor-reported and estimated figures are reported side by side, never summed | KAR-14.1 | Edge case |
-| EPIC-14-S3 | `tokenAccounting: 'none'` produces a blank cost, not a zero | KAR-14.1 | Edge case |
-| EPIC-14-S4 | Subscription quota and API-key currency are two totals, not one | KAR-14.1 | Edge case |
-| EPIC-14-S5 | A failed attempt's spend counts; a retry does not refund it | KAR-14.1 | Edge case |
-| EPIC-14-S6 | Replay after `kill -9` reproduces the rollups and double-counts nothing | KAR-14.1 | Recovery |
-| EPIC-14-S7 | Megabytes of stdout move no cost figure | KAR-14.1 | Edge case |
-| EPIC-14-S8 | Happy path: the cost ceiling pauses the run and stops admission | KAR-14.2 | Happy path |
-| EPIC-14-S9 | **A paused run retains full state and resumes when the ceiling is raised** | KAR-14.2 | Recovery |
-| EPIC-14-S10 | Every dimension × scope produces the right `budget.exceeded` payload | KAR-14.2 | Edge case |
-| EPIC-14-S11 | A node ceiling suspends one branch; siblings keep running | KAR-14.2 | Edge case |
-| EPIC-14-S12 | The pause survives `kill -9` and resumes after restart | KAR-14.2 | Recovery |
-| EPIC-14-S13 | A cost ceiling on an unmeasurable provider is declared unenforceable up front | KAR-14.2 | Failure |
-| EPIC-14-S14 | The vendor's own ceiling (`error_max_budget_usd`) pauses; it is never retried | KAR-14.2 | Failure |
-| EPIC-14-S15 | Happy path: a whole-plan estimate is on the spec-approval surface before `run.started` | KAR-14.3 | Happy path |
-| EPIC-14-S16 | The three worked patch examples reproduce exactly | KAR-14.3 | Happy path |
-| EPIC-14-S17 | `elapsedBudgetFraction >= 1.0` rejects the patch and names the rule | KAR-14.3 | Failure |
-| EPIC-14-S18 | **An unpriceable node estimates `null`, and `null` never reads as cheap** | KAR-14.3 | Failure |
-| EPIC-14-S19 | Seed factor below five samples, learned factor from five | KAR-14.3 | Edge case |
-| EPIC-14-S20 | Estimate versus actual is reconciled and the accuracy is visible | KAR-14.3 | Edge case |
-| EPIC-14-S21 | Happy path: `resetsAt` becomes a `node_wake` row and the run sleeps for free | KAR-14.4 | Happy path |
-| EPIC-14-S22 | **The `2**31` timer footgun: a long wake must be a row, never a timer** | KAR-14.4 | Failure |
-| EPIC-14-S23 | The suspension survives `kill -9` and a laptop sleep | KAR-14.4 | Recovery |
-| EPIC-14-S24 | Re-route only onto a capability superset, and only through the policy engine | KAR-14.4 | Edge case |
-| EPIC-14-S25 | No capable provider: suspend, do not reroute, do not kill the run | KAR-14.4 | Failure |
-| EPIC-14-S26 | Correlated limits: three nodes, three distinct jittered wakes, one transaction each | KAR-14.4 | Concurrency |
-| EPIC-14-S27 | An adapter with no rate-limit signal degrades to blind backoff, honestly labelled | KAR-14.4 | Edge case |
+| Scenario    | Title                                                                                  | Verifies | Type        |
+| ----------- | -------------------------------------------------------------------------------------- | -------- | ----------- |
+| EPIC-14-S1  | Happy path: a completed node's spend lands as `budget.consumed` with provenance        | KAR-14.1 | Happy path  |
+| EPIC-14-S2  | Vendor-reported and estimated figures are reported side by side, never summed          | KAR-14.1 | Edge case   |
+| EPIC-14-S3  | `tokenAccounting: 'none'` produces a blank cost, not a zero                            | KAR-14.1 | Edge case   |
+| EPIC-14-S4  | Subscription quota and API-key currency are two totals, not one                        | KAR-14.1 | Edge case   |
+| EPIC-14-S5  | A failed attempt's spend counts; a retry does not refund it                            | KAR-14.1 | Edge case   |
+| EPIC-14-S6  | Replay after `kill -9` reproduces the rollups and double-counts nothing                | KAR-14.1 | Recovery    |
+| EPIC-14-S7  | Megabytes of stdout move no cost figure                                                | KAR-14.1 | Edge case   |
+| EPIC-14-S8  | Happy path: the cost ceiling pauses the run and stops admission                        | KAR-14.2 | Happy path  |
+| EPIC-14-S9  | **A paused run retains full state and resumes when the ceiling is raised**             | KAR-14.2 | Recovery    |
+| EPIC-14-S10 | Every dimension × scope produces the right `budget.exceeded` payload                   | KAR-14.2 | Edge case   |
+| EPIC-14-S11 | A node ceiling suspends one branch; siblings keep running                              | KAR-14.2 | Edge case   |
+| EPIC-14-S12 | The pause survives `kill -9` and resumes after restart                                 | KAR-14.2 | Recovery    |
+| EPIC-14-S13 | A cost ceiling on an unmeasurable provider is declared unenforceable up front          | KAR-14.2 | Failure     |
+| EPIC-14-S14 | The vendor's own ceiling (`error_max_budget_usd`) pauses; it is never retried          | KAR-14.2 | Failure     |
+| EPIC-14-S15 | Happy path: a whole-plan estimate is on the spec-approval surface before `run.started` | KAR-14.3 | Happy path  |
+| EPIC-14-S16 | The three worked patch examples reproduce exactly                                      | KAR-14.3 | Happy path  |
+| EPIC-14-S17 | `elapsedBudgetFraction >= 1.0` rejects the patch and names the rule                    | KAR-14.3 | Failure     |
+| EPIC-14-S18 | **An unpriceable node estimates `null`, and `null` never reads as cheap**              | KAR-14.3 | Failure     |
+| EPIC-14-S19 | Seed factor below five samples, learned factor from five                               | KAR-14.3 | Edge case   |
+| EPIC-14-S20 | Estimate versus actual is reconciled and the accuracy is visible                       | KAR-14.3 | Edge case   |
+| EPIC-14-S21 | Happy path: `resetsAt` becomes a `node_wake` row and the run sleeps for free           | KAR-14.4 | Happy path  |
+| EPIC-14-S22 | **The `2**31` timer footgun: a long wake must be a row, never a timer\*\*              | KAR-14.4 | Failure     |
+| EPIC-14-S23 | The suspension survives `kill -9` and a laptop sleep                                   | KAR-14.4 | Recovery    |
+| EPIC-14-S24 | Re-route only onto a capability superset, and only through the policy engine           | KAR-14.4 | Edge case   |
+| EPIC-14-S25 | No capable provider: suspend, do not reroute, do not kill the run                      | KAR-14.4 | Failure     |
+| EPIC-14-S26 | Correlated limits: three nodes, three distinct jittered wakes, one transaction each    | KAR-14.4 | Concurrency |
+| EPIC-14-S27 | An adapter with no rate-limit signal degrades to blind backoff, honestly labelled      | KAR-14.4 | Edge case   |
 
 ---
 
@@ -130,8 +130,8 @@ Feature: The three accounting tiers are never silently mixed
     And a figure constructed without a source or method fails to typecheck
 ```
 
-**Notes:** the architecture's phrasing is a prohibition, not a preference — *"never silently mix the
-tiers; every count carries its `method`"*. The `1.75` assertion is deliberately written as an
+**Notes:** the architecture's phrasing is a prohibition, not a preference — _"never silently mix the
+tiers; every count carries its `method`"_. The `1.75` assertion is deliberately written as an
 absence, because the natural implementation of a "run total" is exactly that sum and it will be
 added by someone in week three unless a test forbids it.
 
@@ -154,7 +154,7 @@ Feature: Honest degradation when a vendor reports nothing
     And the projection type makes 0 unrepresentable as "unknown"
 ```
 
-**Notes:** *"a blank cost cell, not a zero"*. A zero is a claim that nothing was spent, which is
+**Notes:** _"a blank cost cell, not a zero"_. A zero is a claim that nothing was spent, which is
 false and which also makes a cost ceiling silently unenforceable — see EPIC-14-S13, which is the
 consequence this scenario exists to make visible.
 
@@ -177,9 +177,9 @@ Feature: Auth mode changes what a cost figure means
     And a run containing an "api_key" node is labelled as such in the run summary
 ```
 
-**Notes:** from the adapter layer — runs on the direct-API path *"are labelled in the ledger, because
+**Notes:** from the adapter layer — runs on the direct-API path _"are labelled in the ledger, because
 their cost accounting (F9.1) is real currency rather than subscription quota, and the two must not be
-summed into one number."* The related security invariant is that the *effective* auth mode of every
+summed into one number."_ The related security invariant is that the _effective_ auth mode of every
 provider is a recorded, rendered fact and never something the user has to infer from a bill.
 
 ---
@@ -218,7 +218,7 @@ Feature: Accounting is a projection, so it survives a crash for free
   Scenario: SIGKILL mid-run, then a fresh engine over the same ledger file
     Given a scripted three-node run in progress with two "budget.consumed" events committed
     And the pre-crash rollup has been snapshotted by the harness
-    When karvand is killed with SIGKILL
+    When DeFlowd is killed with SIGKILL
     And a fresh engine is constructed over the same ledger.db file
     Then the replayed rollup is byte-identical to the pre-crash snapshot
     And PRAGMA integrity_check returns "ok"
@@ -278,7 +278,7 @@ Feature: Budget ceilings pause rather than fail
     And the run appears in "GET /api/approvals" with the budget reason
 ```
 
-**Notes:** the pause is implemented at *admission*, not by terminating children. Tearing down a node
+**Notes:** the pause is implemented at _admission_, not by terminating children. Tearing down a node
 that is most of the way through a build to save a few cents turns a pause into a partial failure and
 breaks EPIC-14-S9's promise.
 
@@ -294,8 +294,8 @@ Feature: A ceiling is a decision point, not a way to lose four hours of work
   Scenario: the operator raises the ceiling and the run continues from where it stopped
     Given a run paused by "budget.exceeded" with scope "run" and dimension "cost"
     And nodes "n_recon" and "n_impl_1" are in state "completed"
-    And node "n_impl_1" owns the worktree at ".karvan/runs/r1/worktrees/n_impl_1"
-        on branch "karvan/r1__n_impl_1"
+    And node "n_impl_1" owns the worktree at ".DeFlow/runs/r1/worktrees/n_impl_1"
+        on branch "DeFlow/r1__n_impl_1"
     And three facts written by "n_recon" are on the blackboard
     And the effect journal holds completed entries for both nodes' idempotency keys
     When the operator raises the run's costUsd ceiling to 5.00
@@ -304,7 +304,7 @@ Feature: A ceiling is a decision point, not a way to lose four hours of work
     And no "node.started" event is appended for "n_recon" or "n_impl_1"
     And the effect journal returns memoised results for their idempotency keys rather than
         re-executing them
-    And the worktree at ".karvan/runs/r1/worktrees/n_impl_1" is unchanged, still locked,
+    And the worktree at ".DeFlow/runs/r1/worktrees/n_impl_1" is unchanged, still locked,
         and "git worktree list --porcelain -z" still reports it
     And the three blackboard facts are present with unchanged provenance
     And the plan version and planHash are unchanged
@@ -314,7 +314,7 @@ Feature: A ceiling is a decision point, not a way to lose four hours of work
 ```
 
 **Notes:** this is the scenario the whole story exists for. Nothing here needs a checkpoint
-mechanism: the ledger *is* the checkpoint, the effect journal is what makes "never re-execute"
+mechanism: the ledger _is_ the checkpoint, the effect journal is what makes "never re-execute"
 mechanical rather than aspirational, and `run.paused`/`run.resumed` are ordinary events so the pause
 is visible in the timeline afterwards. If any assertion in this scenario needs new persistence to
 pass, the durability model has been bypassed somewhere upstream.
@@ -353,7 +353,7 @@ Feature: Both dimensions and both scopes are first class
 
 **Notes:** the six-hour advance costs microseconds because the clock is a port. The `25.00 / 25.40`
 row is lifted from the error envelope example in the API contract, so the wire message
-*"Run budget of $25.00 exceeded; run is paused"* and the ledger event agree on the same numbers.
+_"Run budget of $25.00 exceeded; run is paused"_ and the ledger event agree on the same numbers.
 
 ---
 
@@ -387,8 +387,8 @@ Feature: Pause is an event, never an in-memory flag
 
   Scenario: SIGKILL after a budget pause, then restart
     Given a run paused by "budget.exceeded" with "run.paused" committed
-    When karvand is killed with SIGKILL
-    And karvand is restarted over the same .karvan/ directory
+    When DeFlowd is killed with SIGKILL
+    And DeFlowd is restarted over the same .DeFlow/ directory
     Then ledger replay reconstructs the run in state paused
     And the scheduler admits no node on the first tick after restart
     And the run still appears in "GET /api/approvals" with reason "budget"
@@ -409,7 +409,7 @@ every test that does not restart the daemon.
 **Verifies:** KAR-14.2 · **Type:** Failure · **Automated at:** integration
 
 ```gherkin
-Feature: Karvan does not claim a ceiling it cannot measure
+Feature: DeFlow does not claim a ceiling it cannot measure
 
   Scenario: a costUsd ceiling over a provider that reports no usage
     Given a run created with budget { costUsd: 25.00, wallclockMs: 14400000 }
@@ -420,7 +420,7 @@ Feature: Karvan does not claim a ceiling it cannot measure
     And the reason names provider "gemini" and node "n_x"
     And the spec-approval surface shows that marker before approval is possible
     And the wallclockMs ceiling is still reported as enforceable
-    And "karvan doctor" lists "gemini" under providers with no cost accounting
+    And "DeFlow doctor" lists "gemini" under providers with no cost accounting
 ```
 
 **Notes:** this is EPIC-14-S3's consequence made explicit. Without it, a `tokenAccounting: 'none'`
@@ -435,7 +435,7 @@ to say so loudly, before approval, while a different provider is still one edit 
 **Verifies:** KAR-14.2 · **Type:** Failure · **Automated at:** integration
 
 ```gherkin
-Feature: Defence in depth below Karvan's ceiling
+Feature: Defence in depth below DeFlow's ceiling
 
   Scenario: Claude Code's own --max-budget-usd fires
     Given node "n_impl_1" is spawned with "--max-budget-usd 2.00"
@@ -525,7 +525,7 @@ Feature: A run that has spent its budget does not get to spend more by replannin
     And the run remains paused rather than aborted
 ```
 
-**Notes:** a rejection is *"a 'not without you', not a dead end"* — the rejected patch stays
+**Notes:** a rejection is _"a 'not without you', not a dead end"_ — the rejected patch stays
 addressable and approvable. Recording rejections is also an NF10 obligation: "the run wanted to do X
 and was not allowed to" is exactly the state a user asks about later.
 
@@ -538,7 +538,7 @@ and was not allowed to" is exactly the state a user asks about later.
 ```gherkin
 Feature: Unknown cost is not zero cost
 
-  Scenario: a patch onto a provider Karvan cannot price
+  Scenario: a patch onto a provider DeFlow cannot price
     Given a PlanPatch inserting an agent node routed to a provider with no price-table entry
     And the provider's capability manifest carries tokenAccounting "none"
     When the estimator runs
@@ -554,7 +554,7 @@ Feature: Unknown cost is not zero cost
 
 **Notes:** the whole failure chain is one coercion. `null → 0` makes `costDeltaUsd <= 5.00` true,
 which matches `read-only-analysis`, which is `auto` — so the single most expensive class of patch
-auto-applies on exactly the providers Karvan cannot meter. The rule table's default arm being
+auto-applies on exactly the providers DeFlow cannot meter. The rule table's default arm being
 `approve` rather than `auto` is the second half of the defence and both halves must hold.
 
 ---
@@ -582,7 +582,7 @@ Feature: The estimate says how confident it is
 ```
 
 **Notes:** the seeds exist because tiktoken-family tokenizers undercount Claude tokens by roughly
-15–20% on prose and more on code, and an undercount systematically *overfills* — the dangerous
+15–20% on prose and more on code, and an undercount systematically _overfills_ — the dangerous
 direction. Marking an estimate as seed-based is what lets the UI say "early estimate" for the first
 handful of nodes of a fresh (provider, model) pair instead of quietly being wrong.
 
@@ -602,12 +602,12 @@ Feature: The estimator teaches itself
     Then each node appends the estimate/actual delta alongside its "budget.consumed" event
     And the stored tokenEstimateFactor moves monotonically from the 1.2 seed toward 1.18
     And by the twentieth sample it is within 0.02 of 1.18
-    And "karvan doctor" reports the factor and sample count for that pair
+    And "DeFlow doctor" reports the factor and sample count for that pair
     And the run summary exposes a per-run estimate-accuracy figure
 ```
 
 **Notes:** the EWMA itself belongs to EPIC-09 KAR-09.7; what this scenario verifies is that this epic
-actually *feeds* it — the reconciliation step is easy to leave out, and without it the factor never
+actually _feeds_ it — the reconciliation step is easy to leave out, and without it the factor never
 moves and every estimate stays seed-based forever.
 
 ---
@@ -637,7 +637,7 @@ Feature: Rate-limit awareness for a days-long orchestrator
     And the run was never paused and never failed
 ```
 
-**Notes:** *"a suspended node costs exactly one row and zero CPU."* The same-transaction requirement
+**Notes:** _"a suspended node costs exactly one row and zero CPU."_ The same-transaction requirement
 is the one that bites: split the wake row from the failure event and a restart inside the window
 either loses the delay (retry storm) or double-counts the attempt.
 
@@ -684,9 +684,9 @@ Feature: Durable wake times
 
   Scenario: crash and sleep across a quota suspension
     Given node "n_impl_1" suspended with a node_wake row at <now + 4h>, reason "quota"
-    When karvand is killed with SIGKILL
-    And the machine's wall clock is advanced by two hours while karvand is down
-    And karvand is restarted over the same .karvan/ directory
+    When DeFlowd is killed with SIGKILL
+    And the machine's wall clock is advanced by two hours while DeFlowd is down
+    And DeFlowd is restarted over the same .DeFlow/ directory
     Then the node_wake row is still present and unchanged
     And the ticker does not admit the node on the first tick
     When the TestClock is advanced to the recorded wake_at
@@ -735,8 +735,8 @@ Feature: Provider re-routing is a visible plan patch, never a silent swap
 ```
 
 **Notes:** the matrix rows are the measured 2026-08-02 probe — copilot 1.0.77 and gemini 0.53.1
-cannot resume at all, and codex-acp 1.1.9 has no `fork`. That fixture is *a test fixture, never a
-constant*: it is regenerated by `karvan doctor` and a diff against it is expected to fail the
+cannot resume at all, and codex-acp 1.1.9 has no `fork`. That fixture is _a test fixture, never a
+constant_: it is regenerated by `DeFlow doctor` and a diff against it is expected to fail the
 conformance suite rather than to be edited into agreement.
 
 ---
@@ -757,7 +757,7 @@ Feature: One provider unavailable degrades the plan; it does not kill the run
     And "node.suspended" is appended
     And the run is not paused, not failed and not aborted
     And an independent branch "n_docs" continues and reaches "node.completed"
-    And "karvan doctor" reports "claude" as rate-limited until <now + 6h>
+    And "DeFlow doctor" reports "claude" as rate-limited until <now + 6h>
 ```
 
 ---
@@ -778,7 +778,7 @@ Feature: Full jitter, because the failure mode is correlated
     And the three wake_at values are distinct
     And each node_wake row was written in the same transaction as its "node.failed" event
     And each ledger entry pairs "node.failed" with "node.retry.scheduled"
-    When karvand is killed with SIGKILL inside the backoff window and restarted
+    When DeFlowd is killed with SIGKILL inside the backoff window and restarted
     Then each node still has its original wake_at
     And no attempt counter was incremented by the restart
 
@@ -788,9 +788,9 @@ Feature: Full jitter, because the failure mode is correlated
     And the draws are not all equal
 ```
 
-**Notes:** full jitter rather than equal jitter or none, *"because the common failure here is
+**Notes:** full jitter rather than equal jitter or none, _"because the common failure here is
 correlated: several nodes hit the same vendor rate limit at the same moment, and you do not want them
-retrying in lockstep and re-tripping it."* Asserting distinctness over a seeded RNG rather than a
+retrying in lockstep and re-tripping it."_ Asserting distinctness over a seeded RNG rather than a
 single run is what makes this test non-flaky.
 
 ---
@@ -811,7 +811,7 @@ Feature: Honest degradation when the vendor says nothing machine-readable
     And the retry uses the full-jitter backoff rather than a scheduled reset
     And the projected provider status shows "rate limited, reset time unknown"
         rather than a fabricated reset time
-    And "karvan doctor" reports the same wording for that provider
+    And "DeFlow doctor" reports the same wording for that provider
 ```
 
 **Notes:** the temptation is to invent a plausible reset time so the UI has something to render. A

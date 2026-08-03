@@ -4,10 +4,10 @@
 
 ## Context
 
-Karvan is eight packages and an estimated ~15k LOC, built by one person. It has a clean
+DeFlow is eight packages and an estimated ~15k LOC, built by one person. It has a clean
 internal boundary structure that is worth enforcing — a pure core with zero I/O, a ledger, an
 adapter layer, a daemon, a CLI, a web app, a testkit — but it has exactly one artefact anyone
-outside the repo will ever install: `npx karvan up` (NF6).
+outside the repo will ever install: `npx DeFlow up` (NF6).
 
 Those two facts pull in opposite directions if you are not careful. Monorepo tooling is designed
 around the assumption that packages are published independently, which brings version coordination,
@@ -20,7 +20,7 @@ only with a package manager whose linking model supports it.
 
 ## Decision
 
-**pnpm 11 workspaces with a `catalog:` block. Exactly one published package (`karvan`). No task
+**pnpm 11 workspaces with a `catalog:` block. Exactly one published package (`DeFlow`). No task
 runner at M1.**
 
 - Root `package.json` sets `"packageManager": "pnpm@11.18.0"`, `"type": "module"`,
@@ -28,16 +28,16 @@ runner at M1.**
 - `pnpm-workspace.yaml` lists `packages/*` and `e2e`, plus a **`catalog:`** block pinning shared
   versions (typescript, vitest, vite, zod, `@types/node`) in **one** place. Packages consume them as
   `"typescript": "catalog:"`, so no package can drift.
-- **`@karvan/*` are all `private: true`** — `core`, `ledger`, `adapters`, `daemon`, `web`,
-  `testkit`, `mock-agent`. Only `packages/cli` publishes, as `karvan`, and tsdown inlines the
-  workspace packages into its bundle with `noExternal: [/^@karvan\//]`.
+- **`@DeFlow/*` are all `private: true`** — `core`, `ledger`, `adapters`, `daemon`, `web`,
+  `testkit`, `mock-agent`. Only `packages/cli` publishes, as `DeFlow`, and tsdown inlines the
+  workspace packages into its bundle with `noExternal: [/^@DeFlow\//]`.
 - **Cross-package dev resolution uses pnpm's `publishConfig` override**: `exports` points at
   `./src/index.ts` in the workspace and at `./dist/index.js` in the published tarball. Node, Vite,
   Vitest and `tsc` then all see live TypeScript source across packages — no watch-build chain, no
   stale `dist`, and goto-definition lands on real code. This trick is the single biggest DX win in
   the repo and it works cleanly on pnpm's symlinked store in a way npm's hoisting does not.
 
-**No Nx, no Turborepo, no moon at M1.** `pnpm -r run build` and `pnpm --filter @karvan/daemon test`
+**No Nx, no Turborepo, no moon at M1.** `pnpm -r run build` and `pnpm --filter @DeFlow/daemon test`
 are sufficient for eight packages. A task runner solves cache and graph problems that do not exist
 at this size: Nx 23 wants plugins, a daemon and generators; moon 2.4 introduces a whole toolchain
 concept. Both are negative value for one developer today.
@@ -53,16 +53,18 @@ Layout, package boundaries and the dependency direction rules are in
 ## Consequences
 
 ### Positive
+
 - **The multi-package versioning problem is deleted, not managed.** No changesets, no release
   orchestration, no inter-package version matrix.
-- The published tarball has exactly one native runtime dependency; everything `@karvan/*` is inlined.
+- The published tarball has exactly one native runtime dependency; everything `@DeFlow/*` is inlined.
 - Catalogs mean a TypeScript or Vitest bump is a one-line change, which matters because TypeScript
   is pinned hard ([ADR 0010](./0010-typescript-6-pin-esm-only-erasable-syntax.md)).
-- Package boundaries still do their real job — `@karvan/core` is pure and importable by the web app,
+- Package boundaries still do their real job — `@DeFlow/core` is pure and importable by the web app,
   the daemon cannot be imported by core — without paying for independent publishing.
 
 ### Negative
-- Nobody else can depend on `@karvan/core`. If a colleague ever wants to build on the domain model,
+
+- Nobody else can depend on `@DeFlow/core`. If a colleague ever wants to build on the domain model,
   that requires publishing it, which reintroduces versioning. Accepted: that is an M3+ problem and
   the trigger is written below.
 - `pnpm -r typecheck` runs everything every time, with no cache. Fine at eight packages; the
@@ -72,8 +74,9 @@ Layout, package boundaries and the dependency direction rules are in
   `pnpm/action-setup@v6`; `packageManager` is still read as a version assertion.
 
 ### Neutral
+
 - Not Bun. `node-pty` compatibility is unverified there, and AR-1 already forces us onto the user's
-  Node install for `npx karvan up`.
+  Node install for `npx DeFlow up`.
 
 ## Alternatives considered
 
@@ -88,7 +91,7 @@ Layout, package boundaries and the dependency direction rules are in
   the pure core and the I/O shell is what makes `reduce()`/`decide()` testable with no I/O
   ([ADR 0006](./0006-journaled-dag-state-machine-not-deterministic-replay.md)), and a directory
   convention does not enforce it.
-- **Publishing `@karvan/*` alongside `karvan`.** Rejected: buys nothing today and costs a release
+- **Publishing `@DeFlow/*` alongside `DeFlow`.** Rejected: buys nothing today and costs a release
   process. If it ever becomes necessary, note that **pnpm 11.13+ has native release management**
   (`pnpm change`, `pnpm version -r`, `pnpm lane`, configured under `versioning:` in
   `pnpm-workspace.yaml`) — strictly less machinery than changesets and one fewer dependency.
@@ -102,9 +105,10 @@ Two independent, checkable triggers:
    cache starts paying for itself. Add `turbo@2.10.8` — a `turbo.json` with `dependsOn` and
    `outputs`, no code changes. Do not reach for Nx or moon at that point either; the problem being
    solved is caching, not orchestration.
-2. **Someone outside this repo needs to depend on a `@karvan/*` package.** Then, and only then,
+2. **Someone outside this repo needs to depend on a `@DeFlow/*` package.** Then, and only then,
    publish it and adopt a release tool — evaluating pnpm's native release management before
    changesets.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

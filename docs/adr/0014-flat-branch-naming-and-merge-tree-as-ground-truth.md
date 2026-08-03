@@ -7,19 +7,19 @@
 Two findings about git, both verified by running it rather than reading about it, and both of which
 contradict the PRD.
 
-**1. The PRD's branch naming scheme is a latent bug.** F5.1 specifies `karvan/<run-id>/<node-id>`.
+**1. The PRD's branch naming scheme is a latent bug.** F5.1 specifies `DeFlow/<run-id>/<node-id>`.
 That works right up until you create a branch at the run level — which is exactly what an
 integration branch is. **Verified 2026-08-02** on git 2.43:
 
 ```
-$ git branch karvan/r1/n1     # ok
-$ git branch karvan/r1
-fatal: cannot lock ref 'refs/heads/karvan/r1': 'refs/heads/karvan/r1/n1' exists;
-       cannot create 'refs/heads/karvan/r1'
+$ git branch DeFlow/r1/n1     # ok
+$ git branch DeFlow/r1
+fatal: cannot lock ref 'refs/heads/DeFlow/r1': 'refs/heads/DeFlow/r1/n1' exists;
+       cannot create 'refs/heads/DeFlow/r1'
 ```
 
 and symmetrically in the reverse order. This is git's refs directory/file conflict:
-`refs/heads/karvan/r1` cannot be both a file and a directory. It would surface late — when the
+`refs/heads/DeFlow/r1` cannot be both a file and a directory. It would surface late — when the
 integration step is built — and present as an inexplicable git failure mid-run.
 
 **2. Path-scope declarations are a prediction, not a fact.** F5.3 has a write node declare the paths
@@ -39,10 +39,10 @@ No shipping orchestrator found uses it as a continuous scheduling signal.
 
 ## Decision
 
-**Branch naming is flat: `karvan/<runId>__<nodeId>`.** Integration branches live under a *different*
-prefix segment: `karvan/int/<runId>`. Ids are sanitised through `git check-ref-format --branch`
+**Branch naming is flat: `DeFlow/<runId>__<nodeId>`.** Integration branches live under a _different_
+prefix segment: `DeFlow/int/<runId>`. Ids are sanitised through `git check-ref-format --branch`
 before use — **verified 2026-08-02** that it rejects components ending `.lock`, `..` sequences,
-trailing spaces and `@{`. Note that `-n` *is* a valid component, so a leading-dash node id passes
+trailing spaces and `@{`. Note that `-n` _is_ a valid component, so a leading-dash node id passes
 `check-ref-format` and is then parsed as a flag — always use `--` separators or `--branch=` forms.
 
 **`git merge-tree --write-tree` is the ground truth for conflict detection. Declared path scopes are
@@ -56,15 +56,15 @@ demoted to a plan-time prediction.**
 - **A scope violation is a warning. A merge-tree conflict is the gate.**
 
 This turns conflict from a merge-time surprise into a **scheduling input**: the planner can
-serialise two nodes the moment their branches *start* conflicting, rather than waiting for both to
+serialise two nodes the moment their branches _start_ conflicting, rather than waiting for both to
 finish. It also relaxes F5.2 usefully — rather than statically serialising all write nodes with
-overlapping declared scopes, start them in parallel and serialise on *first detected conflict*, since
+overlapping declared scopes, start them in parallel and serialise on _first detected conflict_, since
 most declared overlaps never actually conflict (two agents editing different functions in one file
 merge fine).
 
 Three supporting rules, all verified:
 
-- **Never pass `--force` to `git worktree add`.** **Verified 2026-08-02**: `--force` *does* create a
+- **Never pass `--force` to `git worktree add`.** **Verified 2026-08-02**: `--force` _does_ create a
   second worktree on the same branch, and `git worktree list` then shows both. That is the real
   index-corruption footgun. Encode it as an assertion in the `Git` wrapper. `--force` is permitted on
   `worktree remove` only.
@@ -84,6 +84,7 @@ hard-deny list are in [09-workspace-and-safety.md](../09-workspace-and-safety.md
 ## Consequences
 
 ### Positive
+
 - A whole class of late-surfacing git failure is removed for the cost of one character in a name.
 - Conflict detection becomes continuous, cheap and accurate, with no agent cooperation and no
   checkout. Roughly 40 lines of code.
@@ -93,16 +94,18 @@ hard-deny list are in [09-workspace-and-safety.md](../09-workspace-and-safety.md
   against the integration branch, re-running merge-tree after each merge because the counts change.
 
 ### Negative
-- Branch names are less readable: `karvan/r-01H8__recon-vue-components` rather than a nested path.
+
+- Branch names are less readable: `DeFlow/r-01H8__recon-vue-components` rather than a nested path.
   `git branch` output does not group by run. Accepted; the UI groups, and the ledger has the
   structure.
 - The PRD's F5.1 text is now wrong and must be read alongside this record. Noted in
   [research-findings.md](../research-findings.md).
 - The pairwise conflict matrix is O(n²) merge-tree invocations per completed write node. At the
-  parallelism Karvan actually schedules (default 3 agent slots) this is trivially small, but it does
+  parallelism DeFlow actually schedules (default 3 agent slots) this is trivially small, but it does
   not scale to hundreds of concurrent branches.
 
 ### Neutral
+
 - A useful non-problem: **gitignored files do not block worktree removal.** **Verified 2026-08-02** —
   a worktree containing only `node_modules/` removed cleanly with exit 0 and no `--force`. Only
   tracked-modified and untracked-but-not-ignored files block. So a fat `node_modules` is a disk
@@ -110,12 +113,12 @@ hard-deny list are in [09-workspace-and-safety.md](../09-workspace-and-safety.md
 
 ## Alternatives considered
 
-- **Keep `karvan/<run-id>/<node-id>` and simply never create a run-level branch.** Rejected: the
+- **Keep `DeFlow/<run-id>/<node-id>` and simply never create a run-level branch.** Rejected: the
   integration branch is a run-level branch, and F5.2's sequential merge strategy needs one.
-- **`karvan/<runId>-<nodeId>` with a single dash.** Acceptable and equivalent; `__` was chosen
+- **`DeFlow/<runId>-<nodeId>` with a single dash.** Acceptable and equivalent; `__` was chosen
   because run ids and node ids may themselves contain dashes, so a double underscore stays visually
   parseable.
-- **A custom ref namespace, `refs/karvan/<run>/<node>`, outside `refs/heads/`.** Genuinely
+- **A custom ref namespace, `refs/DeFlow/<run>/<node>`, outside `refs/heads/`.** Genuinely
   attractive: hierarchical names coexist, `git branch` output stays clean, and agent-created
   branches stop polluting the user's branch list. Rejected because custom refs are invisible to most
   git GUIs and do not push by default, and the review surface matters more than the tidiness.
@@ -131,7 +134,7 @@ Two checkable triggers:
 
 1. **`git merge-tree --write-tree` output format changes**, or the minimum git version we require
    moves. We require **git ≥ 2.38** for `merge-tree --write-tree` and prefer **≥ 2.45** for stable
-   `worktree list --porcelain -z`; `karvan doctor` asserts both. A parser change should be caught by
+   `worktree list --porcelain -z`; `DeFlow doctor` asserts both. A parser change should be caught by
    the git-fixture tests, which run against the real binary, not a mock.
 2. **Concurrent in-flight write branches routinely exceed roughly 20.** The pairwise matrix is
    O(n²); at that point it needs to become incremental (only recompute pairs involving the branch
@@ -141,4 +144,5 @@ The flat-naming half of this decision has no revisit trigger. It is a git invari
 preference.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

@@ -1,18 +1,18 @@
 # Verification gates
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
 
 ---
 
-This document answers one question: **how does Karvan know the work is actually done?**
+This document answers one question: **how does DeFlow know the work is actually done?**
 
 The spec-driven-development literature surveyed in PRD §4.5 converges on a small set of answers —
 acceptance criteria defined before any code, the author cannot be the judge, surgical fix loops, hard
 build gates — and on a matching set of failure modes: shallow specs, spec-then-drift, false precision
-from EARS notation, and *gates that exist but are not treated as real gates*. Everything below is
+from EARS notation, and _gates that exist but are not treated as real gates_. Everything below is
 either one of those answers made mechanical, or one of those failure modes designed against.
 
 ---
@@ -22,12 +22,12 @@ either one of those answers made mechanical, or one of those failure modes desig
 A gate is a `PlanGraph` node of type `gate` (F2.3) that emits a typed `Verdict` (§4). Gates come in
 four classes and they are ordered deliberately.
 
-| Class | Examples | Cost | Verdict source |
-|---|---|---|---|
-| **Deterministic** (F7.1) | typecheck, lint, unit, integration, build, custom scripts | seconds to minutes, $0 | process exit code + parsed output |
-| **Structural** | `git merge-tree` conflict probe, path-scope check, handoff schema validation | milliseconds, $0 | computed by karvand |
-| **Adversarial review** (F7.2) | a critic agent on a different session and provider | minutes, real money | agent, schema-enforced verdict |
-| **Human** (F8.1) | approval, judgement calls, anything marked `needs-human` | unbounded, durable suspension | a person |
+| Class                         | Examples                                                                     | Cost                          | Verdict source                    |
+| ----------------------------- | ---------------------------------------------------------------------------- | ----------------------------- | --------------------------------- |
+| **Deterministic** (F7.1)      | typecheck, lint, unit, integration, build, custom scripts                    | seconds to minutes, $0        | process exit code + parsed output |
+| **Structural**                | `git merge-tree` conflict probe, path-scope check, handoff schema validation | milliseconds, $0              | computed by DeFlowd               |
+| **Adversarial review** (F7.2) | a critic agent on a different session and provider                           | minutes, real money           | agent, schema-enforced verdict    |
+| **Human** (F8.1)              | approval, judgement calls, anything marked `needs-human`                     | unbounded, durable suspension | a person                          |
 
 **Deterministic gates run first, and the sequence short-circuits.** The scheduler orders a milestone's
 gate set `deterministic → structural → adversarial → human`, and the first `fail` stops the rest.
@@ -45,7 +45,7 @@ milestone-advance rule below can be enforced by the reducer rather than negotiat
 > at a ledger offset after the last write to the paths in its scope.**
 
 Two halves, both load-bearing. The first half is F7.1's "no milestone advances until typecheck +
-tests + build pass". The second half — *after the last write* — is what stops a stale green from
+tests + build pass". The second half — _after the last write_ — is what stops a stale green from
 carrying a milestone. A `pass` from before the last three commits proves nothing, and it is exactly
 the shape a run drifts into when a repair loop touches files after the gate ran.
 
@@ -56,33 +56,33 @@ There is deliberately **no override flag in the data model.** The only path past
 
 ## 2. Deterministic gates and custom gate definitions (F7.1, F7.6)
 
-Karvan ships built-in gate definitions derived from repo reconnaissance (the scripts that actually
-exist in `package.json`), and discovers repo-specific ones from `.karvan/gates/*.{yaml,yml}` (F7.6).
+DeFlow ships built-in gate definitions derived from repo reconnaissance (the scripts that actually
+exist in `package.json`), and discovers repo-specific ones from `.DeFlow/gates/*.{yaml,yml}` (F7.6).
 
 A worked definition:
 
 ```yaml
-# .karvan/gates/typecheck.yaml
+# .DeFlow/gates/typecheck.yaml
 id: typecheck
 kind: deterministic
 title: TypeScript project check
 run: pnpm exec tsc -p tsconfig.json --noEmit
-cwd: worktree                 # worktree | repo — 'repo' requires explicit opt-in
+cwd: worktree # worktree | repo — 'repo' requires explicit opt-in
 timeout: 300s
-effect: pure                  # pure | mutating. A gate MUST be pure. See §8.
-permission: worktree          # gates obey the same ladder as any other node (F5.4)
+effect: pure # pure | mutating. A gate MUST be pure. See §8.
+permission: worktree # gates obey the same ladder as any other node (F5.4)
 expect:
   exitCode: 0
 findings:
-  parser: tsc                 # tsc | eslint-json | biome-json | vitest-json | junit-xml | jsonl | none
-satisfies: [AC-3, AC-7]       # acceptance criterion ids from the pinned TaskSpec
-severityFloor: error          # findings below this do not fail the gate
+  parser: tsc # tsc | eslint-json | biome-json | vitest-json | junit-xml | jsonl | none
+satisfies: [AC-3, AC-7] # acceptance criterion ids from the pinned TaskSpec
+severityFloor: error # findings below this do not fail the gate
 ```
 
 And one with a custom producer, for the cases the built-in parsers do not cover:
 
 ```yaml
-# .karvan/gates/bundle-budget.yaml
+# .DeFlow/gates/bundle-budget.yaml
 id: bundle-budget
 kind: deterministic
 title: Bundle size budget
@@ -93,12 +93,12 @@ effect: pure
 expect:
   exitCode: 0
 findings:
-  parser: jsonl               # each line is a Finding-shaped object
+  parser: jsonl # each line is a Finding-shaped object
   path: $.violations
 satisfies: [AC-11]
 ```
 
-**Definitions are hashed into the run manifest at run creation.** Karvan emits a `gates.loaded` event
+**Definitions are hashed into the run manifest at run creation.** DeFlow emits a `gates.loaded` event
 carrying the sha256 of every discovered file. A mid-run edit to a gate file therefore does not
 silently change the contract — it is a visible divergence between the manifest hash and the file on
 disk, reported at the next evaluation and surfaced as `needs-human`. This is the same anti-drift
@@ -141,21 +141,21 @@ a green review, and a review you cannot distinguish from a self-assessment does 
 function assertIndependentReview(review: PlanNode, s: RunState): void {
   const producer = s.nodes[review.reviews];
   if (review.resolvedSessionId === producer.resolvedSessionId) {
-    throw new SchedulingRefused('REVIEW_SESSION_NOT_INDEPENDENT', review.id);
+    throw new SchedulingRefused("REVIEW_SESSION_NOT_INDEPENDENT", review.id);
   }
-  if (review.resume?.kind === 'fork' || review.resume?.of === producer.id) {
-    throw new SchedulingRefused('REVIEW_INHERITS_PRODUCER_CONTEXT', review.id);
+  if (review.resume?.kind === "fork" || review.resume?.of === producer.id) {
+    throw new SchedulingRefused("REVIEW_INHERITS_PRODUCER_CONTEXT", review.id);
   }
 }
 ```
 
 Session ids are knowable on both adapter paths:
 
-- **ACP path.** `session/new` returns a fresh `sessionId` per session. Karvan records it on
+- **ACP path.** `session/new` returns a fresh `sessionId` per session. DeFlow records it on
   `node.started`.
 - **CLI shim path.** Claude Code accepts a client-chosen `--session-id <uuid>`, and it is **verified
   2026-08-02** that the supplied uuid is honoured verbatim in every emitted frame. Gemini CLI
-  likewise takes `--session-id <uuid>`. So Karvan mints the uuid and can assert on it rather than
+  likewise takes `--session-id <uuid>`. So DeFlow mints the uuid and can assert on it rather than
   parsing it back out and hoping.
 
 The second check matters as much as the first. `claude-agent-acp` and `opencode acp` both advertise
@@ -180,30 +180,35 @@ across repair attempts, cannot be counted, and cannot be traced to an acceptance
 ```ts
 type Verdict = {
   gate: GateId;
-  node: NodeId;                     // the node under test
-  verdict: 'pass' | 'fail' | 'needs-human';
-  specHash: string;                 // sha256 of the pinned TaskSpec this was judged against
+  node: NodeId; // the node under test
+  verdict: "pass" | "fail" | "needs-human";
+  specHash: string; // sha256 of the pinned TaskSpec this was judged against
   criteria: Array<{
-    id: string;                     // 'AC-3'
-    status: 'satisfied' | 'unsatisfied' | 'unverifiable';
+    id: string; // 'AC-3'
+    status: "satisfied" | "unsatisfied" | "unverifiable";
     evidence: Handle[];
   }>;
   findings: Finding[];
-  weakened?: 'same-provider' | 'single-attempt';
+  weakened?: "same-provider" | "single-attempt";
   cost: { tokens?: TokenUsage; usd?: number; durationMs: number };
 };
 
 type Finding = {
-  id: string;                       // stable: sha256(gate|file|rule|normalisedMessage).slice(0,12)
-  severity: 'error' | 'warning' | 'info';
-  file: string;                     // repo-relative, POSIX separators
-  blobSha: string;                  // the exact blob the range refers to — see §7
-  range: { startLine: number; startCol?: number; endLine?: number; endCol?: number };
-  rule: string;                     // 'ts2345' | 'no-floating-promises' | 'merge/conflict'
+  id: string; // stable: sha256(gate|file|rule|normalisedMessage).slice(0,12)
+  severity: "error" | "warning" | "info";
+  file: string; // repo-relative, POSIX separators
+  blobSha: string; // the exact blob the range refers to — see §7
+  range: {
+    startLine: number;
+    startCol?: number;
+    endLine?: number;
+    endCol?: number;
+  };
+  rule: string; // 'ts2345' | 'no-floating-promises' | 'merge/conflict'
   message: string;
-  criterion?: string;               // the AC id this bears on
+  criterion?: string; // the AC id this bears on
   suggestedFix?: { patch: string };
-  artifact?: Handle;                // handle to the full log
+  artifact?: Handle; // handle to the full log
 };
 ```
 
@@ -217,7 +222,7 @@ recurring.
 For agent-produced verdicts, the schema is enforced at the adapter boundary, not by prompt:
 
 1. Author `Verdict` in Zod 4.4.3, emit with `z.toJSONSchema()` to
-   `.karvan/schemas/verdict.schema.json` so it is inspectable on disk (NF8).
+   `.DeFlow/schemas/verdict.schema.json` so it is inspectable on disk (NF8).
 2. Pass it natively: Claude Code takes `--json-schema <schema>` and returns the parsed object in the
    result envelope's `structured_output` field; Codex takes `--output-schema <FILE>`. **Verified
    2026-08-02.**
@@ -238,8 +243,8 @@ Truncating a JSON payload produces invalid JSON downstream, which is precisely t
 of garbage F6.9 forbids.
 
 Telemetry: a `gate` node emits an OTel span `execute_tool <gateId>` with the standard
-`gen_ai.*` attributes plus a Karvan-namespaced `karvan.gate.verdict`. Do not invent `gen_ai.*` names
-for Karvan concepts. See [observability](./13-observability-and-telemetry.md).
+`gen_ai.*` attributes plus a DeFlow-namespaced `DeFlow.gate.verdict`. Do not invent `gen_ai.*` names
+for DeFlow concepts. See [observability](./13-observability-and-telemetry.md).
 
 ---
 
@@ -271,9 +276,9 @@ than quietly counted as green.
 
 ### 5.2 Gates evaluate against the pinned spec, not the current code
 
-This is the anti-drift mechanism, and drift is the failure mode PRD §4.5 describes as *"the spec
+This is the anti-drift mechanism, and drift is the failure mode PRD §4.5 describes as _"the spec
 launches the session and the code silently becomes the source of truth again the moment generation
-starts."* It is subtle because nothing visibly breaks — the reviewer reads the code, forms a model of
+starts."_ It is subtle because nothing visibly breaks — the reviewer reads the code, forms a model of
 what the code is trying to do, and judges the code against that model. It always passes.
 
 Four concrete mechanisms:
@@ -291,8 +296,8 @@ Four concrete mechanisms:
    code-reads-well check.
 4. **Prohibitions restated as requirements, mechanically, in the packet builder.** The measured
    asymmetry is that prohibitions decay under context pressure while requirements persist. So the
-   reviewer is told *"judge each finding against AC-3 as written above"*, not *"do not judge against
-   the code"*.
+   reviewer is told _"judge each finding against AC-3 as written above"_, not _"do not judge against
+   the code"_.
 
 The reviewer is also given the criteria as its output obligation: the `criteria[]` array in the
 verdict is required, and a criterion the reviewer omits is treated as `unverifiable`, not as
@@ -304,8 +309,8 @@ satisfied.
 
 ### 6.1 `git merge-tree` is ground truth (D14)
 
-Karvan runs `git merge-tree --write-tree` between the run's integration branch and each node's branch
-(`karvan/<runId>__<nodeId>`, flat naming per **D13**). A conflicted result is a gate failure with
+DeFlow runs `git merge-tree --write-tree` between the run's integration branch and each node's branch
+(`DeFlow/<runId>__<nodeId>`, flat naming per **D13**). A conflicted result is a gate failure with
 findings at the conflicting paths and `rule: 'merge/conflict'`.
 
 This runs **before** the adversarial review, in the structural tier. Paying a model to review work
@@ -324,9 +329,9 @@ violation set is `changedFiles(nodeBranch) \ declaredScope`, and it is emitted a
 
 It is promoted to `severity: 'error'` in exactly three cases:
 
-1. `git merge-tree` reports a conflict at that path — the prediction was wrong *and* it cost something.
+1. `git merge-tree` reports a conflict at that path — the prediction was wrong _and_ it cost something.
 2. The path is outside the node's worktree, or outside the repository.
-3. The path is in the run's protected set: `.karvan/**` (including gate definitions — see §9),
+3. The path is in the run's protected set: `.DeFlow/**` (including gate definitions — see §9),
    lockfiles the node did not declare, CI configuration, and anything matching the F5.6 execution
    boundary deny list.
 
@@ -407,7 +412,7 @@ GET /api/runs/:id/diff?node=<nodeId>               → unified diff + per-hunk l
 **2. Line numbers must be anchored to a blob, not to "the current file".** This is the field that
 makes the feature work and it costs one string: every `Finding` carries `blobSha` for the exact
 revision its `range` refers to. When the diff view renders a later revision, findings whose `blobSha`
-no longer matches the rendered blob are shown as *"stale — from attempt 2"* in the margin rather than
+no longer matches the rendered blob are shown as _"stale — from attempt 2"_ in the margin rather than
 being drawn against whatever line now happens to occupy that number. Without it, the second repair
 attempt silently attaches every earlier finding to the wrong lines, and the reviewer stops trusting
 the annotations within about ten minutes.
@@ -436,7 +441,7 @@ runs, goes red, and everybody learns to click past it.
 
 Five mechanisms, in order of how much they actually help:
 
-1. **The agent may not edit gate definitions or tests-as-contract.** `.karvan/gates/**` is in the
+1. **The agent may not edit gate definitions or tests-as-contract.** `.DeFlow/gates/**` is in the
    protected path set (§6.2), so a write there is a hard `error`, not a warning. This is the real
    defence: the classic failure is not a human overriding a gate, it is an agent "fixing" the check.
    A repair node that modifies the assertion instead of the code fails on path scope before its
@@ -447,7 +452,7 @@ Five mechanisms, in order of how much they actually help:
    but it is never invisible.
 3. **Gate definitions are hashed into the run manifest** (§2), so weakening a gate mid-run is a
    visible divergence rather than a quiet edit.
-4. **`karvan doctor` reports gates that are defined but were never evaluated** in the last N runs.
+4. **`DeFlow doctor` reports gates that are defined but were never evaluated** in the last N runs.
    A gate nothing schedules is decoration.
 5. **Track gate first-pass rate as a first-class metric** (PRD §12 target: > 40%). Both tails are
    informative. Below 40% and the plan or the spec is wrong. At 100%, the gate is either testing
@@ -457,7 +462,7 @@ Five mechanisms, in order of how much they actually help:
 
 EARS-style criteria read as testable and frequently are not:
 
-> *WHEN the user submits an invalid form, THE system SHALL display an error within 200ms.*
+> _WHEN the user submits an invalid form, THE system SHALL display an error within 200ms._
 
 That sentence has the grammar of a test and none of the machinery. There is no harness that measures
 it, no definition of which 200ms, and no agreement on what "display an error" means. It will be
@@ -502,10 +507,10 @@ Four mitigations, all cheap:
   what the code does.
 - **Do not attach findings to line numbers without a `blobSha`.** They will silently point at the
   wrong lines after the first repair attempt.
-- **Do not invent `gen_ai.*` attribute names for gate concepts.** `karvan.gate.verdict` and the rest
-  of the `karvan.*` namespace. The GenAI conventions are all Development-stability and rename without
+- **Do not invent `gen_ai.*` attribute names for gate concepts.** `DeFlow.gate.verdict` and the rest
+  of the `DeFlow.*` namespace. The GenAI conventions are all Development-stability and rename without
   a major bump; owning your own namespace is how you avoid being broken by that.
-- **Do not let an agent write to `.karvan/gates/`.** Everything in §9.1 rests on this one rule.
+- **Do not let an agent write to `.DeFlow/gates/`.** Everything in §9.1 rests on this one rule.
 
 ---
 

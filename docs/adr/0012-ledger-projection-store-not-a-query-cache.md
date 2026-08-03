@@ -9,10 +9,10 @@ This is the load-bearing call for the whole frontend, and the reflex answer is w
 The reflex answer in 2026 is TanStack Query (`@tanstack/vue-query@5.101.4`) or Pinia Colada
 (`@pinia/colada@1.4.2`). Both are excellent, both are actively maintained, and both are **key-scoped
 fetch caches** with `staleTime`, invalidation and refetch semantics. They exist to solve a specific
-problem: *server state is a set of resources you request, which may have gone stale since you last
-asked.*
+problem: _server state is a set of resources you request, which may have gone stale since you last
+asked._
 
-**Karvan's server state is not that.** It is a monotonically-growing append-only log with a total
+**DeFlow's server state is not that.** It is a monotonically-growing append-only log with a total
 order (`seq`), where every UI view is a projection of the same stream (F4.1, NF10 — "any state in
 the UI is traceable to specific ledger events"). Applying a fetch cache to it means:
 
@@ -34,7 +34,7 @@ state.**
 
 The structure mirrors the daemon's own model (PRD §9.3) deliberately:
 
-- **`src/ledger/types.ts`** — the *same* discriminated-union `Event` type as the daemon, published
+- **`src/ledger/types.ts`** — the _same_ discriminated-union `Event` type as the daemon, published
   from a shared workspace package, so the projection code typechecks against the producer.
 - **`src/ledger/stream.ts`** — one SSE connection per tab, feeding a single `applyEvent(e: Event)`
   dispatcher.
@@ -60,17 +60,19 @@ Store shape, the nine views and the browser-memory rules are in
 ## Consequences
 
 ### Positive
+
 - **NF10 becomes structural rather than aspirational.** Every pixel in the UI is derived from named
   events by a pure function you can point at.
 - **The scrubber and replay come free.** Both are "run the reducers to `seq` N".
 - **The highest-risk logic is testable as pure functions** — feed a recorded `events.jsonl` fixture,
   assert the final state. Milliseconds per test, no DOM. This should be around 80% of the frontend
   test count ([14-testing-strategy.md](../14-testing-strategy.md)).
-- The fixture format *is* the production format, which is what makes `karvan replay <fixture.jsonl>`
+- The fixture format _is_ the production format, which is what makes `DeFlow replay <fixture.jsonl>`
   a real development and demo tool rather than a mock.
 - No cache-invalidation reasoning anywhere in run state.
 
 ### Negative
+
 - We write and maintain the store. No devtools timeline, no automatic retry/refetch, no request
   deduplication — none of which apply to a single SSE stream, but they are real amenities given up.
 - **Browser memory over a multi-hour run is our problem and no library solves it.** Three rules,
@@ -83,6 +85,7 @@ Store shape, the nine views and the browser-memory rules are in
   must be enforced by review, since nothing mechanical prevents someone caching a run.
 
 ### Neutral
+
 - The projections are plain TypeScript reducers, so if the frontend framework ever changes, they
   port unchanged.
 
@@ -114,4 +117,5 @@ than that the architecture is wrong — but it is the point at which this record
 rather than assumed.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

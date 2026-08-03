@@ -1,25 +1,25 @@
 # EPIC-00: Foundation spikes
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-00-foundation-spikes-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-00 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M0 |
-| **Workstream** | M0 (see [roadmap §1](../../17-roadmap.md)) |
-| **Size** | ~7.5 days across 7 stories (roadmap budgets 8–10 working days) |
-| **Depends on** | — |
-| **Blocks** | EPIC-01, and through it every other epic; directly also EPIC-03 (spike S5), EPIC-05 (spike S1) and EPIC-16 (spikes S3, S4) |
-| **PRD requirements** | F3.1, F3.2, F3.4, F3.5, F6.9, F9.1, F10.1, F10.2, F10.5, NF3, NF5, NF6, AR-1; PRD §11 M0 kill criterion |
-| **Architecture** | [17-roadmap.md §1](../../17-roadmap.md) (the seven spikes and the open-risks register), with supporting detail in [02-tech-stack.md](../../02-tech-stack.md), [03-local-development.md](../../03-local-development.md), [07-provider-adapter-layer.md](../../07-provider-adapter-layer.md), [12-frontend-architecture.md](../../12-frontend-architecture.md) |
+|                      |                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Epic ID**          | EPIC-00                                                                                                                                                                                                                                                                                                                                                      |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                                                                                  |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                                                                           |
+| **Milestone**        | M0                                                                                                                                                                                                                                                                                                                                                           |
+| **Workstream**       | M0 (see [roadmap §1](../../17-roadmap.md))                                                                                                                                                                                                                                                                                                                   |
+| **Size**             | ~7.5 days across 7 stories (roadmap budgets 8–10 working days)                                                                                                                                                                                                                                                                                               |
+| **Depends on**       | —                                                                                                                                                                                                                                                                                                                                                            |
+| **Blocks**           | EPIC-01, and through it every other epic; directly also EPIC-03 (spike S5), EPIC-05 (spike S1) and EPIC-16 (spikes S3, S4)                                                                                                                                                                                                                                   |
+| **PRD requirements** | F3.1, F3.2, F3.4, F3.5, F6.9, F9.1, F10.1, F10.2, F10.5, NF3, NF5, NF6, AR-1; PRD §11 M0 kill criterion                                                                                                                                                                                                                                                      |
+| **Architecture**     | [17-roadmap.md §1](../../17-roadmap.md) (the seven spikes and the open-risks register), with supporting detail in [02-tech-stack.md](../../02-tech-stack.md), [03-local-development.md](../../03-local-development.md), [07-provider-adapter-layer.md](../../07-provider-adapter-layer.md), [12-frontend-architecture.md](../../12-frontend-architecture.md) |
 
 ## Goal
 
-At the end of this epic every load-bearing assumption in the Karvan architecture that was
-*reasoned about but never executed* has either been executed and recorded, or has been replaced by
+At the end of this epic every load-bearing assumption in the DeFlow architecture that was
+_reasoned about but never executed_ has either been executed and recorded, or has been replaced by
 its documented fallback. The deliverable is not code — it is seven decisions, each backed by a
 re-runnable command or a measured number, plus one explicit go/no-go against the PRD's M0 kill
 criterion. Nothing in EPIC-01 onwards starts until KAR-00.7 records a **GO**.
@@ -33,7 +33,7 @@ pnpm's workspace symlinks — the single load-bearing assumption in the entire d
 in a Vite 8 worker), and A1-1/A1-2 (every fsync benchmark ran on Linux; only `linux-x64` prebuilds
 were ever executed). Each of these costs a day to test now and a fortnight to discover in month
 three. A0-1 is worse than that: if the ACP prompt cycle does not work and the CLI shims are
-unstable across two vendors, the provider-neutrality thesis — the thing that makes Karvan legal
+unstable across two vendors, the provider-neutrality thesis — the thing that makes DeFlow legal
 under AR-1 and different from every tool in PRD §4 — needs rethinking, and the correct action is to
 stop rather than build eleven more epics on top of it.
 
@@ -64,10 +64,10 @@ changes. A spike that ends in "seems fine" has not run.**
 - Any production code. Every spike directory is deleted or archived when EPIC-01 starts; the only
   things that carry forward are the decision notes and the capability fixture.
 - The real ACP client, adapter registry and conformance suite — EPIC-05.
-- The mock agent binary — EPIC-04. S1 talks to *real* vendor adapters precisely because that is the
+- The mock agent binary — EPIC-04. S1 talks to _real_ vendor adapters precisely because that is the
   thing a mock cannot verify.
 - The real `vitest.config.ts`, `biome.json`, `.oxlintrc.json`, `lefthook.yml` and CI workflow —
-  EPIC-01. S7 produces the *decision* about Biome's `.vue` handling; EPIC-01 wires it into the hook.
+  EPIC-01. S7 produces the _decision_ about Biome's `.vue` handling; EPIC-01 wires it into the hook.
 - The real Vue Flow / ELK graph canvas — EPIC-16 (KAR-16.6). S3 answers "does it build", not
   "is it fast enough"; the 400-node measurement belongs in week one of W10.
 - Windows. NF5 puts it at M3; the process-tree-kill spike is an M2 item (roadmap §4, A0-10).
@@ -108,13 +108,13 @@ changes. A spike that ends in "seems fine" has not run.**
 
 ### KAR-00.1 — Spike: ACP client completes a full prompt cycle against a real adapter
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-00.2 |
-| **PRD** | F3.1, F3.4, F3.5, F6.9, F9.1, F10.5, AR-1 |
+|                 |                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                         |
+| **Priority**    | P0                                                                                  |
+| **Size**        | L                                                                                   |
+| **Depends on**  | KAR-00.2                                                                            |
+| **PRD**         | F3.1, F3.4, F3.5, F6.9, F9.1, F10.5, AR-1                                           |
 | **Verified by** | EPIC-00-S4, EPIC-00-S5, EPIC-00-S6, EPIC-00-S7, EPIC-00-S8, EPIC-00-S9, EPIC-00-S10 |
 
 **As** the author, **I want** one throwaway script that drives a real ACP agent through
@@ -123,10 +123,10 @@ changes. A spike that ends in "seems fine" has not run.**
 — that ACP-first is a real integration path and not a spec-reading exercise — is settled before
 eleven epics are built on it.
 
-**Timebox: 4 working days.** The question: *can Karvan, acting as an ACP client, complete a full
+**Timebox: 4 working days.** The question: _can DeFlow, acting as an ACP client, complete a full
 prompt cycle against a community adapter and against a natively-ACP agent, with streaming that
 actually streams, permission mediation that actually reaches the client, and cancellation that does
-not deadlock?* The research verified `initialize` handshakes live against all five entry points on
+not deadlock?_ The research verified `initialize` handshakes live against all five entry points on
 2026-08-02 and confirmed all five negotiate wire `protocolVersion: 1` — but it never completed a
 prompt cycle against any of them, because that costs vendor credits and needs each vendor's auth.
 Everything past `initialize` is design-verified from `@agentclientprotocol/sdk@1.3.0`'s types and
@@ -136,7 +136,7 @@ actually populated on success?) while the harness is warm.
 
 Run against **two** agents, and the choice is deliberate:
 `@agentclientprotocol/claude-agent-acp@0.64.1` because Claude Code does not speak ACP natively
-(verified absent from `claude --help` v2.1.220) and the community *adapter* is the real risk
+(verified absent from `claude --help` v2.1.220) and the community _adapter_ is the real risk
 surface (A0-2); and `gemini --acp` 0.53.1 because it is a native-ACP agent and the cheapest to
 authenticate.
 
@@ -146,7 +146,7 @@ authenticate.
 first version of the capability matrix fixture that EPIC-05 consumes), and
 `docs/spikes/S1-acp-round-trip.md`.
 
-**If it fails:** record precisely *which* step failed for *which* agent. Failure of the streaming,
+**If it fails:** record precisely _which_ step failed for _which_ agent. Failure of the streaming,
 permission or cancellation steps on **both** agents is half of the kill criterion and feeds
 directly into KAR-00.7. Failure on the adapter but not the native agent is an A0-2 finding, not a
 kill — it means the shim path (F3.2) carries more weight than the architecture assumed, and EPIC-05
@@ -158,7 +158,7 @@ re-weights KAR-05.8 accordingly.
    was observed at each.
 2. `initialize` returns `protocolVersion: 1` and the full `agentCapabilities` block is written
    verbatim to a fixture file keyed on the agent's exact version.
-3. `session/new` returns a session id, and Karvan's own stdio MCP server is accepted in
+3. `session/new` returns a session id, and DeFlow's own stdio MCP server is accepted in
    `mcpServers` without error.
 4. **At least three** `session/update` notifications arrive incrementally — proven by client-side
    receipt timestamps whose spread exceeds 500 ms, not by eyeball and not by counting the frames
@@ -175,22 +175,22 @@ re-weights KAR-05.8 accordingly.
    line length, so an agent that never emits `\n` grows it without bound. The harness imposes its
    own cap and records the value chosen.
 
-**Test plan (TDD)** — for a spike, "red" means *the observation that would change the plan*. Write
+**Test plan (TDD)** — for a spike, "red" means _the observation that would change the plan_. Write
 the assertion before running the agent, so a pass is a pass and not a story told afterwards.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | contract (spike) | Every received frame validates against `@agentclientprotocol/sdk/schema/schema.json` with `ajv` | Any frame fails validation → the SDK's types and the wire disagree; adapter work is larger than scoped |
-| 2 | integration (spike) | `initialize` → assert `protocolVersion === 1` and snapshot `agentCapabilities` to the fixture path | The negotiated version is not 1, or capabilities differ from the 2026-08-02 probe |
-| 3 | integration (spike) | Collect `{receivedAt}` per `session/update`; assert `count >= 3 && max-min > 500ms` | Frames arrive in one burst at turn end → streaming is a fiction and F10.6/F10.1 lose their premise |
-| 4 | integration (spike) | Respond `reject_once` to `session/request_permission`; assert the agent does not perform the action | The agent proceeds anyway → permission mediation does not reach the client (kill-criterion input) |
-| 5 | integration (spike) | Send `session/cancel` mid-turn; assert `stopReason: 'cancelled'` within 5 s **and** that ≥1 trailing `session/update` is accepted afterwards without the client's read loop wedging | The promise never settles → cancellation deadlocks (kill-criterion input) |
-| 6 | manual | Grep the full recorded frame log for any token/usage/compaction-shaped field | Nothing found → `tokenAccounting: 'none'` on the ACP path; F9.1 and F10.5 degrade honestly and that trade is now known, not discovered in W6 |
-| 7 | integration (spike) | Run a prompt whose result should carry `structured_output`; assert the field is present and non-null | Absent → F6.9's handoff-contract validation cannot lean on the vendor and needs its own repair loop |
-| 8 | integration (spike) | Feed the client a 10 MB frame with no trailing newline through the harness's own transport | Memory grows unbounded → confirms the `LineBuffer` footgun and fixes the cap value used from EPIC-05 onward |
+| #   | Level               | Test                                                                                                                                                                                | Red when                                                                                                                                     |
+| --- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | contract (spike)    | Every received frame validates against `@agentclientprotocol/sdk/schema/schema.json` with `ajv`                                                                                     | Any frame fails validation → the SDK's types and the wire disagree; adapter work is larger than scoped                                       |
+| 2   | integration (spike) | `initialize` → assert `protocolVersion === 1` and snapshot `agentCapabilities` to the fixture path                                                                                  | The negotiated version is not 1, or capabilities differ from the 2026-08-02 probe                                                            |
+| 3   | integration (spike) | Collect `{receivedAt}` per `session/update`; assert `count >= 3 && max-min > 500ms`                                                                                                 | Frames arrive in one burst at turn end → streaming is a fiction and F10.6/F10.1 lose their premise                                           |
+| 4   | integration (spike) | Respond `reject_once` to `session/request_permission`; assert the agent does not perform the action                                                                                 | The agent proceeds anyway → permission mediation does not reach the client (kill-criterion input)                                            |
+| 5   | integration (spike) | Send `session/cancel` mid-turn; assert `stopReason: 'cancelled'` within 5 s **and** that ≥1 trailing `session/update` is accepted afterwards without the client's read loop wedging | The promise never settles → cancellation deadlocks (kill-criterion input)                                                                    |
+| 6   | manual              | Grep the full recorded frame log for any token/usage/compaction-shaped field                                                                                                        | Nothing found → `tokenAccounting: 'none'` on the ACP path; F9.1 and F10.5 degrade honestly and that trade is now known, not discovered in W6 |
+| 7   | integration (spike) | Run a prompt whose result should carry `structured_output`; assert the field is present and non-null                                                                                | Absent → F6.9's handoff-contract validation cannot lean on the vendor and needs its own repair loop                                          |
+| 8   | integration (spike) | Feed the client a 10 MB frame with no trailing newline through the harness's own transport                                                                                          | Memory grows unbounded → confirms the `LineBuffer` footgun and fixes the cap value used from EPIC-05 onward                                  |
 
 **Notes / risks** — This is the only spike that spends real vendor quota. Run it once, record
-everything (`KARVAN_RECORD=1`-style tee at the transport, raw bytes, never the parsed
+everything (`DeFlow_RECORD=1`-style tee at the transport, raw bytes, never the parsed
 interpretation), and replay from the recording for every re-run. The recordings become the seed of
 `recordings/<provider>@<exact-version>/` that EPIC-05's golden suite uses. AR-1 applies to the
 spike as strictly as to production: the harness reads no token file, sets no auth environment
@@ -200,13 +200,13 @@ variable, and spawns the vendor binary under the author's own account.
 
 ### KAR-00.2 — Spike: zero-build dev loop through pnpm workspace symlinks
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | — |
-| **PRD** | NF5, NF6 |
+|                 |                                    |
+| --------------- | ---------------------------------- |
+| **Status**      | Ready                              |
+| **Priority**    | P0                                 |
+| **Size**        | S                                  |
+| **Depends on**  | —                                  |
+| **PRD**         | NF5, NF6                           |
 | **Verified by** | EPIC-00-S1, EPIC-00-S2, EPIC-00-S3 |
 
 **As** the author, **I want** to prove that `node packages/daemon/src/main.ts` can import a sibling
@@ -215,8 +215,8 @@ in [03-local-development.md](../../03-local-development.md) — no build step, n
 no stale `dist/`, goto-definition landing on real code — rests on an executed fact rather than a
 plausible chain of reasoning.
 
-**Timebox: half a day, and run it first.** The question: *does Node type-strip a `.ts` file that is
-resolved through a pnpm workspace symlink inside `node_modules`?* Node refuses to type-strip `.ts`
+**Timebox: half a day, and run it first.** The question: _does Node type-strip a `.ts` file that is
+resolved through a pnpm workspace symlink inside `node_modules`?_ Node refuses to type-strip `.ts`
 files resolved inside `node_modules`, and pnpm workspace links **are** symlinks in `node_modules`.
 Node normally resolves the realpath first, which should make it work — but this was reasoned about,
 never executed (A2-1, graded **High**). It is the one load-bearing assumption in the entire dev
@@ -228,7 +228,7 @@ wired exactly as `packages/daemon` → `packages/core` will be, a `run.sh` that 
 and `docs/spikes/S2-zero-build.md` recording the result per Node major.
 
 **If it fails:** the fallback is `tsx@4.23.4` in watch mode, and — importantly — the dev-loop
-document changes *before* it is written into muscle memory. The `dev` script becomes
+document changes _before_ it is written into muscle memory. The `dev` script becomes
 `tsx watch packages/daemon/src/main.ts`, KAR-01.3's acceptance criteria change, and the note
 records that `node --watch` is no longer the crash-resume test described in
 [03-local-development.md §5](../../03-local-development.md).
@@ -252,13 +252,13 @@ records that `node --watch` is no longer the crash-resume test described in
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration (spike) | `node a/src/main.ts` under Node 24 exits 0 and stdout matches the expected string | Exit is non-zero with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` → realpath resolution does not save us; take the `tsx` fallback |
-| 2 | integration (spike) | The same under Node 26 | Behaviour differs across majors → the dev loop is version-fragile and `.node-version` becomes load-bearing rather than convenient |
-| 3 | integration (spike) | `vitest run` in `a` imports from `b` and passes; `tsc -b` typechecks the two-project graph | The runner or the compiler resolves differently from `node` → three tools, three resolution stories, and the "one source of truth" claim dies |
-| 4 | integration (spike) | Add `enum Status { Ok }` to `b/src/index.ts` and rerun | It *succeeds* → the runtime is more permissive than documented; still ban it, because `--experimental-transform-types` was removed in Node 26.0.0 and there is no escape hatch left |
-| 5 | manual | `pnpm pack` on `b`; inspect the tarball's `package.json` `exports` | It still points at `./src/index.ts` → `publishConfig` is not being applied and the published-package story is wrong |
+| #   | Level               | Test                                                                                       | Red when                                                                                                                                                                            |
+| --- | ------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | integration (spike) | `node a/src/main.ts` under Node 24 exits 0 and stdout matches the expected string          | Exit is non-zero with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` → realpath resolution does not save us; take the `tsx` fallback                                                 |
+| 2   | integration (spike) | The same under Node 26                                                                     | Behaviour differs across majors → the dev loop is version-fragile and `.node-version` becomes load-bearing rather than convenient                                                   |
+| 3   | integration (spike) | `vitest run` in `a` imports from `b` and passes; `tsc -b` typechecks the two-project graph | The runner or the compiler resolves differently from `node` → three tools, three resolution stories, and the "one source of truth" claim dies                                       |
+| 4   | integration (spike) | Add `enum Status { Ok }` to `b/src/index.ts` and rerun                                     | It _succeeds_ → the runtime is more permissive than documented; still ban it, because `--experimental-transform-types` was removed in Node 26.0.0 and there is no escape hatch left |
+| 5   | manual              | `pnpm pack` on `b`; inspect the tarball's `package.json` `exports`                         | It still points at `./src/index.ts` → `publishConfig` is not being applied and the published-package story is wrong                                                                 |
 
 **Notes / risks** — Half a day, and it unblocks everything. If it is going to fail, failing on a
 Tuesday morning in week one is the cheapest possible outcome.
@@ -267,27 +267,27 @@ Tuesday morning in week one is the cheapest possible outcome.
 
 ### KAR-00.3 — Spike: Vite middleware mode carrying SSE and HMR on one port
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-00.2 |
-| **PRD** | NF3, NF10, F10.1, F10.6, F4.4 |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-00.2                              |
+| **PRD**         | NF3, NF10, F10.1, F10.6, F4.4         |
 | **Verified by** | EPIC-00-S11, EPIC-00-S12, EPIC-00-S13 |
 
 **As** the author, **I want** one Node process on port 7777 that simultaneously holds a
 ten-minute SSE stream open with events arriving individually and hot-reloads a `.vue` edit,
-**so that** D10 — Vite in middleware mode inside `karvand`, no proxy, no CORS, no second port — is
+**so that** D10 — Vite in middleware mode inside `DeFlowd`, no proxy, no CORS, no second port — is
 a demonstrated property rather than a type-declaration reading.
 
 **Timebox: 1 day** (roadmap labels this M at 1 day; on this backlog's scale a one-day spike is S).
-The question: *does `vite@8.2.0`'s `middlewareMode: { server }` actually attach HMR to the
+The question: _does `vite@8.2.0`'s `middlewareMode: { server }` actually attach HMR to the
 daemon's own `node:http` server, and does an SSE route on that same server survive ten minutes
-without buffering or dying?* The `middlewareMode?: boolean | { server: HttpServer }` signature was
+without buffering or dying?_ The `middlewareMode?: boolean | { server: HttpServer }` signature was
 verified on 2026-08-02 from vite 8.2.0's bundled type declarations, where `server` is documented as
-*"Parent server instance to attach to. This is needed to proxy WebSocket connections to the parent
-server"*. That is a **type**, not a runtime observation. The whole UI is an SSE projection of the
+_"Parent server instance to attach to. This is needed to proxy WebSocket connections to the parent
+server"_. That is a **type**, not a runtime observation. The whole UI is an SSE projection of the
 ledger, so if this does not hold, the dev loop needs a proxy — and Vite's dev proxy is
 documented-bad at SSE in exactly three ways ([03-local-development.md §4.3](../../03-local-development.md)):
 events buffer and arrive in one burst at stream end, long streams hit socket timeouts, and close
@@ -327,14 +327,14 @@ now differs structurally from production routing, which is the class of bug D10 
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration (spike) | Boot the harness; assert a single listening socket on 7777 | A second port appears → Vite opened its own HMR server; `middlewareMode: { server }` is not doing what the type says |
-| 2 | e2e (spike) | Run the 10-minute stream; assert `events.length === 600` and `max(gap) < 3000ms` from the client CSV | Events arrive in one burst, or the stream dies at N minutes → buffering or a socket timeout; the fallback proxy config becomes mandatory reading |
-| 3 | e2e (spike) | Touch a `.vue` file at t=300 s; assert an HMR update reaches the browser **and** the SSE `EventSource.readyState` never leaves `OPEN` | The stream drops on reload → HMR and SSE cannot share the server and D10 is wrong |
-| 4 | integration (spike) | Assert response headers on `/api/stream` | `Content-Encoding` present, or `no-transform` missing → something is compressing the stream |
-| 5 | e2e (spike) | Reload the page at t=120 s; capture the request headers of the new `EventSource` | `Last-Event-ID` is present → the verified browser behaviour has changed; re-check before dropping `?since=` |
-| 6 | integration (spike) | Register the SPA fallback first, on purpose, and assert `/api/stream` returns HTML | It returns the stream anyway → mount order does not matter here and the note says so |
+| #   | Level               | Test                                                                                                                                  | Red when                                                                                                                                         |
+| --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | integration (spike) | Boot the harness; assert a single listening socket on 7777                                                                            | A second port appears → Vite opened its own HMR server; `middlewareMode: { server }` is not doing what the type says                             |
+| 2   | e2e (spike)         | Run the 10-minute stream; assert `events.length === 600` and `max(gap) < 3000ms` from the client CSV                                  | Events arrive in one burst, or the stream dies at N minutes → buffering or a socket timeout; the fallback proxy config becomes mandatory reading |
+| 3   | e2e (spike)         | Touch a `.vue` file at t=300 s; assert an HMR update reaches the browser **and** the SSE `EventSource.readyState` never leaves `OPEN` | The stream drops on reload → HMR and SSE cannot share the server and D10 is wrong                                                                |
+| 4   | integration (spike) | Assert response headers on `/api/stream`                                                                                              | `Content-Encoding` present, or `no-transform` missing → something is compressing the stream                                                      |
+| 5   | e2e (spike)         | Reload the page at t=120 s; capture the request headers of the new `EventSource`                                                      | `Last-Event-ID` is present → the verified browser behaviour has changed; re-check before dropping `?since=`                                      |
+| 6   | integration (spike) | Register the SPA fallback first, on purpose, and assert `/api/stream` returns HTML                                                    | It returns the stream anyway → mount order does not matter here and the note says so                                                             |
 
 **Notes / risks** — Ten minutes of wall clock per attempt makes this spike slower than its size
 suggests; run the long stream once, in the background, while doing the header and mount-order
@@ -344,13 +344,13 @@ checks.
 
 ### KAR-00.4 — Spike: elkjs in a Vite 8 web worker
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-00.2 |
-| **PRD** | F10.1, F10.2 |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-00.2                              |
+| **PRD**         | F10.1, F10.2                          |
 | **Verified by** | EPIC-00-S14, EPIC-00-S15, EPIC-00-S16 |
 
 **As** the author, **I want** a `vite build` — not a `vite dev` — of a scratch app that lays out a
@@ -358,8 +358,8 @@ checks.
 scrubber (F10.2, the marquee feature) rest on a layout engine that is known to bundle rather than
 one that is known to be awkward.
 
-**Timebox: 1 day.** The question: *does `elkjs@0.12.0` load in a Vite 8 worker, in a production
-build, served from `dist/` by the daemon?* elkjs is GWT-transpiled Java; its own README
+**Timebox: 1 day.** The question: _does `elkjs@0.12.0` load in a Vite 8 worker, in a production
+build, served from `dist/` by the daemon?_ elkjs is GWT-transpiled Java; its own README
 acknowledges bundler friction, and its documented `workerUrl` option assumes a publicly-served path
 that does not survive Vite's asset hashing. The plan is Vite's `?worker` import plus ELK's
 `workerFactory`, and it is **Unverified** — the research could not run a build (A3-4, graded
@@ -399,13 +399,13 @@ copies example code later: the Vue Flow docs' repl pins `@dagrejs/dagre@1.1.2`, 
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration (spike) | `vite build` then assert a `*.worker-*.js` asset exists in `dist/assets/` | No worker chunk emitted → `?worker` + `workerFactory` did not wire up; take the dagre fallback |
-| 2 | integration (spike) | Assert the entry chunk's byte size is within 100 KB of the same build with ELK removed | ELK is in the initial chunk → 1.6 MB on first paint, against NF3's "UI interactive < 1 s" |
-| 3 | browser (spike) | Serve `dist/` over plain HTTP; run the 60-node layout; assert coordinates are returned and a main-thread `setInterval` counter advanced by ≥ 5 during the call | Layout throws under the built asset paths → the `workerUrl` hashing problem is real |
-| 4 | browser (spike) | Lay out the union of five plan versions once; assert node positions are byte-identical across the five rendered versions | Positions move → the scrubber jumps on every step and F10.2 needs a different mechanism |
-| 5 | browser (spike) | Set `layerChoiceConstraint` without `interactiveLayout: true`; assert it is ignored | It works → the research's finding is wrong for 0.12.0; record that and keep it as an experiment anyway |
+| #   | Level               | Test                                                                                                                                                           | Red when                                                                                               |
+| --- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1   | integration (spike) | `vite build` then assert a `*.worker-*.js` asset exists in `dist/assets/`                                                                                      | No worker chunk emitted → `?worker` + `workerFactory` did not wire up; take the dagre fallback         |
+| 2   | integration (spike) | Assert the entry chunk's byte size is within 100 KB of the same build with ELK removed                                                                         | ELK is in the initial chunk → 1.6 MB on first paint, against NF3's "UI interactive < 1 s"              |
+| 3   | browser (spike)     | Serve `dist/` over plain HTTP; run the 60-node layout; assert coordinates are returned and a main-thread `setInterval` counter advanced by ≥ 5 during the call | Layout throws under the built asset paths → the `workerUrl` hashing problem is real                    |
+| 4   | browser (spike)     | Lay out the union of five plan versions once; assert node positions are byte-identical across the five rendered versions                                       | Positions move → the scrubber jumps on every step and F10.2 needs a different mechanism                |
+| 5   | browser (spike)     | Set `layerChoiceConstraint` without `interactiveLayout: true`; assert it is ignored                                                                            | It works → the research's finding is wrong for 0.12.0; record that and keep it as an experiment anyway |
 
 **Notes / risks** — This spike answers "does it build", not "is it fast enough". The performance
 question — Vue Flow's ceiling, currently an **estimate extrapolated from React Flow guidance and
@@ -416,34 +416,34 @@ measurement, not this one, that decides whether the memory/data-flow view (F10.4
 
 ### KAR-00.5 — Spike: native prebuilds load on the target machines
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | KAR-00.2 |
-| **PRD** | NF4, NF5, NF6, F4.1, F4.2 |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-00.2                              |
+| **PRD**         | NF4, NF5, NF6, F4.1, F4.2             |
 | **Verified by** | EPIC-00-S17, EPIC-00-S18, EPIC-00-S19 |
 
 **As** the author, **I want** both native dependencies proven to install and load with **zero
-compilation** on the machines Karvan will actually run on, and the ledger's fsync cost measured on
-APFS, **so that** `npx karvan up` (NF6) does not fail on a toolchain-less laptop and the
+compilation** on the machines DeFlow will actually run on, and the ledger's fsync cost measured on
+APFS, **so that** `npx DeFlow up` (NF6) does not fail on a toolchain-less laptop and the
 `synchronous=` setting is picked from a number measured on the machine that will run it.
 
 **Timebox: 1 day** — roadmap S5 (2 hours) plus S6 (half a day), combined because they answer the
-same question with the same harness. The questions: *do `better-sqlite3@13.0.2`'s darwin prebuilds
-actually execute?* and *does `@lydell/node-pty@1.2.0-beta.14` cover the platform matrix?*
+same question with the same harness. The questions: _do `better-sqlite3@13.0.2`'s darwin prebuilds
+actually execute?_ and _does `@lydell/node-pty@1.2.0-beta.14` cover the platform matrix?_
 better-sqlite3 v13 migrated to N-API and ships 8 prebuilt binaries in the npm tarball
 (`prebuilds/{darwin,linux,linuxmusl,win32}-{x64,arm64}.node`) with `gypfile: false` and no install
 script; `npm i` completed in **1 second** with zero compilation — **verified 2026-08-02 on
 linux-x64 only** (A1-2). The darwin binaries are demonstrably in the tarball but were never
 executed. `@lydell/node-pty` installed in **514 ms** with zero compilation, but it is at
 `1.2.0-beta.14`, a beta of a community fork, and it is the single remaining native-install risk for
-`npx karvan up` (A0-6).
+`npx DeFlow up` (A0-6).
 
 Every fsync-sensitive number in [05-durable-execution.md](../../05-durable-execution.md) —
 **979 ev/s at `synchronous=FULL` versus 22,982 ev/s at `NORMAL`** — was measured on Linux, likely
-on overlayfs. macOS uses `F_FULLFSYNC` and is typically *slower* for fsync (A1-1). The relative
+on overlayfs. macOS uses `F_FULLFSYNC` and is typically _slower_ for fsync (A1-1). The relative
 shape should hold; the absolute numbers must be re-measured.
 
 **Artefact left behind:** `spikes/s5-native/` with `probe.mjs` and `bench.mjs`, a results CSV per
@@ -454,7 +454,7 @@ machine, and `docs/spikes/S5-native-prebuilds.md` carrying the install matrix ta
 source prerequisite (which contradicts NF6) or an early move to the `Db` port's alternative
 implementation, and the note says which. A `@lydell/node-pty` gap is survivable and the fallback is
 already designed: **no agent process needs a TTY** — ACP and every headless mode are pure pipe
-protocols, verified across five agents — so a pty is needed only for Karvan's own ACP `terminal/*`
+protocols, verified across five agents — so a pty is needed only for DeFlow's own ACP `terminal/*`
 implementation. A missing matrix leg becomes either a documented prerequisite or a no-TTY fallback
 path where `terminal/*` is simply not advertised as a client capability.
 
@@ -467,27 +467,27 @@ path where `terminal/*` is simply not advertised as a client capability.
 3. The append benchmark is re-run on APFS at `synchronous=FULL` and `synchronous=NORMAL`, single-
    append and batched, and the four numbers are recorded next to the Linux baseline
    (979 / 22,982 ev/s) with the ratio computed.
-4. The note names the `synchronous=` value Karvan will ship with, and the reason, in one sentence.
+4. The note names the `synchronous=` value DeFlow will ship with, and the reason, in one sentence.
 5. `@lydell/node-pty@1.2.0-beta.14` installs with zero compilation and allocates a working
    `/dev/pts` on each cell of the matrix: macOS Apple Silicon × Node 24, macOS Apple Silicon ×
    Node 26, Linux glibc × Node 24, Linux glibc × Node 26, Linux musl × Node 24 — **on a box with no
    compiler installed**.
 6. Any missing cell is written into the note as either a documented prerequisite or a no-TTY
    fallback, and never left as "probably fine".
-7. Upstream `node-pty@1.1.0` is *not* used anywhere and the note records why: its install script is
+7. Upstream `node-pty@1.1.0` is _not_ used anywhere and the note records why: its install script is
    `node scripts/prebuild.js || node-gyp rebuild`, it silently falls back to compiling, and it was
    verified to fail outright in a toolchain-less environment.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration (spike) | Install into a clean tmpdir with `PATH` stripped of compilers; assert the install log contains no `gyp` line and completes in < 5 s | A compile is attempted → NF6 is broken on a fresh machine and the note must say so before EPIC-01 pins the dependency |
-| 2 | unit (spike) | `db.prepare('select sqlite_version() v').get()` returns `3.53.4` | A different version → SQL behaviour drifts with the user's install, which is the exact reason `node:sqlite` was rejected |
-| 3 | integration (spike) | Create an FTS5 table with `tokenize = "unicode61 remove_diacritics 2 tokenchars '_-.'"`, insert, and `ORDER BY bm25(t)` | FTS5 is absent → D15's retrieval design has no engine and the tokenizer decision (unchangeable after table creation) needs re-taking |
-| 4 | integration (spike) | Append 10,000 events at `synchronous=FULL` and at `NORMAL`, single and batched, on APFS; write ev/s to CSV | `FULL` on APFS is so slow that the durability setting becomes a product trade-off rather than a default — record it, do not paper over it |
-| 5 | integration (spike) | Spawn a pty per matrix cell; assert a `/dev/pts/*` fd is allocated and echoes | Allocation fails on a cell → that platform gets the no-TTY fallback and `terminal/*` is not advertised there |
-| 6 | manual | `ls node_modules/better-sqlite3/prebuilds/` and record the filenames actually present | The 8 prebuilds are not there → the tarball changed between 13.0.2 and whatever resolved |
+| #   | Level               | Test                                                                                                                                | Red when                                                                                                                                  |
+| --- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | integration (spike) | Install into a clean tmpdir with `PATH` stripped of compilers; assert the install log contains no `gyp` line and completes in < 5 s | A compile is attempted → NF6 is broken on a fresh machine and the note must say so before EPIC-01 pins the dependency                     |
+| 2   | unit (spike)        | `db.prepare('select sqlite_version() v').get()` returns `3.53.4`                                                                    | A different version → SQL behaviour drifts with the user's install, which is the exact reason `node:sqlite` was rejected                  |
+| 3   | integration (spike) | Create an FTS5 table with `tokenize = "unicode61 remove_diacritics 2 tokenchars '_-.'"`, insert, and `ORDER BY bm25(t)`             | FTS5 is absent → D15's retrieval design has no engine and the tokenizer decision (unchangeable after table creation) needs re-taking      |
+| 4   | integration (spike) | Append 10,000 events at `synchronous=FULL` and at `NORMAL`, single and batched, on APFS; write ev/s to CSV                          | `FULL` on APFS is so slow that the durability setting becomes a product trade-off rather than a default — record it, do not paper over it |
+| 5   | integration (spike) | Spawn a pty per matrix cell; assert a `/dev/pts/*` fd is allocated and echoes                                                       | Allocation fails on a cell → that platform gets the no-TTY fallback and `terminal/*` is not advertised there                              |
+| 6   | manual              | `ls node_modules/better-sqlite3/prebuilds/` and record the filenames actually present                                               | The 8 prebuilds are not there → the tarball changed between 13.0.2 and whatever resolved                                                  |
 
 **Notes / risks** — Linux musl needs a container to test, which is the one place this spike touches
 Docker. That is acceptable: it is a test environment, not a runtime dependency, and NF6's "no
@@ -497,21 +497,21 @@ Docker requirement for the core" is about the user's machine.
 
 ### KAR-00.6 — Spike: Biome's Vue formatter on real SFCs
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | XS |
-| **Depends on** | KAR-00.2 |
-| **PRD** | NF6 (toolchain floor); roadmap risk A2-3. See the epic's Risks note on this story's weak PRD anchor |
-| **Verified by** | EPIC-00-S20 |
+|                 |                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                         |
+| **Priority**    | P0                                                                                                  |
+| **Size**        | XS                                                                                                  |
+| **Depends on**  | KAR-00.2                                                                                            |
+| **PRD**         | NF6 (toolchain floor); roadmap risk A2-3. See the epic's Risks note on this story's weak PRD anchor |
+| **Verified by** | EPIC-00-S20                                                                                         |
 
 **As** the author, **I want** to see what `biome check --write` actually does to real Vue SFCs
 before it is wired into a `stage_fixed: true` pre-commit hook, **so that** the hook cannot silently
 auto-stage a bad rewrite, and cannot silently do nothing at all.
 
-**Timebox: 3 hours.** The question: *is Biome 2.5.6's `.vue` formatting good enough to auto-apply,
-and is the opt-in flag actually required?* Biome's `.vue` support is not merely "experimental" — it
+**Timebox: 3 hours.** The question: _is Biome 2.5.6's `.vue` formatting good enough to auto-apply,
+and is the opt-in flag actually required?_ Biome's `.vue` support is not merely "experimental" — it
 is **off by default**, gated behind
 `"html": { "experimentalFullSupportEnabled": true, "formatter": { "enabled": true } }` in
 `biome.json`. Without that flag, `biome check` **silently no-ops on `.vue` files**: a green run and
@@ -548,12 +548,12 @@ and KAR-01.5's acceptance criteria change accordingly before the hook is written
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration (spike) | Run `biome check --write` with no `html` block; assert `git diff --name-only -- '*.vue'` is empty | It formats anyway → the flag is no longer required in 2.5.6; record the version where behaviour changed |
-| 2 | manual | Read the whole diff produced with the flag on | Any rewrite changes semantics, mangles a generic, or reflows a template unreadably → `stage_fixed` is unsafe for `.vue` |
-| 3 | integration (spike) | Enable Biome's linter *and* oxlint over the same file; count diagnostics | Duplicates appear → confirms `"linter": { "enabled": false }` is load-bearing, not stylistic |
-| 4 | integration (spike) | `oxlint` a `.vue` file with an unused component registration | It reports nothing → confirms oxlint sees only `<script>`; template rules need ESLint, which is a separate decision deferred out of M1 |
+| #   | Level               | Test                                                                                              | Red when                                                                                                                               |
+| --- | ------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | integration (spike) | Run `biome check --write` with no `html` block; assert `git diff --name-only -- '*.vue'` is empty | It formats anyway → the flag is no longer required in 2.5.6; record the version where behaviour changed                                |
+| 2   | manual              | Read the whole diff produced with the flag on                                                     | Any rewrite changes semantics, mangles a generic, or reflows a template unreadably → `stage_fixed` is unsafe for `.vue`                |
+| 3   | integration (spike) | Enable Biome's linter _and_ oxlint over the same file; count diagnostics                          | Duplicates appear → confirms `"linter": { "enabled": false }` is load-bearing, not stylistic                                           |
+| 4   | integration (spike) | `oxlint` a `.vue` file with an unused component registration                                      | It reports nothing → confirms oxlint sees only `<script>`; template rules need ESLint, which is a separate decision deferred out of M1 |
 
 **Notes / risks** — Three hours. The reason it is in M0 rather than EPIC-01 is ordering: the hook
 is written in KAR-01.6, and a formatter that auto-stages a bad rewrite is the worst possible
@@ -563,14 +563,14 @@ combination to discover after fifty commits.
 
 ### KAR-00.7 — Record spike outcomes and take the go/no-go decision against the kill criterion
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | XS |
-| **Depends on** | KAR-00.1, KAR-00.2, KAR-00.3, KAR-00.4, KAR-00.5, KAR-00.6 |
-| **PRD** | F3.1, F3.2, AR-1; PRD §11 M0 kill criterion; PRD §13 risks "Provider ToS shifts again" and "Scope explosion" |
-| **Verified by** | EPIC-00-S10, EPIC-00-S21, EPIC-00-S22, EPIC-00-S23 |
+|                 |                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                                  |
+| **Priority**    | P0                                                                                                           |
+| **Size**        | XS                                                                                                           |
+| **Depends on**  | KAR-00.1, KAR-00.2, KAR-00.3, KAR-00.4, KAR-00.5, KAR-00.6                                                   |
+| **PRD**         | F3.1, F3.2, AR-1; PRD §11 M0 kill criterion; PRD §13 risks "Provider ToS shifts again" and "Scope explosion" |
+| **Verified by** | EPIC-00-S10, EPIC-00-S21, EPIC-00-S22, EPIC-00-S23                                                           |
 
 **As** the author, **I want** the seven spike outcomes consolidated into one dated decision record
 that either authorises EPIC-01 or stops the project, **so that** the largest decision in the whole
@@ -589,7 +589,7 @@ answer.
 Two clarifications the research adds and this note must carry. First, the ACP adapters for Claude
 Code and Codex are **community-maintained bridges, not first-party vendor implementations**, so
 their fidelity to the underlying CLI is the main risk to the ACP-first thesis — which is why
-KAR-00.1 tests the *adapters*, not only the natively-ACP agents (A0-2). Second, the PRD's separate
+KAR-00.1 tests the _adapters_, not only the natively-ACP agents (A0-2). Second, the PRD's separate
 worry that ACP fragments because Microsoft ships a competitor has **largely retired**: Microsoft
 shipped Intelligent Terminal 0.1 on 2 June 2026 with a native agent pane speaking ACP that
 auto-detects Copilot, Claude Code, Codex CLI and Gemini CLI, and Microsoft's `agent-host-protocol`
@@ -599,11 +599,11 @@ adapter fidelity and v2 timing, not standards fragmentation.
 
 **The decision is one of three**, and the note must pick exactly one:
 
-| Decision | Condition | Consequence |
-|---|---|---|
-| **GO** | KAR-00.1's six steps completed on at least one agent, with permission mediation reaching the client and cancellation not deadlocking | EPIC-01 starts. Each of the other six spikes' fallbacks, where taken, is written into the affected epic's stories before that epic starts |
-| **GO, re-weighted** | The ACP cycle works on the native agent but the community adapter is unreliable | EPIC-01 starts, and EPIC-05's KAR-05.8 (CLI exec shim fallback) is promoted from fallback to a first-class parallel path with its own conformance battery |
-| **NO-GO** | The ACP cycle is unreliable across both agents **and** a shim spike over two vendors is equally unstable | Stop. The note states what would have to change to revisit, and no EPIC-01 story is started |
+| Decision            | Condition                                                                                                                            | Consequence                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GO**              | KAR-00.1's six steps completed on at least one agent, with permission mediation reaching the client and cancellation not deadlocking | EPIC-01 starts. Each of the other six spikes' fallbacks, where taken, is written into the affected epic's stories before that epic starts                 |
+| **GO, re-weighted** | The ACP cycle works on the native agent but the community adapter is unreliable                                                      | EPIC-01 starts, and EPIC-05's KAR-05.8 (CLI exec shim fallback) is promoted from fallback to a first-class parallel path with its own conformance battery |
+| **NO-GO**           | The ACP cycle is unreliable across both agents **and** a shim spike over two vendors is equally unstable                             | Stop. The note states what would have to change to revisit, and no EPIC-01 story is started                                                               |
 
 Note that **none of the other six spikes is a kill criterion.** Each has a stated fallback; the
 point of running them in M0 is that the fallback costs a day now and a fortnight later.
@@ -619,7 +619,7 @@ timebox, before the decision is taken.
 **Acceptance criteria**
 
 1. `docs/spikes/` contains exactly seven decision notes plus the go/no-go note, and every one has a
-   filled-in *measurement* section — not a prose impression.
+   filled-in _measurement_ section — not a prose impression.
 2. The go/no-go note restates the kill criterion verbatim and states which of the three decisions
    was taken, with the specific evidence for it.
 3. Every spike whose fallback was taken has the affected downstream story named by id (for example:
@@ -635,12 +635,12 @@ timebox, before the decision is taken.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration | A script asserts one `docs/spikes/S<n>-*.md` exists per spike and each contains a non-empty `## Measurement` and `## Decision` section | A note is missing a measurement → that spike "ended in seems fine" and must be re-run |
-| 2 | integration | Grep `packages/` and `spikes/` for a literal capability object (`supportsResume`, `sessionCapabilities` as source constants) | A constant is found → the fixture-not-constant rule (F3.5) is already being broken in week one |
-| 3 | unit | Parse each note's `closes:` front-matter and assert the union covers the ten risk ids this epic owns | A risk id is unclaimed → it silently survives into M1 as an unowned assumption |
-| 4 | manual | Read the go/no-go note against the kill criterion text side by side | The decision does not follow from the recorded evidence → the criterion is being rationalised past, which is the exact failure PRD §13's "scope explosion" row warns about |
+| #   | Level       | Test                                                                                                                                   | Red when                                                                                                                                                                   |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | integration | A script asserts one `docs/spikes/S<n>-*.md` exists per spike and each contains a non-empty `## Measurement` and `## Decision` section | A note is missing a measurement → that spike "ended in seems fine" and must be re-run                                                                                      |
+| 2   | integration | Grep `packages/` and `spikes/` for a literal capability object (`supportsResume`, `sessionCapabilities` as source constants)           | A constant is found → the fixture-not-constant rule (F3.5) is already being broken in week one                                                                             |
+| 3   | unit        | Parse each note's `closes:` front-matter and assert the union covers the ten risk ids this epic owns                                   | A risk id is unclaimed → it silently survives into M1 as an unowned assumption                                                                                             |
+| 4   | manual      | Read the go/no-go note against the kill criterion text side by side                                                                    | The decision does not follow from the recorded evidence → the criterion is being rationalised past, which is the exact failure PRD §13's "scope explosion" row warns about |
 
 **Notes / risks** — This is the story most likely to be skipped under time pressure, and it is the
 one that makes the other six worth having. Half a day of writing converts seven afternoons of
@@ -650,14 +650,14 @@ experimentation into a plan.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| **KAR-00.1 overruns its 4-day timebox.** It is the largest, the only one that spends quota, and the only one whose failure stops the project. | The timebox is itself a signal: an overrun means the integration is harder than the design assumes, which is A0-2 evidence. Record the overrun in the note rather than quietly extending. |
-| **A spike "passes" without a recorded measurement.** The single most likely way this epic produces no value. | The epic DoD and KAR-00.7's test plan both assert on the presence of a non-empty `## Measurement` section. A spike with no recorded outcome is a spike you will repeat. |
-| **The author proceeds past a NO-GO** because the architecture documents are already written and the sunk cost feels large. | The three-way decision table exists so the outcome is chosen from a fixed menu, and the board is updated mechanically. PRD §13 already names scope explosion as a **High** risk. |
-| **Spike code leaks into production.** Throwaway harnesses have a way of becoming `packages/`. | `spikes/` is deliberately outside `pnpm-workspace.yaml`'s `packages:` globs, so it never enters `pnpm -r`, `tsc -b` or the vitest projects. The only artefact that graduates is `fixtures/capabilities/`. |
-| **KAR-00.6 has no clean PRD requirement id.** It is a toolchain decision, and the traceability rule wants an F- or NF-number. | Stated here rather than dropped silently, per the brief. It anchors to NF6 (the install/toolchain floor) and to roadmap risk A2-3; its real justification is that it de-risks KAR-01.5 and KAR-01.6, both of which do carry NF-numbers. |
-| **Vendor versions move between spike and build.** Two of the five agent versions probed on 2026-08-02 were published the same day. | The capability matrix is a generated fixture regenerated on every `karvan doctor` run, never a constant (A0-9). The spike's job is to prove the *probe* works, not to freeze its output. |
+| Risk                                                                                                                                          | Mitigation                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **KAR-00.1 overruns its 4-day timebox.** It is the largest, the only one that spends quota, and the only one whose failure stops the project. | The timebox is itself a signal: an overrun means the integration is harder than the design assumes, which is A0-2 evidence. Record the overrun in the note rather than quietly extending.                                               |
+| **A spike "passes" without a recorded measurement.** The single most likely way this epic produces no value.                                  | The epic DoD and KAR-00.7's test plan both assert on the presence of a non-empty `## Measurement` section. A spike with no recorded outcome is a spike you will repeat.                                                                 |
+| **The author proceeds past a NO-GO** because the architecture documents are already written and the sunk cost feels large.                    | The three-way decision table exists so the outcome is chosen from a fixed menu, and the board is updated mechanically. PRD §13 already names scope explosion as a **High** risk.                                                        |
+| **Spike code leaks into production.** Throwaway harnesses have a way of becoming `packages/`.                                                 | `spikes/` is deliberately outside `pnpm-workspace.yaml`'s `packages:` globs, so it never enters `pnpm -r`, `tsc -b` or the vitest projects. The only artefact that graduates is `fixtures/capabilities/`.                               |
+| **KAR-00.6 has no clean PRD requirement id.** It is a toolchain decision, and the traceability rule wants an F- or NF-number.                 | Stated here rather than dropped silently, per the brief. It anchors to NF6 (the install/toolchain floor) and to roadmap risk A2-3; its real justification is that it de-risks KAR-01.5 and KAR-01.6, both of which do carry NF-numbers. |
+| **Vendor versions move between spike and build.** Two of the five agent versions probed on 2026-08-02 were published the same day.            | The capability matrix is a generated fixture regenerated on every `DeFlow doctor` run, never a constant (A0-9). The spike's job is to prove the _probe_ works, not to freeze its output.                                                |
 
 Total size (~7.5 days) sits inside the roadmap's 8–10 day M0 budget and well under this backlog's
 15-day epic warning line. The dependency shape is a fan: KAR-00.2 first and alone, then

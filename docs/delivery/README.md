@@ -1,4 +1,4 @@
-# Karvan delivery plan
+# DeFlow delivery plan
 
 > How the architecture in [`../README.md`](../README.md) becomes working software, one story at a
 > time, built by one person alongside a job and a degree.
@@ -11,11 +11,11 @@
 
 Three documents already exist and none of them is a plan.
 
-| Document | What it settles | What it does not |
-|---|---|---|
-| [PRD](../prd.md) | *What* Karvan is, the `F`/`NF`/`AR-1` requirement ids, the priorities, the success metrics | Any build order |
-| [Architecture set](../README.md) (`01`–`17`) | *How* it works — mechanisms, verified numbers, exact flags, locked decisions | What to do on Tuesday |
-| [Roadmap](../17-roadmap.md) | The M0 spikes, the twelve M1 workstreams W0–W12 and their dependencies, the open-risks register | Anything smaller than a workstream |
+| Document                                     | What it settles                                                                                 | What it does not                   |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------- |
+| [PRD](../prd.md)                             | _What_ DeFlow is, the `F`/`NF`/`AR-1` requirement ids, the priorities, the success metrics      | Any build order                    |
+| [Architecture set](../README.md) (`01`–`17`) | _How_ it works — mechanisms, verified numbers, exact flags, locked decisions                    | What to do on Tuesday              |
+| [Roadmap](../17-roadmap.md)                  | The M0 spikes, the twelve M1 workstreams W0–W12 and their dependencies, the open-risks register | Anything smaller than a workstream |
 
 This directory is the missing layer: **workstreams broken into epics, epics into stories, stories
 into scenarios, scenarios into tests.** It exists so that at any moment there is exactly one obvious
@@ -56,15 +56,15 @@ Each story's **Verified by** list names its scenarios; each scenario's **Verifie
 stories. If those two disagree, one of them is wrong — that check is mechanical and belongs on the
 board.
 
-### The flow files *are* the acceptance specifications
+### The flow files _are_ the acceptance specifications
 
 This is the part that is easy to get wrong. The epic file is a product manager's document: goal,
-scope, sizing, sequencing, acceptance criteria at the level of *outcomes*. The flow file is a
+scope, sizing, sequencing, acceptance criteria at the level of _outcomes_. The flow file is a
 business analyst's document, and it is the **behavioural specification the tests are written from**.
 
 - Every scenario's Then clauses are observable: a real event kind, a real table, a real error string,
-  a real exit code. *"Then the ledger contains a `node.failed` event with `reason: 'timeout'`"* — not
-  *"then the system handles the error"*.
+  a real exit code. _"Then the ledger contains a `node.failed` event with `reason: 'timeout'`"_ — not
+  _"then the system handles the error"_.
 - Every scenario names the level it is automated at: unit / integration / contract / e2e / browser /
   manual.
 - The behaviour space is covered, not just the happy path — roughly two to four non-happy scenarios
@@ -77,7 +77,7 @@ next person — including future you — will read.
 
 ## 3. The TDD working agreement
 
-Karvan's testing strategy is specific and non-obvious. Read
+DeFlow's testing strategy is specific and non-obvious. Read
 [14-testing-strategy.md](../14-testing-strategy.md) once in full; this section is the working
 agreement distilled from it, not a replacement.
 
@@ -91,22 +91,22 @@ That is exactly why it is written down.
 
 ### Which level to reach for
 
-| Level | Reach for it when | Cost |
-|---|---|---|
-| `unit` | Pure logic: `reduce()`, `decide()`, projections, patch policy, packet rendering, the permission ladder, path scoping. **Should be ~80% of the test count** and run in about a second | free |
-| `integration` | Anything touching a real subprocess, real `git`, or a real SQLite file. 30 s timeout, `pool: 'forks'` | seconds |
-| `e2e` | Cross-process behaviour only: a real `karvand` on an ephemeral port. `singleFork`, no file parallelism, 180 s | slow, flaky, budget ~5 |
-| `web` | Anything with geometry — Vue Flow, d3, xterm. Real Chromium | slow |
+| Level         | Reach for it when                                                                                                                                                                    | Cost                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| `unit`        | Pure logic: `reduce()`, `decide()`, projections, patch policy, packet rendering, the permission ladder, path scoping. **Should be ~80% of the test count** and run in about a second | free                   |
+| `integration` | Anything touching a real subprocess, real `git`, or a real SQLite file. 30 s timeout, `pool: 'forks'`                                                                                | seconds                |
+| `e2e`         | Cross-process behaviour only: a real `DeFlowd` on an ephemeral port. `singleFork`, no file parallelism, 180 s                                                                        | slow, flaky, budget ~5 |
+| `web`         | Anything with geometry — Vue Flow, d3, xterm. Real Chromium                                                                                                                          | slow                   |
 
 The default answer is `unit`. Reach up a level only when the behaviour genuinely lives at the
 boundary — and when it does, do not fake the boundary (below).
 
-### The six Karvan-specific constraints
+### The six DeFlow-specific constraints
 
 These are not style preferences. Each one exists because the alternative removes exactly the surface
 where the bugs live.
 
-1. **Fake binaries, not mocked modules.** `@karvan/mock-agent` and the testkit's fake exec-shim agent
+1. **Fake binaries, not mocked modules.** `@DeFlow/mock-agent` and the testkit's fake exec-shim agent
    are real executables on a temp `PATH`. **Never mock `child_process` / `spawn`** — it tests your
    mock, and the parser, framing, backpressure, timeout and kill paths all go untested.
    ([§3](../14-testing-strategy.md))
@@ -127,7 +127,7 @@ where the bugs live.
 5. **Never use fake timers while a child process is alive.** `vi.useFakeTimers()` freezes the event
    loop's timers, the child's real I/O never arrives, and you deadlock — usually as a test that
    passes locally and hangs for the full 30 s timeout in CI. Retry backoff, budget ceilings,
-   no-progress detection and long suspension are all *about time around child processes*, so this is
+   no-progress detection and long suspension are all _about time around child processes_, so this is
    not a corner case. ([§8](../14-testing-strategy.md))
 6. **Register the normalising snapshot serializer before writing the first snapshot.** Normalise
    timestamps, run/node/event ids, durations, absolute paths, ports and worktree directory names —
@@ -135,7 +135,7 @@ where the bugs live.
    no snapshots. ([§9](../14-testing-strategy.md))
 
 One more, inherited from the process-tree work: **any kill-verification assertion must exclude
-`Z`-state processes.** After a *successful* group SIGKILL, `ps` still lists the grandchildren as
+`Z`-state processes.** After a _successful_ group SIGKILL, `ps` still lists the grandchildren as
 zombies with `ppid=1`. A naive assertion concludes the kill failed when it did not.
 ([§10](../14-testing-strategy.md))
 
@@ -207,7 +207,7 @@ satisfied — which, for most stories, means an earlier story finished first. Be
 **Sizing** — `XS` (< ½ day) · `S` (½–1 day) · `M` (2–3 days) · `L` (4–5 days) · `XL` (> 1 week —
 **split it**)
 
-Days are *working days for one person alongside a job and a degree*, not ideal engineering days. An
+Days are _working days for one person alongside a job and a degree_, not ideal engineering days. An
 epic totalling more than ~15 days says so in its Risks section rather than pretending.
 
 **Priority** — `P0` required for M1 personal use · `P1` required before showing colleagues (M2) ·
@@ -218,27 +218,27 @@ P0 because it is interesting.
 
 ## 7. The epics
 
-| Epic | Title | W | Docs |
-|---|---|---|---|
-| EPIC-00 | [Foundation spikes](./epics/EPIC-00-foundation-spikes.md) | M0 | [flows](./flows/EPIC-00-foundation-spikes-flows.md) |
-| EPIC-01 | [Development environment and toolchain](./epics/EPIC-01-dev-environment.md) | pre-W0 | [flows](./flows/EPIC-01-dev-environment-flows.md) |
-| EPIC-02 | [Domain model and schemas](./epics/EPIC-02-domain-model.md) | W0 | [flows](./flows/EPIC-02-domain-model-flows.md) |
-| EPIC-03 | [Event ledger and durable state](./epics/EPIC-03-event-ledger.md) | W1 | [flows](./flows/EPIC-03-event-ledger-flows.md) |
-| EPIC-04 | [Deterministic mock agent](./epics/EPIC-04-mock-agent.md) | W2 | [flows](./flows/EPIC-04-mock-agent-flows.md) |
-| EPIC-05 | [Provider adapter layer](./epics/EPIC-05-provider-adapters.md) | W3 | [flows](./flows/EPIC-05-provider-adapters-flows.md) |
-| EPIC-06 | [Orchestrator: scheduling and durable effects](./epics/EPIC-06-orchestrator.md) | W4 | [flows](./flows/EPIC-06-orchestrator-flows.md) |
-| EPIC-07 | [Workspace isolation and git orchestration](./epics/EPIC-07-workspace-isolation.md) | W5a | [flows](./flows/EPIC-07-workspace-isolation-flows.md) |
-| EPIC-08 | [Permission ladder and execution boundary](./epics/EPIC-08-safety-model.md) | W5b | [flows](./flows/EPIC-08-safety-model-flows.md) |
-| EPIC-09 | [Context assembly and memory](./epics/EPIC-09-context-memory.md) | W6 | [flows](./flows/EPIC-09-context-memory-flows.md) |
-| EPIC-10 | [Task intake and framing](./epics/EPIC-10-task-intake.md) | W7a | [flows](./flows/EPIC-10-task-intake-flows.md) |
-| EPIC-11 | [Dynamic planning and patch policy](./epics/EPIC-11-dynamic-planning.md) | W7b | [flows](./flows/EPIC-11-dynamic-planning-flows.md) |
-| EPIC-12 | [Verification gates and the repair loop](./epics/EPIC-12-verification-gates.md) | W8a | [flows](./flows/EPIC-12-verification-gates-flows.md) |
-| EPIC-13 | [Human-in-the-loop and approvals](./epics/EPIC-13-human-in-the-loop.md) | W8b | [flows](./flows/EPIC-13-human-in-the-loop-flows.md) |
-| EPIC-14 | [Cost, budget and quota governance](./epics/EPIC-14-cost-governance.md) | cross-cutting | [flows](./flows/EPIC-14-cost-governance-flows.md) |
-| EPIC-15 | [Daemon API and event stream](./epics/EPIC-15-daemon-api.md) | W9 | [flows](./flows/EPIC-15-daemon-api-flows.md) |
-| EPIC-16 | [Web UI foundation and projection store](./epics/EPIC-16-ui-foundation.md) | W10 | [flows](./flows/EPIC-16-ui-foundation-flows.md) |
-| EPIC-17 | [P0 visualisation views](./epics/EPIC-17-p0-views.md) | W11 | [flows](./flows/EPIC-17-p0-views-flows.md) |
-| EPIC-18 | [CLI, doctor and packaging](./epics/EPIC-18-cli-packaging.md) | W12 | [flows](./flows/EPIC-18-cli-packaging-flows.md) |
+| Epic    | Title                                                                               | W             | Docs                                                  |
+| ------- | ----------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- |
+| EPIC-00 | [Foundation spikes](./epics/EPIC-00-foundation-spikes.md)                           | M0            | [flows](./flows/EPIC-00-foundation-spikes-flows.md)   |
+| EPIC-01 | [Development environment and toolchain](./epics/EPIC-01-dev-environment.md)         | pre-W0        | [flows](./flows/EPIC-01-dev-environment-flows.md)     |
+| EPIC-02 | [Domain model and schemas](./epics/EPIC-02-domain-model.md)                         | W0            | [flows](./flows/EPIC-02-domain-model-flows.md)        |
+| EPIC-03 | [Event ledger and durable state](./epics/EPIC-03-event-ledger.md)                   | W1            | [flows](./flows/EPIC-03-event-ledger-flows.md)        |
+| EPIC-04 | [Deterministic mock agent](./epics/EPIC-04-mock-agent.md)                           | W2            | [flows](./flows/EPIC-04-mock-agent-flows.md)          |
+| EPIC-05 | [Provider adapter layer](./epics/EPIC-05-provider-adapters.md)                      | W3            | [flows](./flows/EPIC-05-provider-adapters-flows.md)   |
+| EPIC-06 | [Orchestrator: scheduling and durable effects](./epics/EPIC-06-orchestrator.md)     | W4            | [flows](./flows/EPIC-06-orchestrator-flows.md)        |
+| EPIC-07 | [Workspace isolation and git orchestration](./epics/EPIC-07-workspace-isolation.md) | W5a           | [flows](./flows/EPIC-07-workspace-isolation-flows.md) |
+| EPIC-08 | [Permission ladder and execution boundary](./epics/EPIC-08-safety-model.md)         | W5b           | [flows](./flows/EPIC-08-safety-model-flows.md)        |
+| EPIC-09 | [Context assembly and memory](./epics/EPIC-09-context-memory.md)                    | W6            | [flows](./flows/EPIC-09-context-memory-flows.md)      |
+| EPIC-10 | [Task intake and framing](./epics/EPIC-10-task-intake.md)                           | W7a           | [flows](./flows/EPIC-10-task-intake-flows.md)         |
+| EPIC-11 | [Dynamic planning and patch policy](./epics/EPIC-11-dynamic-planning.md)            | W7b           | [flows](./flows/EPIC-11-dynamic-planning-flows.md)    |
+| EPIC-12 | [Verification gates and the repair loop](./epics/EPIC-12-verification-gates.md)     | W8a           | [flows](./flows/EPIC-12-verification-gates-flows.md)  |
+| EPIC-13 | [Human-in-the-loop and approvals](./epics/EPIC-13-human-in-the-loop.md)             | W8b           | [flows](./flows/EPIC-13-human-in-the-loop-flows.md)   |
+| EPIC-14 | [Cost, budget and quota governance](./epics/EPIC-14-cost-governance.md)             | cross-cutting | [flows](./flows/EPIC-14-cost-governance-flows.md)     |
+| EPIC-15 | [Daemon API and event stream](./epics/EPIC-15-daemon-api.md)                        | W9            | [flows](./flows/EPIC-15-daemon-api-flows.md)          |
+| EPIC-16 | [Web UI foundation and projection store](./epics/EPIC-16-ui-foundation.md)          | W10           | [flows](./flows/EPIC-16-ui-foundation-flows.md)       |
+| EPIC-17 | [P0 visualisation views](./epics/EPIC-17-p0-views.md)                               | W11           | [flows](./flows/EPIC-17-p0-views-flows.md)            |
+| EPIC-18 | [CLI, doctor and packaging](./epics/EPIC-18-cli-packaging.md)                       | W12           | [flows](./flows/EPIC-18-cli-packaging-flows.md)       |
 
 Live status, sizing rollups and requirement coverage are on the [board](./board.md). This table is
 the index; the board is the state.
@@ -254,7 +254,7 @@ the index; the board is the state.
    very little of the day to spend on it.
 4. Anything `Ready` and `S` or `XS`, if the available time is under an hour.
 
-Do not pick by interest. The interesting work is the visualisation and it is at the *end* of the
+Do not pick by interest. The interesting work is the visualisation and it is at the _end_ of the
 chain for a reason: a view built against a hand-rolled fixture gets rebuilt against the real stream.
 
 **The critical path is what protects you.** Two orderings in it are non-negotiable and both are
@@ -265,12 +265,12 @@ work.
 
 **When you are blocked.** Say which kind:
 
-- *Blocked on knowledge* → it is a spike. Timebox it, write down the answer, and record it in
+- _Blocked on knowledge_ → it is a spike. Timebox it, write down the answer, and record it in
   [research-findings.md](../research-findings.md) or the relevant architecture doc. A spike that ends
   in "seems fine" has not run.
-- *Blocked on an earlier story* → set `Blocked`, name the blocker in the story, and drop down the
+- _Blocked on an earlier story_ → set `Blocked`, name the blocker in the story, and drop down the
   picking list. Do not start the blocked work anyway with a stub; the stub will ship.
-- *Blocked on the outside world* (a vendor CLI, an upstream bug) → it belongs in the
+- _Blocked on the outside world_ (a vendor CLI, an upstream bug) → it belongs in the
   [open-risks register](../17-roadmap.md#6-consolidated-open-risks-register) with what would close
   it, and the story gets a fallback path or is deferred. Waiting is not a plan.
 
@@ -280,7 +280,7 @@ your head every time and this project is measured in months.
 
 **And the honest part.** This plan will be wrong. Estimates on a solo build alongside a job and a
 degree are guesses, several epics depend on things that are still `Unverified`, and the vendor
-surface underneath moves monthly. The plan's job is to make the *next* decision cheap, not to predict
+surface underneath moves monthly. The plan's job is to make the _next_ decision cheap, not to predict
 March. When it stops doing that, change it — the next section says how.
 
 ## 9. Changing the plan
@@ -290,7 +290,7 @@ story list so the board reconciler notices, cite its PRD requirement, and add it
 flow file. A story with no scenarios cannot be Done, so this is not optional bookkeeping.
 
 **Splitting an `XL`.** `XL` is not a size, it is a signal that the story was never understood. Split
-on a *behavioural* seam, never a layer seam — "the happy path" and "the failure paths" is a good
+on a _behavioural_ seam, never a layer seam — "the happy path" and "the failure paths" is a good
 split; "the types" and "the implementation" is not, because neither half is demonstrable alone. The
 original number keeps the first half; subsequent halves get new numbers and cite the original.
 
@@ -303,7 +303,7 @@ needs a replacement story or an explicit gap note in the epic's Risks.
 status honestly, keep its number, and note in the epic's Risks or Out-of-scope section what is gone
 and where it now lives (an epic id or a milestone). The existing model is
 [roadmap §3](../17-roadmap.md#3-recommendation-cut-the-p0-view-surface-from-nine-to-six), which
-argues nine P0 views down to seven-with-two-reduced *in writing, with reasoning*, and marks
+argues nine P0 views down to seven-with-two-reduced _in writing, with reasoning_, and marks
 `KAR-17.9` as a scope-cut candidate rather than deleting it. Do the same. The version of this project
 that fails is the one where three quiet cuts accumulate into a tool that does not do the thing it
 was for.
@@ -323,16 +323,16 @@ Everything in this plan serves that sentence. Anything that does not is M2.
 
 The metrics that judge it ([PRD §12](../prd.md)):
 
-| Metric | M1 target |
-|---|---|
-| Task completion rate without human rescue, on the anchor use cases | > 50% |
-| Gate first-pass rate | > 40% |
-| Median time-to-diagnose a failed run | < 5 min |
-| Successful resume rate after interruption | > 95% |
-| Cost per completed task vs manual agent driving | ≤ 1.5× |
-| Replans per run | 1–4 |
-| Runs abandoned due to runaway loop | < 5% |
-| **Personal weekly active use** | **≥ 3 real tasks/week** |
+| Metric                                                             | M1 target               |
+| ------------------------------------------------------------------ | ----------------------- |
+| Task completion rate without human rescue, on the anchor use cases | > 50%                   |
+| Gate first-pass rate                                               | > 40%                   |
+| Median time-to-diagnose a failed run                               | < 5 min                 |
+| Successful resume rate after interruption                          | > 95%                   |
+| Cost per completed task vs manual agent driving                    | ≤ 1.5×                  |
+| Replans per run                                                    | 1–4                     |
+| Runs abandoned due to runaway loop                                 | < 5%                    |
+| **Personal weekly active use**                                     | **≥ 3 real tasks/week** |
 
 Two of these deserve a note. **Median time-to-diagnose** is the metric that judges the visualisation
 — if it does not drop, the views are wrong, and no amount of polish fixes that. **Personal weekly

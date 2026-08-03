@@ -1,4 +1,4 @@
-# ADR 0011: Run Vite in middleware mode inside karvand
+# ADR 0011: Run Vite in middleware mode inside DeFlowd
 
 **Status:** Accepted · **Date:** 2 August 2026 · **Deciders:** Meg
 
@@ -6,7 +6,7 @@
 
 The default Vue + Node development setup is two processes: a Vite dev server on 5173, an API server
 on some other port, and either `server.proxy` forwarding `/api` or CORS between them. It is
-familiar, it is what every tutorial shows, and for Karvan it is the wrong shape.
+familiar, it is what every tutorial shows, and for DeFlow it is the wrong shape.
 
 **The entire UI is an SSE projection of the ledger.** Every one of the nine P0 views (F10.1–F10.9)
 renders from the same event stream; there is no meaningful "fetch a resource" path for run state
@@ -15,7 +15,7 @@ documented-bad at SSE.** The failure modes are specific and all three are fatal 
 
 1. **Events buffered and delivered in one burst at stream end.** A live plan graph that updates once,
    at the end of a three-hour run.
-2. **Proxy and socket timeouts killing long streams.** Karvan's streams are measured in hours.
+2. **Proxy and socket timeouts killing long streams.** DeFlow's streams are measured in hours.
 3. **Close events not propagating to the backend** (vitejs/vite#12157, still open in spirit), so the
    daemon does not learn that a client went away.
 
@@ -37,28 +37,28 @@ HMR's WebSocket rides the daemon's own HTTP server.
 ## Decision
 
 **`pnpm dev` starts exactly one process on exactly one URL: `http://127.0.0.1:7777`. Vite runs in
-middleware mode inside karvand.**
+middleware mode inside DeFlowd.**
 
 ```ts
-const app = new Hono()
-app.route('/api', api)
-const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+const app = new Hono();
+app.route("/api", api);
+const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });
 
-if (process.env.KARVAN_DEV === '1') {
-  const { createServer } = await import('vite')
+if (process.env.DeFlow_DEV === "1") {
+  const { createServer } = await import("vite");
   const vite = await createServer({
-    root: fileURLToPath(new URL('../../../web', import.meta.url)),
-    appType: 'spa',
-    server: { middlewareMode: { server } },   // HMR websocket through the daemon
-  })
-  app.use('*', honoAdapter(vite.middlewares))
+    root: fileURLToPath(new URL("../../../web", import.meta.url)),
+    appType: "spa",
+    server: { middlewareMode: { server } }, // HMR websocket through the daemon
+  });
+  app.use("*", honoAdapter(vite.middlewares));
 } else {
-  app.use('/assets/*', serveStatic({ root: uiDir }))
-  app.get('*', (c) => c.html(indexHtml))       // SPA fallback
+  app.use("/assets/*", serveStatic({ root: uiDir }));
+  app.get("*", (c) => c.html(indexHtml)); // SPA fallback
 }
 ```
 
-The Vite import is dynamic and gated on `KARVAN_DEV`, so Vite is a devDependency that is never
+The Vite import is dynamic and gated on `DeFlow_DEV`, so Vite is a devDependency that is never
 loaded — or shipped — in the published package.
 
 HTTP framework is `hono` with `@hono/node-server`, chosen for first-class `streamSSE` and for
@@ -71,6 +71,7 @@ The SSE contract, `Last-Event-ID` resume from ledger offsets, and the daemon aut
 ## Consequences
 
 ### Positive
+
 - **The SSE-through-proxy class of bug is removed entirely**, rather than mitigated with headers and
   timeout settings that must be right forever.
 - **No proxy and no CORS.** The token-authenticated, `Origin`-checked, `127.0.0.1`-bound surface has
@@ -82,6 +83,7 @@ The SSE contract, `Last-Event-ID` resume from ledger offsets, and the daemon aut
 - HMR still works, riding the daemon's HTTP server.
 
 ### Negative
+
 - **Every save restarts the whole daemon**, because `node --watch` is watching `packages/`. That is
   slower than a Vite-only reload for a pure CSS tweak. It is also, deliberately, a feature: every
   restart exercises F4.2 crash-resume, so if resume breaks you find out in seconds rather than in
@@ -91,9 +93,10 @@ The SSE contract, `Last-Event-ID` resume from ledger offsets, and the daemon aut
 - The daemon has a devDependency on Vite. Bounded by the dynamic import.
 
 ### Neutral
+
 - If the two-process shape is ever wanted for faster frontend iteration, the documented fallback is
-  **not** a proxy: point `EventSource` directly at `import.meta.env.VITE_KARVAND_URL` and enable
-  CORS for `http://localhost:5173` only when `KARVAN_DEV=1`. Skipping the proxy for the one thing
+  **not** a proxy: point `EventSource` directly at `import.meta.env.VITE_DeFlowD_URL` and enable
+  CORS for `http://localhost:5173` only when `DeFlow_DEV=1`. Skipping the proxy for the one thing
   proxies handle worst is the pragmatic move. If a proxy is used anyway, it needs
   `timeout: 0`, `proxyTimeout: 0`, `Cache-Control: no-cache, no-transform`,
   `X-Accel-Buffering: no`, and no compression middleware on that route.
@@ -106,7 +109,7 @@ The SSE contract, `Last-Event-ID` resume from ledger offsets, and the daemon aut
   documented fallback. Rejected as the default because it reintroduces a dev/production routing
   divergence and a CORS configuration that exists only in one environment.
 - **Serve a pre-built SPA in dev too.** Rejected: no HMR, and a build step in the inner loop.
-- **Nuxt.** Rejected: Karvan serves a static SPA bundle from karvand on localhost; SSR and Nitro are
+- **Nuxt.** Rejected: DeFlow serves a static SPA bundle from DeFlowd on localhost; SSR and Nitro are
   pure overhead and add a second server process, which conflicts with the daemon-owns-execution rule
   (I2).
 
@@ -125,4 +128,5 @@ cost in the inner loop. Cold start is budgeted at under three seconds (NF3), so 
 being consumed by restart-on-save, the two-process fallback becomes worth the divergence.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

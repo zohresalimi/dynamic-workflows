@@ -7,89 +7,89 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan. In this epic they mostly *open a tab and leave it open for six hours* — the scenarios are about what happens underneath while they do |
-| **Browser tab** | One `@karvan/web` SPA instance. **One SSE connection, opened once at app start, never a second** |
-| **karvand** | The local daemon on `127.0.0.1:7777`, serving the API, the SSE stream and — via Vite middleware mode (D10) — the UI itself. One process, one port, no proxy, no CORS |
-| **Replay harness** | `karvan replay <fixture> --speed <n>x`. A daemon mode that serves the *normal* `/api/*` and `/api/stream` from a recorded ledger. The UI cannot tell the difference |
-| **Stream client** | `src/ledger/stream.ts` on `eventsource-client@^1.2.0` — sends the bearer token as a header, which native `EventSource` cannot do |
-| **Dispatcher** | `src/ledger/apply.ts`. Switches on `e.kind`, calls the seven projections, routes by `e.runId` |
-| **Projections** | The seven pure modules in `src/ledger/projections/`. **Zero Vue imports.** Where the risky logic lives |
-| **Run store** | `useRunStore` — `shallowRef` containers, version counters, view-model selectors. Reactivity and nothing else |
-| **Graph canvas** | `src/components/graph/GraphCanvas.vue`, the facade over `@vue-flow/core`. The only file allowed to import it |
+| Actor              | Description                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator**       | The engineer driving DeFlow. In this epic they mostly _open a tab and leave it open for six hours_ — the scenarios are about what happens underneath while they do   |
+| **Browser tab**    | One `@DeFlow/web` SPA instance. **One SSE connection, opened once at app start, never a second**                                                                     |
+| **DeFlowd**        | The local daemon on `127.0.0.1:7777`, serving the API, the SSE stream and — via Vite middleware mode (D10) — the UI itself. One process, one port, no proxy, no CORS |
+| **Replay harness** | `DeFlow replay <fixture> --speed <n>x`. A daemon mode that serves the _normal_ `/api/*` and `/api/stream` from a recorded ledger. The UI cannot tell the difference  |
+| **Stream client**  | `src/ledger/stream.ts` on `eventsource-client@^1.2.0` — sends the bearer token as a header, which native `EventSource` cannot do                                     |
+| **Dispatcher**     | `src/ledger/apply.ts`. Switches on `e.kind`, calls the seven projections, routes by `e.runId`                                                                        |
+| **Projections**    | The seven pure modules in `src/ledger/projections/`. **Zero Vue imports.** Where the risky logic lives                                                               |
+| **Run store**      | `useRunStore` — `shallowRef` containers, version counters, view-model selectors. Reactivity and nothing else                                                         |
+| **Graph canvas**   | `src/components/graph/GraphCanvas.vue`, the facade over `@vue-flow/core`. The only file allowed to import it                                                         |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given karvand is bound to 127.0.0.1:7777 and Vite runs in middleware mode inside it,
+  Given DeFlowd is bound to 127.0.0.1:7777 and Vite runs in middleware mode inside it,
         so dev and production routing are byte-identical and there is no proxy in front of SSE
   And every request except "GET /api/health" carries "Authorization: Bearer <token>"
         and is rejected if its Origin header is present and is not the daemon's own origin
   And the SSE response carries
         "Content-Type: text/event-stream", "Cache-Control: no-cache, no-transform",
-        "X-Accel-Buffering: no" and "X-Karvan-Api: 1"
+        "X-Accel-Buffering: no" and "X-DeFlow-Api: 1"
   And no compression middleware touches "/api/stream"
   And every ledger frame carries "id: <seq>" and the default (unnamed) SSE event type
   And "hello", "subscribed", "caught_up" and "fatal" are NAMED events and are stream control,
         never ledger events
   And "seq" is INTEGER PRIMARY KEY AUTOINCREMENT, so gaps are normal and cursors are never reused
-  And the UI imports the Event union type-only from @karvan/core
+  And the UI imports the Event union type-only from @DeFlow/core
   And browser-mode tests run in real Chromium — never jsdom, never happy-dom
 ```
 
 > Two of those lines are load-bearing rather than decorative. **No compression on `/api/stream`**:
 > gzip buffers, and a buffered SSE stream delivers events in clumps that look exactly like a backend
 > scheduling bug and are not one ([11 §3.1](../../11-api-and-realtime.md)). And **real Chromium**:
-> jsdom and happy-dom have no SVG measurement, no canvas and no WebGL, and *they fail silently* —
+> jsdom and happy-dom have no SVG measurement, no canvas and no WebGL, and _they fail silently_ —
 > `getBBox()` returns `0`, so a test asserting a label fits inside a node passes against a `0×0` box
 > ([14 §13](../../14-testing-strategy.md)).
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-16-S1 | Happy path: a cold tab boots, hydrates, streams and renders | KAR-16.1, KAR-16.2 | Happy path |
-| EPIC-16-S2 | The bootstrap token arrives in a fragment and never in a log | KAR-16.1 | Happy path |
-| EPIC-16-S3 | Seven states, two themes, and never colour alone | KAR-16.1 | Edge case |
-| EPIC-16-S4 | Driving the whole surface from the keyboard, with motion off | KAR-16.1 | Edge case |
-| EPIC-16-S5 | The initial chunk stays under budget | KAR-16.1 | Edge case |
-| EPIC-16-S6 | Three run panels, one connection | KAR-16.2 | Happy path |
-| EPIC-16-S7 | The page reloads and `Last-Event-ID` is not sent | KAR-16.2 | Failure |
-| EPIC-16-S8 | The connection drops mid-run and comes back with no seam | KAR-16.2 | Recovery |
-| EPIC-16-S9 | A gap in `seq` is a healthy log, not data loss | KAR-16.2, KAR-16.3 | Edge case |
-| EPIC-16-S10 | Control frames never reach the reducer | KAR-16.2, KAR-16.3 | Failure |
-| EPIC-16-S11 | An old tab meets a newer daemon | KAR-16.2, KAR-16.3 | Edge case |
-| EPIC-16-S12 | The daemon restarted underneath the tab | KAR-16.2 | Recovery |
-| EPIC-16-S13 | Fatal stream conditions, and which ones stop the retry loop | KAR-16.2 | Failure |
-| EPIC-16-S14 | Fifteen idle minutes, and the events that arrive in a clump | KAR-16.2 | Edge case |
-| EPIC-16-S15 | Projections are pure, and the suite proves it | KAR-16.3 | Happy path |
-| EPIC-16-S16 | `plan.ts` over the happy path: seven states, labelled edges | KAR-16.3 | Happy path |
-| EPIC-16-S17 | `planHistory.ts`: the rail carries rejected patches too | KAR-16.3 | Happy path |
-| EPIC-16-S18 | `context.ts`: the compaction whose "after" does not exist | KAR-16.3 | Edge case |
-| EPIC-16-S19 | `gates.ts`: `unverifiable` and `needs-human` are not failures | KAR-16.3 | Edge case |
-| EPIC-16-S20 | `cost.ts`: vendor-reported and estimated are never mixed | KAR-16.3 | Edge case |
-| EPIC-16-S21 | `timeline.ts`: the node that never finished | KAR-16.3 | Edge case |
-| EPIC-16-S22 | `blackboard.ts`: provenance, consumers and taint | KAR-16.3 | Edge case |
-| EPIC-16-S23 | The same event applied twice changes nothing | KAR-16.3 | Failure |
-| EPIC-16-S24 | Subscribe-backfill overlaps the cursor | KAR-16.2, KAR-16.3 | Concurrency |
-| EPIC-16-S25 | Apply and drop: the raw event array is not retained | KAR-16.4 | Happy path |
-| EPIC-16-S26 | Agent output goes to the terminal buffer and nowhere else | KAR-16.4 | Edge case |
-| EPIC-16-S27 | Six hours at `--speed max` and the tab is still alive | KAR-16.4 | Edge case |
-| EPIC-16-S28 | No Vue proxy reaches Vue Flow, ELK or xterm | KAR-16.4 | Failure |
-| EPIC-16-S29 | Scrubbing hydrates from a snapshot, never from `seq` 0 | KAR-16.4 | Edge case |
-| EPIC-16-S30 | The leak assertion that fires in dev and is absent in production | KAR-16.4 | Edge case |
-| EPIC-16-S31 | The UI cannot tell a replay from a live run | KAR-16.5 | Happy path |
-| EPIC-16-S32 | The six fixtures and what each one proves | KAR-16.5 | Happy path |
-| EPIC-16-S33 | Speed control, pause and seek | KAR-16.5 | Edge case |
-| EPIC-16-S34 | Fixtures are recorded, never hand-written | KAR-16.5 | Failure |
-| EPIC-16-S35 | Nothing reaches past the graph facade | KAR-16.6 | Failure |
-| EPIC-16-S36 | 400 nodes, measured in week one | KAR-16.6 | Edge case |
-| EPIC-16-S37 | ELK in a worker, in the built output | KAR-16.6 | Edge case |
-| EPIC-16-S38 | Adding a node does not reshuffle the graph | KAR-16.6 | Edge case |
-| EPIC-16-S39 | The node animation you must not write | KAR-16.6 | Failure |
-| EPIC-16-S40 | The graph is reachable from the keyboard and by a screen reader | KAR-16.6 | Edge case |
+| Scenario    | Title                                                            | Verifies           | Type        |
+| ----------- | ---------------------------------------------------------------- | ------------------ | ----------- |
+| EPIC-16-S1  | Happy path: a cold tab boots, hydrates, streams and renders      | KAR-16.1, KAR-16.2 | Happy path  |
+| EPIC-16-S2  | The bootstrap token arrives in a fragment and never in a log     | KAR-16.1           | Happy path  |
+| EPIC-16-S3  | Seven states, two themes, and never colour alone                 | KAR-16.1           | Edge case   |
+| EPIC-16-S4  | Driving the whole surface from the keyboard, with motion off     | KAR-16.1           | Edge case   |
+| EPIC-16-S5  | The initial chunk stays under budget                             | KAR-16.1           | Edge case   |
+| EPIC-16-S6  | Three run panels, one connection                                 | KAR-16.2           | Happy path  |
+| EPIC-16-S7  | The page reloads and `Last-Event-ID` is not sent                 | KAR-16.2           | Failure     |
+| EPIC-16-S8  | The connection drops mid-run and comes back with no seam         | KAR-16.2           | Recovery    |
+| EPIC-16-S9  | A gap in `seq` is a healthy log, not data loss                   | KAR-16.2, KAR-16.3 | Edge case   |
+| EPIC-16-S10 | Control frames never reach the reducer                           | KAR-16.2, KAR-16.3 | Failure     |
+| EPIC-16-S11 | An old tab meets a newer daemon                                  | KAR-16.2, KAR-16.3 | Edge case   |
+| EPIC-16-S12 | The daemon restarted underneath the tab                          | KAR-16.2           | Recovery    |
+| EPIC-16-S13 | Fatal stream conditions, and which ones stop the retry loop      | KAR-16.2           | Failure     |
+| EPIC-16-S14 | Fifteen idle minutes, and the events that arrive in a clump      | KAR-16.2           | Edge case   |
+| EPIC-16-S15 | Projections are pure, and the suite proves it                    | KAR-16.3           | Happy path  |
+| EPIC-16-S16 | `plan.ts` over the happy path: seven states, labelled edges      | KAR-16.3           | Happy path  |
+| EPIC-16-S17 | `planHistory.ts`: the rail carries rejected patches too          | KAR-16.3           | Happy path  |
+| EPIC-16-S18 | `context.ts`: the compaction whose "after" does not exist        | KAR-16.3           | Edge case   |
+| EPIC-16-S19 | `gates.ts`: `unverifiable` and `needs-human` are not failures    | KAR-16.3           | Edge case   |
+| EPIC-16-S20 | `cost.ts`: vendor-reported and estimated are never mixed         | KAR-16.3           | Edge case   |
+| EPIC-16-S21 | `timeline.ts`: the node that never finished                      | KAR-16.3           | Edge case   |
+| EPIC-16-S22 | `blackboard.ts`: provenance, consumers and taint                 | KAR-16.3           | Edge case   |
+| EPIC-16-S23 | The same event applied twice changes nothing                     | KAR-16.3           | Failure     |
+| EPIC-16-S24 | Subscribe-backfill overlaps the cursor                           | KAR-16.2, KAR-16.3 | Concurrency |
+| EPIC-16-S25 | Apply and drop: the raw event array is not retained              | KAR-16.4           | Happy path  |
+| EPIC-16-S26 | Agent output goes to the terminal buffer and nowhere else        | KAR-16.4           | Edge case   |
+| EPIC-16-S27 | Six hours at `--speed max` and the tab is still alive            | KAR-16.4           | Edge case   |
+| EPIC-16-S28 | No Vue proxy reaches Vue Flow, ELK or xterm                      | KAR-16.4           | Failure     |
+| EPIC-16-S29 | Scrubbing hydrates from a snapshot, never from `seq` 0           | KAR-16.4           | Edge case   |
+| EPIC-16-S30 | The leak assertion that fires in dev and is absent in production | KAR-16.4           | Edge case   |
+| EPIC-16-S31 | The UI cannot tell a replay from a live run                      | KAR-16.5           | Happy path  |
+| EPIC-16-S32 | The six fixtures and what each one proves                        | KAR-16.5           | Happy path  |
+| EPIC-16-S33 | Speed control, pause and seek                                    | KAR-16.5           | Edge case   |
+| EPIC-16-S34 | Fixtures are recorded, never hand-written                        | KAR-16.5           | Failure     |
+| EPIC-16-S35 | Nothing reaches past the graph facade                            | KAR-16.6           | Failure     |
+| EPIC-16-S36 | 400 nodes, measured in week one                                  | KAR-16.6           | Edge case   |
+| EPIC-16-S37 | ELK in a worker, in the built output                             | KAR-16.6           | Edge case   |
+| EPIC-16-S38 | Adding a node does not reshuffle the graph                       | KAR-16.6           | Edge case   |
+| EPIC-16-S39 | The node animation you must not write                            | KAR-16.6           | Failure     |
+| EPIC-16-S40 | The graph is reachable from the keyboard and by a screen reader  | KAR-16.6           | Edge case   |
 
 ---
 
@@ -101,7 +101,7 @@ Background:
 Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
 
   Scenario: First open against a run already 4,000 events deep
-    Given karvand is serving a run "r_01JXQ" whose headSeq is 4127
+    Given DeFlowd is serving a run "r_01JXQ" whose headSeq is 4127
     And the browser tab has no persisted cursor
     When the Operator opens http://127.0.0.1:7777/#token=<t>
     Then the tab reads the token from the fragment and strips it from the address bar
@@ -114,7 +114,7 @@ Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
     And the plan graph renders every node from the hydrated state before the first live frame
 
   Scenario: Live frames advance the same projections
-    When karvand appends "node.started" for "n_impl_3" at seq 4128
+    When DeFlowd appends "node.started" for "n_impl_3" at seq 4128
     Then the tab receives a frame with "id: 4128" on the default SSE event type
     And applyEvent routes it to every projection
     And the node "n_impl_3" renders in the "running" state within one frame
@@ -128,7 +128,7 @@ Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
 
 **Notes:** the hydrate-then-stream order is not an optimisation, it is the correctness requirement of
 [11 §4.1](../../11-api-and-realtime.md). Note also the `headSeq` detail: it exists so the UI can show
-*"applying 3,400 of 4,127 events"* rather than an unbounded spinner during a long hydrate, which is
+_"applying 3,400 of 4,127 events"_ rather than an unbounded spinner during a long hydrate, which is
 the difference between a slow start and a start that looks broken.
 
 ---
@@ -140,8 +140,8 @@ the difference between a slow start and a start that looks broken.
 ```gherkin
 Feature: Bootstrap handoff (11 §8)
 
-  Scenario: The URL karvan up prints
-    Given "karvan up" printed http://127.0.0.1:7777/#token=<t>
+  Scenario: The URL DeFlow up prints
+    Given "DeFlow up" printed http://127.0.0.1:7777/#token=<t>
     When the Operator opens it
     Then sessionStorage holds the token
     And history.replaceState has removed the fragment from the address bar
@@ -156,7 +156,7 @@ Feature: Bootstrap handoff (11 §8)
   Scenario: A second tab opened without the fragment
     Given sessionStorage is per-tab and the new tab has none
     When the Operator opens http://127.0.0.1:7777/ directly
-    Then the app renders an explicit "paste the URL printed by karvan up" state
+    Then the app renders an explicit "paste the URL printed by DeFlow up" state
     And it does not render a spinner, a blank page, or a 401 retry loop
 
   Scenario: The token is not sent to third parties
@@ -205,11 +205,11 @@ Feature: One state palette, seven views (12 §9.1, 9.2)
 
   Scenario: An eighth state cannot be introduced silently
     Given a new node state is added to the domain model
-    When the palette test enumerates the states from @karvan/core
+    When the palette test enumerates the states from @DeFlow/core
     Then the test fails until "--state-<new>" is defined for both themes
 ```
 
-**Notes:** *"roughly 8% of male engineers will otherwise misread the graph"* — colour + glyph + text
+**Notes:** _"roughly 8% of male engineers will otherwise misread the graph"_ — colour + glyph + text
 label, every time, is WCAG 1.4.1 and it is also simply better for a status board
 ([12 §9.2](../../12-frontend-architecture.md)). The reason the palette is CSS custom properties and
 not Tailwind classes is that seven views then stay consistent by construction and dark mode works
@@ -252,8 +252,8 @@ Feature: Keyboard map and reduced motion (12 §9.4, 9.5)
 ```
 
 **Notes:** for hours-long work this is the accessibility feature the author will personally use most
-([12 §9.5](../../12-frontend-architecture.md)). `resizable` and `command` from shadcn-vue *"carry an
-operator UI further than any amount of visual polish"* — they are taken, not built.
+([12 §9.5](../../12-frontend-architecture.md)). `resizable` and `command` from shadcn-vue _"carry an
+operator UI further than any amount of visual polish"_ — they are taken, not built.
 
 ---
 
@@ -286,7 +286,7 @@ Feature: Bundle budget for NF3 (12 §10)
 
 **Notes:** serving is local, so transfer time is near zero — **the budget is really about parse and
 execute time** ([12 §10](../../12-frontend-architecture.md)). Measure with the 400-node stress fixture
-through `karvan replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
+through `DeFlow replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
 defaults to Oxc; diff the built CSS once on the first upgrade.
 
 ---
@@ -325,7 +325,7 @@ Feature: Exactly one SSE connection per tab (11 §2)
 ```
 
 **Notes:** HTTP/2 is not available here — browsers refuse h2c and shipping a certificate for
-`127.0.0.1` is a worse problem than the one it solves, so `karvand` is HTTP/1.1 and the ~6-connection
+`127.0.0.1` is a worse problem than the one it solves, so `DeFlowd` is HTTP/1.1 and the ~6-connection
 cap is real ([11 §2](../../11-api-and-realtime.md)). The `SharedWorker` + `BroadcastChannel`
 hardening that would reduce N tabs to one connection total is deliberately deferred until three-plus
 tabs is a habit rather than a hypothetical.
@@ -348,9 +348,9 @@ Feature: The explicit hydrate path is mandatory (11 §4.1)
     And the applied event set after the reload is identical to a tab that never reloaded
 
   Scenario: The developer case that bites hardest
-    Given karvand is restarted while the tab is open
+    Given DeFlowd is restarted while the tab is open
     And the tab's stream failed to open at all during the restart window
-    When karvand comes back
+    When DeFlowd comes back
     Then the reconnect carries no Last-Event-ID, because the connection never opened successfully
     And the client still supplies "?since=8200"
     And no event appended during the outage is missing from the UI
@@ -402,8 +402,8 @@ Feature: Resume by cursor, not by hope
     Then the projections are byte-identical afterwards, because they are seq-guarded
 ```
 
-**Notes:** this is Playwright smoke #4 from [14 §13](../../14-testing-strategy.md) — *"replay at
-speed, kill the connection, assert the UI reconnects and backfills without a gap or a duplicate."*
+**Notes:** this is Playwright smoke #4 from [14 §13](../../14-testing-strategy.md) — _"replay at
+speed, kill the connection, assert the UI reconnects and backfills without a gap or a duplicate."_
 It is one of only five E2E specs the project allows itself, and it earns its place because no
 browser-mode component test can exercise a severed socket.
 
@@ -478,7 +478,7 @@ Feature: Named SSE events are stream control, not ledger events (11 §3.2)
 ```
 
 **Notes:** the reason to keep exactly one `onmessage` handler feeding `applyEvent` is that it makes
-the *"there is no other input"* claim in [12 §1](../../12-frontend-architecture.md) checkable by
+the _"there is no other input"_ claim in [12 §1](../../12-frontend-architecture.md) checkable by
 reading one function. `hello.daemonEpoch` and `hello.build` are consumed by the connection layer and
 never by a projection.
 
@@ -506,15 +506,15 @@ Feature: Unknown kinds are ignored, exactly as the backend reducer ignores them
     And it does not silently continue rendering a partial picture
 
   Scenario: The compile-time half of the same guarantee
-    Given a new event kind is added to the Event union in @karvan/core
+    Given a new event kind is added to the Event union in @DeFlow/core
     When "vue-tsc --noEmit" runs
     Then the projection whose exhaustive switch does not handle it fails to typecheck
     And this happens in the same commit that added the kind, because the import is type-only
 ```
 
-**Notes:** ignoring unknown kinds is *"what lets a user run an older UI build against a newer daemon
-without corruption"* ([11 §3.2](../../11-api-and-realtime.md)). The type-only import is what turns
-the *other* direction — a kind the UI should have handled — into a compile error rather than a silent
+**Notes:** ignoring unknown kinds is _"what lets a user run an older UI build against a newer daemon
+without corruption"_ ([11 §3.2](../../11-api-and-realtime.md)). The type-only import is what turns
+the _other_ direction — a kind the UI should have handled — into a compile error rather than a silent
 omission. Both halves are needed; neither substitutes for the other.
 
 ---
@@ -528,7 +528,7 @@ Feature: daemon_epoch fencing, observed from the client
 
   Scenario: A restart mid-run
     Given the tab's last hello carried daemonEpoch 7
-    And karvand is killed with SIGKILL and restarted over the same .karvan/ directory
+    And DeFlowd is killed with SIGKILL and restarted over the same .DeFlow/ directory
     When the client reconnects and receives a hello with daemonEpoch 8
     Then the UI surfaces an explicit "the daemon restarted" state
     And the client resumes from its own persisted cursor, not from head
@@ -545,7 +545,7 @@ Feature: daemon_epoch fencing, observed from the client
     And the UI refreshes its cursor and re-renders rather than retrying blindly
 ```
 
-**Notes:** `hello.daemonEpoch` is *how a client detects that the daemon restarted under it*
+**Notes:** `hello.daemonEpoch` is _how a client detects that the daemon restarted under it_
 ([11 §3.2](../../11-api-and-realtime.md)). The distinction that matters for the operator is that a
 restart is not a new run: the ledger is the truth, the tab's cursor is still valid, and the only
 thing that changed is which process is appending.
@@ -569,7 +569,7 @@ Feature: A stream never returns an error body mid-flight (11 §10)
       | code             | behaviour        | surface                                        |
       | bad_token        | stop retrying    | an explicit re-authenticate prompt              |
       | epoch_mismatch   | stop retrying    | a reload prompt naming the daemon restart       |
-      | daemon_starting  | keep retrying    | a transient "waiting for karvand" state          |
+      | daemon_starting  | keep retrying    | a transient "waiting for DeFlowd" state          |
       | internal         | keep retrying    | a transient reconnecting state                   |
 
   Scenario: The error envelope is closed and carries its ledger event
@@ -581,8 +581,8 @@ Feature: A stream never returns an error body mid-flight (11 §10)
 ```
 
 **Notes:** `code` is a stable identifier clients may branch on; `message` is for humans and may change
-freely ([11 §10](../../11-api-and-realtime.md)). Carrying `seq` on the error is *NF10 applied to the
-error path, which is exactly where auditability usually stops* — the UI can link "this failed" to
+freely ([11 §10](../../11-api-and-realtime.md)). Carrying `seq` on the error is _NF10 applied to the
+error path, which is exactly where auditability usually stops_ — the UI can link "this failed" to
 "here is the event that says so".
 
 ---
@@ -610,13 +610,13 @@ Feature: Keepalive, and the buffering footgun
 
   Scenario: The dev-proxy variant of the same failure
     Then there is no Vite dev proxy in front of SSE at all, because Vite runs in middleware
-         mode inside karvand (D10) — one process, one port
+         mode inside DeFlowd (D10) — one process, one port
 ```
 
 **Notes:** an SSE comment line is ignored by every client and costs 12 bytes; its job is to keep every
-inactivity timer in the path quiet, and *"long-running Karvan nodes are routinely idle for minutes"*
-([11 §3.2](../../11-api-and-realtime.md)). The burst symptom *"looks like a backend scheduling bug and
-is not one"* — encoding that as a named scenario is how the afternoon it would otherwise cost gets
+inactivity timer in the path quiet, and _"long-running DeFlow nodes are routinely idle for minutes"_
+([11 §3.2](../../11-api-and-realtime.md)). The burst symptom _"looks like a backend scheduling bug and
+is not one"_ — encoding that as a named scenario is how the afternoon it would otherwise cost gets
 saved.
 
 ---
@@ -646,8 +646,8 @@ Feature: Projections are pure TypeScript with zero Vue imports (12 §3.3)
     And no module reads a clock, performs I/O, or generates a random value
 ```
 
-**Notes:** *"this is where the genuinely risky logic lives and it should be roughly 80% of the test
-count"* ([12 §3.3](../../12-frontend-architecture.md)). The ratio is a design target, not an
+**Notes:** _"this is where the genuinely risky logic lives and it should be roughly 80% of the test
+count"_ ([12 §3.3](../../12-frontend-architecture.md)). The ratio is a design target, not an
 observation — if the browser-mode suite grows past the projection suite, logic has leaked out of the
 projections and into components, and the cost of every subsequent test goes up by two orders of
 magnitude.
@@ -690,7 +690,7 @@ Feature: The plan projection (F10.1)
 
 **Notes:** the seven states are PRD F10.1's own list and they are the same seven the CSS palette
 defines — that alignment is deliberate and is what makes S3's enumeration test possible. Note that
-`node.progress` is *cheap, frequent, and does not advance the progress watermark*
+`node.progress` is _cheap, frequent, and does not advance the progress watermark_
 ([04 §9](../../04-domain-model.md)); treating it as a state change makes the graph flicker.
 
 ---
@@ -727,7 +727,7 @@ Feature: The version rail behind the scrubber (F10.2, F2.6)
          because "show me version N" is replayTo(planVersionSeq[N])
 ```
 
-**Notes:** ohash's README promises only *"best efforts"* at stable serialisation — **fine for a
+**Notes:** ohash's README promises only _"best efforts"_ at stable serialisation — **fine for a
 change-detection hash and not fine for anything needing stability across versions**
 ([12 §6.2](../../12-frontend-architecture.md)). `planHash` itself is computed by the daemon with its
 own canonical encoder ([04 §3](../../04-domain-model.md)); the UI never recomputes it.
@@ -750,7 +750,7 @@ Feature: Compaction fidelity (F6.6, F10.5)
 
     Examples:
       | scope          | fidelity | after      | dropped      | render                          |
-      | karvan.packet  | exact    | a number   | a populated list | before → after with the delta |
+      | DeFlow.packet  | exact    | a number   | a populated list | before → after with the delta |
       | vendor.session | partial  | null       | an empty list    | the gap rendered AS a gap     |
 
   Scenario: The coercion that must not happen
@@ -774,8 +774,8 @@ Feature: Compaction fidelity (F6.6, F10.5)
 **Notes:** the reason `fidelity` exists at all is that Claude Code's `stream-json` emits
 `{ type:'system', subtype:'compact_boundary', compact_metadata: { trigger, pre_tokens } }` —
 `pre_tokens` only, no post count, no dropped list, no handle to the original. **Verified 2026-08-02.**
-*"Encoding that uncertainty in the type is the difference between an auditable system and one that
-quietly lies"* ([04 §9.1](../../04-domain-model.md)).
+_"Encoding that uncertainty in the type is the difference between an auditable system and one that
+quietly lies"_ ([04 §9.1](../../04-domain-model.md)).
 
 ---
 
@@ -810,8 +810,8 @@ Feature: Typed verdicts and criteria satisfaction (F7.3, F7.4, F10.8)
     And the projection exposes the attempt sequence per evaluated node
 ```
 
-**Notes:** conflating `needs-human` with `fail` *"sends work into the repair loop that no amount of
-repair will fix"* ([04 §7](../../04-domain-model.md)). The `unverifiable` state is where a shallow
+**Notes:** conflating `needs-human` with `fail` _"sends work into the repair loop that no amount of
+repair will fix"_ ([04 §7](../../04-domain-model.md)). The `unverifiable` state is where a shallow
 spec becomes visible — the SDD literature's primary failure mode, surfaced as data rather than as a
 feeling.
 
@@ -847,7 +847,7 @@ Feature: Live cost accounting (F9.1)
     And "provider.rate_limited" with a resetsAt is exposed for the timeline overlay
 ```
 
-**Notes:** `source` is mandatory on `TokenUsage` and *"must never be silently mixed"*
+**Notes:** `source` is mandatory on `TokenUsage` and _"must never be silently mixed"_
 ([04 §8](../../04-domain-model.md)). A3 open risk A4-3 records that token accounting is unverified for
 Copilot, Gemini/Antigravity, Cursor and OpenCode — only Claude Code and Codex were checked — so the
 `'none'` branch is not hypothetical.
@@ -888,7 +888,7 @@ Feature: Execution spans for the Gantt (F10.9)
 
 **Notes:** ordering is by `seq`, never by `ts` — `ts` is informational only
 ([04 §9](../../04-domain-model.md)), and a laptop sleep or an NTP correction can move it backwards.
-The Gantt's x-axis is wall clock and therefore uses `ts`, but any *ordering* decision in the
+The Gantt's x-axis is wall clock and therefore uses `ts`, but any _ordering_ decision in the
 projection uses `seq`.
 
 ---
@@ -922,8 +922,8 @@ Feature: Memory sharing as data (F6.3, F10.4)
 ```
 
 **Notes:** this projection is built even though KAR-17.9 may slip to M2. The roadmap is explicit that
-*"nothing is lost by deferring it — `fact.written` and `fact.read` are ledger events regardless. The
-data accrues from day one; only the rendering slips"* ([roadmap §3](../../17-roadmap.md)). The
+_"nothing is lost by deferring it — `fact.written` and `fact.read` are ledger events regardless. The
+data accrues from day one; only the rendering slips"_ ([roadmap §3](../../17-roadmap.md)). The
 provenance table inside the node inspector (KAR-17.3) consumes this projection directly.
 
 ---
@@ -1029,8 +1029,8 @@ Feature: Browser memory over a multi-hour run (12 §5.1)
     And this test must fail for that build
 ```
 
-**Notes:** *"unbounded retention has no visible symptom until the tab dies at hour four of a real
-run"* ([12 §5.1](../../12-frontend-architecture.md)) — which is why the assertion is a `WeakRef` test
+**Notes:** _"unbounded retention has no visible symptom until the tab dies at hour four of a real
+run"_ ([12 §5.1](../../12-frontend-architecture.md)) — which is why the assertion is a `WeakRef` test
 rather than a code review item. Note the ring cap is a constant the dev assertion in S30 reports, so
 raising it is visible rather than quiet.
 
@@ -1065,7 +1065,7 @@ Feature: Cap unbounded per-node collections (12 §5.2)
 ```
 
 **Notes:** the arithmetic behind the 5,000-line cap is in KAR-17.5, but the store-side rule belongs
-here because it is what makes the terminal's cap sufficient: if the store *also* holds the output,
+here because it is what makes the terminal's cap sufficient: if the store _also_ holds the output,
 capping xterm achieves nothing. `io_chunk` is the data plane and never rides the control-plane stream
 ([11 §5.1](../../11-api-and-realtime.md)).
 
@@ -1079,7 +1079,7 @@ capping xterm achieves nothing. `io_chunk` is the data plane and never rides the
 Feature: The soak that proves the memory rules
 
   Scenario: A six-hour replay of the stress fixture
-    Given "karvan replay fixtures/stress-400.jsonl --speed max" looping for six hours
+    Given "DeFlow replay fixtures/stress-400.jsonl --speed max" looping for six hours
     And the tab open with the plan graph, timeline and inspector mounted
     When the soak completes
     Then JS heap growth across the final four measured hours is within the recorded ceiling
@@ -1100,7 +1100,7 @@ Feature: The soak that proves the memory rules
     And a per-push proxy for it is a ten-minute run at --speed max with the same assertions
 ```
 
-**Notes:** *"this is what will actually kill the tab, and no library solves it"*
+**Notes:** _"this is what will actually kill the tab, and no library solves it"_
 ([12 §5](../../12-frontend-architecture.md)). All four rules are cheap on day one and miserable to
 retrofit, which is why the soak exists in this epic rather than after EPIC-17 has built nine views on
 top of an unbounded store.
@@ -1142,8 +1142,8 @@ Feature: shallowRef and markRaw (12 §4)
          is very hard to see and very easy to avoid
 ```
 
-**Notes:** rule 3 is the one people get backwards — *"reassigning a 2,000-entry array on every
-`node.progress` event is worse than the deep reactivity you were avoiding"*
+**Notes:** rule 3 is the one people get backwards — _"reassigning a 2,000-entry array on every
+`node.progress` event is worse than the deep reactivity you were avoiding"_
 ([12 §4](../../12-frontend-architecture.md)). Also note the forward risk: these characteristics may
 shift under Vue 3.6's alien-signals rewrite, so S27's soak is re-run, not assumed, whenever the Vue
 pin moves.
@@ -1180,7 +1180,7 @@ Feature: Server-side snapshots (12 §5.3, 11 §7.3)
     And this test must fail for that build
 ```
 
-**Notes:** *"the reason this exists is browser memory, not server convenience"*
+**Notes:** _"the reason this exists is browser memory, not server convenience"_
 ([11 §7.3](../../11-api-and-realtime.md)). This is also the mechanism the marquee scrubber
 (KAR-17.2) is built on, which is why it is proven here — before a view depends on it — rather than
 discovered during EPIC-17.
@@ -1221,10 +1221,10 @@ pressure at hour four.
 **Verifies:** KAR-16.5 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: karvan replay serves the normal contract (03 §6.2)
+Feature: DeFlow replay serves the normal contract (03 §6.2)
 
   Scenario: Booting the harness
-    When the Operator runs "karvan replay fixtures/three-patches.jsonl --speed 20x --port 7777"
+    When the Operator runs "DeFlow replay fixtures/three-patches.jsonl --speed 20x --port 7777"
     Then GET /api/stream, /api/runs/:id/events, /api/runs/:id/snapshot, /api/runs/:id/plans,
          /api/runs/:id/plans/diff, /api/runs/:id/nodes/:nodeId, /api/runs/:id/gates,
          /api/runs/:id/criteria and /api/runs/:id/diff all respond
@@ -1247,8 +1247,8 @@ Feature: karvan replay serves the normal contract (03 §6.2)
     And GET /api/health remains the only unauthenticated route
 ```
 
-**Notes:** *"the UI cannot tell the difference, because there is no difference: the browser is a
-projection of an event stream either way"* ([03 §6.2](../../03-local-development.md)). The auth
+**Notes:** _"the UI cannot tell the difference, because there is no difference: the browser is a
+projection of an event stream either way"_ ([03 §6.2](../../03-local-development.md)). The auth
 scenario is not pedantry — a harness that skips auth is a harness that lets an auth regression ship,
 because the harness is what most development runs against.
 
@@ -1272,7 +1272,7 @@ Feature: The replay corpus (14 §12)
       | happy-path-12        | a small run, all nodes pass, one gate, one worktree merged           | plan graph, timeline, node inspector          |
       | three-patches        | insert, split and provider-replace, each with a reason and decision  | plan-evolution scrubber (F10.2)               |
       | gate-fail-repair     | a failing gate, a surgical fix node, a second attempt, a pass        | criteria board, repair loop, inline verdicts  |
-      | compaction           | both fidelities: exact karvan.packet and vendor.session with after null | context budget (F10.5)                     |
+      | compaction           | both fidelities: exact DeFlow.packet and vendor.session with after null | context budget (F10.5)                     |
       | crash-resume         | a ledger whose seq values jump, as a real SIGKILL produces           | resume, hydrate, "did the UI notice?"          |
       | stress-400           | a wide map fan-out to 400 nodes                                     | render budget, ELK layout time, scrubber       |
 
@@ -1322,10 +1322,10 @@ Feature: Playback control
   Scenario: The dev loop
     Then "pnpm dev:replay" runs the happy path under node --watch
     And a source edit reloads without restarting the browser session
-    And "karvan replay fixtures/gate-fail-repair.jsonl --speed 50x" jumps straight to a failed gate
+    And "DeFlow replay fixtures/gate-fail-repair.jsonl --speed 50x" jumps straight to a failed gate
 ```
 
-**Notes:** *"do not wait for a run to reach the state you want to style"*
+**Notes:** _"do not wait for a run to reach the state you want to style"_
 ([03 §6.2](../../03-local-development.md)). `--speed max` is what makes the six-hour soak in S27 and
 the graph measurement in S36 practical at all.
 
@@ -1351,16 +1351,16 @@ Feature: Fixture provenance
 
   Scenario: The dependency this creates, stated honestly
     Given fixtures must come from real runs
-    Then at least one full run must complete headlessly through "karvan run" first
+    Then at least one full run must complete headlessly through "DeFlow run" first
     And this epic's KAR-16.5 depends on EPIC-18 KAR-18.3 for that reason
     And the acceptable interim is recording from the orchestrator's own test harness
          driving the mock agent — never hand-writing
 ```
 
-**Notes:** [roadmap §2.1](../../17-roadmap.md) makes this a sequencing rule, not a preference: *"do
+**Notes:** [roadmap §2.1](../../17-roadmap.md) makes this a sequencing rule, not a preference: _"do
 not start W11 until at least one full run completes headlessly through W12's CLI. A run you can drive
 from the terminal is a run you can build a fixture from, and the replay-fixture harness is the main
-structural defence against the view work sprawling."*
+structural defence against the view work sprawling."_
 
 ---
 
@@ -1374,7 +1374,7 @@ Feature: GraphCanvas is the only Vue Flow importer (12 §6.1)
   Scenario: The rule
     Then "src/components/graph/GraphCanvas.vue" is the only file importing "@vue-flow/core"
     And a lint rule fails the build on any other importer, naming the file
-    And GraphCanvas's exported props are Karvan types:
+    And GraphCanvas's exported props are DeFlow types:
         { nodes: PlanNodeVM[]; edges: PlanEdgeVM[]; selected?: NodeId }
     And no Vue Flow type appears in its public surface
 
@@ -1392,9 +1392,9 @@ Feature: GraphCanvas is the only Vue Flow importer (12 §6.1)
     And it also lets the memory graph swap to sigma + graphology without touching the plan graph
 ```
 
-**Notes:** A3-1, rated **High**. [Roadmap §2.3](../../17-roadmap.md): *"wrap Vue Flow behind a
+**Notes:** A3-1, rated **High**. [Roadmap §2.3](../../17-roadmap.md): _"wrap Vue Flow behind a
 `GraphCanvas` facade on day one of W10. One day of work against the largest single third-party risk
-in the frontend."* The escape hatches if the ceiling is hit are `sigma@^3.0.3` + `graphology@^0.26.0`
+in the frontend."_ The escape hatches if the ceiling is hit are `sigma@^3.0.3` + `graphology@^0.26.0`
 (comfortable into the tens of thousands) or `@cosmograph/cosmos@^3.4.1` for GPU force layout.
 
 ---
@@ -1407,7 +1407,7 @@ in the frontend."* The escape hatches if the ceiling is hit are `sigma@^3.0.3` +
 Feature: Replacing an extrapolation with a measurement (A3-2)
 
   Scenario: The measurement run
-    Given "karvan replay fixtures/stress-400.jsonl --speed max"
+    Given "DeFlow replay fixtures/stress-400.jsonl --speed max"
     And headless Chromium
     When "pnpm measure:graph" runs
     Then it records: ELK layout time off the main thread, time to first paint of the full graph,
@@ -1435,8 +1435,8 @@ Feature: Replacing an extrapolation with a measurement (A3-2)
     And that decision is recorded in the measurement file rather than in someone's memory
 ```
 
-**Notes:** [roadmap §2.3](../../17-roadmap.md) — *"measure Vue Flow in week one of W10, not week four
-of W11 … that number decides §3."* Re-run the measurement when the Vue pin moves: 3.6's reactivity
+**Notes:** [roadmap §2.3](../../17-roadmap.md) — _"measure Vue Flow in week one of W10, not week four
+of W11 … that number decides §3."_ Re-run the measurement when the Vue pin moves: 3.6's reactivity
 rewrite could shift it either way, and Vue Flow's store leans hard on the internals 3.6 rewrites.
 
 ---
@@ -1505,7 +1505,7 @@ Feature: Layout stability, the cheap way (12 §6.1)
     And they remain an experiment, not the design
 ```
 
-**Notes:** A3-5. This scenario is the *cheap* stability mechanism for the live graph; the *marquee*
+**Notes:** A3-5. This scenario is the _cheap_ stability mechanism for the live graph; the _marquee_
 stability mechanism for the scrubber is the union-graph layout computed once and cached, which is
 KAR-17.2's business. Both exist because reflow between versions destroys the one thing the scrubber
 is for.
@@ -1572,7 +1572,7 @@ Feature: What Vue Flow gives free, and must not be undone (12 §9.3)
     And that table doubles as the copy-into-a-PR-description surface
 ```
 
-**Notes:** *"do not set `disableKeyboardA11y`"* is a direct instruction from
+**Notes:** _"do not set `disableKeyboardA11y`"_ is a direct instruction from
 [12 §9.3](../../12-frontend-architecture.md), and the temptation to set it is real — it is the
 quickest way to stop key handlers conflicting with a custom keymap. Resolve the conflict in the
 keymap instead.

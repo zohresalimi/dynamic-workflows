@@ -39,19 +39,19 @@ drift out from under the compiler.
 
 **ESM-only.** `"type": "module"` in every `package.json`. No dual CJS build, ever. Node 24 is the
 floor (Active LTS to 2026-10-20); develop and CI on 24 and 26. Node 22 is maintenance-only and is
-deliberately *not* listed in `engines` — if you list it, you must test it.
+deliberately _not_ listed in `engines` — if you list it, you must test it.
 
 **Banned syntax, and this is permanent rather than a stylistic preference.** With
 `--experimental-transform-types` gone from Node 26, `erasableSyntaxOnly: true` is the only
 configuration whose output Node can execute directly. Banned:
 
-| Banned | Use instead |
-|---|---|
-| `enum` | `const X = { ... } as const` + a union type |
-| runtime `namespace` | a module |
-| constructor parameter properties | assign fields explicitly |
-| decorators | plain higher-order functions |
-| `import` aliases (`import X = require(...)`) | ESM `import` |
+| Banned                                       | Use instead                                 |
+| -------------------------------------------- | ------------------------------------------- |
+| `enum`                                       | `const X = { ... } as const` + a union type |
+| runtime `namespace`                          | a module                                    |
+| constructor parameter properties             | assign fields explicitly                    |
+| decorators                                   | plain higher-order functions                |
+| `import` aliases (`import X = require(...)`) | ESM `import`                                |
 
 Ban them now, not after 5k lines are written.
 
@@ -72,6 +72,7 @@ Full config, the tsdown build and the dev runner are in
 ## Consequences
 
 ### Positive
+
 - `vue-tsc` runs, and type-aware linting has a working path.
 - `node file.ts` works with no build step in development, which is the stated first-class dev-loop
   requirement. Every save restarts the daemon and therefore continuously exercises F4.2.
@@ -80,15 +81,17 @@ Full config, the tsdown build and the dev runner are in
 - One toolchain, one lint config, one typecheck path.
 
 ### Negative
+
 - We forgo an 8–12× typecheck speedup for some months. At eight packages that is seconds, not
   minutes, so the trade is comfortable today and will get less comfortable as the repo grows.
 - `enum` is genuinely convenient and its absence shows up constantly in a codebase full of
   discriminated unions. `as const` objects plus union types are the standard replacement and are
   arguably better for a system whose event kinds must be serialisable.
 - No decorators means no decorator-based DI or ORM, which rules out a family of libraries. Not a
-  loss here — Karvan has no ORM and no DI container.
+  loss here — DeFlow has no ORM and no DI container.
 
 ### Neutral
+
 - The linter choice inherits this constraint. `oxlint` with `oxlint-tsgolint` is currently the only
   type-aware JS/TS linter with a TS 7 path (type-aware mode went stable in **oxlint 1.75.0**; 1.76.0
   is merely the current latest). ESLint plus `eslint-plugin-vue` is deferred, and note it would
@@ -104,7 +107,7 @@ Full config, the tsdown build and the dev runner are in
 - **Split-version workspace (TS 7 for Node packages, TS 6 for `packages/web`).** Rejected for now:
   two toolchains, two lint configs, two typecheck paths, for a speedup measured in seconds at this
   size. It is the fallback if typechecking becomes painful before 7.1 lands.
-- **Dual CJS + ESM build.** Rejected outright: Karvan is an application, not a library. There is no
+- **Dual CJS + ESM build.** Rejected outright: DeFlow is an application, not a library. There is no
   consumer to be compatible with, and dual builds are the largest single source of packaging bugs.
 - **Allow enums and use a bundler transform in dev.** Rejected: `--experimental-transform-types` was
   removed in Node 26, so this would permanently require a build step in development and give up the
@@ -131,4 +134,5 @@ With `--experimental-transform-types` removed in Node 26 they are permanent, and
 would need to explain what changed in Node, not in TypeScript.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

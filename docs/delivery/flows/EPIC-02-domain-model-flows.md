@@ -7,22 +7,22 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan — writes and approves the `TaskSpec`, reads the inspector |
-| **Planner** | The agent (or human) that allocates `NodeId`s and emits `PlanGraph` documents and `PlanPatch`es |
-| **Scheduler** | The component that reads `NodeFailure.class` and decides retry / fail / suspend |
-| **karvand** | The local daemon; here, only as the thing that parses events and may be an older or newer build |
-| **Blackboard** | The projection over `fact.*` events; validates a fact's `value` against its `schemaId` |
+| Actor              | Description                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| **Operator**       | The engineer driving DeFlow — writes and approves the `TaskSpec`, reads the inspector              |
+| **Planner**        | The agent (or human) that allocates `NodeId`s and emits `PlanGraph` documents and `PlanPatch`es    |
+| **Scheduler**      | The component that reads `NodeFailure.class` and decides retry / fail / suspend                    |
+| **DeFlowd**        | The local daemon; here, only as the thing that parses events and may be an older or newer build    |
+| **Blackboard**     | The projection over `fact.*` events; validates a fact's `value` against its `schemaId`             |
 | **Provider agent** | A vendor CLI subprocess handed an emitted JSON Schema file via `--json-schema` / `--output-schema` |
-| **CI** | The `check` job that runs `pnpm schemas:check` and the unit slice |
+| **CI**             | The `check` job that runs `pnpm schemas:check` and the unit slice                                  |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given the package "@karvan/core" is built with erasableSyntaxOnly: true and ESM only
-  And "zod@4.4.3" is the only runtime dependency of @karvan/core
+  Given the package "@DeFlow/core" is built with erasableSyntaxOnly: true and ESM only
+  And "zod@4.4.3" is the only runtime dependency of @DeFlow/core
   And the normalising snapshot serialiser from testing-strategy §9 is registered in test/setup.ts
   And every schema in this file is authored as a Zod 4 schema with its TypeScript type derived by z.infer
   And no test in this file opens a database, spawns a process, or reads the wall clock
@@ -34,36 +34,36 @@ functions, so it is the cheapest and fastest part of the suite and should stay t
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-02-S1 | A `NodeId` is accepted or rejected by format | KAR-02.1 | Happy path / edge |
-| EPIC-02-S2 | A patch may change anything about a node except its id | KAR-02.1, KAR-02.4 | Failure |
-| EPIC-02-S3 | `split-node` retires the id and mints successors | KAR-02.1, KAR-02.4 | Happy path |
-| EPIC-02-S4 | Map children keep their ids when the collection is re-derived | KAR-02.1, KAR-02.3 | Edge case |
-| EPIC-02-S5 | A `RunId` is a legal path segment and sorts by creation order | KAR-02.1 | Happy path |
-| EPIC-02-S6 | Re-approving an unchanged spec does not change its `specHash` | KAR-02.2, KAR-02.9 | Happy path |
-| EPIC-02-S7 | A shallow or malformed `TaskSpec` is rejected at the boundary | KAR-02.2 | Failure |
-| EPIC-02-S8 | The canonical encoder is invariant to key order and refuses lossy values | KAR-02.9 | Edge case |
-| EPIC-02-S9 | A graph with all seven node types parses and snapshots stably | KAR-02.3 | Happy path |
-| EPIC-02-S10 | A node missing a `NodeBase` contract field is rejected | KAR-02.3 | Failure |
-| EPIC-02-S11 | An undeclared read is caught before a token is spent | KAR-02.3 | Failure |
-| EPIC-02-S12 | A patch with an incomplete `policy` block cannot be proposed | KAR-02.4 | Failure |
-| EPIC-02-S13 | A rejected patch is still a recorded, well-formed value | KAR-02.4 | Edge case |
-| EPIC-02-S14 | A fact's value is validated against its `schemaId` before acceptance | KAR-02.5, KAR-02.8 | Happy path |
-| EPIC-02-S15 | An `ext:` fact with no registered schema is refused | KAR-02.5, KAR-02.8 | Failure |
-| EPIC-02-S16 | A corrected fact is a new `FactId` that supersedes the old one | KAR-02.5 | Happy path |
-| EPIC-02-S17 | A packet's totals and pin digests are self-consistent | KAR-02.6 | Happy path |
-| EPIC-02-S18 | Token counts declare their source and are never silently mixed | KAR-02.6, KAR-02.10 | Failure |
-| EPIC-02-S19 | An older build meets an event kind it has never heard of | KAR-02.7 | Recovery |
-| EPIC-02-S20 | An upcaster chain lifts a v1 payload to v3 at read time | KAR-02.7 | Happy path |
-| EPIC-02-S21 | A hole in the upcaster chain fails at build, not at 3am | KAR-02.7 | Failure |
-| EPIC-02-S22 | A lossy payload change becomes a new `kind`, not a new `v` | KAR-02.7 | Edge case |
-| EPIC-02-S23 | Vendor-internal compaction cannot fabricate an "after" number | KAR-02.7 | Edge case |
-| EPIC-02-S24 | An edited Zod schema without re-emission fails CI | KAR-02.8 | Failure |
-| EPIC-02-S25 | Every emitted schema compiles under Ajv2020 in strict mode | KAR-02.8 | Happy path |
-| EPIC-02-S26 | A vendor CLI consumes an emitted schema file directly | KAR-02.8 | Contract |
-| EPIC-02-S27 | A thrown `Error` never reaches the ledger | KAR-02.10 | Failure |
-| EPIC-02-S28 | Failure class is assigned at construction, not derived at render | KAR-02.10 | Edge case |
+| Scenario    | Title                                                                    | Verifies            | Type              |
+| ----------- | ------------------------------------------------------------------------ | ------------------- | ----------------- |
+| EPIC-02-S1  | A `NodeId` is accepted or rejected by format                             | KAR-02.1            | Happy path / edge |
+| EPIC-02-S2  | A patch may change anything about a node except its id                   | KAR-02.1, KAR-02.4  | Failure           |
+| EPIC-02-S3  | `split-node` retires the id and mints successors                         | KAR-02.1, KAR-02.4  | Happy path        |
+| EPIC-02-S4  | Map children keep their ids when the collection is re-derived            | KAR-02.1, KAR-02.3  | Edge case         |
+| EPIC-02-S5  | A `RunId` is a legal path segment and sorts by creation order            | KAR-02.1            | Happy path        |
+| EPIC-02-S6  | Re-approving an unchanged spec does not change its `specHash`            | KAR-02.2, KAR-02.9  | Happy path        |
+| EPIC-02-S7  | A shallow or malformed `TaskSpec` is rejected at the boundary            | KAR-02.2            | Failure           |
+| EPIC-02-S8  | The canonical encoder is invariant to key order and refuses lossy values | KAR-02.9            | Edge case         |
+| EPIC-02-S9  | A graph with all seven node types parses and snapshots stably            | KAR-02.3            | Happy path        |
+| EPIC-02-S10 | A node missing a `NodeBase` contract field is rejected                   | KAR-02.3            | Failure           |
+| EPIC-02-S11 | An undeclared read is caught before a token is spent                     | KAR-02.3            | Failure           |
+| EPIC-02-S12 | A patch with an incomplete `policy` block cannot be proposed             | KAR-02.4            | Failure           |
+| EPIC-02-S13 | A rejected patch is still a recorded, well-formed value                  | KAR-02.4            | Edge case         |
+| EPIC-02-S14 | A fact's value is validated against its `schemaId` before acceptance     | KAR-02.5, KAR-02.8  | Happy path        |
+| EPIC-02-S15 | An `ext:` fact with no registered schema is refused                      | KAR-02.5, KAR-02.8  | Failure           |
+| EPIC-02-S16 | A corrected fact is a new `FactId` that supersedes the old one           | KAR-02.5            | Happy path        |
+| EPIC-02-S17 | A packet's totals and pin digests are self-consistent                    | KAR-02.6            | Happy path        |
+| EPIC-02-S18 | Token counts declare their source and are never silently mixed           | KAR-02.6, KAR-02.10 | Failure           |
+| EPIC-02-S19 | An older build meets an event kind it has never heard of                 | KAR-02.7            | Recovery          |
+| EPIC-02-S20 | An upcaster chain lifts a v1 payload to v3 at read time                  | KAR-02.7            | Happy path        |
+| EPIC-02-S21 | A hole in the upcaster chain fails at build, not at 3am                  | KAR-02.7            | Failure           |
+| EPIC-02-S22 | A lossy payload change becomes a new `kind`, not a new `v`               | KAR-02.7            | Edge case         |
+| EPIC-02-S23 | Vendor-internal compaction cannot fabricate an "after" number            | KAR-02.7            | Edge case         |
+| EPIC-02-S24 | An edited Zod schema without re-emission fails CI                        | KAR-02.8            | Failure           |
+| EPIC-02-S25 | Every emitted schema compiles under Ajv2020 in strict mode               | KAR-02.8            | Happy path        |
+| EPIC-02-S26 | A vendor CLI consumes an emitted schema file directly                    | KAR-02.8            | Contract          |
+| EPIC-02-S27 | A thrown `Error` never reaches the ledger                                | KAR-02.10           | Failure           |
+| EPIC-02-S28 | Failure class is assigned at construction, not derived at render         | KAR-02.10           | Edge case         |
 
 ---
 
@@ -96,7 +96,7 @@ Feature: Identifier format rules
 
 **Notes:** The uppercase rejection is not fussiness. Roadmap risk **A5-7** records that git worktree
 behaviour on APFS is untested and that a case-insensitive filesystem could collide worktree paths
-for node ids differing only in case — `.karvan/wt/<runId>__<nodeId>` is built from this string.
+for node ids differing only in case — `.DeFlow/wt/<runId>__<nodeId>` is built from this string.
 Rejecting uppercase at the schema is the cheapest possible fix and it belongs here, not in the
 worktree manager.
 
@@ -193,7 +193,7 @@ Feature: Deterministic map child identity
     And this test is annotated as a regression guard documenting why 'value-hash' is the schema default
 ```
 
-**Notes:** The second scenario deliberately asserts the *bad* behaviour so that nobody "simplifies"
+**Notes:** The second scenario deliberately asserts the _bad_ behaviour so that nobody "simplifies"
 the default. `itemIdFrom` defaults to `'value-hash'` in the Zod schema, so a plan authored without
 the field gets the safe path.
 
@@ -219,7 +219,7 @@ Feature: RunId is a directory name and a sort key
     And both match /^run_\d{8}T\d{6}Z_[0-9a-f]{6}$/
 ```
 
-**Notes:** Sorting matters because `.karvan/runs/` is browsed by a human and listed by `karvan run
+**Notes:** Sorting matters because `.DeFlow/runs/` is browsed by a human and listed by `DeFlow run
 --list`; the format puts the timestamp before the random suffix precisely so `ls` is chronological.
 
 ---
@@ -276,7 +276,7 @@ Feature: TaskSpec validation
       | criterion check.kind set to "script"              | acceptanceCriteria.0.check.kind   |
       | goal set to ""                                    | goal                              |
       | knownFailureModes[0].detection removed            | knownFailureModes.0.detection     |
-      | schemaId set to "karvan.taskspec"                 | schemaId                          |
+      | schemaId set to "DeFlow.taskspec"                 | schemaId                          |
 
   Scenario: coveredByGates is not required from an author
     Given a hand-written spec with no coveredByGates on any criterion
@@ -285,7 +285,7 @@ Feature: TaskSpec validation
     And every criterion's coveredByGates is []
 ```
 
-**Notes:** `schemaId: 'karvan.taskspec'` without the `.v1` suffix is rejected because the version
+**Notes:** `schemaId: 'DeFlow.taskspec'` without the `.v1` suffix is rejected because the version
 suffix is part of the id — schemas are append-only and an unsuffixed id has no upgrade path.
 `knownFailureModes[].detection` is required rather than optional because a failure mode with no
 detection story is the "shallow spec" the SDD literature names as the primary failure mode.
@@ -333,7 +333,7 @@ Feature: Canonical JSON encoding
 ```
 
 **Notes:** The last two scenarios encode a verified caution. `ohash`'s stable key-ordering behaviour
-*is* confirmed, but its README promises only "best efforts" at stable serialisation — acceptable for
+_is_ confirmed, but its README promises only "best efforts" at stable serialisation — acceptable for
 "did this object change since last render" in the UI, and wrong for the primary key of the `plan`
 table. If the golden hex in the fourth scenario ever changes, every existing ledger's `plan` rows
 have been orphaned; treat that diff as a migration, not a snapshot update.
@@ -421,7 +421,7 @@ Feature: Every node carries the safety and memory contract
     And budget is {}
 ```
 
-**Notes:** `permission` and `pathScopes` are required on *every* node type including `human` and
+**Notes:** `permission` and `pathScopes` are required on _every_ node type including `human` and
 `subgraph`, with no default. A defaulted permission level is how a system ends up silently
 escalating, which is precisely the ODW binary-permission hazard (PRD G6) this design exists to
 avoid. The retry defaults match F7.5's cap of 3 and the full-jitter constants in
@@ -443,7 +443,7 @@ Feature: Declared reads must be satisfiable
     Then it returns exactly one violation { node: "implement-auth", read: "finding/auth-uses-jwt" }
 
   Scenario: an ancestor two hops up satisfies it
-    Given node "recon-auth-surface" is an ancestor at depth 2 and declares writes [{ kind: "fact", key: "finding/auth-uses-jwt", schemaId: "karvan.finding.v1" }]
+    Given node "recon-auth-surface" is an ancestor at depth 2 and declares writes [{ kind: "fact", key: "finding/auth-uses-jwt", schemaId: "DeFlow.finding.v1" }]
     When readsAreSatisfiable(graph) is called
     Then it returns []
 
@@ -533,7 +533,7 @@ Feature: Rejections are first-class records
     And nothing in the schema distinguishes it from a planner-proposed patch
 ```
 
-**Notes:** The third scenario is F3.9. Quota-driven provider re-routing is deliberately *not* a
+**Notes:** The third scenario is F3.9. Quota-driven provider re-routing is deliberately _not_ a
 special case, so it appears in the plan-evolution scrubber alongside every other patch — "why did
 this node switch to Codex halfway through?" is answerable in one click rather than buried in a log.
 
@@ -547,11 +547,11 @@ this node switch to Codex halfway through?" is answerable in one click rather th
 Feature: Facts are schema-validated on acceptance
 
   Background:
-    Given .karvan/schemas/karvan.finding.v1.json has been emitted from the Zod source
-    And makeValidator("karvan.finding.v1") returns an Ajv2020 validator configured { strict: true, allErrors: true }
+    Given .DeFlow/schemas/DeFlow.finding.v1.json has been emitted from the Zod source
+    And makeValidator("DeFlow.finding.v1") returns an Ajv2020 validator configured { strict: true, allErrors: true }
 
   Scenario: a conforming finding is accepted
-    Given a Fact with key "finding/auth-uses-jwt", kind "finding", schemaId "karvan.finding.v1"
+    Given a Fact with key "finding/auth-uses-jwt", kind "finding", schemaId "DeFlow.finding.v1"
     And a value conforming to that schema
     And provenance { byNode: "recon-auth-surface", byProvider: "claude-code", byModel: "claude-sonnet-4-6", fromEvidence: ["artifact://<64 hex>"], atEvent: 412, confidence: "verified" }
     When acceptFact is called
@@ -594,17 +594,17 @@ wrong" from "this was verified and the world changed".
 Feature: The free-form namespace is schema-validated but not enumerated
 
   Scenario: an unregistered ext schema is refused
-    Given .karvan/schemas/ contains no file named "ext.migration.vue3-incompat.v1.json"
+    Given .DeFlow/schemas/ contains no file named "ext.migration.vue3-incompat.v1.json"
     And a Fact with kind "ext", key "ext:migration/vue3-incompat-list", schemaId "ext.migration.vue3-incompat.v1"
     When acceptFact is called
     Then it returns an error of kind 'unknown-schema-id'
-    And the message names "ext.migration.vue3-incompat.v1" and the directory ".karvan/schemas/"
+    And the message names "ext.migration.vue3-incompat.v1" and the directory ".DeFlow/schemas/"
 
   Scenario: registering the schema makes the same fact acceptable
-    Given the operator writes ext.migration.vue3-incompat.v1.json into .karvan/schemas/
+    Given the operator writes ext.migration.vue3-incompat.v1.json into .DeFlow/schemas/
     When acceptFact is called with the same Fact
     Then it returns ok
-    And Karvan applies no further constraint on what the namespace means
+    And DeFlow applies no further constraint on what the namespace means
 ```
 
 **Notes:** This is the concrete answer to PRD open question §15.2 — a small fixed core plus one
@@ -697,7 +697,7 @@ Feature: ContextPacket internal consistency
     And the history.summary appears in the chronological position of turns 3–7, not in a preamble
 ```
 
-**Notes:** `pinnedDigests` is the *input* to the F6.6 integrity check: after rendering, the packet
+**Notes:** `pinnedDigests` is the _input_ to the F6.6 integrity check: after rendering, the packet
 builder asserts that each pinned segment's sha256 still appears in the outgoing prompt, and a
 mismatch emits `pin.integrity_violated` and fails the node. Deriving the digests from
 `contentHash` rather than maintaining them separately means the check cannot be defeated by a
@@ -769,7 +769,7 @@ Feature: Forward compatibility of the event union
 ```
 
 **Notes:** This is the single forward-compatibility mechanism in the system. It exists so that a user
-who installs a newer `karvand`, starts a run, then downgrades gets a daemon that skips events it does
+who installs a newer `DeFlowd`, starts a run, then downgrades gets a daemon that skips events it does
 not understand rather than one that refuses to open the ledger. The corresponding reducer behaviour
 — `return state` unchanged — is [EPIC-03-S16](./EPIC-03-event-ledger-flows.md). Note the "does not
 log at error level" clause: an error-level log on every skipped event during a downgraded replay is
@@ -830,7 +830,7 @@ Feature: Upcaster chain completeness
 
   Scenario: the assertion runs in the unit suite and at daemon boot
     Then a unit test calls assertUpcasterChainsComplete() over the real registry
-    And karvand calls it during startup before opening the ledger
+    And DeFlowd calls it during startup before opening the ledger
     And a failure at boot exits with a typed error naming the gap, not a stack trace
 ```
 
@@ -879,9 +879,9 @@ only when that specific historical event is replayed.
 ```gherkin
 Feature: context.compacted carries a fidelity discriminator
 
-  Scenario: Karvan's own packet compaction is exact
-    Given a compaction performed by Karvan's own context builder
-    When the context.compacted payload is constructed with scope "karvan.packet" and fidelity "exact"
+  Scenario: DeFlow's own packet compaction is exact
+    Given a compaction performed by DeFlow's own context builder
+    When the context.compacted payload is constructed with scope "DeFlow.packet" and fidelity "exact"
     Then before and after are both numbers
     And droppedSegments lists the SegmentIds removed
     And originalHandle is an artifact:// Handle
@@ -931,7 +931,7 @@ Feature: Zod and JSON Schema cannot drift
     And `pnpm schemas:emit` has not been run
     When `pnpm schemas:check` runs
     Then it exits non-zero
-    And stderr names "karvan.fact.v1"
+    And stderr names "DeFlow.fact.v1"
     And stderr contains a unified diff showing the added "sourceRun" under "required"
 
   Scenario: re-emitting makes it green
@@ -959,20 +959,20 @@ seconds and this is a full package build.
 Feature: The emitted dialect is usable by the one validator we ship
 
   Scenario Outline: strict compilation
-    Given the emitted file .karvan/schemas/<schemaId>.json
+    Given the emitted file .DeFlow/schemas/<schemaId>.json
     Then it declares "$schema": "https://json-schema.org/draft/2020-12/schema"
     And new Ajv2020({ strict: true, allErrors: true }) with ajv-formats compiles it without warnings
     And the compiled validator accepts the schema's own fixture and rejects its counter-fixture
 
     Examples:
       | schemaId                  |
-      | karvan.taskspec.v1        |
-      | karvan.plangraph.v1       |
-      | karvan.planpatch.v1       |
-      | karvan.fact.v1            |
-      | karvan.finding.v1         |
-      | karvan.verdict.v1         |
-      | karvan.contextpacket.v1   |
+      | DeFlow.taskspec.v1        |
+      | DeFlow.plangraph.v1       |
+      | DeFlow.planpatch.v1       |
+      | DeFlow.fact.v1            |
+      | DeFlow.finding.v1         |
+      | DeFlow.verdict.v1         |
+      | DeFlow.contextpacket.v1   |
 
   Scenario: a schema is a standalone document
     Then no emitted file contains a $ref to a sibling file path
@@ -995,8 +995,8 @@ handed a file with a relative `$ref` cannot resolve it.
 Feature: Emitted schemas are the vendor's structured-output contract
 
   Scenario: Claude Code accepts the file
-    Given .karvan/schemas/karvan.finding.v1.json emitted from the Zod source
-    When an agent node is invoked with --json-schema .karvan/schemas/karvan.finding.v1.json
+    Given .DeFlow/schemas/DeFlow.finding.v1.json emitted from the Zod source
+    When an agent node is invoked with --json-schema .DeFlow/schemas/DeFlow.finding.v1.json
     Then the CLI accepts the file without a parse error
     And a conforming structured_output is returned on the success path
 

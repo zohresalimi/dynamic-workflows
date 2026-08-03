@@ -7,20 +7,20 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Test harness** | A vitest spec in the `unit` or `integration` project slice. It plays the role karvand plays in production: it spawns the binary, writes frames to its stdin and reads frames from its stdout |
-| **Mock agent** | The `karvan-mock-agent` executable — a real child process speaking ACP over ndjson |
-| **Fake exec-shim agent** | `packages/testkit/bin/fake-agent.ts`, symlinked onto a tmp `PATH` under a vendor name, speaking a vendor's own headless wire format |
-| **Scenario file** | The declarative script that tells either binary what to do |
-| **Recording** | A captured real session at `recordings/<provider>@<version>/<case>.ndjson` |
+| Actor                    | Description                                                                                                                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Test harness**         | A vitest spec in the `unit` or `integration` project slice. It plays the role DeFlowd plays in production: it spawns the binary, writes frames to its stdin and reads frames from its stdout |
+| **Mock agent**           | The `DeFlow-mock-agent` executable — a real child process speaking ACP over ndjson                                                                                                           |
+| **Fake exec-shim agent** | `packages/testkit/bin/fake-agent.ts`, symlinked onto a tmp `PATH` under a vendor name, speaking a vendor's own headless wire format                                                          |
+| **Scenario file**        | The declarative script that tells either binary what to do                                                                                                                                   |
+| **Recording**            | A captured real session at `recordings/<provider>@<version>/<case>.ndjson`                                                                                                                   |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'karvan-'))
-  And KARVAN_KEEP_TMP is honoured so a failed run leaves the directory for inspection
+  Given a temp directory created with fs.mkdtemp(path.join(os.tmpdir(), 'DeFlow-'))
+  And DeFlow_KEEP_TMP is honoured so a failed run leaves the directory for inspection
   And "<tmp>/bin" is prepended to PATH with the binary under test symlinked into it
   And the harness holds the resolved ABSOLUTE path to the binary, never relying on PATH lookup at spawn
   And the child is spawned with stdio ['pipe','pipe','pipe'] and detached: true
@@ -30,34 +30,34 @@ Background:
 
 > The `detached: true` default is not incidental. It is the production spawn mode
 > ([adapter layer §9.3](../../07-provider-adapter-layer.md)) and testing under `detached: false` would
-> exercise a process-group topology karvand never creates.
+> exercise a process-group topology DeFlowd never creates.
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-04-S1 | Happy path: a full ACP prompt cycle over a real subprocess | KAR-04.1 | Happy path |
-| EPIC-04-S2 | Byte-reproducible output under `--seed` | KAR-04.1 | Happy path |
-| EPIC-04-S3 | Spawned by resolved absolute path, never by PATH lookup | KAR-04.1 | Edge case |
-| EPIC-04-S4 | Scripted streaming cadence arrives incrementally | KAR-04.2 | Happy path |
-| EPIC-04-S5 | `tool_call` walks every status value | KAR-04.2 | Happy path |
-| EPIC-04-S6 | Permission request branches per outcome, including `cancelled` | KAR-04.2 | Edge case |
-| EPIC-04-S7 | Client callbacks: `fs/*` and the full `terminal/*` lifecycle | KAR-04.2 | Happy path |
-| EPIC-04-S8 | Hang forever mid-turn, and cancel through it | KAR-04.3 | Failure |
-| EPIC-04-S9 | `process.exit(1)` mid-turn leaves a truncated frame | KAR-04.3 | Failure |
-| EPIC-04-S10 | A malformed JSON line | KAR-04.3 | Failure |
-| EPIC-04-S11 | Valid JSON that is schema-invalid | KAR-04.3 | Failure |
-| EPIC-04-S12 | A single 10 MB line, and an agent that never emits a newline | KAR-04.3 | Failure |
-| EPIC-04-S13 | Capability profiles across the five verified adapters | KAR-04.4 | Edge case |
-| EPIC-04-S14 | A profile that advertises what it will not honour | KAR-04.4 | Failure |
-| EPIC-04-S15 | Replaying a golden recording as a provider | KAR-04.5 | Happy path |
-| EPIC-04-S16 | Recording directories keyed on the exact version | KAR-04.5 | Edge case |
-| EPIC-04-S17 | Fake exec-shim: the Claude Code `stream-json` envelope | KAR-04.6 | Happy path |
-| EPIC-04-S18 | Fake exec-shim: exit with no output at all | KAR-04.6 | Failure |
-| EPIC-04-S19 | Fake exec-shim: ignoring SIGTERM, and the zombie false negative | KAR-04.6 | Failure |
-| EPIC-04-S20 | Fake exec-shim: dialect mismatches and a permission refusal | KAR-04.6 | Edge case |
-| EPIC-04-S21 | The mock agent imports nothing from the workspace | KAR-04.1 | Edge case |
-| EPIC-04-S22 | The per-invocation side-effect log | KAR-04.2 | Recovery |
+| Scenario    | Title                                                           | Verifies | Type       |
+| ----------- | --------------------------------------------------------------- | -------- | ---------- |
+| EPIC-04-S1  | Happy path: a full ACP prompt cycle over a real subprocess      | KAR-04.1 | Happy path |
+| EPIC-04-S2  | Byte-reproducible output under `--seed`                         | KAR-04.1 | Happy path |
+| EPIC-04-S3  | Spawned by resolved absolute path, never by PATH lookup         | KAR-04.1 | Edge case  |
+| EPIC-04-S4  | Scripted streaming cadence arrives incrementally                | KAR-04.2 | Happy path |
+| EPIC-04-S5  | `tool_call` walks every status value                            | KAR-04.2 | Happy path |
+| EPIC-04-S6  | Permission request branches per outcome, including `cancelled`  | KAR-04.2 | Edge case  |
+| EPIC-04-S7  | Client callbacks: `fs/*` and the full `terminal/*` lifecycle    | KAR-04.2 | Happy path |
+| EPIC-04-S8  | Hang forever mid-turn, and cancel through it                    | KAR-04.3 | Failure    |
+| EPIC-04-S9  | `process.exit(1)` mid-turn leaves a truncated frame             | KAR-04.3 | Failure    |
+| EPIC-04-S10 | A malformed JSON line                                           | KAR-04.3 | Failure    |
+| EPIC-04-S11 | Valid JSON that is schema-invalid                               | KAR-04.3 | Failure    |
+| EPIC-04-S12 | A single 10 MB line, and an agent that never emits a newline    | KAR-04.3 | Failure    |
+| EPIC-04-S13 | Capability profiles across the five verified adapters           | KAR-04.4 | Edge case  |
+| EPIC-04-S14 | A profile that advertises what it will not honour               | KAR-04.4 | Failure    |
+| EPIC-04-S15 | Replaying a golden recording as a provider                      | KAR-04.5 | Happy path |
+| EPIC-04-S16 | Recording directories keyed on the exact version                | KAR-04.5 | Edge case  |
+| EPIC-04-S17 | Fake exec-shim: the Claude Code `stream-json` envelope          | KAR-04.6 | Happy path |
+| EPIC-04-S18 | Fake exec-shim: exit with no output at all                      | KAR-04.6 | Failure    |
+| EPIC-04-S19 | Fake exec-shim: ignoring SIGTERM, and the zombie false negative | KAR-04.6 | Failure    |
+| EPIC-04-S20 | Fake exec-shim: dialect mismatches and a permission refusal     | KAR-04.6 | Edge case  |
+| EPIC-04-S21 | The mock agent imports nothing from the workspace               | KAR-04.1 | Edge case  |
+| EPIC-04-S22 | The per-invocation side-effect log                              | KAR-04.2 | Recovery   |
 
 ---
 
@@ -69,13 +69,13 @@ Background:
 Feature: The mock agent completes an ACP turn as a real child process
 
   Scenario: initialize, session/new, prompt, stop
-    Given the harness spawns "karvan-mock-agent --scenario fixtures/scenarios/hello.json --seed 42"
+    Given the harness spawns "DeFlow-mock-agent --scenario fixtures/scenarios/hello.json --seed 42"
     And the child's stdin and stdout are wrapped with acp.ndJsonStream
     When the harness sends "initialize" with protocolVersion 1 and clientCapabilities
          { fs: { readTextFile: true, writeTextFile: true }, terminal: true }
     Then the response carries protocolVersion equal to the integer 1, not the string "1"
     And the response carries an "agentCapabilities" object
-    And the response carries "authMethods": [] because the mock needs nothing from Karvan
+    And the response carries "authMethods": [] because the mock needs nothing from DeFlow
     When the harness sends "session/new" with cwd set to the temp worktree path
     Then the response carries a non-empty "sessionId"
     When the harness sends "session/prompt" with a single text block
@@ -104,7 +104,7 @@ Feature: Seeded determinism
   Scenario: The same seed produces the same bytes
     Given the scenario "fixtures/scenarios/tool-call-walk.json" which generates
           a sessionId, three toolCallIds and eight timestamps
-    When the harness runs "karvan-mock-agent --scenario tool-call-walk.json --seed 42" twice,
+    When the harness runs "DeFlow-mock-agent --scenario tool-call-walk.json --seed 42" twice,
          capturing raw stdout into buffers A and B
     Then Buffer.compare(A, B) returns 0 with no normalisation applied
     And A contains no value matching the UUID v4 pattern produced by crypto.randomUUID
@@ -116,8 +116,8 @@ Feature: Seeded determinism
 ```
 
 **Notes:** Byte-identity — not snapshot-equality after normalisation — is the bar, because this is what
-makes the crash-fuzz test's pre-crash side deterministic so that *the only variable is where the knife
-lands* ([testing strategy §11](../../14-testing-strategy.md)). Frame count staying constant across seeds
+makes the crash-fuzz test's pre-crash side deterministic so that _the only variable is where the knife
+lands_ ([testing strategy §11](../../14-testing-strategy.md)). Frame count staying constant across seeds
 proves the seed drives ids and clock only, not control flow.
 
 ---
@@ -138,7 +138,7 @@ Feature: Absolute-path resolution mirrors production
 
   Scenario: A daemon-shaped PATH does not find the binary
     Given the child is spawned with env.PATH set to "/usr/bin:/bin" only,
-          simulating karvand started from a launchd or systemd unit
+          simulating DeFlowd started from a launchd or systemd unit
     When the harness spawns the stored absolute path
     Then the child starts normally
     When the harness instead spawns the bare name "claude"
@@ -146,7 +146,7 @@ Feature: Absolute-path resolution mirrors production
     And the failure is the one a NodeFailure with reason "adapter.spawn-failed" must be built from
 ```
 
-**Notes:** karvand's `PATH` at daemon start differs from the user's login shell — a silent,
+**Notes:** DeFlowd's `PATH` at daemon start differs from the user's login shell — a silent,
 machine-specific failure that presents as "works for me"
 ([adapter layer §4.3](../../07-provider-adapter-layer.md)). The second scenario is the regression test
 that stops anyone simplifying the resolution step away.
@@ -180,7 +180,7 @@ Feature: Scripted chunk cadence
 ```
 
 **Notes:** The second scenario is the pull loop's whole point. `session.nextUpdate()` is a pull loop, not
-a callback registration — Karvan does not request the next frame until it has finished with the current
+a callback registration — DeFlow does not request the next frame until it has finished with the current
 one, the OS pipe fills at 64 KiB (measured `highWaterMark`, 2026-08-02) and the agent blocks in `write()`
 ([adapter layer §2.3](../../07-provider-adapter-layer.md)). It is also the only legal place to `await` the
 SQLite append. If this scenario shows unbounded RSS growth, someone has reintroduced flowing mode.
@@ -293,7 +293,7 @@ Feature: The agent calls back into the client
     And no fs/write_text_file request is ever written to stdout
 ```
 
-**Notes:** These seven methods are exactly where the permission ladder lives — Karvan sits in the path of
+**Notes:** These seven methods are exactly where the permission ladder lives — DeFlow sits in the path of
 every file access and every command execution, which is what collapses an N-vendors × M-levels matrix into
 one pure policy function ([adapter layer §1](../../07-provider-adapter-layer.md),
 [testing strategy §10](../../14-testing-strategy.md)). The third scenario matters because ACP v2 **removes
@@ -397,7 +397,7 @@ Feature: Not JSON at all
         malformed line and the subsequent frames are NOT delivered to the ledger
 ```
 
-**Notes:** The second scenario exists to make the recovery policy a *decision* rather than an accident.
+**Notes:** The second scenario exists to make the recovery policy a _decision_ rather than an accident.
 The architecture's position is that a malformed frame tears the session down; this scenario is where that
 is written down and checked, so nobody later adds a "skip and continue" that silently drops half a turn.
 
@@ -466,11 +466,11 @@ Feature: Framing hazards
 
 **Notes:** This is the verified hazard behind KAR-05.4. `@agentclientprotocol/sdk`'s `LineBuffer`
 (`dist/line-buffer.js`) has **no maximum line length** — `push()` accumulates chunks into a private
-`#pending` array and only emits on finding a `0x0a`. karvand is a long-lived daemon supervising runs for
-days, so this is a real availability bug. For scale: a *trivial* `claude -p "say ok"` turn emitted a single
+`#pending` array and only emits on finding a `0x0a`. DeFlowd is a long-lived daemon supervising runs for
+days, so this is a real availability bug. For scale: a _trivial_ `claude -p "say ok"` turn emitted a single
 **16,024-byte** line (the `system/commands_changed` frame), and real turns that read a large file routinely
 produce multi-megabyte single lines. The `noNewline` case is the nastier of the two because no cap on
-*frame* size helps if the frame never completes — only a byte counter since the last newline does.
+_frame_ size helps if the frame never completes — only a byte counter since the last newline does.
 
 ---
 
@@ -529,7 +529,7 @@ has to be, because **two of five providers cannot resume**, so `ResumeByReplay` 
 The three shape variants matter individually. Absent-key (Gemini), empty-object (Copilot) and explicit-
 `false` (Codex) are three different things that naive optional chaining flattens into one, and flattening
 them is how a router concludes an agent can do something it cannot. The examples table is generated from
-the fixture, so when `karvan doctor` re-probes and a vendor's capabilities change, this table changes with
+the fixture, so when `DeFlow doctor` re-probes and a vendor's capabilities change, this table changes with
 it and the diff is the alert.
 
 ---
@@ -564,7 +564,7 @@ Feature: A lying capability manifest
     | additionalDirectories | session/new       |
 ```
 
-**Notes:** The capability row is *the single input the entire routing layer trusts*
+**Notes:** The capability row is _the single input the entire routing layer trusts_
 ([adapter layer §11.3](../../07-provider-adapter-layer.md)). If it lies, the planner schedules work onto an
 adapter that cannot do it, and the failure surfaces hours later inside a node instead of at admission time.
 `-32601` rather than a malformed success is the distinction worth asserting: a JSON-RPC error is a clean
@@ -583,7 +583,7 @@ Feature: A captured real session becomes a free provider
     Given a recording at recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
     And each line has the shape {"t": <msOffset>, "dir": "in"|"out", "msg": { ... }}
     When the harness spawns
-        "karvan-mock-agent --replay recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
+        "DeFlow-mock-agent --replay recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
          --replay-speed max"
     Then every "out" frame in the file is emitted to stdout in file order
     And the harness observes the recorded chunk texts in the recorded order
@@ -644,7 +644,7 @@ Feature: Version-keyed goldens
     Then Buffer.compare of the two stdout captures returns 0
 ```
 
-**Notes:** Keying on the exact version is what makes a vendor bump *a visible new directory in a PR* rather
+**Notes:** Keying on the exact version is what makes a vendor bump _a visible new directory in a PR_ rather
 than a silent invalidation of every existing golden. Three flag breakages were already visible in the
 current release set as of 2026-08-02 — Claude Code's `--permission-prompt-tool` gone from `--help`, Codex's
 `exec --full-auto` gone, and Gemini's `--experimental-acp` and `--allowed-tools` both deprecated.
@@ -661,7 +661,7 @@ Feature: The non-ACP fallback's fake binary
 
   Scenario: --verbose is required alongside stream-json
     Given "<tmp>/bin/claude" is a symlink to packages/testkit/bin/fake-agent.ts
-    And KARVAN_FAKE_DIALECT is "claude-stream-json"
+    And DeFlow_FAKE_DIALECT is "claude-stream-json"
     When the harness spawns it with "-p 'say ok' --output-format stream-json"
     Then the process exits non-zero
     And stderr is exactly
@@ -709,7 +709,7 @@ fake that emits a constant `uuid` would let a broken dedup implementation pass.
 Feature: Silence
 
   Scenario: Exit zero having written nothing
-    Given KARVAN_FAKE_SCENARIO selects the "noOutput" scenario
+    Given DeFlow_FAKE_SCENARIO selects the "noOutput" scenario
     When the harness spawns the fake agent and reads both streams to EOF
     Then the exit code is 0
     And stdout is zero bytes
@@ -761,13 +761,13 @@ Feature: The kill-escalation fixture
 ```
 
 **Notes:** The zombie filter is the trap that costs hours. **Verified by measurement:** after a
-*successful* group SIGKILL, `ps` still lists the grandchildren — in state **`Z`** with `ppid=1`, already
+_successful_ group SIGKILL, `ps` still lists the grandchildren — in state **`Z`** with `ppid=1`, already
 dead and awaiting reaping by init. A naive "did the kill work?" assertion concludes the group kill failed
 when it did not. Zombie reaping is prompt under launchd and systemd but can lag badly inside containers,
 so this bites hardest exactly where you cannot attach a debugger.
 
 The positive-pid scenario encodes the other verified result: with `detached: false` the grandchildren land
-in **karvand's own process group**, so you cannot group-kill them without killing the daemon.
+in **DeFlowd's own process group**, so you cannot group-kill them without killing the daemon.
 
 ---
 
@@ -779,18 +779,18 @@ in **karvand's own process group**, so you cannot group-kill them without killin
 Feature: Vendors are not uniform
 
   Scenario: Copilot has no stream-json
-    Given KARVAN_FAKE_DIALECT is "copilot-json"
+    Given DeFlow_FAKE_DIALECT is "copilot-json"
     When the harness spawns it with "-p 'say ok' --output-format stream-json"
     Then the process exits non-zero
     And a shim that assumed a uniform stream-json across vendors fails here, loudly
 
   Scenario: Copilot's supported formats
-    Given KARVAN_FAKE_DIALECT is "copilot-json"
+    Given DeFlow_FAKE_DIALECT is "copilot-json"
     When the harness spawns it with "-p 'say ok' --output-format json"
     Then the process exits 0 and stdout is a single JSON document
 
   Scenario: A rate limit event carries a resetsAt
-    Given KARVAN_FAKE_DIALECT is "claude-stream-json"
+    Given DeFlow_FAKE_DIALECT is "claude-stream-json"
     And the scenario emits a rate_limit_event with rate_limit_info.resetsAt set 900 seconds ahead
     When the harness parses the stream
     Then a line with type "rate_limit_event" is present
@@ -812,7 +812,7 @@ Feature: Vendors are not uniform
 **Notes:** Copilot's `--output-format` is verified as `text|json` only — there is no `stream-json`. This is
 the single most likely place for a shim to make a silently wrong uniformity assumption, so the fake must
 refuse rather than emulate. The `writeFiles` escape case is the only way to test path-scope detection
-without the mediation layer in front of it; on the ACP path Karvan would have refused the write at
+without the mediation layer in front of it; on the ACP path DeFlow would have refused the write at
 `fs/write_text_file` and the violation would never reach the filesystem.
 
 ---
@@ -827,7 +827,7 @@ Feature: The mock agent is an independent oracle
   Scenario: No workspace imports
     Given every file matched by packages/mock-agent/src/**/*.ts
     When the test reads each file's source
-    Then no file contains an import specifier starting with "@karvan/"
+    Then no file contains an import specifier starting with "@DeFlow/"
     And packages/mock-agent/package.json's dependencies has exactly one key,
         "@agentclientprotocol/sdk"
     And that value is the exact string "1.3.0" with no caret or tilde
@@ -837,7 +837,7 @@ Feature: The mock agent is an independent oracle
     And no file imports "@zed-industries/claude-code-acp" or "@zed-industries/codex-acp"
 ```
 
-**Notes:** If the mock imported `@karvan/core`, a bug in the domain model would be mirrored on both sides
+**Notes:** If the mock imported `@DeFlow/core`, a bug in the domain model would be mirrored on both sides
 of the wire and cancel itself out — the mock would agree with the daemon about something they were both
 wrong about ([adapter layer §13](../../07-provider-adapter-layer.md),
 [repo layout R1](../../16-repo-layout.md)). The exact pin without a caret is warranted because the SDK went
@@ -854,7 +854,7 @@ wrong about ([adapter layer §13](../../07-provider-adapter-layer.md),
 Feature: Making "executed twice" observable
 
   Scenario: One line per invocation
-    Given KARVAN_SIDE_EFFECT_LOG points at "<tmp>/effects.log"
+    Given DeFlow_SIDE_EFFECT_LOG points at "<tmp>/effects.log"
     And the fixture invokes the agent with runId "r1", nodeId "n3", attempt 1
         and idempotencyKey "r1/n3/1/0"
     When the invocation completes
@@ -877,7 +877,7 @@ Feature: Making "executed twice" observable
         crash-resume (same attempt, memoise)
 
   Scenario: The variable is optional
-    Given KARVAN_SIDE_EFFECT_LOG is unset
+    Given DeFlow_SIDE_EFFECT_LOG is unset
     When the agent runs
     Then no file is created and the turn is unaffected
 ```

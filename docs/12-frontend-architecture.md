@@ -1,6 +1,6 @@
 # Frontend architecture
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
@@ -9,7 +9,7 @@ Visualisation is a primary product surface, not a debug afterthought (PRD §7.10
 decides whether this frontend succeeded is **median time-to-diagnose a failed run under five
 minutes** — not how it looks. Everything below is chosen to serve that.
 
-The frontend is `@karvan/web`: a Vue 3 SPA served by `karvand` on `http://127.0.0.1:7777`, in dev
+The frontend is `@DeFlow/web`: a Vue 3 SPA served by `DeFlowd` on `http://127.0.0.1:7777`, in dev
 through Vite middleware mode inside the daemon (D10), in production as static files out of the npm
 tarball. One origin, no proxy, no CORS.
 
@@ -32,7 +32,7 @@ Two P0/P1 features fall out of this for free, and would otherwise each be a besp
 - **Plan-evolution scrubber (F10.2)** — "show me version N" is `replayTo(planVersionSeq[N])`.
 - **Run replay (F10.10)** — "watch it unfold" is feeding the same reducers at a chosen rate.
 
-The same property is also the test harness: `karvan replay fixtures/three-patches.jsonl --speed 20x`
+The same property is also the test harness: `DeFlow replay fixtures/three-patches.jsonl --speed 20x`
 serves the normal `/api/stream` endpoint from a recorded run, so all nine views are developable with
 no credentials, no child processes, no cost and no three-hour wait. See
 [local development](./03-local-development.md) and [testing strategy](./14-testing-strategy.md).
@@ -43,20 +43,20 @@ no credentials, no child processes, no cost and no three-hour wait. See
 
 **Verified on registry.npmjs.org 2026-08-02.**
 
-| Package | Pin | Note |
-|---|---|---|
-| `vue` | `~3.5.40` | Latest **stable**. Published 2026-07-16 |
-| `vue-router` | `^5.2.0` | 2026-07-15 |
-| `pinia` | `^4.0.2` | 2026-07-15 |
-| `@vue/devtools-api` | `^8.2.1` | Pinia 4 no longer bundles it — install alongside or devtools silently break |
-| `vite` | `^8.2.0` | 2026-07-30, Rolldown by default |
-| `@vitejs/plugin-vue` | `^6.0.8` | |
-| `vue-tsc` | `^3.3.9` | 2026-07-31 |
-| `typescript` | `6.0.3` | Exact, workspace-wide via the pnpm catalog (D3) |
-| `vitest` / `@vitest/browser` | `^4.1.10` | |
-| `vitest-browser-vue` | `^2.1.0` | |
-| `@playwright/test` | `^1.62.1` | |
-| `vite-plugin-vue-devtools` | `^8.2.1` | |
+| Package                      | Pin       | Note                                                                        |
+| ---------------------------- | --------- | --------------------------------------------------------------------------- |
+| `vue`                        | `~3.5.40` | Latest **stable**. Published 2026-07-16                                     |
+| `vue-router`                 | `^5.2.0`  | 2026-07-15                                                                  |
+| `pinia`                      | `^4.0.2`  | 2026-07-15                                                                  |
+| `@vue/devtools-api`          | `^8.2.1`  | Pinia 4 no longer bundles it — install alongside or devtools silently break |
+| `vite`                       | `^8.2.0`  | 2026-07-30, Rolldown by default                                             |
+| `@vitejs/plugin-vue`         | `^6.0.8`  |                                                                             |
+| `vue-tsc`                    | `^3.3.9`  | 2026-07-31                                                                  |
+| `typescript`                 | `6.0.3`   | Exact, workspace-wide via the pnpm catalog (D3)                             |
+| `vitest` / `@vitest/browser` | `^4.1.10` |                                                                             |
+| `vitest-browser-vue`         | `^2.1.0`  |                                                                             |
+| `@playwright/test`           | `^1.62.1` |                                                                             |
+| `vite-plugin-vue-devtools`   | `^8.2.1`  |                                                                             |
 
 ### 2.1 Vue 3.5.40, explicitly not 3.6
 
@@ -83,21 +83,21 @@ All components use `<script setup lang="ts">`.
 
 ### 2.2 Vite 8 breaking changes that will bite
 
-| Change | What to do |
-|---|---|
-| `build.rollupOptions` → `build.rolldownOptions` | A compat layer auto-converts, but write the new name so you are not debugging a shim later |
-| `build.cssMinify` now defaults to **Oxc** | Diff the built CSS once on the first upgrade |
-| Rolldown emits **circular-import warnings** Rollup was silent about | These are usually pre-existing and real. Fix them; do not silence the rule |
-| **ESM-only** package | Already true of this workspace (D4) |
-| **Yarn PnP unsupported** | Irrelevant — pnpm 11 (D5) |
-| Node floor 20.19+/22.12+ | Irrelevant — Node ≥24 (D2) |
+| Change                                                              | What to do                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `build.rollupOptions` → `build.rolldownOptions`                     | A compat layer auto-converts, but write the new name so you are not debugging a shim later |
+| `build.cssMinify` now defaults to **Oxc**                           | Diff the built CSS once on the first upgrade                                               |
+| Rolldown emits **circular-import warnings** Rollup was silent about | These are usually pre-existing and real. Fix them; do not silence the rule                 |
+| **ESM-only** package                                                | Already true of this workspace (D4)                                                        |
+| **Yarn PnP unsupported**                                            | Irrelevant — pnpm 11 (D5)                                                                  |
+| Node floor 20.19+/22.12+                                            | Irrelevant — Node ≥24 (D2)                                                                 |
 
 `vue-router@5` is a **non-breaking transition release**: it merged `unplugin-vue-router` (file-based
 routing) into core. Coming from v4 without that plugin it is a version bump only. Use plain object
 routes — file-based routing buys nothing for roughly ten routes. Pinia 4's breaking changes are
 cosmetic: ESM-only, plus the devtools-api split noted above.
 
-Nuxt was considered and rejected: this is a static SPA bundle served by `karvand` on localhost. SSR
+Nuxt was considered and rejected: this is a static SPA bundle served by `DeFlowd` on localhost. SSR
 and Nitro are pure overhead, and a second server process contradicts the daemon-owns-execution rule
 (PRD §6.1 I2).
 
@@ -112,13 +112,13 @@ and Nitro are pure overhead, and a second server process contradicts the daemon-
 `@tanstack/vue-query@5.101.4` and `@pinia/colada@1.4.2` are both excellent, both actively
 maintained, and both are **key-scoped fetch caches** built on `staleTime` and invalidation.
 
-Karvan's server state is not request/response. It is a monotonically-growing append-only log with a
+DeFlow's server state is not request/response. It is a monotonically-growing append-only log with a
 total order (`seq`). Applying a query cache to it means:
 
 - you **invalidate and refetch** a projection you could have advanced by exactly one event;
 - you fight cache keys for state that has precisely one authoritative ordering;
-- replay (F10.10) and the plan scrubber (F10.2) — which are *the same operation as normal
-  rendering*, just stopped at a different `seq` — become bespoke special cases outside the cache;
+- replay (F10.10) and the plan scrubber (F10.2) — which are _the same operation as normal
+  rendering_, just stopped at a different `seq` — become bespoke special cases outside the cache;
 - NF10 becomes unprovable, because the thing on screen came from a merged cache entry rather than
   from an identifiable event.
 
@@ -130,7 +130,7 @@ answers "what happened, in what order, and why?".
 ```
 packages/web/src/
   ledger/
-    types.ts            re-export of the Event union, type-only, from @karvan/core
+    types.ts            re-export of the Event union, type-only, from @DeFlow/core
     stream.ts           ONE SSE connection → applyEvent(e)
     apply.ts            the dispatcher: switch on e.kind, call projections
     cursor.ts           persisted seq cursor (sessionStorage), hydrate-then-stream
@@ -152,10 +152,10 @@ packages/web/src/
 
 ### 3.3 The three rules
 
-**Rule 1 — the `Event` union is shared, type-only, from `@karvan/core`.**
+**Rule 1 — the `Event` union is shared, type-only, from `@DeFlow/core`.**
 The same discriminated union the daemon's reducer switches on. The projection code therefore
 typechecks against the producer, and adding an event kind on the backend surfaces as a compile error
-in the UI in the same commit. `@karvan/web` imports `@karvan/core` for **types only** — that
+in the UI in the same commit. `@DeFlow/web` imports `@DeFlow/core` for **types only** — that
 boundary is enforced in [repo layout](./16-repo-layout.md).
 
 **Rule 2 — projections are pure TypeScript with zero Vue imports.**
@@ -170,10 +170,17 @@ export interface PlanProjection {
 
 export function applyPlan(s: PlanProjection, e: Event): void {
   switch (e.kind) {
-    case 'plan.proposed': /* … */ return;
-    case 'node.started':  { const n = s.nodes.get(e.nodeId!); if (n) n.state = 'running'; return; }
-    case 'node.completed': /* … */ return;
-    default: return;               // unknown kinds are ignored, exactly as the backend does
+    case "plan.proposed":
+      /* … */ return;
+    case "node.started": {
+      const n = s.nodes.get(e.nodeId!);
+      if (n) n.state = "running";
+      return;
+    }
+    case "node.completed":
+      /* … */ return;
+    default:
+      return; // unknown kinds are ignored, exactly as the backend does
   }
 }
 ```
@@ -187,28 +194,30 @@ roughly 80% of the test count.
 
 ```ts
 // packages/web/src/stores/useRunStore.ts
-export const useRunStore = defineStore('run', () => {
-  const seq      = ref(0)
-  const plan     = shallowRef(emptyPlan())      // container swapped, not deep-tracked
-  const bumpPlan = ref(0)                       // version counter for in-place mutation
+export const useRunStore = defineStore("run", () => {
+  const seq = ref(0);
+  const plan = shallowRef(emptyPlan()); // container swapped, not deep-tracked
+  const bumpPlan = ref(0); // version counter for in-place mutation
 
   function applyEvent(e: Event) {
-    applyPlan(plan.value, e)
-    applyBlackboard(bb.value, e)
-    applyContext(ctx.value, e)
+    applyPlan(plan.value, e);
+    applyBlackboard(bb.value, e);
+    applyContext(ctx.value, e);
     // …
-    seq.value = e.seq
-    bumpPlan.value++
+    seq.value = e.seq;
+    bumpPlan.value++;
   }
 
-  const graphNodes = computed(() => (bumpPlan.value, [...plan.value.nodes.values()]))
-  return { seq, graphNodes, applyEvent, /* … */ }
-})
+  const graphNodes = computed(
+    () => (bumpPlan.value, [...plan.value.nodes.values()]),
+  );
+  return { seq, graphNodes, applyEvent /* … */ };
+});
 ```
 
 The store is a thin reactive shell. If you find domain logic in it, it belongs in a projection.
 
-### 3.4 Where a query layer *is* correct
+### 3.4 Where a query layer _is_ correct
 
 For the flat REST endpoints that are not part of the stream — `GET /api/runs` (list),
 `GET /api/artifacts/:sha`, `GET /api/providers`, `GET /api/config` — use **`@pinia/colada@^1.4.2`**.
@@ -253,7 +262,7 @@ retention has no visible symptom until the tab dies at hour four of a real run.
 buffer (already capped, §6.6) and **nowhere else**. Do not also push them into a store array
 "just for the inspector". Findings, facts and verdicts are naturally bounded; agent output is not.
 
-**5.3 Scrubbing must not replay from `seq` 0 in the browser.** `karvand` serves
+**5.3 Scrubbing must not replay from `seq` 0 in the browser.** `DeFlowd` serves
 `GET /api/runs/:id/snapshot?seq=N`, and SQLite rebuilds state far faster than JavaScript can
 (**verified 2026-08-02:** 10,000 control-plane events reduced to state in **29 ms**). The client
 replays forward from the nearest snapshot only. Contract in
@@ -262,10 +271,15 @@ replays forward from the nearest snapshot only. Contract in
 **5.4 Ship a dev-only assertion.** Every 60 seconds in dev, log projection object counts:
 
 ```ts
-if (import.meta.env.DEV) setInterval(() => {
-  console.debug('[proj]', { nodes: plan.value.nodes.size, facts: bb.value.facts.size,
-                            events: ring.length, terminals: termRegistry.size })
-}, 60_000)
+if (import.meta.env.DEV)
+  setInterval(() => {
+    console.debug("[proj]", {
+      nodes: plan.value.nodes.size,
+      facts: bb.value.facts.size,
+      events: ring.length,
+      terminals: termRegistry.size,
+    });
+  }, 60_000);
 ```
 
 You will find the leak in week one instead of in hour four of a run you cared about.
@@ -292,7 +306,7 @@ which is exactly what F10.1 needs (per-node live status, streaming badge, gate v
 per-node Vue content painful; xyflow has repeatedly declined to ship an official Vue port.
 
 **Bus factor, and the mitigation.** Last npm release 2026-01-28 — six months. Recent repo activity
-is docs (2026-06-23) and a fix (2026-05-14); issues *are* still being triaged (#2168 closed
+is docs (2026-06-23) and a fix (2026-05-14); issues _are_ still being triaged (#2168 closed
 2026-07-23); ~5.2k stars; effectively one maintainer; an unreleased `next-release` branch with no
 announced v2. Verdict: alive but slow, and the single largest third-party risk in the frontend.
 
@@ -314,7 +328,9 @@ before committing the memory graph (§6.4) to Vue Flow.
 writes an inline `transform` on `.vue-flow__node` and will overwrite yours. Add only:
 
 ```css
-.vue-flow__node { transition: transform 200ms ease-out; }
+.vue-flow__node {
+  transition: transform 200ms ease-out;
+}
 ```
 
 and disable that transition during node drag and during viewport pan/zoom, or dragging feels like
@@ -338,12 +354,12 @@ publicly-served path that does not survive Vite's asset hashing. Use Vite's nati
 
 ```ts
 // src/graph/elk.worker.ts
-import 'elkjs/lib/elk-worker.min.js'
+import "elkjs/lib/elk-worker.min.js";
 
 // src/graph/layout.ts
-import ElkWorker from './elk.worker?worker'
-import ELK from 'elkjs/lib/elk-api'
-const elk = new ELK({ workerFactory: () => new ElkWorker() })
+import ElkWorker from "./elk.worker?worker";
+import ELK from "elkjs/lib/elk-api";
+const elk = new ELK({ workerFactory: () => new ElkWorker() });
 ```
 
 **Unverified.** elkjs's own README acknowledges bundler friction and this could not be built during
@@ -353,7 +369,7 @@ is acceptable.
 
 ### 6.2 Plan-evolution scrubber (F10.2)
 
-The marquee feature. Its entire value is that a human can see *what changed*, so any layout that
+The marquee feature. Its entire value is that a human can see _what changed_, so any layout that
 reflows between versions destroys it.
 
 **Two honesty markers first**, because both claims circulate:
@@ -374,7 +390,7 @@ reflows between versions destroys it.
 2. **Content hash per node** over the fields whose change matters: `type`, `provider`, `permission`,
    `brief`, `reads[]`, `writes[]`, retry policy. Use **`ohash@^2.0.11`** for stable key ordering,
    which `JSON.stringify` does not give you. Caveat, verified: ohash's README promises only
-   *"best efforts"* at stable serialisation — that is fine for a change-detection hash and **not**
+   _"best efforts"_ at stable serialisation — that is fine for a change-detection hash and **not**
    fine for anything needing cryptographic stability across versions. Store as `node.contentHash`.
 
 3. **Set diff.** `added = ids(Vb) \ ids(Va)`, `removed = ids(Va) \ ids(Vb)`,
@@ -383,7 +399,7 @@ reflows between versions destroys it.
    JSON Patch between the two node objects — **not** `fast-json-patch`, which last shipped in 2022.
    Render the patch beside the human-readable `reason` string from the `plan.patched` event.
 
-4. **Union layout, computed once and cached — this is the whole trick.** Lay out the *union* graph
+4. **Union layout, computed once and cached — this is the whole trick.** Lay out the _union_ graph
    (every node and edge appearing in **either** version) once with ELK, and cache those positions
    under the `unionLayoutKey` the diff endpoint returns. Both versions render at those coordinates.
    **Nothing moves as you scrub.** Removed nodes render in place at reduced opacity with a dashed
@@ -467,23 +483,23 @@ name is stale.
 
 **v6 breaking changes:**
 
-| Change | Consequence |
-|---|---|
+| Change                                                               | Consequence                                                                                           |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `@xterm/addon-canvas` **removed** (last published 0.7.0, 2024-04-05) | Renderer is DOM (default) or WebGL. Load `addon-webgl`, fall back to DOM on its `onContextLoss` event |
-| `windowsMode` removed | — |
-| `fastScrollModifier` removed | — |
-| `ITerminalOptions.overviewRulerWidth` moved under `overviewRuler` | — |
-| Viewport/scrollbar replaced with VS Code's | — |
-| alt → ctrl+arrow hack removed | Add your own keybinding if you want it |
-| Real ESM (`module: lib/xterm.mjs`) | Vite handles it with no interop hacks |
+| `windowsMode` removed                                                | —                                                                                                     |
+| `fastScrollModifier` removed                                         | —                                                                                                     |
+| `ITerminalOptions.overviewRulerWidth` moved under `overviewRuler`    | —                                                                                                     |
+| Viewport/scrollbar replaced with VS Code's                           | —                                                                                                     |
+| alt → ctrl+arrow hack removed                                        | Add your own keybinding if you want it                                                                |
+| Real ESM (`module: lib/xterm.mjs`)                                   | Vite handles it with no interop hacks                                                                 |
 
 **Scrollback arithmetic, read out of the v6 source rather than a blog. Verified 2026-08-02:**
 `BufferLine` allocates `new Uint32Array(3 * cols)` = **12 bytes per cell**. Default option is
 `scrollback: 1000`. `MAX_BUFFER_SIZE` is 4294967295.
 
-| Columns | Per line | 5,000 lines | 10,000 lines | 100,000 lines |
-|---|---|---|---|---|
-| 200 | ~2.4 KB raw, ~2.6 KB with object overhead | **≈ 13 MB** | ≈ 26 MB | ≈ 260 MB |
+| Columns | Per line                                  | 5,000 lines | 10,000 lines | 100,000 lines |
+| ------- | ----------------------------------------- | ----------- | ------------ | ------------- |
+| 200     | ~2.4 KB raw, ~2.6 KB with object overhead | **≈ 13 MB** | ≈ 26 MB      | ≈ 260 MB      |
 
 That is **per terminal**. Several node terminals open at 100k scrollback is a dead tab.
 
@@ -496,12 +512,12 @@ never into xterm. Same rule when reattaching to a running node: ask for the last
 `GET /api/runs/:id/nodes/:nodeId/io` (see [the API contract](./11-api-and-realtime.md)), not the
 whole file.
 
-**Dispose and serialise.** One `Terminal` per *visible* terminal, never per *opened* terminal.
+**Dispose and serialise.** One `Terminal` per _visible_ terminal, never per _opened_ terminal.
 `Terminal` objects hold large typed arrays and, with the WebGL addon, a GL context — and browsers cap
 WebGL contexts at roughly 8–16, so enough undisposed terminals silently kills rendering in the oldest
 ones. On unmount or tab-hide: take an `@xterm/addon-serialize` snapshot string, `term.dispose()`,
 keep only the string. On re-show: construct a fresh `Terminal` and `write()` the snapshot back. Total
-memory becomes proportional to *visible* terminals rather than to every terminal ever opened. Keep
+memory becomes proportional to _visible_ terminals rather than to every terminal ever opened. Keep
 the raw `Terminal` in `markRaw` so Vue's proxy never touches it.
 
 **For structured output, skip xterm entirely.** ACP streaming updates (F3.1) are typed JSON, not a
@@ -520,7 +536,7 @@ requires gate verdicts attached inline at file and line. `diff2html@3.4.56` is a
 it does, but it is a string → HTML generator: you get an HTML blob, not components, so attaching Vue
 verdict widgets at specific lines means DOM surgery. Wrong shape for the requirement.
 
-**Have `karvand` shell out to `git diff` and ship the unified patch** over
+**Have `DeFlowd` shell out to `git diff` and ship the unified patch** over
 `GET /api/runs/:id/diff` as `text/x-patch`. `@git-diff-view/core` parses a unified patch directly,
 and this is orders of magnitude faster and more correct than diffing in JavaScript. Reserve
 **`diff@^9.0.0`** (the `jsdiff` package — note the separate npm package literally named `jsdiff` is
@@ -577,10 +593,10 @@ place a chart library earns its keep, because it is the only place the charts ar
 
 Two packages map directly onto PRD requirements the PRD did not know existed:
 
-| Package | What it does | Requirement it serves |
-|---|---|---|
-| `@shikijs/stream@^4.4.1` | "Streaming colorization … useful for highlighting text streams like LLM outputs" — incremental highlighting without re-tokenising the whole buffer per chunk | **F10.6 / F10.3** for structured (non-TTY) agent output |
-| `@shikijs/magic-move@^4.4.1` | Token-level animated transitions between two code states | **F7.5** surgical-repair loop — animate before/after so the operator sees precisely what the fix agent touched |
+| Package                      | What it does                                                                                                                                                 | Requirement it serves                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `@shikijs/stream@^4.4.1`     | "Streaming colorization … useful for highlighting text streams like LLM outputs" — incremental highlighting without re-tokenising the whole buffer per chunk | **F10.6 / F10.3** for structured (non-TTY) agent output                                                        |
+| `@shikijs/magic-move@^4.4.1` | Token-level animated transitions between two code states                                                                                                     | **F7.5** surgical-repair loop — animate before/after so the operator sees precisely what the fix agent touched |
 
 `@shikijs/magic-move` on the repair loop is the single highest-ratio visual win in the app: it makes
 "one issue, one fix, capped at three attempts" legible at a glance instead of requiring a diff read.
@@ -616,7 +632,7 @@ Install only what nine views need, and skip the rest: `button, dialog, dropdown-
 popover, select, badge, separator, scroll-area, resizable, command, sheet, toast, collapsible,
 table`.
 
-### 8.1 Why vendored components are *lower* maintenance, not higher
+### 8.1 Why vendored components are _lower_ maintenance, not higher
 
 This reads backwards and is worth stating plainly, because the instinct is that owning source means
 owning maintenance.
@@ -629,7 +645,7 @@ invert that:
 - The components are **your source files in your repo**. A Reka UI minor bump cannot change how your
   app looks.
 - There is no override layer at all, so no specificity war.
-- You can add a token-count column or a run-state chip by *editing the component*, which is exactly
+- You can add a token-count column or a run-state chip by _editing the component_, which is exactly
   what a data-dense status UI keeps needing.
 
 The maintenance you take on is real but **bounded**: you own about sixteen small files. That is the
@@ -652,15 +668,17 @@ Define the **entire** node-state palette as CSS custom properties, not Tailwind 
 
 ```css
 :root {
-  --state-pending:        …;
-  --state-running:        …;
-  --state-blocked:        …;
-  --state-passed:         …;
-  --state-failed:         …;
-  --state-abandoned:      …;
+  --state-pending: …;
+  --state-running: …;
+  --state-blocked: …;
+  --state-passed: …;
+  --state-failed: …;
+  --state-abandoned: …;
   --state-awaiting-human: …;
 }
-.dark { /* redefine the same seven */ }
+.dark {
+  /* redefine the same seven */
+}
 ```
 
 Every surface reads the same variable: Vue Flow node borders, Gantt bars, context-budget segments,
@@ -676,11 +694,11 @@ otherwise misread the graph. Pick hues with a perceptual gap and check contrast 
 
 ### 9.3 What you get free, and must not undo
 
-| Source | What it gives |
-|---|---|
-| Reka UI (under shadcn-vue) | Focus trap, roving tabindex, `aria-expanded`/`aria-controls`, escape and outside-click for every overlay — the parts of a11y that are genuinely hard |
-| Vue Flow 1.48.2 | `aria-live`, `aria-label`, `aria-describedby`, `aria-roledescription`, keyboard node traversal. **Verified in the bundle.** Do **not** set `disableKeyboardA11y`. **Do** set a meaningful per-node `ariaLabel` from the view-model: `` `${node.type} ${node.title}, ${node.state}, ${node.provider}` `` — that one line is most of what a screen reader needs from a DAG |
-| xterm.js | `screenReaderMode`. Leave it **off** by default (it is expensive) and expose it as a setting |
+| Source                     | What it gives                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Reka UI (under shadcn-vue) | Focus trap, roving tabindex, `aria-expanded`/`aria-controls`, escape and outside-click for every overlay — the parts of a11y that are genuinely hard                                                                                                                                                                                                                     |
+| Vue Flow 1.48.2            | `aria-live`, `aria-label`, `aria-describedby`, `aria-roledescription`, keyboard node traversal. **Verified in the bundle.** Do **not** set `disableKeyboardA11y`. **Do** set a meaningful per-node `ariaLabel` from the view-model: `` `${node.type} ${node.title}, ${node.state}, ${node.provider}` `` — that one line is most of what a screen reader needs from a DAG |
+| xterm.js                   | `screenReaderMode`. Leave it **off** by default (it is expensive) and expose it as a setting                                                                                                                                                                                                                                                                             |
 
 ### 9.4 Cheap wins with outsized payoff
 
@@ -696,14 +714,14 @@ otherwise misread the graph. Pick hues with a perceptual gap and check contrast 
 
 For hours-long work this is the accessibility feature you will personally use most.
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Move between nodes in the graph |
-| `Enter` | Open the node inspector for the selected node |
-| `←` / `→` | Step the plan-version scrubber |
-| `/` | Search |
-| `Cmd-K` | Run / node jumper (`command`) |
-| `Esc` | Close the topmost overlay |
+| Key       | Action                                        |
+| --------- | --------------------------------------------- |
+| `j` / `k` | Move between nodes in the graph               |
+| `Enter`   | Open the node inspector for the selected node |
+| `←` / `→` | Step the plan-version scrubber                |
+| `/`       | Search                                        |
+| `Cmd-K`   | Run / node jumper (`command`)                 |
+| `Esc`     | Close the topmost overlay                     |
 
 ---
 
@@ -714,17 +732,17 @@ what lands in the initial chunk.
 
 **Budget: ~200 KB gzip for the initial shell.** Everything else is route-split or worker-loaded.
 
-| Cost | Size | Where it goes |
-|---|---|---|
-| elkjs | ~1.6 MB raw | **Web Worker**, via `?worker` import. Never in the initial chunk (§6.1) |
-| Shiki grammars | multi-MB if bundled | `createHighlighterCore` + ~12 lazily imported langs. Never the bundled `shiki` entry (§7) |
-| `@xterm/*` | — | Route-split: the terminal view is a lazy route |
-| `@git-diff-view/*` | — | Route-split: the diff/review view is a lazy route |
-| `@vue-flow/core` | 345 KB raw | Initial chunk — the plan graph *is* the landing view |
-| `echarts` | ~150 KB with explicit registration | P1 only, lazy, cross-run dashboard route |
+| Cost               | Size                               | Where it goes                                                                             |
+| ------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| elkjs              | ~1.6 MB raw                        | **Web Worker**, via `?worker` import. Never in the initial chunk (§6.1)                   |
+| Shiki grammars     | multi-MB if bundled                | `createHighlighterCore` + ~12 lazily imported langs. Never the bundled `shiki` entry (§7) |
+| `@xterm/*`         | —                                  | Route-split: the terminal view is a lazy route                                            |
+| `@git-diff-view/*` | —                                  | Route-split: the diff/review view is a lazy route                                         |
+| `@vue-flow/core`   | 345 KB raw                         | Initial chunk — the plan graph _is_ the landing view                                      |
+| `echarts`          | ~150 KB with explicit registration | P1 only, lazy, cross-run dashboard route                                                  |
 
 Serving is local, so transfer time is near zero and the budget is really about **parse and execute**
-time. Measure with the 400-node stress fixture through `karvan replay`, not with an empty run.
+time. Measure with the 400-node stress fixture through `DeFlow replay`, not with an empty run.
 
 Nothing in this stack is Chrome-only, which keeps the M3 Tauri shell open: Tauri's WebView is
 WKWebView on macOS and WebKitGTK on Linux, and SSE, WebGL, Web Workers and WebStreams are all
@@ -758,7 +776,7 @@ available on both.
 - **Do not import the bundled `shiki` entry.**
 - **Do not encode the seven node states by colour alone.**
 - **Do not set up Storybook or Histoire.** Histoire is stalled at `1.0.0-beta.1` (2026-01-07), and
-  Storybook is a second build pipeline plus a second set of fixtures. The `karvan replay` harness is
+  Storybook is a second build pipeline plus a second set of fixtures. The `DeFlow replay` harness is
   strictly better: it exercises real data through the real store through the real components, and it
   doubles as the internal demo tool.
 - **Do not upgrade to Vue 3.6** until Vue Flow publishes a release naming it.

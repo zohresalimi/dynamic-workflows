@@ -4,19 +4,19 @@
 
 ## Context
 
-Open Dynamic Workflow is the right *shape* and the wrong *depth* (PRD §3.3). Its most instructive
+Open Dynamic Workflow is the right _shape_ and the wrong _depth_ (PRD §3.3). Its most instructive
 flaw is gap G1: "dynamic" is a misnomer. The dynamism is entirely at **authoring** time — an AI
 writes a TypeScript workflow file. Once written, the graph is frozen. There is no mechanism for a
 running workflow to add a step, split a task, or change provider based on what it learned.
 `loop()` with a `maxRounds` cap is the only runtime adaptivity it has.
 
-That matters because the failure mode in the problem statement is exactly this: *the plan is fixed
-too early*. Step 3 discovers the codebase is not what step 1 assumed, and a static graph has no way
+That matters because the failure mode in the problem statement is exactly this: _the plan is fixed
+too early_. Step 3 discovers the codebase is not what step 1 assumed, and a static graph has no way
 to respond except fail (PRD §2.1). One of the six anchor use cases — a cross-cutting refactor with
 unknown blast radius — is entirely about the plan changing as the true scope emerges.
 
 The same problem shows up from the other direction in the durable-execution literature. Engines that
-model workflows as *code* (Temporal, Restate, Inngest) must reconstruct implicit control flow by
+model workflows as _code_ (Temporal, Restate, Inngest) must reconstruct implicit control flow by
 replaying that code, which forces determinism constraints on the workflow author and creates the
 "cannot change workflow code while runs are in flight" problem.
 
@@ -31,7 +31,7 @@ compiled TypeScript files usefully.
 a function.** (F2.1 — "the central departure from ODW")
 
 - The graph is **immutable and content-addressed**. A plan version is a row in the `plan` table
-  keyed by hash. A replan does not mutate anything: it writes a *new* plan row and appends a
+  keyed by hash. A replan does not mutate anything: it writes a _new_ plan row and appends a
   `plan.patched` ledger event referencing it. Every plan version is therefore retained for free
   (F2.6), which is the scrubber's entire data requirement.
 - **Node identity is `nodeId`, assigned by the planner and stable across patches.** Never derived
@@ -56,9 +56,10 @@ document types are in [04-domain-model.md](../04-domain-model.md).
 ## Consequences
 
 ### Positive
+
 - **The plan is diffable, patchable, serialisable and renderable** — the four properties F10.1,
   F10.2, F2.4 and F2.6 each need, and all four fall out of the same choice.
-- **karvand is upgradeable mid-run.** Because control flow is data rather than code, there is no
+- **DeFlowd is upgradeable mid-run.** Because control flow is data rather than code, there is no
   determinism constraint on the engine and no "workflow version" problem. This is what makes
   [ADR 0006](./0006-journaled-dag-state-machine-not-deterministic-replay.md) possible.
 - The plan scrubber needs no bespoke persistence: "show me version N" is `replayTo(planVersionSeq[N])`
@@ -66,6 +67,7 @@ document types are in [04-domain-model.md](../04-domain-model.md).
 - Plan templates (F2.8) are just parameterised documents, not a codegen problem.
 
 ### Negative
+
 - **No arbitrary expressiveness.** A JSON graph cannot express "whatever TypeScript can". Every
   control-flow construct must be an explicit node type — `agent`, `tool`, `gate`, `human`, `map`,
   `loop`, `subgraph` (F2.3) — and adding a construct means changing the schema, the reducer, the
@@ -78,14 +80,15 @@ document types are in [04-domain-model.md](../04-domain-model.md).
   per-node content hash: the scrubber diffs hashes first and only expands what changed.
 
 ### Neutral
-- A `tool` node still executes arbitrary local code — the *plan* is data, the *steps* are not. The
+
+- A `tool` node still executes arbitrary local code — the _plan_ is data, the _steps_ are not. The
   boundary is that the engine never evaluates plan content as code.
 
 ## Alternatives considered
 
 - **ODW's model: an LLM writes a TypeScript workflow, compiled and run once.** Rejected: this is G1.
   It gives up runtime adaptivity, the plan diff, and the scrubber — three of the four things that
-  distinguish Karvan.
+  distinguish DeFlow.
 - **LangGraph-style graph built in code with checkpointer backends.** Rejected on the ADR 0003
   grounds (it is a library for building agents from raw model APIs) and on this one: the graph is
   still constructed by code, so plan versions are not documents.
@@ -93,7 +96,7 @@ document types are in [04-domain-model.md](../04-domain-model.md).
   has conditionals it needs an evaluator, and the diff becomes a diff of expressions rather than of
   structure.
 - **Fully imperative TypeScript workflows with deterministic replay (Temporal/Restate).** Rejected
-  here and in ADR 0006 — see that record for why replay's one benefit is one Karvan does not need.
+  here and in ADR 0006 — see that record for why replay's one benefit is one DeFlow does not need.
 
 ## Revisit when
 
@@ -106,4 +109,5 @@ TypeScript workflows with deterministic replay, as a peer of the data-driven mod
 of expressiveness into the `PlanGraph`. That would require superseding both this ADR and ADR 0006.
 
 ---
+
 [← ADR index](./README.md) · [Architecture docs](../README.md)

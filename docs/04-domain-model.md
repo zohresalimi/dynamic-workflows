@@ -1,6 +1,6 @@
 # Domain model
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
@@ -11,7 +11,7 @@ This is the shared vocabulary. Every other document in this set refers back to t
 here, so this file is normative: if a type appears elsewhere with a different shape, this file wins
 and the other document is a bug.
 
-All types live in one private package, `@karvan/domain` (see [repo layout](./16-repo-layout.md)).
+All types live in one private package, `@DeFlow/domain` (see [repo layout](./16-repo-layout.md)).
 It has no runtime dependency on the daemon, the adapters, or the UI — it is imported by all three.
 
 ## 0. How these types are defined
@@ -21,19 +21,19 @@ TypeScript type is derived with `z.infer`, and the JSON Schema is derived with `
 There is no hand-written interface that a schema has to be kept in sync with, because that sync
 never survives contact with a real codebase.
 
-| Concern | Mechanism | Pin |
-|---|---|---|
-| Schema authoring | `zod` | `4.4.3` |
-| JSON Schema emission | `z.toJSONSchema()` (built in to Zod 4) | — |
-| Runtime validation | `ajv` + `ajv-formats`, JSON Schema **2020-12** dialect | `8.20.0` / `3.0.1` |
-| On-disk schemas | `.karvan/schemas/<schemaId>.json` | NF8 |
+| Concern              | Mechanism                                              | Pin                |
+| -------------------- | ------------------------------------------------------ | ------------------ |
+| Schema authoring     | `zod`                                                  | `4.4.3`            |
+| JSON Schema emission | `z.toJSONSchema()` (built in to Zod 4)                 | —                  |
+| Runtime validation   | `ajv` + `ajv-formats`, JSON Schema **2020-12** dialect | `8.20.0` / `3.0.1` |
+| On-disk schemas      | `.DeFlow/schemas/<schemaId>.json`                      | NF8                |
 
 2020-12 is not an arbitrary choice: it is the dialect MCP tool `inputSchema` defaults to, so the
 [MCP host](./07-provider-adapter-layer.md) and the handoff contracts (F6.9) speak one dialect and
 one validator. Use `Ajv2020` from `ajv/dist/2020`, configured `{ strict: true, allErrors: true }`.
 Ajv arrives transitively via `@modelcontextprotocol/sdk` anyway. **Verified 2026-08-02.**
 
-Writing the generated schemas to `.karvan/schemas/` satisfies NF8 (every artifact inspectable on
+Writing the generated schemas to `.DeFlow/schemas/` satisfies NF8 (every artifact inspectable on
 disk in an open format) and gives agents something to be pointed at: `agent` nodes pass their
 `returns.schemaId` schema to the vendor CLI natively where supported — Claude Code's `--json-schema`
 and Codex's `--output-schema` both take a JSON Schema file. **Verified 2026-08-02.**
@@ -57,30 +57,30 @@ segments, because §9.4 of the PRD puts them in directory names.
 // packages/domain/src/ids.ts
 export type Brand<T, B extends string> = T & { readonly __brand: B };
 
-export type RunId          = Brand<string, 'RunId'>;
-export type NodeId         = Brand<string, 'NodeId'>;
-export type PlanHash       = Brand<string, 'PlanHash'>;
-export type FactId         = Brand<string, 'FactId'>;
-export type Handle         = Brand<string, 'Handle'>;
-export type EventSeq       = Brand<number, 'EventSeq'>;
-export type IdempotencyKey = Brand<string, 'IdempotencyKey'>;
-export type SchemaId       = Brand<string, 'SchemaId'>;
-export type ProviderId     = Brand<string, 'ProviderId'>;   // 'claude-code' | 'codex' | …, discovered
-export type GateId         = Brand<string, 'GateId'>;
-export type CriterionId    = Brand<string, 'CriterionId'>;
-export type SegmentId      = Brand<string, 'SegmentId'>;
+export type RunId = Brand<string, "RunId">;
+export type NodeId = Brand<string, "NodeId">;
+export type PlanHash = Brand<string, "PlanHash">;
+export type FactId = Brand<string, "FactId">;
+export type Handle = Brand<string, "Handle">;
+export type EventSeq = Brand<number, "EventSeq">;
+export type IdempotencyKey = Brand<string, "IdempotencyKey">;
+export type SchemaId = Brand<string, "SchemaId">;
+export type ProviderId = Brand<string, "ProviderId">; // 'claude-code' | 'codex' | …, discovered
+export type GateId = Brand<string, "GateId">;
+export type CriterionId = Brand<string, "CriterionId">;
+export type SegmentId = Brand<string, "SegmentId">;
 ```
 
-| Type | Format | Assigned by | Stability rule |
-|---|---|---|---|
-| `RunId` | `run_20260802T141133Z_9f2a1c` | daemon at run creation | Immutable. Lexicographically sortable and filesystem-safe, because it is a directory name (`runs/<runId>/`). |
-| `NodeId` | `/^[a-z0-9][a-z0-9-]{0,62}$/`, e.g. `recon-auth-surface` | **the planner** | **Stable for the entire life of the run. Never reused, never renamed, never recycled.** See below. |
-| `PlanHash` | `sha256-<64 hex>` | derived | Content address of a canonicalised `PlanGraph`. Primary key of the `plan` table. |
-| `FactId` | `fact_<26 lowercase base32>` | blackboard writer | Immutable. A corrected fact is a *new* `FactId` that `supersedes` the old one. |
-| `Handle` | `artifact://<64 hex sha256>` or `file://<repo-relative path>#L12-L40` | artifact store | Content-addressed, therefore immutable by construction. |
-| `EventSeq` | positive integer | SQLite `INTEGER PRIMARY KEY AUTOINCREMENT` | Monotonic within a run's ledger. **Gaps are expected and legal.** |
-| `IdempotencyKey` | `<runId>/<nodeId>/<attempt>/<ordinal>` | reducer | Deterministic function of reduced state, not of runtime call order. |
-| `SchemaId` | `karvan.finding.v1`, `ext.migration.vue3-incompat.v1` | author | Version suffix is part of the id. Schemas are append-only; you publish `.v2`, you never edit `.v1`. |
+| Type             | Format                                                                | Assigned by                                | Stability rule                                                                                               |
+| ---------------- | --------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `RunId`          | `run_20260802T141133Z_9f2a1c`                                         | daemon at run creation                     | Immutable. Lexicographically sortable and filesystem-safe, because it is a directory name (`runs/<runId>/`). |
+| `NodeId`         | `/^[a-z0-9][a-z0-9-]{0,62}$/`, e.g. `recon-auth-surface`              | **the planner**                            | **Stable for the entire life of the run. Never reused, never renamed, never recycled.** See below.           |
+| `PlanHash`       | `sha256-<64 hex>`                                                     | derived                                    | Content address of a canonicalised `PlanGraph`. Primary key of the `plan` table.                             |
+| `FactId`         | `fact_<26 lowercase base32>`                                          | blackboard writer                          | Immutable. A corrected fact is a _new_ `FactId` that `supersedes` the old one.                               |
+| `Handle`         | `artifact://<64 hex sha256>` or `file://<repo-relative path>#L12-L40` | artifact store                             | Content-addressed, therefore immutable by construction.                                                      |
+| `EventSeq`       | positive integer                                                      | SQLite `INTEGER PRIMARY KEY AUTOINCREMENT` | Monotonic within a run's ledger. **Gaps are expected and legal.**                                            |
+| `IdempotencyKey` | `<runId>/<nodeId>/<attempt>/<ordinal>`                                | reducer                                    | Deterministic function of reduced state, not of runtime call order.                                          |
+| `SchemaId`       | `DeFlow.finding.v1`, `ext.migration.vue3-incompat.v1`                 | author                                     | Version suffix is part of the id. Schemas are append-only; you publish `.v2`, you never edit `.v1`.          |
 
 ### 1.1 `NodeId` stability is load-bearing
 
@@ -91,7 +91,7 @@ Two subsystems key off `NodeId` and both break silently if it moves:
    `pending` effect row being written and the daemon restarting, the memoised result is orphaned and
    the side effect runs twice. There is no way to detect this after the fact.
 2. **The plan-evolution scrubber** (F2.6, F10.2 — the marquee view). The scrubber lays out the
-   *union* of every plan version once and animates nodes between positions; identity across versions
+   _union_ of every plan version once and animates nodes between positions; identity across versions
    is `NodeId` and nothing else. A renamed node renders as a delete plus an insert, which is exactly
    the wrong story to tell about a plan that was merely edited.
 
@@ -133,31 +133,40 @@ export type AcceptanceCriterion = {
   statement: string;
   /** Where possible, the criterion maps to something that can actually be run. */
   check?:
-    | { kind: 'command'; run: string; cwd?: string; expect: 'exit-zero' | 'exit-nonzero' }
-    | { kind: 'gate'; gate: GateId }
-    | { kind: 'manual'; rubric: string };
+    | {
+        kind: "command";
+        run: string;
+        cwd?: string;
+        expect: "exit-zero" | "exit-nonzero";
+      }
+    | { kind: "gate"; gate: GateId }
+    | { kind: "manual"; rubric: string };
   /** Set by the planner during validation: F7.4 requires every criterion to reach a gate. */
   coveredByGates: NodeId[];
 };
 
 export type FailureMode = {
   id: string;
-  description: string;          // 'the migration codemod silently drops v-model modifiers'
-  detection: string;            // how we would notice
+  description: string; // 'the migration codemod silently drops v-model modifiers'
+  detection: string; // how we would notice
   mitigation?: string;
 };
 
 export type TaskSpec = {
-  schemaId: SchemaId;           // 'karvan.taskspec.v1'
+  schemaId: SchemaId; // 'DeFlow.taskspec.v1'
   goal: string;
   scope: { included: string[]; paths?: string[] };
   nonGoals: string[];
-  constraints: string[];        // 'must not change the public API of @voyado/ui'
-  priorDecisions: Array<{ decision: string; rationale?: string; source?: Handle }>;
+  constraints: string[]; // 'must not change the public API of @voyado/ui'
+  priorDecisions: Array<{
+    decision: string;
+    rationale?: string;
+    source?: Handle;
+  }>;
   acceptanceCriteria: AcceptanceCriterion[];
   knownFailureModes: FailureMode[];
-  approvedBy: { at: string; via: 'ui' | 'cli' } | null;
-  specHash: string;             // sha256 of the canonicalised spec, excluding `approvedBy`
+  approvedBy: { at: string; via: "ui" | "cli" } | null;
+  specHash: string; // sha256 of the canonicalised spec, excluding `approvedBy`
 };
 ```
 
@@ -181,14 +190,14 @@ writes a new document and a new row, it does not mutate the old one.
 
 ```ts
 export type PlanGraph = {
-  schemaId: SchemaId;               // 'karvan.plangraph.v1'
+  schemaId: SchemaId; // 'DeFlow.plangraph.v1'
   runId: RunId;
-  version: number;                  // 1, 2, 3 … monotonic per run
-  planHash: PlanHash;               // sha256 of the canonicalised doc, excluding planHash itself
-  parent: PlanHash | null;          // the version this was patched from
+  version: number; // 1, 2, 3 … monotonic per run
+  planHash: PlanHash; // sha256 of the canonicalised doc, excluding planHash itself
+  parent: PlanHash | null; // the version this was patched from
   taskSpecHash: string;
-  createdBy: NodeId | 'planner' | 'human';
-  createdAt: string;                // ISO 8601
+  createdBy: NodeId | "planner" | "human";
+  createdAt: string; // ISO 8601
   nodes: PlanNode[];
   edges: PlanEdge[];
 };
@@ -196,9 +205,9 @@ export type PlanGraph = {
 export type PlanEdge = {
   from: NodeId;
   to: NodeId;
-  kind: 'control' | 'data';
+  kind: "control" | "data";
   /** F10.1: edges are labelled with what flows across them. Populated for kind:'data'. */
-  carries?: string[];               // fact keys, e.g. ['finding/auth-uses-jwt']
+  carries?: string[]; // fact keys, e.g. ['finding/auth-uses-jwt']
 };
 ```
 
@@ -212,7 +221,7 @@ last render", use your own canonical encoder for `planHash`.
 ### 3.1 Node common fields
 
 ```ts
-export type PermissionLevel = 'read' | 'worktree' | 'worktree+net' | 'full';   // F5.4
+export type PermissionLevel = "read" | "worktree" | "worktree+net" | "full"; // F5.4
 
 export type PathScope = {
   /** Globs the node may write. Rendered into the packet as a POSITIVE requirement. */
@@ -221,10 +230,13 @@ export type PathScope = {
 };
 
 export type RetryPolicy = {
-  maxAttempts: number;              // default 3
-  backoff: { base: number; cap: number; jitter: 'full' };   // ms; full jitter, see §7 of 05-
+  maxAttempts: number; // default 3
+  backoff: { base: number; cap: number; jitter: "full" }; // ms; full jitter, see §7 of 05-
   /** F4.5: 'retry with a different provider'. */
-  onFailure?: Array<{ when: NodeFailureReason; action: 'retry' | 'reroute' | 'escalate' }>;
+  onFailure?: Array<{
+    when: NodeFailureReason;
+    action: "retry" | "reroute" | "escalate";
+  }>;
 };
 
 export type NodeBudget = {
@@ -234,13 +246,13 @@ export type NodeBudget = {
 };
 
 export type ReadDecl =
-  | { kind: 'fact'; key: string }                      // exact key or 'finding/*' prefix
-  | { kind: 'artifact'; handle: Handle }
-  | { kind: 'spec'; section: 'goal' | 'criteria' | 'constraints' | 'nonGoals' };
+  | { kind: "fact"; key: string } // exact key or 'finding/*' prefix
+  | { kind: "artifact"; handle: Handle }
+  | { kind: "spec"; section: "goal" | "criteria" | "constraints" | "nonGoals" };
 
-export type WriteDecl = { kind: 'fact'; key: string; schemaId: SchemaId };
+export type WriteDecl = { kind: "fact"; key: string; schemaId: SchemaId };
 
-export type NodeLifecycle = 'active' | 'superseded' | 'abandoned';
+export type NodeLifecycle = "active" | "superseded" | "abandoned";
 
 type NodeBase = {
   id: NodeId;
@@ -249,11 +261,11 @@ type NodeBase = {
   lifecycle: NodeLifecycle;
   derivedFrom?: NodeId[];
 
-  reads: ReadDecl[];                // F6.2 — undeclared reads fail plan validation
+  reads: ReadDecl[]; // F6.2 — undeclared reads fail plan validation
   writes: WriteDecl[];
-  permission: PermissionLevel;      // F5.4
-  pathScopes: PathScope;            // F5.3
-  returns: { schemaId: SchemaId; maxTokens: number };   // F6.4, F6.9
+  permission: PermissionLevel; // F5.4
+  pathScopes: PathScope; // F5.3
+  returns: { schemaId: SchemaId; maxTokens: number }; // F6.4, F6.9
   retry: RetryPolicy;
   budget: NodeBudget;
 };
@@ -264,7 +276,7 @@ declared read is satisfied by some ancestor's declared write, or by the pinned s
 read is a plan validation failure before a single token is spent — pure reachability over the DAG,
 roughly 60 lines, and the cheapest correctness gate in the system.
 
-`returns.maxTokens` defaults to **1500** and is set per node *type*, not globally: a `gate` verdict
+`returns.maxTokens` defaults to **1500** and is set per node _type_, not globally: a `gate` verdict
 needs a few hundred, a recon node summarising a 200-file survey plausibly needs 4000. **Unverified:**
 the 500–2000 token band from F6.4 traces to Anthropic's multi-agent research system and 2026
 practitioner consensus; no controlled study establishes an optimum. Record oversize rate per node
@@ -274,70 +286,95 @@ type and tune from your own data rather than treating the number as settled.
 
 ```ts
 export type PlanNode =
-  | AgentNode | ToolNode | GateNode | HumanNode | MapNode | LoopNode | SubgraphNode;
+  | AgentNode
+  | ToolNode
+  | GateNode
+  | HumanNode
+  | MapNode
+  | LoopNode
+  | SubgraphNode;
 
 export type AgentNode = NodeBase & {
-  type: 'agent';
-  brief: string;                    // the scoped instruction, not a full prompt
+  type: "agent";
+  brief: string; // the scoped instruction, not a full prompt
   /** Planner intent. The scheduler resolves it against probed capabilities (F3.5, F2.7). */
   provider: { prefer: ProviderId[]; requires: AdapterRequirement[] };
   model?: string;
   /** Vendor session reuse is an optimisation, never the durability mechanism. */
-  resume: 'native-if-available' | 'always-replay';
+  resume: "native-if-available" | "always-replay";
 };
 
 export type AdapterRequirement =
-  | 'structuredOutput' | 'streaming' | 'imageInput' | 'mcp' | 'resumableSessions'
-  | { minContext: number } | { permission: PermissionLevel };
+  | "structuredOutput"
+  | "streaming"
+  | "imageInput"
+  | "mcp"
+  | "resumableSessions"
+  | { minContext: number }
+  | { permission: PermissionLevel };
 
 export type ToolNode = NodeBase & {
-  type: 'tool';
+  type: "tool";
   tool:
-    | { kind: 'script'; run: string; cwd?: string }
-    | { kind: 'mcp'; server: string; tool: string; args: unknown }
-    | { kind: 'http'; method: string; url: string };
+    | { kind: "script"; run: string; cwd?: string }
+    | { kind: "mcp"; server: string; tool: string; args: unknown }
+    | { kind: "http"; method: string; url: string };
   /** Decides the reconcile strategy in the effect journal. Classified at plan time. */
-  effectClass: 'pure' | 'mutating';
+  effectClass: "pure" | "mutating";
 };
 
 export type GateNode = NodeBase & {
-  type: 'gate';
-  gate: { kind: 'deterministic'; gateId: GateId } | { kind: 'adversarial'; brief: string };
-  criteria: CriterionId[];          // F7.4 traceability
+  type: "gate";
+  gate:
+    | { kind: "deterministic"; gateId: GateId }
+    | { kind: "adversarial"; brief: string };
+  criteria: CriterionId[]; // F7.4 traceability
   /** F7.2: the producer cannot judge its own output. */
   independence: { notSessionOf: NodeId[]; preferDifferentProvider: boolean };
 };
 
 export type HumanNode = NodeBase & {
-  type: 'human';
+  type: "human";
   prompt: string;
-  options: Array<{ id: string; label: string; effect: 'approve' | 'reject' | 'edit' | 'inject' }>;
+  options: Array<{
+    id: string;
+    label: string;
+    effect: "approve" | "reject" | "edit" | "inject";
+  }>;
   /** Suspension is durable (node_wake), so a deadline of hours costs one SQLite row. */
-  deadline?: { wakeAt: string; onTimeout: 'fail' | 'escalate' | 'default'; default?: string };
+  deadline?: {
+    wakeAt: string;
+    onTimeout: "fail" | "escalate" | "default";
+    default?: string;
+  };
 };
 
 export type MapNode = NodeBase & {
-  type: 'map';
-  over: { kind: 'fact'; key: string } | { kind: 'glob'; pattern: string };
+  type: "map";
+  over: { kind: "fact"; key: string } | { kind: "glob"; pattern: string };
   concurrency: number;
-  body: NodeId;                     // a subgraph node, instantiated once per item
+  body: NodeId; // a subgraph node, instantiated once per item
   /** Item ids are derived deterministically so map children get stable NodeIds. */
-  itemIdFrom: 'index' | 'value-hash';
+  itemIdFrom: "index" | "value-hash";
 };
 
 export type LoopNode = NodeBase & {
-  type: 'loop';
+  type: "loop";
   body: NodeId;
   maxRounds: number;
-  goal: { kind: 'gate'; gate: NodeId };
+  goal: { kind: "gate"; gate: NodeId };
   /** F4.7 — the most expensive failure mode in autonomous loops. */
-  noProgress: { sameFailureSignatureLimit: number; diffSimilarityThreshold: number };
+  noProgress: {
+    sameFailureSignatureLimit: number;
+    diffSimilarityThreshold: number;
+  };
 };
 
 export type SubgraphNode = NodeBase & {
-  type: 'subgraph';
-  graph: { kind: 'inline'; nodes: PlanNode[]; edges: PlanEdge[] }
-       | { kind: 'template'; templateId: string; params: Record<string, unknown> };
+  type: "subgraph";
+  graph:
+    | { kind: "inline"; nodes: PlanNode[]; edges: PlanEdge[] }
+    | { kind: "template"; templateId: string; params: Record<string, unknown> };
 };
 ```
 
@@ -350,39 +387,44 @@ is re-derived after a replan, and moving ids is exactly what §1.1 forbids.
 
 ## 4. `PlanPatch` (F2.4, F2.5)
 
-A patch is the *only* way the graph changes at runtime. It is proposed as data, evaluated by the
+A patch is the _only_ way the graph changes at runtime. It is proposed as data, evaluated by the
 policy engine, and then either applied, queued, or rejected — and all three outcomes are recorded.
 
 ```ts
 export type PatchOp =
-  | { op: 'insert-nodes'; nodes: PlanNode[]; edges: PlanEdge[] }
-  | { op: 'split-node'; node: NodeId; into: PlanNode[]; edges: PlanEdge[] }
-  | { op: 'replace-provider'; node: NodeId; provider: ProviderId; model?: string }
-  | { op: 'extend-loop'; node: NodeId; maxRounds: number }
-  | { op: 'abandon-branch'; root: NodeId; reason: string };
+  | { op: "insert-nodes"; nodes: PlanNode[]; edges: PlanEdge[] }
+  | { op: "split-node"; node: NodeId; into: PlanNode[]; edges: PlanEdge[] }
+  | {
+      op: "replace-provider";
+      node: NodeId;
+      provider: ProviderId;
+      model?: string;
+    }
+  | { op: "extend-loop"; node: NodeId; maxRounds: number }
+  | { op: "abandon-branch"; root: NodeId; reason: string };
 
 export type PlanPatch = {
-  schemaId: SchemaId;               // 'karvan.planpatch.v1'
+  schemaId: SchemaId; // 'DeFlow.planpatch.v1'
   id: string;
-  proposedBy: NodeId | 'planner' | 'human' | 'scheduler';
-  reason: string;                   // rendered verbatim in the scrubber (F10.2)
+  proposedBy: NodeId | "planner" | "human" | "scheduler";
+  reason: string; // rendered verbatim in the scrubber (F10.2)
   ops: PatchOp[];
 
   /** Everything below is what the policy engine reads. All of it is required. */
   policy: {
-    estimatedCostDeltaUsd: number;      // from the F9.3 pre-flight estimator
+    estimatedCostDeltaUsd: number; // from the F9.3 pre-flight estimator
     estimatedWallClockDeltaMs: number;
     blastRadius: { paths: string[]; nodeCount: number };
-    replanDepth: number;                // distance from PlanGraph v1
+    replanDepth: number; // distance from PlanGraph v1
     escalatesPermission: null | { from: PermissionLevel; to: PermissionLevel };
     addsWriteCapability: boolean;
   };
 };
 
 export type PatchDecision = {
-  decision: 'auto' | 'approved' | 'rejected' | 'queued';
-  by: 'policy' | 'human';
-  rule?: string;                    // which declarative rule fired
+  decision: "auto" | "approved" | "rejected" | "queued";
+  by: "policy" | "human";
+  rule?: string; // which declarative rule fired
   at: string;
 };
 ```
@@ -407,16 +449,23 @@ else.
 > namespace.** The PRD's proposal was right; what follows is the concrete shape.
 
 ```ts
-export type FactKind = 'finding' | 'decision' | 'artifact' | 'scope' | 'risk' | 'verdict' | 'ext';
+export type FactKind =
+  | "finding"
+  | "decision"
+  | "artifact"
+  | "scope"
+  | "risk"
+  | "verdict"
+  | "ext";
 
 export type Provenance = {
   byNode: NodeId;
   byProvider: ProviderId;
-  byModel: string;                  // as reported by the adapter, verbatim
-  fromEvidence: Handle[];           // artifact handles, file:line refs
+  byModel: string; // as reported by the adapter, verbatim
+  fromEvidence: Handle[]; // artifact handles, file:line refs
   atEvent: EventSeq;
-  at: string;                       // ISO 8601, display only — ordering is by atEvent
-  confidence: 'asserted' | 'verified' | 'speculative';
+  at: string; // ISO 8601, display only — ordering is by atEvent
+  confidence: "asserted" | "verified" | "speculative";
 };
 
 export type Fact = {
@@ -424,8 +473,8 @@ export type Fact = {
   /** 'finding/auth-uses-jwt' for core kinds; 'ext:migration/vue3-incompat-list' for the free space. */
   key: string;
   kind: FactKind;
-  schemaId: SchemaId;               // resolves to .karvan/schemas/<schemaId>.json
-  value: unknown;                   // validated against schemaId by Ajv before acceptance
+  schemaId: SchemaId; // resolves to .DeFlow/schemas/<schemaId>.json
+  value: unknown; // validated against schemaId by Ajv before acceptance
   provenance: Provenance;
   supersedes?: FactId;
   invalidatedBy?: EventSeq;
@@ -434,17 +483,17 @@ export type Fact = {
 
 Six kinds, fixed, and they are the whole enumerated vocabulary:
 
-| Kind | Written by | Typical shape |
-|---|---|---|
-| `finding` | recon and analysis nodes | an observation about the codebase, with evidence |
-| `decision` | planner, human nodes | a choice made and the rationale for it |
-| `artifact` | any node | a `Handle` plus a one-line description and size |
-| `scope` | recon, planner | a discovered path set, feeding F5.2 write serialisation |
-| `risk` | analysis and gate nodes | something that might break, with a detection story |
-| `verdict` | gate nodes only | a `Verdict` (§7) |
+| Kind       | Written by               | Typical shape                                           |
+| ---------- | ------------------------ | ------------------------------------------------------- |
+| `finding`  | recon and analysis nodes | an observation about the codebase, with evidence        |
+| `decision` | planner, human nodes     | a choice made and the rationale for it                  |
+| `artifact` | any node                 | a `Handle` plus a one-line description and size         |
+| `scope`    | recon, planner           | a discovered path set, feeding F5.2 write serialisation |
+| `risk`     | analysis and gate nodes  | something that might break, with a detection story      |
+| `verdict`  | gate nodes only          | a `Verdict` (§7)                                        |
 
 Anything else goes to `ext:<namespace>/<key>`. Ext facts are **schema-validated but not
-enumerated**: you must register a `schemaId` in `.karvan/schemas/`, and after that Karvan does not
+enumerated**: you must register a `schemaId` in `.DeFlow/schemas/`, and after that DeFlow does not
 care what the namespace means. Fixed core gives the marquee visualisations something renderable,
 diffable and validatable; the ext space stops the vocabulary becoming a straitjacket the first time
 you hit an unanticipated task archetype.
@@ -473,39 +522,45 @@ for reasons no human can reconstruct.
 
 ```ts
 export type SegmentKind =
-  | 'pinned.constraints' | 'pinned.spec' | 'pinned.pathscope'
-  | 'task.brief' | 'fact' | 'artifact.handle' | 'retrieved'
-  | 'history.summary' | 'tool.output';
+  | "pinned.constraints"
+  | "pinned.spec"
+  | "pinned.pathscope"
+  | "task.brief"
+  | "fact"
+  | "artifact.handle"
+  | "retrieved"
+  | "history.summary"
+  | "tool.output";
 
 export type TokenCount = {
   estimated: number;
-  method: 'gpt-tokenizer/o200k_base' | 'heuristic' | 'vendor-reported';
+  method: "gpt-tokenizer/o200k_base" | "heuristic" | "vendor-reported";
 };
 
 export type Segment = {
   id: SegmentId;
   kind: SegmentKind;
-  sourceEvent: EventSeq;            // which event put this here — click-through in the inspector
-  contentHash: string;              // sha256 of `text`
+  sourceEvent: EventSeq; // which event put this here — click-through in the inspector
+  contentHash: string; // sha256 of `text`
   text: string;
   tokens: TokenCount;
-  pinned: boolean;                  // never eligible for compaction, always rendered first
-  compactable: boolean;             // pinned ⇒ !compactable, but not conversely
+  pinned: boolean; // never eligible for compaction, always rendered first
+  compactable: boolean; // pinned ⇒ !compactable, but not conversely
 };
 
 export type ContextPacket = {
-  schemaId: SchemaId;               // 'karvan.contextpacket.v1'
+  schemaId: SchemaId; // 'DeFlow.contextpacket.v1'
   runId: RunId;
   nodeId: NodeId;
   attempt: number;
   builtAtEvent: EventSeq;
   target: { provider: ProviderId; model: string; maxContext: number };
-  budget: { fraction: number; limitTokens: number };   // default 0.5, never above 0.6
+  budget: { fraction: number; limitTokens: number }; // default 0.5, never above 0.6
   segments: Segment[];
   totals: { tokens: number; byKind: Record<SegmentKind, number> };
   /** The rendered prompt is stored too — but derived, not authoritative. */
   renderedPromptHandle: Handle;
-  pinnedDigests: string[];          // sha256 per pinned segment; the integrity check's input
+  pinnedDigests: string[]; // sha256 per pinned segment; the integrity check's input
 };
 ```
 
@@ -547,24 +602,27 @@ surgical repair loop (F7.5).
 
 ```ts
 export type Verdict = {
-  schemaId: SchemaId;               // 'karvan.verdict.v1'
-  outcome: 'pass' | 'fail' | 'needs-human';
+  schemaId: SchemaId; // 'DeFlow.verdict.v1'
+  outcome: "pass" | "fail" | "needs-human";
   gate: GateId;
-  evaluatedNode: NodeId;            // whose work was judged
+  evaluatedNode: NodeId; // whose work was judged
   by: { node: NodeId; provider: ProviderId; model: string };
   /** F7.4: which criteria this gate speaks to, and what it concluded about each. */
-  criteria: Array<{ id: CriterionId; status: 'satisfied' | 'unsatisfied' | 'unverifiable' }>;
+  criteria: Array<{
+    id: CriterionId;
+    status: "satisfied" | "unsatisfied" | "unverifiable";
+  }>;
   findings: Finding[];
-  summary: string;                  // one line, for the board. Not the evidence.
+  summary: string; // one line, for the board. Not the evidence.
 };
 
 export type Finding = {
   id: string;
-  severity: 'blocker' | 'major' | 'minor' | 'info';
+  severity: "blocker" | "major" | "minor" | "info";
   criterion?: CriterionId;
   location?: { file: string; line: number; endLine?: number };
   message: string;
-  evidence: Handle[];               // test output, build log, diff — always a handle, never inline
+  evidence: Handle[]; // test output, build log, diff — always a handle, never inline
   suggestedFix?: string;
 };
 ```
@@ -588,50 +646,63 @@ bug to be fixed, not a design).
 
 ```ts
 export type NodeResult =
-  | { status: 'completed'; output: unknown; outputSchemaId: SchemaId;
-      usage: TokenUsage; costUsd: number; producedFacts: FactId[]; artifacts: Handle[] }
-  | { status: 'failed'; failure: NodeFailure }
-  | { status: 'suspended'; until: { kind: 'human' | 'wake' | 'external'; wakeAt?: string } }
-  | { status: 'cancelled'; by: 'user' | 'policy' | 'parent' };
+  | {
+      status: "completed";
+      output: unknown;
+      outputSchemaId: SchemaId;
+      usage: TokenUsage;
+      costUsd: number;
+      producedFacts: FactId[];
+      artifacts: Handle[];
+    }
+  | { status: "failed"; failure: NodeFailure }
+  | {
+      status: "suspended";
+      until: { kind: "human" | "wake" | "external"; wakeAt?: string };
+    }
+  | { status: "cancelled"; by: "user" | "policy" | "parent" };
 
 export type NodeFailureReason =
   // adapter / transport
-  | 'adapter.spawn-failed'            // binary missing, wrong path, non-executable
-  | 'adapter.handshake-failed'        // ACP initialize failed or negotiated an unsupported version
-  | 'adapter.frame-too-large'         // exceeded the 8 MiB line cap
-  | 'adapter.protocol-error'          // valid JSON, invalid against the ACP schema
-  | 'adapter.malformed-output'        // not JSON at all
-  | 'adapter.capability-missing'      // node required something the adapter never advertised
+  | "adapter.spawn-failed" // binary missing, wrong path, non-executable
+  | "adapter.handshake-failed" // ACP initialize failed or negotiated an unsupported version
+  | "adapter.frame-too-large" // exceeded the 8 MiB line cap
+  | "adapter.protocol-error" // valid JSON, invalid against the ACP schema
+  | "adapter.malformed-output" // not JSON at all
+  | "adapter.capability-missing" // node required something the adapter never advertised
   // agent-reported
-  | 'agent.nonzero-exit'
-  | 'agent.refused'                   // stopReason indicated refusal
-  | 'agent.max-turns'
-  | 'agent.schema-repair-exhausted'   // maps Claude Code's error_max_structured_output_retries
+  | "agent.nonzero-exit"
+  | "agent.refused" // stopReason indicated refusal
+  | "agent.max-turns"
+  | "agent.schema-repair-exhausted" // maps Claude Code's error_max_structured_output_retries
   // contract
-  | 'contract.schema-invalid'         // output failed Ajv validation (F6.9)
-  | 'contract.handoff-oversize'       // over returns.maxTokens after a bounded repair (F6.4)
+  | "contract.schema-invalid" // output failed Ajv validation (F6.9)
+  | "contract.handoff-oversize" // over returns.maxTokens after a bounded repair (F6.4)
   // safety
-  | 'safety.pin-integrity-violated'   // a pinned segment did not survive into the prompt (F6.6)
-  | 'safety.pathscope-violation'      // wrote outside its declared scope (F5.3)
-  | 'safety.permission-unschedulable' // provider cannot express the requested level (F5.4)
-  | 'safety.execution-boundary'       // hit a guarded operation without a human gate (F5.6)
+  | "safety.pin-integrity-violated" // a pinned segment did not survive into the prompt (F6.6)
+  | "safety.pathscope-violation" // wrote outside its declared scope (F5.3)
+  | "safety.permission-unschedulable" // provider cannot express the requested level (F5.4)
+  | "safety.execution-boundary" // hit a guarded operation without a human gate (F5.6)
   // resource
-  | 'budget.cost-exceeded' | 'budget.wallclock-exceeded' | 'timeout'
-  | 'provider.rate-limited' | 'provider.unavailable'
+  | "budget.cost-exceeded"
+  | "budget.wallclock-exceeded"
+  | "timeout"
+  | "provider.rate-limited"
+  | "provider.unavailable"
   // orchestration
-  | 'effect.reconcile-unknown'        // crash mid-effect, probe could not determine what happened
-  | 'effect.request-hash-mismatch'    // the plan changed under a journaled effect
-  | 'dependency.failed'               // a dep failed permanently; propagated
-  | 'gate.failed'
-  | 'internal';
+  | "effect.reconcile-unknown" // crash mid-effect, probe could not determine what happened
+  | "effect.request-hash-mismatch" // the plan changed under a journaled effect
+  | "dependency.failed" // a dep failed permanently; propagated
+  | "gate.failed"
+  | "internal";
 
 export type NodeFailure = {
   reason: NodeFailureReason;
   /** Drives the scheduler: retry, fail the node, or suspend for a human. */
-  class: 'transient' | 'permanent' | 'gate';
-  message: string;                  // human-readable, one line, safe to render
+  class: "transient" | "permanent" | "gate";
+  message: string; // human-readable, one line, safe to render
   detail?: Record<string, unknown>; // reason-specific, JSON only
-  evidence: Handle[];               // stdout tail, the offending frame's first 4 KiB, the diff
+  evidence: Handle[]; // stdout tail, the offending frame's first 4 KiB, the diff
   occurredAtEvent: EventSeq;
   attempt: number;
 };
@@ -649,10 +720,12 @@ Two rules that matter more than they look:
 
 ```ts
 export type TokenUsage = {
-  inputTokens: number; outputTokens: number;
-  cacheReadInputTokens?: number; cacheCreationInputTokens?: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
   reasoningOutputTokens?: number;
-  source: 'vendor-reported' | 'estimated';
+  source: "vendor-reported" | "estimated";
 };
 ```
 
@@ -673,10 +746,10 @@ the only fields the reducer is allowed to branch on before upcasting.
 export type EventEnvelope<K extends string, P> = {
   seq: EventSeq;
   runId: RunId;
-  ts: number;                       // ms epoch, informational only — ORDER IS seq
+  ts: number; // ms epoch, informational only — ORDER IS seq
   kind: K;
-  v: number;                        // payload schema version, for upcasting
-  epoch: number;                    // daemon epoch; stale-epoch writes are rejected
+  v: number; // payload schema version, for upcasting
+  epoch: number; // daemon epoch; stale-epoch writes are rejected
   nodeId?: NodeId;
   attempt?: number;
   ikey?: IdempotencyKey;
@@ -684,60 +757,60 @@ export type EventEnvelope<K extends string, P> = {
 };
 ```
 
-| `kind` | Payload (abridged) | Why it exists |
-|---|---|---|
-| `run.created` | `{ spec: TaskSpec; cwd: string; repo: { head: string; branch: string } }` | F1.1 |
-| `run.spec.approved` | `{ specHash: string; by: 'ui' \| 'cli' }` | F1.3 — the gate, recorded |
-| `run.started` | `{ planHash: PlanHash }` | |
-| `run.paused` / `run.resumed` | `{ by: 'user' \| 'policy'; reason?: string }` | F4.4 — pause is an **event**, never an in-memory flag |
-| `run.cancel.requested` | `{ mode: 'cooperative' \| 'forceful' }` | F5.7 kill switch |
-| `run.completed` / `run.aborted` | `{ outcome; criteriaSatisfied: CriterionId[] }` | |
-| `run.stalled` | `{ watermarkSeq: EventSeq; idleMs: number; runningNodes: NodeId[] }` | F4.7 stall detector. Surfaced, **never auto-killed** — a long build looks identical |
-| `run.needs_human` | `{ reason: 'churn' \| 'budget' \| 'reconcile-unknown'; detail }` | circuit breaker trip |
-| `plan.proposed` | `{ version: number; planHash: PlanHash; graph: PlanGraph; by }` | F2.2 |
-| `plan.patch.proposed` | `{ patch: PlanPatch }` | F2.4 — **the proposal is recorded even if rejected** |
-| `plan.patched` | `{ version; fromHash; toHash; patchId; decision: PatchDecision }` | F2.5 |
-| `plan.patch.rejected` | `{ patchId; rule: string; by: 'policy' \| 'human' }` | |
-| `node.scheduled` | `{ node: NodeId; provider: ProviderId; model?; permission: PermissionLevel }` | |
-| `node.lock.acquired` / `node.lock.released` | `{ node: NodeId; lock: 'repo' \| 'worktree'; key: string }` | F5.2 — locks live in the ledger so they survive restart |
-| `node.started` | `{ node; attempt; ikey; binary: { path; version; sha256 } }` | **Written before the side effect.** This record is what makes at-least-once recovery possible at all |
-| `node.progress` | `{ node; attempt; phase: string; message?: string; ioChunkSeq?: number }` | F10.1/F10.6 live status. Cheap, frequent, and it does **not** advance the progress watermark |
-| `node.completed` | `{ node; attempt; result: Extract<NodeResult, {status:'completed'}> }` | |
-| `node.failed` | `{ node; attempt; failure: NodeFailure }` | |
-| `node.retry.scheduled` | `{ node; nextAttempt; wakeAt: number }` | written in the **same transaction** as `node.failed` |
-| `node.suspended` | `{ node; until }` | F4.8 long suspension |
-| `effect.started` | `{ ikey; kind: EffectKind; requestHash: string }` | the write-ahead intent record |
-| `effect.completed` | `{ ikey; result: unknown; reconciled: boolean }` | memoised on restart |
-| `effect.failed` | `{ ikey; failure: NodeFailure }` | |
-| `context.built` | `{ node; attempt; packet: ContextPacket }` (minus segment `text`) | F10.3, F10.5 |
-| `context.compacted` | see below | F6.6 |
-| `pin.integrity_violated` | `{ node; attempt; missingDigests: string[]; segmentIds: SegmentId[] }` | F6.6 — fails the node |
-| `fact.written` | `{ fact: Fact }` | F6.3 |
-| `fact.read` | `{ factId; key; by: NodeId }` | makes the consumer set one query |
-| `fact.invalidated` | `{ factId; by: NodeId; reason: string; taints: NodeId[] }` | §5.2 |
-| `handoff.oversize` | `{ node; attempt; budget: number; actual: number; repairAttempted: boolean }` | F6.4 enforcement |
-| `gate.evaluated` | `{ gate: GateId; node: NodeId; verdict: Verdict }` | F7.3 |
-| `human.requested` | `{ node; prompt; options; deadline? }` | F8.1 |
-| `human.responded` | `{ node; optionId; text?; at }` | |
-| `budget.consumed` | `{ node?; provider; usage: TokenUsage; costUsd: number }` | F9.1 |
-| `budget.exceeded` | `{ scope: 'node' \| 'run'; dimension: 'cost' \| 'wallclock'; limit; actual }` | F4.6 — **pauses, does not fail** |
-| `provider.probed` | `{ provider; version; capsJson: unknown; binarySha256: string }` | F3.4/F3.5 — capabilities are derived, never hardcoded |
-| `provider.rate_limited` | `{ provider; resetsAt?: number; raw: unknown }` | parsed from Claude Code's `rate_limit_event` frame |
-| `export.blocked` | `{ target: 'report' \| 'hub'; reason: 'redaction-failed' \| 'findings'; count: number }` | F5.9 — redaction **fails closed** |
+| `kind`                                      | Payload (abridged)                                                                       | Why it exists                                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `run.created`                               | `{ spec: TaskSpec; cwd: string; repo: { head: string; branch: string } }`                | F1.1                                                                                                 |
+| `run.spec.approved`                         | `{ specHash: string; by: 'ui' \| 'cli' }`                                                | F1.3 — the gate, recorded                                                                            |
+| `run.started`                               | `{ planHash: PlanHash }`                                                                 |                                                                                                      |
+| `run.paused` / `run.resumed`                | `{ by: 'user' \| 'policy'; reason?: string }`                                            | F4.4 — pause is an **event**, never an in-memory flag                                                |
+| `run.cancel.requested`                      | `{ mode: 'cooperative' \| 'forceful' }`                                                  | F5.7 kill switch                                                                                     |
+| `run.completed` / `run.aborted`             | `{ outcome; criteriaSatisfied: CriterionId[] }`                                          |                                                                                                      |
+| `run.stalled`                               | `{ watermarkSeq: EventSeq; idleMs: number; runningNodes: NodeId[] }`                     | F4.7 stall detector. Surfaced, **never auto-killed** — a long build looks identical                  |
+| `run.needs_human`                           | `{ reason: 'churn' \| 'budget' \| 'reconcile-unknown'; detail }`                         | circuit breaker trip                                                                                 |
+| `plan.proposed`                             | `{ version: number; planHash: PlanHash; graph: PlanGraph; by }`                          | F2.2                                                                                                 |
+| `plan.patch.proposed`                       | `{ patch: PlanPatch }`                                                                   | F2.4 — **the proposal is recorded even if rejected**                                                 |
+| `plan.patched`                              | `{ version; fromHash; toHash; patchId; decision: PatchDecision }`                        | F2.5                                                                                                 |
+| `plan.patch.rejected`                       | `{ patchId; rule: string; by: 'policy' \| 'human' }`                                     |                                                                                                      |
+| `node.scheduled`                            | `{ node: NodeId; provider: ProviderId; model?; permission: PermissionLevel }`            |                                                                                                      |
+| `node.lock.acquired` / `node.lock.released` | `{ node: NodeId; lock: 'repo' \| 'worktree'; key: string }`                              | F5.2 — locks live in the ledger so they survive restart                                              |
+| `node.started`                              | `{ node; attempt; ikey; binary: { path; version; sha256 } }`                             | **Written before the side effect.** This record is what makes at-least-once recovery possible at all |
+| `node.progress`                             | `{ node; attempt; phase: string; message?: string; ioChunkSeq?: number }`                | F10.1/F10.6 live status. Cheap, frequent, and it does **not** advance the progress watermark         |
+| `node.completed`                            | `{ node; attempt; result: Extract<NodeResult, {status:'completed'}> }`                   |                                                                                                      |
+| `node.failed`                               | `{ node; attempt; failure: NodeFailure }`                                                |                                                                                                      |
+| `node.retry.scheduled`                      | `{ node; nextAttempt; wakeAt: number }`                                                  | written in the **same transaction** as `node.failed`                                                 |
+| `node.suspended`                            | `{ node; until }`                                                                        | F4.8 long suspension                                                                                 |
+| `effect.started`                            | `{ ikey; kind: EffectKind; requestHash: string }`                                        | the write-ahead intent record                                                                        |
+| `effect.completed`                          | `{ ikey; result: unknown; reconciled: boolean }`                                         | memoised on restart                                                                                  |
+| `effect.failed`                             | `{ ikey; failure: NodeFailure }`                                                         |                                                                                                      |
+| `context.built`                             | `{ node; attempt; packet: ContextPacket }` (minus segment `text`)                        | F10.3, F10.5                                                                                         |
+| `context.compacted`                         | see below                                                                                | F6.6                                                                                                 |
+| `pin.integrity_violated`                    | `{ node; attempt; missingDigests: string[]; segmentIds: SegmentId[] }`                   | F6.6 — fails the node                                                                                |
+| `fact.written`                              | `{ fact: Fact }`                                                                         | F6.3                                                                                                 |
+| `fact.read`                                 | `{ factId; key; by: NodeId }`                                                            | makes the consumer set one query                                                                     |
+| `fact.invalidated`                          | `{ factId; by: NodeId; reason: string; taints: NodeId[] }`                               | §5.2                                                                                                 |
+| `handoff.oversize`                          | `{ node; attempt; budget: number; actual: number; repairAttempted: boolean }`            | F6.4 enforcement                                                                                     |
+| `gate.evaluated`                            | `{ gate: GateId; node: NodeId; verdict: Verdict }`                                       | F7.3                                                                                                 |
+| `human.requested`                           | `{ node; prompt; options; deadline? }`                                                   | F8.1                                                                                                 |
+| `human.responded`                           | `{ node; optionId; text?; at }`                                                          |                                                                                                      |
+| `budget.consumed`                           | `{ node?; provider; usage: TokenUsage; costUsd: number }`                                | F9.1                                                                                                 |
+| `budget.exceeded`                           | `{ scope: 'node' \| 'run'; dimension: 'cost' \| 'wallclock'; limit; actual }`            | F4.6 — **pauses, does not fail**                                                                     |
+| `provider.probed`                           | `{ provider; version; capsJson: unknown; binarySha256: string }`                         | F3.4/F3.5 — capabilities are derived, never hardcoded                                                |
+| `provider.rate_limited`                     | `{ provider; resetsAt?: number; raw: unknown }`                                          | parsed from Claude Code's `rate_limit_event` frame                                                   |
+| `export.blocked`                            | `{ target: 'report' \| 'hub'; reason: 'redaction-failed' \| 'findings'; count: number }` | F5.9 — redaction **fails closed**                                                                    |
 
 ### 9.1 `context.compacted` carries a fidelity discriminator
 
 ```ts
 type ContextCompacted = {
   node: NodeId;
-  scope: 'karvan.packet' | 'vendor.session';
-  fidelity: 'exact' | 'partial';        // 'partial' ⇒ vendor-reported, numbers are incomplete
-  trigger: 'threshold' | 'manual' | 'vendor.auto';
+  scope: "DeFlow.packet" | "vendor.session";
+  fidelity: "exact" | "partial"; // 'partial' ⇒ vendor-reported, numbers are incomplete
+  trigger: "threshold" | "manual" | "vendor.auto";
   before: number;
-  after: number | null;                 // null when vendor-reported
-  droppedSegments: SegmentId[];         // [] when vendor-reported
+  after: number | null; // null when vendor-reported
+  droppedSegments: SegmentId[]; // [] when vendor-reported
   demotedToHandles: Handle[];
-  pinnedKept: string[];                 // sha256 list — proves the integrity check passed
+  pinnedKept: string[]; // sha256 list — proves the integrity check passed
   originalHandle: Handle | null;
 };
 ```
@@ -751,14 +824,14 @@ quietly lies: a chart with a fabricated "after" number is worse than an honest g
 
 ### 9.2 The envelope and versioning rule
 
-Three rules, and they are not negotiable because they are what lets a user downgrade `karvand`
+Three rules, and they are not negotiable because they are what lets a user downgrade `DeFlowd`
 without corrupting a run:
 
 1. **The reducer is pure and total.** `reduce(state: RunState, e: Event): RunState` performs no I/O,
    reads no clock, and returns a value for every input. It is unit-testable with zero setup, which
    is what makes the whole scheduler testable with a fake clock.
 2. **The reducer MUST ignore unknown `kind` values.** Not throw, not log-and-throw, not
-   `assertNever`. Return `state` unchanged. A user who installs a newer `karvand`, starts a run, then
+   `assertNever`. Return `state` unchanged. A user who installs a newer `DeFlowd`, starts a run, then
    downgrades, must get a daemon that skips the events it does not understand rather than one that
    refuses to open the ledger. This is the single forward-compatibility mechanism in the system.
 3. **Payload evolution goes through an upcaster chain applied at read time.**

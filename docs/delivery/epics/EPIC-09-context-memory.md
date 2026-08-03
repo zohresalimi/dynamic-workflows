@@ -1,37 +1,37 @@
 # EPIC-09: Context assembly and memory
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-09-context-memory-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-09 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W6 (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~21 days across 10 stories — **over the ~15-day guidance, see Risks** |
-| **Depends on** | EPIC-06 (the node runner, the effect journal and the attempt lifecycle a packet is built for), EPIC-05 KAR-05.2 (the capability manifest's `tokenAccounting` tier, which decides how KAR-09.7 measures), EPIC-03 (the `Db` port, `PRAGMA user_version` migrations, the content-addressed blob store), EPIC-02 (`ContextPacket`, `Segment`, `Fact`, `Constraint`, `TaskSpec` and the `Event` union) |
-| **Blocks** | EPIC-10 (the framing interview produces the pinned spec this epic consumes), EPIC-11 (plan validation calls `validateDeclaredReads`), EPIC-12 (gates read the pinned `TaskSpec` from the ledger), EPIC-14 (all cost governance reads this epic's token accounting), EPIC-17 (F10.3 and F10.5 are projections of `context.built` and `context.compacted`) |
-| **PRD requirements** | F6.1, F6.2, F6.3, F6.4, F6.5, F6.6 (all P0) · F6.7, F6.9 (P1) · F9.1, F9.3 · F10.3, F10.5 · NF8, NF9, NF10 |
-| **Architecture** | [08-context-and-memory.md](../../08-context-and-memory.md) (whole document) · [04-domain-model.md](../../04-domain-model.md) §5, §6, §9.1 |
+|                      |                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-09                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Workstream**       | W6 (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                                                                                                                       |
+| **Size**             | ~21 days across 10 stories — **over the ~15-day guidance, see Risks**                                                                                                                                                                                                                                                                                                                              |
+| **Depends on**       | EPIC-06 (the node runner, the effect journal and the attempt lifecycle a packet is built for), EPIC-05 KAR-05.2 (the capability manifest's `tokenAccounting` tier, which decides how KAR-09.7 measures), EPIC-03 (the `Db` port, `PRAGMA user_version` migrations, the content-addressed blob store), EPIC-02 (`ContextPacket`, `Segment`, `Fact`, `Constraint`, `TaskSpec` and the `Event` union) |
+| **Blocks**           | EPIC-10 (the framing interview produces the pinned spec this epic consumes), EPIC-11 (plan validation calls `validateDeclaredReads`), EPIC-12 (gates read the pinned `TaskSpec` from the ledger), EPIC-14 (all cost governance reads this epic's token accounting), EPIC-17 (F10.3 and F10.5 are projections of `context.built` and `context.compacted`)                                           |
+| **PRD requirements** | F6.1, F6.2, F6.3, F6.4, F6.5, F6.6 (all P0) · F6.7, F6.9 (P1) · F9.1, F9.3 · F10.3, F10.5 · NF8, NF9, NF10                                                                                                                                                                                                                                                                                         |
+| **Architecture**     | [08-context-and-memory.md](../../08-context-and-memory.md) (whole document) · [04-domain-model.md](../../04-domain-model.md) §5, §6, §9.1                                                                                                                                                                                                                                                          |
 
 ## Goal
 
-At the end of this epic every agent invocation in Karvan receives a packet that the engine built
+At the end of this epic every agent invocation in DeFlow receives a packet that the engine built
 from an explicit, typed, declared list — and that packet is a record, not a side effect. For any
 node in any run you can answer, from the ledger alone: what bytes went in, which event put each
 one there, how many tokens each segment cost and by which measurement method, what was demoted to
 a handle when the budget ran out, and whether the safety constraints that were pinned at the start
 were still byte-identical in the prompt that was actually sent. The pinned set is never compacted,
-never paraphrased and never merely *assumed* present — its sha256 is checked after rendering, and a
+never paraphrased and never merely _assumed_ present — its sha256 is checked after rendering, and a
 node that would have gone out without it fails instead.
 
 ## Why this matters
 
 The PRD's risk register rates **"compaction silently deletes constraints → unsafe actions"** as
 **High**, and it is the one high-severity risk in the whole document with a measured mechanism
-behind it. The finding ([§4](../../08-context-and-memory.md), arXiv 2606.22528, *Governance Decay*,
+behind it. The finding ([§4](../../08-context-and-memory.md), arXiv 2606.22528, _Governance Decay_,
 1,323 episodes across seven model families) is that the constraint-violation rate is **0% with the
 policy fully in context and 30% after compaction, reaching 59% for the worst model** — and that a
 pinned buffer exempt from compaction, re-injected verbatim with integrity checking, **restores it
@@ -40,25 +40,25 @@ It is the single highest-value-per-line story in this backlog and it is `KAR-09.
 
 The companion result ([§4.2](../../08-context-and-memory.md), arXiv 2604.20911, 4,416 trials, 12
 models, 8 providers) is worse in a subtler way: prohibitions decay while requirements do not.
-Omission compliance — following a *don't* — falls from **73% at turn 5 to 33% at turn 16**, while
-commission compliance holds at **100%**. They call it *Security-Recall Divergence* and note it is
+Omission compliance — following a _don't_ — falls from **73% at turn 5 to 33% at turn 16**, while
+commission compliance holds at **100%**. They call it _Security-Recall Divergence_ and note it is
 invisible to standard monitoring, because the commission-type audit signals stay healthy while the
 prohibitions rot. That is why `KAR-09.4` exists as a separate story: a system that only implements
 pinning has fixed the compaction half and left the turn-depth half untouched, and it will pass its
 own gates the whole way down.
 
 Underneath the safety argument sits the product argument. PRD §2.1's third broken thing is
-*"nobody knows why it went wrong — tools log stdout, they don't show the assembled context packet,
-the memory that was shared, or what compaction deleted."* Three of the nine P0 views (F10.3 node
+_"nobody knows why it went wrong — tools log stdout, they don't show the assembled context packet,
+the memory that was shared, or what compaction deleted."_ Three of the nine P0 views (F10.3 node
 inspector, F10.4 memory graph, F10.5 context budget) are projections of exactly four event kinds
 this epic emits: `context.built`, `context.compacted`, `fact.written` and `fact.read`. PRD §9.3
-says it outright — those events *"exist specifically to make memory sharing renderable; they are
-product requirements, not logging."* Skip this epic and the marquee inspection surfaces have no
+says it outright — those events _"exist specifically to make memory sharing renderable; they are
+product requirements, not logging."_ Skip this epic and the marquee inspection surfaces have no
 data to render, the planner has no budget to plan against, and the highest-severity risk in the PRD
 has no control against it.
 
-The layer is also, per [§12](../../08-context-and-memory.md), *"roughly 100% mockable, which means
-there is no excuse for it not to be tested."* `render(segments) -> string` is pure. The blackboard
+The layer is also, per [§12](../../08-context-and-memory.md), _"roughly 100% mockable, which means
+there is no excuse for it not to be tested."_ `render(segments) -> string` is pure. The blackboard
 is a projection. The compaction pipeline can be driven end to end from a committed `stream-json`
 fixture with no credentials, no network and no cost. This is the epic where the testing strategy
 costs the least and buys the most.
@@ -74,27 +74,27 @@ costs the least and buys the most.
   handles), budget as a fraction of the target adapter's declared `maxContext` (**default 0.5,
   never above 0.6**), and the demotion ladder when over budget — largest `tool.output` first, then
   `retrieved`, then `fact` bodies, then inlined `artifact.handle` bodies.
-- `render(segments) -> string` as a pure function in `@karvan/core`: no clock, no I/O, no
+- `render(segments) -> string` as a pure function in `@DeFlow/core`: no clock, no I/O, no
   randomness, pinned segments always first, `history.summary` interleaved in the chronological
   position of what it replaced.
 - Constraint pinning: the five pinned content types, `pinned ⇒ !compactable`, verbatim
   re-injection, and `assertPinIntegrity(packet, rendered)` with `pin.integrity_violated` and node
   failure `reason: 'pin-integrity'` — no silent retry.
 - The **ConstraintRot regression suite**: ~20 scenarios where a node carries a pinned prohibition
-  and a plausible reason to violate it, run against `@karvan/mock-agent` with pinning enabled and
+  and a plausible reason to violate it, run against `@DeFlow/mock-agent` with pinning enabled and
   disabled, asserting zero violations with pinning enabled.
 - The `Constraint` union (`allow-only` | `require` | `forbid`), the mechanical prohibition →
   positive-requirement restatement applied at packet-build time, `forbid` rendered last among
-  pinned constraints and counted, and the `forbid`-to-`allow-only` ratio in `karvan doctor`.
+  pinned constraints and counted, and the `forbid`-to-`allow-only` ratio in `DeFlow doctor`.
 - Interval re-injection at `pinReinjectTurns` (default **8**), delivered as an appended turn where
   the adapter supports mid-session steering, and a packet-builder warning where it does not.
 - Artifact offloading: bodies to the content-addressed store under
   `runs/<runId>/artifacts/<sha256>/`, `artifact://<64 hex sha256>` and `file://<path>#L12-L40`
   handles, the rendered handle line with description, line count and byte size, and the
-  `karvan_read_artifact` MCP tool that resolves one on demand.
+  `DeFlow_read_artifact` MCP tool that resolves one on demand.
 - `context.compacted` with the `fidelity: 'exact' | 'partial'` discriminator, both scopes
-  (`karvan.packet`, `vendor.session`), the `compact_boundary` frame parser, the §6.2 inferred
-  `after` figure permanently labelled *inferred*, and the §6.3 transcript-snapshot copy from
+  (`DeFlow.packet`, `vendor.session`), the `compact_boundary` frame parser, the §6.2 inferred
+  `after` figure permanently labelled _inferred_, and the §6.3 transcript-snapshot copy from
   `~/.claude/projects/<project>/<session_id>.jsonl`.
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` set deliberately per node class (default **70** for
   write-capable nodes), with the `Math.min` clamp asserted so nobody designs against a lever that
@@ -104,7 +104,7 @@ costs the least and buys the most.
   Tier 3 (`POST /v1/messages/count_tokens`) available **only** on the explicit API-key adapter path.
 - The self-calibrating `tokenEstimateFactor`: EWMA with `ALPHA = 0.2`, seeds
   `{ anthropic: 1.2, openai: 1.0, default: 1.05 }` used until `n >= 5`, persisted per
-  (provider, model) and surfaced in `karvan doctor`.
+  (provider, model) and surfaced in `DeFlow doctor`.
 - The blackboard as a projection: `fact` and `fact_edges` tables rebuildable from `fact.written` /
   `fact.read` / `fact.invalidated`, the six-kind fixed core plus the `ext:` namespace with
   registered `schemaId`, provenance on every fact, and invalidation that marks downstream readers
@@ -122,18 +122,18 @@ costs the least and buys the most.
 
 **Out of scope:**
 
-- A Karvan-side compactor that rewrites a CLI's transcript between turns —
+- A DeFlow-side compactor that rewrites a CLI's transcript between turns —
   [§5.3](../../08-context-and-memory.md) rejects it for M1 outright: per-vendor, requires
   transcript round-tripping through `--resume`, duplicates work the vendor does better.
-- Cross-run project memory (F6.8) in `.karvan/memory/project.db`, and the background curator that
+- Cross-run project memory (F6.8) in `.DeFlow/memory/project.db`, and the background curator that
   proposes promotions — **M3**. Deliberately a separate SQLite file with a separate lifecycle.
 - Embeddings, `sqlite-vec`, RRF hybrid search and query expansion — the upgrade path is written in
   [§10.2](../../08-context-and-memory.md) in cost order; none of it is M1, and
-  [§10](../../08-context-and-memory.md) is explicit that nothing is added *until a semantic-recall
-  miss is actually measured*.
+  [§10](../../08-context-and-memory.md) is explicit that nothing is added _until a semantic-recall
+  miss is actually measured_.
 - The rendering of any of this: F10.3's node inspector, F10.4's memory graph and F10.5's stacked
   context-budget bar are [EPIC-17](./EPIC-17-p0-views.md). This epic produces the events those
-  views project, and owns the one UI-facing *contract* they must honour (never fabricate an `after`
+  views project, and owns the one UI-facing _contract_ they must honour (never fabricate an `after`
   number) — but not the components.
 - Budget ceilings, pre-flight estimation and rate-limit backoff — [EPIC-14](./EPIC-14-cost-governance.md).
   This epic supplies `budget.consumed`'s inputs and the calibrated estimator; EPIC-14 decides what
@@ -154,13 +154,13 @@ costs the least and buys the most.
 
 - [ ] **EPIC-02 Done.** `Segment`, `SegmentKind`, `ContextPacket`, `Fact`, `Provenance`,
       `Constraint`, `TaskSpec` and the `context.*` / `fact.*` / `pin.*` / `handoff.*` members of the
-      `Event` union exist as types with emitted JSON Schemas in `.karvan/schemas/`.
+      `Event` union exist as types with emitted JSON Schemas in `.DeFlow/schemas/`.
 - [ ] **EPIC-03 Done.** The append-only event table, `PRAGMA user_version` migrations and the
       content-addressed blob store exist, so `fact`, `fact_edges` and `artifact_fts` are one more
       migration rather than new infrastructure.
 - [ ] **EPIC-06 Done through KAR-06.3.** There is a node runner with an attempt lifecycle that a
-      packet is built *for*, and a place for `pin.integrity_violated` to fail a node from.
-- [ ] `@karvan/mock-agent` can replay a recorded `stream-json` stream (`--replay`) and honours
+      packet is built _for_, and a place for `pin.integrity_violated` to fail a node from.
+- [ ] `@DeFlow/mock-agent` can replay a recorded `stream-json` stream (`--replay`) and honours
       `--seed`, so the compaction pipeline and the ConstraintRot suite are runnable offline.
 - [ ] A `stream-json` recording containing at least one `compact_boundary` frame and at least one
       `result` envelope with populated `modelUsage` is committed under `test/fixtures/streams/`.
@@ -184,12 +184,12 @@ costs the least and buys the most.
 - [ ] A golden-file packet snapshot exists for each of the five node archetypes (recon, implement,
       gate, human, map-child) and asserts that the pinned segments come first and are byte-identical
       to the approved `TaskSpec`.
-- [ ] `test/fixtures/runs/compaction/ledger.db` contains a `karvan.packet` compaction with exact
+- [ ] `test/fixtures/runs/compaction/ledger.db` contains a `DeFlow.packet` compaction with exact
       before/after and a `vendor.session` compaction with `after: null`, and both render correctly
       in the replay harness.
-- [ ] `karvan doctor` reports, for the loaded workspace: the calibration factor and sample count per
-      (provider, model), FTS5 availability *and the tokenizer string actually set on
-      `artifact_fts`*, whether `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is in effect and at what value, and
+- [ ] `DeFlow doctor` reports, for the loaded workspace: the calibration factor and sample count per
+      (provider, model), FTS5 availability _and the tokenizer string actually set on
+      `artifact_fts`_, whether `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is in effect and at what value, and
       the current `forbid`-to-`allow-only` ratio in the loaded spec.
 - [ ] A CI grep proves no source file imports `@anthropic-ai/tokenizer`, reads the result envelope's
       `usage` field, or creates an FTS5 table without `tokenchars '_-.'`.
@@ -204,13 +204,13 @@ costs the least and buys the most.
 
 ### KAR-09.1 — Declared reads and writes enforced at plan time
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | — (needs only the `PlanGraph` type from EPIC-02) |
-| **PRD** | F6.1, F6.2 |
+|                 |                                                            |
+| --------------- | ---------------------------------------------------------- |
+| **Status**      | Ready                                                      |
+| **Priority**    | P0                                                         |
+| **Size**        | S                                                          |
+| **Depends on**  | — (needs only the `PlanGraph` type from EPIC-02)           |
+| **PRD**         | F6.1, F6.2                                                 |
 | **Verified by** | EPIC-09-S1, EPIC-09-S2, EPIC-09-S3, EPIC-09-S4, EPIC-09-S5 |
 
 **As** the planner, **I want** a node's declared `reads` to be proven satisfiable from its
@@ -218,21 +218,21 @@ ancestors' declared `writes` before the run starts, **so that** a plan that woul
 hours in on an unresolvable read fails in milliseconds and costs nothing.
 
 This is [§2.1](../../08-context-and-memory.md) implemented literally: pure DAG reachability, about
-sixty lines, and *"the cheapest correctness gate in the system."* For each node, the reachable key
+sixty lines, and _"the cheapest correctness gate in the system."_ For each node, the reachable key
 set starts as `PINNED_KEYS` (spec, criteria, scopes — always available) and accumulates every
 **ancestor's** declared `writes`; each declared read must be satisfied by that set or it becomes
 `{ code: 'undeclared-read', node, key }`. `satisfies()` handles exact keys, `finding/*`-style prefix
 globs and `ext:<namespace>/` prefixes. Two things make this a story rather than a utility function:
 it runs on every `plan.proposed` **and** every `plan.patched`, so a runtime `PlanPatch` that
 introduces an undeclared read is rejected by the [EPIC-11](./EPIC-11-dynamic-planning.md) policy
-engine with the same error code; and *ancestors, not siblings* is the load-bearing distinction —
+engine with the same error code; and _ancestors, not siblings_ is the load-bearing distinction —
 two parallel nodes have no ordering guarantee, so a sibling's write is not a satisfied read even
 when it happens to land first.
 
 **Acceptance criteria**
 
 1. `validateDeclaredReads(g)` is pure: no clock, no I/O, no mutation of `g`, and it lives in
-   `@karvan/core`, which per [repo layout R1](../../16-repo-layout.md) depends on nothing capable of
+   `@DeFlow/core`, which per [repo layout R1](../../16-repo-layout.md) depends on nothing capable of
    impurity.
 2. A read satisfied by a **direct or transitive ancestor's** `writes` produces no error; the same
    read satisfied only by a **sibling's** `writes` produces `code: 'undeclared-read'`.
@@ -249,33 +249,33 @@ when it happens to land first.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Linear `recon → implement`: `implement` reads `finding/*`, `recon` writes `finding/auth-uses-jwt` → `[]` | The function does not exist |
-| 2 | unit | Same graph with the edge removed → one error `{ code: 'undeclared-read', node: 'implement', key: 'finding/*' }` | Reachability ignores edges |
-| 3 | unit | Two siblings `a` and `b` under one parent; `b` reads a key only `a` writes → one error | Reachability walks the whole graph instead of ancestors |
-| 4 | unit | Table-driven `satisfies()` over exact / prefix-glob / `ext:` / near-miss (`finding/auth` vs `finding/authz`) | Prefix matching is `startsWith` without a separator check |
-| 5 | unit | A node declaring `{ kind: 'spec', section: 'criteria' }` with no ancestors → `[]` | `PINNED_KEYS` not seeded |
-| 6 | unit | A plan with four independent undeclared reads returns four errors | The function returns early |
-| 7 | integration | A `PlanPatch` inserting a node whose read no ancestor writes is rejected, and `plan.patch.rejected` carries `rule: 'undeclared-read'` | The validator runs only at plan compile time |
-| 8 | unit | A generated 400-node `map` fan-out validates in < 50 ms | Ancestor sets are recomputed per read instead of per node |
+| #   | Level       | Test                                                                                                                                  | Red when                                                  |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 1   | unit        | Linear `recon → implement`: `implement` reads `finding/*`, `recon` writes `finding/auth-uses-jwt` → `[]`                              | The function does not exist                               |
+| 2   | unit        | Same graph with the edge removed → one error `{ code: 'undeclared-read', node: 'implement', key: 'finding/*' }`                       | Reachability ignores edges                                |
+| 3   | unit        | Two siblings `a` and `b` under one parent; `b` reads a key only `a` writes → one error                                                | Reachability walks the whole graph instead of ancestors   |
+| 4   | unit        | Table-driven `satisfies()` over exact / prefix-glob / `ext:` / near-miss (`finding/auth` vs `finding/authz`)                          | Prefix matching is `startsWith` without a separator check |
+| 5   | unit        | A node declaring `{ kind: 'spec', section: 'criteria' }` with no ancestors → `[]`                                                     | `PINNED_KEYS` not seeded                                  |
+| 6   | unit        | A plan with four independent undeclared reads returns four errors                                                                     | The function returns early                                |
+| 7   | integration | A `PlanPatch` inserting a node whose read no ancestor writes is rejected, and `plan.patch.rejected` carries `rule: 'undeclared-read'` | The validator runs only at plan compile time              |
+| 8   | unit        | A generated 400-node `map` fan-out validates in < 50 ms                                                                               | Ancestor sets are recomputed per read instead of per node |
 
 **Notes / risks** — the ancestor set is the only thing here with a performance trap: computing it
-per *read* rather than per *node* turns an O(V+E) walk into an O(V·E) one, which is invisible at
+per _read_ rather than per _node_ turns an O(V+E) walk into an O(V·E) one, which is invisible at
 ten nodes and painful at four hundred. Memoise per node.
 
 ---
 
 ### KAR-09.2 — Packet assembly under a token budget
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-09.1, KAR-09.3 (the pinned set is fill-order position 1 and cannot be added afterwards), KAR-09.7 (the Tier-2 estimator only — calibration can land later), KAR-06.3 |
-| **PRD** | F6.1, F6.2, F6.5, F10.3, F10.5, NF8, NF9 |
-| **Verified by** | EPIC-09-S6, EPIC-09-S7, EPIC-09-S8, EPIC-09-S9, EPIC-09-S10, EPIC-09-S11, EPIC-09-S12, EPIC-09-S13, EPIC-09-S28 |
+|                 |                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                                                                                              |
+| **Priority**    | P0                                                                                                                                                                       |
+| **Size**        | L                                                                                                                                                                        |
+| **Depends on**  | KAR-09.1, KAR-09.3 (the pinned set is fill-order position 1 and cannot be added afterwards), KAR-09.7 (the Tier-2 estimator only — calibration can land later), KAR-06.3 |
+| **PRD**         | F6.1, F6.2, F6.5, F10.3, F10.5, NF8, NF9                                                                                                                                 |
+| **Verified by** | EPIC-09-S6, EPIC-09-S7, EPIC-09-S8, EPIC-09-S9, EPIC-09-S10, EPIC-09-S11, EPIC-09-S12, EPIC-09-S13, EPIC-09-S28                                                          |
 
 **As** the orchestrator, **I want** each node's context assembled from its declarations into an
 addressable segment array under an explicit token budget, **so that** what the agent received is a
@@ -287,13 +287,13 @@ requirements are literally unsatisfiable against a flat blob, and the argument i
 [04-domain-model §6.1](../../04-domain-model.md). The budget is a fraction of the target adapter's
 declared `maxContext` from its F3.5 capability manifest: **default 0.5, never above 0.6**, because
 [§5.1](../../08-context-and-memory.md) shows the vendor's own summariser can consume up to 40k
-tokens on its own, so a post-compaction floor is *your packet plus up to 40k*. Fill order is fixed:
+tokens on its own, so a post-compaction floor is _your packet plus up to 40k_. Fill order is fixed:
 pinned segments, task brief, declared reads resolved from the blackboard, retrieved facts, artifact
 handles. When the budget is exceeded the rule is absolute — **offload, don't summarise**: demote a
 body to `artifact://<sha256>` in the largest-`tool.output`-first order, never compress it. Handles
 are lossless and cheap; summaries are lossy and unauditable. `render(segments) -> string` is pure,
 which is what makes golden-file packet tests free, and the one refinement worth taking from the
-OpenAI Agents SDK is *ordered interleaving*: a `history.summary` sits in the chronological position
+OpenAI Agents SDK is _ordered interleaving_: a `history.summary` sits in the chronological position
 of what it replaced rather than being lumped into a preamble.
 
 **Acceptance criteria**
@@ -315,7 +315,7 @@ of what it replaced rather than being lumped into a preamble.
    error naming the node and the pinned total; it does not demote, drop or truncate a pinned
    segment.
 7. `render(segments)` is deterministic and pure: 50 calls over the same input are byte-identical, it
-   reads no clock, and it produces the same bytes in `@karvan/core`'s unit slice as in the daemon.
+   reads no clock, and it produces the same bytes in `@DeFlow/core`'s unit slice as in the daemon.
 8. A `history.summary` segment renders at the chronological position of the segments it replaced,
    not appended at the top or bottom.
 9. **No implicit inheritance:** given a parent node whose full transcript exists in the ledger, the
@@ -327,22 +327,22 @@ of what it replaced rather than being lumped into a preamble.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Golden-file snapshot of a recon-archetype packet; assert `segments[0].pinned === true` | The builder appends pinned segments last |
-| 2 | unit | Golden-file snapshots for implement / gate / human / map-child archetypes | Archetype-specific fill differs from the spec |
-| 3 | unit | `render()` called 50 times over shuffled-key inputs returns one distinct string | Render iterates an unordered map |
-| 4 | unit | A packet with `fraction: 0.75` configured yields `budget.fraction === 0.6` plus a warning | The clamp is missing |
-| 5 | unit | Over-budget packet with one 40k `tool.output`, one 8k `retrieved`, one 2k `fact` → only the `tool.output` is demoted | Demotion order wrong or over-eager |
-| 6 | unit | Pinned-only packet exceeding the budget throws `PinnedSetExceedsBudget` naming the node | The builder demotes a pinned segment |
-| 7 | unit | A demotion-only build with a `FakeProvider` that throws on any call completes successfully | A summariser is on the demotion path |
-| 8 | unit | `history.summary` replacing segments 3–5 renders between segments 2 and 6 | Summaries are hoisted to a preamble |
-| 9 | integration | Parent node with a 100k transcript in the ledger; child packet's `contentHash` set is disjoint from it | Any inheritance path exists |
-| 10 | integration | After a build, `context.built`'s payload has no `text` key at any depth, and every `contentHash` resolves in the CAS | Texts are inlined into the event |
-| 11 | integration | `prompt.txt` on disk is byte-identical to `render(segments)` recomputed from the manifest | The render is not reproducible from the manifest |
+| #   | Level       | Test                                                                                                                 | Red when                                         |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | unit        | Golden-file snapshot of a recon-archetype packet; assert `segments[0].pinned === true`                               | The builder appends pinned segments last         |
+| 2   | unit        | Golden-file snapshots for implement / gate / human / map-child archetypes                                            | Archetype-specific fill differs from the spec    |
+| 3   | unit        | `render()` called 50 times over shuffled-key inputs returns one distinct string                                      | Render iterates an unordered map                 |
+| 4   | unit        | A packet with `fraction: 0.75` configured yields `budget.fraction === 0.6` plus a warning                            | The clamp is missing                             |
+| 5   | unit        | Over-budget packet with one 40k `tool.output`, one 8k `retrieved`, one 2k `fact` → only the `tool.output` is demoted | Demotion order wrong or over-eager               |
+| 6   | unit        | Pinned-only packet exceeding the budget throws `PinnedSetExceedsBudget` naming the node                              | The builder demotes a pinned segment             |
+| 7   | unit        | A demotion-only build with a `FakeProvider` that throws on any call completes successfully                           | A summariser is on the demotion path             |
+| 8   | unit        | `history.summary` replacing segments 3–5 renders between segments 2 and 6                                            | Summaries are hoisted to a preamble              |
+| 9   | integration | Parent node with a 100k transcript in the ledger; child packet's `contentHash` set is disjoint from it               | Any inheritance path exists                      |
+| 10  | integration | After a build, `context.built`'s payload has no `text` key at any depth, and every `contentHash` resolves in the CAS | Texts are inlined into the event                 |
+| 11  | integration | `prompt.txt` on disk is byte-identical to `render(segments)` recomputed from the manifest                            | The render is not reproducible from the manifest |
 
 **Notes / risks** — this is the largest story in the epic and the one most likely to grow. The
-discipline that keeps it bounded: the builder does *selection and ordering*; it does not
+discipline that keeps it bounded: the builder does _selection and ordering_; it does not
 tokenise (that is the `Tokenizer` port), it does not fetch (that is the blackboard and the CAS), and
 it does not summarise (nothing does, except the explicit continuation path). If a change makes
 `buildPacket` need a network call, the change is wrong.
@@ -351,19 +351,19 @@ it does not summarise (nothing does, except the explicit continuation path). If 
 
 ### KAR-09.3 — Constraint pinning and the integrity check
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-06.5 (the node runner must be able to fail a node with a typed reason) |
-| **PRD** | F6.6, F1.5, F5.3, F5.4 |
+|                 |                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                           |
+| **Priority**    | P0                                                                                                    |
+| **Size**        | M                                                                                                     |
+| **Depends on**  | KAR-06.5 (the node runner must be able to fail a node with a typed reason)                            |
+| **PRD**         | F6.6, F1.5, F5.3, F5.4                                                                                |
 | **Verified by** | EPIC-09-S8, EPIC-09-S14, EPIC-09-S15, EPIC-09-S16, EPIC-09-S17, EPIC-09-S18, EPIC-09-S19, EPIC-09-S20 |
 
 **As** the operator, **I want** the safety constraints, spec and path scopes to be uncompactable,
 rendered first, re-injected as identical bytes and verified by hash after rendering, **so that** the
 30% post-compaction constraint-violation rate measured in the literature is 0% in my runs, and so
-that the one case where the mechanism fails fails *loudly*.
+that the one case where the mechanism fails fails _loudly_.
 
 **This is the single highest-value story in the backlog.** The mechanism is
 [§4.1](../../08-context-and-memory.md) and it is about fifteen lines — `assertPinIntegrity` is
@@ -372,19 +372,19 @@ together and in the regression suite that keeps them enforced. The pinned set is
 things: the `TaskSpec` goal and non-goals (`pinned.spec`), the acceptance criteria (`pinned.spec`),
 the safety constraints from run config and the F5.6 execution-boundary rules
 (`pinned.constraints`), the declared path scopes (`pinned.pathscope`) and the node's permission
-level (`pinned.constraints`). Re-injection is **verbatim** — *"do not let a summariser paraphrase
+level (`pinned.constraints`). Re-injection is **verbatim** — _"do not let a summariser paraphrase
 them, do not reformat them, do not renumber a list. The paper's result is specifically about
-verbatim re-injection; a paraphrase is an untested intervention."* And the check runs against the
+verbatim re-injection; a paraphrase is an untested intervention."_ And the check runs against the
 **rendered output**, not against the manifest, because the failure this catches is a rendering path
 nobody expected. On mismatch the node fails with `reason: 'pin-integrity'` and **does not retry
-silently** — *"a pin that vanished is either a bug in the packet builder or a rendering path nobody
-expected, and both want a human."*
+silently** — _"a pin that vanished is either a bug in the packet builder or a rendering path nobody
+expected, and both want a human."_
 
 The regression suite is not optional polish. [§12](../../08-context-and-memory.md) specifies it:
 roughly **20 scenarios where a node carries a pinned prohibition and a plausible reason to violate
 it**, run against the mock agent with pinning enabled and disabled, asserting **zero violations with
-pinning enabled**. It *"turns the paper's finding into a standing guard rather than a one-time
-implementation, and it is the test that protects the highest-severity risk in PRD §13."*
+pinning enabled**. It _"turns the paper's finding into a standing guard rather than a one-time
+implementation, and it is the test that protects the highest-severity risk in PRD §13."_
 
 **Acceptance criteria**
 
@@ -399,8 +399,8 @@ implementation, and it is the test that protects the highest-severity risk in PR
 4. **Re-injection after any compaction is byte-identical.** The re-injected text's sha256 equals
    `Segment.contentHash` from the original build; a whitespace change, a reflowed line or a
    renumbered list is a failure, not a tolerance.
-5. `assertPinIntegrity(packet, rendered)` fails when *either* `sha256(seg.text) !== seg.contentHash`
-   *or* `!rendered.includes(seg.text)`, and it collects **all** violating segments before throwing —
+5. `assertPinIntegrity(packet, rendered)` fails when _either_ `sha256(seg.text) !== seg.contentHash`
+   _or_ `!rendered.includes(seg.text)`, and it collects **all** violating segments before throwing —
    the error carries `missingDigests: string[]` and `segmentIds: SegmentId[]`.
 6. On violation the node runner appends `pin.integrity_violated` with
    `{ node, attempt, missingDigests, segmentIds }` and fails the node with `reason: 'pin-integrity'`.
@@ -409,53 +409,53 @@ implementation, and it is the test that protects the highest-severity risk in PR
    the check ran and passed — and `ContextPacket.pinnedDigests` matches it.
 8. **The ConstraintRot suite exists**: ~20 scenarios, each a node with a pinned prohibition and a
    plausible in-scenario reason to violate it, graded deterministically on the mock agent's
-   *tool calls* (not on its prose). With pinning enabled the violation count is **0** across all
+   _tool calls_ (not on its prose). With pinning enabled the violation count is **0** across all
    scenarios. With pinning disabled via the suite's own flag, the count is **greater than zero** —
    otherwise the suite proves nothing about the mechanism.
 9. At least three of the ~20 scenarios exercise the `forbid` → `allow-only` restatement from
    KAR-09.4, so the two mitigations are tested together rather than in isolation.
-10. The suite runs offline against `@karvan/mock-agent` with `--seed`, in the `integration` project,
+10. The suite runs offline against `@DeFlow/mock-agent` with `--seed`, in the `integration` project,
     on every push.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `assertPinIntegrity` over a packet whose rendered string contains every pinned text → returns void | The function does not exist |
-| 2 | unit | A rendered string missing one pinned segment → throws `PinIntegrityViolation` with that one digest | The check passes on partial presence |
-| 3 | unit | Two pinned segments missing → the error carries **both** digests and both `SegmentId`s | The loop returns on the first miss |
-| 4 | unit | A segment whose `text` was mutated after build (`contentHash` stale) → throws even though the text is present in the render | Only `rendered.includes` is checked |
-| 5 | unit | A pinned segment paraphrased by a summariser stub → throws | Paraphrase tolerated |
-| 6 | unit | Demotion pass over a 3×-over-budget packet returns all pinned segments unchanged | Pinned segments are demotable |
-| 7 | unit | Golden render across all five archetypes: `pinned.*` kinds occupy the leading positions | Ordering is insertion-order dependent |
-| 8 | integration | Mock agent run where the builder is patched to drop a pin → ledger contains `pin.integrity_violated` then `node.failed` with `reason: 'pin-integrity'` and **no** `node.retry.scheduled` | The runner retries a pin failure |
-| 9 | integration | Successful run → `context.compacted.pinnedKept` equals `packet.pinnedDigests` | The positive evidence is never recorded |
-| 10 | integration | **ConstraintRot suite, pinning enabled**: 20 scenarios, `violations === 0` | Any mechanism above is incomplete |
-| 11 | integration | **ConstraintRot suite, pinning disabled**: `violations > 0` | The suite's scenarios are too weak to tempt a violation — fix the scenarios, not the assertion |
+| #   | Level       | Test                                                                                                                                                                                     | Red when                                                                                       |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | unit        | `assertPinIntegrity` over a packet whose rendered string contains every pinned text → returns void                                                                                       | The function does not exist                                                                    |
+| 2   | unit        | A rendered string missing one pinned segment → throws `PinIntegrityViolation` with that one digest                                                                                       | The check passes on partial presence                                                           |
+| 3   | unit        | Two pinned segments missing → the error carries **both** digests and both `SegmentId`s                                                                                                   | The loop returns on the first miss                                                             |
+| 4   | unit        | A segment whose `text` was mutated after build (`contentHash` stale) → throws even though the text is present in the render                                                              | Only `rendered.includes` is checked                                                            |
+| 5   | unit        | A pinned segment paraphrased by a summariser stub → throws                                                                                                                               | Paraphrase tolerated                                                                           |
+| 6   | unit        | Demotion pass over a 3×-over-budget packet returns all pinned segments unchanged                                                                                                         | Pinned segments are demotable                                                                  |
+| 7   | unit        | Golden render across all five archetypes: `pinned.*` kinds occupy the leading positions                                                                                                  | Ordering is insertion-order dependent                                                          |
+| 8   | integration | Mock agent run where the builder is patched to drop a pin → ledger contains `pin.integrity_violated` then `node.failed` with `reason: 'pin-integrity'` and **no** `node.retry.scheduled` | The runner retries a pin failure                                                               |
+| 9   | integration | Successful run → `context.compacted.pinnedKept` equals `packet.pinnedDigests`                                                                                                            | The positive evidence is never recorded                                                        |
+| 10  | integration | **ConstraintRot suite, pinning enabled**: 20 scenarios, `violations === 0`                                                                                                               | Any mechanism above is incomplete                                                              |
+| 11  | integration | **ConstraintRot suite, pinning disabled**: `violations > 0`                                                                                                                              | The suite's scenarios are too weak to tempt a violation — fix the scenarios, not the assertion |
 
 **Notes / risks** — the arXiv figures carry an explicit citation caveat
 ([§4](../../08-context-and-memory.md)): they were obtained by search-engine indexing of the abstract
 and HTML pages, not by reading the PDF, because `arxiv.org` and `export.arxiv.org` are both
 unreachable from the verification environment. **Re-verify before quoting them publicly.** Note what
-this does and does not affect: the *mechanism* is cheap and obviously sound regardless of the exact
-percentages, and the ConstraintRot suite measures Karvan's own violation rate directly, so the story
+this does and does not affect: the _mechanism_ is cheap and obviously sound regardless of the exact
+percentages, and the ConstraintRot suite measures DeFlow's own violation rate directly, so the story
 does not depend on the paper's numbers being right — only its motivation does.
 
 The second risk is suite quality. A scenario where the agent has no real incentive to violate the
 prohibition passes trivially and teaches nothing; AC 11 exists precisely to catch that, and a failing
-"pinning disabled" run is a signal to strengthen the *scenarios*.
+"pinning disabled" run is a signal to strengthen the _scenarios_.
 
 ---
 
 ### KAR-09.4 — Prohibition-to-requirement rewriting and interval re-injection
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-09.3, KAR-05.1 (mid-session continuation on the ACP path) |
-| **PRD** | F6.6, F1.5, F8.5 |
+|                 |                                                                              |
+| --------------- | ---------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                  |
+| **Priority**    | P0                                                                           |
+| **Size**        | M                                                                            |
+| **Depends on**  | KAR-09.3, KAR-05.1 (mid-session continuation on the ACP path)                |
+| **PRD**         | F6.6, F1.5, F8.5                                                             |
 | **Verified by** | EPIC-09-S20, EPIC-09-S21, EPIC-09-S22, EPIC-09-S23, EPIC-09-S24, EPIC-09-S25 |
 
 **As** the operator, **I want** every prohibition mechanically restated as a positive requirement
@@ -463,17 +463,17 @@ and the pinned set re-injected on a turn interval rather than only on compaction
 half of the decay problem that pinning does not touch — prohibitions rotting with turn depth — is
 also covered.
 
-[§4.2](../../08-context-and-memory.md) is a *distinct* failure mode from compaction deletion, which
-is why the PRD's phrase in F6.6, *"distinct from ordinary long-context attention dilution"*, is
+[§4.2](../../08-context-and-memory.md) is a _distinct_ failure mode from compaction deletion, which
+is why the PRD's phrase in F6.6, _"distinct from ordinary long-context attention dilution"_, is
 correct: you need both mitigations, not one. Omission compliance falls from **73% at turn 5 to 33%
 at turn 16**; commission compliance holds at **100%**. Two mechanisms follow. **(a)** Re-inject the
 pinned set every `pinReinjectTurns` turns (default **8**, configurable per provider in
-`.karvan/config.yaml`), delivered as an appended turn carrying the pinned segments verbatim where
+`.DeFlow/config.yaml`), delivered as an appended turn carrying the pinned segments verbatim where
 the adapter supports mid-session steering, and enforced by keeping nodes short where it does not —
-*"a node that runs 30 turns without a re-injection point is a planning smell, and the packet builder
-should warn."* **(b)** Restate prohibitions positively **at build time**, as a transformation, *"not
+_"a node that runs 30 turns without a re-injection point is a planning smell, and the packet builder
+should warn."_ **(b)** Restate prohibitions positively **at build time**, as a transformation, _"not
 as a style guideline for whoever writes the spec … so it happens even when a human wrote the
-constraint carelessly."* Constraints are therefore authored as structured objects
+constraint carelessly."_ Constraints are therefore authored as structured objects
 (`allow-only` | `require` | `forbid`), which makes the transformation a render choice rather than
 NLP. `forbid` survives as a last resort for constraints with no closed positive form ("do not
 exfiltrate credentials"); those render **last** among the pinned constraints and are **counted**,
@@ -487,15 +487,15 @@ because a rising `forbid` ratio is a leading indicator of exactly the decay this
    and the packet builder renders each form through a fixed template — there is no free-prose path
    into a `pinned.constraints` segment.
 2. The four documented restatements render exactly as specified: a write-path scope renders as
-   *"**only** write files under `src/checkout/**`"*, a command restriction as *"run **only** the
-   commands listed in the allowed-commands set"*, a branch restriction as *"commit **only** to
-   `karvan/<runId>__<nodeId>`"*, and an attempt cap as *"stop after at most 3 fix attempts and
-   escalate to a human"*.
+   _"**only** write files under `src/checkout/**`"_, a command restriction as _"run **only** the
+   commands listed in the allowed-commands set"_, a branch restriction as _"commit **only** to
+   `DeFlow/<runId>__<nodeId>`"_, and an attempt cap as _"stop after at most 3 fix attempts and
+   escalate to a human"_.
 3. A `forbid` constraint renders after every `allow-only` and `require` constraint within the pinned
    block, in every archetype.
-4. The packet builder records the `forbid` count and the `allow-only` count per build; `karvan
-   doctor` reports the ratio for the loaded spec.
-5. `pinReinjectTurns` is read per provider from `.karvan/config.yaml`, defaults to `8`, and where
+4. The packet builder records the `forbid` count and the `allow-only` count per build; `DeFlow
+doctor` reports the ratio for the loaded spec.
+5. `pinReinjectTurns` is read per provider from `.DeFlow/config.yaml`, defaults to `8`, and where
    the adapter advertises mid-session steering the re-injection is an appended turn whose text is
    byte-identical to the original pinned segments (KAR-09.3 AC 4 applies to it).
 6. Where the adapter does **not** support mid-session steering, no re-injection turn is attempted;
@@ -510,17 +510,17 @@ because a rising `forbid` ratio is a leading indicator of exactly the decay this
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Table-driven over the four documented rows: `restate(constraint)` returns the exact positive string | The transformation does not exist |
-| 2 | unit | A `forbid` constraint with two `allow-only` siblings renders third | Ordering is authoring order |
-| 3 | unit | `render()` refuses a `pinned.constraints` segment built from a raw string | A prose escape hatch exists |
-| 4 | unit | Build counts `{ forbid: 1, allowOnly: 3 }` and exposes them on the build result | Counting is absent |
-| 5 | integration | `karvan doctor` output contains the forbid ratio for a fixture spec | Doctor does not report it |
-| 6 | integration | Mock agent advertising steering, node scripted for 20 turns → re-injection turns appear at turns 8 and 16, each byte-identical to the original | The interval is not implemented |
-| 7 | integration | Mock agent with steering **not** advertised, 20-turn node → zero injection turns and exactly one planning warning | The client attempts an unsupported call |
-| 8 | unit | Compaction re-injection at turn 7 then interval tick at turn 8 → one injection, counter reset | The two paths double-inject |
-| 9 | integration | Gate node whose agent context omits the spec still evaluates against the ledger's criteria | The gate reads context instead of the ledger |
+| #   | Level       | Test                                                                                                                                           | Red when                                     |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| 1   | unit        | Table-driven over the four documented rows: `restate(constraint)` returns the exact positive string                                            | The transformation does not exist            |
+| 2   | unit        | A `forbid` constraint with two `allow-only` siblings renders third                                                                             | Ordering is authoring order                  |
+| 3   | unit        | `render()` refuses a `pinned.constraints` segment built from a raw string                                                                      | A prose escape hatch exists                  |
+| 4   | unit        | Build counts `{ forbid: 1, allowOnly: 3 }` and exposes them on the build result                                                                | Counting is absent                           |
+| 5   | integration | `DeFlow doctor` output contains the forbid ratio for a fixture spec                                                                            | Doctor does not report it                    |
+| 6   | integration | Mock agent advertising steering, node scripted for 20 turns → re-injection turns appear at turns 8 and 16, each byte-identical to the original | The interval is not implemented              |
+| 7   | integration | Mock agent with steering **not** advertised, 20-turn node → zero injection turns and exactly one planning warning                              | The client attempts an unsupported call      |
+| 8   | unit        | Compaction re-injection at turn 7 then interval tick at turn 8 → one injection, counter reset                                                  | The two paths double-inject                  |
+| 9   | integration | Gate node whose agent context omits the spec still evaluates against the ledger's criteria                                                     | The gate reads context instead of the ledger |
 
 **Notes / risks** — the turn counter is the subtle part. On the ACP path a "turn" is a
 `session/prompt` continuation; on the exec-shim path there may be no observable turn boundary at all.
@@ -532,31 +532,31 @@ it says so rather than silently no-oping.
 
 ### KAR-09.5 — Artifact offloading and handle resolution
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-09.2, KAR-03.4 (the blob store and the io_chunk split), KAR-05.6 (the MCP host that exposes the tool) |
-| **PRD** | F6.5, NF8 |
-| **Verified by** | EPIC-09-S26, EPIC-09-S27, EPIC-09-S28, EPIC-09-S29 |
+|                 |                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                               |
+| **Priority**    | P0                                                                                                        |
+| **Size**        | M                                                                                                         |
+| **Depends on**  | KAR-09.2, KAR-03.4 (the blob store and the io_chunk split), KAR-05.6 (the MCP host that exposes the tool) |
+| **PRD**         | F6.5, NF8                                                                                                 |
+| **Verified by** | EPIC-09-S26, EPIC-09-S27, EPIC-09-S28, EPIC-09-S29                                                        |
 
 **As** an agent, **I want** large bodies replaced by a described handle I can pull on demand,
 **so that** a 38 KB build log costs me one line of context instead of a third of my window, and
 nothing is lost when I need the whole thing.
 
-[§5.2](../../08-context-and-memory.md) again: *"handles are lossless and cheap; summaries are lossy
-and unauditable."* The store is content-addressed under `runs/<runId>/artifacts/<sha256>/`; the
+[§5.2](../../08-context-and-memory.md) again: _"handles are lossless and cheap; summaries are lossy
+and unauditable."_ The store is content-addressed under `runs/<runId>/artifacts/<sha256>/`; the
 handle grammar is [04-domain-model §1](../../04-domain-model.md)'s `Handle` —
 `artifact://<64 hex sha256>` or `file://<repo-relative path>#L12-L40` — and is immutable by
 construction. The rendered form carries enough for the agent to decide whether to pull it:
 
 ```
 artifact://3f2a…c91  build-log for `pnpm -r build` (fail)  · 412 lines · 38.4 KB
-  → pull with the `karvan_read_artifact` MCP tool
+  → pull with the `DeFlow_read_artifact` MCP tool
 ```
 
-The resolution path is the MCP host Karvan already runs (D9), injected over stdio via `mcpServers`
+The resolution path is the MCP host DeFlow already runs (D9), injected over stdio via `mcpServers`
 in `session/new` — which is the variant [07 §7.1](../../07-provider-adapter-layer.md) picked
 precisely because all five probed agents accept it and not one advertised `mcpCapabilities.acp`.
 
@@ -567,8 +567,8 @@ precisely because all five probed agents accept it and not one advertised `mcpCa
 2. Two identical bodies produce one CAS entry and one `artifact://` handle — content addressing is
    real deduplication, not a naming convention.
 3. The rendered handle line contains the truncated digest, the description, the line count and the
-   byte size, and names `karvan_read_artifact` as the retrieval route.
-4. `karvan_read_artifact` resolves an `artifact://` handle to the full body, and a
+   byte size, and names `DeFlow_read_artifact` as the retrieval route.
+4. `DeFlow_read_artifact` resolves an `artifact://` handle to the full body, and a
    `file://path#L12-L40` handle to exactly that line range of the worktree file, honouring the
    node's permission level — a `read`-level node cannot use it to reach outside its scope.
 5. An unresolvable handle returns a typed MCP error naming the digest; it never returns an empty
@@ -580,52 +580,52 @@ precisely because all five probed agents accept it and not one advertised `mcpCa
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | A 40 KB `tool.output` becomes an `artifact.handle` segment whose `text` is the handle line only | Bodies are inlined |
-| 2 | integration | Two nodes writing identical 1 MB logs produce one directory under `runs/<runId>/artifacts/` | Hashing is per-node or salted |
-| 3 | unit | Snapshot of the rendered handle line against the documented format | Format drift |
-| 4 | integration | Mock agent calls `karvan_read_artifact` over stdio MCP and receives the full 412-line body | The tool is not wired into `session/new` |
-| 5 | integration | A `read`-level node calling the tool with a `file://` handle outside its scope gets a permission error | Handle resolution bypasses the ladder |
-| 6 | integration | Unknown digest → typed MCP error containing the digest | Empty body returned |
-| 7 | unit | Offload-heavy build with a provider stub that throws on call → completes | A summariser is on the path |
+| #   | Level       | Test                                                                                                   | Red when                                 |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| 1   | unit        | A 40 KB `tool.output` becomes an `artifact.handle` segment whose `text` is the handle line only        | Bodies are inlined                       |
+| 2   | integration | Two nodes writing identical 1 MB logs produce one directory under `runs/<runId>/artifacts/`            | Hashing is per-node or salted            |
+| 3   | unit        | Snapshot of the rendered handle line against the documented format                                     | Format drift                             |
+| 4   | integration | Mock agent calls `DeFlow_read_artifact` over stdio MCP and receives the full 412-line body             | The tool is not wired into `session/new` |
+| 5   | integration | A `read`-level node calling the tool with a `file://` handle outside its scope gets a permission error | Handle resolution bypasses the ladder    |
+| 6   | integration | Unknown digest → typed MCP error containing the digest                                                 | Empty body returned                      |
+| 7   | unit        | Offload-heavy build with a provider stub that throws on call → completes                               | A summariser is on the path              |
 
 **Notes / risks** — the permission interaction in AC 4 is the one place this story reaches into
-[EPIC-08](./EPIC-08-safety-model.md). `karvan_read_artifact` is a Karvan-hosted tool, so it is
-*outside* the ACP `fs/*` mediation path and needs its own check. That is easy to forget and would
+[EPIC-08](./EPIC-08-safety-model.md). `DeFlow_read_artifact` is a DeFlow-hosted tool, so it is
+_outside_ the ACP `fs/*` mediation path and needs its own check. That is easy to forget and would
 be a genuine scope escape: a `read` node that cannot open a file with `fs/read_text_file` must not
-be able to open it by asking Karvan nicely.
+be able to open it by asking DeFlow nicely.
 
 ---
 
 ### KAR-09.6 — Compaction events with fidelity discrimination
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-09.2, KAR-05.1 / KAR-05.8 (the stream parsers that surface `compact_boundary` and the result envelope), KAR-04.5 (fixture replay) |
-| **PRD** | F6.6, F10.5, NF10 |
-| **Verified by** | EPIC-09-S30, EPIC-09-S31, EPIC-09-S32, EPIC-09-S33, EPIC-09-S34, EPIC-09-S35 |
+|                 |                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                           |
+| **Priority**    | P0                                                                                                                                    |
+| **Size**        | M                                                                                                                                     |
+| **Depends on**  | KAR-09.2, KAR-05.1 / KAR-05.8 (the stream parsers that surface `compact_boundary` and the result envelope), KAR-04.5 (fixture replay) |
+| **PRD**         | F6.6, F10.5, NF10                                                                                                                     |
+| **Verified by** | EPIC-09-S30, EPIC-09-S31, EPIC-09-S32, EPIC-09-S33, EPIC-09-S34, EPIC-09-S35                                                          |
 
 **As** the operator, **I want** compaction recorded as an event that says honestly how much it
-knows, **so that** I can tell the difference between a number Karvan measured and a number Karvan
+knows, **so that** I can tell the difference between a number DeFlow measured and a number DeFlow
 guessed — and so that the UI never draws a bar it made up.
 
-Because of AR-1 Karvan owns exactly half this problem, and
+Because of AR-1 DeFlow owns exactly half this problem, and
 [§6](../../08-context-and-memory.md) is unusually blunt about the other half. Claude Code does
 surface compaction in `--output-format stream-json` as
 `{ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual' | 'auto',
 pre_tokens: number }, uuid, session_id }` — **verified 2026-08-02 from the binary's zod schemas** —
 but **`compact_metadata` carries `pre_tokens` only**. There is no `post_tokens`, no list of what was
-dropped, and no handle to the pre-compaction transcript. So F6.6's wording is *fully achievable only
-for Karvan's own packet-level compaction*, and the honest response is a discriminator in the type:
+dropped, and no handle to the pre-compaction transcript. So F6.6's wording is _fully achievable only
+for DeFlow's own packet-level compaction_, and the honest response is a discriminator in the type:
 `fidelity: 'exact' | 'partial'`, with `after: number | null`, `droppedSegments: []` and
 `demotedToHandles: []` on the vendor path. **A chart with a fabricated "after" number is worse than
 an honest gap.** §6.2's partial recovery — take the next assistant turn's
 `modelUsage[model].inputTokens` as an approximate post-compaction figure — is allowed, but it is
-stored as `after` with `fidelity: 'partial'` and labelled *inferred* everywhere it is displayed, and
+stored as `after` with `fidelity: 'partial'` and labelled _inferred_ everywhere it is displayed, and
 **never promoted to `'exact'`**. §6.3's transcript snapshot (copy
 `~/.claude/projects/<project>/<session_id>.jsonl` into the run's artifact store on receiving the
 boundary frame) gives F6.6's `originalHandle` for the cost of one file copy — and is **Unverified**,
@@ -633,7 +633,7 @@ so a missing file is `originalHandle: null`, not an error.
 
 **Acceptance criteria**
 
-1. A Karvan packet-level compaction appends `context.compacted` with `scope: 'karvan.packet'`,
+1. A DeFlow packet-level compaction appends `context.compacted` with `scope: 'DeFlow.packet'`,
    `fidelity: 'exact'`, a measured `before` and `after`, the full `droppedSegments: SegmentId[]`,
    the full `demotedToHandles: Handle[]`, `pinnedKept` and an `originalHandle` pointing at the
    pre-compaction manifest blob.
@@ -642,13 +642,13 @@ so a missing file is `originalHandle: null`, not an error.
    `droppedSegments: []` and `demotedToHandles: []`. **The event never carries a fabricated `after`
    or an invented dropped list.**
 3. `trigger` maps `compact_metadata.trigger: 'auto'` to `'vendor.auto'` and `'manual'` to
-   `'manual'`; Karvan's own threshold-driven compaction is `'threshold'`.
+   `'manual'`; DeFlow's own threshold-driven compaction is `'threshold'`.
 4. When the next result envelope arrives, `after` may be filled from
    `modelUsage[model].inputTokens`, and the event stays `fidelity: 'partial'`. **There is no code
    path that sets `fidelity: 'exact'` on a `vendor.session` event** — enforced by a type-level
    discriminated union, not by discipline.
 5. The UI contract this epic owns: for `fidelity: 'partial'` the consumer must render the `before`
-   bar solid and the `after` bar hatched and labelled *inferred*, plus a plain sentence stating the
+   bar solid and the `after` bar hatched and labelled _inferred_, plus a plain sentence stating the
    vendor does not report what it dropped. A `partial` event that renders as a solid two-bar chart
    is a defect in [EPIC-17](./EPIC-17-p0-views.md), and the fixture that proves it lives here.
 6. On `compact_boundary`, the JSONL transcript is copied into the run's artifact store and its
@@ -664,48 +664,48 @@ so a missing file is `originalHandle: null`, not an error.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Parse a committed `compact_boundary` frame → `{ scope: 'vendor.session', fidelity: 'partial', before: <pre_tokens>, after: null }` | The parser does not exist |
-| 2 | unit | Type test: constructing `{ scope: 'vendor.session', fidelity: 'exact' }` does not compile | The union is not discriminated |
-| 3 | unit | Karvan-side compaction over a known packet → exact before/after and the precise `SegmentId` list | `droppedSegments` derived by diffing strings |
-| 4 | integration | Replay the fixture stream through the mock agent → ledger has the partial event; then the following result envelope fills `after` and `fidelity` is still `'partial'` | Inference promotes fidelity |
-| 5 | integration | Snapshot the projected F10.5 payload for a partial event: the `after` field is flagged `inferred: true` | The flag is lost in projection |
-| 6 | browser | Render the compaction fixture: the partial case shows a hatched, labelled bar and the explanatory sentence; no solid `after` bar exists in the DOM | The view fabricates a number |
-| 7 | integration | `compact_boundary` with the transcript file deliberately absent → `originalHandle: null`, run continues, no error event | A missing snapshot fails the node |
-| 8 | contract | Adapter conformance assertion over the decoded constants: setting `autocompactPct: 95` does not move the threshold later than the default | A policy assumes the override can extend a session |
-| 9 | integration | `read` node with `DISABLE_AUTO_COMPACT=1` → the flag appears in the node's scheduling record | The opt-in is invisible after the fact |
+| #   | Level       | Test                                                                                                                                                                  | Red when                                           |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | unit        | Parse a committed `compact_boundary` frame → `{ scope: 'vendor.session', fidelity: 'partial', before: <pre_tokens>, after: null }`                                    | The parser does not exist                          |
+| 2   | unit        | Type test: constructing `{ scope: 'vendor.session', fidelity: 'exact' }` does not compile                                                                             | The union is not discriminated                     |
+| 3   | unit        | DeFlow-side compaction over a known packet → exact before/after and the precise `SegmentId` list                                                                      | `droppedSegments` derived by diffing strings       |
+| 4   | integration | Replay the fixture stream through the mock agent → ledger has the partial event; then the following result envelope fills `after` and `fidelity` is still `'partial'` | Inference promotes fidelity                        |
+| 5   | integration | Snapshot the projected F10.5 payload for a partial event: the `after` field is flagged `inferred: true`                                                               | The flag is lost in projection                     |
+| 6   | browser     | Render the compaction fixture: the partial case shows a hatched, labelled bar and the explanatory sentence; no solid `after` bar exists in the DOM                    | The view fabricates a number                       |
+| 7   | integration | `compact_boundary` with the transcript file deliberately absent → `originalHandle: null`, run continues, no error event                                               | A missing snapshot fails the node                  |
+| 8   | contract    | Adapter conformance assertion over the decoded constants: setting `autocompactPct: 95` does not move the threshold later than the default                             | A policy assumes the override can extend a session |
+| 9   | integration | `read` node with `DISABLE_AUTO_COMPACT=1` → the flag appears in the node's scheduling record                                                                          | The opt-in is invisible after the fact             |
 
 **Notes / risks** — every constant here came from **one** shipping bundle (Claude Code 2.1.220),
 they are private implementation details with no compatibility guarantee, and they **will** change.
 Nothing in the implementation may hardcode a window size: read `modelUsage[m].contextWindow` and
 `maxOutputTokens` from the envelope at runtime and assert the rest in the F3.4 conformance suite so
-drift is caught by `karvan doctor` and not by a failed three-hour run. The `~/.claude/projects/…`
+drift is caught by `DeFlow doctor` and not by a failed three-hour run. The `~/.claude/projects/…`
 path in AC 6 is explicitly **Unverified** — confirm it in the M0 spike and treat absence as normal.
 
 ---
 
 ### KAR-09.7 — Token accounting in three tiers with self-calibration
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-05.2 (the persisted capability manifest that stores `tokenAccounting` and `tokenEstimateFactor`) |
-| **PRD** | F9.1, F9.3, F10.5, NF1, NF6 |
-| **Verified by** | EPIC-09-S36, EPIC-09-S37, EPIC-09-S38, EPIC-09-S39, EPIC-09-S40, EPIC-09-S41 |
+|                 |                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                          |
+| **Priority**    | P0                                                                                                   |
+| **Size**        | M                                                                                                    |
+| **Depends on**  | KAR-05.2 (the persisted capability manifest that stores `tokenAccounting` and `tokenEstimateFactor`) |
+| **PRD**         | F9.1, F9.3, F10.5, NF1, NF6                                                                          |
+| **Verified by** | EPIC-09-S36, EPIC-09-S37, EPIC-09-S38, EPIC-09-S39, EPIC-09-S40, EPIC-09-S41                         |
 
 **As** the planner and the cost view, **I want** three clearly-labelled measurement tiers and an
 estimator that teaches itself the per-model correction factor, **so that** a pre-flight budget stops
 systematically overfilling Anthropic contexts and every displayed number says how it was obtained.
 
 [§7](../../08-context-and-memory.md): you do not own the model call, so exact tokenisation is
-impossible for planning and available only post-hoc — *"build the accounting around that fact, and
-never silently mix the tiers."* **Tier 1** is billing truth from the CLI result envelope, and the
+impossible for planning and available only post-hoc — _"build the accounting around that fact, and
+never silently mix the tiers."_ **Tier 1** is billing truth from the CLI result envelope, and the
 trap is that `usage` is typed `z.unknown()` in the CLI's own schema — a raw passthrough with no
 shape guarantee — while `modelUsage` **is** typed and carries `contextWindow` and `maxOutputTokens`,
-*"which means you never hardcode a window-size table."* Codex's equivalent is `turn.completed`'s
+_"which means you never hardcode a window-size table."_ Codex's equivalent is `turn.completed`'s
 `usage: { input_tokens, cached_input_tokens, output_tokens }` plus cumulative `token_count` events.
 **Tier 2** is `gpt-tokenizer@3.4.0`'s `o200k_base` via the **encoding-specific entrypoint**
 (`import { countTokens } from 'gpt-tokenizer/encoding/o200k_base'`) so the daemon does not pull every
@@ -716,7 +716,7 @@ an EWMA of `actual / estimated` per (provider, model) with `ALPHA = 0.2`, seeded
 `{ anthropic: 1.2, openai: 1.0, default: 1.05 }` until `n >= 5`, converging within a few percent
 after roughly 20 nodes. **Tier 3** is Anthropic's exact `POST /v1/messages/count_tokens`, and it is
 available **only** on the explicit API-key adapter path — under AR-1 there is no code path in
-`karvand` that reads a token file or sets an auth env var to make this call work.
+`DeFlowd` that reads a token file or sets an auth env var to make this call work.
 
 **Acceptance criteria**
 
@@ -728,7 +728,7 @@ available **only** on the explicit API-key adapter path — under AR-1 there is 
 3. Tier 2 imports the encoding-specific entrypoint; a bundle-size assertion catches a regression to
    the barrel import.
 4. `update(c, estimated, actual)` implements the documented EWMA exactly: `observed = actual /
-   estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0.2`, and
+estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0.2`, and
    `estimated <= 0` returns the calibration unchanged.
 5. Until `n >= 5` the seed for the provider family is used (`anthropic: 1.2`, `openai: 1.0`,
    `default: 1.05`); from `n >= 5` the learned ratio is used.
@@ -743,28 +743,28 @@ available **only** on the explicit API-key adapter path — under AR-1 there is 
 9. `tokenAccounting: 'none'` in a capability manifest produces a **blank** cost cell in the
    projected payload, not a zero — the honest degradation from
    [§7](../../08-context-and-memory.md).
-10. `karvan doctor` prints the current factor and sample count per (provider, model).
+10. `DeFlow doctor` prints the current factor and sample count per (provider, model).
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `countTokens` over a fixture string returns a stable number tagged `method: 'gpt-tokenizer/o200k_base'` | The port does not exist |
-| 2 | unit | Parse a committed `result` envelope → `inputTokens`, `contextWindow`, `maxOutputTokens` from `modelUsage`; `usage` untouched | The parser reads `usage` |
-| 3 | unit | Parse a Codex `turn.completed` → `{ input_tokens, cached_input_tokens, output_tokens }` normalised to the same shape | Codex path unimplemented |
-| 4 | unit | `update()` table-driven: first sample, blended sample, `estimated = 0` no-op | The EWMA is wrong or divides by zero |
-| 5 | unit | **Convergence**: 25 samples at true ratio 1.18 from seed 1.2 → factor within ±0.02 of 1.18 by sample 20, and never oscillates outside the interval afterwards | `ALPHA` wrong or the seed is sticky |
-| 6 | unit | With `n = 3`, the seed is used; with `n = 5`, the learned ratio is used | The threshold is off by one |
-| 7 | integration | Restart the daemon; the factor for `(claude, <model>)` is unchanged | The factor lives in memory |
-| 8 | integration | Full mock-agent run on the subscription path with an HTTP spy → zero requests to any Anthropic endpoint | Tier 3 leaks onto the subscription path |
-| 9 | unit | A manifest with `tokenAccounting: 'none'` projects a `null` cost, and the projection type forbids `0` | Zero is used as "unknown" |
-| 10 | integration | `karvan doctor` output contains the factor and sample count | Doctor does not report it |
+| #   | Level       | Test                                                                                                                                                          | Red when                                |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 1   | unit        | `countTokens` over a fixture string returns a stable number tagged `method: 'gpt-tokenizer/o200k_base'`                                                       | The port does not exist                 |
+| 2   | unit        | Parse a committed `result` envelope → `inputTokens`, `contextWindow`, `maxOutputTokens` from `modelUsage`; `usage` untouched                                  | The parser reads `usage`                |
+| 3   | unit        | Parse a Codex `turn.completed` → `{ input_tokens, cached_input_tokens, output_tokens }` normalised to the same shape                                          | Codex path unimplemented                |
+| 4   | unit        | `update()` table-driven: first sample, blended sample, `estimated = 0` no-op                                                                                  | The EWMA is wrong or divides by zero    |
+| 5   | unit        | **Convergence**: 25 samples at true ratio 1.18 from seed 1.2 → factor within ±0.02 of 1.18 by sample 20, and never oscillates outside the interval afterwards | `ALPHA` wrong or the seed is sticky     |
+| 6   | unit        | With `n = 3`, the seed is used; with `n = 5`, the learned ratio is used                                                                                       | The threshold is off by one             |
+| 7   | integration | Restart the daemon; the factor for `(claude, <model>)` is unchanged                                                                                           | The factor lives in memory              |
+| 8   | integration | Full mock-agent run on the subscription path with an HTTP spy → zero requests to any Anthropic endpoint                                                       | Tier 3 leaks onto the subscription path |
+| 9   | unit        | A manifest with `tokenAccounting: 'none'` projects a `null` cost, and the projection type forbids `0`                                                         | Zero is used as "unknown"               |
+| 10  | integration | `DeFlow doctor` output contains the factor and sample count                                                                                                   | Doctor does not report it               |
 
 **Notes / risks** — the dead ends are worth restating because two of them look authoritative:
 `@anthropic-ai/tokenizer` is still **0.0.4** and implements only the Claude 1/2-era BPE — the package
 name is a trap; `js-tiktoken@1.0.21` works but is slower with no accuracy gain; `tiktoken` /
 `@dqbd/tiktoken@1.0.22` add a wasm binary for no accuracy gain; shelling out to Python adds a Python
-dependency to `npx karvan up` and *still* is not exact for Claude. There is no public exact tokenizer
+dependency to `npx DeFlow up` and _still_ is not exact for Claude. There is no public exact tokenizer
 for Claude 3+. Accept it and calibrate.
 
 Token accounting for Copilot, Gemini/Antigravity, Cursor and OpenCode is **Unverified** (roadmap
@@ -777,14 +777,14 @@ manifest fields, not code branches, so the degradation is data-driven.
 
 ### KAR-09.8 — The blackboard as a ledger projection, with invalidation
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-03.5 (the pure reducer), KAR-03.2 (migrations), KAR-02.5 (`Fact` and the blackboard vocabulary) |
-| **PRD** | F6.3, F10.4, NF9, NF10 |
-| **Verified by** | EPIC-09-S42, EPIC-09-S43, EPIC-09-S44, EPIC-09-S45 |
+|                 |                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                         |
+| **Priority**    | P0                                                                                                  |
+| **Size**        | M                                                                                                   |
+| **Depends on**  | KAR-03.5 (the pure reducer), KAR-03.2 (migrations), KAR-02.5 (`Fact` and the blackboard vocabulary) |
+| **PRD**         | F6.3, F10.4, NF9, NF10                                                                              |
+| **Verified by** | EPIC-09-S42, EPIC-09-S43, EPIC-09-S44, EPIC-09-S45                                                  |
 
 **As** the memory graph and the packet builder, **I want** facts to live in the ledger with the
 `fact` and `fact_edges` tables as a droppable materialised view, **so that** every read and write is
@@ -793,15 +793,15 @@ an auditable edge and F10.4's graph is one query rather than a separate instrume
 [§8](../../08-context-and-memory.md) and [04-domain-model §5](../../04-domain-model.md). The
 vocabulary is six fixed kinds — `finding`, `decision`, `artifact`, `scope`, `risk`, `verdict` — plus
 one `ext:<namespace>/<key>` free space that is **schema-validated but not enumerated** against a
-registered `schemaId` in `.karvan/schemas/`. Every fact carries `Provenance`: `byNode`, `byProvider`,
+registered `schemaId` in `.DeFlow/schemas/`. Every fact carries `Provenance`: `byNode`, `byProvider`,
 `byModel` (verbatim as the adapter reported it), `fromEvidence: Handle[]`, `atEvent`, and a
 `confidence` of `asserted | verified | speculative`. The absolute rule is that the tables are a
-projection: *"if the blackboard ever becomes independently mutable, NF9 and NF10 are both gone —
-this is the constraint, not a preference."* Invalidation is where judgement enters: because every
+projection: _"if the blackboard ever becomes independently mutable, NF9 and NF10 are both gone —
+this is the constraint, not a preference."_ Invalidation is where judgement enters: because every
 read is an event, the consumer set is one indexed query over `fact_edges`, and every node in it is
-marked `taint: 'stale-input'` — but **not re-run**. *"Auto-re-running on invalidation is how you
+marked `taint: 'stale-input'` — but **not re-run**. _"Auto-re-running on invalidation is how you
 build a system that loops forever for reasons no human can reconstruct — and it interacts badly with
-F4.6 budget ceilings."* Flag, surface in the F8.3 approval queue, let the patch policy decide.
+F4.6 budget ceilings."_ Flag, surface in the F8.3 approval queue, let the patch policy decide.
 
 **Acceptance criteria**
 
@@ -814,8 +814,8 @@ F4.6 budget ceilings."* Flag, surface in the F8.3 approval queue, let the patch 
    asserted by a CI grep for `INSERT INTO fact` outside the projection module.
 4. A `finding`/`decision`/`artifact`/`scope`/`risk`/`verdict` fact is accepted when its `value`
    validates against its `schemaId`; a mismatched value is rejected before the event is appended.
-5. An `ext:` fact whose `schemaId` is not registered in `.karvan/schemas/` is rejected with a typed
-   error naming the missing schema; a registered one is accepted without Karvan knowing what the
+5. An `ext:` fact whose `schemaId` is not registered in `.DeFlow/schemas/` is rejected with a typed
+   error naming the missing schema; a registered one is accepted without DeFlow knowing what the
    namespace means.
 6. Resolving a declared read during packet assembly appends `fact.read` with the reading node — so
    the memory graph's edges exist because the packet was built, not because someone remembered to
@@ -830,16 +830,16 @@ F4.6 budget ceilings."* Flag, surface in the F8.3 approval queue, let the patch 
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit (`:memory:` permitted — pure projection) | Reduce five `fact.written` and three `fact.read` events → expected `fact` / `fact_edges` rows | The projection does not exist |
-| 2 | integration (file-backed) | Drop both tables, replay from seq 0, compare full table dumps | Any state is held outside the ledger |
-| 3 | unit | `ext:migration/x` with an unregistered `schemaId` → typed rejection | Ext facts bypass validation |
-| 4 | unit | A `verdict` fact whose value violates its schema → rejected before append | Validation happens after the append |
-| 5 | integration | Build a packet resolving `finding/*` → a `fact.read` per resolved fact, with the correct `by` | Reads are not evented |
-| 6 | integration | Invalidate a fact read by nodes A (seq 10) and B (seq 40), invalidation at seq 30 → only A is tainted | The `< seq` comparison is wrong |
-| 7 | integration | After invalidation, `decide()` returns no command for the tainted node and the approval-queue projection lists it | Auto-re-run implemented |
-| 8 | unit | `supersedes` chain: both facts remain readable, ordering by `atEvent` | Supersede deletes |
+| #   | Level                                         | Test                                                                                                              | Red when                             |
+| --- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | unit (`:memory:` permitted — pure projection) | Reduce five `fact.written` and three `fact.read` events → expected `fact` / `fact_edges` rows                     | The projection does not exist        |
+| 2   | integration (file-backed)                     | Drop both tables, replay from seq 0, compare full table dumps                                                     | Any state is held outside the ledger |
+| 3   | unit                                          | `ext:migration/x` with an unregistered `schemaId` → typed rejection                                               | Ext facts bypass validation          |
+| 4   | unit                                          | A `verdict` fact whose value violates its schema → rejected before append                                         | Validation happens after the append  |
+| 5   | integration                                   | Build a packet resolving `finding/*` → a `fact.read` per resolved fact, with the correct `by`                     | Reads are not evented                |
+| 6   | integration                                   | Invalidate a fact read by nodes A (seq 10) and B (seq 40), invalidation at seq 30 → only A is tainted             | The `< seq` comparison is wrong      |
+| 7   | integration                                   | After invalidation, `decide()` returns no command for the tainted node and the approval-queue projection lists it | Auto-re-run implemented              |
+| 8   | unit                                          | `supersedes` chain: both facts remain readable, ordering by `atEvent`                                             | Supersede deletes                    |
 
 **Notes / risks** — the one design smell to watch for is a helper that "just updates the fact table
 directly" for performance during a large fan-out. AC 3's grep exists because that helper is the
@@ -850,20 +850,20 @@ review.
 
 ### KAR-09.9 — Handoff contract validation and the bounded repair loop
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-09.7 (the Tier-2 counter measures the return), KAR-05.1 / KAR-05.8 (native structured output), KAR-02.8 (schema emission to `.karvan/schemas/`) |
-| **PRD** | F6.4 (P0), F6.9 (P1) |
-| **Verified by** | EPIC-09-S46, EPIC-09-S47, EPIC-09-S48, EPIC-09-S49, EPIC-09-S50 |
+|                 |                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                         |
+| **Priority**    | P0                                                                                                                                                  |
+| **Size**        | M                                                                                                                                                   |
+| **Depends on**  | KAR-09.7 (the Tier-2 counter measures the return), KAR-05.1 / KAR-05.8 (native structured output), KAR-02.8 (schema emission to `.DeFlow/schemas/`) |
+| **PRD**         | F6.4 (P0), F6.9 (P1)                                                                                                                                |
+| **Verified by** | EPIC-09-S46, EPIC-09-S47, EPIC-09-S48, EPIC-09-S49, EPIC-09-S50                                                                                     |
 
 **As** a downstream node, **I want** the previous node's return validated against a schema and
 bounded to a token budget, with exactly one repair attempt and a hard failure after it, **so that**
 I never receive silently-truncated JSON or a 40k-token "summary" that eats my window.
 
-[§9](../../08-context-and-memory.md): F6.4's *"default return budget: 500–2,000 tokens, enforced"*
+[§9](../../08-context-and-memory.md): F6.4's _"default return budget: 500–2,000 tokens, enforced"_
 needs a mechanism or it is a comment. Every `agent` node carries
 `returns: { schemaId: SchemaId; maxTokens: number }`, and the schema is passed to the CLI
 **natively** where supported — Claude Code's `--json-schema <schema>` with the parsed object arriving
@@ -872,15 +872,15 @@ table and zod schema), Codex's `codex exec` structured output, and prompt-level 
 validation elsewhere with `structuredOutput: 'prompt-only'` recorded in the manifest so the planner
 knows the contract is softer. Claude Code runs its **own** bounded schema-repair loop and surfaces
 exhaustion as `error_max_structured_output_retries`; map that straight onto a node failure with
-`reason: 'schema-repair-exhausted'` — *"do not retry on top of a retry."* Over budget: emit
+`reason: 'schema-repair-exhausted'` — _"do not retry on top of a retry."_ Over budget: emit
 `handoff.oversize`, run **one** bounded repair, hard-fail if still over. **Never silently truncate**
 — truncating a JSON payload produces invalid JSON downstream, which is exactly the silent
 propagation of garbage F6.9 exists to forbid.
 
-The numbers are honest about their provenance: 500–2,000 is *practitioner consensus, not a
-controlled study*. The defaults are `gate` 300, `human` 500, `agent` (implementation) 1,500, `agent`
+The numbers are honest about their provenance: 500–2,000 is _practitioner consensus, not a
+controlled study_. The defaults are `gate` 300, `human` 500, `agent` (implementation) 1,500, `agent`
 (recon/survey) 4,000, global default **1,500**, overridable per node type and per node — and the
-oversize rate per node type is recorded so the numbers can later be tuned from Karvan's own data.
+oversize rate per node type is recorded so the numbers can later be tuned from DeFlow's own data.
 
 **Acceptance criteria**
 
@@ -893,7 +893,7 @@ oversize rate per node type is recorded so the numbers can later be tuned from K
 3. Returns are validated with Ajv **8.20.0** (`strict: true`, `allErrors: true`) plus
    `ajv-formats@3.0.1` against JSON Schema **2020-12** — the same dialect MCP tool `inputSchema`
    defaults to. Schemas are authored in TypeScript with Zod 4.4.3 and emitted via `z.toJSONSchema()`
-   into `.karvan/schemas/` (NF8).
+   into `.DeFlow/schemas/` (NF8).
 4. The serialised `structured_output` is counted with the Tier-2 tokenizer; over `maxTokens` appends
    `handoff.oversize` with `{ node, attempt, budget, actual, repairAttempted }`.
 5. Exactly **one** repair is attempted — re-prompting the same session to compress to budget — and
@@ -901,27 +901,27 @@ oversize rate per node type is recorded so the numbers can later be tuned from K
 6. Still over budget after the repair → the node **fails**. There is no truncation path anywhere; a
    CI grep proves no `slice(0, maxTokens)` or equivalent exists on the handoff path.
 7. `error_max_structured_output_retries` from the result envelope maps to node failure with
-   `reason: 'schema-repair-exhausted'` and **no** additional Karvan-side repair.
+   `reason: 'schema-repair-exhausted'` and **no** additional DeFlow-side repair.
 8. A schema-invalid return is a node failure with a repair attempt, never an accepted fact — nothing
    invalid reaches the blackboard.
 9. Oversize rate per node type is recorded in a form the F10.11 cross-run dashboard can read later.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Plan validation rejects an `agent` node with no `returns` and no applicable default | The contract is optional |
-| 2 | unit | Defaults table: gate 300, human 500, agent 1500, recon 4000, global 1500 | Defaults drift from the doc |
-| 3 | integration | Mock agent advertising native structured output → the schema reaches it and the parsed object is read from `structured_output` | The native path is not used |
-| 4 | integration | Mock agent without the capability → prompt-injected schema, manifest records `'prompt-only'` | The fallback is silent |
-| 5 | integration | A 3,000-token return against a 1,500 budget → `handoff.oversize` with `repairAttempted: false`, then a compressed return that passes | The repair is not attempted |
-| 6 | integration | Still oversize after repair → `node.failed`; the stored return is the full original, never a prefix | Truncation exists |
-| 7 | integration | Scripted `error_max_structured_output_retries` → `reason: 'schema-repair-exhausted'`, exactly one attempt in the ledger | Karvan retries on top of the CLI's retry |
-| 8 | unit | Ajv rejects a return missing a required field; the error list contains all violations (`allErrors: true`) | Ajv configured with defaults |
-| 9 | integration | A schema-invalid return leaves the `fact` table unchanged | Invalid output reaches the blackboard |
+| #   | Level       | Test                                                                                                                                 | Red when                                 |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| 1   | unit        | Plan validation rejects an `agent` node with no `returns` and no applicable default                                                  | The contract is optional                 |
+| 2   | unit        | Defaults table: gate 300, human 500, agent 1500, recon 4000, global 1500                                                             | Defaults drift from the doc              |
+| 3   | integration | Mock agent advertising native structured output → the schema reaches it and the parsed object is read from `structured_output`       | The native path is not used              |
+| 4   | integration | Mock agent without the capability → prompt-injected schema, manifest records `'prompt-only'`                                         | The fallback is silent                   |
+| 5   | integration | A 3,000-token return against a 1,500 budget → `handoff.oversize` with `repairAttempted: false`, then a compressed return that passes | The repair is not attempted              |
+| 6   | integration | Still oversize after repair → `node.failed`; the stored return is the full original, never a prefix                                  | Truncation exists                        |
+| 7   | integration | Scripted `error_max_structured_output_retries` → `reason: 'schema-repair-exhausted'`, exactly one attempt in the ledger              | DeFlow retries on top of the CLI's retry |
+| 8   | unit        | Ajv rejects a return missing a required field; the error list contains all violations (`allErrors: true`)                            | Ajv configured with defaults             |
+| 9   | integration | A schema-invalid return leaves the `fact` table unchanged                                                                            | Invalid output reaches the blackboard    |
 
 **Notes / risks** — **Unverified** ([§9.1](../../08-context-and-memory.md)): whether
-`structured_output` is populated in *every* Claude Code success case. Confirm empirically in the M0
+`structured_output` is populated in _every_ Claude Code success case. Confirm empirically in the M0
 spike; until then the parser must treat an absent `structured_output` on an otherwise-successful
 result as a contract failure with a clear message, not as an empty object.
 
@@ -933,14 +933,14 @@ no-truncation rule stay P0** — those are the parts that protect downstream win
 
 ### KAR-09.10 — FTS5 retrieval over run artifacts
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P1 |
-| **Size** | S |
-| **Depends on** | KAR-03.2 (migrations), KAR-09.5 (there must be artifacts to index), KAR-09.2 (`retrieved` segments are a fill-order position) |
-| **PRD** | F6.7 |
-| **Verified by** | EPIC-09-S51, EPIC-09-S52, EPIC-09-S53, EPIC-09-S54 |
+|                 |                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                   |
+| **Priority**    | P1                                                                                                                            |
+| **Size**        | S                                                                                                                             |
+| **Depends on**  | KAR-03.2 (migrations), KAR-09.5 (there must be artifacts to index), KAR-09.2 (`retrieved` segments are a fill-order position) |
+| **PRD**         | F6.7                                                                                                                          |
+| **Verified by** | EPIC-09-S51, EPIC-09-S52, EPIC-09-S53, EPIC-09-S54                                                                            |
 
 **As** a node that needs prior context, **I want** to pull relevant artifacts from this run and
 earlier ones by keyword, **so that** I do not have to carry the history in my window to benefit from
@@ -964,7 +964,7 @@ exact-match territory, BM25's strongest suit and dense retrieval's weakest, wher
 
 1. `artifact_fts` is created by migration as
    `USING fts5(title, body, kind UNINDEXED, node_id UNINDEXED, run_id UNINDEXED, tokenize =
-   "unicode61 remove_diacritics 2 tokenchars '_-.'")` — the tokenize string asserted character for
+"unicode61 remove_diacritics 2 tokenchars '_-.'")` — the tokenize string asserted character for
    character by a test reading `sqlite_master`.
 2. **Searching for a `snake_case` identifier finds the artifact containing it**, as does a
    `kebab-case` name and a `file.ext` name; the same searches against a table built without
@@ -979,22 +979,22 @@ exact-match territory, BM25's strongest suit and dense retrieval's weakest, wher
 6. A migration that needs to change the tokenizer **drops and rebuilds** `artifact_fts` from the
    artifact store rather than issuing an `ALTER` — and the migration test asserts the rebuild path,
    because the setting genuinely cannot be changed in place.
-7. `karvan doctor` reports FTS5 availability **and the tokenizer string currently set on
+7. `DeFlow doctor` reports FTS5 availability **and the tokenizer string currently set on
    `artifact_fts`**, so a table created before this rule was enforced is visible rather than merely
    underperforming.
 
 **Test plan (TDD)**
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration | Read `sql` from `sqlite_master` for `artifact_fts` and assert the exact tokenize string | The setting is absent or reworded |
-| 2 | integration | Index a body containing `get_user_by_id`; `MATCH 'get_user_by_id'` returns it as rank 1 | `tokenchars` missing — the identifier was split |
-| 3 | integration | Same for `vue-flow-core` and `pnpm-lock.yaml` | Only underscore handled |
-| 4 | integration | Control: the same corpus in a table built without `tokenchars` fails the same queries | The test does not prove the setting matters |
-| 5 | integration | Title match outranks an equal body match, given `bm25(…, 2.0, 1.0)` | Weights not applied |
-| 6 | integration | A node with no retrieval declaration produces zero `retrieved` segments and zero queries (spy on the `Db` port) | Retrieval runs unconditionally |
-| 7 | integration | Migration changing the tokenizer drops and rebuilds the table; row count and search results match afterwards | An in-place `ALTER` was attempted |
-| 8 | integration | `karvan doctor` prints the live tokenize string | Doctor reports availability only |
+| #   | Level       | Test                                                                                                            | Red when                                        |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 1   | integration | Read `sql` from `sqlite_master` for `artifact_fts` and assert the exact tokenize string                         | The setting is absent or reworded               |
+| 2   | integration | Index a body containing `get_user_by_id`; `MATCH 'get_user_by_id'` returns it as rank 1                         | `tokenchars` missing — the identifier was split |
+| 3   | integration | Same for `vue-flow-core` and `pnpm-lock.yaml`                                                                   | Only underscore handled                         |
+| 4   | integration | Control: the same corpus in a table built without `tokenchars` fails the same queries                           | The test does not prove the setting matters     |
+| 5   | integration | Title match outranks an equal body match, given `bm25(…, 2.0, 1.0)`                                             | Weights not applied                             |
+| 6   | integration | A node with no retrieval declaration produces zero `retrieved` segments and zero queries (spy on the `Db` port) | Retrieval runs unconditionally                  |
+| 7   | integration | Migration changing the tokenizer drops and rebuilds the table; row count and search results match afterwards    | An in-place `ALTER` was attempted               |
+| 8   | integration | `DeFlow doctor` prints the live tokenize string                                                                 | Doctor reports availability only                |
 
 **Notes / risks** — F6.7 is **P1**, so this is the first story to cut if the epic runs long; the
 `retrieved` fill-order slot in KAR-09.2 simply stays empty and nothing else changes. Do not add
@@ -1003,24 +1003,24 @@ keyword variants OR'd into the FTS5 query), notes that `sqlite-vss` is **explici
 own author** in favour of `sqlite-vec`, and that `sqlite-vec` is **pre-1.0 after two years** (stable
 v0.1.9, 31 Mar 2026; pre-release v0.1.10-alpha.4, 18 May 2026; no commits since) with a known
 extension/SQLite-version mismatch failure class on Windows with better-sqlite3 — which lands squarely
-on the M3 Windows target. *"Do not add embeddings until a semantic-recall miss is actually
-measured."*
+on the M3 Windows target. _"Do not add embeddings until a semantic-recall miss is actually
+measured."_
 
 ---
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **The epic totals ~21 days, well over the ~15-day solo-builder guidance.** KAR-09.2 alone is L and KAR-09.3's regression suite is a day of scenario authoring on its own. | High | Explicit cut order, in this sequence: **KAR-09.10** (F6.7 is P1; the `retrieved` slot stays empty), the **F6.9 schema-gating half of KAR-09.9** (keep the token budget and the no-truncation rule, downgrade validation to log-only), **KAR-09.6's §6.3 transcript snapshot** (it is Unverified anyway; `originalHandle: null` is the documented degradation), and **KAR-09.4's interval re-injection on non-steering adapters** (the AC 6 warning alone is a legitimate M1 posture). That reclaims ~5 days. **KAR-09.1 and KAR-09.3 are never cut** — they are the two cheapest and the two highest-value stories here. |
-| **The arXiv figures behind the whole epic are search-indexed, not read.** `arxiv.org` and `export.arxiv.org` are unreachable from the verification environment (403 via the agent proxy). The paper's existence, ID, title, authors and abstract were confirmed consistently; the specific percentages were not read from the PDF. | Medium | The mechanism costs fifteen lines and is sound independent of the exact numbers, and KAR-09.3's ConstraintRot suite measures **Karvan's own** violation rate rather than trusting the paper's. Do not quote 30% / 59% / 73% / 33% publicly without re-verifying against the PDFs. |
-| **The decoded Claude Code constants (2.1.220) are private implementation details with no compatibility guarantee and will change.** `effectiveWindow`, the 13k auto-compact offset, the 20k/3k buffers, the 10k–40k summariser bounds. | Medium | Nothing hardcodes a window: read `modelUsage[m].contextWindow` and `maxOutputTokens` from the envelope at runtime. Assert the rest in the F3.4 conformance suite so `karvan doctor` catches drift instead of a failed three-hour run. |
-| **The gating fixture (`stream-json` with a real `compact_boundary` and a populated `modelUsage`) costs real quota and cannot be recorded in CI.** KAR-09.6 and KAR-09.7 are both blocked on it. | Medium | Record it during **W3**, while adapter work is already spending credits, and commit it under `test/fixtures/streams/`. `pnpm test:record` is manual, never CI. Treat "the fixture exists" as a Definition-of-Ready item, which it is. |
-| **Whether ACP surfaces token usage or compaction state at all is Unverified** (roadmap A0-3, rated High). If it does not, ACP-first silently costs F9.1 and F10.5 for every ACP-path provider. | High | Answer it explicitly in the M0 spike. The fallback is data, not code: `tokenAccounting: 'estimated'` in the capability manifest and honest UI degradation (blank cells, not zeros). KAR-09.7 AC 9 makes that degradation a tested behaviour rather than an aspiration. |
-| **The architecture doc sketches `packages/context/src/…`, which is not one of the eight packages in the repo layout.** | Low | Reconcile at implementation time, not by inventing a package: the pure parts (`render`, `assertPinIntegrity`, `restate`, the calibration EWMA, `validateDeclaredReads`) belong in **`@karvan/core`**, whose only runtime dependency is `zod`; the Context Builder, the blackboard projection and the FTS5 queries belong in **`@karvan/daemon`**. Tokenisation therefore enters `core` through a **`Tokenizer` port** in the same style as `Clock` and `Db`, because `gpt-tokenizer` cannot be a `core` dependency under repo-layout R1. |
-| **The ConstraintRot suite can pass vacuously** if its scenarios do not give the agent a real reason to violate the prohibition. | Medium | KAR-09.3 AC 11 asserts the suite produces violations **with pinning disabled**. A green "disabled" run means the scenarios are too weak — fix the scenarios, never the assertion. |
-| **`karvan_read_artifact` is a Karvan-hosted MCP tool and therefore sits outside the ACP `fs/*` mediation path**, so it could become a permission bypass for `read`-level nodes. | Medium | KAR-09.5 AC 4 and its test 5. Worth re-checking during [EPIC-08](./EPIC-08-safety-model.md) as well — this is the kind of hole that is obvious once named and invisible otherwise. |
-| **Transcript snapshots are raw transcripts** and are in scope for F5.9 redaction before any export or hub sync. | Medium | M2 work, but the constraint lands now: nothing built in this epic may export or sync an artifact, and the snapshot's handle must be tagged so [13-observability-and-telemetry](../../13-observability-and-telemetry.md)'s redaction pass can find it later. |
+| Risk                                                                                                                                                                                                                                                                                                                               | Severity | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **The epic totals ~21 days, well over the ~15-day solo-builder guidance.** KAR-09.2 alone is L and KAR-09.3's regression suite is a day of scenario authoring on its own.                                                                                                                                                          | High     | Explicit cut order, in this sequence: **KAR-09.10** (F6.7 is P1; the `retrieved` slot stays empty), the **F6.9 schema-gating half of KAR-09.9** (keep the token budget and the no-truncation rule, downgrade validation to log-only), **KAR-09.6's §6.3 transcript snapshot** (it is Unverified anyway; `originalHandle: null` is the documented degradation), and **KAR-09.4's interval re-injection on non-steering adapters** (the AC 6 warning alone is a legitimate M1 posture). That reclaims ~5 days. **KAR-09.1 and KAR-09.3 are never cut** — they are the two cheapest and the two highest-value stories here. |
+| **The arXiv figures behind the whole epic are search-indexed, not read.** `arxiv.org` and `export.arxiv.org` are unreachable from the verification environment (403 via the agent proxy). The paper's existence, ID, title, authors and abstract were confirmed consistently; the specific percentages were not read from the PDF. | Medium   | The mechanism costs fifteen lines and is sound independent of the exact numbers, and KAR-09.3's ConstraintRot suite measures **DeFlow's own** violation rate rather than trusting the paper's. Do not quote 30% / 59% / 73% / 33% publicly without re-verifying against the PDFs.                                                                                                                                                                                                                                                                                                                                        |
+| **The decoded Claude Code constants (2.1.220) are private implementation details with no compatibility guarantee and will change.** `effectiveWindow`, the 13k auto-compact offset, the 20k/3k buffers, the 10k–40k summariser bounds.                                                                                             | Medium   | Nothing hardcodes a window: read `modelUsage[m].contextWindow` and `maxOutputTokens` from the envelope at runtime. Assert the rest in the F3.4 conformance suite so `DeFlow doctor` catches drift instead of a failed three-hour run.                                                                                                                                                                                                                                                                                                                                                                                    |
+| **The gating fixture (`stream-json` with a real `compact_boundary` and a populated `modelUsage`) costs real quota and cannot be recorded in CI.** KAR-09.6 and KAR-09.7 are both blocked on it.                                                                                                                                    | Medium   | Record it during **W3**, while adapter work is already spending credits, and commit it under `test/fixtures/streams/`. `pnpm test:record` is manual, never CI. Treat "the fixture exists" as a Definition-of-Ready item, which it is.                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Whether ACP surfaces token usage or compaction state at all is Unverified** (roadmap A0-3, rated High). If it does not, ACP-first silently costs F9.1 and F10.5 for every ACP-path provider.                                                                                                                                     | High     | Answer it explicitly in the M0 spike. The fallback is data, not code: `tokenAccounting: 'estimated'` in the capability manifest and honest UI degradation (blank cells, not zeros). KAR-09.7 AC 9 makes that degradation a tested behaviour rather than an aspiration.                                                                                                                                                                                                                                                                                                                                                   |
+| **The architecture doc sketches `packages/context/src/…`, which is not one of the eight packages in the repo layout.**                                                                                                                                                                                                             | Low      | Reconcile at implementation time, not by inventing a package: the pure parts (`render`, `assertPinIntegrity`, `restate`, the calibration EWMA, `validateDeclaredReads`) belong in **`@DeFlow/core`**, whose only runtime dependency is `zod`; the Context Builder, the blackboard projection and the FTS5 queries belong in **`@DeFlow/daemon`**. Tokenisation therefore enters `core` through a **`Tokenizer` port** in the same style as `Clock` and `Db`, because `gpt-tokenizer` cannot be a `core` dependency under repo-layout R1.                                                                                 |
+| **The ConstraintRot suite can pass vacuously** if its scenarios do not give the agent a real reason to violate the prohibition.                                                                                                                                                                                                    | Medium   | KAR-09.3 AC 11 asserts the suite produces violations **with pinning disabled**. A green "disabled" run means the scenarios are too weak — fix the scenarios, never the assertion.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **`DeFlow_read_artifact` is a DeFlow-hosted MCP tool and therefore sits outside the ACP `fs/*` mediation path**, so it could become a permission bypass for `read`-level nodes.                                                                                                                                                    | Medium   | KAR-09.5 AC 4 and its test 5. Worth re-checking during [EPIC-08](./EPIC-08-safety-model.md) as well — this is the kind of hole that is obvious once named and invisible otherwise.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Transcript snapshots are raw transcripts** and are in scope for F5.9 redaction before any export or hub sync.                                                                                                                                                                                                                    | Medium   | M2 work, but the constraint lands now: nothing built in this epic may export or sync an artifact, and the snapshot's handle must be tagged so [13-observability-and-telemetry](../../13-observability-and-telemetry.md)'s redaction pass can find it later.                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 

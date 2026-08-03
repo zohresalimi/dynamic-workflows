@@ -1,15 +1,15 @@
 # Planning and replanning
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
 
 ---
 
-This is the document for Karvan's central claim. Every competitor in the category either has no plan
+This is the document for DeFlow's central claim. Every competitor in the category either has no plan
 at all (session managers) or has a plan that is frozen the moment it is written (workflow runners).
-Karvan's plan is **data**, it is **validated before a token is spent**, and it **mutates at runtime
+DeFlow's plan is **data**, it is **validated before a token is spent**, and it **mutates at runtime
 through auditable patches**. PRD §3.2 G1 identifies static plans as the critical gap; this is the
 mechanism that closes it.
 
@@ -33,14 +33,14 @@ transformation, so "what did I actually ask for?" is always answerable from the 
 
 A framing agent then interrogates the task **and the repo** and produces a `TaskSpec`:
 
-| Field | Notes |
-|---|---|
-| `goal` | One paragraph. Pinned, never compacted. |
-| `scope` / `nonGoals` | Explicit boundaries. Non-goals are the field people skip and regret. |
-| `constraints` | Safety constraints, protected paths, permission ceiling for the run. |
-| `priorDecisions` | Facts from `.karvan/memory/` (F6.8) and from the repo's own docs. |
+| Field                | Notes                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `goal`               | One paragraph. Pinned, never compacted.                                               |
+| `scope` / `nonGoals` | Explicit boundaries. Non-goals are the field people skip and regret.                  |
+| `constraints`        | Safety constraints, protected paths, permission ceiling for the run.                  |
+| `priorDecisions`     | Facts from `.DeFlow/memory/` (F6.8) and from the repo's own docs.                     |
 | `acceptanceCriteria` | `AC-1 … AC-n`, each with `verifiedBy: GateId[]` or an explicit `unverifiable` reason. |
-| `knownFailureModes` | What "went wrong" looks like for this task archetype. |
+| `knownFailureModes`  | What "went wrong" looks like for this task archetype.                                 |
 
 The framing agent runs at `read` permission (F5.4) in a fresh session. It is the one place where a
 model is allowed to be expansive, because everything downstream is judged against what it produces.
@@ -62,12 +62,12 @@ It is not ceremony. PRD §4.5 surveys every major spec-driven-development framew
 unanimous: **shallow specs are the primary documented failure mode**, ahead of bad models, bad
 prompts and bad tooling. The failure is cheap to produce and expensive to discover — a plausible,
 under-specified spec generates a plausible, under-specified plan, which generates forty nodes of
-confidently wrong work. The second documented failure, *spec-then-drift*, is what §5 of this document
+confidently wrong work. The second documented failure, _spec-then-drift_, is what §5 of this document
 and F1.5 exist to prevent.
 
 Two design consequences follow:
 
-- **Approval mints the pinned spec.** On approval, Karvan computes `specHash = sha256(canonical(spec))`
+- **Approval mints the pinned spec.** On approval, DeFlow computes `specHash = sha256(canonical(spec))`
   and writes `spec.pinned`. Every context packet re-injects the pinned segments verbatim, and every
   gate verdict carries the `specHash` it was judged against. A verdict whose `specHash` does not match
   the run's is void.
@@ -88,19 +88,19 @@ The planner agent receives exactly three things, and nothing else (F6.1, no impl
 2. **Repo reconnaissance** — a structured survey produced by one or more `read`-permission recon
    nodes: language and toolchain detection, the scripts in `package.json`, test/lint/build commands
    that actually exist, directory shape, the size of the areas the spec names, and any
-   `.karvan/gates/` definitions already present in the repo.
+   `.DeFlow/gates/` definitions already present in the repo.
 3. **The provider capability list** — see below. This is the input people get wrong.
 
 ### 2.2 Capabilities are probed, never hardcoded
 
-**Verified 2026-08-02.** Karvan performs an ACP `initialize` handshake against each installed agent
+**Verified 2026-08-02.** DeFlow performs an ACP `initialize` handshake against each installed agent
 binary and persists the full response:
 
 ```sql
 CREATE TABLE provider_capabilities (
   provider      TEXT NOT NULL,
   version       TEXT NOT NULL,      -- from the binary's own --version
-  binary_path   TEXT NOT NULL,      -- absolute, resolved once; karvand's PATH != the user's login shell
+  binary_path   TEXT NOT NULL,      -- absolute, resolved once; DeFlowd's PATH != the user's login shell
   binary_sha256 TEXT NOT NULL,
   caps_json     TEXT NOT NULL,      -- the verbatim initialize response
   probed_at     INTEGER NOT NULL,
@@ -112,13 +112,13 @@ Every routing decision — can this node resume? can it fork? does the adapter a
 output? what is its max context? — reads that row. **A hardcoded capability matrix will be wrong
 within a month.** The matrix measured on 2026-08-02 already differs from what the vendor docs imply:
 
-| Adapter | Version | `session.resume` | `session.fork` | `session.list` | `mcp.sse` |
-|---|---|---|---|---|---|
-| `claude-agent-acp` | 0.64.1 | yes | yes | yes | yes |
-| `codex-acp` | 1.1.9 | yes | no | yes | `false` |
-| `opencode acp` | 1.18.11 | yes | yes | yes | yes |
-| `copilot --acp` | 1.0.77 | **no** | no | yes | yes |
-| `gemini --acp` | 0.53.1 | **no** | no | **no** | yes |
+| Adapter            | Version | `session.resume` | `session.fork` | `session.list` | `mcp.sse` |
+| ------------------ | ------- | ---------------- | -------------- | -------------- | --------- |
+| `claude-agent-acp` | 0.64.1  | yes              | yes            | yes            | yes       |
+| `codex-acp`        | 1.1.9   | yes              | no             | yes            | `false`   |
+| `opencode acp`     | 1.18.11 | yes              | yes            | yes            | yes       |
+| `copilot --acp`    | 1.0.77  | **no**           | no             | yes            | yes       |
+| `gemini --acp`     | 0.53.1  | **no**           | no             | **no**         | yes       |
 
 Two of five providers cannot resume a session at all. Gemini returned no `sessionCapabilities` key
 whatsoever. Any planner that assumes a uniform capability surface will schedule nodes that cannot
@@ -131,7 +131,7 @@ The planner emits a `PlanGraph` as **structured output enforced at the adapter b
 prose we parse. Claude Code takes `--json-schema <schema>` and returns the parsed object in the
 result envelope's `structured_output` field; Codex takes `--output-schema <FILE>`. **Verified
 2026-08-02.** Schemas are authored in Zod 4.4.3 and emitted with `z.toJSONSchema()` into
-`.karvan/schemas/` so they are inspectable on disk (NF8), then validated with Ajv 8.20.0
+`.DeFlow/schemas/` so they are inspectable on disk (NF8), then validated with Ajv 8.20.0
 (`strict: true`, `allErrors: true`) against JSON Schema 2020-12.
 
 Each node carries, at minimum: `id`, `type` (F2.3: `agent | tool | gate | human | map | loop |
@@ -142,14 +142,14 @@ subgraph`), `deps`, declared `reads` and `writes` (F6.2), `pathScope` for write 
 The plan document is immutable and content-addressed:
 
 ```ts
-const doc = canonicalJson(plan);                       // sorted keys, no insignificant whitespace
-const hash = createHash('sha256').update(doc).digest('hex');
+const doc = canonicalJson(plan); // sorted keys, no insignificant whitespace
+const hash = createHash("sha256").update(doc).digest("hex");
 ```
 
 Use `node:crypto` over a canonical serialiser you own. **Do not use `ohash` for this hash.** Its
 stable-key-ordering behaviour is confirmed, but its README only promises "best efforts" at stable
 serialisation — acceptable for change detection, not for a value that is a primary key in the `plan`
-table and is referenced by `run.plan_hash` across karvand versions.
+table and is referenced by `run.plan_hash` across DeFlowd versions.
 
 ---
 
@@ -167,8 +167,8 @@ ancestor's declared `writes`, or by the pinned spec. It is pure graph reachabili
 ```ts
 export function validateReads(plan: PlanGraph, spec: PinnedSpec): Diagnostic[] {
   const diags: Diagnostic[] = [];
-  const order = topoSort(plan);                 // throws PlanCycleError if not a DAG
-  const specKeys = new Set(spec.providedKeys);  // 'spec/goal', 'spec/ac/AC-3', 'spec/pathscope', ...
+  const order = topoSort(plan); // throws PlanCycleError if not a DAG
+  const specKeys = new Set(spec.providedKeys); // 'spec/goal', 'spec/ac/AC-3', 'spec/pathscope', ...
 
   for (const id of order) {
     const node = plan.nodes[id];
@@ -177,9 +177,15 @@ export function validateReads(plan: PlanGraph, spec: PinnedSpec): Diagnostic[] {
       for (const w of plan.nodes[anc].writes) available.add(w);
     }
     for (const r of node.reads) {
-      if (!satisfies(available, r)) {           // exact key or a declared glob prefix
-        diags.push({ severity: 'error', code: 'READ_UNREACHABLE', node: id, key: r,
-          message: `node '${id}' reads '${r}' but no ancestor writes it and it is not in the pinned spec` });
+      if (!satisfies(available, r)) {
+        // exact key or a declared glob prefix
+        diags.push({
+          severity: "error",
+          code: "READ_UNREACHABLE",
+          node: id,
+          key: r,
+          message: `node '${id}' reads '${r}' but no ancestor writes it and it is not in the pinned spec`,
+        });
       }
     }
   }
@@ -203,16 +209,19 @@ capability row, never a constant:
 
 ```ts
 for (const node of agentNodes(plan)) {
-  const caps = capabilityRow(node.provider);                 // from provider_capabilities
-  if (!caps) err('PROVIDER_NOT_PROBED', node);
-  if (node.returns?.schemaId && !caps.structuredOutput) err('NO_STRUCTURED_OUTPUT', node);
-  if (node.requiresResume && !caps.session.resume) err('NO_RESUME', node);
-  if (!caps.permissionLevels.includes(node.permission)) err('PERMISSION_UNSUPPORTED', node);
-  if (estimatePacketTokens(node) > caps.maxContext * 0.6) err('PACKET_EXCEEDS_BUDGET', node);
+  const caps = capabilityRow(node.provider); // from provider_capabilities
+  if (!caps) err("PROVIDER_NOT_PROBED", node);
+  if (node.returns?.schemaId && !caps.structuredOutput)
+    err("NO_STRUCTURED_OUTPUT", node);
+  if (node.requiresResume && !caps.session.resume) err("NO_RESUME", node);
+  if (!caps.permissionLevels.includes(node.permission))
+    err("PERMISSION_UNSUPPORTED", node);
+  if (estimatePacketTokens(node) > caps.maxContext * 0.6)
+    err("PACKET_EXCEEDS_BUDGET", node);
 }
 ```
 
-F5.4 is explicit that where a provider cannot express the requested permission level, Karvan
+F5.4 is explicit that where a provider cannot express the requested permission level, DeFlow
 **refuses to schedule** rather than silently escalating. `PERMISSION_UNSUPPORTED` is that refusal,
 moved to plan time where it costs nothing. `PACKET_EXCEEDS_BUDGET` uses the 60% ceiling from the
 packet-assembly policy in [context and memory](./08-context-and-memory.md).
@@ -223,17 +232,17 @@ packet-assembly policy in [context and memory](./08-context-and-memory.md).
 ### 3.3 Identifier validation
 
 Node ids become git branch names, worktree directory names and artifact paths. Branch naming is flat
-(**D13**): `karvan/<runId>__<nodeId>`. The PRD's `karvan/<run-id>/<node-id>` is a verified bug — git
-refs are files in a directory tree, so `karvan/r1/n1` and a run-level `karvan/r1` integration branch
+(**D13**): `DeFlow/<runId>__<nodeId>`. The PRD's `DeFlow/<run-id>/<node-id>` is a verified bug — git
+refs are files in a directory tree, so `DeFlow/r1/n1` and a run-level `DeFlow/r1` integration branch
 cannot both exist.
 
 Validate the resulting ref with git itself rather than reimplementing its rules:
 
 ```bash
-git check-ref-format "refs/heads/karvan/${runId}__${nodeId}"   # exit 0 = valid
+git check-ref-format "refs/heads/DeFlow/${runId}__${nodeId}"   # exit 0 = valid
 ```
 
-Then apply a stricter Karvan-side charset on top, because the id is also a directory name on
+Then apply a stricter DeFlow-side charset on top, because the id is also a directory name on
 case-insensitive filesystems and a URL path segment in the API:
 
 ```ts
@@ -264,24 +273,34 @@ A failing **patch** is rejected outright (§4.3) — never partially applied.
 ```ts
 type PlanPatch = {
   id: PatchId;
-  basePlanHash: string;                  // optimistic concurrency; must equal run.plan_hash
-  proposedBy: NodeId | 'planner' | 'scheduler' | 'human';
-  reason: string;                        // rendered verbatim in the scrubber; required, non-empty
+  basePlanHash: string; // optimistic concurrency; must equal run.plan_hash
+  proposedBy: NodeId | "planner" | "scheduler" | "human";
+  reason: string; // rendered verbatim in the scrubber; required, non-empty
   ops: PatchOp[];
-  estimate: { costUsdDelta: number; nodesAdded: number; blastRadiusFiles: number;
-              maxPermission: Level; replanDepth: number };
+  estimate: {
+    costUsdDelta: number;
+    nodesAdded: number;
+    blastRadiusFiles: number;
+    maxPermission: Level;
+    replanDepth: number;
+  };
 };
 
 type PatchOp =
-  | { op: 'insert';  nodes: PlanNode[]; edges: Edge[] }
-  | { op: 'split';   node: NodeId; into: PlanNode[] }
-  | { op: 'reroute'; node: NodeId; provider: ProviderId; cause: 'quota' | 'capability' | 'quality' }
-  | { op: 'extend';  node: NodeId; maxRounds: number }
-  | { op: 'abandon'; node: NodeId; cascade: boolean };
+  | { op: "insert"; nodes: PlanNode[]; edges: Edge[] }
+  | { op: "split"; node: NodeId; into: PlanNode[] }
+  | {
+      op: "reroute";
+      node: NodeId;
+      provider: ProviderId;
+      cause: "quota" | "capability" | "quality";
+    }
+  | { op: "extend"; node: NodeId; maxRounds: number }
+  | { op: "abandon"; node: NodeId; cascade: boolean };
 ```
 
 Any node may propose one. `agent` nodes do so through an MCP tool
-(`karvan.propose_plan_patch`) exposed by Karvan's own MCP stdio server, injected into the agent
+(`DeFlow.propose_plan_patch`) exposed by DeFlow's own MCP stdio server, injected into the agent
 session via ACP `session/new` (**D9**). The tool takes the patch as structured input validated
 against the same schema, so a malformed proposal fails at the tool boundary rather than in the
 policy engine.
@@ -308,7 +327,7 @@ node emits patch  ──▶  estimate  ──▶  policy engine  ──▶  auto
 
 Four properties fall out of this and all four matter:
 
-- **Plans are never mutated.** A patch produces a *new* immutable row in the content-addressed `plan`
+- **Plans are never mutated.** A patch produces a _new_ immutable row in the content-addressed `plan`
   table. The old version is still there, still addressable by hash, still renderable.
 - **Application is atomic with the event append.** Same transaction, so a crash mid-apply leaves
   either the old plan and no event, or the new plan and its event. Never a torn state.
@@ -321,18 +340,18 @@ Four properties fall out of this and all four matter:
 
 ### 4.3 The patch policy engine (F2.5)
 
-Declarative, ordered, first match wins. Lives in `.karvan/config.yaml` under `policy.patch` and is
+Declarative, ordered, first match wins. Lives in `.DeFlow/config.yaml` under `policy.patch` and is
 hashed into the run manifest so mid-run edits do not silently change the rules.
 
 **The five dimensions:**
 
-| Dimension | Signal | Source |
-|---|---|---|
-| Cost delta | `estimate.costUsdDelta` | pre-flight estimate (F9.3), Tier-2 tokenizer + per-provider calibration |
-| Blast radius | `estimate.blastRadiusFiles` — union of new nodes' `pathScope`, expanded against the worktree | plan-time prediction |
-| Replan depth | `estimate.replanDepth` — length of the patch's provenance chain back to v1 | plan lineage |
-| Elapsed budget | fraction of the run's currency and wall-clock ceilings consumed | `budget.consumed` events (F4.6) |
-| Permission escalation | `estimate.maxPermission` > the run's ambient level, or the patch touches the execution boundary | permission ladder (F5.4), F5.6 deny list |
+| Dimension             | Signal                                                                                          | Source                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Cost delta            | `estimate.costUsdDelta`                                                                         | pre-flight estimate (F9.3), Tier-2 tokenizer + per-provider calibration |
+| Blast radius          | `estimate.blastRadiusFiles` — union of new nodes' `pathScope`, expanded against the worktree    | plan-time prediction                                                    |
+| Replan depth          | `estimate.replanDepth` — length of the patch's provenance chain back to v1                      | plan lineage                                                            |
+| Elapsed budget        | fraction of the run's currency and wall-clock ceilings consumed                                 | `budget.consumed` events (F4.6)                                         |
+| Permission escalation | `estimate.maxPermission` > the run's ambient level, or the patch touches the execution boundary | permission ladder (F5.4), F5.6 deny list                                |
 
 **Default rule table**, matching F2.5's stated defaults exactly:
 
@@ -342,24 +361,24 @@ policy:
     rules:
       - id: escalates-permission
         when: { permissionEscalation: true }
-        decision: approve                       # queue for a human
+        decision: approve # queue for a human
       - id: touches-execution-boundary
         when: { touchesExecutionBoundary: true }
         decision: approve
       - id: replan-depth-exceeded
-        when: { replanDepth: '> 3' }
+        when: { replanDepth: "> 3" }
         decision: reject
       - id: budget-exhausted
-        when: { elapsedBudgetFraction: '>= 1.0' }
+        when: { elapsedBudgetFraction: ">= 1.0" }
         decision: reject
       - id: expensive
-        when: { costDeltaUsd: '> 5.00' }
+        when: { costDeltaUsd: "> 5.00" }
         decision: approve
       - id: wide-blast-radius
-        when: { blastRadiusFiles: '> 25' }
+        when: { blastRadiusFiles: "> 25" }
         decision: approve
       - id: read-only-analysis
-        when: { maxPermission: read, costDeltaUsd: '<= 5.00' }
+        when: { maxPermission: read, costDeltaUsd: "<= 5.00" }
         decision: auto
       - id: default
         decision: approve
@@ -407,9 +426,15 @@ visualisation** — which is the entire point of F3.9's wording:
 Add one rule to make the common case frictionless without weakening the model:
 
 ```yaml
-      - id: quota-reroute-equivalent
-        when: { onlyOps: [reroute], cause: quota, capabilitySuperset: true, permissionUnchanged: true }
-        decision: auto
+- id: quota-reroute-equivalent
+  when:
+    {
+      onlyOps: [reroute],
+      cause: quota,
+      capabilitySuperset: true,
+      permissionUnchanged: true,
+    }
+  decision: auto
 ```
 
 `capabilitySuperset` is computed from the probed rows: the target adapter's capability set must cover
@@ -430,7 +455,7 @@ not survive a restart.
 Every version is kept. Forever, for the life of the run.
 
 - In SQLite: one immutable row per version in the content-addressed `plan` table.
-- On disk: `.karvan/runs/<runId>/plan/v1.json … vN.json`, per PRD §9.4, so NF8 holds — every artifact
+- On disk: `.DeFlow/runs/<runId>/plan/v1.json … vN.json`, per PRD §9.4, so NF8 holds — every artifact
   inspectable on disk in an open format.
 
 The storage argument is trivial and worth stating so nobody is tempted to prune: a 40-node plan
@@ -460,8 +485,8 @@ Rendering details live in [frontend architecture](./12-frontend-architecture.md)
 Because "why is there a step here that I didn't ask for?" must be answerable in one click, the
 `reason` field on `PlanPatch` is required and non-empty, is rendered verbatim (never summarised), and
 is joined in the UI to the `plan.patched` event's `decision` and `ruleId`. The full answer is
-therefore: *who proposed it, why, what the estimate was, which policy rule fired, and whether a human
-approved it.*
+therefore: _who proposed it, why, what the estimate was, which policy rule fired, and whether a human
+approved it._
 
 ---
 
@@ -471,12 +496,12 @@ approved it.*
 
 Planning quality dominates run quality, but planning is also frequent. The proposal:
 
-| Planning event | Model tier | Rationale |
-|---|---|---|
-| Initial `PlanGraph` v1 | strongest available, high reasoning effort | One call per run. The single highest-leverage inference in the system. |
-| Patch with `permissionEscalation`, `blastRadiusFiles > 25`, or `replanDepth ≥ 2` | strongest available | These are the patches a human is being asked to approve; the proposal should be worth reading. |
-| Routine patch — read-only inserts, quota reroutes, loop extensions | cheap model | High frequency, low blast radius, structurally constrained output. |
-| Query expansion for retrieval | cheap model | 3–5 keyword variants; pennies. |
+| Planning event                                                                   | Model tier                                 | Rationale                                                                                      |
+| -------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Initial `PlanGraph` v1                                                           | strongest available, high reasoning effort | One call per run. The single highest-leverage inference in the system.                         |
+| Patch with `permissionEscalation`, `blastRadiusFiles > 25`, or `replanDepth ≥ 2` | strongest available                        | These are the patches a human is being asked to approve; the proposal should be worth reading. |
+| Routine patch — read-only inserts, quota reroutes, loop extensions               | cheap model                                | High frequency, low blast radius, structurally constrained output.                             |
+| Query expansion for retrieval                                                    | cheap model                                | 3–5 keyword variants; pennies.                                                                 |
 
 "Strongest available" resolves against the probed capability rows, not a constant. Where the adapter
 exposes a reasoning-effort control, use it: Claude Code accepts `--effort low|medium|high|xhigh|max`.
@@ -486,12 +511,12 @@ exposes a reasoning-effort control, use it: Claude Code accepts `--effort low|me
 `plan.proposed` and `plan.patched` event. Then join against the cross-run dashboard (F10.11) on the
 metrics PRD §12 already defines:
 
-| Metric | PRD M1 target | What a bad planner tier looks like |
-|---|---|---|
-| Gate first-pass rate | > 40% | Drops. The plan asked for the wrong work. |
-| Replans per run | 1–4 | Rises above 4. The plan was wrong and kept being wrong. |
-| Task completion without human rescue | > 50% | Drops. |
-| Cost per completed task vs manual | ≤ 1.5× | Rises — cheap planning that causes rework is not cheap. |
+| Metric                               | PRD M1 target | What a bad planner tier looks like                      |
+| ------------------------------------ | ------------- | ------------------------------------------------------- |
+| Gate first-pass rate                 | > 40%         | Drops. The plan asked for the wrong work.               |
+| Replans per run                      | 1–4           | Rises above 4. The plan was wrong and kept being wrong. |
+| Task completion without human rescue | > 50%         | Drops.                                                  |
+| Cost per completed task vs manual    | ≤ 1.5×        | Rises — cheap planning that causes rework is not cheap. |
 
 Alternate the routine-patch tier per run for ~20 runs and compare. Twenty runs is not a controlled
 study and should not be reported as one, but it is enough to detect a large effect, and a large
@@ -529,8 +554,8 @@ Concretely:
 
 ```ts
 function decidePatch(p: PlanPatch, s: RunState): Decision {
-  if (s.circuitBreaker === 'tripped' && p.proposedBy !== 'human') {
-    return { decision: 'reject', ruleId: 'circuit-breaker-tripped' };
+  if (s.circuitBreaker === "tripped" && p.proposedBy !== "human") {
+    return { decision: "reject", ruleId: "circuit-breaker-tripped" };
   }
   return evaluateRules(p, s);
 }
@@ -556,8 +581,8 @@ efficient way to build a loop that never terminates.
   of 40.
 - **Do not let a rejected patch be silent.** No event means no UI, and "the run silently decided not
   to do the thing it decided to do" is unanswerable.
-- **Do not use the PRD's `karvan/<run-id>/<node-id>` branch naming.** It is a verified bug (D13). Flat
-  `karvan/<runId>__<nodeId>`, validated with `git check-ref-format`.
+- **Do not use the PRD's `DeFlow/<run-id>/<node-id>` branch naming.** It is a verified bug (D13). Flat
+  `DeFlow/<runId>__<nodeId>`, validated with `git check-ref-format`.
 - **Do not use `ohash` for the plan content hash.** Best-effort stable serialisation is fine for
   change detection, not for a primary key. `sha256` over your own canonical JSON.
 - **Do not use `setTimeout` for a quota wait.** `2**31` ms silently fires after 1 ms, and timers do
@@ -567,7 +592,7 @@ efficient way to build a loop that never terminates.
 - **Do not mutate a plan row in place.** Ever. The scrubber, replay, and every "why" question depend
   on old versions being byte-identical to what actually ran.
 - **Do not treat replans as a defect to minimise to zero.** PRD §12 targets 1–4 per run. Zero replans
-  means the plan was static, which is the thing Karvan exists not to be. Above four means the framing
+  means the plan was static, which is the thing DeFlow exists not to be. Above four means the framing
   interview under-delivered.
 - **Do not let the planner see another node's transcript.** It gets the spec, the recon output and the
   capability list. F6.1 exists so that the edges in the plan graph mean something.

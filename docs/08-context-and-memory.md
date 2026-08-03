@@ -1,25 +1,25 @@
 # Context and memory
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
 
 ---
 
-This is the layer that makes long-horizon work possible. Because the PRD wants it *visible*
+This is the layer that makes long-horizon work possible. Because the PRD wants it _visible_
 (F10.3, F10.4, F10.5), it must be designed to be rendered, not merely to function. Every decision
 below is taken twice: once for what the agent receives, and once for what the UI can honestly draw
 afterwards.
 
 Type definitions for `ContextPacket`, `Segment`, `Fact`, `Provenance` and the event union live in
-[the domain model](./04-domain-model.md). This document is the *behaviour*: how a packet gets
+[the domain model](./04-domain-model.md). This document is the _behaviour_: how a packet gets
 assembled, what is pinned and how that is enforced, who owns compaction, how tokens are counted,
 and what retrieval does at M1.
 
-**One rule governs the whole layer, and it follows from [AR-1](./15-security-model.md):** Karvan
-does not own the model call. It owns the *boundary* around the model call. Everything below is
-either something Karvan fully controls (the packet), something it can only steer (in-CLI
+**One rule governs the whole layer, and it follows from [AR-1](./15-security-model.md):** DeFlow
+does not own the model call. It owns the _boundary_ around the model call. Everything below is
+either something DeFlow fully controls (the packet), something it can only steer (in-CLI
 compaction), or something it can only observe partially (vendor token counts). Conflating those
 three is how you end up with a dashboard that lies.
 
@@ -27,20 +27,20 @@ three is how you end up with a dashboard that lies.
 
 ## 1. Four tiers, explicit and separate (F6.6)
 
-| Tier | Contents | Lifetime | Storage | Source of truth? |
-|---|---|---|---|---|
-| **T1 Run Ledger** | Every event, immutable, ordered by `seq` | Forever, per run | `$XDG_DATA_HOME/karvan/ledger.db` (one global SQLite database, append-only, every table keyed by `run_id`) | **Yes.** Everything else is a projection |
-| **T2 Blackboard** | Typed facts and artifact handles with provenance | Run lifetime | materialised view in the same DB, rebuildable | No — projection of `fact.*` events |
-| **T3 Context Packet** | Exactly what one node's agent received, per attempt | Per node invocation | `context.built` manifest + blobs in the CAS | No — manifest is a ledger payload |
-| **T4 Workspace** | Git worktree, files, build outputs | Per branch | `.karvan/wt/<runId>__<nodeId>/`, branch `karvan/<runId>__<nodeId>` | No — git is authoritative for its own contents |
+| Tier                  | Contents                                            | Lifetime            | Storage                                                                                                    | Source of truth?                               |
+| --------------------- | --------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **T1 Run Ledger**     | Every event, immutable, ordered by `seq`            | Forever, per run    | `$XDG_DATA_HOME/DeFlow/ledger.db` (one global SQLite database, append-only, every table keyed by `run_id`) | **Yes.** Everything else is a projection       |
+| **T2 Blackboard**     | Typed facts and artifact handles with provenance    | Run lifetime        | materialised view in the same DB, rebuildable                                                              | No — projection of `fact.*` events             |
+| **T3 Context Packet** | Exactly what one node's agent received, per attempt | Per node invocation | `context.built` manifest + blobs in the CAS                                                                | No — manifest is a ledger payload              |
+| **T4 Workspace**      | Git worktree, files, build outputs                  | Per branch          | `.DeFlow/wt/<runId>__<nodeId>/`, branch `DeFlow/<runId>__<nodeId>`                                         | No — git is authoritative for its own contents |
 
 A fifth store exists but is deliberately **not** a tier of run memory: cross-run project memory
-(F6.8, M3) lives in `.karvan/memory/project.db`, a separate SQLite file with a separate lifecycle.
+(F6.8, M3) lives in `.DeFlow/memory/project.db`, a separate SQLite file with a separate lifecycle.
 This is the LangGraph checkpointer/store split, and keeping the files apart is what lets run
 retention and GC differ from curated long-term memory. See §10.
 
-The tiers exist to make one question answerable: *which tier was this byte in when it reached the
-model?* If a fact is in T2 but not in any T3 packet, no agent saw it. If it is in a T3 packet, the
+The tiers exist to make one question answerable: _which tier was this byte in when it reached the
+model?_ If a fact is in T2 but not in any T3 packet, no agent saw it. If it is in a T3 packet, the
 segment's `sourceEvent` says exactly which T1 event put it there.
 
 ### 1.1 Everything is a ledger projection
@@ -58,13 +58,13 @@ NF10's auditability fall out for free rather than needing separate instrumentati
 > **F6.1:** a node receives what the engine constructs for it and nothing else.
 > **F6.2:** each node declares typed `reads` and `writes`; undeclared reads fail plan validation.
 
-These two are one mechanism seen from two sides. The engine assembles the packet *from the
-declarations* — there is no code path by which a parent node's transcript, a sibling's output, or
+These two are one mechanism seen from two sides. The engine assembles the packet _from the
+declarations_ — there is no code path by which a parent node's transcript, a sibling's output, or
 a previous attempt's history leaks into a packet without a declaration naming it.
 
 That is what makes an edge in the memory graph labelable. F10.1 wants edges labelled with what
 flows across them, and F10.4 wants facts as nodes with reads and writes as edges. Both are trivial
-queries *because* the set of things that crossed the edge is a declared, finite, typed list —
+queries _because_ the set of things that crossed the edge is a declared, finite, typed list —
 and impossible if context is inherited implicitly, because then the honest label on every edge is
 "everything, probably".
 
@@ -79,15 +79,15 @@ plan validation failure before a single token is spent. This is pure graph reach
 // packages/planner/src/validate-reads.ts (sketch)
 export function validateDeclaredReads(g: PlanGraph): ValidationError[] {
   const errors: ValidationError[] = [];
-  const writesByNode = new Map(g.nodes.map(n => [n.id, new Set(n.writes)]));
+  const writesByNode = new Map(g.nodes.map((n) => [n.id, new Set(n.writes)]));
   for (const node of g.nodes) {
-    const reachable = new Set<string>(PINNED_KEYS);            // spec, criteria, scopes
+    const reachable = new Set<string>(PINNED_KEYS); // spec, criteria, scopes
     for (const anc of ancestorsOf(g, node.id)) {
       for (const k of writesByNode.get(anc) ?? []) reachable.add(k);
     }
     for (const key of node.reads) {
       if (!satisfies(reachable, key)) {
-        errors.push({ code: 'undeclared-read', node: node.id, key });
+        errors.push({ code: "undeclared-read", node: node.id, key });
       }
     }
   }
@@ -103,10 +103,10 @@ with the same error code.
 ### 2.2 What "nothing else" does not mean
 
 It does not mean the agent cannot discover things. A node with `read` permission can still grep the
-repo, and the vendor CLI will still load its own `CLAUDE.md`. F6.1 governs *what Karvan puts in the
-packet*, not what the harness does with its own filesystem access. Two consequences:
+repo, and the vendor CLI will still load its own `CLAUDE.md`. F6.1 governs _what DeFlow puts in the
+packet_, not what the harness does with its own filesystem access. Two consequences:
 
-- The `/context` categories Karvan does not control (system prompt, system tools, MCP tools,
+- The `/context` categories DeFlow does not control (system prompt, system tools, MCP tools,
   agents, slash commands, skills, memory files) are still a real slice of the window. Budget for
   them — see §6.2.
 - Repo-derived discovery is not provenanced. If a node's finding matters downstream, it must be
@@ -121,9 +121,15 @@ is in [04-domain-model §6.1](./04-domain-model.md). The mechanics:
 
 ```ts
 type SegmentKind =
-  | 'pinned.constraints' | 'pinned.spec' | 'pinned.pathscope'
-  | 'task.brief' | 'fact' | 'artifact.handle' | 'retrieved'
-  | 'history.summary' | 'tool.output';
+  | "pinned.constraints"
+  | "pinned.spec"
+  | "pinned.pathscope"
+  | "task.brief"
+  | "fact"
+  | "artifact.handle"
+  | "retrieved"
+  | "history.summary"
+  | "tool.output";
 ```
 
 - Each `Segment` carries `sourceEvent` (click-through in the node inspector), `contentHash`
@@ -144,28 +150,28 @@ type SegmentKind =
 **Verified 2026-08-02** by decompiling the category list from Claude Code 2.1.220's shipping bundle
 (`/opt/node22/lib/node_modules/@anthropic-ai/claude-code/cli.js`). It splits the window into:
 
-| Claude Code `/context` band | Karvan analogue |
-|---|---|
-| System prompt | not Karvan's (harness-owned) — reserve, do not model |
-| System tools | harness-owned |
-| MCP tools | Karvan's MCP host contributes here (see [07](./07-provider-adapter-layer.md)) |
-| Agents | harness-owned |
-| Slash commands | harness-owned |
-| Skills | harness-owned |
-| Memory files (`CLAUDE.md`) | harness-owned, repo-derived |
-| `userMessageTokens` | `task.brief`, `pinned.*`, `fact`, `retrieved`, `artifact.handle` |
-| `assistantMessageTokens` | in-session, observed post-hoc only |
-| `toolCallTokens` / `toolResultTokens` | `tool.output` |
-| `attachmentTokens` | `artifact.handle` bodies when inlined |
-| Free space | `limitTokens - totals.tokens` |
-| Autocompact buffer | the vendor's reserve — see §5.1 |
+| Claude Code `/context` band           | DeFlow analogue                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| System prompt                         | not DeFlow's (harness-owned) — reserve, do not model                          |
+| System tools                          | harness-owned                                                                 |
+| MCP tools                             | DeFlow's MCP host contributes here (see [07](./07-provider-adapter-layer.md)) |
+| Agents                                | harness-owned                                                                 |
+| Slash commands                        | harness-owned                                                                 |
+| Skills                                | harness-owned                                                                 |
+| Memory files (`CLAUDE.md`)            | harness-owned, repo-derived                                                   |
+| `userMessageTokens`                   | `task.brief`, `pinned.*`, `fact`, `retrieved`, `artifact.handle`              |
+| `assistantMessageTokens`              | in-session, observed post-hoc only                                            |
+| `toolCallTokens` / `toolResultTokens` | `tool.output`                                                                 |
+| `attachmentTokens`                    | `artifact.handle` bodies when inlined                                         |
+| Free space                            | `limitTokens - totals.tokens`                                                 |
+| Autocompact buffer                    | the vendor's reserve — see §5.1                                               |
 
 This is not cosmetic. F10.5's stacked bar should use these bands so that a user who runs `/context`
-inside Claude Code and then opens Karvan's node inspector sees the *same* decomposition of the same
+inside Claude Code and then opens DeFlow's node inspector sees the _same_ decomposition of the same
 window. Inventing a parallel vocabulary would mean the two never reconcile, and the first time they
 disagree the user will believe the tool they can see with their own eyes.
 
-Karvan-owned bands are measured (§6). Harness-owned bands are unknown until the first result
+DeFlow-owned bands are measured (§6). Harness-owned bands are unknown until the first result
 envelope arrives, at which point `modelUsage[m].inputTokens` minus the packet estimate gives you the
 harness overhead for that (provider, model) — worth recording and reusing as a reserve.
 
@@ -176,8 +182,8 @@ harness overhead for that (provider, model) — worth recording and reusing as a
 This is the single highest-value safety mechanism in the memory layer, and it is about fifteen
 lines of code.
 
-The motivating result is arXiv **2606.22528**, *Governance Decay: How Context Compaction Silently
-Erases Safety Constraints in Long-Horizon LLM Agents* (Shiyang Chen, Beijing Institute of
+The motivating result is arXiv **2606.22528**, _Governance Decay: How Context Compaction Silently
+Erases Safety Constraints in Long-Horizon LLM Agents_ (Shiyang Chen, Beijing Institute of
 Technology; submitted 21 June 2026, currently v2). It introduces the **ConstraintRot** benchmark
 with deterministic tool-call violation grading. Reported: across 1,323 episodes over seven model
 families, the constraint-violation rate is 0% with the policy fully in context and rises to **30%
@@ -196,17 +202,17 @@ across all seven models at negligible cost.
 
 **(1) The pinned set.** Segments with `pinned: true` are, exactly:
 
-| Pinned content | Segment kind | Source |
-|---|---|---|
-| `TaskSpec` goal and non-goals | `pinned.spec` | F1.2, approved at F1.3 |
-| Acceptance criteria | `pinned.spec` | F1.2 / F7.4 |
-| Safety constraints | `pinned.constraints` | run config + F5.6 execution-boundary rules |
-| Declared path scopes | `pinned.pathscope` | F5.3 |
-| The node's permission level | `pinned.constraints` | F5.4 |
+| Pinned content                | Segment kind         | Source                                     |
+| ----------------------------- | -------------------- | ------------------------------------------ |
+| `TaskSpec` goal and non-goals | `pinned.spec`        | F1.2, approved at F1.3                     |
+| Acceptance criteria           | `pinned.spec`        | F1.2 / F7.4                                |
+| Safety constraints            | `pinned.constraints` | run config + F5.6 execution-boundary rules |
+| Declared path scopes          | `pinned.pathscope`   | F5.3                                       |
+| The node's permission level   | `pinned.constraints` | F5.4                                       |
 
 They are never eligible for compaction and are **always rendered first** in the packet.
 
-**(2) Verbatim re-injection.** After any compaction, re-emit the *identical bytes*. Do not let a
+**(2) Verbatim re-injection.** After any compaction, re-emit the _identical bytes_. Do not let a
 summariser paraphrase them, do not reformat them, do not renumber a list. The paper's result is
 specifically about verbatim re-injection; a paraphrase is an untested intervention.
 
@@ -216,11 +222,15 @@ corresponds to text present in the outgoing prompt. On mismatch, **fail the node
 
 ```ts
 // packages/context/src/pin-integrity.ts — the whole mechanism
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
-const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
+const sha256 = (s: string) =>
+  createHash("sha256").update(s, "utf8").digest("hex");
 
-export function assertPinIntegrity(packet: ContextPacket, rendered: string): void {
+export function assertPinIntegrity(
+  packet: ContextPacket,
+  rendered: string,
+): void {
   const missing: string[] = [];
   const ids: SegmentId[] = [];
   for (const seg of packet.segments) {
@@ -231,7 +241,10 @@ export function assertPinIntegrity(packet: ContextPacket, rendered: string): voi
     }
   }
   if (missing.length > 0) {
-    throw new PinIntegrityViolation({ missingDigests: missing, segmentIds: ids });
+    throw new PinIntegrityViolation({
+      missingDigests: missing,
+      segmentIds: ids,
+    });
   }
 }
 ```
@@ -246,23 +259,23 @@ is the positive evidence that the check ran and passed.
 
 ### 4.2 The fourth mechanism: prohibitions decay, requirements persist
 
-From the companion paper, arXiv **2604.20911**, *Omission Constraints Decay While Commission
-Constraints Persist in Long-Context LLM Agents* (4,416 trials, 12 models, 8 providers). Reported:
-omission compliance — following a *don't* — falls from **73% at turn 5 to 33% at turn 16**, while
-commission compliance — following a *do* — holds at **100%**. They call the asymmetry
+From the companion paper, arXiv **2604.20911**, _Omission Constraints Decay While Commission
+Constraints Persist in Long-Context LLM Agents_ (4,416 trials, 12 models, 8 providers). Reported:
+omission compliance — following a _don't_ — falls from **73% at turn 5 to 33% at turn 16**, while
+commission compliance — following a _do_ — holds at **100%**. They call the asymmetry
 **Security-Recall Divergence**, and note it is invisible to standard monitoring, because the
 commission-type audit signals stay healthy while the prohibitions rot. Same search-indexed
 citation caveat as §4.
 
-This is a *distinct* failure mode from compaction deletion — which is why the PRD's phrase in F6.6,
+This is a _distinct_ failure mode from compaction deletion — which is why the PRD's phrase in F6.6,
 "distinct from ordinary long-context attention dilution", is correct. You need both mitigations,
 not one. Two additions:
 
 **(a) Re-inject on a turn interval, not only on compaction.** The paper calls the per-model
-interval the *Safe Turn Depth*. Start at every **8 turns**, make it configurable per adapter:
+interval the _Safe Turn Depth_. Start at every **8 turns**, make it configurable per adapter:
 
 ```yaml
-# .karvan/config.yaml
+# .DeFlow/config.yaml
 providers:
   claude:
     pinReinjectTurns: 8
@@ -279,27 +292,31 @@ point is a planning smell, and the packet builder should warn.
 Not as a style guideline for whoever writes the spec — as a transformation applied at build time,
 so it happens even when a human wrote the constraint carelessly.
 
-| Written as | Emitted into the packet as |
-|---|---|
-| do not write outside `src/checkout/**` | **only** write files under `src/checkout/**` |
-| never run migrations | run **only** the commands listed in the allowed-commands set |
-| do not touch the default branch | commit **only** to `karvan/<runId>__<nodeId>` |
-| do not exceed 3 fix attempts | stop after at most 3 fix attempts and escalate to a human |
+| Written as                             | Emitted into the packet as                                   |
+| -------------------------------------- | ------------------------------------------------------------ |
+| do not write outside `src/checkout/**` | **only** write files under `src/checkout/**`                 |
+| never run migrations                   | run **only** the commands listed in the allowed-commands set |
+| do not touch the default branch        | commit **only** to `DeFlow/<runId>__<nodeId>`                |
+| do not exceed 3 fix attempts           | stop after at most 3 fix attempts and escalate to a human    |
 
 Implementation: constraints are authored as structured objects, not prose, so the transformation is
 a render choice rather than NLP.
 
 ```ts
 type Constraint =
-  | { form: 'allow-only'; subject: 'write-path' | 'command' | 'branch'; allowed: string[] }
-  | { form: 'require';    statement: string }
-  | { form: 'forbid';     subject: string; forbidden: string[] };  // last resort
+  | {
+      form: "allow-only";
+      subject: "write-path" | "command" | "branch";
+      allowed: string[];
+    }
+  | { form: "require"; statement: string }
+  | { form: "forbid"; subject: string; forbidden: string[] }; // last resort
 ```
 
 `forbid` exists because some constraints genuinely have no closed positive form ("do not exfiltrate
-credentials"). Render those *last* among the pinned constraints and count them: a rising `forbid`
+credentials"). Render those _last_ among the pinned constraints and count them: a rising `forbid`
 ratio in a run's spec is a leading indicator of the decay this section exists to prevent, and it is
-worth a line in `karvan doctor`.
+worth a line in `DeFlow doctor`.
 
 ### 4.3 Gates evaluate against the pinned spec, not against context
 
@@ -329,20 +346,20 @@ warningBuffer     = 20_000 (GUY)   errorBuffer = 20_000 (ZUY)   blockingBuffer =
 
 For a 200k window with 32k max output: effective = 180k, auto-compaction fires at **167k**, i.e.
 about **83.5%** of the raw window. Env controls: `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (a float 0–100,
-a percentage *of the effective window*), `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT`.
+a percentage _of the effective window_), `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT`.
 
 > **The gotcha, verified in the code.** The override is applied as
 > `Math.min(pct * effectiveWindow, defaultThreshold)`. It can therefore only ever move the threshold
 > **earlier**, never later. Do not design a policy that assumes you can extend a session past the
 > vendor's threshold — that lever does not exist.
 
-Which happens to be exactly the direction F6.6 wants: *"compaction triggers proactively at a
-configured budget fraction, not at exhaustion."* So set it, deliberately:
+Which happens to be exactly the direction F6.6 wants: _"compaction triggers proactively at a
+configured budget fraction, not at exhaustion."_ So set it, deliberately:
 
 ```yaml
 providers:
   claude:
-    autocompactPct: 70        # → CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70, write-capable nodes
+    autocompactPct: 70 # → CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70, write-capable nodes
 ```
 
 Default 70 for write-capable nodes. `read`-level nodes may opt into `DISABLE_AUTO_COMPACT=1` for
@@ -357,13 +374,13 @@ floor is your packet plus up to 40k — plan the fill fraction accordingly.
 
 **These constants are private implementation details of one version with no compatibility
 guarantee, and they will change.** Assert them in the adapter conformance suite (F3.4) so drift is
-caught by `karvan doctor` and not by a failed three-hour run. Prefer reading
+caught by `DeFlow doctor` and not by a failed three-hour run. Prefer reading
 `modelUsage[m].contextWindow` and `maxOutputTokens` from the result envelope at runtime over
 hardcoding anything.
 
 ### 5.2 At the packet boundary: offload, don't summarise
 
-Between nodes, Karvan owns everything, and the rule is absolute: **offload, don't summarise.**
+Between nodes, DeFlow owns everything, and the rule is absolute: **offload, don't summarise.**
 
 Budget is a fraction of the target adapter's declared `maxContext` from its F3.5 capability
 manifest. **Default 0.5, never above 0.6.** Fill order:
@@ -378,13 +395,13 @@ When the budget is exceeded, **never** summarise a fact or an artifact. Demote i
 
 ```
 artifact://3f2a…c91  build-log for `pnpm -r build` (fail)  · 412 lines · 38.4 KB
-  → pull with the `karvan_read_artifact` MCP tool
+  → pull with the `DeFlow_read_artifact` MCP tool
 ```
 
-The agent retrieves the full body on demand through the MCP tool Karvan already hosts (D9). Handles
+The agent retrieves the full body on demand through the MCP tool DeFlow already hosts (D9). Handles
 are lossless and cheap; summaries are lossy and unauditable. Anthropic's own reported result for
 multi-agent systems is that isolated subagents returning 1–2k token summaries beat monolithic
-context — and the mechanism there is *offloading*, not compression.
+context — and the mechanism there is _offloading_, not compression.
 
 Demotion order when over budget: largest `tool.output` first, then `retrieved`, then `fact` bodies,
 then `artifact.handle` inlined bodies. Pinned segments are never demoted; if the pinned set alone
@@ -393,9 +410,9 @@ exceeds the budget, that is a plan error, not a compaction problem — fail loud
 **Only `history.summary` segments are ever LLM-summarised**, and only when a node is an explicit
 continuation of a previous node. Everything else is offloaded or dropped-with-a-handle.
 
-### 5.3 What Karvan deliberately does not build
+### 5.3 What DeFlow deliberately does not build
 
-A Karvan-side compactor that rewrites the CLI's transcript between turns. It requires transcript
+A DeFlow-side compactor that rewrites the CLI's transcript between turns. It requires transcript
 round-tripping through `--resume`, is per-vendor, and duplicates work the vendor does better.
 Rejected for M1; revisit only if a vendor exposes a supported transcript-mutation path.
 
@@ -403,7 +420,7 @@ Rejected for M1; revisit only if a vendor exposes a supported transcript-mutatio
 
 ## 6. Compaction auditability, honestly (F6.6, F10.5)
 
-Claude Code *does* surface compaction in `--output-format stream-json`. **Verified 2026-08-02** from
+Claude Code _does_ surface compaction in `--output-format stream-json`. **Verified 2026-08-02** from
 the binary's zod schemas:
 
 ```ts
@@ -416,8 +433,8 @@ plus `{ type: 'system', subtype: 'status', status: 'compacting' | null }` for a 
 
 **The honest limitation: `compact_metadata` carries `pre_tokens` only.** There is no `post_tokens`,
 no list of what was dropped, and no handle to the pre-compaction transcript. So F6.6's wording —
-*"before/after token counts, what was summarized, what was dropped, with handles to the full
-original"* — is **fully achievable only for Karvan's own packet-level compaction.**
+_"before/after token counts, what was summarized, what was dropped, with handles to the full
+original"_ — is **fully achievable only for DeFlow's own packet-level compaction.**
 
 Do not ship a UI that implies otherwise. **A chart with a fabricated "after" number is worse than an
 honest gap.**
@@ -427,39 +444,39 @@ honest gap.**
 ```ts
 type ContextCompacted = {
   node: NodeId;
-  scope: 'karvan.packet' | 'vendor.session';
-  fidelity: 'exact' | 'partial';        // 'partial' ⇒ vendor-reported
-  trigger: 'threshold' | 'manual' | 'vendor.auto';
+  scope: "DeFlow.packet" | "vendor.session";
+  fidelity: "exact" | "partial"; // 'partial' ⇒ vendor-reported
+  trigger: "threshold" | "manual" | "vendor.auto";
   before: number;
-  after: number | null;                 // null when vendor-reported
-  droppedSegments: SegmentId[];         // [] when vendor-reported
+  after: number | null; // null when vendor-reported
+  droppedSegments: SegmentId[]; // [] when vendor-reported
   demotedToHandles: Handle[];
-  pinnedKept: string[];                 // sha256 list — proves the integrity check passed
+  pinnedKept: string[]; // sha256 list — proves the integrity check passed
   originalHandle: Handle | null;
 };
 ```
 
-| Field | `karvan.packet` | `vendor.session` |
-|---|---|---|
-| `fidelity` | `'exact'` | `'partial'` |
-| `before` | measured (Tier 2) | `compact_metadata.pre_tokens` |
-| `after` | measured (Tier 2) | `null`, or an **inferred** figure (§6.2) |
-| `droppedSegments` | full list of `SegmentId` | `[]` |
-| `demotedToHandles` | full list | `[]` |
-| `originalHandle` | the pre-compaction manifest blob | transcript snapshot, if taken (§6.3) |
+| Field              | `DeFlow.packet`                  | `vendor.session`                         |
+| ------------------ | -------------------------------- | ---------------------------------------- |
+| `fidelity`         | `'exact'`                        | `'partial'`                              |
+| `before`           | measured (Tier 2)                | `compact_metadata.pre_tokens`            |
+| `after`            | measured (Tier 2)                | `null`, or an **inferred** figure (§6.2) |
+| `droppedSegments`  | full list of `SegmentId`         | `[]`                                     |
+| `demotedToHandles` | full list                        | `[]`                                     |
+| `originalHandle`   | the pre-compaction manifest blob | transcript snapshot, if taken (§6.3)     |
 
 [The frontend](./12-frontend-architecture.md) branches on `fidelity`: `exact` renders a solid
 before→after bar with a clickable dropped-segment list; `partial` renders the `before` bar solid,
-the `after` bar hatched and labelled *inferred*, and a plain sentence saying the vendor does not
+the `after` bar hatched and labelled _inferred_, and a plain sentence saying the vendor does not
 report what it dropped. The label is a feature, not an apology — it tells the user the difference
-between a number Karvan measured and a number Karvan guessed.
+between a number DeFlow measured and a number DeFlow guessed.
 
 ### 6.2 Partial recovery of the "after" figure
 
 Take `pre_tokens` from `compact_boundary`, then read the **next** assistant turn's
 `modelUsage[model].inputTokens` from the result envelope and use it as an approximate
 post-compaction figure. It is approximate because the next turn also includes whatever the agent
-did after compaction. Store it as `after` with `fidelity: 'partial'` and label it *inferred*
+did after compaction. Store it as `after` with `fidelity: 'partial'` and label it _inferred_
 everywhere it is displayed. Never promote an inferred number to `fidelity: 'exact'`.
 
 ### 6.3 The transcript-snapshot trick
@@ -523,20 +540,20 @@ if it does not, ACP-first silently costs F9.1 and F10.5. Check it explicitly in 
 
 ### Tier 2 — approximate, pre-flight, for budgeting the packet
 
-`gpt-tokenizer@3.4.0` with `o200k_base`, as a single universal estimator for *all* providers,
+`gpt-tokenizer@3.4.0` with `o200k_base`, as a single universal estimator for _all_ providers,
 labelled `method: 'gpt-tokenizer/o200k_base'`. Import the **encoding-specific entrypoint** so you do
 not pull every BPE table into the daemon:
 
 ```ts
-import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
+import { countTokens } from "gpt-tokenizer/encoding/o200k_base";
 ```
 
 Fastest pure-JS tokenizer on npm, no native or wasm build step — which matters for
-`npx karvan up` (NF6).
+`npx DeFlow up` (NF6).
 
 **The error bar, stated honestly.** Anthropic's own documentation warns that tiktoken-family
 tokenizers **undercount Claude tokens by roughly 15–20% on prose, and considerably more on code and
-non-English text**. An uncalibrated pre-flight budget will therefore systematically *overfill*
+non-English text**. An uncalibrated pre-flight budget will therefore systematically _overfill_
 Anthropic contexts — which is the dangerous direction.
 
 **The fix is a self-calibrating rolling ratio per (provider, model), and it is free.** After every
@@ -544,22 +561,33 @@ node, compare the Tier-2 estimate of the rendered prompt against Tier-1 `inputTo
 
 ```ts
 // packages/context/src/calibration.ts (sketch)
-type Calibration = { n: number; ratio: number };  // ratio = actual / estimated
+type Calibration = { n: number; ratio: number }; // ratio = actual / estimated
 
-const ALPHA = 0.2;                                 // EWMA, converges in ~20 samples
-export function update(c: Calibration, estimated: number, actual: number): Calibration {
+const ALPHA = 0.2; // EWMA, converges in ~20 samples
+export function update(
+  c: Calibration,
+  estimated: number,
+  actual: number,
+): Calibration {
   if (estimated <= 0) return c;
   const observed = actual / estimated;
-  return { n: c.n + 1, ratio: c.n === 0 ? observed : c.ratio * (1 - ALPHA) + observed * ALPHA };
+  return {
+    n: c.n + 1,
+    ratio: c.n === 0 ? observed : c.ratio * (1 - ALPHA) + observed * ALPHA,
+  };
 }
 
 // seeds, used until n >= 5
-const SEED: Record<string, number> = { anthropic: 1.2, openai: 1.0, default: 1.05 };
+const SEED: Record<string, number> = {
+  anthropic: 1.2,
+  openai: 1.0,
+  default: 1.05,
+};
 ```
 
 Store it in the adapter capability manifest as `tokenEstimateFactor` and persist per
 (provider, model). After roughly 20 nodes the estimates land within a few percent. Surface the
-current factor in `karvan doctor`. This turns an unfixable systematic bias into a solved problem at
+current factor in `DeFlow doctor`. This turns an unfixable systematic bias into a solved problem at
 zero cost, and nobody else in the category does it.
 
 ### Tier 3 — exact, opt-in, API-key path only
@@ -567,16 +595,16 @@ zero cost, and nobody else in the category does it.
 Anthropic's `POST /v1/messages/count_tokens` is exact and free of charge, but it requires a
 credential. Under AR-1 it is available **only** when the user has explicitly supplied their own key
 via the F3.3 direct-API adapter. **Never call it on the subscription path.** There is no code path
-in `karvand` that reads a token file or sets an auth env var to make this call work.
+in `DeFlowd` that reads a token file or sets an auth env var to make this call work.
 
 ### Dead ends
 
-| Package | Why not |
-|---|---|
-| `@anthropic-ai/tokenizer` | Still **0.0.4**, implements only the Claude 1/2-era BPE. Wrong for every current model. The package name makes it look authoritative — it is a trap. |
-| `js-tiktoken@1.0.21` | Works, slower than `gpt-tokenizer`, no accuracy gain. |
-| `tiktoken` / `@dqbd/tiktoken@1.0.22` | wasm; adds a binary artifact for no accuracy gain. |
-| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx karvan up`, and *still* isn't exact for Claude. |
+| Package                                          | Why not                                                                                                                                              |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@anthropic-ai/tokenizer`                        | Still **0.0.4**, implements only the Claude 1/2-era BPE. Wrong for every current model. The package name makes it look authoritative — it is a trap. |
+| `js-tiktoken@1.0.21`                             | Works, slower than `gpt-tokenizer`, no accuracy gain.                                                                                                |
+| `tiktoken` / `@dqbd/tiktoken@1.0.22`             | wasm; adds a binary artifact for no accuracy gain.                                                                                                   |
+| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx DeFlow up`, and _still_ isn't exact for Claude.                                                                     |
 
 There is no public exact tokenizer for Claude 3+. Accept it and calibrate.
 
@@ -586,7 +614,7 @@ There is no public exact tokenizer for Claude 3+. Accept it and calibrate.
 
 **Six-kind fixed core plus one `ext:` namespace.** The kinds are `finding`, `decision`, `artifact`,
 `scope`, `risk`, `verdict`; anything else goes to `ext:<namespace>/<key>`, schema-validated against
-a registered `schemaId` in `.karvan/schemas/` but not enumerated. Full type in
+a registered `schemaId` in `.DeFlow/schemas/` but not enumerated. Full type in
 [04-domain-model §5](./04-domain-model.md).
 
 Fixed core gives the marquee visualisations something renderable, diffable and validatable. The ext
@@ -630,7 +658,7 @@ can reconstruct — and it interacts badly with F4.6 budget ceilings.
 
 ## 9. Handoff contracts and the enforced return budget (F6.4, F6.9)
 
-F6.4's *"default return budget: 500–2,000 tokens, enforced"* needs a mechanism or it is a comment.
+F6.4's _"default return budget: 500–2,000 tokens, enforced"_ needs a mechanism or it is a comment.
 Three layers, all already available.
 
 ### 9.1 Declare the contract
@@ -640,7 +668,7 @@ the CLI **natively** where supported — far more reliable than prompt-only inst
 
 - **Claude Code**: `--json-schema <schema>`; the parsed object arrives in the result envelope's
   `structured_output` field. **Verified 2026-08-02** from the bundle's flag table and zod schema.
-  Whether `structured_output` is populated in *every* success case is **unverified** — confirm
+  Whether `structured_output` is populated in _every_ success case is **unverified** — confirm
   empirically in the M0 spike.
 - **Codex**: structured-output support in `codex exec`.
 - Anything else: prompt-level schema plus Ajv validation, and mark
@@ -665,8 +693,8 @@ exactly the "silent propagation of garbage" F6.9 exists to forbid. Repair-or-fai
 
 Validation is Ajv 8.20.0 (`strict: true`, `allErrors: true`) plus `ajv-formats@3.0.1` against JSON
 Schema 2020-12 — the same draft MCP tool `inputSchema` defaults to, which keeps one dialect across
-Karvan's MCP host and its handoff contracts. Author schemas in TypeScript with Zod 4.4.3 and emit
-via `z.toJSONSchema()` into `.karvan/schemas/`, so the TS type and the runtime contract cannot
+DeFlow's MCP host and its handoff contracts. Author schemas in TypeScript with Zod 4.4.3 and emit
+via `z.toJSONSchema()` into `.DeFlow/schemas/`, so the TS type and the runtime contract cannot
 drift and the schemas remain inspectable on disk (NF8).
 
 ### 9.3 About the number itself — be honest
@@ -674,24 +702,24 @@ drift and the schemas remain inspectable on disk (NF8).
 The 500–2,000 figure is **practitioner consensus, not a controlled study.** It traces to Anthropic's
 multi-agent research system and the 2026 convergence of Anthropic, Cognition and OpenAI on
 orchestrator-plus-isolated-subagents returning compressed summaries. No experiment establishes an
-optimum, and the surrounding guidance is expressed as *ratios of the window* rather than absolutes
+optimum, and the surrounding guidance is expressed as _ratios of the window_ rather than absolutes
 (the recurring rules being "system prompts under ~2,000 tokens" and "compact proactively past
 ~60% fill").
 
-The related figure that *is* measured: on Anthropic's BrowseComp evaluation, token usage alone
+The related figure that _is_ measured: on Anthropic's BrowseComp evaluation, token usage alone
 explains about **80%** of performance variance, and the lead-Opus / subagent-Sonnet configuration
 outperformed single-agent Opus by 90.2% at roughly 15× the token cost of a normal chat turn. That
 is a browsing/research workload — do not generalise it to coding without saying so.
 
 Therefore:
 
-| Node type | `maxTokens` default |
-|---|---|
-| `gate` | 300 |
-| `human` (structured response) | 500 |
-| `agent` (implementation) | 1,500 |
-| `agent` (recon / survey) | 4,000 |
-| `tool` | n/a (deterministic output, handled by handles) |
+| Node type                     | `maxTokens` default                            |
+| ----------------------------- | ---------------------------------------------- |
+| `gate`                        | 300                                            |
+| `human` (structured response) | 500                                            |
+| `agent` (implementation)      | 1,500                                          |
+| `agent` (recon / survey)      | 4,000                                          |
+| `tool`                        | n/a (deterministic output, handled by handles) |
 
 Global default **1,500**, overridable per node type and per node. Record **oversize rate per node
 type** and feed it into F10.11's cross-run dashboard, then tune from your own data. That
@@ -728,7 +756,7 @@ LIMIT 20;
 
 ### 10.1 Why embeddings are the wrong first move
 
-Karvan's corpus is a run's own artifacts and prior runs: stack traces, test output, diffs, file
+DeFlow's corpus is a run's own artifacts and prior runs: stack traces, test output, diffs, file
 paths, symbol names, error codes. That is overwhelmingly **exact-match territory** — BM25's
 strongest suit and dense retrieval's weakest. The 2026 hybrid-search literature is consistent that
 embeddings conflate identifiers differing by a few characters, which is catastrophic for
@@ -753,7 +781,7 @@ F6.7 is P1, and P1 is the right place for it.
    transformers.js; v4 rewrote the WebGPU runtime in C++ and reports BERT-family embedding models up
    to 4× faster, running server-side in Node) with a 768-dim model. Prefer it over `fastembed@2.1.0`,
    which pulls native `@anush008/tokenizers` bindings — a cross-platform install hazard for
-   `npx karvan up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
+   `npx DeFlow up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
    optional accelerator when the user already runs Ollama; never as a required dependency.
 
 Bottom line: the cheapest thing that works is FTS5 with correct `tokenchars`, and there is a decent
@@ -768,29 +796,29 @@ The PRD names these in §4.3. Each contributes exactly one idea worth keeping, a
 that is actively wrong for a provenance-first system. Being explicit about the boundary is what
 prevents cargo-culting.
 
-| Reference | **Take** | **Leave** |
-|---|---|---|
-| **Letta** (memory blocks) | The *rendering* idea: a memory block is a labelled section of the window with an explicit character/token limit, prepended in XML-ish form. Maps 1:1 onto Karvan's segment list and gives a natural per-segment cap. | The **shared-mutable-block model**. Letta's shared blocks propagate updates to all agents immediately and the agent itself mutates them. F6.1 wants no implicit sharing and F6.3 wants full provenance — an agent silently editing a block that another agent reads is precisely the failure both requirements exist to prevent. |
-| **LangGraph** (checkpointer/store split) | The split itself, which maps 1:1 and validates the PRD's tiering: checkpointer = thread-scoped short-term state (T1 ledger + T2 blackboard, run-scoped); store = cross-thread long-term memory (F6.8). Keep them in **separate SQLite files** — the global run ledger (`$XDG_DATA_HOME/karvan/ledger.db`) vs `.karvan/memory/project.db` — so retention/GC and curation have different lifecycles. | The **dependency**. §4.3's disqualification stands: LangGraph is a library for building agents from raw model APIs, which means per-token API billing and reimplementing the coding harness. Both contradict AR-1 and the whole premise. |
-| **OpenAI Agents SDK** (`nest_handoff_history`) | The **ordered interleaving**: summaries sit in the chronological position of what they replaced rather than being lumped into one preamble. That preserves causal ordering and is a small change to `render(segments)` — do it. | Enabling transcript collapsing by default. `nest_handoff_history` is still an **opt-in beta, disabled by default** "while we stabilize nested handoffs". That even OpenAI does not consider transcript collapsing safe by default is a strong signal supporting §5.2's offload-don't-summarise stance. |
+| Reference                                      | **Take**                                                                                                                                                                                                                                                                                                                                                                                           | **Leave**                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Letta** (memory blocks)                      | The _rendering_ idea: a memory block is a labelled section of the window with an explicit character/token limit, prepended in XML-ish form. Maps 1:1 onto DeFlow's segment list and gives a natural per-segment cap.                                                                                                                                                                               | The **shared-mutable-block model**. Letta's shared blocks propagate updates to all agents immediately and the agent itself mutates them. F6.1 wants no implicit sharing and F6.3 wants full provenance — an agent silently editing a block that another agent reads is precisely the failure both requirements exist to prevent. |
+| **LangGraph** (checkpointer/store split)       | The split itself, which maps 1:1 and validates the PRD's tiering: checkpointer = thread-scoped short-term state (T1 ledger + T2 blackboard, run-scoped); store = cross-thread long-term memory (F6.8). Keep them in **separate SQLite files** — the global run ledger (`$XDG_DATA_HOME/DeFlow/ledger.db`) vs `.DeFlow/memory/project.db` — so retention/GC and curation have different lifecycles. | The **dependency**. §4.3's disqualification stands: LangGraph is a library for building agents from raw model APIs, which means per-token API billing and reimplementing the coding harness. Both contradict AR-1 and the whole premise.                                                                                         |
+| **OpenAI Agents SDK** (`nest_handoff_history`) | The **ordered interleaving**: summaries sit in the chronological position of what they replaced rather than being lumped into one preamble. That preserves causal ordering and is a small change to `render(segments)` — do it.                                                                                                                                                                    | Enabling transcript collapsing by default. `nest_handoff_history` is still an **opt-in beta, disabled by default** "while we stabilize nested handoffs". That even OpenAI does not consider transcript collapsing safe by default is a strong signal supporting §5.2's offload-don't-summarise stance.                           |
 
-Two June 2026 preprints found during the research converge independently on Karvan's architecture
+Two June 2026 preprints found during the research converge independently on DeFlow's architecture
 and are worth knowing as prior art — **not** as validated results, since both are
 single-author/small-team with no independent replication:
 
-- **arXiv 2606.23752** (*ESAA-Conversational*) treats the visible conversation as a local event
+- **arXiv 2606.23752** (_ESAA-Conversational_) treats the visible conversation as a local event
   store, normalising turns into an append-only `activity.jsonl` and deterministically projecting
   read models so a cold agent starts from projections plus a selective window rather than the whole
-  log. That is Karvan's ledger-plus-projection design, arrived at separately.
-- **arXiv 2606.12329** (*PROJECTMEM*, University of Utah) is a local-first append-only typed event
+  log. That is DeFlow's ledger-plus-projection design, arrived at separately.
+- **arXiv 2606.12329** (_PROJECTMEM_, University of Utah) is a local-first append-only typed event
   log projected into compact summaries served over MCP, plus a deterministic **pre-action gate**
   that warns an agent before it repeats a previously-failed fix or edits a known-fragile file —
-  "Memory-as-Governance". That gate is a genuinely good idea Karvan currently lacks: it is F4.7
+  "Memory-as-Governance". That gate is a genuinely good idea DeFlow currently lacks: it is F4.7
   no-progress detection generalised from within-loop to across-runs, and it fits the F6.8 / M3 slot.
 
 Also relevant to F6.8: Letta's **sleep-time agents** (background curators that asynchronously edit a
 primary agent's blocks) are a good shape for a background curator proposing promotions to
-`.karvan/memory/` — gated by human review, exactly as F6.8 requires. Never auto-promoted.
+`.DeFlow/memory/` — gated by human review, exactly as F6.8 requires. Never auto-promoted.
 
 ---
 
@@ -806,7 +834,7 @@ segments come first and are byte-identical to the spec.
 
 **A committed compaction fixture corpus.** Record real `stream-json` transcripts from Claude Code
 once, including at least one `compact_boundary` and at least one `result` envelope with populated
-`modelUsage`, and commit them under `test/fixtures/streams/`. The `@karvan/mock-agent` binary (D17)
+`modelUsage`, and commit them under `test/fixtures/streams/`. The `@DeFlow/mock-agent` binary (D17)
 replays them. This lets you develop and test the compaction event pipeline, the three-tier token
 accounting, the calibration ratio and the F10.5 visualisation with no credentials, no network and
 no cost — the difference between this being testable on a train and not.
@@ -818,7 +846,7 @@ finding into a standing guard rather than a one-time implementation, and it is t
 protects the highest-severity risk in PRD §13. Include at least three scenarios that exercise the
 `forbid` → `allow-only` restatement from §4.2.
 
-**`karvan doctor` reports the memory layer too**: current tokenizer calibration factor per
+**`DeFlow doctor` reports the memory layer too**: current tokenizer calibration factor per
 (provider, model) with sample count, FTS5 availability and the tokenizer setting on
 `artifact_fts`, whether `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is in effect and at what value, and the
 current `forbid`-to-`allow-only` ratio in the loaded spec. Cheap, and it makes the invisible parts
@@ -836,7 +864,7 @@ of the system legible when something goes wrong.
 - **Do not assume `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` can delay compaction.** `Math.min` clamps it to
   the default threshold; it moves compaction earlier only.
 - **Do not budget a packet with an uncalibrated `gpt-tokenizer` count.** The 15–20% undercount on
-  Claude prose (worse on code) systematically *overfills* the context. Ship the rolling ratio.
+  Claude prose (worse on code) systematically _overfills_ the context. Ship the rolling ratio.
 - **Do not use `@anthropic-ai/tokenizer`.** Version 0.0.4, Claude 1/2-era BPE, authoritative-looking
   name, wrong answer.
 - **Do not create `artifact_fts` without `tokenchars '_-.'`.** Recall on code collapses, and you

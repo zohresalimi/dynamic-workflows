@@ -1,24 +1,24 @@
 # EPIC-10: Task intake and framing
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-10-task-intake-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-10 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W7a (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~13 days across 5 stories |
-| **Depends on** | EPIC-09 (the pinned segment set, `render(segments)`, `assertPinIntegrity` and the blackboard the recon facts land in), EPIC-06 (the node runner, blocking `human` nodes and durable `node_wake` suspension), EPIC-05 (an ACP session at `read` permission with structured output), EPIC-02 (`TaskSpec`, `AcceptanceCriterion`, `FailureMode`, `Fact` and the `run.*` / `human.*` members of the `Event` union) |
-| **Blocks** | EPIC-11 (the planner's first two of three inputs are the pinned spec and the recon facts), EPIC-12 (every gate is judged against the `specHash` minted here), EPIC-17 (F10.8's acceptance-criteria board renders this epic's criteria) |
-| **PRD requirements** | F1.1, F1.2, F1.3 (all P0) · F1.5 (P1, **pulled into M1** — see Scope) · F5.4, F6.1, F6.2, F6.4, F7.4, F8.1 · NF8, NF10 |
-| **Architecture** | [06-planning-and-replanning.md §1](../../06-planning-and-replanning.md) (whole section) · [04-domain-model.md §2](../../04-domain-model.md) · [08-context-and-memory.md §4](../../08-context-and-memory.md) · [10-verification-gates.md §5](../../10-verification-gates.md) |
+|                      |                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-10                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Workstream**       | W7a (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                                                                                                                                  |
+| **Size**             | ~13 days across 5 stories                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Depends on**       | EPIC-09 (the pinned segment set, `render(segments)`, `assertPinIntegrity` and the blackboard the recon facts land in), EPIC-06 (the node runner, blocking `human` nodes and durable `node_wake` suspension), EPIC-05 (an ACP session at `read` permission with structured output), EPIC-02 (`TaskSpec`, `AcceptanceCriterion`, `FailureMode`, `Fact` and the `run.*` / `human.*` members of the `Event` union) |
+| **Blocks**           | EPIC-11 (the planner's first two of three inputs are the pinned spec and the recon facts), EPIC-12 (every gate is judged against the `specHash` minted here), EPIC-17 (F10.8's acceptance-criteria board renders this epic's criteria)                                                                                                                                                                         |
+| **PRD requirements** | F1.1, F1.2, F1.3 (all P0) · F1.5 (P1, **pulled into M1** — see Scope) · F5.4, F6.1, F6.2, F6.4, F7.4, F8.1 · NF8, NF10                                                                                                                                                                                                                                                                                         |
+| **Architecture**     | [06-planning-and-replanning.md §1](../../06-planning-and-replanning.md) (whole section) · [04-domain-model.md §2](../../04-domain-model.md) · [08-context-and-memory.md §4](../../08-context-and-memory.md) · [10-verification-gates.md §5](../../10-verification-gates.md)                                                                                                                                    |
 
 ## Goal
 
-At the end of this epic a task can enter Karvan four ways, is interrogated by a framing agent that
+At the end of this epic a task can enter DeFlow four ways, is interrogated by a framing agent that
 has read the repository and is allowed to ask the operator questions, and comes out the other side
 as a `TaskSpec` the operator has actually read, edited and explicitly approved. Approval mints
 `specHash` and the pinned segment set; from that moment every packet carries the spec verbatim and
@@ -33,13 +33,13 @@ this is the first surface a human touches, and it is the one gate whose absence 
 is unanimous about. [PRD §4.5](../../prd.md) surveys every major spec-driven-development framework
 and finds them agreeing on one thing: **shallow specs are the primary documented failure mode**,
 ahead of bad models, bad prompts and bad tooling.
-[06 §1.3](../../06-planning-and-replanning.md) puts the economics plainly — the failure is *"cheap
+[06 §1.3](../../06-planning-and-replanning.md) puts the economics plainly — the failure is _"cheap
 to produce and expensive to discover: a plausible, under-specified spec generates a plausible,
-under-specified plan, which generates forty nodes of confidently wrong work."*
+under-specified plan, which generates forty nodes of confidently wrong work."_
 
-The second documented failure is worse because it is invisible. *Spec-then-drift* is what
-[10-verification-gates §5.2](../../10-verification-gates.md) describes as *"the spec launches the
-session and the code silently becomes the source of truth again the moment generation starts"* —
+The second documented failure is worse because it is invisible. _Spec-then-drift_ is what
+[10-verification-gates §5.2](../../10-verification-gates.md) describes as _"the spec launches the
+session and the code silently becomes the source of truth again the moment generation starts"_ —
 the reviewer reads the code, forms a model of what the code is trying to do, and judges the code
 against that model. **It always passes.** `KAR-10.4` is the mechanical answer: the spec is pinned,
 re-injected verbatim, its sha256 is checked after rendering, and a verdict whose `specHash` does not
@@ -54,8 +54,8 @@ that governs a run has to be re-asserted rather than merely stated once. EPIC-09
 machinery. This epic is what fills it with something worth pinning.
 
 Skip this epic and the planner has no contract to compile, the gates have nothing to judge against,
-F10.8's acceptance-criteria board has no rows, and the honest answer to *"has the requested outcome
-been achieved?"* becomes *"the agent said so."*
+F10.8's acceptance-criteria board has no rows, and the honest answer to _"has the requested outcome
+been achieved?"_ becomes _"the agent said so."_
 
 ## Scope
 
@@ -64,13 +64,13 @@ been achieved?"* becomes *"the agent said so."*
 - Intake of all four F1.1 sources — free text, a file path, a git issue reference, a spec document —
   normalised into a single `task.submitted` event carrying the **raw source plus its provenance**
   and nothing interpreted. `POST /api/runs` with `input: { kind: 'text' | 'file' | 'issue' }` and
-  the `karvan run "…"` CLI entry over the identical daemon path, honouring `Idempotency-Key`.
-- The raw text pinned and surviving every later transformation, so *"what did I actually ask for?"*
+  the `DeFlow run "…"` CLI entry over the identical daemon path, honouring `Idempotency-Key`.
+- The raw text pinned and surviving every later transformation, so _"what did I actually ask for?"_
   is answerable from the ledger at any point in a multi-hour run.
 - The framing interview: a fresh-session framing agent at **`read` permission** producing a
-  `TaskSpec` (`karvan.taskspec.v1`) with `goal`, `scope`, `nonGoals`, `constraints`,
+  `TaskSpec` (`DeFlow.taskspec.v1`) with `goal`, `scope`, `nonGoals`, `constraints`,
   `priorDecisions`, `acceptanceCriteria` and `knownFailureModes` — as **structured output enforced
-  at the adapter boundary** (`--json-schema` / `--output-schema`), never prose that Karvan parses.
+  at the adapter boundary** (`--json-schema` / `--output-schema`), never prose that DeFlow parses.
 - Clarifying questions: the framing agent may block for operator input mid-interview, and the
   question-and-answer pairs are recorded and land in the spec as `priorDecisions`.
 - The acceptance-criteria contract enforced structurally: every criterion either names at least one
@@ -90,7 +90,7 @@ been achieved?"* becomes *"the agent said so."*
   worktrees producing the structured survey [06 §2.1](../../06-planning-and-replanning.md)
   specifies — language and toolchain detection, the scripts in `package.json` **that actually
   exist**, test/lint/build commands, directory shape, the size of the areas the spec names, and any
-  `.karvan/gates/` definitions already present in the repo — landing as `finding/*` and `scope/*`
+  `.DeFlow/gates/` definitions already present in the repo — landing as `finding/*` and `scope/*`
   facts with provenance and a `confidence` value.
 
 **Out of scope:**
@@ -103,15 +103,15 @@ been achieved?"* becomes *"the agent said so."*
 - Running the gates that the criteria name — [EPIC-12](./EPIC-12-verification-gates.md). This epic
   guarantees each criterion names one; EPIC-12 makes it produce a verdict.
 - The `human` node primitive itself, the cross-run approval queue and interjection —
-  [EPIC-13](./EPIC-13-human-in-the-loop.md). This epic is the first *consumer* of a blocking human
+  [EPIC-13](./EPIC-13-human-in-the-loop.md). This epic is the first _consumer_ of a blocking human
   node and depends on EPIC-06's suspension mechanics, not on EPIC-13's queue surface.
 - The packet builder, `render(segments)`, `assertPinIntegrity`, the prohibition-to-requirement
   restatement and the ConstraintRot harness — [EPIC-09](./EPIC-09-context-memory.md). This epic
-  supplies the *content* of the pinned set and the rule that gates key on `specHash`.
+  supplies the _content_ of the pinned set and the rule that gates key on `specHash`.
 - Rendering: F10.8's acceptance-criteria board and the spec editor UI are
   [EPIC-17](./EPIC-17-p0-views.md) and [EPIC-16](./EPIC-16-ui-foundation.md). Approval must be
   reachable from the CLI in M1 (`by: 'cli'`) so this epic is not blocked on the UI.
-- Cross-run project memory as a `priorDecisions` source (F6.8) — **M3**. `.karvan/memory/` may be
+- Cross-run project memory as a `priorDecisions` source (F6.8) — **M3**. `.DeFlow/memory/` may be
   read if present, but nothing in this epic writes or curates it.
 
 ## Definition of Ready (epic level)
@@ -119,7 +119,7 @@ been achieved?"* becomes *"the agent said so."*
 - [ ] **EPIC-02 Done.** `TaskSpec`, `AcceptanceCriterion`, `FailureMode`, `Fact`, `Provenance` and
       the `run.created` / `run.spec.approved` / `human.requested` / `human.responded` /
       `fact.written` members of the `Event` union exist, with JSON Schemas emitted to
-      `.karvan/schemas/`.
+      `.DeFlow/schemas/`.
 - [ ] **The three intake/approval event kinds named in [06 §1](../../06-planning-and-replanning.md)
       but absent from [04 §9's](../../04-domain-model.md) Event union table — `task.submitted`,
       `spec.pinned`, `spec.amended` — have been reconciled into `KAR-02.7`.** This is a real gap
@@ -133,11 +133,11 @@ been achieved?"* becomes *"the agent said so."*
 - [ ] **EPIC-05 KAR-05.1 and KAR-05.2 Done.** An ACP session can be opened at `read` permission with
       structured output enforced at the adapter boundary, and the `provider_capabilities` row says
       whether the chosen adapter supports it.
-- [ ] `@karvan/mock-agent` can be scripted to return a valid `karvan.taskspec.v1` document, an
+- [ ] `@DeFlow/mock-agent` can be scripted to return a valid `DeFlow.taskspec.v1` document, an
       invalid one, and a mid-turn `session/request_permission` for a write — so the entire framing
       interview is testable offline with no credentials.
 - [ ] A decision is recorded on **how a git issue reference is fetched** (`gh` CLI subprocess vs
-      plain HTTPS) and how that squares with NF1. Intake is the only place in M1 where Karvan itself
+      plain HTTPS) and how that squares with NF1. Intake is the only place in M1 where DeFlow itself
       touches the network.
 
 ## Definition of Done (epic level)
@@ -152,7 +152,7 @@ been achieved?"* becomes *"the agent said so."*
 - [ ] **A test proves the anti-drift claim:** a gate verdict produced against `specHash` A is voided
       and the gate re-run after the operator edits the spec to `specHash` B — and the gate's packet
       contains the spec bytes from the ledger, not from the worktree's code.
-- [ ] An e2e spec drives `karvan run "…"` end to end: intake → framing → clarifying question →
+- [ ] An e2e spec drives `DeFlow run "…"` end to end: intake → framing → clarifying question →
       operator edit → approval → recon facts on the blackboard → the run becomes schedulable, with
       the daemon killed with `SIGKILL` while suspended at the approval gate and restarted.
 - [ ] `test/fixtures/runs/spec-approval/ledger.db` is committed, containing `task.submitted`, a
@@ -167,25 +167,25 @@ been achieved?"* becomes *"the agent said so."*
 
 ### KAR-10.1 — Task intake from text, file, issue reference or spec
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | EPIC-02 (`TaskSpec` and the run events), EPIC-03 (the append path) |
-| **PRD** | F1.1, NF8, NF10 |
-| **Verified by** | EPIC-10-S1, EPIC-10-S2, EPIC-10-S3, EPIC-10-S4, EPIC-10-S5 |
+|                 |                                                                    |
+| --------------- | ------------------------------------------------------------------ |
+| **Status**      | Ready                                                              |
+| **Priority**    | P0                                                                 |
+| **Size**        | S                                                                  |
+| **Depends on**  | EPIC-02 (`TaskSpec` and the run events), EPIC-03 (the append path) |
+| **PRD**         | F1.1, NF8, NF10                                                    |
+| **Verified by** | EPIC-10-S1, EPIC-10-S2, EPIC-10-S3, EPIC-10-S4, EPIC-10-S5         |
 
-**As** the operator, **I want** to hand Karvan a task as text, a file, an issue URL or a spec
+**As** the operator, **I want** to hand DeFlow a task as text, a file, an issue URL or a spec
 document and get back a run id, **so that** the way I happened to have the task written down is not
 a reason to retype it.
 
 [06 §1.1](../../06-planning-and-replanning.md) is unusually strict about what this story may do:
-*"Intake does exactly one thing: normalise the input into a `task.submitted` event carrying the raw
-source plus its provenance. **No interpretation happens here.**"* The raw text is pinned and
-survives every later transformation, which is what makes *"what did I actually ask for?"* answerable
+_"Intake does exactly one thing: normalise the input into a `task.submitted` event carrying the raw
+source plus its provenance. **No interpretation happens here.**"_ The raw text is pinned and
+survives every later transformation, which is what makes _"what did I actually ask for?"_ answerable
 from the ledger three hours in, after two replans and a compaction. Both entry points —
-`POST /api/runs` ([11 §7.1](../../11-api-and-realtime.md)) and `karvan run "…"` — go through the
+`POST /api/runs` ([11 §7.1](../../11-api-and-realtime.md)) and `DeFlow run "…"` — go through the
 same daemon code path; the CLI is a client of the HTTP API, not a second implementation. Creating a
 run explicitly **does not start execution**: the 201 response carries
 `status: "awaiting-spec-approval"`.
@@ -208,24 +208,24 @@ run explicitly **does not start execution**: the 201 response carries
    **no `run.created` row**, so a failed intake never leaves a half-born run in the list.
 6. `POST /api/runs` honours an `Idempotency-Key` header: a repeat with the same key returns the
    original `runId` and creates no second run.
-7. `karvan run "…"` produces a ledger byte-identical (modulo ids and timestamps) to the same task
+7. `DeFlow run "…"` produces a ledger byte-identical (modulo ids and timestamps) to the same task
    submitted over HTTP, and records `by: 'cli'` in provenance.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `normaliseInput({kind:'text'})` returns a `task.submitted` payload whose `raw` is byte-identical to the input and whose `sha256` matches | The normaliser does not exist |
-| 2 | integration | Real tmpdir + real `git init` with `GIT_CONFIG_GLOBAL=/dev/null`; `{kind:'file', path:'docs/spec.md'}` → the file's exact bytes land in the ledger | The reader trims or re-encodes |
-| 3 | integration | `{kind:'file', path:'../../../etc/passwd'}` → typed rejection, and `SELECT count(*) FROM run` is 0 | Path resolution happens after run creation |
-| 4 | integration | A 200 KiB spec file → the payload holds an `artifact://<sha256>` handle and the CAS holds the bytes | The payload inlines an arbitrarily large blob into the event row |
-| 5 | integration | Two `POST /api/runs` with the same `Idempotency-Key` → same `runId`, one `run.created` | The key is accepted and ignored |
-| 6 | e2e | `karvan run "…"` against a booted daemon → `status: "awaiting-spec-approval"` and **zero** `node.scheduled` events | The CLI starts execution itself |
-| 7 | integration | An `issue` URL whose resolver returns 404 → typed failure, no run row, and the error names the URL | Failure is swallowed and an empty task is framed |
+| #   | Level       | Test                                                                                                                                               | Red when                                                         |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | unit        | `normaliseInput({kind:'text'})` returns a `task.submitted` payload whose `raw` is byte-identical to the input and whose `sha256` matches           | The normaliser does not exist                                    |
+| 2   | integration | Real tmpdir + real `git init` with `GIT_CONFIG_GLOBAL=/dev/null`; `{kind:'file', path:'docs/spec.md'}` → the file's exact bytes land in the ledger | The reader trims or re-encodes                                   |
+| 3   | integration | `{kind:'file', path:'../../../etc/passwd'}` → typed rejection, and `SELECT count(*) FROM run` is 0                                                 | Path resolution happens after run creation                       |
+| 4   | integration | A 200 KiB spec file → the payload holds an `artifact://<sha256>` handle and the CAS holds the bytes                                                | The payload inlines an arbitrarily large blob into the event row |
+| 5   | integration | Two `POST /api/runs` with the same `Idempotency-Key` → same `runId`, one `run.created`                                                             | The key is accepted and ignored                                  |
+| 6   | e2e         | `DeFlow run "…"` against a booted daemon → `status: "awaiting-spec-approval"` and **zero** `node.scheduled` events                                 | The CLI starts execution itself                                  |
+| 7   | integration | An `issue` URL whose resolver returns 404 → typed failure, no run row, and the error names the URL                                                 | Failure is swallowed and an empty task is framed                 |
 
-**Notes / risks** — the `issue` kind is the only place in M1 where karvand itself makes an outbound
-request, which sits awkwardly against NF1's *"full functionality with no network beyond what the
-provider CLIs themselves need."* Shelling out to an already-authenticated `gh issue view --json` is
+**Notes / risks** — the `issue` kind is the only place in M1 where DeFlowd itself makes an outbound
+request, which sits awkwardly against NF1's _"full functionality with no network beyond what the
+provider CLIs themselves need."_ Shelling out to an already-authenticated `gh issue view --json` is
 the shape most consistent with AR-1's logic (the vendor's own tool, the user's own credentials) and
 should be the default, with a plain HTTPS fetch as the fallback for non-GitHub hosts.
 
@@ -233,26 +233,26 @@ should be the default, with a plain HTTPS fetch as the fallback for non-GitHub h
 
 ### KAR-10.2 — The framing interview producing a TaskSpec
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-10.1, KAR-05.1, KAR-05.2, KAR-08.1 (`read` is a policy level the fs boundary actually enforces), KAR-09.9 (handoff schema validation) |
-| **PRD** | F1.2, F5.4, F6.1, F6.4, F7.4 |
-| **Verified by** | EPIC-10-S6, EPIC-10-S7, EPIC-10-S8, EPIC-10-S9, EPIC-10-S10, EPIC-10-S11, EPIC-10-S12 |
+|                 |                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                               |
+| **Priority**    | P0                                                                                                                                        |
+| **Size**        | L                                                                                                                                         |
+| **Depends on**  | KAR-10.1, KAR-05.1, KAR-05.2, KAR-08.1 (`read` is a policy level the fs boundary actually enforces), KAR-09.9 (handoff schema validation) |
+| **PRD**         | F1.2, F5.4, F6.1, F6.4, F7.4                                                                                                              |
+| **Verified by** | EPIC-10-S6, EPIC-10-S7, EPIC-10-S8, EPIC-10-S9, EPIC-10-S10, EPIC-10-S11, EPIC-10-S12                                                     |
 
-**As** the operator, **I want** a framing agent to interrogate my task *and the repository* and hand
+**As** the operator, **I want** a framing agent to interrogate my task _and the repository_ and hand
 me a structured `TaskSpec` — including the acceptance criteria and the ways this could go wrong —
 **so that** the thing the whole run is judged against was written before any code was generated.
 
 [06 §1.2](../../06-planning-and-replanning.md) is specific about the shape and about the posture.
-The framing agent runs at **`read` permission in a fresh session**, and it is *"the one place where a
+The framing agent runs at **`read` permission in a fresh session**, and it is _"the one place where a
 model is allowed to be expansive, because everything downstream is judged against what it
-produces."* Its output is a `karvan.taskspec.v1` document with eight fields, produced as **structured
+produces."_ Its output is a `DeFlow.taskspec.v1` document with eight fields, produced as **structured
 output enforced at the adapter boundary** — Claude Code's `--json-schema <schema>` returning the
 parsed object in the result envelope's `structured_output` field, Codex's `--output-schema <FILE>`
-— never prose Karvan regexes. The one contract enforced structurally rather than by exhortation is
+— never prose DeFlow regexes. The one contract enforced structurally rather than by exhortation is
 the criteria contract: **every criterion must either name at least one gate in `verifiedBy` or be
 explicitly marked `unverifiable: true` with a `reason`.** A criterion nothing checks is a lie on the
 acceptance board.
@@ -267,7 +267,7 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 1. The framing node is scheduled with `permission: 'read'` and a fresh ACP session; a
    `fs/write_text_file` or a non-read-only `terminal/create` from that session is rejected at the
    boundary and recorded, and the interview continues rather than crashing.
-2. The produced document validates against `.karvan/schemas/karvan.taskspec.v1.json` with Ajv
+2. The produced document validates against `.DeFlow/schemas/DeFlow.taskspec.v1.json` with Ajv
    (`strict: true`, `allErrors: true`); a document that fails validation gets **exactly one** bounded
    repair attempt and then fails the node with `contract.schema-invalid` — never a partial spec
    written to the ledger.
@@ -280,8 +280,8 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 5. `knownFailureModes[]` entries each carry a `description` and a `detection` — "what going wrong
    looks like" and "how we would notice". An entry with a description and no detection is invalid.
 6. `nonGoals` is required and may not be empty. It is the field
-   [06 §1.2](../../06-planning-and-replanning.md) singles out as *"the field people skip and
-   regret"*, and an empty array is an invitation to scope creep the planner will accept.
+   [06 §1.2](../../06-planning-and-replanning.md) singles out as _"the field people skip and
+   regret"_, and an empty array is an invitation to scope creep the planner will accept.
 7. The framing agent may emit a clarifying question; the run suspends on a `node_wake` row, the
    question appears as `human.requested`, and the operator's answer appears as `human.responded` and
    is delivered into the same session where the adapter supports it, or into a fresh session with
@@ -296,46 +296,46 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Ajv validates a hand-written good `karvan.taskspec.v1`; a copy with `nonGoals: []` fails with a pointer to `/nonGoals` | The schema does not require `nonGoals` |
-| 2 | unit | Criteria contract: `{ verifiedBy: [] }` with no `unverifiable` → one error naming the criterion id; `{ unverifiable: true, reason: '' }` → one error | Only `verifiedBy` is checked |
-| 3 | integration | `karvan-mock-agent --seed` scripted to return a valid spec over ACP → `TaskSpec` in the ledger, `structured_output` read from the result envelope, not from stdout text | The adapter parses prose |
-| 4 | integration | Mock agent returns a schema-invalid document → exactly one repair prompt is sent, then `node.failed` with `reason: 'contract.schema-invalid'` | The repair loop is unbounded, or the partial spec is persisted |
-| 5 | integration | Mock agent scripted (testkit scenario 4) to call `fs/write_text_file` mid-interview → the call is rejected, a policy event is recorded, the turn continues | `read` is decorative on the framing path |
-| 6 | integration | Mock agent emits `session/request_permission` then a clarifying question → `human.requested`, a `node_wake` row with `reason = 'human_gate'`, and **zero CPU** between tick polls | The question blocks a thread |
-| 7 | integration | Answer the question → `human.responded`, the answer appears in `priorDecisions` with `source: 'operator'` | The answer is delivered to the agent but never recorded |
-| 8 | unit | Capability gate: a `provider_capabilities` row with `structuredOutput: false` → the framing node is refused with `adapter.capability-missing` | The code reads a hardcoded matrix |
-| 9 | integration | Assembled framing packet golden-file snapshot with the normalising serializer → contains the raw task, pinned safety constraints and no foreign `history.summary` | Context is inherited implicitly |
+| #   | Level       | Test                                                                                                                                                                              | Red when                                                       |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | unit        | Ajv validates a hand-written good `DeFlow.taskspec.v1`; a copy with `nonGoals: []` fails with a pointer to `/nonGoals`                                                            | The schema does not require `nonGoals`                         |
+| 2   | unit        | Criteria contract: `{ verifiedBy: [] }` with no `unverifiable` → one error naming the criterion id; `{ unverifiable: true, reason: '' }` → one error                              | Only `verifiedBy` is checked                                   |
+| 3   | integration | `DeFlow-mock-agent --seed` scripted to return a valid spec over ACP → `TaskSpec` in the ledger, `structured_output` read from the result envelope, not from stdout text           | The adapter parses prose                                       |
+| 4   | integration | Mock agent returns a schema-invalid document → exactly one repair prompt is sent, then `node.failed` with `reason: 'contract.schema-invalid'`                                     | The repair loop is unbounded, or the partial spec is persisted |
+| 5   | integration | Mock agent scripted (testkit scenario 4) to call `fs/write_text_file` mid-interview → the call is rejected, a policy event is recorded, the turn continues                        | `read` is decorative on the framing path                       |
+| 6   | integration | Mock agent emits `session/request_permission` then a clarifying question → `human.requested`, a `node_wake` row with `reason = 'human_gate'`, and **zero CPU** between tick polls | The question blocks a thread                                   |
+| 7   | integration | Answer the question → `human.responded`, the answer appears in `priorDecisions` with `source: 'operator'`                                                                         | The answer is delivered to the agent but never recorded        |
+| 8   | unit        | Capability gate: a `provider_capabilities` row with `structuredOutput: false` → the framing node is refused with `adapter.capability-missing`                                     | The code reads a hardcoded matrix                              |
+| 9   | integration | Assembled framing packet golden-file snapshot with the normalising serializer → contains the raw task, pinned safety constraints and no foreign `history.summary`                 | Context is inherited implicitly                                |
 
 **Notes / risks** — this story is entirely dependent on `structured_output` being populated on every
 success case, which [roadmap A4-2](../../17-roadmap.md) still lists as **Unverified**. If the M0-S1
 spike shows it is not reliable, the fallback is not prose parsing — it is routing the framing node
 onto the adapter that does support it and refusing the others, which is exactly what AC 3 already
 specifies. Note also that `--permission-prompt-tool` has already vanished from Claude Code's
-`--help`; do not build the read-permission enforcement on a vendor flag when Karvan is the ACP
+`--help`; do not build the read-permission enforcement on a vendor flag when DeFlow is the ACP
 client and owns the boundary itself.
 
 ---
 
 ### KAR-10.3 — Human review and approval of the TaskSpec
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-10.2, KAR-06.6 (durable wake times), KAR-06.7 (pause/resume as events) |
-| **PRD** | F1.3, F8.1, NF4, NF10 |
+|                 |                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                               |
+| **Priority**    | P0                                                                                        |
+| **Size**        | M                                                                                         |
+| **Depends on**  | KAR-10.2, KAR-06.6 (durable wake times), KAR-06.7 (pause/resume as events)                |
+| **PRD**         | F1.3, F8.1, NF4, NF10                                                                     |
 | **Verified by** | EPIC-10-S13, EPIC-10-S14, EPIC-10-S15, EPIC-10-S16, EPIC-10-S17, EPIC-10-S18, EPIC-10-S29 |
 
 **As** the operator, **I want** to read, edit, reject or approve the `TaskSpec` before anything
 executes, **so that** forty nodes of confidently wrong work never get started on a spec I would have
 caught in ninety seconds.
 
-[06 §1.3](../../06-planning-and-replanning.md) — *"The approval gate is real"* — implements this as
-a blocking `human` node suspended durably: *"a row in `node_wake`, zero CPU, survives laptop sleep
-and daemon restart. A six-hour think about a spec costs one SQLite row."* Four operator actions are
+[06 §1.3](../../06-planning-and-replanning.md) — _"The approval gate is real"_ — implements this as
+a blocking `human` node suspended durably: _"a row in `node_wake`, zero CPU, survives laptop sleep
+and daemon restart. A six-hour think about a spec costs one SQLite row."_ Four operator actions are
 supported: **approve**, **edit-then-approve**, **reject-and-reframe**, and **abandon**. An edit
 appends `spec.amended` and recomputes `specHash`; approval appends `run.spec.approved` and
 `spec.pinned`. A rejection carries a reason and re-runs the framing interview with that reason as
@@ -351,7 +351,7 @@ explicit that pause is an event and never an in-memory flag.
 1. After the framing node completes, the run's status is `awaiting-spec-approval` and a blocking
    `human` node exists with `human.requested` carrying the rendered spec and the four options.
 2. Suspension is durable: exactly one `node_wake` row with `reason = 'human_gate'`, no timer, no
-   held connection. `SIGKILL` the daemon and restart it over the same `.karvan/` directory and the
+   held connection. `SIGKILL` the daemon and restart it over the same `.DeFlow/` directory and the
    run is still waiting, with the same node and the same prompt.
 3. **No `node.scheduled` event exists for any node other than the framing and recon nodes until
    `run.spec.approved` is appended.** A test drives the scheduler's tick loop for 30 simulated
@@ -374,17 +374,17 @@ explicit that pause is an event and never an in-memory flag.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `reduce()` over `[task.submitted, node.completed(frame), human.requested]` → status `awaiting-spec-approval` and a ready set of `[]` | Status is derived from a flag, not the log |
-| 2 | integration | File-backed ledger; tick the `TestClock` forward 30 minutes → no `node.scheduled`, one `node_wake` row, and CPU-free (the tick performs one indexed `node_wake` query) | The gate polls the agent or holds a promise |
-| 3 | integration | `SIGKILL` the daemon while suspended, reopen the **same file** with a fresh engine → the run is still at the gate with the same `human.requested` payload | The gate lives in memory (`:memory:` would have hidden this) |
-| 4 | integration | Approve → `run.spec.approved` + `spec.pinned` appended in one transaction; then and only then does the ready set become non-empty | Approval and pinning are two transactions, so a crash between them loses the pin |
-| 5 | unit | `specHash` stability: canonicalise, hash, mutate `approvedBy` only → same hash; mutate one char of `goal` → different hash | `approvedBy` is inside the canonical form |
-| 6 | integration | Edit → `spec.amended` with an rfc6902 patch; the pre-edit spec is still readable at its old hash | The spec row is mutated in place |
-| 7 | integration | Reject with reason "acceptance criteria are untestable" → a second framing attempt is scheduled whose packet contains the rejected spec and the reason | Rejection discards the run |
-| 8 | integration | Mid-run edit → `spec.pinned` v2, plan revalidation runs, and a deliberately-broken edit drives `run.needs_human` | Revalidation is skipped for edits after start |
-| 9 | e2e | `karvan run` → suspend → `karvan` approve from a second terminal → the run advances, with `by: 'cli'` | Approval only exists in the UI |
+| #   | Level       | Test                                                                                                                                                                   | Red when                                                                         |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 1   | unit        | `reduce()` over `[task.submitted, node.completed(frame), human.requested]` → status `awaiting-spec-approval` and a ready set of `[]`                                   | Status is derived from a flag, not the log                                       |
+| 2   | integration | File-backed ledger; tick the `TestClock` forward 30 minutes → no `node.scheduled`, one `node_wake` row, and CPU-free (the tick performs one indexed `node_wake` query) | The gate polls the agent or holds a promise                                      |
+| 3   | integration | `SIGKILL` the daemon while suspended, reopen the **same file** with a fresh engine → the run is still at the gate with the same `human.requested` payload              | The gate lives in memory (`:memory:` would have hidden this)                     |
+| 4   | integration | Approve → `run.spec.approved` + `spec.pinned` appended in one transaction; then and only then does the ready set become non-empty                                      | Approval and pinning are two transactions, so a crash between them loses the pin |
+| 5   | unit        | `specHash` stability: canonicalise, hash, mutate `approvedBy` only → same hash; mutate one char of `goal` → different hash                                             | `approvedBy` is inside the canonical form                                        |
+| 6   | integration | Edit → `spec.amended` with an rfc6902 patch; the pre-edit spec is still readable at its old hash                                                                       | The spec row is mutated in place                                                 |
+| 7   | integration | Reject with reason "acceptance criteria are untestable" → a second framing attempt is scheduled whose packet contains the rejected spec and the reason                 | Rejection discards the run                                                       |
+| 8   | integration | Mid-run edit → `spec.pinned` v2, plan revalidation runs, and a deliberately-broken edit drives `run.needs_human`                                                       | Revalidation is skipped for edits after start                                    |
+| 9   | e2e         | `DeFlow run` → suspend → `DeFlow` approve from a second terminal → the run advances, with `by: 'cli'`                                                                  | Approval only exists in the UI                                                   |
 
 **Notes / risks** — the temptation here is to make approval a fast path that skips the human node
 and just flips a status. Do not: the suspension mechanics are the same ones every later gate uses,
@@ -396,32 +396,32 @@ must not wait for the queue surface, only for a blocking node.
 
 ### KAR-10.4 — Spec pinning and anti-drift re-injection
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-10.3, KAR-09.3 (`assertPinIntegrity` and the pinned segment kinds), KAR-09.4 (prohibition restatement and interval re-injection) |
-| **PRD** | F1.5, F6.6, F7.4, NF10 |
-| **Verified by** | EPIC-10-S19, EPIC-10-S20, EPIC-10-S21, EPIC-10-S22, EPIC-10-S23, EPIC-10-S29 |
+|                 |                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                                                          |
+| **Priority**    | P0                                                                                                                                   |
+| **Size**        | M                                                                                                                                    |
+| **Depends on**  | KAR-10.3, KAR-09.3 (`assertPinIntegrity` and the pinned segment kinds), KAR-09.4 (prohibition restatement and interval re-injection) |
+| **PRD**         | F1.5, F6.6, F7.4, NF10                                                                                                               |
+| **Verified by** | EPIC-10-S19, EPIC-10-S20, EPIC-10-S21, EPIC-10-S22, EPIC-10-S23, EPIC-10-S29                                                         |
 
 **As** the operator, **I want** the approved spec re-injected verbatim into every agent and every
-gate to be judged against *that* rather than against the code as it currently stands, **so that** a
+gate to be judged against _that_ rather than against the code as it currently stands, **so that** a
 run cannot quietly redefine success halfway through and then pass its own review.
 
-This is F1.5 and it is the mechanical answer to *spec-then-drift*.
+This is F1.5 and it is the mechanical answer to _spec-then-drift_.
 [10 §5.2](../../10-verification-gates.md) names four mechanisms and this story owns three of them:
 **the verdict carries `specHash` and a mismatch voids it**; **the reviewer's packet contains the
 pinned segments first and verbatim**; and **prohibitions are restated as positive requirements** so
-the reviewer is told *"judge each finding against AC-3 as written above"* rather than *"do not judge
-against the code"*. The fourth — the post-render sha256 assertion — is EPIC-09's
+the reviewer is told _"judge each finding against AC-3 as written above"_ rather than _"do not judge
+against the code"_. The fourth — the post-render sha256 assertion — is EPIC-09's
 `assertPinIntegrity`, and this story is the caller that gives it something to check.
 
 The pinned set is exactly what [08 §4.1](../../08-context-and-memory.md) enumerates: `TaskSpec` goal
 and non-goals, acceptance criteria, safety constraints, declared path scopes, and the node's
 permission level — compiled to `pinned.spec`, `pinned.constraints` and `pinned.pathscope` segments
 with `pinned: true` and therefore `compactable: false`. The subtle part is the last clause of F1.5:
-*"gates evaluate against the spec, not against the current state of the code."*
+_"gates evaluate against the spec, not against the current state of the code."_
 [08 §4.3](../../08-context-and-memory.md) explains why that is not merely good hygiene — passing
 gates are **not** evidence that prohibitions are being honoured, because Security-Recall Divergence
 is invisible to exactly the monitoring a green board provides.
@@ -430,7 +430,7 @@ is invisible to exactly the monitoring a green board provides.
 
 1. `run.spec.approved` mints `spec.pinned` carrying the sha256 of each pinned segment's text and the
    `specHash` they derive from, in the **same transaction** as the approval.
-2. `compilePinnedSegments(spec, node)` is pure and total, lives in `@karvan/core`, and produces
+2. `compilePinnedSegments(spec, node)` is pure and total, lives in `@DeFlow/core`, and produces
    segments whose `text` is byte-identical to the corresponding slice of the approved spec — no
    reflow, no re-wrapping, no bullet normalisation.
 3. Every packet built for every node in the run — agent, gate, human and recon alike — contains the
@@ -454,21 +454,21 @@ is invisible to exactly the monitoring a green board provides.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `compilePinnedSegments` over a fixture spec → golden-file snapshot; each segment's `text` is a byte-exact substring of the approved spec's canonical form | The compiler reformats |
-| 2 | unit | Purity: deep-frozen spec, two calls, deeply equal results, no port constructed | It reads a clock or the filesystem |
-| 3 | integration | Approve → `run.spec.approved` and `spec.pinned` share one transaction; kill between them is impossible by construction | Two separate appends |
-| 4 | integration | Build packets for all five node archetypes → every one contains the pinned segments first and byte-identical | Pinning applies only to `agent` nodes |
-| 5 | integration | Strip one pinned segment from the rendered prompt in a test double → `pin.integrity_violated` with the missing digest, node failed, **zero** retry attempts | The runner retries a pin failure |
-| 6 | integration | **Anti-drift:** a worktree whose code contradicts AC-3, a review gate run against it → the verdict's `criteria[]` marks AC-3 `unsatisfied` and its packet's pinned bytes match the ledger's spec, not the code | The gate builds its own idea of the spec from the diff |
-| 7 | integration | **Void verdict:** gate passes at `specHash` A → operator edits → `specHash` B → the verdict is excluded from the acceptance board and the gate is re-scheduled | Verdicts are trusted regardless of hash |
-| 8 | unit | A spec constraint phrased as a prohibition renders as a positive requirement; a `forbid` with no positive form renders last and increments the counter | The restatement pass is skipped for spec-sourced constraints |
-| 9 | integration | A compaction in a live run → `context.compacted.pinnedKept` equals the pinned digest list | `pinnedKept` is populated only on the success path of the packet builder |
+| #   | Level       | Test                                                                                                                                                                                                           | Red when                                                                 |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1   | unit        | `compilePinnedSegments` over a fixture spec → golden-file snapshot; each segment's `text` is a byte-exact substring of the approved spec's canonical form                                                      | The compiler reformats                                                   |
+| 2   | unit        | Purity: deep-frozen spec, two calls, deeply equal results, no port constructed                                                                                                                                 | It reads a clock or the filesystem                                       |
+| 3   | integration | Approve → `run.spec.approved` and `spec.pinned` share one transaction; kill between them is impossible by construction                                                                                         | Two separate appends                                                     |
+| 4   | integration | Build packets for all five node archetypes → every one contains the pinned segments first and byte-identical                                                                                                   | Pinning applies only to `agent` nodes                                    |
+| 5   | integration | Strip one pinned segment from the rendered prompt in a test double → `pin.integrity_violated` with the missing digest, node failed, **zero** retry attempts                                                    | The runner retries a pin failure                                         |
+| 6   | integration | **Anti-drift:** a worktree whose code contradicts AC-3, a review gate run against it → the verdict's `criteria[]` marks AC-3 `unsatisfied` and its packet's pinned bytes match the ledger's spec, not the code | The gate builds its own idea of the spec from the diff                   |
+| 7   | integration | **Void verdict:** gate passes at `specHash` A → operator edits → `specHash` B → the verdict is excluded from the acceptance board and the gate is re-scheduled                                                 | Verdicts are trusted regardless of hash                                  |
+| 8   | unit        | A spec constraint phrased as a prohibition renders as a positive requirement; a `forbid` with no positive form renders last and increments the counter                                                         | The restatement pass is skipped for spec-sourced constraints             |
+| 9   | integration | A compaction in a live run → `context.compacted.pinnedKept` equals the pinned digest list                                                                                                                      | `pinnedKept` is populated only on the success path of the packet builder |
 
 **Notes / risks** — AC 5 has a sharp interaction with [EPIC-12](./EPIC-12-verification-gates.md):
 voiding verdicts on a spec edit means a mid-run edit can invalidate an hour of gate work. That is
-correct and it should be *visible* — the acceptance board must show "re-running against the amended
+correct and it should be _visible_ — the acceptance board must show "re-running against the amended
 spec", not silently blank. Do not soften the rule by comparing only the criteria that changed; the
 whole point is that the reviewer's judgement was formed against a different contract.
 
@@ -476,43 +476,43 @@ whole point is that the reviewer's judgement was formed against a different cont
 
 ### KAR-10.5 — Repository reconnaissance as planner input
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-10.3, KAR-07.2 (worktree lifecycle — recon runs in a `--detach --lock` worktree), KAR-09.8 (the blackboard), KAR-08.1 |
-| **PRD** | F1.2, F2.2, F6.2, F6.3, F5.4 |
-| **Verified by** | EPIC-10-S24, EPIC-10-S25, EPIC-10-S26, EPIC-10-S27, EPIC-10-S28 |
+|                 |                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                               |
+| **Priority**    | P0                                                                                                                        |
+| **Size**        | M                                                                                                                         |
+| **Depends on**  | KAR-10.3, KAR-07.2 (worktree lifecycle — recon runs in a `--detach --lock` worktree), KAR-09.8 (the blackboard), KAR-08.1 |
+| **PRD**         | F1.2, F2.2, F6.2, F6.3, F5.4                                                                                              |
+| **Verified by** | EPIC-10-S24, EPIC-10-S25, EPIC-10-S26, EPIC-10-S27, EPIC-10-S28                                                           |
 
 **As** the planner, **I want** a structured survey of the repository as typed facts with provenance,
 **so that** I plan against the toolchain that is actually installed and the scripts that actually
 exist rather than the ones a model assumed.
 
 [06 §2.1](../../06-planning-and-replanning.md) makes recon the planner's second input and lists what
-it must produce: *"language and toolchain detection, the scripts in `package.json`, test/lint/build
+it must produce: _"language and toolchain detection, the scripts in `package.json`, test/lint/build
 commands **that actually exist**, directory shape, the size of the areas the spec names, and any
-`.karvan/gates/` definitions already present in the repo."* The italicised part is the whole value —
+`.DeFlow/gates/` definitions already present in the repo."_ The italicised part is the whole value —
 a plan whose gate node runs `pnpm test:unit` in a repo with no such script fails at node 27 of 40,
 which is exactly the failure mode dynamic planning is supposed to make unnecessary.
 
 Recon nodes run at `read` permission in a detached, locked worktree, and their output is not a
 report: it is `finding/*` and `scope/*` facts on the blackboard, each with full `Provenance`
 (`byNode`, `byProvider`, `byModel`, `fromEvidence` handles, `atEvent`, `confidence`). The
-`confidence` field is load-bearing — *"the repo probably uses Pinia"* and *"`package.json` lists
-`pinia@3.0.4`"* are both useful and must not be indistinguishable.
+`confidence` field is load-bearing — _"the repo probably uses Pinia"_ and _"`package.json` lists
+`pinia@3.0.4`"_ are both useful and must not be indistinguishable.
 
 **Acceptance criteria**
 
 1. Recon nodes are scheduled with `permission: 'read'` into a worktree created with
-   `git worktree add --detach --lock --reason "karvan run=<runId> node=<nodeId>"` — detached, because
+   `git worktree add --detach --lock --reason "DeFlow run=<runId> node=<nodeId>"` — detached, because
    a read node needs no branch and git will not check the same branch out twice.
 2. Toolchain findings are **verified by execution or by file read, not asserted**: a claimed test
    command is recorded as `confidence: 'verified'` only if the script key exists in `package.json`
    (or the equivalent manifest); otherwise it is `'speculative'` and says so.
 3. `scope/*` facts carry a discovered path set with a file count, which feeds F5.2 write
    serialisation and the patch policy's `blastRadiusFiles` estimate.
-4. `.karvan/gates/` definitions present in the repo are discovered and recorded as facts, so
+4. `.DeFlow/gates/` definitions present in the repo are discovered and recorded as facts, so
    criteria coverage (KAR-11.2) can bind an `AC-n` to a gate that already exists.
 5. Every fact carries `fromEvidence` handles pointing at the artifact or `file://<path>#L12-L40`
    range it was derived from, so the node inspector's provenance table can click through.
@@ -521,42 +521,42 @@ report: it is `finding/*` and `scope/*` facts on the blackboard, each with full 
    never truncated.
 7. Recon results are **not** given to the planner as a transcript. The planner reads facts, and a
    test asserts no `history.summary` segment sourced from a recon node appears in the planner's
-   packet (F6.1, and [06 §8](../../06-planning-and-replanning.md)'s *"do not let the planner see
-   another node's transcript"*).
+   packet (F6.1, and [06 §8](../../06-planning-and-replanning.md)'s _"do not let the planner see
+   another node's transcript"_).
 8. A repository where detection genuinely fails — no recognised manifest, no test command —
    produces facts saying so with `confidence: 'asserted'`, and the planner is expected to plan a
    discovery step. It does not produce a fabricated toolchain.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | integration | `makeRepo({ files: { 'package.json': {scripts:{test:'vitest run'}} } })`, recon node → `finding/test-command` fact with `confidence: 'verified'` and evidence `file://package.json#L…` | Findings carry no evidence |
-| 2 | integration | Same repo with the `test` script removed, mock agent still claims `pnpm test` → the fact is recorded `confidence: 'speculative'`, not `'verified'` | The verifier trusts the model |
-| 3 | integration | Recon worktree is created `--detach --lock`; `git worktree list --porcelain -z` shows `detached` and `locked` | Recon reuses the main working copy |
-| 4 | integration | Mock agent attempts `fs/write_text_file` inside the recon worktree → rejected at the boundary, recorded, node continues | `read` is not enforced for recon |
-| 5 | integration | A repo with `.karvan/gates/typecheck.yaml` → a fact naming the gate id, retrievable by the criteria-coverage check | Custom gates are invisible until EPIC-12 |
-| 6 | integration | A 200-file survey exceeding 4000 tokens → `handoff.oversize`, one repair, then an `artifact://` handle; the ledger never holds a truncated survey | The return is truncated |
-| 7 | integration | Planner packet golden snapshot → contains `finding/*` and `scope/*` facts, contains **no** recon transcript | The planner is handed the recon session |
-| 8 | integration | An empty repo with no manifest → facts with `confidence: 'asserted'` stating detection failed; no fabricated commands | Detection invents a default |
+| #   | Level       | Test                                                                                                                                                                                   | Red when                                 |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 1   | integration | `makeRepo({ files: { 'package.json': {scripts:{test:'vitest run'}} } })`, recon node → `finding/test-command` fact with `confidence: 'verified'` and evidence `file://package.json#L…` | Findings carry no evidence               |
+| 2   | integration | Same repo with the `test` script removed, mock agent still claims `pnpm test` → the fact is recorded `confidence: 'speculative'`, not `'verified'`                                     | The verifier trusts the model            |
+| 3   | integration | Recon worktree is created `--detach --lock`; `git worktree list --porcelain -z` shows `detached` and `locked`                                                                          | Recon reuses the main working copy       |
+| 4   | integration | Mock agent attempts `fs/write_text_file` inside the recon worktree → rejected at the boundary, recorded, node continues                                                                | `read` is not enforced for recon         |
+| 5   | integration | A repo with `.DeFlow/gates/typecheck.yaml` → a fact naming the gate id, retrievable by the criteria-coverage check                                                                     | Custom gates are invisible until EPIC-12 |
+| 6   | integration | A 200-file survey exceeding 4000 tokens → `handoff.oversize`, one repair, then an `artifact://` handle; the ledger never holds a truncated survey                                      | The return is truncated                  |
+| 7   | integration | Planner packet golden snapshot → contains `finding/*` and `scope/*` facts, contains **no** recon transcript                                                                            | The planner is handed the recon session  |
+| 8   | integration | An empty repo with no manifest → facts with `confidence: 'asserted'` stating detection failed; no fabricated commands                                                                  | Detection invents a default              |
 
 **Notes / risks** — the sizing here assumes recon is one or two nodes, not a configurable recon
 subgraph. Resist that: the planner can insert more read-only analysis nodes at runtime via a patch
 that auto-applies under `read-only-analysis` ([EPIC-11](./EPIC-11-dynamic-planning.md)), which is a
-better mechanism than a recon DSL and costs nothing extra. The `.karvan/gates/` discovery here is
+better mechanism than a recon DSL and costs nothing extra. The `.DeFlow/gates/` discovery here is
 read-only cataloguing; F7.6's full custom-gate execution is P1 and belongs to EPIC-12.
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **Three event kinds this epic emits are named in [06 §1](../../06-planning-and-replanning.md) but are absent from [04 §9's](../../04-domain-model.md) Event union table: `task.submitted`, `spec.pinned`, `spec.amended`.** [01 §](../../01-architecture-overview.md) uses `spec.amended` and `spec.approved`; 04 defines `run.spec.approved`. These are the same concepts under three spellings across three documents. | **High** (silent) | Close it in `KAR-02.7` as a Definition-of-Ready item **before** this epic starts, and pick one spelling. Recommendation: keep 04's `run.spec.approved` as canonical and add `task.submitted`, `spec.pinned` and `spec.amended` to the union with schemas. Do not let two spellings both ship — the reducer ignores unknown kinds by design, so the wrong one fails *silently*. |
-| **The framing interview depends completely on `structured_output` being populated on every success case, which is Unverified** (roadmap A4-2). | **High** | Answer it in **M0-S1**, which is already scheduled. The fallback is AC 3 of KAR-10.2 — refuse to schedule framing onto an adapter whose probed row does not advertise structured output — not prose parsing, which is how the planner layer starts breaking on every CLI update. |
-| **The gate can become ceremony.** An operator who approves every spec unread has re-created the failure the epic exists to prevent, and no code can stop that. | Medium | Make the cost of reading low rather than the cost of approving high: render the spec as the diff of what the framing agent changed from the raw task, put the criteria contract violations in front of the operator before the approve button, and record `by` and timestamps so a pattern of instant approvals is at least visible. This is a product risk, not a bug. |
-| **Voiding verdicts on a mid-run spec edit can discard an hour of gate work** (KAR-10.4 AC 5). | Medium | Correct behaviour, but it must be visible: the acceptance board shows "re-running against the amended spec" and the ledger shows the void. Consider surfacing the cost of an edit *before* it is committed — a count of verdicts that will be voided — in EPIC-17. Do not soften the rule. |
-| **Intake is the only place karvand itself touches the network** (`{kind: 'issue'}`), which sits awkwardly against NF1. | Low | Default to shelling out to the user's already-authenticated `gh` — the vendor's own tool, the user's own credentials, exactly AR-1's shape. Plain HTTPS is the fallback for other hosts, and both are recorded in provenance including the HTTP status. Offline, the failure is typed and the operator pastes the text. |
-| **`priorDecisions` sourced from `.karvan/memory/` (F6.8) is M3**, so the spec's "prior decisions" field will be thin in M1 and may look like dead weight. | Low | Keep the field and populate it from the operator's clarifying answers, which is the highest-value source anyway. The M3 curator writes into the same shape rather than a new one. |
-| **This epic's e2e coverage needs a booted daemon and a real approval round trip**, which is the slowest test shape Karvan owns. | Low | Exactly one e2e spec (the DoD's intake-to-schedulable walk). Everything else is integration against a file-backed ledger with `karvan-mock-agent` on a temp `PATH` — [14 §13](../../14-testing-strategy.md) is explicit that five e2e specs is a ceiling, not a target. |
+| Risk                                                                                                                                                                                                                                                                                                                                                                                                                     | Severity          | Mitigation                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Three event kinds this epic emits are named in [06 §1](../../06-planning-and-replanning.md) but are absent from [04 §9's](../../04-domain-model.md) Event union table: `task.submitted`, `spec.pinned`, `spec.amended`.** [01 §](../../01-architecture-overview.md) uses `spec.amended` and `spec.approved`; 04 defines `run.spec.approved`. These are the same concepts under three spellings across three documents. | **High** (silent) | Close it in `KAR-02.7` as a Definition-of-Ready item **before** this epic starts, and pick one spelling. Recommendation: keep 04's `run.spec.approved` as canonical and add `task.submitted`, `spec.pinned` and `spec.amended` to the union with schemas. Do not let two spellings both ship — the reducer ignores unknown kinds by design, so the wrong one fails _silently_. |
+| **The framing interview depends completely on `structured_output` being populated on every success case, which is Unverified** (roadmap A4-2).                                                                                                                                                                                                                                                                           | **High**          | Answer it in **M0-S1**, which is already scheduled. The fallback is AC 3 of KAR-10.2 — refuse to schedule framing onto an adapter whose probed row does not advertise structured output — not prose parsing, which is how the planner layer starts breaking on every CLI update.                                                                                               |
+| **The gate can become ceremony.** An operator who approves every spec unread has re-created the failure the epic exists to prevent, and no code can stop that.                                                                                                                                                                                                                                                           | Medium            | Make the cost of reading low rather than the cost of approving high: render the spec as the diff of what the framing agent changed from the raw task, put the criteria contract violations in front of the operator before the approve button, and record `by` and timestamps so a pattern of instant approvals is at least visible. This is a product risk, not a bug.        |
+| **Voiding verdicts on a mid-run spec edit can discard an hour of gate work** (KAR-10.4 AC 5).                                                                                                                                                                                                                                                                                                                            | Medium            | Correct behaviour, but it must be visible: the acceptance board shows "re-running against the amended spec" and the ledger shows the void. Consider surfacing the cost of an edit _before_ it is committed — a count of verdicts that will be voided — in EPIC-17. Do not soften the rule.                                                                                     |
+| **Intake is the only place DeFlowd itself touches the network** (`{kind: 'issue'}`), which sits awkwardly against NF1.                                                                                                                                                                                                                                                                                                   | Low               | Default to shelling out to the user's already-authenticated `gh` — the vendor's own tool, the user's own credentials, exactly AR-1's shape. Plain HTTPS is the fallback for other hosts, and both are recorded in provenance including the HTTP status. Offline, the failure is typed and the operator pastes the text.                                                        |
+| **`priorDecisions` sourced from `.DeFlow/memory/` (F6.8) is M3**, so the spec's "prior decisions" field will be thin in M1 and may look like dead weight.                                                                                                                                                                                                                                                                | Low               | Keep the field and populate it from the operator's clarifying answers, which is the highest-value source anyway. The M3 curator writes into the same shape rather than a new one.                                                                                                                                                                                              |
+| **This epic's e2e coverage needs a booted daemon and a real approval round trip**, which is the slowest test shape DeFlow owns.                                                                                                                                                                                                                                                                                          | Low               | Exactly one e2e spec (the DoD's intake-to-schedulable walk). Everything else is integration against a file-backed ledger with `DeFlow-mock-agent` on a temp `PATH` — [14 §13](../../14-testing-strategy.md) is explicit that five e2e specs is a ceiling, not a target.                                                                                                        |
 
 ---
 

@@ -1,24 +1,24 @@
 # EPIC-17: P0 visualisation views
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-17-p0-views-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-17 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W11 (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~28 days across 9 stories — **far over the guideline; see Risks and the roadmap §3 recommendation** |
-| **Depends on** | EPIC-16 (all six stories), EPIC-15 KAR-15.6 (read endpoints), EPIC-13 (the approval surfaces KAR-17.3 and KAR-17.7 render), EPIC-12 (verdicts and findings), EPIC-11 (plan versions and patch decisions), EPIC-10 (the acceptance criteria KAR-17.7 boards), EPIC-09 (packets and compaction events) · EPIC-18 KAR-18.3 **soft** — scheduling only, not a build dependency ([roadmap §2.3](../../17-roadmap.md): no W11 before one headless run) |
-| **Blocks** | — (this is the last workstream on the M1 critical path) |
-| **PRD requirements** | F10.1, F10.2, F10.3, F10.4, F10.5, F10.6, F10.7, F10.8, F10.9, F7.7, and the visible half of F7.3, F7.4, F6.3, F6.6, F9.1 |
-| **Architecture** | [12-frontend-architecture.md §6](../../12-frontend-architecture.md) (all nine subsections), §7, §9 · [11-api-and-realtime.md §6, §7.4, §7.6](../../11-api-and-realtime.md) · [17-roadmap.md §3](../../17-roadmap.md) |
+|                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Epic ID**          | EPIC-17                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Workstream**       | W11 (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Size**             | ~28 days across 9 stories — **far over the guideline; see Risks and the roadmap §3 recommendation**                                                                                                                                                                                                                                                                                                                                              |
+| **Depends on**       | EPIC-16 (all six stories), EPIC-15 KAR-15.6 (read endpoints), EPIC-13 (the approval surfaces KAR-17.3 and KAR-17.7 render), EPIC-12 (verdicts and findings), EPIC-11 (plan versions and patch decisions), EPIC-10 (the acceptance criteria KAR-17.7 boards), EPIC-09 (packets and compaction events) · EPIC-18 KAR-18.3 **soft** — scheduling only, not a build dependency ([roadmap §2.3](../../17-roadmap.md): no W11 before one headless run) |
+| **Blocks**           | — (this is the last workstream on the M1 critical path)                                                                                                                                                                                                                                                                                                                                                                                          |
+| **PRD requirements** | F10.1, F10.2, F10.3, F10.4, F10.5, F10.6, F10.7, F10.8, F10.9, F7.7, and the visible half of F7.3, F7.4, F6.3, F6.6, F9.1                                                                                                                                                                                                                                                                                                                        |
+| **Architecture**     | [12-frontend-architecture.md §6](../../12-frontend-architecture.md) (all nine subsections), §7, §9 · [11-api-and-realtime.md §6, §7.4, §7.6](../../11-api-and-realtime.md) · [17-roadmap.md §3](../../17-roadmap.md)                                                                                                                                                                                                                             |
 
 ## Goal
 
-At the end of this epic the answer to *"why did this run do that?"* is a screen rather than a
+At the end of this epic the answer to _"why did this run do that?"_ is a screen rather than a
 transcript. The Operator can watch a plan execute live, drag a rail back to the original plan and
 step forward through every patch reading why it was proposed, open any node and see the exact bytes
 it received with a per-segment token breakdown, watch a gate fail and land on the offending line of
@@ -30,22 +30,22 @@ epic's flow file ends with an end-to-end scenario that measures it.
 
 ## Why this matters
 
-PRD §2.1's third broken thing is the reason Karvan exists at all: *"Nobody knows why it went wrong.
+PRD §2.1's third broken thing is the reason DeFlow exists at all: _"Nobody knows why it went wrong.
 When a 40-step run produces a bad diff, the question is which step poisoned it and what context that
 step actually received. Tools log stdout. They don't show the assembled context packet, the memory
-that was shared, or what compaction deleted."*
+that was shared, or what compaction deleted."_
 
 Every other epic in this plan produces the data that answers that question. This one is where the
 answer becomes visible, and the competitive table in PRD §4.8 says plainly that the graph-and-context
 visualisation column is empty for every competitor — session managers have a board and no graph,
-workflow runners have no UI, trace viewers render a tree of spans after the fact and *"cannot show a
+workflow runners have no UI, trace viewers render a tree of spans after the fact and _"cannot show a
 plan graph, cannot show plan evolution, cannot show what a context packet contained versus what was
-compacted away, and you cannot intervene in a run from them"* (§4.6).
+compacted away, and you cannot intervene in a run from them"_ (§4.6).
 
 Two views carry a disproportionate share of that:
 
 - **The plan-evolution scrubber (F10.2) is the marquee feature.** It is the direct visual expression
-  of "dynamic workflow", it is the answer to *"why is there a step here that I didn't ask for?"* in
+  of "dynamic workflow", it is the answer to _"why is there a step here that I didn't ask for?"_ in
   one click, and it is the demo — PRD §15.4 and [roadmap §7](../../17-roadmap.md) both say the
   strongest internal presentation is a real Voyado task shown through the scrubber.
 - **The node inspector (F10.3)** answers "which step poisoned it and what did it actually receive" in
@@ -53,8 +53,8 @@ Two views carry a disproportionate share of that:
   answers the 80% of the memory-graph question at roughly forty lines of markup.
 
 And one risk sits over the whole epic and must be stated up front rather than discovered: PRD §13
-names *"the visualisation is pretty but not diagnostic"* as a Medium risk with the mitigation
-*"metric: median time-to-diagnose. If it doesn't drop, the views are wrong."* That is why S35 in the
+names _"the visualisation is pretty but not diagnostic"_ as a Medium risk with the mitigation
+_"metric: median time-to-diagnose. If it doesn't drop, the views are wrong."_ That is why S35 in the
 flow file is a timed, scripted diagnosis run rather than a demo script.
 
 ## Scope
@@ -94,8 +94,8 @@ flow file is a timed, scripted diagnosis run rather than a demo script.
 - **Hand-editing a running plan.** PRD §15.3 and [roadmap §7](../../17-roadmap.md) both defer it past
   M1: read and approve is required, direct editing is a large UI surface and this epic is already too
   large.
-- **A design system.** PRD §13's mitigation is *"visualisation scoped to nine P0 views, not a design
-  system"*, and [12 §8.1](../../12-frontend-architecture.md) bounds the component ownership at about
+- **A design system.** PRD §13's mitigation is _"visualisation scoped to nine P0 views, not a design
+  system"_, and [12 §8.1](../../12-frontend-architecture.md) bounds the component ownership at about
   sixteen vendored files.
 - **Editable diff hunks.** CodeMirror 6's merge addon is the future path if the operator ever needs
   to hand-fix a hunk before approving; much larger surface, deferred past M1.
@@ -113,7 +113,7 @@ flow file is a timed, scripted diagnosis run rather than a demo script.
       recommended seven-with-two-reduced. This epic is written to make either choice explicit rather
       than accidental — see KAR-17.5 and KAR-17.9.
 - [ ] `Verdict`, `Finding`, `ContextPacket`, `Segment`, `PlanGraph` and `AcceptanceCriterion` are
-      landed in `@karvan/core` and exported type-only.
+      landed in `@DeFlow/core` and exported type-only.
 
 ## Definition of Done (epic level)
 
@@ -126,7 +126,7 @@ flow file is a timed, scripted diagnosis run rather than a demo script.
       minutes**, timed, on at least three different seeded failure fixtures. This is the PRD §12
       metric and it is a gate on the epic, not a report on it.
 - [ ] The five Playwright E2E smokes from [14 §13](../../14-testing-strategy.md) all pass against
-      `karvan replay` — and there are still only five.
+      `DeFlow replay` — and there are still only five.
 - [ ] Nothing in `packages/web/src` outside `components/graph/` imports `@vue-flow/core`, and nothing
       outside `ledger/projections/` contains reduction logic.
 - [ ] Every view renders correctly in both themes and under `prefers-reduced-motion`, and no state is
@@ -144,13 +144,13 @@ possibly not at all in M1.
 
 ### KAR-17.1 — Live plan graph
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-16 KAR-16.6, EPIC-16 KAR-16.3 |
-| **PRD** | F10.1, NF3 |
+|                 |                                                             |
+| --------------- | ----------------------------------------------------------- |
+| **Status**      | Not started                                                 |
+| **Priority**    | P0                                                          |
+| **Size**        | M                                                           |
+| **Depends on**  | EPIC-16 KAR-16.6, EPIC-16 KAR-16.3                          |
+| **PRD**         | F10.1, NF3                                                  |
 | **Verified by** | EPIC-17-S1, EPIC-17-S2, EPIC-17-S3, EPIC-17-S4, EPIC-17-S35 |
 
 **As** the Operator, **I want** the run's graph on screen with every node's live state, **so that**
@@ -158,13 +158,13 @@ one glance tells me what is running, what is blocked, what failed and what is wa
 
 The landing view and the shell the other eight hang off. It renders `PlanNodeVM[]` and `PlanEdgeVM[]`
 from `plan.ts` through `GraphCanvas`, with a custom node component — which is the entire reason Vue
-Flow was chosen over the canvas-first alternatives: *a custom node **is** a Vue component*, which is
+Flow was chosen over the canvas-first alternatives: _a custom node **is** a Vue component_, which is
 exactly what per-node live status, a streaming badge, a gate verdict chip and a cost figure need
 ([12 §6.1](../../12-frontend-architecture.md)).
 
 Seven states by colour **and** glyph **and** text label, each reading its `--state-*` custom
 property. Edges labelled with what flows across them — a `data` edge's `carries[]` is a field on the
-`PlanEdge`, not an inference, which is what makes F10.1's *"edges labelled with what flows"* real
+`PlanEdge`, not an inference, which is what makes F10.1's _"edges labelled with what flows"_ real
 rather than decorative.
 
 Layout is dagre for the sub-16 ms relayout while a run is streaming node additions, ELK in the worker
@@ -198,17 +198,17 @@ for the settled layout, both fed nodes in ledger-insertion order with
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `toNodeVM(projectionNode)` maps every state and never yields `undefined` | A state added to the domain silently renders as pending |
-| 2 | web (browser) | Mount with the `happy-path-12` projection; assert node count, edge count, and one node's full accessible name | Node bodies are Vue Flow defaults |
-| 3 | web (browser) | Seven-state render matrix asserting colour token, glyph presence and text label | State is colour-only |
-| 4 | web (browser) | Apply `node.started` then three `node.progress` events; assert one state change and zero relayouts | Progress is treated as a state transition |
-| 5 | web (browser) | `carries[]` rendered for a data edge, absent for a control edge | Edge labels are faked from node titles |
-| 6 | web (browser) | Insert 20 nodes over simulated time; assert pre-existing relative order unchanged | ELK ordering was not fed insertion order |
-| 7 | web (browser) | Keyboard: `j`, `k`, `Enter`; assert selection and inspector open | Handlers live in a component that unmounts |
-| 8 | e2e | `stress-400` through `karvan replay`; assert the frame budget from the measurement file | The measurement was never wired to a test |
-| 9 | e2e | Playwright smoke #1: completed run, every node with the right state colour | The graph renders from a fixture rather than the stream |
+| #   | Level         | Test                                                                                                          | Red when                                                |
+| --- | ------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 1   | unit          | `toNodeVM(projectionNode)` maps every state and never yields `undefined`                                      | A state added to the domain silently renders as pending |
+| 2   | web (browser) | Mount with the `happy-path-12` projection; assert node count, edge count, and one node's full accessible name | Node bodies are Vue Flow defaults                       |
+| 3   | web (browser) | Seven-state render matrix asserting colour token, glyph presence and text label                               | State is colour-only                                    |
+| 4   | web (browser) | Apply `node.started` then three `node.progress` events; assert one state change and zero relayouts            | Progress is treated as a state transition               |
+| 5   | web (browser) | `carries[]` rendered for a data edge, absent for a control edge                                               | Edge labels are faked from node titles                  |
+| 6   | web (browser) | Insert 20 nodes over simulated time; assert pre-existing relative order unchanged                             | ELK ordering was not fed insertion order                |
+| 7   | web (browser) | Keyboard: `j`, `k`, `Enter`; assert selection and inspector open                                              | Handlers live in a component that unmounts              |
+| 8   | e2e           | `stress-400` through `DeFlow replay`; assert the frame budget from the measurement file                       | The measurement was never wired to a test               |
+| 9   | e2e           | Playwright smoke #1: completed run, every node with the right state colour                                    | The graph renders from a fixture rather than the stream |
 
 **Notes / risks** — do not test any of this in jsdom or happy-dom: no SVG measurement, no canvas, no
 WebGL, and the failure is silent rather than loud ([14 §13](../../14-testing-strategy.md)).
@@ -217,21 +217,21 @@ WebGL, and the failure is silent rather than loud ([14 §13](../../14-testing-st
 
 ### KAR-17.2 — Plan evolution scrubber
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-17.1, EPIC-16 KAR-16.3, EPIC-16 KAR-16.4, EPIC-15 KAR-15.6, EPIC-11 KAR-11.5 |
-| **PRD** | F10.2, F2.6, F2.4, F2.5 |
+|                 |                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                       |
+| **Priority**    | P0                                                                                                |
+| **Size**        | L                                                                                                 |
+| **Depends on**  | KAR-17.1, EPIC-16 KAR-16.3, EPIC-16 KAR-16.4, EPIC-15 KAR-15.6, EPIC-11 KAR-11.5                  |
+| **PRD**         | F10.2, F2.6, F2.4, F2.5                                                                           |
 | **Verified by** | EPIC-17-S5, EPIC-17-S6, EPIC-17-S7, EPIC-17-S8, EPIC-17-S9, EPIC-17-S10, EPIC-17-S11, EPIC-17-S35 |
 
 **As** the Operator, **I want** to drag back to the plan I approved and step forward through every
-patch with its reason, **so that** *"why is there a step here that I didn't ask for?"* is answered in
+patch with its reason, **so that** _"why is there a step here that I didn't ask for?"_ is answered in
 one click instead of by reading a log.
 
-**This is the marquee feature and the demo.** Its entire value is that a human can see *what
-changed* — so **any layout that reflows between versions destroys it**. On a real 40-node replan the
+**This is the marquee feature and the demo.** Its entire value is that a human can see _what
+changed_ — so **any layout that reflows between versions destroys it**. On a real 40-node replan the
 reflow is too large for the eye to track, and the operator ends up doing a visual diff by hand, which
 is the thing the view exists to remove.
 
@@ -244,12 +244,12 @@ The mechanism is the union-graph layout, and it is the load-bearing part
    wrong output. Edge identity is `` `${source}->${target}` ``.
 2. **Content hash per node** over `type`, `provider`, `permission`, `brief`, `reads[]`, `writes[]`
    and retry policy, using `ohash@^2.0.11` for stable key ordering (`JSON.stringify` does not give
-   you that). Change detection only — ohash promises *"best efforts"* at stable serialisation, which
+   you that). Change detection only — ohash promises _"best efforts"_ at stable serialisation, which
    is fine here and not fine for an identity.
 3. **Set diff:** `added`, `removed`, `changed` (same id, different hash), `unchanged` — for nodes and
    for edges. For the field-level "why did this change" panel, `rfc6902@^5.3.0` produces a JSON Patch
    between the two node objects. **Not `fast-json-patch`**, which last shipped in 2022.
-4. **Lay out the union graph once** — every node and edge appearing in *either* version — and cache
+4. **Lay out the union graph once** — every node and edge appearing in _either_ version — and cache
    those positions under the `unionLayoutKey` the diff endpoint returns. Both versions render at
    those coordinates. **Nothing moves as you scrub.**
 5. **The interactive-ELK constraint recipe is an experiment, not the design.** Passing each surviving
@@ -280,7 +280,7 @@ The UI is a horizontal version rail with tick marks coloured by patch `decision`
 5. Clicking a changed node opens the field-level panel showing the RFC 6902 patch between the two
    node objects beside the human-readable reason — e.g.
    `{ "op": "replace", "path": "/provider", "value": "codex" }` next to
-   *"Anthropic rate limit hit; re-routing implementation node to Codex"*.
+   _"Anthropic rate limit hit; re-routing implementation node to Codex"_.
 6. The union layout is computed **once per version pair** and cached under `unionLayoutKey`;
    re-scrubbing over the same pair performs zero ELK calls, asserted by counting worker messages.
 7. Scrubbing on a 10,000-event run applies zero events below the snapshot `seq` in the browser and
@@ -294,23 +294,23 @@ The UI is a horizontal version rail with tick marks coloured by patch `decision`
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `contentHash(node)` is stable across key reordering and changes when `provider` changes | `JSON.stringify` was used and key order leaks in |
-| 2 | unit | Set diff over two versions yields correct `added`/`removed`/`changed`/`unchanged` for nodes and edges | Edge identity is not `source->target` |
-| 3 | unit | Identity is `nodeId`: a version where two nodes swapped positions yields zero changes | Identity was derived from position or index |
-| 4 | unit | `rfc6902` patch between two node objects for a provider change and for a `reads[]` change | The panel diffs rendered strings instead of objects |
-| 5 | unit | Union node set is the union of both versions' ids; layout input is deterministic | The union is computed from the newer version only |
-| 6 | web (browser) | Step v3 → v4 and assert every surviving node's `transform` is byte-identical | The layout was recomputed per version |
-| 7 | web (browser) | Four-way encoding matrix: added / removed / changed / unchanged, each with a non-colour signal | Encoding is colour-only |
-| 8 | web (browser) | Worker-message counter across a back-and-forth scrub over the same pair is 1 | The cache key is wrong or unused |
-| 9 | integration | Scrub on a 10,000-event fixture: assert the snapshot call and zero sub-snapshot applies | The scrub replays from zero |
-| 10 | e2e | Playwright smoke #2 over `three-patches` | The rail renders but stepping does not re-render the graph |
+| #   | Level         | Test                                                                                                  | Red when                                                   |
+| --- | ------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | unit          | `contentHash(node)` is stable across key reordering and changes when `provider` changes               | `JSON.stringify` was used and key order leaks in           |
+| 2   | unit          | Set diff over two versions yields correct `added`/`removed`/`changed`/`unchanged` for nodes and edges | Edge identity is not `source->target`                      |
+| 3   | unit          | Identity is `nodeId`: a version where two nodes swapped positions yields zero changes                 | Identity was derived from position or index                |
+| 4   | unit          | `rfc6902` patch between two node objects for a provider change and for a `reads[]` change             | The panel diffs rendered strings instead of objects        |
+| 5   | unit          | Union node set is the union of both versions' ids; layout input is deterministic                      | The union is computed from the newer version only          |
+| 6   | web (browser) | Step v3 → v4 and assert every surviving node's `transform` is byte-identical                          | The layout was recomputed per version                      |
+| 7   | web (browser) | Four-way encoding matrix: added / removed / changed / unchanged, each with a non-colour signal        | Encoding is colour-only                                    |
+| 8   | web (browser) | Worker-message counter across a back-and-forth scrub over the same pair is 1                          | The cache key is wrong or unused                           |
+| 9   | integration   | Scrub on a 10,000-event fixture: assert the snapshot call and zero sub-snapshot applies               | The scrub replays from zero                                |
+| 10  | e2e           | Playwright smoke #2 over `three-patches`                                                              | The rail renders but stepping does not re-render the graph |
 
 **Notes / risks** — two honesty markers from [12 §6.2](../../12-frontend-architecture.md) that must
-not be repeated as fact. *"No npm package does visual DAG diffing"* is an **unverifiable negative** —
+not be repeated as fact. _"No npm package does visual DAG diffing"_ is an **unverifiable negative** —
 a search found none as of mid-2026, which is an absence of evidence, not evidence of absence. It does
-not change the decision. And *"about 200 lines"* is **an estimate, and an optimistic one** given the
+not change the decision. And _"about 200 lines"_ is **an estimate, and an optimistic one** given the
 five pieces above; [roadmap §3](../../17-roadmap.md) says to **budget a week, not an afternoon**, and
 this story is sized `L` for that reason. Worth twenty minutes before starting: arXiv 2406.05560
 (pairwise DAG comparison layout) could not be fetched during the research (A3-7) and may contain a
@@ -320,13 +320,13 @@ better shape-change encoding.
 
 ### KAR-17.3 — Node inspector
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-17.1, EPIC-15 KAR-15.6, EPIC-09 KAR-09.2 |
-| **PRD** | F10.3, F6.1, F6.2, F6.3, NF10 |
+|                 |                                                                              |
+| --------------- | ---------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                  |
+| **Priority**    | P0                                                                           |
+| **Size**        | L                                                                            |
+| **Depends on**  | KAR-17.1, EPIC-15 KAR-15.6, EPIC-09 KAR-09.2                                 |
+| **PRD**         | F10.3, F6.1, F6.2, F6.3, NF10                                                |
 | **Verified by** | EPIC-17-S12, EPIC-17-S13, EPIC-17-S14, EPIC-17-S15, EPIC-17-S16, EPIC-17-S35 |
 
 **As** the Operator staring at a bad diff, **I want** to open the node that produced it and see the
@@ -350,7 +350,7 @@ tool:
   visible** — the difference between a UI that claims traceability and one that demonstrates it.
 
 Per [roadmap §3](../../17-roadmap.md), this story also absorbs the 80% of F10.4 that matters: a
-**provenance table** answering *"what did this node read, and who wrote each fact"* — perhaps forty
+**provenance table** answering _"what did this node read, and who wrote each fact"_ — perhaps forty
 lines of markup against a graph surface that is a week of layout, culling and interaction work.
 
 **Acceptance criteria**
@@ -363,7 +363,7 @@ lines of markup against a graph surface that is a week of layout, culling and in
 3. **The per-segment token counts sum to the header total**, asserted in the test — Playwright smoke
    #3 from [14 §13](../../14-testing-strategy.md).
 4. The exact rendered prompt is shown from its artifact handle, syntax-highlighted through the single
-   shared Shiki highlighter, with an explicit indication that it is *derived* from the manifest and
+   shared Shiki highlighter, with an explicit indication that it is _derived_ from the manifest and
    the manifest is authoritative.
 5. Raw output and normalised/validated output are shown separately, and a `contract.schema-invalid`
    failure shows the Ajv error beside the offending output rather than a generic message.
@@ -384,17 +384,17 @@ lines of markup against a graph surface that is a week of layout, culling and in
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Segment grouping and ordering: pinned first, `history.summary` in chronological position | Segments are rendered in array order |
-| 2 | unit | Sum assertion: per-segment tokens equal `totals.tokens` and per-kind equal `totals.byKind` | Header total is recomputed differently from the bar |
-| 3 | unit | `seq` link resolution for a token count, a fact, a cost figure and a state transition | Links are wired for some values and not others |
-| 4 | unit | Packet segment-level diff between attempt 1 and attempt 3 | The comparison diffs rendered text, not segments |
-| 5 | web (browser) | Mount for a failed-before-packet node; assert the typed failure renders and no packet section is fabricated | The panel renders blank |
-| 6 | web (browser) | Attempt selector switches and the side-by-side comparison renders both packets | Only the latest attempt is fetched |
-| 7 | web (browser) | Provenance table over `happy-path-12`: reads, writers, evidence, invalidation flag | Provenance is inferred from the graph rather than from `fact.read` |
-| 8 | web (browser) | Exactly one Shiki highlighter instance exists across inspector, diff, plan JSON and output views | Each view created its own |
-| 9 | e2e | Playwright smoke #3: open the inspector, assert the segment breakdown sums to the header total | The endpoint and the projection disagree |
+| #   | Level         | Test                                                                                                        | Red when                                                           |
+| --- | ------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1   | unit          | Segment grouping and ordering: pinned first, `history.summary` in chronological position                    | Segments are rendered in array order                               |
+| 2   | unit          | Sum assertion: per-segment tokens equal `totals.tokens` and per-kind equal `totals.byKind`                  | Header total is recomputed differently from the bar                |
+| 3   | unit          | `seq` link resolution for a token count, a fact, a cost figure and a state transition                       | Links are wired for some values and not others                     |
+| 4   | unit          | Packet segment-level diff between attempt 1 and attempt 3                                                   | The comparison diffs rendered text, not segments                   |
+| 5   | web (browser) | Mount for a failed-before-packet node; assert the typed failure renders and no packet section is fabricated | The panel renders blank                                            |
+| 6   | web (browser) | Attempt selector switches and the side-by-side comparison renders both packets                              | Only the latest attempt is fetched                                 |
+| 7   | web (browser) | Provenance table over `happy-path-12`: reads, writers, evidence, invalidation flag                          | Provenance is inferred from the graph rather than from `fact.read` |
+| 8   | web (browser) | Exactly one Shiki highlighter instance exists across inspector, diff, plan JSON and output views            | Each view created its own                                          |
+| 9   | e2e           | Playwright smoke #3: open the inspector, assert the segment breakdown sums to the header total              | The endpoint and the projection disagree                           |
 
 **Notes / risks** — the shared highlighter matters for the bundle as much as for correctness: **never
 import the bundled `shiki` entry**, which pulls every grammar and costs multiple megabytes. Use
@@ -406,21 +406,21 @@ diff, markdown` ([12 §7](../../12-frontend-architecture.md)).
 
 ### KAR-17.4 — Context budget visualisation
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-17.3, EPIC-16 KAR-16.3, EPIC-09 KAR-09.6 |
-| **PRD** | F10.5, F6.6, F9.1 |
+|                 |                                                                 |
+| --------------- | --------------------------------------------------------------- |
+| **Status**      | Not started                                                     |
+| **Priority**    | P0                                                              |
+| **Size**        | M                                                               |
+| **Depends on**  | KAR-17.3, EPIC-16 KAR-16.3, EPIC-09 KAR-09.6                    |
+| **PRD**         | F10.5, F6.6, F9.1                                               |
 | **Verified by** | EPIC-17-S17, EPIC-17-S18, EPIC-17-S19, EPIC-17-S32, EPIC-17-S35 |
 
 **As** the Operator whose run went subtly wrong after hour two, **I want** to see what compaction
 deleted, **so that** I can tell whether the agent lost a constraint I thought it still had.
 
 [Roadmap §3](../../17-roadmap.md) names this one of the three views that carry the diagnosis metric,
-for a specific reason: compaction *actively deletes governance constraints from context, causing
-unsafe tool calls* — a mechanism distinct from ordinary long-context attention dilution, and the
+for a specific reason: compaction _actively deletes governance constraints from context, causing
+unsafe tool calls_ — a mechanism distinct from ordinary long-context attention dilution, and the
 reason F6.6's pinned set exists at all. This view is where that becomes visible.
 
 `d3-shape`'s `stack()` over the `ContextPacket` segments — pinned constraints / spec / retrieved
@@ -462,16 +462,16 @@ separates an auditable system from one that quietly lies.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `stack()` input builder: pinned kinds first, totals matching the packet | Stack order is `Object.keys` order |
-| 2 | unit | `fidelity: 'partial'` produces a gap descriptor with `after: null` preserved | `after ?? 0` crept in somewhere |
-| 3 | unit | Budget line position from `budget.limitTokens`, not from the tallest bar | The scale is derived from the data and headroom disappears |
-| 4 | web (browser) | Render `compaction.jsonl`; assert the partial mark has no numeric after value in the DOM | A placeholder number was rendered |
-| 5 | web (browser) | Exact compaction: before, after, delta, dropped list and original-handle link all present | The link was dropped as "not important" |
-| 6 | web (browser) | `pin.integrity_violated` renders the blocking marker with digests | The event is ignored as a duplicate of the failure |
-| 7 | web (browser) | Data-table twin lists every bar's segments with method labels | The table was built from a different source than the chart |
-| 8 | web (browser) | Both themes: segment colours read `--state-*` / theme tokens and contrast passes | Colours are hardcoded per segment kind |
+| #   | Level         | Test                                                                                      | Red when                                                   |
+| --- | ------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | unit          | `stack()` input builder: pinned kinds first, totals matching the packet                   | Stack order is `Object.keys` order                         |
+| 2   | unit          | `fidelity: 'partial'` produces a gap descriptor with `after: null` preserved              | `after ?? 0` crept in somewhere                            |
+| 3   | unit          | Budget line position from `budget.limitTokens`, not from the tallest bar                  | The scale is derived from the data and headroom disappears |
+| 4   | web (browser) | Render `compaction.jsonl`; assert the partial mark has no numeric after value in the DOM  | A placeholder number was rendered                          |
+| 5   | web (browser) | Exact compaction: before, after, delta, dropped list and original-handle link all present | The link was dropped as "not important"                    |
+| 6   | web (browser) | `pin.integrity_violated` renders the blocking marker with digests                         | The event is ignored as a duplicate of the failure         |
+| 7   | web (browser) | Data-table twin lists every bar's segments with method labels                             | The table was built from a different source than the chart |
+| 8   | web (browser) | Both themes: segment colours read `--state-*` / theme tokens and contrast passes          | Colours are hardcoded per segment kind                     |
 
 **Notes / risks** — d3 is **a maths library here**: scales, stacks, ticks, time formatting. **Never
 call `d3-selection` to mutate the DOM inside a Vue component** — two owners of the same nodes
@@ -482,13 +482,13 @@ never the `d3` metapackage, which drags in ~30 modules.
 
 ### KAR-17.5 — Live agent output streams
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-17.1, EPIC-15 KAR-15.6, EPIC-16 KAR-16.4 |
-| **PRD** | F10.6, NF8 |
+|                 |                                                    |
+| --------------- | -------------------------------------------------- |
+| **Status**      | Not started                                        |
+| **Priority**    | P0                                                 |
+| **Size**        | M                                                  |
+| **Depends on**  | KAR-17.1, EPIC-15 KAR-15.6, EPIC-16 KAR-16.4       |
+| **PRD**         | F10.6, NF8                                         |
 | **Verified by** | EPIC-17-S20, EPIC-17-S21, EPIC-17-S22, EPIC-17-S23 |
 
 **As** the Operator, **I want** to tail what an agent is doing right now and reattach after closing
@@ -499,7 +499,7 @@ The story has a fidelity decision baked into it, taken from [roadmap §3](../../
 than deferred: **for ACP adapters, skip xterm entirely.** ACP streaming updates are typed JSON, not a
 TTY byte stream. Render them as a **virtualised list of typed message components** — faster,
 searchable, selectable, diffable, themeable and accessible — highlighted incrementally with
-`@shikijs/stream@^4.4.1`, which exists precisely for *"highlighting text streams like LLM outputs"*.
+`@shikijs/stream@^4.4.1`, which exists precisely for _"highlighting text streams like LLM outputs"_.
 Use `@xterm/xterm@^6.0.0` only for the CLI-shim adapters where the output genuinely is ANSI with
 cursor movement and spinners.
 
@@ -514,7 +514,7 @@ Where xterm is used, four disciplines are non-negotiable
 - **`scrollback: 5000` and never raise it.** `BufferLine` allocates `new Uint32Array(3 * cols)` —
   **12 bytes per cell**, read out of the v6 source. **Verified 2026-08-02.** At 200 columns that is
   ≈ 13 MB for 5,000 lines, ≈ 26 MB for 10,000 and ≈ 260 MB for 100,000 — **per terminal**.
-- **One `Terminal` per *visible* terminal, never per *opened* terminal.** On unmount or tab-hide,
+- **One `Terminal` per _visible_ terminal, never per _opened_ terminal.** On unmount or tab-hide,
   take an `@xterm/addon-serialize` snapshot string, `dispose()`, and keep only the string; on
   re-show, construct a fresh `Terminal` and `write()` it back. Browsers cap WebGL contexts at roughly
   8–16 and the failure is **silent, in the oldest terminals**.
@@ -554,17 +554,17 @@ never into xterm. Reattaching to a running node asks for the last N KB via
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Scrollback arithmetic assertion: `12 * cols * lines` against the configured cap, documenting the ceiling | Someone raises scrollback "just for debugging" |
-| 2 | unit | The `/io` tail request builder omits `fromSeq` and sets `limit` | The client asks for the whole log |
-| 3 | web (browser) | Open and close 20 terminals; assert live `Terminal` count equals visible count | `dispose()` is not called on unmount |
-| 4 | web (browser) | Serialise → dispose → re-show restores buffer content from the snapshot | The snapshot is taken after disposal |
-| 5 | web (browser) | WebGL context loss triggers the DOM fallback without losing buffer content | The fallback was assumed and never wired |
-| 6 | web (browser) | 2,000-chunk stream through `@shikijs/stream`; assert per-chunk time does not grow linearly | The whole buffer is re-highlighted per chunk |
-| 7 | web (browser) | ACP node renders typed message components, not a terminal | Everything was routed through xterm for uniformity |
-| 8 | web (browser) | "Open full log" mounts the virtualised viewer and constructs no `Terminal` | The archive path fell back to xterm |
-| 9 | integration | Reattach after a panel close: assert only the tail was fetched | Reattach re-reads the archive |
+| #   | Level         | Test                                                                                                     | Red when                                           |
+| --- | ------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | unit          | Scrollback arithmetic assertion: `12 * cols * lines` against the configured cap, documenting the ceiling | Someone raises scrollback "just for debugging"     |
+| 2   | unit          | The `/io` tail request builder omits `fromSeq` and sets `limit`                                          | The client asks for the whole log                  |
+| 3   | web (browser) | Open and close 20 terminals; assert live `Terminal` count equals visible count                           | `dispose()` is not called on unmount               |
+| 4   | web (browser) | Serialise → dispose → re-show restores buffer content from the snapshot                                  | The snapshot is taken after disposal               |
+| 5   | web (browser) | WebGL context loss triggers the DOM fallback without losing buffer content                               | The fallback was assumed and never wired           |
+| 6   | web (browser) | 2,000-chunk stream through `@shikijs/stream`; assert per-chunk time does not grow linearly               | The whole buffer is re-highlighted per chunk       |
+| 7   | web (browser) | ACP node renders typed message components, not a terminal                                                | Everything was routed through xterm for uniformity |
+| 8   | web (browser) | "Open full log" mounts the virtualised viewer and constructs no `Terminal`                               | The archive path fell back to xterm                |
+| 9   | integration   | Reattach after a panel close: assert only the tail was fetched                                           | Reattach re-reads the archive                      |
 
 **Notes / risks** — A3-8 records that the xterm v6 breaking-change list was read via a summarizer that
 got the release date wrong; **re-read the real changelog before writing terminal code**. Also note the
@@ -577,13 +577,13 @@ reduced fidelity, taken deliberately.
 
 ### KAR-17.6 — Diff and review surface with inline verdicts
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-17.1, EPIC-12 KAR-12.3, EPIC-15 KAR-15.6 |
-| **PRD** | F10.7, F7.7, F7.3, F7.5 |
+|                 |                                                                 |
+| --------------- | --------------------------------------------------------------- |
+| **Status**      | Not started                                                     |
+| **Priority**    | P0                                                              |
+| **Size**        | M                                                               |
+| **Depends on**  | KAR-17.1, EPIC-12 KAR-12.3, EPIC-15 KAR-15.6                    |
+| **PRD**         | F10.7, F7.7, F7.3, F7.5                                         |
 | **Verified by** | EPIC-17-S24, EPIC-17-S25, EPIC-17-S26, EPIC-17-S27, EPIC-17-S35 |
 
 **As** the Operator reviewing what the run produced, **I want** the gate's findings attached to the
@@ -596,7 +596,7 @@ narrow and decisive: **first-class inline widget/extend slots per line.** F7.7 r
 attached inline at file and line, and `diff2html` is a string → HTML generator, so attaching Vue
 verdict widgets at specific lines would mean DOM surgery. Wrong shape for the requirement.
 
-**`karvand` shells out to `git diff` and ships the unified patch** over `GET /api/runs/:id/diff` as
+**`DeFlowd` shells out to `git diff` and ships the unified patch** over `GET /api/runs/:id/diff` as
 `text/x-patch`; `@git-diff-view/core` parses a unified patch directly, and that is orders of
 magnitude faster and more correct than diffing in JavaScript. `diff@^9.0.0` (the `jsdiff` package —
 note the separate npm package literally named `jsdiff` is abandoned, last publish 2014) is reserved
@@ -606,9 +606,9 @@ Three scopes: per-node, per-worktree and cumulative-run. Findings come from
 `GET /api/runs/:id/findings?file=` grouped by file and ordered by line, and each carries severity,
 an optional criterion id, a message, evidence handles and an optional suggested fix.
 
-`@shikijs/magic-move@^4.4.1` animates the repair loop's before/after at token level. That is *"the
+`@shikijs/magic-move@^4.4.1` animates the repair loop's before/after at token level. That is _"the
 single highest-ratio visual win in the app: it makes 'one issue, one fix, capped at three attempts'
-legible at a glance instead of requiring a diff read"* ([12 §7](../../12-frontend-architecture.md)).
+legible at a glance instead of requiring a diff read"_ ([12 §7](../../12-frontend-architecture.md)).
 
 **Acceptance criteria**
 
@@ -632,17 +632,17 @@ legible at a glance instead of requiring a diff read"* ([12 §7](../../12-fronte
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Findings-to-line index: group by file, order by line, bucket the location-less ones separately | Location-less findings land on line 1 |
-| 2 | unit | Unified-patch parse of a real `git diff` output including renames and binary files | The parser was tested only on a synthetic patch |
-| 3 | web (browser) | Mount `gate-fail-repair`'s diff; assert a finding widget renders at the exact line | Widgets are appended after the hunk |
-| 4 | web (browser) | Severity matrix with glyph + label + colour for all four values | Severity is colour-only |
-| 5 | web (browser) | `needs-human` renders distinctly from `fail` | The two were merged into "not passing" |
-| 6 | web (browser) | Magic-move between attempt 1 and attempt 2 of the repaired file | The animation re-mounts and loses scroll position |
-| 7 | web (browser) | A 5,000-line file renders collapsed and expands on demand within budget | The whole diff renders eagerly |
-| 8 | integration | Built output: `@git-diff-view/*` absent from the initial chunk | The route was imported eagerly for a type |
-| 9 | e2e | Follow a failing verdict from the criteria board to the diff line and back | The link carries a file but not a line |
+| #   | Level         | Test                                                                                           | Red when                                          |
+| --- | ------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1   | unit          | Findings-to-line index: group by file, order by line, bucket the location-less ones separately | Location-less findings land on line 1             |
+| 2   | unit          | Unified-patch parse of a real `git diff` output including renames and binary files             | The parser was tested only on a synthetic patch   |
+| 3   | web (browser) | Mount `gate-fail-repair`'s diff; assert a finding widget renders at the exact line             | Widgets are appended after the hunk               |
+| 4   | web (browser) | Severity matrix with glyph + label + colour for all four values                                | Severity is colour-only                           |
+| 5   | web (browser) | `needs-human` renders distinctly from `fail`                                                   | The two were merged into "not passing"            |
+| 6   | web (browser) | Magic-move between attempt 1 and attempt 2 of the repaired file                                | The animation re-mounts and loses scroll position |
+| 7   | web (browser) | A 5,000-line file renders collapsed and expands on demand within budget                        | The whole diff renders eagerly                    |
+| 8   | integration   | Built output: `@git-diff-view/*` absent from the initial chunk                                 | The route was imported eagerly for a type         |
+| 9   | e2e           | Follow a failing verdict from the criteria board to the diff line and back                     | The link carries a file but not a line            |
 
 **Notes / risks** — `@git-diff-view` is pre-1.0 and pinned exactly for that reason; a caret here is
 how a minor bump silently changes the review surface. `diff2html@3.4.56` is alive and fine at what it
@@ -653,17 +653,17 @@ does — it is simply the wrong shape for F7.7, and that distinction should be r
 
 ### KAR-17.7 — Acceptance criteria board
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | S |
-| **Depends on** | EPIC-16 KAR-16.3, EPIC-12 KAR-12.4, EPIC-15 KAR-15.6 |
-| **PRD** | F10.8, F7.4, F7.3 |
-| **Verified by** | EPIC-17-S28, EPIC-17-S29, EPIC-17-S35 |
+|                 |                                                      |
+| --------------- | ---------------------------------------------------- |
+| **Status**      | Not started                                          |
+| **Priority**    | P0                                                   |
+| **Size**        | S                                                    |
+| **Depends on**  | EPIC-16 KAR-16.3, EPIC-12 KAR-12.4, EPIC-15 KAR-15.6 |
+| **PRD**         | F10.8, F7.4, F7.3                                    |
+| **Verified by** | EPIC-17-S28, EPIC-17-S29, EPIC-17-S35                |
 
 **As** the Operator deciding whether to merge, **I want** the checklist from the `TaskSpec` with what
-is satisfied and the evidence behind each, **so that** *"has the requested outcome been achieved"* is
+is satisfied and the evidence behind each, **so that** _"has the requested outcome been achieved"_ is
 a screen and not a judgement.
 
 The literal answer to the question the whole product is for. A table of the `TaskSpec` criteria with
@@ -693,14 +693,14 @@ with its own glyph and label ([12 §6.8](../../12-frontend-architecture.md)).
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Criterion → gate join produces `unverifiable` for an unmapped criterion | Unmapped criteria are dropped from the table |
-| 2 | unit | Conflicting verdicts on one criterion produce a headline plus a conflict flag | The last write silently wins and the conflict vanishes |
-| 3 | web (browser) | Three-state render matrix with glyph, label and colour | `unverifiable` is styled as a muted failure |
-| 4 | web (browser) | Live update: apply a `gate.evaluated` event and assert the row flips with no refetch | The board is a query, not a projection |
-| 5 | web (browser) | Expand a criterion; assert gate summary, findings and the diff deep link | Evidence is a handle with no link |
-| 6 | unit | Copy-as-markdown output snapshot | The export drifts from the table |
+| #   | Level         | Test                                                                                 | Red when                                               |
+| --- | ------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| 1   | unit          | Criterion → gate join produces `unverifiable` for an unmapped criterion              | Unmapped criteria are dropped from the table           |
+| 2   | unit          | Conflicting verdicts on one criterion produce a headline plus a conflict flag        | The last write silently wins and the conflict vanishes |
+| 3   | web (browser) | Three-state render matrix with glyph, label and colour                               | `unverifiable` is styled as a muted failure            |
+| 4   | web (browser) | Live update: apply a `gate.evaluated` event and assert the row flips with no refetch | The board is a query, not a projection                 |
+| 5   | web (browser) | Expand a criterion; assert gate summary, findings and the diff deep link             | Evidence is a handle with no link                      |
+| 6   | unit          | Copy-as-markdown output snapshot                                                     | The export drifts from the table                       |
 
 **Notes / risks** — this is the smallest story in the epic and one of the most valuable, because it is
 the surface a colleague reads. Resist adding a progress percentage: a run at "80% of criteria
@@ -711,21 +711,21 @@ misreading.
 
 ### KAR-17.8 — Run timeline with cost overlay
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-16 KAR-16.3, EPIC-14 KAR-14.1 |
-| **PRD** | F10.9, F9.1 |
+|                 |                                                    |
+| --------------- | -------------------------------------------------- |
+| **Status**      | Not started                                        |
+| **Priority**    | P0                                                 |
+| **Size**        | M                                                  |
+| **Depends on**  | EPIC-16 KAR-16.3, EPIC-14 KAR-14.1                 |
+| **PRD**         | F10.9, F9.1                                        |
 | **Verified by** | EPIC-17-S30, EPIC-17-S31, EPIC-17-S32, EPIC-17-S35 |
 
 **As** the Operator, **I want** a Gantt of every node against wall clock with cost overlaid,
 **so that** parallelism, stalls and cost concentration are obvious at a glance instead of being
 inferred from a log.
 
-[Roadmap §3](../../17-roadmap.md) explicitly keeps this at P0 and explains why: *"it looks like the
-expensive one and is not"* — roughly 150 lines of `d3-scale` plus Vue-rendered SVG over
+[Roadmap §3](../../17-roadmap.md) explicitly keeps this at P0 and explains why: _"it looks like the
+expensive one and is not"_ — roughly 150 lines of `d3-scale` plus Vue-rendered SVG over
 `node.started` / `node.completed` / `budget.consumed`, all of which are projections that already
 exist. No Gantt library is needed and none of the Vue chart libraries ships one.
 
@@ -758,16 +758,16 @@ custom properties, and the DOM is yours to put ARIA on.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Span builder from `node.started`/`node.completed`/`node.suspended` including an open span | The open span is dropped or given `now` |
-| 2 | unit | Lane assignment is stable across re-renders and does not reshuffle on a new node | Lanes are assigned by sort order of a changing array |
-| 3 | unit | Cumulative cost series is monotonic and matches the sum of `budget.consumed` | The series resets on a retry |
-| 4 | web (browser) | Render `happy-path-12`; assert bar count, lane count and one bar's geometry against the scale | Geometry was asserted in jsdom against a `0×0` box |
-| 5 | web (browser) | Suspension segment renders distinctly from execution | The gate looks like six hours of work |
-| 6 | web (browser) | `budget.exceeded` marker states "paused", not "failed" | The two were rendered identically |
-| 7 | web (browser) | Data-table twin matches the chart's spans exactly | The table is built from a second derivation |
-| 8 | unit | Import audit: no `d3` metapackage, no `d3-selection` | Someone imported `d3` for convenience |
+| #   | Level         | Test                                                                                          | Red when                                             |
+| --- | ------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 1   | unit          | Span builder from `node.started`/`node.completed`/`node.suspended` including an open span     | The open span is dropped or given `now`              |
+| 2   | unit          | Lane assignment is stable across re-renders and does not reshuffle on a new node              | Lanes are assigned by sort order of a changing array |
+| 3   | unit          | Cumulative cost series is monotonic and matches the sum of `budget.consumed`                  | The series resets on a retry                         |
+| 4   | web (browser) | Render `happy-path-12`; assert bar count, lane count and one bar's geometry against the scale | Geometry was asserted in jsdom against a `0×0` box   |
+| 5   | web (browser) | Suspension segment renders distinctly from execution                                          | The gate looks like six hours of work                |
+| 6   | web (browser) | `budget.exceeded` marker states "paused", not "failed"                                        | The two were rendered identically                    |
+| 7   | web (browser) | Data-table twin matches the chart's spans exactly                                             | The table is built from a second derivation          |
+| 8   | unit          | Import audit: no `d3` metapackage, no `d3-selection`                                          | Someone imported `d3` for convenience                |
 
 **Notes / risks** — the x-axis is wall clock and therefore uses `ts`, but every **ordering** decision
 comes from `seq`; `ts` is informational only and can move backwards across a laptop sleep or an NTP
@@ -777,19 +777,19 @@ data.
 
 ---
 
-### KAR-17.9 — Memory and data-flow graph *(scope-cut candidate)*
+### KAR-17.9 — Memory and data-flow graph _(scope-cut candidate)_
 
-| | |
-|---|---|
-| **Status** | Blocked |
-| **Priority** | P1 |
-| **Size** | L |
-| **Depends on** | KAR-17.3, EPIC-16 KAR-16.6 **and its committed 400-node measurement**, EPIC-09 KAR-09.8 |
-| **PRD** | F10.4 (PRD priority **P0** — this story sits at P1 as a deliberate, recorded deviation; see the note below), F6.3 |
-| **Verified by** | EPIC-17-S33, EPIC-17-S34 |
+|                 |                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Blocked                                                                                                           |
+| **Priority**    | P1                                                                                                                |
+| **Size**        | L                                                                                                                 |
+| **Depends on**  | KAR-17.3, EPIC-16 KAR-16.6 **and its committed 400-node measurement**, EPIC-09 KAR-09.8                           |
+| **PRD**         | F10.4 (PRD priority **P0** — this story sits at P1 as a deliberate, recorded deviation; see the note below), F6.3 |
+| **Verified by** | EPIC-17-S33, EPIC-17-S34                                                                                          |
 
 **As** the Operator, **I want** a graph of the blackboard with facts as nodes and reads and writes as
-edges, **so that** *"which node produced the wrong assumption?"* is a click rather than an
+edges, **so that** _"which node produced the wrong assumption?"_ is a click rather than an
 investigation.
 
 **Status is `Blocked` and priority is honestly `P1`, and both are decisions with reasons.**
@@ -801,8 +801,8 @@ investigation.
 2. **Nothing is lost by deferring it.** `fact.written` and `fact.read` are ledger events regardless —
    PRD §9.3 is explicit that they exist to make memory sharing renderable. The data accrues from day
    one; only the rendering slips, and adding the view in M2 needs no migration and no re-run.
-3. **KAR-17.3's provenance table already answers the 80% question** — *"what did this node read, and
-   who wrote each fact"* — at roughly forty lines of markup against a graph surface that is a week of
+3. **KAR-17.3's provenance table already answers the 80% question** — _"what did this node read, and
+   who wrote each fact"_ — at roughly forty lines of markup against a graph surface that is a week of
    layout, culling and interaction work.
 4. **It is the view a colleague would want, not the view the author needs daily**, which makes it a
    strong M2 feature precisely because M2's definition of done is about someone else understanding a
@@ -816,7 +816,7 @@ If it is built, the design decision is made in product before it is made in rend
 ([12 §6.4](../../12-frontend-architecture.md)): **aggregate facts by producing node and expand on
 demand.** The default view is one bubble per node with a fact count; clicking expands that node's
 facts inline. That is cheaper to build, dramatically more readable, and it is what an operator
-actually wants — *"which node produced the wrong assumption?"* not *"here are 3,000 dots"*. Only if
+actually wants — _"which node produced the wrong assumption?"_ not _"here are 3,000 dots"_. Only if
 the expanded view genuinely exceeds ~1,500 nodes does the escape hatch open:
 `sigma@^3.0.3` + `graphology@^0.26.0`, or `@cosmograph/cosmos@^3.4.1` for GPU force layout at 100k+.
 Because everything goes through `GraphCanvas`, that swap touches one file and does not disturb the
@@ -844,15 +844,15 @@ plan graph.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Aggregation: facts grouped by producing node with counts and consumer edges | The graph is built from raw facts and aggregated in the component |
-| 2 | unit | Expansion is bounded and paginated | Expansion renders every fact for a node with 900 of them |
-| 3 | unit | `fact.invalidated` taint propagation to the recorded consumer set | Taint is recomputed from the current graph rather than the event |
-| 4 | web (browser) | Aggregated render of a 3,000-fact fixture within budget | The default view renders raw facts |
-| 5 | web (browser) | Fact detail: provenance fields and the full consumer list | Consumers are inferred from edges rather than fetched |
-| 6 | integration | Built output: the memory-graph route is absent from the initial chunk | The route was eagerly imported |
-| 7 | e2e | Render through `GraphCanvas` with a stub renderer substituted; the view still works | Something reached past the facade |
+| #   | Level         | Test                                                                                | Red when                                                          |
+| --- | ------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 1   | unit          | Aggregation: facts grouped by producing node with counts and consumer edges         | The graph is built from raw facts and aggregated in the component |
+| 2   | unit          | Expansion is bounded and paginated                                                  | Expansion renders every fact for a node with 900 of them          |
+| 3   | unit          | `fact.invalidated` taint propagation to the recorded consumer set                   | Taint is recomputed from the current graph rather than the event  |
+| 4   | web (browser) | Aggregated render of a 3,000-fact fixture within budget                             | The default view renders raw facts                                |
+| 5   | web (browser) | Fact detail: provenance fields and the full consumer list                           | Consumers are inferred from edges rather than fetched             |
+| 6   | integration   | Built output: the memory-graph route is absent from the initial chunk               | The route was eagerly imported                                    |
+| 7   | e2e           | Render through `GraphCanvas` with a stub renderer substituted; the view still works | Something reached past the facade                                 |
 
 **Notes / risks** — **F10.4 is a PRD P0 and this story is `P1`.** That deviation is recorded rather
 than silent, and F10.4's requirement is not dropped: its diagnostic core is delivered by KAR-17.3's
@@ -865,16 +865,16 @@ author's decision belongs in `docs/measurements/vue-flow-400.md` alongside the n
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
+| Risk                                                                                                                                       | Severity | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **~28 days across nine views for one person alongside a job and a degree.** PRD §13 names scope explosion as **High** and A3-6 repeats it. | **High** | [Roadmap §3](../../17-roadmap.md)'s recommendation, taken explicitly: keep F10.1, F10.2, F10.3 (+provenance table), F10.5, F10.7, F10.8, F10.9 at full fidelity; reduce F10.6 to a streaming log pane (KAR-17.5's ACP path) and defer F10.4's graph (KAR-17.9). That is seven views with two reduced and takes roughly two weeks off. Build order is the metric order, so the diagnosis capability exists before the epic is finished. |
-| **"The visualisation is pretty but not diagnostic."** PRD §13, Medium, with the mitigation stated as a metric. | Medium | EPIC-17-S35 is a timed, scripted diagnosis over at least three seeded failure fixtures, and it is a Definition-of-Done gate on the epic rather than a report. If the time does not come in under five minutes, the views are wrong and the epic is not done. |
-| **The scrubber is budgeted as "about 200 lines" and is not.** | Medium | Sized `L` with the five components enumerated in the story. [Roadmap §3](../../17-roadmap.md): *"budget for it as a week, not an afternoon."* If it overruns, the fallback is the non-adjacent-comparison mode (full reflow with FLIP) as a **secondary** mode only — never as the primary one, because reflow destroys the view's purpose. |
-| **A3-2's measurement comes back below ~300 nodes**, invalidating both graph surfaces. | High | KAR-16.6 measures before this epic starts. KAR-17.1 then defaults `onlyRenderVisibleElements` on, and KAR-17.9 closes as deferred. The `GraphCanvas` facade makes a renderer swap a one-file change if even that is insufficient. |
-| **A3-1 — Vue Flow stalls out during M1.** | High | The facade. Two views depend on it and both go through one file. Re-check release activity before M2. |
-| **The read endpoints these views need (KAR-15.6) drift or arrive late.** | Medium | Every view is developed against `karvan replay`, which serves the same contract; a drift shows up as a failing response-shape equality test in EPIC-16 KAR-16.5 rather than as a broken view. |
-| **`@git-diff-view` is pre-1.0** and is pinned exactly, so a needed fix may require a manual bump and a changelog read. | Low | Pinned with no caret and the reason recorded. The alternative (`diff2html`) is documented as the wrong shape for F7.7, so the decision does not get re-litigated by someone reading a stale search result. |
-| **Nine views' worth of components erode into a design system.** | Medium | [12 §8.1](../../12-frontend-architecture.md)'s bound: about sixteen vendored `shadcn-vue` files, and no override layer. Any new shared component needs a reason beyond "it might be reused". |
+| **"The visualisation is pretty but not diagnostic."** PRD §13, Medium, with the mitigation stated as a metric.                             | Medium   | EPIC-17-S35 is a timed, scripted diagnosis over at least three seeded failure fixtures, and it is a Definition-of-Done gate on the epic rather than a report. If the time does not come in under five minutes, the views are wrong and the epic is not done.                                                                                                                                                                           |
+| **The scrubber is budgeted as "about 200 lines" and is not.**                                                                              | Medium   | Sized `L` with the five components enumerated in the story. [Roadmap §3](../../17-roadmap.md): _"budget for it as a week, not an afternoon."_ If it overruns, the fallback is the non-adjacent-comparison mode (full reflow with FLIP) as a **secondary** mode only — never as the primary one, because reflow destroys the view's purpose.                                                                                            |
+| **A3-2's measurement comes back below ~300 nodes**, invalidating both graph surfaces.                                                      | High     | KAR-16.6 measures before this epic starts. KAR-17.1 then defaults `onlyRenderVisibleElements` on, and KAR-17.9 closes as deferred. The `GraphCanvas` facade makes a renderer swap a one-file change if even that is insufficient.                                                                                                                                                                                                      |
+| **A3-1 — Vue Flow stalls out during M1.**                                                                                                  | High     | The facade. Two views depend on it and both go through one file. Re-check release activity before M2.                                                                                                                                                                                                                                                                                                                                  |
+| **The read endpoints these views need (KAR-15.6) drift or arrive late.**                                                                   | Medium   | Every view is developed against `DeFlow replay`, which serves the same contract; a drift shows up as a failing response-shape equality test in EPIC-16 KAR-16.5 rather than as a broken view.                                                                                                                                                                                                                                          |
+| **`@git-diff-view` is pre-1.0** and is pinned exactly, so a needed fix may require a manual bump and a changelog read.                     | Low      | Pinned with no caret and the reason recorded. The alternative (`diff2html`) is documented as the wrong shape for F7.7, so the decision does not get re-litigated by someone reading a stale search result.                                                                                                                                                                                                                             |
+| **Nine views' worth of components erode into a design system.**                                                                            | Medium   | [12 §8.1](../../12-frontend-architecture.md)'s bound: about sixteen vendored `shadcn-vue` files, and no override layer. Any new shared component needs a reason beyond "it might be reused".                                                                                                                                                                                                                                           |
 
 ---
 

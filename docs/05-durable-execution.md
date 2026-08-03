@@ -1,6 +1,6 @@
 # Durable execution
 
-> Part of the [Karvan architecture documentation](./README.md). See also: [PRD](./prd.md) ·
+> Part of the [DeFlow architecture documentation](./README.md). See also: [PRD](./prd.md) ·
 > [Architecture overview](./01-architecture-overview.md) · [Research findings](./research-findings.md)
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
@@ -17,15 +17,15 @@ It is also the document with the most measured evidence behind it. The design be
 from a blog post; the alternatives were benchmarked on 2026-08-02 against `better-sqlite3@13.0.2`,
 and the numbers are quoted inline. Where a number appears, it was measured.
 
-| Decision | Verdict |
-|---|---|
-| Execution model | Checkpoint-and-memoize (Inngest/DBOS), **not** deterministic replay (Temporal/Restate) — D7 |
-| Dependency | Build it. ~800–1500 LOC. DBOS rejected on source evidence |
-| Store | `better-sqlite3@13.0.2` behind a ~60-line `Db` port — D6 |
-| Snapshotting | **Do not build it yet.** The control-plane/data-plane table split removes the need |
-| Sequence numbers | `INTEGER PRIMARY KEY AUTOINCREMENT`. Non-negotiable |
-| Timers | Durable `node_wake` rows on a ~1 Hz tick. **Never** `setTimeout` for a wait |
-| Durability setting | `synchronous = NORMAL`. Survives process crash, not power loss. Stated, not hidden |
+| Decision           | Verdict                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| Execution model    | Checkpoint-and-memoize (Inngest/DBOS), **not** deterministic replay (Temporal/Restate) — D7 |
+| Dependency         | Build it. ~800–1500 LOC. DBOS rejected on source evidence                                   |
+| Store              | `better-sqlite3@13.0.2` behind a ~60-line `Db` port — D6                                    |
+| Snapshotting       | **Do not build it yet.** The control-plane/data-plane table split removes the need          |
+| Sequence numbers   | `INTEGER PRIMARY KEY AUTOINCREMENT`. Non-negotiable                                         |
+| Timers             | Durable `node_wake` rows on a ~1 Hz tick. **Never** `setTimeout` for a wait                 |
+| Durability setting | `synchronous = NORMAL`. Survives process crash, not power loss. Stated, not hidden          |
 
 ---
 
@@ -33,7 +33,7 @@ and the numbers are quoted inline. Where a number appears, it was measured.
 
 Durable execution engines split into two families.
 
-**Deterministic replay** (Temporal, Restate, Cloudflare Workflows) treats your *workflow function*
+**Deterministic replay** (Temporal, Restate, Cloudflare Workflows) treats your _workflow function_
 as the source of truth. On recovery it re-executes the function from the top, feeding recorded
 results back at each await point until it reaches the frontier. That works only if the function is
 deterministic, which imposes a real tax: no `Date.now()`, no `Math.random()`, no unordered
@@ -45,27 +45,27 @@ array carried in every request purely so the SDK can detect that the code change
 running function.
 
 **Checkpoint-and-memoize** (Inngest's and DBOS's actual persistence layer, underneath that
-machinery) treats the *journal* as the source of truth. Each step boundary writes an intent record
+machinery) treats the _journal_ as the source of truth. Each step boundary writes an intent record
 before the side effect and a result record after it. Recovery does not re-execute orchestration
 code at all — it folds the log into state and short-circuits any step that already has a `done`
 record.
 
-Karvan takes the second model, and the reason is structural rather than aesthetic: **Karvan's
+DeFlow takes the second model, and the reason is structural rather than aesthetic: **DeFlow's
 control flow is already persisted data.** The `PlanGraph` is an immutable, content-hashed JSON
 document in SQLite ([domain model](./04-domain-model.md)), and node identity comes from `node_id`
 in that document — never from code position, call order, or a hash of a function name. The one
 thing replay buys you, reconstructing implicit control flow from imperative code, is something
-Karvan does not need, because there is no imperative workflow code to reconstruct it from.
+DeFlow does not need, because there is no imperative workflow code to reconstruct it from.
 
 Three consequences follow, and they are the whole argument:
 
-1. **karvand can be upgraded mid-run with zero determinism risk.** Stop the daemon, install a new
+1. **DeFlowd can be upgraded mid-run with zero determinism risk.** Stop the daemon, install a new
    version, start it, and in-flight runs continue. There is no "workflow versioning" problem
    because there is no workflow code whose shape must match the history.
 2. **The entire problem class disappears.** No `patched()`, no version markers, no step-hash
    counters, no `ctx.stack` change detection, no "you added an `await` above line 40 and now every
-   running instance is non-deterministic". None of that machinery exists in Karvan because none of
-   the problems it solves exist in Karvan.
+   running instance is non-deterministic". None of that machinery exists in DeFlow because none of
+   the problems it solves exist in DeFlow.
 3. **The only compatibility surface left is the event payload schema**, and that is handled
    explicitly: every event carries `kind` plus an integer `v`, with an upcaster chain
    `upcast(kind, v, payload) -> latestPayload` applied at read time. That is one small, testable,
@@ -75,8 +75,8 @@ There is no performance argument on the other side either. **Verified 2026-08-02
 control-plane ledger of 10,000 rows into state takes **29 ms**; a full scan of 500,000 rows takes
 **416 ms**. Replay-style optimisation would be solving a problem that does not exist at this scale.
 
-**When the other model would be right.** If Karvan ever lets users write imperative TypeScript
-workflows, deterministic replay becomes necessary for *those*. Add it then, as a second execution
+**When the other model would be right.** If DeFlow ever lets users write imperative TypeScript
+workflows, deterministic replay becomes necessary for _those_. Add it then, as a second execution
 mode layered on the same ledger. Do not retrofit it into this one.
 
 ---
@@ -110,7 +110,7 @@ And even if TypeScript SQLite support lands in 2027, it would still be the wrong
 workflows as decorated imperative functions with `DBOS.runStep`, owns its own `dbos` schema, runs
 its own recovery executor, and uses a Postgres `LISTEN`/`NOTIFY` loop for notifications. All of
 that fights the data-driven DAG above, and a Postgres requirement contradicts NF6 outright — the
-promise is `npx karvan up` with no database server.
+promise is `npx DeFlow up` with no database server.
 
 The rest of the field is no better. `reflow-ts@0.5.0` (2026-06-10, four published versions total)
 is the only SQLite-backed TypeScript durable-execution package found, and four releases is not a
@@ -118,7 +118,7 @@ durability guarantee. `@aws/durable-execution-sdk-js@2.2.0` is Lambda-only.
 
 **What you would be reimplementing is small, and you have to own it anyway**: the ledger, the
 reducer, the effect journal, the scheduler. Budget **~800–1500 LOC** of core, excluding effect
-adapters. Revisit DBOS-on-Postgres or Restate only if Karvan ever needs multi-machine orchestration
+adapters. Revisit DBOS-on-Postgres or Restate only if DeFlow ever needs multi-machine orchestration
 — which [PRD §5](./prd.md#5-the-provider-neutrality-constraint-read-this-before-anything-else)
 argues against.
 
@@ -135,7 +135,7 @@ clock cannot order. Timestamps are informational; `seq` is authoritative (F4.1, 
 
 **2. A deterministic reducer `(state, event) -> state`.** Pure, total, and — this is the part
 people skip — it **must ignore unknown `kind` values** rather than throwing. A user who downgrades
-karvand after a run has recorded a newer event kind must get a degraded projection, never a
+DeFlowd after a run has recorded a newer event kind must get a degraded projection, never a
 corrupted one or a crash loop.
 
 **3. `decide()` separated from execution.** The scheduler's entire policy — ready-set derivation,
@@ -156,12 +156,12 @@ already happen out there in the world?" for the crash-mid-effect case. There is 
 there is at-least-once plus a good enough probe plus an honest escalation path when the probe
 cannot tell.
 
-**7. Effect journaling, not replay.** The *result* of every non-deterministic operation is
+**7. Effect journaling, not replay.** The _result_ of every non-deterministic operation is
 persisted. Restart short-circuits on a `done` record. You never re-execute orchestration code to
 reconstruct state — you `reduce()` the log.
 
 **8. Versioning in two layers.** (a) The event envelope carries `kind` + `v:int`, with an upcaster
-chain applied at read time. (b) Plan versioning is *free*: plans are immutable documents referenced
+chain applied at read time. (b) Plan versioning is _free_: plans are immutable documents referenced
 by content hash, so a replan writes a **new** `plan` row plus a `plan.patched` event rather than
 mutating anything. That property is also exactly what makes the plan-evolution scrubber (F10.2)
 possible — see [planning and replanning](./06-planning-and-replanning.md).
@@ -173,7 +173,7 @@ why this is not paranoia.
 
 ## 4. The functional core
 
-Three declarations carry the engine. They live in `@karvan/core`, which has no dependency capable
+Three declarations carry the engine. They live in `@DeFlow/core`, which has no dependency capable
 of performing I/O.
 
 ```ts
@@ -183,7 +183,7 @@ export function reduce(state: RunState, event: Event): RunState;
 // Pure. "Given this state, at this instant, what should happen next?"
 export function decide(state: RunState, now: number): Command[];
 
-// The imperative shell (@karvan/daemon) — the only place effects happen.
+// The imperative shell (@DeFlow/daemon) — the only place effects happen.
 export interface EffectRunner {
   run(command: Command, ctx: EffectCtx): Promise<Event[]>;
 }
@@ -206,13 +206,13 @@ The discipline buys four concrete things:
 
 The corollary is a hard rule: **anything nondeterministic goes through a port.** Time via `Clock`.
 Randomness via a seeded generator. Ids via an injected factory. An import of `node:fs` inside
-`@karvan/core` means the design has already broken.
+`@DeFlow/core` means the design has already broken.
 
 ---
 
 ## 5. The schema
 
-Six tables. The most important decision in the whole file is the first two being *two* tables and
+Six tables. The most important decision in the whole file is the first two being _two_ tables and
 not one.
 
 ```sql
@@ -305,16 +305,16 @@ into the same table as your state transitions. Separate them and the problem eva
 
 **Measured 2026-08-02** (this machine, `better-sqlite3@13.0.2`, WAL + `synchronous = NORMAL`):
 
-| Measurement | Result |
-|---|---|
-| 500,000 events in one combined table | **193 MB**, inserted in 4.8 s |
-| Full replay scan of all 500,000 rows | **416 ms** |
-| Control-plane subset (10,000 rows) reduced to state | **29 ms** |
+| Measurement                                                                | Result                         |
+| -------------------------------------------------------------------------- | ------------------------------ |
+| 500,000 events in one combined table                                       | **193 MB**, inserted in 4.8 s  |
+| Full replay scan of all 500,000 rows                                       | **416 ms**                     |
+| Control-plane subset (10,000 rows) reduced to state                        | **29 ms**                      |
 | 1,000 SSE tail queries (`WHERE run_id=? AND seq>? ORDER BY seq LIMIT 500`) | **196 ms total, ~0.2 ms each** |
 
 The control-plane figure was obtained on the combined table via a partial index — `EXPLAIN QUERY
 PLAN` confirmed `SEARCH event USING INDEX event_run_ctl`. In the shipped schema the same isolation
-is achieved *physically*, by the table split, which is strictly better: there is no index to get
+is achieved _physically_, by the table split, which is strictly better: there is no index to get
 wrong and no `kind` predicate to keep in sync. The SSE tail query is served by
 `SEARCH event USING COVERING INDEX event_run_seq`.
 
@@ -339,7 +339,7 @@ be wrong is a checkpoint that will eventually be wrong at 3am on a nine-hour run
 
 Revisit real snapshots only if a single run exceeds ~100k control-plane events, which would mean
 you started emitting control events per tool call rather than per step. Instrument the count per
-run from M1 so you find out by measurement instead of by pain. If ledger *file size* becomes an
+run from M1 so you find out by measurement instead of by pain. If ledger _file size_ becomes an
 operational concern before that, the cheaper move is putting `io_chunk` in a second SQLite file
 via `ATTACH`.
 
@@ -354,11 +354,11 @@ insert again — the new row gets **seq 3**. The sequence number is reused, beca
 `max(rowid) + 1` and `max` just moved. With `AUTOINCREMENT` the same sequence yields **1, 2, 4**,
 because SQLite keeps the high-water mark in a `sqlite_sequence` row that deletion does not lower.
 
-Why this is catastrophic rather than untidy: `seq` is the identity of an event *outside* the
+Why this is catastrophic rather than untidy: `seq` is the identity of an event _outside_ the
 database. It is the SSE frame `id` a browser tab persisted before a reload. It is the `last_seq` in
 a checkpoint row. It is the cursor a frontend store holds across a reconnect. The moment run
 pruning or retention is added — and it will be added, because a 193 MB ledger is real — every one
-of those persisted cursors starts pointing at a *different event than the one it was written for*,
+of those persisted cursors starts pointing at a _different event than the one it was written for_,
 silently, with no error anywhere. The UI shows the wrong history; the checkpoint skips events that
 were never applied.
 
@@ -401,26 +401,29 @@ package; `drizzle-kit@0.31.10` drags in a whole ORM, and `drizzle-orm` is mid-ma
 (`latest` is 0.45.2 while the 1.0 line has sat in `rc.4` since 2026-06-27) so adopting it during
 this window is a bad trade; `sqlite@5.1.1` has not shipped since 2023. `dbmate@2.34.1` is a decent
 standalone binary that does support SQLite, but it adds a non-npm install step, which conflicts
-with `npx karvan up` (NF6).
+with `npx DeFlow up` (NF6).
 
 ```ts
 type Migration = { id: number; name: string; up: (db: Db) => void };
 
 export function migrate(db: Db, migrations: readonly Migration[]) {
-  db.exec('PRAGMA foreign_keys = OFF');
-  const cur = db.prepare<{ user_version: number }>('PRAGMA user_version').get()!.user_version;
-  for (const m of migrations.filter(m => m.id > cur).sort((a, b) => a.id - b.id)) {
-    db.exec('BEGIN IMMEDIATE');
+  db.exec("PRAGMA foreign_keys = OFF");
+  const cur = db.prepare<{ user_version: number }>("PRAGMA user_version").get()!
+    .user_version;
+  for (const m of migrations
+    .filter((m) => m.id > cur)
+    .sort((a, b) => a.id - b.id)) {
+    db.exec("BEGIN IMMEDIATE");
     try {
       m.up(db);
-      db.exec(`PRAGMA user_version = ${m.id}`);  // cannot be parameterised
-      db.exec('COMMIT');
+      db.exec(`PRAGMA user_version = ${m.id}`); // cannot be parameterised
+      db.exec("COMMIT");
     } catch (e) {
-      db.exec('ROLLBACK');
+      db.exec("ROLLBACK");
       throw new Error(`migration ${m.id} (${m.name}) failed`, { cause: e });
     }
   }
-  db.exec('PRAGMA foreign_keys = ON');
+  db.exec("PRAGMA foreign_keys = ON");
 }
 ```
 
@@ -452,7 +455,7 @@ ikey = `${run_id}/${node_id}/${attempt}/${ordinal}`
 Hash it to short hex when it has to be embedded in a filename.
 
 `ordinal` is a monotonic counter of effects within one node attempt, and the critical detail is
-**where it comes from**: it is assigned from the *reducer's view* of how many effect intents this
+**where it comes from**: it is assigned from the _reducer's view_ of how many effect intents this
 `(run_id, node_id, attempt)` has already recorded — not from a runtime counter in the effect
 runner. A runtime counter resets to zero when the process restarts, so the second effect of an
 interrupted attempt would come back as ordinal 0 and collide with the first. Derived from reduced
@@ -465,23 +468,28 @@ Intent first, then act, then record. This is the protocol:
 ```ts
 async function durable<T>(eff: Effect<T>): Promise<T> {
   const row = db.transaction(() => {
-    db.prepare(`INSERT INTO effect(ikey,run_id,node_id,attempt,ordinal,kind,request_hash,state,started_at)
+    db.prepare(
+      `INSERT INTO effect(ikey,run_id,node_id,attempt,ordinal,kind,request_hash,state,started_at)
                 VALUES (@ikey,@run_id,@node_id,@attempt,@ordinal,@kind,@request_hash,'pending',@now)
-                ON CONFLICT(ikey) DO NOTHING`).run(eff.meta);
+                ON CONFLICT(ikey) DO NOTHING`,
+    ).run(eff.meta);
     return db.prepare(`SELECT * FROM effect WHERE ikey=?`).get(eff.ikey)!;
   })();
 
-  if (row.state === 'done')   return JSON.parse(row.result_json) as T;   // memoised
-  if (row.state === 'failed') throw new EffectFailed(row);
+  if (row.state === "done") return JSON.parse(row.result_json) as T; // memoised
+  if (row.state === "failed") throw new EffectFailed(row);
 
   if (row.started_at < daemonStartedAt) {
     // 'pending' from a PREVIOUS daemon life => we crashed mid-effect. Ambiguous.
-    const probe = await eff.reconcile(row);        // 'done' | 'not-started' | 'unknown'
-    if (probe.status === 'done')    { markDone(eff.ikey, probe.result); return probe.result; }
-    if (probe.status === 'unknown') throw new NeedsHumanReview(eff.ikey);
+    const probe = await eff.reconcile(row); // 'done' | 'not-started' | 'unknown'
+    if (probe.status === "done") {
+      markDone(eff.ikey, probe.result);
+      return probe.result;
+    }
+    if (probe.status === "unknown") throw new NeedsHumanReview(eff.ikey);
   }
 
-  const result = await eff.perform();              // ikey embedded in the world where possible
+  const result = await eff.perform(); // ikey embedded in the world where possible
   markDone(eff.ikey, result);
   return result;
 }
@@ -498,19 +506,19 @@ Read the branches carefully, because each one is a different real situation:
   case, and it is what `reconcile()` exists for.
 
 `request_hash` is the guard against a subtler failure: someone edits the plan (or a `PlanPatch`
-lands) so that a node now does something *different*, while an `effect` row for that ikey already
+lands) so that a node now does something _different_, while an `effect` row for that ikey already
 exists. Without the hash you would happily return the memoised result of the old operation as if it
 were the new one. A mismatch is a **hard error**, not a warning and not a silent stale result.
 
 ### 8.3 The four effect types
 
 A generic "use an idempotency key" recommendation would be useless, because each of the four things
-Karvan actually does has a different reconciliation story.
+DeFlow actually does has a different reconciliation story.
 
 **Agent invocation — the good case.** Journal the `session_id` from the **first** frame the instant
 it arrives, as its own `event` row, never buffered — a buffered session id is a session id you lose
-in exactly the crash where you needed it. On reconcile: if a session id is journaled *and the
-adapter advertises resume*, resume the session; if none is journaled, the agent produced no durable
+in exactly the crash where you needed it. On reconcile: if a session id is journaled _and the
+adapter advertises resume_, resume the session; if none is journaled, the agent produced no durable
 state and a clean restart is safe. Raw stdout streams into `io_chunk` throughout, so a partial
 transcript survives the crash and the UI can replay it.
 
@@ -520,7 +528,7 @@ never an assumption**. Claude Code's headless mode has `--resume <session_id>` w
 ACP layer, `session.resume` is advertised by Claude, Codex and OpenCode but **not** by Copilot or
 Gemini ([provider adapter layer](./07-provider-adapter-layer.md)). An adapter without resume means a
 crashed agent node restarts from scratch — a cost model difference, not a correctness difference,
-because Karvan's own ledger is always sufficient to reconstruct the prompt.
+because DeFlow's own ledger is always sufficient to reconstruct the prompt.
 
 **Shell command — not idempotent in general, and no cleverness fixes that.** Classify it at
 **plan time**, not at run time:
@@ -529,23 +537,23 @@ because Karvan's own ledger is always sufficient to reconstruct the prompt.
 - `mutating` — migrations, package publishes, network POSTs.
 
 For `mutating`, run inside a dedicated worktree and journal a hash of `git status --porcelain`
-**before** and **after**. Reconcile by re-hashing: matches the *before* hash ⇒ not started; matches
-the *after* hash ⇒ done; anything else ⇒ `unknown`. **Never auto-retry a `mutating` command whose
+**before** and **after**. Reconcile by re-hashing: matches the _before_ hash ⇒ not started; matches
+the _after_ hash ⇒ done; anything else ⇒ `unknown`. **Never auto-retry a `mutating` command whose
 `reconcile()` returns `unknown`.** Escalate to the human gate. A migration that half-ran is not a
 thing to guess about.
 
 **Git — make it structurally idempotent instead of journaling around it.** Branch names are flat,
-`karvan/<runId>__<nodeId>` (D13 — the PRD's slashed form is a verified bug, since git cannot have
-`refs/heads/karvan/r1` be both a file and a directory, which blocks any run-level integration
-branch). Worktree path `.karvan/wt/<runId>__<nodeId>`. `git worktree add` failing with "already
+`DeFlow/<runId>__<nodeId>` (D13 — the PRD's slashed form is a verified bug, since git cannot have
+`refs/heads/DeFlow/r1` be both a file and a directory, which blocks any run-level integration
+branch). Worktree path `.DeFlow/wt/<runId>__<nodeId>`. `git worktree add` failing with "already
 exists" is a **success**, not an error.
 
 Commits are the one genuinely non-idempotent git operation, and a single trailer fixes them:
 
 ```bash
-git commit -m "<subject>" -m "Karvan-Effect-Id: <ikey>"
+git commit -m "<subject>" -m "DeFlow-Effect-Id: <ikey>"
 # reconcile:
-git log --grep="Karvan-Effect-Id: <ikey>" --format=%H -1
+git log --grep="DeFlow-Effect-Id: <ikey>" --format=%H -1
 ```
 
 Absolute rule inside a retriable node: **no `push --force`, no `reset --hard`, no `clean -fdx`.**
@@ -554,13 +562,13 @@ Full detail in [workspace and safety](./09-workspace-and-safety.md).
 **File write — atomic rename, with the ikey in the temp filename.**
 
 ```ts
-const tmp = `${path}.karvan-${ikey}.tmp`;   // sibling of the target, NEVER /tmp
-const fd = openSync(tmp, 'w');
+const tmp = `${path}.DeFlow-${ikey}.tmp`; // sibling of the target, NEVER /tmp
+const fd = openSync(tmp, "w");
 writeSync(fd, data);
 fsyncSync(fd);
 closeSync(fd);
 renameSync(tmp, path);
-fsyncSync(dirFd);                            // then fsync the DIRECTORY
+fsyncSync(dirFd); // then fsync the DIRECTORY
 ```
 
 Reconcile is pleasingly simple: an orphaned tmp file bearing this ikey means the crash happened
@@ -572,18 +580,18 @@ done.
 ## 9. The known holes
 
 Every design that claims exactly-once side effects against git and a shell is lying. Here is what
-Karvan cannot do, stated up front so nobody is surprised by it later.
+DeFlow cannot do, stated up front so nobody is surprised by it later.
 
 **9.1 The window between the effect landing in the world and the `done` row committing is
 irreducible.** There is no two-phase commit with git, with a shell command, or with an HTTP POST.
-It can only be *shrunk* — write `done` immediately, keep `synchronous = NORMAL` so the commit is
+It can only be _shrunk_ — write `done` immediately, keep `synchronous = NORMAL` so the commit is
 fast — and then reconciled. This is the honest floor of the whole design.
 
 **9.2 A retry deliberately produces a new ikey and re-executes.** `attempt` is part of the key, so a
 retry mints a new key by construction. That is intentional, but it means **crash-resume** (same
 attempt → memoise) and **failure-retry** (new attempt → re-execute) are genuinely different
-operations. The reducer must distinguish them, and every effect adapter must be *told which one it
-is in*, because "re-run this" and "check whether this already ran" call for different behaviour.
+operations. The reducer must distinguish them, and every effect adapter must be _told which one it
+is in_, because "re-run this" and "check whether this already ran" call for different behaviour.
 
 **9.3 `reconcile()` can return `unknown`, and there is no correct automatic action.** Retrying might
 double-apply. Skipping might drop the work. Both are wrong in some cases and neither is detectable.
@@ -593,7 +601,7 @@ chooses "it ran" or "it didn't". If `unknown` turns out to be common in practice
 a content-addressed overlay (run every mutating node copy-on-write, diff, apply) — large complexity,
 and it still does not help with network effects, so do not pre-build it.
 
-**9.4 Orphaned children after SIGKILL.** Agents are spawned `{ detached: true }`, so when karvand
+**9.4 Orphaned children after SIGKILL.** Agents are spawned `{ detached: true }`, so when DeFlowd
 dies they are reparented to init and **keep running and keep burning tokens**. Journal
 `(pid, process_start_time)` — `/proc/<pid>/stat` field 22 on Linux, `ps -o lstart= -p <pid>` on
 macOS. On restart, kill only when **both** the pid and the start time match.
@@ -601,7 +609,7 @@ macOS. On restart, kill only when **both** the pid and the start time match.
 > **Never kill by bare pid after a restart.** Pids are recycled. You will eventually kill the
 > user's editor.
 
-Kill the *group*, not the process: `process.kill(-child.pid, 'SIGTERM')`, a configurable grace
+Kill the _group_, not the process: `process.kill(-child.pid, 'SIGTERM')`, a configurable grace
 period (default 5 s), then `SIGKILL`. **Verified 2026-08-02** that process-group kill works this
 way. Agent CLIs spawn their own subprocess trees (git, node, ripgrep) that `child.kill()` would
 leave running. The full escalation ladder is in
@@ -609,7 +617,7 @@ leave running. The full escalation ladder is in
 
 **9.5 Filesystem caveats.** `rename` is atomic only **within one filesystem**, which is why the temp
 file must be a sibling of the target and never in `/tmp`. Directory `fsync` is a **no-op on
-Windows**. Both guarantees break on network mounts. Karvan targets macOS and Linux at M1 (NF5); the
+Windows**. Both guarantees break on network mounts. DeFlow targets macOS and Linux at M1 (NF5); the
 Windows caveat is a known M3 gap.
 
 **9.6 The wall clock is not monotonic.** Laptop sleep and NTP correction both move `Date.now()`
@@ -629,14 +637,14 @@ effect** — a publish, a deploy, a push to a remote.
 
 **Unverified caveat.** All benchmarks ran in a Linux container, likely over overlayfs. The absolute
 fsync-sensitive numbers will differ on macOS APFS, which uses `F_FULLFSYNC` and is typically slower.
-Re-run the benchmark on the target laptop before fixing the setting. The *relative* shape (FULL is
+Re-run the benchmark on the target laptop before fixing the setting. The _relative_ shape (FULL is
 20–25× more expensive per commit; batching gives ~7×) should hold.
 
 ---
 
 ## 10. The scheduler
 
-A single-threaded tick loop in karvand, running at roughly **1 Hz**, driving `decide(state, now)`.
+A single-threaded tick loop in DeFlowd, running at roughly **1 Hz**, driving `decide(state, now)`.
 
 ### 10.1 Durable wake times, never `setTimeout`
 
@@ -666,12 +674,12 @@ never as the wait.
 The elegance is the payoff. A suspended node costs exactly **one row and zero CPU** (F4.8), and
 four problems that look unrelated collapse into one mechanism:
 
-| Problem | Mechanism |
-|---|---|
-| A six-hour human gate (F8.1) | a `node_wake` row |
+| Problem                             | Mechanism         |
+| ----------------------------------- | ----------------- |
+| A six-hour human gate (F8.1)        | a `node_wake` row |
 | Laptop sleep across that gate (NF4) | a `node_wake` row |
-| Crash and restart mid-wait (F4.2) | a `node_wake` row |
-| Retry backoff (F4.5) | a `node_wake` row |
+| Crash and restart mid-wait (F4.2)   | a `node_wake` row |
+| Retry backoff (F4.5)                | a `node_wake` row |
 
 One code path, exercised constantly, instead of four rarely-exercised ones.
 
@@ -680,23 +688,28 @@ One code path, exercised constantly, instead of four rarely-exercised ones.
 The ready set is derived purely from state — no ambient knowledge, no in-memory bookkeeping:
 
 ```ts
-ready = nodes.filter(n =>
-  n.state === 'pending' &&
-  n.deps.every(d => state.nodes[d].state === 'completed') &&
-  n.attempt < n.maxAttempts &&
-  (n.wakeAt ?? 0) <= now);
+ready = nodes.filter(
+  (n) =>
+    n.state === "pending" &&
+    n.deps.every((d) => state.nodes[d].state === "completed") &&
+    n.attempt < n.maxAttempts &&
+    (n.wakeAt ?? 0) <= now,
+);
 
-admit = min(globalAgentSlots - running.length, classSlots(n) - runningInClass(n));
+admit = min(
+  globalAgentSlots - running.length,
+  classSlots(n) - runningInClass(n),
+);
 ```
 
 **Use per-resource-class semaphores, not one global number.** A single "max concurrency: 3" is the
 wrong abstraction because the constraints are not fungible:
 
-| Class | Default | What actually limits it |
-|---|---|---|
-| Global agent slots | 3 | Laptop RAM and vendor rate limits |
-| Per-repository write lock | 1 | Git index contention; F5.2's serialise-writes policy |
-| Per-worktree exclusive lock | 1 | One agent per worktree, always |
+| Class                       | Default | What actually limits it                              |
+| --------------------------- | ------- | ---------------------------------------------------- |
+| Global agent slots          | 3       | Laptop RAM and vendor rate limits                    |
+| Per-repository write lock   | 1       | Git index contention; F5.2's serialise-writes policy |
+| Per-worktree exclusive lock | 1       | One agent per worktree, always                       |
 
 **The repo write lock is enforced in the ledger** (`node.lock.acquired` / `node.lock.released`
 events), not in a JavaScript `Map`. An in-memory lock evaporates on restart, and the first thing
@@ -708,10 +721,10 @@ lock most.
 Full jitter:
 
 ```ts
-delay = Math.random() * Math.min(cap, base * 2 ** (attempt - 1));   // base 2_000ms, cap 300_000ms
+delay = Math.random() * Math.min(cap, base * 2 ** (attempt - 1)); // base 2_000ms, cap 300_000ms
 ```
 
-Full jitter rather than equal jitter or none, because the common failure here is *correlated*:
+Full jitter rather than equal jitter or none, because the common failure here is _correlated_:
 several nodes hit the same vendor rate limit at the same moment, and you do not want them retrying
 in lockstep and re-tripping it.
 
@@ -721,11 +734,11 @@ retry storm) or double-counts the attempt.
 
 Classify the error before deciding what the failure even means:
 
-| Class | Examples | Action |
-|---|---|---|
-| `transient` | Rate limit, `ETIMEDOUT`, known-flaky exit code | Retry with backoff (F4.5), optionally on a different provider |
-| `permanent` | Plan references a nonexistent file, auth failure, schema violation | Fail the node; propagate to dependents |
-| `gate` | `reconcile()` returned `unknown`; the agent asked a question | Suspend, notify a human (F8.1, F8.3) |
+| Class       | Examples                                                           | Action                                                        |
+| ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `transient` | Rate limit, `ETIMEDOUT`, known-flaky exit code                     | Retry with backoff (F4.5), optionally on a different provider |
+| `permanent` | Plan references a nonexistent file, auth failure, schema violation | Fail the node; propagate to dependents                        |
+| `gate`      | `reconcile()` returned `unknown`; the agent asked a question       | Suspend, notify a human (F8.1, F8.3)                          |
 
 Hitting a budget ceiling (F4.6) is deliberately a `gate`, not a `permanent` failure: the run
 **pauses for a human decision** rather than dying with hours of work half-done.
@@ -795,18 +808,18 @@ bug, not as the primary mechanism.
 ## 12. Fencing: flock plus daemon epoch
 
 "It's a single-user local daemon, so locking is unnecessary" is wrong, and the failure is common
-rather than exotic: **a user runs `npx karvan up` in two terminals.** It happens the first week.
+rather than exotic: **a user runs `npx DeFlow up` in two terminals.** It happens the first week.
 
-SQLite protects the *database* — verified, a second connection's `BEGIN IMMEDIATE` returns
-`SQLITE_BUSY` — but it does absolutely nothing to stop two schedulers from interleaving *effect
-execution*. Both daemons reduce the same ledger, both derive the same ready set, both spawn the
+SQLite protects the _database_ — verified, a second connection's `BEGIN IMMEDIATE` returns
+`SQLITE_BUSY` — but it does absolutely nothing to stop two schedulers from interleaving _effect
+execution_. Both daemons reduce the same ledger, both derive the same ready set, both spawn the
 same agent, both burn tokens, and both commit to the same branch.
 
 Two mechanisms, together:
 
-1. **`flock` on `<dataDir>/karvan.lock`**, taken at boot. Second instance fails fast with a clear
+1. **`flock` on `<dataDir>/DeFlow.lock`**, taken at boot. Second instance fails fast with a clear
    message naming the pid holding the lock — not a stack trace.
-2. **`daemon_epoch`**, a counter bumped on every karvand start and stamped on every write. Writes
+2. **`daemon_epoch`**, a counter bumped on every DeFlowd start and stamped on every write. Writes
    carrying a stale epoch are **rejected**. This is the belt to `flock`'s braces, and it is what
    covers the cases `flock` does not: a stale lock file on a network mount, a debugger-suspended
    process, a container restart that inherited the file.
@@ -833,7 +846,7 @@ A concentrated list of the verified footguns in this area.
 - **Never build a write pool.** One writer. Readers as separate read-only connections, all with
   `busy_timeout` set.
 - **Never use `setTimeout` for a wait longer than a tick.** `2**31` ms fires after 1 ms.
-- **Never kill by bare pid after a restart.** Match pid *and* process start time. And when verifying
+- **Never kill by bare pid after a restart.** Match pid _and_ process start time. And when verifying
   a group kill worked, exclude `Z`-state processes — a successfully killed subtree shows up as
   zombies awaiting reaping, which reads as a false negative.
 - **Never put the atomic-write temp file in `/tmp`.** Cross-filesystem rename is not atomic.
@@ -854,12 +867,16 @@ Because `reduce` and `decide` are pure, the scheduler is exercised entirely with
 harness is a first-class API rather than a test helper:
 
 ```ts
-const h = new Harness({ db: ':memory:', clock: new FakeClock(), effects: new FakeEffectRunner() });
-h.clock.advance(hours(6));   // exercise a 6-hour human gate in microseconds
-h.crashAndRestart();         // reopen the DB, rebuild state, assert invariants
+const h = new Harness({
+  db: ":memory:",
+  clock: new FakeClock(),
+  effects: new FakeEffectRunner(),
+});
+h.clock.advance(hours(6)); // exercise a 6-hour human gate in microseconds
+h.crashAndRestart(); // reopen the DB, rebuild state, assert invariants
 ```
 
-The load-bearing test is **crash-fuzz in CI**: spawn karvand as a child process, `kill -9` at a
+The load-bearing test is **crash-fuzz in CI**: spawn DeFlowd as a child process, `kill -9` at a
 random point in a scripted run, restart, and assert three invariants —
 
 1. no effect executed twice without its ikey being reused,

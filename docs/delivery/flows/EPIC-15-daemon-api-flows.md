@@ -7,28 +7,28 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan through a browser tab or the `karvan` CLI |
-| **karvand** | The local daemon: one `node:http` server on 127.0.0.1:7777 carrying `/api/*`, the SSE stream and (in dev) Vite's middleware and HMR socket |
-| **Browser tab** | A client holding exactly one multiplexed SSE connection for its lifetime, plus ordinary `fetch` calls |
-| **CLI client** | `packages/cli`, importing the identical `hc<ApiType>` client and the identical stream module. Has no `Last-Event-ID` mechanism at all |
-| **Ledger** | The single global SQLite database; `event.seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` and is the total order of the system |
-| **Provider agent** | A `karvan-mock-agent` subprocess on a temp `PATH`. Relevant here as a *threat actor*: it can reach 127.0.0.1:7777 |
-| **Hostile page** | A page on `attacker.example` whose DNS resolves to 127.0.0.1 — the rebinding case |
-| **Replay harness** | `karvan replay <fixture>` serving a recorded ledger over the same HTTP + SSE contract as a live run |
+| Actor              | Description                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Operator**       | The engineer driving DeFlow through a browser tab or the `DeFlow` CLI                                                                      |
+| **DeFlowd**        | The local daemon: one `node:http` server on 127.0.0.1:7777 carrying `/api/*`, the SSE stream and (in dev) Vite's middleware and HMR socket |
+| **Browser tab**    | A client holding exactly one multiplexed SSE connection for its lifetime, plus ordinary `fetch` calls                                      |
+| **CLI client**     | `packages/cli`, importing the identical `hc<ApiType>` client and the identical stream module. Has no `Last-Event-ID` mechanism at all      |
+| **Ledger**         | The single global SQLite database; `event.seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` and is the total order of the system                 |
+| **Provider agent** | A `DeFlow-mock-agent` subprocess on a temp `PATH`. Relevant here as a _threat actor_: it can reach 127.0.0.1:7777                          |
+| **Hostile page**   | A page on `attacker.example` whose DNS resolves to 127.0.0.1 — the rebinding case                                                          |
+| **Replay harness** | `DeFlow replay <fixture>` serving a recorded ledger over the same HTTP + SSE contract as a live run                                        |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a real git repository on branch "main"
+  Given a DeFlow workspace initialised in a real git repository on branch "main"
   And the ledger is a file-backed SQLite database whose event table declares
       "seq INTEGER PRIMARY KEY AUTOINCREMENT" and carries the covering index "event_run_seq"
   And the daemon serves reads on read-only connections with busy_timeout set,
       never on the write connection
-  And karvand is bound to 127.0.0.1 on an ephemeral port in tests, 7777 in the documented flows
-  And ".karvan/daemon.json" holds { pid, port, token, startedAt } at mode 0600 and is gitignored
+  And DeFlowd is bound to 127.0.0.1 on an ephemeral port in tests, 7777 in the documented flows
+  And ".DeFlow/daemon.json" holds { pid, port, token, startedAt } at mode 0600 and is gitignored
   And every request except "GET /api/health" carries "Authorization: Bearer <token>"
   And time enters the engine through an injected Clock port, never Date.now()
   And no test in this file calls vi.useFakeTimers() while a child process or an open socket is alive
@@ -47,56 +47,56 @@ Background:
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-15-S1 | Happy path: a typed round trip from the daemon's own route types | KAR-15.1 | Happy path |
-| EPIC-15-S2 | Renaming a daemon field breaks the UI build in the same commit | KAR-15.1 | Edge case |
-| EPIC-15-S3 | `/api/health` is the only unauthenticated route, and `karvan up` polls it | KAR-15.1 | Happy path |
-| EPIC-15-S4 | Domain failures are envelopes, not exceptions | KAR-15.1 | Failure |
-| EPIC-15-S5 | Compression never touches `/api/stream` | KAR-15.1 | Failure |
-| EPIC-15-S6 | One process, one port: API, HMR and SSE coexist | KAR-15.1 | Happy path |
-| EPIC-15-S7 | **An unauthenticated request is rejected** | KAR-15.2 | Failure |
-| EPIC-15-S8 | A wrong token is rejected, in constant time | KAR-15.2 | Failure |
-| EPIC-15-S9 | **A cross-origin request is rejected, token or no token** | KAR-15.2 | Failure |
-| EPIC-15-S10 | `Vary: Origin` on every response, including the errors | KAR-15.2 | Edge case |
-| EPIC-15-S11 | `Host` validation, and an absent `Origin` is fine | KAR-15.2 | Edge case |
-| EPIC-15-S12 | **First-run token handoff through the URL fragment** | KAR-15.2 | Happy path |
-| EPIC-15-S13 | **The token never appears in a query string** | KAR-15.2 | Failure |
-| EPIC-15-S14 | An agent Karvan spawned finds port 7777 and cannot drive it | KAR-15.2 | Failure |
-| EPIC-15-S15 | Happy path: one connection, three runs, one dispatcher | KAR-15.3 | Happy path |
-| EPIC-15-S16 | **What breaks without multiplexing: six streams and a `fetch` that never resolves** | KAR-15.3 | Failure |
-| EPIC-15-S17 | Subscribe mid-stream: backfill before live, no gap and no duplicate | KAR-15.3 | Edge case |
-| EPIC-15-S18 | `runs=*` carries lifecycle only, not every `node.progress` frame | KAR-15.3 | Edge case |
-| EPIC-15-S19 | The frame contract: `hello`, `retry`, `id:`, one-line data, keepalive | KAR-15.3 | Happy path |
-| EPIC-15-S20 | Control frames never reach the reducer; unknown `kind` is ignored | KAR-15.3 | Edge case |
-| EPIC-15-S21 | The two-phase drain: an event committed between drain and park is not lost | KAR-15.3 | Concurrency |
-| EPIC-15-S22 | The emitter fires post-commit; a rollback advances no cursor | KAR-15.3 | Failure |
-| EPIC-15-S23 | **The 82.6 MB WAL: never hold a cursor open across a stream** | KAR-15.3 | Failure |
-| EPIC-15-S24 | `io_chunk` never appears on the control-plane stream | KAR-15.3 | Edge case |
-| EPIC-15-S25 | A fatal condition closes with `event: fatal`, and only two codes stop retrying | KAR-15.3 | Failure |
-| EPIC-15-S26 | Resume path 1: automatic reconnect with `Last-Event-ID` | KAR-15.4 | Happy path |
-| EPIC-15-S27 | **Resume path 2: a page reload sends no `Last-Event-ID` at all** | KAR-15.4 | Failure |
-| EPIC-15-S28 | Precedence: `since` > `Last-Event-ID` > head | KAR-15.4 | Edge case |
-| EPIC-15-S29 | **Gaps are healthy: 4, 5, 7 is not data loss** | KAR-15.4 | Edge case |
-| EPIC-15-S30 | Rowid reuse: why `AUTOINCREMENT` is mandatory | KAR-15.4 | Failure |
-| EPIC-15-S31 | Cold-start hydrate loop, then open the stream at the cursor | KAR-15.4 | Happy path |
-| EPIC-15-S32 | The daemon restarted under the tab: `daemonEpoch` and `build` skew | KAR-15.4 | Recovery |
-| EPIC-15-S33 | Happy path: pause, resume, cancel — and pausing a paused run | KAR-15.5 | Happy path |
-| EPIC-15-S34 | `ifLastSeq` and the stale approval panel | KAR-15.5 | Edge case |
-| EPIC-15-S35 | `Idempotency-Key` on run creation | KAR-15.5 | Edge case |
-| EPIC-15-S36 | Forceful cancel is the kill switch, and zombies are excluded | KAR-15.5 | Failure |
-| EPIC-15-S37 | Creating a run does not start it | KAR-15.5 | Edge case |
-| EPIC-15-S38 | Engine idempotency keys are not on the API | KAR-15.5 | Edge case |
-| EPIC-15-S39 | Plan version rail and RFC 6902 diffs | KAR-15.6 | Happy path |
-| EPIC-15-S40 | The `io_chunk` tail: last N KB, never the whole log | KAR-15.6 | Edge case |
-| EPIC-15-S41 | Artifacts: `Range`, `HEAD` and immutable caching | KAR-15.6 | Happy path |
-| EPIC-15-S42 | The inspector bundle and a packet whose segments sum to its header | KAR-15.6 | Happy path |
-| EPIC-15-S43 | Facts and consumers, one indexed query each | KAR-15.6 | Happy path |
-| EPIC-15-S44 | Every 404 names its own resource; every list is bounded | KAR-15.6 | Failure |
-| EPIC-15-S45 | Happy path: reduced state at a sequence, server-side | KAR-15.7 | Happy path |
-| EPIC-15-S46 | A `seq` inside a gap resolves down, and says so | KAR-15.7 | Edge case |
-| EPIC-15-S47 | Scrubbing a multi-hour run does not replay from zero in the browser | KAR-15.7 | Edge case |
-| EPIC-15-S48 | PTY upgrade is authenticated before the socket exists | KAR-15.8 | Failure |
+| Scenario    | Title                                                                               | Verifies | Type        |
+| ----------- | ----------------------------------------------------------------------------------- | -------- | ----------- |
+| EPIC-15-S1  | Happy path: a typed round trip from the daemon's own route types                    | KAR-15.1 | Happy path  |
+| EPIC-15-S2  | Renaming a daemon field breaks the UI build in the same commit                      | KAR-15.1 | Edge case   |
+| EPIC-15-S3  | `/api/health` is the only unauthenticated route, and `DeFlow up` polls it           | KAR-15.1 | Happy path  |
+| EPIC-15-S4  | Domain failures are envelopes, not exceptions                                       | KAR-15.1 | Failure     |
+| EPIC-15-S5  | Compression never touches `/api/stream`                                             | KAR-15.1 | Failure     |
+| EPIC-15-S6  | One process, one port: API, HMR and SSE coexist                                     | KAR-15.1 | Happy path  |
+| EPIC-15-S7  | **An unauthenticated request is rejected**                                          | KAR-15.2 | Failure     |
+| EPIC-15-S8  | A wrong token is rejected, in constant time                                         | KAR-15.2 | Failure     |
+| EPIC-15-S9  | **A cross-origin request is rejected, token or no token**                           | KAR-15.2 | Failure     |
+| EPIC-15-S10 | `Vary: Origin` on every response, including the errors                              | KAR-15.2 | Edge case   |
+| EPIC-15-S11 | `Host` validation, and an absent `Origin` is fine                                   | KAR-15.2 | Edge case   |
+| EPIC-15-S12 | **First-run token handoff through the URL fragment**                                | KAR-15.2 | Happy path  |
+| EPIC-15-S13 | **The token never appears in a query string**                                       | KAR-15.2 | Failure     |
+| EPIC-15-S14 | An agent DeFlow spawned finds port 7777 and cannot drive it                         | KAR-15.2 | Failure     |
+| EPIC-15-S15 | Happy path: one connection, three runs, one dispatcher                              | KAR-15.3 | Happy path  |
+| EPIC-15-S16 | **What breaks without multiplexing: six streams and a `fetch` that never resolves** | KAR-15.3 | Failure     |
+| EPIC-15-S17 | Subscribe mid-stream: backfill before live, no gap and no duplicate                 | KAR-15.3 | Edge case   |
+| EPIC-15-S18 | `runs=*` carries lifecycle only, not every `node.progress` frame                    | KAR-15.3 | Edge case   |
+| EPIC-15-S19 | The frame contract: `hello`, `retry`, `id:`, one-line data, keepalive               | KAR-15.3 | Happy path  |
+| EPIC-15-S20 | Control frames never reach the reducer; unknown `kind` is ignored                   | KAR-15.3 | Edge case   |
+| EPIC-15-S21 | The two-phase drain: an event committed between drain and park is not lost          | KAR-15.3 | Concurrency |
+| EPIC-15-S22 | The emitter fires post-commit; a rollback advances no cursor                        | KAR-15.3 | Failure     |
+| EPIC-15-S23 | **The 82.6 MB WAL: never hold a cursor open across a stream**                       | KAR-15.3 | Failure     |
+| EPIC-15-S24 | `io_chunk` never appears on the control-plane stream                                | KAR-15.3 | Edge case   |
+| EPIC-15-S25 | A fatal condition closes with `event: fatal`, and only two codes stop retrying      | KAR-15.3 | Failure     |
+| EPIC-15-S26 | Resume path 1: automatic reconnect with `Last-Event-ID`                             | KAR-15.4 | Happy path  |
+| EPIC-15-S27 | **Resume path 2: a page reload sends no `Last-Event-ID` at all**                    | KAR-15.4 | Failure     |
+| EPIC-15-S28 | Precedence: `since` > `Last-Event-ID` > head                                        | KAR-15.4 | Edge case   |
+| EPIC-15-S29 | **Gaps are healthy: 4, 5, 7 is not data loss**                                      | KAR-15.4 | Edge case   |
+| EPIC-15-S30 | Rowid reuse: why `AUTOINCREMENT` is mandatory                                       | KAR-15.4 | Failure     |
+| EPIC-15-S31 | Cold-start hydrate loop, then open the stream at the cursor                         | KAR-15.4 | Happy path  |
+| EPIC-15-S32 | The daemon restarted under the tab: `daemonEpoch` and `build` skew                  | KAR-15.4 | Recovery    |
+| EPIC-15-S33 | Happy path: pause, resume, cancel — and pausing a paused run                        | KAR-15.5 | Happy path  |
+| EPIC-15-S34 | `ifLastSeq` and the stale approval panel                                            | KAR-15.5 | Edge case   |
+| EPIC-15-S35 | `Idempotency-Key` on run creation                                                   | KAR-15.5 | Edge case   |
+| EPIC-15-S36 | Forceful cancel is the kill switch, and zombies are excluded                        | KAR-15.5 | Failure     |
+| EPIC-15-S37 | Creating a run does not start it                                                    | KAR-15.5 | Edge case   |
+| EPIC-15-S38 | Engine idempotency keys are not on the API                                          | KAR-15.5 | Edge case   |
+| EPIC-15-S39 | Plan version rail and RFC 6902 diffs                                                | KAR-15.6 | Happy path  |
+| EPIC-15-S40 | The `io_chunk` tail: last N KB, never the whole log                                 | KAR-15.6 | Edge case   |
+| EPIC-15-S41 | Artifacts: `Range`, `HEAD` and immutable caching                                    | KAR-15.6 | Happy path  |
+| EPIC-15-S42 | The inspector bundle and a packet whose segments sum to its header                  | KAR-15.6 | Happy path  |
+| EPIC-15-S43 | Facts and consumers, one indexed query each                                         | KAR-15.6 | Happy path  |
+| EPIC-15-S44 | Every 404 names its own resource; every list is bounded                             | KAR-15.6 | Failure     |
+| EPIC-15-S45 | Happy path: reduced state at a sequence, server-side                                | KAR-15.7 | Happy path  |
+| EPIC-15-S46 | A `seq` inside a gap resolves down, and says so                                     | KAR-15.7 | Edge case   |
+| EPIC-15-S47 | Scrubbing a multi-hour run does not replay from zero in the browser                 | KAR-15.7 | Edge case   |
+| EPIC-15-S48 | PTY upgrade is authenticated before the socket exists                               | KAR-15.8 | Failure     |
 
 ---
 
@@ -114,7 +114,7 @@ Feature: One API, one client module, two consumers
     Then the awaited res.json() is typed as the daemon's own return type and not as any
     And the same call from packages/cli compiles against the same types
     And no codegen step, OpenAPI document or generated client exists in the repository
-    And every response carries "X-Karvan-Api: 1"
+    And every response carries "X-DeFlow-Api: 1"
 ```
 
 **Notes:** the chaining is load-bearing rather than stylistic — `hc<AppType>` infers from the chained
@@ -133,7 +133,7 @@ the routes for readability.
 Feature: The type system is the schema-drift defence
 
   Scenario: a field is renamed in the daemon's response type
-    Given "@karvan/daemon"'s exports field points at "./src/index.ts" inside the workspace
+    Given "@DeFlow/daemon"'s exports field points at "./src/index.ts" inside the workspace
     And packages/web typechecks against live daemon source rather than a built .d.ts
     When a field on the run summary type is renamed in the daemon
     Then "pnpm typecheck" fails in packages/web
@@ -143,7 +143,7 @@ Feature: The type system is the schema-drift defence
 
 ---
 
-## EPIC-15-S3 — `/api/health` is the only unauthenticated route, and `karvan up` polls it
+## EPIC-15-S3 — `/api/health` is the only unauthenticated route, and `DeFlow up` polls it
 
 **Verifies:** KAR-15.1 · **Type:** Happy path · **Automated at:** integration
 
@@ -151,10 +151,10 @@ Feature: The type system is the schema-drift defence
 Feature: One unauthenticated discovery endpoint, deliberately
 
   Scenario: readiness polling before the token file has been read
-    Given karvand is starting and has not yet finished migrations
+    Given DeFlowd is starting and has not yet finished migrations
     When "GET /api/health" is requested with no Authorization header
     Then the response is 200 with { apiVersion, build, daemonEpoch, headSeq, uptimeMs }
-    And it exposes nothing a local process could not already learn from ".karvan/daemon.json"
+    And it exposes nothing a local process could not already learn from ".DeFlow/daemon.json"
 
   Scenario: exactly one route is exempt
     When every registered route is enumerated and requested without an Authorization header
@@ -162,7 +162,7 @@ Feature: One unauthenticated discovery endpoint, deliberately
     And that route is "GET /api/health"
 ```
 
-**Notes:** health is unauthenticated *deliberately* so `karvan up` can poll for readiness before it
+**Notes:** health is unauthenticated _deliberately_ so `DeFlow up` can poll for readiness before it
 has read the token file. The enumeration in the second scenario is the guard: the natural way a
 second unauthenticated route appears is somebody adding a `/api/version` for convenience.
 
@@ -228,7 +228,7 @@ Feature: A buffered SSE stream looks like a scheduler bug and is not one
         not in one burst at stream end
 ```
 
-**Notes:** the symptom of getting this wrong — *"events arrive in clumps, then all at once"* — reads
+**Notes:** the symptom of getting this wrong — _"events arrive in clumps, then all at once"_ — reads
 as a backend scheduling problem and sends you looking in the wrong place for an afternoon. The
 timestamp assertion is measured client-side rather than eyeballed, per the M0 S4 spike criterion.
 
@@ -239,16 +239,16 @@ timestamp assertion is measured client-side rather than eyeballed, per the M0 S4
 **Verifies:** KAR-15.1 · **Type:** Happy path · **Automated at:** e2e
 
 ```gherkin
-Feature: Vite in middleware mode inside karvand
+Feature: Vite in middleware mode inside DeFlowd
 
   Scenario: dev and production route identically
-    Given karvand is started with KARVAN_DEV=1
+    Given DeFlowd is started with DeFlow_DEV=1
     Then exactly one node process is listening on port 7777
     And "GET /api/health" is served by Hono
     And an SSE stream on the same port emits events individually for ten minutes
     And editing a .vue file hot-reloads the browser over the same port
     And the SSE connection is not dropped by the hot reload
-    When karvand is started without KARVAN_DEV
+    When DeFlowd is started without DeFlow_DEV
     Then the same route table serves "/api/*" and static assets from dist/ui
     And "GET /api/nope" returns a 404 envelope rather than index.html
 ```
@@ -267,7 +267,7 @@ silently-served HTML page and a JSON parse error in the client.
 Feature: Localhost is not authentication
 
   Scenario: no Authorization header
-    Given karvand is bound to 127.0.0.1 with a generated bearer token
+    Given DeFlowd is bound to 127.0.0.1 with a generated bearer token
     When "GET /api/runs" is requested with no Authorization header
     Then the response is 401 with code "missing_token"
     And the body does not reveal the expected token or its length
@@ -303,7 +303,7 @@ Feature: Constant-time comparison
 ```
 
 **Notes:** timing analysis over loopback is a marginal threat and the control is nearly free, which is
-the right trade. The test asserts *which primitive is used* rather than trying to measure timing,
+the right trade. The test asserts _which primitive is used_ rather than trying to measure timing,
 because a timing assertion in CI is a flake generator.
 
 ---
@@ -341,8 +341,8 @@ Feature: Origin validation is the DNS-rebinding defence
 ```
 
 **Notes:** same-origin policy does not help here — the browser believes the origin is
-`attacker.example` and it is talking to `127.0.0.1:7777`. What saves you is that *a rebound page
-cannot forge `Origin`*. The second scenario matters because the natural implementation checks the
+`attacker.example` and it is talking to `127.0.0.1:7777`. What saves you is that _a rebound page
+cannot forge `Origin`_. The second scenario matters because the natural implementation checks the
 origin only on the unauthenticated path, which leaves the attack open the moment a token leaks.
 
 ---
@@ -361,8 +361,8 @@ Feature: Without Vary, a cache defeats the Origin check
     And "GET /api/health" carries it
 ```
 
-**Notes:** without it, *"any intermediate or browser cache can serve a response computed for one
-origin to a request from another"*, which quietly undoes EPIC-15-S9. The failure is invisible in
+**Notes:** without it, _"any intermediate or browser cache can serve a response computed for one
+origin to a request from another"_, which quietly undoes EPIC-15-S9. The failure is invisible in
 development because there is no cache in the path — which is exactly why it needs a test rather than
 a habit.
 
@@ -380,7 +380,7 @@ Feature: The second half of the rebinding defence, without breaking the CLI
     Then it is rejected
 
   Scenario: the CLI sends no Origin at all
-    Given the karvan CLI issuing "GET /api/runs" with a valid token and no Origin header
+    Given the DeFlow CLI issuing "GET /api/runs" with a valid token and no Origin header
     Then the request is accepted
     And origin validation rejects a present-and-wrong Origin, never an absent one
 ```
@@ -398,11 +398,11 @@ check entirely rather than fixing the condition.
 ```gherkin
 Feature: Getting the token into the browser without leaking it
 
-  Scenario: karvan up generates and prints the token
-    Given a fresh workspace with no ".karvan/daemon.json"
-    When "karvan up" runs
+  Scenario: DeFlow up generates and prints the token
+    Given a fresh workspace with no ".DeFlow/daemon.json"
+    When "DeFlow up" runs
     Then 32 bytes from crypto.randomBytes are base64url-encoded as the token
-    And ".karvan/daemon.json" is written as { pid, port, token, startedAt } at mode 0600
+    And ".DeFlow/daemon.json" is written as { pid, port, token, startedAt } at mode 0600
     And the file is inside a gitignored directory
     And the printed URL is exactly "http://127.0.0.1:7777/#token=<token>"
 
@@ -453,14 +453,14 @@ Feature: A token in a URL is a token in five logs
 the `Referer` header of any outbound link, and any access log anyone ever adds — unacceptable for a
 long-lived token that authorises spawning processes on the user's machine.
 `@microsoft/fetch-event-source` is abandoned (last published 2.0.1 on 2021-04-25) and
-`eventsource@^4.1.0` is a spec-faithful polyfill that therefore *inherits* the no-headers limitation;
+`eventsource@^4.1.0` is a spec-faithful polyfill that therefore _inherits_ the no-headers limitation;
 its own README points at `eventsource-client`. **Note also that
 [03-local-development.md §9 step 8](../../03-local-development.md) currently describes a `?t=`
 query-parameter handoff — that contradicts this scenario and is corrected as part of KAR-15.2.**
 
 ---
 
-## EPIC-15-S14 — An agent Karvan spawned finds port 7777 and cannot drive it
+## EPIC-15-S14 — An agent DeFlow spawned finds port 7777 and cannot drive it
 
 **Verifies:** KAR-15.2 · **Type:** Failure · **Automated at:** integration
 
@@ -468,21 +468,21 @@ query-parameter handoff — that contradicts this scenario and is corrected as p
 Feature: The agent is inside the network boundary and outside the trust boundary
 
   Scenario: a prompt-injected agent tries to drive the control plane
-    Given a run in progress with "karvan-mock-agent" scripted to call
+    Given a run in progress with "DeFlow-mock-agent" scripted to call
           "terminal/create" with a command that issues an HTTP request to
           "http://127.0.0.1:<port>/api/runs"
     And the node's permission level allows that command through the allowlist
-    When the agent's request reaches karvand
+    When the agent's request reaches DeFlowd
     Then the response is 401 with code "missing_token"
     And no run is created
     And the child environment the agent received contains no token variable
 ```
 
-**Notes:** this is the threat-model row that most justifies the bearer token: *"an agent with a
+**Notes:** this is the threat-model row that most justifies the bearer token: _"an agent with a
 prompt-injected instruction and a shell is inside the trust boundary of an unauthenticated daemon
-that can start runs, read every artifact and approve human gates."* The honest limit is worth
-recording next to the passing test — a process running *as the user* can read
-`.karvan/daemon.json`; this raises the bar from trivial to requiring filesystem access as the user,
+that can start runs, read every artifact and approve human gates."_ The honest limit is worth
+recording next to the passing test — a process running _as the user_ can read
+`.DeFlow/daemon.json`; this raises the bar from trivial to requiring filesystem access as the user,
 and only OS-level isolation would eliminate the class.
 
 ---
@@ -527,7 +527,7 @@ Feature: The six-connection cap is an architecture constraint, not a tuning knob
     And the connection count for the origin is 1
 ```
 
-**Notes:** karvand runs on Node's `http` server, which is HTTP/1.1. HTTP/2 on localhost is not
+**Notes:** DeFlowd runs on Node's `http` server, which is HTTP/1.1. HTTP/2 on localhost is not
 available — browsers refuse h2c, so h2 would require TLS, and shipping a certificate for `127.0.0.1`
 is a worse problem than the one it solves. Browsers cap concurrent connections per origin at about
 six, and an SSE connection never closes. This scenario is expensive to automate and worth it exactly
@@ -587,7 +587,7 @@ Feature: The SSE frame contract
     When a client opens "GET /api/stream?runs=r_a&since=0"
     Then the response headers are
         "Content-Type: text/event-stream", "Cache-Control: no-cache, no-transform",
-        "X-Accel-Buffering: no", "Connection: keep-alive", "X-Karvan-Api: 1", "Vary: Origin"
+        "X-Accel-Buffering: no", "Connection: keep-alive", "X-DeFlow-Api: 1", "Vary: Origin"
     And the first frame is "event: hello" with
         { streamId, apiVersion, build, daemonEpoch, headSeq }
     And "retry: 2000" is written once, immediately after
@@ -604,7 +604,7 @@ Feature: The SSE frame contract
 ```
 
 **Notes:** the keepalive costs 12 bytes and exists so no socket-inactivity timer anywhere in the path
-— Node's, the OS's, a proxy's — ever sees a silent connection. Long-running Karvan nodes are routinely
+— Node's, the OS's, a proxy's — ever sees a silent connection. Long-running DeFlow nodes are routinely
 idle for minutes, so this is a steady-state condition rather than an edge case.
 
 ---
@@ -661,8 +661,8 @@ Feature: Subscribe-then-drain-again, never subscribe-only
     And holds no query open between iterations
 ```
 
-**Notes:** because the notify is post-commit and the reaction is *"drain from my cursor"* rather than
-*"here is the payload"*, the emitter carries no data and needs no ordering guarantees — a missed
+**Notes:** because the notify is post-commit and the reaction is _"drain from my cursor"_ rather than
+_"here is the payload"_, the emitter carries no data and needs no ordering guarantees — a missed
 notification only delays delivery to the next one, and the keepalive tick bounds that. This is
 deliberately the least clever part of the system.
 
@@ -688,7 +688,7 @@ Feature: A cursor must never point past an event that does not exist
     And the missing 501 is not reported as a loss
 ```
 
-**Notes:** if the emitter fires *inside* the transaction, a stream can read a row a subsequent
+**Notes:** if the emitter fires _inside_ the transaction, a stream can read a row a subsequent
 rollback removes and the client's cursor advances past an event that does not exist. The second
 scenario is EPIC-15-S29's precondition — this is where the gap comes from.
 
@@ -740,8 +740,8 @@ Feature: Agent stdout is the data plane and has its own endpoint
         "GET /api/runs/r_a/nodes/:nodeId/io" instead
 ```
 
-**Notes:** mixing the data plane into this query *"is what makes people believe event sourcing needs
-snapshots"* — and it also breaks the progress watermark, since an agent producing megabytes while
+**Notes:** mixing the data plane into this query _"is what makes people believe event sourcing needs
+snapshots"_ — and it also breaks the progress watermark, since an agent producing megabytes while
 accomplishing nothing would start looking like progress.
 
 ---
@@ -804,8 +804,8 @@ Feature: The explicit cursor path is mandatory, not an optimisation
 
   Scenario: the daemon was down when the tab first tried to connect
     Given a tab whose initial stream connection never opened successfully
-        because karvand was not yet bound
-    When karvand comes back and the tab reconnects
+        because DeFlowd was not yet bound
+    When DeFlowd comes back and the tab reconnects
     Then the request still carries no "Last-Event-ID"
     And the client's persisted cursor supplies "?since="
     And no event committed while the daemon was down is missed
@@ -821,7 +821,7 @@ Feature: The explicit cursor path is mandatory, not an optimisation
 **Notes:** the browser sends `Last-Event-ID` **only** when its own reconnection logic fires on a
 connection that had previously opened successfully — never after a page reload, never on a first
 attempt, never when the initial connect failed. That third case is the common one during development:
-you restart `karvand`, the tab's stream fails to open, and when the daemon comes back the tab
+you restart `DeFlowd`, the tab's stream fails to open, and when the daemon comes back the tab
 reconnects with no cursor at all. The CLI has no `Last-Event-ID` mechanism whatsoever, so `?since=`
 is the only path it has.
 
@@ -881,8 +881,8 @@ Feature: The cursor contract is "strictly greater than", never "seq + 1"
     And it must never compare it for density
 ```
 
-**Notes:** *"a rolled-back transaction burns `AUTOINCREMENT` values. `seq` 4, 5, 7 is a normal,
-healthy log — `6` was allocated by a transaction that did not commit."* A client that treats a gap as
+**Notes:** _"a rolled-back transaction burns `AUTOINCREMENT` values. `seq` 4, 5, 7 is a normal,
+healthy log — `6` was allocated by a transaction that did not commit."_ A client that treats a gap as
 a dropped event reports false data loss on a perfectly correct stream and, worse, may try to "repair"
 by refetching from zero — which on a multi-hour run is minutes of wasted work triggered by nothing.
 **Do not write gap detection.**
@@ -947,7 +947,7 @@ Feature: Detecting that the world changed underneath a tab
 
   Scenario: a daemon restart
     Given a tab with an open stream whose hello carried daemonEpoch 7
-    When karvand is restarted and the tab reconnects
+    When DeFlowd is restarted and the tab reconnects
     Then the new hello carries daemonEpoch 8
     And the client detects the restart from that difference alone
     And it resumes from its own persisted cursor rather than from head
@@ -1027,8 +1027,8 @@ Feature: Optimistic concurrency on a decision surface that moves by itself
     And no second "plan.patched" event is appended
 ```
 
-**Notes:** *"this is what stops an operator approving a patch on a panel that went stale while they
-read it — a real hazard given that patches are auto-applied on a policy timer."* The distinction
+**Notes:** _"this is what stops an operator approving a patch on a panel that went stale while they
+read it — a real hazard given that patches are auto-applied on a policy timer."_ The distinction
 between a decision-changing advance and a harmless one is the part that needs a real implementation
 rather than a head comparison.
 
@@ -1076,7 +1076,7 @@ Feature: One control stops every child process in a run
     And a verification that did not exclude Z-state would wrongly conclude the kill failed
 ```
 
-**Notes:** verified by measurement — after a *successful* group SIGKILL the grandchildren remain
+**Notes:** verified by measurement — after a _successful_ group SIGKILL the grandchildren remain
 listed as zombies awaiting reaping by init. Reaping is prompt under launchd and systemd but can lag
 badly inside containers, so this bites hardest in exactly the environment where you cannot attach a
 debugger.
@@ -1121,15 +1121,15 @@ Feature: The spec gate is real, not a formality
 Feature: The effect journal is not client-reachable
 
   Scenario: the emitted schemas
-    Given the JSON Schemas emitted to ".karvan/schemas/"
+    Given the JSON Schemas emitted to ".DeFlow/schemas/"
     When every request and response schema is inspected
     Then none of them contains the engine's (runId, nodeId, attempt) idempotency key
     And no endpoint accepts one as input
     And the API-level Idempotency-Key header is a distinct concept with a distinct name
 ```
 
-**Notes:** *"conflating the two would let a client reach into the effect journal, which is precisely
-the invariant that makes crash recovery sound."*
+**Notes:** _"conflating the two would let a client reach into the effect journal, which is precisely
+the invariant that makes crash recovery sound."_
 
 ---
 
@@ -1342,7 +1342,7 @@ Feature: A requested seq may name a value that was never committed
 Feature: The reason this endpoint exists is browser memory
 
   Scenario: dragging the plan-evolution scrubber
-    Given the "three-patches" fixture served by "karvan replay"
+    Given the "three-patches" fixture served by "DeFlow replay"
     When the operator drags the scrubber back to plan v1 and forward through each patch
     Then each position is hydrated from "…/snapshot?seq=<N>"
     And the client replays forward only from the nearest snapshot

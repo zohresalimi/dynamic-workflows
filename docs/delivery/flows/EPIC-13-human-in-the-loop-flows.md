@@ -7,70 +7,70 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Operator** | The engineer driving Karvan. **The primary actor throughout this file** — every scenario below exists because a decision needs a person |
-| **karvand** | The local daemon: scheduler, ledger, 1 Hz ticker |
-| **Scheduler** | `decide(state, now)` plus the ticker that reads `node_wake` — the component that suspends and resumes |
-| **Approval queue** | The `GET /api/approvals` projection: everything waiting on the Operator, across all runs |
-| **Provider agent** | A `karvan-mock-agent` subprocess. Scenario 3 of its script — `session/request_permission` per chosen option, including `cancelled` — is what makes this epic testable |
-| **Permission policy** | The pure policy function from [EPIC-08](../epics/EPIC-08-safety-model.md). Auto-answers routine requests; escalates the gated categories |
-| **Browser tab** | One `EventSource`-shaped connection per tab, opened once at app start, filtered server-side |
+| Actor                 | Description                                                                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator**          | The engineer driving DeFlow. **The primary actor throughout this file** — every scenario below exists because a decision needs a person                               |
+| **DeFlowd**           | The local daemon: scheduler, ledger, 1 Hz ticker                                                                                                                      |
+| **Scheduler**         | `decide(state, now)` plus the ticker that reads `node_wake` — the component that suspends and resumes                                                                 |
+| **Approval queue**    | The `GET /api/approvals` projection: everything waiting on the Operator, across all runs                                                                              |
+| **Provider agent**    | A `DeFlow-mock-agent` subprocess. Scenario 3 of its script — `session/request_permission` per chosen option, including `cancelled` — is what makes this epic testable |
+| **Permission policy** | The pure policy function from [EPIC-08](../epics/EPIC-08-safety-model.md). Auto-answers routine requests; escalates the gated categories                              |
+| **Browser tab**       | One `EventSource`-shaped connection per tab, opened once at app start, filtered server-side                                                                           |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given a Karvan workspace initialised in a git repository on branch "main"
+  Given a DeFlow workspace initialised in a git repository on branch "main"
   And the ledger is a file-backed SQLite database — never ":memory:" — opened with
       "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000"
   And "seq" is INTEGER PRIMARY KEY AUTOINCREMENT, so cursors are never reused
-  And karvand holds the flock on "<dataDir>/karvan.lock" and stamps daemon_epoch on every write
+  And DeFlowd holds the flock on "<dataDir>/DeFlow.lock" and stamps daemon_epoch on every write
   And time enters the engine through an injected Clock port; tests advance it with clock.advance()
   And the scheduler's only use of setTimeout is the ticker's own sleep hint,
       setTimeout(min(nextWakeAt - now, 1000))
-  And "karvan-mock-agent" is on a temp PATH, with --capabilities used to shape the adapter profile
+  And "DeFlow-mock-agent" is on a temp PATH, with --capabilities used to shape the adapter profile
   And no test in this file calls vi.useFakeTimers() while a child process is alive
 ```
 
-> The file-backed database is not a preference. Half of this epic is *"is it still there after the
-> daemon died?"*, and `:memory:` cannot be reopened after a simulated crash — it *"cannot test the
-> one property that matters most"* ([testing strategy §7](../../14-testing-strategy.md)). Every
+> The file-backed database is not a preference. Half of this epic is _"is it still there after the
+> daemon died?"_, and `:memory:` cannot be reopened after a simulated crash — it _"cannot test the
+> one property that matters most"_ ([testing strategy §7](../../14-testing-strategy.md)). Every
 > restart scenario below closes the database and constructs a **fresh engine over the same file**,
 > which is the real code path a daemon restart takes.
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-13-S1 | Happy path: a `human` node blocks, the Operator approves, the run advances | KAR-13.1 | Happy path |
-| EPIC-13-S2 | Six hours of suspension for one row and zero CPU | KAR-13.1 | Happy path |
-| EPIC-13-S3 | The daemon restarts while a `human` node is pending — the gate survives | KAR-13.1 | Recovery |
-| EPIC-13-S4 | The `setTimeout` footgun, asserted rather than commented | KAR-13.1 | Failure |
-| EPIC-13-S5 | Laptop sleep and a backwards clock do not move the gate | KAR-13.1 | Edge case |
-| EPIC-13-S6 | The deadline matrix: `fail`, `escalate`, `default` | KAR-13.1 | Edge case |
-| EPIC-13-S7 | The four option effects: approve, reject, edit, inject | KAR-13.1 | Edge case |
-| EPIC-13-S8 | Answering twice, and the transaction that makes it safe | KAR-13.1 | Failure |
-| EPIC-13-S9 | A pending approval is not a paused run | KAR-13.1 | Concurrency |
-| EPIC-13-S10 | The queue aggregates across concurrent runs in one call | KAR-13.2 | Happy path |
-| EPIC-13-S11 | Eight kinds, each carrying enough to decide without a second request | KAR-13.2 | Edge case |
-| EPIC-13-S12 | `runs=*` carries approvals without the firehose | KAR-13.2 | Edge case |
-| EPIC-13-S13 | The panel went stale while the Operator was reading it | KAR-13.2 | Failure |
-| EPIC-13-S14 | An already-decided patch answers with what actually happened | KAR-13.2 | Failure |
-| EPIC-13-S15 | The queue is a projection, and it survives a restart intact | KAR-13.2 | Recovery |
-| EPIC-13-S16 | Resolving an item, and adding a run panel without a second connection | KAR-13.2 | Concurrency |
-| EPIC-13-S17 | Interjection happy path: a correction lands and the run is not discarded | KAR-13.3 | Happy path |
-| EPIC-13-S18 | An adapter that cannot steer says so, with a `202` | KAR-13.3 | Failure |
-| EPIC-13-S19 | `pause-and-inject` resumes the same attempt with the same idempotency key | KAR-13.3 | Edge case |
-| EPIC-13-S20 | Interjecting a node that finished while the Operator was typing | KAR-13.3 | Failure |
-| EPIC-13-S21 | The guidance is an attributed segment, not a spliced prompt | KAR-13.3 | Edge case |
-| EPIC-13-S22 | Routine permission requests never reach the Operator | KAR-13.4 | Happy path |
-| EPIC-13-S23 | An escalation carries enough context to decide in five seconds | KAR-13.4 | Happy path |
-| EPIC-13-S24 | The four `PermissionOptionKind` values, and the run scope of `_always` | KAR-13.4 | Edge case |
-| EPIC-13-S25 | `cancelled` is an outcome, not an error | KAR-13.4 | Edge case |
-| EPIC-13-S26 | An escalation nobody answers | KAR-13.4 | Failure |
-| EPIC-13-S27 | `mediatedExecution: false` is refused scheduling, never silently escalated | KAR-13.4 | Failure |
-| EPIC-13-S28 | The daemon restarts while a permission escalation is outstanding | KAR-13.4 | Recovery |
+| Scenario    | Title                                                                      | Verifies | Type        |
+| ----------- | -------------------------------------------------------------------------- | -------- | ----------- |
+| EPIC-13-S1  | Happy path: a `human` node blocks, the Operator approves, the run advances | KAR-13.1 | Happy path  |
+| EPIC-13-S2  | Six hours of suspension for one row and zero CPU                           | KAR-13.1 | Happy path  |
+| EPIC-13-S3  | The daemon restarts while a `human` node is pending — the gate survives    | KAR-13.1 | Recovery    |
+| EPIC-13-S4  | The `setTimeout` footgun, asserted rather than commented                   | KAR-13.1 | Failure     |
+| EPIC-13-S5  | Laptop sleep and a backwards clock do not move the gate                    | KAR-13.1 | Edge case   |
+| EPIC-13-S6  | The deadline matrix: `fail`, `escalate`, `default`                         | KAR-13.1 | Edge case   |
+| EPIC-13-S7  | The four option effects: approve, reject, edit, inject                     | KAR-13.1 | Edge case   |
+| EPIC-13-S8  | Answering twice, and the transaction that makes it safe                    | KAR-13.1 | Failure     |
+| EPIC-13-S9  | A pending approval is not a paused run                                     | KAR-13.1 | Concurrency |
+| EPIC-13-S10 | The queue aggregates across concurrent runs in one call                    | KAR-13.2 | Happy path  |
+| EPIC-13-S11 | Eight kinds, each carrying enough to decide without a second request       | KAR-13.2 | Edge case   |
+| EPIC-13-S12 | `runs=*` carries approvals without the firehose                            | KAR-13.2 | Edge case   |
+| EPIC-13-S13 | The panel went stale while the Operator was reading it                     | KAR-13.2 | Failure     |
+| EPIC-13-S14 | An already-decided patch answers with what actually happened               | KAR-13.2 | Failure     |
+| EPIC-13-S15 | The queue is a projection, and it survives a restart intact                | KAR-13.2 | Recovery    |
+| EPIC-13-S16 | Resolving an item, and adding a run panel without a second connection      | KAR-13.2 | Concurrency |
+| EPIC-13-S17 | Interjection happy path: a correction lands and the run is not discarded   | KAR-13.3 | Happy path  |
+| EPIC-13-S18 | An adapter that cannot steer says so, with a `202`                         | KAR-13.3 | Failure     |
+| EPIC-13-S19 | `pause-and-inject` resumes the same attempt with the same idempotency key  | KAR-13.3 | Edge case   |
+| EPIC-13-S20 | Interjecting a node that finished while the Operator was typing            | KAR-13.3 | Failure     |
+| EPIC-13-S21 | The guidance is an attributed segment, not a spliced prompt                | KAR-13.3 | Edge case   |
+| EPIC-13-S22 | Routine permission requests never reach the Operator                       | KAR-13.4 | Happy path  |
+| EPIC-13-S23 | An escalation carries enough context to decide in five seconds             | KAR-13.4 | Happy path  |
+| EPIC-13-S24 | The four `PermissionOptionKind` values, and the run scope of `_always`     | KAR-13.4 | Edge case   |
+| EPIC-13-S25 | `cancelled` is an outcome, not an error                                    | KAR-13.4 | Edge case   |
+| EPIC-13-S26 | An escalation nobody answers                                               | KAR-13.4 | Failure     |
+| EPIC-13-S27 | `mediatedExecution: false` is refused scheduling, never silently escalated | KAR-13.4 | Failure     |
+| EPIC-13-S28 | The daemon restarts while a permission escalation is outstanding           | KAR-13.4 | Recovery    |
 
 ---
 
@@ -108,9 +108,9 @@ Feature: Blocking human nodes (F8.1)
     And no in-memory "pending approvals" map exists in the daemon
 ```
 
-**Notes:** the response being an *event* is the load-bearing part. A flag on an object survives
+**Notes:** the response being an _event_ is the load-bearing part. A flag on an object survives
 neither a restart nor a timeline, and NF10 requires any state in the UI to trace to specific ledger
-events — *"the Operator approved this at 14:12"* is exactly the state someone asks about three days
+events — _"the Operator approved this at 14:12"_ is exactly the state someone asks about three days
 later.
 
 ---
@@ -144,8 +144,8 @@ Feature: Long suspension costs one SQLite row (F4.8)
 ```
 
 **Notes:** four problems collapse into this one mechanism — a six-hour human gate, laptop sleep
-across that gate, crash-and-restart mid-wait, and retry backoff — so it is *"one code path,
-exercised constantly, instead of four rarely-exercised ones"*
+across that gate, crash-and-restart mid-wait, and retry backoff — so it is _"one code path,
+exercised constantly, instead of four rarely-exercised ones"_
 ([05 §10.1](../../05-durable-execution.md)). The last scenario is why `Clock` is a port: with a
 `FakeClock`, `clock.advance(hours(6))` exercises a six-hour gate in microseconds, and when it fails
 you can print the clock's state instead of interrogating sinon's internals.
@@ -162,8 +162,8 @@ Feature: NF4 — run state survives daemon restart
   Scenario: SIGKILL mid-suspension
     Given a "human" node suspended at seq 4120 with a node_wake row and a queue item
     And two other runs also have pending approvals
-    When karvand is killed with SIGKILL — no cleanup, no flush, no handlers
-    And a fresh engine is constructed over the same .karvan/ directory
+    When DeFlowd is killed with SIGKILL — no cleanup, no flush, no handlers
+    And a fresh engine is constructed over the same .DeFlow/ directory
     Then ledger replay reduces to a state in which the node is still suspended
     And exactly one "human.requested" event exists for that node — the restart did not re-request
     And the node_wake row is intact with the same wake_at
@@ -187,8 +187,8 @@ Feature: NF4 — run state survives daemon restart
 ```
 
 **Notes:** this is the scenario that proves the thesis for this epic, and it is the reason the three
-writes are one transaction. `SIGKILL` rather than `SIGTERM` is deliberate: *"SIGTERM tests your
-shutdown handler; SIGKILL tests your durability"*
+writes are one transaction. `SIGKILL` rather than `SIGTERM` is deliberate: _"SIGTERM tests your
+shutdown handler; SIGKILL tests your durability"_
 ([testing strategy §11](../../14-testing-strategy.md)). The `daemonEpoch` scenario matters because
 the tab's own recovery must not manufacture a duplicate item — `hello.daemonEpoch` is precisely how
 a client detects that the daemon restarted under it ([11 §3.2](../../11-api-and-realtime.md)).
@@ -256,8 +256,8 @@ Feature: The wall clock is not monotonic
     And the node resumes normally
 ```
 
-**Notes:** *"Journal timestamps for display; order strictly by `seq`. Any logic that compares two
-timestamps to decide what happened first is a bug waiting for a daylight-saving transition"*
+**Notes:** _"Journal timestamps for display; order strictly by `seq`. Any logic that compares two
+timestamps to decide what happened first is a bug waiting for a daylight-saving transition"_
 ([05 §9.6](../../05-durable-execution.md)). Timers do not fire during laptop sleep at all, which is
 the second independent reason the wait is a row.
 
@@ -294,7 +294,7 @@ Feature: HumanNode.deadline
 
 **Notes:** the third example is the branch KAR-13.4 reuses for permission escalations, where the
 declared default is `reject_once`. Catching the unknown option id at plan validation rather than at
-expiry is the same economics as everywhere else in the system: *"the cheapest correctness gate"*
+expiry is the same economics as everywhere else in the system: _"the cheapest correctness gate"_
 runs before a token is spent ([06 §3](../../06-planning-and-replanning.md)).
 
 ---
@@ -362,10 +362,10 @@ Feature: Writes are idempotent because they are event appends over a state machi
     And a restart never finds an answered node still holding a node_wake row
 ```
 
-**Notes:** *"Pausing a paused run is a no-op that returns the existing `seq` and `200`, not an error.
+**Notes:** _"Pausing a paused run is a no-op that returns the existing `seq` and `200`, not an error.
 Approving an already-approved patch returns `409` with the original decision, so the UI can show what
-actually happened rather than double-applying"* ([11 §11](../../11-api-and-realtime.md)). The
-difference between those two shapes is whether the second call carries a *different intent*, and it
+actually happened rather than double-applying"_ ([11 §11](../../11-api-and-realtime.md)). The
+difference between those two shapes is whether the second call carries a _different intent_, and it
 does here.
 
 ---
@@ -398,8 +398,8 @@ Feature: A human node blocks its dependents and nothing else
 ```
 
 **Notes:** [06 §4.3](../../06-planning-and-replanning.md) states the same property for queued
-patches — *"The run does not stall on it if other branches are runnable — the patch is pending, not
-the run"* — and it must be true for human nodes for the same reason: a run that halts entirely on
+patches — _"The run does not stall on it if other branches are runnable — the patch is pending, not
+the run"_ — and it must be true for human nodes for the same reason: a run that halts entirely on
 every approval turns a four-branch plan into a serial one.
 
 ---
@@ -467,10 +467,10 @@ Feature: The queue is not a list of links
 ```
 
 **Notes:** `reconcile-unknown` is rated **High** in the open-risks register (A1-5) precisely because
-*"there is no correct automatic action"* ([05 §9.3](../../05-durable-execution.md)) — the product
+_"there is no correct automatic action"_ ([05 §9.3](../../05-durable-execution.md)) — the product
 answer is this queue item, designed on day one rather than bolted on. The tainted case is the same
-shape: *"Automatic re-running on invalidation is a very efficient way to build a loop that never
-terminates"* ([06 §7](../../06-planning-and-replanning.md)).
+shape: _"Automatic re-running on invalidation is a very efficient way to build a loop that never
+terminates"_ ([06 §7](../../06-planning-and-replanning.md)).
 
 ---
 
@@ -505,8 +505,8 @@ Feature: One SSE connection per tab, filtered server-side
 ```
 
 **Notes:** the connection cap is an architecture constraint, not a tuning knob: HTTP/1.1 allows
-about six connections per origin, an SSE connection never closes, and *"the failure mode is not an
-error — it is that every subsequent `fetch` silently queues behind the streams, forever"*
+about six connections per origin, an SSE connection never closes, and _"the failure mode is not an
+error — it is that every subsequent `fetch` silently queues behind the streams, forever"_
 ([11 §2](../../11-api-and-realtime.md)). The last scenario is the other verified trap: a rolled-back
 transaction burns `AUTOINCREMENT` values, so `seq` 4, 5, 7 is a healthy log and gap detection reports
 false data loss.
@@ -540,8 +540,8 @@ Feature: Optimistic concurrency via ifLastSeq
     And the response carries the seq it appended
 ```
 
-**Notes:** *"This is what stops an operator approving a patch on a panel that went stale while they
-read it — a real hazard given that patches are auto-applied on a policy timer (F2.5)"*
+**Notes:** _"This is what stops an operator approving a patch on a panel that went stale while they
+read it — a real hazard given that patches are auto-applied on a policy timer (F2.5)"_
 ([11 §11](../../11-api-and-realtime.md)). The middle scenario is what keeps it usable: a `409` on
 every progress frame would train the Operator to retry blindly, which is the same failure as an
 always-on approval dialog.
@@ -573,9 +573,9 @@ Feature: 409 patch_already_decided
     And "plan.patched" with decision "rejected" carries the ruleId
 ```
 
-**Notes:** *"a rejection is a 'not without you', not a dead end"*
-([06 §4.3](../../06-planning-and-replanning.md)). And *"No event means no UI, and 'the run silently
-decided not to do the thing it decided to do' is unanswerable"* — which is why the third scenario is
+**Notes:** _"a rejection is a 'not without you', not a dead end"_
+([06 §4.3](../../06-planning-and-replanning.md)). And _"No event means no UI, and 'the run silently
+decided not to do the thing it decided to do' is unanswerable"_ — which is why the third scenario is
 here rather than only in EPIC-11.
 
 ---
@@ -595,7 +595,7 @@ Feature: No auxiliary pending table
 
   Scenario: Restart with items pending
     Given three items pending across two runs
-    When karvand is SIGKILLed and restarted over the same directory
+    When DeFlowd is SIGKILLed and restarted over the same directory
     Then the same three items are present, with the same creating seqs
     And none is duplicated
     And none triggers a second notification
@@ -606,9 +606,9 @@ Feature: No auxiliary pending table
     And the queue is degraded, never corrupted, and the daemon does not crash-loop
 ```
 
-**Notes:** the third scenario is the forward-compatibility rule applied here: *"A user who installs a
-newer `karvand`, starts a run, then downgrades, must get a daemon that skips the events it does not
-understand rather than one that refuses to open the ledger"*
+**Notes:** the third scenario is the forward-compatibility rule applied here: _"A user who installs a
+newer `DeFlowd`, starts a run, then downgrades, must get a daemon that skips the events it does not
+understand rather than one that refuses to open the ledger"_
 ([04 §9.2](../../04-domain-model.md)). A queue that throws on an unknown kind takes the whole
 approval surface down on a downgrade.
 
@@ -678,7 +678,7 @@ Feature: Interject at any time (F8.2)
     And the ledger contains exactly one "human.interjected" for it
 ```
 
-**Notes:** *"A running node can be paused and given a correction without discarding the run"* (F8.2).
+**Notes:** _"A running node can be paused and given a correction without discarding the run"_ (F8.2).
 The assertion that no attempt was re-minted is the one that matters: `attempt` is part of the
 idempotency key, so a re-attempt would re-execute effects
 ([05 §9.2](../../05-durable-execution.md)) — an interjection must never look like a retry.
@@ -715,8 +715,8 @@ Feature: delivery: "unsupported" is honest, not an error
 ```
 
 **Notes:** F8.5 is P1 and adapter-dependent, and the capability matrix is genuinely uneven — two of
-five probed adapters cannot even resume a session (**verified 2026-08-02**). *"The UI must render
-that honestly rather than showing a delivered guidance bubble that never arrived"*
+five probed adapters cannot even resume a session (**verified 2026-08-02**). _"The UI must render
+that honestly rather than showing a delivered guidance bubble that never arrived"_
 ([11 §7.5](../../11-api-and-realtime.md)). An error status would be worse in both directions: it
 implies the Operator did something wrong and invites a retry that will also not work.
 
@@ -749,9 +749,9 @@ Feature: The mode that always works
     And it does not restart at 0
 ```
 
-**Notes:** the ordinal detail is [05 §8.1](../../05-durable-execution.md)'s: *"A runtime counter
+**Notes:** the ordinal detail is [05 §8.1](../../05-durable-execution.md)'s: _"A runtime counter
 resets to zero when the process restarts, so the second effect of an interrupted attempt would come
-back as ordinal 0 and collide with the first."* A pause-and-inject is an interruption of exactly that
+back as ordinal 0 and collide with the first."_ A pause-and-inject is an interruption of exactly that
 shape, so it exercises the same path a crash does — which is why it is worth asserting here rather
 than only in EPIC-06.
 
@@ -829,7 +829,7 @@ long runs. Guidance that must survive belongs in the spec, where editing it prod
 **Verifies:** KAR-13.4 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: Karvan auto-responds from the policy table (F5.4)
+Feature: DeFlow auto-responds from the policy table (F5.4)
 
   Scenario: Twenty in-scope reads
     Given a node at permission "worktree" with pathScopes.write ["packages/ui/src/**"]
@@ -860,9 +860,9 @@ Feature: Karvan auto-responds from the policy table (F5.4)
          so a symlink pointing outside is rejected
 ```
 
-**Notes:** this is the whole reason ACP-first pays off for safety: *"Karvan sits in the path of every
-file access and every command execution"*, so the ladder collapses from an N-vendors × M-levels
-matrix into **one policy function in Karvan's own code**
+**Notes:** this is the whole reason ACP-first pays off for safety: _"DeFlow sits in the path of every
+file access and every command execution"_, so the ladder collapses from an N-vendors × M-levels
+matrix into **one policy function in DeFlow's own code**
 ([14 §10](../../14-testing-strategy.md)) — a fast unit test with nothing installed. The last row of
 the outline is the point of KAR-13.4: even at `full`, the F5.6 categories escalate.
 
@@ -885,7 +885,7 @@ Feature: The escalation payload
           | field           | value                                              |
           | command         | curl                                               |
           | args            | ["-sS","https://registry.example.com/token"]       |
-          | cwd             | .karvan/wt/r1__n_impl_3                            |
+          | cwd             | .DeFlow/wt/r1__n_impl_3                            |
           | matchedRule     | egress-outside-allowlist                           |
           | nodeId          | n_impl_3                                           |
           | nodePermission  | worktree                                           |
@@ -907,7 +907,7 @@ Feature: The escalation payload
 ```
 
 **Notes:** `ToolCallLocation.path` is the improvement over F5.3 noted in
-[09 §8.2](../../09-workspace-and-safety.md): Karvan rejects the write *before it happens*, with a
+[09 §8.2](../../09-workspace-and-safety.md): DeFlow rejects the write _before it happens_, with a
 reason the UI can render, rather than diffing at completion and calling it a gate failure. The
 `enforcement` field exists because of A5-1 and A5-2 — if the platform's sandbox silently degraded,
 the Operator is deciding under different assumptions and should be told so.
@@ -938,7 +938,7 @@ Feature: PermissionOptionKind
     Given "allow_always" was chosen in run r1
     When run r2 makes the same request
     Then it escalates to the Operator again
-    And nothing was written to .karvan/config.yaml
+    And nothing was written to .DeFlow/config.yaml
 
   Scenario: The decision is recorded as an event, so the history is auditable
     Then "human.responded" carries the optionId, the matched request signature and the scope
@@ -968,7 +968,7 @@ Feature: RequestPermissionOutcome
   Scenario: The agent cancels its own request
     Given an escalated permission request is pending
     When the agent's turn is cancelled and the outcome is { outcome: "cancelled" }
-    Then Karvan records the cancellation
+    Then DeFlow records the cancellation
     And the node is not failed with a protocol error
     And the queue item is removed with reason "cancelled-by-agent"
     And the Operator's stale panel shows it as withdrawn rather than as still pending
@@ -981,13 +981,13 @@ Feature: RequestPermissionOutcome
 
   Scenario: The selected outcome shape
     When the Operator chooses an option
-    Then Karvan responds { outcome: "selected", optionId: "<id>" }
+    Then DeFlow responds { outcome: "selected", optionId: "<id>" }
 ```
 
-**Notes:** *"Cancellation must be handled as a first-class outcome, not an error"*
+**Notes:** _"Cancellation must be handled as a first-class outcome, not an error"_
 ([09 §8.2](../../09-workspace-and-safety.md)), and the trailing-updates behaviour is one of M0-S1's
-explicit success criteria — the client must keep accepting notifications after a cancel *without
-deadlocking*. This scenario is where that requirement is regression-tested after the spike is gone.
+explicit success criteria — the client must keep accepting notifications after a cancel _without
+deadlocking_. This scenario is where that requirement is regression-tested after the spike is gone.
 
 ---
 
@@ -1002,7 +1002,7 @@ Feature: An open agent session is not free
     Given an escalated permission request with deadline { wakeAt: T+30m, onTimeout: "default",
           default: "reject_once" }
     When the clock passes wakeAt with no response
-    Then Karvan responds { outcome: "selected", optionId: "reject_once" }
+    Then DeFlow responds { outcome: "selected", optionId: "reject_once" }
     And "human.responded" is appended with by "policy"
     And the queue item is resolved with the recorded reason "timed out — auto-rejected"
     And the agent receives a refusal and its turn continues or ends per the adapter's contract
@@ -1064,7 +1064,7 @@ Feature: A queue item must never outlive the thing that can answer it
   Scenario: SIGKILL with an escalation pending
     Given an escalated session/request_permission is pending for node "n_impl_3"
     And the agent subprocess is detached, so it survives the daemon's death
-    When karvand is SIGKILLed and restarted over the same directory
+    When DeFlowd is SIGKILLed and restarted over the same directory
     Then the orphan reaper matches the recorded (pid, process_start_time) and terminates the group
     And the kill verification excludes Z-state processes
     And the node fails with a typed reason naming the lost session
@@ -1084,8 +1084,8 @@ Feature: A queue item must never outlive the thing that can answer it
 
 **Notes:** this is the scenario that separates the two kinds of waiting in this epic. A `human` node
 is durable because it needs nothing but a row; a permission escalation is bound to a live ACP session
-and cannot outlive it. *"Never kill by bare pid after a restart. Pids are recycled. You will
-eventually kill the user's editor"* ([05 §9.4](../../05-durable-execution.md)) — and the Z-state
+and cannot outlive it. _"Never kill by bare pid after a restart. Pids are recycled. You will
+eventually kill the user's editor"_ ([05 §9.4](../../05-durable-execution.md)) — and the Z-state
 exclusion is the verified false negative that makes a successful group kill look like a failed one.
 
 ---

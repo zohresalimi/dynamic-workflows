@@ -1,20 +1,20 @@
 # EPIC-16: Web UI foundation and projection store
 
-> Part of the [Karvan delivery plan](../README.md) · [Board](../board.md) ·
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
 > [Flows for this epic](../flows/EPIC-16-ui-foundation-flows.md)
 
-| | |
-|---|---|
-| **Epic ID** | EPIC-16 |
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Milestone** | M1 |
-| **Workstream** | W10 (see [roadmap §2.2](../../17-roadmap.md)) |
-| **Size** | ~20 days across 6 stories — **over the 15-day guideline, see Risks** |
-| **Depends on** | EPIC-15 (the SSE contract, the snapshot endpoint and the typed client), EPIC-02 (the `Event` union, imported type-only), EPIC-00 S3 and S4 (elkjs in a Vite 8 worker; SSE and HMR on one port) |
-| **Blocks** | EPIC-17 (all nine views) |
-| **PRD requirements** | F4.1, F10.10, NF3, NF10, and the shell of F10.1 |
-| **Architecture** | [12-frontend-architecture.md](../../12-frontend-architecture.md) §1–§5, §6.1, §9, §10, §11 · [11-api-and-realtime.md](../../11-api-and-realtime.md) §2–§5, §7.3, §8 · [14-testing-strategy.md](../../14-testing-strategy.md) §12, §13 · [03-local-development.md](../../03-local-development.md) §6.2 |
+|                      |                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Epic ID**          | EPIC-16                                                                                                                                                                                                                                                                                               |
+| **Status**           | Not started                                                                                                                                                                                                                                                                                           |
+| **Priority**         | P0                                                                                                                                                                                                                                                                                                    |
+| **Milestone**        | M1                                                                                                                                                                                                                                                                                                    |
+| **Workstream**       | W10 (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                                         |
+| **Size**             | ~20 days across 6 stories — **over the 15-day guideline, see Risks**                                                                                                                                                                                                                                  |
+| **Depends on**       | EPIC-15 (the SSE contract, the snapshot endpoint and the typed client), EPIC-02 (the `Event` union, imported type-only), EPIC-00 S3 and S4 (elkjs in a Vite 8 worker; SSE and HMR on one port)                                                                                                        |
+| **Blocks**           | EPIC-17 (all nine views)                                                                                                                                                                                                                                                                              |
+| **PRD requirements** | F4.1, F10.10, NF3, NF10, and the shell of F10.1                                                                                                                                                                                                                                                       |
+| **Architecture**     | [12-frontend-architecture.md](../../12-frontend-architecture.md) §1–§5, §6.1, §9, §10, §11 · [11-api-and-realtime.md](../../11-api-and-realtime.md) §2–§5, §7.3, §8 · [14-testing-strategy.md](../../14-testing-strategy.md) §12, §13 · [03-local-development.md](../../03-local-development.md) §6.2 |
 
 ## Goal
 
@@ -23,7 +23,7 @@ ledger the daemon reduces** — not a REST client that renders view models someo
 SSE connection per tab feeds a dispatcher; the dispatcher feeds seven pure projection modules with
 zero Vue imports; a thin Pinia shell owns reactivity and nothing else; and the whole thing survives
 a multi-hour run without the tab dying, because raw events are applied and dropped rather than
-retained. Alongside it there is `karvan replay`, which serves the *normal* API and SSE contract from
+retained. Alongside it there is `DeFlow replay`, which serves the _normal_ API and SSE contract from
 a recorded ledger, so every view in EPIC-17 is developable offline with no credentials, no child
 processes, no quota and no three-hour wait. And there is a number — a real measurement of the graph
 renderer against a 400-node stress fixture — where the architecture currently has an estimate.
@@ -34,31 +34,31 @@ development loop that makes building them cheap.
 ## Why this matters
 
 The PRD treats visualisation as a primary product surface with equal weight to execution (§7.10),
-and names *median time-to-diagnose a failed run under five minutes* as the metric that decides
+and names _median time-to-diagnose a failed run under five minutes_ as the metric that decides
 whether it worked (§12). Neither is reachable from a UI built the ordinary way, for a reason that is
 structural rather than aesthetic:
 
 **NF10 says any state in the UI is traceable to specific ledger events.** If the UI is a fetch cache
 over server-computed view models, that claim is unprovable — the thing on screen came out of a merged
 cache entry, and there is no event to point at. If the UI applies the same event vocabulary the
-backend applies, it becomes *impossible to render something that did not come from an event, because
-there is no other input* ([12 §1](../../12-frontend-architecture.md)). NF10 stops being aspirational
+backend applies, it becomes _impossible to render something that did not come from an event, because
+there is no other input_ ([12 §1](../../12-frontend-architecture.md)). NF10 stops being aspirational
 and becomes structural.
 
 Two of the P0 views fall out of that property for free and would each otherwise be a bespoke
 subsystem: the plan-evolution scrubber (F10.2) is `replayTo(planVersionSeq[N])`, and run replay
 (F10.10) is feeding the same reducers at a chosen rate. Getting the store wrong is therefore not one
-bad file — [12 §3](../../12-frontend-architecture.md) calls it *"the load-bearing frontend
-decision. Get it wrong and every subsequent view fights it."*
+bad file — [12 §3](../../12-frontend-architecture.md) calls it _"the load-bearing frontend
+decision. Get it wrong and every subsequent view fights it."_
 
 Three things break concretely if this epic is skipped or done casually:
 
 - **The tab dies at hour four.** Not at hour one, and with no visible symptom before then. Unbounded
   event retention, uncapped per-node arrays and undisposed `Terminal` objects each kill a long run,
   and all three are cheap on day one and miserable to retrofit ([12 §5](../../12-frontend-architecture.md)).
-- **Every view is built twice.** The roadmap is explicit: *"a view built against a hand-rolled
-  fixture will be rebuilt against the real stream"* ([roadmap §2.1](../../17-roadmap.md)). The replay
-  harness is what makes the fixture *be* the production format, so there is no fixture-maintenance
+- **Every view is built twice.** The roadmap is explicit: _"a view built against a hand-rolled
+  fixture will be rebuilt against the real stream"_ ([roadmap §2.1](../../17-roadmap.md)). The replay
+  harness is what makes the fixture _be_ the production format, so there is no fixture-maintenance
   tax and no drift.
 - **The renderer's ceiling is discovered in week four of EPIC-17 instead of week one of this epic.**
   The 300–500-node smooth band is an **estimate extrapolated from React Flow guidance**, not a
@@ -69,8 +69,8 @@ Three things break concretely if this epic is skipped or done casually:
 
 **In scope:**
 
-- The `@karvan/web` package: Vue 3.5.40 SPA, `vue-router@5`, Pinia 4, Vite 8 with Rolldown, Tailwind
-  4 CSS-first, `shadcn-vue` vendored components on `reka-ui`, served by `karvand` on
+- The `@DeFlow/web` package: Vue 3.5.40 SPA, `vue-router@5`, Pinia 4, Vite 8 with Rolldown, Tailwind
+  4 CSS-first, `shadcn-vue` vendored components on `reka-ui`, served by `DeFlowd` on
   `http://127.0.0.1:7777` — one origin, no proxy, no CORS.
 - The bootstrap token handoff: read `#token=` from the fragment once, store in `sessionStorage`,
   strip with `history.replaceState`, send as an `Authorization: Bearer` header thereafter.
@@ -84,7 +84,7 @@ Three things break concretely if this epic is skipped or done casually:
   layout, selection, theme — explicitly **not** derived from the ledger).
 - Browser memory discipline: apply-and-drop, a bounded ~2,000-event debug ring, capped per-node
   collections, snapshot-based scrubbing, and the dev-only 60-second projection-count assertion.
-- `karvan replay <fixture> --speed <n>x --port <p>` and the six-fixture corpus, recorded from
+- `DeFlow replay <fixture> --speed <n>x --port <p>` and the six-fixture corpus, recorded from
   mock-agent runs.
 - `GraphCanvas.vue` — the facade over `@vue-flow/core` — the ELK worker, the dagre fast path, and a
   recorded, re-runnable performance measurement against `stress-400`.
@@ -99,16 +99,16 @@ Three things break concretely if this epic is skipped or done casually:
   snapshot endpoint** — [EPIC-15](./EPIC-15-daemon-api.md). This epic is the client of that
   contract and asserts against it; it does not implement it.
 - **The `Event` union itself and its upcasters** — [EPIC-02](./EPIC-02-domain-model.md) KAR-02.7.
-  `@karvan/web` imports it **type-only** from `@karvan/core`; that boundary is enforced in
+  `@DeFlow/web` imports it **type-only** from `@DeFlow/core`; that boundary is enforced in
   [16 §4](../../16-repo-layout.md).
-- **Vite middleware mode inside `karvand`** — [EPIC-01](./EPIC-01-dev-environment.md) KAR-01.3 and
+- **Vite middleware mode inside `DeFlowd`** — [EPIC-01](./EPIC-01-dev-environment.md) KAR-01.3 and
   M0 spike S4. This epic assumes one process on one port and would be miserable without it.
 - **Recording the fixtures' underlying runs.** The mock agent is [EPIC-04](./EPIC-04-mock-agent.md);
   a run that reaches a gate failure with a repair loop is EPIC-06/EPIC-12. KAR-16.5 owns the replay
-  *server* and the corpus definition, not the orchestration that produces the events.
+  _server_ and the corpus definition, not the orchestration that produces the events.
 - **The interactive PTY WebSocket** at `/api/pty/:runId/:nodeId` — EPIC-15 for the transport,
   KAR-17.5 for the panel.
-- **Run replay as a product feature (F10.10)** — P1, M2. The *mechanism* is built here (it is the
+- **Run replay as a product feature (F10.10)** — P1, M2. The _mechanism_ is built here (it is the
   same mechanism as the scrubber and the harness); the operator-facing playback controls are M2.
 - **OTel export, the cross-run dashboard, `echarts`, and any second theme.** P1/P2.
 - **Storybook or Histoire.** Deliberately not built — see the note under KAR-16.5.
@@ -120,16 +120,16 @@ Three things break concretely if this epic is skipped or done casually:
       `GET /api/runs/:id/snapshot?seq=N` returns a reduced state. Building the client against a
       hand-mocked stream is the exact mistake [roadmap §2.1](../../17-roadmap.md) warns about.
 - [ ] **M0-S4 green.** One `node` process on port 7777 streaming SSE for ten minutes with events
-      arriving individually (measured by client-side timestamps, not by eyeball) *and* hot-reloading
+      arriving individually (measured by client-side timestamps, not by eyeball) _and_ hot-reloading
       a `.vue` edit over the same port without dropping the connection.
 - [ ] **M0-S3 green, or its fallback chosen.** elkjs builds in a Vite 8 worker with the ~1.6 MB
       absent from the initial chunk — or `@dagrejs/dagre@3.0.0` is confirmed as the live-graph
       layout engine with ELK on the main thread for cached scrubber layouts.
-- [ ] **At least one full run completes headlessly** through `karvan run`
-      ([EPIC-18](./EPIC-18-cli-packaging.md) KAR-18.3), so KAR-16.5's fixtures can be *recorded*
+- [ ] **At least one full run completes headlessly** through `DeFlow run`
+      ([EPIC-18](./EPIC-18-cli-packaging.md) KAR-18.3), so KAR-16.5's fixtures can be _recorded_
       rather than hand-written.
 - [ ] The `Event` union, `PlanGraph`, `ContextPacket`, `Verdict` and `NodeFailure` types are landed
-      in `@karvan/core` and exported type-only.
+      in `@DeFlow/core` and exported type-only.
 - [ ] The pinned dependency set from [12 §2](../../12-frontend-architecture.md) is in the pnpm
       catalog, including `@vue/devtools-api@^8.2.1` — Pinia 4 no longer bundles it and devtools
       break silently without it.
@@ -146,12 +146,12 @@ Three things break concretely if this epic is skipped or done casually:
 - [ ] A lint rule fails the build if any file under `src/ledger/projections/` imports from `vue`.
 - [ ] A lint rule fails the build if any file outside `src/components/graph/` imports `VueFlow` or
       `@vue-flow/core`.
-- [ ] A six-hour `karvan replay --speed max` soak against `stress-400` ends with heap and projection
+- [ ] A six-hour `DeFlow replay --speed max` soak against `stress-400` ends with heap and projection
       object counts within the bounds asserted in KAR-16.4, and the debug ring at exactly its cap.
 - [ ] **The 400-node measurement exists as a committed artifact** — `docs/measurements/vue-flow-400.md`
       with the numbers, the machine, the browser build and the command to re-run it. A3-2 is no
       longer `Unverified` for this project.
-- [ ] `karvan replay fixtures/three-patches.jsonl --speed 20x` serves the identical `/api/*` and
+- [ ] `DeFlow replay fixtures/three-patches.jsonl --speed 20x` serves the identical `/api/*` and
       `/api/stream` contract a live daemon serves, and the UI code contains **no** branch on whether
       it is talking to a replay.
 - [ ] The production build's initial chunk is ≤ 200 KB gzip, asserted in CI, with elkjs, the bundled
@@ -164,13 +164,13 @@ Three things break concretely if this epic is skipped or done casually:
 
 ### KAR-16.1 — Vue application shell, routing and theming
 
-| | |
-|---|---|
-| **Status** | Ready |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | EPIC-01 KAR-01.1, EPIC-01 KAR-01.3 |
-| **PRD** | NF3, F10.1, and the a11y floor under all of F10.1–F10.9 |
+|                 |                                                            |
+| --------------- | ---------------------------------------------------------- |
+| **Status**      | Ready                                                      |
+| **Priority**    | P0                                                         |
+| **Size**        | M                                                          |
+| **Depends on**  | EPIC-01 KAR-01.1, EPIC-01 KAR-01.3                         |
+| **PRD**         | NF3, F10.1, and the a11y floor under all of F10.1–F10.9    |
 | **Verified by** | EPIC-16-S1, EPIC-16-S2, EPIC-16-S3, EPIC-16-S4, EPIC-16-S5 |
 
 **As** the Operator, **I want** the app to open on localhost already authenticated, in my system
@@ -194,7 +194,7 @@ bars, context-budget segments, gate chips, criteria rows and the version rail al
 variable, so seven views stay consistent by construction and both themes work because you only
 redefine seven values. Retrofitting hardcoded colours across nine views is the expensive path.
 
-The token handoff is the security-relevant part. `karvan up` prints
+The token handoff is the security-relevant part. `DeFlow up` prints
 `http://127.0.0.1:7777/#token=<token>`. Fragments are never sent to the server, so the token cannot
 land in an access log; the UI reads it once, puts it in `sessionStorage`, strips it from the address
 bar with `history.replaceState`, and sends it as a header thereafter
@@ -210,7 +210,7 @@ bar with `history.replaceState`, and sends it as a header thereafter
    address bar showing no fragment, at least one subsequent authenticated request carrying
    `Authorization: Bearer <t>`, and the token appearing in **no** URL the browser ever sends.
 3. Opening the app with no token and no stored token renders an explicit "paste the URL from
-   `karvan up`" state — not a spinner, not a blank page, and not a 401 loop.
+   `DeFlow up`" state — not a spinner, not a blank page, and not a 401 loop.
 4. All seven state tokens are defined for both themes; a test enumerates the seven and asserts every
    one resolves to a non-empty computed value under `:root` and under `.dark`.
 5. No state anywhere in the app is encoded by colour alone: every state chip renders a colour, a
@@ -231,17 +231,17 @@ bar with `history.replaceState`, and sends it as a header thereafter
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `readBootstrapToken(location)` returns the token, and the returned `cleanUrl` has no fragment | The token survives in the address bar |
-| 2 | unit | The auth header factory throws rather than sending a request with no token | A missing token silently 401s in a loop |
-| 3 | unit | Enumerate the seven `--state-*` names against a fixture stylesheet for both themes | A state was added to the domain and not to the palette |
-| 4 | web (browser) | Mount the state chip for each of the seven states; assert accessible name contains the label and a glyph node exists | State is colour-only |
-| 5 | web (browser) | `useDark()` toggles `.dark` and a `--state-failed` computed value differs between themes | Dark mode is a class with no token redefinition |
-| 6 | web (browser) | Keyboard map: dispatch `j`, `k`, `Enter`, `/`, `Escape` and assert focus and overlay state | Handlers are bound to a component that is not always mounted |
-| 7 | web (browser) | With `prefers-reduced-motion: reduce` emulated, the node transition computed style is `none` | The media query wraps the wrong rule |
-| 8 | integration | `vite build`, then assert initial-chunk gzip ≤ 200 KB and that four named modules are absent from it | A lazy route was imported eagerly |
-| 9 | e2e | Boot `karvan replay`, open the printed URL with the fragment, assert an authenticated `/api/runs` call succeeds and no request URL contains the token | The token was put in the query string |
+| #   | Level         | Test                                                                                                                                                  | Red when                                                     |
+| --- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1   | unit          | `readBootstrapToken(location)` returns the token, and the returned `cleanUrl` has no fragment                                                         | The token survives in the address bar                        |
+| 2   | unit          | The auth header factory throws rather than sending a request with no token                                                                            | A missing token silently 401s in a loop                      |
+| 3   | unit          | Enumerate the seven `--state-*` names against a fixture stylesheet for both themes                                                                    | A state was added to the domain and not to the palette       |
+| 4   | web (browser) | Mount the state chip for each of the seven states; assert accessible name contains the label and a glyph node exists                                  | State is colour-only                                         |
+| 5   | web (browser) | `useDark()` toggles `.dark` and a `--state-failed` computed value differs between themes                                                              | Dark mode is a class with no token redefinition              |
+| 6   | web (browser) | Keyboard map: dispatch `j`, `k`, `Enter`, `/`, `Escape` and assert focus and overlay state                                                            | Handlers are bound to a component that is not always mounted |
+| 7   | web (browser) | With `prefers-reduced-motion: reduce` emulated, the node transition computed style is `none`                                                          | The media query wraps the wrong rule                         |
+| 8   | integration   | `vite build`, then assert initial-chunk gzip ≤ 200 KB and that four named modules are absent from it                                                  | A lazy route was imported eagerly                            |
+| 9   | e2e           | Boot `DeFlow replay`, open the printed URL with the fragment, assert an authenticated `/api/runs` call succeeds and no request URL contains the token | The token was put in the query string                        |
 
 **Notes / risks** — do **not** ship on `vue@3.6`. It is a reactivity-core rewrite (alien-signals) plus
 Vapor Mode; Vapor buys this app nothing because every rendering-heavy dependency here is vDOM-based,
@@ -254,13 +254,13 @@ the reactivity internals 3.6 rewrites ([12 §2.1](../../12-frontend-architecture
 
 ### KAR-16.2 — The SSE client and event dispatcher
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-16.1, EPIC-15 KAR-15.3, EPIC-15 KAR-15.4 |
-| **PRD** | F4.1, NF10, NF3 |
+|                 |                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                              |
+| **Priority**    | P0                                                                                                                                       |
+| **Size**        | M                                                                                                                                        |
+| **Depends on**  | KAR-16.1, EPIC-15 KAR-15.3, EPIC-15 KAR-15.4                                                                                             |
+| **PRD**         | F4.1, NF10, NF3                                                                                                                          |
 | **Verified by** | EPIC-16-S1, EPIC-16-S6, EPIC-16-S7, EPIC-16-S8, EPIC-16-S9, EPIC-16-S10, EPIC-16-S11, EPIC-16-S12, EPIC-16-S13, EPIC-16-S14, EPIC-16-S24 |
 
 **As** the Operator, **I want** the UI to stay exactly in step with the ledger across page reloads,
@@ -269,7 +269,7 @@ plausible but wrong picture of a run I am about to make a decision on.
 
 `src/ledger/stream.ts` opens **one** connection for the whole tab, at app start, and never a second
 one. This is an architecture constraint, not a tuning knob
-([11 §2](../../11-api-and-realtime.md)): `karvand` is HTTP/1.1, browsers cap concurrent connections
+([11 §2](../../11-api-and-realtime.md)): `DeFlowd` is HTTP/1.1, browsers cap concurrent connections
 per origin at about six, and an SSE connection never closes. One stream per run panel across two or
 three tabs exhausts the budget, and the failure mode is not an error — every subsequent `fetch`
 silently queues behind the streams forever, which reads as "the daemon hung".
@@ -283,7 +283,7 @@ Three behaviours carry most of the risk and each has a verified footgun behind i
 
 - **`Last-Event-ID` is sent only on automatic reconnect** — never after a page reload, never on the
   first connection of a session, and never if the initial connection failed to open. That third case
-  is the common one in development: restart `karvand`, the tab's stream fails to open, and when the
+  is the common one in development: restart `DeFlowd`, the tab's stream fails to open, and when the
   daemon comes back the tab reconnects with no cursor at all. **Verified 2026-08-02.** So the client
   persists its own cursor and always opens with `?since=<seq>`; the server's precedence is
   `since` > `Last-Event-ID` > head ([11 §4.1](../../11-api-and-realtime.md)).
@@ -331,39 +331,39 @@ Three behaviours carry most of the risk and each has a verified footgun behind i
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `parseFrame()` routes named events to `handleControl` and unnamed to `applyEvent` | Discrimination is on `kind` before checking the SSE `event:` name |
-| 2 | unit | Cursor store: `advance(seq)` is monotonic and refuses a lower seq; persisted to and read from `sessionStorage` | The cursor lives in a component |
-| 3 | unit | Applying a synthetic gap `4, 5, 7` leaves no error state and no refetch scheduled | Gap detection was written |
-| 4 | unit | Unknown `kind` returns without mutating any projection, and still advances the cursor | The dispatcher throws on the default branch |
-| 5 | unit | `fatal` code table — `bad_token` and `epoch_mismatch` stop retrying, others do not | The stop set is inverted or missing |
-| 6 | integration | Against a real `karvan replay` daemon: cold hydrate loop until `more: false`, then stream from `cursor` | Hydrate is a single call and drops the tail |
-| 7 | integration | Reload simulation — drop the client, construct a fresh one with the persisted cursor, assert identical applied set | The client relies on `Last-Event-ID` |
-| 8 | integration | Server-side connection count stays at 1 while three run panels are added via `subscribe` | A panel opens its own `EventSource` |
-| 9 | integration | Backfill-on-subscribe overlap: force an overlapping range and assert projections are unchanged by the duplicates | Projections are not seq-guarded |
-| 10 | integration | 15-minute idle stream with the injected clock; assert zero reconnects and N keepalive comments | The client has its own idle timeout |
-| 11 | e2e | Replay at speed, `kill` the connection, assert the UI reconnects and backfills with no gap and no duplicate | The reconnect path was never exercised |
+| #   | Level       | Test                                                                                                               | Red when                                                          |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1   | unit        | `parseFrame()` routes named events to `handleControl` and unnamed to `applyEvent`                                  | Discrimination is on `kind` before checking the SSE `event:` name |
+| 2   | unit        | Cursor store: `advance(seq)` is monotonic and refuses a lower seq; persisted to and read from `sessionStorage`     | The cursor lives in a component                                   |
+| 3   | unit        | Applying a synthetic gap `4, 5, 7` leaves no error state and no refetch scheduled                                  | Gap detection was written                                         |
+| 4   | unit        | Unknown `kind` returns without mutating any projection, and still advances the cursor                              | The dispatcher throws on the default branch                       |
+| 5   | unit        | `fatal` code table — `bad_token` and `epoch_mismatch` stop retrying, others do not                                 | The stop set is inverted or missing                               |
+| 6   | integration | Against a real `DeFlow replay` daemon: cold hydrate loop until `more: false`, then stream from `cursor`            | Hydrate is a single call and drops the tail                       |
+| 7   | integration | Reload simulation — drop the client, construct a fresh one with the persisted cursor, assert identical applied set | The client relies on `Last-Event-ID`                              |
+| 8   | integration | Server-side connection count stays at 1 while three run panels are added via `subscribe`                           | A panel opens its own `EventSource`                               |
+| 9   | integration | Backfill-on-subscribe overlap: force an overlapping range and assert projections are unchanged by the duplicates   | Projections are not seq-guarded                                   |
+| 10  | integration | 15-minute idle stream with the injected clock; assert zero reconnects and N keepalive comments                     | The client has its own idle timeout                               |
+| 11  | e2e         | Replay at speed, `kill` the connection, assert the UI reconnects and backfills with no gap and no duplicate        | The reconnect path was never exercised                            |
 
 **Notes / risks** — the SSE resume contract rests partly on `Last-Event-ID` semantics that the
 research read from search summaries rather than the WHATWG spec (A1-6, Low). The mitigation is
 already the design: the client never depends on `Last-Event-ID` for correctness, only as a
 belt-and-braces alongside its own `?since=`. Separately, if events ever arrive in clumps rather than
 individually, look for compression middleware in front of `/api/stream` before looking at the
-scheduler — a buffered SSE stream *looks exactly like* a backend scheduling bug
+scheduler — a buffered SSE stream _looks exactly like_ a backend scheduling bug
 ([11 §3.1](../../11-api-and-realtime.md)).
 
 ---
 
 ### KAR-16.3 — Pure projection modules per view
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | L |
-| **Depends on** | KAR-16.2, EPIC-02 KAR-02.7 |
-| **PRD** | F4.1, NF10, NF9, and the data behind F10.1–F10.9 |
+|                 |                                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                            |
+| **Priority**    | P0                                                                                                                                                                     |
+| **Size**        | L                                                                                                                                                                      |
+| **Depends on**  | KAR-16.2, EPIC-02 KAR-02.7                                                                                                                                             |
+| **PRD**         | F4.1, NF10, NF9, and the data behind F10.1–F10.9                                                                                                                       |
 | **Verified by** | EPIC-16-S9, EPIC-16-S10, EPIC-16-S11, EPIC-16-S15, EPIC-16-S16, EPIC-16-S17, EPIC-16-S18, EPIC-16-S19, EPIC-16-S20, EPIC-16-S21, EPIC-16-S22, EPIC-16-S23, EPIC-16-S24 |
 
 **As** the engineer building nine views, **I want** every view's data derived by a plain reducer
@@ -372,23 +372,23 @@ recorded ledgers instead of through a mounted component in a browser.
 
 Seven modules under `src/ledger/projections/`, each exporting a state interface and an
 `apply<Name>(s, e): void` function that switches on `e.kind` and returns silently on the default
-branch — *unknown kinds are ignored, exactly as the backend does*
+branch — _unknown kinds are ignored, exactly as the backend does_
 ([12 §3.3](../../12-frontend-architecture.md)):
 
-| Module | Owns | Principal event kinds |
-|---|---|---|
-| `plan.ts` | Node and edge view-models, live state, edge `carries[]` labels | `plan.proposed`, `plan.patched`, `node.scheduled`, `node.started`, `node.progress`, `node.completed`, `node.failed`, `node.suspended`, `node.retry.scheduled` |
-| `planHistory.ts` | The version rail, per-version node sets, `contentHash` per node | `plan.proposed`, `plan.patch.proposed`, `plan.patched`, `plan.patch.rejected` |
-| `blackboard.ts` | Facts, provenance, consumer edges, taint | `fact.written`, `fact.read`, `fact.invalidated` |
-| `context.ts` | Packet manifests, per-segment tokens, compaction marks | `context.built`, `context.compacted`, `pin.integrity_violated` |
-| `gates.ts` | Verdicts, findings by file/line, criterion satisfaction | `gate.evaluated`, `human.requested`, `human.responded` |
-| `cost.ts` | Per-node / per-provider / per-run token and cost accumulation | `budget.consumed`, `budget.exceeded`, `provider.rate_limited` |
-| `timeline.ts` | Execution spans for the Gantt, plus the cost series | `node.started`, `node.completed`, `node.failed`, `node.suspended`, `budget.consumed` |
+| Module           | Owns                                                            | Principal event kinds                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plan.ts`        | Node and edge view-models, live state, edge `carries[]` labels  | `plan.proposed`, `plan.patched`, `node.scheduled`, `node.started`, `node.progress`, `node.completed`, `node.failed`, `node.suspended`, `node.retry.scheduled` |
+| `planHistory.ts` | The version rail, per-version node sets, `contentHash` per node | `plan.proposed`, `plan.patch.proposed`, `plan.patched`, `plan.patch.rejected`                                                                                 |
+| `blackboard.ts`  | Facts, provenance, consumer edges, taint                        | `fact.written`, `fact.read`, `fact.invalidated`                                                                                                               |
+| `context.ts`     | Packet manifests, per-segment tokens, compaction marks          | `context.built`, `context.compacted`, `pin.integrity_violated`                                                                                                |
+| `gates.ts`       | Verdicts, findings by file/line, criterion satisfaction         | `gate.evaluated`, `human.requested`, `human.responded`                                                                                                        |
+| `cost.ts`        | Per-node / per-provider / per-run token and cost accumulation   | `budget.consumed`, `budget.exceeded`, `provider.rate_limited`                                                                                                 |
+| `timeline.ts`    | Execution spans for the Gantt, plus the cost series             | `node.started`, `node.completed`, `node.failed`, `node.suspended`, `budget.consumed`                                                                          |
 
 **These files import nothing from `vue`.** No `ref`, no `reactive`, no `computed`, no component.
 That is what makes them unit-testable in Vitest's node environment with no DOM and no mount, and it
-is why [12 §3.3](../../12-frontend-architecture.md) says *"this is where the genuinely risky logic
-lives and it should be roughly 80% of the test count."* Plan for that ratio deliberately: a
+is why [12 §3.3](../../12-frontend-architecture.md) says _"this is where the genuinely risky logic
+lives and it should be roughly 80% of the test count."_ Plan for that ratio deliberately: a
 projection bug renders a wrong picture of a real run, which is the one failure this whole product
 exists to prevent, and catching it costs a 40-millisecond test rather than a browser.
 
@@ -421,7 +421,7 @@ Three correctness properties are not obvious and each has an event-shape reason 
    `reason` string. A `plan.patch.rejected` event appears on the rail — the proposal is recorded even
    when it was refused.
 5. `applyContext` over `compaction` yields, for the `vendor.session` compaction, `after === null`
-   and `fidelity === 'partial'` — not `0`, not an interpolation — and for the `karvan.packet` one an
+   and `fidelity === 'partial'` — not `0`, not an interpolation — and for the `DeFlow.packet` one an
    exact before/after with a populated `droppedSegments[]` and `pinnedKept[]`.
 6. For every packet, `sum(segments[].tokens.estimated) === totals.tokens` and the per-kind sums match
    `totals.byKind` for all nine `SegmentKind` values.
@@ -441,38 +441,38 @@ Three correctness properties are not obvious and each has an event-shape reason 
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | `applyPlan()` returns without mutating on `{ kind: 'not.a.real.kind' }` | The reducer throws on an unknown kind |
-| 2 | unit | Double-apply the same envelope to each of the seven projections; deep-equal before and after | A counter increments per call rather than per seq |
-| 3 | unit | Seven node states enumerated against `applyPlan`'s output over a fixture covering all of them | A state transition was missed and renders as `pending` |
-| 4 | unit | Packet segment sums equal `totals.tokens` and `totals.byKind` across every packet in `happy-path-12` | Totals are re-derived rather than carried |
-| 5 | unit | `context.compacted` with `fidelity: 'partial'` keeps `after === null` | `after ?? 0` was written somewhere |
-| 6 | unit | `unverifiable` and `needs-human` survive as distinct states through `applyGates` | They were collapsed into failure |
-| 7 | unit | `cost.ts` — mixing a `vendor-reported` and an `estimated` `budget.consumed` yields two totals, not one | The sums were merged |
-| 8 | unit | `timeline.ts` — a `node.started` with no terminal event yields an open span | The span is dropped or given `now` as its end |
-| 9 | unit | `blackboard.ts` — `fact.invalidated` taints the recorded consumers of that fact | Consumers are computed only from the current graph |
-| 10 | unit | File snapshots of all seven final states over all six fixtures, under the normalising serializer | The serializer was not registered first and every snapshot is churn |
-| 11 | integration | `tsc` fails when a new event kind is added to `@karvan/core` and a projection's exhaustive switch is not updated | The switch has an untyped default that swallows new kinds |
+| #   | Level       | Test                                                                                                             | Red when                                                            |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 1   | unit        | `applyPlan()` returns without mutating on `{ kind: 'not.a.real.kind' }`                                          | The reducer throws on an unknown kind                               |
+| 2   | unit        | Double-apply the same envelope to each of the seven projections; deep-equal before and after                     | A counter increments per call rather than per seq                   |
+| 3   | unit        | Seven node states enumerated against `applyPlan`'s output over a fixture covering all of them                    | A state transition was missed and renders as `pending`              |
+| 4   | unit        | Packet segment sums equal `totals.tokens` and `totals.byKind` across every packet in `happy-path-12`             | Totals are re-derived rather than carried                           |
+| 5   | unit        | `context.compacted` with `fidelity: 'partial'` keeps `after === null`                                            | `after ?? 0` was written somewhere                                  |
+| 6   | unit        | `unverifiable` and `needs-human` survive as distinct states through `applyGates`                                 | They were collapsed into failure                                    |
+| 7   | unit        | `cost.ts` — mixing a `vendor-reported` and an `estimated` `budget.consumed` yields two totals, not one           | The sums were merged                                                |
+| 8   | unit        | `timeline.ts` — a `node.started` with no terminal event yields an open span                                      | The span is dropped or given `now` as its end                       |
+| 9   | unit        | `blackboard.ts` — `fact.invalidated` taints the recorded consumers of that fact                                  | Consumers are computed only from the current graph                  |
+| 10  | unit        | File snapshots of all seven final states over all six fixtures, under the normalising serializer                 | The serializer was not registered first and every snapshot is churn |
+| 11  | integration | `tsc` fails when a new event kind is added to `@DeFlow/core` and a projection's exhaustive switch is not updated | The switch has an untyped default that swallows new kinds           |
 
 **Notes / risks** — register the normalising snapshot serializer **before writing the first
 snapshot**, or every snapshot is churn you learn to `-u` past, which is worse than having none
 ([14 §9](../../14-testing-strategy.md)). Normalise timestamps, ULIDs/UUIDs, durations, absolute
-paths, ports and worktree directory names. Note also that `@karvan/web` imports the `Event` union
-**type-only**: adding an event kind on the backend should surface as a compile error in the UI *in
-the same commit*, and that only works if the exhaustive switch has no untyped escape hatch.
+paths, ports and worktree directory names. Note also that `@DeFlow/web` imports the `Event` union
+**type-only**: adding an event kind on the backend should surface as a compile error in the UI _in
+the same commit_, and that only works if the exhaustive switch has no untyped escape hatch.
 
 ---
 
 ### KAR-16.4 — The run store with bounded memory
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-16.3, EPIC-15 KAR-15.7 |
-| **PRD** | NF3, NF4, NF10 |
+|                 |                                                                              |
+| --------------- | ---------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                  |
+| **Priority**    | P0                                                                           |
+| **Size**        | M                                                                            |
+| **Depends on**  | KAR-16.3, EPIC-15 KAR-15.7                                                   |
+| **PRD**         | NF3, NF4, NF10                                                               |
 | **Verified by** | EPIC-16-S25, EPIC-16-S26, EPIC-16-S27, EPIC-16-S28, EPIC-16-S29, EPIC-16-S30 |
 
 **As** the Operator running a task for six hours, **I want** the tab to be as responsive at hour six
@@ -485,20 +485,20 @@ the counter to derive view-model arrays. If domain logic appears in it, it belon
 and is explicitly not derived from the ledger.
 
 Four performance rules, and the third is the one people get backwards. Deep `reactive()` over a few
-thousand ledger-derived objects is the single most likely cause of missing NF3's *UI interactive
-< 1s*: Vue walks thousands of objects installing proxies. `shallowRef` tracks one reference instead.
+thousand ledger-derived objects is the single most likely cause of missing NF3's _UI interactive
+< 1s_: Vue walks thousands of objects installing proxies. `shallowRef` tracks one reference instead.
 `markRaw` goes on anything handed to a non-Vue library — Vue Flow node objects, `xterm` `Terminal`
 instances, ELK graph inputs, d3 scale objects — because a Vue proxy around an object a foreign
 library holds identity comparisons on is very hard to see and very easy to avoid. And **mutate the
 underlying `Map`, then bump a counter**: reassigning a 2,000-entry array on every `node.progress`
-event is *worse* than the deep reactivity you were avoiding.
+event is _worse_ than the deep reactivity you were avoiding.
 
 Then the four memory rules from [12 §5](../../12-frontend-architecture.md), all cheap on day one and
 miserable to retrofit:
 
 - **Never retain the raw event array.** Apply each event to the projections and drop it. Keep a
-  bounded ring of the last ~2,000 raw events for the debug pane and nothing more. *Unbounded
-  retention has no visible symptom until the tab dies at hour four of a real run.*
+  bounded ring of the last ~2,000 raw events for the debug pane and nothing more. _Unbounded
+  retention has no visible symptom until the tab dies at hour four of a real run._
 - **Cap unbounded per-node collections.** `node.progress` and stdout go to the terminal's xterm
   buffer (already capped at 5,000 lines) and **nowhere else**. Do not also push them into a store
   array "just for the inspector".
@@ -507,7 +507,7 @@ miserable to retrofit:
   state in **29 ms** — **verified 2026-08-02** — and the client replays forward from the nearest
   snapshot only.
 - **Ship a dev-only assertion.** Every 60 seconds in dev, log `{ nodes, facts, events, terminals }`
-  counts. *You will find the leak in week one instead of in hour four of a run you cared about.*
+  counts. _You will find the leak in week one instead of in hour four of a run you cared about._
 
 **Acceptance criteria**
 
@@ -528,32 +528,32 @@ miserable to retrofit:
 7. Scrubbing to plan version N issues `GET /api/runs/:id/snapshot?seq=<planVersionSeq[N]>` and
    replays forward from the returned state only. A test asserts **zero** events with
    `seq < snapshot.seq` are applied during a scrub, on a fixture with 10,000 events.
-8. A **six-hour** `karvan replay --speed max` soak over `stress-400` ends with: JS heap growth under
+8. A **six-hour** `DeFlow replay --speed max` soak over `stress-400` ends with: JS heap growth under
    the agreed ceiling across the last four measured hours, projection object counts bounded by node
    and fact count, the debug ring at exactly its cap, and zero undisposed `Terminal` instances.
 9. The dev-only 60-second counter assertion is present under `import.meta.env.DEV` and is
    **absent from the production bundle** — asserted by grepping the built output for its log tag.
 10. `@pinia/colada` is used for `/api/runs`, `/api/providers`, `/api/config` and `/api/artifacts/:sha`
     and for nothing whose answer changes because an event was appended. A lint rule enforces the
-    boundary: *if the answer changes because an event was appended, it is a projection; if it changes
-    because a file on disk changed, it is a query.*
+    boundary: _if the answer changes because an event was appended, it is a projection; if it changes
+    because a file on disk changed, it is a query._
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Ring buffer: push 10,000, assert length === 2,000 and the head/tail identities | The ring is an array with `.shift()` and drifts |
-| 2 | unit | `WeakRef` retention test over an applied envelope after the ring rolls | Something kept the raw array |
-| 3 | unit | `isReactive(plan.value) === false` and a counter bump drives a dependent `computed` | `reactive()` was used for convenience |
-| 4 | unit | `markRaw` audit over everything the store hands out to foreign libraries | A proxy leaked into Vue Flow |
-| 5 | unit | Scrub path calls the snapshot endpoint and applies zero events below `snapshot.seq` | Scrubbing replays from zero |
-| 6 | web (browser) | Render 400 `PlanNodeVM`s, mutate one node's state, assert only that node's subtree re-rendered | The view array is reassigned wholesale |
-| 7 | integration | 6-hour `--speed max` soak with periodic `performance.measureUserAgentSpecificMemory()` samples | Any of the four memory rules was skipped |
-| 8 | integration | Build the production bundle and grep for the dev leak-assertion tag | The assertion is not behind `import.meta.env.DEV` |
-| 9 | web (browser) | Query-layer boundary: a Colada key over run state fails the lint fixture | Run state was put in a fetch cache |
+| #   | Level         | Test                                                                                           | Red when                                          |
+| --- | ------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1   | unit          | Ring buffer: push 10,000, assert length === 2,000 and the head/tail identities                 | The ring is an array with `.shift()` and drifts   |
+| 2   | unit          | `WeakRef` retention test over an applied envelope after the ring rolls                         | Something kept the raw array                      |
+| 3   | unit          | `isReactive(plan.value) === false` and a counter bump drives a dependent `computed`            | `reactive()` was used for convenience             |
+| 4   | unit          | `markRaw` audit over everything the store hands out to foreign libraries                       | A proxy leaked into Vue Flow                      |
+| 5   | unit          | Scrub path calls the snapshot endpoint and applies zero events below `snapshot.seq`            | Scrubbing replays from zero                       |
+| 6   | web (browser) | Render 400 `PlanNodeVM`s, mutate one node's state, assert only that node's subtree re-rendered | The view array is reassigned wholesale            |
+| 7   | integration   | 6-hour `--speed max` soak with periodic `performance.measureUserAgentSpecificMemory()` samples | Any of the four memory rules was skipped          |
+| 8   | integration   | Build the production bundle and grep for the dev leak-assertion tag                            | The assertion is not behind `import.meta.env.DEV` |
+| 9   | web (browser) | Query-layer boundary: a Colada key over run state fails the lint fixture                       | Run state was put in a fetch cache                |
 
 **Notes / risks** — the `shallowRef` / `markRaw` performance characteristics this story depends on
-*may shift either way under Vue 3.6's alien-signals reactivity*
+_may shift either way under Vue 3.6's alien-signals reactivity_
 ([12 §2.1](../../12-frontend-architecture.md)). That is one more reason the epic pins 3.5.40, and it
 is why the soak in AC-8 must be re-run — not assumed — whenever the Vue pin moves.
 
@@ -561,21 +561,21 @@ is why the soak in AC-8 must be re-run — not assumed — whenever the Vue pin 
 
 ### KAR-16.5 — The replay harness serving recorded runs
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-16.2, EPIC-15 KAR-15.3, EPIC-18 KAR-18.3, EPIC-04 KAR-04.1 |
-| **PRD** | F10.10 (mechanism), F4.9, NF8, and the development loop under F10.1–F10.9 |
-| **Verified by** | EPIC-16-S31, EPIC-16-S32, EPIC-16-S33, EPIC-16-S34 |
+|                 |                                                                           |
+| --------------- | ------------------------------------------------------------------------- |
+| **Status**      | Not started                                                               |
+| **Priority**    | P0                                                                        |
+| **Size**        | M                                                                         |
+| **Depends on**  | KAR-16.2, EPIC-15 KAR-15.3, EPIC-18 KAR-18.3, EPIC-04 KAR-04.1            |
+| **PRD**         | F10.10 (mechanism), F4.9, NF8, and the development loop under F10.1–F10.9 |
+| **Verified by** | EPIC-16-S31, EPIC-16-S32, EPIC-16-S33, EPIC-16-S34                        |
 
 **As** the engineer building nine views alongside a job and a degree, **I want** any UI state I need
 to be one command away from being on screen, **so that** I never wait three hours or spend a pound
 of provider quota to style a compaction marker.
 
 **This is the single biggest DX lever in the project and it is a first-class deliverable, not
-tooling.** `karvan replay fixtures/three-patches.jsonl --speed 20x --port 7777` is a daemon mode that
+tooling.** `DeFlow replay fixtures/three-patches.jsonl --speed 20x --port 7777` is a daemon mode that
 serves the **normal** `/api/*` and `/api/stream` endpoints from a recorded ledger instead of a live
 run. The UI cannot tell the difference, because there is no difference — the browser is a projection
 of an event stream either way ([03 §6.2](../../03-local-development.md)).
@@ -591,11 +591,11 @@ What that buys, concretely:
 - **It is also the E2E driver** — the roughly five Playwright smokes run against it on an ephemeral
   port ([14 §13](../../14-testing-strategy.md)) — **and the demo tool.** The PRD's strongest internal
   demo (§15.4) is a real Voyado task shown through the plan-evolution scrubber; that is
-  `karvan replay` pointed at a recorded real run.
+  `DeFlow replay` pointed at a recorded real run.
 
-This is also precisely why there is no Storybook. Karvan's UI is not a component library — it is
-several stateful views over one event stream, and every interesting state is *"a particular ledger at
-a particular offset"*, which `karvan replay` already expresses better, with real data, through the
+This is also precisely why there is no Storybook. DeFlow's UI is not a component library — it is
+several stateful views over one event stream, and every interesting state is _"a particular ledger at
+a particular offset"_, which `DeFlow replay` already expresses better, with real data, through the
 real store and the real components. Storybook would mean a second build pipeline plus a second set of
 fake props that drift from the real event shapes, to get worse fidelity
 ([14 §13](../../14-testing-strategy.md)).
@@ -603,25 +603,25 @@ fake props that drift from the real event shapes, to get worse fidelity
 The corpus, all six **recorded from mock-agent runs, never hand-written** — hand-written fixtures
 encode your assumptions about the event stream rather than its actual shape, and they rot silently:
 
-| Fixture | Must contain | Proves |
-|---|---|---|
-| `happy-path-12.jsonl` | A small run, all nodes pass, one gate, one worktree merged | Plan graph, timeline, node inspector |
-| `three-patches.jsonl` | Insert, split and provider-replace patches, each with a `reason` and a `decision` | The plan-evolution scrubber (F10.2) |
-| `gate-fail-repair.jsonl` | A failing gate, a surgical fix node, a second attempt, a pass | Criteria board, repair loop, inline verdicts |
-| `compaction.jsonl` | Both fidelities: a `karvan.packet` compaction with exact before/after **and** a `vendor.session` one with `after: null` | Context budget (F10.5) and the honest rendering of the missing post-count |
-| `crash-resume.jsonl` | A ledger whose `seq` values jump, as a real `SIGKILL` produces | `Last-Event-ID` resume, the `?since=` hydrate path, "did the UI notice?" |
-| `stress-400.jsonl` | A wide `map` fan-out to 400 nodes | Vue Flow render budget, ELK layout time, scrubber responsiveness |
+| Fixture                  | Must contain                                                                                                            | Proves                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `happy-path-12.jsonl`    | A small run, all nodes pass, one gate, one worktree merged                                                              | Plan graph, timeline, node inspector                                      |
+| `three-patches.jsonl`    | Insert, split and provider-replace patches, each with a `reason` and a `decision`                                       | The plan-evolution scrubber (F10.2)                                       |
+| `gate-fail-repair.jsonl` | A failing gate, a surgical fix node, a second attempt, a pass                                                           | Criteria board, repair loop, inline verdicts                              |
+| `compaction.jsonl`       | Both fidelities: a `DeFlow.packet` compaction with exact before/after **and** a `vendor.session` one with `after: null` | Context budget (F10.5) and the honest rendering of the missing post-count |
+| `crash-resume.jsonl`     | A ledger whose `seq` values jump, as a real `SIGKILL` produces                                                          | `Last-Event-ID` resume, the `?since=` hydrate path, "did the UI notice?"  |
+| `stress-400.jsonl`       | A wide `map` fan-out to 400 nodes                                                                                       | Vue Flow render budget, ELK layout time, scrubber responsiveness          |
 
 **Acceptance criteria**
 
-1. `karvan replay <fixture> --speed <n>x --port <p>` boots and serves `GET /api/stream`,
+1. `DeFlow replay <fixture> --speed <n>x --port <p>` boots and serves `GET /api/stream`,
    `GET /api/runs/:id/events`, `GET /api/runs/:id/snapshot`, `GET /api/runs/:id/plans*`,
    `GET /api/runs/:id/nodes/*`, `GET /api/runs/:id/gates`, `GET /api/runs/:id/criteria` and
    `GET /api/runs/:id/diff` with byte-identical response shapes to a live daemon.
 2. **The web codebase contains no branch on whether it is talking to a replay.** Asserted by grepping
    `packages/web/src` for any replay-related identifier and finding none.
 3. Frames carry `id: <seq>`, the `hello` control frame carries `{ streamId, apiVersion, build,
-   daemonEpoch, headSeq }`, `retry: 2000` is written once, and `: keepalive` arrives every 15 s —
+daemonEpoch, headSeq }`, `retry: 2000` is written once, and `: keepalive` arrives every 15 s —
    the same contract EPIC-15 serves.
 4. `--speed` accepts `1x`, `20x`, `50x` and `max`. At `1x` the recorded inter-event delays are
    reproduced within a stated tolerance; at `max` the whole fixture is delivered as fast as the
@@ -641,20 +641,20 @@ encode your assumptions about the event stream rather than its actual shape, and
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Fixture reader parses NDJSON envelopes and rejects one with a missing `seq` or `kind` | The reader is lenient and a bad fixture fails later, obscurely |
-| 2 | unit | Speed scheduler: `20x` maps recorded offsets to emission times within tolerance; `max` yields zero delay | `--speed` is ignored or applied per-frame incorrectly |
-| 3 | integration | Boot the harness on an ephemeral port; assert the SSE headers, `retry:`, `id:` and the `hello` payload shape | The harness serves a simplified stream |
-| 4 | integration | Response-shape equality: run the same endpoint against a live daemon fixture and the harness, diff the JSON | The harness drifted from the contract |
-| 5 | integration | Unauthenticated request to `/api/runs` returns 401; bad `Origin` returns 403 | The harness skipped auth "because it is only dev" |
-| 6 | integration | Serve `crash-resume`, assert the client applies every event and reports no gap error | Gap handling was tested only synthetically |
-| 7 | integration | Regenerate `happy-path-12` from its script and diff against the committed fixture modulo the normalising serializer | The corpus is drifting from the emitters |
-| 8 | e2e | The five Playwright smokes from [14 §13](../../14-testing-strategy.md) all drive the harness | The smokes need a real orchestrator and are therefore never run |
+| #   | Level       | Test                                                                                                                | Red when                                                        |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1   | unit        | Fixture reader parses NDJSON envelopes and rejects one with a missing `seq` or `kind`                               | The reader is lenient and a bad fixture fails later, obscurely  |
+| 2   | unit        | Speed scheduler: `20x` maps recorded offsets to emission times within tolerance; `max` yields zero delay            | `--speed` is ignored or applied per-frame incorrectly           |
+| 3   | integration | Boot the harness on an ephemeral port; assert the SSE headers, `retry:`, `id:` and the `hello` payload shape        | The harness serves a simplified stream                          |
+| 4   | integration | Response-shape equality: run the same endpoint against a live daemon fixture and the harness, diff the JSON         | The harness drifted from the contract                           |
+| 5   | integration | Unauthenticated request to `/api/runs` returns 401; bad `Origin` returns 403                                        | The harness skipped auth "because it is only dev"               |
+| 6   | integration | Serve `crash-resume`, assert the client applies every event and reports no gap error                                | Gap handling was tested only synthetically                      |
+| 7   | integration | Regenerate `happy-path-12` from its script and diff against the committed fixture modulo the normalising serializer | The corpus is drifting from the emitters                        |
+| 8   | e2e         | The five Playwright smokes from [14 §13](../../14-testing-strategy.md) all drive the harness                        | The smokes need a real orchestrator and are therefore never run |
 
 **Notes / risks** — this story **depends on something outside the frontend**: the fixtures must be
-recorded from real runs, and [roadmap §2.1](../../17-roadmap.md) is explicit that *"do not start W11
-until at least one full run completes headlessly through W12's CLI."* That makes `karvan run`
+recorded from real runs, and [roadmap §2.1](../../17-roadmap.md) is explicit that _"do not start W11
+until at least one full run completes headlessly through W12's CLI."_ That makes `DeFlow run`
 (KAR-18.3) a genuine predecessor, and it is stated in `Depends on` even though it makes the plan look
 slower. If EPIC-18 slips, the honest interim is to record fixtures from the mock agent driven by the
 orchestrator's own test harness rather than to hand-write them — never the latter.
@@ -663,13 +663,13 @@ orchestrator's own test harness rather than to hand-write them — never the lat
 
 ### KAR-16.6 — Graph canvas facade and a measured performance baseline
 
-| | |
-|---|---|
-| **Status** | Not started |
-| **Priority** | P0 |
-| **Size** | M |
-| **Depends on** | KAR-16.4, KAR-16.5, EPIC-00 KAR-00.4 |
-| **PRD** | F10.1, NF3 |
+|                 |                                                                              |
+| --------------- | ---------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                  |
+| **Priority**    | P0                                                                           |
+| **Size**        | M                                                                            |
+| **Depends on**  | KAR-16.4, KAR-16.5, EPIC-00 KAR-00.4                                         |
+| **PRD**         | F10.1, NF3                                                                   |
 | **Verified by** | EPIC-16-S35, EPIC-16-S36, EPIC-16-S37, EPIC-16-S38, EPIC-16-S39, EPIC-16-S40 |
 
 **As** the author, **I want** one file between my views and Vue Flow and a real number for how many
@@ -679,8 +679,8 @@ different library.
 
 Two deliverables, deliberately in one story because neither is worth doing without the other.
 
-**The facade.** `src/components/graph/GraphCanvas.vue` exposes Karvan's own props —
-`{ nodes: PlanNodeVM[]; edges: PlanEdgeVM[]; selected?: NodeId }` — and Karvan's own events. Every
+**The facade.** `src/components/graph/GraphCanvas.vue` exposes DeFlow's own props —
+`{ nodes: PlanNodeVM[]; edges: PlanEdgeVM[]; selected?: NodeId }` — and DeFlow's own events. Every
 view imports `GraphCanvas`; **no view imports `VueFlow`**. Vue Flow is the single largest third-party
 risk in the frontend (A3-1, **High**): last npm release 2026-01-28, effectively one maintainer, an
 unreleased `next-release` branch, no announced v2, and no Vue 3.6 compatibility statement. It is
@@ -688,8 +688,8 @@ alive but slow. The facade costs about a day and it also lets the memory graph s
 `sigma@^3.0.3` + `graphology@^0.26.0` — comfortable into the tens of thousands of nodes — without
 touching the plan graph.
 
-**The measurement.** [Roadmap §2.3](../../17-roadmap.md) is unambiguous: *"Measure Vue Flow in week
-one of W10, not week four of W11."* The published guidance in
+**The measurement.** [Roadmap §2.3](../../17-roadmap.md) is unambiguous: _"Measure Vue Flow in week
+one of W10, not week four of W11."_ The published guidance in
 [12 §6.1](../../12-frontend-architecture.md) — ~300–500 nodes smooth at 60 fps with custom node
 components, 500–1,500 usable with `onlyRenderVisibleElements: true`, stalls past roughly 2,000 nodes
 or 4,000 edges — is explicitly **UNVERIFIED**: no official Vue Flow benchmark exists and the numbers
@@ -712,7 +712,7 @@ relative ordering stable across plan versions with no per-node constraints at al
 **Acceptance criteria**
 
 1. `GraphCanvas.vue` is the only file in `packages/web/src` that imports `@vue-flow/core`; a lint
-   rule fails the build otherwise. Its public props and events are Karvan types, and no Vue Flow type
+   rule fails the build otherwise. Its public props and events are DeFlow types, and no Vue Flow type
    appears in its exported surface.
 2. `GraphCanvas` renders a node via a slot taking a `PlanNodeVM`, so per-node live status, streaming
    badge, gate verdict and cost are Vue components — the reason Vue Flow was chosen over the
@@ -746,21 +746,21 @@ relative ordering stable across plan versions with no per-node constraints at al
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
-| # | Level | Test | Red when |
-|---|---|---|---|
-| 1 | unit | Lint fixture: a view importing `@vue-flow/core` fails the rule | The rule matches only the default export |
-| 2 | unit | The ELK adapter maps `PlanNodeVM[]` in ledger-insertion order and sets `considerModelOrder.strategy` | Ordering is `Map` iteration order by accident, not by contract |
-| 3 | unit | Layout stability: insert a node mid-graph, assert the relative order of the pre-existing nodes is unchanged | The option was set on the wrong ELK layout algorithm |
-| 4 | web (browser) | Mount `GraphCanvas` with 12 nodes; assert per-node slot content and the `ariaLabel` string shape | Node bodies are Vue Flow defaults, not Karvan components |
-| 5 | web (browser) | Keyboard traversal moves selection; `disableKeyboardA11y` is absent from the rendered options | A11y was disabled to stop key handlers conflicting |
-| 6 | web (browser) | Computed style of `.vue-flow__node` has the 200 ms transition; drag sets the disabling class; reduced-motion removes it | A bespoke `translate3d` animation was authored and Vue Flow overwrites it |
-| 7 | integration | `vite build`, then assert the worker chunk exists, is hashed, and elkjs is absent from the initial chunk | Worker wiring works in dev only |
-| 8 | e2e | `pnpm measure:graph` against `stress-400` through `karvan replay`, emitting the measurement file | The measurement was done by hand once and never again |
-| 9 | e2e | Replace the facade internals with a stub renderer; every view still compiles and renders | Something reached past the facade |
+| #   | Level         | Test                                                                                                                    | Red when                                                                  |
+| --- | ------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1   | unit          | Lint fixture: a view importing `@vue-flow/core` fails the rule                                                          | The rule matches only the default export                                  |
+| 2   | unit          | The ELK adapter maps `PlanNodeVM[]` in ledger-insertion order and sets `considerModelOrder.strategy`                    | Ordering is `Map` iteration order by accident, not by contract            |
+| 3   | unit          | Layout stability: insert a node mid-graph, assert the relative order of the pre-existing nodes is unchanged             | The option was set on the wrong ELK layout algorithm                      |
+| 4   | web (browser) | Mount `GraphCanvas` with 12 nodes; assert per-node slot content and the `ariaLabel` string shape                        | Node bodies are Vue Flow defaults, not DeFlow components                  |
+| 5   | web (browser) | Keyboard traversal moves selection; `disableKeyboardA11y` is absent from the rendered options                           | A11y was disabled to stop key handlers conflicting                        |
+| 6   | web (browser) | Computed style of `.vue-flow__node` has the 200 ms transition; drag sets the disabling class; reduced-motion removes it | A bespoke `translate3d` animation was authored and Vue Flow overwrites it |
+| 7   | integration   | `vite build`, then assert the worker chunk exists, is hashed, and elkjs is absent from the initial chunk                | Worker wiring works in dev only                                           |
+| 8   | e2e           | `pnpm measure:graph` against `stress-400` through `DeFlow replay`, emitting the measurement file                        | The measurement was done by hand once and never again                     |
+| 9   | e2e           | Replace the facade internals with a stub renderer; every view still compiles and renders                                | Something reached past the facade                                         |
 
 **Notes / risks** — do **not** test this surface in jsdom or happy-dom. They have no SVG measurement
-(`getBBox`, `getComputedTextLength`, `getScreenCTM`), no canvas and no WebGL, and *the failure mode is
-not a clean error*: `getBBox()` returns `0`, `getContext('2d')` is `null` or a no-op, element sizes
+(`getBBox`, `getComputedTextLength`, `getScreenCTM`), no canvas and no WebGL, and _the failure mode is
+not a clean error_: `getBBox()` returns `0`, `getContext('2d')` is `null` or a no-op, element sizes
 report as zero. A test asserting "the node label fits inside the node" passes against a `0×0` box.
 **They will lie to you**, which is strictly worse than not testing
 ([14 §13](../../14-testing-strategy.md)). Everything geometric here runs in real Chromium under
@@ -770,16 +770,16 @@ Vitest 4 browser mode.
 
 ## Risks
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| **This epic totals ~20 days, over the ~15-day guideline** for a solo build alongside a job and a degree. | High | The honest slice is KAR-16.1 → 16.2 → 16.3 → 16.4 as a hard prerequisite block (~14 days) and KAR-16.5 + 16.6 as a second block (~6 days) that can overlap the first EPIC-17 story. Do **not** reorder 16.5 after EPIC-17 starts: building views before the harness exists is what makes EPIC-17 expensive. |
-| **A3-1 — Vue Flow bus factor.** Last release 2026-01-28, effectively one maintainer, no v2 announced, no Vue 3.6 statement. | High | KAR-16.6's facade, built on day one of the epic rather than as a refactor. Re-check release activity before M2; a stalled dependency becomes a one-file swap to `sigma`/`graphology` rather than a rewrite. |
-| **A3-2 — the performance ceiling is an extrapolation from React Flow**, and it gates whether KAR-17.9 ships. | High | KAR-16.6 AC-3/AC-4. Measure in week one, commit the number, assert it in CI. If the number comes back below ~300 nodes, KAR-17.9 slips to M2 by the roadmap §3 recommendation and the plan graph gains `onlyRenderVisibleElements` by default. |
-| **A3-4 — elkjs in a Vite 8 worker is unverified**; elkjs is GWT-transpiled and its README acknowledges bundler friction. | High | M0-S3 answers it before this epic starts, and the epic's DoR names it. Fallback is `@dagrejs/dagre@3.0.0` live with ELK on the main thread for cached scrubber layouts, which is acceptable because the scrubber's layout is computed once and cached. |
-| **EPIC-15 slipping leaves this epic with nothing to project.** | Medium | The projection modules (KAR-16.3) depend only on the `Event` union and can be built and unit-tested against recorded fixture files with no server at all. That is roughly a third of the epic, and it is deliberately the third with the most risk in it. |
-| **The memory rules look like premature optimisation and get skipped.** | Medium | KAR-16.4 AC-8 makes the consequence measurable rather than a matter of belief: a six-hour soak, run in CI on a schedule rather than on every push. All four rules are cheap on day one; retrofitting them means touching every view EPIC-17 built in the meantime. |
-| **The replay harness drifts from the live contract** and dev stops predicting production. | Medium | KAR-16.5 AC-2 (no replay branch in the web code) plus AC-4's response-shape equality test and AC-7's fixture regeneration check. If the harness ever needs a special case in the UI, that is the bug. |
-| **Vitest 5.0 goes stable during M1**, bringing another `projects` / browser-mode migration. | Low | Do not chase the beta (A2-5). Budget an afternoon if it lands. |
+| Risk                                                                                                                        | Severity | Mitigation                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **This epic totals ~20 days, over the ~15-day guideline** for a solo build alongside a job and a degree.                    | High     | The honest slice is KAR-16.1 → 16.2 → 16.3 → 16.4 as a hard prerequisite block (~14 days) and KAR-16.5 + 16.6 as a second block (~6 days) that can overlap the first EPIC-17 story. Do **not** reorder 16.5 after EPIC-17 starts: building views before the harness exists is what makes EPIC-17 expensive. |
+| **A3-1 — Vue Flow bus factor.** Last release 2026-01-28, effectively one maintainer, no v2 announced, no Vue 3.6 statement. | High     | KAR-16.6's facade, built on day one of the epic rather than as a refactor. Re-check release activity before M2; a stalled dependency becomes a one-file swap to `sigma`/`graphology` rather than a rewrite.                                                                                                 |
+| **A3-2 — the performance ceiling is an extrapolation from React Flow**, and it gates whether KAR-17.9 ships.                | High     | KAR-16.6 AC-3/AC-4. Measure in week one, commit the number, assert it in CI. If the number comes back below ~300 nodes, KAR-17.9 slips to M2 by the roadmap §3 recommendation and the plan graph gains `onlyRenderVisibleElements` by default.                                                              |
+| **A3-4 — elkjs in a Vite 8 worker is unverified**; elkjs is GWT-transpiled and its README acknowledges bundler friction.    | High     | M0-S3 answers it before this epic starts, and the epic's DoR names it. Fallback is `@dagrejs/dagre@3.0.0` live with ELK on the main thread for cached scrubber layouts, which is acceptable because the scrubber's layout is computed once and cached.                                                      |
+| **EPIC-15 slipping leaves this epic with nothing to project.**                                                              | Medium   | The projection modules (KAR-16.3) depend only on the `Event` union and can be built and unit-tested against recorded fixture files with no server at all. That is roughly a third of the epic, and it is deliberately the third with the most risk in it.                                                   |
+| **The memory rules look like premature optimisation and get skipped.**                                                      | Medium   | KAR-16.4 AC-8 makes the consequence measurable rather than a matter of belief: a six-hour soak, run in CI on a schedule rather than on every push. All four rules are cheap on day one; retrofitting them means touching every view EPIC-17 built in the meantime.                                          |
+| **The replay harness drifts from the live contract** and dev stops predicting production.                                   | Medium   | KAR-16.5 AC-2 (no replay branch in the web code) plus AC-4's response-shape equality test and AC-7's fixture regeneration check. If the harness ever needs a special case in the UI, that is the bug.                                                                                                       |
+| **Vitest 5.0 goes stable during M1**, bringing another `projects` / browser-mode migration.                                 | Low      | Do not chase the beta (A2-5). Budget an afternoon if it lands.                                                                                                                                                                                                                                              |
 
 ---
 

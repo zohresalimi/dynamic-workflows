@@ -7,21 +7,21 @@
 
 ## Actors
 
-| Actor | Description |
-|---|---|
-| **Developer** | The author at M1; a Voyado colleague at M2. The person a broken inner loop costs an afternoon |
-| **pnpm** | The package manager: workspace linking, `catalog:` resolution, `workspace:*`, `publishConfig` at pack time |
-| **karvand** | The local daemon started by `pnpm dev` — orchestrator, ledger, HTTP + SSE, and in dev the Vite host |
-| **Vite** | Runs in middleware mode *inside* karvand (D10). Never a second server, never behind a proxy |
-| **lefthook** | The Go hook runner installed by `prepare`; owns pre-commit and pre-push |
-| **CI** | GitHub Actions: `check`, a four-leg `test` matrix, and `browser-e2e` |
-| **Guard test** | A mechanical assertion protecting a rule that is silent in development and fatal in the published package |
+| Actor          | Description                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Developer**  | The author at M1; a Voyado colleague at M2. The person a broken inner loop costs an afternoon              |
+| **pnpm**       | The package manager: workspace linking, `catalog:` resolution, `workspace:*`, `publishConfig` at pack time |
+| **DeFlowd**    | The local daemon started by `pnpm dev` — orchestrator, ledger, HTTP + SSE, and in dev the Vite host        |
+| **Vite**       | Runs in middleware mode _inside_ DeFlowd (D10). Never a second server, never behind a proxy                |
+| **lefthook**   | The Go hook runner installed by `prepare`; owns pre-commit and pre-push                                    |
+| **CI**         | GitHub Actions: `check`, a four-leg `test` matrix, and `browser-e2e`                                       |
+| **Guard test** | A mechanical assertion protecting a rule that is silent in development and fatal in the published package  |
 
 ## Preconditions common to all flows
 
 ```gherkin
 Background:
-  Given the repository is the Karvan monorepo at the layout described in 16-repo-layout.md §1
+  Given the repository is the DeFlow monorepo at the layout described in 16-repo-layout.md §1
   And Node 24 is the active major unless a scenario says otherwise
   And pnpm 11.18.0 is installed via "npm i -g pnpm@11", never via "corepack enable"
   And git >= 2.38 is on PATH
@@ -38,32 +38,32 @@ scenario in this file that needed one of those would be a scenario describing a 
 
 ## Flow index
 
-| Scenario | Title | Verifies | Type |
-|---|---|---|---|
-| EPIC-01-S1 | First clone: four commands to a running app | KAR-01.1, KAR-01.3 | Happy path |
-| EPIC-01-S2 | Frozen-lockfile install with zero compilation | KAR-01.1 | Happy path |
-| EPIC-01-S3 | Install invokes node-gyp because the wrong pty package crept in | KAR-01.1 | Failure |
-| EPIC-01-S4 | `corepack enable` fails on Node 26 | KAR-01.1 | Failure |
-| EPIC-01-S5 | Dependency direction R1 and R2 are enforced by test | KAR-01.1 | Edge case |
-| EPIC-01-S6 | `tsc -b` typechecks the solution graph, `vue-tsc` covers the SFCs | KAR-01.2 | Happy path |
-| EPIC-01-S7 | Banned syntax is rejected by both the compiler and the runtime | KAR-01.2 | Failure |
-| EPIC-01-S8 | The two breakages that are invisible in development | KAR-01.1, KAR-01.2 | Failure |
-| EPIC-01-S9 | The daily inner loop: a save restarts the daemon | KAR-01.3 | Happy path |
-| EPIC-01-S10 | A save mid-run, with effects left pending | KAR-01.3 | Edge case |
-| EPIC-01-S11 | The daemon fails to come back after a save | KAR-01.3 | Failure |
-| EPIC-01-S12 | An SFC edit hot-reloads without dropping the SSE stream | KAR-01.3 | Happy path |
-| EPIC-01-S13 | Someone adds a Vite proxy | KAR-01.3 | Failure |
-| EPIC-01-S14 | Four slices, each with the right pool and timeout | KAR-01.4 | Happy path |
-| EPIC-01-S15 | A git fixture inherits the developer's global config | KAR-01.4 | Failure |
-| EPIC-01-S16 | Fake timers around a live child process deadlock | KAR-01.4 | Failure |
-| EPIC-01-S17 | Snapshots churn because the serializer was registered too late | KAR-01.4 | Failure |
-| EPIC-01-S18 | `defineWorkspace` copied from a tutorial | KAR-01.4 | Failure |
-| EPIC-01-S19 | `:memory:` SQLite cannot test the one property that matters | KAR-01.4 | Failure |
-| EPIC-01-S20 | A lint failure blocks a commit | KAR-01.5, KAR-01.6 | Failure |
-| EPIC-01-S21 | The pre-commit budget, measured and defended | KAR-01.5, KAR-01.6 | Edge case |
-| EPIC-01-S22 | The formatter/linter ownership split holds | KAR-01.5 | Edge case |
-| EPIC-01-S23 | CI green on the named matrix | KAR-01.6 | Happy path |
-| EPIC-01-S24 | CI fails on one matrix leg only | KAR-01.6 | Failure |
+| Scenario    | Title                                                             | Verifies           | Type       |
+| ----------- | ----------------------------------------------------------------- | ------------------ | ---------- |
+| EPIC-01-S1  | First clone: four commands to a running app                       | KAR-01.1, KAR-01.3 | Happy path |
+| EPIC-01-S2  | Frozen-lockfile install with zero compilation                     | KAR-01.1           | Happy path |
+| EPIC-01-S3  | Install invokes node-gyp because the wrong pty package crept in   | KAR-01.1           | Failure    |
+| EPIC-01-S4  | `corepack enable` fails on Node 26                                | KAR-01.1           | Failure    |
+| EPIC-01-S5  | Dependency direction R1 and R2 are enforced by test               | KAR-01.1           | Edge case  |
+| EPIC-01-S6  | `tsc -b` typechecks the solution graph, `vue-tsc` covers the SFCs | KAR-01.2           | Happy path |
+| EPIC-01-S7  | Banned syntax is rejected by both the compiler and the runtime    | KAR-01.2           | Failure    |
+| EPIC-01-S8  | The two breakages that are invisible in development               | KAR-01.1, KAR-01.2 | Failure    |
+| EPIC-01-S9  | The daily inner loop: a save restarts the daemon                  | KAR-01.3           | Happy path |
+| EPIC-01-S10 | A save mid-run, with effects left pending                         | KAR-01.3           | Edge case  |
+| EPIC-01-S11 | The daemon fails to come back after a save                        | KAR-01.3           | Failure    |
+| EPIC-01-S12 | An SFC edit hot-reloads without dropping the SSE stream           | KAR-01.3           | Happy path |
+| EPIC-01-S13 | Someone adds a Vite proxy                                         | KAR-01.3           | Failure    |
+| EPIC-01-S14 | Four slices, each with the right pool and timeout                 | KAR-01.4           | Happy path |
+| EPIC-01-S15 | A git fixture inherits the developer's global config              | KAR-01.4           | Failure    |
+| EPIC-01-S16 | Fake timers around a live child process deadlock                  | KAR-01.4           | Failure    |
+| EPIC-01-S17 | Snapshots churn because the serializer was registered too late    | KAR-01.4           | Failure    |
+| EPIC-01-S18 | `defineWorkspace` copied from a tutorial                          | KAR-01.4           | Failure    |
+| EPIC-01-S19 | `:memory:` SQLite cannot test the one property that matters       | KAR-01.4           | Failure    |
+| EPIC-01-S20 | A lint failure blocks a commit                                    | KAR-01.5, KAR-01.6 | Failure    |
+| EPIC-01-S21 | The pre-commit budget, measured and defended                      | KAR-01.5, KAR-01.6 | Edge case  |
+| EPIC-01-S22 | The formatter/linter ownership split holds                        | KAR-01.5           | Edge case  |
+| EPIC-01-S23 | CI green on the named matrix                                      | KAR-01.6           | Happy path |
+| EPIC-01-S24 | CI fails on one matrix leg only                                   | KAR-01.6           | Failure    |
 
 ---
 
@@ -72,7 +72,7 @@ scenario in this file that needed one of those would be a scenario describing a 
 **Verifies:** KAR-01.1, KAR-01.3 · **Type:** Happy path · **Automated at:** e2e
 
 ```gherkin
-Feature: A fresh machine reaches a running Karvan in four commands
+Feature: A fresh machine reaches a running DeFlow in four commands
 
   Background:
     Given a machine with a shell, a browser, Node 24 and pnpm 11.18.0, and nothing else
@@ -80,18 +80,18 @@ Feature: A fresh machine reaches a running Karvan in four commands
     And the pnpm store is cold
 
   Scenario: clone, install, run
-    When the developer runs "git clone https://github.com/<you>/karvan.git"
-    And runs "cd karvan"
+    When the developer runs "git clone https://github.com/<you>/DeFlow.git"
+    And runs "cd DeFlow"
     And runs "pnpm install"
     And runs "pnpm dev"
     Then exactly one node process is running
     And exactly one socket is listening, on 127.0.0.1:7777
-    And opening "http://127.0.0.1:7777" in a browser renders the Karvan UI
+    And opening "http://127.0.0.1:7777" in a browser renders the DeFlow UI
     And no build step ran
     And no directory named "dist" exists under any package
 
   Scenario: what pnpm install did, observably
-    Then the seven "@karvan/*" workspace packages are linked by symlink under node_modules
+    Then the seven "@DeFlow/*" workspace packages are linked by symlink under node_modules
     And "better-sqlite3" resolved to a prebuilt binary with no compilation
     And "@lydell/node-pty" resolved to a per-platform optionalDependency with no compilation
     And "lefthook install" ran via the "prepare" script
@@ -127,7 +127,7 @@ Feature: Versions are pinned in one place and resolve identically everywhere
 
   Scenario: no package declares its own version of a shared dependency
     When a guard test parses every packages/*/package.json dependency block
-    Then every "@karvan/*" dependency value is "workspace:*"
+    Then every "@DeFlow/*" dependency value is "workspace:*"
     And every shared third-party dependency value is "catalog:"
     And no literal semver string appears in any package's dependency block
 
@@ -243,17 +243,17 @@ Feature: The functional core is pure structurally, not by convention
 
   Scenario: R2 — the daemon stays a leaf
     When the guard test scans every package.json
-    Then only packages/cli depends on "@karvan/daemon"
+    Then only packages/cli depends on "@DeFlow/daemon"
 
   Scenario: the mock agent is an independent oracle
     When the guard test reads packages/mock-agent/package.json
-    Then it has zero "@karvan/*" dependencies
+    Then it has zero "@DeFlow/*" dependencies
     And the note in 16-repo-layout.md §1 is quoted in the failure message: if it depended on core, a bug in the domain model could be mirrored on both sides of the wire and cancel itself out
 ```
 
 **Notes:** R1 is what makes NF9's "deterministic core" and the functional-core/imperative-shell
 split structural rather than aspirational — `reduce`, `decide`, the patch policy engine and the
-permission ladder are pure because `@karvan/core` has no dependency capable of impurity. The test is
+permission ladder are pure because `@DeFlow/core` has no dependency capable of impurity. The test is
 cheap and it must be added **before the first temptation**, not after; by EPIC-06 there will be a
 plausible-sounding reason to reach for a driver in core, and by then the test is a negotiation
 rather than a fact.
@@ -362,7 +362,7 @@ Feature: The failures that work locally and break only in the tarball are caught
     And it states that the aliased specifier would survive into the published bundle and fail at runtime with module-not-found
 
   Scenario: a deep cross-package import is added
-    Given a file imports "@karvan/core/src/reduce.ts" instead of "@karvan/core"
+    Given a file imports "@DeFlow/core/src/reduce.ts" instead of "@DeFlow/core"
     When the developer runs "pnpm dev"
     Then it works, because the deep path exists in the workspace
     And when the guard test runs, it fails naming the file and the specifier
@@ -370,7 +370,7 @@ Feature: The failures that work locally and break only in the tarball are caught
     And it states that deep imports turn every internal file into public API
 
   Scenario: the correct forms pass
-    Given the file imports "@karvan/core" and "./patch.ts"
+    Given the file imports "@DeFlow/core" and "./patch.ts"
     Then both guard tests pass
 ```
 
@@ -397,7 +397,7 @@ Feature: Every save is a crash-resume trial
     When the developer saves a change to packages/core/src/reduce.ts
     Then the running daemon process exits
     And a new daemon process starts within 2 seconds
-    And the new process reopens the ledger at $XDG_DATA_HOME/karvan/ledger.db
+    And the new process reopens the ledger at $XDG_DATA_HOME/DeFlow/ledger.db
     And it reduces the event log and rebuilds RunState
     And it bumps daemon_epoch and retakes the flock
     And "/api/health" responds again
@@ -476,7 +476,7 @@ Feature: A failed restart is a real bug, not a dev-loop annoyance
     And it states that deleting ledger.db to "get moving again" destroys the evidence
 
   Scenario: the ledger can be snapshotted for a bug report before anything is changed
-    When the developer runs "karvan ledger snapshot <runId> --out /tmp/karvan-bug-1234.db"
+    When the developer runs "DeFlow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db"
     Then a single consistent file is produced with no WAL sidecar
     And "PRAGMA integrity_check" on it returns "ok"
     And the events can be read with plain sqlite3
@@ -498,8 +498,8 @@ inspectable on disk in an open format" is what makes the third scenario possible
 Feature: One port, one origin, HMR and SSE together
 
   Background:
-    Given "pnpm dev" is running with KARVAN_DEV=1
-    And Vite was created with server: { middlewareMode: { server } } against karvand's own node:http server
+    Given "pnpm dev" is running with DeFlow_DEV=1
+    And Vite was created with server: { middlewareMode: { server } } against DeFlowd's own node:http server
     And a browser tab is connected to "/api/stream"
 
   Scenario: the UI hot-reloads and the stream survives
@@ -521,9 +521,9 @@ Feature: One port, one origin, HMR and SSE together
     And the guard test asserts the "/api" route is registered before the catch-all
 ```
 
-**Notes:** The reason the daemon must *not* restart on a `.vue` save is that
+**Notes:** The reason the daemon must _not_ restart on a `.vue` save is that
 `--watch-path=packages` covers `packages/web` too; the watch path and the Vite root overlap, and if
-both react to the same save you get a restart *and* an HMR update, the stream drops, and the loop
+both react to the same save you get a restart _and_ an HMR update, the stream drops, and the loop
 becomes unusable while a run is going. The mount-order assertion looks pedantic until the first time
 `/api/stream` returns `index.html` with a 200 and an SSE client sits there silently consuming HTML.
 
@@ -554,13 +554,13 @@ Feature: The proxy rule is enforced, not merely documented
   Scenario: the production reverse-proxy note is not a licence to proxy in dev
     Then the API contract still documents "timeout: 0", "proxyTimeout: 0", "X-Accel-Buffering: no",
       "Cache-Control: no-cache, no-transform" and no compression middleware
-    And the documentation states these exist for anyone who later puts a reverse proxy in front of karvand, not for the dev loop
+    And the documentation states these exist for anyone who later puts a reverse proxy in front of DeFlowd, not for the dev loop
 ```
 
 **Notes:** All three failure modes are reported against Vite and none is theoretical
 (vitejs/vite#12157, discussion #10851). The rule in
-[03-local-development.md §4.3](../../03-local-development.md) is blunt — *if you ever find yourself
-adding `server.proxy` to `packages/web/vite.config.ts`, stop* — and the guard test exists because
+[03-local-development.md §4.3](../../03-local-development.md) is blunt — _if you ever find yourself
+adding `server.proxy` to `packages/web/vite.config.ts`, stop_ — and the guard test exists because
 the temptation reappears every time the daemon restart feels slow. The trade being refused is a
 slightly faster restart in exchange for debugging your transport instead of your product.
 
@@ -630,7 +630,7 @@ Feature: Git fixtures are hermetic, or they are worthless
     And commits succeed without a signing key
 
   Scenario: the guard
-    When the guard test scans @karvan/testkit for every git invocation
+    When the guard test scans @DeFlow/testkit for every git invocation
     Then each one passes the isolated environment
     And a new invocation that omits it fails the test
 
@@ -683,9 +683,9 @@ Feature: Time enters through an injected Clock, never through fake timers around
 ```
 
 **Notes:** `vi.useFakeTimers()` wraps `@sinonjs/fake-timers@15.4.0` and freezes the event loop's
-timers, so the child's real I/O never arrives. This is not a corner case for Karvan specifically:
+timers, so the child's real I/O never arrives. This is not a corner case for DeFlow specifically:
 the retry-backoff, budget-ceiling, no-progress-detection and long-suspension paths (F4.5–F4.8) are
-all *about time around child processes*, so they are exactly the tests most likely to reach for a
+all _about time around child processes_, so they are exactly the tests most likely to reach for a
 fake timer and exactly the ones that will deadlock. The `Clock` port is also what NF9 requires —
 no nondeterminism outside adapter boundaries — so this is one mechanism serving two requirements.
 
@@ -950,7 +950,7 @@ Feature: CI covers both target platforms and both supported Node majors
     Given the test job runs on <os> with Node <node>
     When "pnpm vitest run --project unit --project integration" runs
     Then it passes
-    And KARVAN_KEEP_TMP is set for the run
+    And DeFlow_KEEP_TMP is set for the run
 
     Examples:
       | os           | node |
@@ -997,9 +997,9 @@ Feature: A single-platform failure is visible, diagnosable and does not hide the
     And the failing leg is identifiable by name in the checks list
 
   Scenario: the evidence is uploaded
-    Given KARVAN_KEEP_TMP=1 was set for the run
+    Given DeFlow_KEEP_TMP=1 was set for the run
     When the leg fails
-    Then "actions/upload-artifact@v4" uploads "/tmp/karvan-*"
+    Then "actions/upload-artifact@v4" uploads "/tmp/DeFlow-*"
     And the artefact name includes the os and node values, so it does not collide with another leg's upload
     And the developer can download the preserved tmpdir and inspect the worktree with git status, git log and git worktree list
 
@@ -1016,7 +1016,7 @@ Feature: A single-platform failure is visible, diagnosable and does not hide the
     And the failure message records that macos-latest migrated to macOS 26 on Apple Silicon between 8 and 15 June 2026, shifting native module prebuilds, node-pty behaviour and filesystem case-sensitivity at once
 ```
 
-**Notes:** `KARVAN_KEEP_TMP=1` plus `upload-artifact` on failure is what makes a CI-only worktree
+**Notes:** `DeFlow_KEEP_TMP=1` plus `upload-artifact` on failure is what makes a CI-only worktree
 failure diagnosable at all — without it, post-mortem on a broken worktree from a platform you are
 not sitting in front of is guesswork. The third scenario names a real, low-probability-high-
 confusion case (A5-7: macOS/APFS case-insensitivity could collide worktree paths for node ids
