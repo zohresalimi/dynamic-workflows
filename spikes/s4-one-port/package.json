@@ -1,0 +1,14 @@
+{
+  "name": "spike-s4-one-port",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KAR-00.3 — does Vite in middleware mode really carry HMR and a ten-minute SSE stream on one port?",
+  "devDependencies": {
+    "@hono/node-server": "2.0.12",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "hono": "4.12.33",
+    "vite": "8.2.0",
+    "vue": "~3.5.40"
+  }
+}

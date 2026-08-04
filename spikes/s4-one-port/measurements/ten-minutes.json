@@ -1,0 +1,48 @@
+{
+  "recordedAt": "2026-08-04T16:09:06.188Z",
+  "node": "v24.18.0",
+  "vite": "8.2.0",
+  "port": 7777,
+  "durationSeconds": 600,
+  "intervalMs": 1000,
+  "listeningSockets": [
+    {
+      "address": "127.0.0.1",
+      "port": 7777
+    }
+  ],
+  "direct": {
+    "csv": "ten-minutes-direct.csv",
+    "events": 600,
+    "heldForMs": 600509,
+    "endedEarly": false,
+    "headers": {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+      "content-encoding": null
+    }
+  },
+  "hmr": {
+    "file": "app/src/Live.vue",
+    "editAtMs": 299873,
+    "updateReceivedAtMs": 300982,
+    "updatedModules": ["/src/Live.vue"],
+    "streamEnded": false,
+    "reconnects": 0,
+    "allMessageTypes": ["connected", "custom", "update"]
+  },
+  "proxied": {
+    "csv": "ten-minutes-proxied.csv",
+    "events": 600,
+    "diedAfterMs": null,
+    "headers": {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+      "content-encoding": null
+    },
+    "backendSawCloseMs": 5,
+    "backendStillOpenConnections": 0
+  }
+}
