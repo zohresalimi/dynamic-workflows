@@ -55,5 +55,42 @@ export type { ParsedIkey } from './ikey.ts';
 export { ikey, parseIkey } from './ikey.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
+// KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy.
+export type {
+  FailureClass,
+  FailureTag,
+  NodeFailure,
+  NodeFailureReason,
+  ToNodeFailureContext,
+} from './node-failure.ts';
+export {
+  FAILURE_CLASSES,
+  FAILURE_TAG,
+  FailureClassSchema,
+  GATE_ONLY_REASONS,
+  NODE_FAILURE_REASONS,
+  NodeFailureError,
+  NodeFailureReasonSchema,
+  NodeFailureSchema,
+  readInternalFailureCount,
+  resetInternalFailureCount,
+  toNodeFailure,
+} from './node-failure.ts';
 export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
+export type { NodeResult } from './node-result.ts';
+export { CANCELLATION_SOURCES, NodeResultSchema, SUSPENSION_KINDS } from './node-result.ts';
 export { mintRunId } from './run-id.ts';
+export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
+export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
+export { sumUsage, TokenUsageSchema, TokenUsageSourceSchema } from './token-usage.ts';
+export type { Finding, Verdict } from './verdict.ts';
+export {
+  CRITERION_STATUSES,
+  CriterionStatusSchema,
+  FINDING_SEVERITIES,
+  FindingSchema,
+  FindingSeveritySchema,
+  VERDICT_OUTCOMES,
+  VerdictOutcomeSchema,
+  VerdictSchema,
+} from './verdict.ts';
