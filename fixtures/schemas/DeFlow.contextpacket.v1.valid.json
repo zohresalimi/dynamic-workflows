@@ -1,0 +1,47 @@
+{
+  "schemaId": "DeFlow.contextpacket.v1",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "nodeId": "migrate-router-guards",
+  "attempt": 0,
+  "builtAtEvent": 418,
+  "target": { "provider": "claude-code", "model": "claude-sonnet-4-6", "maxContext": 200000 },
+  "budget": { "fraction": 0.5, "limitTokens": 100000 },
+  "totals": {
+    "tokens": 1400,
+    "byKind": {
+      "pinned.constraints": 0,
+      "pinned.spec": 900,
+      "pinned.pathscope": 0,
+      "task.brief": 500,
+      "fact": 0,
+      "artifact.handle": 0,
+      "retrieved": 0,
+      "history.summary": 0,
+      "tool.output": 0
+    }
+  },
+  "renderedPromptHandle": "artifact://3c1f8b7a6d5e4f30291a0b9c8d7e6f504132231405f6e7d8c9b0a1928374655a",
+  "pinnedDigests": ["sha256-aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899"],
+  "segments": [
+    {
+      "id": "spec-pinned",
+      "kind": "pinned.spec",
+      "sourceEvent": 12,
+      "contentHash": "sha256-aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899",
+      "tokens": { "estimated": 900, "method": "gpt-tokenizer/o200k_base" },
+      "pinned": true,
+      "compactable": false,
+      "text": "Migrate the Vue 2 router guards to Vue 3 without changing observable behaviour."
+    },
+    {
+      "id": "task-brief",
+      "kind": "task.brief",
+      "sourceEvent": 417,
+      "contentHash": "sha256-bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899aa11",
+      "tokens": { "estimated": 500, "method": "heuristic" },
+      "pinned": false,
+      "compactable": true,
+      "text": "Rewrite src/router/guards.ts to the Vue 3 navigation guard signature."
+    }
+  ]
+}

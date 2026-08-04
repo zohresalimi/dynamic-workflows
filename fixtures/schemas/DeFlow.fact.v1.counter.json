@@ -1,0 +1,16 @@
+{
+  "id": "not-a-fact-id",
+  "key": "finding/auth-uses-jwt",
+  "kind": "hunch",
+  "schemaId": "DeFlow.finding.v1",
+  "value": {},
+  "provenance": {
+    "byNode": "recon-auth-surface",
+    "byProvider": "claude-code",
+    "byModel": "claude-sonnet-4-6",
+    "fromEvidence": [],
+    "atEvent": 412,
+    "at": "2026-08-02T14:11:33.000Z",
+    "confidence": "verified"
+  }
+}

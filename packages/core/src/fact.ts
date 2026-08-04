@@ -48,6 +48,13 @@ import {
   SchemaIdSchema,
 } from './ids.ts';
 
+/**
+ * The id of the `Fact` **envelope** document — what `schemas/DeFlow.fact.v1.json`
+ * describes (KAR-02.8). Not to be confused with `Fact.schemaId`, which names
+ * the schema of the fact's *value*.
+ */
+export const FACT_SCHEMA_ID = 'DeFlow.fact.v1' as const;
+
 /** The whole enumerated vocabulary: six fixed kinds plus the free-form
  * `ext` escape hatch. Nothing outside this list is a legal `Fact.kind`. */
 export const FACT_KINDS = [

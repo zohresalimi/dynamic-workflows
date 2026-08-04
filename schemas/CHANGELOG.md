@@ -6,6 +6,20 @@ The ledger is append-only and events are **never rewritten on disk**. A `v1` pay
 March is still a `v1` payload in December, and the daemon reading it in December may be older than
 the one that wrote it. Everything below follows from that.
 
+## The `*.json` files next to this one
+
+The `DeFlow.*.v1.json` documents in this directory are **generated**, never hand-edited: they are
+`z.toJSONSchema` output for the registry in `packages/core/src/json-schema.ts`, written by
+`pnpm schemas:emit` and proven to match the Zod source by `pnpm schemas:check` in CI (KAR-02.8).
+`DeFlow init` copies them into a run directory as `.DeFlow/schemas/`, which is what an `agent` node
+hands a vendor CLI and what the daemon's Ajv2020 validator compiles.
+
+A `schemaId` obeys the same append-only rule as an event payload, for the same reason — a run
+directory outlives the daemon that wrote it. A shape change publishes `DeFlow.<name>.v2.json` and
+leaves `.v1` byte-for-byte alone; `packages/core/test/schemas-append-only.test.ts` pins a content
+hash per shipped file so an in-place edit is a red test rather than a discovery months later. The
+same document-level entries belong below, headed `<schemaId>`, whenever a `.v2` ships.
+
 ## The rule
 
 **A payload change that an upcaster can express is a new `v`. A change no upcaster can express is a

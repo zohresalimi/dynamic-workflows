@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/DeFlow.taskspec.v1.json",
+  "title": "DeFlow.taskspec.v1",
+  "description": "The approved intent a run is measured against (F1.1).",
+  "type": "object",
+  "properties": {
+    "schemaId": {
+      "type": "string",
+      "const": "DeFlow.taskspec.v1"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "included": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "included"
+      ],
+      "additionalProperties": false
+    },
+    "nonGoals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priorDecisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "acceptanceCriteria": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "check": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "command"
+                  },
+                  "run": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "expect": {
+                    "type": "string",
+                    "enum": [
+                      "exit-zero",
+                      "exit-nonzero"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "run",
+                  "expect"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "gate"
+                  },
+                  "gate": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "gate"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "manual"
+                  },
+                  "rubric": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "rubric"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "coveredByGates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "statement"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "knownFailureModes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detection": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mitigation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "detection"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "approvedBy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "ui",
+                "cli"
+              ]
+            }
+          },
+          "required": [
+            "at",
+            "via"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "specHash": {
+      "type": "string",
+      "pattern": "^sha256-[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "schemaId",
+    "goal",
+    "scope",
+    "nonGoals",
+    "constraints",
+    "priorDecisions",
+    "acceptanceCriteria",
+    "knownFailureModes",
+    "approvedBy",
+    "specHash"
+  ],
+  "additionalProperties": false
+}

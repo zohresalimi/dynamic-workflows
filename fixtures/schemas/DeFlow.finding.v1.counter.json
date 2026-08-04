@@ -1,0 +1,7 @@
+{
+  "id": "auth-uses-jwt",
+  "severity": "catastrophic",
+  "location": { "file": "src/http/auth.ts", "line": 0 },
+  "message": "",
+  "evidence": ["/etc/passwd"]
+}

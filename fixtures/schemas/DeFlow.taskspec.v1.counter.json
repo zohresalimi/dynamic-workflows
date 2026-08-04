@@ -1,0 +1,7 @@
+{
+  "schemaId": "DeFlow.taskspec.v1",
+  "title": "",
+  "goal": "migrate the app to Vue 3",
+  "acceptanceCriteria": [],
+  "constraints": "no breaking changes"
+}

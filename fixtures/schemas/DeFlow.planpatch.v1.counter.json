@@ -1,0 +1,5 @@
+{
+  "schemaId": "DeFlow.planpatch.v1",
+  "ops": [{ "op": "delete-everything" }],
+  "rationale": ""
+}

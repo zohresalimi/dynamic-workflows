@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!.claude/**", "!**/__snapshots__/**"]
+    "includes": ["**", "!.claude/**", "!**/__snapshots__/**", "!schemas/**"]
   },
   "formatter": {
     "enabled": true,

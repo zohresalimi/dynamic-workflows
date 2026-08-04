@@ -19,6 +19,78 @@
     "typescript/no-unnecessary-condition": "error",
     "typescript/no-unsafe-argument": "error"
   },
+  // R1 / KAR-02.8 AC7: @DeFlow/core is pure, and purity is a property of the
+  // build rather than of a test somebody remembered to run. A `node:fs` import
+  // under packages/core/src is refused here, in the editor, at the moment it is
+  // typed — not at review time. Build tooling that legitimately needs the disk
+  // lives in packages/core/scripts (the JSON Schema emitter), which this
+  // override does not cover, and which is outside the published surface.
+  "overrides": [
+    {
+      "files": ["packages/core/src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["node:*"],
+                "message": "@DeFlow/core performs no I/O (R1). Time, randomness and ids enter through ports declared in core and implemented in @DeFlow/daemon or @DeFlow/testkit; the JSON Schema emitter lives in packages/core/scripts."
+              }
+            ],
+            "paths": [
+              {
+                "name": "better-sqlite3",
+                "message": "The ledger's driver belongs in @DeFlow/ledger. @DeFlow/core declares the Db port; it never opens a database."
+              },
+              {
+                "name": "execa",
+                "message": "Spawning belongs in @DeFlow/adapters or @DeFlow/daemon. @DeFlow/core is deterministic and has no subprocesses."
+              },
+              {
+                "name": "hono",
+                "message": "HTTP belongs in @DeFlow/daemon. @DeFlow/core is transport-agnostic."
+              },
+              {
+                "name": "pino",
+                "message": "Logging is a driver. @DeFlow/core returns values; the daemon decides what to write."
+              },
+              {
+                "name": "ajv",
+                "message": "The Ajv validator lives in @DeFlow/daemon (src/schema-store.ts) and in packages/core/scripts. @DeFlow/core owns the Zod source of truth and the pure conversion only."
+              },
+              {
+                "name": "ajv-formats",
+                "message": "The Ajv validator lives in @DeFlow/daemon (src/schema-store.ts) and in packages/core/scripts. @DeFlow/core owns the Zod source of truth and the pure conversion only."
+              },
+              {
+                "name": "@modelcontextprotocol/sdk",
+                "message": "The MCP host belongs in @DeFlow/daemon."
+              },
+              {
+                "name": "@agentclientprotocol/sdk",
+                "message": "The ACP client belongs in @DeFlow/adapters."
+              },
+              {
+                "name": "@lydell/node-pty",
+                "message": "Terminals belong in @DeFlow/daemon, behind an optional dependency."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // Specs are not the published surface, and a spec that parses a fixture
+      // needs node:fs. The purity guard scopes itself the same way
+      // (`productionSources` skips *.test.ts), so the two agree on what "core
+      // is pure" means. A later override wins, as it does in ESLint.
+      "files": ["packages/core/src/**/*.test.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
   "ignorePatterns": [
     "vitest.config.ts",
     "packages/web/**",
