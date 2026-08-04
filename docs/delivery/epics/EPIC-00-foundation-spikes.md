@@ -233,6 +233,15 @@ document changes _before_ it is written into muscle memory. The `dev` script bec
 records that `node --watch` is no longer the crash-resume test described in
 [03-local-development.md §5](../../03-local-development.md).
 
+**Outcome (2026-08-04): it did not fail.** The fallback above was not taken, so EPIC-00-S2 — the
+scenario that specifies it — is **not applicable** and is not automated; its Given never held. The
+`Verified by` row still lists it because the scenario still exists and would become live if the
+package layout ever stopped being symlinked. What is automated in its place is the counterfactual
+(the `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` refusal is real, and the pnpm symlink is what
+avoids it). See [`docs/spikes/S2-zero-build.md`](../../spikes/S2-zero-build.md) and the Outcome
+note on EPIC-00-S2 in
+[the flow file](../flows/EPIC-00-foundation-spikes-flows.md#epic-00-s2--type-stripping-is-refused-inside-node_modules-and-the-tsx-fallback-is-adopted).
+
 **Acceptance criteria**
 
 1. Package `b` declares `"exports": { ".": "./src/index.ts" }` and is consumed by `a` via

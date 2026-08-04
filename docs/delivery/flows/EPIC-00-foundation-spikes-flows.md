@@ -51,7 +51,7 @@ credential anywhere (AR-1).
 | Scenario    | Title                                                                                     | Verifies           | Type       |
 | ----------- | ----------------------------------------------------------------------------------------- | ------------------ | ---------- |
 | EPIC-00-S1  | Zero-build import across a pnpm workspace symlink, on both Node majors                    | KAR-00.2           | Happy path |
-| EPIC-00-S2  | Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted         | KAR-00.2           | Failure    |
+| EPIC-00-S2  | Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted — **not applicable, see [decision note](../../spikes/S2-zero-build.md#epic-00-s2-is-not-applicable-and-that-is-a-result-not-an-omission)** | KAR-00.2           | Failure    |
 | EPIC-00-S3  | Non-erasable syntax in a linked package fails at runtime                                  | KAR-00.2           | Edge case  |
 | EPIC-00-S4  | Full ACP prompt cycle against a real adapter                                              | KAR-00.1           | Happy path |
 | EPIC-00-S5  | The same cycle across both agents, with an uneven capability matrix                       | KAR-00.1           | Edge case  |
@@ -130,7 +130,28 @@ that only fails visibly the day someone actually packs one.
 
 ## EPIC-00-S2 — Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted
 
-**Verifies:** KAR-00.2 · **Type:** Failure · **Automated at:** integration
+**Verifies:** KAR-00.2 · **Type:** Failure · **Automated at:** _not automated — precondition did
+not hold; see Outcome below_
+
+> **Outcome (2026-08-04): not applicable.** This scenario's Given is "`node a/src/main.ts` failed to
+> strip types". It did not fail — EPIC-00-S1 passed on both Node majors, so the whole fallback
+> branch below (adopt `tsx@4.23.4`, change KAR-01.3 acceptance criteria 2 and 5, lose `node --watch`
+> crash-resume, re-measure KAR-01.6's pre-push budget) never became reachable, and **none of its
+> Then clauses are automated**. `tsx@4.23.4` is not a dependency of this repo and must not be added
+> to make a scenario pass whose Given never happened.
+>
+> What was automated instead is the counterfactual, in the same file
+> (`test/integration/spike-s2-zero-build.test.ts`, suite _"EPIC-00-S2 — the node_modules
+> type-stripping refusal is real, and the symlink is what avoids it"_): with the single variable
+> flipped — `@spike/b` materialised as a real directory under `a/node_modules/@spike/` rather than
+> a pnpm symlink — `node` does fail with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` on both
+> majors, while the symlinked layout still exits 0. That proves the refusal this scenario predicted
+> is real and that the workspace symlink is precisely what avoids it, which is the strongest claim
+> available once the happy path wins. It also makes pnpm's symlinked node-linker load-bearing: if
+> the layout ever changes, that test goes red first and the scenario below becomes live again.
+>
+> The scenario text is kept, unedited, because it is the written form of the fallback plan. See
+> [docs/spikes/S2-zero-build.md](../../spikes/S2-zero-build.md).
 
 ```gherkin
 Feature: The dev loop has a stated fallback that is taken deliberately

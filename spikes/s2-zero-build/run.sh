@@ -75,6 +75,30 @@ done
 cp /tmp/s2-zero-build-index.ts.bak b/src/index.ts
 echo
 
+echo "== counterfactual: the same package as a real directory under node_modules is refused =="
+# Row 10 of docs/spikes/S2-zero-build.md. This is what makes AC2's pass a fact
+# about the symlink rather than about Node having relaxed the node_modules rule:
+# flip that one variable and node refuses with
+# ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING on both majors.
+CF_DIR=$(mktemp -d)
+mkdir -p "$CF_DIR/a/node_modules/@spike"
+cp -R b "$CF_DIR/b"
+cp -R a/src "$CF_DIR/a/src"
+cp a/package.json "$CF_DIR/a/package.json"
+cp -R "$CF_DIR/b" "$CF_DIR/a/node_modules/@spike/b"
+for node_bin in "$NODE24" "$NODE26"; do
+  echo "-- $($node_bin --version), @spike/b as a real directory --"
+  (cd "$CF_DIR/a" && "$node_bin" src/main.ts) && echo "UNEXPECTED: exited 0" || true
+  echo "-- $($node_bin --version), @spike/b as a symlink (control) --"
+  rm -rf "$CF_DIR/a/node_modules/@spike/b"
+  ln -s ../../../b "$CF_DIR/a/node_modules/@spike/b"
+  (cd "$CF_DIR/a" && "$node_bin" src/main.ts)
+  rm -rf "$CF_DIR/a/node_modules/@spike/b"
+  cp -R "$CF_DIR/b" "$CF_DIR/a/node_modules/@spike/b"
+done
+rm -rf "$CF_DIR"
+echo
+
 echo "== pnpm pack on b: exports point at dist/, not src/ (AC5) =="
 (cd b && pnpm pack && tar -xzOf spike-b-*.tgz package/package.json && rm -f spike-b-*.tgz)
 echo
