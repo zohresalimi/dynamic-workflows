@@ -1,0 +1,19 @@
+{
+  "label": "direct",
+  "url": "http://127.0.0.1:7777/api/stream",
+  "seconds": 600,
+  "untilEvents": 600,
+  "startedWallClock": 1785859145641,
+  "connectedWallClock": 1785859145661,
+  "heldForMs": 600509,
+  "events": 600,
+  "endedEarly": false,
+  "endedAtMs": null,
+  "error": null,
+  "headers": {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache, no-transform",
+    "x-accel-buffering": "no",
+    "content-encoding": null
+  }
+}

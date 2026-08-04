@@ -518,7 +518,16 @@ permission to stop reading the stream.
 
 ## EPIC-00-S11 — One port carries a ten-minute SSE stream and a `.vue` hot reload
 
-**Verifies:** KAR-00.3 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Happy path · **Automated at:** integration, e2e and a recorded
+ten-minute run
+
+> **Outcome (2026-08-04): every scenario holds.** One listening socket on `127.0.0.1:7777` with
+> HMR on it; 600 events over 599.8 s with a maximum inter-arrival gap of 1006.9 ms (AC2 allows
+> 3 000); a `.vue` edit at t=300 s applied as an HMR update without the stream ending, reconnecting,
+> gapping or duplicating; and `/api/stream` answering `text/event-stream` even to a
+> `Accept: text/html` request, while the same harness with the SPA fallback mounted first answers
+> `index.html`. The recording is `spikes/s4-one-port/measurements/`; the reading is
+> [docs/spikes/S4-one-port.md](../../spikes/S4-one-port.md).
 
 ```gherkin
 Feature: Vite in middleware mode inside the daemon, one process, one port
@@ -568,7 +577,28 @@ opened its own, the count is two and D10's central claim is false.
 
 ## EPIC-00-S12 — Compression in front of the stream buffers events into one burst
 
-**Verifies:** KAR-00.3 · **Type:** Failure · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Failure · **Automated at:** integration (row 1 and the guard);
+rows 2 and 3 _not automated as written — the symptoms did not reproduce, see Outcome below_
+
+> **Outcome (2026-08-04): one of the three reproduced, and that is the finding.** Measured against
+> `vite@8.2.0` and `hono@4.12.33` by `test/integration/spike-s4-one-port.test.ts`; the full record is
+> [docs/spikes/S4-one-port.md](../../spikes/S4-one-port.md).
+>
+> - **Compression** (row 1) reproduced exactly: twelve events emitted 100 ms apart all arrived at
+>   t=1205 ms, in one burst at stream end. It took three deliberate mistakes to get there — hono's
+>   `compress` middleware refuses `text/event-stream`, refuses any response carrying
+>   `no-transform`, and refuses one carrying `Transfer-Encoding`. The guard is therefore asserted in
+>   both directions: the symptom with the header dropped, and the refusal with it in place.
+> - **A dev proxy killing long streams** (row 2) did not reproduce: a proxied client held the same
+>   ten minutes as the direct one and received all 600 events, max gap 1008 ms.
+> - **A dev proxy swallowing the close** (row 3) did not reproduce: the backend learned the client
+>   had navigated away in 6 ms.
+>
+> The Then clauses of rows 2 and 3 are consequently **not** asserted — writing down a symptom that
+> did not occur would be automating a belief. What is asserted instead is the measured behaviour,
+> with a failure message naming what it would mean if it ever flipped back. The rule the scenario
+> exists to protect ("never add `server.proxy`") is unchanged and, after this, rests on D10's
+> one-origin argument rather than on a bug report.
 
 ```gherkin
 Feature: The three documented SSE failure modes are reproduced deliberately, once
@@ -602,7 +632,18 @@ afternoon assuming the reducer was broken.
 
 ## EPIC-00-S13 — A page reload sends no `Last-Event-ID`, so `?since=` is mandatory
 
-**Verifies:** KAR-00.3 · **Type:** Edge case · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Edge case · **Automated at:** e2e (real Chromium) and unit
+
+> **Outcome (2026-08-04): all four scenarios hold, and the third one added a clause.** Verified
+> against Chromium 151 by `e2e/spike-s4-one-port.test.ts`. A fresh `EventSource` after a reload
+> really does send no `Last-Event-ID`, and an automatic reconnect really does send one.
+>
+> What the reconnect *also* does is re-request the **same URL** — so a page that hydrated at
+> `/api/stream?since=137` and lost its connection at seq 150 sends the stale `?since=137` and a
+> current `Last-Event-ID: 150` together. A server that prefers `?since` in that case replays
+> thirteen events the page already had, which is the duplication this scenario forbids. The contract
+> is therefore **resume from the greater of the two cursors** (a tie counts as a reconnect), pinned
+> by `test/spike-s4-resume.test.ts`. KAR-15.3 inherits it.
 
 ```gherkin
 Feature: Stream resume works across a page reload, not only across an automatic reconnect
