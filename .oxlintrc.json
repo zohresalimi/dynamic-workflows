@@ -35,6 +35,16 @@
     // rather than the real project's strict settings. Scoping type-aware
     // linting to what is actually typechecked keeps its diagnostics honest;
     // widening this needs test/ added to a tsconfig's "include" first.
-    "packages/*/test/**"
+    "packages/*/test/**",
+    // Same rule, same evidence. EPIC-00 puts every spike directory outside the
+    // workspace globs on purpose — "so it never enters `pnpm -r` or the
+    // typecheck graph" — so no tsconfig "include" covers spikes/** either, and
+    // --type-aware falls back to the same weaker defaults. Pointed at
+    // spikes/s1-acp it reports, among other things, an "unnecessary optional
+    // chain" on an indexed access, which is only unnecessary when
+    // noUncheckedIndexedAccess is off; tsconfig.base.json has it on.
+    // Diagnostics derived from settings this project does not use are noise.
+    // Spike directories are deleted or archived when EPIC-01 starts anyway.
+    "spikes/**"
   ]
 }
