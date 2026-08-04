@@ -20,26 +20,96 @@ export type { Clock, TimerHandle } from './clock.ts';
 export type {
   ContextBudget,
   ContextPacket,
+  ContextPacketRecord,
   ContextTotals,
   PacketTotalsResult,
   Segment,
   SegmentKind,
+  SegmentRecord,
   TokenCount,
   TokenCountMethod,
 } from './context-packet.ts';
 export {
   CONTEXTPACKET_SCHEMA_ID,
   ContextBudgetSchema,
+  ContextPacketRecordSchema,
   ContextPacketSchema,
   packetTotalsAreConsistent,
   renderOrderOf,
   SEGMENT_KINDS,
   SegmentKindSchema,
+  SegmentRecordSchema,
   SegmentSchema,
   TOKEN_COUNT_METHODS,
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-02.7 — the ~40 event payload schemas and the §9 registry.
+export type {
+  CompactionFidelity,
+  EffectKind,
+  EventKind,
+  EventPayloadOf,
+  RunOutcome,
+} from './event-payloads.ts';
+export {
+  BUDGET_DIMENSIONS,
+  BUDGET_SCOPES,
+  BudgetConsumedSchema,
+  BudgetExceededSchema,
+  COMPACTION_FIDELITIES,
+  COMPACTION_SCOPES,
+  COMPACTION_TRIGGERS,
+  ContextBuiltSchema,
+  ContextCompactedSchema,
+  EFFECT_KINDS,
+  EffectCompletedSchema,
+  EffectFailedSchema,
+  EffectStartedSchema,
+  EVENT_CURRENT_VERSIONS,
+  EVENT_KINDS,
+  EVENT_SCHEMAS,
+  EXPORT_BLOCK_REASONS,
+  EXPORT_TARGETS,
+  ExportBlockedSchema,
+  FactInvalidatedSchema,
+  FactReadSchema,
+  FactWrittenSchema,
+  GateEvaluatedSchema,
+  HandoffOversizeSchema,
+  HumanRequestedSchema,
+  HumanRespondedSchema,
+  isEventKind,
+  LOCK_KINDS,
+  NodeCompletedSchema,
+  NodeFailedSchema,
+  NodeLockSchema,
+  NodeProgressSchema,
+  NodeRetryScheduledSchema,
+  NodeScheduledSchema,
+  NodeStartedSchema,
+  NodeSuspendedSchema,
+  PinIntegrityViolatedSchema,
+  PlanPatchedSchema,
+  PlanPatchProposedSchema,
+  PlanPatchRejectedSchema,
+  PlanProposedSchema,
+  ProviderProbedSchema,
+  ProviderRateLimitedSchema,
+  RUN_NEEDS_HUMAN_REASONS,
+  RUN_OUTCOMES,
+  RunCancelRequestedSchema,
+  RunCreatedSchema,
+  RunEndedSchema,
+  RunNeedsHumanSchema,
+  RunPauseToggledSchema,
+  RunSpecApprovedSchema,
+  RunStalledSchema,
+  RunStartedSchema,
+} from './event-payloads.ts';
+// KAR-02.7 — the envelope and the total, forward-compatible reader.
+export type { Event, EventEnvelope, ParseEventResult } from './events.ts';
+export { EventEnvelopeSchema, parseEvent } from './events.ts';
 // KAR-02.5 — Fact, Provenance and the blackboard vocabulary.
 export type { Confidence, Fact, FactKind, Provenance } from './fact.ts';
 export {
@@ -113,8 +183,14 @@ export {
   toNodeFailure,
 } from './node-failure.ts';
 export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
-export type { NodeResult } from './node-result.ts';
-export { CANCELLATION_SOURCES, NodeResultSchema, SUSPENSION_KINDS } from './node-result.ts';
+export type { CompletedNodeResult, NodeResult, NodeSuspension } from './node-result.ts';
+export {
+  CANCELLATION_SOURCES,
+  CompletedNodeResultSchema,
+  NodeResultSchema,
+  NodeSuspensionSchema,
+  SUSPENSION_KINDS,
+} from './node-result.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -180,6 +256,7 @@ export type {
   PatchWellFormedness,
   PermissionEscalation,
   PlanPatch,
+  ProposedBy,
 } from './plan-patch.ts';
 export {
   AbandonBranchOpSchema,
@@ -195,6 +272,7 @@ export {
   PermissionEscalationSchema,
   PLANPATCH_SCHEMA_ID,
   PlanPatchSchema,
+  ProposedBySchema,
   patchIsWellFormed,
   ReplaceProviderOpSchema,
   retirementsOf,
@@ -229,6 +307,26 @@ export {
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
 export { sumUsage, TokenUsageSchema, TokenUsageSourceSchema } from './token-usage.ts';
+// KAR-02.7 — the read-time upcaster chain.
+export type {
+  MissingHop,
+  Upcaster,
+  UpcasterRegistration,
+  UpcasterViolation,
+} from './upcasters.ts';
+export {
+  assertUpcasterChainsComplete,
+  checkUpcasterFixtures,
+  checkUpcastersPreserveRequiredFields,
+  DuplicateUpcaster,
+  eventUpcasters,
+  registerUpcaster,
+  UnknownUpcasterKind,
+  UpcasterChainIncomplete,
+  UpcasterFutureVersion,
+  UpcasterRegistry,
+  upcast,
+} from './upcasters.ts';
 export type { Finding, Verdict } from './verdict.ts';
 export {
   CRITERION_STATUSES,

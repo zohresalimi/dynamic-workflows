@@ -89,33 +89,54 @@ const ContentHashSchema = z
   .string()
   .regex(CONTENT_HASH_PATTERN, `contentHash must match ${CONTENT_HASH_PATTERN}`);
 
+const segmentShape = {
+  id: SegmentIdSchema,
+  kind: SegmentKindSchema,
+  /** Which event put this here — click-through in the inspector (AC7,
+   * F10.3). */
+  sourceEvent: EventSeqSchema,
+  contentHash: ContentHashSchema,
+  tokens: TokenCountSchema,
+  /** Never eligible for compaction, always rendered first. */
+  pinned: z.boolean(),
+  compactable: z.boolean(),
+};
+
+// AC2: pinned implies not compactable. The implication is one-way — a
+// segment that is neither pinned nor compactable is legal.
+const refinePinnedNotCompactable = (
+  segment: { pinned: boolean; compactable: boolean },
+  ctx: z.RefinementCtx,
+): void => {
+  if (segment.pinned && segment.compactable) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['compactable'],
+      message: 'a pinned segment cannot be compactable: pinned implies !compactable',
+    });
+  }
+};
+
 export const SegmentSchema = z
-  .strictObject({
-    id: SegmentIdSchema,
-    kind: SegmentKindSchema,
-    /** Which event put this here — click-through in the inspector (AC7,
-     * F10.3). */
-    sourceEvent: EventSeqSchema,
-    contentHash: ContentHashSchema,
-    text: z.string(),
-    tokens: TokenCountSchema,
-    /** Never eligible for compaction, always rendered first. */
-    pinned: z.boolean(),
-    compactable: z.boolean(),
-  })
-  .superRefine((segment, ctx) => {
-    // AC2: pinned implies not compactable. The implication is one-way — a
-    // segment that is neither pinned nor compactable is legal.
-    if (segment.pinned && segment.compactable) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['compactable'],
-        message: 'a pinned segment cannot be compactable: pinned implies !compactable',
-      });
-    }
-  });
+  .strictObject({ ...segmentShape, text: z.string() })
+  .superRefine(refinePinnedNotCompactable);
 
 export type Segment = z.infer<typeof SegmentSchema>;
+
+/**
+ * A `Segment` as it is recorded in the ledger: everything except `text`.
+ *
+ * §9's `context.built` row says "(minus segment `text`)" and it is not a
+ * detail — segment text is the whole rendered prompt, and copying it into an
+ * append-only event payload would grow the control plane without bound for
+ * data that is already reachable through `contentHash` and
+ * `renderedPromptHandle`.
+ */
+export const SegmentRecordSchema = z
+  .strictObject(segmentShape)
+  .superRefine(refinePinnedNotCompactable);
+
+export type SegmentRecord = z.infer<typeof SegmentRecordSchema>;
 
 const ContextTargetSchema = z.strictObject({
   provider: ProviderIdSchema,
@@ -156,46 +177,65 @@ const ContextPacketSchemaIdSchema: z.ZodType<SchemaId, string> = z
   .literal(CONTEXTPACKET_SCHEMA_ID)
   .transform((value): SchemaId => value as SchemaId);
 
+const packetShape = {
+  schemaId: ContextPacketSchemaIdSchema,
+  runId: RunIdSchema,
+  nodeId: NodeIdSchema,
+  attempt: z.number().int().nonnegative(),
+  builtAtEvent: EventSeqSchema,
+  target: ContextTargetSchema,
+  budget: ContextBudgetSchema,
+  totals: ContextTotalsSchema,
+  /** The rendered prompt is stored too — but derived, not authoritative
+   * (§6.1). */
+  renderedPromptHandle: HandleSchema,
+  /** AC4: one sha256 per pinned segment, checked below against that
+   * segment's `contentHash` — the F6.6 integrity check's input is
+   * derivable, not separately maintained. */
+  pinnedDigests: z.array(ContentHashSchema),
+};
+
+const refinePinnedDigests = (
+  packet: {
+    segments: readonly { pinned: boolean; contentHash: string }[];
+    pinnedDigests: readonly string[];
+  },
+  ctx: z.RefinementCtx,
+): void => {
+  const expected = packet.segments
+    .filter((segment) => segment.pinned)
+    .map((segment) => segment.contentHash)
+    .toSorted();
+  const actual = [...packet.pinnedDigests].toSorted();
+  const matches =
+    expected.length === actual.length && expected.every((value, index) => value === actual[index]);
+  if (!matches) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['pinnedDigests'],
+      message:
+        'pinnedDigests must contain exactly one sha256 per pinned segment, each equal to ' +
+        "that segment's contentHash — no extra, missing, or mismatched entries",
+    });
+  }
+};
+
 export const ContextPacketSchema = z
-  .strictObject({
-    schemaId: ContextPacketSchemaIdSchema,
-    runId: RunIdSchema,
-    nodeId: NodeIdSchema,
-    attempt: z.number().int().nonnegative(),
-    builtAtEvent: EventSeqSchema,
-    target: ContextTargetSchema,
-    budget: ContextBudgetSchema,
-    segments: z.array(SegmentSchema),
-    totals: ContextTotalsSchema,
-    /** The rendered prompt is stored too — but derived, not authoritative
-     * (§6.1). */
-    renderedPromptHandle: HandleSchema,
-    /** AC4: one sha256 per pinned segment, checked below against that
-     * segment's `contentHash` — the F6.6 integrity check's input is
-     * derivable, not separately maintained. */
-    pinnedDigests: z.array(ContentHashSchema),
-  })
-  .superRefine((packet, ctx) => {
-    const expected = packet.segments
-      .filter((segment) => segment.pinned)
-      .map((segment) => segment.contentHash)
-      .toSorted();
-    const actual = [...packet.pinnedDigests].toSorted();
-    const matches =
-      expected.length === actual.length &&
-      expected.every((value, index) => value === actual[index]);
-    if (!matches) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['pinnedDigests'],
-        message:
-          'pinnedDigests must contain exactly one sha256 per pinned segment, each equal to ' +
-          "that segment's contentHash — no extra, missing, or mismatched entries",
-      });
-    }
-  });
+  .strictObject({ ...packetShape, segments: z.array(SegmentSchema) })
+  .superRefine(refinePinnedDigests);
 
 export type ContextPacket = z.infer<typeof ContextPacketSchema>;
+
+/**
+ * The packet as `context.built` records it: identical to `ContextPacket`
+ * except that segments carry no `text`. Same refinement, because the pinned
+ * digest check is about `contentHash`, which the record form still has.
+ */
+export const ContextPacketRecordSchema = z
+  .strictObject({ ...packetShape, segments: z.array(SegmentRecordSchema) })
+  .superRefine(refinePinnedDigests);
+
+export type ContextPacketRecord = z.infer<typeof ContextPacketRecordSchema>;
 
 /**
  * AC1: whether `packet.totals` reconciles with `packet.segments`. Not
