@@ -13,3 +13,43 @@
  * the Event union, reduce, decide, the patch policy and the permission ladder.
  */
 export type { Clock, TimerHandle } from './clock.ts';
+
+// KAR-02.1 — identifier types and the stable-NodeId invariant.
+export type {
+  Brand,
+  CriterionId,
+  EventSeq,
+  FactId,
+  GateId,
+  Handle,
+  IdempotencyKey,
+  NodeId,
+  NodeLifecycle,
+  PlanHash,
+  ProviderId,
+  RunId,
+  SchemaId,
+  SegmentId,
+} from './ids.ts';
+export {
+  CriterionIdSchema,
+  EventSeqSchema,
+  FactIdSchema,
+  GateIdSchema,
+  HandleSchema,
+  NodeIdSchema,
+  NodeLifecycleSchema,
+  PlanHashSchema,
+  ProviderIdSchema,
+  RunIdSchema,
+  SchemaIdSchema,
+  SegmentIdSchema,
+} from './ids.ts';
+export type { ParsedIkey } from './ikey.ts';
+// IdempotencyKeySchema is deliberately not exported (AC4) — ikey() below is
+// the only legal constructor.
+export { ikey, parseIkey } from './ikey.ts';
+export type { ItemIdFrom } from './map-child-id.ts';
+export { mapChildId } from './map-child-id.ts';
+export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
+export { mintRunId } from './run-id.ts';
