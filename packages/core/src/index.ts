@@ -80,6 +80,29 @@ export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
 export type { NodeResult } from './node-result.ts';
 export { CANCELLATION_SOURCES, NodeResultSchema, SUSPENSION_KINDS } from './node-result.ts';
 export { mintRunId } from './run-id.ts';
+// KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
+export type {
+  AcceptanceCriterion,
+  AcceptanceCriterionCheck,
+  FailureMode,
+  PinnedField,
+  PinnedNodeContext,
+  PinnedSegmentInput,
+  PriorDecision,
+  TaskSpec,
+  TaskSpecApproval,
+} from './task-spec.ts';
+export {
+  AcceptanceCriterionCheckSchema,
+  AcceptanceCriterionSchema,
+  FailureModeSchema,
+  PINNED_SPEC_FIELDS,
+  PriorDecisionSchema,
+  pinnedSegmentsOf,
+  TASKSPEC_SCHEMA_ID,
+  TaskSpecApprovalSchema,
+  TaskSpecSchema,
+} from './task-spec.ts';
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
 export { sumUsage, TokenUsageSchema, TokenUsageSourceSchema } from './token-usage.ts';
