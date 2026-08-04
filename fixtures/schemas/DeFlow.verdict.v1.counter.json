@@ -1,0 +1,10 @@
+{
+  "schemaId": "DeFlow.verdict.v1",
+  "outcome": "probably-fine",
+  "gate": "Typecheck_Gate",
+  "evaluatedNode": "migrate-router-guards",
+  "by": { "node": "typecheck-gate", "provider": "codex" },
+  "criteria": [{ "id": "typecheck-clean", "status": "maybe" }],
+  "findings": [],
+  "summary": "a summary\nwith a newline is still a single JSON string, but the gate id above is not a slug"
+}

@@ -19,3 +19,11 @@ export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+export type { SchemaDirectory, ValidateValue } from './schema-store.ts';
+export {
+  defaultSchemasDir,
+  loadSchemaDirectory,
+  makeValidator,
+  SchemaCompilationFailed,
+  UnknownSchemaFile,
+} from './schema-store.ts';

@@ -1,0 +1,61 @@
+# `@DeFlow/core`
+
+The pure domain and engine logic: `TaskSpec`, `PlanGraph`, `PlanPatch`, `Fact`, `ContextPacket`, the
+`Event` union, the failure taxonomy, the canonical JSON encoder and the hashes built on it. Zero
+I/O — `zod` is the only runtime dependency, and time, randomness and ids arrive through ports
+declared here and implemented in `@DeFlow/daemon` or `@DeFlow/testkit` (R1).
+
+`src/index.ts` is the whole contract. Deep imports across packages are banned, so anything meant to
+be shared is exported there or it is internal.
+
+## Published schemas (v1)
+
+Zod is the source of truth. `schemas/<schemaId>.json` at the repository root is **generated** from
+it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` — it is what an
+`agent` node hands a vendor CLI (`--json-schema`, `--output-schema`) and what `makeValidator` in
+`@DeFlow/daemon` compiles.
+
+| `schemaId`                | Zod source                | What it describes                                                     |
+| ------------------------- | ------------------------- | --------------------------------------------------------------------- |
+| `DeFlow.contextpacket.v1` | `src/context-packet.ts`   | The addressable, typed context a node actually received (F6.1, F6.2)  |
+| `DeFlow.fact.v1`          | `src/fact.ts`             | A blackboard fact envelope: key, kind, provenance, value schema id     |
+| `DeFlow.finding.v1`       | `src/verdict.ts`          | A structured gate finding, attachable to a diff line (F7.7)            |
+| `DeFlow.plangraph.v1`     | `src/plan-graph.ts`       | A whole plan: seven node types, edges, budgets, declared reads (F2.1)  |
+| `DeFlow.planpatch.v1`     | `src/plan-patch.ts`       | A proposed plan evolution: five ops, blast radius, rationale (F2.3)    |
+| `DeFlow.taskspec.v1`      | `src/task-spec.ts`        | The approved intent a run is measured against (F1.1)                   |
+| `DeFlow.verdict.v1`       | `src/verdict.ts`          | A gate verdict: outcome, per-criterion status, findings (F7.4)         |
+
+The registry those rows come from is `SCHEMA_REGISTRY` in `src/json-schema.ts`. Adding a row is how
+a new document ships.
+
+```
+pnpm schemas:emit     # regenerate schemas/ from the Zod source
+pnpm schemas:check    # CI: fail on any divergence, or on a document Ajv2020 strict refuses
+```
+
+`pnpm schemas:check` runs in the CI `check` job, next to `biome ci` and `typecheck` — never in a git
+hook, which docs/14-testing-strategy.md §14.1 keeps under about two seconds.
+
+## The append-only rule
+
+**A published `schemaId` is never edited. `.v2` is published; `.v1` is left exactly as it was.**
+
+A run directory written last month is still being read this month, possibly by an older daemon, and
+an in-place edit silently reinterprets every document already on disk. `schemas/CHANGELOG.md`
+records what changed and why it was safe;
+`packages/core/test/schemas-append-only.test.ts` pins a content hash per shipped file, so an
+in-place edit is a red test naming the file rather than a discovery months later. A red row there is
+not a licence to update the hash — the fix is a new `.v2`.
+
+## The emitted schema is weaker than its Zod source
+
+JSON Schema cannot express a cross-field refinement, so the following are enforced by Zod (and by
+`acceptFact`) and **not** by the emitted document:
+
+- a `Fact`'s `kind` and `key` prefix must agree, and a fact may not supersede itself;
+- a pinned `Segment` may not be `compactable`, and `pinnedDigests` must match the pinned segments;
+- `Handle` accepts `artifact://<64 hex>` or `file://<repo-relative>#L12-L40` — the emitted schema
+  only says "string", because the constraint is a `.refine()`.
+
+The emitted file is the wire-level contract a vendor CLI validates against. Zod stays the gate on
+the way in.

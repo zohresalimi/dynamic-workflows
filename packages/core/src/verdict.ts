@@ -25,6 +25,15 @@ import {
 } from './ids.ts';
 import { singleLine } from './text.ts';
 
+/**
+ * The two document ids this module ships (KAR-02.8). A `finding` fact carries
+ * `schemaId: 'DeFlow.finding.v1'` and a `Finding` as its value; a `verdict`
+ * fact carries `DeFlow.verdict.v1` and a whole `Verdict`.
+ */
+export const FINDING_SCHEMA_ID = 'DeFlow.finding.v1' as const;
+
+export const VERDICT_SCHEMA_ID = 'DeFlow.verdict.v1' as const;
+
 export const FINDING_SEVERITIES = ['blocker', 'major', 'minor', 'info'] as const;
 
 export const FindingSeveritySchema = z.enum(FINDING_SEVERITIES);

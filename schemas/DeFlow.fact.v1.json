@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/DeFlow.fact.v1.json",
+  "title": "DeFlow.fact.v1",
+  "description": "A blackboard fact envelope: key, kind, provenance and the value schema id (F5.1).",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^fact_[a-z0-9]{26}$"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "finding",
+        "decision",
+        "artifact",
+        "scope",
+        "risk",
+        "verdict",
+        "ext"
+      ]
+    },
+    "schemaId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][\\w.-]*\\.v\\d+$"
+    },
+    "value": {},
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "byNode": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+        },
+        "byProvider": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "byModel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fromEvidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "atEvent": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "asserted",
+            "verified",
+            "speculative"
+          ]
+        }
+      },
+      "required": [
+        "byNode",
+        "byProvider",
+        "byModel",
+        "fromEvidence",
+        "atEvent",
+        "at",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "supersedes": {
+      "type": "string",
+      "pattern": "^fact_[a-z0-9]{26}$"
+    },
+    "invalidatedBy": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "id",
+    "key",
+    "kind",
+    "schemaId",
+    "value",
+    "provenance"
+  ],
+  "additionalProperties": false
+}

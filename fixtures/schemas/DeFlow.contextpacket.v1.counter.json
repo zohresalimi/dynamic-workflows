@@ -1,0 +1,24 @@
+{
+  "schemaId": "DeFlow.contextpacket.v1",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "nodeId": "migrate-router-guards",
+  "attempt": 0,
+  "builtAtEvent": 418,
+  "target": { "provider": "claude-code", "model": "claude-sonnet-4-6", "maxContext": 200000 },
+  "budget": { "fraction": 0.9, "limitTokens": 100000 },
+  "totals": { "tokens": 1400, "byKind": { "pinned.spec": 900 } },
+  "renderedPromptHandle": "artifact://not-hex",
+  "pinnedDigests": ["nope"],
+  "segments": [
+    {
+      "id": "spec-pinned",
+      "kind": "pinned.spec",
+      "sourceEvent": 12,
+      "contentHash": "sha256-aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899",
+      "tokens": { "estimated": 900, "method": "tiktoken" },
+      "pinned": true,
+      "compactable": false,
+      "text": "…"
+    }
+  ]
+}

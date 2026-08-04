@@ -13,6 +13,14 @@
  * the Event union, reduce, decide, the patch policy and the permission ladder.
  */
 
+// KAR-02.8 — fact acceptance: shape, registration, then value.
+export type {
+  AcceptFactError,
+  AcceptFactResult,
+  FactSchemaRegistry,
+  SchemaIssue,
+} from './accept-fact.ts';
+export { acceptFact } from './accept-fact.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
@@ -117,13 +125,13 @@ export {
   ConfidenceSchema,
   compareFactsByEventOrder,
   FACT_KINDS,
+  FACT_SCHEMA_ID,
   FactKindSchema,
   FactSchema,
   keyMatchesKind,
   ProvenanceSchema,
 } from './fact.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
-
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
   Brand,
@@ -159,6 +167,21 @@ export type { ParsedIkey } from './ikey.ts';
 // IdempotencyKeySchema is deliberately not exported (AC4) — ikey() below is
 // the only legal constructor.
 export { ikey, parseIkey } from './ikey.ts';
+// KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
+export type { JsonSchemaDocument, SchemaRegistration } from './json-schema.ts';
+export {
+  AJV_2020_OPTIONS,
+  JSON_SCHEMA_DIALECT,
+  REGISTERED_SCHEMA_IDS,
+  SCHEMA_ID_BASE,
+  SCHEMA_REGISTRY,
+  schemaFileName,
+  schemaRegistrationOf,
+  serializeSchemaDocument,
+  toJsonSchemaDocument,
+  toJsonSchemaDocuments,
+  UnknownSchemaId,
+} from './json-schema.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
 // KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy.
@@ -331,10 +354,12 @@ export type { Finding, Verdict } from './verdict.ts';
 export {
   CRITERION_STATUSES,
   CriterionStatusSchema,
+  FINDING_SCHEMA_ID,
   FINDING_SEVERITIES,
   FindingSchema,
   FindingSeveritySchema,
   VERDICT_OUTCOMES,
+  VERDICT_SCHEMA_ID,
   VerdictOutcomeSchema,
   VerdictSchema,
 } from './verdict.ts';
