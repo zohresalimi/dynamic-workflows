@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // bin/ holds the fake agent executable; it is real shipped code and is
+  // typechecked like the rest of the package.
+  "include": ["src", "bin"]
+}

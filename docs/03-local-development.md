@@ -185,6 +185,13 @@ bundled type declarations, where `server` is documented as _"Parent server insta
 This is needed to proxy WebSocket connections to the parent server"_ — i.e. Vite's HMR websocket
 rides `DeFlowd`'s own HTTP server rather than opening a second one.
 
+> **Correction, verified 2026-08-04 (KAR-01.3) against Vite's shipped code.** `middlewareMode.server`
+> is consumed only when forwarding to a configured upstream; it has nothing to do with HMR. The
+> option that attaches the HMR websocket to a parent server is **`server.ws.server`**, and without it
+> Vite opens a second listening socket on port 24678. Pass both:
+> `server: { middlewareMode: { server }, ws: { server } }`. The single-socket property is asserted by
+> `e2e/dev-loop.test.ts`.
+
 ```ts
 // packages/daemon/src/http/server.ts
 import { Hono } from "hono";
@@ -209,7 +216,10 @@ export async function startHttp(port: number, hostname = "127.0.0.1") {
     const vite = await createServer({
       root: fileURLToPath(new URL("../../../web", import.meta.url)),
       appType: "spa",
-      server: { middlewareMode: { server } }, // <- HMR ws rides the daemon's server
+      server: {
+        middlewareMode: { server },
+        ws: { server }, // <- HMR ws rides the daemon's server
+      },
     });
     // Vite's connect-style middleware, adapted onto Hono's fetch handler.
     app.use("*", honoAdapter(vite.middlewares));
