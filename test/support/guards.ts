@@ -228,6 +228,36 @@ export function checkNoNodeBuiltinImports(files: readonly SourceFile[]): Violati
   return violations;
 }
 
+/**
+ * KAR-02.9 AC6 / EPIC-02-S8: `ohash` appears nowhere in `packages/core/src`.
+ * `ohash`'s stable key-ordering behaviour is confirmed, but its README
+ * promises only "best efforts" at stable serialisation — acceptable for
+ * "did this object change since last render" in `@DeFlow/web`, wrong for a
+ * value that is a primary key of the `plan` table and an identity across
+ * daemon versions. `canonicalJson` (./packages/core/src/canonical-json.ts)
+ * is the encoder core owns instead.
+ */
+export function checkNoOhashImport(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const lines = file.text.split('\n');
+    for (const [index, line] of lines.entries()) {
+      if (/from\s+['"]ohash['"]/.test(line) || /require\(\s*['"]ohash['"]/.test(line)) {
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} imports "ohash". ohash's README promises only "best efforts" at ` +
+            'stable serialisation, which is wrong for planHash/specHash/contentHash — values that ' +
+            'are primary keys and identities across daemon versions. Use canonicalJson instead ' +
+            '(packages/core/src/canonical-json.ts); ohash stays fine for change detection in ' +
+            '@DeFlow/web.',
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 /** R2. AC8 / EPIC-01-S5: only packages/cli may depend on @DeFlow/daemon. */
 export function checkDaemonIsLeaf(manifests: readonly Manifest[]): Violation[] {
   const violations: Violation[] = [];
