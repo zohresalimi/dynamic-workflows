@@ -1,0 +1,7 @@
+{
+  "name": "spike-s7-biome-vue",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KAR-00.6 — what biome check --write actually does to real Vue SFCs, before it is wired into a stage_fixed: true pre-commit hook."
+}
