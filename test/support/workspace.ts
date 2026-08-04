@@ -2,7 +2,7 @@
  * Reads the real workspace off disk so the guards in ./guards.ts can be applied
  * to it. Nothing here asserts; it only loads.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -133,7 +133,9 @@ export function productionSources(packageDir: string): SourceFile[] {
 /** Non-test sources of every workspace package, plus e2e specs. */
 export function allWorkspaceSources(): SourceFile[] {
   return packageDirs().flatMap((dir) =>
-    readSources(walk(dir, (path) => (path.endsWith('.ts') || path.endsWith('.vue')) && !isTestFile(path))),
+    readSources(
+      walk(dir, (path) => (path.endsWith('.ts') || path.endsWith('.vue')) && !isTestFile(path)),
+    ),
   );
 }
 

@@ -8,14 +8,17 @@
  * Verifies: EPIC-01-S2 (the pack half) · AC10
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe as suite, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import { readJson, repoRoot } from '../../../../test/support/workspace.ts';
 
 let packed: Record<string, unknown>;
-let tarballDir: string;
+// Undefined until beforeAll runs, and stays that way if it throws before the
+// assignment — afterAll's guard exists for exactly that path, so the type
+// stays honestly optional rather than asserted.
+let tarballDir: string | undefined;
 
 beforeAll(() => {
   tarballDir = mkdtempSync(join(tmpdir(), 'deflow-core-pack-'));

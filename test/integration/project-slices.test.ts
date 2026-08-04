@@ -8,7 +8,7 @@
  * Verifies: EPIC-01-S14 · AC1, AC2
  */
 import { execFile } from 'node:child_process';
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { repoRoot } from '../support/workspace.ts';
 
 const VITEST = 'node_modules/.bin/vitest';
@@ -33,7 +33,8 @@ const runVitest = (args: readonly string[]): Promise<Run> =>
       },
       (error, stdout, stderr) => {
         resolve({
-          code: error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1),
+          code:
+            error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1),
           output: `${stdout}\n${stderr}`,
           ms: Date.now() - started,
         });

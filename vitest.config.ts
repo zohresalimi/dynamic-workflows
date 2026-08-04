@@ -26,11 +26,7 @@ export default defineConfig({
           name: 'unit',
           environment: 'node',
           pool: 'threads',
-          include: [
-            'packages/*/src/**/*.test.ts',
-            'packages/*/test/*.test.ts',
-            'test/*.test.ts',
-          ],
+          include: ['packages/*/src/**/*.test.ts', 'packages/*/test/*.test.ts', 'test/*.test.ts'],
         },
       },
       {
@@ -43,10 +39,7 @@ export default defineConfig({
           // diagnose.
           name: 'integration',
           environment: 'node',
-          include: [
-            'packages/*/test/integration/**/*.test.ts',
-            'test/integration/**/*.test.ts',
-          ],
+          include: ['packages/*/test/integration/**/*.test.ts', 'test/integration/**/*.test.ts'],
           testTimeout: 30_000,
           pool: 'forks',
         },

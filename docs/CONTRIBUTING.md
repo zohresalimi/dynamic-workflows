@@ -87,6 +87,43 @@ DeFlowd and turns production logs into something other than ndjson. Every subsys
 
 ---
 
+## Lint and format
+
+```bash
+pnpm format   # biome check --write . — the only thing that rewrites files
+pnpm lint     # oxlint --type-aware && biome check . — checks, never writes
+```
+
+**One owner per concern.** `biome.json` sets `"linter": { "enabled": false }`: Biome formats
+everything (`.ts`, `.js`, `.json`, `.jsonc`, `.css`, `.html`, `.vue`), and `oxlint` — with
+`--type-aware` — is the linter for `packages/{core,ledger,adapters,daemon,cli}`. Running both
+linters over the same file gives duplicate diagnostics and autofixes that fight each other across
+runs; `test/integration/lint-format-pipeline.test.ts` turns Biome's linter back on once,
+mechanically, to prove that duplication is real rather than assumed.
+
+**Biome's `.vue` support is off by default**, gated behind `html.experimentalFullSupportEnabled` in
+`biome.json`. Without that flag `biome check` silently no-ops on every `.vue` file in
+`packages/web` — a green run and zero formatting — which is exactly the failure mode a
+`stage_fixed: true` pre-commit hook (KAR-01.6) must never hit unnoticed. A guard test
+(`test/lint-format-pipeline.test.ts`) asserts the flag is set rather than trusting it.
+
+**The known gap: oxlint sees only the `<script>` block of a `.vue` file.** Template rules —
+`vue/no-unused-components` and the rest of `eslint-plugin-vue`'s surface — are not enforced at M1.
+A `.vue` file that registers a component its template never uses will not be flagged by `oxlint`.
+This is deliberate, not an oversight: `eslint@10.8.0` + `eslint-plugin-vue@10.10.0` +
+`vue-eslint-parser@10` + `eslint-plugin-oxlint@1.76.0`, scoped to `packages/web/**/*.vue` only, is
+deferred to M2 (docs/02-tech-stack.md §8).
+
+**oxlint's scope excludes every `test/` directory.** Every package's `tsconfig.json` sets
+`"include": ["src"]` (`packages/testkit` adds `"bin"`), so `test/` directories sit outside every
+project's type-checked graph — `pnpm typecheck` never sees them, and `--type-aware`'s tsconfig
+auto-discovery falls back to weaker defaults for a file no config `"include"`s, producing both
+false positives and false negatives rather than the real project's strict settings. `.oxlintrc.json`
+scopes type-aware linting to what is actually typechecked; widening it needs `test/` added to a
+tsconfig's `"include"` first, which is its own decision, not a side effect of a lint-pipeline story.
+
+---
+
 ## Measurements
 
 Re-measure these on a clean checkout at every milestone; a monorepo accretes implicit prerequisites

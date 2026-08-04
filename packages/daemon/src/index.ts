@@ -11,8 +11,9 @@
  * process shape from KAR-01.3: one HTTP server, one origin, and `src/main.ts`
  * as the `node --watch` entry point.
  */
-export { createLogger, log, CENSOR, REDACT_PATHS } from './logging.ts';
+
+export type { StartedHttp, StartHttpOptions } from './http/server.ts';
+export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
+export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
-export { startHttp, DEFAULT_HOSTNAME, DEFAULT_PORT } from './http/server.ts';
-export type { StartHttpOptions, StartedHttp } from './http/server.ts';

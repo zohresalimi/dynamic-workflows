@@ -84,7 +84,8 @@ export function workspaceDependencyEdges(
 ): WorkspaceEdge[] {
   const workspace = new Set(workspaceNames);
   return manifests.flatMap((manifest) => {
-    const consumerDir = manifest.path === 'package.json' ? '.' : manifest.path.replace(/\/package\.json$/, '');
+    const consumerDir =
+      manifest.path === 'package.json' ? '.' : manifest.path.replace(/\/package\.json$/, '');
     return allDependencies(manifest.json)
       .filter(([name]) => workspace.has(name))
       .map(([dependency]) => ({ consumerDir, dependency }));
@@ -395,7 +396,7 @@ export function checkNoPathsAlias(tsconfigs: readonly TsconfigFile[]): Violation
         message:
           `${tsconfig.path} declares "compilerOptions.paths". rewriteRelativeImportExtensions ` +
           'does not rewrite through a paths alias (microsoft/TypeScript#61991), so an aliased ' +
-          "specifier like \"@/patch.ts\" survives into the emitted JavaScript and the published " +
+          'specifier like "@/patch.ts" survives into the emitted JavaScript and the published ' +
           'bundle fails at runtime with a module-not-found. It works in development only because ' +
           'the .ts file genuinely exists there. See docs/16-repo-layout.md §6.',
       });
@@ -518,9 +519,9 @@ const SERVER_PROXY = /server\s*\.\s*proxy/;
  */
 export function checkNoViteProxy(files: readonly SourceFile[]): Violation[] {
   const violations: Violation[] = [];
-  const consequences = VITE_PROXY_CONSEQUENCES.map(
-    ([mode, why]) => `  - ${mode} — ${why}`,
-  ).join('\n');
+  const consequences = VITE_PROXY_CONSEQUENCES.map(([mode, why]) => `  - ${mode} — ${why}`).join(
+    '\n',
+  );
 
   for (const file of files) {
     for (const [index, line] of file.text.split('\n').entries()) {
@@ -529,7 +530,7 @@ export function checkNoViteProxy(files: readonly SourceFile[]): Violation[] {
         where: `${file.path}:${index + 1}`,
         message:
           `${file.path} line ${index + 1} configures a proxy. The UI is served by DeFlowd on the ` +
-          'same origin (D10, ADR 0011), so there is nothing to proxy to. Vite\'s dev proxy is ' +
+          "same origin (D10, ADR 0011), so there is nothing to proxy to. Vite's dev proxy is " +
           'documented-bad at SSE and all three failure modes land on the transport the whole UI ' +
           `depends on:\n${consequences}\n` +
           'The reverse-proxy settings in the API contract (timeout: 0, proxyTimeout: 0, ' +
@@ -708,7 +709,7 @@ export function checkDevLoopScripts(root: PackageJson): Violation[] {
       message:
         `scripts.dev passes "--env-file...=${envFile[1]}", a relative path. Verified 2026-08-04 on ` +
         'Node 24.18.0: a relative env-file path combined with --watch/--watch-path makes the ' +
-        'watcher react to writes anywhere under the working directory, so Vite\'s ' +
+        "watcher react to writes anywhere under the working directory, so Vite's " +
         'node_modules/.vite/deps_temp_* churn restarts the daemon about twice a second, forever. ' +
         'The daemon loads .env in-process instead (packages/daemon/src/env.ts).',
     });
@@ -943,5 +944,153 @@ export function checkNoUnsupportedGitLibrary(manifests: readonly Manifest[]): Vi
       });
     }
   }
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.5 — the lint and format pipeline: one owner per concern.
+ * -------------------------------------------------------------------------- */
+
+export interface BiomeConfig {
+  readonly linter?: { readonly enabled?: boolean };
+  readonly html?: {
+    readonly experimentalFullSupportEnabled?: boolean;
+    readonly formatter?: { readonly enabled?: boolean };
+  };
+}
+
+/**
+ * AC1, EPIC-01-S22 scenario 1: biome.json declares the ownership split rather
+ * than relying on anyone trusting it. Biome's .vue support is off by default
+ * and silently no-ops without the html block (EPIC-01-S22 scenario 3), and
+ * "linter.enabled" must be false or oxlint and Biome's linter fight over the
+ * same files (EPIC-01-S22 scenario 4).
+ */
+export function checkBiomeOwnershipSplit(config: BiomeConfig): Violation[] {
+  const violations: Violation[] = [];
+
+  if (config.linter?.enabled !== false) {
+    violations.push({
+      where: 'biome.json',
+      message:
+        '"linter.enabled" must be false. oxlint is the linter for the Node packages; running ' +
+        "Biome's linter alongside it over the same globs gives duplicate diagnostics and " +
+        'autofixes that fight each other across runs.',
+    });
+  }
+  if (config.html?.experimentalFullSupportEnabled !== true) {
+    violations.push({
+      where: 'biome.json',
+      message:
+        '"html.experimentalFullSupportEnabled" must be true. Without it "biome check" silently ' +
+        'no-ops on every .vue file in packages/web — a green run and zero formatting.',
+    });
+  }
+  if (config.html?.formatter?.enabled !== true) {
+    violations.push({
+      where: 'biome.json',
+      message:
+        '"html.formatter.enabled" must be true, or .vue files are parsed but the formatter never ' +
+        'runs over them.',
+    });
+  }
+
+  return violations;
+}
+
+/** AC2, AC3: the six type-aware rules a floating promise in a three-hour run needs. */
+export const REQUIRED_TYPE_AWARE_RULES = [
+  'typescript/no-floating-promises',
+  'typescript/no-misused-promises',
+  'typescript/await-thenable',
+  'typescript/require-await',
+  'typescript/no-unnecessary-condition',
+  'typescript/no-unsafe-argument',
+] as const;
+
+/** AC2: the plugins the type-aware correctness rules and import hygiene need. */
+export const REQUIRED_OXLINT_PLUGINS = ['typescript', 'unicorn', 'promise', 'import'] as const;
+
+export interface OxlintConfig {
+  readonly plugins?: readonly string[];
+  readonly categories?: Record<string, string>;
+  readonly rules?: Record<string, string>;
+}
+
+/**
+ * AC2, EPIC-01-S20 background: the plugins, categories and the six rules a
+ * floating promise in a three-hour run needs are turned on as errors, not
+ * left to a preset that could silently downgrade or drop one of them.
+ */
+export function checkOxlintConfig(config: OxlintConfig): Violation[] {
+  const violations: Violation[] = [];
+  const plugins = config.plugins ?? [];
+
+  for (const plugin of REQUIRED_OXLINT_PLUGINS) {
+    if (!plugins.includes(plugin)) {
+      violations.push({
+        where: '.oxlintrc.json',
+        message: `"plugins" is missing "${plugin}".`,
+      });
+    }
+  }
+
+  if (config.categories?.correctness !== 'error') {
+    violations.push({
+      where: '.oxlintrc.json',
+      message: `"categories.correctness" must be "error", found ${JSON.stringify(config.categories?.correctness)}.`,
+    });
+  }
+  if (config.categories?.suspicious !== 'warn') {
+    violations.push({
+      where: '.oxlintrc.json',
+      message: `"categories.suspicious" must be "warn", found ${JSON.stringify(config.categories?.suspicious)}.`,
+    });
+  }
+
+  for (const rule of REQUIRED_TYPE_AWARE_RULES) {
+    if (config.rules?.[rule] !== 'error') {
+      violations.push({
+        where: '.oxlintrc.json',
+        message:
+          `"rules[\\"${rule}\\"]" must be "error", found ${JSON.stringify(config.rules?.[rule])}. ` +
+          'A dropped rule here is a silently smaller correctness net than the design records.',
+      });
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * AC3, AC4: exactly one script formats and exactly one lints, and "lint" must
+ * never carry "--write" — a lint job that rewrites files on every CI run
+ * hides the very drift it exists to catch.
+ */
+export function checkLintFormatScripts(root: PackageJson): Violation[] {
+  const violations: Violation[] = [];
+  const scripts = root.scripts ?? {};
+  const lint = scripts.lint;
+  const format = scripts.format;
+
+  if (lint === undefined || !lint.includes('oxlint') || !lint.includes('--type-aware')) {
+    violations.push({
+      where: 'package.json',
+      message: `scripts.lint must run "oxlint --type-aware", found ${JSON.stringify(lint)}.`,
+    });
+  }
+  if (lint === undefined || !/biome\s+check(?!\s+--write)/.test(lint)) {
+    violations.push({
+      where: 'package.json',
+      message: `scripts.lint must also run "biome check ." (checking, not writing), found ${JSON.stringify(lint)}.`,
+    });
+  }
+  if (format === undefined || !/biome\s+check\s+--write/.test(format)) {
+    violations.push({
+      where: 'package.json',
+      message: `scripts.format must run "biome check --write .", found ${JSON.stringify(format)}.`,
+    });
+  }
+
   return violations;
 }

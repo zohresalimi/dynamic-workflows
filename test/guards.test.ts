@@ -7,14 +7,16 @@
  * Verifies: EPIC-01-S2, EPIC-01-S3, EPIC-01-S4, EPIC-01-S5, EPIC-01-S6, EPIC-01-S7,
  * EPIC-01-S8 (unit)
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
+  checkBiomeOwnershipSplit,
   checkCorePurity,
   checkDaemonIsLeaf,
   checkDependencyValues,
   checkDevLoopScripts,
   checkExactCatalogPins,
   checkGitInvocationsAreHermetic,
+  checkLintFormatScripts,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
   checkNoCorepack,
@@ -27,9 +29,12 @@ import {
   checkNoUnsupportedGitLibrary,
   checkNoViteProxy,
   checkNoVitestWorkspace,
+  checkOxlintConfig,
   checkPinoPrettyIsNotARuntimeTransport,
   checkRelativeImportsHaveTsExtension,
   checkViteImportIsDynamic,
+  REQUIRED_OXLINT_PLUGINS,
+  REQUIRED_TYPE_AWARE_RULES,
   describe as render,
   VITE_PROXY_CONSEQUENCES,
   workspaceDependencyEdges,
@@ -40,7 +45,12 @@ const NAMES = ['@DeFlow/core', '@DeFlow/daemon', '@DeFlow/mock-agent', 'DeFlow']
 suite('checkDependencyValues', () => {
   it('rejects a literal semver on a third-party dependency', () => {
     const violations = checkDependencyValues(
-      [{ path: 'packages/ledger/package.json', json: { dependencies: { 'better-sqlite3': '13.0.2' } } }],
+      [
+        {
+          path: 'packages/ledger/package.json',
+          json: { dependencies: { 'better-sqlite3': '13.0.2' } },
+        },
+      ],
       NAMES,
     );
     expect(violations).toHaveLength(1);
@@ -50,7 +60,12 @@ suite('checkDependencyValues', () => {
 
   it('rejects a literal version on a workspace dependency', () => {
     const violations = checkDependencyValues(
-      [{ path: 'packages/daemon/package.json', json: { dependencies: { '@DeFlow/core': '^0.0.0' } } }],
+      [
+        {
+          path: 'packages/daemon/package.json',
+          json: { dependencies: { '@DeFlow/core': '^0.0.0' } },
+        },
+      ],
       NAMES,
     );
     expect(violations).toHaveLength(1);
@@ -104,7 +119,10 @@ suite('workspaceDependencyEdges', () => {
               devDependencies: { '@DeFlow/testkit': 'workspace:*' },
             },
           },
-          { path: 'packages/cli/package.json', json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } } },
+          {
+            path: 'packages/cli/package.json',
+            json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } },
+          },
         ],
         [...NAMES, '@DeFlow/testkit'],
       ),
@@ -162,7 +180,9 @@ suite('checkExactCatalogPins', () => {
 
 suite('checkCorePurity (R1)', () => {
   it('fails naming the added dependency and pointing at the ports rule', () => {
-    const violations = checkCorePurity({ dependencies: { zod: 'catalog:', 'better-sqlite3': 'catalog:' } });
+    const violations = checkCorePurity({
+      dependencies: { zod: 'catalog:', 'better-sqlite3': 'catalog:' },
+    });
     const message = render(violations);
     expect(message).toContain('better-sqlite3');
     expect(message).toContain(
@@ -178,7 +198,10 @@ suite('checkCorePurity (R1)', () => {
 suite('checkNoNodeBuiltinImports (R1)', () => {
   it('catches a node: builtin import and names the line', () => {
     const violations = checkNoNodeBuiltinImports([
-      { path: 'packages/core/src/reduce.ts', text: "const a = 1;\nimport { readFile } from 'node:fs';\n" },
+      {
+        path: 'packages/core/src/reduce.ts',
+        text: "const a = 1;\nimport { readFile } from 'node:fs';\n",
+      },
     ]);
     expect(violations).toHaveLength(1);
     expect(violations[0]?.where).toBe('packages/core/src/reduce.ts:2');
@@ -187,7 +210,10 @@ suite('checkNoNodeBuiltinImports (R1)', () => {
   it('leaves a pure file alone', () => {
     expect(
       checkNoNodeBuiltinImports([
-        { path: 'packages/core/src/reduce.ts', text: "import { z } from 'zod';\nexport const x = z;\n" },
+        {
+          path: 'packages/core/src/reduce.ts',
+          text: "import { z } from 'zod';\nexport const x = z;\n",
+        },
       ]),
     ).toEqual([]);
   });
@@ -196,8 +222,14 @@ suite('checkNoNodeBuiltinImports (R1)', () => {
 suite('checkDaemonIsLeaf (R2)', () => {
   it('rejects any package but the cli depending on the daemon', () => {
     const violations = checkDaemonIsLeaf([
-      { path: 'packages/adapters/package.json', json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } } },
-      { path: 'packages/cli/package.json', json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } } },
+      {
+        path: 'packages/adapters/package.json',
+        json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } },
+      },
+      {
+        path: 'packages/cli/package.json',
+        json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } },
+      },
     ]);
     expect(violations).toHaveLength(1);
     expect(violations[0]?.where).toBe('packages/adapters/package.json');
@@ -208,7 +240,10 @@ suite('checkDaemonIsLeaf (R2)', () => {
 suite('checkMockAgentIsIndependent', () => {
   it('quotes the oracle rule when the mock agent depends on core', () => {
     const violations = checkMockAgentIsIndependent(
-      { path: 'packages/mock-agent/package.json', json: { dependencies: { '@DeFlow/core': 'workspace:*' } } },
+      {
+        path: 'packages/mock-agent/package.json',
+        json: { dependencies: { '@DeFlow/core': 'workspace:*' } },
+      },
       NAMES,
     );
     expect(render(violations)).toContain(
@@ -219,7 +254,10 @@ suite('checkMockAgentIsIndependent', () => {
   it('accepts a mock agent with only third-party dependencies', () => {
     expect(
       checkMockAgentIsIndependent(
-        { path: 'packages/mock-agent/package.json', json: { dependencies: { '@agentclientprotocol/sdk': 'catalog:' } } },
+        {
+          path: 'packages/mock-agent/package.json',
+          json: { dependencies: { '@agentclientprotocol/sdk': 'catalog:' } },
+        },
         NAMES,
       ),
     ).toEqual([]);
@@ -239,7 +277,10 @@ suite('checkNoBareNodePty', () => {
   it('accepts @lydell/node-pty', () => {
     expect(
       checkNoBareNodePty([
-        { path: 'packages/daemon/package.json', json: { optionalDependencies: { '@lydell/node-pty': 'catalog:' } } },
+        {
+          path: 'packages/daemon/package.json',
+          json: { optionalDependencies: { '@lydell/node-pty': 'catalog:' } },
+        },
       ]),
     ).toEqual([]);
   });
@@ -248,7 +289,12 @@ suite('checkNoBareNodePty', () => {
 suite('checkNoDeepWorkspaceImports', () => {
   it('fails naming the file and the specifier, and explains the tarball breakage', () => {
     const violations = checkNoDeepWorkspaceImports(
-      [{ path: 'packages/daemon/src/tick.ts', text: "import { reduce } from '@DeFlow/core/src/reduce.ts';\n" }],
+      [
+        {
+          path: 'packages/daemon/src/tick.ts',
+          text: "import { reduce } from '@DeFlow/core/src/reduce.ts';\n",
+        },
+      ],
       NAMES,
     );
     expect(violations).toHaveLength(1);
@@ -287,7 +333,9 @@ suite('checkNoCorepack', () => {
 
   it('accepts npm i -g pnpm@11', () => {
     expect(
-      checkNoCorepack([{ path: '.github/workflows/ci.yml', text: 'steps:\n  - run: npm i -g pnpm@11\n' }]),
+      checkNoCorepack([
+        { path: '.github/workflows/ci.yml', text: 'steps:\n  - run: npm i -g pnpm@11\n' },
+      ]),
     ).toEqual([]);
   });
 });
@@ -354,7 +402,9 @@ suite('checkNoTransformTypesFlag (EPIC-01-S7 scenario 3)', () => {
 
   it('accepts a script with no such flag', () => {
     expect(
-      checkNoTransformTypesFlag([{ path: 'package.json', text: '"dev": "node --watch main.ts"\n' }]),
+      checkNoTransformTypesFlag([
+        { path: 'package.json', text: '"dev": "node --watch main.ts"\n' },
+      ]),
     ).toEqual([]);
   });
 });
@@ -527,7 +577,9 @@ const IN_MEMORY_DSN = `:mem${'ory'}:`;
 
 suite('checkNoVitestWorkspace (EPIC-01-S18)', () => {
   it('rejects a file named vitest.workspace.ts', () => {
-    const violations = checkNoVitestWorkspace([{ path: 'vitest.workspace.ts', text: 'export default [];\n' }]);
+    const violations = checkNoVitestWorkspace([
+      { path: 'vitest.workspace.ts', text: 'export default [];\n' },
+    ]);
     expect(render(violations)).toContain('REMOVED in Vitest 4');
   });
 
@@ -548,7 +600,10 @@ suite('checkNoVitestWorkspace (EPIC-01-S18)', () => {
   it('accepts the supported shape', () => {
     expect(
       checkNoVitestWorkspace([
-        { path: 'vitest.config.ts', text: 'export default defineConfig({ test: { projects: [] } });\n' },
+        {
+          path: 'vitest.config.ts',
+          text: 'export default defineConfig({ test: { projects: [] } });\n',
+        },
       ]),
     ).toEqual([]);
   });
@@ -681,5 +736,136 @@ suite('checkNoUnsupportedGitLibrary (EPIC-01-S15 scenario 4)', () => {
         { path: 'packages/testkit/package.json', json: { dependencies: { execa: 'catalog:' } } },
       ]),
     ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.5 — the lint and format pipeline
+ * -------------------------------------------------------------------------- */
+
+suite('checkBiomeOwnershipSplit (AC1, EPIC-01-S22 scenario 1)', () => {
+  const compliant = {
+    linter: { enabled: false },
+    html: { experimentalFullSupportEnabled: true, formatter: { enabled: true } },
+  };
+
+  it('accepts the compliant shape', () => {
+    expect(checkBiomeOwnershipSplit(compliant)).toEqual([]);
+  });
+
+  it('fires when the linter is left enabled, naming the fight it causes', () => {
+    const violations = checkBiomeOwnershipSplit({ ...compliant, linter: { enabled: true } });
+    expect(render(violations)).toContain('fight each other');
+  });
+
+  it('fires when the html block is missing entirely (the silent no-op, EPIC-01-S22 scenario 3)', () => {
+    const violations = checkBiomeOwnershipSplit({ linter: { enabled: false } });
+    expect(render(violations)).toContain('silently no-ops on every .vue file');
+  });
+
+  it('fires when experimentalFullSupportEnabled is false', () => {
+    const violations = checkBiomeOwnershipSplit({
+      ...compliant,
+      html: { experimentalFullSupportEnabled: false, formatter: { enabled: true } },
+    });
+    expect(violations).toHaveLength(1);
+  });
+
+  it('fires when html.formatter.enabled is false', () => {
+    const violations = checkBiomeOwnershipSplit({
+      ...compliant,
+      html: { experimentalFullSupportEnabled: true, formatter: { enabled: false } },
+    });
+    expect(render(violations)).toContain('formatter never');
+  });
+});
+
+suite('checkOxlintConfig (AC2, EPIC-01-S20 background)', () => {
+  const compliant = {
+    plugins: [...REQUIRED_OXLINT_PLUGINS],
+    categories: { correctness: 'error', suspicious: 'warn' },
+    rules: Object.fromEntries(REQUIRED_TYPE_AWARE_RULES.map((rule) => [rule, 'error'])),
+  };
+
+  it('accepts the compliant shape', () => {
+    expect(checkOxlintConfig(compliant)).toEqual([]);
+  });
+
+  it('names each missing plugin', () => {
+    const violations = checkOxlintConfig({ ...compliant, plugins: ['typescript'] });
+    expect(violations).toHaveLength(3);
+    expect(render(violations)).toContain('unicorn');
+    expect(render(violations)).toContain('promise');
+    expect(render(violations)).toContain('import');
+  });
+
+  it('rejects correctness set to anything but error', () => {
+    const violations = checkOxlintConfig({
+      ...compliant,
+      categories: { correctness: 'warn', suspicious: 'warn' },
+    });
+    expect(render(violations)).toContain('categories.correctness');
+  });
+
+  it('rejects suspicious set to anything but warn', () => {
+    const violations = checkOxlintConfig({
+      ...compliant,
+      categories: { correctness: 'error', suspicious: 'error' },
+    });
+    expect(render(violations)).toContain('categories.suspicious');
+  });
+
+  it.each(REQUIRED_TYPE_AWARE_RULES)('fails naming "%s" when it is downgraded to warn', (rule) => {
+    const violations = checkOxlintConfig({
+      ...compliant,
+      rules: { ...compliant.rules, [rule]: 'warn' },
+    });
+    expect(render(violations)).toContain(rule);
+  });
+
+  it('fails naming a rule that is missing outright', () => {
+    const { 'typescript/no-floating-promises': _dropped, ...rest } = compliant.rules;
+    const violations = checkOxlintConfig({ ...compliant, rules: rest });
+    expect(render(violations)).toContain('typescript/no-floating-promises');
+  });
+});
+
+suite('checkLintFormatScripts (AC3, AC4)', () => {
+  it('accepts the documented shape', () => {
+    expect(
+      checkLintFormatScripts({
+        scripts: { lint: 'oxlint --type-aware && biome check .', format: 'biome check --write .' },
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects a lint script missing --type-aware', () => {
+    const violations = checkLintFormatScripts({
+      scripts: { lint: 'oxlint && biome check .', format: 'biome check --write .' },
+    });
+    expect(render(violations)).toContain('--type-aware');
+  });
+
+  it('rejects a lint script that writes instead of checking', () => {
+    const violations = checkLintFormatScripts({
+      scripts: {
+        lint: 'oxlint --type-aware && biome check --write .',
+        format: 'biome check --write .',
+      },
+    });
+    expect(render(violations)).toContain('checking, not writing');
+  });
+
+  it('rejects a format script that only checks', () => {
+    const violations = checkLintFormatScripts({
+      scripts: { lint: 'oxlint --type-aware && biome check .', format: 'biome check .' },
+    });
+    expect(render(violations)).toContain('scripts.format');
+  });
+
+  it('rejects missing scripts entirely, naming both the missing type-aware run and the missing check', () => {
+    const violations = checkLintFormatScripts({});
+    expect(violations).toHaveLength(3);
+    expect(render(violations)).toContain('scripts.format');
   });
 });

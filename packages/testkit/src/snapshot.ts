@@ -129,7 +129,13 @@ export function createSnapshotSerializers(): {
     indentation: string,
     depth: number,
     refs: never,
-    printer: (value: unknown, config: never, indentation: string, depth: number, refs: never) => string,
+    printer: (
+      value: unknown,
+      config: never,
+      indentation: string,
+      depth: number,
+      refs: never,
+    ) => string,
   ) => string;
 }[] {
   const already = new WeakSet<object>();

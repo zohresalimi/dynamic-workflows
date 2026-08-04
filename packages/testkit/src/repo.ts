@@ -9,7 +9,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { git, type GitResult, tryGit } from './git.ts';
+import { type GitResult, git, tryGit } from './git.ts';
 
 export interface MakeRepoOptions {
   /** Directory to initialise. Created if missing; usually the `tmp` fixture. */
@@ -67,7 +67,11 @@ export async function makeRepo(options: MakeRepoOptions): Promise<Repo> {
         Object.fromEntries(conflicts.map((path) => [path, `written by ${branch}\n`])),
       );
       await git(dir, ['add', '-A']);
-      await git(dir, ['commit', '-m', `DeFlow test fixture: ${branch} rewrites the conflict paths`]);
+      await git(dir, [
+        'commit',
+        '-m',
+        `DeFlow test fixture: ${branch} rewrites the conflict paths`,
+      ]);
     }
   }
   if (branches.length > 0) await git(dir, ['checkout', 'main']);

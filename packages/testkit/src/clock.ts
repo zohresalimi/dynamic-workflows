@@ -94,7 +94,11 @@ export class TestClock implements Clock {
     let best: ScheduledTimer | undefined;
     for (const timer of this.#timers) {
       if (timer.cancelled || timer.due > target) continue;
-      if (best === undefined || timer.due < best.due || (timer.due === best.due && timer.seq < best.seq)) {
+      if (
+        best === undefined ||
+        timer.due < best.due ||
+        (timer.due === best.due && timer.seq < best.seq)
+      ) {
         best = timer;
       }
     }

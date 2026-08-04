@@ -10,7 +10,7 @@
  * Verifies: EPIC-01-S14 (configuration half), EPIC-01-S17 (ordering guard),
  * EPIC-01-S18 (supported-shape half) · AC1, AC2, AC3, AC8, AC11
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import webConfig from '../packages/web/vitest.config.ts';
 import rootConfig from '../vitest.config.ts';
 import { exists, readJson, readText, walk } from './support/workspace.ts';
@@ -39,7 +39,9 @@ interface Slice {
 
 type ProjectEntry = Slice | string;
 
-const root = rootConfig as { test?: { setupFiles?: readonly string[]; projects?: readonly ProjectEntry[] } };
+const root = rootConfig as {
+  test?: { setupFiles?: readonly string[]; projects?: readonly ProjectEntry[] };
+};
 const projects = root.test?.projects ?? [];
 
 const inlineSlices = projects.filter((entry): entry is Slice => typeof entry !== 'string');
@@ -121,7 +123,10 @@ suite('the snapshot serializer is registered by the shared setup file (AC8)', ()
     const statements = readText('test/setup.ts')
       .split('\n')
       .map((line) => line.trim())
-      .filter((line) => line !== '' && !line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*'));
+      .filter(
+        (line) =>
+          line !== '' && !line.startsWith('//') && !line.startsWith('*') && !line.startsWith('/*'),
+      );
     const firstCall = statements.findIndex((line) => line.includes('('));
     const registration = statements.findIndex((line) => line.includes('addSnapshotSerializer'));
     expect(registration).toBeGreaterThanOrEqual(0);
@@ -139,7 +144,10 @@ suite('the crash-fuzz slot EPIC-03 fills (AC11)', () => {
   });
 
   it('is referenced by no CI workflow until EPIC-03 adds it', () => {
-    const workflows = walk('.github/workflows', (path) => path.endsWith('.yml') || path.endsWith('.yaml'));
+    const workflows = walk(
+      '.github/workflows',
+      (path) => path.endsWith('.yml') || path.endsWith('.yaml'),
+    );
     for (const workflow of workflows) {
       expect(readText(workflow), `${workflow} references the crash-fuzz project`).not.toMatch(
         /crash-fuzz/,

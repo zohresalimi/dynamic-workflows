@@ -13,10 +13,18 @@
  * Verifies: EPIC-01-S6, EPIC-01-S7 · AC3, AC4, AC5
  */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe as suite, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { repoRoot } from '../support/workspace.ts';
 
 const TSC = join(repoRoot, 'node_modules/.bin/tsc');
@@ -72,7 +80,10 @@ suite('erasableSyntaxOnly rejects banned syntax at compile time (AC4)', () => {
   const CONSTRUCTS: ReadonlyArray<readonly [name: string, code: string]> = [
     ['enum', 'enum Status { Ok, Fail }\nexport { Status };\n'],
     ['const enum', 'const enum Level { Read }\nexport { Level };\n'],
-    ['a namespace carrying runtime code', 'namespace X {\n  export const y = 1;\n}\nexport { X };\n'],
+    [
+      'a namespace carrying runtime code',
+      'namespace X {\n  export const y = 1;\n}\nexport { X };\n',
+    ],
     [
       'a constructor parameter property',
       'class C {\n  constructor(private readonly db: number) {}\n}\nexport { C };\n',
@@ -96,50 +107,62 @@ suite('the runtime rejects the same syntax, which is what a developer meets firs
     const result = spawnSync(process.execPath, [file], { encoding: 'utf8' });
     expect(result.status).not.toBe(0);
     expect(result.status).not.toBeNull();
-    expect(`${result.stdout ?? ''}${result.stderr ?? ''}`).toContain('ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX');
+    expect(`${result.stdout ?? ''}${result.stderr ?? ''}`).toContain(
+      'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX',
+    );
   });
 });
 
-suite('a type error in an upstream project surfaces where it is consumed (EPIC-01-S6 scenario 2)', () => {
-  it('reports the error against the consumer and emits no build artefact, because noEmit is true', () => {
-    const upstream = join(workdir, 'upstream');
-    const consumer = join(workdir, 'consumer');
-    mkdirSync(join(upstream, 'src'), { recursive: true });
-    mkdirSync(join(consumer, 'src'), { recursive: true });
-    for (const dir of [upstream, consumer]) fixtureTsconfigAt(dir);
-    writeFileSync(join(upstream, 'src', 'index.ts'), 'export function f(x: string): void {}\n');
-    writeFileSync(
-      join(consumer, 'src', 'index.ts'),
-      "import { f } from '../../upstream/src/index.ts';\nf(123);\n",
-    );
-    writeFileSync(
-      join(workdir, 'solution.tsconfig.json'),
-      JSON.stringify({ files: [], references: [{ path: './upstream' }, { path: './consumer' }] }),
-    );
+suite(
+  'a type error in an upstream project surfaces where it is consumed (EPIC-01-S6 scenario 2)',
+  () => {
+    it('reports the error against the consumer and emits no build artefact, because noEmit is true', () => {
+      const upstream = join(workdir, 'upstream');
+      const consumer = join(workdir, 'consumer');
+      mkdirSync(join(upstream, 'src'), { recursive: true });
+      mkdirSync(join(consumer, 'src'), { recursive: true });
+      for (const dir of [upstream, consumer]) fixtureTsconfigAt(dir);
+      writeFileSync(join(upstream, 'src', 'index.ts'), 'export function f(x: string): void {}\n');
+      writeFileSync(
+        join(consumer, 'src', 'index.ts'),
+        "import { f } from '../../upstream/src/index.ts';\nf(123);\n",
+      );
+      writeFileSync(
+        join(workdir, 'solution.tsconfig.json'),
+        JSON.stringify({ files: [], references: [{ path: './upstream' }, { path: './consumer' }] }),
+      );
 
-    const result = spawnSync(TSC, ['-b', join(workdir, 'solution.tsconfig.json')], { encoding: 'utf8' });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+      const result = spawnSync(TSC, ['-b', join(workdir, 'solution.tsconfig.json')], {
+        encoding: 'utf8',
+      });
+      const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
 
-    expect(result.status).not.toBe(0);
-    expect(output).toContain('consumer/src/index.ts');
-    expect(output).toContain("Argument of type 'number' is not assignable to parameter of type 'string'");
+      expect(result.status).not.toBe(0);
+      expect(output).toContain('consumer/src/index.ts');
+      expect(output).toContain(
+        "Argument of type 'number' is not assignable to parameter of type 'string'",
+      );
 
-    const emitted = [...readdirSync(join(upstream, 'src')), ...readdirSync(join(consumer, 'src'))];
-    expect(emitted.some((name) => name.endsWith('.js') || name.endsWith('.d.ts'))).toBe(false);
-  });
+      const emitted = [
+        ...readdirSync(join(upstream, 'src')),
+        ...readdirSync(join(consumer, 'src')),
+      ];
+      expect(emitted.some((name) => name.endsWith('.js') || name.endsWith('.d.ts'))).toBe(false);
+    });
 
-  function fixtureTsconfigAt(dir: string): void {
-    cpSync(join(repoRoot, 'tsconfig.base.json'), join(dir, 'tsconfig.base.json'));
-    writeFileSync(
-      join(dir, 'tsconfig.json'),
-      JSON.stringify({
-        extends: './tsconfig.base.json',
-        compilerOptions: { typeRoots: [NODE_TYPE_ROOTS] },
-        include: ['src'],
-      }),
-    );
-  }
-});
+    function fixtureTsconfigAt(dir: string): void {
+      cpSync(join(repoRoot, 'tsconfig.base.json'), join(dir, 'tsconfig.base.json'));
+      writeFileSync(
+        join(dir, 'tsconfig.json'),
+        JSON.stringify({
+          extends: './tsconfig.base.json',
+          compilerOptions: { typeRoots: [NODE_TYPE_ROOTS] },
+          include: ['src'],
+        }),
+      );
+    }
+  },
+);
 
 // This project's testTimeout is 30s (vitest.config.ts), which is generous
 // enough for a cold "tsc -b"/"vue-tsc" run against nine tiny packages.

@@ -7,10 +7,11 @@
  * whole adapter: no buffering, no re-wrapping, so Vite streams its transformed
  * modules straight out.
  */
+
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { HttpBindings } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import type { MiddlewareHandler } from 'hono';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export type ConnectMiddleware = (
   request: IncomingMessage,
@@ -35,7 +36,11 @@ export function fromConnect(
           resolve(false);
           return;
         }
-        reject(error instanceof Error ? error : new Error(String(error)));
+        if (error instanceof Error) {
+          reject(error);
+          return;
+        }
+        reject(new Error(typeof error === 'string' ? error : JSON.stringify(error)));
       });
     });
 

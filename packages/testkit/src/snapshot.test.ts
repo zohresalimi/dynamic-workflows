@@ -13,7 +13,7 @@
  */
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { normaliseSnapshotText, repoRoot } from './snapshot.ts';
 
 const ulid = (): string => {
@@ -59,7 +59,9 @@ suite('normaliseSnapshotText', () => {
   });
 
   it('replaces a port in an address and in a URL', () => {
-    expect(normaliseSnapshotText('listening on 127.0.0.1:54321')).toBe('listening on 127.0.0.1:<port>');
+    expect(normaliseSnapshotText('listening on 127.0.0.1:54321')).toBe(
+      'listening on 127.0.0.1:<port>',
+    );
     expect(normaliseSnapshotText('http://localhost:7777/api/health')).toBe(
       'http://localhost:<port>/api/health',
     );

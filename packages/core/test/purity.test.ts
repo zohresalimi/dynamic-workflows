@@ -7,7 +7,7 @@
  *
  * Verifies: EPIC-01-S5 (scenarios 1 and 2) · AC7
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
   checkCorePurity,
   checkNoNodeBuiltinImports,

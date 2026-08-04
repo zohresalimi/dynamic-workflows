@@ -11,9 +11,10 @@
  * testing of F4.2 crash-resume. Do not "fix" it with a reloader that preserves
  * process state — see docs/03-local-development.md §5.
  */
+
+import { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
-import { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 
 const daemon = log.child({ mod: 'daemon' });
 

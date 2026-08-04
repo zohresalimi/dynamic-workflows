@@ -15,12 +15,13 @@
  * The `vite` import is dynamic and gated on `DeFlow_DEV`, which is what keeps a
  * devDependency out of the one published tarball.
  */
-import { createAdaptorServer, type HttpBindings } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
+
 import { existsSync, readFileSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createAdaptorServer, type HttpBindings } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { log } from '../logging.ts';
 import { api } from './api.ts';
@@ -71,7 +72,7 @@ export async function startHttp(options: StartHttpOptions): Promise<StartedHttp>
   const server = createAdaptorServer({ fetch: app.fetch }) as HttpServer;
 
   let viteLoaded = false;
-  let closeUi = async (): Promise<void> => undefined;
+  let closeUi = (): Promise<void> => Promise.resolve();
 
   if (dev) {
     // Dynamic import: vite is a devDependency and must not enter the bundle.

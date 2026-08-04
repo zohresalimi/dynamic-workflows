@@ -9,7 +9,7 @@
  *
  * Verifies: EPIC-01-S13 (unit), EPIC-01-S9 (scenario 2), EPIC-01-S11 (scenario 2)
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
   checkDevLoopScripts,
   checkNoViteProxy,

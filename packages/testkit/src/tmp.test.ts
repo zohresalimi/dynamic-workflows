@@ -8,7 +8,7 @@
  *
  * Verifies: AC4
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { KEEP_TMP_ENV, shouldRemoveTempDir, TMP_PREFIX } from './tmp.ts';
 
 suite('shouldRemoveTempDir', () => {

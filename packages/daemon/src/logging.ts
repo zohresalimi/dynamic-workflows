@@ -24,8 +24,8 @@
  * ndjson.
  */
 import './env.ts'; // side effect: populates process.env before the level is read
-import pino from 'pino';
 import type { DestinationStream, Logger } from 'pino';
+import pino from 'pino';
 
 /** What a redacted value is replaced with. */
 export const CENSOR = '[redacted]';

@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe as suite, expect } from 'vitest';
+import { afterAll, beforeAll, expect, describe as suite } from 'vitest';
 import { it, KEEP_TMP_ENV } from '../../src/index.ts';
 
 const withKeepTmp = (value: string | undefined) => {

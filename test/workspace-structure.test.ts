@@ -4,7 +4,7 @@
  *
  * Verifies: EPIC-01-S2 (unit half), AC1, AC2, AC5, AC6, AC10 (declaration half)
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { checkExactCatalogPins, describe as render } from './support/guards.ts';
 import { exists, packageDirs, readJson, readText, readWorkspaceYaml } from './support/workspace.ts';
 

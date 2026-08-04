@@ -7,6 +7,7 @@
  * route table is docs/11-api-and-realtime.md §6 and lands with EPIC-03.
  */
 import { Hono } from 'hono';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
@@ -18,6 +19,22 @@ const DEFAULT_HEARTBEAT_MS = 15_000;
 function heartbeatMs(): number {
   const configured = Number(process.env.DeFlow_SSE_HEARTBEAT_MS);
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_HEARTBEAT_MS;
+}
+
+/**
+ * `stream.aborted` and `.closed` flip from an internal event listener the
+ * while-loop below can never see, but they are read through the *same*
+ * `stream.aborted` expression at the top of that loop and again after the
+ * `await`. TypeScript's control-flow narrowing treats a repeated property
+ * read as unchanged unless it sees a local assignment to it — it has no way
+ * to know the flip happens inside the client's own implementation — so it
+ * narrows both reads to the literal `false` the while-condition just proved
+ * and reports the second check as dead code. It is not: a real client can
+ * disconnect mid-`sleep`. Crossing a function boundary resets that narrowing,
+ * which is the only way to keep the guard TypeScript will still believe.
+ */
+function stoppedMidSleep(stream: SSEStreamingApi): boolean {
+  return stream.aborted || stream.closed;
 }
 
 export const api = new Hono();
@@ -60,7 +77,7 @@ api.get('/stream', (c) => {
     });
     while (!stream.aborted && !stream.closed) {
       await stream.sleep(interval);
-      if (stream.aborted || stream.closed) break;
+      if (stoppedMidSleep(stream)) break;
       seq += 1;
       await stream.writeSSE({
         event: 'heartbeat',

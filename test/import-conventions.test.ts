@@ -5,8 +5,12 @@
  * Verifies: EPIC-01-S8 (deep-import half), EPIC-01-S4 (scenario 2 and the
  * troubleshooting entry from scenario 1)
  */
-import { describe as suite, expect, it } from 'vitest';
-import { checkNoCorepack, checkNoDeepWorkspaceImports, describe as render } from './support/guards.ts';
+import { expect, it, describe as suite } from 'vitest';
+import {
+  checkNoCorepack,
+  checkNoDeepWorkspaceImports,
+  describe as render,
+} from './support/guards.ts';
 import {
   allWorkspaceSources,
   exists,

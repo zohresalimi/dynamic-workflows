@@ -8,9 +8,9 @@
  * `node --watch` supervisor and the daemon it supervises, with no extra pnpm
  * process muddying the "exactly one listening socket" assertion.
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { createServer } from 'node:net';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

@@ -4,7 +4,7 @@
  *
  * Verifies: EPIC-01-S2 (scenario 2), EPIC-01-S5 (unit)
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
   checkDaemonIsLeaf,
   checkDependencyValues,

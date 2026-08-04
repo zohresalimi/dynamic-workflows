@@ -13,15 +13,15 @@
  * Verifies: EPIC-01-S15 (guard), EPIC-01-S16 (guard), EPIC-01-S18,
  * EPIC-01-S19 (guard) · AC1, AC5, AC9, AC10
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
   checkGitInvocationsAreHermetic,
   checkNoFakeTimers,
   checkNoInMemoryDatabases,
   checkNoUnsupportedGitLibrary,
   checkNoVitestWorkspace,
-  describe as render,
   FAKE_TIMER_ALLOWLIST,
+  describe as render,
 } from './support/guards.ts';
 import { allManifests, readSources, repoTypeScriptFiles } from './support/workspace.ts';
 

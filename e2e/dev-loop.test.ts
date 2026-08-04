@@ -14,15 +14,15 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe as suite, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
+  type DevLoop,
   health,
   listeningSockets,
   repoRoot,
   sleep,
   startDevLoop,
   waitForRestart,
-  type DevLoop,
 } from './support/dev-loop.ts';
 import { openHmrSocket, openSse } from './support/streams.ts';
 
@@ -30,7 +30,11 @@ const ENGINE_FILE = 'packages/core/src/index.ts';
 const SFC_FILE = 'packages/web/src/components/HelloDeFlow.vue';
 
 /** Edit a real source file and put it back exactly as it was. */
-async function withEdit(relativePath: string, edit: (text: string) => string, body: () => Promise<void>) {
+async function withEdit(
+  relativePath: string,
+  edit: (text: string) => string,
+  body: () => Promise<void>,
+) {
   const absolute = join(repoRoot, relativePath);
   const original = readFileSync(absolute, 'utf8');
   try {
@@ -95,7 +99,11 @@ suite('the dev loop', () => {
       ENGINE_FILE,
       (text) => `${text}\n// KAR-01.3 dev-loop probe\n`,
       async () => {
-        const { health: after, elapsedMs } = await waitForRestart(loop.origin, before.bootId, 10_000);
+        const { health: after, elapsedMs } = await waitForRestart(
+          loop.origin,
+          before.bootId,
+          10_000,
+        );
         expect(after.pid).not.toBe(before.pid);
         expect(after.bootId).not.toBe(before.bootId);
         expect(
@@ -109,7 +117,9 @@ suite('the dev loop', () => {
     );
     // Restoring the file restarts it once more; wait for that to settle so the
     // next spec is not racing a restart.
-    await waitForRestart(loop.origin, (await health(loop.origin)).bootId, 10_000).catch(() => undefined);
+    await waitForRestart(loop.origin, (await health(loop.origin)).bootId, 10_000).catch(
+      () => undefined,
+    );
   }, 30_000);
 
   it('hot-reloads a .vue save over the same port without restarting (AC4, EPIC-01-S12)', async () => {

@@ -13,7 +13,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
-import { describe as suite, expect } from 'vitest';
+import { expect, describe as suite } from 'vitest';
 import { it, linkFakeAgent } from '../../src/index.ts';
 
 const run = promisify(execFile);
@@ -37,7 +37,9 @@ suite('the agentPath fixture', () => {
     expect(JSON.parse(stdout)).toMatchObject({ argv: ['--hello'] });
   });
 
-  it('is spawnable by absolute path when PATH cannot find it — the daemon case', async ({ tmp }) => {
+  it('is spawnable by absolute path when PATH cannot find it — the daemon case', async ({
+    tmp,
+  }) => {
     // A name no real CLI has, linked into a directory that is deliberately not
     // on PATH: this is DeFlowd's situation, whose PATH at daemon start is not
     // the login shell's. A bare name is unresolvable; the stored absolute path

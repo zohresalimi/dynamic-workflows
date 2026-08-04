@@ -9,7 +9,7 @@
  * Verifies: EPIC-01-S6 (base-config scenario), EPIC-01-S7 (scenario 3),
  * EPIC-01-S8 (paths-alias half) · AC1, AC6, AC8
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import {
   checkNoPathsAlias,
   checkNoTransformTypesFlag,

@@ -13,7 +13,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe as suite, expect } from 'vitest';
+import { afterAll, beforeAll, expect, describe as suite } from 'vitest';
 import { it, makeRepo } from '../../src/index.ts';
 
 const POISON = [

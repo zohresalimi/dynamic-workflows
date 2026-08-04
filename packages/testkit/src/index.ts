@@ -15,8 +15,8 @@
 export { type AgentOnPath, FAKE_AGENT_BIN, linkFakeAgent } from './agent.ts';
 export { TestClock } from './clock.ts';
 export { type DeFlowFixtures, it } from './fixtures.ts';
-export { git, GIT_ENV, type GitResult, tryGit } from './git.ts';
-export { makeRepo, type MakeRepoOptions, type Repo } from './repo.ts';
+export { GIT_ENV, type GitResult, git, tryGit } from './git.ts';
+export { type MakeRepoOptions, makeRepo, type Repo } from './repo.ts';
 export {
   createSnapshotSerializers,
   normaliseSnapshotObject,
@@ -24,4 +24,10 @@ export {
   repoRoot,
 } from './snapshot.ts';
 export { openTestDatabase, TEST_PRAGMAS } from './sqlite.ts';
-export { KEEP_TMP_ENV, makeTempDir, removeTempDir, shouldRemoveTempDir, TMP_PREFIX } from './tmp.ts';
+export {
+  KEEP_TMP_ENV,
+  makeTempDir,
+  removeTempDir,
+  shouldRemoveTempDir,
+  TMP_PREFIX,
+} from './tmp.ts';

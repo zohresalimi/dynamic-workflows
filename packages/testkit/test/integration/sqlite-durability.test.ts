@@ -11,7 +11,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe as suite, expect } from 'vitest';
+import { expect, describe as suite } from 'vitest';
 import { it, openTestDatabase } from '../../src/index.ts';
 
 interface Row {

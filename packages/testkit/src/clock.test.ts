@@ -8,7 +8,7 @@
  *
  * Verifies: EPIC-01-S16 (TestClock alternative scenario) · AC7
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { TestClock } from './clock.ts';
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;

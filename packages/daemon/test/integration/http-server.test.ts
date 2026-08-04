@@ -8,13 +8,22 @@
  * Verifies: KAR-01.3 test plan #6, EPIC-01-S12 (scenarios 2 and 3)
  */
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe as suite, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import { startHttp } from '../../src/http/server.ts';
 
 type Started = Awaited<ReturnType<typeof startHttp>>;
 
+// `started` is only ever undefined if beforeAll itself threw, in which case
+// afterAll's `started?.close()` must not throw a second, less informative
+// error on top of the real one — so the type stays honestly optional, and
+// every other read goes through this narrowing helper instead of an `!`.
+function requireStarted(started: Started | undefined): Started {
+  if (started === undefined) throw new Error('startHttp() has not resolved yet');
+  return started;
+}
+
 suite('the dev-mode server', () => {
-  let started: Started;
+  let started: Started | undefined;
   let origin: string;
 
   beforeAll(async () => {
@@ -28,7 +37,7 @@ suite('the dev-mode server', () => {
   });
 
   it('registers every /api route before the catch-all (test plan #6)', () => {
-    const paths = started.app.routes.map((route) => route.path);
+    const paths = requireStarted(started).app.routes.map((route) => route.path);
     const firstApi = paths.findIndex((path) => path.startsWith('/api'));
     const catchAll = paths.findIndex((path) => path === '*' || path === '/*');
     expect(firstApi).toBeGreaterThanOrEqual(0);
@@ -86,7 +95,7 @@ suite('the dev-mode server', () => {
 });
 
 suite('the production-mode server', () => {
-  let started: Started;
+  let started: Started | undefined;
   let origin: string;
 
   beforeAll(async () => {
@@ -100,7 +109,7 @@ suite('the production-mode server', () => {
   });
 
   it('mounts /api first there too, so dev and production routing are identical', async () => {
-    const paths = started.app.routes.map((route) => route.path);
+    const paths = requireStarted(started).app.routes.map((route) => route.path);
     const firstApi = paths.findIndex((path) => path.startsWith('/api'));
     const catchAll = paths.findIndex((path) => path === '*' || path === '/*');
     expect(firstApi).toBeLessThan(catchAll);
@@ -111,6 +120,6 @@ suite('the production-mode server', () => {
   });
 
   it('never loads Vite outside the dev branch (AC8)', () => {
-    expect(started.viteLoaded).toBe(false);
+    expect(requireStarted(started).viteLoaded).toBe(false);
   });
 });

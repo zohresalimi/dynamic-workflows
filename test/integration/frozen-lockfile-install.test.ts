@@ -16,15 +16,15 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { afterAll, beforeAll, describe as suite, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import { workspaceDependencyEdges } from '../support/guards.ts';
 import { allManifests, packageDirs, repoRoot, workspaceNames } from '../support/workspace.ts';
 
@@ -87,7 +87,9 @@ suite('pnpm install --frozen-lockfile', () => {
   it('resolves the pty to a per-platform optionalDependency with no compilation', () => {
     const virtualStore = readdirSync(join(workdir, 'node_modules/.pnpm'));
     expect(virtualStore.some((entry) => entry.startsWith('@lydell+node-pty@'))).toBe(true);
-    expect(virtualStore.some((entry) => /^@lydell\+node-pty-[a-z0-9]+-[a-z0-9]+@/.test(entry))).toBe(true);
+    expect(
+      virtualStore.some((entry) => /^@lydell\+node-pty-[a-z0-9]+-[a-z0-9]+@/.test(entry)),
+    ).toBe(true);
   });
 });
 
@@ -98,16 +100,21 @@ suite('every workspace dependency is linked, never downloaded', () => {
     expect(edges.length).toBeGreaterThan(0);
   });
 
-  it.each(edges)('$consumerDir/node_modules/$dependency is a symlink into the workspace', (edge) => {
-    const link = join(workdir, edge.consumerDir, 'node_modules', edge.dependency);
-    expect(lstatSync(link).isSymbolicLink(), `${link} is a symlink`).toBe(true);
+  it.each(edges)(
+    '$consumerDir/node_modules/$dependency is a symlink into the workspace',
+    (edge) => {
+      const link = join(workdir, edge.consumerDir, 'node_modules', edge.dependency);
+      expect(lstatSync(link).isSymbolicLink(), `${link} is a symlink`).toBe(true);
 
-    // A same-named package downloaded from the registry would land in the
-    // virtual store; "workspace:*" must resolve to the local source directory.
-    const target = relative(realpathSync(workdir), realpathSync(link));
-    expect(target.startsWith('..'), `${edge.dependency} resolves inside the workspace`).toBe(false);
-    expect(target).not.toContain(`node_modules${'/'}.pnpm`);
-  });
+      // A same-named package downloaded from the registry would land in the
+      // virtual store; "workspace:*" must resolve to the local source directory.
+      const target = relative(realpathSync(workdir), realpathSync(link));
+      expect(target.startsWith('..'), `${edge.dependency} resolves inside the workspace`).toBe(
+        false,
+      );
+      expect(target).not.toContain(`node_modules${'/'}.pnpm`);
+    },
+  );
 
   // @DeFlow/web has no consumer yet: packages/cli gains it with KAR-01.3, when
   // the cli starts shipping the built UI. Updating this list is the visible diff

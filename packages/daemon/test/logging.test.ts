@@ -8,7 +8,7 @@
  *
  * Verifies: KAR-01.3 test plan #7 (unit)
  */
-import { describe as suite, expect, it } from 'vitest';
+import { expect, it, describe as suite } from 'vitest';
 import { CENSOR, createLogger, REDACT_PATHS } from '../src/logging.ts';
 
 interface Capture {
@@ -54,8 +54,9 @@ suite('redaction (AC6)', () => {
       'request',
     );
     const record = sink.records()[0];
+    if (record === undefined) throw new Error('expected a captured log record');
     expect(JSON.stringify(record)).not.toContain('sk-ant-secret');
-    expect((record?.req as Record<string, unknown>).authorization).toBe(CENSOR);
+    expect((record.req as Record<string, unknown>).authorization).toBe(CENSOR);
   });
 
   it('censors a token, a cookie header and the two provider keys', () => {
