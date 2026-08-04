@@ -1,3 +1,7 @@
+---
+closes: []
+---
+
 # S4 — one port carries SSE and HMR
 
 > Spike for [KAR-00.3](../delivery/epics/EPIC-00-foundation-spikes.md#kar-003--spike-vite-middleware-mode-carrying-sse-and-hmr-on-one-port).

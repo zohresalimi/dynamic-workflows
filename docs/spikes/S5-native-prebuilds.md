@@ -1,3 +1,7 @@
+---
+closes: [A0-6, A1-1, A1-2]
+---
+
 # S5 — native prebuilds load on the target machines
 
 > Spike for [KAR-00.5](../delivery/epics/EPIC-00-foundation-spikes.md#kar-005--spike-native-prebuilds-load-on-the-target-machines).
@@ -231,6 +235,32 @@ can honour NF6.
 
 `node-pty` is banned by a guard: `test/spike-s5-fsync.test.ts` fails if the unscoped package appears
 in any workspace manifest or in the catalog.
+
+## Decision
+
+**Adopt all three as measured, with two fallbacks taken.**
+
+- **better-sqlite3@13.0.2: adopt, unchanged.** Zero-compilation prebuilds load on darwin-arm64,
+  linux-arm64 (glibc ≥ 2.41) and linuxmusl-arm64, with FTS5 and the `tokenchars` tokenizer intact.
+  No fallback was needed here.
+- **`synchronous = NORMAL`: adopt, unchanged.** `FULL` buys nothing extra against power loss at
+  darwin's default `fullfsync = 0` and costs 144x once `fullfsync = 1` is set to make it a real
+  barrier; `05-durable-execution.md §9.7`'s recipe already names `NORMAL` as the default. No fallback
+  was needed here either, though §9.7's `FULL`-plus-irreversible-effect escape hatch needs a
+  `fullfsync = 1` correction on macOS (new EPIC-03 work, not a fallback).
+- **`linux-glibc-node24` (Debian bookworm, glibc 2.36): fallback taken — a documented prerequisite,
+  not a workaround.** DeFlow's Linux support statement becomes **glibc ≥ 2.38** (Debian 13/Ubuntu
+  24.04+, or any musl distribution). Affected downstream stories: **KAR-18.4** (`DeFlow doctor`'s
+  runtime-prerequisite checks must name the glibc floor so the raw `dlopen` failure reads as a
+  sentence, not a stack trace) and **KAR-18.6** (install verification / the published README must
+  state the floor explicitly — "no toolchain required" and "runs anywhere" are different claims).
+- **`linux-musl-node24` (no `@lydell/node-pty` musl build): fallback taken — the no-TTY path, which
+  was already the designed answer.** No agent process needs a TTY (verified across five agents);
+  only DeFlow's own `terminal/*` client capability does. `@lydell/node-pty` stays an
+  `optionalDependency` with a plain-`spawn` fallback (**KAR-01.1**, already implemented this way),
+  and the `terminal/*` capability is advertised at `initialize` only when a pty allocation actually
+  succeeds at runtime, never from a compiled-in platform list (**KAR-05.1**, the ACP client's
+  `initialize`/session-lifecycle story). Confirms the existing design; no plan change.
 
 ## The risks this closes
 

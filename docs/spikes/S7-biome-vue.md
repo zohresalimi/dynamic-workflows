@@ -1,3 +1,7 @@
+---
+closes: [A2-3]
+---
+
 # S7 — Biome's Vue formatter, run against real SFCs
 
 > Spike for [KAR-00.6](../delivery/epics/EPIC-00-foundation-spikes.md#kar-006--spike-biomes-vue-formatter-on-real-sfcs).
@@ -14,6 +18,14 @@
 
 **Verdict: safe.** `stage_fixed: true` may auto-stage Biome's `.vue` rewrites in the pre-commit
 `format` job. `lefthook.yml`'s `format` job glob now includes `vue`.
+
+## Decision
+
+**Adopt.** Turn the `html` block on (`experimentalFullSupportEnabled: true`,
+`formatter.enabled: true`) and include `vue` in the pre-commit `format` job's glob with
+`stage_fixed: true`, exactly as the Verdict above states and as `biome.json`/`lefthook.yml` already
+implement (KAR-01.5, KAR-01.6). No fallback ("do not auto-stage `.vue`") is taken — Findings 1–3
+below are the evidence for why not.
 
 ## The question
 
@@ -39,6 +51,11 @@ Both are formatted with real `git init` repositories in `fs.mkdtemp` directories
 (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`), a real `biome` binary, and — for the
 linter-split check — a real `oxlint` binary, exactly as `test/integration/spike-s7-biome-vue.test.ts`
 runs them.
+
+## Measurement
+
+Three findings, each backed by a real `biome`/`oxlint` binary run against real-shaped SFCs in a
+real `git init` tmpdir — full numbers and diffs in Findings 1–3 below.
 
 ## Finding 1 — the "silent no-op" claim needed a correction (AC1, test plan #1)
 

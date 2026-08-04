@@ -1,3 +1,7 @@
+---
+closes: [A0-1, A0-3, A4-2]
+---
+
 # S1 — ACP client completes a full prompt cycle against a real adapter
 
 > Spike for [KAR-00.1](../delivery/epics/EPIC-00-foundation-spikes.md#kar-001--spike-acp-client-completes-a-full-prompt-cycle-against-a-real-adapter).

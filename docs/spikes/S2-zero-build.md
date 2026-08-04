@@ -1,3 +1,7 @@
+---
+closes: [A2-1]
+---
+
 # S2 — zero-build dev loop through pnpm workspace symlinks
 
 > Spike for [KAR-00.2](../delivery/epics/EPIC-00-foundation-spikes.md#kar-002--spike-zero-build-dev-loop-through-pnpm-workspace-symlinks).
