@@ -836,6 +836,19 @@ makes the layout engine swappable.
 
 **Verifies:** KAR-00.5 · **Type:** Happy path · **Automated at:** integration
 
+> **Outcome (2026-08-04): every scenario holds on darwin-arm64.** With a `PATH` reduced to a
+> sandbox holding only `node`, `npm` and `sh` — all eight of `cc`, `c++`, `clang`, `clang++`,
+> `gcc`, `g++`, `make` and `node-gyp` resolve to nothing — `npm i better-sqlite3@13.0.2` completed
+> in **436 ms** with no `gyp`, no `prebuild-install`, no install script at all and `gypfile: false`,
+> and `prebuilds/` held **all 8** `{darwin,linux,linuxmusl,win32}-{x64,arm64}.node`. The binary that
+> actually loaded, read off `process.report().sharedObjects`, is
+> `better-sqlite3/prebuilds/darwin-arm64.node`; `sqlite_version()` is **3.53.4** and
+> `db.loadExtension` is a function. FTS5 created with
+> `tokenize = "unicode61 remove_diacritics 2 tokenchars '_-.'"`, and the three compound terms each
+> matched whole while `"case"`, `"name"` and `"ext"` matched **0 rows** — nothing fragmented — with
+> `ORDER BY bm25(t)` returning `[4, 1]` against an insertion order of `[1, 4]`.
+> The reading is [docs/spikes/S5-native-prebuilds.md](../../spikes/S5-native-prebuilds.md).
+
 ```gherkin
 Feature: The ledger's driver installs without a toolchain on the machines DeFlow ships to
 
@@ -872,7 +885,21 @@ M0 is free; getting it wrong in W6 means a migration.
 
 ## EPIC-00-S18 — The APFS fsync benchmark picks the `synchronous=` setting
 
-**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration (the measurement) and
+unit (the ratios and the note's consistency with them)
+
+> **Outcome (2026-08-04): measured, and the Linux shape did *not* hold — for a reason that
+> matters.** The scenario asks for four numbers; eight were taken, because macOS `fsync(2)` does not
+> flush the drive's write cache and SQLite reaches for `fcntl(F_FULLFSYNC)` only under
+> `PRAGMA fullfsync = 1`, which is **off by default on darwin**. At that default: `FULL` **41,246**
+> ev/s single and **788,076** batched, `NORMAL` **137,549** and **1,083,923** — a `FULL` penalty of
+> only **3.3x**, because it is not doing the same work the Linux baseline's `FULL` did. With
+> `fullfsync = 1`: `FULL` **335** and **28,605**, `NORMAL` **48,143** and **661,412** — a penalty of
+> **143.6x**, and 335 ev/s against the Linux baseline's **979** confirms A1-1's prediction that APFS
+> is roughly **3x slower** per real barrier. So neither setting reproduces the 20–25x band; batching
+> at `NORMAL` did hold at **7.9x** against the expected ~7x. **Decision: `synchronous = NORMAL`**,
+> with the caveat that §9.7's "switch to `FULL` for an irreversible effect" recipe must also set
+> `fullfsync = 1` on macOS or it buys nothing, at about 3 ms per such commit.
 
 ```gherkin
 Feature: The durability setting is chosen from a number measured on the machine that will run it
@@ -910,7 +937,25 @@ append waits on the disk" — not a tuning detail to be defaulted.
 
 ## EPIC-00-S19 — The pty install matrix, cell by cell, with a no-TTY fallback
 
-**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration (five real cells: two
+Node majors on the host, three containers)
+
+> **Outcome (2026-08-04): three cells pass, two fail, and both fallbacks are taken rather than
+> noted.** Everything installs everywhere with zero compilation; what separates the cells is whether
+> the installed binary then loads. Pass: `macos-arm64-node24` and `macos-arm64-node26` (`/dev/ttys002`,
+> echoes) and `linux-glibc-node26` (`node:26-slim`, glibc 2.41, `/dev/pts/0`). Fail:
+> **`linux-glibc-node24`** — `node:24-slim` is Debian bookworm, glibc **2.36**, and
+> better-sqlite3's `linux-arm64` prebuild wants `GLIBC_2.38`; a control cell on
+> `node:24-trixie-slim` (same Node major, glibc 2.41) loads it fine, so the variable is the
+> distribution, and the fallback is a **documented prerequisite of glibc ≥ 2.38**. And
+> **`linux-musl-node24`** — `@lydell/node-pty` ships no musl build, npm installs the glibc
+> `linux-arm64` one anyway, and `dlopen` fails on the missing `ld-linux-aarch64.so.1` (the package's
+> own error says "Cannot find module", which is misleading); the fallback is **no-TTY**, and
+> better-sqlite3 itself loads there from `linuxmusl-arm64.node`. Upstream `node-pty@1.1.0` failed in
+> all three Linux cells with `node-gyp` actually running, and **succeeded** on darwin — it ships
+> darwin and win32 prebuilds and no Linux ones — which is exactly why its `||` fallback is
+> dangerous: the platform the maintainer tests on is the platform where it works. **x64 was not
+> tested here**; every container is `linux/arm64` because the docker host is Apple Silicon.
 
 ```gherkin
 Feature: The last native-install risk for "npx DeFlow up" is bounded
