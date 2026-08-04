@@ -51,7 +51,7 @@ credential anywhere (AR-1).
 | Scenario    | Title                                                                                     | Verifies           | Type       |
 | ----------- | ----------------------------------------------------------------------------------------- | ------------------ | ---------- |
 | EPIC-00-S1  | Zero-build import across a pnpm workspace symlink, on both Node majors                    | KAR-00.2           | Happy path |
-| EPIC-00-S2  | Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted         | KAR-00.2           | Failure    |
+| EPIC-00-S2  | Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted — **not applicable, see [decision note](../../spikes/S2-zero-build.md#epic-00-s2-is-not-applicable-and-that-is-a-result-not-an-omission)** | KAR-00.2           | Failure    |
 | EPIC-00-S3  | Non-erasable syntax in a linked package fails at runtime                                  | KAR-00.2           | Edge case  |
 | EPIC-00-S4  | Full ACP prompt cycle against a real adapter                                              | KAR-00.1           | Happy path |
 | EPIC-00-S5  | The same cycle across both agents, with an uneven capability matrix                       | KAR-00.1           | Edge case  |
@@ -130,7 +130,28 @@ that only fails visibly the day someone actually packs one.
 
 ## EPIC-00-S2 — Type stripping is refused inside `node_modules` and the `tsx` fallback is adopted
 
-**Verifies:** KAR-00.2 · **Type:** Failure · **Automated at:** integration
+**Verifies:** KAR-00.2 · **Type:** Failure · **Automated at:** _not automated — precondition did
+not hold; see Outcome below_
+
+> **Outcome (2026-08-04): not applicable.** This scenario's Given is "`node a/src/main.ts` failed to
+> strip types". It did not fail — EPIC-00-S1 passed on both Node majors, so the whole fallback
+> branch below (adopt `tsx@4.23.4`, change KAR-01.3 acceptance criteria 2 and 5, lose `node --watch`
+> crash-resume, re-measure KAR-01.6's pre-push budget) never became reachable, and **none of its
+> Then clauses are automated**. `tsx@4.23.4` is not a dependency of this repo and must not be added
+> to make a scenario pass whose Given never happened.
+>
+> What was automated instead is the counterfactual, in the same file
+> (`test/integration/spike-s2-zero-build.test.ts`, suite _"EPIC-00-S2 — the node_modules
+> type-stripping refusal is real, and the symlink is what avoids it"_): with the single variable
+> flipped — `@spike/b` materialised as a real directory under `a/node_modules/@spike/` rather than
+> a pnpm symlink — `node` does fail with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` on both
+> majors, while the symlinked layout still exits 0. That proves the refusal this scenario predicted
+> is real and that the workspace symlink is precisely what avoids it, which is the strongest claim
+> available once the happy path wins. It also makes pnpm's symlinked node-linker load-bearing: if
+> the layout ever changes, that test goes red first and the scenario below becomes live again.
+>
+> The scenario text is kept, unedited, because it is the written form of the fallback plan. See
+> [docs/spikes/S2-zero-build.md](../../spikes/S2-zero-build.md).
 
 ```gherkin
 Feature: The dev loop has a stated fallback that is taken deliberately
@@ -240,6 +261,16 @@ present via the MCP SDK) is the only conformance signal available.
 
 **Verifies:** KAR-00.1 · **Type:** Edge case · **Automated at:** integration
 
+> **Outcome (2026-08-04):** both fixtures are generated and both rows match the Examples table —
+> `claude-agent-acp@0.64.1` advertises `session.resume` and `session.list`, `gemini-cli@0.53.1`
+> advertises neither. `gemini --acp` completed only `initialize`: `session/new` returned
+> `-32000 Gemini API key is missing or not configured.`, and AR-1 forbids the harness from setting
+> one, so its remaining five steps are recorded as blocked for a credentials reason rather than a
+> protocol one. Scenario 2's Given (a probed value contradicting the snapshot) did not occur with
+> either vendor, so it is automated against the `fake-divergent` agent binary instead, which
+> advertises `session.resume` where its own snapshot row denies it — the harness writes the
+> observed value and reports the divergence rather than falling back.
+
 ```gherkin
 Feature: The capability matrix is generated per agent, never assumed
 
@@ -278,6 +309,14 @@ established in week one.
 
 **Verifies:** KAR-00.1 · **Type:** Edge case · **Automated at:** integration
 
+> **Outcome (2026-08-04): scenario 1 passes; scenario 2 is not applicable.** 17 `session/update`
+> notifications arrived from `claude-agent-acp@0.64.1` with a client-side receipt spread of
+> **6699 ms** against the 500 ms threshold, and the full inter-arrival list is in
+> [the decision note](../../spikes/S1-acp-round-trip.md#streaming-is-incremental-ac4-epic-00-s6).
+> Scenario 2's Given ("all frames were received within 50 ms of the prompt response") did not
+> occur, so its Thens — record "streaming is not incremental", name F10.1/F10.6 as affected, carry
+> A0-2 into KAR-00.7 as kill-criterion input — are **not automated**.
+
 ```gherkin
 Feature: session/update notifications arrive as they happen, not in a burst at turn end
 
@@ -306,7 +345,27 @@ it is that the ACP path loses its main advantage over the shim path and KAR-00.7
 
 ## EPIC-00-S7 — ACP surfaces no token usage, so `tokenAccounting` degrades honestly
 
-**Verifies:** KAR-00.1 · **Type:** Failure · **Automated at:** manual
+**Verifies:** KAR-00.1 · **Type:** Failure · **Automated at:** integration (scenario 2); scenario 1
+**not applicable** — precondition did not hold, see Outcome below
+
+> **Outcome (2026-08-04): scenario 1's premise is false, and that is the finding.** Its Given is
+> "the developer greps the frame log … Then no such field is found". Such fields were found, in
+> quantity: every `session/prompt` response carries
+> `usage: { inputTokens, outputTokens, cachedReadTokens, cachedWriteTokens, totalTokens }`, eight
+> `usage_update` notifications carried `{ used, size }` against a 1,000,000-token context window,
+> and two of them carried `cost: { amount, currency }`. `Usage` and `UsageUpdate` are `$defs` of
+> the protocol, not a vendor extension. So the manifest value for this adapter is
+> `tokenAccounting: 'exact'`, **not** the `'estimated'` fallback this scenario prescribes, and
+> F9.1 does not degrade on the ACP path. Those Then clauses are **not automated**; the positive is
+> asserted in their place (`test/integration/spike-s1-acp.test.ts`, suite _"EPIC-00-S7"_).
+>
+> Two halves of the scenario did hold and are automated: **compaction state is genuinely absent**
+> (no frame carries a field named for it, and `compact` appears in none of the 262 `$defs` — it
+> occurs in the log only as the name of a slash command, which is why the assertion is written
+> against key positions rather than as a substring grep), and **`structured_output` is absent from
+> the protocol entirely**, so F6.9 needs DeFlow's own bounded repair loop and KAR-09.9 owns it.
+> The honest-degradation requirement is unchanged and still asserted: a missing value renders as
+> unknown, never as `0`.
 
 ```gherkin
 Feature: The cost of the ACP-first path is known before it is paid
@@ -402,7 +461,23 @@ Capturing the `--help` baseline in M0 is what makes the monthly diff in
 
 ## EPIC-00-S10 — Cancellation deadlocks, and the kill-criterion input is recorded
 
-**Verifies:** KAR-00.1, KAR-00.7 · **Type:** Failure · **Automated at:** integration
+**Verifies:** KAR-00.1, KAR-00.7 · **Type:** Failure · **Automated at:** integration (against
+fake-agent binaries — see Outcome below)
+
+> **Outcome (2026-08-04): none of the three Givens occurred against a real agent.**
+> `session/cancel` produced `stopReason: 'cancelled'` **6 ms** later from
+> `claude-agent-acp@0.64.1`, one trailing `session/update` was flushed afterwards and accepted, and
+> a subsequent `session/new` round-tripped — so the transport had not wedged. Scenario 3's Given
+> (deadlock on the adapter but not the native agent) is also false: it was the *native* agent that
+> could not proceed, and for a credentials reason rather than a protocol one. `KAR-05.8` is
+> therefore **not** promoted to a first-class parallel path.
+>
+> Scenarios 1 and 2 are nevertheless automated — against fake-agent **binaries**
+> (`spikes/s1-acp/agents/fake-agent.ts --mode deadlock|trailing`), spawned over the same pipes
+> through the same framer as a vendor. That is stronger than leaving them unwritten: it turns "no
+> agent did this to us today" into a permanent regression test, and it pins the client rule
+> scenario 2 encodes — **the prompt promise resolving is not permission to stop reading the
+> stream** — into `AcpClient` rather than into someone's memory. KAR-05.9 inherits that rule.
 
 ```gherkin
 Feature: The kill criterion is evaluated against observed behaviour
@@ -443,7 +518,16 @@ permission to stop reading the stream.
 
 ## EPIC-00-S11 — One port carries a ten-minute SSE stream and a `.vue` hot reload
 
-**Verifies:** KAR-00.3 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Happy path · **Automated at:** integration, e2e and a recorded
+ten-minute run
+
+> **Outcome (2026-08-04): every scenario holds.** One listening socket on `127.0.0.1:7777` with
+> HMR on it; 600 events over 599.8 s with a maximum inter-arrival gap of 1006.9 ms (AC2 allows
+> 3 000); a `.vue` edit at t=300 s applied as an HMR update without the stream ending, reconnecting,
+> gapping or duplicating; and `/api/stream` answering `text/event-stream` even to a
+> `Accept: text/html` request, while the same harness with the SPA fallback mounted first answers
+> `index.html`. The recording is `spikes/s4-one-port/measurements/`; the reading is
+> [docs/spikes/S4-one-port.md](../../spikes/S4-one-port.md).
 
 ```gherkin
 Feature: Vite in middleware mode inside the daemon, one process, one port
@@ -493,7 +577,28 @@ opened its own, the count is two and D10's central claim is false.
 
 ## EPIC-00-S12 — Compression in front of the stream buffers events into one burst
 
-**Verifies:** KAR-00.3 · **Type:** Failure · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Failure · **Automated at:** integration (row 1 and the guard);
+rows 2 and 3 _not automated as written — the symptoms did not reproduce, see Outcome below_
+
+> **Outcome (2026-08-04): one of the three reproduced, and that is the finding.** Measured against
+> `vite@8.2.0` and `hono@4.12.33` by `test/integration/spike-s4-one-port.test.ts`; the full record is
+> [docs/spikes/S4-one-port.md](../../spikes/S4-one-port.md).
+>
+> - **Compression** (row 1) reproduced exactly: twelve events emitted 100 ms apart all arrived at
+>   t=1205 ms, in one burst at stream end. It took three deliberate mistakes to get there — hono's
+>   `compress` middleware refuses `text/event-stream`, refuses any response carrying
+>   `no-transform`, and refuses one carrying `Transfer-Encoding`. The guard is therefore asserted in
+>   both directions: the symptom with the header dropped, and the refusal with it in place.
+> - **A dev proxy killing long streams** (row 2) did not reproduce: a proxied client held the same
+>   ten minutes as the direct one and received all 600 events, max gap 1008 ms.
+> - **A dev proxy swallowing the close** (row 3) did not reproduce: the backend learned the client
+>   had navigated away in 6 ms.
+>
+> The Then clauses of rows 2 and 3 are consequently **not** asserted — writing down a symptom that
+> did not occur would be automating a belief. What is asserted instead is the measured behaviour,
+> with a failure message naming what it would mean if it ever flipped back. The rule the scenario
+> exists to protect ("never add `server.proxy`") is unchanged and, after this, rests on D10's
+> one-origin argument rather than on a bug report.
 
 ```gherkin
 Feature: The three documented SSE failure modes are reproduced deliberately, once
@@ -527,7 +632,18 @@ afternoon assuming the reducer was broken.
 
 ## EPIC-00-S13 — A page reload sends no `Last-Event-ID`, so `?since=` is mandatory
 
-**Verifies:** KAR-00.3 · **Type:** Edge case · **Automated at:** e2e
+**Verifies:** KAR-00.3 · **Type:** Edge case · **Automated at:** e2e (real Chromium) and unit
+
+> **Outcome (2026-08-04): all four scenarios hold, and the third one added a clause.** Verified
+> against Chromium 151 by `e2e/spike-s4-one-port.test.ts`. A fresh `EventSource` after a reload
+> really does send no `Last-Event-ID`, and an automatic reconnect really does send one.
+>
+> What the reconnect *also* does is re-request the **same URL** — so a page that hydrated at
+> `/api/stream?since=137` and lost its connection at seq 150 sends the stale `?since=137` and a
+> current `Last-Event-ID: 150` together. A server that prefers `?since` in that case replays
+> thirteen events the page already had, which is the duplication this scenario forbids. The contract
+> is therefore **resume from the greater of the two cursors** (a tie counts as a reconnect), pinned
+> by `test/spike-s4-resume.test.ts`. KAR-15.3 inherits it.
 
 ```gherkin
 Feature: Stream resume works across a page reload, not only across an automatic reconnect
@@ -572,7 +688,17 @@ in the real ledger.
 
 ## EPIC-00-S14 — `vite build` emits a hashed ELK worker chunk and keeps ELK out of the entry
 
-**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** integration (the build) and e2e
+(the built `dist/` in a real Chromium)
+
+> **Outcome (2026-08-04): every scenario holds, and the entry cost is far below the ceiling.**
+> `vite build` with `elkjs/lib/elk-worker.min.js?worker` plus `workerFactory` emits exactly one
+> hashed worker chunk, `assets/elk-worker.min-COjlAv4s.js` (1425139 B), which Chromium fetches with
+> a 200 from a plain static server over the built `dist/` — no 404, no failed request. The entry
+> chunk is 13291 B with ELK against 7736 B without it: a **5555 B** difference, not the 1.6 MB the
+> risk assumed, because what the app imports is the ~10 KB `elk-api.js` wrapper and a worker URL.
+> A 60-node layout returned coordinates for all 60 in ~95 ms while a 10 ms main-thread heartbeat
+> ticked 9 times. The reading is [docs/spikes/S3-elk-worker.md](../../spikes/S3-elk-worker.md).
 
 ```gherkin
 Feature: elkjs lays out a graph off the main thread in a production build
@@ -612,7 +738,14 @@ chunk is not a rounding error.
 
 ## EPIC-00-S15 — The union graph keeps node positions stable across five plan versions
 
-**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** e2e (real Chromium), with the
+fixture's own shape pinned at unit level
+
+> **Outcome (2026-08-04): both scenarios hold.** One layout over the union of all five versions,
+> stepped v1 → v5 and read back out of the DOM, gave **30 surviving-node comparisons, every one
+> byte-identical**. Laying the same five versions out independently moved **15 surviving nodes**,
+> including every remaining node when the abandoned branch disappeared at v5 — so the two mechanisms
+> are distinguishable, and the union graph is the one F10.2 uses.
 
 ```gherkin
 Feature: The plan-evolution scrubber does not re-layout on every step
@@ -643,7 +776,31 @@ Budget a week.
 
 ## EPIC-00-S16 — `layerChoiceConstraint` is ignored without `interactiveLayout`, and dagre is the fallback
 
-**Verifies:** KAR-00.4 · **Type:** Failure · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Failure · **Automated at:** e2e (real Chromium); scenario 2's
+`Given` _did not occur — the build succeeded, see Outcome below_
+
+> **Outcome (2026-08-04): scenario 1 holds and then some; scenario 2's premise never arrived.**
+> Measured against elkjs 0.12.0 by `e2e/spike-s3-elk-worker.test.ts`; the full record is
+> [docs/spikes/S3-elk-worker.md](../../spikes/S3-elk-worker.md).
+>
+> - **The constraints are ignored, silently** — identical coordinates, no error, no console warning.
+>   ELK's own `knownLayoutOptions()` lists both option ids, so "ignored" here means ignored rather
+>   than misspelt, and the spec asserts that first.
+> - **Turning on `org.eclipse.elk.interactiveLayout` does not help either**, which is one step worse
+>   than the scenario predicted. Nor does `org.eclipse.elk.position` with
+>   `crossingMinimization.semiInteractive`.
+> - **The trap:** switching the layering strategy to `INTERACTIVE` *does* redraw the graph and the
+>   target *does* land in the requested layer — the screenshot a blog post would call success. The
+>   same graph laid out with the same `INTERACTIVE` strategies and **no constraint at all** produces
+>   the byte-identical drawing: `INTERACTIVE` reads node coordinates, a fresh graph has none, and
+>   the layer was where the node was going anyway. That control run is why this scenario can be
+>   trusted, and it is kept.
+> - **Scenario 2 is a counterfactual that did not happen.** `vite build` produced a working ELK
+>   worker chunk inside the timebox, so the fallback was not taken and its `Given` is not asserted.
+>   Its remaining `Then` clauses are asserted anyway, because they are worth keeping either way:
+>   `@dagrejs/dagre@3.0.0` lays the same 60 nodes out on every e2e run, and the note carries both
+>   the `1.1.2`-versus-`3.0.0` warning and KAR-16.6 as the story that must not depend on which
+>   engine won.
 
 ```gherkin
 Feature: The layout-pinning recipe that circulates online does not work as written
@@ -678,6 +835,19 @@ makes the layout engine swappable.
 ## EPIC-00-S17 — better-sqlite3 loads on macOS with zero compilation
 
 **Verifies:** KAR-00.5 · **Type:** Happy path · **Automated at:** integration
+
+> **Outcome (2026-08-04): every scenario holds on darwin-arm64.** With a `PATH` reduced to a
+> sandbox holding only `node`, `npm` and `sh` — all eight of `cc`, `c++`, `clang`, `clang++`,
+> `gcc`, `g++`, `make` and `node-gyp` resolve to nothing — `npm i better-sqlite3@13.0.2` completed
+> in **436 ms** with no `gyp`, no `prebuild-install`, no install script at all and `gypfile: false`,
+> and `prebuilds/` held **all 8** `{darwin,linux,linuxmusl,win32}-{x64,arm64}.node`. The binary that
+> actually loaded, read off `process.report().sharedObjects`, is
+> `better-sqlite3/prebuilds/darwin-arm64.node`; `sqlite_version()` is **3.53.4** and
+> `db.loadExtension` is a function. FTS5 created with
+> `tokenize = "unicode61 remove_diacritics 2 tokenchars '_-.'"`, and the three compound terms each
+> matched whole while `"case"`, `"name"` and `"ext"` matched **0 rows** — nothing fragmented — with
+> `ORDER BY bm25(t)` returning `[4, 1]` against an insertion order of `[1, 4]`.
+> The reading is [docs/spikes/S5-native-prebuilds.md](../../spikes/S5-native-prebuilds.md).
 
 ```gherkin
 Feature: The ledger's driver installs without a toolchain on the machines DeFlow ships to
@@ -715,7 +885,21 @@ M0 is free; getting it wrong in W6 means a migration.
 
 ## EPIC-00-S18 — The APFS fsync benchmark picks the `synchronous=` setting
 
-**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration (the measurement) and
+unit (the ratios and the note's consistency with them)
+
+> **Outcome (2026-08-04): measured, and the Linux shape did *not* hold — for a reason that
+> matters.** The scenario asks for four numbers; eight were taken, because macOS `fsync(2)` does not
+> flush the drive's write cache and SQLite reaches for `fcntl(F_FULLFSYNC)` only under
+> `PRAGMA fullfsync = 1`, which is **off by default on darwin**. At that default: `FULL` **41,246**
+> ev/s single and **788,076** batched, `NORMAL` **137,549** and **1,083,923** — a `FULL` penalty of
+> only **3.3x**, because it is not doing the same work the Linux baseline's `FULL` did. With
+> `fullfsync = 1`: `FULL` **335** and **28,605**, `NORMAL` **48,143** and **661,412** — a penalty of
+> **143.6x**, and 335 ev/s against the Linux baseline's **979** confirms A1-1's prediction that APFS
+> is roughly **3x slower** per real barrier. So neither setting reproduces the 20–25x band; batching
+> at `NORMAL` did hold at **7.9x** against the expected ~7x. **Decision: `synchronous = NORMAL`**,
+> with the caveat that §9.7's "switch to `FULL` for an irreversible effect" recipe must also set
+> `fullfsync = 1` on macOS or it buys nothing, at about 3 ms per such commit.
 
 ```gherkin
 Feature: The durability setting is chosen from a number measured on the machine that will run it
@@ -753,7 +937,25 @@ append waits on the disk" — not a tuning detail to be defaulted.
 
 ## EPIC-00-S19 — The pty install matrix, cell by cell, with a no-TTY fallback
 
-**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-00.5 · **Type:** Edge case · **Automated at:** integration (five real cells: two
+Node majors on the host, three containers)
+
+> **Outcome (2026-08-04): three cells pass, two fail, and both fallbacks are taken rather than
+> noted.** Everything installs everywhere with zero compilation; what separates the cells is whether
+> the installed binary then loads. Pass: `macos-arm64-node24` and `macos-arm64-node26` (`/dev/ttys002`,
+> echoes) and `linux-glibc-node26` (`node:26-slim`, glibc 2.41, `/dev/pts/0`). Fail:
+> **`linux-glibc-node24`** — `node:24-slim` is Debian bookworm, glibc **2.36**, and
+> better-sqlite3's `linux-arm64` prebuild wants `GLIBC_2.38`; a control cell on
+> `node:24-trixie-slim` (same Node major, glibc 2.41) loads it fine, so the variable is the
+> distribution, and the fallback is a **documented prerequisite of glibc ≥ 2.38**. And
+> **`linux-musl-node24`** — `@lydell/node-pty` ships no musl build, npm installs the glibc
+> `linux-arm64` one anyway, and `dlopen` fails on the missing `ld-linux-aarch64.so.1` (the package's
+> own error says "Cannot find module", which is misleading); the fallback is **no-TTY**, and
+> better-sqlite3 itself loads there from `linuxmusl-arm64.node`. Upstream `node-pty@1.1.0` failed in
+> all three Linux cells with `node-gyp` actually running, and **succeeded** on darwin — it ships
+> darwin and win32 prebuilds and no Linux ones — which is exactly why its `||` fallback is
+> dangerous: the platform the maintainer tests on is the platform where it works. **x64 was not
+> tested here**; every container is `linux/arm64` because the docker host is Apple Silicon.
 
 ```gherkin
 Feature: The last native-install risk for "npx DeFlow up" is bounded

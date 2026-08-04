@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>S3 — elkjs in a Vite 8 worker</title>
+    <style>
+    body {
+      margin: 0;
+      font:
+        12px / 1.4 ui-sans-serif,
+        system-ui,
+        sans-serif;
+    }
+    #graph {
+      position: relative;
+      width: 4000px;
+      height: 3000px;
+    }
+    .node {
+      position: absolute;
+      box-sizing: border-box;
+      border: 1px solid #888;
+      border-radius: 4px;
+      padding: 4px;
+      overflow: hidden;
+    }
+    </style>
+  </head>
+  <body>
+    <div id="graph"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

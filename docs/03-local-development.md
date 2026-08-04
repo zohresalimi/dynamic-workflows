@@ -248,7 +248,12 @@ theoretical:
 | **Proxy / socket timeouts**      | A stream dies silently after some minutes                             | Runs are measured in hours (F4.8). A dev loop that cannot hold a stream open cannot exercise the product's core use case                                               |
 | **Close events not propagating** | Browser navigates away, backend never learns the client is gone       | Leaked subscriptions per reload, and the backpressure path never gets tested                                                                                           |
 
-See vitejs/vite#12157 and vitejs/vite discussion #10851. The workarounds (`timeout: 0`,
+See vitejs/vite#12157 and vitejs/vite discussion #10851. **Measured against `vite@8.2.0` on
+2026-08-04 ([S4](spikes/S4-one-port.md), rows 12–13): none of the three reproduced.** The rule below
+stands anyway, and on firmer ground — it follows from one origin, not from a bug that may already be
+fixed. Read the spike note before citing this table as current.
+
+The workarounds (`timeout: 0`,
 `proxyTimeout: 0`, `X-Accel-Buffering: no`, `Cache-Control: no-cache, no-transform`, no compression
 middleware on that route) exist and are documented in the API contract for the benefit of anyone who
 later puts a reverse proxy in front of `DeFlowd` — but as a _dev loop_ the tradeoff is absurd. You

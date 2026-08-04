@@ -8,6 +8,7 @@
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "DeFlow": "workspace:*",
+    "playwright": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

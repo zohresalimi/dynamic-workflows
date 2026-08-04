@@ -1,0 +1,51 @@
+{
+  "agent": "claude-agent-acp",
+  "version": "0.64.1",
+  "probedAt": "2026-08-04T15:15:44.689Z",
+  "protocolVersion": 1,
+  "agentInfo": {
+    "name": "@agentclientprotocol/claude-agent-acp",
+    "title": "Claude Agent",
+    "version": "0.64.1"
+  },
+  "agentCapabilities": {
+    "_meta": {
+      "claudeCode": {
+        "promptQueueing": true
+      }
+    },
+    "promptCapabilities": {
+      "image": true,
+      "embeddedContext": true
+    },
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    },
+    "auth": {
+      "logout": {}
+    },
+    "providers": {},
+    "loadSession": true,
+    "sessionCapabilities": {
+      "additionalDirectories": {},
+      "close": {},
+      "delete": {},
+      "fork": {},
+      "list": {},
+      "resume": {}
+    }
+  },
+  "capabilityMatrix": {
+    "resume": true,
+    "list": true,
+    "loadSession": true,
+    "mcpHttp": true,
+    "mcpSse": true,
+    "mcpAcp": false,
+    "promptImage": true,
+    "promptAudio": false,
+    "promptEmbeddedContext": true
+  },
+  "divergesFromSnapshot": []
+}

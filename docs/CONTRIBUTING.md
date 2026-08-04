@@ -155,13 +155,17 @@ patterns eat the whole argument list — so without the flag a test-only commit,
 project is most of them, fails a hook it has no business failing. Found the way these things usually
 are: the hook rejected the commit that added it.
 
-**`.vue` is not in the pre-commit format glob.** `stage_fixed: true` means whatever Biome writes is
-in the commit before anyone reads it, and Biome's SFC support is still behind
-`html.experimentalFullSupportEnabled`. KAR-00.6 is the spike that reviews a real before/after diff
-and leaves a verdict in `docs/spikes/S7-biome-vue.md`; that note does not exist yet, so the answer
-is no. `test/git-hooks.test.ts` holds the note and the glob to each other in both directions — the
-day the note says `safe`, the test fails until `vue` is added. Until then `.vue` is formatted by
-`pnpm format`, and CI's `biome ci .` catches a file that skipped it.
+**`.vue` is in the pre-commit format glob, as of KAR-00.6.** `stage_fixed: true` means whatever
+Biome writes is in the commit before anyone reads it, and Biome's SFC support is still behind
+`html.experimentalFullSupportEnabled`, so this was gated on a real spike rather than assumed:
+`docs/spikes/S7-biome-vue.md` reviews a real before/after diff on two adversarial fixtures —
+`<script setup>` with complex generics, a template with a long attribute list — and records a
+`safe` verdict. `test/git-hooks.test.ts` holds the note and the glob to each other in both
+directions, so if the verdict ever regresses `vue` comes back out of the glob until it is fixed.
+The same note also corrects an assumption in the epic: without the `html` block, the `<template>`
+markup is a real no-op, but the embedded `<script>` block is still reformatted by Biome's ordinary
+TS formatter regardless of the flag — a `.vue` file with misformatted TypeScript in it was never a
+true no-op either way.
 
 ---
 

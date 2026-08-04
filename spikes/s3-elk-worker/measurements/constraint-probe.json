@@ -1,0 +1,20 @@
+{
+  "targetNode": "e",
+  "baselineLayer": 2,
+  "requestedLayer": 1,
+  "optionIsKnown": true,
+  "layers": {
+    "baseline": 2,
+    "withoutInteractive": 2,
+    "withInteractive": 2,
+    "withInteractiveStrategy": 1,
+    "interactiveStrategyNoConstraint": 1,
+    "semiInteractivePosition": 2
+  },
+  "ignoredWithoutInteractiveLayout": true,
+  "changedWithInteractiveLayout": false,
+  "changedWithInteractiveLayeringStrategy": true,
+  "interactiveStrategyHonouredTheConstraint": false,
+  "changedWithSemiInteractivePosition": false,
+  "errors": []
+}
