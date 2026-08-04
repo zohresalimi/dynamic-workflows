@@ -207,7 +207,7 @@ that whoever added them never notices.
 | Cold start: `pnpm dev` to first 200 on `/api/health` | < 3 s (NF3) | **299 ms** (298/299/300 over four runs, one with `packages/web/node_modules/.vite` deleted), 2026-08-04, macOS / Node 24.18.0 / Apple silicon |
 | `pnpm install --frozen-lockfile`, warm store   | seconds          | see KAR-01.1                                |
 | Pre-commit hook over 20 staged files            | < 2 s            | **352 ms** median (medians of 341/352/366 ms over three five-run rounds), 2026-08-04, macOS / Node 24.18.0 / Apple silicon |
-| Full CI run on a green commit                   | < 10 min (AC12)  | **1 min 23 s** wall clock (run 30915210685, all six jobs green), 2026-08-04, GitHub-hosted runners |
+| Full CI run on a green commit                   | < 10 min (AC12)  | **1 min 28 s** wall clock (run 30915685333 on `382a252`, all six jobs green), 2026-08-04, GitHub-hosted runners |
 
 The cold-start number is asserted by `e2e/dev-loop.test.ts`, which prints the measurement it took,
 so a regression shows up in the test log rather than in a vague sense that the loop got slower. The
@@ -218,24 +218,28 @@ with a number converts the argument from taste into evidence.
 
 **The CI figure comes from a real run**, because it cannot come from anywhere else: AC12 asks for
 GitHub-hosted runner wall clock. Run
-[30915210685](https://github.com/zohresalimi/dynamic-workflows/actions/runs/30915210685), on
-`epic/01-dev-environment`, all six jobs green, 13:43:08 → 13:44:31 UTC — **83 seconds** against a
-600-second budget. The run page names the commit it ran on: this story's tree, with this note and
-the assertion that guards it as the only changes since. Per job:
+[30915685333](https://github.com/zohresalimi/dynamic-workflows/actions/runs/30915685333), on commit
+`382a252`, all six jobs green, 13:48:48 → 13:50:16 UTC — **88 seconds** against a 600-second budget.
+Every job restored its pnpm store from cache. Per job:
 
-| Job                     | Duration | Notes                                                        |
-| ----------------------- | -------- | ------------------------------------------------------------ |
-| `check`                 | 32 s     | pnpm store restored from cache                               |
-| `test (ubuntu-26.04, 24)` | 47 s   | cache hit                                                    |
-| `test (ubuntu-26.04, 26)` | 49 s   | cache hit                                                    |
-| `test (macos-26, 24)`   | 51 s     | **cold** store — this leg wrote the macOS cache              |
-| `test (macos-26, 26)`   | 78 s     | the critical path; the run is as long as this leg            |
-| `browser-e2e`           | 45 s     | includes `playwright install --with-deps chromium`           |
+| Job                       | Duration | Notes                                                  |
+| ------------------------- | -------- | ------------------------------------------------------ |
+| `check`                   | 45 s     |                                                        |
+| `test (ubuntu-26.04, 24)` | 44 s     |                                                        |
+| `test (ubuntu-26.04, 26)` | 45 s     |                                                        |
+| `test (macos-26, 24)`     | 49 s     |                                                        |
+| `test (macos-26, 26)`     | 44 s     |                                                        |
+| `browser-e2e`             | 84 s     | the critical path — `playwright install --with-deps` downloads Chromium on every run, cache or no cache |
+
+The run before it, [30915210685](https://github.com/zohresalimi/dynamic-workflows/actions/runs/30915210685),
+took **83 s** with a cold macOS store (that leg: 78 s, against 44–49 s warm). Two runs is not a
+distribution, but it is enough to say where the time is: the browser job's Chromium download is the
+critical path, and the pnpm cache is worth roughly thirty seconds on a macOS leg. Neither is close
+to the budget, so neither is worth optimising yet.
 
 `test/ci-workflow.test.ts` asserts this row against the budget, so it cannot drift back to a
-placeholder or quietly record a number over ten minutes. The figure is generous headroom today and
-the shape to watch is the macOS legs: they are the slowest, they are the ones whose pnpm store cache
-misses most often, and EPIC-03's crash-fuzz slice lands on them. Re-measure when it does.
+placeholder or quietly record a number over ten minutes. The shape to watch is EPIC-03's crash-fuzz
+slice, which lands on the `test` legs. Re-measure when it does.
 
 **Three things had to be fixed before any of this could be measured, and none of them were visible
 from a laptop.** They are recorded here because each is a class of failure, not a typo:
