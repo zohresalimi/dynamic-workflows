@@ -1,0 +1,35 @@
+{
+  "agent": "gemini-cli",
+  "version": "0.53.1",
+  "probedAt": "2026-08-04T15:05:32.384Z",
+  "protocolVersion": 1,
+  "agentInfo": {
+    "name": "gemini-cli",
+    "title": "Gemini CLI",
+    "version": "0.53.1"
+  },
+  "agentCapabilities": {
+    "loadSession": true,
+    "promptCapabilities": {
+      "image": true,
+      "audio": true,
+      "embeddedContext": true
+    },
+    "mcpCapabilities": {
+      "http": true,
+      "sse": true
+    }
+  },
+  "capabilityMatrix": {
+    "resume": false,
+    "list": false,
+    "loadSession": true,
+    "mcpHttp": true,
+    "mcpSse": true,
+    "mcpAcp": false,
+    "promptImage": true,
+    "promptAudio": true,
+    "promptEmbeddedContext": true
+  },
+  "divergesFromSnapshot": []
+}

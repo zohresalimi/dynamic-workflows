@@ -261,6 +261,16 @@ present via the MCP SDK) is the only conformance signal available.
 
 **Verifies:** KAR-00.1 · **Type:** Edge case · **Automated at:** integration
 
+> **Outcome (2026-08-04):** both fixtures are generated and both rows match the Examples table —
+> `claude-agent-acp@0.64.1` advertises `session.resume` and `session.list`, `gemini-cli@0.53.1`
+> advertises neither. `gemini --acp` completed only `initialize`: `session/new` returned
+> `-32000 Gemini API key is missing or not configured.`, and AR-1 forbids the harness from setting
+> one, so its remaining five steps are recorded as blocked for a credentials reason rather than a
+> protocol one. Scenario 2's Given (a probed value contradicting the snapshot) did not occur with
+> either vendor, so it is automated against the `fake-divergent` agent binary instead, which
+> advertises `session.resume` where its own snapshot row denies it — the harness writes the
+> observed value and reports the divergence rather than falling back.
+
 ```gherkin
 Feature: The capability matrix is generated per agent, never assumed
 
@@ -299,6 +309,14 @@ established in week one.
 
 **Verifies:** KAR-00.1 · **Type:** Edge case · **Automated at:** integration
 
+> **Outcome (2026-08-04): scenario 1 passes; scenario 2 is not applicable.** 17 `session/update`
+> notifications arrived from `claude-agent-acp@0.64.1` with a client-side receipt spread of
+> **6699 ms** against the 500 ms threshold, and the full inter-arrival list is in
+> [the decision note](../../spikes/S1-acp-round-trip.md#streaming-is-incremental-ac4-epic-00-s6).
+> Scenario 2's Given ("all frames were received within 50 ms of the prompt response") did not
+> occur, so its Thens — record "streaming is not incremental", name F10.1/F10.6 as affected, carry
+> A0-2 into KAR-00.7 as kill-criterion input — are **not automated**.
+
 ```gherkin
 Feature: session/update notifications arrive as they happen, not in a burst at turn end
 
@@ -327,7 +345,27 @@ it is that the ACP path loses its main advantage over the shim path and KAR-00.7
 
 ## EPIC-00-S7 — ACP surfaces no token usage, so `tokenAccounting` degrades honestly
 
-**Verifies:** KAR-00.1 · **Type:** Failure · **Automated at:** manual
+**Verifies:** KAR-00.1 · **Type:** Failure · **Automated at:** integration (scenario 2); scenario 1
+**not applicable** — precondition did not hold, see Outcome below
+
+> **Outcome (2026-08-04): scenario 1's premise is false, and that is the finding.** Its Given is
+> "the developer greps the frame log … Then no such field is found". Such fields were found, in
+> quantity: every `session/prompt` response carries
+> `usage: { inputTokens, outputTokens, cachedReadTokens, cachedWriteTokens, totalTokens }`, eight
+> `usage_update` notifications carried `{ used, size }` against a 1,000,000-token context window,
+> and two of them carried `cost: { amount, currency }`. `Usage` and `UsageUpdate` are `$defs` of
+> the protocol, not a vendor extension. So the manifest value for this adapter is
+> `tokenAccounting: 'exact'`, **not** the `'estimated'` fallback this scenario prescribes, and
+> F9.1 does not degrade on the ACP path. Those Then clauses are **not automated**; the positive is
+> asserted in their place (`test/integration/spike-s1-acp.test.ts`, suite _"EPIC-00-S7"_).
+>
+> Two halves of the scenario did hold and are automated: **compaction state is genuinely absent**
+> (no frame carries a field named for it, and `compact` appears in none of the 262 `$defs` — it
+> occurs in the log only as the name of a slash command, which is why the assertion is written
+> against key positions rather than as a substring grep), and **`structured_output` is absent from
+> the protocol entirely**, so F6.9 needs DeFlow's own bounded repair loop and KAR-09.9 owns it.
+> The honest-degradation requirement is unchanged and still asserted: a missing value renders as
+> unknown, never as `0`.
 
 ```gherkin
 Feature: The cost of the ACP-first path is known before it is paid
@@ -423,7 +461,23 @@ Capturing the `--help` baseline in M0 is what makes the monthly diff in
 
 ## EPIC-00-S10 — Cancellation deadlocks, and the kill-criterion input is recorded
 
-**Verifies:** KAR-00.1, KAR-00.7 · **Type:** Failure · **Automated at:** integration
+**Verifies:** KAR-00.1, KAR-00.7 · **Type:** Failure · **Automated at:** integration (against
+fake-agent binaries — see Outcome below)
+
+> **Outcome (2026-08-04): none of the three Givens occurred against a real agent.**
+> `session/cancel` produced `stopReason: 'cancelled'` **6 ms** later from
+> `claude-agent-acp@0.64.1`, one trailing `session/update` was flushed afterwards and accepted, and
+> a subsequent `session/new` round-tripped — so the transport had not wedged. Scenario 3's Given
+> (deadlock on the adapter but not the native agent) is also false: it was the *native* agent that
+> could not proceed, and for a credentials reason rather than a protocol one. `KAR-05.8` is
+> therefore **not** promoted to a first-class parallel path.
+>
+> Scenarios 1 and 2 are nevertheless automated — against fake-agent **binaries**
+> (`spikes/s1-acp/agents/fake-agent.ts --mode deadlock|trailing`), spawned over the same pipes
+> through the same framer as a vendor. That is stronger than leaving them unwritten: it turns "no
+> agent did this to us today" into a permanent regression test, and it pins the client rule
+> scenario 2 encodes — **the prompt promise resolving is not permission to stop reading the
+> stream** — into `AcpClient` rather than into someone's memory. KAR-05.9 inherits that rule.
 
 ```gherkin
 Feature: The kill criterion is evaluated against observed behaviour
