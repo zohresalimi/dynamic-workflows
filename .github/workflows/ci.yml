@@ -53,6 +53,12 @@ jobs:
       - run: pnpm schemas:check
 
   test:
+    # HELD BACK (owner's decision, 2026-08-05): no tests run in CI for now.
+    # They still run locally and in every epic gate before anything merges.
+    # Turn back on by setting the repository variable RUN_TESTS_IN_CI to
+    # "true" (Settings -> Secrets and variables -> Actions -> Variables),
+    # or by deleting this line.
+    if: vars.RUN_TESTS_IN_CI == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       # One failing leg must not cancel the other three. With fail-fast on, a
@@ -105,6 +111,8 @@ jobs:
           retention-days: 7
 
   browser-e2e:
+    # Held back with the `test` job above; re-enabled the same way.
+    if: vars.RUN_TESTS_IN_CI == 'true'
     # Linux only — do not triple macOS minutes on a browser job. Nothing in the
     # web or e2e slices is platform-specific; the platform-specific surface is
     # git worktrees and child processes, which the `test` matrix covers.
