@@ -1,0 +1,17 @@
+{
+  "elkjs": "0.12.0",
+  "vite": "8.2.0",
+  "entryChunk": "assets/index-B6ttXx7b.js",
+  "entryWithElkBytes": 13291,
+  "entryWithoutElkBytes": 7736,
+  "entryDeltaBytes": 5555,
+  "workerChunk": "assets/elk-worker.min-COjlAv4s.js",
+  "workerChunkBytes": 1425139,
+  "assets": [
+    ".vite/manifest.json",
+    "assets/dagre.esm-CWvo-0J4.js",
+    "assets/elk-worker.min-COjlAv4s.js",
+    "assets/index-B6ttXx7b.js",
+    "index.html"
+  ]
+}

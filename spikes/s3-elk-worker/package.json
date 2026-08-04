@@ -1,0 +1,15 @@
+{
+  "name": "spike-s3-elk-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KAR-00.4 — does elkjs@0.12.0 load in a Vite 8 worker, in a production build, served from dist/ over plain HTTP?",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "@dagrejs/dagre": "3.0.0",
+    "elkjs": "0.12.0",
+    "vite": "8.2.0"
+  }
+}

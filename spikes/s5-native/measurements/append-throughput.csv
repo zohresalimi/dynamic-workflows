@@ -1,0 +1,9 @@
+machine,filesystem,synchronous,fullfsync,mode,batch_size,events,elapsed_ms,events_per_second
+darwin-arm64-Mac15-4,apfs,FULL,0,single,1,10000,242.451,41245.5
+darwin-arm64-Mac15-4,apfs,FULL,0,batched,100,10000,12.689,788076.4
+darwin-arm64-Mac15-4,apfs,NORMAL,0,single,1,10000,72.701,137549.2
+darwin-arm64-Mac15-4,apfs,NORMAL,0,batched,100,10000,9.226,1083922.7
+darwin-arm64-Mac15-4,apfs,FULL,1,single,1,10000,29829.284,335.2
+darwin-arm64-Mac15-4,apfs,FULL,1,batched,100,10000,349.592,28604.8
+darwin-arm64-Mac15-4,apfs,NORMAL,1,single,1,10000,207.714,48143
+darwin-arm64-Mac15-4,apfs,NORMAL,1,batched,100,10000,15.119,661412.1

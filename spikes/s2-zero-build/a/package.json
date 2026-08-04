@@ -1,0 +1,14 @@
+{
+  "name": "@spike/a",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@spike/b": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vitest": "4.1.10",
+    "vite": "8.2.0"
+  }
+}

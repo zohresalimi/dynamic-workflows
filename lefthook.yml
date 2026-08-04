@@ -19,16 +19,14 @@ pre-commit:
   parallel: true
   jobs:
     - name: format
-      # .vue is deliberately NOT in this glob. `stage_fixed: true` puts whatever
-      # Biome writes into the commit before anyone reads it, and Biome's SFC
-      # formatting is behind `html.experimentalFullSupportEnabled` — still
-      # experimental. KAR-00.6 is the spike that reviews a real before/after
-      # diff and leaves a verdict in docs/spikes/S7-biome-vue.md; that note does
-      # not exist yet, so the answer is no. Once it records "safe", add `vue`
-      # here — test/git-hooks.test.ts asserts the two move together in both
-      # directions. Until then `.vue` is formatted by `pnpm format`, and CI's
-      # `biome ci .` is what catches a file that skipped it.
-      glob: "*.{ts,json,jsonc,css,html}"
+      # .vue is in this glob as of KAR-00.6: docs/spikes/S7-biome-vue.md
+      # records a "safe" verdict on stage_fixed: true for .vue, after a real
+      # before/after diff on two adversarial SFCs (complex script-setup
+      # generics, a long template attribute list) came back small, bounded and
+      # semantics-preserving. test/git-hooks.test.ts asserts the note and this
+      # glob move together in both directions — if the note ever regresses to
+      # "not safe", that test fails until vue comes back out.
+      glob: "*.{ts,vue,json,jsonc,css,html}"
       run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
 

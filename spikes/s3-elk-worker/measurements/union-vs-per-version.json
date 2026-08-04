@@ -1,0 +1,20 @@
+{
+  "perVersionMoves": 15,
+  "moved": [
+    "v1->v2:verify",
+    "v1->v2:report",
+    "v2->v3:intake",
+    "v2->v3:plan",
+    "v2->v3:verify",
+    "v2->v3:report",
+    "v2->v3:research",
+    "v2->v3:review",
+    "v4->v5:intake",
+    "v4->v5:plan",
+    "v4->v5:verify",
+    "v4->v5:report",
+    "v4->v5:review",
+    "v4->v5:implement.frontend",
+    "v4->v5:implement.backend"
+  ]
+}

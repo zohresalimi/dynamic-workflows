@@ -134,6 +134,9 @@ importers:
       DeFlow:
         specifier: workspace:*
         version: link:../packages/cli
+      playwright:
+        specifier: 'catalog:'
+        version: 1.62.1
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
