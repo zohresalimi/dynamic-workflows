@@ -64,6 +64,29 @@ to a remote. Wrap that transaction, and only that transaction, in `withFullSync(
 the transaction, and restores both afterwards including when the callback throws. It costs about
 3 ms per commit.
 
+## Migrations: no `down`, roll forward or restore
+
+Migrations are numbered `.ts` files under `src/migrations/`, append-only and never edited once
+shipped, each exporting a `Migration` with an `up(db)`. **There is no `down` migration anywhere in
+this package**, and none should ever be added: for a local single-user daemon, a down migration is a
+second, less-tested code path that exists to be wrong. Recovery from a bad migration is **roll
+forward** (ship a new migration that fixes the shape) **or restore the pre-migration backup**.
+
+Before the first `up()` of a run touches anything, `migrate()` takes
+`VACUUM INTO '<dataDir>/pre-migrate-<user_version>.db'` — measured 2026-08-02 at 1007 ms for a
+193 MB database, faster than `db.backup()`'s 1633 ms, and it produces a compacted, independently
+openable copy. That file is the recovery path, and it doubles as a one-command "attach my ledger to
+this bug report".
+
+**Downgrade safety is two mechanisms, not one, and they cover different layers:**
+
+- **Event payloads** downgrade gracefully: the reducer's tolerance for an unknown `kind` (KAR-03.5)
+  is what makes a run written by a newer daemon still readable by an older one, one event at a time.
+- **The schema itself does not.** A ledger whose `PRAGMA user_version` is higher than this binary's
+  highest shipped migration id throws `LedgerTooNew` — naming both versions and pointing at the
+  `pre-migrate-*.db` files — rather than guessing. There is no equivalent tolerance here, because a
+  write from the older binary could violate a constraint it does not know exists.
+
 ## Testing this package
 
 **`:memory:` is for pure projection unit tests only** — files named `*.projection.test.ts`, and a
