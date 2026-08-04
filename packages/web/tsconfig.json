@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The one package that runs in a browser: it needs the DOM lib the base
+    // config deliberately withholds from the Node packages, and vite/client for
+    // import.meta.env and the asset module declarations.
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node", "vite/client"],
+    // The rewrite exists so `tsc`/`tsdown` turn ".ts" into ".js" on emit while
+    // `node src/main.ts` runs the source directly (D4). Nothing here is emitted
+    // by tsc — Vite bundles this package — and the rewrite rejects `.vue`
+    // specifiers outright (TS2876), so it is off for this package only.
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+}

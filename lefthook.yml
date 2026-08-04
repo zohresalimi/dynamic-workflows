@@ -1,0 +1,76 @@
+# Git hooks (docs/03-local-development.md §12, docs/14-testing-strategy.md §14.1).
+#
+# lefthook@2 replaces husky *and* lint-staged with one Go binary shipped through
+# optionalDependencies. `"prepare": "lefthook install"` in package.json wires it
+# up on `pnpm install`, so a fresh clone has working hooks with no extra step.
+#
+# The split between the two hooks is a budget, not a taste. Pre-commit must stay
+# under about two seconds: anything slower and you start reaching for
+# `--no-verify`, at which point the hooks are theatre and you have paid the
+# setup cost for nothing. So pre-commit gets the two things that are
+# milliseconds over a handful of staged files, and everything that needs a type
+# graph or a test run happens on pre-push and again in CI.
+#
+# The measured number is in docs/CONTRIBUTING.md and asserted by
+# test/integration/git-hooks.test.ts — which fails, rather than warns, if a new
+# job pushes the median past 2 s.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      # .vue is deliberately NOT in this glob. `stage_fixed: true` puts whatever
+      # Biome writes into the commit before anyone reads it, and Biome's SFC
+      # formatting is behind `html.experimentalFullSupportEnabled` — still
+      # experimental. KAR-00.6 is the spike that reviews a real before/after
+      # diff and leaves a verdict in docs/spikes/S7-biome-vue.md; that note does
+      # not exist yet, so the answer is no. Once it records "safe", add `vue`
+      # here — test/git-hooks.test.ts asserts the two move together in both
+      # directions. Until then `.vue` is formatted by `pnpm format`, and CI's
+      # `biome ci .` is what catches a file that skipped it.
+      glob: "*.{ts,json,jsonc,css,html}"
+      run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+
+    - name: lint
+      # No `--type-aware` here, by design (KAR-01.6 AC1, docs/14-testing-strategy.md
+      # §14.1): it needs a full type graph, and the graph is a property of the
+      # repository rather than of the four files you staged, so its cost grows
+      # while the hook's input does not.
+      #
+      # Know what that buys and what it costs. All six of the correctness rules
+      # this project turns on — `typescript/no-floating-promises` first among
+      # them — are type-aware rules, so this job cannot see any of them.
+      # Measured 2026-08-04: a plain `oxlint` over a floating promise exits 0.
+      # The type-aware pass therefore runs on pre-push instead, below, which is
+      # still before the code reaches a branch. `test/integration/git-hooks.test.ts`
+      # pins both halves of that, so the day the rule stops needing types it
+      # fails and tells you to move it back down here.
+      #
+      # `*.ts` only: oxlint sees just the <script> block of an SFC, so pointing
+      # it at .vue buys a partial lint and the illusion of coverage.
+      #
+      # `--no-error-on-unmatched-pattern` is the counterpart to the format job's
+      # `--no-errors-on-unmatched`, and it is not optional: .oxlintrc.json
+      # ignores every `test/` directory, and oxlint exits 1 with "No files found
+      # to lint" when its ignore patterns eat the whole argument list. Without
+      # the flag, a test-only commit — which in a TDD project is most of them —
+      # fails a hook it has no business failing, and you learn to reach for
+      # `--no-verify`.
+      glob: "*.ts"
+      run: pnpm oxlint --no-error-on-unmatched-pattern {staged_files}
+
+pre-push:
+  jobs:
+    - name: typecheck
+      run: pnpm typecheck
+
+    - name: lint
+      # The type-aware pass pre-commit refuses on budget grounds. A floating
+      # promise in a three-hour orchestrator run is a silent data-loss bug, not
+      # a style issue, so it cannot be left to CI alone — this is the last point
+      # at which it costs a re-edit rather than a red build on a pushed branch.
+      run: pnpm lint
+
+    - name: unit
+      run: pnpm vitest run --project unit

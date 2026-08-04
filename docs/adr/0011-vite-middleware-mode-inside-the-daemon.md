@@ -34,6 +34,16 @@ dev is a class of bug that only appears after `pnpm pack`.
 instance to attach to. This is needed to proxy WebSocket connections to the parent server" — i.e.
 HMR's WebSocket rides the daemon's own HTTP server.
 
+> **Correction, verified 2026-08-04 (KAR-01.3), against `vite@8.2.0`'s shipped code, not its
+> type declarations.** That reading of `middlewareMode: { server }` is wrong. In Vite 8 the field is
+> consumed in exactly one place — constructing the middleware that forwards to a configured
+> upstream — and never by HMR. The option that attaches the HMR WebSocket to a parent server is
+> **`server.ws.server`**. With `middlewareMode` set and no `ws.server`, Vite resolves the client's
+> HMR port to the default **24678** and opens a second listening socket, which is exactly the
+> two-port shape this ADR exists to remove. The decision below is unchanged; only the mechanism is.
+> The working configuration is `server: { middlewareMode: { server }, ws: { server } }`, and
+> `e2e/dev-loop.test.ts` asserts one listening socket so the mistake cannot come back.
+
 ## Decision
 
 **`pnpm dev` starts exactly one process on exactly one URL: `http://127.0.0.1:7777`. Vite runs in
@@ -49,7 +59,10 @@ if (process.env.DeFlow_DEV === "1") {
   const vite = await createServer({
     root: fileURLToPath(new URL("../../../web", import.meta.url)),
     appType: "spa",
-    server: { middlewareMode: { server } }, // HMR websocket through the daemon
+    server: {
+      middlewareMode: { server },
+      ws: { server }, // HMR websocket through the daemon — see the correction above
+    },
   });
   app.use("*", honoAdapter(vite.middlewares));
 } else {

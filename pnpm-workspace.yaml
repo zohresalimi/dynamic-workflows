@@ -1,0 +1,56 @@
+packages:
+  - packages/*
+  - e2e
+
+# NF6: nothing in this workspace may ever compile at install time. pnpm 11 asks
+# for a decision per package that ships a binding.gyp; better-sqlite3@13.0.2 has
+# gypfile:false, no install script and ships prebuilds/, so the answer is no —
+# stated here so a future dependency cannot start compiling without a visible diff.
+allowBuilds:
+  better-sqlite3: false
+  # playwright's install script downloads ~150 MB of browser binaries. The web
+  # slice needs a real Chromium, but it is fetched explicitly by
+  # "pnpm exec playwright install --with-deps chromium" in the browser CI job
+  # (docs/14-testing-strategy.md §14) — never silently, on every install, on
+  # machines that will only ever run the unit slice.
+  playwright: false
+  # lefthook's postinstall runs "lefthook install" for you. It compiles nothing,
+  # but it writes into .git/hooks as a side effect of installing a dependency,
+  # which is a surprising place for an install to reach. The root "prepare"
+  # script does the same job explicitly, one line further down the same install,
+  # so the implicit one is off.
+  lefthook: false
+
+# One place, so nine packages cannot drift (docs/16-repo-layout.md §5).
+# Consume every entry as "catalog:" — never a literal version in a package.json.
+catalog:
+  typescript: 6.0.3 # D3 — NOT 7.x: 7.x ships only bin/tsc, so vue-tsc cannot run
+  vue-tsc: ^3.3.9 # embeds the TS6 compiler API; the reason typescript stays pinned at 6.0.3 (D3)
+  zod: 4.4.3
+  vitest: 4.1.10
+  vite: 8.2.0
+  "@types/node": ^24.0.0
+  hono: 4.12.33
+  "@hono/node-server": 2.0.12
+  better-sqlite3: 13.0.2 # prebuilt N-API binaries, gypfile: false, no install script
+  "@agentclientprotocol/sdk": 1.3.0 # exact: 0.4.5 -> 1.3.0 plus an npm-scope and org change in ~10 months
+  "@modelcontextprotocol/sdk": 1.30.0
+  execa: 10.0.1
+  pino: 10.3.1
+  "@biomejs/biome": 2.5.6 # exact: a patch bump that reflows the repo makes the next commit unreviewable
+  oxlint: 1.76.0
+  oxlint-tsgolint: ^7.0.2001 # the type-aware engine "--type-aware" spawns; peerDependency of oxlint
+  tsdown: 0.22.14 # exact: still 0.x
+  "@lydell/node-pty": 1.2.0-beta.14 # per-platform optionalDependencies; never node-gyp
+  yaml: 2.9.0
+  lefthook: ^2.1.10 # replaces husky *and* lint-staged; one Go binary via optionalDependencies
+  vue: ~3.5.40 # tilde, deliberately: 3.6 rewrites the reactivity core and @vue-flow/core has not named it
+  "@vitejs/plugin-vue": ^6.0.8 # peers vite ^8
+  pino-pretty: ^13.1.3 # dev-only pipe ("pnpm dev | pino-pretty"), never a runtime transport
+  "@types/better-sqlite3": ^9.6.0 # better-sqlite3@13 ships no types of its own
+  # The web slice (docs/14-testing-strategy.md §13). Browser mode is stable in
+  # Vitest 4; the three @vitest/* versions must move together with vitest itself.
+  "@vitest/browser": 4.1.10
+  "@vitest/browser-playwright": 4.1.10
+  playwright: 1.62.1
+  vitest-browser-vue: 2.1.0

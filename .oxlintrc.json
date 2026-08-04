@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // oxlint is the linter for the Node packages: core, ledger, adapters,
+  // daemon, cli. packages/web is Vue and gets ESLint at M2 (oxlint sees only
+  // the <script> block of an SFC). packages/mock-agent and packages/testkit
+  // are excluded per docs/16-repo-layout.md — mock-agent is deliberately an
+  // independent implementation, and testkit ships fake binaries the type-aware
+  // rules below are not aimed at.
+  "plugins": ["typescript", "unicorn", "promise", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/require-await": "error",
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-unsafe-argument": "error"
+  },
+  "ignorePatterns": [
+    "vitest.config.ts",
+    "packages/web/**",
+    "packages/mock-agent/**",
+    "packages/testkit/**",
+    "e2e/**",
+    "test/**",
+    ".claude/**",
+    // Every packages/*/tsconfig.json sets "include": ["src"] (testkit adds
+    // "bin") — test/ directories are outside every project's type-checked
+    // graph, "pnpm typecheck" never sees them, and --type-aware's tsconfig
+    // auto-discovery falls back to weaker defaults for a file that config
+    // does not "include", producing both false positives and false negatives
+    // rather than the real project's strict settings. Scoping type-aware
+    // linting to what is actually typechecked keeps its diagnostics honest;
+    // widening this needs test/ added to a tsconfig's "include" first.
+    "packages/*/test/**"
+  ]
+}
