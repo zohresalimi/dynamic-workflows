@@ -15,12 +15,25 @@
 import { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
+import { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
 
 const daemon = log.child({ mod: 'daemon' });
 
 function port(): number {
   const configured = Number(process.env.DeFlow_PORT);
   return Number.isInteger(configured) && configured >= 0 ? configured : DEFAULT_PORT;
+}
+
+// Before anything binds and long before a ledger is opened: an event kind
+// whose upcaster chain has a hole cannot be read at all, and finding that out
+// mid-replay is finding it out at the worst possible moment (EPIC-02-S21).
+const schemas = checkSchemaRegistry();
+if (!schemas.ok) {
+  daemon.error(
+    { kind: schemas.kind, version: schemas.version },
+    `DeFlowd cannot start: ${schemas.message}`,
+  );
+  process.exit(EX_CONFIG);
 }
 
 const started = await startHttp({

@@ -21,28 +21,37 @@ export const SUSPENSION_KINDS = ['human', 'wake', 'external'] as const;
 
 export const CANCELLATION_SOURCES = ['user', 'policy', 'parent'] as const;
 
+/** The `completed` arm on its own, because `node.completed`'s payload is
+ * `Extract<NodeResult, {status:'completed'}>` (§9) and a union member is not
+ * reachable as a schema once it is inside `z.discriminatedUnion`. */
+export const CompletedNodeResultSchema = z.strictObject({
+  status: z.literal('completed'),
+  output: z.unknown(),
+  outputSchemaId: SchemaIdSchema,
+  usage: TokenUsageSchema,
+  costUsd: z.number().nonnegative(),
+  producedFacts: z.array(FactIdSchema),
+  artifacts: z.array(HandleSchema),
+});
+
+/** What a suspended node is waiting for. Named separately because
+ * `node.suspended`'s payload carries exactly this object (§9). */
+export const NodeSuspensionSchema = z.strictObject({
+  kind: z.enum(SUSPENSION_KINDS),
+  /** Only meaningful for `wake`; an ISO-8601 instant, not a duration, so
+   * it survives a restart that outlives the timer. */
+  wakeAt: z.iso.datetime().optional(),
+});
+
 export const NodeResultSchema = z.discriminatedUnion('status', [
-  z.strictObject({
-    status: z.literal('completed'),
-    output: z.unknown(),
-    outputSchemaId: SchemaIdSchema,
-    usage: TokenUsageSchema,
-    costUsd: z.number().nonnegative(),
-    producedFacts: z.array(FactIdSchema),
-    artifacts: z.array(HandleSchema),
-  }),
+  CompletedNodeResultSchema,
   z.strictObject({
     status: z.literal('failed'),
     failure: NodeFailureSchema,
   }),
   z.strictObject({
     status: z.literal('suspended'),
-    until: z.strictObject({
-      kind: z.enum(SUSPENSION_KINDS),
-      /** Only meaningful for `wake`; an ISO-8601 instant, not a duration, so
-       * it survives a restart that outlives the timer. */
-      wakeAt: z.iso.datetime().optional(),
-    }),
+    until: NodeSuspensionSchema,
   }),
   z.strictObject({
     status: z.literal('cancelled'),
@@ -51,3 +60,5 @@ export const NodeResultSchema = z.discriminatedUnion('status', [
 ]);
 
 export type NodeResult = z.infer<typeof NodeResultSchema>;
+export type CompletedNodeResult = z.infer<typeof CompletedNodeResultSchema>;
+export type NodeSuspension = z.infer<typeof NodeSuspensionSchema>;

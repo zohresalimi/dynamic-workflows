@@ -17,3 +17,5 @@ export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+export type { SchemaRegistryCheck } from './preflight.ts';
+export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';

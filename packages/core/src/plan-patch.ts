@@ -168,12 +168,16 @@ export type PatchOp = z.infer<typeof PatchOpSchema>;
  * first so they are matched as themselves rather than as node ids they would
  * also lexically satisfy.
  */
-const ProposedBySchema = z.union([
+export const ProposedBySchema = z.union([
   z.literal('planner'),
   z.literal('human'),
   z.literal('scheduler'),
   NodeIdSchema,
 ]);
+
+/** Who proposed a plan or a patch. Shared with `plan.proposed`'s `by` field
+ * (§9), which is the same vocabulary. */
+export type ProposedBy = z.infer<typeof ProposedBySchema>;
 
 /** AC6: required and non-empty, and non-blank — it is rendered verbatim in
  * the scrubber (F10.2) and never summarised or rewritten anywhere in the
