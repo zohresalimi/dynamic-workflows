@@ -1,0 +1,7 @@
+# KAR-00.2 — a throwaway workspace, deliberately outside the root
+# pnpm-workspace.yaml. It wires "a" -> "b" exactly as packages/daemon will
+# wire to packages/core, so the matrix in run.sh proves the mechanism before
+# EPIC-01 depends on it. See docs/spikes/S2-zero-build.md for the result.
+packages:
+  - a
+  - b
