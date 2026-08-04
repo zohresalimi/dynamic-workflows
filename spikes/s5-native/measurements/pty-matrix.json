@@ -1,0 +1,209 @@
+{
+  "recordedAt": "2026-08-04T17:37:50.445Z",
+  "cells": [
+    {
+      "id": "macos-arm64-node24",
+      "status": "pass",
+      "fallback": null,
+      "nodeVersion": "v24.18.0",
+      "arch": "arm64",
+      "libc": "darwin",
+      "glibcVersion": null,
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": true,
+        "durationMs": 512,
+        "compilationMarkers": [],
+        "sqliteVersion": "3.53.4",
+        "binding": "better-sqlite3/prebuilds/darwin-arm64.node",
+        "failure": null
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 179,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-darwin-arm64",
+        "device": "/dev/ttys002",
+        "echoed": true,
+        "failure": null,
+        "dlopenFailure": null
+      },
+      "upstreamPty": {
+        "ok": true,
+        "prebuildForThisPlatform": true,
+        "nodeGypRan": false
+      }
+    },
+    {
+      "id": "macos-arm64-node26",
+      "status": "pass",
+      "fallback": null,
+      "nodeVersion": "v26.6.0",
+      "arch": "arm64",
+      "libc": "darwin",
+      "glibcVersion": null,
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": true,
+        "durationMs": 326,
+        "compilationMarkers": [],
+        "sqliteVersion": "3.53.4",
+        "binding": "better-sqlite3/prebuilds/darwin-arm64.node",
+        "failure": null
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 172,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-darwin-arm64",
+        "device": "/dev/ttys002",
+        "echoed": true,
+        "failure": null,
+        "dlopenFailure": null
+      },
+      "upstreamPty": {
+        "ok": true,
+        "prebuildForThisPlatform": true,
+        "nodeGypRan": false
+      }
+    },
+    {
+      "id": "linux-glibc-node24",
+      "status": "fail",
+      "fallback": "documented prerequisite: better-sqlite3@13.0.2 installs here but its prebuild will not load, so this platform is not a supported target for the ledger as pinned",
+      "nodeVersion": "v24.19.0",
+      "arch": "arm64",
+      "libc": "glibc",
+      "glibcVersion": "2.36",
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": false,
+        "durationMs": 510,
+        "compilationMarkers": [],
+        "sqliteVersion": null,
+        "binding": null,
+        "failure": "/lib/aarch64-linux-gnu/libm.so.6: version `GLIBC_2.38' not found (required by /tmp/s5-install-RkUw6j/node_modules/better-sqlite3/prebuilds/linux-arm64.node)"
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 325,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-linux-arm64",
+        "device": "/dev/pts/0",
+        "echoed": true,
+        "failure": null,
+        "dlopenFailure": null
+      },
+      "upstreamPty": {
+        "ok": false,
+        "prebuildForThisPlatform": false,
+        "nodeGypRan": true
+      }
+    },
+    {
+      "id": "linux-glibc-node26",
+      "status": "pass",
+      "fallback": null,
+      "nodeVersion": "v26.5.1",
+      "arch": "arm64",
+      "libc": "glibc",
+      "glibcVersion": "2.41",
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": true,
+        "durationMs": 456,
+        "compilationMarkers": [],
+        "sqliteVersion": "3.53.4",
+        "binding": "better-sqlite3/prebuilds/linux-arm64.node",
+        "failure": null
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 518,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-linux-arm64",
+        "device": "/dev/pts/0",
+        "echoed": true,
+        "failure": null,
+        "dlopenFailure": null
+      },
+      "upstreamPty": {
+        "ok": false,
+        "prebuildForThisPlatform": false,
+        "nodeGypRan": true
+      }
+    },
+    {
+      "id": "linux-musl-node24",
+      "status": "fail",
+      "fallback": "no-TTY: @lydell/node-pty stays an optionalDependency and DeFlow does not advertise the ACP terminal/* client capability on this platform",
+      "nodeVersion": "v24.19.0",
+      "arch": "arm64",
+      "libc": "musl",
+      "glibcVersion": null,
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": true,
+        "durationMs": 504,
+        "compilationMarkers": [],
+        "sqliteVersion": "3.53.4",
+        "binding": "better-sqlite3/prebuilds/linuxmusl-arm64.node",
+        "failure": null
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 359,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-linux-arm64",
+        "device": null,
+        "echoed": false,
+        "failure": "Failed to load native module: pty.node, checked: build/Release, build/Debug, prebuilds/linux-arm64: Error: Cannot find module './prebuilds/linux-arm64/pty.node'\nRequire stack:\n- /tmp/s5-install-CjhKpF/node_modules/@lydell/node-pty-linux-arm64/lib/utils.js\n- /tmp/s5-install-CjhKpF/node_modules/@lydell/node-pty-linux-arm64/lib/index.js\n- /tmp/s5-install-CjhKpF/node_modules/@lydell/node-pty/index.js\n- /tmp/s5-install-CjhKpF/probe.cjs",
+        "dlopenFailure": "linux-arm64/pty.node: Error loading shared library ld-linux-aarch64.so.1: No such file or directory (needed by /tmp/s5-install-CjhKpF/node_modules/@lydell/node-pty-linux-arm64/prebuilds/linux-arm64/pty.node)"
+      },
+      "upstreamPty": {
+        "ok": false,
+        "prebuildForThisPlatform": false,
+        "nodeGypRan": true
+      }
+    },
+    {
+      "id": "linux-glibc-trixie-node24",
+      "status": "pass",
+      "fallback": null,
+      "nodeVersion": "v24.19.0",
+      "arch": "arm64",
+      "libc": "glibc",
+      "glibcVersion": "2.41",
+      "compilersOnPath": [],
+      "betterSqlite3": {
+        "installed": true,
+        "loaded": true,
+        "durationMs": 497,
+        "compilationMarkers": [],
+        "sqliteVersion": "3.53.4",
+        "binding": "better-sqlite3/prebuilds/linux-arm64.node",
+        "failure": null
+      },
+      "lydellPty": {
+        "installed": true,
+        "durationMs": 340,
+        "compilationMarkers": [],
+        "platformPackage": "@lydell/node-pty-linux-arm64",
+        "device": "/dev/pts/0",
+        "echoed": true,
+        "failure": null,
+        "dlopenFailure": null
+      },
+      "upstreamPty": {
+        "ok": false,
+        "prebuildForThisPlatform": false,
+        "nodeGypRan": true
+      }
+    }
+  ]
+}

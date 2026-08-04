@@ -1,0 +1,15 @@
+{
+  "name": "spike-s5-native",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "KAR-00.5 — do better-sqlite3@13.0.2 and @lydell/node-pty@1.2.0-beta.14 install and load with zero compilation on the target machines, and what does an fsync cost on APFS?",
+  "scripts": {
+    "probe": "node probe.mjs",
+    "bench": "node bench.mjs",
+    "matrix": "node matrix.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.2"
+  }
+}
