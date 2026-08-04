@@ -114,6 +114,39 @@ suite('EPIC-00-S11 — one process, one port (AC1, AC6)', () => {
   });
 });
 
+/**
+ * The number of streams the server currently believes are open, sampled only
+ * once that number has stopped moving.
+ *
+ * `SseRecorder.close()` aborts the client's fetch and returns synchronously,
+ * but the server only decrements `open` when it notices the socket is gone —
+ * measured at 1–4 ms on an idle machine, and wider under a loaded run. A
+ * baseline taken while an earlier spec's stream is still counted makes the
+ * deltas below net out to zero: the stale connection is reaped between the two
+ * samples, so one arrives and one leaves and the count does not move. That is a
+ * red with nothing to say about the transport it is meant to be testing, so the
+ * baseline waits for quiescence rather than assuming it.
+ */
+async function settledOpen(origin: string, timeoutMs = 10_000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let last = (await observations(origin)).open;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    await sleep(25);
+    const current = (await observations(origin)).open;
+    if (current !== last) {
+      last = current;
+      stable = 0;
+      continue;
+    }
+    stable += 1;
+    // 100 ms of an unchanging count, against a reap measured in single-digit
+    // milliseconds.
+    if (stable >= 4) return current;
+  }
+  throw new Error(`the open-stream count never settled within ${timeoutMs} ms (last saw ${last})`);
+}
+
 suite('EPIC-00-S11 — the stream transport (AC4)', () => {
   it('sends no-cache, no-transform and X-Accel-Buffering: no, and no Content-Encoding', async () => {
     const stream = await connectSse(`${main.origin}/api/stream`);
@@ -146,20 +179,20 @@ suite('EPIC-00-S11 — the stream transport (AC4)', () => {
   });
 
   it('learns immediately when a client goes away', async () => {
-    const before = await observations(main.origin);
+    const before = await settledOpen(main.origin);
     const stream = await connectSse(`${main.origin}/api/stream`);
     await stream.waitFor(1, 10_000);
-    expect((await observations(main.origin)).open).toBe(before.open + 1);
+    expect((await observations(main.origin)).open).toBe(before + 1);
 
     stream.close();
     const deadline = Date.now() + 5_000;
     let open = -1;
     while (Date.now() < deadline) {
       open = (await observations(main.origin)).open;
-      if (open === before.open) break;
+      if (open === before) break;
       await sleep(50);
     }
-    expect(open, 'the backend must learn the client navigated away').toBe(before.open);
+    expect(open, 'the backend must learn the client navigated away').toBe(before);
   });
 });
 
@@ -315,10 +348,10 @@ suite('EPIC-00-S12 — a Vite dev proxy in front of the daemon', () => {
   it('propagates the disconnect to the backend, on this version, within a second', async () => {
     const proxy = await startProxy(main.port);
     try {
-      const before = await observations(main.origin);
+      const before = await settledOpen(main.origin);
       const stream = await connectSse(`${proxy.origin}/api/stream`);
       await stream.waitFor(2, 15_000);
-      expect((await observations(main.origin)).open).toBe(before.open + 1);
+      expect((await observations(main.origin)).open).toBe(before + 1);
 
       stream.close();
       const deadline = Date.now() + 5_000;
@@ -327,7 +360,7 @@ suite('EPIC-00-S12 — a Vite dev proxy in front of the daemon', () => {
       const closedAt = Date.now();
       while (Date.now() < deadline) {
         open = (await observations(main.origin)).open;
-        if (open === before.open) {
+        if (open === before) {
           elapsed = Date.now() - closedAt;
           break;
         }
@@ -336,7 +369,7 @@ suite('EPIC-00-S12 — a Vite dev proxy in front of the daemon', () => {
       expect(
         open,
         'the proxy held the upstream connection open — vitejs/vite#12157 is live again and docs/03-local-development.md §4.3 needs its third bullet back',
-      ).toBe(before.open);
+      ).toBe(before);
       expect(elapsed).toBeLessThan(5_000);
     } finally {
       await proxy.stop();
