@@ -1,0 +1,50 @@
+{
+  "schemaId": "DeFlow.taskspec.v1",
+  "goal": "Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.",
+  "scope": {
+    "included": ["packages/web/src/checkout/**"],
+    "paths": ["packages/web/src/checkout"]
+  },
+  "nonGoals": ["Rewriting the payment gateway integration"],
+  "constraints": ["must not change the public API of @voyado/ui"],
+  "priorDecisions": [
+    {
+      "decision": "Use the Vue 3 Composition API for all new composables",
+      "rationale": "Matches the rest of the codebase post-migration",
+      "source": "file://docs/adr/0010-typescript-6-pin-esm-only-erasable-syntax.md#L1-L5"
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "unit-tests-pass",
+      "statement": "All existing checkout unit tests pass unmodified.",
+      "check": { "kind": "command", "run": "pnpm test", "expect": "exit-zero" },
+      "coveredByGates": []
+    },
+    {
+      "id": "no-v-model-regression",
+      "statement": "No v-model modifier is silently dropped by the codemod.",
+      "check": { "kind": "gate", "gate": "codemod-review" },
+      "coveredByGates": []
+    },
+    {
+      "id": "manual-visual-check",
+      "statement": "The checkout flow renders identically in a manual pass.",
+      "check": {
+        "kind": "manual",
+        "rubric": "Compare before/after screenshots at each checkout step."
+      },
+      "coveredByGates": []
+    }
+  ],
+  "knownFailureModes": [
+    {
+      "id": "v-model-drop",
+      "description": "the migration codemod silently drops v-model modifiers",
+      "detection": "diff the compiled template output before and after the codemod",
+      "mitigation": "add a lint rule that flags any v-model without a matching modifier in the diff"
+    }
+  ],
+  "approvedBy": null,
+  "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000"
+}
