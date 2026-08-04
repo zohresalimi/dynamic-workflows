@@ -14,6 +14,8 @@
  */
 export { type AgentOnPath, FAKE_AGENT_BIN, linkFakeAgent } from './agent.ts';
 export { TestClock } from './clock.ts';
+export { dbContract } from './db-contract.ts';
+export { FakeDb, FakeDbClosed, FakeDbUnsupportedSql } from './fake-db.ts';
 export { type DeFlowFixtures, it } from './fixtures.ts';
 export { GIT_ENV, type GitResult, git, tryGit } from './git.ts';
 export { type MakeRepoOptions, makeRepo, type Repo } from './repo.ts';

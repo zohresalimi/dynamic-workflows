@@ -52,6 +52,9 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
+// @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
+export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
   CompactionFidelity,
