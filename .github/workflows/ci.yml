@@ -46,6 +46,11 @@ jobs:
       - run: pnpm biome ci .
       - run: pnpm oxlint --type-aware
       - run: pnpm typecheck
+      # KAR-02.8 AC2: the emitted JSON Schemas under schemas/ are regenerated
+      # from the Zod source and compared by content. It belongs here and not in
+      # a pre-commit hook — it loads the whole domain package, and
+      # docs/14-testing-strategy.md §14.1 keeps that hook under ~2 seconds.
+      - run: pnpm schemas:check
 
   test:
     # HELD BACK (owner's decision, 2026-08-05): no tests run in CI for now.

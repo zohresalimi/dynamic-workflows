@@ -27,6 +27,12 @@ catalog:
   typescript: 6.0.3 # D3 — NOT 7.x: 7.x ships only bin/tsc, so vue-tsc cannot run
   vue-tsc: ^3.3.9 # embeds the TS6 compiler API; the reason typescript stays pinned at 6.0.3 (D3)
   zod: 4.4.3
+  # KAR-02.8: the one JSON Schema 2020-12 validator this project ships. 2020-12 is the
+  # dialect MCP tool `inputSchema` defaults to, and ajv arrives transitively via
+  # @modelcontextprotocol/sdk anyway — pinned here so both users of it (the daemon at
+  # runtime, packages/core/scripts at check time) compile the same bytes.
+  ajv: 8.20.0
+  ajv-formats: 3.0.1
   vitest: 4.1.10
   vite: 8.2.0
   "@types/node": ^24.0.0

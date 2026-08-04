@@ -1,0 +1,61 @@
+[
+  {
+    "field": "goal",
+    "value": "Migrate the checkout module from Vue 2 to Vue 3 without changing its public API."
+  },
+  {
+    "field": "nonGoals",
+    "value": [
+      "Rewriting the payment gateway integration"
+    ]
+  },
+  {
+    "field": "constraints",
+    "value": [
+      "must not change the public API of @voyado/ui"
+    ]
+  },
+  {
+    "field": "acceptanceCriteria",
+    "value": [
+      {
+        "id": "unit-tests-pass",
+        "statement": "All existing checkout unit tests pass unmodified.",
+        "check": {
+          "kind": "command",
+          "run": "pnpm test",
+          "expect": "exit-zero"
+        },
+        "coveredByGates": []
+      },
+      {
+        "id": "no-v-model-regression",
+        "statement": "No v-model modifier is silently dropped by the codemod.",
+        "check": {
+          "kind": "gate",
+          "gate": "codemod-review"
+        },
+        "coveredByGates": []
+      },
+      {
+        "id": "manual-visual-check",
+        "statement": "The checkout flow renders identically in a manual pass.",
+        "check": {
+          "kind": "manual",
+          "rubric": "Compare before/after screenshots at each checkout step."
+        },
+        "coveredByGates": []
+      }
+    ]
+  },
+  {
+    "field": "pathScopes",
+    "value": [
+      "packages/web/**"
+    ]
+  },
+  {
+    "field": "permission",
+    "value": "edit"
+  }
+]

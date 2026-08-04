@@ -1,0 +1,352 @@
+{
+  "schemaId": "DeFlow.plangraph.v1",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "version": 1,
+  "planHash": "sha256-ac252376919065dbd057ce593743b5f3d10ff8ae7ffb92ac6deecdb354d2a536",
+  "parent": null,
+  "taskSpecHash": "sha256-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "createdBy": "planner",
+  "createdAt": "2026-08-02T14:11:33.000Z",
+  "nodes": [
+    {
+      "id": "recon-auth-surface",
+      "title": "Survey the auth surface",
+      "deps": [],
+      "lifecycle": "active",
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal"
+        }
+      ],
+      "writes": [
+        {
+          "kind": "fact",
+          "key": "finding/auth-uses-jwt",
+          "schemaId": "DeFlow.finding.v1"
+        }
+      ],
+      "permission": "read",
+      "pathScopes": {
+        "write": [],
+        "read": [
+          "src/auth/**"
+        ]
+      },
+      "returns": {
+        "schemaId": "DeFlow.finding.v1",
+        "maxTokens": 4000
+      },
+      "retry": {
+        "maxAttempts": 3,
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full"
+        }
+      },
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000
+      },
+      "type": "agent",
+      "brief": "Survey how the auth module verifies tokens and report findings.",
+      "provider": {
+        "prefer": [
+          "claude-code"
+        ],
+        "requires": [
+          "structuredOutput"
+        ]
+      },
+      "resume": "native-if-available"
+    },
+    {
+      "id": "run-lint",
+      "title": "Run the linter",
+      "deps": [
+        "recon-auth-surface"
+      ],
+      "lifecycle": "active",
+      "reads": [],
+      "writes": [
+        {
+          "kind": "fact",
+          "key": "lint/result",
+          "schemaId": "DeFlow.lintresult.v1"
+        }
+      ],
+      "permission": "worktree",
+      "pathScopes": {
+        "write": [
+          "**"
+        ]
+      },
+      "returns": {
+        "schemaId": "DeFlow.lintresult.v1",
+        "maxTokens": 500
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoff": {
+          "base": 500,
+          "cap": 5000,
+          "jitter": "full"
+        }
+      },
+      "budget": {
+        "maxWallClockMs": 60000
+      },
+      "type": "tool",
+      "tool": {
+        "kind": "script",
+        "run": "pnpm lint",
+        "cwd": "."
+      },
+      "effectClass": "pure"
+    },
+    {
+      "id": "gate-lint-clean",
+      "title": "Lint must be clean",
+      "deps": [
+        "run-lint"
+      ],
+      "lifecycle": "active",
+      "reads": [
+        {
+          "kind": "fact",
+          "key": "lint/result"
+        }
+      ],
+      "writes": [],
+      "permission": "read",
+      "pathScopes": {
+        "write": []
+      },
+      "returns": {
+        "schemaId": "DeFlow.verdict.v1",
+        "maxTokens": 300
+      },
+      "retry": {
+        "maxAttempts": 1,
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full"
+        }
+      },
+      "budget": {},
+      "type": "gate",
+      "gate": {
+        "kind": "deterministic",
+        "gateId": "lint-clean"
+      },
+      "criteria": [
+        "lint-has-zero-errors"
+      ],
+      "independence": {
+        "notSessionOf": [],
+        "preferDifferentProvider": false
+      }
+    },
+    {
+      "id": "approve-release",
+      "title": "Operator approves the release",
+      "deps": [
+        "gate-lint-clean"
+      ],
+      "lifecycle": "active",
+      "reads": [],
+      "writes": [],
+      "permission": "read",
+      "pathScopes": {
+        "write": []
+      },
+      "returns": {
+        "schemaId": "DeFlow.humandecision.v1",
+        "maxTokens": 200
+      },
+      "retry": {
+        "maxAttempts": 1,
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full"
+        }
+      },
+      "budget": {},
+      "type": "human",
+      "prompt": "Approve this release?",
+      "options": [
+        {
+          "id": "approve",
+          "label": "Approve",
+          "effect": "approve"
+        },
+        {
+          "id": "reject",
+          "label": "Reject",
+          "effect": "reject"
+        }
+      ],
+      "deadline": {
+        "wakeAt": "2026-08-03T14:11:33.000Z",
+        "onTimeout": "escalate"
+      }
+    },
+    {
+      "id": "review-each-file",
+      "title": "Review each changed file",
+      "deps": [
+        "approve-release"
+      ],
+      "lifecycle": "active",
+      "reads": [
+        {
+          "kind": "fact",
+          "key": "lint/result"
+        }
+      ],
+      "writes": [],
+      "permission": "read",
+      "pathScopes": {
+        "write": []
+      },
+      "returns": {
+        "schemaId": "DeFlow.reviewitem.v1",
+        "maxTokens": 1500
+      },
+      "retry": {
+        "maxAttempts": 3,
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full"
+        }
+      },
+      "budget": {},
+      "type": "map",
+      "over": {
+        "kind": "glob",
+        "pattern": "src/**/*.ts"
+      },
+      "concurrency": 3,
+      "body": "review-one-file",
+      "itemIdFrom": "value-hash"
+    },
+    {
+      "id": "retry-flaky-check",
+      "title": "Retry the flaky integration check",
+      "deps": [
+        "review-each-file"
+      ],
+      "lifecycle": "active",
+      "reads": [],
+      "writes": [],
+      "permission": "read",
+      "pathScopes": {
+        "write": []
+      },
+      "returns": {
+        "schemaId": "DeFlow.verdict.v1",
+        "maxTokens": 300
+      },
+      "retry": {
+        "maxAttempts": 5,
+        "backoff": {
+          "base": 1000,
+          "cap": 60000,
+          "jitter": "full"
+        }
+      },
+      "budget": {
+        "maxWallClockMs": 1800000
+      },
+      "type": "loop",
+      "body": "run-integration-check",
+      "maxRounds": 5,
+      "goal": {
+        "kind": "gate",
+        "gate": "gate-lint-clean"
+      },
+      "noProgress": {
+        "sameFailureSignatureLimit": 3,
+        "diffSimilarityThreshold": 0.9
+      }
+    },
+    {
+      "id": "ship-it",
+      "title": "Ship the release",
+      "deps": [
+        "retry-flaky-check"
+      ],
+      "lifecycle": "active",
+      "reads": [],
+      "writes": [],
+      "permission": "worktree+net",
+      "pathScopes": {
+        "write": [
+          "**"
+        ]
+      },
+      "returns": {
+        "schemaId": "DeFlow.shipresult.v1",
+        "maxTokens": 500
+      },
+      "retry": {
+        "maxAttempts": 1,
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full"
+        }
+      },
+      "budget": {
+        "maxWallClockMs": 900000
+      },
+      "type": "subgraph",
+      "graph": {
+        "kind": "template",
+        "templateId": "release-and-announce",
+        "params": {
+          "channel": "#releases"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "to": "run-lint",
+      "kind": "control"
+    },
+    {
+      "from": "run-lint",
+      "to": "gate-lint-clean",
+      "kind": "data",
+      "carries": [
+        "lint/result"
+      ]
+    },
+    {
+      "from": "gate-lint-clean",
+      "to": "approve-release",
+      "kind": "control"
+    },
+    {
+      "from": "approve-release",
+      "to": "review-each-file",
+      "kind": "control"
+    },
+    {
+      "from": "review-each-file",
+      "to": "retry-flaky-check",
+      "kind": "control"
+    },
+    {
+      "from": "retry-flaky-check",
+      "to": "ship-it",
+      "kind": "control"
+    }
+  ]
+}

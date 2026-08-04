@@ -650,7 +650,7 @@ union with an explicitly-assigned class, **so that** a failure survives `JSON.st
 daemon restart, and tells the scheduler what to do without being re-interpreted at render time.
 
 Added because [04-domain-model §7 and §8](../../04-domain-model.md#8-noderesult-and-nodefailure)
-specify `Verdict`, `Finding`, `NodeResult`, `NodeFailure`, `NodeFailureReason` (30 literals across
+specify `Verdict`, `Finding`, `NodeResult`, `NodeFailure`, `NodeFailureReason` (26 literals across
 adapter, agent-reported, contract, safety, resource and orchestration groups) and `TokenUsage`, and
 no skeleton story owns them — yet KAR-02.7's event payloads (`node.failed`, `gate.evaluated`,
 `node.completed`, `budget.consumed`) cannot be written without them. The story also ships the single
@@ -660,9 +660,11 @@ the union, with unmapped throws becoming `{ reason: 'internal' }` and the stack 
 
 **Acceptance criteria**
 
-1. `NodeFailureReason` is a string-literal union containing exactly the 30 reasons in §8, verified
-   by a table-driven test against a committed list. No `enum` — `erasableSyntaxOnly: true` forbids
-   it and a union round-trips through JSON.
+1. `NodeFailureReason` is a string-literal union containing exactly the reasons in §8 — **26**, not
+   the 30 this line claimed before KAR-02.10 counted them — verified by a table-driven test against
+   a committed list and a second test that reads the union out of §8 itself, so the code and the
+   document cannot drift. No `enum` — `erasableSyntaxOnly: true` forbids it and a union round-trips
+   through JSON.
 2. `class` (`transient` / `permanent` / `gate`) is a required field on `NodeFailure` and is _not_
    derivable from `reason`: the same reason appears in the test corpus with two different classes
    (`provider.unavailable` transient for a rate-limited vendor, permanent for an uninstalled binary).
@@ -684,7 +686,7 @@ the union, with unmapped throws becoming `{ reason: 'internal' }` and the stack 
 
 | #   | Level | Test                                                                                      | Red when                                            |
 | --- | ----- | ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| 1   | unit  | Committed 30-row reason table compared to the exported union                              | A reason was added to one and not the other         |
+| 1   | unit  | Committed reason table compared to the exported union, and both to §8                     | A reason was added to one and not the other         |
 | 2   | unit  | `provider.unavailable` fixtures with both classes both parse                              | `class` is computed from `reason`                   |
 | 3   | unit  | `effect.reconcile-unknown` + `class: 'transient'` rejected                                | The refinement is missing                           |
 | 4   | unit  | Round-trip deep-equality over the full corpus                                             | A `Handle` or `EventSeq` brand breaks serialisation |

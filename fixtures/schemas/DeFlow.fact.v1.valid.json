@@ -1,0 +1,21 @@
+{
+  "id": "fact_01hq5m9z00000000000000000a",
+  "key": "finding/auth-uses-jwt",
+  "kind": "finding",
+  "schemaId": "DeFlow.finding.v1",
+  "value": {
+    "id": "auth-uses-jwt",
+    "severity": "info",
+    "message": "the HTTP API authenticates with a JWT bearer token, validated in src/http/auth.ts",
+    "evidence": ["file://src/http/auth.ts#L12-L40"]
+  },
+  "provenance": {
+    "byNode": "recon-auth-surface",
+    "byProvider": "claude-code",
+    "byModel": "claude-sonnet-4-6",
+    "fromEvidence": ["artifact://9f2a1c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"],
+    "atEvent": 412,
+    "at": "2026-08-02T14:11:33.000Z",
+    "confidence": "verified"
+  }
+}

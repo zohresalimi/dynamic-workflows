@@ -20,6 +20,8 @@
     "@DeFlow/ledger": "workspace:*",
     "@hono/node-server": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "execa": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:"
