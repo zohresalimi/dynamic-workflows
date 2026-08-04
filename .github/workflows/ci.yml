@@ -53,6 +53,13 @@ jobs:
       - run: pnpm schemas:check
 
   test:
+    # TEMPORARY (owner's decision, 2026-08-05): the test legs are held back in
+    # CI for the rest of the M1 build-out. They still run locally and in each
+    # epic's gate before anything merges. Re-enable by setting the repository
+    # variable RUN_TESTS_IN_CI to "true" (Settings -> Secrets and variables ->
+    # Actions -> Variables), or by deleting this `if:` line, at the end of the
+    # project. Nothing else in this file changed.
+    if: vars.RUN_TESTS_IN_CI == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       # One failing leg must not cancel the other three. With fail-fast on, a
@@ -105,6 +112,8 @@ jobs:
           retention-days: 7
 
   browser-e2e:
+    # Held back with the `test` job above, and re-enabled the same way.
+    if: vars.RUN_TESTS_IN_CI == 'true'
     # Linux only — do not triple macOS minutes on a browser job. Nothing in the
     # web or e2e slices is platform-specific; the platform-specific surface is
     # git worktrees and child processes, which the `test` matrix covers.
