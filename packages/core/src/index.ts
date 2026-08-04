@@ -16,6 +16,30 @@
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
+// KAR-02.6 — ContextPacket and typed segments.
+export type {
+  ContextBudget,
+  ContextPacket,
+  ContextTotals,
+  PacketTotalsResult,
+  Segment,
+  SegmentKind,
+  TokenCount,
+  TokenCountMethod,
+} from './context-packet.ts';
+export {
+  CONTEXTPACKET_SCHEMA_ID,
+  ContextBudgetSchema,
+  ContextPacketSchema,
+  packetTotalsAreConsistent,
+  renderOrderOf,
+  SEGMENT_KINDS,
+  SegmentKindSchema,
+  SegmentSchema,
+  TOKEN_COUNT_METHODS,
+  TokenCountMethodSchema,
+  TokenCountSchema,
+} from './context-packet.ts';
 // KAR-02.5 — Fact, Provenance and the blackboard vocabulary.
 export type { Confidence, Fact, FactKind, Provenance } from './fact.ts';
 export {
