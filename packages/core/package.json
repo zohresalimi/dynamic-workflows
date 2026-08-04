@@ -18,6 +18,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

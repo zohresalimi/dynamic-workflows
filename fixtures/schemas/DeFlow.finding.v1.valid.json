@@ -1,0 +1,9 @@
+{
+  "id": "auth-uses-jwt",
+  "severity": "major",
+  "criterion": "no-plaintext-secrets",
+  "location": { "file": "src/http/auth.ts", "line": 12, "endLine": 40 },
+  "message": "the refresh token is stored in localStorage, which any XSS can read",
+  "evidence": ["file://src/http/auth.ts#L12-L40"],
+  "suggestedFix": "move the refresh token to an httpOnly cookie"
+}

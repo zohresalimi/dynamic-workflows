@@ -1,0 +1,62 @@
+{
+  "schemaId": "DeFlow.planpatch.v1",
+  "id": "patch-3a91f0",
+  "proposedBy": "recon-auth-surface",
+  "reason": "Auth turns out to be JWT-based, so the recon step should re-run on Codex, the token-expiry edge cases need their own node, and the release subgraph is out of scope for this task.",
+  "ops": [
+    {
+      "op": "replace-provider",
+      "node": "recon-auth-surface",
+      "provider": "codex",
+      "model": "gpt-5-codex"
+    },
+    {
+      "op": "insert-nodes",
+      "nodes": [
+        {
+          "id": "harden-auth-tests",
+          "title": "Cover the token-expiry edge cases",
+          "type": "agent",
+          "deps": ["recon-auth-surface"],
+          "lifecycle": "active",
+          "reads": [{ "kind": "fact", "key": "finding/auth-uses-jwt" }],
+          "writes": [
+            { "kind": "fact", "key": "artifact/auth-tests", "schemaId": "DeFlow.artifact.v1" }
+          ],
+          "permission": "worktree",
+          "pathScopes": { "write": ["test/auth/**"], "read": ["src/auth/**"] },
+          "returns": { "schemaId": "DeFlow.artifact.v1", "maxTokens": 1500 },
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": { "base": 2000, "cap": 300000, "jitter": "full" }
+          },
+          "budget": { "maxCostUsd": 3 },
+          "brief": "Add tests for token expiry and clock skew against the JWT verifier.",
+          "provider": { "prefer": ["claude-code"], "requires": ["structuredOutput"] },
+          "resume": "native-if-available"
+        }
+      ],
+      "edges": [
+        {
+          "from": "recon-auth-surface",
+          "to": "harden-auth-tests",
+          "kind": "data",
+          "carries": ["finding/auth-uses-jwt"]
+        }
+      ]
+    },
+    {
+      "op": "abandon-branch",
+      "root": "ship-it",
+      "reason": "Shipping is out of scope for this task; the release subgraph never runs."
+    }
+  ],
+  "policy": {
+    "estimatedCostDeltaUsd": 2.75,
+    "estimatedWallClockDeltaMs": 480000,
+    "blastRadius": { "paths": ["test/auth/**"], "nodeCount": 3 },
+    "replanDepth": 2,
+    "escalatesPermission": { "from": "read", "to": "worktree" },
+    "addsWriteCapability": true
+  }
+}

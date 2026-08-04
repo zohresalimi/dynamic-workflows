@@ -1,0 +1,5 @@
+{
+  "schemaId": "DeFlow.plangraph.v1",
+  "nodes": [{ "id": "Recon_Auth", "type": "sorcery" }],
+  "edges": [{ "from": "a" }]
+}
