@@ -1,0 +1,14 @@
+{
+  "name": "@DeFlow/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-process specs. Depends on the published DeFlow package, not on @DeFlow/daemon, so they exercise the artefact users install.",
+  "devDependencies": {
+    "@DeFlow/testkit": "workspace:*",
+    "@types/node": "catalog:",
+    "DeFlow": "workspace:*",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

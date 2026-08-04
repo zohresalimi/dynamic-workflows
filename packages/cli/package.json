@@ -1,0 +1,19 @@
+{
+  "name": "DeFlow",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The one published package: DeFlow's bins, the inlined daemon and the built UI.",
+  "dependencies": {
+    "@DeFlow/daemon": "workspace:*",
+    "@DeFlow/mock-agent": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

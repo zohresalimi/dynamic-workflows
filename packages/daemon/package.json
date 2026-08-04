@@ -1,0 +1,35 @@
+{
+  "name": "@DeFlow/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "dependencies": {
+    "@DeFlow/adapters": "workspace:*",
+    "@DeFlow/core": "workspace:*",
+    "@DeFlow/ledger": "workspace:*",
+    "@hono/node-server": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "execa": "catalog:",
+    "hono": "catalog:",
+    "pino": "catalog:"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
