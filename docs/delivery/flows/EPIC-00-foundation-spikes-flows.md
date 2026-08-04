@@ -688,7 +688,17 @@ in the real ledger.
 
 ## EPIC-00-S14 — `vite build` emits a hashed ELK worker chunk and keeps ELK out of the entry
 
-**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** integration (the build) and e2e
+(the built `dist/` in a real Chromium)
+
+> **Outcome (2026-08-04): every scenario holds, and the entry cost is far below the ceiling.**
+> `vite build` with `elkjs/lib/elk-worker.min.js?worker` plus `workerFactory` emits exactly one
+> hashed worker chunk, `assets/elk-worker.min-COjlAv4s.js` (1425139 B), which Chromium fetches with
+> a 200 from a plain static server over the built `dist/` — no 404, no failed request. The entry
+> chunk is 13291 B with ELK against 7736 B without it: a **5555 B** difference, not the 1.6 MB the
+> risk assumed, because what the app imports is the ~10 KB `elk-api.js` wrapper and a worker URL.
+> A 60-node layout returned coordinates for all 60 in ~95 ms while a 10 ms main-thread heartbeat
+> ticked 9 times. The reading is [docs/spikes/S3-elk-worker.md](../../spikes/S3-elk-worker.md).
 
 ```gherkin
 Feature: elkjs lays out a graph off the main thread in a production build
@@ -728,7 +738,14 @@ chunk is not a rounding error.
 
 ## EPIC-00-S15 — The union graph keeps node positions stable across five plan versions
 
-**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Happy path · **Automated at:** e2e (real Chromium), with the
+fixture's own shape pinned at unit level
+
+> **Outcome (2026-08-04): both scenarios hold.** One layout over the union of all five versions,
+> stepped v1 → v5 and read back out of the DOM, gave **30 surviving-node comparisons, every one
+> byte-identical**. Laying the same five versions out independently moved **15 surviving nodes**,
+> including every remaining node when the abandoned branch disappeared at v5 — so the two mechanisms
+> are distinguishable, and the union graph is the one F10.2 uses.
 
 ```gherkin
 Feature: The plan-evolution scrubber does not re-layout on every step
@@ -759,7 +776,31 @@ Budget a week.
 
 ## EPIC-00-S16 — `layerChoiceConstraint` is ignored without `interactiveLayout`, and dagre is the fallback
 
-**Verifies:** KAR-00.4 · **Type:** Failure · **Automated at:** browser
+**Verifies:** KAR-00.4 · **Type:** Failure · **Automated at:** e2e (real Chromium); scenario 2's
+`Given` _did not occur — the build succeeded, see Outcome below_
+
+> **Outcome (2026-08-04): scenario 1 holds and then some; scenario 2's premise never arrived.**
+> Measured against elkjs 0.12.0 by `e2e/spike-s3-elk-worker.test.ts`; the full record is
+> [docs/spikes/S3-elk-worker.md](../../spikes/S3-elk-worker.md).
+>
+> - **The constraints are ignored, silently** — identical coordinates, no error, no console warning.
+>   ELK's own `knownLayoutOptions()` lists both option ids, so "ignored" here means ignored rather
+>   than misspelt, and the spec asserts that first.
+> - **Turning on `org.eclipse.elk.interactiveLayout` does not help either**, which is one step worse
+>   than the scenario predicted. Nor does `org.eclipse.elk.position` with
+>   `crossingMinimization.semiInteractive`.
+> - **The trap:** switching the layering strategy to `INTERACTIVE` *does* redraw the graph and the
+>   target *does* land in the requested layer — the screenshot a blog post would call success. The
+>   same graph laid out with the same `INTERACTIVE` strategies and **no constraint at all** produces
+>   the byte-identical drawing: `INTERACTIVE` reads node coordinates, a fresh graph has none, and
+>   the layer was where the node was going anyway. That control run is why this scenario can be
+>   trusted, and it is kept.
+> - **Scenario 2 is a counterfactual that did not happen.** `vite build` produced a working ELK
+>   worker chunk inside the timebox, so the fallback was not taken and its `Given` is not asserted.
+>   Its remaining `Then` clauses are asserted anyway, because they are worth keeping either way:
+>   `@dagrejs/dagre@3.0.0` lays the same 60 nodes out on every e2e run, and the note carries both
+>   the `1.1.2`-versus-`3.0.0` warning and KAR-16.6 as the story that must not depend on which
+>   engine won.
 
 ```gherkin
 Feature: The layout-pinning recipe that circulates online does not work as written

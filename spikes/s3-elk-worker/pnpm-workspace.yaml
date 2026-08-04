@@ -1,0 +1,3 @@
+# Its own workspace root, so `pnpm -r` and `tsc -b` at the repository root
+# never see this throwaway directory (docs/delivery/epics/EPIC-00 §Scope).
+packages: []
