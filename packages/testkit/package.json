@@ -15,9 +15,12 @@
     }
   },
   "dependencies": {
-    "@DeFlow/core": "workspace:*"
+    "@DeFlow/core": "workspace:*",
+    "better-sqlite3": "catalog:",
+    "execa": "catalog:"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

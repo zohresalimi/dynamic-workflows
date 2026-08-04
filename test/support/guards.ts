@@ -732,3 +732,216 @@ export function checkDevLoopScripts(root: PackageJson): Violation[] {
 export function describe(violations: readonly Violation[]): string {
   return violations.map((v) => `- ${v.where}: ${v.message}`).join('\n');
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.4 — the testing rules.
+ *
+ * Two notes on how these are written, because both are load-bearing.
+ *
+ * First, they are rules about *code*, so they run over the source with
+ * whole-line comments blanked out. Without that, a file whose doc comment
+ * explains why fake timers deadlock would be the rule's own first violation,
+ * and the only way to document a rule would be to stop naming the thing it
+ * bans.
+ *
+ * Second, `test/testing-hygiene.test.ts` points them at the whole TypeScript
+ * tree, this file included. Each pattern below is built so it cannot match its
+ * own source text — the escapes in `\bdefine` and `vi\.use` are what keep this
+ * file out of its own results, and they must stay.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The source with whole-line comments blanked out. Line *count* is preserved,
+ * so line numbers computed from the result still refer to the real file.
+ */
+function codeOnly(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trimStart();
+      return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')
+        ? ''
+        : line;
+    })
+    .join('\n');
+}
+
+export const VITEST_WORKSPACE_MESSAGE =
+  'vitest.workspace.ts and defineWorkspace were REMOVED in Vitest 4, so any tutorial showing ' +
+  'them is pre-3.2. The failure is not a clean error: the configuration is simply ignored and ' +
+  'the run looks plausible over the wrong set of files. Use one root vitest.config.ts with ' +
+  'test.projects.';
+
+const WORKSPACE_FILE_NAME = /(^|\/)vitest\.workspace\.[cm]?ts$/;
+const WORKSPACE_BUILDER_CALL = /\bdefineWorkspace\s*\(/;
+const WORKSPACE_BUILDER_IMPORT = /import\s*(?:type\s*)?\{[^}]*\bdefineWorkspace\b[^}]*\}/;
+
+/** AC1, EPIC-01-S18. */
+export function checkNoVitestWorkspace(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (WORKSPACE_FILE_NAME.test(file.path)) {
+      violations.push({ where: file.path, message: VITEST_WORKSPACE_MESSAGE });
+      continue;
+    }
+    const code = codeOnly(file.text);
+    if (WORKSPACE_BUILDER_CALL.test(code) || WORKSPACE_BUILDER_IMPORT.test(code)) {
+      violations.push({ where: file.path, message: VITEST_WORKSPACE_MESSAGE });
+    }
+  }
+  return violations;
+}
+
+/**
+ * Files permitted to fake timers. Empty, and every addition is a decision: the
+ * hard rule is that no test may fake timers while a child process is alive,
+ * because @sinonjs/fake-timers freezes the event loop's timers, the child's real
+ * I/O never arrives, and the spec deadlocks for the full slice timeout — passing
+ * locally and hanging in CI.
+ */
+export const FAKE_TIMER_ALLOWLIST: readonly string[] = [];
+
+const FAKE_TIMERS_CALL = /\bvi\.useFakeTimers\s*\(/;
+const SCOPED_FAKE_TIMERS = /\bvi\.useFakeTimers\s*\(\s*\{[^}]*\btoFake\b/;
+
+/** AC9, EPIC-01-S16. */
+export function checkNoFakeTimers(
+  files: readonly SourceFile[],
+  allowlist: readonly string[],
+): Violation[] {
+  const permitted = new Set(allowlist);
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const code = codeOnly(file.text);
+    if (!FAKE_TIMERS_CALL.test(code)) continue;
+
+    if (!permitted.has(file.path)) {
+      violations.push({
+        where: file.path,
+        message:
+          'fakes timers, and is not on the allowlist. Time enters through the Clock port ' +
+          '(now, sleep, setTimer) so a six-hour gate is exercised in microseconds; faking the ' +
+          "event loop's timers instead freezes them, so a live child process's real I/O never " +
+          'arrives and the spec deadlocks for the full slice timeout.',
+      });
+      continue;
+    }
+
+    if (!SCOPED_FAKE_TIMERS.test(code)) {
+      violations.push({
+        where: file.path,
+        message:
+          'is allowlisted to fake timers but does not scope toFake. Pass ' +
+          "toFake: ['setTimeout', 'setInterval', 'Date'] so nextTick and queueMicrotask stay real.",
+      });
+    }
+  }
+
+  return violations;
+}
+
+const INTEGRATION_SPEC = /^packages\/[^/]+\/test\/integration\//;
+const IN_MEMORY_DSN = /:memory:/;
+
+/** AC10, EPIC-01-S19. */
+export function checkNoInMemoryDatabases(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!INTEGRATION_SPEC.test(file.path)) continue;
+    if (!IN_MEMORY_DSN.test(codeOnly(file.text))) continue;
+    violations.push({
+      where: file.path,
+      message:
+        'opens an in-memory database in an integration spec. It cannot exercise WAL, it cannot ' +
+        'be reopened after a simulated crash, and it hides fsync and ordering bugs — which is to ' +
+        'say it cannot test F4.2, the entire durability thesis. Open a file inside the tmpdir ' +
+        'instead. An in-memory database is permitted only in a pure projection unit test.',
+    });
+  }
+  return violations;
+}
+
+/** The identifier every git invocation in the testkit must pass as its env. */
+export const HERMETIC_GIT_ENV = 'GIT_ENV';
+
+const GIT_INVOCATION = /\b(execa|execaSync|spawn|spawnSync|execFile|execFileSync)\(\s*['"]git['"]/g;
+
+/** The argument list of the call whose opening paren is at `open`, quotes and nesting respected. */
+function callArguments(text: string, open: number): string {
+  let depth = 0;
+  let quote = '';
+  for (let i = open; i < text.length; i += 1) {
+    const character = text[i] ?? '';
+    if (quote !== '') {
+      if (character === '\\') i += 1;
+      else if (character === quote) quote = '';
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(' || character === '[' || character === '{') depth += 1;
+    else if (character === ')' || character === ']' || character === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(open + 1, i);
+    }
+  }
+  return text.slice(open + 1);
+}
+
+/**
+ * AC5, EPIC-01-S15. Without an isolated environment the developer's own
+ * ~/.gitconfig (init.defaultBranch, commit.gpgsign, aliases, core.hooksPath)
+ * silently changes test outcomes — the classic "passes locally, fails in CI"
+ * and its equally confusing inverse.
+ */
+export function checkGitInvocationsAreHermetic(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const code = codeOnly(file.text);
+    GIT_INVOCATION.lastIndex = 0;
+    let match: RegExpExecArray | null = GIT_INVOCATION.exec(code);
+    while (match !== null) {
+      const open = code.indexOf('(', match.index);
+      const args = callArguments(code, open);
+      if (!/\benv\s*:/.test(args) || !args.includes(HERMETIC_GIT_ENV)) {
+        const line = code.slice(0, match.index).split('\n').length;
+        violations.push({
+          where: `${file.path}:${line}`,
+          message:
+            `invokes git without passing ${HERMETIC_GIT_ENV}. Every git invocation in the testkit ` +
+            'must pass the isolated environment — GIT_CONFIG_GLOBAL=/dev/null, ' +
+            'GIT_CONFIG_SYSTEM=/dev/null and an explicit author/committer identity — or the ' +
+            "developer's own global config decides what the test proves.",
+        });
+      }
+      match = GIT_INVOCATION.exec(code);
+    }
+  }
+
+  return violations;
+}
+
+const UNSUPPORTED_GIT_LIBRARIES = ['isomorphic-git', 'simple-git'] as const;
+
+/** EPIC-01-S15 scenario 4. */
+export function checkNoUnsupportedGitLibrary(manifests: readonly Manifest[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const manifest of manifests) {
+    for (const [name] of allDependencies(manifest.json)) {
+      if (!(UNSUPPORTED_GIT_LIBRARIES as readonly string[]).includes(name)) continue;
+      violations.push({
+        where: manifest.path,
+        message:
+          `depends on "${name}". Neither library has any worktree support at all — ` +
+          "isomorphic-git@1.40.0's full export list was enumerated at runtime and contains no " +
+          'worktree function, and simple-git@3.36.0 has no worktree API either (verified ' +
+          '2026-08-02) — and worktrees are F5.1. Shell out to the real git binary.',
+      });
+    }
+  }
+  return violations;
+}

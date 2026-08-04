@@ -14,14 +14,19 @@ import {
   checkDependencyValues,
   checkDevLoopScripts,
   checkExactCatalogPins,
+  checkGitInvocationsAreHermetic,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
   checkNoCorepack,
   checkNoDeepWorkspaceImports,
+  checkNoFakeTimers,
+  checkNoInMemoryDatabases,
   checkNoNodeBuiltinImports,
   checkNoPathsAlias,
   checkNoTransformTypesFlag,
+  checkNoUnsupportedGitLibrary,
   checkNoViteProxy,
+  checkNoVitestWorkspace,
   checkPinoPrettyIsNotARuntimeTransport,
   checkRelativeImportsHaveTsExtension,
   checkViteImportIsDynamic,
@@ -507,5 +512,174 @@ suite('checkDevLoopScripts (EPIC-01-S9 scenario 2)', () => {
       scripts: { ...good, dev: 'node --watch --watch-path=packages/daemon main.ts' },
     });
     expect(render(violations)).toContain('DeFlow_DEV=1');
+  });
+});
+
+/**
+ * The KAR-01.4 guards. Every fixture below that must be *detected* is assembled
+ * from fragments at runtime, because these guards are pointed at the whole
+ * TypeScript tree in ./testing-hygiene.test.ts — a literal `defineWorkspace(`
+ * written here would make this file its own first violation.
+ */
+const DEFINE_WORKSPACE = `define${'Workspace'}`;
+const USE_FAKE_TIMERS = `vi.useFake${'Timers'}`;
+const IN_MEMORY_DSN = `:mem${'ory'}:`;
+
+suite('checkNoVitestWorkspace (EPIC-01-S18)', () => {
+  it('rejects a file named vitest.workspace.ts', () => {
+    const violations = checkNoVitestWorkspace([{ path: 'vitest.workspace.ts', text: 'export default [];\n' }]);
+    expect(render(violations)).toContain('REMOVED in Vitest 4');
+  });
+
+  it('rejects the removed builder wherever it is called', () => {
+    const violations = checkNoVitestWorkspace([
+      { path: 'vitest.config.ts', text: `export default ${DEFINE_WORKSPACE}(['a', 'b']);\n` },
+    ]);
+    expect(render(violations)).toContain('pre-3.2');
+  });
+
+  it('rejects it as an import even before it is called', () => {
+    const violations = checkNoVitestWorkspace([
+      { path: 'vitest.config.ts', text: `import { ${DEFINE_WORKSPACE} } from 'vitest/config';\n` },
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts the supported shape', () => {
+    expect(
+      checkNoVitestWorkspace([
+        { path: 'vitest.config.ts', text: 'export default defineConfig({ test: { projects: [] } });\n' },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoFakeTimers (AC9, EPIC-01-S16)', () => {
+  it('rejects a fake-timer call in a file that is not allowlisted', () => {
+    const violations = checkNoFakeTimers(
+      [{ path: 'packages/daemon/test/integration/retry.test.ts', text: `${USE_FAKE_TIMERS}();\n` }],
+      [],
+    );
+    expect(render(violations)).toContain('child process');
+  });
+
+  it('rejects an allowlisted file that fakes everything', () => {
+    const path = 'packages/core/src/backoff.test.ts';
+    const violations = checkNoFakeTimers([{ path, text: `${USE_FAKE_TIMERS}();\n` }], [path]);
+    expect(render(violations)).toContain('toFake');
+  });
+
+  it('accepts an allowlisted file that scopes toFake', () => {
+    const path = 'packages/core/src/backoff.test.ts';
+    const text = `${USE_FAKE_TIMERS}({ toFake: ['setTimeout', 'setInterval', 'Date'] });\n`;
+    expect(checkNoFakeTimers([{ path, text }], [path])).toEqual([]);
+  });
+
+  it('accepts a file that takes time through the Clock port instead', () => {
+    expect(
+      checkNoFakeTimers(
+        [{ path: 'packages/core/src/backoff.test.ts', text: 'const clock = new TestClock();\n' }],
+        [],
+      ),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoInMemoryDatabases (AC10, EPIC-01-S19)', () => {
+  it('rejects an in-memory database under an integration directory', () => {
+    const violations = checkNoInMemoryDatabases([
+      {
+        path: 'packages/ledger/test/integration/resume.test.ts',
+        text: `const db = new Database('${IN_MEMORY_DSN}');\n`,
+      },
+    ]);
+    expect(render(violations)).toContain('reopened');
+  });
+
+  it('permits it in a pure projection unit test', () => {
+    expect(
+      checkNoInMemoryDatabases([
+        {
+          path: 'packages/ledger/src/reduce.test.ts',
+          text: `const db = new Database('${IN_MEMORY_DSN}');\n`,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('accepts a file-backed integration test', () => {
+    expect(
+      checkNoInMemoryDatabases([
+        {
+          path: 'packages/ledger/test/integration/resume.test.ts',
+          text: "const db = new Database(join(tmp, 'ledger.db'));\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkGitInvocationsAreHermetic (AC5, EPIC-01-S15)', () => {
+  it('rejects a new invocation that omits the isolated environment', () => {
+    const violations = checkGitInvocationsAreHermetic([
+      {
+        path: 'packages/testkit/src/repo.ts',
+        text: "await execa('git', ['init', '-b', 'main'], { cwd: dir });\n",
+      },
+    ]);
+    expect(render(violations)).toContain('GIT_ENV');
+  });
+
+  it('rejects an invocation that passes an environment that is not the hermetic one', () => {
+    const violations = checkGitInvocationsAreHermetic([
+      {
+        path: 'packages/testkit/src/repo.ts',
+        text: "await execa('git', ['status'], { cwd: dir, env: process.env });\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts an invocation that passes GIT_ENV', () => {
+    expect(
+      checkGitInvocationsAreHermetic([
+        {
+          path: 'packages/testkit/src/git.ts',
+          text: "await execa('git', args, { cwd: dir, env: { ...GIT_ENV }, reject: false });\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('catches a raw spawn as well as execa', () => {
+    const violations = checkGitInvocationsAreHermetic([
+      { path: 'packages/testkit/src/repo.ts', text: "spawnSync('git', ['log']);\n" },
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
+  it('ignores a file with no git invocation at all', () => {
+    expect(
+      checkGitInvocationsAreHermetic([
+        { path: 'packages/testkit/src/clock.ts', text: 'export class TestClock {}\n' },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoUnsupportedGitLibrary (EPIC-01-S15 scenario 4)', () => {
+  it.each(['isomorphic-git', 'simple-git'])('rejects %s', (name) => {
+    const violations = checkNoUnsupportedGitLibrary([
+      { path: 'packages/testkit/package.json', json: { dependencies: { [name]: 'catalog:' } } },
+    ]);
+    expect(render(violations)).toContain('worktree');
+  });
+
+  it('accepts a manifest that shells out to the real binary', () => {
+    expect(
+      checkNoUnsupportedGitLibrary([
+        { path: 'packages/testkit/package.json', json: { dependencies: { execa: 'catalog:' } } },
+      ]),
+    ).toEqual([]);
   });
 });

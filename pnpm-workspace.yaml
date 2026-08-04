@@ -8,6 +8,12 @@ packages:
 # stated here so a future dependency cannot start compiling without a visible diff.
 allowBuilds:
   better-sqlite3: false
+  # playwright's install script downloads ~150 MB of browser binaries. The web
+  # slice needs a real Chromium, but it is fetched explicitly by
+  # "pnpm exec playwright install --with-deps chromium" in the browser CI job
+  # (docs/14-testing-strategy.md §14) — never silently, on every install, on
+  # machines that will only ever run the unit slice.
+  playwright: false
 
 # One place, so nine packages cannot drift (docs/16-repo-layout.md §5).
 # Consume every entry as "catalog:" — never a literal version in a package.json.
@@ -33,3 +39,10 @@ catalog:
   vue: ~3.5.40 # tilde, deliberately: 3.6 rewrites the reactivity core and @vue-flow/core has not named it
   "@vitejs/plugin-vue": ^6.0.8 # peers vite ^8
   pino-pretty: ^13.1.3 # dev-only pipe ("pnpm dev | pino-pretty"), never a runtime transport
+  "@types/better-sqlite3": ^9.6.0 # better-sqlite3@13 ships no types of its own
+  # The web slice (docs/14-testing-strategy.md §13). Browser mode is stable in
+  # Vitest 4; the three @vitest/* versions must move together with vitest itself.
+  "@vitest/browser": 4.1.10
+  "@vitest/browser-playwright": 4.1.10
+  playwright: 1.62.1
+  vitest-browser-vue: 2.1.0

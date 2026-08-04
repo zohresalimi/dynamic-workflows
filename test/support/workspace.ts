@@ -101,6 +101,25 @@ export function readSources(paths: readonly string[]): SourceFile[] {
   return paths.map((path) => ({ path, text: readText(path) }));
 }
 
+/** The directories that hold hand-written TypeScript, plus the root config files. */
+const TYPESCRIPT_ROOTS = ['packages', 'e2e', 'test'] as const;
+
+/**
+ * Every TypeScript file in the repository, tests and configs included.
+ *
+ * This is the input to the KAR-01.4 hygiene guards, which are rules about test
+ * code, so — unlike `allWorkspaceSources()` — it deliberately does not filter
+ * test files out. `docs/` is excluded: it is full of prose showing the very
+ * shapes those guards ban.
+ */
+export function repoTypeScriptFiles(): string[] {
+  const isTypeScript = (path: string): boolean => path.endsWith('.ts');
+  const rootConfigs = readdirSync(repoRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && isTypeScript(entry.name))
+    .map((entry) => entry.name);
+  return [...rootConfigs, ...TYPESCRIPT_ROOTS.flatMap((dir) => walk(dir, isTypeScript))].sort();
+}
+
 const isTestFile = (path: string): boolean =>
   path.endsWith('.test.ts') || path.includes('/test/') || path.includes('/__snapshots__/');
 

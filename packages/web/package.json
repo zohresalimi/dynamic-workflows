@@ -20,9 +20,13 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "catalog:",
+    "@vitest/browser": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "playwright": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
+    "vitest-browser-vue": "catalog:",
     "vue-tsc": "catalog:"
   }
 }

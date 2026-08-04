@@ -12,4 +12,4 @@
  * EPIC-02 fills this in: TaskSpec, PlanGraph, PlanPatch, Fact, ContextPacket,
  * the Event union, reduce, decide, the patch policy and the permission ladder.
  */
-export {};
+export type { Clock, TimerHandle } from './clock.ts';
