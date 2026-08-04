@@ -53,7 +53,7 @@ function run(bin: string, args: readonly string[]): Promise<Run> {
 let dir: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'deflow-lint-pipeline-'));
+  dir = mkdtempSync(join(tmpdir(), 'DeFlow-lint-pipeline-'));
 });
 
 afterEach(() => {

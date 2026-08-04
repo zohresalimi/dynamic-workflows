@@ -36,6 +36,21 @@ export function readWorkspaceYaml(): WorkspaceYaml {
   return parseYaml(readText('pnpm-workspace.yaml')) as WorkspaceYaml;
 }
 
+/** Any YAML file in the repository, parsed. Used for lefthook.yml and the workflows. */
+export function readYaml<T>(repoRelativePath: string): T {
+  return parseYaml(readText(repoRelativePath)) as T;
+}
+
+/** Every GitHub Actions workflow file, repo-relative. */
+export function workflowFiles(): string[] {
+  return walk('.github/workflows', (path) => path.endsWith('.yml') || path.endsWith('.yaml'));
+}
+
+/** Every file under docs/, which AC8's corepack grep has to cover in full. */
+export function docFiles(): string[] {
+  return walk('docs', (path) => path.endsWith('.md'));
+}
+
 /** The directories pnpm treats as workspace packages, repo-relative. */
 export function packageDirs(): string[] {
   const dirs: string[] = [];

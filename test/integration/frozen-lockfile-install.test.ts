@@ -20,6 +20,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -29,6 +30,15 @@ import { workspaceDependencyEdges } from '../support/guards.ts';
 import { allManifests, packageDirs, repoRoot, workspaceNames } from '../support/workspace.ts';
 
 const MANIFEST_FILES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml'];
+
+/**
+ * Not a manifest, but part of what a clone hands the installer: `prepare` runs
+ * `lefthook install`, which reads this file to know which hooks to write.
+ * Without it the install still succeeds and writes no hooks at all — the silent
+ * half of KAR-01.6 AC5, and the reason that criterion is asserted here rather
+ * than on the presence of the script.
+ */
+const HOOK_CONFIG = 'lefthook.yml';
 
 let workdir: string;
 let install: { status: number | null; output: string };
@@ -43,12 +53,29 @@ function pnpm(args: string[], cwd: string) {
 }
 
 beforeAll(() => {
-  workdir = mkdtempSync(join(tmpdir(), 'deflow-frozen-install-'));
-  for (const file of [...MANIFEST_FILES, ...packageDirs().map((dir) => `${dir}/package.json`)]) {
+  // DeFlow-prefixed, so CI's upload-artifact glob over the runner temp
+  // directory collects this workdir when a leg fails (KAR-01.6 AC10).
+  workdir = mkdtempSync(join(tmpdir(), 'DeFlow-frozen-install-'));
+  for (const file of [
+    ...MANIFEST_FILES,
+    HOOK_CONFIG,
+    ...packageDirs().map((dir) => `${dir}/package.json`),
+  ]) {
     mkdirSync(dirname(join(workdir, file)), { recursive: true });
     cpSync(join(repoRoot, file), join(workdir, file));
   }
   writeFileSync(join(workdir, '.npmrc'), 'side-effects-cache=false\n');
+  // A real `git init`, because a fresh clone is a git repository and this
+  // fixture claims to install from the same inputs one does. It stopped being
+  // a detail when KAR-01.6 added `"prepare": "lefthook install"`: lefthook
+  // exits 128 outside a work tree, and a `prepare` that cannot fail is a
+  // `prepare` that cannot tell you the hooks are missing, so the fixture grew
+  // the .git it was always implying rather than the script growing a `|| true`.
+  spawnSync('git', ['init', '--initial-branch=main'], {
+    cwd: workdir,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+  });
   install = pnpm(['install', '--frozen-lockfile'], workdir);
 }, 600_000);
 
@@ -62,6 +89,17 @@ suite('pnpm install --frozen-lockfile', () => {
   it('completes with exit code 0', () => {
     expect(install.output).toBeDefined();
     expect(install.status).toBe(0);
+  });
+
+  // KAR-01.6 AC5, EPIC-01-S1: the hooks have to be there after a clone and an
+  // install, with no third step. Asserted on the artefact `git` will actually
+  // execute, not on the presence of the "prepare" script that writes it.
+  it('leaves working git hooks behind, with no extra step (KAR-01.6 AC5)', () => {
+    const hook = join(workdir, '.git/hooks/pre-commit');
+    expect(readFileSync(hook, 'utf8')).toContain('lefthook');
+    // Installed is not enough: git ignores a hook that is not executable, and
+    // does so silently.
+    expect(statSync(hook).mode & 0o111).not.toBe(0);
   });
 
   it('never invokes node-gyp', () => {

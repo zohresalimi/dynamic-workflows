@@ -14,6 +14,12 @@ allowBuilds:
   # (docs/14-testing-strategy.md §14) — never silently, on every install, on
   # machines that will only ever run the unit slice.
   playwright: false
+  # lefthook's postinstall runs "lefthook install" for you. It compiles nothing,
+  # but it writes into .git/hooks as a side effect of installing a dependency,
+  # which is a surprising place for an install to reach. The root "prepare"
+  # script does the same job explicitly, one line further down the same install,
+  # so the implicit one is off.
+  lefthook: false
 
 # One place, so nine packages cannot drift (docs/16-repo-layout.md §5).
 # Consume every entry as "catalog:" — never a literal version in a package.json.
@@ -37,6 +43,7 @@ catalog:
   tsdown: 0.22.14 # exact: still 0.x
   "@lydell/node-pty": 1.2.0-beta.14 # per-platform optionalDependencies; never node-gyp
   yaml: 2.9.0
+  lefthook: ^2.1.10 # replaces husky *and* lint-staged; one Go binary via optionalDependencies
   vue: ~3.5.40 # tilde, deliberately: 3.6 rewrites the reactivity core and @vue-flow/core has not named it
   "@vitejs/plugin-vue": ^6.0.8 # peers vite ^8
   pino-pretty: ^13.1.3 # dev-only pipe ("pnpm dev | pino-pretty"), never a runtime transport

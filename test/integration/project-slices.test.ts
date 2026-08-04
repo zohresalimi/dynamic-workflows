@@ -19,6 +19,21 @@ interface Run {
   readonly ms: number;
 }
 
+/**
+ * SGR escape sequences, removed before anything reads the summary.
+ *
+ * Whether the nested runner colours its output is a property of the machine, not
+ * of the run: vitest turns colour off when std-env reports an AI agent
+ * (`CLAUDECODE` in the environment) and leaves it on otherwise, and tinyrainbow
+ * enables it for any process with `CI` in its environment — which this helper
+ * sets deliberately. So `'Test Files  1 passed'` is present as plain text on an
+ * agent's laptop and split by `\x1b[2m…` on a GitHub runner and in a colleague's
+ * terminal. Measured: run 30914294996 failed all four legs on exactly this,
+ * having passed locally. Asserting on the escaped form instead would just move
+ * the machine-dependence; the summary line is what the assertion is about.
+ */
+const ANSI = new RegExp(`${String.fromCodePoint(0x1b)}\\[[0-9;]*m`, 'g');
+
 const runVitest = (args: readonly string[]): Promise<Run> =>
   new Promise((resolve) => {
     const started = Date.now();
@@ -35,7 +50,7 @@ const runVitest = (args: readonly string[]): Promise<Run> =>
         resolve({
           code:
             error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1),
-          output: `${stdout}\n${stderr}`,
+          output: `${stdout}\n${stderr}`.replaceAll(ANSI, ''),
           ms: Date.now() - started,
         });
       },

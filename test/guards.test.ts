@@ -16,6 +16,7 @@ import {
   checkDevLoopScripts,
   checkExactCatalogPins,
   checkGitInvocationsAreHermetic,
+  checkJobLevelContexts,
   checkLintFormatScripts,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
@@ -31,8 +32,11 @@ import {
   checkNoVitestWorkspace,
   checkOxlintConfig,
   checkPinoPrettyIsNotARuntimeTransport,
+  checkRecordedCiRuntime,
   checkRelativeImportsHaveTsExtension,
+  checkTempDirPrefixes,
   checkViteImportIsDynamic,
+  checkWorkflowExecutablesAreDeclared,
   REQUIRED_OXLINT_PLUGINS,
   REQUIRED_TYPE_AWARE_RULES,
   describe as render,
@@ -335,6 +339,53 @@ suite('checkNoCorepack', () => {
     expect(
       checkNoCorepack([
         { path: '.github/workflows/ci.yml', text: 'steps:\n  - run: npm i -g pnpm@11\n' },
+      ]),
+    ).toEqual([]);
+  });
+
+  // KAR-01.6 AC8 widens the grep to the whole of docs/, where every mention is
+  // a prohibition. A guard that fired on those would make the only fix
+  // "stop documenting the footgun".
+  it('accepts prose that names it in order to forbid it', () => {
+    expect(
+      checkNoCorepack([
+        {
+          path: 'docs/03-local-development.md',
+          text: '**Do not run `corepack enable`** — it was removed from Node 25+.\n',
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('rejects it inside a shell block, which is what a reader pastes', () => {
+    const violations = checkNoCorepack([
+      {
+        path: 'docs/CONTRIBUTING.md',
+        text: 'Set pnpm up:\n\n```bash\ncorepack enable\npnpm install\n```\n',
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('docs/CONTRIBUTING.md:4');
+  });
+
+  it('rejects it inside a yaml block, which is what a workflow is copied from', () => {
+    expect(
+      checkNoCorepack([
+        {
+          path: 'docs/14-testing-strategy.md',
+          text: '```yaml\nsteps:\n  - run: corepack enable\n```\n',
+        },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('accepts a gherkin block that describes the failure as a scenario', () => {
+    expect(
+      checkNoCorepack([
+        {
+          path: 'docs/delivery/flows/EPIC-01-dev-environment-flows.md',
+          text: '```gherkin\n  When the developer runs "corepack enable"\n  Then it fails\n```\n',
+        },
       ]),
     ).toEqual([]);
   });
@@ -867,5 +918,184 @@ suite('checkLintFormatScripts (AC3, AC4)', () => {
     const violations = checkLintFormatScripts({});
     expect(violations).toHaveLength(3);
     expect(render(violations)).toContain('scripts.format');
+  });
+});
+
+suite('checkTempDirPrefixes (KAR-01.6 AC10)', () => {
+  it('rejects a prefix the case-sensitive CI artefact glob would miss', () => {
+    const violations = checkTempDirPrefixes(
+      [
+        {
+          path: 'test/integration/thing.test.ts',
+          text: "const dir = mkdtempSync(join(tmpdir(), 'deflow-thing-'));\n",
+        },
+      ],
+      'DeFlow-',
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('deflow-thing-');
+    expect(render(violations)).toContain('upload');
+  });
+
+  it('accepts the shared prefix', () => {
+    expect(
+      checkTempDirPrefixes(
+        [
+          {
+            path: 'test/integration/thing.test.ts',
+            text: "await mkdtemp(join(tmpdir(), 'DeFlow-thing-'));\n",
+          },
+        ],
+        'DeFlow-',
+      ),
+    ).toEqual([]);
+  });
+
+  it('ignores a mkdtemp whose prefix is not a literal, since it cannot judge it', () => {
+    expect(
+      checkTempDirPrefixes(
+        [{ path: 'packages/testkit/src/tmp.ts', text: 'mkdtemp(join(tmpdir(), TMP_PREFIX))\n' }],
+        'DeFlow-',
+      ),
+    ).toEqual([]);
+  });
+});
+
+suite('checkJobLevelContexts (KAR-01.6 AC12)', () => {
+  it('rejects the job-level env that made the whole workflow uninterpretable', () => {
+    const violations = checkJobLevelContexts(
+      { jobs: { test: { 'runs-on': 'ubuntu-26.04', env: { TMPDIR: '${{ runner.temp }}' } } } },
+      '.github/workflows/ci.yml',
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('runner');
+    expect(render(violations)).toContain('TMPDIR');
+    // The consequence is what makes this worth a guard: not one red job, but a
+    // run with no jobs at all, which no other assertion in the repo can see.
+    expect(render(violations)).toMatch(/zero jobs|no jobs/);
+  });
+
+  it('accepts the contexts a job header may actually use', () => {
+    expect(
+      checkJobLevelContexts(
+        {
+          jobs: {
+            test: {
+              'runs-on': '${{ matrix.os }}',
+              env: { REF: '${{ github.ref }}', TOKEN: '${{ secrets.GITHUB_TOKEN }}' },
+              strategy: { 'fail-fast': false, matrix: { os: ['ubuntu-26.04'] } },
+            },
+          },
+        },
+        '.github/workflows/ci.yml',
+      ),
+    ).toEqual([]);
+  });
+
+  it('leaves step-level env alone, where runner.temp is legal', () => {
+    expect(
+      checkJobLevelContexts(
+        {
+          jobs: {
+            test: {
+              'runs-on': 'ubuntu-26.04',
+              steps: [{ run: 'pnpm vitest run', env: { TMPDIR: '${{ runner.temp }}' } }],
+            },
+          },
+        },
+        '.github/workflows/ci.yml',
+      ),
+    ).toEqual([]);
+  });
+});
+
+suite('checkWorkflowExecutablesAreDeclared (KAR-01.6 AC12)', () => {
+  const web = { path: 'packages/web/package.json', json: { name: '@DeFlow/web' } };
+
+  it('rejects a root "pnpm exec" of a binary only a workspace package depends on', () => {
+    const violations = checkWorkflowExecutablesAreDeclared(
+      {
+        jobs: {
+          'browser-e2e': {
+            steps: [{ run: 'pnpm exec playwright install --with-deps chromium' }],
+          },
+        },
+      },
+      '.github/workflows/ci.yml',
+      [
+        { path: 'package.json', json: { name: 'DeFlow-root', devDependencies: { vitest: '11' } } },
+        { ...web, json: { ...web.json, devDependencies: { playwright: 'catalog:' } } },
+      ],
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('playwright');
+    // The fix is in the message, because the failure only ever shows up on a
+    // machine whose node_modules were built from the lockfile and nowhere else.
+    expect(render(violations)).toContain('@DeFlow/web');
+  });
+
+  it('accepts the same command once it is filtered to the package that declares it', () => {
+    expect(
+      checkWorkflowExecutablesAreDeclared(
+        {
+          jobs: {
+            'browser-e2e': {
+              steps: [
+                { run: 'pnpm --filter @DeFlow/web exec playwright install --with-deps chromium' },
+              ],
+            },
+          },
+        },
+        '.github/workflows/ci.yml',
+        [
+          { path: 'package.json', json: { name: 'DeFlow-root' } },
+          { ...web, json: { ...web.json, devDependencies: { playwright: 'catalog:' } } },
+        ],
+      ),
+    ).toEqual([]);
+  });
+
+  it('says so when no package in the workspace declares the binary at all', () => {
+    const violations = checkWorkflowExecutablesAreDeclared(
+      { jobs: { check: { steps: [{ run: 'pnpm exec tsx script.ts' }] } } },
+      '.github/workflows/ci.yml',
+      [{ path: 'package.json', json: { name: 'DeFlow-root' } }],
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('no package in the workspace declares it');
+  });
+});
+
+suite('checkRecordedCiRuntime (KAR-01.6 AC12)', () => {
+  const row = (lastMeasured: string): string =>
+    `| Measurement | Budget | Last measured |\n| --- | --- | --- |\n` +
+    `| Full CI run on a green commit | < 10 min (AC12) | ${lastMeasured} |\n`;
+
+  it('rejects the placeholder the row started life as', () => {
+    const violations = checkRecordedCiRuntime(row('**not yet measured on hosted runners**'));
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('AC12');
+  });
+
+  it('rejects a duration with no run behind it, since an unciteable number is a claim', () => {
+    const violations = checkRecordedCiRuntime(row('**1 min 23 s**, 2026-08-04'));
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toMatch(/run/i);
+  });
+
+  it('rejects a recorded run that went over the budget', () => {
+    const violations = checkRecordedCiRuntime(row('**11 min 4 s** (run 30915210685), 2026-08-04'));
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('664');
+  });
+
+  it('accepts a measured, cited, in-budget figure', () => {
+    expect(checkRecordedCiRuntime(row('**1 min 23 s** (run 30915210685), 2026-08-04'))).toEqual([]);
+  });
+
+  it('fails loudly if the row it measures has been renamed away', () => {
+    const violations = checkRecordedCiRuntime('| something else | | |\n');
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('Full CI run');
   });
 });

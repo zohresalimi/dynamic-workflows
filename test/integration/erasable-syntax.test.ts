@@ -45,7 +45,7 @@ function fixtureTsconfig(extra: Record<string, unknown> = {}): void {
 }
 
 beforeEach(() => {
-  workdir = mkdtempSync(join(tmpdir(), 'deflow-erasable-'));
+  workdir = mkdtempSync(join(tmpdir(), 'DeFlow-erasable-'));
   cpSync(join(repoRoot, 'tsconfig.base.json'), join(workdir, 'tsconfig.base.json'));
   writeFileSync(
     join(workdir, 'package.json'),

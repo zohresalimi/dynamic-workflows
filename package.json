@@ -8,6 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "prepare": "lefthook install",
     "dev": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/adapters --watch-path=packages/daemon --watch-path=packages/cli --watch-path=packages/mock-agent packages/daemon/src/main.ts",
     "dev:pretty": "pnpm dev | pino-pretty",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@biomejs/biome": "catalog:",
     "@types/node": "catalog:",
+    "lefthook": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "pino-pretty": "catalog:",

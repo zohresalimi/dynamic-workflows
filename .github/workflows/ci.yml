@@ -1,0 +1,125 @@
+# CI (docs/14-testing-strategy.md §14, NF4/NF5).
+#
+# Three jobs. `check` is the fast, single-platform gate. `test` is the only
+# thing here that costs real time, and it is a four-leg matrix because macOS and
+# Linux are the two platforms NF5 promises and Node 24 (Active LTS floor, D2)
+# and 26 (Current) are the two runtimes. `browser-e2e` is Linux only.
+#
+# Two 2026 footguns are enforced by guard tests rather than by comments alone —
+# see test/ci-workflow.test.ts:
+#
+#   * Corepack is never enabled here. It was removed from Node 25+
+#     distributions (TSC vote, March 2025) and is bundled only through Node 24,
+#     so it would work on the `24` legs and fail outright on the `26` ones.
+#     pnpm/action-setup installs pnpm; "packageManager" is still read as a
+#     version assertion. (The guard greps this file for the literal command,
+#     which is why the phrase does not appear even in a comment: a commented-out
+#     step is one keystroke from being a live one.)
+#   * Runner images are never the floating aliases. The macOS alias migrated to
+#     macOS 26 on Apple Silicon between 8 and 15 June 2026; an implicit
+#     architecture change shifts native module prebuilds, node-pty behaviour and
+#     filesystem case-sensitivity at once, and it lands without a commit.
+#
+# Action pins were checked against the marketplace on 2026-08-04 (the epic's own
+# "Unverified" item); what was found, and why the newer majors are not taken
+# yet, is recorded in docs/CONTRIBUTING.md.
+
+name: ci
+
+on: [push, pull_request]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm biome ci .
+      - run: pnpm oxlint --type-aware
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One failing leg must not cancel the other three. With fail-fast on, a
+      # macOS-only bug and a repo-wide bug produce the same checks list.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26]
+        node: ["24", "26"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The two environment variables belong on this step and not on the job,
+      # even though every step in the job would happily read them: `runner.*`
+      # does not exist until a runner has been assigned, which is *after* the
+      # job header is evaluated, so `env:` one level up makes GitHub reject the
+      # whole file — a run with zero jobs and no logs, not a red job. Measured:
+      # run 30913790575. checkJobLevelContexts in test/support/guards.ts holds
+      # the line; test/ci-workflow.test.ts runs it over this file.
+      - run: pnpm vitest run --project unit --project integration
+        env:
+          # Keep the tmpdirs the fixtures create, so the upload step below has
+          # something to collect. Locally this is opt-in; in CI it is the only
+          # way a worktree failure on a platform you do not own is diagnosable.
+          DeFlow_KEEP_TMP: "1"
+          # os.tmpdir() is /tmp on the Linux runners and /var/folders/…/T on the
+          # macOS ones. Pinning TMPDIR is what makes one upload path correct on
+          # all four legs — upload-artifact treats "no files matched" as a
+          # warning, so without this the macOS legs would fail and upload
+          # nothing, silently. test/integration/ci-artifact-path.test.ts holds
+          # the path and the fixture to the same glob.
+          TMPDIR: ${{ runner.temp }}
+      # EPIC-03 adds the fifth vitest project — the SIGKILL/restart slice — and
+      # the step that runs it, here, together. vitest.config.ts holds a
+      # deliberately empty slot for it; a step naming a project that does not
+      # exist is a red build on every commit, and a guard test keeps the name
+      # out of this file until the project is real.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          # Per matrix cell: two legs uploading under one name is one leg losing
+          # its evidence, and it is the failing leg you will want.
+          name: tmp-${{ matrix.os }}-${{ matrix.node }}
+          path: ${{ runner.temp }}/DeFlow-*
+          if-no-files-found: warn
+          retention-days: 7
+
+  browser-e2e:
+    # Linux only — do not triple macOS minutes on a browser job. Nothing in the
+    # web or e2e slices is platform-specific; the platform-specific surface is
+    # git worktrees and child processes, which the `test` matrix covers.
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Explicit, because pnpm-workspace.yaml sets `allowBuilds: playwright:
+      # false` — ~150 MB of browsers must never download on every install on
+      # machines that only ever run the unit slice.
+      #
+      # `--filter @DeFlow/web` is not decoration: playwright is a dependency of
+      # packages/web, and `pnpm exec` resolves against the .bin directory of the
+      # package it runs in. At the root it only ever resolved on a machine with
+      # a stale shim left by an earlier install — on a clean --frozen-lockfile
+      # checkout it is "Command not found" (measured: run 30914294996).
+      - run: pnpm --filter @DeFlow/web exec playwright install --with-deps chromium
+      - run: pnpm vitest run --project web --project e2e

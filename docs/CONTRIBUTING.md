@@ -124,6 +124,79 @@ tsconfig's `"include"` first, which is its own decision, not a side effect of a 
 
 ---
 
+## Git hooks
+
+`pnpm install` runs `prepare`, which is `lefthook install`, so the hooks are there after a clone
+with no third step. There is no `|| true` on that script: if it fails you have no hooks, and the one
+thing worse than no hooks is hooks you believe in. The consequence is that `pnpm install` needs a
+git work tree — running it in a directory with no `.git` fails with `not a git repository`, which is
+also why `test/integration/frozen-lockfile-install.test.ts` does a real `git init` first.
+
+| Hook           | Jobs                                                                                    |
+| -------------- | --------------------------------------------------------------------------------------- |
+| **pre-commit** | `format` (`biome check --write` over staged files, `stage_fixed: true`) and `lint` (`oxlint`, no `--type-aware`), in parallel |
+| **pre-push**   | `typecheck`, `lint` (`pnpm lint`, type-aware), `unit`                                    |
+
+**The type-aware rules are on pre-push, not pre-commit — and that is a deviation from KAR-01.6's
+AC4, taken deliberately.** AC4 asks for a commit carrying a floating promise to be *rejected*, while
+AC1 and `EPIC-01-S20`'s own fourth scenario forbid `--type-aware` in the pre-commit lint job. Both
+cannot hold, because all six of the correctness rules `.oxlintrc.json` turns on —
+`typescript/no-floating-promises` first among them — live in oxlint's type-aware engine and are
+simply not evaluated without the flag. **Measured 2026-08-04 on oxlint 1.76.0:** a plain `oxlint`
+over a file with a floating promise exits 0 and reports nothing. So the net moved to the next hook
+down, which is still before the code reaches a branch.
+`test/integration/git-hooks.test.ts` asserts *both* halves, so if oxlint ever reports the rule
+without a type graph the first assertion fails and the job moves back to pre-commit where AC4
+wanted it.
+
+**The pre-commit lint job passes `--no-error-on-unmatched-pattern`, and it has to.** `.oxlintrc.json`
+ignores every `test/` directory, and oxlint exits 1 with `No files found to lint` when its ignore
+patterns eat the whole argument list — so without the flag a test-only commit, which in a TDD
+project is most of them, fails a hook it has no business failing. Found the way these things usually
+are: the hook rejected the commit that added it.
+
+**`.vue` is not in the pre-commit format glob.** `stage_fixed: true` means whatever Biome writes is
+in the commit before anyone reads it, and Biome's SFC support is still behind
+`html.experimentalFullSupportEnabled`. KAR-00.6 is the spike that reviews a real before/after diff
+and leaves a verdict in `docs/spikes/S7-biome-vue.md`; that note does not exist yet, so the answer
+is no. `test/git-hooks.test.ts` holds the note and the glob to each other in both directions — the
+day the note says `safe`, the test fails until `vue` is added. Until then `.vue` is formatted by
+`pnpm format`, and CI's `biome ci .` catches a file that skipped it.
+
+---
+
+## CI
+
+Three jobs in `.github/workflows/ci.yml`: `check` (Linux, Node 24), `test` (a four-leg matrix,
+`{ubuntu-26.04, macos-26} × {24, 26}`, `fail-fast: false`) and `browser-e2e` (Linux only — a browser
+job on the macOS legs triples macOS minutes for no extra signal).
+
+**Action pins, verified against the marketplace on 2026-08-04** — roadmap risk A2-7, which recorded
+`pnpm/action-setup@v6` and `actions/setup-node@v6` as *unverified*:
+
+| Action                                | Pinned | What was found                                                                                              |
+| ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `actions/checkout`                    | `v5`   | tag exists; `v7.0.1` is the current release                                                                 |
+| `pnpm/action-setup`                   | `v6`   | tag exists and is current — `v6.0.10`, released 2026-08-03                                                  |
+| `actions/setup-node`                  | `v6`   | tag exists, `v6.5.0` released 2026-07-14; `v7.0.0` also exists                                              |
+| `actions/upload-artifact`             | `v4`   | tag exists; `v7.0.1` is the current release                                                                 |
+| `pnpm/setup` (the combined action)    | —      | real: `v1.0.0`, 2026-06-15, "install pnpm and a JavaScript runtime in one step". **Not adopted.** Seven weeks old, and it collapses the two steps whose separation is what gives `cache: pnpm`. Revisit at M2 |
+
+The three tags the plan named all resolve, so they are pinned as written even where a newer major
+exists: a major bump is its own change with its own diff, not something to fold into the story that
+first writes the file.
+
+**The artefact path is `${{ runner.temp }}/DeFlow-*`, not `/tmp/DeFlow-*`.** `os.tmpdir()` is `/tmp`
+on the Linux runners and `/var/folders/…/T` on the macOS ones, so the path the strategy document
+shows would match nothing on exactly the two legs whose failures you cannot reproduce locally — and
+`upload-artifact` treats "no files matched" as a *warning*, so the leg would fail and hand you
+nothing. The job pins `TMPDIR` to the runner temp directory and uploads from there;
+`test/integration/ci-artifact-path.test.ts` globs the declared path against a directory the real
+fixture creates, so the two cannot drift. Every temp directory in this repo is therefore prefixed
+`DeFlow-`, case included: the glob is case-sensitive on Linux.
+
+---
+
 ## Measurements
 
 Re-measure these on a clean checkout at every milestone; a monorepo accretes implicit prerequisites
@@ -133,6 +206,60 @@ that whoever added them never notices.
 | ---------------------------------------------- | ---------------- | ------------------------------------------ |
 | Cold start: `pnpm dev` to first 200 on `/api/health` | < 3 s (NF3) | **299 ms** (298/299/300 over four runs, one with `packages/web/node_modules/.vite` deleted), 2026-08-04, macOS / Node 24.18.0 / Apple silicon |
 | `pnpm install --frozen-lockfile`, warm store   | seconds          | see KAR-01.1                                |
+| Pre-commit hook over 20 staged files            | < 2 s            | **352 ms** median (medians of 341/352/366 ms over three five-run rounds), 2026-08-04, macOS / Node 24.18.0 / Apple silicon |
+| Full CI run on a green commit                   | < 10 min (AC12)  | **1 min 23 s** wall clock (run 30915210685, all six jobs green), 2026-08-04, GitHub-hosted runners |
 
 The cold-start number is asserted by `e2e/dev-loop.test.ts`, which prints the measurement it took,
-so a regression shows up in the test log rather than in a vague sense that the loop got slower.
+so a regression shows up in the test log rather than in a vague sense that the loop got slower. The
+pre-commit number works the same way, in `test/integration/git-hooks.test.ts`: it measures five runs
+of the real hook over twenty real files, asserts the median against the budget, and prints what it
+saw. The budget will be attacked repeatedly and always for a good reason; making it an assertion
+with a number converts the argument from taste into evidence.
+
+**The CI figure comes from a real run**, because it cannot come from anywhere else: AC12 asks for
+GitHub-hosted runner wall clock. Run
+[30915210685](https://github.com/zohresalimi/dynamic-workflows/actions/runs/30915210685), on
+`epic/01-dev-environment`, all six jobs green, 13:43:08 → 13:44:31 UTC — **83 seconds** against a
+600-second budget. The run page names the commit it ran on: this story's tree, with this note and
+the assertion that guards it as the only changes since. Per job:
+
+| Job                     | Duration | Notes                                                        |
+| ----------------------- | -------- | ------------------------------------------------------------ |
+| `check`                 | 32 s     | pnpm store restored from cache                               |
+| `test (ubuntu-26.04, 24)` | 47 s   | cache hit                                                    |
+| `test (ubuntu-26.04, 26)` | 49 s   | cache hit                                                    |
+| `test (macos-26, 24)`   | 51 s     | **cold** store — this leg wrote the macOS cache              |
+| `test (macos-26, 26)`   | 78 s     | the critical path; the run is as long as this leg            |
+| `browser-e2e`           | 45 s     | includes `playwright install --with-deps chromium`           |
+
+`test/ci-workflow.test.ts` asserts this row against the budget, so it cannot drift back to a
+placeholder or quietly record a number over ten minutes. The figure is generous headroom today and
+the shape to watch is the macOS legs: they are the slowest, they are the ones whose pnpm store cache
+misses most often, and EPIC-03's crash-fuzz slice lands on them. Re-measure when it does.
+
+**Three things had to be fixed before any of this could be measured, and none of them were visible
+from a laptop.** They are recorded here because each is a class of failure, not a typo:
+
+1. **`env:` on a job may not name `runner.*`.** The first push (run 30913790575) failed in six
+   seconds with *zero jobs* and no logs: GitHub rejects the whole file at parse time, because the
+   runner contexts do not exist until a runner has been assigned, which is after the job header is
+   evaluated. Every static guard in the repo read the YAML happily — the YAML was valid. `TMPDIR`
+   now sits on the vitest step, and `checkJobLevelContexts` fails on any job-level expression naming
+   a context GitHub does not provide there.
+2. **`pnpm exec playwright` resolved locally and nowhere else.** `node_modules/.bin` at the
+   workspace root keeps shims from every package ever installed there, so the root form ran fine on
+   the machine that wrote it and died on the first clean `--frozen-lockfile` install with `Command
+   "playwright" not found` (run 30914294996). playwright belongs to `packages/web`; the step is now
+   `pnpm --filter @DeFlow/web exec …`, and `checkWorkflowExecutablesAreDeclared` checks every
+   `pnpm exec` in the workflow against the manifest it runs in. Note that
+   `docs/14-testing-strategy.md` §14 still shows the root form.
+3. **A test that only passed for an AI agent.** `test/integration/project-slices.test.ts` asserted
+   on the literal string `Test Files  1 passed` in a nested runner's output. vitest disables colour
+   when `std-env` detects an agent (`CLAUDECODE` in the environment) and tinyrainbow enables it for
+   any process with `CI` in its environment — which that helper sets deliberately. So the assertion
+   held on an agent's laptop and failed on all four legs, and would fail in a colleague's terminal
+   too. The helper now strips SGR escapes before anything reads the output.
+
+For reference, the local floor — the work each job does, on the machine above, excluding all runner
+overhead — is `check` 3.5 s, `test` (unit + integration) 7.9 s, `browser-e2e` 2.8 s excluding the
+Chromium download. Runner overhead dominates: 83 s of wall clock against ~14 s of work.

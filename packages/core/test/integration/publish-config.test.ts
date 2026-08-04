@@ -21,7 +21,7 @@ let packed: Record<string, unknown>;
 let tarballDir: string | undefined;
 
 beforeAll(() => {
-  tarballDir = mkdtempSync(join(tmpdir(), 'deflow-core-pack-'));
+  tarballDir = mkdtempSync(join(tmpdir(), 'DeFlow-core-pack-'));
   const pack = spawnSync('pnpm', ['pack', '--pack-destination', tarballDir], {
     cwd: join(repoRoot, 'packages/core'),
     encoding: 'utf8',

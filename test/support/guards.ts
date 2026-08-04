@@ -347,16 +347,45 @@ export function checkNoDeepWorkspaceImports(
   return violations;
 }
 
+/** Fenced-code languages whose contents are commands somebody will paste and run. */
+const EXECUTABLE_FENCE_LANGUAGES = new Set([
+  'bash',
+  'sh',
+  'shell',
+  'zsh',
+  'console',
+  'yaml',
+  'yml',
+  'dockerfile',
+]);
+
 /**
- * EPIC-01-S4: `corepack enable` works today on Node 24 and breaks the moment
- * anyone moves to a current Node, which is exactly the "a colleague installs it
- * unaided" scenario.
+ * EPIC-01-S4, KAR-01.6 AC8: `corepack enable` works today on Node 24 and breaks
+ * the moment anyone moves to a current Node, which is exactly the "a colleague
+ * installs it unaided" scenario.
+ *
+ * AC8 widens this from the workflows to the whole of `docs/`, which is why the
+ * rule is about instructions rather than about the string. Every mention in
+ * `docs/` today is a *prohibition* — "Do not use `corepack enable`" — and a
+ * grep that fires on those would force the documentation to stop naming the
+ * footgun, which is the opposite of the point. So prose may say it; a shell or
+ * YAML block, which is what a reader copies, may not.
  */
 export function checkNoCorepack(files: readonly SourceFile[]): Violation[] {
   const violations: Violation[] = [];
   for (const file of files) {
+    const prose = file.path.endsWith('.md');
+    let fenceLanguage: string | undefined;
     const lines = file.text.split('\n');
     for (const [index, line] of lines.entries()) {
+      if (prose) {
+        const fence = /^\s*(?:```+|~~~+)\s*([A-Za-z0-9_+-]*)/.exec(line);
+        if (fence !== null) {
+          fenceLanguage = fenceLanguage === undefined ? (fence[1] ?? '').toLowerCase() : undefined;
+          continue;
+        }
+        if (fenceLanguage === undefined || !EXECUTABLE_FENCE_LANGUAGES.has(fenceLanguage)) continue;
+      }
       if (/corepack\s+enable/.test(line)) {
         violations.push({
           where: `${file.path}:${index + 1}`,
@@ -1090,6 +1119,824 @@ export function checkLintFormatScripts(root: PackageJson): Violation[] {
       where: 'package.json',
       message: `scripts.format must run "biome check --write .", found ${JSON.stringify(format)}.`,
     });
+  }
+
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.6 — git hooks and CI. Two files nobody reads until they misbehave.
+ * -------------------------------------------------------------------------- */
+
+export interface LefthookJob {
+  readonly name?: string;
+  readonly glob?: string;
+  readonly run?: string;
+  readonly stage_fixed?: boolean;
+}
+
+export interface LefthookHook {
+  readonly parallel?: boolean;
+  readonly jobs?: readonly LefthookJob[];
+}
+
+export interface LefthookConfig {
+  readonly 'pre-commit'?: LefthookHook;
+  readonly 'pre-push'?: LefthookHook;
+}
+
+/** KAR-00.6's artefact: the note that decides whether `.vue` may be auto-staged. */
+export const VUE_SPIKE_NOTE = 'docs/spikes/S7-biome-vue.md';
+
+export type VueStageFixedVerdict = 'safe' | 'not-safe' | 'unrecorded';
+
+/**
+ * AC2: `stage_fixed: true` reaches `.vue` only on a "safe" verdict from
+ * KAR-00.6. "The note does not exist yet" and "the note says not safe" are the
+ * same answer for the hook — no auto-staging — but they are different states of
+ * the plan, so they are different values here.
+ */
+export function readVueStageFixedVerdict(noteText: string | undefined): VueStageFixedVerdict {
+  if (noteText === undefined) return 'unrecorded';
+  const match = /verdict[^\n]*?:\s*\**\s*(not safe|not-safe|unsafe|safe)/i.exec(noteText);
+  if (match === null) return 'unrecorded';
+  return /^safe$/i.test(match[1] ?? '') ? 'safe' : 'not-safe';
+}
+
+/** The extensions the format job must cover regardless of the `.vue` verdict. */
+const FORMAT_EXTENSIONS = ['ts', 'json', 'jsonc', 'css', 'html'] as const;
+
+/** Anything in this list in a pre-commit job is the two-second budget being spent. */
+const PRE_COMMIT_FORBIDDEN = [
+  ['--type-aware', 'type-aware linting needs a full type graph, whose cost is the repository'],
+  ['pnpm lint', '"pnpm lint" is the type-aware pass over everything, wearing a shorter name'],
+  ['typecheck', '"pnpm typecheck" builds every project and belongs on pre-push'],
+  ['vitest', 'running specs at commit time is the pre-push job, not the pre-commit one'],
+] as const;
+
+/**
+ * AC1 names `typecheck` and `unit`. `lint` is here because AC4 wants a floating
+ * promise rejected before the code reaches a branch, and every one of the six
+ * correctness rules that catches one is type-aware — which AC1 keeps out of
+ * pre-commit. Pre-push is where those two criteria meet.
+ */
+const EXPECTED_PRE_PUSH_JOBS = [
+  ['typecheck', 'pnpm typecheck'],
+  ['lint', 'pnpm lint'],
+  ['unit', 'pnpm vitest run --project unit'],
+] as const;
+
+/**
+ * AC1, AC2, EPIC-01-S21 scenarios 3 and 4: the hook's whole value is that it is
+ * fast enough never to be bypassed, so what it does *not* do is as much of the
+ * contract as what it does.
+ */
+export function checkLefthookConfig(
+  config: LefthookConfig,
+  context: { readonly text: string; readonly verdict: VueStageFixedVerdict },
+): Violation[] {
+  const violations: Violation[] = [];
+  const where = 'lefthook.yml';
+  const preCommit = config['pre-commit'];
+  const prePush = config['pre-push'];
+
+  if (preCommit?.parallel !== true) {
+    violations.push({
+      where,
+      message:
+        '"pre-commit.parallel" must be true. Serialising the format and lint jobs roughly doubles ' +
+        'the hook and there is no ordering between them to preserve — they read the same staged ' +
+        'files and touch different concerns.',
+    });
+  }
+
+  const jobs = preCommit?.jobs ?? [];
+  const format = jobs.find((job) => job.name === 'format');
+  const lint = jobs.find((job) => job.name === 'lint');
+
+  if (format === undefined) {
+    violations.push({ where, message: 'pre-commit has no job named "format".' });
+  } else {
+    if (!/biome\s+check\s+--write/.test(format.run ?? '')) {
+      violations.push({
+        where,
+        message: `the "format" job must run "biome check --write", found ${JSON.stringify(format.run)}.`,
+      });
+    }
+    if (!(format.run ?? '').includes('--no-errors-on-unmatched')) {
+      violations.push({
+        where,
+        message:
+          'the "format" job must pass "--no-errors-on-unmatched". Without it a commit whose ' +
+          'staged files Biome does not handle fails the hook for no reason.',
+      });
+    }
+    if (!(format.run ?? '').includes('{staged_files}')) {
+      violations.push({
+        where,
+        message:
+          'the "format" job must run over "{staged_files}". Formatting the whole repository at ' +
+          'commit time is both slow and a way to commit changes nobody asked for.',
+      });
+    }
+    if (format.stage_fixed !== true) {
+      violations.push({
+        where,
+        message:
+          '"stage_fixed: true" is missing from the "format" job. Without it the rewrite lands in ' +
+          'the working tree but not the index, so the commit carries the unformatted bytes and ' +
+          'CI\'s "biome ci ." fails on a commit that passed its own hook.',
+      });
+    }
+    const glob = format.glob ?? '';
+    for (const extension of FORMAT_EXTENSIONS) {
+      if (!new RegExp(`[{,.]${extension}[},]`).test(glob)) {
+        violations.push({
+          where,
+          message: `the "format" glob does not cover .${extension}, found ${JSON.stringify(glob)}.`,
+        });
+      }
+    }
+    const formatsVue = glob.includes('vue');
+    if (formatsVue && context.verdict !== 'safe') {
+      violations.push({
+        where,
+        message:
+          'the "format" glob includes .vue, but ' +
+          (context.verdict === 'unrecorded'
+            ? `${VUE_SPIKE_NOTE} does not exist or records no verdict`
+            : `${VUE_SPIKE_NOTE} records "not safe"`) +
+          '. A "stage_fixed: true" hook auto-stages whatever Biome writes to an SFC, so the ' +
+          'rewrite is in the commit before anyone reads it — which is why KAR-00.6 exists and ' +
+          'why the gate is this way round.',
+      });
+    }
+    if (!formatsVue && context.verdict === 'safe') {
+      violations.push({
+        where,
+        message:
+          `${VUE_SPIKE_NOTE} now records a "safe" verdict, so .vue belongs in the "format" glob. ` +
+          'Leaving it out means .vue formatting is a manual step that will silently stop happening.',
+      });
+    }
+    if (!formatsVue && !context.text.includes(VUE_SPIKE_NOTE)) {
+      violations.push({
+        where,
+        message:
+          `.vue is excluded from the "format" glob, so the reason must be a comment naming ` +
+          `${VUE_SPIKE_NOTE} — an unexplained exclusion reads as an oversight and gets "fixed".`,
+      });
+    }
+  }
+
+  if (lint === undefined) {
+    violations.push({ where, message: 'pre-commit has no job named "lint".' });
+  } else {
+    if (!(lint.run ?? '').includes('oxlint')) {
+      violations.push({
+        where,
+        message: `the "lint" job must run oxlint, found ${JSON.stringify(lint.run)}.`,
+      });
+    }
+    if (!(lint.run ?? '').includes('{staged_files}')) {
+      violations.push({
+        where,
+        message: 'the "lint" job must run over "{staged_files}".',
+      });
+    }
+    if (!(lint.run ?? '').includes('--no-error-on-unmatched-pattern')) {
+      violations.push({
+        where,
+        message:
+          'the "lint" job must pass "--no-error-on-unmatched-pattern". .oxlintrc.json ignores ' +
+          'every test/ directory, and oxlint exits 1 with "No files found to lint" when its ' +
+          'ignore patterns eat the whole argument list — so without the flag a test-only commit ' +
+          'fails a hook it has no business failing, and you learn to reach for "--no-verify".',
+      });
+    }
+    if (lint.glob !== '*.ts') {
+      violations.push({
+        where,
+        message:
+          `the "lint" glob must be "*.ts", found ${JSON.stringify(lint.glob)}. oxlint sees ` +
+          'only the <script> block of an SFC, so pointing it at .vue buys a partial lint and the ' +
+          'illusion of coverage.',
+      });
+    }
+  }
+
+  for (const job of jobs) {
+    for (const [needle, why] of PRE_COMMIT_FORBIDDEN) {
+      if ((job.run ?? '').includes(needle)) {
+        violations.push({
+          where,
+          message:
+            `the pre-commit job "${job.name}" runs "${needle}": ${why}. Keep pre-commit under ` +
+            'about two seconds — the moment you type "--no-verify" the hooks stop existing, and ' +
+            'you have paid the setup cost for nothing.',
+        });
+      }
+    }
+  }
+
+  const pushJobs = prePush?.jobs ?? [];
+  for (const [name, command] of EXPECTED_PRE_PUSH_JOBS) {
+    const job = pushJobs.find((candidate) => candidate.name === name);
+    if (job === undefined) {
+      violations.push({
+        where,
+        message:
+          `pre-push has no job named "${name}". What pre-commit refuses on budget grounds has to ` +
+          'land somewhere before the branch does, or the budget is just a smaller net.',
+      });
+      continue;
+    }
+    if (!(job.run ?? '').includes(command)) {
+      violations.push({
+        where,
+        message: `the pre-push "${name}" job must run "${command}", found ${JSON.stringify(job.run)}.`,
+      });
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * AC5, EPIC-01-S1: hooks that need a documented extra step after cloning are
+ * hooks that are missing on every machine but the one they were written on.
+ */
+export function checkPrepareInstallsHooks(root: PackageJson): Violation[] {
+  const violations: Violation[] = [];
+  const prepare = root.scripts?.prepare;
+
+  if (prepare === undefined || !/lefthook\s+install/.test(prepare)) {
+    violations.push({
+      where: 'package.json',
+      message:
+        `scripts.prepare must run "lefthook install", found ${JSON.stringify(prepare)}. pnpm runs ` +
+        '"prepare" after every install, which is what makes the hooks appear on a fresh clone ' +
+        'with no extra step in the README that nobody performs.',
+    });
+  }
+  if (root.devDependencies?.lefthook !== 'catalog:') {
+    violations.push({
+      where: 'package.json',
+      message: `devDependencies.lefthook must be "catalog:", found ${JSON.stringify(root.devDependencies?.lefthook)}.`,
+    });
+  }
+
+  return violations;
+}
+
+/** The `${{ runner.temp }}` expression the test job pins TMPDIR to. */
+export const RUNNER_TEMP_EXPRESSION = '${{ runner.temp }}';
+
+/** AC6: verified against the marketplace on 2026-08-04 — see docs/CONTRIBUTING.md. */
+export const PINNED_ACTIONS: Readonly<Record<string, string>> = {
+  'actions/checkout': 'v5',
+  'pnpm/action-setup': 'v6',
+  'actions/setup-node': 'v6',
+  'actions/upload-artifact': 'v4',
+};
+
+/** AC9, EPIC-01-S23: Node 24 is the Active LTS floor (D2); Node 26 is Current. */
+export const EXPECTED_TEST_MATRIX = {
+  os: ['ubuntu-26.04', 'macos-26'],
+  node: ['24', '26'],
+} as const;
+
+export interface WorkflowStep {
+  readonly uses?: string;
+  readonly run?: string;
+  readonly if?: string;
+  readonly with?: Record<string, string>;
+  readonly env?: Record<string, string>;
+}
+
+export interface WorkflowJob {
+  readonly 'runs-on'?: string;
+  readonly env?: Record<string, string>;
+  readonly strategy?: {
+    readonly 'fail-fast'?: boolean;
+    readonly matrix?: Record<string, readonly string[]>;
+  };
+  readonly steps?: readonly WorkflowStep[];
+}
+
+export interface CiWorkflow {
+  readonly name?: string;
+  readonly on?: unknown;
+  readonly concurrency?: { readonly group?: string; readonly 'cancel-in-progress'?: boolean };
+  readonly jobs?: Record<string, WorkflowJob>;
+}
+
+/** Expands a `${{ matrix.x }}` template over a matrix, the way GitHub would. */
+export function expandMatrixTemplate(
+  template: string,
+  matrix: { readonly [key: string]: readonly string[] },
+): string[] {
+  let expanded = [template];
+  for (const [key, values] of Object.entries(matrix)) {
+    const expression = new RegExp(`\\$\\{\\{\\s*matrix\\.${key}\\s*\\}\\}`, 'g');
+    expanded = expanded.flatMap((candidate) =>
+      values.map((value) => candidate.replace(expression, value)),
+    );
+  }
+  return expanded;
+}
+
+const runsOf = (job: WorkflowJob | undefined): string =>
+  (job?.steps ?? []).map((step) => step.run ?? '').join('\n');
+
+/**
+ * The contexts GitHub evaluates in a job *header* — `env`, `runs-on`, `if`,
+ * `strategy`, `timeout-minutes`, `container`. Everything a step can see and a
+ * job header cannot (`runner`, `steps`, `job`, `env` itself) is absent by
+ * design: those values do not exist until a runner has been assigned, which
+ * happens after the header has been evaluated.
+ *
+ * https://docs.github.com/actions/reference/workflows-and-actions/contexts
+ */
+export const JOB_LEVEL_CONTEXTS = [
+  'github',
+  'needs',
+  'strategy',
+  'matrix',
+  'vars',
+  'secrets',
+  'inputs',
+] as const;
+
+/**
+ * Every `${{ … }}` expression in a value, however deeply nested, each tagged
+ * with the dotted key path it was found at — a job header can carry a dozen
+ * environment variables, and "one of them is wrong" is not a fixable report.
+ */
+function expressionsIn(value: unknown, path: string): { path: string; expression: string }[] {
+  if (typeof value === 'string') {
+    return [...value.matchAll(/\$\{\{([^}]*)\}\}/g)].map((match) => ({
+      path,
+      expression: match[1] ?? '',
+    }));
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => expressionsIn(item, `${path}[${index}]`));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, nested]) =>
+      expressionsIn(nested, `${path}.${key}`),
+    );
+  }
+  return [];
+}
+
+/**
+ * AC12. A job header that names a step-only context does not produce a red job
+ * — it produces a run with **zero jobs**, because GitHub rejects the workflow
+ * file before it schedules anything ("Unrecognized named-value"). That is the
+ * one failure mode every other guard in this file is blind to: they parse the
+ * YAML, and the YAML is perfectly valid. Measured, on the first push of this
+ * workflow: `env: TMPDIR: ${{ runner.temp }}` at job level, run 30913790575,
+ * failed in six seconds with nothing to look at. AC12 wants a green run's wall
+ * clock, and a workflow that cannot start can never produce one.
+ */
+export function checkJobLevelContexts(workflow: CiWorkflow, where: string): Violation[] {
+  const violations: Violation[] = [];
+  const allowed = new Set<string>(JOB_LEVEL_CONTEXTS);
+
+  for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+    for (const [field, value] of Object.entries(job)) {
+      if (field === 'steps') {
+        continue; // Steps run on a runner, so `runner.*` and `steps.*` are legal there.
+      }
+      for (const { path, expression } of expressionsIn(value, field)) {
+        for (const [, context] of expression.matchAll(/\b([a-zA-Z_][\w-]*)\s*\./g)) {
+          if (context === undefined || allowed.has(context)) {
+            continue;
+          }
+          violations.push({
+            where,
+            message:
+              `job "${jobName}" uses "\${{ ${expression.trim()} }}" in "${path}", but ` +
+              `"${context}" is not one of the contexts a job header may name ` +
+              `(${JOB_LEVEL_CONTEXTS.join(', ')}). GitHub rejects the whole file at parse time, ` +
+              'so the run finishes in seconds with zero jobs and no logs — not one red job. Move ' +
+              'the value onto the step that needs it, where the runner contexts exist.',
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+/** AC12's budget, in seconds. Ten minutes is the point a push loop stops being one. */
+export const CI_RUNTIME_BUDGET_SECONDS = 600;
+
+/**
+ * AC12, second half: "measured **and recorded**".
+ *
+ * The number is GitHub-hosted runner wall clock, so no assertion can produce it
+ * from a laptop — the measurements table in docs/CONTRIBUTING.md is the record,
+ * and this is what keeps that record honest. It fails three ways: a row that
+ * never got a number (the state the story shipped in, and the state it would
+ * quietly return to), a number with no run behind it (unciteable, therefore
+ * uncheckable), and a number that is over budget (recorded, and ignored).
+ */
+export function checkRecordedCiRuntime(contributing: string): Violation[] {
+  const where = 'docs/CONTRIBUTING.md';
+  const row = contributing
+    .split('\n')
+    .find((line) => line.startsWith('|') && line.includes('Full CI run'));
+  if (row === undefined) {
+    return [
+      {
+        where,
+        message:
+          'the measurements table has no "Full CI run on a green commit" row. AC12 asks for that ' +
+          'number to be measured and recorded, and this table is where it is recorded.',
+      },
+    ];
+  }
+
+  const measured = row.split('|').at(-2) ?? '';
+  const duration = /(?:(\d+)\s*min\s*)?(\d+)\s*s\b/.exec(measured);
+  if (duration === null) {
+    return [
+      {
+        where,
+        message:
+          `the "Full CI run" row records no duration (${measured.trim()}). AC12 is not met by a ` +
+          'placeholder: the run has to happen on hosted runners and the wall clock has to land ' +
+          'here.',
+      },
+    ];
+  }
+  if (!/run\s*\d{6,}|actions\/runs\/\d+/.test(measured)) {
+    return [
+      {
+        where,
+        message:
+          'the "Full CI run" row records a duration but names no run. A number nobody can look ' +
+          'up is a claim, not a measurement — cite the workflow run id it came from.',
+      },
+    ];
+  }
+
+  const seconds = Number(duration[1] ?? 0) * 60 + Number(duration[2]);
+  if (seconds >= CI_RUNTIME_BUDGET_SECONDS) {
+    return [
+      {
+        where,
+        message:
+          `the recorded CI wall clock is ${seconds} s, at or over AC12's ` +
+          `${CI_RUNTIME_BUDGET_SECONDS} s budget. Recording a number that breaks the budget is ` +
+          'not satisfying the criterion; the fix is almost certainly caching rather than the ' +
+          'test slices.',
+      },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * AC12. `pnpm exec <bin>` resolves against `node_modules/.bin` of the package it
+ * runs in, and that directory is a *cache*: on a machine where a dependency was
+ * once installed at the root, its shim survives every later manifest change. So
+ * a workflow step can run for months on the author's laptop and fail on the
+ * first clean `--frozen-lockfile` install with "Command not found" — which is
+ * the only kind of machine CI ever is. Measured: run 30914294996, `browser-e2e`,
+ * `pnpm exec playwright` against a root manifest that has never declared
+ * playwright (it belongs to packages/web).
+ *
+ * The rule is deliberately narrow: the binary must be *declared* by the
+ * manifest the command runs in. Mapping a binary name to the package that
+ * provides it is not decidable from manifests alone, so a name that matches no
+ * declared dependency anywhere is reported as unresolvable rather than guessed
+ * at.
+ */
+export function checkWorkflowExecutablesAreDeclared(
+  workflow: CiWorkflow,
+  where: string,
+  manifests: readonly Manifest[],
+): Violation[] {
+  const violations: Violation[] = [];
+  const declaredBy = (manifest: Manifest | undefined): Set<string> =>
+    new Set(DEPENDENCY_BLOCKS.flatMap((block) => Object.keys(manifest?.json[block] ?? {})));
+  const root = manifests.find((manifest) => manifest.path === 'package.json');
+
+  for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+    for (const step of job.steps ?? []) {
+      for (const line of (step.run ?? '').split('\n')) {
+        const match = /^\s*pnpm\s+(?:--filter\s+(\S+)\s+)?exec\s+(\S+)/.exec(line);
+        if (match === null) {
+          continue;
+        }
+        const [, filter, binary = ''] = match;
+        const target =
+          filter === undefined ? root : manifests.find((manifest) => manifest.json.name === filter);
+        if (declaredBy(target).has(binary)) {
+          continue;
+        }
+        const provider = manifests.find((manifest) => declaredBy(manifest).has(binary));
+        violations.push({
+          where,
+          message:
+            `job "${jobName}" runs "pnpm ${filter === undefined ? '' : `--filter ${filter} `}` +
+            `exec ${binary}", but ${filter ?? 'the workspace root'} does not declare ` +
+            `"${binary}" — ` +
+            (provider === undefined
+              ? 'and no package in the workspace declares it either, so this step cannot resolve ' +
+                'on any machine that installed from the lockfile.'
+              : `${provider.json.name ?? provider.path} does. Run it as ` +
+                `"pnpm --filter ${provider.json.name ?? provider.path} exec ${binary} …". ` +
+                'A stale shim in the root node_modules/.bin hides this locally: it resolves on ' +
+                'the machine that wrote the step and fails on the first clean install.'),
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * AC6, AC9, AC10, EPIC-01-S23: the workflow is the one file in this repository
+ * that only ever executes on machines you do not have, so every property worth
+ * having is asserted here rather than discovered from a red build.
+ */
+export function checkCiWorkflow(workflow: CiWorkflow, where: string): Violation[] {
+  const violations: Violation[] = [];
+  const jobs = workflow.jobs ?? {};
+
+  if (workflow.concurrency?.group !== 'ci-${{ github.ref }}') {
+    violations.push({
+      where,
+      message: `concurrency.group must be "ci-\${{ github.ref }}", found ${JSON.stringify(workflow.concurrency?.group)}.`,
+    });
+  }
+  if (workflow.concurrency?.['cancel-in-progress'] !== true) {
+    violations.push({
+      where,
+      message:
+        'concurrency.cancel-in-progress must be true, or a fast follow-up push queues behind a run ' +
+        'whose result nobody will read.',
+    });
+  }
+
+  for (const name of ['check', 'test', 'browser-e2e']) {
+    if (jobs[name] === undefined) violations.push({ where, message: `job "${name}" is missing.` });
+  }
+
+  // Every action is pinned to the tag that was checked against the marketplace.
+  for (const [jobName, job] of Object.entries(jobs)) {
+    for (const step of job.steps ?? []) {
+      if (step.uses === undefined) continue;
+      const [action, tag] = step.uses.split('@');
+      const expected = PINNED_ACTIONS[action ?? ''];
+      if (expected === undefined) {
+        violations.push({
+          where,
+          message: `job "${jobName}" uses "${step.uses}", which is not in the pinned set.`,
+        });
+        continue;
+      }
+      if (tag !== expected) {
+        violations.push({
+          where,
+          message: `job "${jobName}" uses "${step.uses}"; the verified pin is "${action}@${expected}".`,
+        });
+      }
+    }
+  }
+
+  // setup-node: the Node the toolchain floor names, and pnpm's store cached.
+  for (const [jobName, job] of Object.entries(jobs)) {
+    const setup = (job.steps ?? []).find((step) => step.uses?.startsWith('actions/setup-node'));
+    if (setup === undefined) {
+      violations.push({ where, message: `job "${jobName}" never sets up Node.` });
+      continue;
+    }
+    if (setup.with?.cache !== 'pnpm') {
+      violations.push({
+        where,
+        message: `job "${jobName}" must set "cache: pnpm" on actions/setup-node.`,
+      });
+    }
+    const nodeVersion = String(setup.with?.['node-version'] ?? '');
+    const expectedVersion = jobName === 'test' ? '${{ matrix.node }}' : '24';
+    if (nodeVersion !== expectedVersion) {
+      violations.push({
+        where,
+        message: `job "${jobName}" must set "node-version: ${expectedVersion}", found ${JSON.stringify(nodeVersion)}.`,
+      });
+    }
+  }
+
+  const check = jobs.check;
+  if (check !== undefined) {
+    if (check['runs-on'] !== 'ubuntu-26.04') {
+      violations.push({
+        where,
+        message: `job "check" must run on ubuntu-26.04, found ${JSON.stringify(check['runs-on'])}.`,
+      });
+    }
+    for (const command of ['pnpm biome ci .', 'pnpm oxlint --type-aware', 'pnpm typecheck']) {
+      if (!runsOf(check).includes(command)) {
+        violations.push({ where, message: `job "check" must run "${command}".` });
+      }
+    }
+  }
+
+  const test = jobs.test;
+  if (test !== undefined) {
+    if (test.strategy?.['fail-fast'] !== false) {
+      violations.push({
+        where,
+        message:
+          'the test matrix must set "fail-fast: false". With it on, the first failing leg cancels ' +
+          'the other three, so a macOS-only bug and a repo-wide bug look identical.',
+      });
+    }
+    for (const [key, expected] of Object.entries(EXPECTED_TEST_MATRIX)) {
+      const actual = (test.strategy?.matrix?.[key] ?? []).map(String);
+      if (JSON.stringify(actual) !== JSON.stringify([...expected])) {
+        violations.push({
+          where,
+          message: `the test matrix "${key}" must be ${JSON.stringify(expected)}, found ${JSON.stringify(actual)}.`,
+        });
+      }
+    }
+    if (test['runs-on'] !== '${{ matrix.os }}') {
+      violations.push({
+        where,
+        message: `job "test" must run on "\${{ matrix.os }}", found ${JSON.stringify(test['runs-on'])}.`,
+      });
+    }
+    if (!runsOf(test).includes('pnpm vitest run --project unit --project integration')) {
+      violations.push({
+        where,
+        message: 'job "test" must run "pnpm vitest run --project unit --project integration".',
+      });
+    }
+    // Both of these are asserted on the *step*, not the job. `runner.temp` is
+    // not a context a job header may name (checkJobLevelContexts), so demanding
+    // them one level up is demanding a workflow GitHub refuses to run at all.
+    const vitest = (test.steps ?? []).find((step) => step.run?.startsWith('pnpm vitest run'));
+    if (vitest?.env?.DeFlow_KEEP_TMP !== '1') {
+      violations.push({
+        where,
+        message:
+          'the vitest step in job "test" must set DeFlow_KEEP_TMP: "1". Without it the fixture ' +
+          'deletes its tmpdir on the way out and the upload step has nothing to collect.',
+      });
+    }
+    if (vitest?.env?.TMPDIR !== RUNNER_TEMP_EXPRESSION) {
+      violations.push({
+        where,
+        message:
+          `the vitest step in job "test" must set TMPDIR: "${RUNNER_TEMP_EXPRESSION}". ` +
+          'os.tmpdir() is /tmp on the Linux runners and /var/folders/…/T on the macOS ones, so a ' +
+          'fixed /tmp upload path matches nothing on exactly the two legs whose failures you ' +
+          'cannot reproduce locally.',
+      });
+    }
+    const upload = (test.steps ?? []).find((step) => step.uses?.includes('upload-artifact'));
+    if (upload === undefined) {
+      violations.push({ where, message: 'job "test" never uploads the tmpdir artefact.' });
+    } else {
+      if (upload.if !== 'failure()') {
+        violations.push({
+          where,
+          message: `the upload step must be "if: failure()", found ${JSON.stringify(upload.if)}.`,
+        });
+      }
+      const name = upload.with?.name ?? '';
+      const names = expandMatrixTemplate(name, EXPECTED_TEST_MATRIX);
+      if (new Set(names).size !== 4) {
+        violations.push({
+          where,
+          message:
+            `the artefact name ${JSON.stringify(name)} expands to ${new Set(names).size} distinct ` +
+            'names across the four legs. Two legs uploading under one name is one leg losing its ' +
+            'evidence, and it is the failing leg you will want.',
+        });
+      }
+    }
+  }
+
+  const browser = jobs['browser-e2e'];
+  if (browser !== undefined) {
+    if (browser['runs-on'] !== 'ubuntu-26.04') {
+      violations.push({
+        where,
+        message:
+          `job "browser-e2e" must run on ubuntu-26.04 only, found ${JSON.stringify(browser['runs-on'])} — ` +
+          'a browser job on the macOS legs triples macOS minutes for no extra signal.',
+      });
+    }
+    for (const command of [
+      // Filtered to the package that declares playwright — see
+      // checkWorkflowExecutablesAreDeclared for why the root form cannot work.
+      'pnpm --filter @DeFlow/web exec playwright install --with-deps chromium',
+      'pnpm vitest run --project web --project e2e',
+    ]) {
+      if (!runsOf(browser).includes(command)) {
+        violations.push({ where, message: `job "browser-e2e" must run "${command}".` });
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * AC7, EPIC-01-S24 scenario 4. The cheapest control in the epic: an unpinned
+ * runner image is an operating-system and architecture change that lands under
+ * you without a commit.
+ */
+export function checkRunnerImagesArePinned(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of file.text.split('\n').entries()) {
+      const match = /([A-Za-z0-9_.-]+-latest)/.exec(line);
+      if (match === null) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} line ${index + 1} names "${match[1]}". Pin the image: "macos-latest" ` +
+          'migrated to macOS 26 on Apple Silicon between 8 and 15 June 2026, and an implicit ' +
+          'architecture change shifts native module prebuilds, node-pty behaviour and filesystem ' +
+          'case-sensitivity all at once. Use ubuntu-26.04 and macos-26.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * AC11, EPIC-01-S23 last scenario. The strategy document's example workflow
+ * includes a crash-fuzz step, and copying it produces a red build on the first
+ * commit because the project has nothing to run until EPIC-03 adds it.
+ */
+export function checkNoCrashFuzzProject(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of file.text.split('\n').entries()) {
+      if (!/--project\s+crash-fuzz/.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} line ${index + 1} references "--project crash-fuzz", which does not exist ` +
+          'yet — vitest.config.ts holds a deliberately empty slot for it. EPIC-03 adds the project ' +
+          'and this step together; until then this is a red build on every commit.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * AC10, EPIC-01-S24 scenario 2: the CI artefact glob is only worth as much as
+ * the directories it matches, and on the Linux legs it is case-sensitive. A
+ * spec whose tmpdir is named anything else uploads nothing when it fails —
+ * silently, because `upload-artifact` treats an empty match as a warning rather
+ * than an error. The one thing worse than no evidence is believing you have it.
+ *
+ * Only literal prefixes are judged: a `mkdtemp` whose prefix is a variable is
+ * the shared fixture, or something this guard has no way to evaluate.
+ */
+export function checkTempDirPrefixes(
+  files: readonly SourceFile[],
+  requiredPrefix: string,
+): Violation[] {
+  const violations: Violation[] = [];
+  const call = /mkdtemp(?:Sync)?\s*\(\s*join\s*\(\s*tmpdir\(\)\s*,\s*(['"`])([^'"`]*)\1/g;
+
+  for (const file of files) {
+    const lines = file.text.split('\n');
+    for (const [index, line] of lines.entries()) {
+      call.lastIndex = 0;
+      let match = call.exec(line);
+      while (match !== null) {
+        const prefix = match[2] ?? '';
+        if (!prefix.startsWith(requiredPrefix)) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message:
+              `${file.path} line ${index + 1} creates a temp directory named "${prefix}…". It must ` +
+              `start with "${requiredPrefix}", which is what CI's upload-artifact step globs for ` +
+              'after a failing matrix leg — and the glob is case-sensitive on the Linux runners. ' +
+              'A directory outside it is a failure you cannot post-mortem from a platform you do ' +
+              'not own, and upload-artifact will only warn that it matched nothing.',
+          });
+        }
+        match = call.exec(line);
+      }
+    }
   }
 
   return violations;
