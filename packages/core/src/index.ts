@@ -16,6 +16,18 @@
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
+// KAR-02.5 — Fact, Provenance and the blackboard vocabulary.
+export type { Confidence, Fact, FactKind, Provenance } from './fact.ts';
+export {
+  CONFIDENCE_LEVELS,
+  ConfidenceSchema,
+  compareFactsByEventOrder,
+  FACT_KINDS,
+  FactKindSchema,
+  FactSchema,
+  keyMatchesKind,
+  ProvenanceSchema,
+} from './fact.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
