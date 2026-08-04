@@ -1,0 +1,27 @@
+<script setup lang="ts">
+import {ref,computed} from 'vue'
+
+interface GraphNode<TPayload extends Record<string,unknown> = Record<string,unknown>> {
+  id:string
+  payload:TPayload
+  children:GraphNode<TPayload>[]
+}
+
+function collect<TPayload,TResult>(nodes:GraphNode<TPayload>[],project:(node:GraphNode<TPayload>)=>TResult):Map<string,TResult>{
+const out=new Map<string,TResult>()
+for(const node of nodes){
+out.set(node.id,project(node))
+if(node.children.length>0){
+for(const [id,value] of collect(node.children,project)){out.set(id,value)}
+}
+}
+return out
+}
+
+const nodes=ref<GraphNode<{label:string;status:'pending'|'running'|'done'}>[]>([])
+const doneCount=computed<number>(()=>collect(nodes.value,(n)=>n.payload.status).size)
+</script>
+
+<template>
+  <div>{{ doneCount }}</div>
+</template>
