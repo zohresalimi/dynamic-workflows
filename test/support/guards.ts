@@ -371,6 +371,99 @@ export function checkNoCorepack(files: readonly SourceFile[]): Violation[] {
   return violations;
 }
 
+export interface TsconfigFile {
+  /** Repo-relative path of the tsconfig.json. */
+  readonly path: string;
+  readonly json: { readonly compilerOptions?: { readonly paths?: unknown } };
+}
+
+/**
+ * AC6 / EPIC-01-S8: no tsconfig, anywhere, ever declares "paths". D4's
+ * rewriteRelativeImportExtensions does not rewrite through a paths alias
+ * (microsoft/TypeScript#61991), so an aliased specifier survives into the
+ * emitted JavaScript and the published bundle fails at runtime with a
+ * module-not-found — a failure invisible in development, because in
+ * development the .ts file genuinely exists.
+ */
+export function checkNoPathsAlias(tsconfigs: readonly TsconfigFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const tsconfig of tsconfigs) {
+    if (tsconfig.json.compilerOptions?.paths !== undefined) {
+      violations.push({
+        where: tsconfig.path,
+        message:
+          `${tsconfig.path} declares "compilerOptions.paths". rewriteRelativeImportExtensions ` +
+          'does not rewrite through a paths alias (microsoft/TypeScript#61991), so an aliased ' +
+          "specifier like \"@/patch.ts\" survives into the emitted JavaScript and the published " +
+          'bundle fails at runtime with a module-not-found. It works in development only because ' +
+          'the .ts file genuinely exists there. See docs/16-repo-layout.md §6.',
+      });
+    }
+  }
+  return violations;
+}
+
+const RELATIVE_IMPORT_SPECIFIER =
+  /(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]|require\(\s*['"](\.[^'"]*)['"]\s*\)/g;
+
+/**
+ * AC8 / EPIC-01-S8: every relative import under packages/*\/src carries an
+ * explicit .ts extension. allowImportingTsExtensions + rewriteRelativeImportExtensions
+ * rewrite ".ts" to ".js" on emit while "node src/main.ts" runs the source
+ * directly; an extensionless relative specifier is rejected outright by
+ * "nodenext" resolution.
+ */
+export function checkRelativeImportsHaveTsExtension(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const lines = file.text.split('\n');
+    for (const [index, line] of lines.entries()) {
+      RELATIVE_IMPORT_SPECIFIER.lastIndex = 0;
+      let match: RegExpExecArray | null = RELATIVE_IMPORT_SPECIFIER.exec(line);
+      while (match !== null) {
+        const specifier = match[1] ?? match[2];
+        if (specifier !== undefined && !specifier.endsWith('.ts') && !specifier.endsWith('.json')) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message:
+              `${file.path} imports "${specifier}" with no ".ts" extension. "nodenext" module ` +
+              'resolution rejects an extensionless relative specifier, and ' +
+              'rewriteRelativeImportExtensions only rewrites specifiers that already end in ".ts" ' +
+              'to ".js" on emit — add the explicit ".ts" suffix.',
+          });
+        }
+        match = RELATIVE_IMPORT_SPECIFIER.exec(line);
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * EPIC-01-S7 scenario 3: there is no flag that would make banned syntax run.
+ * "--experimental-transform-types" was removed in Node 26.0.0; if it still
+ * appears anywhere it is either dead configuration or someone reaching for an
+ * escape hatch that no longer exists.
+ */
+export function checkNoTransformTypesFlag(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const lines = file.text.split('\n');
+    for (const [index, line] of lines.entries()) {
+      if (line.includes('--experimental-transform-types')) {
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} line ${index + 1} passes "--experimental-transform-types". The flag was ` +
+            'removed in Node 26.0.0 and there is no replacement — erasableSyntaxOnly is permanent ' +
+            '(D4), not a preference that a flag can work around.',
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 /** Render violations into an assertion message that names every offender. */
 export function describe(violations: readonly Violation[]): string {
   return violations.map((v) => `- ${v.where}: ${v.message}`).join('\n');

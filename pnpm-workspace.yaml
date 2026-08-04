@@ -13,6 +13,7 @@ allowBuilds:
 # Consume every entry as "catalog:" — never a literal version in a package.json.
 catalog:
   typescript: 6.0.3 # D3 — NOT 7.x: 7.x ships only bin/tsc, so vue-tsc cannot run
+  vue-tsc: ^3.3.9 # embeds the TS6 compiler API; the reason typescript stays pinned at 6.0.3 (D3)
   zod: 4.4.3
   vitest: 4.1.10
   vite: 8.2.0

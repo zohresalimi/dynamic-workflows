@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import type { Manifest, PackageJson, SourceFile } from './guards.ts';
+import type { Manifest, PackageJson, SourceFile, TsconfigFile } from './guards.ts';
 
 export const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -116,4 +116,27 @@ export function allWorkspaceSources(): SourceFile[] {
   return packageDirs().flatMap((dir) =>
     readSources(walk(dir, (path) => (path.endsWith('.ts') || path.endsWith('.vue')) && !isTestFile(path))),
   );
+}
+
+/** Non-test sources under packages/*\/src only — AC8's scope for KAR-01.2. */
+export function packageProductionSources(): SourceFile[] {
+  return packageDirs()
+    .filter((dir) => dir.startsWith('packages/'))
+    .flatMap((dir) => productionSources(dir));
+}
+
+export function readTsconfig(repoRelativePath: string): TsconfigFile['json'] {
+  return JSON.parse(readText(repoRelativePath)) as TsconfigFile['json'];
+}
+
+/** tsconfig.base.json plus every package's own tsconfig.json that exists. */
+export function tsconfigFiles(): TsconfigFile[] {
+  const files: TsconfigFile[] = [
+    { path: 'tsconfig.base.json', json: readTsconfig('tsconfig.base.json') },
+  ];
+  for (const dir of packageDirs()) {
+    const path = `${dir}/tsconfig.json`;
+    if (exists(path)) files.push({ path, json: readTsconfig(path) });
+  }
+  return files;
 }

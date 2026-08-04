@@ -4,7 +4,8 @@
  * A structural guard that has only ever seen a compliant repository is not
  * known to detect anything. Each rule gets a violating input and a clean input.
  *
- * Verifies: EPIC-01-S2, EPIC-01-S3, EPIC-01-S4, EPIC-01-S5, EPIC-01-S8 (unit)
+ * Verifies: EPIC-01-S2, EPIC-01-S3, EPIC-01-S4, EPIC-01-S5, EPIC-01-S6, EPIC-01-S7,
+ * EPIC-01-S8 (unit)
  */
 import { describe as suite, expect, it } from 'vitest';
 import {
@@ -17,6 +18,9 @@ import {
   checkNoCorepack,
   checkNoDeepWorkspaceImports,
   checkNoNodeBuiltinImports,
+  checkNoPathsAlias,
+  checkNoTransformTypesFlag,
+  checkRelativeImportsHaveTsExtension,
   describe as render,
   workspaceDependencyEdges,
 } from './support/guards.ts';
@@ -274,6 +278,73 @@ suite('checkNoCorepack', () => {
   it('accepts npm i -g pnpm@11', () => {
     expect(
       checkNoCorepack([{ path: '.github/workflows/ci.yml', text: 'steps:\n  - run: npm i -g pnpm@11\n' }]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoPathsAlias (AC6)', () => {
+  it('fails naming the tsconfig and citing the TypeScript issue', () => {
+    const violations = checkNoPathsAlias([
+      {
+        path: 'tsconfig.base.json',
+        json: { compilerOptions: { paths: { '@/*': ['./src/*'] } } },
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('tsconfig.base.json');
+    const message = render(violations);
+    expect(message).toContain('microsoft/TypeScript#61991');
+    expect(message).toContain('module-not-found');
+  });
+
+  it('accepts a tsconfig with no paths key', () => {
+    expect(
+      checkNoPathsAlias([
+        { path: 'packages/core/tsconfig.json', json: { compilerOptions: {} } },
+        { path: 'tsconfig.base.json', json: {} },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkRelativeImportsHaveTsExtension (AC8)', () => {
+  it('catches an extensionless relative import and names the line', () => {
+    const violations = checkRelativeImportsHaveTsExtension([
+      { path: 'packages/daemon/src/tick.ts', text: "import { applyPatch } from './patch';\n" },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/daemon/src/tick.ts:1');
+    expect(render(violations)).toContain('nodenext');
+  });
+
+  it('accepts a relative import that already ends in .ts, and ignores bare specifiers', () => {
+    expect(
+      checkRelativeImportsHaveTsExtension([
+        {
+          path: 'packages/daemon/src/tick.ts',
+          text: "import { applyPatch } from './patch.ts';\nimport { z } from 'zod';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoTransformTypesFlag (EPIC-01-S7 scenario 3)', () => {
+  it('fails naming the file and line, and records that Node 26 removed the flag', () => {
+    const violations = checkNoTransformTypesFlag([
+      {
+        path: 'package.json',
+        text: '"dev": "node --experimental-transform-types packages/daemon/src/main.ts"\n',
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('package.json:1');
+    expect(render(violations)).toContain('removed in Node 26.0.0');
+  });
+
+  it('accepts a script with no such flag', () => {
+    expect(
+      checkNoTransformTypesFlag([{ path: 'package.json', text: '"dev": "node --watch main.ts"\n' }]),
     ).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
