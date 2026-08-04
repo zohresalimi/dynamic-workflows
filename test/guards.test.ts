@@ -25,6 +25,7 @@ import {
   checkNoFakeTimers,
   checkNoInMemoryDatabases,
   checkNoNodeBuiltinImports,
+  checkNoOhashImport,
   checkNoPathsAlias,
   checkNoTransformTypesFlag,
   checkNoUnsupportedGitLibrary,
@@ -217,6 +218,30 @@ suite('checkNoNodeBuiltinImports (R1)', () => {
         {
           path: 'packages/core/src/reduce.ts',
           text: "import { z } from 'zod';\nexport const x = z;\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoOhashImport (KAR-02.9 AC6)', () => {
+  it('catches an ohash import and names the line', () => {
+    const violations = checkNoOhashImport([
+      {
+        path: 'packages/core/src/hash.ts',
+        text: "const a = 1;\nimport { hash } from 'ohash';\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/core/src/hash.ts:2');
+  });
+
+  it('leaves a file that hashes with canonicalJson alone', () => {
+    expect(
+      checkNoOhashImport([
+        {
+          path: 'packages/core/src/hash.ts',
+          text: "import { canonicalJson } from './canonical-json.ts';\nexport const x = canonicalJson;\n",
         },
       ]),
     ).toEqual([]);

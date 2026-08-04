@@ -12,7 +12,11 @@
  * EPIC-02 fills this in: TaskSpec, PlanGraph, PlanPatch, Fact, ContextPacket,
  * the Event union, reduce, decide, the patch policy and the permission ladder.
  */
+
+// KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
+export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
+export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
