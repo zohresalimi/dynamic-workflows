@@ -166,6 +166,40 @@ export {
   ToolNodeSchema,
   WriteDeclSchema,
 } from './plan-graph.ts';
+// KAR-02.4 — PlanPatch, PatchDecision and the structural well-formedness check.
+export type {
+  BlastRadius,
+  PatchDecision,
+  PatchDecisionOutcome,
+  PatchError,
+  PatchErrorKind,
+  PatchOp,
+  PatchOpKind,
+  PatchPolicy,
+  PatchRetirement,
+  PatchWellFormedness,
+  PermissionEscalation,
+  PlanPatch,
+} from './plan-patch.ts';
+export {
+  AbandonBranchOpSchema,
+  BlastRadiusSchema,
+  ExtendLoopOpSchema,
+  InsertNodesOpSchema,
+  PATCH_DECISIONS,
+  PATCH_ERROR_KINDS,
+  PATCH_OPS,
+  PatchDecisionSchema,
+  PatchOpSchema,
+  PatchPolicySchema,
+  PermissionEscalationSchema,
+  PLANPATCH_SCHEMA_ID,
+  PlanPatchSchema,
+  patchIsWellFormed,
+  ReplaceProviderOpSchema,
+  retirementsOf,
+  SplitNodeOpSchema,
+} from './plan-patch.ts';
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 export { mintRunId } from './run-id.ts';
