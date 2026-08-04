@@ -31,6 +31,7 @@ export interface PackageJson {
   readonly type?: string;
   readonly engines?: Record<string, string>;
   readonly packageManager?: string;
+  readonly scripts?: Record<string, string>;
   readonly exports?: unknown;
   readonly publishConfig?: { readonly exports?: unknown };
   readonly dependencies?: Record<string, string>;
@@ -412,7 +413,13 @@ const RELATIVE_IMPORT_SPECIFIER =
  * rewrite ".ts" to ".js" on emit while "node src/main.ts" runs the source
  * directly; an extensionless relative specifier is rejected outright by
  * "nodenext" resolution.
+ *
+ * ".vue" and ".json" are explicit extensions that Vite and vue-tsc resolve
+ * directly, so they satisfy the rule the guard actually enforces: never leave
+ * the extension off.
  */
+const EXPLICIT_RELATIVE_EXTENSIONS = ['.ts', '.json', '.vue'] as const;
+
 export function checkRelativeImportsHaveTsExtension(files: readonly SourceFile[]): Violation[] {
   const violations: Violation[] = [];
   for (const file of files) {
@@ -422,7 +429,10 @@ export function checkRelativeImportsHaveTsExtension(files: readonly SourceFile[]
       let match: RegExpExecArray | null = RELATIVE_IMPORT_SPECIFIER.exec(line);
       while (match !== null) {
         const specifier = match[1] ?? match[2];
-        if (specifier !== undefined && !specifier.endsWith('.ts') && !specifier.endsWith('.json')) {
+        const explicit =
+          specifier !== undefined &&
+          EXPLICIT_RELATIVE_EXTENSIONS.some((extension) => specifier.endsWith(extension));
+        if (specifier !== undefined && !explicit) {
           violations.push({
             where: `${file.path}:${index + 1}`,
             message:
@@ -461,6 +471,260 @@ export function checkNoTransformTypesFlag(files: readonly SourceFile[]): Violati
       }
     }
   }
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.3 — the one-command dev loop (D10, ADR 0011)
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The three documented consequences of proxying SSE through Vite's dev server,
+ * each paired with why it is fatal for DeFlow specifically. EPIC-01-S13 asserts
+ * that the guard's failure message restates all three, because a bare "no
+ * proxies" rule is exactly the kind of rule that gets deleted by whoever next
+ * finds the daemon restart slow.
+ *
+ * Sources: vitejs/vite#12157, vitejs/vite discussion #10851,
+ * docs/03-local-development.md §4.3.
+ */
+export const VITE_PROXY_CONSEQUENCES: readonly (readonly [string, string])[] = [
+  [
+    'events buffer until the stream ends',
+    'the live plan graph would appear frozen for hours and then flood',
+  ],
+  [
+    'the stream dies after some minutes',
+    'runs are measured in hours, so the dev loop could not exercise the core use case',
+  ],
+  [
+    'close events do not propagate',
+    'leaked subscriptions per reload, and the backpressure path never gets tested',
+  ],
+];
+
+const PROXY_KEY = /(?:^|[\s{,;([])proxy\s*:/;
+const SERVER_PROXY = /server\s*\.\s*proxy/;
+
+/**
+ * AC7 / EPIC-01-S13: neither the string "server.proxy" nor a "proxy:" key may
+ * appear in any Vite config or package source. The UI is served by the daemon
+ * (D10); a proxy reintroduces the entire class of bug ADR 0011 exists to
+ * delete.
+ *
+ * Scope is deliberately code, not prose: docs/03-local-development.md §4.3 and
+ * ADR 0011 both quote "server.proxy" in order to forbid it, and a guard that
+ * fires on its own justification is a guard that gets deleted.
+ */
+export function checkNoViteProxy(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  const consequences = VITE_PROXY_CONSEQUENCES.map(
+    ([mode, why]) => `  - ${mode} — ${why}`,
+  ).join('\n');
+
+  for (const file of files) {
+    for (const [index, line] of file.text.split('\n').entries()) {
+      if (!SERVER_PROXY.test(line) && !PROXY_KEY.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} line ${index + 1} configures a proxy. The UI is served by DeFlowd on the ` +
+          'same origin (D10, ADR 0011), so there is nothing to proxy to. Vite\'s dev proxy is ' +
+          'documented-bad at SSE and all three failure modes land on the transport the whole UI ' +
+          `depends on:\n${consequences}\n` +
+          'The reverse-proxy settings in the API contract (timeout: 0, proxyTimeout: 0, ' +
+          'X-Accel-Buffering: no, Cache-Control: no-cache, no-transform, no compression ' +
+          'middleware) exist for anyone who later puts a reverse proxy in front of DeFlowd, not ' +
+          'for the dev loop.',
+      });
+    }
+  }
+  return violations;
+}
+
+const DYNAMIC_VITE_IMPORT = /\bimport\s*\(\s*['"]vite['"]\s*\)/;
+const STATIC_VITE_IMPORT = /(?:from\s*['"]vite['"]|require\(\s*['"]vite['"]\s*\))/;
+const DEV_FLAG_GUARD = /DeFlow_DEV\s*===\s*['"]1['"]/;
+
+/**
+ * AC8: `vite` is imported dynamically, and only under the DeFlow_DEV === '1'
+ * branch. Vite is a devDependency; a static import would drag it into the one
+ * published tarball, where it is both dead weight and a runtime resolution
+ * failure.
+ */
+export function checkViteImportIsDynamic(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    let dynamicImports = 0;
+    for (const [index, line] of file.text.split('\n').entries()) {
+      if (DYNAMIC_VITE_IMPORT.test(line)) {
+        dynamicImports += 1;
+        continue;
+      }
+      if (STATIC_VITE_IMPORT.test(line)) {
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} line ${index + 1} imports "vite" statically. Vite is a devDependency ` +
+            'and must be reachable only through await import("vite") inside the ' +
+            'DeFlow_DEV === "1" branch, so it can never enter the published bundle.',
+        });
+      }
+    }
+    if (dynamicImports > 0 && !DEV_FLAG_GUARD.test(file.text)) {
+      violations.push({
+        where: file.path,
+        message:
+          `${file.path} imports "vite" dynamically but contains no DeFlow_DEV === "1" guard. ` +
+          'The dynamic import is only half the protection: without the env branch the published ' +
+          'package still tries to resolve vite at runtime.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * AC5: pino-pretty is a dev-only pipe ("pnpm dev | pino-pretty"), never a
+ * runtime transport. `transport: { target: 'pino-pretty' }` spawns a worker
+ * thread inside DeFlowd, couples log formatting to the daemon and makes
+ * production logs unparseable ndjson — see docs/13-observability-and-telemetry.md §1.
+ */
+export function checkPinoPrettyIsNotARuntimeTransport(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of file.text.split('\n').entries()) {
+      if (!line.includes('pino-pretty')) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} line ${index + 1} names "pino-pretty" in runtime source. pino-pretty is ` +
+          'a dev-only pipe — "pnpm dev | pino-pretty" — and must never be wired as a pino ' +
+          'transport: that spawns a worker thread inside DeFlowd and makes production logs ' +
+          'unparseable ndjson.',
+      });
+    }
+  }
+  return violations;
+}
+
+const STATE_PRESERVING_RELOADERS = [
+  'nodemon',
+  'tsx watch',
+  'vite-node',
+  'node-dev',
+  '--hot',
+  'webpack-dev-server',
+];
+
+const WATCH_PATH_FLAG = /--watch-path=(\S+)/g;
+
+/**
+ * AC1, AC3, AC4, AC5 and EPIC-01-S9 scenario 2, read off the root scripts block.
+ *
+ * The restart is the test (F4.2), so the dev script must run under
+ * `node --watch` and must not be "fixed" into a reloader that preserves process
+ * state. And it must not watch packages/web: the watch path and the Vite root
+ * would overlap, so one .vue save would produce a daemon restart *and* an HMR
+ * update, the SSE stream would drop, and the loop would be unusable while a run
+ * is going (AC4, EPIC-01-S12).
+ */
+export function checkDevLoopScripts(root: PackageJson): Violation[] {
+  const violations: Violation[] = [];
+  const scripts = root.scripts ?? {};
+  const dev = scripts.dev;
+
+  if (dev === undefined) {
+    return [{ where: 'package.json', message: 'the root package.json declares no "dev" script.' }];
+  }
+
+  if (!dev.includes('node --watch')) {
+    violations.push({
+      where: 'package.json',
+      message:
+        `scripts.dev is "${dev}" and does not run "node --watch". Every save must kill and ` +
+        'restart DeFlowd: that is free, continuous, adversarial testing of F4.2 crash-resume, ' +
+        'which is the single property most competing tools lack.',
+    });
+  }
+
+  for (const reloader of STATE_PRESERVING_RELOADERS) {
+    if (dev.includes(reloader)) {
+      violations.push({
+        where: 'package.json',
+        message:
+          `scripts.dev uses "${reloader}", which preserves process state across a save. Do not ` +
+          '"fix" the restart with a hot-reload scheme — the restart is the test ' +
+          '(docs/03-local-development.md §5).',
+      });
+    }
+  }
+
+  if (!dev.includes('DeFlow_DEV=1')) {
+    violations.push({
+      where: 'package.json',
+      message:
+        'scripts.dev does not set DeFlow_DEV=1, so the daemon would serve the production static ' +
+        'branch and Vite would never be mounted.',
+    });
+  }
+
+  WATCH_PATH_FLAG.lastIndex = 0;
+  const watched: string[] = [];
+  let match: RegExpExecArray | null = WATCH_PATH_FLAG.exec(dev);
+  while (match !== null) {
+    if (match[1] !== undefined) watched.push(match[1]);
+    match = WATCH_PATH_FLAG.exec(dev);
+  }
+
+  if (watched.length === 0) {
+    violations.push({
+      where: 'package.json',
+      message:
+        'scripts.dev passes no --watch-path, so node watches only the files it loaded and a save ' +
+        'in a package the daemon has not imported yet would be silently ignored.',
+    });
+  }
+
+  const overlapping = watched.filter(
+    (path) => path === 'packages' || path === 'packages/' || path.startsWith('packages/web'),
+  );
+  if (overlapping.length > 0) {
+    violations.push({
+      where: 'package.json',
+      message:
+        `scripts.dev watches ${overlapping.join(', ')}, which covers packages/web. The watch path ` +
+        'and the Vite root would overlap, so one .vue save produces a daemon restart *and* an HMR ' +
+        'update: the SSE stream drops and the loop becomes unusable while a run is going (AC4, ' +
+        'EPIC-01-S12). List the daemon-side packages explicitly instead.',
+    });
+  }
+
+  const envFile = /--env-file(?:-if-exists)?=(\S+)/.exec(dev);
+  if (envFile?.[1] !== undefined && !envFile[1].startsWith('/')) {
+    violations.push({
+      where: 'package.json',
+      message:
+        `scripts.dev passes "--env-file...=${envFile[1]}", a relative path. Verified 2026-08-04 on ` +
+        'Node 24.18.0: a relative env-file path combined with --watch/--watch-path makes the ' +
+        'watcher react to writes anywhere under the working directory, so Vite\'s ' +
+        'node_modules/.vite/deps_temp_* churn restarts the daemon about twice a second, forever. ' +
+        'The daemon loads .env in-process instead (packages/daemon/src/env.ts).',
+    });
+  }
+
+  const pretty = scripts['dev:pretty'];
+  if (pretty === undefined || !/\|\s*pino-pretty/.test(pretty)) {
+    violations.push({
+      where: 'package.json',
+      message:
+        `scripts["dev:pretty"] must pipe into pino-pretty ("pnpm dev | pino-pretty"), not wire it ` +
+        'as a runtime transport. It is currently ' +
+        (pretty === undefined ? 'missing.' : `"${pretty}".`),
+    });
+  }
+
   return violations;
 }
 

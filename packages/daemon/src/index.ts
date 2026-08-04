@@ -7,7 +7,12 @@
  * anything another package needs from it belongs in @DeFlow/core if it is pure,
  * or is a port that the daemon implements and injects if it is not.
  *
- * EPIC-06 and EPIC-15 fill this in; src/main.ts (the `node --watch` entry
- * point) arrives with KAR-01.3.
+ * EPIC-06 and EPIC-15 fill in the orchestrator. What exists today is the
+ * process shape from KAR-01.3: one HTTP server, one origin, and `src/main.ts`
+ * as the `node --watch` entry point.
  */
-export {};
+export { createLogger, log, CENSOR, REDACT_PATHS } from './logging.ts';
+export type { CreateLoggerOptions } from './logging.ts';
+export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+export { startHttp, DEFAULT_HOSTNAME, DEFAULT_PORT } from './http/server.ts';
+export type { StartHttpOptions, StartedHttp } from './http/server.ts';

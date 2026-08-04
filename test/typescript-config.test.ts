@@ -20,6 +20,7 @@ import {
   exists,
   packageDirs,
   packageProductionSources,
+  parseJsonc,
   readText,
   readTsconfig,
   tsconfigFiles,
@@ -71,7 +72,7 @@ suite('tsconfig.json — the root solution file (AC2)', () => {
 suite('every package tsconfig extends the base config', () => {
   it.each(packageDirs())('%s/tsconfig.json extends ../../tsconfig.base.json', (dir) => {
     expect(exists(`${dir}/tsconfig.json`)).toBe(true);
-    const parsed = JSON.parse(readText(`${dir}/tsconfig.json`)) as { extends?: string };
+    const parsed = parseJsonc<{ extends?: string }>(readText(`${dir}/tsconfig.json`));
     const depth = dir.split('/').length;
     expect(parsed.extends).toBe(`${'../'.repeat(depth)}tsconfig.base.json`);
   });

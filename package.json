@@ -8,11 +8,17 @@
     "node": ">=24"
   },
   "scripts": {
+    "dev": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/adapters --watch-path=packages/daemon --watch-path=packages/cli --watch-path=packages/mock-agent packages/daemon/src/main.ts",
+    "dev:pretty": "pnpm dev | pino-pretty",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:int": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "pino-pretty": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "yaml": "catalog:"

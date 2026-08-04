@@ -125,8 +125,21 @@ export function packageProductionSources(): SourceFile[] {
     .flatMap((dir) => productionSources(dir));
 }
 
+/**
+ * tsconfig.json is JSONC — TypeScript's own `tsc --init` output is full of
+ * comments — so a reader that only speaks strict JSON cannot read the files it
+ * is meant to guard.
+ */
+export function parseJsonc<T>(text: string): T {
+  const withoutComments = text
+    .split('\n')
+    .map((line) => (/^\s*\/\//.test(line) ? '' : line))
+    .join('\n');
+  return JSON.parse(withoutComments) as T;
+}
+
 export function readTsconfig(repoRelativePath: string): TsconfigFile['json'] {
-  return JSON.parse(readText(repoRelativePath)) as TsconfigFile['json'];
+  return parseJsonc<TsconfigFile['json']>(readText(repoRelativePath));
 }
 
 /** tsconfig.base.json plus every package's own tsconfig.json that exists. */

@@ -15,9 +15,11 @@
     }
   },
   "dependencies": {
-    "@DeFlow/core": "workspace:*"
+    "@DeFlow/core": "workspace:*",
+    "vue": "catalog:"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",

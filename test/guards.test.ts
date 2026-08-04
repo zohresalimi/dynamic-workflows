@@ -12,6 +12,7 @@ import {
   checkCorePurity,
   checkDaemonIsLeaf,
   checkDependencyValues,
+  checkDevLoopScripts,
   checkExactCatalogPins,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
@@ -20,8 +21,12 @@ import {
   checkNoNodeBuiltinImports,
   checkNoPathsAlias,
   checkNoTransformTypesFlag,
+  checkNoViteProxy,
+  checkPinoPrettyIsNotARuntimeTransport,
   checkRelativeImportsHaveTsExtension,
+  checkViteImportIsDynamic,
   describe as render,
+  VITE_PROXY_CONSEQUENCES,
   workspaceDependencyEdges,
 } from './support/guards.ts';
 
@@ -346,5 +351,161 @@ suite('checkNoTransformTypesFlag (EPIC-01-S7 scenario 3)', () => {
     expect(
       checkNoTransformTypesFlag([{ path: 'package.json', text: '"dev": "node --watch main.ts"\n' }]),
     ).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * KAR-01.3 — the one-command dev loop
+ * -------------------------------------------------------------------------- */
+
+suite('checkNoViteProxy (EPIC-01-S13)', () => {
+  it('fires on a proxy key in a Vite config, naming the file', () => {
+    const violations = checkNoViteProxy([
+      {
+        path: 'packages/web/vite.config.ts',
+        text: "export default { server: { proxy: { '/api': 'http://localhost:7778' } } };\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/web/vite.config.ts:1');
+  });
+
+  it('fires on the string "server.proxy" in source', () => {
+    const violations = checkNoViteProxy([
+      { path: 'packages/daemon/src/http/server.ts', text: 'config.server.proxy = {};\n' },
+    ]);
+    expect(violations).toHaveLength(1);
+  });
+
+  it.each(VITE_PROXY_CONSEQUENCES)(
+    'restates the consequence "%s" and why it is fatal here',
+    (mode, why) => {
+      const message = render(
+        checkNoViteProxy([
+          { path: 'packages/web/vite.config.ts', text: 'server: { proxy: {} }\n' },
+        ]),
+      );
+      expect(message).toContain(mode);
+      expect(message).toContain(why);
+    },
+  );
+
+  it('leaves a proxy-free Vite config alone', () => {
+    expect(
+      checkNoViteProxy([
+        {
+          path: 'packages/web/vite.config.ts',
+          text: "import vue from '@vitejs/plugin-vue';\nexport default { plugins: [vue()] };\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkViteImportIsDynamic (AC8)', () => {
+  it('rejects a static import of vite in daemon source', () => {
+    const violations = checkViteImportIsDynamic([
+      {
+        path: 'packages/daemon/src/http/server.ts',
+        text: "import { createServer } from 'vite';\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('published bundle');
+  });
+
+  it('rejects a dynamic import that is not behind the DeFlow_DEV branch', () => {
+    const violations = checkViteImportIsDynamic([
+      {
+        path: 'packages/daemon/src/http/server.ts',
+        text: "const { createServer } = await import('vite');\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('DeFlow_DEV');
+  });
+
+  it('accepts a dynamic import inside the dev branch', () => {
+    expect(
+      checkViteImportIsDynamic([
+        {
+          path: 'packages/daemon/src/http/server.ts',
+          text:
+            "if (process.env.DeFlow_DEV === '1') {\n" +
+            "  const { createServer } = await import('vite');\n" +
+            '}\n',
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkPinoPrettyIsNotARuntimeTransport (AC5)', () => {
+  it('fires when pino-pretty is named in runtime source', () => {
+    const violations = checkPinoPrettyIsNotARuntimeTransport([
+      {
+        path: 'packages/daemon/src/logging.ts',
+        text: "const log = pino({ transport: { target: 'pino-pretty' } });\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('worker thread');
+  });
+
+  it('accepts a logger with no transport', () => {
+    expect(
+      checkPinoPrettyIsNotARuntimeTransport([
+        { path: 'packages/daemon/src/logging.ts', text: 'const log = pino({ level });\n' },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkDevLoopScripts (EPIC-01-S9 scenario 2)', () => {
+  const good = {
+    dev: 'DeFlow_DEV=1 node --watch --watch-path=packages/daemon --watch-path=packages/core packages/daemon/src/main.ts',
+    'dev:pretty': 'pnpm dev | pino-pretty',
+  };
+
+  it('accepts the node --watch loop that excludes packages/web', () => {
+    expect(checkDevLoopScripts({ scripts: good })).toEqual([]);
+  });
+
+  it('rejects a state-preserving reloader', () => {
+    const violations = checkDevLoopScripts({
+      scripts: { ...good, dev: 'DeFlow_DEV=1 nodemon --watch-path=packages/daemon main.ts' },
+    });
+    expect(render(violations)).toContain('the restart is the test');
+  });
+
+  it('rejects watching packages, because that covers packages/web', () => {
+    const violations = checkDevLoopScripts({
+      scripts: { ...good, dev: 'DeFlow_DEV=1 node --watch --watch-path=packages main.ts' },
+    });
+    expect(render(violations)).toContain('restart *and* an HMR');
+  });
+
+  it('rejects a relative --env-file path, which turns the loop into a restart storm', () => {
+    const violations = checkDevLoopScripts({
+      scripts: {
+        ...good,
+        dev: `${good.dev} --env-file-if-exists=.env`,
+      },
+    });
+    expect(render(violations)).toContain('restarts the daemon about twice a second');
+  });
+
+  it('requires dev:pretty to pipe rather than configure a transport', () => {
+    const violations = checkDevLoopScripts({
+      scripts: { dev: good.dev, 'dev:pretty': 'DeFlow_LOG_PRETTY=1 pnpm dev' },
+    });
+    expect(render(violations)).toContain('dev:pretty');
+  });
+
+  it('requires DeFlow_DEV=1, or Vite is never mounted', () => {
+    const violations = checkDevLoopScripts({
+      scripts: { ...good, dev: 'node --watch --watch-path=packages/daemon main.ts' },
+    });
+    expect(render(violations)).toContain('DeFlow_DEV=1');
   });
 });

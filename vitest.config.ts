@@ -31,6 +31,21 @@ export default defineConfig({
           pool: 'forks',
         },
       },
+      {
+        extends: true,
+        test: {
+          // KAR-01.3 needs a slice that can boot the real `pnpm dev` script.
+          // KAR-01.4 owns the finished shape of this project (browser mode,
+          // shared fixtures); this is the minimum it needs to exist as.
+          name: 'e2e',
+          environment: 'node',
+          include: ['e2e/**/*.test.ts'],
+          testTimeout: 60_000,
+          hookTimeout: 60_000,
+          pool: 'forks',
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });
