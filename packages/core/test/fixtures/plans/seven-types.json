@@ -2,7 +2,7 @@
   "schemaId": "DeFlow.plangraph.v1",
   "runId": "run_20260802T141133Z_9f2a1c",
   "version": 1,
-  "planHash": "sha256-0000000000000000000000000000000000000000000000000000000000000",
+  "planHash": "sha256-ac252376919065dbd057ce593743b5f3d10ff8ae7ffb92ac6deecdb354d2a536",
   "parent": null,
   "taskSpecHash": "sha256-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
   "createdBy": "planner",
@@ -112,8 +112,9 @@
       "retry": { "maxAttempts": 5, "backoff": { "base": 1000, "cap": 60000, "jitter": "full" } },
       "budget": { "maxWallClockMs": 1800000 },
       "body": "run-integration-check",
-      "until": { "kind": "fact", "key": "check/passed" },
-      "maxIterations": 5
+      "maxRounds": 5,
+      "goal": { "kind": "gate", "gate": "gate-lint-clean" },
+      "noProgress": { "sameFailureSignatureLimit": 3, "diffSimilarityThreshold": 0.9 }
     },
     {
       "id": "ship-it",
@@ -128,7 +129,11 @@
       "returns": { "schemaId": "DeFlow.shipresult.v1", "maxTokens": 500 },
       "retry": { "maxAttempts": 1, "backoff": { "base": 0, "cap": 0, "jitter": "full" } },
       "budget": { "maxWallClockMs": 900000 },
-      "planRef": "sha256-b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      "graph": {
+        "kind": "template",
+        "templateId": "release-and-announce",
+        "params": { "channel": "#releases" }
+      }
     }
   ],
   "edges": [

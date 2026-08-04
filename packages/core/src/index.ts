@@ -79,6 +79,59 @@ export {
 export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
 export type { NodeResult } from './node-result.ts';
 export { CANCELLATION_SOURCES, NodeResultSchema, SUSPENSION_KINDS } from './node-result.ts';
+// KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
+export type {
+  AdapterRequirement,
+  AgentNode,
+  GateNode,
+  HumanNode,
+  LoopNode,
+  MapNode,
+  NodeBudget,
+  NodeReturns,
+  NodeType,
+  ParsedPlanGraph,
+  PathScope,
+  PermissionLevel,
+  PlanEdge,
+  PlanGraph,
+  PlanIssue,
+  PlanNode,
+  ReadDecl,
+  RetryPolicy,
+  SubgraphNode,
+  ToolNode,
+  WriteDecl,
+} from './plan-graph.ts';
+export {
+  AdapterRequirementSchema,
+  AgentNodeSchema,
+  DEFAULT_ITEM_ID_FROM,
+  DEFAULT_RETRY_POLICY,
+  DEFAULT_RETURNS_MAX_TOKENS,
+  GateNodeSchema,
+  HumanNodeSchema,
+  LoopNodeSchema,
+  MapNodeSchema,
+  NODE_TYPES,
+  NodeBudgetSchema,
+  NodeReturnsSchema,
+  PathScopeSchema,
+  PERMISSION_LEVELS,
+  PermissionLevelSchema,
+  PLANGRAPH_SCHEMA_ID,
+  PlanEdgeSchema,
+  PlanGraphSchema,
+  PlanNodeSchema,
+  parsePlanGraph,
+  ReadDeclSchema,
+  RetryPolicySchema,
+  SubgraphNodeSchema,
+  ToolNodeSchema,
+  WriteDeclSchema,
+} from './plan-graph.ts';
+export type { UnsatisfiedRead } from './reads-satisfiable.ts';
+export { readsAreSatisfiable } from './reads-satisfiable.ts';
 export { mintRunId } from './run-id.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
