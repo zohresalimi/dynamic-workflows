@@ -1,3 +1,7 @@
+---
+closes: [A3-4, A3-5]
+---
+
 # S3 — elkjs in a Vite 8 web worker
 
 > Spike for [KAR-00.4](../delivery/epics/EPIC-00-foundation-spikes.md#kar-004--spike-elkjs-in-a-vite-8-web-worker).
