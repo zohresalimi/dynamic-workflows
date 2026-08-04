@@ -30,3 +30,35 @@ export class LedgerAlreadyOpen extends Error {
     this.file = file;
   }
 }
+
+/**
+ * A ledger whose `PRAGMA user_version` is higher than this binary's highest
+ * shipped migration id — it was written by a newer DeFlowd.
+ *
+ * There is no `down` migration (docs/05-durable-execution.md §7.2), so there
+ * is nothing honest this binary can do but refuse: not partially migrate, not
+ * run backward, not guess. The reducer's tolerance for an unknown event
+ * `kind` is what makes a *payload*-level downgrade safe; there is no
+ * equivalent at the schema layer, because a write from the older binary could
+ * violate a constraint it does not know about. Recovery is installing the
+ * newer build, or restoring a `pre-migrate-*.db` backup taken by an earlier,
+ * compatible run.
+ */
+export class LedgerTooNew extends Error {
+  readonly ledgerVersion: number;
+  readonly highestKnownMigration: number;
+  readonly dataDir: string;
+
+  constructor(ledgerVersion: number, highestKnownMigration: number, dataDir: string) {
+    super(
+      `this ledger's PRAGMA user_version is ${ledgerVersion}, but this build's highest shipped ` +
+        `migration id is ${highestKnownMigration}. It was written by a newer DeFlowd, and there ` +
+        `is no down migration to run backward, so this binary refuses to open it rather than ` +
+        `guess. Install the build that wrote it, or restore ${dataDir}/pre-migrate-*.db.`,
+    );
+    this.name = 'LedgerTooNew';
+    this.ledgerVersion = ledgerVersion;
+    this.highestKnownMigration = highestKnownMigration;
+    this.dataDir = dataDir;
+  }
+}
