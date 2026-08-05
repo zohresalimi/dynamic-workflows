@@ -32,9 +32,10 @@
  */
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
-import type { CriterionId, NodeId, RunId } from './ids.ts';
+import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
 import type { PlanGraph } from './plan-graph.ts';
 import {
+  initialNodeState,
   type LockState,
   lockKey,
   type NodeState,
@@ -43,24 +44,8 @@ import {
 } from './run-state.ts';
 import { sumUsage, type TokenUsage, type UsageTotals } from './token-usage.ts';
 
-/**
- * A node nothing is yet known about. `attempts: 0` matters: it is derived from
- * the attempt index of the events that arrive, never counted, so a ledger
- * whose `node.started` was skipped by an older binary still cannot produce a
- * node that completed without having run.
- */
-const UNKNOWN_NODE: NodeState = {
-  status: 'scheduled',
-  attempt: 0,
-  attempts: 0,
-  provider: null,
-  model: null,
-  permission: null,
-  result: null,
-  failure: null,
-  suspension: null,
-  wakeAt: null,
-};
+/** A node nothing is yet known about — see `initialNodeState`. */
+const UNKNOWN_NODE: NodeState = initialNodeState();
 
 /** A transition's answer. `null` is "this event changed nothing" — see the watermark. */
 type Transition = RunState | null;
@@ -127,6 +112,11 @@ export function reduce(state: RunState, event: Event): RunState {
  * so the two can be read side by side.
  */
 function project(state: RunState, event: Event): Transition {
+  // Read defensively for the same reason `reduce` does: totality means an
+  // envelope that never came through `parseEvent` is answered, not thrown at.
+  const rawSeq: unknown = (event as { seq?: unknown }).seq;
+  const seq = typeof rawSeq === 'number' ? rawSeq : 0;
+
   switch (event.kind) {
     case 'run.created':
       return state.runId === event.runId && state.status === 'created'
@@ -139,7 +129,7 @@ function project(state: RunState, event: Event): Transition {
     case 'run.started': {
       const planHash = event.payload.planHash;
       if (state.status === 'running' && state.planHash === planHash) return null;
-      return { ...state, status: 'running', planHash };
+      return withActivePlan({ ...state, status: 'running', planHash }, planHash);
     }
 
     // F4.4: pause is an event and never an in-memory flag, because a flag does
@@ -189,14 +179,17 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     case 'plan.patched':
-      return {
-        ...state,
-        planHash: event.payload.toHash,
-        planVersion: Math.max(state.planVersion, event.payload.version),
-      };
+      return withActivePlan(
+        {
+          ...state,
+          planHash: event.payload.toHash,
+          planVersion: Math.max(state.planVersion, event.payload.version),
+        },
+        event.payload.toHash,
+      );
 
     case 'node.scheduled':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'scheduled',
         provider: event.payload.provider,
@@ -218,7 +211,7 @@ function project(state: RunState, event: Event): Transition {
       return withoutLock(state, event.payload.lock, event.payload.key);
 
     case 'node.started':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         ...attemptOf(current, event.payload.attempt),
         status: 'running',
@@ -233,7 +226,7 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     case 'node.completed':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         ...attemptOf(current, event.payload.attempt),
         status: 'completed',
@@ -244,7 +237,7 @@ function project(state: RunState, event: Event): Transition {
       }));
 
     case 'node.failed':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         ...attemptOf(current, event.payload.attempt),
         status: 'failed',
@@ -253,7 +246,7 @@ function project(state: RunState, event: Event): Transition {
       }));
 
     case 'node.retry.scheduled':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'awaiting-retry',
         // The attempt has not happened yet, so `attempt` does not move; only
@@ -263,7 +256,7 @@ function project(state: RunState, event: Event): Transition {
       }));
 
     case 'node.suspended':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'suspended',
         suspension: event.payload.until,
@@ -303,14 +296,14 @@ function project(state: RunState, event: Event): Transition {
       );
 
     case 'human.requested':
-      return withNode(state, event.payload.node, (current) => ({
+      return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'suspended',
         suspension: { kind: 'human' },
       }));
 
     case 'human.responded':
-      return withNode(state, event.payload.node, (current) =>
+      return withNode(state, seq, event.payload.node, (current) =>
         current.status === 'suspended'
           ? { ...current, status: 'running', suspension: null, wakeAt: null }
           : current,
@@ -396,6 +389,7 @@ function attemptOf(current: NodeState, attempt: number): Pick<NodeState, 'attemp
 
 function withNode(
   state: RunState,
+  seq: number,
   id: NodeId,
   patch: (current: NodeState) => NodeState,
 ): Transition {
@@ -406,16 +400,25 @@ function withNode(
 
   return {
     ...state,
-    nodes: { ...state.nodes, [id]: next },
+    // `updatedSeq` is stamped here rather than by each transition, and only on
+    // the path where something else changed: an event that leaves the node
+    // exactly as it was returned above, so it moves neither the run's
+    // watermark nor the node's.
+    nodes: { ...state.nodes, [id]: { ...next, updatedSeq: Math.max(next.updatedSeq, seq) } },
     // A node the run has touched is an id the run has allocated (§1.1),
     // whether or not a `plan.proposed` was ever folded.
     nodeIds: known ? state.nodeIds : allocate(state, id),
   };
 }
 
+/**
+ * Every field but `updatedSeq`, which is bookkeeping about the fold rather
+ * than part of the projection — comparing it would make every event look like
+ * a change and quietly turn the watermark into an event counter.
+ */
 function sameNode(left: NodeState, right: NodeState): boolean {
   if (left === right) return true;
-  const keys = Object.keys(left) as (keyof NodeState)[];
+  const keys = (Object.keys(left) as (keyof NodeState)[]).filter((key) => key !== 'updatedSeq');
   return keys.every((key) => Object.is(left[key], right[key]));
 }
 
@@ -431,6 +434,12 @@ function allocate(state: RunState, id: NodeId): RunState['nodeIds'] {
  * retired rather than dropped, and `retired` never shrinks: the effect
  * journal's idempotency key is `(runId, nodeId, attempt, ordinal)`, so a
  * reused id hands a node a memoised result belonging to a different one.
+ *
+ * The graph itself is held too, because `decide(state, now)` reads `deps`,
+ * `lifecycle` and `retry` off it and is not allowed a third input (NF9). It is
+ * held as a *proposal* until an event activates it: §9 is explicit that the
+ * plan a run executes comes from `run.started` and `plan.patched`, never from
+ * the act of proposing one.
  */
 function withPlanNodes(state: RunState, graph: PlanGraph): Transition {
   const proposed = graph.nodes.map((node) => node.id);
@@ -440,8 +449,32 @@ function withPlanNodes(state: RunState, graph: PlanGraph): Transition {
     ...proposed.filter((id) => !state.nodeIds.retired.includes(id)),
   ]);
   const retired = dedupe([...state.nodeIds.retired, ...retiring]);
+  const held = state.plan?.planHash === graph.planHash;
 
-  return { ...state, nodeIds: { active, retired } };
+  return {
+    ...state,
+    nodeIds: { active, retired },
+    proposedPlans: held ? state.proposedPlans : { ...state.proposedPlans, [graph.planHash]: graph },
+  };
+}
+
+/**
+ * Promotes the proposal `planHash` names into the executing plan, and empties
+ * the waiting room — every other proposal was either superseded or rejected,
+ * and keeping them would grow `run.state_json` by one plan document per
+ * replan for no reader.
+ *
+ * A hash with no proposal folded (an older binary, a truncated ledger) leaves
+ * the previous graph in place rather than clearing it: a scheduler with no
+ * plan schedules nothing, and silently stopping a run is a worse answer than
+ * continuing on the last plan the ledger could actually prove.
+ */
+function withActivePlan(state: RunState, planHash: PlanHash): RunState {
+  const activated = state.proposedPlans[planHash];
+  if (activated === undefined) {
+    return Object.keys(state.proposedPlans).length === 0 ? state : { ...state, proposedPlans: {} };
+  }
+  return { ...state, plan: activated, proposedPlans: {} };
 }
 
 function withLock(state: RunState, lock: LockState): Transition {

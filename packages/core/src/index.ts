@@ -24,6 +24,21 @@ export { acceptFact } from './accept-fact.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
+// KAR-06.1 — the closed Command union decide() returns and the EffectRunner
+// performs. Every member carries what the runner needs, so the shell never
+// reads RunState.
+export type {
+  AcquireLock,
+  CancelNode,
+  Command,
+  EmitEvent,
+  EmittedEvent,
+  ReleaseLock,
+  ScheduleWake,
+  StartNode,
+  WakeReason,
+} from './command.ts';
+export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
 // KAR-02.6 — ContextPacket and typed segments.
 export type {
   ContextBudget,
@@ -55,6 +70,9 @@ export {
 // KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
 // @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
 export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
+// KAR-06.1 — the whole scheduling policy, as a pure function of state and one
+// instant.
+export { decide } from './decide.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
   CompactionFidelity,
@@ -327,11 +345,14 @@ export type {
   NodeStatus,
   RunState,
   RunStatus,
+  SchedulingPolicy,
 } from './run-state.ts';
 // KAR-03.6 — CHECKPOINT_VERSION stamps the cache; RunStateSchema is what a
 // decoded `run.state_json` has to survive before it may become state.
 export {
   CHECKPOINT_VERSION,
+  DEFAULT_SCHEDULING_POLICY,
+  initialNodeState,
   initialRunState,
   lockKey,
   NODE_STATUSES,

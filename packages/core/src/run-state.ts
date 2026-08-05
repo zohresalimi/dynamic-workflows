@@ -51,7 +51,12 @@ import {
   type NodeSuspension,
   NodeSuspensionSchema,
 } from './node-result.ts';
-import { type PermissionLevel, PermissionLevelSchema } from './plan-graph.ts';
+import {
+  type PermissionLevel,
+  PermissionLevelSchema,
+  type PlanGraph,
+  PlanGraphSchema,
+} from './plan-graph.ts';
 import { singleLine } from './text.ts';
 import { type UsageTotals, UsageTotalsSchema } from './token-usage.ts';
 
@@ -111,6 +116,20 @@ export interface NodeState {
   readonly suspension: NodeSuspension | null;
   /** ms epoch a retry or a wake is due at, from the event that scheduled it. */
   readonly wakeAt: number | null;
+  /**
+   * The `seq` of the last event that *changed* this node's projection — the
+   * per-node counterpart of `watermarkSeq`, and for the same reason.
+   *
+   * `decide()` orders its commands by the `seq` of the event that enabled them
+   * (KAR-06.1 AC6), and for a node becoming ready that event is the last of its
+   * dependencies completing. Without this field the only total order available
+   * to the scheduler is the node id, and a snapshot of a command list would
+   * stop reflecting the order the run actually unfolded in.
+   *
+   * `0` means "no event has moved this node yet", which is what a node named
+   * only by a plan looks like; a real `EventSeq` is positive.
+   */
+  readonly updatedSeq: number;
 }
 
 /**
@@ -162,6 +181,27 @@ export interface BudgetState {
   readonly breaches: readonly BudgetBreach[];
 }
 
+/**
+ * The bounds `decide()` admits work within (F5.2, EPIC-06-S4).
+ *
+ * It lives on `RunState` rather than in a module constant because an operator
+ * must be able to turn the slot count down after a rate-limit episode — mid
+ * run, without a code change and without killing anything in flight. It is the
+ * one part of the projection the reducer does not produce: no event carries it,
+ * so the daemon stamps the value from `.DeFlow/config.yaml` onto the state it
+ * hands `decide()`. A checkpointed copy is therefore last week's config and is
+ * always overwritten rather than believed.
+ */
+export interface SchedulingPolicy {
+  /**
+   * How many nodes may be in flight across the whole run. The default of 3 is
+   * bounded by laptop RAM and vendor rate limits, not by anything intrinsic.
+   */
+  readonly globalAgentSlots: number;
+}
+
+export const DEFAULT_SCHEDULING_POLICY: SchedulingPolicy = Object.freeze({ globalAgentSlots: 3 });
+
 /** Why the circuit breaker asked for a human (§9). */
 export interface NeedsHumanState {
   readonly reason: 'churn' | 'budget' | 'reconcile-unknown';
@@ -177,9 +217,31 @@ export interface RunState {
   /** The plan the run is executing, not the newest one proposed. */
   readonly planHash: PlanHash | null;
   readonly planVersion: number;
+  /**
+   * The graph `planHash` names, so the scheduler can read a node's `deps`,
+   * `lifecycle` and `retry` without a lookup.
+   *
+   * `decide(state, now)` has exactly two inputs, and the temptation to give it
+   * a third — "just fetch the plan row" — is what NF9 dies of. The plan is a
+   * ledger fact (`plan.proposed` carries the whole document), so folding it in
+   * costs nothing and keeps the scheduler a function of a plain object.
+   */
+  readonly plan: PlanGraph | null;
+  /**
+   * Proposed graphs that are not the executing one yet, keyed by plan hash.
+   *
+   * A proposal is not an adoption (§9: "the plan the run *executes* comes from
+   * run.started and plan.patched"), so a `plan.proposed` waits here until the
+   * event that activates it names its hash. Emptied on activation, which is
+   * what keeps the checkpoint bounded rather than accumulating one full plan
+   * document per replan.
+   */
+  readonly proposedPlans: Readonly<Record<string, PlanGraph>>;
   readonly nodes: Readonly<Record<string, NodeState>>;
   readonly locks: Readonly<Record<string, LockState>>;
   readonly nodeIds: NodeIdRegistryState;
+  /** The admission bounds `decide()` works within — config, not a fold. */
+  readonly policy: SchedulingPolicy;
   readonly budget: BudgetState;
   /**
    * F4.7. The `seq` of the last event that actually changed this projection —
@@ -214,7 +276,32 @@ export interface RunState {
  * the cache is a pure optimisation and is allowed to be thrown away, never to
  * be believed when it is stale.
  */
-export const CHECKPOINT_VERSION = 1;
+export const CHECKPOINT_VERSION = 2;
+
+/**
+ * A node nothing is yet known about: named by a plan, or named by an event
+ * this build folded before any `node.scheduled` arrived.
+ *
+ * `attempts: 0` matters. It is derived from the attempt index of the events
+ * that arrive, never counted, so a ledger whose `node.started` was skipped —
+ * an older binary reading a newer ledger — still cannot produce a node that
+ * completed without having run.
+ */
+export function initialNodeState(): NodeState {
+  return {
+    status: 'scheduled',
+    attempt: 0,
+    attempts: 0,
+    provider: null,
+    model: null,
+    permission: null,
+    result: null,
+    failure: null,
+    suspension: null,
+    wakeAt: null,
+    updatedSeq: 0,
+  };
+}
 
 /**
  * The state a run has before its first event. A constant would be shared
@@ -230,9 +317,12 @@ export function initialRunState(): RunState {
     needsHuman: null,
     planHash: null,
     planVersion: 0,
+    plan: null,
+    proposedPlans: {},
     nodes: {},
     locks: {},
     nodeIds: { active: [], retired: [] },
+    policy: { ...DEFAULT_SCHEDULING_POLICY },
     budget: { costUsd: 0, usage: { vendorReported: null, estimated: null }, breaches: [] },
     watermarkSeq: 0,
     epoch: 0,
@@ -256,6 +346,7 @@ const NodeStateSchema = z.strictObject({
   failure: NodeFailureSchema.nullable(),
   suspension: NodeSuspensionSchema.nullable(),
   wakeAt: wholeCount.nullable(),
+  updatedSeq: wholeCount,
 });
 
 const LockStateSchema = z.strictObject({
@@ -310,9 +401,12 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
     .nullable(),
   planHash: PlanHashSchema.nullable(),
   planVersion: wholeCount,
+  plan: PlanGraphSchema.nullable(),
+  proposedPlans: z.record(z.string(), PlanGraphSchema),
   nodes: z.record(z.string(), NodeStateSchema),
   locks: z.record(z.string(), LockStateSchema),
   nodeIds: NodeIdRegistryStateSchema,
+  policy: z.strictObject({ globalAgentSlots: z.number().int().nonnegative() }),
   budget: BudgetStateSchema,
   watermarkSeq: wholeCount,
   epoch: wholeCount,
