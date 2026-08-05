@@ -1,0 +1,12 @@
+{
+  "name": "schema-repair-exhausted",
+  "description": "The turn ends with subtype error_max_structured_output_retries — the agent gave up trying to produce output matching the schema it was given. This is the only honest source for the NodeFailure reason agent.schema-repair-exhausted; a taxonomy entry whose stimulus cannot be produced is a branch nobody has ever run.",
+  "steps": [{ "type": "message", "text": "attempting structured output" }],
+  "result": {
+    "subtype": "error_max_structured_output_retries",
+    "stopReason": "refusal",
+    "text": "",
+    "totalCostUsd": 0.42
+  },
+  "exitCode": 1
+}

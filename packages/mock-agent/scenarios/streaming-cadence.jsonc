@@ -1,0 +1,19 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "streaming-cadence",
+  "description": "EPIC-04-S4: a plan, then five chunks 50 ms apart. Proves frames arrive incrementally rather than as one burst at the end of the turn.",
+  "steps": [
+    {
+      "type": "plan",
+      "entries": [
+        { "content": "Read the file", "priority": "high", "status": "in_progress" },
+        { "content": "Explain what it does", "priority": "medium", "status": "pending" }
+      ]
+    },
+    // 50 ms, not 500: the assertion is that the agent slept between frames,
+    // and a scenario library that simulates real latency makes the suite slow
+    // without making it stronger.
+    { "type": "chunks", "count": 5, "delayMs": 50, "text": "scripted chunk" }
+  ],
+  "stopReason": "end_turn"
+}

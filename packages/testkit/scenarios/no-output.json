@@ -1,0 +1,6 @@
+{
+  "name": "no-output",
+  "description": "Exit having written zero bytes to stdout and stderr. The worst outcome in the F3.4 battery: the adapter sees a process that succeeded and carries nothing, and an empty result propagates downstream instead of failing. Set DeFlow_FAKE_EXIT_CODE to run the same silence with a non-zero exit.",
+  "noOutput": true,
+  "exitCode": 0
+}

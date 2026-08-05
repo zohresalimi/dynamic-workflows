@@ -1,0 +1,7 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "huge-line",
+  "description": "EPIC-04-S12: a single 10 MB line written in 64 KiB chunks, so a byte counter watches it grow past a cap instead of receiving it atomically. The payload is a generated repeating pattern — never random, never checked in — so --seed still holds.",
+  "steps": [{ "type": "hugeLine", "totalBytes": 10485760, "chunkBytes": 65536 }],
+  "stopReason": "end_turn"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "rate-limited",
+  "description": "A rate_limit_event fifteen minutes ahead of now, then an ordinary completion. resetsAt is what a backoff scheduler is supposed to read instead of retrying blindly (F9.4, F4.8), so it has to arrive as a real epoch timestamp on a real line rather than as a constant a parser test could hard-code.",
+  "steps": [
+    { "type": "message", "text": "starting" },
+    { "type": "rateLimit", "resetsInSeconds": 900, "status": "allowed_warning" },
+    { "type": "message", "text": "carrying on" }
+  ],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "done"
+  }
+}

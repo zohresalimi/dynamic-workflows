@@ -2047,3 +2047,113 @@ export function checkTempDirPrefixes(
 
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-04.1 — the mock agent is an independent oracle.
+ * -------------------------------------------------------------------------- */
+
+/** Any import or require specifier on a line, however it is spelled. */
+const IMPORT_SPECIFIER =
+  /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+function specifiersIn(text: string): { line: number; specifier: string }[] {
+  const found: { line: number; specifier: string }[] = [];
+  for (const [index, line] of codeOnly(text).split('\n').entries()) {
+    IMPORT_SPECIFIER.lastIndex = 0;
+    let match = IMPORT_SPECIFIER.exec(line);
+    while (match !== null) {
+      const specifier = match[1] ?? match[2];
+      if (specifier !== undefined) found.push({ line: index + 1, specifier });
+      match = IMPORT_SPECIFIER.exec(line);
+    }
+  }
+  return found;
+}
+
+export const MOCK_AGENT_INDEPENDENCE_MESSAGE =
+  'packages/mock-agent must import nothing from the workspace. If it imported @DeFlow/core, a bug ' +
+  'in the domain model would be mirrored on both sides of the wire and cancel itself out — the ' +
+  'mock would agree with the daemon about something they were both wrong about. It is an ' +
+  'independent implementation of the agent side of the same published schema, and that is the ' +
+  'only reason it is worth anything as an oracle (docs/07-provider-adapter-layer.md §13, ' +
+  'docs/16-repo-layout.md R1).';
+
+/**
+ * EPIC-04-S21 scenario 1: no source under packages/mock-agent imports a
+ * `@DeFlow/*` package. The manifest half of the same rule is
+ * `checkMockAgentIsIndependent`; both are needed, because an import that the
+ * manifest does not declare still resolves inside a pnpm workspace.
+ */
+export function checkNoWorkspaceImports(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const { line, specifier } of specifiersIn(file.text)) {
+      if (specifier.startsWith('@DeFlow/')) {
+        violations.push({
+          where: `${file.path}:${line}`,
+          message: `${file.path} imports "${specifier}". ${MOCK_AGENT_INDEPENDENCE_MESSAGE}`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * The three deprecated renames of the ACP packages. All of them are what any
+ * cached knowledge older than late 2025 names, and all three still install —
+ * which is what makes this worth a guard rather than a comment.
+ */
+export const DEPRECATED_ACP_PACKAGES = [
+  '@zed-industries/agent-client-protocol',
+  '@zed-industries/claude-code-acp',
+  '@zed-industries/codex-acp',
+] as const;
+
+/**
+ * EPIC-04-S21 scenario 2: the deprecated packages are unreachable, in source
+ * and in every manifest. The SDK went 0.4.5 -> 1.3.0 and changed npm scope *and*
+ * GitHub org inside about ten months; a stray old name resolves to a real
+ * package that speaks an older protocol, so the failure is a subtle wire
+ * mismatch rather than a missing module.
+ */
+export function checkNoDeprecatedAcpPackages(
+  files: readonly SourceFile[],
+  manifests: readonly Manifest[],
+): Violation[] {
+  const violations: Violation[] = [];
+  const deprecated: readonly string[] = DEPRECATED_ACP_PACKAGES;
+
+  for (const file of files) {
+    for (const { line, specifier } of specifiersIn(file.text)) {
+      const offended = deprecated.find(
+        (name) => specifier === name || specifier.startsWith(`${name}/`),
+      );
+      if (offended !== undefined) {
+        violations.push({
+          where: `${file.path}:${line}`,
+          message:
+            `${file.path} imports "${specifier}", a deprecated rename. The supported package is ` +
+            '@agentclientprotocol/sdk, pinned exactly at 1.3.0 in the catalog.',
+        });
+      }
+    }
+  }
+
+  for (const manifest of manifests) {
+    for (const block of DEPENDENCY_BLOCKS) {
+      for (const [name] of entriesOf(manifest.json, block)) {
+        if (deprecated.includes(name)) {
+          violations.push({
+            where: manifest.path,
+            message:
+              `${manifest.path} declares "${name}" in ${block}. The supported package is ` +
+              '@agentclientprotocol/sdk, pinned exactly at 1.3.0 in the catalog.',
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}

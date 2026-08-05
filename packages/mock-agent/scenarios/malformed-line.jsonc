@@ -1,0 +1,11 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "malformed-line",
+  "description": "EPIC-04-S10: a complete line that is not JSON at all, followed by well-formed frames. The frames after it are what make the client's recovery-vs-teardown decision testable instead of accidental.",
+  "steps": [
+    { "type": "message", "text": "before the malformed line" },
+    { "type": "malformedLine" },
+    { "type": "chunks", "count": 2, "delayMs": 0, "text": "after the malformed line" }
+  ],
+  "stopReason": "end_turn"
+}

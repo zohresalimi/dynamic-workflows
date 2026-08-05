@@ -1,0 +1,30 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "client-callbacks",
+  "description": "EPIC-04-S7: all seven fs/* and terminal/* client methods in one turn, in lifecycle order. These are exactly where the permission ladder lives — DeFlow sits in the path of every file access and every command execution — so a mock that could not call them would leave the ladder untestable.",
+  "steps": [
+    {
+      "type": "clientCall",
+      "method": "fs/read_text_file",
+      "params": { "path": "/workspace/src/index.ts" }
+    },
+    {
+      "type": "clientCall",
+      "method": "fs/write_text_file",
+      "params": { "path": "/workspace/src/index.ts", "content": "export const answer = 42;\n" }
+    },
+    {
+      "type": "clientCall",
+      "method": "terminal/create",
+      "params": { "command": "pnpm", "args": ["test"] }
+    },
+    // terminalId is filled in from whatever terminal/create returned: the id
+    // belongs to the client, and a scenario that hard-coded one would be
+    // testing the stub rather than the round trip.
+    { "type": "clientCall", "method": "terminal/output" },
+    { "type": "clientCall", "method": "terminal/wait_for_exit" },
+    { "type": "clientCall", "method": "terminal/kill" },
+    { "type": "clientCall", "method": "terminal/release" }
+  ],
+  "stopReason": "end_turn"
+}

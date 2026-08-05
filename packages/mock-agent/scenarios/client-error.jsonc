@@ -1,0 +1,17 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "client-error",
+  "description": "EPIC-04-S7, second and third scenarios: one fs/write_text_file the client is expected to refuse. The onError branch echoes the client's message verbatim, so a test can assert the agent saw the rejection rather than only that a request went out. When the client never advertised fs.writeTextFile the step is skipped instead, and the turn ends normally.",
+  "steps": [
+    {
+      "type": "clientCall",
+      "method": "fs/write_text_file",
+      "params": { "path": "/etc/passwd", "content": "nope\n" },
+      "onError": {
+        "steps": [{ "type": "message", "text": "client refused: {{error}}" }],
+        "stopReason": "refusal"
+      }
+    }
+  ],
+  "stopReason": "end_turn"
+}
