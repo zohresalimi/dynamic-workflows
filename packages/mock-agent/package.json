@@ -10,7 +10,8 @@
     "bin",
     "src",
     "scenarios",
-    "schema"
+    "schema",
+    "fixtures"
   ],
   "exports": {
     ".": "./src/index.ts"

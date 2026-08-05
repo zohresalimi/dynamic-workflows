@@ -11,20 +11,38 @@
  * that fails loudly. KAR-04.2 adds the scripted scenario format — plans,
  * chunks at a declared cadence, tool-call status walks, permission branching
  * and the seven client callbacks — plus the per-invocation side-effect log.
- * Hang, mid-turn crash, malformed frames, the 10 MB line, configurable
- * `agentCapabilities` and recording replay are KAR-04.3 to KAR-04.5.
+ * KAR-04.3 adds hang, mid-turn crash, malformed frames and the 10 MB line.
+ * KAR-04.4 adds configurable `agentCapabilities` — named profiles generated
+ * from `fixtures/capability-matrix.json`, an arbitrary `--capabilities-file`,
+ * and `--dishonest-capabilities` for a capability advertised but refused.
+ * Recording replay is KAR-04.5.
  */
 export {
   AGENT_NAME,
   AGENT_VERSION,
+  type CapabilitiesOptions,
   createMockAgent,
   DEFAULT_AGENT_CAPABILITIES,
+  DEFAULT_CAPABILITIES_OPTIONS,
   turnChunks,
 } from './agent.ts';
 export {
+  CAPABILITY_MATRIX_PATH,
+  CAPABILITY_PROFILE_NAMES,
+  CAPABILITY_PROFILES,
+  type CapabilityMatrix,
+  type CapabilityProfileName,
+  type CapabilityProfiles,
+  generateCapabilityProfiles,
+} from './capability-profiles.ts';
+export {
   BIN_NAME,
   BUILTIN_SCENARIO_DIR,
+  type CapabilitiesSelection,
   DEFAULT_SEED,
+  DISHONEST_CAPABILITY_METHODS,
+  type DishonestCapability,
+  type DishonestMethod,
   type MockAgentOptions,
   PATHOLOGICAL_FLAGS,
   type ParsedArgv,
@@ -34,7 +52,7 @@ export {
 } from './cli.ts';
 export { type Clock, createSyntheticClock, MOCK_CLOCK_STEP_MS, MOCK_EPOCH_MS } from './clock.ts';
 export { createIdFactory, type IdFactory } from './ids.ts';
-export { type Io, run, SCENARIO_EXIT_CODE, serve } from './main.ts';
+export { CAPABILITIES_EXIT_CODE, type Io, run, SCENARIO_EXIT_CODE, serve } from './main.ts';
 export {
   HUGE_LINE_TOTAL_BYTES,
   hugeLineFrameParts,

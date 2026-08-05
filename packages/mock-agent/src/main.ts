@@ -18,8 +18,21 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { createMockAgent } from './agent.ts';
-import { BIN_NAME, type MockAgentOptions, parseArgv, SCENARIO_ENV, USAGE } from './cli.ts';
+import {
+  type CapabilitiesOptions,
+  createMockAgent,
+  DEFAULT_CAPABILITIES_OPTIONS,
+} from './agent.ts';
+import { CAPABILITY_PROFILES } from './capability-profiles.ts';
+import {
+  BIN_NAME,
+  type CapabilitiesSelection,
+  DISHONEST_CAPABILITY_METHODS,
+  type MockAgentOptions,
+  parseArgv,
+  SCENARIO_ENV,
+  USAGE,
+} from './cli.ts';
 import { createProcessPorts } from './ports.ts';
 import { parseScenario, type Scenario } from './scenario.ts';
 import { recordInvocation } from './side-effect-log.ts';
@@ -39,11 +52,15 @@ const processIo = (): Io => ({
 /** Exit code for a scenario that could not be read or could not be understood. */
 export const SCENARIO_EXIT_CODE = 3;
 
+/** Exit code for a --capabilities-file that could not be read or parsed. */
+export const CAPABILITIES_EXIT_CODE = 4;
+
 /** Serves one ACP client over `io`, returning when the connection closes. */
 export async function serve(
   options: MockAgentOptions,
   scenario: Scenario | null = null,
   io: Io = processIo(),
+  capabilities: CapabilitiesOptions = DEFAULT_CAPABILITIES_OPTIONS,
 ): Promise<void> {
   const stream = acp.ndJsonStream(
     Writable.toWeb(io.stdout as Writable) as WritableStream<Uint8Array>,
@@ -53,9 +70,12 @@ export async function serve(
   // malformed line or a 10 MB flood interleaves with ACP frames in the order
   // the script wrote them rather than in whatever order two fd handles
   // happened to flush in.
-  const connection = createMockAgent(options, scenario, createProcessPorts(io.stdout)).connect(
-    stream,
-  );
+  const connection = createMockAgent(
+    options,
+    scenario,
+    createProcessPorts(io.stdout),
+    capabilities,
+  ).connect(stream);
 
   try {
     await connection.closed;
@@ -87,6 +107,41 @@ function loadScenario(path: string | null): LoadResult {
   return { ok: true, scenario: parsed.scenario };
 }
 
+type LoadCapabilitiesResult =
+  | { readonly ok: true; readonly agentCapabilities: unknown }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * Resolves `--capabilities` / `--capabilities-file` into the exact block AC1
+ * returns verbatim. `--capabilities-file` does real I/O, so — like scenario
+ * loading — this runs after `parseArgv` and before the transport opens: a
+ * file that cannot be read or parsed must produce no ACP frames, the same
+ * rule KAR-04.2 AC1 applies to a broken scenario.
+ */
+function loadCapabilities(selection: CapabilitiesSelection): LoadCapabilitiesResult {
+  if (selection.kind === 'default') {
+    return { ok: true, agentCapabilities: DEFAULT_CAPABILITIES_OPTIONS.agentCapabilities };
+  }
+  if (selection.kind === 'name') {
+    return { ok: true, agentCapabilities: CAPABILITY_PROFILES[selection.name] };
+  }
+
+  let text: string;
+  try {
+    text = readFileSync(selection.path, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'unknown error';
+    return { ok: false, message: `${selection.path}: cannot read capabilities file (${code})` };
+  }
+
+  try {
+    return { ok: true, agentCapabilities: JSON.parse(text) };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: `${selection.path}: not valid JSON (${reason})` };
+  }
+}
+
 export async function run(
   argv: readonly string[],
   io: Io = processIo(),
@@ -116,6 +171,18 @@ export async function run(
     return SCENARIO_EXIT_CODE;
   }
 
-  await serve(parsed.options, loaded.scenario, io);
+  const loadedCapabilities = loadCapabilities(parsed.options.capabilities);
+  if (!loadedCapabilities.ok) {
+    io.stderr.write(`${BIN_NAME}: ${loadedCapabilities.message}\n`);
+    return CAPABILITIES_EXIT_CODE;
+  }
+
+  await serve(parsed.options, loaded.scenario, io, {
+    agentCapabilities: loadedCapabilities.agentCapabilities,
+    dishonestMethod:
+      parsed.options.dishonestCapability === null
+        ? null
+        : DISHONEST_CAPABILITY_METHODS[parsed.options.dishonestCapability],
+  });
   return 0;
 }

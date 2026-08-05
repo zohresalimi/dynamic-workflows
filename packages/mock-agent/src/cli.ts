@@ -8,6 +8,7 @@
  */
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CAPABILITY_PROFILE_NAMES, type CapabilityProfileName } from './capability-profiles.ts';
 import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
@@ -39,6 +40,29 @@ export const PATHOLOGICAL_FLAGS: Readonly<Record<string, string>> = {
   '--no-newline': 'no-newline.jsonc',
 };
 
+/**
+ * KAR-04.4 AC4 — the five capabilities a `--dishonest-capabilities` run can
+ * lie about, mapped to the one request method each corresponds to.
+ *
+ * `additionalDirectories` maps to `session/new` rather than to a lifecycle
+ * method of its own: it is a modifier on session creation, not a method, and
+ * `session/new` is the request whose params it qualifies.
+ */
+export const DISHONEST_CAPABILITY_METHODS = {
+  'session.resume': 'session/resume',
+  'session.fork': 'session/fork',
+  'session.list': 'session/list',
+  'session.delete': 'session/delete',
+  additionalDirectories: 'session/new',
+} as const;
+
+export type DishonestCapability = keyof typeof DISHONEST_CAPABILITY_METHODS;
+export type DishonestMethod = (typeof DISHONEST_CAPABILITY_METHODS)[DishonestCapability];
+
+function isDishonestCapability(value: string): value is DishonestCapability {
+  return Object.hasOwn(DISHONEST_CAPABILITY_METHODS, value);
+}
+
 export const USAGE = `${BIN_NAME} — a deterministic ACP agent that runs as a real subprocess.
 
 Usage:
@@ -50,6 +74,17 @@ Options:
   --scenario <path>   A JSON or JSONC scenario file describing the whole turn.
                       Also read from $${SCENARIO_ENV}; the flag wins.
                       Without one, the built-in greeting turn runs.
+  --capabilities <name>       Selects a named agentCapabilities profile,
+                              returned verbatim in the initialize response.
+                              One of: ${CAPABILITY_PROFILE_NAMES.join(', ')}.
+                              Without one, a fixed built-in default is used.
+  --capabilities-file <path>  Supplies an arbitrary JSON block as
+                              agentCapabilities instead of a named profile.
+                              Cannot be combined with --capabilities.
+  --dishonest-capabilities <capability>
+                              Advertises <capability> as supported, then
+                              answers its request with JSON-RPC -32601. One
+                              of: ${Object.keys(DISHONEST_CAPABILITY_METHODS).join(', ')}.
   --run-id <id>       Recorded, with the three below, as one line in
   --node-id <id>      $DeFlow_SIDE_EFFECT_LOG when that variable is set, so
   --attempt <n>       "was this effect executed twice?" is a duplicate-key
@@ -78,10 +113,22 @@ and exits 0 when stdin reaches EOF. It needs no credential, no network and no
 vendor CLI.
 `;
 
+/**
+ * How `agentCapabilities` was selected on argv. `'default'` keeps the fixed
+ * built-in block KAR-04.1 shipped, unchanged (no test written against it may
+ * break just because this story exists).
+ */
+export type CapabilitiesSelection =
+  | { readonly kind: 'default' }
+  | { readonly kind: 'name'; readonly name: CapabilityProfileName }
+  | { readonly kind: 'file'; readonly path: string };
+
 export interface MockAgentOptions {
   readonly seed: number;
   /** The scenario file named on argv, if any. */
   readonly scenarioPath: string | null;
+  readonly capabilities: CapabilitiesSelection;
+  readonly dishonestCapability: DishonestCapability | null;
 }
 
 export type ParsedArgv =
@@ -93,6 +140,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   let seed = DEFAULT_SEED;
   let scenarioPath: string | null = null;
   let behaviour: string | null = null;
+  let capabilities: CapabilitiesSelection = { kind: 'default' };
+  let dishonestCapability: DishonestCapability | null = null;
 
   /** Two scripts and one turn is a silent choice, so it is refused instead. */
   const conflict = (flag: string, other: string): ParsedArgv => ({
@@ -138,6 +187,54 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       continue;
     }
 
+    if (argument === '--capabilities') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--capabilities needs a profile name' };
+      }
+      if (capabilities.kind === 'file') return conflict('--capabilities', '--capabilities-file');
+      if (!(CAPABILITY_PROFILE_NAMES as readonly string[]).includes(raw)) {
+        // AC5: no silent fallback to a default profile — a whole test file
+        // green for the wrong reason is worse than a loud, early exit.
+        return {
+          kind: 'error',
+          message: `--capabilities: unknown profile "${raw}" — choose one of: ${CAPABILITY_PROFILE_NAMES.join(', ')}`,
+        };
+      }
+      capabilities = { kind: 'name', name: raw as CapabilityProfileName };
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--capabilities-file') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--capabilities-file needs a path to a JSON file' };
+      }
+      if (capabilities.kind === 'name') return conflict('--capabilities-file', '--capabilities');
+      capabilities = { kind: 'file', path: raw };
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--dishonest-capabilities') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--dishonest-capabilities needs a capability name' };
+      }
+      if (!isDishonestCapability(raw)) {
+        return {
+          kind: 'error',
+          message:
+            `--dishonest-capabilities: unknown capability "${raw}" — choose one of: ` +
+            `${Object.keys(DISHONEST_CAPABILITY_METHODS).join(', ')}`,
+        };
+      }
+      dishonestCapability = raw;
+      index += 1;
+      continue;
+    }
+
     // The idempotency fields belong to the side-effect log, which scans argv
     // itself — it has to work for an invocation whose argv is otherwise
     // unusable. They are accepted here only so they are not "unknown".
@@ -160,6 +257,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         behaviour === null
           ? scenarioPath
           : join(BUILTIN_SCENARIO_DIR, PATHOLOGICAL_FLAGS[behaviour] as string),
+      capabilities,
+      dishonestCapability,
     },
   };
 }
