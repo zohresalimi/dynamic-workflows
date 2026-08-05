@@ -150,6 +150,69 @@ export function registryRefused(
 }
 
 /**
+ * KAR-05.8 AC3 — the exec shim was asked for an output format this vendor
+ * does not have.
+ *
+ * Raised at **construction**, before a process exists, and that is the whole
+ * assertion: a shim that assumes one streaming format across vendors would
+ * emit the flag, spawn, and learn from a stderr line and a non-zero exit —
+ * having spent a spawn to discover something the invocation table already
+ * knew. Permanent, because the same build of the same binary parses the same
+ * flag the same way on the next attempt.
+ *
+ * The supported set is in the message, spelled the way the vendor's own
+ * `--help` spells it, so the operator reading the ledger can tell "DeFlow
+ * asked for the wrong thing" from "the vendor dropped a format".
+ */
+export function unsupportedOutputFormat(
+  provider: string,
+  requested: string,
+  supported: readonly string[],
+): NodeFailureError {
+  return new NodeFailureError(
+    `${provider} has no --output-format ${requested}; it supports ${supported.join('|')}. ` +
+      'The exec shim refuses at construction rather than emitting a flag the vendor will ' +
+      'reject, because a spawn is not the cheapest way to read a table DeFlow already has',
+    {
+      reason: 'adapter.spawn-failed',
+      class: 'permanent',
+      detail: { provider, requested, supported: [...supported] },
+    },
+  );
+}
+
+/**
+ * KAR-05.8 — the vendor's flags cannot express the permission level this node
+ * was planned at.
+ *
+ * On the shim path DeFlow is not in front of the agent's file access, so the
+ * vendor's own flag is the only enforcement there is. Where there is no flag
+ * for the level, the honest answer is to refuse to schedule the node — the
+ * alternative is picking the nearest flag and running at a level nobody chose,
+ * which is the silent escalation F5.4 exists to prevent.
+ *
+ * `safety.permission-unschedulable`, matching what `admit` returns for the
+ * same situation reached from the capability row: one reason, whether the
+ * refusal came from the manifest or from the flag table.
+ */
+export function permissionInexpressible(
+  provider: string,
+  permission: string,
+  expressible: readonly string[],
+): NodeFailureError {
+  return new NodeFailureError(
+    `${provider} has no flag that expresses permission level ${permission} ` +
+      `(it can express: ${expressible.join(', ')}), so DeFlow refuses to schedule the node ` +
+      'rather than invoking it at whatever level the vendor happens to default to',
+    {
+      reason: 'safety.permission-unschedulable',
+      class: 'permanent',
+      detail: { provider, permission, expressible: [...expressible] },
+    },
+  );
+}
+
+/**
  * A POSIX-only process operation, reached on Windows (KAR-05.9 AC5).
  *
  * Not a `NodeFailureError`, and deliberately not routed through

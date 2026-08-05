@@ -151,10 +151,21 @@ export type {
   KnownProviderId,
   ProviderKind,
   ProviderSpec,
+  ShimContext,
+  ShimDialect,
+  ShimFormat,
+  ShimPlan,
+  ShimSpec,
   SpawnContext,
   SpawnPlan,
 } from './provider-registry.ts';
-export { PROVIDER_SPECS, providerSpec, spawnPlan } from './provider-registry.ts';
+export {
+  PROVIDER_SPECS,
+  providerSpec,
+  SHIM_FORMATS,
+  shimPlan,
+  spawnPlan,
+} from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
 // KAR-05.7 — the golden-recording tee, and the exact-version key that makes a
 // vendor bump a new directory rather than a silent invalidation.
@@ -223,6 +234,17 @@ export {
   OUTPUT_INLINE_LIMIT_BYTES,
   runAcpNode,
 } from './run-node.ts';
+// KAR-05.8 — the CLI exec shim: the documented, permanently-retained fallback
+// for an agent with no ACP path. It gives up mediation, and refuses rather
+// than hides that.
+export type {
+  NodeWakeRow,
+  ShimNodeOutcome,
+  ShimNodeRequest,
+  ShimPorts,
+  WakeRegistry,
+} from './run-shim-node.ts';
+export { runShimNode, shimCapabilityRow, WAKE_REASON_QUOTA } from './run-shim-node.ts';
 // KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
 // DeFlow's own event ids, and never selected automatically.
 export type {
@@ -240,6 +262,18 @@ export {
   loadWouldFlood,
   MAX_LOAD_REPLAY_NOTIFICATIONS,
 } from './session-load.ts';
+// KAR-05.8 — the per-line parser: uuid as the dedup key, the vendor-reported
+// usage envelope, and the rate limit's epoch-seconds `resetsAt`.
+export type { ShimLine, ShimRateLimit } from './shim-frames.ts';
+export {
+  parseShimLine,
+  RESULT_SUBTYPE_REASONS,
+  shimRateLimit,
+  shimResultCostUsd,
+  shimResultFailure,
+  shimResultUsage,
+  shimText,
+} from './shim-frames.ts';
 export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
 export type { UpdateDescription } from './updates.ts';
