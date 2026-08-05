@@ -116,6 +116,92 @@ export interface ProcessExit {
   readonly signal: NodeJS.Signals | null;
 }
 
+/**
+ * What the pull loop needs of a session, and nothing more.
+ *
+ * The SDK's `ActiveSession` satisfies it structurally, which is the point:
+ * KAR-05.5's resumed session cannot be one — `attachSession` is private and
+ * `SessionBuilder` only ever sends `session/new` — so the loop is written
+ * against the four members both can offer rather than duplicated per path. A
+ * resumed node that ran a *different* loop would be a second implementation of
+ * backpressure, spilling and the durable-append rule, and the two would drift.
+ */
+interface TurnSession {
+  readonly sessionId: string;
+  prompt(text: string): Promise<unknown>;
+  nextUpdate(): Promise<acp.ActiveSessionMessage>;
+  dispose(): void;
+}
+
+/**
+ * The one-slot handover between the `session/update` handler and the loop.
+ *
+ * Deliberately unbounded on the push side and awaited on the take side: the
+ * transport's gate is what applies backpressure (§2.3), and a second queue
+ * with its own policy here would quietly undo it.
+ */
+interface UpdateQueue {
+  push(message: acp.ActiveSessionMessage): void;
+  take(): Promise<acp.ActiveSessionMessage>;
+}
+
+function updateQueue(): UpdateQueue {
+  const buffered: acp.ActiveSessionMessage[] = [];
+  let waiting: ((message: acp.ActiveSessionMessage) => void) | null = null;
+  return {
+    push(message) {
+      const waiter = waiting;
+      if (waiter === null) {
+        buffered.push(message);
+        return;
+      }
+      waiting = null;
+      waiter(message);
+    },
+    take() {
+      const next = buffered.shift();
+      if (next !== undefined) return Promise.resolve(next);
+      return new Promise<acp.ActiveSessionMessage>((resolve) => {
+        waiting = resolve;
+      });
+    },
+  };
+}
+
+/**
+ * A session the client did not create, wrapped so the pull loop cannot tell.
+ *
+ * The stop message is queued from the prompt's own resolution, exactly as
+ * `ActiveSession` does it, so `nextUpdate()` ends the turn on both paths.
+ */
+function resumedSession(
+  ctx: acp.ClientContext,
+  sessionId: string,
+  updates: UpdateQueue,
+): TurnSession {
+  return {
+    sessionId,
+    prompt(text: string): Promise<unknown> {
+      const response = ctx.request('session/prompt', {
+        sessionId,
+        prompt: [{ type: 'text', text }],
+      });
+      void (async () => {
+        try {
+          const settled = await response;
+          updates.push({ kind: 'stop', response: settled, stopReason: settled.stopReason });
+        } catch {
+          // A rejected prompt reaches the loop through `stranded`; pushing an
+          // error here as well would race two failures for one cause.
+        }
+      })();
+      return response;
+    },
+    nextUpdate: () => updates.take(),
+    dispose: () => {},
+  };
+}
+
 /** What every arm of the outcome can say about the session that produced it. */
 interface OutcomeCommon {
   readonly protocolVersion: number | null;
@@ -369,6 +455,20 @@ export async function runAcpNode(
     await started;
 
     let app = acp.client({ name: CLIENT_INFO.name });
+    // Registered only on the resume path. The fresh path's `ActiveSession`
+    // does its own `session/update` routing, and a second handler for the same
+    // method is one implementation detail away from stealing its notifications.
+    const resumedUpdates = updateQueue();
+    if (request.resume !== undefined) {
+      app = app.onNotification('session/update', ({ params }) => {
+        if (params.sessionId !== request.resume?.sessionId) return;
+        resumedUpdates.push({
+          kind: 'session_update',
+          notification: params,
+          update: params.update,
+        });
+      });
+    }
     for (const [method, handler] of Object.entries(ports.handlers ?? {})) {
       // Registered as data: these are the daemon's thin fronts, and ACP v2
       // deletes `fs/*` and `terminal/*` from the client entirely (§3). The
@@ -444,13 +544,7 @@ export async function runAcpNode(
                 spawnedAt: clock.now(),
               });
 
-        const builder = ctx.buildSession({
-          cwd: request.worktree,
-          mcpServers: [...request.mcpServers],
-        });
-        turn.newSessionRequest = builder.toRequest();
-
-        await builder.withSession(async (session) => {
+        const driveTurn = async (session: TurnSession): Promise<void> => {
           turn.sessionId = session.sessionId;
           // AC3: the sessionId is durable against the node before a single
           // update can refer to it.
@@ -552,7 +646,31 @@ export async function runAcpNode(
               transport.gate.open();
             }
           }
-        });
+        };
+
+        // KAR-05.5 — the one branch a resume adds, and the only one. A fresh
+        // node opens a session; a resumed one is handed the id a previous
+        // daemon life journalled and re-enters the *same* pull loop, because
+        // "the node completes" has to mean the same thing on both paths.
+        if (request.resume === undefined) {
+          const builder = ctx.buildSession({
+            cwd: request.worktree,
+            mcpServers: [...request.mcpServers],
+          });
+          turn.newSessionRequest = builder.toRequest();
+          await builder.withSession(driveTurn);
+        } else {
+          await ctx.request('session/resume', {
+            sessionId: request.resume.sessionId,
+            cwd: request.worktree,
+          });
+          const session = resumedSession(ctx, request.resume.sessionId, resumedUpdates);
+          try {
+            await driveTurn(session);
+          } finally {
+            session.dispose();
+          }
+        }
       }),
     ]);
   } catch (caught) {

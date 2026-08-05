@@ -186,6 +186,16 @@ export interface AcpNodeRequest {
    * nothing.
    */
   readonly requires?: readonly CapabilityRequirement[];
+  /**
+   * KAR-05.5 — resume the session a previous daemon life journalled instead of
+   * opening a new one.
+   *
+   * Absent is a fresh node, and that is the only difference the pull loop
+   * sees: a resumed turn sends `session/resume` where a fresh one sends
+   * `session/new`, and then runs the identical loop. Which of the two a node
+   * gets is decided in ./resume.ts from the probed row, never here.
+   */
+  readonly resume?: { readonly sessionId: string };
   /** The assembled context packet, as text. */
   readonly prompt: string;
   /** What the node's structured output is validated against (EPIC-09/EPIC-12). */

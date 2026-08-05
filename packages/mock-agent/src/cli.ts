@@ -114,6 +114,13 @@ Options:
                       pathological flag, or any --capabilities flag: in this
                       mode every frame, every id and every timestamp comes out
                       of the file.
+  --load-history <n>  How many historical session/update notifications a
+                      session/load replays back at the client. Default 0.
+                      session/load is only registered at all when the selected
+                      capability profile advertises loadSession.
+  --wire-log <path>   Appends every frame that arrives on stdin to <path>, one
+                      JSON line each — the record of what the client actually
+                      sent, written on the agent's side of the pipe.
   --replay-speed <s>  "real" honours the recorded millisecond offsets between
                       consecutive agent frames; "max" (the default, and what CI
                       runs) emits as fast as the pipe allows.
@@ -172,6 +179,24 @@ export interface MockAgentOptions {
   readonly dishonestCapability: DishonestCapability | null;
   /** Non-null when `--replay` was given, in which case nothing else generates. */
   readonly replay: ReplaySelection | null;
+  /**
+   * KAR-05.5 — how many historical `session/update` notifications a
+   * `session/load` replays back at the client.
+   *
+   * Zero by default: `session/load` is a real method with a real cost, and an
+   * agent that replayed a synthetic history nobody asked for would make every
+   * unrelated spec's update count wrong.
+   */
+  readonly loadHistory: number;
+  /**
+   * Where to record every frame that arrived on stdin, one JSON line each.
+   *
+   * The witness for "DeFlow sent a `session/resume` frame" and for its
+   * negative. It is written on the far side of a real pipe, which is what
+   * distinguishes "DeFlow chose not to send it" from "DeFlow sent it and the
+   * agent had no handler for it".
+   */
+  readonly wireLog: string | null;
 }
 
 export type ParsedArgv =
@@ -188,6 +213,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   let dishonestCapability: DishonestCapability | null = null;
   let replayPath: string | null = null;
   let replaySpeed: ReplaySpeed | null = null;
+  let loadHistory = 0;
+  let wireLog: string | null = null;
 
   /** Two scripts and one turn is a silent choice, so it is refused instead. */
   const conflict = (flag: string, other: string): ParsedArgv => ({
@@ -251,6 +278,31 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         };
       }
       seed = Number.parseInt(raw, 10);
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--load-history') {
+      const raw = argv[index + 1];
+      // Same rule as --seed: a value that was silently misread is a flood
+      // nobody sized, and `Number.parseInt('lots')` is NaN.
+      if (raw === undefined || !/^\d+$/.test(raw)) {
+        return {
+          kind: 'error',
+          message: `--load-history needs a non-negative integer, got ${raw === undefined ? 'nothing' : `"${raw}"`}`,
+        };
+      }
+      loadHistory = Number.parseInt(raw, 10);
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--wire-log') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--wire-log needs a path' };
+      }
+      wireLog = raw;
       index += 1;
       continue;
     }
@@ -356,6 +408,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         replayPath === null
           ? null
           : { path: replayPath, speed: replaySpeed ?? DEFAULT_REPLAY_SPEED },
+      loadHistory,
+      wireLog,
     },
   };
 }

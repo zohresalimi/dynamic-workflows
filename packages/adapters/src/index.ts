@@ -128,6 +128,41 @@ export type {
 } from './provider-registry.ts';
 export { PROVIDER_SPECS, providerSpec, spawnPlan } from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
+// KAR-05.5 — the prompt a replay resume sends, rebuilt from the ledger and
+// from DeFlow's own blob store. No vendor session file, no vendor API.
+export type {
+  LedgerEventRow,
+  PacketSources,
+  ReconstructedPacket,
+} from './replay-packet.ts';
+export { reconstructPacket, renderPrompt, SEGMENT_SEPARATOR } from './replay-packet.ts';
+// KAR-05.5 — two strategies behind one interface, selected from the probed
+// row, plus the guard that refuses to resume across a changed binary.
+export type {
+  BinaryDriftField,
+  BinaryIdentity,
+  CrossVersionGateInput,
+  ResumePolicy,
+  ResumeStrategyName,
+} from './resume.ts';
+export {
+  binaryDrift,
+  crossVersionGatePrompt,
+  crossVersionRefusal,
+  RESUME_GATE_OPTIONS,
+  RESUME_OVERRIDE_OPTION_ID,
+  RESUME_REFUSE_OPTION_ID,
+  selectResumeStrategy,
+} from './resume.ts';
+// KAR-05.5 — resuming one node: read the ledger, check the binary identity,
+// select the strategy from the probed row, run the same turn either way.
+export type {
+  ResumeNodeOutcome,
+  ResumeNodeRequest,
+  ResumeOverride,
+  ResumePorts,
+} from './resume-node.ts';
+export { DEFAULT_CONTINUATION, resumeAcpNode } from './resume-node.ts';
 export type { AcpNodeOutcome, ProcessExit } from './run-node.ts';
 export {
   AGENT_TURN_SCHEMA_ID,
@@ -138,6 +173,23 @@ export {
   OUTPUT_INLINE_LIMIT_BYTES,
   runAcpNode,
 } from './run-node.ts';
+// KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
+// DeFlow's own event ids, and never selected automatically.
+export type {
+  LoadDedupeResult,
+  NotificationScope,
+  ReplayedNotification,
+  SessionLoadOutcome,
+  SessionLoadPorts,
+  SessionLoadRequest,
+} from './session-load.ts';
+export {
+  dedupeReplayedNotifications,
+  deflowNotificationId,
+  diagnoseSessionLoad,
+  loadWouldFlood,
+  MAX_LOAD_REPLAY_NOTIFICATIONS,
+} from './session-load.ts';
 export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
 export type { UpdateDescription } from './updates.ts';

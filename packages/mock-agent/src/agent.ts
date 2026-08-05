@@ -74,6 +74,32 @@ function refuseAsDishonest(): never {
   throw new acp.RequestError(-32601, 'Method not found');
 }
 
+/**
+ * Whether the block this run advertises grants `path` — the mock's own,
+ * deliberately small reading of what it was told to say.
+ *
+ * KAR-05.5 needs an agent that implements exactly what it advertises: one
+ * advertising `sessionCapabilities.resume` must answer `session/resume` for a
+ * session **this process never created**, the way a restarted vendor CLI does
+ * after reading its own session file, and one that does not must answer
+ * -32601. Registering the handlers unconditionally would make "DeFlow did not
+ * send the frame" and "the agent had no handler" indistinguishable in exactly
+ * the specs that need to tell them apart.
+ *
+ * `{}` counts as granted, matching the wire: one probed adapter answered
+ * `sessionCapabilities: { list: {} }`, which advertises the capability while
+ * claiming nothing further about it.
+ */
+function advertises(agentCapabilities: unknown, path: readonly string[]): boolean {
+  let cursor: unknown = agentCapabilities;
+  for (const segment of path) {
+    if (typeof cursor !== 'object' || cursor === null) return false;
+    if (!Object.hasOwn(cursor, segment)) return false;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor === true || (typeof cursor === 'object' && cursor !== null);
+}
+
 /** The text blocks of a prompt, concatenated. Non-text blocks are ignored. */
 function promptText(blocks: readonly acp.ContentBlock[]): string {
   return blocks
@@ -205,6 +231,45 @@ export function createMockAgent(
       sessions.delete(params.sessionId);
       return {};
     });
+
+  // KAR-05.5 — the two lifecycle methods a resume spec needs, each registered
+  // only when this run's profile advertises it. An honest agent implements
+  // what it advertised and refuses what it did not.
+  if (
+    capabilities.dishonestMethod !== 'session/resume' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'resume'])
+  ) {
+    agent.onRequest('session/resume', ({ params }) => {
+      // Deliberately accepted for an id this process never issued: that is the
+      // whole operation. A vendor CLI restarted after a crash has no memory of
+      // the session either until it reads its own file, and a mock that
+      // insisted on having created it could only ever test a resume inside one
+      // process — which is not the case that breaks.
+      sessions.add(params.sessionId);
+      return {};
+    });
+  }
+
+  if (advertises(capabilities.agentCapabilities, ['loadSession'])) {
+    agent.onRequest('session/load', async ({ params, client }) => {
+      sessions.add(params.sessionId);
+      // The behaviour the design rule warns about, reproduced honestly:
+      // `session/load` streams the *entire* conversation history back as
+      // `session/update` notifications before it answers. For a days-long run
+      // this is tens of thousands of frames nobody asked for.
+      for (let index = 0; index < options.loadHistory; index += 1) {
+        await client.notify('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: `replayed frame ${index}` },
+          },
+          _meta: { timestampMs: clock.now(), replayed: true },
+        });
+      }
+      return {};
+    });
+  }
 
   // AC4, the four lifecycle methods this mock does not otherwise implement:
   // registered only when named as the one dishonest capability, so an honest

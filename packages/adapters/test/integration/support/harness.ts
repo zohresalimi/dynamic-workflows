@@ -97,6 +97,16 @@ export interface TestLedger {
   /** Every `process` row, terminal ones included. */
   processRows(): readonly ProcessRow[];
   readonly captureEvidence: (evidence: string | Uint8Array) => Handle;
+  /**
+   * A context segment's bytes, by its `contentHash` — the port a replay resume
+   * rebuilds a prompt through (KAR-05.5).
+   *
+   * `Segment.contentHash` is `sha256-<hex>` and a blob handle is
+   * `artifact://<hex>`: the same digest of the same bytes, spelled for two
+   * different readers. The store verifies the hash on read, so a corrupted
+   * blob raises rather than answering.
+   */
+  readonly readSegmentText: (contentHash: string) => string | null;
   /** Every control-plane event for the run, in `seq` order. */
   events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
   /** Every data-plane chunk for the node attempt, in `seq` order. */
@@ -240,6 +250,17 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
         typeof evidence === 'string' ? 'text/plain' : 'application/octet-stream',
       );
       return HandleSchema.parse(blobHandle(ref.sha256));
+    },
+    readSegmentText: (contentHash: string): string | null => {
+      try {
+        return Buffer.from(
+          getBlob(dataDir, `artifact://${contentHash.replace(/^sha256-/, '')}`),
+        ).toString('utf8');
+      } catch {
+        // Gone, or no longer hashing to its own name. Both are "not there" to
+        // a caller that must refuse rather than send different bytes.
+        return null;
+      }
     },
     events() {
       const collected: { seq: EventSeq; kind: string; payload: Record<string, unknown> }[] = [];
