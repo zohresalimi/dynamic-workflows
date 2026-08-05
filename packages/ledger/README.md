@@ -200,6 +200,31 @@ this bug report".
   `pre-migrate-*.db` files — rather than guessing. There is no equivalent tolerance here, because a
   write from the older binary could violate a constraint it does not know exists.
 
+## The checkpoint is a cache, and it is allowed to be thrown away
+
+`run.state_json` + `run.last_seq` are a **pure optimisation**. There is no snapshot table here and
+there should not be one: a 40-node multi-hour run is on the order of 2,000 control-plane events and
+folding those is single-digit milliseconds, so the cache buys a fast start and nothing else.
+
+Two rules keep it from ever buying a *wrong* start:
+
+- **It is written in the same transaction as the events it covers.** `RunCheckpointer.append` does
+  the inserts and the `run` upsert inside one `BEGIN IMMEDIATE`, so there is no window — none
+  reachable by `SIGKILL` — in which a checkpoint exists without its events. That is what makes
+  `run.last_seq <= max(event.seq)` true by construction rather than by care.
+- **It is discarded at the slightest doubt.** `run.checkpoint_version` not matching the binary's
+  `CHECKPOINT_VERSION`, `state_json` that will not parse, a decoded object the `RunStateSchema`
+  refuses, or a `last_seq` past the end of the run all produce the same behaviour: one warning line
+  naming the run and the reason, and a full replay from seq 0. A replay is the correct answer, not a
+  degraded one.
+
+`CHECKPOINT_VERSION` lives in `@DeFlow/core`'s `run-state.ts`, three lines under the type it stamps.
+**Bump it whenever the shape of `RunState` changes**, at any depth. Forgetting to is the only way
+this cache can be wrong, and bumping it unnecessarily costs milliseconds of replay.
+
+Set **`DeFlow_NO_CHECKPOINT=1`** to turn the whole thing off. The suite is run with it set, because
+a cache that anything has come to *depend on* is no longer a cache.
+
 ## Testing this package
 
 **`:memory:` is for pure projection unit tests only** — files named `*.projection.test.ts`, and a

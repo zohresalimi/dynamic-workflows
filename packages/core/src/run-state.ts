@@ -23,12 +23,37 @@
  * exactly the intent — the cache is a pure optimisation and is allowed to be
  * thrown away, never to be wrong.
  */
-import type { RunOutcome } from './event-payloads.ts';
-import type { CriterionId, NodeId, PlanHash, ProviderId, RunId } from './ids.ts';
-import type { NodeFailure } from './node-failure.ts';
-import type { CompletedNodeResult, NodeSuspension } from './node-result.ts';
-import type { PermissionLevel } from './plan-graph.ts';
-import type { UsageTotals } from './token-usage.ts';
+import { z } from 'zod';
+import {
+  BUDGET_DIMENSIONS,
+  BUDGET_SCOPES,
+  LOCK_KINDS,
+  RUN_NEEDS_HUMAN_REASONS,
+  RUN_OUTCOMES,
+  type RunOutcome,
+} from './event-payloads.ts';
+import {
+  type CriterionId,
+  CriterionIdSchema,
+  type NodeId,
+  NodeIdSchema,
+  type PlanHash,
+  PlanHashSchema,
+  type ProviderId,
+  ProviderIdSchema,
+  type RunId,
+  RunIdSchema,
+} from './ids.ts';
+import { type NodeFailure, NodeFailureSchema } from './node-failure.ts';
+import {
+  type CompletedNodeResult,
+  CompletedNodeResultSchema,
+  type NodeSuspension,
+  NodeSuspensionSchema,
+} from './node-result.ts';
+import { type PermissionLevel, PermissionLevelSchema } from './plan-graph.ts';
+import { singleLine } from './text.ts';
+import { type UsageTotals, UsageTotalsSchema } from './token-usage.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -173,6 +198,25 @@ export interface RunState {
 }
 
 /**
+ * The shape stamp the checkpoint cache is written under (KAR-03.6,
+ * docs/05-durable-execution.md §5.1).
+ *
+ * **Bump this whenever the shape of `RunState` above changes** — a field
+ * added, removed, renamed or retyped, at any depth, including inside
+ * `NodeState`, `LockState`, `BudgetState` or anything they reference. It sits
+ * here, three lines from the type, because that is the only place the next
+ * person to edit the shape will read it.
+ *
+ * A mismatch between this number and `run.checkpoint_version` means exactly
+ * one thing: ignore the cached state and replay the run's events from zero.
+ * That is why forgetting to bump it is the only way the checkpoint can be
+ * wrong, and why bumping it costs nothing but a few milliseconds of replay —
+ * the cache is a pure optimisation and is allowed to be thrown away, never to
+ * be believed when it is stale.
+ */
+export const CHECKPOINT_VERSION = 1;
+
+/**
  * The state a run has before its first event. A constant would be shared
  * across folds, so this is a factory: two callers must never be handed the
  * same object to build different runs from.
@@ -195,3 +239,82 @@ export function initialRunState(): RunState {
     staleEpochSkipped: 0,
   };
 }
+
+// ── decoding a checkpoint ────────────────────────────────────────────────────
+
+/** A count, an index or a watermark: `0` is legal, a fraction is not. */
+const wholeCount = z.number().int().nonnegative();
+
+const NodeStateSchema = z.strictObject({
+  status: z.enum(NODE_STATUSES),
+  attempt: wholeCount,
+  attempts: wholeCount,
+  provider: ProviderIdSchema.nullable(),
+  model: z.string().min(1).nullable(),
+  permission: PermissionLevelSchema.nullable(),
+  result: CompletedNodeResultSchema.nullable(),
+  failure: NodeFailureSchema.nullable(),
+  suspension: NodeSuspensionSchema.nullable(),
+  wakeAt: wholeCount.nullable(),
+});
+
+const LockStateSchema = z.strictObject({
+  lock: z.enum(LOCK_KINDS),
+  key: z.string().min(1),
+  node: NodeIdSchema,
+  /** The `seq` of the event that took it, and no event has seq 0. */
+  sinceSeq: z.number().int().positive(),
+});
+
+const NodeIdRegistryStateSchema = z.strictObject({
+  active: z.array(NodeIdSchema),
+  retired: z.array(NodeIdSchema),
+});
+
+const BudgetStateSchema = z.strictObject({
+  costUsd: z.number().nonnegative(),
+  usage: UsageTotalsSchema,
+  breaches: z.array(
+    z.strictObject({
+      scope: z.enum(BUDGET_SCOPES),
+      dimension: z.enum(BUDGET_DIMENSIONS),
+      limit: z.number().nonnegative(),
+      actual: z.number().nonnegative(),
+    }),
+  ),
+});
+
+/**
+ * `RunState` as a value that can be *validated*, which is what a checkpoint
+ * decoder needs and `JSON.parse` cannot give it (KAR-03.6 AC5).
+ *
+ * Strict at every level, on purpose. The dangerous input is not the truncated
+ * file — that throws, and a `try` catches it. It is `run.state_json` written
+ * by last month's binary: valid JSON, an object, every field it kept holding
+ * the right kind of value, and a shape the current reducer would never have
+ * produced. `strictObject` is what turns "a field this build has never heard
+ * of" and "a field this build requires, missing" into a refusal instead of a
+ * run that is quietly wrong from its first tick.
+ *
+ * Annotated as `z.ZodType<RunState, unknown>` rather than inferred so the
+ * compiler holds the two halves together: add a field to `RunState` without
+ * adding it here and this assignment stops type-checking.
+ */
+export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
+  runId: RunIdSchema.nullable(),
+  status: z.enum(RUN_STATUSES),
+  outcome: z.enum(RUN_OUTCOMES).nullable(),
+  criteriaSatisfied: z.array(CriterionIdSchema),
+  needsHuman: z
+    .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
+    .nullable(),
+  planHash: PlanHashSchema.nullable(),
+  planVersion: wholeCount,
+  nodes: z.record(z.string(), NodeStateSchema),
+  locks: z.record(z.string(), LockStateSchema),
+  nodeIds: NodeIdRegistryStateSchema,
+  budget: BudgetStateSchema,
+  watermarkSeq: wholeCount,
+  epoch: wholeCount,
+  staleEpochSkipped: wholeCount,
+});

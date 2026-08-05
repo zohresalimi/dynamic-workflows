@@ -328,7 +328,16 @@ export type {
   RunState,
   RunStatus,
 } from './run-state.ts';
-export { initialRunState, lockKey, NODE_STATUSES, RUN_STATUSES } from './run-state.ts';
+// KAR-03.6 — CHECKPOINT_VERSION stamps the cache; RunStateSchema is what a
+// decoded `run.state_json` has to survive before it may become state.
+export {
+  CHECKPOINT_VERSION,
+  initialRunState,
+  lockKey,
+  NODE_STATUSES,
+  RUN_STATUSES,
+  RunStateSchema,
+} from './run-state.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,
@@ -354,7 +363,12 @@ export {
 } from './task-spec.ts';
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
-export { sumUsage, TokenUsageSchema, TokenUsageSourceSchema } from './token-usage.ts';
+export {
+  sumUsage,
+  TokenUsageSchema,
+  TokenUsageSourceSchema,
+  UsageTotalsSchema,
+} from './token-usage.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,
