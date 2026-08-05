@@ -229,6 +229,77 @@ export function checkNoNodeBuiltinImports(files: readonly SourceFile[]): Violati
 }
 
 /**
+ * KAR-03.4 AC2 / EPIC-03-S11 scenario 3: `reduce()` has no read path to the
+ * data plane.
+ *
+ * The control-plane / data-plane split is the reason DeFlow ships no snapshot
+ * table, and the reason the F4.7 progress watermark is meaningful for free. It
+ * survives only if the reducer *cannot* read `io_chunk` — not if it merely does
+ * not today. So no file under `packages/core/src` may import `@DeFlow/ledger`
+ * or a driver, and none may name the table: `reduce`'s input type is `Event`,
+ * and a `Db` handle is not in scope inside @DeFlow/core at all.
+ */
+export function checkNoDataPlaneReachFromCore(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of file.text.split('\n').entries()) {
+      const reaches =
+        /['"]@DeFlow\/ledger['"]/.test(line) ||
+        /['"]better-sqlite3['"]/.test(line) ||
+        /\bio_chunk\b/.test(line);
+      if (!reaches) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} reaches for the data plane. @DeFlow/core folds an Event into RunState and ` +
+          'holds no database: agent stdout lives in io_chunk and never touches the reducer, which ' +
+          'is what keeps replay in milliseconds beside a 500,000-row data plane and what makes ' +
+          'the progress watermark meaningful without a line of code written to make it so. ' +
+          'Read io_chunk from @DeFlow/ledger or @DeFlow/daemon instead.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * KAR-03.4 AC5 / EPIC-03-S13 scenario 3: no `SELECT` over `event` or `io_chunk`
+ * in `packages/ledger/src` without a `LIMIT`.
+ *
+ * better-sqlite3 is **fully synchronous**. One unbounded scan on the write
+ * connection does not make one endpoint slow — it stops the event loop, and
+ * every in-flight SSE stream and HTTP request in the daemon waits behind it.
+ * The symptom is "the UI froze", which is about as far from "someone dropped a
+ * LIMIT" as a symptom gets.
+ *
+ * Counting aggregates are exempt: they return exactly one row, so the result
+ * set cannot grow with the ledger.
+ */
+export function checkLedgerReadsAreBounded(files: readonly SourceFile[]): Violation[] {
+  // SQL in this package lives in string or template literals, one statement each.
+  const literals = /`[^`]*`|'(?:[^'\\\n]|\\.)*'/g;
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    for (const literal of file.text.match(literals) ?? []) {
+      const reads = /\bSELECT\b/i.test(literal) && /\bFROM\s+(event|io_chunk)\b/i.test(literal);
+      if (!reads) continue;
+      if (/\bLIMIT\b/i.test(literal) || /\bcount\s*\(/i.test(literal)) continue;
+      violations.push({
+        where: file.path,
+        message:
+          `${file.path} reads ${/io_chunk/.test(literal) ? 'io_chunk' : 'event'} without a LIMIT: ` +
+          `${literal.replace(/\s+/g, ' ').slice(0, 120)}. better-sqlite3 is fully synchronous, so ` +
+          'an unbounded read on the write connection stalls every in-flight SSE stream and HTTP ' +
+          'request in the daemon rather than making one query slow. Drain in bounded windows ' +
+          '(src/drain.ts) — and never with a lazy iterate() cursor, which pins the WAL open.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
  * KAR-02.9 AC6 / EPIC-02-S8: `ohash` appears nowhere in `packages/core/src`.
  * `ohash`'s stable key-ordering behaviour is confirmed, but its README
  * promises only "best efforts" at stable serialisation — acceptable for

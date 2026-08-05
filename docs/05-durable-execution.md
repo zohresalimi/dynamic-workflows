@@ -318,6 +318,13 @@ is achieved _physically_, by the table split, which is strictly better: there is
 wrong and no `kind` predicate to keep in sync. The SSE tail query is served by
 `SEARCH event USING COVERING INDEX event_run_seq`.
 
+**Clarification, verified 2026-08-05 (KAR-03.4).** That plan string is what the *seq-only* cursor
+probe produces. `event_run_seq` covers `(run_id, seq)`, so the shipped tail — which selects the
+whole envelope, payload included — fetches the row and plans as
+`SEARCH event USING INDEX event_run_seq (run_id=? AND seq>?)`. Both are asserted in
+`packages/ledger/test/integration/control-plane-split.test.ts`, along with the two properties that
+carry the performance either way: **no `SCAN event`** and **no `USE TEMP B-TREE FOR ORDER BY`**.
+
 A 40-node multi-hour run produces on the order of **2,000** control-plane events. Reducing that is
 single-digit milliseconds.
 
@@ -854,6 +861,12 @@ A concentrated list of the verified footguns in this area.
   `-wal` file that no checkpoint could truncate — `wal_checkpoint(TRUNCATE)` returned
   `{busy:0, log:0, checkpointed:0}` and space was only reclaimed after the cursor closed. Drain with
   bounded `LIMIT` queries and close.
+  **Re-measured 2026-08-05 (KAR-03.4)** on darwin/arm64 with the shipped pragmas, 20,000 4 KiB rows:
+  the `-wal` file reached **96 MB** against the bounded drain's **5.8 MB**, and the blocked
+  `wal_checkpoint(TRUNCATE)` returned **`{busy:1, log:23318, checkpointed:248}`** — 248 frames of
+  23,318, with nothing returned to the filesystem. `{busy:0, log:0, checkpointed:0}` is what it
+  returns *after* the cursor closes. The magnitude and the conclusion stand; the exact row does not.
+  Both halves are asserted in `packages/ledger/test/integration/wal-held-cursor.test.ts`.
 - **Never run an unbounded scan on the write connection.** `better-sqlite3` is fully synchronous and
   blocks the event loop; a large unindexed query stalls every in-flight SSE stream and HTTP request.
   Headroom is large (0.2 ms per tail query) but it is not infinite.

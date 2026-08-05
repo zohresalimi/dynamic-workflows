@@ -43,3 +43,25 @@ suite('packages/ledger/README.md is honest about durability', () => {
     expect(readme).toContain('*.projection.test.ts');
   });
 });
+
+/**
+ * KAR-03.4 / EPIC-03-S13 scenario 3: the reason unbounded reads are banned has
+ * to be written down, because "add a LIMIT" reads like fussiness until someone
+ * knows that the driver is synchronous and the cost lands on every other
+ * request in the process.
+ *
+ * Verifies: EPIC-03-S13 (scenario 3), EPIC-03-S14 · AC5
+ */
+suite('packages/ledger/README.md explains why reads are bounded', () => {
+  it('says better-sqlite3 is synchronous and what that costs the rest of the daemon', () => {
+    expect(readme).toMatch(/synchronous/i);
+    expect(readme).toMatch(/SSE/);
+    expect(readme).toMatch(/stalls?/i);
+  });
+
+  it('records the held-cursor WAL failure and the bounded drain that replaces it', () => {
+    expect(readme).toMatch(/iterate\(\)/);
+    expect(readme).toMatch(/-wal/);
+    expect(readme).toMatch(/wal_checkpoint\(TRUNCATE\)/);
+  });
+});
