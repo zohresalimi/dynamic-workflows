@@ -1985,23 +1985,51 @@ export function checkRunnerImagesArePinned(files: readonly SourceFile[]): Violat
 
 /**
  * AC11, EPIC-01-S23 last scenario. The strategy document's example workflow
- * includes a crash-fuzz step, and copying it produces a red build on the first
- * commit because the project has nothing to run until EPIC-03 adds it.
+ * includes a `--project crash-fuzz` step, and copying it while vitest.config.ts
+ * still held an empty slot for that project produced a red build on every
+ * commit. The original guard therefore banned that one literal string.
+ *
+ * That ban expired the moment KAR-03.8 filled the slot, and it then did real
+ * damage: it stood between the crash-fuzz suite and the CI job EPIC-06's
+ * Definition of Done requires it to run in. What the ban was protecting is kept
+ * here in the form that does not go stale — a workflow may name any vitest
+ * project the runner config actually declares, and no others. Pass the declared
+ * names in; do not restate them here, or this guard becomes the second place
+ * the project list lives.
  */
-export function checkNoCrashFuzzProject(files: readonly SourceFile[]): Violation[] {
+export function checkWorkflowProjectsExist(
+  files: readonly SourceFile[],
+  declaredProjects: readonly string[],
+): Violation[] {
   const violations: Violation[] = [];
+  const known = new Set(declaredProjects);
+  const named = /--project[=\s]+([A-Za-z0-9_./-]+)/g;
+
   for (const file of files) {
     for (const [index, line] of file.text.split('\n').entries()) {
-      if (!/--project\s+crash-fuzz/.test(line)) continue;
-      violations.push({
-        where: `${file.path}:${index + 1}`,
-        message:
-          `${file.path} line ${index + 1} references "--project crash-fuzz", which does not exist ` +
-          'yet — vitest.config.ts holds a deliberately empty slot for it. EPIC-03 adds the project ' +
-          'and this step together; until then this is a red build on every commit.',
-      });
+      // Only lines that actually invoke the runner. Prose about the flag is not
+      // a step — but a *commented-out* vitest command still is, one keystroke
+      // from being live, so the filter is the word "vitest" rather than "run:".
+      if (!line.includes('vitest')) continue;
+      named.lastIndex = 0;
+      let match = named.exec(line);
+      while (match !== null) {
+        const project = match[1] ?? '';
+        if (!known.has(project)) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message:
+              `${file.path} line ${index + 1} runs "--project ${project}", which vitest.config.ts ` +
+              `does not declare. The projects that exist are ${[...known].join(', ')}. A step ` +
+              'naming a project that is only a slot is a red build on every commit, and the ' +
+              'failure reads as a test failure rather than as a configuration one.',
+          });
+        }
+        match = named.exec(line);
+      }
     }
   }
+
   return violations;
 }
 

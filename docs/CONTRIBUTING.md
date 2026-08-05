@@ -235,6 +235,22 @@ nothing. The job pins `TMPDIR` to the runner temp directory and uploads from the
 fixture creates, so the two cannot drift. Every temp directory in this repo is therefore prefixed
 `DeFlow-`, case included: the glob is case-sensitive on Linux.
 
+**The `test` job runs the crash-fuzz slice as its own step**, after unit and integration
+(`pnpm vitest run --project crash-fuzz`, with the same `DeFlow_KEEP_TMP` and `TMPDIR`). That is the
+shape `docs/14-testing-strategy.md` §14 always showed; it was absent until KAR-06.9 because
+`vitest.config.ts` held the project as an empty slot through EPIC-02 and a guard test kept the name
+out of the workflow until it was real. **That guard outlived its premise**: KAR-03.8 filled the slot
+and the ban stayed, so the ledger crash-fuzz suite shipped without CI ever running it. It is now
+`checkWorkflowProjectsExist`, which asserts the durable version of the same rule — a workflow may
+name any vitest project the runner config declares, and no others — and `test/test-runner.test.ts`
+asserts the positive direction, that `ci.yml` is the file naming `crash-fuzz`.
+
+**A caveat worth stating plainly, because it is easy to read the wiring as the whole story:** the
+`test` job is held behind `vars.RUN_TESTS_IN_CI`, so the crash-fuzz step does not execute on pushes
+today any more than the unit step does. The local gate is the authority meanwhile. What the wiring
+buys is that turning the variable on turns the durability suite on with everything else, instead of
+leaving a second commit nobody remembers to make.
+
 ---
 
 ## Measurements
@@ -278,8 +294,18 @@ critical path, and the pnpm cache is worth roughly thirty seconds on a macOS leg
 to the budget, so neither is worth optimising yet.
 
 `test/ci-workflow.test.ts` asserts this row against the budget, so it cannot drift back to a
-placeholder or quietly record a number over ten minutes. The shape to watch is EPIC-03's crash-fuzz
-slice, which lands on the `test` legs. Re-measure when it does.
+placeholder or quietly record a number over ten minutes.
+
+**The row is stale by construction and will stay that way until the test jobs are turned back on.**
+The 88 seconds above was measured before two things changed. First, on 2026-08-05 the owner held the
+`test` matrix and `browser-e2e` behind the repository variable `RUN_TESTS_IN_CI`, which is unset —
+so a "full CI run" today is the `check` job alone and the figure describes a workflow that no longer
+executes. Second, KAR-06.9 wired the crash-fuzz slice into the `test` legs, which is the shape this
+paragraph used to say to watch for: a serialised SIGKILL/restart loop measured in minutes rather
+than seconds, on four legs, two of them macOS. It is the one addition with a real chance of moving
+the number toward the ten-minute budget, and there is no honest way to say by how much from a
+laptop. **Re-measure the moment `RUN_TESTS_IN_CI` is set**, and treat the first such run as the
+crash-fuzz slice's CI budget check rather than as a formality.
 
 **Three things had to be fixed before any of this could be measured, and none of them were visible
 from a laptop.** They are recorded here because each is a class of failure, not a typo:
