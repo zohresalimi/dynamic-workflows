@@ -1,0 +1,17 @@
+{
+  "name": "permission-refusal",
+  "description": "A turn that completed with a tool denied. On the shim path a refusal is not a separate frame — it is an entry in the result envelope's permission_denials array, which is the only place the shim can learn that the agent wanted something it was not allowed to have.",
+  "steps": [{ "type": "message", "text": "asking to run a command" }],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "I was not permitted to run that command.",
+    "permissionDenials": [
+      {
+        "toolName": "Bash",
+        "toolUseId": "toolu_01denied",
+        "toolInput": { "command": "rm -rf /" }
+      }
+    ]
+  }
+}

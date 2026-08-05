@@ -1,0 +1,12 @@
+{
+  "name": "error-during-execution",
+  "description": "The turn ends with subtype error_during_execution and a non-zero exit, which is what agent.nonzero-exit is classified from. Distinct from schema-repair exhaustion on purpose: the two carry different failure classes and therefore different scheduler decisions, and a fake that produced only one of them would let a shim conflating them stay green.",
+  "steps": [{ "type": "message", "text": "starting" }],
+  "result": {
+    "subtype": "error_during_execution",
+    "stopReason": "",
+    "text": "",
+    "totalCostUsd": 0.01
+  },
+  "exitCode": 1
+}

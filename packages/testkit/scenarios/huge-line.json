@@ -1,0 +1,10 @@
+{
+  "name": "huge-line",
+  "description": "One 10 MB line, written 64 KB at a time so the reader watches it grow, then a newline. The SDK's line buffer has no maximum line length and DeFlow's frame cap is 8 MiB, so this is the payload that decides whether the cap is enforced or merely written down.",
+  "steps": [{ "type": "hugeLine", "totalBytes": 10485760, "chunkBytes": 65536 }],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "flooded"
+  }
+}
