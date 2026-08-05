@@ -169,19 +169,39 @@ suite('the crash-fuzz slice EPIC-03 filled (AC11)', () => {
     }
   });
 
-  it('is not wired into CI, whose test jobs are gated off', () => {
-    // The suite exists and `pnpm test:fuzz` runs it; no workflow does, because
-    // the repository variable that gates the test matrix is unset. When it is
-    // turned back on, this is the assertion to revisit.
+  it('collects both halves of the suite: the ledger one and the daemon one', () => {
+    // KAR-03.8 wrote the ledger crash/restart harness; KAR-06.9 wrote the
+    // orchestrator one. A glob that quietly stopped matching one of them would
+    // leave the epic's acceptance gate passing with half the run, so the files
+    // are named rather than counted.
+    for (const spec of [
+      'packages/ledger/test/crash-fuzz/crash-restart.test.ts',
+      'packages/daemon/test/crash-fuzz/orchestrator-crash.test.ts',
+    ]) {
+      expect(exists(spec), `${spec} is missing`).toBe(true);
+    }
+  });
+
+  it('is the project CI names, so the durability suite is something CI runs', () => {
+    // This assertion used to say the opposite — "no workflow references
+    // crash-fuzz" — which was right while vitest.config.ts held an empty slot
+    // and wrong from KAR-03.8 onward, when it became the thing keeping the
+    // suite out of CI. EPIC-06's Definition of Done is that the crash-fuzz
+    // suite is green in CI, and this is where the wiring is held.
+    //
+    // Note what is *not* asserted: that the step executes today. The whole
+    // `test` job is held behind `vars.RUN_TESTS_IN_CI` (owner's decision,
+    // 2026-08-05), so nothing in the matrix runs until that variable is set —
+    // and the point of this test is that when it is set, crash-fuzz comes back
+    // on with everything else rather than needing a second, forgotten commit.
     const workflows = walk(
       '.github/workflows',
       (path) => path.endsWith('.yml') || path.endsWith('.yaml'),
     );
-    for (const workflow of workflows) {
-      expect(readText(workflow), `${workflow} references the crash-fuzz project`).not.toMatch(
-        /crash-fuzz/,
-      );
-    }
+    const naming = workflows.filter((workflow) =>
+      readText(workflow).includes('pnpm vitest run --project crash-fuzz'),
+    );
+    expect(naming).toEqual(['.github/workflows/ci.yml']);
   });
 });
 
