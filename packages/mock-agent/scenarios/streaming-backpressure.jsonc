@@ -1,0 +1,7 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "streaming-backpressure",
+  "description": "EPIC-04-S4, second scenario: 200 chunks of 8 KiB with no scripted delay, so the only thing slowing the turn down is the consumer. The OS pipe fills at 64 KiB and the agent blocks in write(), which is the condition a pull-loop client has to survive without dropping or reordering a frame.",
+  "steps": [{ "type": "chunks", "count": 200, "delayMs": 0, "sizeBytes": 8192, "text": "flood" }],
+  "stopReason": "end_turn"
+}

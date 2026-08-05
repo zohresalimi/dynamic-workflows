@@ -1,0 +1,7 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "minimal-turn",
+  "description": "The smallest legal scenario: one message and a stop. Used where a spec needs a turn to exist but has nothing to say about its shape — scenario selection, the side-effect log, argv precedence.",
+  "steps": [{ "type": "message", "text": "scripted turn" }],
+  "stopReason": "end_turn"
+}

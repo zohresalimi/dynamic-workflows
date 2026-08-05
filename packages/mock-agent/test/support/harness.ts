@@ -23,12 +23,25 @@
  * creates.
  */
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { PassThrough, Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
 
 /** The binary under test, absolute. Never a bare name looked up on PATH. */
 export const MOCK_AGENT_BIN = fileURLToPath(new URL('../../bin/mock-agent.ts', import.meta.url));
+
+/**
+ * The one directory the suite's scenario files live in (KAR-04.2 AC7), so a
+ * spec names a scenario rather than spelling a relative path that quietly
+ * stops resolving when the spec moves.
+ */
+export const SCENARIO_DIR = fileURLToPath(new URL('../../scenarios/', import.meta.url));
+
+/** Absolute path to a scenario in `SCENARIO_DIR`. */
+export function scenarioPath(name: string): string {
+  return join(SCENARIO_DIR, name);
+}
 
 export interface AgentExit {
   readonly code: number | null;
@@ -112,19 +125,94 @@ export function spawnMockAgent(
   };
 }
 
+/** One outbound request the agent made back into the client. */
+export interface ClientCallRecord {
+  readonly method: string;
+  readonly params: Record<string, unknown>;
+}
+
+export interface ClientStubs {
+  /**
+   * Answers `session/request_permission` with a `RequestPermissionOutcome` —
+   * the inner value, which is what EPIC-04-S6's table is written in. Defaults
+   * to `{ outcome: 'cancelled' }`, the variant implementations forget.
+   */
+  readonly permission?: (
+    params: acp.RequestPermissionRequest,
+  ) => acp.RequestPermissionOutcome | Promise<acp.RequestPermissionOutcome>;
+  /**
+   * Answers one of the seven `fs/*` / `terminal/*` methods. Returning
+   * `undefined` falls through to the stock reply; throwing an
+   * `acp.RequestError` is how a spec makes the client refuse.
+   */
+  readonly respond?: (method: string, params: Record<string, unknown>) => unknown;
+}
+
 export interface ConnectedClient {
   readonly connection: acp.ClientConnection;
   /** Every `session/update` notification, in arrival order. */
   readonly updates: acp.SessionNotification[];
+  /**
+   * `performance.now()` at the moment each notification was handled, one entry
+   * per `updates` entry. Cadence is a property of *arrival*, so it has to be
+   * sampled here rather than read out of the frame the agent wrote.
+   */
+  readonly arrivals: number[];
+  /** Every request the agent sent back into the client, in call order. */
+  readonly calls: ClientCallRecord[];
 }
 
+/** The stock replies, so a spec only writes the one answer it cares about. */
+const STOCK_REPLIES: Record<string, unknown> = {
+  'fs/read_text_file': { content: 'stub file content\n' },
+  'fs/write_text_file': {},
+  'terminal/create': { terminalId: 'stub-terminal-1' },
+  'terminal/output': { output: 'stub terminal output\n', truncated: false },
+  'terminal/wait_for_exit': { exitCode: 0, signal: null },
+  'terminal/kill': {},
+  'terminal/release': {},
+};
+
+/** The seven client methods a `clientCall` step can name, in lifecycle order. */
+export const CLIENT_METHODS = [
+  'fs/read_text_file',
+  'fs/write_text_file',
+  'terminal/create',
+  'terminal/output',
+  'terminal/wait_for_exit',
+  'terminal/kill',
+  'terminal/release',
+] as const;
+
 /** An ACP client built on the SDK, wrapped around a spawned agent's pipes. */
-export function connectClient(agent: SpawnedAgent): ConnectedClient {
+export function connectClient(agent: SpawnedAgent, stubs: ClientStubs = {}): ConnectedClient {
   const updates: acp.SessionNotification[] = [];
+  const arrivals: number[] = [];
+  const calls: ClientCallRecord[] = [];
+
   const app = acp.client().onNotification('session/update', ({ params }) => {
     updates.push(params);
+    arrivals.push(performance.now());
   });
-  return { connection: app.connect(agent.stream), updates };
+
+  app.onRequest('session/request_permission', async ({ params }) => {
+    calls.push({ method: 'session/request_permission', params: params as never });
+    return { outcome: (await stubs.permission?.(params)) ?? { outcome: 'cancelled' } };
+  });
+
+  for (const method of CLIENT_METHODS) {
+    // The handler is registered for every method whether or not the spec
+    // stubs it: a method the client never registered comes back as a JSON-RPC
+    // -32601, which would make "the agent skipped the step" and "the client
+    // does not implement it" the same observation.
+    app.onRequest(method, ({ params }) => {
+      calls.push({ method, params: params as never });
+      const answered = stubs.respond?.(method, params as never);
+      return (answered ?? STOCK_REPLIES[method]) as never;
+    });
+  }
+
+  return { connection: app.connect(agent.stream), updates, arrivals, calls };
 }
 
 /** The client capabilities EPIC-04-S1 sends: real fs and terminal support. */

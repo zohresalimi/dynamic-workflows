@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/mock-scenario.v1.json",
+  "title": "DeFlow mock agent scenario",
+  "description": "A whole agent turn as data. The binary carries its own hand-written parser because @DeFlow/mock-agent ships exactly one dependency and ajv is not it; this schema is the format's published contract, and a unit test keeps the two readers from drifting.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["steps"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "stopReason": { "$ref": "#/$defs/stopReason" },
+    "steps": {
+      "type": "array",
+      "description": "Executed in order. The first step that declares a stopReason ends the turn.",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "stopReason": {
+      "type": "string",
+      "enum": ["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"]
+    },
+    "toolKind": {
+      "type": "string",
+      "enum": [
+        "read",
+        "edit",
+        "delete",
+        "move",
+        "search",
+        "execute",
+        "think",
+        "fetch",
+        "switch_mode",
+        "other"
+      ]
+    },
+    "toolCallStatus": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "completed", "failed"]
+    },
+    "clientMethod": {
+      "type": "string",
+      "description": "The seven client methods ACP v1 defines. ACP v2 removes all seven and pushes them onto MCP.",
+      "enum": [
+        "fs/read_text_file",
+        "fs/write_text_file",
+        "terminal/create",
+        "terminal/output",
+        "terminal/wait_for_exit",
+        "terminal/kill",
+        "terminal/release"
+      ]
+    },
+    "branch": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where control goes after a decision. Omitting stopReason means 'carry on with the rest of the script'.",
+      "properties": {
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "stopReason": { "$ref": "#/$defs/stopReason" }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        { "$ref": "#/$defs/planStep" },
+        { "$ref": "#/$defs/chunksStep" },
+        { "$ref": "#/$defs/messageStep" },
+        { "$ref": "#/$defs/toolCallStep" },
+        { "$ref": "#/$defs/permissionStep" },
+        { "$ref": "#/$defs/clientCallStep" }
+      ]
+    },
+    "planStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "entries"],
+      "properties": {
+        "type": { "const": "plan" },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+              "content": { "type": "string", "minLength": 1 },
+              "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+              "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] }
+            }
+          }
+        }
+      }
+    },
+    "chunksStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "count"],
+      "description": "N agent_message_chunk notifications, delayMs apart. The delay is a real sleep in the child, so keep it in the tens of milliseconds.",
+      "properties": {
+        "type": { "const": "chunks" },
+        "count": { "type": "integer", "minimum": 1 },
+        "delayMs": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Pads each chunk to at least this many characters."
+        }
+      }
+    },
+    "messageStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "description": "One chunk whose text is exactly what the script says. {{error}} expands to the last client error.",
+      "properties": {
+        "type": { "const": "message" },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "toolCallStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "title", "toolKind", "path", "statuses"],
+      "properties": {
+        "type": { "const": "toolCall" },
+        "title": { "type": "string", "minLength": 1 },
+        "toolKind": { "$ref": "#/$defs/toolKind" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The ToolCallLocation carried on every frame. Required: it is what lets a permission ladder enforce path scope at request time rather than detect a violation afterwards."
+        },
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/toolCallStatus" }
+        },
+        "delayMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "permissionStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "title", "toolKind", "path", "options"],
+      "properties": {
+        "type": { "const": "permission" },
+        "title": { "type": "string", "minLength": 1 },
+        "toolKind": { "$ref": "#/$defs/toolKind" },
+        "path": { "type": "string", "minLength": 1 },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["optionId", "name", "kind"],
+            "properties": {
+              "optionId": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "kind": {
+                "type": "string",
+                "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
+              }
+            }
+          }
+        },
+        "onAllowed": { "$ref": "#/$defs/branch" },
+        "onRejected": { "$ref": "#/$defs/branch" },
+        "onCancelled": {
+          "$ref": "#/$defs/branch",
+          "description": "Taken for { outcome: 'cancelled' }, which carries no optionId. An agent that ignores this variant deadlocks the node."
+        }
+      }
+    },
+    "clientCallStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "method"],
+      "properties": {
+        "type": { "const": "clientCall" },
+        "method": { "$ref": "#/$defs/clientMethod" },
+        "params": {
+          "type": "object",
+          "description": "Merged over sessionId, and over terminalId when a terminal has been created."
+        },
+        "onError": { "$ref": "#/$defs/branch" }
+      }
+    }
+  }
+}
