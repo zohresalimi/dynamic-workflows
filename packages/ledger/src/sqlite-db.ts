@@ -116,3 +116,25 @@ export function openRead(file: string): Db {
   applyPragmas(db);
   return db;
 }
+
+/**
+ * Opens `<dataDir>/DeFlow.lock` — a database whose only job is the file lock
+ * the operating system takes on it (KAR-03.7). @see ./lease.ts
+ *
+ * None of `LEDGER_PRAGMAS` applies here and applying them would be wrong in
+ * two ways. `journal_mode = WAL` would leave a `-wal` and a `-shm` beside a
+ * file that is documented as one lock file and never stores anything; and
+ * `busy_timeout = 5000` is the exact opposite of what a lease wants — a second
+ * DeFlowd must fail in milliseconds with a sentence about two terminals, not
+ * pause for five seconds first. `busy_timeout = 0` is what "fails fast" is
+ * spelled as.
+ *
+ * It is not in the writer registry: the registry protects the *ledger* from a
+ * second write connection in this process, and the lock file's own contention
+ * is the thing under test.
+ */
+export function openLock(file: string): Db {
+  const db = new SqliteDb(new Database(resolve(file)));
+  db.pragma('busy_timeout = 0');
+  return db;
+}

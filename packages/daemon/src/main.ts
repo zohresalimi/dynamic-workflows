@@ -12,7 +12,9 @@
  * process state — see docs/03-local-development.md §5.
  */
 
-import { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
+import { DaemonAlreadyRunning } from '@DeFlow/ledger';
+import { type Booted, boot, EX_ALREADY_RUNNING } from './boot.ts';
+import { DEFAULT_PORT } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
 import { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
@@ -27,6 +29,8 @@ function port(): number {
 // Before anything binds and long before a ledger is opened: an event kind
 // whose upcaster chain has a hole cannot be read at all, and finding that out
 // mid-replay is finding it out at the worst possible moment (EPIC-02-S21).
+// It reads a static table in memory — it opens nothing, spawns nothing and
+// binds nothing, so it does not belong inside the lease.
 const schemas = checkSchemaRegistry();
 if (!schemas.ok) {
   daemon.error(
@@ -36,12 +40,28 @@ if (!schemas.ok) {
   process.exit(EX_CONFIG);
 }
 
-const started = await startHttp({
-  port: port(),
-  hostname: process.env.DeFlow_HOST ?? DEFAULT_HOSTNAME,
-});
+let started: Booted;
+try {
+  started = await boot({
+    port: port(),
+    ...(process.env.DeFlow_HOST === undefined ? {} : { hostname: process.env.DeFlow_HOST }),
+  });
+} catch (error) {
+  if (error instanceof DaemonAlreadyRunning) {
+    // One sentence on stderr, and nothing else: this is the "I ran `DeFlow up`
+    // in two terminals" case (KAR-03.7 AC2), and a stack trace here is the
+    // failure. It is written directly rather than logged because a JSON log
+    // line is not what a user reads in a terminal.
+    process.stderr.write(`${error.message}\n`);
+    process.exit(EX_ALREADY_RUNNING);
+  }
+  throw error;
+}
 
-daemon.info({ bootId: BOOT_ID, build: BUILD, pid: process.pid }, 'DeFlowd up');
+daemon.info(
+  { bootId: BOOT_ID, build: BUILD, pid: process.pid, epoch: started.epoch },
+  'DeFlowd up',
+);
 
 let stopping = false;
 
@@ -55,7 +75,9 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   const hardExit = setTimeout(() => process.exit(0), 2_000);
   hardExit.unref();
 
-  await started.close();
+  // Port, then ledger, then lease: the next daemon may only get in once this
+  // one has stopped writing.
+  await started.shutdown();
   process.exit(0);
 }
 

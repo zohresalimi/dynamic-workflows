@@ -14,9 +14,28 @@
 import { RunIdSchema } from '@DeFlow/core';
 import { FakeDb } from '@DeFlow/testkit';
 import { expect, it, describe as suite } from 'vitest';
-import { appendEvents, type EventDraft, InvalidEventEnvelope, readRange } from './index.ts';
+import {
+  appendEvents,
+  type EventDraft,
+  InvalidEventEnvelope,
+  readRange,
+  StaleEpoch,
+} from './index.ts';
 
 const RUN_A = RunIdSchema.parse('run_20260802T141133Z_9f2a1c');
+
+/**
+ * A fake carrying migration 0003's epoch row and nothing else — no `event`
+ * table. It is what lets these specs tell "refused before the database" from
+ * "refused by the database": the epoch fence can read, and the insert cannot
+ * land.
+ */
+function fakeLedger(epoch = 1): FakeDb {
+  const db = new FakeDb();
+  db.exec('CREATE TABLE daemon (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL)');
+  db.prepare('INSERT INTO daemon (id, epoch) VALUES (?, ?)').run(1, epoch);
+  return db;
+}
 
 const valid = (): EventDraft => ({
   runId: RUN_A,
@@ -91,12 +110,55 @@ suite('append rejects an envelope EventEnvelopeSchema would reject (AC6)', () =>
     // exactly the evidence wanted: validation passed and the write was tried.
     let thrown: unknown;
     try {
-      appendEvents(new FakeDb(), [{ ...valid(), kind: 'from.the.future' }]);
+      appendEvents(fakeLedger(), [{ ...valid(), kind: 'from.the.future' }]);
     } catch (error) {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(Error);
     expect(thrown).not.toBeInstanceOf(InvalidEventEnvelope);
+    expect((thrown as Error).message).toContain('INSERT INTO event');
+  });
+});
+
+/**
+ * KAR-03.7 AC5 — the epoch fence, at unit level, for the one thing the
+ * integration specs cannot show as cheaply: *when* it runs. The fake has no
+ * `event` table, so a `StaleEpoch` here proves the batch was refused before
+ * the insert was ever attempted rather than rolled back after it.
+ */
+suite('the append boundary fences a stale daemon epoch (AC5)', () => {
+  it('refuses an epoch below the persisted one, before touching `event`', () => {
+    let thrown: unknown;
+    try {
+      appendEvents(fakeLedger(8), [{ ...valid(), epoch: 7 }]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(StaleEpoch);
+    expect((thrown as StaleEpoch).epoch).toBe(7);
+    expect((thrown as StaleEpoch).currentEpoch).toBe(8);
+  });
+
+  it('refuses the whole batch for one stale event in it', () => {
+    let thrown: unknown;
+    try {
+      appendEvents(fakeLedger(8), [
+        { ...valid(), epoch: 8 },
+        { ...valid(), epoch: 8 },
+        { ...valid(), epoch: 7 },
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect((thrown as StaleEpoch).index).toBe(2);
+  });
+
+  it('lets an epoch at or above the persisted one through to the insert', () => {
+    // Above is not stale: it is a daemon this ledger has not been told about
+    // yet, and the reducer treats it as the new high-water mark.
+    for (const epoch of [8, 9]) {
+      expect(() => appendEvents(fakeLedger(8), [{ ...valid(), epoch }])).not.toThrow(StaleEpoch);
+    }
   });
 });
 

@@ -30,6 +30,7 @@
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

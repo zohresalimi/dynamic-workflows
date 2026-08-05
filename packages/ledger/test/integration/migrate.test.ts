@@ -67,7 +67,8 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         )
         .all()
         .map((row) => row.name);
-      expect(tables).toEqual(['effect', 'event', 'io_chunk', 'node_wake', 'plan', 'run']);
+      // `daemon` is migration 0003's single-row epoch counter (KAR-03.7).
+      expect(tables).toEqual(['daemon', 'effect', 'event', 'io_chunk', 'node_wake', 'plan', 'run']);
 
       const sqlByTable = new Map(
         db

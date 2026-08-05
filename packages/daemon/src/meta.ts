@@ -7,9 +7,10 @@
  * is a question the dev loop has to be able to answer.
  *
  * `daemonEpoch` and `headSeq` are part of the documented `/api/health` body
- * (docs/11-api-and-realtime.md §12) but are owned by the ledger, which does not
- * exist yet — they are reported as null until EPIC-03 rather than invented
- * here.
+ * (docs/11-api-and-realtime.md §12) but are owned by the ledger rather than by
+ * this file. Since KAR-03.7 the epoch is real: `boot` takes it and publishes it
+ * through `runtime.ts`. `headSeq` waits for the ledger tail (KAR-03.8) and is
+ * reported as null until then rather than invented here.
  */
 import './env.ts'; // side effect: populates process.env before DeFlow_BUILD is read
 import { randomUUID } from 'node:crypto';

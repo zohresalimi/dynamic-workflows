@@ -32,6 +32,7 @@ import {
   type RunId,
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
+import { readEpoch, StaleEpoch } from './epoch.ts';
 
 /**
  * An event on its way in: the envelope of docs/04-domain-model.md §9 minus
@@ -165,6 +166,24 @@ function validate(drafts: readonly EventDraft[]): Appendable[] {
 }
 
 /**
+ * The daemon-epoch fence (KAR-03.7 AC5).
+ *
+ * Refuses the whole batch if any event in it carries an epoch **below** the
+ * one persisted in this ledger — the signature of a daemon that has been
+ * superseded and does not know it. Above it is not refused: a higher epoch is
+ * a daemon this ledger has not been told about yet, and the reducer treats it
+ * as the new high-water mark rather than as an error.
+ *
+ * Called with the write lock already held. @see ./epoch.ts
+ */
+function fence(db: Db, appendables: readonly Appendable[]): void {
+  const current = readEpoch(db);
+  for (const [index, { draft }] of appendables.entries()) {
+    if (draft.epoch < current) throw new StaleEpoch(index, draft.epoch, current);
+  }
+}
+
+/**
  * Appends `drafts` in **one** transaction and returns the `seq` assigned to
  * each, in the same order.
  *
@@ -182,15 +201,19 @@ export function appendEvents(db: Db, drafts: readonly EventDraft[]): EventSeq[] 
   if (validated.length === 0) return [];
 
   const insert = db.prepare<{ seq: number }>(INSERT_EVENT);
-  return db.transaction(() =>
-    validated.map((appendable) => {
+  return db.transaction(() => {
+    // Inside the transaction, so the write lock is already held: no other
+    // connection can advance the epoch between this read and the inserts
+    // below. One read per batch, not per event.
+    fence(db, validated);
+    return validated.map((appendable) => {
       const assigned = insert.get(...bindings(appendable));
       if (assigned === undefined) {
         throw new Error('INSERT INTO event … RETURNING seq returned no row');
       }
       return assigned.seq as EventSeq;
-    }),
-  );
+    });
+  });
 }
 
 /**
