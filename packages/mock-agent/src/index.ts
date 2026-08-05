@@ -99,6 +99,13 @@ export {
   type RecordingResult,
 } from './recording.ts';
 export {
+  HOME_PLACEHOLDER,
+  RecordingRedactor,
+  type RedactionOptions,
+  redactRecording,
+  TMPDIR_PLACEHOLDER,
+} from './redaction.ts';
+export {
   DEFAULT_REPLAY_SPEED,
   lines,
   REPLAY_MISMATCH_EXIT_CODE,

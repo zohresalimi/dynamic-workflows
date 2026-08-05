@@ -255,13 +255,18 @@ suite('EPIC-00-S7 — what the ACP path does and does not surface (AC7)', () => 
     expect(report.compaction.observed).toBe(false);
     const log = frames().join('\n');
     // No *key* is compaction-shaped anywhere in the log.
-    expect(log).not.toMatch(/"[^"]*compact[^"]*"\s*:/i);
-    // The string does occur — as the name of Claude Code's `/compact` slash
-    // command in available_commands_update. Asserting that explicitly is what
-    // stops the check above from silently becoming vacuous if the naming
-    // changes, and records why a plain substring grep answers the wrong
-    // question.
-    expect(log).toMatch(/"name":"compact"/);
+    const compactionField = /"[^"]*compact[^"]*"\s*:/i;
+    expect(log).not.toMatch(compactionField);
+    // A negative assertion is worth exactly as much as the evidence that it
+    // could have failed, so the pattern is shown to bite — and to bite on the
+    // key position rather than on the substring, which is the distinction the
+    // finding rests on. Until the recordings were scrubbed the anchor was the
+    // log's own `{"name":"compact"}`, the `/compact` slash command in
+    // `available_commands_update`; that frame's command list enumerated the
+    // recording machine's installed commands and is now empty, so the
+    // counterexample is stated here instead of borrowed from the capture.
+    expect('{"compactionState":"pending"}').toMatch(compactionField);
+    expect('{"name":"compact"}').not.toMatch(compactionField);
   });
 
   it('structured_output is absent from the success result — and from the protocol', () => {

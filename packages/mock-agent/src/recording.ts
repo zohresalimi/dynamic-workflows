@@ -26,6 +26,7 @@
  * server's `id` is content.
  */
 import { unifiedDiff } from './diff.ts';
+import { RecordingRedactor, type RedactionOptions } from './redaction.ts';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonObject = { [key: string]: Json };
@@ -197,6 +198,8 @@ export interface CaptureConversionOptions {
   readonly derivedFrom?: string;
   /** Keeps only the first n frames, so a case can be a prefix of a session. */
   readonly frameLimit?: number;
+  /** Which home and temp directory collapse to placeholders (./redaction.ts). */
+  readonly redaction?: RedactionOptions;
 }
 
 const NEWLINE = 0x0a;
@@ -210,8 +213,14 @@ const NEWLINE = 0x0a;
  * notifications, and one frame can span two chunks — so the bytes are re-framed
  * per direction. And every direction label flips, because replay serves the
  * other end of the same wire.
+ *
+ * Every frame and the header pass through ./redaction.ts on the way out. A
+ * capture written by a redacting tee is already scrubbed and the second pass
+ * changes nothing — that is what the redactor's determinism buys — but a
+ * capture from anywhere else cannot derive an unscrubbed golden.
  */
 export function fromTransportCapture(text: string, options: CaptureConversionOptions = {}): string {
+  const redactor = new RecordingRedactor(options.redaction ?? {});
   const pending: Record<Direction, Buffer> = { in: Buffer.alloc(0), out: Buffer.alloc(0) };
   const out: string[] = [];
   let header: JsonObject | null = null;
@@ -237,7 +246,7 @@ export function fromTransportCapture(text: string, options: CaptureConversionOpt
       const frame = pending[dir].subarray(0, at).toString('utf8');
       pending[dir] = pending[dir].subarray(at + 1);
       if (frame.trim() === '') continue;
-      const msg = JSON.parse(frame) as Json;
+      const msg = redactor.value(JSON.parse(frame) as Json);
       if (!isObject(msg)) throw new Error(`a captured frame is not a JSON object: ${frame}`);
       // The flip: what the client wrote is what the agent received.
       frames.push({ t, dir: dir === 'out' ? 'in' : 'out', msg });
@@ -250,7 +259,7 @@ export function fromTransportCapture(text: string, options: CaptureConversionOpt
     out.push(
       JSON.stringify({
         header: {
-          ...(header ?? {}),
+          ...(redactor.value(header ?? {}) as JsonObject),
           ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
           perspective: 'agent',
         },
