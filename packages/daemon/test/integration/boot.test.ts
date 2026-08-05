@@ -13,7 +13,13 @@
  *
  * Verifies: EPIC-03-S21 (scenarios 1 and 2) · AC1, AC2, AC4
  */
-import { acquireLease, DaemonAlreadyRunning, type Lease } from '@DeFlow/ledger';
+import {
+  acquireLease,
+  DaemonAlreadyRunning,
+  HOLDER_FILE,
+  type Lease,
+  LOCK_FILE,
+} from '@DeFlow/ledger';
 import { it } from '@DeFlow/testkit';
 import { existsSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -110,7 +116,9 @@ suite('a second daemon stops at the lease (EPIC-03-S21 scenario 1, AC2)', () => 
     expect(steps).toEqual(['resolve-data-dir']);
     // No ledger was opened for writing — not even created.
     expect(existsSync(join(tmp, 'ledger.db'))).toBe(false);
-    expect(readdirSync(tmp)).toEqual(['DeFlow.lock']);
+    // The lock and the holder's pid, both put there by the lease this test
+    // took itself. The refused boot added nothing at all.
+    expect(readdirSync(tmp).sort()).toEqual([HOLDER_FILE, LOCK_FILE].sort());
     // And nothing is listening on the port it would have taken.
     expect(await bindable(port)).toBe(true);
   });

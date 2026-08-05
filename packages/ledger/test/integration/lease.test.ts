@@ -121,8 +121,14 @@ suite('the lease is held for the process lifetime and no longer (AC1, AC3)', () 
     expect(mine.file).toBe(first.file);
   });
 
-  it('writes one file into the data directory and nothing else', async ({ tmp }) => {
+  it('leaves the lock and the holder pid in the data directory and nothing else', async ({
+    tmp,
+  }) => {
     mine = acquireLease(tmp);
-    expect(readdirSync(tmp)).toEqual(['DeFlow.lock']);
+    // Two files, and the second is a *hint*, not a lock: `DeFlow.lock.pid` is
+    // read only by a daemon that has already been refused the lock and so
+    // already knows a live holder exists. Nothing consults it for liveness,
+    // which is what makes it not the pid file this design rejects.
+    expect(readdirSync(tmp).sort()).toEqual(['DeFlow.lock', 'DeFlow.lock.pid']);
   });
 });
