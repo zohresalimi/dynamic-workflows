@@ -15,7 +15,15 @@
  * is how the next reader understands why the three-way answer exists at all;
  * comments cannot route a node.
  *
- * Verifies: EPIC-05-S6 (scenario 3) · AC5 · test plan #8
+ * **One file is exempt, and the exemption is paid for.** KAR-05.3's provider
+ * registry has to name vendors: how each one is *invoked* cannot be probed —
+ * you have to know that OpenCode takes a subcommand before you can ask it
+ * anything at all — and encoding that once is the entire point of the story.
+ * So `provider-registry.ts` may name vendors and, in exchange, this file
+ * asserts that it names no *capability* and imports nothing from
+ * `capabilities.ts`. Invocation is a table; capability is never one.
+ *
+ * Verifies: EPIC-05-S6 (scenario 3), EPIC-05-S10 · AC5 · test plan #8
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -64,12 +72,27 @@ function sourceFiles(dir: string): string[] {
 
 const files = sourceFiles(srcDir);
 
+/**
+ * The one file allowed to name vendors: the spawn registry (KAR-05.3 AC1).
+ * Kept as a list of exactly one so that adding a second is a deliberate edit
+ * to this line, reviewed on its own.
+ */
+const INVOCATION_TABLE = ['provider-registry.ts'];
+
+const exempt = (file: string): boolean =>
+  INVOCATION_TABLE.includes(file.slice(srcDir.length).replaceAll('\\', '/'));
+
 suite('no source file under packages/adapters/src carries a vendor matrix', () => {
   it('found source files to check at all', () => {
     expect(files.length).toBeGreaterThan(5);
   });
 
-  for (const file of files) {
+  it('exempts exactly one file, and it exists', () => {
+    expect(INVOCATION_TABLE).toHaveLength(1);
+    expect(files.filter(exempt)).toHaveLength(1);
+  });
+
+  for (const file of files.filter((path) => !exempt(path))) {
     it(`${file.slice(srcDir.length)} names no more than one vendor in code`, () => {
       const named = vendorsNamedIn(readFileSync(file, 'utf8'));
       expect(
@@ -79,6 +102,34 @@ suite('no source file under packages/adapters/src carries a vendor matrix', () =
       ).toHaveLength(0);
     });
   }
+});
+
+suite('the exempt file pays for its exemption (KAR-05.3)', () => {
+  const registry = files.filter(exempt).map((path) => ({ path, code: readFileSync(path, 'utf8') }));
+
+  it('names how each vendor is invoked, which is why it is exempt', () => {
+    for (const file of registry) expect(vendorsNamedIn(file.code).length).toBeGreaterThan(1);
+  });
+
+  it('names no capability, and asks nothing about one', () => {
+    // The routing questions live in `capabilities.ts` and are answered from a
+    // probed row. A registry entry that knew a vendor "cannot fork" would be
+    // AC5's hazard wearing this story's clothes.
+    for (const file of registry) {
+      const code = strippedOfComments(file.code);
+      for (const capability of [
+        'loadSession',
+        'sessionCapabilities',
+        'mcpCapabilities',
+        'canResume',
+        'canFork',
+        'additionalDirectories',
+      ]) {
+        expect(code, `${file.path} names the capability ${capability}`).not.toContain(capability);
+      }
+      expect(code).not.toContain('capabilities.ts');
+    }
+  });
 });
 
 suite('the check is not vacuous', () => {

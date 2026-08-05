@@ -1,0 +1,56 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the argv table is a golden snapshot (AC2) > spawns each vendor exactly the way 2026-08-02 verified 1`] = `
+[
+  {
+    "argv": [
+      "--acp",
+    ],
+    "command": "/opt/DeFlow/bin/gemini",
+    "env": {},
+    "kind": "native",
+    "package": "@google/gemini-cli",
+    "provider": "gemini",
+  },
+  {
+    "argv": [
+      "--acp",
+    ],
+    "command": "/opt/DeFlow/bin/copilot",
+    "env": {},
+    "kind": "native",
+    "package": "@github/copilot",
+    "provider": "copilot",
+  },
+  {
+    "argv": [
+      "acp",
+      "--cwd",
+      "/tmp/DeFlow/wt/n1",
+    ],
+    "command": "/opt/DeFlow/bin/opencode",
+    "env": {},
+    "kind": "native",
+    "package": "opencode-ai",
+    "provider": "opencode",
+  },
+  {
+    "argv": [],
+    "command": "/opt/DeFlow/bin/claude-agent-acp",
+    "env": {},
+    "kind": "adapter",
+    "package": "@agentclientprotocol/claude-agent-acp",
+    "provider": "claude",
+  },
+  {
+    "argv": [],
+    "command": "/opt/DeFlow/bin/codex-acp",
+    "env": {
+      "CODEX_PATH": "/opt/DeFlow/bin/codex",
+    },
+    "kind": "adapter",
+    "package": "@agentclientprotocol/codex-acp",
+    "provider": "codex",
+  },
+]
+`;
