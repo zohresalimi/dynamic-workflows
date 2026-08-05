@@ -1,0 +1,1203 @@
+{
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "status": "completed",
+  "outcome": "succeeded",
+  "criteriaSatisfied": [
+    "unit-tests-pass",
+    "no-v-model-regression"
+  ],
+  "needsHuman": null,
+  "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planVersion": 0,
+  "nodes": {
+    "step-01": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-01 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1200,
+          "outputTokens": 340,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.01,
+        "producedFacts": [
+          "fact_00000000000000000000000000"
+        ],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-02": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-02 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1210,
+          "outputTokens": 341,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.02,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-03": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-03 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1220,
+          "outputTokens": 342,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.03,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-04": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-04 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1230,
+          "outputTokens": 343,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.04,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-05": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-05 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1240,
+          "outputTokens": 344,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.05,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-06": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-06 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1250,
+          "outputTokens": 345,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.06,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-07": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-07 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1260,
+          "outputTokens": 346,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.07,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-08": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-08 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1270,
+          "outputTokens": 347,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.08,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-09": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-09 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1280,
+          "outputTokens": 348,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.09,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-10": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-10 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1290,
+          "outputTokens": 349,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.1,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-11": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-11 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1300,
+          "outputTokens": 350,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.11,
+        "producedFacts": [
+          "fact_00000000000000000000000010"
+        ],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-12": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-12 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1310,
+          "outputTokens": 351,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.12,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-13": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-13 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1320,
+          "outputTokens": 352,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.13,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-14": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-14 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1330,
+          "outputTokens": 353,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.14,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-15": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-15 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1340,
+          "outputTokens": 354,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.15,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-16": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-16 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1350,
+          "outputTokens": 355,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.16,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-17": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-17 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1360,
+          "outputTokens": 356,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.17,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-18": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-18 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1370,
+          "outputTokens": 357,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.18,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-19": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-19 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1380,
+          "outputTokens": 358,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.19,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-20": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-20 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1390,
+          "outputTokens": 359,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.2,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-21": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-21 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1400,
+          "outputTokens": 360,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.21,
+        "producedFacts": [
+          "fact_00000000000000000000000020"
+        ],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-22": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-22 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1410,
+          "outputTokens": 361,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.22,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-23": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-23 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1420,
+          "outputTokens": 362,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.23,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-24": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-24 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1430,
+          "outputTokens": 363,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.24,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-25": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-25 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1440,
+          "outputTokens": 364,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.25,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-26": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-26 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1450,
+          "outputTokens": 365,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.26,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-27": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-27 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1460,
+          "outputTokens": 366,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.27,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-28": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-28 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1470,
+          "outputTokens": 367,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.28,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-29": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-29 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1480,
+          "outputTokens": 368,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.29,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-30": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-30 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1490,
+          "outputTokens": 369,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.3,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-31": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-31 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1500,
+          "outputTokens": 370,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.31,
+        "producedFacts": [
+          "fact_00000000000000000000000030"
+        ],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-32": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-32 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1510,
+          "outputTokens": 371,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.32,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-33": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-33 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1520,
+          "outputTokens": 372,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.33,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-34": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-34 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1530,
+          "outputTokens": 373,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.34,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-35": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-35 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1540,
+          "outputTokens": 374,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.35,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-36": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-36 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1550,
+          "outputTokens": 375,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.36,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-37": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-37 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1560,
+          "outputTokens": 376,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.37,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-38": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-38 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1570,
+          "outputTokens": 377,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.38,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-39": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "claude-code",
+      "model": "claude-sonnet-4-6",
+      "permission": "worktree",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-39 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1580,
+          "outputTokens": 378,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.39,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    },
+    "step-40": {
+      "status": "completed",
+      "attempt": 0,
+      "attempts": 1,
+      "provider": "codex",
+      "model": "gpt-5-codex",
+      "permission": "read",
+      "result": {
+        "status": "completed",
+        "output": {
+          "summary": "step-40 done"
+        },
+        "outputSchemaId": "DeFlow.artifact.v1",
+        "usage": {
+          "inputTokens": 1590,
+          "outputTokens": 379,
+          "source": "vendor-reported"
+        },
+        "costUsd": 0.4,
+        "producedFacts": [],
+        "artifacts": [
+          "artifact://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "failure": null,
+      "suspension": null,
+      "wakeAt": null
+    }
+  },
+  "locks": {},
+  "nodeIds": {
+    "active": [
+      "step-01",
+      "step-02",
+      "step-03",
+      "step-04",
+      "step-05",
+      "step-06",
+      "step-07",
+      "step-08",
+      "step-09",
+      "step-10",
+      "step-11",
+      "step-12",
+      "step-13",
+      "step-14",
+      "step-15",
+      "step-16",
+      "step-17",
+      "step-18",
+      "step-19",
+      "step-20",
+      "step-21",
+      "step-22",
+      "step-23",
+      "step-24",
+      "step-25",
+      "step-26",
+      "step-27",
+      "step-28",
+      "step-29",
+      "step-30",
+      "step-31",
+      "step-32",
+      "step-33",
+      "step-34",
+      "step-35",
+      "step-36",
+      "step-37",
+      "step-38",
+      "step-39",
+      "step-40"
+    ],
+    "retired": []
+  },
+  "budget": {
+    "costUsd": 8.2,
+    "usage": {
+      "vendorReported": {
+        "inputTokens": 55800,
+        "outputTokens": 14380,
+        "source": "vendor-reported"
+      },
+      "estimated": null
+    },
+    "breaches": []
+  },
+  "watermarkSeq": 2000,
+  "epoch": 1,
+  "staleEpochSkipped": 0
+}

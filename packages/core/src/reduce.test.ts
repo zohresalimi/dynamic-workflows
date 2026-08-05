@@ -1,0 +1,289 @@
+/**
+ * KAR-03.5 — the laws the reducer is allowed to have, stated as tests
+ * (docs/04-domain-model.md §9.2, docs/05-durable-execution.md §4).
+ *
+ * Every assertion here is about a *property* rather than a transition: the
+ * per-kind transitions are covered by the corpus and fixture specs in
+ * ../test/, and the properties are what a later epic is most likely to break
+ * while adding a transition.
+ *
+ * Verifies: EPIC-03-S15 · AC1, AC2, AC3, AC5, AC6, AC7, AC8
+ */
+import { afterEach, expect, it, describe as suite, vi } from 'vitest';
+import type { EventKind } from './event-payloads.ts';
+import { EVENT_SCHEMAS } from './event-payloads.ts';
+import type { Event } from './events.ts';
+import { parseEvent } from './events.ts';
+import { reduce } from './reduce.ts';
+import { initialRunState, type RunState } from './run-state.ts';
+
+const RUN_ID = 'run_20260802T141133Z_9f2a1c';
+const NODE = 'recon-auth-surface';
+const SHA = `sha256-${'a'.repeat(64)}`;
+const HANDLE = `artifact://${'b'.repeat(64)}`;
+const IKEY = `${RUN_ID}/${NODE}/1/0`;
+const TS = 1_754_313_093_000;
+
+const completedResult = {
+  status: 'completed',
+  output: { summary: 'done' },
+  outputSchemaId: 'DeFlow.artifact.v1',
+  usage: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+  costUsd: 0.42,
+  producedFacts: [],
+  artifacts: [HANDLE],
+};
+
+interface EnvelopeOverrides {
+  readonly seq?: number;
+  readonly epoch?: number;
+}
+
+/**
+ * Built through `parseEvent` rather than cast, so a spec can never assert
+ * against a payload the schema would have refused — the reducer only ever
+ * sees parsed, upcast events in production.
+ */
+function event(kind: EventKind, payload: unknown, overrides: EnvelopeOverrides = {}): Event {
+  const result = parseEvent({
+    seq: overrides.seq ?? 1,
+    runId: RUN_ID,
+    ts: TS,
+    kind,
+    v: EVENT_SCHEMAS[kind].v,
+    epoch: overrides.epoch ?? 1,
+    payload,
+  });
+  if (result.status !== 'ok') {
+    throw new Error(`fixture for ${kind} is not a valid event: ${JSON.stringify(result)}`);
+  }
+  return result.event;
+}
+
+const started = (seq: number, epoch = 1): Event =>
+  event('run.started', { planHash: SHA }, { seq, epoch });
+
+const paused = (seq: number, epoch = 1): Event =>
+  event('run.paused', { by: 'user', reason: 'stepping away' }, { seq, epoch });
+
+const resumed = (seq: number, epoch = 1): Event =>
+  event('run.resumed', { by: 'user' }, { seq, epoch });
+
+const nodeStarted = (seq: number, attempt = 0): Event =>
+  event(
+    'node.started',
+    {
+      node: NODE,
+      attempt,
+      ikey: IKEY,
+      binary: { path: '/opt/homebrew/bin/claude', version: '2.1.220', sha256: 'd'.repeat(64) },
+    },
+    { seq },
+  );
+
+const nodeProgress = (seq: number): Event =>
+  event('node.progress', { node: NODE, attempt: 0, phase: 'tool-use' }, { seq });
+
+const nodeCompleted = (seq: number): Event =>
+  event('node.completed', { node: NODE, attempt: 0, result: completedResult }, { seq });
+
+const lockAcquired = (seq: number): Event =>
+  event('node.lock.acquired', { node: NODE, lock: 'repo', key: 'repo' }, { seq });
+
+const lockReleased = (seq: number): Event =>
+  event('node.lock.released', { node: NODE, lock: 'repo', key: 'repo' }, { seq });
+
+const fold = (events: readonly Event[], from: RunState = initialRunState()): RunState =>
+  events.reduce(reduce, from);
+
+/** Freezes the whole object graph, so any in-place write throws in strict mode. */
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+  for (const entry of Object.values(value as Record<string, unknown>)) deepFreeze(entry);
+  return Object.freeze(value);
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+suite('AC1 — an unknown kind returns the identical state object', () => {
+  it('returns the same reference, and does not throw', () => {
+    const state = fold([started(1)]);
+    const future = { ...started(2), kind: 'node.sandbox.escalated' } as unknown as Event;
+
+    expect(reduce(state, future)).toBe(state);
+  });
+
+  it('does the same for a kind from the future carrying a newer epoch', () => {
+    const state = fold([started(1)]);
+    const future = { ...started(2), kind: 'run.teleported', epoch: 9 } as unknown as Event;
+
+    // The epoch is envelope-level, but an event this build cannot interpret
+    // must not move the projection in *any* respect — including the epoch.
+    expect(reduce(state, future)).toBe(state);
+  });
+
+  it('is total against garbage that never came from parseEvent', () => {
+    const state = initialRunState();
+    const rubbish: unknown[] = [{}, { kind: 42 }, { kind: '' }, { kind: 'x', payload: null }];
+
+    for (const value of rubbish) {
+      expect(reduce(state, value as Event)).toBe(state);
+    }
+  });
+});
+
+suite('AC2 — determinism and immutability', () => {
+  const script = (): Event[] => [
+    started(1),
+    lockAcquired(2),
+    nodeStarted(3),
+    nodeProgress(4),
+    nodeCompleted(5),
+    lockReleased(6),
+    paused(7),
+  ];
+
+  it('folds the same events twice into deeply-equal state', () => {
+    expect(fold(script())).toEqual(fold(script()));
+  });
+
+  it('never mutates the state it was handed, even deeply frozen', () => {
+    const frozen = deepFreeze(initialRunState());
+
+    const next = fold(script(), frozen);
+
+    expect(next).not.toBe(frozen);
+    expect(frozen).toEqual(initialRunState());
+  });
+
+  it('never mutates the event it was handed', () => {
+    const events = script().map((one) => deepFreeze(structuredClone(one)));
+    const before = structuredClone(events);
+
+    fold(events);
+
+    expect(events).toEqual(before);
+  });
+});
+
+suite('AC3 — no clock, no randomness', () => {
+  it('completes a fold with Date.now and Math.random stubbed to throw', () => {
+    const boom = (): never => {
+      throw new Error('the reducer read a clock or a random number');
+    };
+    vi.spyOn(Date, 'now').mockImplementation(boom);
+    vi.spyOn(Math, 'random').mockImplementation(boom);
+
+    expect(() => fold([started(1), nodeStarted(2), nodeCompleted(3), paused(4)])).not.toThrow();
+  });
+});
+
+suite('AC5 — pause is an event, never an in-memory flag', () => {
+  it('survives a fold from scratch with no resume', () => {
+    expect(fold([started(1), paused(50)]).status).toBe('paused');
+  });
+
+  it('is reversed by run.resumed', () => {
+    expect(fold([started(1), paused(50), resumed(51)]).status).toBe('running');
+  });
+
+  it('is idempotent: a second run.paused changes nothing', () => {
+    const once = fold([started(1), paused(50)]);
+
+    expect(reduce(once, paused(51))).toBe(once);
+  });
+});
+
+suite('AC6 — node.progress does not advance the progress watermark', () => {
+  it('leaves the watermark where node.started put it, across 50 progress events', () => {
+    const events = [
+      started(1),
+      nodeStarted(2),
+      ...Array.from({ length: 50 }, (_unused, index) => nodeProgress(3 + index)),
+    ];
+
+    const state = fold(events);
+
+    expect(state.watermarkSeq).toBe(2);
+  });
+
+  it('advances on the next node.completed', () => {
+    const events = [
+      started(1),
+      nodeStarted(2),
+      ...Array.from({ length: 50 }, (_unused, index) => nodeProgress(3 + index)),
+      nodeCompleted(53),
+    ];
+
+    expect(fold(events).watermarkSeq).toBe(53);
+  });
+
+  it('leaves the whole projection untouched for a progress event', () => {
+    const state = fold([started(1), nodeStarted(2)]);
+
+    expect(reduce(state, nodeProgress(3))).toBe(state);
+  });
+});
+
+suite('AC7 — locks live in the ledger', () => {
+  it('is still held after a fold from zero, because it is an event and not a Map', () => {
+    const state = fold([started(1), lockAcquired(2), nodeStarted(3)]);
+
+    expect(state.locks).toEqual({
+      'repo:repo': { lock: 'repo', key: 'repo', node: NODE, sinceSeq: 2 },
+    });
+  });
+
+  it('is released by node.lock.released', () => {
+    expect(fold([started(1), lockAcquired(2), lockReleased(3)]).locks).toEqual({});
+  });
+
+  it('releasing a lock nobody holds changes nothing', () => {
+    const state = fold([started(1)]);
+
+    expect(reduce(state, lockReleased(2))).toBe(state);
+  });
+});
+
+suite('AC8 — a stale-epoch event is a no-op with a counter', () => {
+  it('applies nothing and increments staleEpochSkipped', () => {
+    const state = fold([started(1, 4)]);
+
+    const next = reduce(state, paused(2, 3));
+
+    expect(next.status).toBe('running');
+    expect(next.staleEpochSkipped).toBe(1);
+  });
+
+  it('does not advance the watermark, because nothing was projected', () => {
+    const state = fold([started(1, 4)]);
+
+    expect(reduce(state, paused(2, 3)).watermarkSeq).toBe(state.watermarkSeq);
+  });
+
+  it('raises the epoch when a newer daemon writes, and applies that event', () => {
+    const state = fold([started(1, 4), paused(2, 7)]);
+
+    expect(state.epoch).toBe(7);
+    expect(state.status).toBe('paused');
+    expect(state.staleEpochSkipped).toBe(0);
+  });
+});
+
+suite('the node projection cannot reach an impossible state', () => {
+  it('counts attempts from the attempt index, so completed implies at least one attempt', () => {
+    // node.started is missing on purpose: an older binary that skipped an
+    // unknown kind must still not produce completed-without-having-run.
+    const state = fold([started(1), nodeCompleted(2)]);
+
+    expect(state.nodes[NODE]).toMatchObject({ status: 'completed', attempt: 0, attempts: 1 });
+  });
+
+  it('keeps attempts monotone across a retry', () => {
+    const state = fold([started(1), nodeStarted(2, 0), nodeStarted(3, 1)]);
+
+    expect(state.nodes[NODE]).toMatchObject({ attempt: 1, attempts: 2 });
+  });
+});

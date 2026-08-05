@@ -65,3 +65,34 @@ suite('packages/ledger/README.md explains why reads are bounded', () => {
     expect(readme).toMatch(/wal_checkpoint\(TRUNCATE\)/);
   });
 });
+
+/**
+ * KAR-03.5 / EPIC-03-S7 scenario 2: the two downgrade mechanisms are stated
+ * *together*, because on their own each one reads like an inconsistency —
+ * "the ledger tolerates a newer daemon" and "the ledger refuses a newer
+ * daemon" are both true, of different layers, and a reader who meets only one
+ * of them will assume the other is a bug.
+ *
+ * Verifies: EPIC-03-S7 (scenario 2)
+ */
+suite('packages/ledger/README.md states both downgrade rules as a pair', () => {
+  const section = readme.slice(readme.indexOf('Downgrade safety is two mechanisms'));
+
+  it('has a section that introduces them as two mechanisms covering different layers', () => {
+    expect(readme).toMatch(/Downgrade safety is two mechanisms, not one/);
+  });
+
+  it('names the reducer’s unknown-kind tolerance as the event-payload half', () => {
+    expect(section).toMatch(/unknown `kind`/);
+    expect(section).toMatch(/KAR-03\.5/);
+  });
+
+  it('names LedgerTooNew as the schema half, and points at the backups', () => {
+    expect(section).toContain('LedgerTooNew');
+    expect(section).toContain('pre-migrate-*.db');
+  });
+
+  it('says why there is no equivalent tolerance at the schema layer', () => {
+    expect(section).toMatch(/constraint it does not know exists/);
+  });
+});
