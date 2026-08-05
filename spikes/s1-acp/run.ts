@@ -82,6 +82,7 @@ if (replay) {
   const spawned = spawnChannel(agent.command, agent.args, cwd);
   channel = spawned;
   cleanup = () => {
+    recorder?.close();
     if (spawned.stderr() !== '') {
       writeFileSync(join(recordingDir, 'agent-stderr.txt'), spawned.stderr());
     }
