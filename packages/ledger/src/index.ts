@@ -149,6 +149,7 @@ export {
   type NodeWakeKey,
   type NodeWakeRow,
   nextWakeAt,
+  readWake,
   readWakes,
   scheduleWake,
   scheduleWakeIfChanged,

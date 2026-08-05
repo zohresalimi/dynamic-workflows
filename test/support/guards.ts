@@ -2548,3 +2548,50 @@ export function checkTimerAllowlistIsLinted(config: string): Violation[] {
 
   return violations;
 }
+
+/**
+ * KAR-06.5 AC1 — the scheduler reads `class` and nothing else.
+ *
+ * `class` is assigned when a `NodeFailure` is *constructed*, by the code that
+ * knows which situation it is in: `provider.unavailable` is transient for a
+ * rate-limited vendor and permanent for a binary the user uninstalled mid-run.
+ * The moment the scheduler re-derives a decision from `reason`, that context is
+ * gone and the two cases become one — silently, and only in production.
+ *
+ * So no `NodeFailureReason` string literal may appear in a scheduling module.
+ * Comparing `entry.when === failure.reason` is fine and is what
+ * `retry.onFailure` is for: that is data flowing from the plan, not a branch
+ * compiled into the scheduler.
+ *
+ * The one module allowed to name reasons is the classifier — that is what
+ * `classifierPaths` is, and it is a parameter rather than a constant so the
+ * test states which file it is exempting where a reader will see it.
+ */
+export function checkSchedulerBranchesOnClassOnly(
+  files: readonly SourceFile[],
+  reasons: readonly string[],
+  classifierPaths: readonly string[],
+): Violation[] {
+  const exempt = new Set(classifierPaths);
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    if (exempt.has(file.path)) continue;
+    const code = codeOnly(file.text);
+    for (const [index, line] of code.split('\n').entries()) {
+      for (const reason of reasons) {
+        if (!line.includes(`'${reason}'`) && !line.includes(`"${reason}"`)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} names the NodeFailureReason "${reason}" as a literal. The scheduler ` +
+            'reads `class` and nothing else: the same reason is transient or permanent depending ' +
+            'on context, so classification happens where the failure is constructed ' +
+            `(${classifierPaths.join(', ')}) and never at the point a decision is taken.`,
+        });
+      }
+    }
+  }
+
+  return violations;
+}

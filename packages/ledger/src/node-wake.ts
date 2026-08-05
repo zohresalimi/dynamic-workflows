@@ -144,6 +144,20 @@ export function scheduleWake(db: Db, row: NodeWakeRow): void {
 const ONE_SQL = `SELECT ${COLUMNS} FROM node_wake WHERE run_id = ? AND node_id = ?`;
 
 /**
+ * The one wait a node has, or `null` when it has none.
+ *
+ * Read by primary key, and the reason it is exported rather than kept private
+ * is KAR-06.5 AC7: when a failure is recorded for a node that already has a
+ * `backoff` row outstanding, the deadline is read off the row rather than drawn
+ * again. A wait that gets pushed forward every time it is restated is not a
+ * wait, it is a treadmill.
+ */
+export function readWake(db: Db, key: NodeWakeKey): NodeWakeRow | null {
+  const row = db.prepare<WakeDbRow>(ONE_SQL).get(key.runId, key.nodeId);
+  return row === undefined ? null : toRow(row);
+}
+
+/**
  * The same upsert, skipped when the row already says exactly this. Returns
  * whether it wrote.
  *

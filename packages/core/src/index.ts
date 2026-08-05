@@ -235,6 +235,10 @@ export type {
   ToNodeFailureContext,
 } from './node-failure.ts';
 export {
+  budgetBreachOf,
+  budgetExceededFailure,
+  dependencyFailedFailure,
+  escalatesToHuman,
   FAILURE_CLASSES,
   FAILURE_TAG,
   FailureClassSchema,
@@ -243,6 +247,7 @@ export {
   NodeFailureError,
   NodeFailureReasonSchema,
   NodeFailureSchema,
+  needsHumanCategory,
   readInternalFailureCount,
   resetInternalFailureCount,
   toNodeFailure,
@@ -343,10 +348,15 @@ export {
   retirementsOf,
   SplitNodeOpSchema,
 } from './plan-patch.ts';
+export type { Random } from './random.ts';
+export { seededRandom } from './random.ts';
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
+// KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
+export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
+export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,
