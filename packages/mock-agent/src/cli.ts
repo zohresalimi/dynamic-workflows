@@ -9,6 +9,7 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CAPABILITY_PROFILE_NAMES, type CapabilityProfileName } from './capability-profiles.ts';
+import { DEFAULT_REPLAY_SPEED, REPLAY_SPEEDS, type ReplaySpeed } from './replay.ts';
 import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
@@ -85,6 +86,15 @@ Options:
                               Advertises <capability> as supported, then
                               answers its request with JSON-RPC -32601. One
                               of: ${Object.keys(DISHONEST_CAPABILITY_METHODS).join(', ')}.
+  --replay <path>     Serves a captured session from a golden recording at
+                      recordings/<provider>@<version>/<case>.ndjson instead of
+                      generating a turn. Cannot be combined with --scenario, a
+                      pathological flag, or any --capabilities flag: in this
+                      mode every frame, every id and every timestamp comes out
+                      of the file.
+  --replay-speed <s>  "real" honours the recorded millisecond offsets between
+                      consecutive agent frames; "max" (the default, and what CI
+                      runs) emits as fast as the pipe allows.
   --run-id <id>       Recorded, with the three below, as one line in
   --node-id <id>      $DeFlow_SIDE_EFFECT_LOG when that variable is set, so
   --attempt <n>       "was this effect executed twice?" is a duplicate-key
@@ -123,12 +133,20 @@ export type CapabilitiesSelection =
   | { readonly kind: 'name'; readonly name: CapabilityProfileName }
   | { readonly kind: 'file'; readonly path: string };
 
+/** KAR-04.5 — the recording this run serves, and how fast it serves it. */
+export interface ReplaySelection {
+  readonly path: string;
+  readonly speed: ReplaySpeed;
+}
+
 export interface MockAgentOptions {
   readonly seed: number;
   /** The scenario file named on argv, if any. */
   readonly scenarioPath: string | null;
   readonly capabilities: CapabilitiesSelection;
   readonly dishonestCapability: DishonestCapability | null;
+  /** Non-null when `--replay` was given, in which case nothing else generates. */
+  readonly replay: ReplaySelection | null;
 }
 
 export type ParsedArgv =
@@ -142,6 +160,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   let behaviour: string | null = null;
   let capabilities: CapabilitiesSelection = { kind: 'default' };
   let dishonestCapability: DishonestCapability | null = null;
+  let replayPath: string | null = null;
+  let replaySpeed: ReplaySpeed | null = null;
 
   /** Two scripts and one turn is a silent choice, so it is refused instead. */
   const conflict = (flag: string, other: string): ParsedArgv => ({
@@ -156,7 +176,35 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     if (argument !== undefined && PATHOLOGICAL_FLAGS[argument] !== undefined) {
       if (behaviour !== null) return conflict(argument, behaviour);
       if (scenarioPath !== null) return conflict(argument, '--scenario');
+      if (replayPath !== null) return conflict(argument, '--replay');
       behaviour = argument;
+      continue;
+    }
+
+    if (argument === '--replay') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--replay needs a path to a recording' };
+      }
+      if (scenarioPath !== null) return conflict('--replay', '--scenario');
+      if (behaviour !== null) return conflict('--replay', behaviour);
+      replayPath = raw;
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--replay-speed') {
+      const raw = argv[index + 1];
+      if (raw === undefined || !(REPLAY_SPEEDS as readonly string[]).includes(raw)) {
+        return {
+          kind: 'error',
+          message:
+            `--replay-speed needs one of: ${REPLAY_SPEEDS.join(', ')}` +
+            `${raw === undefined ? '' : `, got "${raw}"`}`,
+        };
+      }
+      replaySpeed = raw as ReplaySpeed;
+      index += 1;
       continue;
     }
 
@@ -182,6 +230,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         return { kind: 'error', message: '--scenario needs a path to a scenario file' };
       }
       if (behaviour !== null) return conflict(behaviour, '--scenario');
+      if (replayPath !== null) return conflict('--scenario', '--replay');
       scenarioPath = raw;
       index += 1;
       continue;
@@ -249,6 +298,19 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     return { kind: 'error', message: `unknown argument "${argument ?? ''}"` };
   }
 
+  // Validated after the loop so the flags may be given in either order — and
+  // refused rather than ignored, because a --replay-speed nobody applied is a
+  // cadence assertion that quietly measures the wrong thing.
+  if (replayPath === null && replaySpeed !== null) {
+    return { kind: 'error', message: '--replay-speed only means something alongside --replay' };
+  }
+  if (replayPath !== null && capabilities.kind !== 'default') {
+    return conflict('--replay', `--capabilities${capabilities.kind === 'file' ? '-file' : ''}`);
+  }
+  if (replayPath !== null && dishonestCapability !== null) {
+    return conflict('--replay', '--dishonest-capabilities');
+  }
+
   return {
     kind: 'run',
     options: {
@@ -259,6 +321,10 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
           : join(BUILTIN_SCENARIO_DIR, PATHOLOGICAL_FLAGS[behaviour] as string),
       capabilities,
       dishonestCapability,
+      replay:
+        replayPath === null
+          ? null
+          : { path: replayPath, speed: replaySpeed ?? DEFAULT_REPLAY_SPEED },
     },
   };
 }

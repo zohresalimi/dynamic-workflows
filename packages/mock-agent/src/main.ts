@@ -15,6 +15,7 @@
  * half-open session to explain, and the resulting failure points at the client.
  */
 import { readFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 import process from 'node:process';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
@@ -30,10 +31,13 @@ import {
   DISHONEST_CAPABILITY_METHODS,
   type MockAgentOptions,
   parseArgv,
+  type ReplaySelection,
   SCENARIO_ENV,
   USAGE,
 } from './cli.ts';
 import { createProcessPorts } from './ports.ts';
+import { parseRecording, parseRecordingKey } from './recording.ts';
+import { lines, runReplay } from './replay.ts';
 import { parseScenario, type Scenario } from './scenario.ts';
 import { recordInvocation } from './side-effect-log.ts';
 
@@ -54,6 +58,17 @@ export const SCENARIO_EXIT_CODE = 3;
 
 /** Exit code for a --capabilities-file that could not be read or parsed. */
 export const CAPABILITIES_EXIT_CODE = 4;
+
+/**
+ * Exit code for a recording that could not be read, understood, or found in a
+ * directory named `<provider>@<version>` (KAR-04.5 AC4).
+ *
+ * Like a broken scenario, this is decided before the transport opens, so a
+ * rejected recording produces no ACP frames at all: a client that had already
+ * seen a handshake would have a half-open session to explain, and the failure
+ * would read as its own.
+ */
+export const RECORDING_EXIT_CODE = 5;
 
 /** Serves one ACP client over `io`, returning when the connection closes. */
 export async function serve(
@@ -142,6 +157,75 @@ function loadCapabilities(selection: CapabilitiesSelection): LoadCapabilitiesRes
   }
 }
 
+/** Real elapsed time, for `--replay-speed real`. */
+const realSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * KAR-04.5 — serves `--replay`, and never touches `acp.agent()`.
+ *
+ * The ACP SDK is a frame *generator*; a replay is a frame *player*, and putting
+ * the player behind the generator would mean the recording's bytes were
+ * re-derived from the SDK's idea of what they should be. That is exactly the
+ * class of upstream change a golden exists to detect, so the recording is
+ * written to stdout as it was recorded.
+ */
+async function replay(selection: ReplaySelection, io: Io): Promise<number> {
+  // The version key first: a recording in a directory named `claude-agent-acp`
+  // is refused before anything is read, because a golden that is not keyed on
+  // an exact version is silently invalidated by the next vendor release.
+  const key = parseRecordingKey(basename(dirname(selection.path)));
+  if (!key.ok) {
+    io.stderr.write(`${BIN_NAME}: ${selection.path}: ${key.message}\n`);
+    return RECORDING_EXIT_CODE;
+  }
+
+  let text: string;
+  try {
+    text = readFileSync(selection.path, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'unknown error';
+    io.stderr.write(`${BIN_NAME}: ${selection.path}: cannot read recording (${code})\n`);
+    return RECORDING_EXIT_CODE;
+  }
+
+  const parsed = parseRecording(text, selection.path);
+  if (!parsed.ok) {
+    io.stderr.write(`${BIN_NAME}: ${parsed.message}\n`);
+    return RECORDING_EXIT_CODE;
+  }
+
+  const inbound = lines(io.stdin as AsyncIterable<Uint8Array>);
+  try {
+    return await runReplay(parsed.frames, {
+      io: {
+        inbound,
+        write: (chunk) =>
+          new Promise((resolve, reject) => {
+            io.stdout.write(chunk, (error) => {
+              if (error === null || error === undefined) resolve();
+              else reject(error);
+            });
+          }),
+        warn: (chunk) => {
+          io.stderr.write(`${BIN_NAME}: ${chunk}`);
+        },
+      },
+      speed: selection.speed,
+      path: selection.path,
+      sleep: realSleep,
+    });
+  } finally {
+    // The recording, not the client, decides when a replay is over. Releasing
+    // stdin is what lets the process end on the last recorded frame instead of
+    // waiting for a client that has no reason to close it.
+    await inbound.return(undefined);
+    (io.stdin as Readable).pause?.();
+  }
+}
+
 export async function run(
   argv: readonly string[],
   io: Io = processIo(),
@@ -162,6 +246,12 @@ export async function run(
     io.stderr.write(`${BIN_NAME}: ${parsed.message}\n\n${USAGE}`);
     return 2;
   }
+
+  // AC1: a replay is driven entirely by the file, so neither --scenario nor
+  // $DeFlow_MOCK_SCENARIO is consulted. argv already refused the flag; the
+  // environment variable is simply not read, because a spawn that exports it
+  // globally should not turn a replay into a scripted turn.
+  if (parsed.options.replay !== null) return await replay(parsed.options.replay, io);
 
   const loaded = loadScenario(parsed.options.scenarioPath ?? env[SCENARIO_ENV] ?? null);
   if (!loaded.ok) {
