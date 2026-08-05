@@ -109,8 +109,12 @@ export interface ReleaseLock {
   readonly reason: LockReleaseReason;
 }
 
-/** Why a node is asleep. Mirrors the `node_wake.reason` column (§5). */
-export const WAKE_REASONS = ['backoff', 'human-gate', 'poll'] as const;
+/**
+ * Why a node is asleep. Mirrors the `node_wake.reason` column (§5) verbatim,
+ * underscore included, so the value the timeline renders is the value on the
+ * row and no translation table sits between them (KAR-06.6 AC4).
+ */
+export const WAKE_REASONS = ['backoff', 'human_gate', 'poll'] as const;
 
 export type WakeReason = (typeof WAKE_REASONS)[number];
 

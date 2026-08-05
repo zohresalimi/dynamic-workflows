@@ -124,7 +124,14 @@ export interface NodeState {
   readonly failure: NodeFailure | null;
   /** What a suspended node is waiting for; `null` unless `status` is `suspended`. */
   readonly suspension: NodeSuspension | null;
-  /** ms epoch a retry or a wake is due at, from the event that scheduled it. */
+  /**
+   * ms epoch a retry or a suspension is due at, from the event that scheduled
+   * it — `node.retry.scheduled`'s `wakeAt`, or a `node.suspended` whose
+   * `until` carries a deadline. It is what `decide()` turns into the one
+   * `node_wake` row that *is* the wait (KAR-06.6), so a suspension with no
+   * deadline leaves it `null` and is woken by an event rather than by the
+   * ticker.
+   */
   readonly wakeAt: number | null;
   /**
    * The `seq` of the last event that *changed* this node's projection — the
@@ -296,8 +303,14 @@ export interface RunState {
  * wrong, and why bumping it costs nothing but a few milliseconds of replay —
  * the cache is a pure optimisation and is allowed to be thrown away, never to
  * be believed when it is stale.
+ *
+ * The same applies to a change in how an existing field is *derived*, which is
+ * what took it to 4: `node.suspended` now fills `NodeState.wakeAt` from its
+ * suspension deadline (KAR-06.6). A checkpoint written by 3 has the field, and
+ * has it empty for every suspended node — so believing it would leave a
+ * six-hour human gate with no wake row and no way to ever come back.
  */
-export const CHECKPOINT_VERSION = 3;
+export const CHECKPOINT_VERSION = 4;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event

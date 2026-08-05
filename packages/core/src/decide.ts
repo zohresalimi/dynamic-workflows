@@ -466,7 +466,7 @@ function scheduleWakes(state: RunState, runId: RunId, now: number): ScheduleWake
 
 function wakeReason(node: NodeState): WakeReason {
   if (node.status === 'awaiting-retry') return 'backoff';
-  if (node.suspension?.kind === 'human') return 'human-gate';
+  if (node.suspension?.kind === 'human') return 'human_gate';
   return 'poll';
 }
 
