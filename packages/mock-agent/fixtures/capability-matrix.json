@@ -1,0 +1,55 @@
+{
+  "claude": {
+    "loadSession": true,
+    "sessionCapabilities": {
+      "resume": true,
+      "fork": true,
+      "list": true,
+      "close": true,
+      "delete": true,
+      "additionalDirectories": true
+    },
+    "mcpCapabilities": { "http": true, "sse": true }
+  },
+  "codex": {
+    "loadSession": true,
+    "sessionCapabilities": {
+      "resume": true,
+      "list": true,
+      "close": true,
+      "delete": true,
+      "additionalDirectories": true
+    },
+    "mcpCapabilities": { "http": true, "sse": false, "acp": false }
+  },
+  "opencode": {
+    "loadSession": true,
+    "sessionCapabilities": {
+      "resume": true,
+      "fork": true,
+      "list": true
+    },
+    "mcpCapabilities": { "http": true, "sse": true }
+  },
+  "copilot": {
+    "loadSession": true,
+    "sessionCapabilities": { "list": {} },
+    "mcpCapabilities": { "http": true, "sse": true }
+  },
+  "gemini": {
+    "loadSession": true,
+    "mcpCapabilities": { "http": true, "sse": true }
+  },
+  "mock-full": {
+    "loadSession": true,
+    "sessionCapabilities": {
+      "resume": true,
+      "fork": true,
+      "list": true,
+      "close": true,
+      "delete": true,
+      "additionalDirectories": true
+    },
+    "mcpCapabilities": { "http": true, "sse": true, "acp": true }
+  }
+}

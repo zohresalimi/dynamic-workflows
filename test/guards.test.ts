@@ -24,6 +24,7 @@ import {
   checkNoCorepack,
   checkNoDataPlaneReachFromCore,
   checkNoDeepWorkspaceImports,
+  checkNoDeprecatedAcpPackages,
   checkNoFakeTimers,
   checkNoInMemoryDatabases,
   checkNoNodeBuiltinImports,
@@ -33,6 +34,7 @@ import {
   checkNoUnsupportedGitLibrary,
   checkNoViteProxy,
   checkNoVitestWorkspace,
+  checkNoWorkspaceImports,
   checkOxlintConfig,
   checkPinoPrettyIsNotARuntimeTransport,
   checkRecordedCiRuntime,
@@ -1226,5 +1228,100 @@ suite('checkRecordedCiRuntime (KAR-01.6 AC12)', () => {
     const violations = checkRecordedCiRuntime('| something else | | |\n');
     expect(violations).toHaveLength(1);
     expect(render(violations)).toContain('Full CI run');
+  });
+});
+
+suite('checkNoWorkspaceImports (KAR-04.1 AC5)', () => {
+  it('rejects a mock-agent source that imports @DeFlow/core', () => {
+    const violations = checkNoWorkspaceImports([
+      { path: 'packages/mock-agent/src/ids.ts', text: "import { newRunId } from '@DeFlow/core';" },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('cancel itself out');
+  });
+
+  it('sees a dynamic import too, since it resolves the same way', () => {
+    expect(
+      checkNoWorkspaceImports([
+        {
+          path: 'packages/mock-agent/src/agent.ts',
+          text: "const core = await import('@DeFlow/core');",
+        },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('does not read a doc comment as an import', () => {
+    expect(
+      checkNoWorkspaceImports([
+        {
+          path: 'packages/mock-agent/src/index.ts',
+          text: "// It deliberately does not import from '@DeFlow/core'.\nexport {};",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('accepts the SDK, which is the one dependency it is allowed', () => {
+    expect(
+      checkNoWorkspaceImports([
+        {
+          path: 'packages/mock-agent/src/agent.ts',
+          text: "import * as acp from '@agentclientprotocol/sdk';",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkNoDeprecatedAcpPackages (KAR-04.1, EPIC-04-S21)', () => {
+  it('rejects an import of the old @zed-industries name', () => {
+    const violations = checkNoDeprecatedAcpPackages(
+      [
+        {
+          path: 'packages/adapters/src/acp.ts',
+          // Split so this fixture is not itself a violation when the guard is
+          // pointed at the whole TypeScript tree, exactly as the KAR-01.4
+          // guards escape their own patterns.
+          text: `import { Agent } from '@zed-${'industries/agent-client-protocol'}';`,
+        },
+      ],
+      [],
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('@agentclientprotocol/sdk');
+  });
+
+  it('rejects a manifest that still declares one of the renamed packages', () => {
+    const violations = checkNoDeprecatedAcpPackages(
+      [],
+      [
+        {
+          path: 'packages/adapters/package.json',
+          json: { dependencies: { '@zed-industries/claude-code-acp': '0.4.5' } },
+        },
+      ],
+    );
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('@zed-industries/claude-code-acp');
+  });
+
+  it('accepts the supported package under all three names it is not', () => {
+    expect(
+      checkNoDeprecatedAcpPackages(
+        [
+          {
+            path: 'packages/mock-agent/src/agent.ts',
+            text: "import * as acp from '@agentclientprotocol/sdk';",
+          },
+        ],
+        [
+          {
+            path: 'packages/mock-agent/package.json',
+            json: { dependencies: { '@agentclientprotocol/sdk': 'catalog:' } },
+          },
+        ],
+      ),
+    ).toEqual([]);
   });
 });

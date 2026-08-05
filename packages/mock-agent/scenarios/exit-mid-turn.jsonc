@@ -1,0 +1,12 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "exit-mid-turn",
+  "description": "EPIC-04-S9: process.exit(1) two frames into a three-chunk turn, leaving a half-written line on stdout. The truncated tail is what separates agent.nonzero-exit from adapter.malformed-output.",
+  "steps": [
+    // Armed first: afterFrames counts notifications from here, so the knife
+    // lands inside the third chunk rather than between two clean steps.
+    { "type": "exit", "code": 1, "afterFrames": 2, "truncateMidFrame": true },
+    { "type": "chunks", "count": 3, "delayMs": 10, "text": "chunk before the crash" }
+  ],
+  "stopReason": "end_turn"
+}

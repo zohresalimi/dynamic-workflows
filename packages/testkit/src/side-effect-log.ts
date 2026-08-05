@@ -10,10 +10,11 @@
  * file, and the invariant becomes a duplicate-key check on that file — an
  * observation of the world, not an inference from the thing under test.
  *
- * Nothing here writes. `bin/fake-agent.ts` is the writer, from inside the
- * child process where the invocation actually happens.
+ * `readInvocation` and `recordInvocation` are the writing half, called by
+ * `bin/fake-agent.ts` from inside the child process where the invocation
+ * actually happens. Everything else here reads.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 
 /** One invocation, as the fake binary recorded it. */
 export interface SideEffect {
@@ -64,6 +65,73 @@ export function readSideEffectLog(path: string): SideEffectLog {
     else entries.push(effect);
   }
   return { entries, malformed };
+}
+
+// ---------------------------------------------------------------------------
+// The writing half (KAR-04.6 AC8)
+// ---------------------------------------------------------------------------
+
+/** Where the log goes. Unset means no log, and the invocation is unaffected. */
+export const SIDE_EFFECT_LOG_ENV = 'DeFlow_SIDE_EFFECT_LOG';
+/** What EPIC-01 and EPIC-03 already set. Still honoured, and still an alias. */
+export const LEGACY_SIDE_EFFECT_LOG_ENV = 'DeFlow_FAKE_SIDE_EFFECT_LOG';
+
+/**
+ * The four fields, in each of the three spellings a caller may use.
+ *
+ * All three, because DeFlowd passes them one way or the other depending on how
+ * the adapter builds its argv, and a fixture that only worked one way would
+ * look green right up until the adapter changed. argv wins over the environment:
+ * it is the more specific of the two. `DeFlow_FAKE_*` is the spelling the
+ * pre-KAR-04.6 fixtures use and it stays supported, last.
+ */
+export const IDEMPOTENCY_FIELDS = [
+  { flag: '--run-id', env: 'DeFlow_RUN_ID', legacyEnv: 'DeFlow_FAKE_RUN_ID', key: 'runId' },
+  { flag: '--node-id', env: 'DeFlow_NODE_ID', legacyEnv: 'DeFlow_FAKE_NODE_ID', key: 'nodeId' },
+  { flag: '--attempt', env: 'DeFlow_ATTEMPT', legacyEnv: 'DeFlow_FAKE_ATTEMPT', key: 'attempt' },
+  { flag: '--ikey', env: 'DeFlow_IKEY', legacyEnv: 'DeFlow_FAKE_IKEY', key: 'idempotencyKey' },
+] as const;
+
+export const IDEMPOTENCY_FLAGS = IDEMPOTENCY_FIELDS.map((field) => field.flag);
+
+export type InvocationEnv = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Scans argv directly rather than through any parser.
+ *
+ * Deliberate: "every invocation appends exactly one line" has to hold for an
+ * invocation whose argv turned out to be unusable, and the invocation whose
+ * absence from the log would be hardest to explain later is exactly that one.
+ */
+export function readInvocation(argv: readonly string[], env: InvocationEnv): SideEffect {
+  const value = (flag: string, name: string, legacy: string): string => {
+    const at = argv.lastIndexOf(flag);
+    if (at >= 0 && argv[at + 1] !== undefined) return argv[at + 1] as string;
+    return env[name] ?? env[legacy] ?? '';
+  };
+
+  const attempt = Number.parseInt(value('--attempt', 'DeFlow_ATTEMPT', 'DeFlow_FAKE_ATTEMPT'), 10);
+  return {
+    runId: value('--run-id', 'DeFlow_RUN_ID', 'DeFlow_FAKE_RUN_ID'),
+    nodeId: value('--node-id', 'DeFlow_NODE_ID', 'DeFlow_FAKE_NODE_ID'),
+    // Verbatim, except that an absent or unreadable attempt is 0 rather than
+    // NaN — NaN does not survive JSON.stringify.
+    attempt: Number.isFinite(attempt) ? attempt : 0,
+    idempotencyKey: value('--ikey', 'DeFlow_IKEY', 'DeFlow_FAKE_IKEY'),
+  };
+}
+
+/**
+ * Appends one line, or does nothing at all when no log is configured.
+ *
+ * Synchronous on purpose: the process this exists to observe is one that gets
+ * `SIGKILL`ed, and a line sitting in a stream buffer when the signal lands is a
+ * line that never existed.
+ */
+export function recordInvocation(argv: readonly string[], env: InvocationEnv): void {
+  const path = env[SIDE_EFFECT_LOG_ENV] ?? env[LEGACY_SIDE_EFFECT_LOG_ENV];
+  if (path === undefined || path === '') return;
+  appendFileSync(path, `${JSON.stringify(readInvocation(argv, env))}\n`);
 }
 
 /** An idempotency key that was performed more than once. */

@@ -1,0 +1,7 @@
+{
+  "name": "ignore-sigterm",
+  "description": "The kill-escalation fixture. Installs a no-op SIGTERM handler, backgrounds two `sleep 300` children so there is a real process tree to reach, announces their pids so a spec can find them, and then never exits on its own. Only SIGKILL ends this invocation, which is the whole point: without a process that genuinely survives SIGTERM, the escalation path is never executed.",
+  "spawnGrandchildren": { "count": 2, "sleepSeconds": 300 },
+  "ignoreSigterm": true,
+  "hangForever": true
+}

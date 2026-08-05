@@ -1,0 +1,14 @@
+{
+  "name": "claude-turn",
+  "description": "The ordinary headless turn: a system/init line, three assistant lines a few milliseconds apart, and the verified result envelope. The relative order of the line types is part of what the shim parser is asserted against, so it is scripted rather than incidental.",
+  "steps": [
+    { "type": "chunks", "count": 3, "delayMs": 5, "text": "working" },
+    { "type": "message", "text": "ok" }
+  ],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "ok",
+    "totalCostUsd": 0.0123
+  }
+}
