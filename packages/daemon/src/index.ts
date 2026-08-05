@@ -12,6 +12,16 @@
  * as the `node --watch` entry point.
  */
 
+// KAR-03.7 — the boot sequence, and the order its steps run in.
+export {
+  BOOT_STEPS,
+  type Booted,
+  type BootOptions,
+  type BootStep,
+  boot,
+  EX_ALREADY_RUNNING,
+} from './boot.ts';
+export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
@@ -19,6 +29,7 @@ export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+export { daemonEpoch, headSeq, setDaemonEpoch, setHeadSeq } from './runtime.ts';
 export type { SchemaDirectory, ValidateValue } from './schema-store.ts';
 export {
   defaultSchemasDir,

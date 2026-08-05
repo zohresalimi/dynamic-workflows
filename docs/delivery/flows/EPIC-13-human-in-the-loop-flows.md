@@ -507,9 +507,9 @@ Feature: One SSE connection per tab, filtered server-side
 **Notes:** the connection cap is an architecture constraint, not a tuning knob: HTTP/1.1 allows
 about six connections per origin, an SSE connection never closes, and _"the failure mode is not an
 error — it is that every subsequent `fetch` silently queues behind the streams, forever"_
-([11 §2](../../11-api-and-realtime.md)). The last scenario is the other verified trap: a rolled-back
-transaction burns `AUTOINCREMENT` values, so `seq` 4, 5, 7 is a healthy log and gap detection reports
-false data loss.
+([11 §2](../../11-api-and-realtime.md)). The last scenario is the other verified trap: one global
+sequence is shared by every run and `AUTOINCREMENT` never reissues a pruned number, so `seq` 4, 5, 7
+is a healthy log and gap detection reports false data loss.
 
 ---
 

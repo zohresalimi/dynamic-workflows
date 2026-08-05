@@ -287,8 +287,8 @@ Three behaviours carry most of the risk and each has a verified footgun behind i
   daemon comes back the tab reconnects with no cursor at all. **Verified 2026-08-02.** So the client
   persists its own cursor and always opens with `?since=<seq>`; the server's precedence is
   `since` > `Last-Event-ID` > head ([11 §4.1](../../11-api-and-realtime.md)).
-- **`seq` gaps are normal.** A rolled-back transaction burns `AUTOINCREMENT` values, so `4, 5, 7` is
-  a healthy log. **Do not write gap detection.** A client that treats a gap as data loss will report
+- **`seq` gaps are normal.** One global sequence is shared by every run, and `AUTOINCREMENT` never
+  reissues a pruned number, so `4, 5, 7` is a healthy log. **Do not write gap detection.** A client that treats a gap as data loss will report
   false loss and may "repair" by refetching from zero.
 - **Named SSE events are stream control, not ledger events.** `hello`, `subscribed` and `caught_up`
   must never reach the reducer; ledger events arrive on the default unnamed type and discriminate on

@@ -52,6 +52,9 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
+// @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
+export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
   CompactionFidelity,
@@ -131,6 +134,14 @@ export {
   keyMatchesKind,
   ProvenanceSchema,
 } from './fact.ts';
+// KAR-03.5 — the read path into the reducer: parse, upcast, fold, tally.
+export type {
+  FoldOptions,
+  FoldRejection,
+  FoldRejectionReason,
+  FoldReport,
+} from './fold-events.ts';
+export { describeSkipped, foldEvents } from './fold-events.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -303,7 +314,30 @@ export {
 } from './plan-patch.ts';
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
+// KAR-03.5 — the pure, total reducer and the projection it folds into.
+export { reduce } from './reduce.ts';
 export { mintRunId } from './run-id.ts';
+export type {
+  BudgetBreach,
+  BudgetState,
+  LockState,
+  NeedsHumanState,
+  NodeIdRegistryState,
+  NodeState,
+  NodeStatus,
+  RunState,
+  RunStatus,
+} from './run-state.ts';
+// KAR-03.6 — CHECKPOINT_VERSION stamps the cache; RunStateSchema is what a
+// decoded `run.state_json` has to survive before it may become state.
+export {
+  CHECKPOINT_VERSION,
+  initialRunState,
+  lockKey,
+  NODE_STATUSES,
+  RUN_STATUSES,
+  RunStateSchema,
+} from './run-state.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,
@@ -329,7 +363,12 @@ export {
 } from './task-spec.ts';
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
-export { sumUsage, TokenUsageSchema, TokenUsageSourceSchema } from './token-usage.ts';
+export {
+  sumUsage,
+  TokenUsageSchema,
+  TokenUsageSourceSchema,
+  UsageTotalsSchema,
+} from './token-usage.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,

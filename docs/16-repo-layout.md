@@ -322,7 +322,8 @@ The per-run files under `runs/<runId>/` satisfy NF8 — "every artifact inspecta
 
 ```
 $XDG_DATA_HOME/DeFlow/         (falls back to ~/.DeFlow)
-  DeFlow.lock                  flock target + daemon_epoch (single-instance lease)
+  DeFlow.lock                  flock target (single-instance lease); always 0 bytes
+  DeFlow.lock.pid              the holder's pid, for the message a refused daemon prints
   ledger.db  ledger.db-wal  ledger.db-shm
   blobs/<ab>/<sha256>          content-addressed spill for payloads > ~256 KiB
   recordings/<provider>@<version>/<case>.ndjson
@@ -336,7 +337,7 @@ The **ledger is a single global database**, not one per run. Three reasons: the 
 
 Blobs are global for the same reason content-addressing exists: the identical failing test log across three retry attempts, or across two runs of the same task, deduplicates to one object.
 
-`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx DeFlow up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected.
+`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx DeFlow up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected. The `daemon_epoch` counter lives in `ledger.db`, not in `DeFlow.lock`: nothing is ever written into the lock file, because committing is precisely the moment SQLite releases the file lock, and an acquisition that lets go of the lock halfway through is not exclusive against a second daemon started microseconds rather than seconds later (see `packages/ledger/README.md` §single-instance lease). The lock file is therefore always 0 bytes, and the holder's pid — needed only for the sentence a *refused* daemon prints, never for a liveness check — goes in `DeFlow.lock.pid` beside it.
 
 On first run, `DeFlow up` resolves the data dir, runs migrations, probes for installed agent CLIs and records their versions (F3.6), binds port 7777 or the next free one, writes `.DeFlow/daemon.json` with a freshly generated 32-byte bearer token, and prints the URL.
 

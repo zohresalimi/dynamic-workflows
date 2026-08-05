@@ -182,8 +182,10 @@ browser's, and because the CLI has no `Last-Event-ID` mechanism at all.
 
 ### 4.2 Sequence numbers have gaps
 
-A rolled-back transaction burns `AUTOINCREMENT` values. `seq` 4, 5, 7 is a normal, healthy log —
-`6` was allocated by a transaction that did not commit.
+`seq` 4, 5, 7 is a normal, healthy log. `6` belongs to another run — the `event` table is one global
+sequence keyed by `run_id` — or to a pruned event, whose number `AUTOINCREMENT` never reissues. (This
+paragraph used to say "a rolled-back transaction burns `AUTOINCREMENT` values"; corrected 2026-08-05,
+see [05-durable-execution §6](./05-durable-execution.md#6-autoincrement-is-mandatory).)
 
 > **The cursor contract is "resume from strictly greater than `seq`". It is never "expect `seq + 1`".**
 

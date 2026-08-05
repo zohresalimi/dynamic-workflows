@@ -922,9 +922,9 @@ Feature: One transaction, or the backoff is a lie
 
 **Notes:** _"Split them and a restart inside the backoff window either loses the delay (immediate
 retry storm) or double-counts the attempt."_ The second scenario's final line is a deliberate
-reminder of EPIC-03's contract: a rolled-back transaction burns `AUTOINCREMENT` values, so **sequence
-numbers have gaps**, and every consumer must resume from strictly-greater-than rather than assuming
-`cursor + 1`.
+reminder of EPIC-03's contract: one global sequence is shared by every run and `AUTOINCREMENT` never
+reissues a pruned number, so **sequence numbers have gaps**, and every consumer must resume from
+strictly-greater-than rather than assuming `cursor + 1`.
 
 ---
 

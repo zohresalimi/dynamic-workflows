@@ -9,8 +9,9 @@
  * process muddying the "exactly one listening socket" assertion.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,11 +74,19 @@ export async function startDevLoop(options: StartOptions = {}): Promise<DevLoop>
   const origin = `http://127.0.0.1:${port}`;
   const chunks: string[] = [];
 
+  // Its own data directory, never the developer's. Since KAR-03.7 the daemon
+  // takes a single-instance lease on `<dataDir>/DeFlow.lock` at boot, so a
+  // spec that used the default would fail against a DeFlowd the developer
+  // already has running — and would write a ledger into their home directory
+  // on the way.
+  const dataDir = mkdtempSync(join(tmpdir(), 'DeFlow-devloop-'));
+
   const startedAt = performance.now();
   const child = spawn('sh', ['-c', devScript()], {
     cwd: repoRoot,
     env: {
       ...process.env,
+      DeFlow_DATA_DIR: dataDir,
       DeFlow_PORT: String(port),
       DeFlow_SSE_HEARTBEAT_MS: String(options.heartbeatMs ?? 250),
       DeFlow_LOG_LEVEL: 'info',
@@ -90,15 +99,19 @@ export async function startDevLoop(options: StartOptions = {}): Promise<DevLoop>
   const output = () => chunks.join('');
 
   const stop = async (): Promise<void> => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    await new Promise<void>((resolve) => {
-      child.once('exit', () => resolve());
-      child.kill('SIGTERM');
-      setTimeout(() => {
-        child.kill('SIGKILL');
-        resolve();
-      }, 5_000).unref();
-    });
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        child.once('exit', () => resolve());
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve();
+        }, 5_000).unref();
+      });
+    }
+    if (process.env.DeFlow_KEEP_TMP === undefined) {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   };
 
   try {

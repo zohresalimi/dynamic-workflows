@@ -55,14 +55,18 @@ suite('DeFlowd checks the upcaster chains before it opens anything', () => {
     expect(result.message).not.toContain('\n    at ');
   });
 
-  it('runs in main.ts before the HTTP server binds', () => {
+  it('runs in main.ts before boot takes the lease, opens the ledger or binds', () => {
     const main = readText('packages/daemon/src/main.ts');
 
     const preflightAt = main.indexOf('checkSchemaRegistry(');
-    const listenAt = main.indexOf('startHttp(');
+    // Since KAR-03.7 the whole of "open anything" is behind `boot()`, whose
+    // own ordering — lease, then migrate, then probe, then bind — is asserted
+    // in test/integration/boot.test.ts. What this spec still owns is that the
+    // registry check happens before any of it.
+    const bootAt = main.indexOf('boot({');
 
     expect(preflightAt, 'main.ts does not run the schema preflight').toBeGreaterThan(-1);
-    expect(listenAt).toBeGreaterThan(-1);
-    expect(preflightAt).toBeLessThan(listenAt);
+    expect(bootAt, 'main.ts does not boot').toBeGreaterThan(-1);
+    expect(preflightAt).toBeLessThan(bootAt);
   });
 });

@@ -13,6 +13,7 @@
 import { expect, it, describe as suite } from 'vitest';
 import {
   checkCorePurity,
+  checkNoDataPlaneReachFromCore,
   checkNoNodeBuiltinImports,
   checkNoOhashImport,
   describe as render,
@@ -36,5 +37,42 @@ suite('@DeFlow/core purity', () => {
     const sources = productionSources('packages/core');
     expect(sources.length).toBeGreaterThan(0);
     expect(render(checkNoOhashImport(sources))).toBe('');
+  });
+});
+
+/**
+ * KAR-03.4 AC2 / EPIC-03-S11 scenario 3. The control-plane / data-plane split
+ * is what removes snapshotting, and it survives only if the reducer *cannot*
+ * read `io_chunk` — not if it merely does not today. Two structural facts hold
+ * it: core declares no dependency on the ledger or on a driver, and no file
+ * under packages/core/src names either.
+ */
+suite('the reducer structurally cannot reach the data plane (KAR-03.4 AC2)', () => {
+  it('declares no dependency on @DeFlow/ledger or better-sqlite3', () => {
+    const core = readJson('packages/core/package.json');
+    const declared = Object.keys({
+      ...core.dependencies,
+      ...core.devDependencies,
+      ...core.optionalDependencies,
+      ...core.peerDependencies,
+    });
+    expect(declared).not.toContain('@DeFlow/ledger');
+    expect(declared).not.toContain('better-sqlite3');
+  });
+
+  it('has no source that imports the ledger or names the io_chunk table', () => {
+    const sources = productionSources('packages/core');
+    expect(sources.length).toBeGreaterThan(0);
+    expect(render(checkNoDataPlaneReachFromCore(sources))).toBe('');
+  });
+
+  it('and that is a real result, not an empty scan', () => {
+    // Take the rule away from the real source and the guard must object, which
+    // is only possible if it read the files in the first place.
+    const mutated = productionSources('packages/core').map((file) => ({
+      ...file,
+      text: `${file.text}\nimport { readIoChunks } from '@DeFlow/ledger';\n`,
+    }));
+    expect(checkNoDataPlaneReachFromCore(mutated).length).toBe(mutated.length);
   });
 });

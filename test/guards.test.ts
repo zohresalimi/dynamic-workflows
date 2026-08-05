@@ -17,10 +17,12 @@ import {
   checkExactCatalogPins,
   checkGitInvocationsAreHermetic,
   checkJobLevelContexts,
+  checkLedgerReadsAreBounded,
   checkLintFormatScripts,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
   checkNoCorepack,
+  checkNoDataPlaneReachFromCore,
   checkNoDeepWorkspaceImports,
   checkNoFakeTimers,
   checkNoInMemoryDatabases,
@@ -245,6 +247,108 @@ suite('checkNoOhashImport (KAR-02.9 AC6)', () => {
         },
       ]),
     ).toEqual([]);
+  });
+});
+
+suite('checkNoDataPlaneReachFromCore (KAR-03.4 AC2)', () => {
+  it('catches an @DeFlow/ledger import in core and names the line', () => {
+    const violations = checkNoDataPlaneReachFromCore([
+      {
+        path: 'packages/core/src/reduce.ts',
+        text: "const a = 1;\nimport { readIoChunks } from '@DeFlow/ledger';\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/core/src/reduce.ts:2');
+  });
+
+  it('catches a bare mention of the io_chunk table in core', () => {
+    const violations = checkNoDataPlaneReachFromCore([
+      {
+        path: 'packages/core/src/reduce.ts',
+        text: "export const sql = 'SELECT data FROM io_chunk WHERE run_id = ?';\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/core/src/reduce.ts:1');
+  });
+
+  it('leaves a reducer that only ever sees an Event alone', () => {
+    expect(
+      checkNoDataPlaneReachFromCore([
+        {
+          path: 'packages/core/src/reduce.ts',
+          text: "import type { Event } from './events.ts';\nexport const x: Event | null = null;\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+suite('checkLedgerReadsAreBounded (KAR-03.4 AC5 / EPIC-03-S13 scenario 3)', () => {
+  it('catches a SELECT over event with no LIMIT', () => {
+    const violations = checkLedgerReadsAreBounded([
+      {
+        path: 'packages/ledger/src/tail.ts',
+        text: 'const SQL = `SELECT seq, payload FROM event WHERE run_id = ? ORDER BY seq`;\n',
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/ledger/src/tail.ts');
+  });
+
+  it('catches a SELECT over io_chunk with no LIMIT', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/io-chunk.ts',
+          text: "const SQL = 'SELECT data FROM io_chunk WHERE run_id = ?';\n",
+        },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('accepts a bounded read and a counting aggregate', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/append.ts',
+          text:
+            'const A = `SELECT seq FROM event WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?`;\n' +
+            'const B = `SELECT count(*) AS n FROM io_chunk WHERE run_id = ?`;\n',
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  /**
+   * KAR-03.8's run discovery is `min(seq) … GROUP BY run_id` and `max(seq)`,
+   * and both are exempt for the reason `count(*)` is: the result set is one row
+   * per run rather than one row per event, so it cannot grow with the ledger.
+   * A read that returns *rows* is still caught, aggregate word or not.
+   */
+  it('accepts an aggregate projection that is not a count', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/open-and-replay.ts',
+          text:
+            'const A = `SELECT run_id, min(seq) AS first_seq FROM event GROUP BY run_id`;\n' +
+            "const B = 'SELECT coalesce(max(seq), 0) AS head FROM event';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still catches a row-returning read that merely mentions a column called max', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/tail.ts',
+          text: "const SQL = 'SELECT seq, max_attempt FROM event WHERE run_id = ?';\n",
+        },
+      ]),
+    ).toHaveLength(1);
   });
 });
 
