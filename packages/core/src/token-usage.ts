@@ -43,6 +43,18 @@ export interface UsageTotals {
   readonly estimated: TokenUsage | null;
 }
 
+/**
+ * The same pair as a schema, because `UsageTotals` is part of `RunState` and
+ * `RunState` is decoded from a checkpoint row written by some earlier binary
+ * (KAR-03.6). `null` is spelled out on both arms for the reason the whole file
+ * exists: a missing `estimated` and an `estimated` of zero are different
+ * claims, and only one of them is true.
+ */
+export const UsageTotalsSchema: z.ZodType<UsageTotals, unknown> = z.strictObject({
+  vendorReported: TokenUsageSchema.nullable(),
+  estimated: TokenUsageSchema.nullable(),
+});
+
 /** The three counters §8 marks optional. They are summed only when at least
  * one contributing usage reported them, so "not reported" survives the sum
  * instead of becoming a confident zero. */

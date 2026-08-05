@@ -135,7 +135,12 @@ export function parseEvent(
     return { status: 'unknown-kind', kind, seq: rest.seq };
   }
 
-  const current = EVENT_SCHEMAS[kind].v;
+  // The registry is what says which version this build writes, so a caller
+  // that hands in a different table — a test exercising a v1→v3 chain none of
+  // the shipped kinds has yet — exercises this exact code path rather than a
+  // reimplementation of it. It is built from EVENT_CURRENT_VERSIONS, so the
+  // fallback is only reached by a registry that has never heard of the kind.
+  const current = registry.currentVersion(kind) ?? EVENT_SCHEMAS[kind].v;
   if (v > current) {
     return { status: 'future-version', kind, v, current, seq: rest.seq };
   }

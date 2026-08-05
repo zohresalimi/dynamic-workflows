@@ -482,9 +482,9 @@ and because the CLI has no `Last-Event-ID` mechanism at all. On a cold start wit
 client hydrates first through `GET /api/runs/:id/events?since=0` and only then opens the stream at
 the returned cursor.
 
-The second half of the story is what a client must **not** do. `seq` has gaps: a rolled-back
-transaction burns `AUTOINCREMENT` values, so `4, 5, 7` is a normal, healthy log — `6` was allocated
-by a transaction that did not commit. _"The cursor contract is 'resume from strictly greater than
+The second half of the story is what a client must **not** do. `seq` has gaps: one global sequence is
+shared by every run, and `AUTOINCREMENT` never reissues a pruned number, so `4, 5, 7` is a normal,
+healthy log — `6` belongs to another run, or to an event that was pruned. _"The cursor contract is 'resume from strictly greater than
 `seq`'. It is never 'expect `seq + 1`'."_ A client that treats a gap as a dropped event reports false
 data loss and, worse, may try to "repair" by refetching from zero. **Do not write gap detection.**
 And `AUTOINCREMENT` is mandatory for the mirror-image reason: a bare `INTEGER PRIMARY KEY` reuses

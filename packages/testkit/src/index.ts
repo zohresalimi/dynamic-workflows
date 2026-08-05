@@ -9,14 +9,44 @@
  * logic, the argv construction, the stream parser, the backpressure handling,
  * the timeout and the kill path all live on the other side of it.
  *
- * Still to come: the fake agent's full F3.4 scenario vocabulary (EPIC-04/05),
- * the FakeEffectRunner (EPIC-06) and the crash-fuzz harness (EPIC-03).
+ * KAR-03.8 adds what the crash-fuzz suite runs on: a real child that can be
+ * SIGKILLed together with everything it spawned, the fake agents' own
+ * side-effect log, and the seed that makes a failing kill point reproducible.
+ *
+ * Still to come: the fake agent's full F3.4 scenario vocabulary (EPIC-04/05)
+ * and the FakeEffectRunner (EPIC-06).
  */
 export { type AgentOnPath, FAKE_AGENT_BIN, linkFakeAgent } from './agent.ts';
 export { TestClock } from './clock.ts';
+export {
+  type Crashable,
+  type CrashableOptions,
+  type Exit,
+  sleep,
+  startCrashable,
+  type WaitForOptions,
+  waitFor,
+} from './crash.ts';
+export { dbContract } from './db-contract.ts';
+export { FakeDb, FakeDbClosed, FakeDbUnsupportedSql } from './fake-db.ts';
 export { type DeFlowFixtures, it } from './fixtures.ts';
 export { GIT_ENV, type GitResult, git, tryGit } from './git.ts';
+export {
+  CI_RUN_ID_ENV,
+  CRASH_SEED_ENV,
+  type CrashSeed,
+  crashSeed,
+  mulberry32,
+  type SeedEnv,
+} from './random.ts';
 export { type MakeRepoOptions, makeRepo, type Repo } from './repo.ts';
+export {
+  type DuplicateEffect,
+  duplicateIdempotencyKeys,
+  readSideEffectLog,
+  type SideEffect,
+  type SideEffectLog,
+} from './side-effect-log.ts';
 export {
   createSnapshotSerializers,
   normaliseSnapshotObject,

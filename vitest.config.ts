@@ -69,20 +69,38 @@ export default defineConfig({
         },
       },
 
+      {
+        extends: true,
+        test: {
+          // KAR-03.8's crash-fuzz suite: SIGKILL a real scripted run mid-flight,
+          // restart it over the same .DeFlow/ directory, and assert that no
+          // effect ran twice, that the ledger reduces to the pre-crash
+          // projection, that integrity_check is ok and that the run never
+          // wedges.
+          //
+          // Its own slice rather than more integration specs because it wants
+          // things the integration slice must not have: many randomised
+          // repetitions, minutes rather than seconds, and DeFlow_KEEP_TMP=1 in
+          // CI so a failing ledger can be uploaded and opened. Serialised for
+          // the same reason e2e is — every iteration owns a data directory and
+          // a process group, and two at once is a race by construction.
+          name: 'crash-fuzz',
+          environment: 'node',
+          include: ['packages/*/test/crash-fuzz/**/*.test.ts'],
+          testTimeout: 300_000,
+          hookTimeout: 300_000,
+          pool: 'forks',
+          fileParallelism: false,
+          maxWorkers: 1,
+        },
+      },
+
       // Vue components in a real Chromium. It lives in its own file because
       // browser mode brings its own plugin stack; docs/14-testing-strategy.md
       // §13 records why jsdom and happy-dom cannot serve the visualization
       // surface — they return 0 from getBBox(), stub getContext('2d') and
       // report zero element sizes, so they lie rather than fail.
       'packages/web/vitest.config.ts',
-
-      // Slot, deliberately empty: EPIC-03 adds a fifth project here named
-      // `crash-fuzz` — SIGKILL the daemon mid-run, restart over the same
-      // .DeFlow/ directory, assert no effect ran twice and that the ledger
-      // reduces to the pre-crash projection. It earns its own slice because it
-      // is the only one that wants many randomised repetitions and
-      // DeFlow_KEEP_TMP=1 in CI. Until EPIC-03 lands, nothing may reference the
-      // name — the CI workflow included.
     ],
   },
 });

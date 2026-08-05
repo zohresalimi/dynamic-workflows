@@ -19,8 +19,11 @@
     "better-sqlite3": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/testkit": "workspace:*",
+    "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }
