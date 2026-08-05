@@ -1,11 +1,14 @@
 /**
  * KAR-03.4 AC7 — a payload over ~256 KiB never reaches `event.payload`.
  *
- * The spill itself is KAR-03.9's content-addressed blob store. Until it lands,
- * the boundary refuses the row rather than writing it: `event` is append-only,
- * so a 4 MB tool transcript written into it is permanent, is read by every
- * replay for the life of the run, and is exactly the thing the control-plane /
- * data-plane split exists to keep out. Refusing is recoverable; writing is not.
+ * The spill itself is KAR-03.9's content-addressed blob store, and
+ * `appendEvents` performs it whenever it is given a `spillTo` data directory —
+ * `test/integration/blob-spill.test.ts` is that half. These specs cover the
+ * other half: a caller that has *not* wired the store gets the row refused
+ * rather than written. `event` is append-only, so a 4 MB tool transcript
+ * written into it is permanent, is read by every replay for the life of the
+ * run, and is exactly the thing the control-plane / data-plane split exists to
+ * keep out. Refusing is recoverable; writing is not.
  *
  * Verifies: EPIC-03-S11 (scenario 1) · AC7
  */

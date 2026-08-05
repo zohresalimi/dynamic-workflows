@@ -137,3 +137,47 @@ suite('packages/ledger/README.md says the checkpoint is optional and disposable'
     expect(section).toMatch(/depend on/i);
   });
 });
+
+/**
+ * KAR-03.9 — the blob store's three non-obvious rules are written down, because
+ * each of them looks like fussiness to a reader who has not been bitten by it.
+ *
+ * "Put the temp file next to the target" reads as style until you know that
+ * `rename` is atomic only within one filesystem; "never delete a blob" reads as
+ * an oversight until you know a blob is shared across every run that produced
+ * the same bytes; and "verify the hash on read" reads as paranoia until you
+ * picture a corrupted build log going to an agent as evidence.
+ *
+ * Verifies: EPIC-03-S28, EPIC-03-S29 · AC4, AC5, AC6
+ */
+suite('packages/ledger/README.md explains the blob store', () => {
+  const section = readme.slice(readme.indexOf('## Big payloads spill'));
+  /** Wrapping is the formatter's business, so the assertions are about words. */
+  const flat = section.replaceAll(/\s+/g, ' ');
+
+  it('has the section, and states the threshold and what the event keeps', () => {
+    expect(readme).toMatch(/## Big payloads spill/);
+    expect(section).toContain('256 KiB');
+    expect(flat).toContain('{ sha256, bytes, mime, head, tail }');
+  });
+
+  it('says why: replay time is a function of ledger size', () => {
+    expect(flat).toMatch(/replay time is\*{0,2} a function of ledger size/i);
+  });
+
+  it('gives the reason the temp file is a sibling rather than in a system temp dir', () => {
+    expect(flat).toMatch(/atomic only \*{0,2}within one filesystem/);
+    expect(section).toContain('.DeFlow-');
+  });
+
+  it('states that blobs are global and that nothing here deletes one', () => {
+    expect(section).toMatch(/global/i);
+    expect(section).toMatch(/mark-and-sweep|reference-counted/);
+  });
+
+  it('says the hash is verified on read, and names both typed failures', () => {
+    expect(section).toContain('BlobCorrupt');
+    expect(section).toContain('BlobMissing');
+    expect(section).toMatch(/head\/tail/);
+  });
+});

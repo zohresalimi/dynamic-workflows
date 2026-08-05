@@ -32,6 +32,7 @@ import {
   type RunId,
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
+import { MAX_INLINE_PAYLOAD_BYTES, PAYLOAD_MIME, spillBytes } from './blobs.ts';
 import { readEpoch, StaleEpoch } from './epoch.ts';
 
 /**
@@ -81,23 +82,12 @@ export class InvalidEventEnvelope extends Error {
 }
 
 /**
- * The ceiling on an inline `event.payload`, as one exported constant
- * (docs/04-domain-model.md §10, KAR-03.4 AC7).
+ * A payload too large to live inline, appended with nowhere to spill it.
  *
- * `event` is append-only and is read in full by every replay for the life of
- * the run, so a 4 MB tool transcript written into it is permanent *and*
- * recurring cost — precisely what the control-plane / data-plane split exists
- * to keep out. Above this line a payload belongs in the content-addressed blob
- * store, with the event keeping `{ sha256, bytes, mime, head, tail }`.
- */
-export const MAX_INLINE_PAYLOAD_BYTES = 256 * 1024;
-
-/**
- * A payload too large to live inline.
- *
- * Until KAR-03.9's blob store lands this is refused rather than spilled, and
- * that is the honest failure: refusing is recoverable, and a row written into
- * an append-only table is not.
+ * KAR-03.9's blob store is where it belongs, and `appendEvents` will put it
+ * there the moment it is told which data directory to use (`spillTo`). Without
+ * that it refuses, which is the honest failure: refusing is recoverable, and a
+ * row written into an append-only table is not.
  */
 export class PayloadTooLarge extends Error {
   readonly index: number;
@@ -106,16 +96,29 @@ export class PayloadTooLarge extends Error {
   constructor(index: number, kind: string, bytes: number) {
     super(
       `event ${index} of this batch ("${kind}") has a ${bytes}-byte payload, over the ` +
-        `${MAX_INLINE_PAYLOAD_BYTES}-byte inline ceiling, so none of the batch was appended. ` +
-        'Anything this size belongs in the content-addressed blob store (KAR-03.9), with the ' +
-        'event carrying { sha256, bytes, mime, head, tail } instead of the bytes: `event` is ' +
-        'append-only and is re-read by every replay, so an oversized payload is permanent and ' +
-        'recurring cost. Agent output belongs in io_chunk (appendIoChunk), never here.',
+        `${MAX_INLINE_PAYLOAD_BYTES}-byte inline ceiling, and appendEvents was given no ` +
+        '`spillTo` data directory, so none of the batch was appended. Anything this size ' +
+        'belongs in the content-addressed blob store (KAR-03.9), with the event carrying ' +
+        '{ sha256, bytes, mime, head, tail } instead of the bytes: `event` is append-only and ' +
+        'is re-read by every replay, so an oversized payload is permanent and recurring cost. ' +
+        'Agent output belongs in io_chunk (appendIoChunk), never here.',
     );
     this.name = 'PayloadTooLarge';
     this.index = index;
     this.bytes = bytes;
   }
+}
+
+/** How `appendEvents` should handle a payload over the inline ceiling. */
+export interface AppendOptions {
+  /**
+   * The data directory whose `blobs/` receives payloads over
+   * `MAX_INLINE_PAYLOAD_BYTES` (KAR-03.9). Omitted, an oversized payload is
+   * refused with `PayloadTooLarge` rather than written into the append-only
+   * table — a caller that has not wired the store yet gets a loud error, not a
+   * permanent 4 MB row.
+   */
+  readonly spillTo?: string;
 }
 
 const INSERT_EVENT = `INSERT INTO event (run_id, ts, kind, v, epoch, node_id, attempt, ikey, payload)
@@ -141,7 +144,7 @@ const bindings = ({ draft, payload }: Appendable): (string | number | null)[] =>
   payload,
 ];
 
-function validate(drafts: readonly EventDraft[]): Appendable[] {
+function validate(drafts: readonly EventDraft[], spillTo: string | undefined): Appendable[] {
   return drafts.map((draft, index) => {
     const parsed = EventDraftSchema.safeParse(draft);
     if (!parsed.success) {
@@ -157,11 +160,19 @@ function validate(drafts: readonly EventDraft[]): Appendable[] {
     const payload = canonicalJson(validated.payload);
     // The encoded bytes, not the object graph: the ceiling is about what lands
     // in the row and is re-read by every replay.
-    const bytes = Buffer.byteLength(payload, 'utf8');
-    if (bytes > MAX_INLINE_PAYLOAD_BYTES) {
-      throw new PayloadTooLarge(index, validated.kind, bytes);
+    const encoded = Buffer.from(payload, 'utf8');
+    if (encoded.byteLength <= MAX_INLINE_PAYLOAD_BYTES) return { draft: validated, payload };
+    if (spillTo === undefined) {
+      throw new PayloadTooLarge(index, validated.kind, encoded.byteLength);
     }
-    return { draft: validated, payload };
+    // KAR-03.9: the bytes go to the content-addressed blob store and the row
+    // keeps `{ sha256, bytes, mime, head, tail }`. Deliberately outside the
+    // transaction below — a blob orphaned by a rolled-back batch is harmless
+    // (its name is its content, so the next write of the same bytes adopts it),
+    // whereas doing filesystem I/O while holding SQLite's write lock would
+    // stall every other writer for the length of a 40 MB write.
+    const ref = spillBytes(spillTo, encoded, PAYLOAD_MIME, validated.ikey);
+    return { draft: { ...validated, payload: ref }, payload: canonicalJson(ref) };
   });
 }
 
@@ -196,8 +207,12 @@ function fence(db: Db, appendables: readonly Appendable[]): void {
  * these numbers describe rows that never existed — and SQLite will hand the
  * same ones out again (see the README's "Sequence numbers have gaps").
  */
-export function appendEvents(db: Db, drafts: readonly EventDraft[]): EventSeq[] {
-  const validated = validate(drafts);
+export function appendEvents(
+  db: Db,
+  drafts: readonly EventDraft[],
+  options: AppendOptions = {},
+): EventSeq[] {
+  const validated = validate(drafts, options.spillTo);
   if (validated.length === 0) return [];
 
   const insert = db.prepare<{ seq: number }>(INSERT_EVENT);

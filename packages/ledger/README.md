@@ -225,6 +225,45 @@ this cache can be wrong, and bumping it unnecessarily costs milliseconds of repl
 Set **`DeFlow_NO_CHECKPOINT=1`** to turn the whole thing off. The suite is run with it set, because
 a cache that anything has come to *depend on* is no longer a cache.
 
+## Big payloads spill to the content-addressed blob store
+
+Any event payload whose canonical encoding exceeds **256 KiB** (`MAX_INLINE_PAYLOAD_BYTES`, one
+exported constant) is written to `<dataDir>/blobs/<first two hex of sha256>/<sha256>` and the event
+keeps only `{ sha256, bytes, mime, head, tail }` plus `truncated: true`. `appendEvents` does this
+when it is given a `spillTo` data directory; without one it refuses the batch with `PayloadTooLarge`
+rather than writing a permanent oversized row into an append-only table.
+
+The reason is the one sentence the whole control-plane / data-plane split rests on: **replay time is
+a function of ledger size**, and un-spilled tool output is what makes it explode. `event` is read in
+full by every replay for the life of the run, so a 4 MB tool transcript in it is permanent *and*
+recurring cost. `head` and `tail` are ~2 KiB each, which is what lets the UI preview a 40 MB build
+log in a list of two hundred nodes without touching the disk once.
+
+**The temp file is a sibling of its target**, `<sha256>.DeFlow-<ikey>.tmp` in the same shard
+directory, and never in a system temp directory. This is not style: `rename(2)` is atomic only
+**within one filesystem**, so a temp file on a different mount silently turns the atomic publish into
+a copy, and the store then has torn files in it. `test/blob-paths.test.ts` asserts the sibling
+property and scans `src/blobs.ts` for any reference to a system temp directory, because it is a
+property of the *absence* of code. The write is the full recipe from
+[durable execution §9.4](../../docs/05-durable-execution.md): write, `fsync` the file, close, rename,
+then `fsync` the **directory** — the bytes being durable does not help if the directory entry
+pointing at them is not.
+
+**Blobs are global, not per-run, and nothing in this package deletes one.** That is the same fact
+twice: content addressing means the identical failing test log from attempts 1, 2 and 3 — or from
+two different runs of the same task — is one object with one handle, and therefore that no single
+run owns it. Writing the same bytes again is a no-op: the target already exists at the name its
+content determines, so there is no temp file, no rename and no I/O. Retention, when someone ships
+it, has to be reference-counted or mark-and-sweep; a per-run `rm -rf` never can be.
+
+**The hash is verified on every read.** A path is a claim about content, and returning bytes just
+because they were found at the right filename is how a corrupted build log reaches an agent as
+evidence. `getBlob` raises `BlobCorrupt` naming the handle when the bytes disagree with their own
+name, and `BlobMissing` when the file is gone. Neither is fatal to the UI: `inspectArtifact` turns
+them into an `ArtifactView` carrying the event's own head/tail excerpt plus an explicit
+`full artifact unavailable` or `artifact failed integrity` notice, so a lost artifact renders as a
+preview and a sentence rather than an empty box.
+
 ## Two daemons: the lease and the epoch
 
 The failure is common rather than exotic — **a user runs `npx DeFlow up` in two terminals**, and it
