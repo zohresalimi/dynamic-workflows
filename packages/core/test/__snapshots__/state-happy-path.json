@@ -1,6 +1,7 @@
 {
   "runId": "run_20260802T141133Z_9f2a1c",
   "status": "completed",
+  "repoRoot": "/Users/dev/projects/shop",
   "outcome": "succeeded",
   "criteriaSatisfied": [
     "unit-tests-pass",
@@ -19,6 +20,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -50,6 +52,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -79,6 +82,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -108,6 +112,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -137,6 +142,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -166,6 +172,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -195,6 +202,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -224,6 +232,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -253,6 +262,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -282,6 +292,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -311,6 +322,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -342,6 +354,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -371,6 +384,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -400,6 +414,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -429,6 +444,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -458,6 +474,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -487,6 +504,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -516,6 +534,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -545,6 +564,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -574,6 +594,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -603,6 +624,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -634,6 +656,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -663,6 +686,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -692,6 +716,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -721,6 +746,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -750,6 +776,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -779,6 +806,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -808,6 +836,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -837,6 +866,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -866,6 +896,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -895,6 +926,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -926,6 +958,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -955,6 +988,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -984,6 +1018,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1013,6 +1048,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1042,6 +1078,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1071,6 +1108,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1100,6 +1138,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1129,6 +1168,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1158,6 +1198,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {

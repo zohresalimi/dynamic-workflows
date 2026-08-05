@@ -12,7 +12,10 @@
  * Verifies: EPIC-06-S1, EPIC-06-S2, EPIC-06-S3, EPIC-06-S4 ·
  * AC1, AC3, AC4, AC5, AC6, AC7, AC8
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
+import type { Command } from './command.ts';
 import { decide } from './decide.ts';
 import type { EventKind } from './event-payloads.ts';
 import { EVENT_SCHEMAS } from './event-payloads.ts';
@@ -46,6 +49,12 @@ interface NodeSpec {
   readonly permission?: 'read' | 'worktree' | 'worktree+net' | 'full';
   readonly provider?: readonly string[];
   readonly model?: string;
+  /**
+   * `pathScopes.write` — F5.3's positive write scope, and the thing KAR-06.2
+   * reads to decide whether a node *declares a repository write*. Empty (the
+   * default) means it writes no files, so it never contends for the repo lock.
+   */
+  readonly writes?: readonly string[];
 }
 
 /** One `agent` node, spelled out because every field of `NodeBase` is required. */
@@ -59,7 +68,7 @@ function agentNode(spec: NodeSpec): Record<string, unknown> {
     reads: [],
     writes: [],
     permission: spec.permission ?? 'read',
-    pathScopes: { write: [] },
+    pathScopes: { write: [...(spec.writes ?? [])] },
     returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
     retry: {
       maxAttempts: spec.maxAttempts ?? 3,
@@ -124,9 +133,20 @@ function parse(row: Row, seq: number): Event {
   return result.event;
 }
 
-/** The two rows every scenario starts from: a proposed plan, then a started run. */
-function started(nodes: readonly NodeSpec[], rest: readonly Row[] = []): RunState {
+/**
+ * The two rows every scenario starts from: a proposed plan, then a started run.
+ *
+ * `head` goes in front of both, which is where `run.created` belongs — it is
+ * the row that tells the projection which repository the run is executing
+ * against, and therefore what the repo lock's key is.
+ */
+function started(
+  nodes: readonly NodeSpec[],
+  rest: readonly Row[] = [],
+  head: readonly Row[] = [],
+): RunState {
   return fold([
+    ...head,
     {
       kind: 'plan.proposed',
       payload: { version: 1, planHash: PLAN_HASH, graph: planGraph(nodes), by: 'planner' },
@@ -170,6 +190,56 @@ const startedNode = (node: string, attempt = 0): Row => ({
 const retryScheduled = (node: string, nextAttempt: number, wakeAt: number): Row => ({
   kind: 'node.retry.scheduled',
   payload: { node, nextAttempt, wakeAt },
+});
+
+/** The repository the fixtures' run executes in, and the key its lock is under. */
+const REPO = '/home/u/proj';
+const REPO_LOCK = `repo:${REPO}`;
+
+/**
+ * A `run.created` for `cwd`. The spec is the committed TaskSpec fixture
+ * because `RunCreatedSchema` embeds a whole one and a hand-written stub would
+ * only prove that the stub parses.
+ */
+const TASK_SPEC: unknown = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('../test/fixtures/specs/vue3-migration.json', import.meta.url)),
+    'utf8',
+  ),
+);
+
+const createdIn = (cwd: string = REPO): Row => ({
+  kind: 'run.created',
+  payload: { spec: TASK_SPEC, cwd, repo: { head: 'e83c516', branch: 'main' } },
+});
+
+/**
+ * `node.scheduled` — the event that records the scheduler's resolution of a
+ * node's execution parameters, including the worktree it was assigned.
+ */
+const scheduled = (node: string, worktree?: string): Row => ({
+  kind: 'node.scheduled',
+  payload: {
+    node,
+    provider: 'claude-code',
+    permission: 'worktree',
+    ...(worktree === undefined ? {} : { worktree }),
+  },
+});
+
+const lockAcquired = (node: string, lock: 'repo' | 'worktree', key: string): Row => ({
+  kind: 'node.lock.acquired',
+  payload: { node, lock, key },
+});
+
+const lockReleased = (node: string, lock: 'repo' | 'worktree', key: string): Row => ({
+  kind: 'node.lock.released',
+  payload: { node, lock, key },
+});
+
+const suspendedNode = (node: string): Row => ({
+  kind: 'node.suspended',
+  payload: { node, until: { kind: 'human' } },
 });
 
 const CHAIN: readonly NodeSpec[] = [
@@ -223,6 +293,7 @@ suite('EPIC-06-S1 — the ready set admits an unblocked node', () => {
       model: 'gpt-5',
       permission: 'worktree',
       pathScopes: { write: [] },
+      worktree: null,
       retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
     });
   });
@@ -423,6 +494,7 @@ suite('AC7 — a paused run returns no StartNode but still tidies work in flight
       node: 'recon',
       lock: 'repo',
       key: 'repo:/tmp/proj',
+      reason: 'reclaimed',
     });
     expect(commands[1]).toEqual({
       kind: 'ScheduleWake',
@@ -478,5 +550,263 @@ suite('EPIC-06-S4 — global agent slots cap admission at three', () => {
     const roomier: RunState = { ...running, policy: { ...running.policy, globalAgentSlots: 5 } };
 
     expect(startNodes(roomier)).toEqual(['d', 'e']);
+  });
+});
+
+// ── EPIC-06-S5 — two write nodes contend for the repository lock ─────────────
+
+/** Every command of one kind, in the order `decide` returned them. */
+const of = <K extends Command['kind']>(
+  state: RunState,
+  kind: K,
+  now = NOW,
+): Extract<Command, { kind: K }>[] =>
+  decide(state, now).filter(
+    (command): command is Extract<Command, { kind: K }> => command.kind === kind,
+  );
+
+suite('EPIC-06-S5 — two write nodes contend for the repository lock', () => {
+  /** Both write the repository, so both claim `repo:/home/u/proj`. */
+  const WRITERS: readonly NodeSpec[] = [
+    { id: 'impl-auth', permission: 'worktree', writes: ['src/auth/**'] },
+    { id: 'impl-router', permission: 'worktree', writes: ['src/router/**'] },
+  ];
+
+  const contending = (rest: readonly Row[] = []): RunState => started(WRITERS, rest, [createdIn()]);
+
+  it('AC2: admits exactly one of them, and asks for the lock once', () => {
+    const state = contending();
+
+    expect(of(state, 'AcquireLock')).toEqual([
+      { kind: 'AcquireLock', runId: RUN_ID, node: 'impl-auth', lock: 'repo', key: REPO_LOCK },
+    ]);
+    expect(startNodes(state)).toEqual(['impl-auth']);
+  });
+
+  it('AC2: withholds the loser entirely — no lock command, no start, still pending', () => {
+    const commands = decide(contending(), NOW);
+
+    expect(
+      commands.filter((command) => 'node' in command && command.node === 'impl-router'),
+    ).toEqual([]);
+  });
+
+  it('AC2: admits the withheld node once a release for that key is reduced', () => {
+    const afterRelease = contending([
+      lockAcquired('impl-auth', 'repo', REPO_LOCK),
+      startedNode('impl-auth'),
+      completed('impl-auth'),
+      lockReleased('impl-auth', 'repo', REPO_LOCK),
+    ]);
+
+    expect(startNodes(afterRelease)).toEqual(['impl-router']);
+    expect(of(afterRelease, 'AcquireLock')).toEqual([
+      { kind: 'AcquireLock', runId: RUN_ID, node: 'impl-router', lock: 'repo', key: REPO_LOCK },
+    ]);
+  });
+
+  it('does not re-acquire a lock the admitted node already holds', () => {
+    // The crash-between-lock-and-start window: the acquisition landed, the
+    // start did not. The node is still ready and still holds the lock.
+    const held = contending([lockAcquired('impl-auth', 'repo', REPO_LOCK)]);
+
+    expect(of(held, 'AcquireLock')).toEqual([]);
+    expect(startNodes(held)).toEqual(['impl-auth']);
+  });
+
+  for (const outcome of ['completed', 'failed'] as const) {
+    it(`AC5: gives the lock back when its holder reduces to ${outcome}`, () => {
+      // There is no `node.cancelled` in the §9 registry: a cancelled node
+      // reduces to `failed`, so these two are every terminal outcome there is.
+      const terminal =
+        outcome === 'completed' ? completed('impl-auth') : failed('impl-auth', 'permanent');
+      const state = contending([
+        lockAcquired('impl-auth', 'repo', REPO_LOCK),
+        startedNode('impl-auth'),
+        terminal,
+      ]);
+
+      expect(of(state, 'ReleaseLock')).toEqual([
+        {
+          kind: 'ReleaseLock',
+          runId: RUN_ID,
+          node: 'impl-auth',
+          lock: 'repo',
+          key: REPO_LOCK,
+          reason: 'reclaimed',
+        },
+      ]);
+    });
+  }
+
+  it('AC6: read-only nodes never ask for the repo lock, so slots are the only bound', () => {
+    const analysts: NodeSpec[] = Array.from({ length: 8 }, (_unused, index) => ({
+      id: `read-${index}`,
+      permission: 'read',
+      // A read node with a write scope is a contradiction the schema does not
+      // forbid; `permission` is what the lock consults, and it must win.
+      writes: ['src/**'],
+    }));
+    const state = started(analysts, [], [createdIn()]);
+
+    expect(of(state, 'AcquireLock')).toEqual([]);
+    expect(startNodes(state)).toHaveLength(3);
+  });
+
+  it('a write node that declares no write scope does not contend', () => {
+    const state = started(
+      [
+        { id: 'plan-a', permission: 'worktree' },
+        { id: 'plan-b', permission: 'worktree' },
+      ],
+      [],
+      [createdIn()],
+    );
+
+    expect(of(state, 'AcquireLock')).toEqual([]);
+    expect(startNodes(state)).toEqual(['plan-a', 'plan-b']);
+  });
+
+  it('takes no repo lock at all when the ledger never said which repository', () => {
+    // No `run.created`, so `repoRoot` is null. Inventing a key here would put a
+    // lock over a path nothing in the system agrees on.
+    const state = started(WRITERS);
+
+    expect(of(state, 'AcquireLock')).toEqual([]);
+    expect(startNodes(state)).toEqual(['impl-auth', 'impl-router']);
+  });
+});
+
+// ── EPIC-06-S6 — the lock lives in the ledger, so a restart cannot lose it ───
+
+suite('EPIC-06-S6 — a held lock is state, not bookkeeping', () => {
+  const WRITERS: readonly NodeSpec[] = [
+    { id: 'impl-auth', permission: 'worktree', writes: ['src/auth/**'] },
+    { id: 'impl-router', permission: 'worktree', writes: ['src/router/**'] },
+  ];
+
+  it('withholds the competitor for a hundred ticks while the lock is unreleased', () => {
+    const state = started(
+      WRITERS,
+      [lockAcquired('impl-auth', 'repo', REPO_LOCK), startedNode('impl-auth')],
+      [createdIn()],
+    );
+
+    for (let tick = 0; tick < 100; tick += 1) {
+      expect(startNodes(state, NOW + tick * 1_000)).toEqual([]);
+    }
+  });
+
+  it('AC5: reclaims a lock whose owner failed, and admits the competitor on that tick', () => {
+    const state = started(
+      WRITERS,
+      [
+        lockAcquired('impl-auth', 'repo', REPO_LOCK),
+        startedNode('impl-auth'),
+        failed('impl-auth', 'permanent', 0),
+      ],
+      [createdIn()],
+    );
+
+    expect(decide(state, NOW).map((command) => command.kind)).toEqual([
+      'ReleaseLock',
+      'AcquireLock',
+      'StartNode',
+    ]);
+    expect(of(state, 'ReleaseLock')[0]).toMatchObject({ node: 'impl-auth', reason: 'reclaimed' });
+    expect(startNodes(state)).toEqual(['impl-router']);
+  });
+
+  it('AC5: names the node that held it, not the node taking it', () => {
+    const state = started(
+      WRITERS,
+      [
+        lockAcquired('impl-auth', 'repo', REPO_LOCK),
+        startedNode('impl-auth'),
+        completed('impl-auth'),
+      ],
+      [createdIn()],
+    );
+
+    expect(of(state, 'ReleaseLock')[0]?.node).toBe('impl-auth');
+  });
+});
+
+// ── EPIC-06-S7 — one agent per worktree, always ─────────────────────────────
+
+suite('EPIC-06-S7 — one agent per worktree, always', () => {
+  const SHARED = `.DeFlow/wt/${RUN_ID}__implement`;
+  const FIXES: readonly NodeSpec[] = [
+    { id: 'fix-1', permission: 'worktree' },
+    { id: 'fix-2', permission: 'worktree' },
+  ];
+
+  it('AC7: two nodes in one worktree take one lock, and only one starts', () => {
+    const state = started(
+      FIXES,
+      [scheduled('fix-1', SHARED), scheduled('fix-2', SHARED)],
+      [createdIn()],
+    );
+
+    expect(of(state, 'AcquireLock')).toEqual([
+      { kind: 'AcquireLock', runId: RUN_ID, node: 'fix-1', lock: 'worktree', key: SHARED },
+    ]);
+    expect(startNodes(state)).toEqual(['fix-1']);
+  });
+
+  it('AC7: distinct worktrees do not contend', () => {
+    const state = started(
+      FIXES,
+      [scheduled('fix-1', `${SHARED}-a`), scheduled('fix-2', `${SHARED}-b`)],
+      [createdIn()],
+    );
+
+    expect(of(state, 'AcquireLock').map((command) => command.node)).toEqual(['fix-1', 'fix-2']);
+    expect(startNodes(state)).toEqual(['fix-1', 'fix-2']);
+  });
+
+  it('carries the assigned worktree on the StartNode, so the runner needs no lookup', () => {
+    const state = started(FIXES, [scheduled('fix-1', SHARED)], [createdIn()]);
+
+    expect(of(state, 'StartNode')[0]).toMatchObject({ node: 'fix-1', worktree: SHARED });
+  });
+
+  it('a suspended node holds neither a slot nor its worktree lock', () => {
+    const state = started(
+      FIXES,
+      [
+        scheduled('fix-1', SHARED),
+        scheduled('fix-2', SHARED),
+        lockAcquired('fix-1', 'worktree', SHARED),
+        startedNode('fix-1'),
+        suspendedNode('fix-1'),
+      ],
+      [createdIn()],
+    );
+
+    expect(of(state, 'ReleaseLock')).toEqual([
+      {
+        kind: 'ReleaseLock',
+        runId: RUN_ID,
+        node: 'fix-1',
+        lock: 'worktree',
+        key: SHARED,
+        reason: 'reclaimed',
+      },
+    ]);
+    expect(startNodes(state)).toEqual(['fix-2']);
+  });
+
+  it('the repo lock and the worktree lock over one path are two different locks', () => {
+    const state = started(
+      [{ id: 'fix-1', permission: 'worktree', writes: ['src/**'] }],
+      [scheduled('fix-1', REPO)],
+      [createdIn()],
+    );
+
+    expect(of(state, 'AcquireLock')).toEqual([
+      { kind: 'AcquireLock', runId: RUN_ID, node: 'fix-1', lock: 'repo', key: REPO_LOCK },
+      { kind: 'AcquireLock', runId: RUN_ID, node: 'fix-1', lock: 'worktree', key: REPO },
+    ]);
   });
 });

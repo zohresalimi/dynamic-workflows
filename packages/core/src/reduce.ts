@@ -118,10 +118,18 @@ function project(state: RunState, event: Event): Transition {
   const seq = typeof rawSeq === 'number' ? rawSeq : 0;
 
   switch (event.kind) {
-    case 'run.created':
-      return state.runId === event.runId && state.status === 'created'
+    // `cwd` is the repository the run executes against, and it is folded here
+    // rather than read from the daemon's process because F5.2's write lock is
+    // keyed on it: a scheduler that asked `process.cwd()` would key the lock
+    // differently during a replay than it did live.
+    case 'run.created': {
+      const repoRoot = event.payload.cwd;
+      return state.runId === event.runId &&
+        state.status === 'created' &&
+        state.repoRoot === repoRoot
         ? null
-        : { ...state, runId: event.runId, status: 'created' };
+        : { ...state, runId: event.runId, status: 'created', repoRoot };
+    }
 
     case 'run.spec.approved':
       return withStatus(state, 'spec-approved');
@@ -195,6 +203,11 @@ function project(state: RunState, event: Event): Transition {
         provider: event.payload.provider,
         model: event.payload.model ?? null,
         permission: event.payload.permission,
+        // Absent means the main checkout, and it must not un-assign a worktree
+        // a previous `node.scheduled` already named — a re-schedule that
+        // resolved only the provider would otherwise silently drop the lock
+        // key the node is serialised on.
+        worktree: event.payload.worktree ?? current.worktree,
       }));
 
     // F5.2: the repo write lock lives in the ledger, so it survives a restart

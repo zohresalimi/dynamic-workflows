@@ -79,6 +79,7 @@ export type {
   EffectKind,
   EventKind,
   EventPayloadOf,
+  LockReleaseReason,
   RunOutcome,
 } from './event-payloads.ts';
 export {
@@ -110,8 +111,10 @@ export {
   HumanRespondedSchema,
   isEventKind,
   LOCK_KINDS,
+  LOCK_RELEASE_REASONS,
   NodeCompletedSchema,
   NodeFailedSchema,
+  NodeLockReleasedSchema,
   NodeLockSchema,
   NodeProgressSchema,
   NodeRetryScheduledSchema,
@@ -211,6 +214,10 @@ export {
   toJsonSchemaDocuments,
   UnknownSchemaId,
 } from './json-schema.ts';
+// KAR-06.2 — F5.2's per-resource-class locks: what a node claims, and who
+// holds it. State-derived; the ledger is the only record.
+export type { LockClaim } from './locks.ts';
+export { claimId, lockClaims, lockHolder, repoLockKey } from './locks.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
 // KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy.
