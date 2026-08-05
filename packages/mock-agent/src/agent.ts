@@ -25,6 +25,8 @@ import * as acp from '@agentclientprotocol/sdk';
 import type { MockAgentOptions } from './cli.ts';
 import { createSyntheticClock } from './clock.ts';
 import { createIdFactory } from './ids.ts';
+import type { Scenario } from './scenario.ts';
+import { realSleep, runScenario } from './scripted.ts';
 
 export const AGENT_NAME = 'DeFlow-mock-agent';
 export const AGENT_VERSION = '0.0.0';
@@ -64,10 +66,22 @@ export function turnChunks(prompt: readonly acp.ContentBlock[]): string[] {
   return [`Hello from ${AGENT_NAME}.`, ` You said: ${promptText(prompt)}`];
 }
 
-export function createMockAgent(options: MockAgentOptions): acp.AgentApp {
+export function createMockAgent(
+  options: MockAgentOptions,
+  scenario: Scenario | null = null,
+): acp.AgentApp {
   const ids = createIdFactory(options.seed);
   const clock = createSyntheticClock(options.seed);
   const sessions = new Set<string>();
+  /**
+   * What the client said it could do, remembered from the handshake.
+   *
+   * A scripted `clientCall` step is skipped when the capability behind it was
+   * never advertised — ACP v2 removes all seven client methods and pushes them
+   * onto MCP, and an agent that called them anyway would hide that migration
+   * behind a stub that answers regardless.
+   */
+  let capabilities: acp.ClientCapabilities = {};
 
   return acp
     .agent()
@@ -80,6 +94,7 @@ export function createMockAgent(options: MockAgentOptions): acp.AgentApp {
           { supported: [acp.PROTOCOL_VERSION], requested: params.protocolVersion },
         );
       }
+      capabilities = params.clientCapabilities ?? {};
       return {
         protocolVersion: acp.PROTOCOL_VERSION,
         agentCapabilities: DEFAULT_AGENT_CAPABILITIES,
@@ -96,6 +111,22 @@ export function createMockAgent(options: MockAgentOptions): acp.AgentApp {
       if (!sessions.has(params.sessionId)) {
         throw new acp.RequestError(INVALID_PARAMS, `unknown session "${params.sessionId}"`);
       }
+
+      if (scenario !== null) {
+        const turn = await runScenario(scenario, {
+          sessionId: params.sessionId,
+          client,
+          ids,
+          clock,
+          capabilities,
+          sleep: realSleep,
+        });
+        // The trace rides back on `_meta` so a spec can assert what the agent
+        // *saw* — that it received the client's rejection — rather than only
+        // that a request went out.
+        return { stopReason: turn.stopReason, _meta: { trace: turn.trace } };
+      }
+
       for (const text of turnChunks(params.prompt)) {
         await client.notify('session/update', {
           sessionId: params.sessionId,

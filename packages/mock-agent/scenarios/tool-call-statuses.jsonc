@@ -1,0 +1,71 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "tool-call-statuses",
+  "description": "EPIC-04-S5: one tool call per ToolKind, between them walking every ToolCallStatus the ACP schema defines. Every frame carries a ToolCallLocation, which is what lets a permission ladder enforce path scope at request time rather than detect a violation afterwards.",
+  "steps": [
+    {
+      "type": "toolCall",
+      "title": "Read src/index.ts",
+      "toolKind": "read",
+      "path": "/workspace/src/index.ts",
+      "statuses": ["pending", "in_progress", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Edit src/index.ts",
+      "toolKind": "edit",
+      "path": "/workspace/src/index.ts",
+      "statuses": ["pending", "in_progress", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Run the test suite",
+      "toolKind": "execute",
+      "path": "/workspace",
+      "statuses": ["pending", "in_progress", "failed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Search for TODO",
+      "toolKind": "search",
+      "path": "/workspace",
+      "statuses": ["pending", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Delete build output",
+      "toolKind": "delete",
+      "path": "/workspace/dist",
+      "statuses": ["pending", "in_progress", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Move the fixture",
+      "toolKind": "move",
+      "path": "/workspace/fixtures/a.json",
+      "statuses": ["pending", "in_progress", "failed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Consider the approach",
+      "toolKind": "think",
+      "path": "/workspace",
+      "statuses": ["pending", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Fetch the changelog",
+      "toolKind": "fetch",
+      "path": "https://example.test/CHANGELOG.md",
+      "statuses": ["pending", "in_progress", "completed"]
+    },
+    {
+      "type": "toolCall",
+      "title": "Something unclassified",
+      "toolKind": "other",
+      "path": "/workspace",
+      "statuses": ["pending", "failed"]
+    }
+  ],
+  "stopReason": "end_turn"
+}

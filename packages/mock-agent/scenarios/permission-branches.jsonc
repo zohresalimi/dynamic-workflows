@@ -1,0 +1,32 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "permission-branches",
+  "description": "EPIC-04-S6: one session/request_permission offering all four PermissionOptionKinds, with a branch per outcome. The onCancelled branch is the one implementations forget — RequestPermissionOutcome has a { outcome: 'cancelled' } variant with no optionId, and an agent that destructures optionId unconditionally wedges the node.",
+  "steps": [
+    {
+      "type": "permission",
+      "title": "Write to src/index.ts",
+      "toolKind": "edit",
+      "path": "/workspace/src/index.ts",
+      "options": [
+        { "optionId": "allow_once", "name": "Allow once", "kind": "allow_once" },
+        { "optionId": "allow_always", "name": "Always allow", "kind": "allow_always" },
+        { "optionId": "reject_once", "name": "Reject", "kind": "reject_once" },
+        { "optionId": "reject_always", "name": "Always reject", "kind": "reject_always" }
+      ],
+      "onAllowed": {
+        "steps": [{ "type": "message", "text": "branch:onAllowed" }],
+        "stopReason": "end_turn"
+      },
+      "onRejected": {
+        "steps": [{ "type": "message", "text": "branch:onRejected" }],
+        "stopReason": "refusal"
+      },
+      "onCancelled": {
+        "steps": [{ "type": "message", "text": "branch:onCancelled" }],
+        "stopReason": "cancelled"
+      }
+    }
+  ],
+  "stopReason": "end_turn"
+}
