@@ -1,0 +1,7 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "no-newline",
+  "description": "EPIC-04-S12: 64 KiB every 10 ms, forever, with no 0x0a ever. The SDK's LineBuffer has no maximum line length, so left alone it accumulates without emitting a single frame. Only a process-group kill ends this.",
+  "steps": [{ "type": "noNewline", "chunkBytes": 65536, "intervalMs": 10 }],
+  "stopReason": "end_turn"
+}

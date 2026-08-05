@@ -16,6 +16,14 @@
  * every shipped scenario against both readers so the two cannot drift.
  */
 import type * as acp from '@agentclientprotocol/sdk';
+import {
+  HUGE_LINE_TOTAL_BYTES,
+  INVALID_FRAME_VARIANTS,
+  type InvalidFrameVariant,
+  MALFORMED_LINE,
+  NO_NEWLINE_INTERVAL_MS,
+  RAW_CHUNK_BYTES,
+} from './pathological.ts';
 
 /** Every `ToolCallStatus` the ACP schema defines, in lifecycle order. */
 export const TOOL_CALL_STATUSES = [
@@ -147,13 +155,91 @@ export interface ClientCallStep {
   readonly onError: Branch | null;
 }
 
+// ---------------------------------------------------------------------------
+// The pathological steps (KAR-04.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stop emitting, and stay. Never another byte, never an exit, and stdout stays
+ * open — the client has to observe a wedge rather than an EOF, or every
+ * timeout path downstream is dead code.
+ *
+ * `onCancel` is what the turn does when `session/cancel` arrives: adapter layer
+ * §2.5 stage 1 says the agent may flush its tail and then *answer* the prompt,
+ * and a client that tore its reader down on cancel would lose that tail.
+ */
+export interface HangForeverStep {
+  readonly type: 'hangForever';
+  readonly onCancel: Branch;
+}
+
+/** The same wedge, deaf to `session/cancel`: the SIGTERM escalation's target. */
+export interface HangForeverIgnoringCancelStep {
+  readonly type: 'hangForeverIgnoringCancel';
+}
+
+/**
+ * `process.exit(code)` after `afterFrames` more notifications, counted from
+ * where this step runs — so the step is placed *before* the frames it
+ * interrupts. `truncateMidFrame` leaves a half-written line behind, which is
+ * what separates `agent.nonzero-exit` from `adapter.malformed-output`.
+ */
+export interface ExitStep {
+  readonly type: 'exit';
+  readonly code: number;
+  readonly afterFrames: number;
+  readonly truncateMidFrame: boolean;
+}
+
+/** A complete line that is not JSON at all. */
+export interface MalformedLineStep {
+  readonly type: 'malformedLine';
+  readonly text: string;
+}
+
+/** Valid JSON that fails validation against the published ACP schema. */
+export interface InvalidFrameStep {
+  readonly type: 'invalidFrame';
+  readonly variant: InvalidFrameVariant;
+}
+
+/** One line of `totalBytes`, written `chunkBytes` at a time, then a newline. */
+export interface HugeLineStep {
+  readonly type: 'hugeLine';
+  readonly totalBytes: number;
+  readonly chunkBytes: number;
+}
+
+/** The same flood with no newline, ever. `totalBytes: null` means never stop. */
+export interface NoNewlineStep {
+  readonly type: 'noNewline';
+  readonly chunkBytes: number;
+  readonly intervalMs: number;
+  readonly totalBytes: number | null;
+}
+
+/** Processes that outlive the agent, so the orphan reaper has something to find. */
+export interface SpawnGrandchildrenStep {
+  readonly type: 'spawnGrandchildren';
+  readonly count: number;
+  readonly lifetimeMs: number;
+}
+
 export type Step =
   | PlanStep
   | ChunksStep
   | MessageStep
   | ToolCallStep
   | PermissionStep
-  | ClientCallStep;
+  | ClientCallStep
+  | HangForeverStep
+  | HangForeverIgnoringCancelStep
+  | ExitStep
+  | MalformedLineStep
+  | InvalidFrameStep
+  | HugeLineStep
+  | NoNewlineStep
+  | SpawnGrandchildrenStep;
 
 export interface Scenario {
   readonly name: string;
@@ -326,6 +412,34 @@ function oneOf<T extends string>(
   return value as T;
 }
 
+function optionalBoolean(
+  object: Record<string, unknown>,
+  key: string,
+  at: string,
+  fallback: boolean,
+): boolean {
+  const value = object[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== 'boolean') {
+    fail(at, `"${key}" must be a boolean, got ${JSON.stringify(value)}`);
+  }
+  return value as boolean;
+}
+
+/** A count that has to be there and has to be usable — never zero. */
+function positiveCount(
+  object: Record<string, unknown>,
+  key: string,
+  at: string,
+  fallback: number,
+): number {
+  const value = optionalCount(object, key, at, fallback);
+  if (value === null || value === 0) {
+    fail(at, `"${key}" must be a positive integer, got ${JSON.stringify(object[key])}`);
+  }
+  return value as number;
+}
+
 function asArray(value: unknown, at: string, key: string): unknown[] {
   if (!Array.isArray(value)) fail(at, `"${key}" must be an array`);
   return value as unknown[];
@@ -351,6 +465,14 @@ const STEP_KEYS: Record<string, readonly string[]> = {
     'onCancelled',
   ],
   clientCall: ['type', 'method', 'params', 'onError'],
+  hangForever: ['type', 'onCancel'],
+  hangForeverIgnoringCancel: ['type'],
+  exit: ['type', 'code', 'afterFrames', 'truncateMidFrame'],
+  malformedLine: ['type', 'text'],
+  invalidFrame: ['type', 'variant'],
+  hugeLine: ['type', 'totalBytes', 'chunkBytes'],
+  noNewline: ['type', 'chunkBytes', 'intervalMs', 'totalBytes'],
+  spawnGrandchildren: ['type', 'count', 'lifetimeMs'],
 };
 
 const NO_BRANCH: Branch = { steps: [], stopReason: null };
@@ -462,6 +584,73 @@ function parseStep(value: unknown, at: string): Step {
         object.onCancelled === undefined
           ? NO_BRANCH
           : parseBranch(object.onCancelled, `${at}.onCancelled`),
+    };
+  }
+
+  if (type === 'hangForever') {
+    return {
+      type: 'hangForever',
+      // The default answers cancel rather than ignoring it: stage 1 of the
+      // three-stage cancellation is the only stage that produces a clean
+      // transcript, so it is what you get without asking. Ignoring cancel is a
+      // separate step type, chosen on purpose.
+      onCancel:
+        object.onCancel === undefined
+          ? { steps: [], stopReason: 'cancelled' }
+          : parseBranch(object.onCancel, `${at}.onCancel`),
+    };
+  }
+
+  if (type === 'hangForeverIgnoringCancel') return { type: 'hangForeverIgnoringCancel' };
+
+  if (type === 'exit') {
+    return {
+      type: 'exit',
+      code: optionalCount(object, 'code', at, 1) as number,
+      afterFrames: optionalCount(object, 'afterFrames', at, 0) as number,
+      truncateMidFrame: optionalBoolean(object, 'truncateMidFrame', at, false),
+    };
+  }
+
+  if (type === 'malformedLine') {
+    return { type: 'malformedLine', text: optionalString(object, 'text', at, MALFORMED_LINE) };
+  }
+
+  if (type === 'invalidFrame') {
+    return {
+      type: 'invalidFrame',
+      variant:
+        object.variant === undefined
+          ? 'unknownSessionUpdate'
+          : oneOf(object.variant, INVALID_FRAME_VARIANTS, at, 'invalid frame variant'),
+    };
+  }
+
+  if (type === 'hugeLine') {
+    return {
+      type: 'hugeLine',
+      totalBytes: positiveCount(object, 'totalBytes', at, HUGE_LINE_TOTAL_BYTES),
+      chunkBytes: positiveCount(object, 'chunkBytes', at, RAW_CHUNK_BYTES),
+    };
+  }
+
+  if (type === 'noNewline') {
+    return {
+      type: 'noNewline',
+      chunkBytes: positiveCount(object, 'chunkBytes', at, RAW_CHUNK_BYTES),
+      intervalMs: optionalCount(object, 'intervalMs', at, NO_NEWLINE_INTERVAL_MS) as number,
+      // null is "never stop", which is the hazard itself rather than an
+      // omission: an agent that eventually terminated its line would be
+      // survivable by a buffer with a cap.
+      totalBytes: optionalCount(object, 'totalBytes', at, null),
+    };
+  }
+
+  if (type === 'spawnGrandchildren') {
+    return {
+      type: 'spawnGrandchildren',
+      count: positiveCount(object, 'count', at, 2),
+      lifetimeMs: positiveCount(object, 'lifetimeMs', at, 30_000),
     };
   }
 

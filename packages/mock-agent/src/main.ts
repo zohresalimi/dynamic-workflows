@@ -20,6 +20,7 @@ import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import { createMockAgent } from './agent.ts';
 import { BIN_NAME, type MockAgentOptions, parseArgv, SCENARIO_ENV, USAGE } from './cli.ts';
+import { createProcessPorts } from './ports.ts';
 import { parseScenario, type Scenario } from './scenario.ts';
 import { recordInvocation } from './side-effect-log.ts';
 
@@ -48,7 +49,13 @@ export async function serve(
     Writable.toWeb(io.stdout as Writable) as WritableStream<Uint8Array>,
     Readable.toWeb(io.stdin as Readable) as ReadableStream<Uint8Array>,
   );
-  const connection = createMockAgent(options, scenario).connect(stream);
+  // The raw-write port wraps the *same* writable the transport wraps, so a
+  // malformed line or a 10 MB flood interleaves with ACP frames in the order
+  // the script wrote them rather than in whatever order two fd handles
+  // happened to flush in.
+  const connection = createMockAgent(options, scenario, createProcessPorts(io.stdout)).connect(
+    stream,
+  );
 
   try {
     await connection.closed;

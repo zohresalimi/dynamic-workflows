@@ -72,7 +72,15 @@
         { "$ref": "#/$defs/messageStep" },
         { "$ref": "#/$defs/toolCallStep" },
         { "$ref": "#/$defs/permissionStep" },
-        { "$ref": "#/$defs/clientCallStep" }
+        { "$ref": "#/$defs/clientCallStep" },
+        { "$ref": "#/$defs/hangForeverStep" },
+        { "$ref": "#/$defs/hangForeverIgnoringCancelStep" },
+        { "$ref": "#/$defs/exitStep" },
+        { "$ref": "#/$defs/malformedLineStep" },
+        { "$ref": "#/$defs/invalidFrameStep" },
+        { "$ref": "#/$defs/hugeLineStep" },
+        { "$ref": "#/$defs/noNewlineStep" },
+        { "$ref": "#/$defs/spawnGrandchildrenStep" }
       ]
     },
     "planStep": {
@@ -191,6 +199,116 @@
           "description": "Merged over sessionId, and over terminalId when a terminal has been created."
         },
         "onError": { "$ref": "#/$defs/branch" }
+      }
+    },
+    "hangForeverStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Stop emitting and stay: no further byte, no exit, and stdout left open, so the client observes a wedge rather than an EOF.",
+      "properties": {
+        "type": { "const": "hangForever" },
+        "onCancel": {
+          "$ref": "#/$defs/branch",
+          "description": "What session/cancel triggers. Defaults to { steps: [], stopReason: 'cancelled' } — adapter layer §2.5 stage 1 answers the prompt rather than tearing the session down."
+        }
+      }
+    },
+    "hangForeverIgnoringCancelStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "The same wedge, deaf to session/cancel. This is the state the SIGTERM escalation in KAR-05.9 has to resolve.",
+      "properties": { "type": { "const": "hangForeverIgnoringCancel" } }
+    },
+    "exitStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "process.exit mid-turn. Place it BEFORE the steps it interrupts: afterFrames counts notifications from where this step runs.",
+      "properties": {
+        "type": { "const": "exit" },
+        "code": { "type": "integer", "minimum": 0, "description": "Exit code. Default 1." },
+        "afterFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Notifications to allow through first. 0 exits immediately. Default 0."
+        },
+        "truncateMidFrame": {
+          "type": "boolean",
+          "description": "Leave a half-written frame with no trailing newline. This is what separates agent.nonzero-exit from adapter.malformed-output. Default false."
+        }
+      }
+    },
+    "malformedLineStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "A complete line that is not JSON at all. The input for a NodeFailure with reason adapter.malformed-output.",
+      "properties": {
+        "type": { "const": "malformedLine" },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The line, without its newline. Defaults to an unbalanced brace cut at a key."
+        }
+      }
+    },
+    "invalidFrameStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Syntactically valid JSON that fails validation against @agentclientprotocol/sdk/schema/schema.json. The input for adapter.protocol-error, which is a different reason from adapter.malformed-output.",
+      "properties": {
+        "type": { "const": "invalidFrame" },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "unknownSessionUpdate",
+            "toolCallMissingId",
+            "unknownPermissionOptionKind",
+            "unknownStopReason",
+            "locationPathNotAString"
+          ]
+        }
+      }
+    },
+    "hugeLineStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "One line of totalBytes with no embedded newline, written chunkBytes at a time so a byte counter sees it grow. The payload is a generated repeating pattern, never random and never checked in.",
+      "properties": {
+        "type": { "const": "hugeLine" },
+        "totalBytes": { "type": "integer", "minimum": 1, "description": "Default 10485760." },
+        "chunkBytes": { "type": "integer", "minimum": 1, "description": "Default 65536." }
+      }
+    },
+    "noNewlineStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "The same flood with no 0x0a, ever. The SDK's LineBuffer has no maximum line length, so left alone it accumulates without emitting a frame.",
+      "properties": {
+        "type": { "const": "noNewline" },
+        "chunkBytes": { "type": "integer", "minimum": 1, "description": "Default 65536." },
+        "intervalMs": { "type": "integer", "minimum": 0, "description": "Default 10." },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Omit to flood without end, which is the hazard itself."
+        }
+      }
+    },
+    "spawnGrandchildrenStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Processes that outlive the agent, announced on the wire as 'grandchildren: <pid>,<pid>'. They stay in the agent's process group, so the orphan reaper has something to find.",
+      "properties": {
+        "type": { "const": "spawnGrandchildren" },
+        "count": { "type": "integer", "minimum": 1, "description": "Default 2." },
+        "lifetimeMs": { "type": "integer", "minimum": 1, "description": "Default 30000." }
       }
     }
   }

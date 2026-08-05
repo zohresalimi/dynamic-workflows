@@ -24,6 +24,7 @@
  */
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { join } from 'node:path';
+import process from 'node:process';
 import { PassThrough, Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import * as acp from '@agentclientprotocol/sdk';
@@ -123,6 +124,26 @@ export function spawnMockAgent(
       return exit;
     },
   };
+}
+
+/**
+ * Kills the child's whole process group.
+ *
+ * The only way to end a wedged agent, and the only way to reach the
+ * grandchildren a crashed one leaves behind — which is why DeFlowd records the
+ * pgid rather than the pid (docs/07-provider-adapter-layer.md §9.3). The
+ * negative pid is the group; `detached: true` at spawn is what makes the child
+ * its leader.
+ */
+export function killProcessGroup(agent: SpawnedAgent, signal: NodeJS.Signals = 'SIGKILL'): void {
+  const pid = agent.child.pid;
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // Already reaped. Nothing to do, and nothing to report: a spec that
+    // finished normally has usually already ended the child.
+  }
 }
 
 /** One outbound request the agent made back into the client. */

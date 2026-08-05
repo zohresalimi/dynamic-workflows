@@ -6,6 +6,8 @@
  * reason — `--capabilities gemini` quietly ignored is a suite that proves the
  * Gemini profile works when it was never selected.
  */
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
@@ -15,6 +17,27 @@ export const DEFAULT_SEED = 0;
 
 /** `--scenario`'s environment equivalent, for a spawn that owns no argv. */
 export const SCENARIO_ENV = 'DeFlow_MOCK_SCENARIO';
+
+/** The scenario library that ships inside the package (see `files` in package.json). */
+export const BUILTIN_SCENARIO_DIR = fileURLToPath(new URL('../scenarios/', import.meta.url));
+
+/**
+ * One dedicated flag per pathological behaviour (KAR-04.3 AC8).
+ *
+ * Each resolves to the *same shipped scenario file* the suite runs, never to a
+ * second in-memory definition: two definitions of one behaviour drift, and the
+ * drift is invisible until the day someone's reproduction stops reproducing.
+ * `DeFlow-mock-agent --huge-line` is meant to be the whole bug report.
+ */
+export const PATHOLOGICAL_FLAGS: Readonly<Record<string, string>> = {
+  '--hang-forever': 'hang-forever.jsonc',
+  '--hang-forever-ignoring-cancel': 'hang-forever-ignoring-cancel.jsonc',
+  '--exit-mid-turn': 'exit-mid-turn.jsonc',
+  '--malformed-line': 'malformed-line.jsonc',
+  '--invalid-frame': 'invalid-frame.jsonc',
+  '--huge-line': 'huge-line.jsonc',
+  '--no-newline': 'no-newline.jsonc',
+};
 
 export const USAGE = `${BIN_NAME} — a deterministic ACP agent that runs as a real subprocess.
 
@@ -32,6 +55,23 @@ Options:
   --attempt <n>       "was this effect executed twice?" is a duplicate-key
   --ikey <key>        check on a text file. Also read from the environment.
   -h, --help          Print this text and exit 0.
+
+Pathological behaviours — one flag each, so a reported bug is one command.
+Each runs the shipped scenario of the same name; none may be combined with
+--scenario or with each other.
+
+  --hang-forever                    Stop mid-turn and never write again. Answers
+                                    session/cancel by flushing a tail and ending
+                                    the turn with stopReason "cancelled".
+  --hang-forever-ignoring-cancel    The same wedge, deaf to session/cancel.
+  --exit-mid-turn                   process.exit(1) mid-frame, leaving a
+                                    truncated line on stdout.
+  --malformed-line                  Write a line that is not JSON at all, then
+                                    carry on with valid frames.
+  --invalid-frame                   Write valid JSON that fails validation
+                                    against the published ACP schema.
+  --huge-line                       Write a single 10 MB line, in 64 KiB chunks.
+  --no-newline                      Flood 64 KiB at a time and never emit \\n.
 
 Speaks ACP protocol version 1 over newline-delimited JSON on stdin and stdout,
 and exits 0 when stdin reaches EOF. It needs no credential, no network and no
@@ -52,10 +92,24 @@ export type ParsedArgv =
 export function parseArgv(argv: readonly string[]): ParsedArgv {
   let seed = DEFAULT_SEED;
   let scenarioPath: string | null = null;
+  let behaviour: string | null = null;
+
+  /** Two scripts and one turn is a silent choice, so it is refused instead. */
+  const conflict = (flag: string, other: string): ParsedArgv => ({
+    kind: 'error',
+    message: `${flag} cannot be combined with ${other}`,
+  });
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--help' || argument === '-h') return { kind: 'help' };
+
+    if (argument !== undefined && PATHOLOGICAL_FLAGS[argument] !== undefined) {
+      if (behaviour !== null) return conflict(argument, behaviour);
+      if (scenarioPath !== null) return conflict(argument, '--scenario');
+      behaviour = argument;
+      continue;
+    }
 
     if (argument === '--seed') {
       const raw = argv[index + 1];
@@ -78,6 +132,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       if (raw === undefined || raw.startsWith('--')) {
         return { kind: 'error', message: '--scenario needs a path to a scenario file' };
       }
+      if (behaviour !== null) return conflict(behaviour, '--scenario');
       scenarioPath = raw;
       index += 1;
       continue;
@@ -97,5 +152,14 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     return { kind: 'error', message: `unknown argument "${argument ?? ''}"` };
   }
 
-  return { kind: 'run', options: { seed, scenarioPath } };
+  return {
+    kind: 'run',
+    options: {
+      seed,
+      scenarioPath:
+        behaviour === null
+          ? scenarioPath
+          : join(BUILTIN_SCENARIO_DIR, PATHOLOGICAL_FLAGS[behaviour] as string),
+    },
+  };
 }

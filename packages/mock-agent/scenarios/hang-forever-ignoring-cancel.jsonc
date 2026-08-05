@@ -1,0 +1,10 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "hang-forever-ignoring-cancel",
+  "description": "EPIC-04-S8: a wedge that ignores session/cancel entirely, so the SIGTERM escalation in KAR-05.9 has a target. Nothing at the protocol layer can end this turn.",
+  "steps": [
+    { "type": "chunks", "count": 1, "delayMs": 0, "text": "before the wedge" },
+    { "type": "hangForeverIgnoringCancel" }
+  ],
+  "stopReason": "end_turn"
+}
