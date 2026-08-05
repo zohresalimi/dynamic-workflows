@@ -14,6 +14,28 @@ import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
 
+/**
+ * What `--version` prints when nothing overrides it.
+ *
+ * The package's own version, stated here rather than read from
+ * `package.json`: the bin runs straight off the source tree with no build
+ * step, so a `readFileSync` of a sibling manifest would be one more thing that
+ * breaks differently inside an installed tarball than it does in the
+ * workspace.
+ */
+export const MOCK_AGENT_VERSION = '0.0.0';
+
+/**
+ * Overrides what `--version` reports, so a *version bump* is something a spec
+ * can stage against the real binary (KAR-05.2, EPIC-05-S8).
+ *
+ * The capability manifest's primary key is `(provider, version,
+ * binary_sha256)`, and "a version bump writes a second row and leaves the
+ * first intact" is only observable if the binary under test can be made to
+ * report a different version without being rewritten.
+ */
+export const VERSION_ENV = 'DeFlow_MOCK_VERSION';
+
 /** Used when `--seed` is absent, so an unseeded run is still reproducible. */
 export const DEFAULT_SEED = 0;
 
@@ -92,6 +114,13 @@ Options:
                       pathological flag, or any --capabilities flag: in this
                       mode every frame, every id and every timestamp comes out
                       of the file.
+  --load-history <n>  How many historical session/update notifications a
+                      session/load replays back at the client. Default 0.
+                      session/load is only registered at all when the selected
+                      capability profile advertises loadSession.
+  --wire-log <path>   Appends every frame that arrives on stdin to <path>, one
+                      JSON line each — the record of what the client actually
+                      sent, written on the agent's side of the pipe.
   --replay-speed <s>  "real" honours the recorded millisecond offsets between
                       consecutive agent frames; "max" (the default, and what CI
                       runs) emits as fast as the pipe allows.
@@ -99,6 +128,9 @@ Options:
   --node-id <id>      $DeFlow_SIDE_EFFECT_LOG when that variable is set, so
   --attempt <n>       "was this effect executed twice?" is a duplicate-key
   --ikey <key>        check on a text file. Also read from the environment.
+  --version           Print "${BIN_NAME} <version>" and exit 0. This is
+                      what the capability probe records verbatim; override it
+                      with $${VERSION_ENV} to stage a version bump.
   -h, --help          Print this text and exit 0.
 
 Pathological behaviours — one flag each, so a reported bug is one command.
@@ -147,11 +179,30 @@ export interface MockAgentOptions {
   readonly dishonestCapability: DishonestCapability | null;
   /** Non-null when `--replay` was given, in which case nothing else generates. */
   readonly replay: ReplaySelection | null;
+  /**
+   * KAR-05.5 — how many historical `session/update` notifications a
+   * `session/load` replays back at the client.
+   *
+   * Zero by default: `session/load` is a real method with a real cost, and an
+   * agent that replayed a synthetic history nobody asked for would make every
+   * unrelated spec's update count wrong.
+   */
+  readonly loadHistory: number;
+  /**
+   * Where to record every frame that arrived on stdin, one JSON line each.
+   *
+   * The witness for "DeFlow sent a `session/resume` frame" and for its
+   * negative. It is written on the far side of a real pipe, which is what
+   * distinguishes "DeFlow chose not to send it" from "DeFlow sent it and the
+   * agent had no handler for it".
+   */
+  readonly wireLog: string | null;
 }
 
 export type ParsedArgv =
   | { readonly kind: 'run'; readonly options: MockAgentOptions }
   | { readonly kind: 'help' }
+  | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string };
 
 export function parseArgv(argv: readonly string[]): ParsedArgv {
@@ -162,6 +213,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   let dishonestCapability: DishonestCapability | null = null;
   let replayPath: string | null = null;
   let replaySpeed: ReplaySpeed | null = null;
+  let loadHistory = 0;
+  let wireLog: string | null = null;
 
   /** Two scripts and one turn is a silent choice, so it is refused instead. */
   const conflict = (flag: string, other: string): ParsedArgv => ({
@@ -172,6 +225,11 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--help' || argument === '-h') return { kind: 'help' };
+    // Like --help: an interrogation, not a run, so it answers whatever else
+    // is on the line. A probe asks `<bin> --version` and nothing else, but a
+    // vendor CLI that ignored the flag when it appeared beside another one
+    // would be a real and infuriating bug to inherit.
+    if (argument === '--version') return { kind: 'version' };
 
     if (argument !== undefined && PATHOLOGICAL_FLAGS[argument] !== undefined) {
       if (behaviour !== null) return conflict(argument, behaviour);
@@ -220,6 +278,31 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         };
       }
       seed = Number.parseInt(raw, 10);
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--load-history') {
+      const raw = argv[index + 1];
+      // Same rule as --seed: a value that was silently misread is a flood
+      // nobody sized, and `Number.parseInt('lots')` is NaN.
+      if (raw === undefined || !/^\d+$/.test(raw)) {
+        return {
+          kind: 'error',
+          message: `--load-history needs a non-negative integer, got ${raw === undefined ? 'nothing' : `"${raw}"`}`,
+        };
+      }
+      loadHistory = Number.parseInt(raw, 10);
+      index += 1;
+      continue;
+    }
+
+    if (argument === '--wire-log') {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return { kind: 'error', message: '--wire-log needs a path' };
+      }
+      wireLog = raw;
       index += 1;
       continue;
     }
@@ -325,6 +408,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         replayPath === null
           ? null
           : { path: replayPath, speed: replaySpeed ?? DEFAULT_REPLAY_SPEED },
+      loadHistory,
+      wireLog,
     },
   };
 }

@@ -161,6 +161,20 @@ suite('500k data-plane rows do not slow the fold (EPIC-03-S12, AC3)', () => {
 });
 
 suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
+  /**
+   * The shipped query with the index taken away from it, derived from the
+   * shipped constant so the two cannot drift into different queries. `+ 0`
+   * makes `seq` an expression rather than a column, which SQLite cannot answer
+   * from `event_run_seq` — the regression the plan assertions forbid, kept here
+   * as a live control to time against. If `EVENT_TAIL_SQL` is ever reworded so
+   * these substitutions miss, the control stops being slow and the ratio
+   * assertion fails, which is the direction a broken fixture should fail in.
+   */
+  const SCAN_CONTROL_SQL = EVENT_TAIL_SQL.replace('AND seq > ?', 'AND seq + 0 > ?').replace(
+    'ORDER BY seq',
+    'ORDER BY seq + 0',
+  );
+
   const plan = (db: Db, sql: string, parameters: DbValue[]): string =>
     db
       .prepare<{ detail: string }>(`EXPLAIN QUERY PLAN ${sql}`)
@@ -211,7 +225,9 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
     }
   });
 
-  it('serves 1,000 advancing tail queries over 500,000 events in under 600 ms', ({ tmp }) => {
+  it('serves 1,000 advancing tail queries over 500,000 events, 25x cheaper than the plan it forbids', ({
+    tmp,
+  }) => {
     const db = openLedger(tmp);
     try {
       seedControlPlane(db, 500_000);
@@ -226,13 +242,29 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
         each.push(performance.now() - before);
         cursor = rows.at(-1)?.seq ?? 0;
       }
-      const elapsed = performance.now() - started;
+      const perQuery = (performance.now() - started) / 1000;
 
       expect(cursor).toBe(500_000);
-      // The architecture measured 196 ms total, ~0.2 ms each. The budget is the
-      // aggregate, because that is what a plan regression moves: a query that
-      // stopped using the index is slow every time, not once.
-      expect(elapsed).toBeLessThan(600);
+
+      // The control: the same query over the same 500,000 rows on the same
+      // machine seconds later, with only the property under test taken away —
+      // `seq + 0` is opaque to the index, so the ordering goes through the temp
+      // b-tree the spec above forbids. Asserting the *ratio* rather than an
+      // absolute budget is what makes this survive its neighbours: the
+      // integration slice runs a hundred forked specs, several of them driving
+      // real agent subprocesses, and the same thousand queries that take 196 ms
+      // on an idle box took 770 ms beside a full slice — a number that measures
+      // the scheduler, not the query plan. Load moves both halves together, so
+      // it cancels; a plan regression moves only one.
+      expect(plan(db, SCAN_CONTROL_SQL, [RUN_A, 0, 500])).toContain('USE TEMP B-TREE FOR ORDER BY');
+      const control = db.prepare<{ seq: number }>(SCAN_CONTROL_SQL);
+      const controlStarted = performance.now();
+      for (let query = 0; query < 3; query++) control.all(RUN_A, query * 1000, 500);
+      const controlPerQuery = (performance.now() - controlStarted) / 3;
+
+      // Measured 2026-08-02: 0.2 ms indexed against 28.7 ms through the b-tree,
+      // a factor of ~135. 25 is the floor, not the expectation.
+      expect(perQuery * 25).toBeLessThan(controlPerQuery);
       // The scenario's "no single query exceeds 5 ms", asserted at p99 rather
       // than at the maximum. The integration slice runs several heavy specs in
       // parallel forks, so one query in a thousand meets a GC pause or the OS

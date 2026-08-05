@@ -89,10 +89,61 @@ suite('the seven pathological steps are part of the scenario format', () => {
     ).toEqual([
       { type: 'malformedLine', text: '{"jsonrpc":"2.0","method":' },
       { type: 'invalidFrame', variant: 'unknownStopReason' },
-      { type: 'hugeLine', totalBytes: 1024, chunkBytes: 256 },
+      { type: 'hugeLine', totalBytes: 1024, chunkBytes: 256, lineBytes: null },
       { type: 'noNewline', chunkBytes: 256, intervalMs: 5, totalBytes: 4096 },
       { type: 'spawnGrandchildren', count: 3, lifetimeMs: 5_000 },
     ]);
+  });
+
+  it('gives a tool call a result of a stated size, for the 256 KiB spill threshold', () => {
+    const [step] = stepsOf({
+      steps: [
+        {
+          type: 'toolCall',
+          title: 'run the tests',
+          toolKind: 'execute',
+          path: '/tmp/x',
+          statuses: ['pending', 'completed'],
+          contentBytes: 307200,
+        },
+      ],
+    });
+    expect((step as { contentBytes: number }).contentBytes).toBe(307200);
+  });
+
+  it('defaults contentBytes to null: an ordinary tool call carries no result blob', () => {
+    const [step] = stepsOf({
+      steps: [
+        {
+          type: 'toolCall',
+          title: 't',
+          toolKind: 'execute',
+          path: '/tmp/x',
+          statuses: ['completed'],
+        },
+      ],
+    });
+    expect((step as { contentBytes: number | null }).contentBytes).toBeNull();
+  });
+
+  it('takes an exact line size, which is how the 8 MiB boundary is stimulated', () => {
+    const [step] = stepsOf({ steps: [{ type: 'hugeLine', lineBytes: 8388609 }] });
+    expect(step).toEqual({
+      type: 'hugeLine',
+      totalBytes: 10 * 1024 * 1024,
+      chunkBytes: 64 * 1024,
+      lineBytes: 8388609,
+    });
+  });
+
+  it('defaults lineBytes to null, meaning "as long as totalBytes makes it"', () => {
+    const [step] = stepsOf({ steps: [{ type: 'hugeLine', totalBytes: 1024, chunkBytes: 256 }] });
+    expect(step).toEqual({
+      type: 'hugeLine',
+      totalBytes: 1024,
+      chunkBytes: 256,
+      lineBytes: null,
+    });
   });
 
   it('lets noNewline run without end, which is the wedge it models', () => {

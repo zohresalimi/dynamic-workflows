@@ -28,9 +28,11 @@ import type { Clock } from './clock.ts';
 import type { IdFactory } from './ids.ts';
 import {
   hugeLineFrameParts,
+  hugeLinePayloadBytes,
   invalidFrame,
   malformedLine,
   patternSlice,
+  sizedToolContent,
   truncatedFrame,
 } from './pathological.ts';
 import type { MockAgentPorts } from './ports.ts';
@@ -178,6 +180,13 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
     if (step.type === 'toolCall') {
       const toolCallId = io.ids.toolCall();
       const locations = [{ path: step.path }];
+      // The result rides on the *updates* rather than on the opening frame,
+      // which is where a real agent puts it: a tool call announces itself
+      // before it has any output to report.
+      const content =
+        step.contentBytes === null
+          ? {}
+          : { content: sizedToolContent(step.contentBytes) as acp.ToolCallContent[] };
       for (const [index, status] of step.statuses.entries()) {
         if (index > 0 && step.delayMs > 0) await io.sleep(step.delayMs);
         await notify(
@@ -190,7 +199,7 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
                 status,
                 locations,
               }
-            : { sessionUpdate: 'tool_call_update', toolCallId, status, locations },
+            : { sessionUpdate: 'tool_call_update', toolCallId, status, locations, ...content },
         );
       }
       return null;
@@ -263,9 +272,15 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
 
     if (step.type === 'hugeLine') {
       const { prefix, suffix } = hugeLineFrameParts(io.sessionId);
+      // `lineBytes` measures the line the *client* will see, framing included,
+      // which is the only thing a byte cap can be asserted against.
+      const totalBytes =
+        step.lineBytes === null
+          ? step.totalBytes
+          : hugeLinePayloadBytes(prefix, suffix, step.lineBytes);
       await io.ports.writeRaw(prefix);
-      for (let written = 0; written < step.totalBytes; ) {
-        const size = Math.min(step.chunkBytes, step.totalBytes - written);
+      for (let written = 0; written < totalBytes; ) {
+        const size = Math.min(step.chunkBytes, totalBytes - written);
         await io.ports.writeRaw(patternSlice(written, size));
         written += size;
       }

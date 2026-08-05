@@ -159,6 +159,15 @@ importers:
         specifier: 'catalog:'
         version: 1.3.0(zod@4.4.3)
     devDependencies:
+      '@DeFlow/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@DeFlow/mock-agent':
+        specifier: workspace:*
+        version: link:../mock-agent
+      '@DeFlow/testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -228,6 +237,9 @@ importers:
       '@DeFlow/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@agentclientprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.3.0(zod@4.4.3)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.12(hono@4.12.33)
@@ -249,7 +261,13 @@ importers:
       pino:
         specifier: 'catalog:'
         version: 10.3.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
+      '@DeFlow/mock-agent':
+        specifier: workspace:*
+        version: link:../mock-agent
       '@DeFlow/testkit':
         specifier: workspace:*
         version: link:../testkit
@@ -329,12 +347,21 @@ importers:
         specifier: 'catalog:'
         version: 10.0.1
     devDependencies:
+      '@DeFlow/mock-agent':
+        specifier: workspace:*
+        version: link:../mock-agent
+      '@agentclientprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.3.0(zod@4.4.3)
       '@types/better-sqlite3':
         specifier: 'catalog:'
         version: 9.6.0
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

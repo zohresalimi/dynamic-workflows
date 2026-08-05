@@ -19,6 +19,7 @@ import {
   checkJobLevelContexts,
   checkLedgerReadsAreBounded,
   checkLintFormatScripts,
+  checkMcpSdkImports,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
   checkNoCorepack,
@@ -1322,6 +1323,63 @@ suite('checkNoDeprecatedAcpPackages (KAR-04.1, EPIC-04-S21)', () => {
           },
         ],
       ),
+    ).toEqual([]);
+  });
+});
+
+suite('checkMcpSdkImports (KAR-05.6, EPIC-05-S22)', () => {
+  // Split so these fixtures are not themselves violations when the guard is
+  // pointed at the whole TypeScript tree, as the KAR-01.4 guards do.
+  const sdk = `@modelcontextprotocol${'/sdk'}`;
+
+  it('rejects a root-package import', () => {
+    const violations = checkMcpSdkImports([
+      { path: 'packages/daemon/src/mcp/host.ts', text: `import { McpServer } from '${sdk}';` },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('express');
+  });
+
+  it('rejects the deprecated SSE transport and says why', () => {
+    const violations = checkMcpSdkImports([
+      {
+        path: 'packages/daemon/src/mcp/host.ts',
+        text: `import { SSEServerTransport } from '${sdk}/server/sse.js';`,
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('2026-07-28');
+  });
+
+  it('rejects any other subpath, however harmless it looks', () => {
+    expect(
+      checkMcpSdkImports([
+        { path: 'packages/daemon/src/mcp/host.ts', text: `import x from '${sdk}/types.js';` },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('accepts the two allowed deep subpaths', () => {
+    expect(
+      checkMcpSdkImports([
+        {
+          path: 'packages/daemon/src/mcp/shim.ts',
+          text:
+            `import { McpServer } from '${sdk}/server/mcp.js';\n` +
+            `import { StdioServerTransport } from '${sdk}/server/stdio.js';`,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('leaves unrelated packages alone', () => {
+    expect(
+      checkMcpSdkImports([
+        {
+          path: 'packages/adapters/src/x.ts',
+          text: "import * as acp from '@agentclientprotocol/sdk';",
+        },
+      ]),
     ).toEqual([]);
   });
 });
