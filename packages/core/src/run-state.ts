@@ -44,7 +44,7 @@ import {
   type RunId,
   RunIdSchema,
 } from './ids.ts';
-import { type NodeFailure, NodeFailureSchema } from './node-failure.ts';
+import { type BudgetBreach, type NodeFailure, NodeFailureSchema } from './node-failure.ts';
 import {
   type CompletedNodeResult,
   CompletedNodeResultSchema,
@@ -178,13 +178,13 @@ export interface NodeIdRegistryState {
   readonly retired: readonly NodeId[];
 }
 
-/** One F4.6 ceiling breach, kept because it pauses the run rather than failing it. */
-export interface BudgetBreach {
-  readonly scope: 'node' | 'run';
-  readonly dimension: 'cost' | 'wallclock';
-  readonly limit: number;
-  readonly actual: number;
-}
+/**
+ * One F4.6 ceiling breach, kept because it pauses the run rather than failing
+ * it. Declared beside the failure taxonomy — a breach reaches the projection as
+ * the `detail` of a `gate`-class `NodeFailure` (KAR-06.5 AC9), and one shape
+ * with two declarations is one shape that can disagree with itself.
+ */
+export type { BudgetBreach };
 
 export interface BudgetState {
   readonly costUsd: number;

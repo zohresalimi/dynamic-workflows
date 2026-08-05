@@ -37,6 +37,7 @@ import type {
 } from './command.ts';
 import type { EventSeq, NodeId, RunId } from './ids.ts';
 import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
+import { dependencyFailedFailure } from './node-failure.ts';
 import type { PlanGraph, PlanNode } from './plan-graph.ts';
 import { initialNodeState, type NodeState, type RunState } from './run-state.ts';
 
@@ -379,16 +380,12 @@ function dependencyFailed(state: RunState, runId: RunId, node: NodeId, cause: nu
       payload: {
         node,
         attempt,
-        failure: {
-          reason: 'dependency.failed',
-          class: 'permanent',
-          message: 'a dependency failed permanently, so this node can never run',
-          evidence: [],
-          // The seq of the failure that caused it — the one thing that turns a
-          // wall of poisoned nodes back into the single event to look at.
-          occurredAtEvent: eventSeq(cause),
-          attempt,
-        },
+        // Constructed by the classifier module, not spelled out here: the
+        // scheduler reads `class` and never names a reason (KAR-06.5 AC1).
+        // `cause` is the seq of the failure that poisoned the branch — the one
+        // thing that turns a wall of poisoned nodes back into the single event
+        // to look at.
+        failure: dependencyFailedFailure(eventSeq(cause), attempt),
       },
     },
   };
