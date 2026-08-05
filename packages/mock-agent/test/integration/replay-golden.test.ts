@@ -71,7 +71,13 @@ suite('a captured real session becomes a free provider', () => {
       'session/new',
       recordedParams(frames, 'session/new') as never,
     );
-    expect(session.sessionId).toBe('a54d92c7-c390-4042-8a61-ada78417aad6');
+    // The vendor's own session id was replaced by the recording redactor
+    // (packages/mock-agent/src/redaction.ts) before this file was committed:
+    // uuid-shaped, so a client still parses it, and numbered by order of first
+    // appearance, so it is the same string on every replay. Pinning it here is
+    // still pinning the recording — a re-record that renumbered the sessions
+    // would land as a diff on this line.
+    expect(session.sessionId).toBe('00000000-0000-4000-8000-000000000001');
 
     const prompted = await connection.agent.request(
       'session/prompt',

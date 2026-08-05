@@ -352,8 +352,11 @@ export async function runCycle(channel: Channel, context: CycleContext): Promise
   const joined = inboundText.join('\n');
   // A *key* named anything compaction-shaped, not the mere substring: Claude
   // Code advertises a `/compact` slash command in its
-  // `available_commands_update`, so "compact appears in the log" is true and
-  // means nothing. What F10.5 would need is a field.
+  // `available_commands_update`, so "compact appears in the log" is true of a
+  // live run and means nothing. What F10.5 would need is a field. (The
+  // committed recording no longer carries that command list — it enumerated the
+  // recording machine's installed commands — which changes what a grep finds
+  // but not what the check asks.)
   const compactionField = /"[^"]*compact[^"]*"\s*:/i.exec(joined)?.[0] ?? null;
   const framing = client.framingFailure;
 
@@ -399,7 +402,7 @@ export async function runCycle(channel: Channel, context: CycleContext): Promise
       observed: compactionField !== null,
       evidence:
         compactionField ??
-        'no field in any frame is named for compaction; the only occurrences of the string are the names of slash commands in available_commands_update',
+        'no field in any frame is named for compaction; where the string occurs at all it is a value — the name of a slash command — and never a key',
     },
     structuredOutput: {
       present: /structured[_ ]?output/i.test(joined),
