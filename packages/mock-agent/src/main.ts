@@ -14,10 +14,10 @@
  * handshake and only then notices its script is wrong leaves the client with a
  * half-open session to explain, and the resulting failure points at the client.
  */
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import process from 'node:process';
-import { Readable, Writable } from 'node:stream';
+import { PassThrough, Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
 import {
   type CapabilitiesOptions,
@@ -72,6 +72,36 @@ export const CAPABILITIES_EXIT_CODE = 4;
  */
 export const RECORDING_EXIT_CODE = 5;
 
+/**
+ * KAR-05.5 — `--wire-log`: every complete line that arrived on stdin, appended
+ * to a file before it reaches the transport.
+ *
+ * A tee rather than a hook inside a handler, because the interesting question
+ * is often about a method the agent has **no** handler for: "was a
+ * `session/resume` frame sent at all" cannot be answered from inside a
+ * `session/resume` handler that was never registered. Split on newlines and
+ * written synchronously — a chunk boundary can fall mid-frame, and a partial
+ * line in the log would read as a malformed frame that never existed.
+ */
+function teeToWireLog(stdin: NodeJS.ReadableStream, path: string): NodeJS.ReadableStream {
+  const tee = new PassThrough();
+  let pending = '';
+  stdin.on('data', (bytes: Buffer) => {
+    pending += bytes.toString('utf8');
+    let newline = pending.indexOf('\n');
+    while (newline !== -1) {
+      const line = pending.slice(0, newline);
+      pending = pending.slice(newline + 1);
+      if (line.trim() !== '') appendFileSync(path, `${line}\n`);
+      newline = pending.indexOf('\n');
+    }
+    tee.write(bytes);
+  });
+  stdin.on('end', () => tee.end());
+  stdin.on('close', () => tee.end());
+  return tee;
+}
+
 /** Serves one ACP client over `io`, returning when the connection closes. */
 export async function serve(
   options: MockAgentOptions,
@@ -79,9 +109,10 @@ export async function serve(
   io: Io = processIo(),
   capabilities: CapabilitiesOptions = DEFAULT_CAPABILITIES_OPTIONS,
 ): Promise<void> {
+  const inbound = options.wireLog === null ? io.stdin : teeToWireLog(io.stdin, options.wireLog);
   const stream = acp.ndJsonStream(
     Writable.toWeb(io.stdout as Writable) as WritableStream<Uint8Array>,
-    Readable.toWeb(io.stdin as Readable) as ReadableStream<Uint8Array>,
+    Readable.toWeb(inbound as Readable) as ReadableStream<Uint8Array>,
   );
   // The raw-write port wraps the *same* writable the transport wraps, so a
   // malformed line or a 10 MB flood interleaves with ACP frames in the order
