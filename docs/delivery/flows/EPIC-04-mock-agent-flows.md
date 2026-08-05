@@ -168,7 +168,8 @@ Feature: Scripted chunk cadence
     When the harness prompts and records a client-side timestamp for each session/update
     Then the first notification has sessionUpdate "plan"
     And five notifications with sessionUpdate "agent_message_chunk" follow
-    And at least four consecutive inter-arrival gaps are >= 40 ms
+    And the whole turn takes at least 190 ms, the agent's four sleeps
+    And all four consecutive inter-arrival gaps are >= 10 ms
     And no two chunks share an arrival timestamp
 
   Scenario: The reader stalls while the consumer is slow
@@ -178,6 +179,14 @@ Feature: Scripted chunk cadence
     Then every chunk is delivered exactly once, in order, with none dropped
     And the harness's peak RSS growth stays under 32 MiB
 ```
+
+**Amended 2026-08-05** (EPIC-05 gate): the first scenario used to assert every inter-arrival gap at
+>= 40 ms and flaked at **39.89 ms** under a loaded integration slice. Arrival timestamps are the
+*reader's*: descheduling this process for a few milliseconds delays chunk N and leaves chunk N+1
+already buffered, moving time out of one gap and into its neighbour — a 39.9 ms gap sits next to a
+60 ms one, and the agent did nothing different. "It slept" is therefore asserted on the turn's total
+duration, which no amount of reader lateness can shorten, and the per-gap floor is left only to
+catch a burst (measured at **0.1 ms** per gap when `delayMs` is 0, a hundredfold margin).
 
 **Notes:** The second scenario is the pull loop's whole point. `session.nextUpdate()` is a pull loop, not
 a callback registration — DeFlow does not request the next frame until it has finished with the current
