@@ -14,6 +14,28 @@ import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
 
+/**
+ * What `--version` prints when nothing overrides it.
+ *
+ * The package's own version, stated here rather than read from
+ * `package.json`: the bin runs straight off the source tree with no build
+ * step, so a `readFileSync` of a sibling manifest would be one more thing that
+ * breaks differently inside an installed tarball than it does in the
+ * workspace.
+ */
+export const MOCK_AGENT_VERSION = '0.0.0';
+
+/**
+ * Overrides what `--version` reports, so a *version bump* is something a spec
+ * can stage against the real binary (KAR-05.2, EPIC-05-S8).
+ *
+ * The capability manifest's primary key is `(provider, version,
+ * binary_sha256)`, and "a version bump writes a second row and leaves the
+ * first intact" is only observable if the binary under test can be made to
+ * report a different version without being rewritten.
+ */
+export const VERSION_ENV = 'DeFlow_MOCK_VERSION';
+
 /** Used when `--seed` is absent, so an unseeded run is still reproducible. */
 export const DEFAULT_SEED = 0;
 
@@ -99,6 +121,9 @@ Options:
   --node-id <id>      $DeFlow_SIDE_EFFECT_LOG when that variable is set, so
   --attempt <n>       "was this effect executed twice?" is a duplicate-key
   --ikey <key>        check on a text file. Also read from the environment.
+  --version           Print "${BIN_NAME} <version>" and exit 0. This is
+                      what the capability probe records verbatim; override it
+                      with $${VERSION_ENV} to stage a version bump.
   -h, --help          Print this text and exit 0.
 
 Pathological behaviours — one flag each, so a reported bug is one command.
@@ -152,6 +177,7 @@ export interface MockAgentOptions {
 export type ParsedArgv =
   | { readonly kind: 'run'; readonly options: MockAgentOptions }
   | { readonly kind: 'help' }
+  | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string };
 
 export function parseArgv(argv: readonly string[]): ParsedArgv {
@@ -172,6 +198,11 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--help' || argument === '-h') return { kind: 'help' };
+    // Like --help: an interrogation, not a run, so it answers whatever else
+    // is on the line. A probe asks `<bin> --version` and nothing else, but a
+    // vendor CLI that ignored the flag when it appeared beside another one
+    // would be a real and infuriating bug to inherit.
+    if (argument === '--version') return { kind: 'version' };
 
     if (argument !== undefined && PATHOLOGICAL_FLAGS[argument] !== undefined) {
       if (behaviour !== null) return conflict(argument, behaviour);

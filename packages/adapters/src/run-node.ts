@@ -40,6 +40,7 @@ import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import process from 'node:process';
 import * as acp from '@agentclientprotocol/sdk';
+import { admit } from './admission.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import {
   ACP_PROTOCOL_VERSION,
@@ -203,6 +204,41 @@ export async function runAcpNode(
       permission: request.permission,
     }),
   );
+
+  // KAR-05.2 AC7 — admission, and the reason it is *here*: before `spawn`,
+  // after the scheduling decision is durable. A node whose requirements the
+  // probed row does not satisfy is refused as a plan-time fact; discovering it
+  // at runtime means a spawned process, a consumed quota and a failure hours
+  // from the decision that caused it. `node.scheduled` above is what the
+  // refusal points at — the decision it refused.
+  const refusal = admit(
+    {
+      node: request.nodeId,
+      requires: request.requires ?? [],
+      permission: request.permission,
+    },
+    ports.capabilityRow ?? null,
+  );
+  if (refusal !== null) {
+    const failure = toAdapterFailure(refusal, {
+      occurredAtEvent: lastSeq,
+      attempt: request.attempt,
+      captureEvidence: ports.captureEvidence,
+    });
+    await ledger.append(
+      event('node.failed', { node: request.nodeId, attempt: request.attempt, failure }),
+    );
+    return {
+      status: 'failed',
+      failure,
+      protocolVersion: null,
+      clientCapabilities: CLIENT_CAPABILITIES,
+      newSessionRequest: null,
+      sessionId: null,
+      exit: null,
+      pgid: 0,
+    };
+  }
 
   const { child, started, exited } = spawnAgent(request);
   const pgid = child.pid ?? 0;

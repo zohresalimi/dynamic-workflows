@@ -11,6 +11,35 @@
  * The rest of EPIC-05 fills in probing, the registry, the frame guard, resume,
  * the MCP host and the conformance suite.
  */
+// KAR-05.2 — admission control: the last question before a spawn, answered
+// from the probed row.
+export {
+  ADAPTER_REQUIREMENT_CAPABILITIES,
+  type AdmissionRequest,
+  admit,
+  CAPABILITY_REQUIREMENTS,
+  type CapabilityRequirement,
+} from './admission.ts';
+// KAR-05.2 — every routing question, answered from the probed row and from
+// nothing else. There is no provider name in that module, by construction.
+export {
+  additionalDirectories,
+  CAPABILITY_PATHS,
+  type CapabilityAnswer,
+  type CapabilityKey,
+  type CapabilityReason,
+  type CapabilityRow,
+  canClose,
+  canDelete,
+  canFork,
+  canList,
+  canResume,
+  capability,
+  loadSession,
+  mcpAcp,
+  mediatedExecution,
+  supportsTerminal,
+} from './capabilities.ts';
 export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 export {
   ACP_PROTOCOL_VERSION,
@@ -25,11 +54,23 @@ export type {
   AcpNodeRequest,
   AcpPorts,
   AgentBinary,
+  CapabilityStore,
   ClientHandlers,
   EventRecord,
   IoRecord,
   LedgerSink,
 } from './ports.ts';
+// KAR-05.2 — spawn, one `initialize`, terminate. Never `session/new`, so a
+// probe costs no quota.
+export {
+  PROBE_HANDSHAKE_TIMEOUT_MS,
+  PROBE_TERMINATE_GRACE_MS,
+  type ProbeOutcome,
+  type ProbePorts,
+  type ProbeRequest,
+  probeProvider,
+} from './probe.ts';
+export { sliceMember } from './raw-frame.ts';
 export type { AcpNodeOutcome, ProcessExit } from './run-node.ts';
 export {
   AGENT_TURN_SCHEMA_ID,

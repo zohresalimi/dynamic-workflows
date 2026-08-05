@@ -29,11 +29,13 @@ import {
   BIN_NAME,
   type CapabilitiesSelection,
   DISHONEST_CAPABILITY_METHODS,
+  MOCK_AGENT_VERSION,
   type MockAgentOptions,
   parseArgv,
   type ReplaySelection,
   SCENARIO_ENV,
   USAGE,
+  VERSION_ENV,
 } from './cli.ts';
 import { createProcessPorts } from './ports.ts';
 import { parseRecording, parseRecordingKey } from './recording.ts';
@@ -237,6 +239,14 @@ export async function run(
 
   if (parsed.kind === 'help') {
     io.stdout.write(USAGE);
+    return 0;
+  }
+
+  // One line on stdout and nothing else. KAR-05.2 AC2 stores this output
+  // verbatim as the manifest's `version` column, so a banner, a build date or
+  // a "checking for updates…" line here would end up inside a primary key.
+  if (parsed.kind === 'version') {
+    io.stdout.write(`${BIN_NAME} ${env[VERSION_ENV] ?? MOCK_AGENT_VERSION}\n`);
     return 0;
   }
 

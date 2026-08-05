@@ -28,6 +28,8 @@ import type {
   SchemaId,
 } from '@DeFlow/core';
 import type * as acp from '@agentclientprotocol/sdk';
+import type { CapabilityRequirement } from './admission.ts';
+import type { CapabilityRow } from './capabilities.ts';
 
 /** The agent as the provider registry resolved it (KAR-05.2, KAR-05.3). */
 export interface AgentBinary {
@@ -45,8 +47,10 @@ export interface EventRecord {
   readonly v: number;
   /** ms epoch, from the injected `Clock` and never from `Date.now()`. */
   readonly ts: number;
-  readonly nodeId: NodeId;
-  readonly attempt: number;
+  /** Absent on the events that are not about a node: a capability probe is a
+   * fact about the machine, and `provider.probed` has no node to belong to. */
+  readonly nodeId?: NodeId;
+  readonly attempt?: number;
   readonly ikey?: IdempotencyKey;
   readonly payload: unknown;
 }
@@ -67,6 +71,22 @@ export interface IoRecord {
   readonly stream: 'stdout' | 'stderr' | 'agent_json';
   readonly ts: number;
   readonly data: Uint8Array;
+}
+
+/**
+ * The `provider_capabilities` table, as the probe needs it (KAR-05.2).
+ *
+ * A port rather than a direct dependency for the same reason `LedgerSink` is
+ * one: @DeFlow/adapters depends on @DeFlow/core alone (docs/16-repo-layout.md
+ * R2), and the SQL lives in @DeFlow/ledger. `record` returning whether it
+ * *inserted* is the load-bearing part — a re-probe of an unchanged binary must
+ * be visible as a no-op on the table, not guessed at by counting rows
+ * afterwards.
+ */
+export interface CapabilityStore {
+  record(row: CapabilityRow): { readonly inserted: boolean };
+  /** Every row probed for `provider`, oldest first. A history, not a lookup. */
+  read(provider: ProviderId): readonly CapabilityRow[];
 }
 
 export interface LedgerSink {
@@ -104,6 +124,15 @@ export interface AcpNodeRequest {
   readonly env?: NodeJS.ProcessEnv;
   /** The `mcpServers` array from KAR-05.6. */
   readonly mcpServers: readonly acp.McpServer[];
+  /**
+   * What this node needs the adapter to be able to do — `AgentNode.provider
+   * .requires`, translated by `ADAPTER_REQUIREMENT_CAPABILITIES`.
+   *
+   * Checked against the probed row before anything is spawned (KAR-05.2 AC7).
+   * Empty is the honest default: a node that asks for nothing is refused
+   * nothing.
+   */
+  readonly requires?: readonly CapabilityRequirement[];
   /** The assembled context packet, as text. */
   readonly prompt: string;
   /** What the node's structured output is validated against (EPIC-09/EPIC-12). */
@@ -119,6 +148,15 @@ export interface AcpPorts {
   readonly captureEvidence: (text: string) => Handle;
   /** The daemon's thin ACP fronts. */
   readonly handlers?: ClientHandlers;
+  /**
+   * What this provider's binary said it could do, the last time it was probed
+   * on this machine — the single input the routing layer trusts (KAR-05.2).
+   *
+   * `null` or absent means nothing has been probed, which refuses a node that
+   * declared requirements and admits one that did not. It is passed in rather
+   * than read here because @DeFlow/adapters owns no database.
+   */
+  readonly capabilityRow?: CapabilityRow | null;
   /**
    * Cooperative cancellation. Aborting sends `session/cancel` at the protocol
    * level and **keeps the loop running** until the stop frame arrives, so the
