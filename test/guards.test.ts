@@ -320,6 +320,36 @@ suite('checkLedgerReadsAreBounded (KAR-03.4 AC5 / EPIC-03-S13 scenario 3)', () =
       ]),
     ).toEqual([]);
   });
+
+  /**
+   * KAR-03.8's run discovery is `min(seq) … GROUP BY run_id` and `max(seq)`,
+   * and both are exempt for the reason `count(*)` is: the result set is one row
+   * per run rather than one row per event, so it cannot grow with the ledger.
+   * A read that returns *rows* is still caught, aggregate word or not.
+   */
+  it('accepts an aggregate projection that is not a count', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/open-and-replay.ts',
+          text:
+            'const A = `SELECT run_id, min(seq) AS first_seq FROM event GROUP BY run_id`;\n' +
+            "const B = 'SELECT coalesce(max(seq), 0) AS head FROM event';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still catches a row-returning read that merely mentions a column called max', () => {
+    expect(
+      checkLedgerReadsAreBounded([
+        {
+          path: 'packages/ledger/src/tail.ts',
+          text: "const SQL = 'SELECT seq, max_attempt FROM event WHERE run_id = ?';\n",
+        },
+      ]),
+    ).toHaveLength(1);
+  });
 });
 
 suite('checkDaemonIsLeaf (R2)', () => {

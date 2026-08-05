@@ -51,10 +51,17 @@ const sliceNamed = (name: string): SliceTestOptions => {
   return slice.test;
 };
 
-suite('vitest.config.ts — the four project slices (AC1)', () => {
-  it('declares exactly the four slices of docs/14-testing-strategy.md §2', () => {
+suite('vitest.config.ts — the project slices (AC1)', () => {
+  it('declares exactly the slices of docs/14-testing-strategy.md §2', () => {
     const names = projects.map((entry) => (typeof entry === 'string' ? entry : entry.test?.name));
-    expect(names).toEqual(['unit', 'integration', 'e2e', 'packages/web/vitest.config.ts']);
+    expect(names).toEqual([
+      'unit',
+      'integration',
+      'e2e',
+      // KAR-03.8 filled the slot §2 left for it.
+      'crash-fuzz',
+      'packages/web/vitest.config.ts',
+    ]);
   });
 
   it('inherits the root test options into every inline slice', () => {
@@ -134,16 +141,38 @@ suite('the snapshot serializer is registered by the shared setup file (AC8)', ()
   });
 });
 
-suite('the crash-fuzz slot EPIC-03 fills (AC11)', () => {
-  it('is documented in the config but not yet a project', () => {
-    const names = inlineSlices.map((slice) => slice.test?.name);
-    expect(names).not.toContain('crash-fuzz');
-    const text = readText('vitest.config.ts');
-    expect(text).toMatch(/crash-fuzz/);
-    expect(text).toMatch(/EPIC-03/);
+/**
+ * The slot EPIC-03 was holding is filled: KAR-03.8 ships the suite, so the
+ * assertion flips from "not yet a project" to "a project, with the options
+ * that make it one".
+ *
+ * Serialised and long-running are both requirements rather than preferences.
+ * Every iteration owns a data directory and a process group it SIGKILLs, so
+ * two files at once is a race by construction, and a slice that inherited the
+ * integration timeout would report a wedged run as an infrastructure timeout —
+ * which is the one diagnosis EPIC-03-S26 explicitly refuses.
+ */
+suite('the crash-fuzz slice EPIC-03 filled (AC11)', () => {
+  it('is a real project, serialised, with a budget a crash-restart loop fits in', () => {
+    const fuzz = sliceNamed('crash-fuzz');
+    expect(fuzz.include).toEqual(['packages/*/test/crash-fuzz/**/*.test.ts']);
+    expect(fuzz.pool).toBe('forks');
+    expect(fuzz.fileParallelism).toBe(false);
+    expect(fuzz.maxWorkers).toBe(1);
+    expect(fuzz.testTimeout).toBeGreaterThanOrEqual(120_000);
   });
 
-  it('is referenced by no CI workflow until EPIC-03 adds it', () => {
+  it('collects nothing the other slices already collect', () => {
+    const fuzz = sliceNamed('crash-fuzz').include ?? [];
+    for (const other of [sliceNamed('unit'), sliceNamed('integration'), sliceNamed('e2e')]) {
+      for (const pattern of other.include ?? []) expect(fuzz).not.toContain(pattern);
+    }
+  });
+
+  it('is not wired into CI, whose test jobs are gated off', () => {
+    // The suite exists and `pnpm test:fuzz` runs it; no workflow does, because
+    // the repository variable that gates the test matrix is unset. When it is
+    // turned back on, this is the assertion to revisit.
     const workflows = walk(
       '.github/workflows',
       (path) => path.endsWith('.yml') || path.endsWith('.yaml'),
@@ -163,6 +192,7 @@ suite('the scripts the author actually types (AC2, AC3)', () => {
     ['test:unit', 'unit'],
     ['test:int', 'integration'],
     ['test:e2e', 'e2e'],
+    ['test:fuzz', 'crash-fuzz'],
   ])('%s runs only the %s slice', (script, project) => {
     expect(scripts[script]).toBe(`vitest run --project ${project}`);
   });

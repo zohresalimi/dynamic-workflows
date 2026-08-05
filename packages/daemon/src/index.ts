@@ -29,7 +29,7 @@ export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
-export { daemonEpoch, setDaemonEpoch } from './runtime.ts';
+export { daemonEpoch, headSeq, setDaemonEpoch, setHeadSeq } from './runtime.ts';
 export type { SchemaDirectory, ValidateValue } from './schema-store.ts';
 export {
   defaultSchemasDir,

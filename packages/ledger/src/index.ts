@@ -114,6 +114,17 @@ export {
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
+// KAR-03.8 — the daemon's start-of-life rebuild: every run in a data
+// directory, folded from the ledger a dead process left behind.
+export {
+  headSeq,
+  type LedgerReplay,
+  listRunIds,
+  type OpenedLedger,
+  openAndReplay,
+  type RunReplay,
+  replayAll,
+} from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
 export { applyPragmas, LEDGER_PRAGMAS, SYNCHRONOUS, withFullSync } from './pragmas.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
