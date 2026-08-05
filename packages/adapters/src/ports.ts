@@ -1,0 +1,141 @@
+/**
+ * What `runAcpNode` needs from the world, declared as ports so that
+ * @DeFlow/adapters keeps no opinion about SQLite, about the blob store, or
+ * about which policy answers a permission request.
+ *
+ * Two of these are load-bearing rather than tidy:
+ *
+ * - **`LedgerSink.append` returns the assigned `seq`.** AC4 is a durability
+ *   claim — the event must be *durable* before DeFlow asks the agent for more —
+ *   and a `seq` is the only observation that proves the transaction committed.
+ *   A `void` port could be satisfied by a queue.
+ * - **`ClientHandlers` is a plain method→function map.** The ACP handlers are
+ *   the daemon's thin fronts (docs/07-provider-adapter-layer.md §3), and ACP v2
+ *   deletes `fs/*` and `terminal/*` from the client entirely. Passing them in
+ *   as data is what lets the daemon own the fronts without this package
+ *   importing the daemon, and what makes deleting the ACP front a one-line
+ *   change when v2 lands.
+ */
+import type {
+  Clock,
+  EventSeq,
+  Handle,
+  IdempotencyKey,
+  NodeId,
+  PermissionLevel,
+  ProviderId,
+  RunId,
+  SchemaId,
+} from '@DeFlow/core';
+import type * as acp from '@agentclientprotocol/sdk';
+
+/** The agent as the provider registry resolved it (KAR-05.2, KAR-05.3). */
+export interface AgentBinary {
+  /** Absolute. Never a bare name looked up on PATH at spawn time (§4.3). */
+  readonly path: string;
+  readonly version: string;
+  /** 64 lowercase hex, so a binary swapped under a running daemon is visible. */
+  readonly sha256: string;
+}
+
+/** One control-plane event on its way to the ledger. `runId`, `epoch` and the
+ * envelope's bookkeeping belong to the ledger; the adapter supplies the rest. */
+export interface EventRecord {
+  readonly kind: string;
+  readonly v: number;
+  /** ms epoch, from the injected `Clock` and never from `Date.now()`. */
+  readonly ts: number;
+  readonly nodeId: NodeId;
+  readonly attempt: number;
+  readonly ikey?: IdempotencyKey;
+  readonly payload: unknown;
+}
+
+/** One data-plane chunk: the frame as it came off the wire, kept verbatim. */
+export interface IoRecord {
+  readonly nodeId: NodeId;
+  /**
+   * The **0-based** attempt, exactly as the event envelope spells it.
+   *
+   * `io_chunk.attempt` is 1-based in the ledger (see `IoChunkDraft`), and the
+   * translation belongs in the sink rather than up here: an adapter that had
+   * to remember which of two conventions applied to which port would get it
+   * wrong on the first retry, and the symptom — a retry's output filed under
+   * the attempt it replaced — is invisible until someone reads a transcript.
+   */
+  readonly attempt: number;
+  readonly stream: 'stdout' | 'stderr' | 'agent_json';
+  readonly ts: number;
+  readonly data: Uint8Array;
+}
+
+export interface LedgerSink {
+  /** Appends one event and resolves with the `seq` the ledger assigned it. */
+  append(event: EventRecord): Promise<EventSeq>;
+  /** Appends one chunk of agent output and resolves with its `seq`. */
+  appendIo(chunk: IoRecord): Promise<EventSeq>;
+}
+
+/**
+ * The client-side ACP request handlers, by method name.
+ *
+ * `session/request_permission`, `fs/read_text_file`, `fs/write_text_file` and
+ * the five `terminal/*` methods. Each is expected to be a front that unwraps
+ * params, calls a service and wraps the result — no business logic, because
+ * ACP v2 deletes these methods from the client and the policy behind them has
+ * to outlive the transport.
+ */
+export type ClientHandlers = Readonly<Record<string, (params: never) => unknown>>;
+
+/** What the node needs to run, as the scheduler decided it. */
+export interface AcpNodeRequest {
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  /** 0-based, matching the event envelope. */
+  readonly attempt: number;
+  readonly provider: ProviderId;
+  readonly permission: PermissionLevel;
+  readonly model?: string;
+  /** The node's worktree. Becomes `session/new`'s `cwd`. */
+  readonly worktree: string;
+  readonly binary: AgentBinary;
+  /** The vendor's own invocation (KAR-05.3 owns the per-vendor strategy). */
+  readonly argv?: readonly string[];
+  readonly env?: NodeJS.ProcessEnv;
+  /** The `mcpServers` array from KAR-05.6. */
+  readonly mcpServers: readonly acp.McpServer[];
+  /** The assembled context packet, as text. */
+  readonly prompt: string;
+  /** What the node's structured output is validated against (EPIC-09/EPIC-12). */
+  readonly outputSchemaId?: SchemaId;
+}
+
+export interface AcpPorts {
+  /** Time enters here and nowhere else (NF9). */
+  readonly clock: Clock;
+  readonly ledger: LedgerSink;
+  /** Stores a diagnostic and returns the handle it can be read back through —
+   * the daemon's blob store. Failures carry handles, never stacks. */
+  readonly captureEvidence: (text: string) => Handle;
+  /** The daemon's thin ACP fronts. */
+  readonly handlers?: ClientHandlers;
+  /**
+   * Cooperative cancellation. Aborting sends `session/cancel` at the protocol
+   * level and **keeps the loop running** until the stop frame arrives, so the
+   * tail of the turn is appended rather than lost (§2.5).
+   */
+  readonly signal?: AbortSignal;
+  /** How long, on the injected `Clock`, a cancelled agent has to answer
+   * before the process group is signalled. */
+  readonly cancelGraceMs?: number;
+  /** How long after `SIGTERM` before `SIGKILL`. */
+  readonly killGraceMs?: number;
+  /**
+   * Called immediately before each `session.nextUpdate()`, with the bytes read
+   * off the child's stdout so far.
+   *
+   * A tracing seam, and the only way a spec can observe that the reader did
+   * not race ahead of the durable writes — which is the whole claim of §2.3.
+   */
+  readonly onPull?: (pull: number, bytesRead: number) => void;
+}

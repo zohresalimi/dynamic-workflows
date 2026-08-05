@@ -38,3 +38,35 @@ export {
   SchemaCompilationFailed,
   UnknownSchemaFile,
 } from './schema-store.ts';
+export { acpFsHandlers } from './services/fronts/acp-fs.ts';
+export { acpPermissionHandlers } from './services/fronts/acp-permission.ts';
+export { acpTerminalHandlers } from './services/fronts/acp-terminal.ts';
+// KAR-05.1 — the transport-neutral fs/terminal/permission services, and the
+// thin ACP fronts wired into the client. ACP v2 deletes the fronts; the
+// services outlive them.
+export type {
+  FsService,
+  FsServiceOptions,
+  PathPolicy,
+  ReadTextRequest,
+  WriteTextRequest,
+} from './services/fs-service.ts';
+export { createFsService } from './services/fs-service.ts';
+export type {
+  PermissionDecider,
+  PermissionDecision,
+  PermissionOption,
+  PermissionQuery,
+  PermissionService,
+  ToolKind,
+} from './services/permission-service.ts';
+export { createPermissionService } from './services/permission-service.ts';
+export type {
+  CommandPolicy,
+  CreateTerminalRequest,
+  TerminalExit,
+  TerminalOutput,
+  TerminalService,
+  TerminalServiceOptions,
+} from './services/terminal-service.ts';
+export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
