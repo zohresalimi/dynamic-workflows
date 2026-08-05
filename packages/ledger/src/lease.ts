@@ -29,19 +29,49 @@
  * this purpose, and the second daemon's `BEGIN IMMEDIATE` fails with
  * `SQLITE_BUSY` immediately because `busy_timeout` on this connection is 0.
  *
- * The pid is committed *before* the held transaction is re-taken, which is why
- * the holder's pid is readable by the daemon that fails: `RESERVED` blocks
- * writers, not readers. Nothing is written inside the held transaction, so a
- * `SIGKILL`ed holder leaves no journal to roll back and the next start needs
- * no manual cleanup.
+ * ## Why acquiring is one statement, and why the pid lives beside the lock
+ *
+ * There is an obvious-looking design in which the holder's pid is a row in the
+ * lock database, so that the daemon which loses can name the one that won. It
+ * does not work, and the reason is worth writing down because it will be
+ * proposed again. Publishing that row means committing it, **and a commit is
+ * exactly the moment SQLite lets go of the file lock**. The acquisition then
+ * has to take the lock, commit, and take it a second time to hold — and
+ * between the commit and the retake it holds nothing at all. Two daemons
+ * started microseconds apart (a supervisor, a container restart, a script, a
+ * test harness — anything that is not a human typing in two terminals) walk
+ * into that window and the results are measurable, not theoretical: the daemon
+ * that acquired *first* gets locked out by the one that arrived second; both
+ * fail and the user is left with no daemon at all; and the losing daemon's
+ * concurrent pid read holds a `SHARED` lock that makes the winner's commit
+ * fail with a raw `SqliteError: database is locked`, which is precisely the
+ * leaked errno AC2 forbids. `test/integration/lease-race.test.ts` is that
+ * measurement.
+ *
+ * So nothing is ever written into the lock file. `DeFlow.lock` stays zero
+ * bytes forever; its whole job is the `fcntl` lock the kernel takes on it.
+ * There is exactly **one** `BEGIN IMMEDIATE`, it is never committed and never
+ * rolled back, and it *is* the lease — which also means a `SIGKILL`ed holder
+ * leaves no rollback journal, because no transaction ever wrote a page.
+ *
+ * The pid moves to `DeFlow.lock.pid` beside it. That is not a pid file in the
+ * sense the section above rejects: nothing consults it to decide whether a
+ * daemon is running, and it is never trusted for liveness. It is read in one
+ * place only — by a daemon that has *already* been refused the lock, and so
+ * already knows a live holder exists — purely to put a number in the sentence
+ * the user reads. A pid left behind by a `SIGKILL`ed holder is therefore
+ * unreachable: the next daemon takes the lock rather than reading the file.
  */
 import type { Db } from '@DeFlow/core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openLock } from './sqlite-db.ts';
 
 /** The lease file, in the global data directory (docs/16-repo-layout.md §7.2). */
 export const LOCK_FILE = 'DeFlow.lock';
+
+/** Where the holder publishes its pid, for the message a losing daemon prints. */
+export const HOLDER_FILE = 'DeFlow.lock.pid';
 
 /**
  * A second DeFlowd against a data directory another one already holds (AC2).
@@ -76,15 +106,22 @@ export interface Lease {
   release(): void;
 }
 
-const CREATE_LEASE = `CREATE TABLE IF NOT EXISTS lease (
-    id  INTEGER PRIMARY KEY CHECK (id = 1),
-    pid INTEGER NOT NULL
-  ) STRICT`;
-
-const CLAIM = `INSERT INTO lease (id, pid) VALUES (1, ?)
-  ON CONFLICT(id) DO UPDATE SET pid = excluded.pid`;
-
-const HOLDER = 'SELECT pid FROM lease WHERE id = ?';
+/**
+ * The lock connections this process holds.
+ *
+ * This is a garbage-collection root, and it is load-bearing rather than
+ * bookkeeping. The kernel lock lives on a file descriptor owned by a
+ * better-sqlite3 `Database`, and that object has a finalizer that closes it:
+ * if the only reference to it is the `Lease` this function returns, then a
+ * caller who keeps `lease.pid` for a log line and lets the object go has
+ * handed the lease to V8 to release at a time of its choosing. That is not a
+ * hypothetical — it collects within milliseconds under a normal boot's
+ * allocation rate, and a second daemon then acquires the lease of a daemon
+ * that is still running, which is the whole of what AC1 forbids. Holding the
+ * connection here makes the lease last exactly as long as the process, no
+ * matter what the caller does with the return value.
+ */
+const held = new Set<Db>();
 
 /** True for the one error that means "someone else holds it". */
 function isBusy(error: unknown): boolean {
@@ -94,6 +131,9 @@ function isBusy(error: unknown): boolean {
 /**
  * Takes the lock, or answers false. Anything that is not contention — a
  * read-only data directory, a full disk — is rethrown as itself.
+ *
+ * The transaction this opens is never closed. There is no matching commit or
+ * rollback anywhere in this file, and adding one would give the lease away.
  */
 function take(db: Db): boolean {
   try {
@@ -106,13 +146,31 @@ function take(db: Db): boolean {
 }
 
 /**
- * The pid recorded by whoever holds the lease. Null when the row is not there
- * to be read — a lock file abandoned mid-creation, or one written by a build
- * that did not record it.
+ * Publishes this process's pid beside the lock, for the sentence a losing
+ * daemon prints. Called only once the lock is held.
+ *
+ * Removed before it is rewritten, and renamed into place rather than written
+ * in place, so a daemon reading it concurrently sees either nothing or a
+ * complete pid — never a previous run's pid, and never half of one. "Nothing"
+ * degrades to `pid unknown`, which is honest; a stale number is a lie that
+ * sends the user to kill an unrelated process.
  */
-function holderPid(db: Db): number | null {
+function publishHolder(holderFile: string, pid: number): void {
+  rmSync(holderFile, { force: true });
+  const scratch = `${holderFile}.${pid}`;
+  writeFileSync(scratch, `${pid}\n`);
+  renameSync(scratch, holderFile);
+}
+
+/**
+ * The pid published by whoever holds the lease. Null when there is nothing
+ * legible there — a holder that has the lock but has not published yet, or a
+ * data directory from a build that did not write the file.
+ */
+function readHolder(holderFile: string): number | null {
   try {
-    return db.prepare<{ pid: number }>(HOLDER).get(1)?.pid ?? null;
+    const pid = Number.parseInt(readFileSync(holderFile, 'utf8').trim(), 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
   }
@@ -128,35 +186,29 @@ function holderPid(db: Db): number | null {
 export function acquireLease(dataDir: string): Lease {
   mkdirSync(dataDir, { recursive: true });
   const file = join(dataDir, LOCK_FILE);
+  const holderFile = join(dataDir, HOLDER_FILE);
   const db = openLock(file);
 
   try {
-    if (!take(db)) throw new DaemonAlreadyRunning(holderPid(db), dataDir);
-
-    // Committed rather than held, so the *next* daemon can read the pid it
-    // has to name. Readers are not blocked by a RESERVED lock; they are
-    // blocked by an uncommitted row.
-    db.exec(CREATE_LEASE);
-    db.prepare(CLAIM).run(process.pid);
-    db.exec('COMMIT');
-
-    // And re-taken, to hold for the lifetime of this process. The gap between
-    // the two is one statement wide: a daemon that wins it takes the lease and
-    // this one fails here instead, which is the same outcome an instant later
-    // and never two holders.
-    if (!take(db)) throw new DaemonAlreadyRunning(holderPid(db), dataDir);
+    // The one and only arbitration point in this function, and the whole of
+    // the lease. Everything after it runs with the lock already held.
+    if (!take(db)) throw new DaemonAlreadyRunning(readHolder(holderFile), dataDir);
+    publishHolder(holderFile, process.pid);
   } catch (error) {
     db.close();
     throw error;
   }
 
-  let held = true;
+  held.add(db);
+  let holding = true;
   return {
     pid: process.pid,
     file,
     release(): void {
-      if (!held) return;
-      held = false;
+      if (!holding) return;
+      holding = false;
+      held.delete(db);
+      rmSync(holderFile, { force: true });
       db.close();
     },
   };

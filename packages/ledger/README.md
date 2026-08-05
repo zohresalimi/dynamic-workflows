@@ -246,8 +246,34 @@ that it is released when the holder dies — `SIGKILL` included, with no handler
 exposes no `flock(2)` and the npm package that does needs `node-gyp` at install time, which NF6
 forbids. What is already here, already compiled, is SQLite, whose unix VFS takes ordinary `fcntl`
 advisory locks: an open `BEGIN IMMEDIATE` on `DeFlow.lock` holds one for exactly as long as the
-process lives. The holder's pid is committed to the lock file *before* the held transaction is
-re-taken, which is why a reader can still name it.
+process lives.
+
+Acquiring it is **one statement**, and nothing is ever written into `DeFlow.lock` — it stays zero
+bytes forever. That is not minimalism, it is the correctness condition: **a commit is exactly the
+moment SQLite lets go of the file lock**. An acquisition that commits the holder's pid into the lock
+file has to take the lock, commit, and take it again to hold, and between the commit and the retake
+it holds nothing. Two daemons started microseconds apart — a supervisor, a container restart, a
+script, a test harness; anything that is not a human typing in two terminals — walk into that
+window, and `test/integration/lease-race.test.ts` measures what comes out: the daemon that acquired
+*first* locked out by the one that arrived second, rounds where **both** fail and the user gets no
+daemon at all, and a raw `SqliteError: database is locked` escaping to the terminal when the losing
+daemon's pid read collides with the winner's commit. So there is one `BEGIN IMMEDIATE`, it is never
+committed and never rolled back, and it *is* the lease. A `SIGKILL`ed holder leaves no rollback
+journal, because no transaction ever wrote a page.
+
+The pid the message names lives in `DeFlow.lock.pid` beside the lock. That is not the pid file this
+section rejects: nothing consults it to decide whether a daemon is running, and it is never trusted
+for liveness. It is read in exactly one place — by a daemon that has *already* been refused the lock
+and therefore already knows a live holder exists — purely to put a number in the sentence. A pid
+left behind by a `SIGKILL`ed holder is unreachable, because the next daemon takes the lock instead
+of reading the file.
+
+The lease is also anchored in a module-level set inside `lease.ts`, and that too is load-bearing.
+The kernel lock lives on a file descriptor owned by a better-sqlite3 `Database` with a finalizer
+that closes it, so if the only reference were the returned `Lease`, a caller who keeps `lease.pid`
+for a log line and drops the object would have handed the lease to the garbage collector to release
+whenever it felt like it — measured at milliseconds under a normal boot's allocation rate, after
+which a second daemon acquires the lease of a daemon that is still running.
 
 **`bumpEpoch(db)`** is the belt to that lock's braces. It advances `daemon.epoch` once per daemon
 life in a single `UPDATE … RETURNING` (never a read followed by a write — that hands two racing

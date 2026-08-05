@@ -132,9 +132,23 @@ export function openRead(file: string): Db {
  * It is not in the writer registry: the registry protects the *ledger* from a
  * second write connection in this process, and the lock file's own contention
  * is the thing under test.
+ *
+ * `journal_mode = MEMORY` for the same reason. Nothing is ever written through
+ * this connection — the lease is an open `BEGIN IMMEDIATE` that is never
+ * committed, and committing is what would give the lock away (see ./lease.ts)
+ * — but SQLite creates a `DeFlow.lock-journal` the moment it takes `RESERVED`
+ * regardless, and a `SIGKILL`ed daemon leaves it behind next to a file
+ * documented as the only thing in that directory. `MEMORY` costs nothing here
+ * because the only thing it gives up is rolling back writes there are none of,
+ * and it does not touch locking, which is the entire purpose of this
+ * connection. (`OFF` would say the same thing and is quietly refused —
+ * `PRAGMA journal_mode = OFF` leaves the mode at `delete` and reports no
+ * error, which is why the assertion that lives on this is a `readdir` of the
+ * data directory rather than a read-back of the pragma.)
  */
 export function openLock(file: string): Db {
   const db = new SqliteDb(new Database(resolve(file)));
   db.pragma('busy_timeout = 0');
+  db.pragma('journal_mode = MEMORY');
   return db;
 }

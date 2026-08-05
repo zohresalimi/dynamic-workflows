@@ -77,7 +77,13 @@ export {
 } from './io-chunk.ts';
 // KAR-03.7 — the single-instance lease. Taken first in boot, before anything
 // else can change the world.
-export { acquireLease, DaemonAlreadyRunning, type Lease, LOCK_FILE } from './lease.ts';
+export {
+  acquireLease,
+  DaemonAlreadyRunning,
+  HOLDER_FILE,
+  type Lease,
+  LOCK_FILE,
+} from './lease.ts';
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
