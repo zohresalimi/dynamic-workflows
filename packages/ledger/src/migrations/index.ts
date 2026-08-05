@@ -8,6 +8,7 @@ import { migration0002EventEpoch } from './0002-event-epoch.ts';
 import { migration0003DaemonEpoch } from './0003-daemon-epoch.ts';
 import { migration0004ProviderCapabilities } from './0004-provider-capabilities.ts';
 import { migration0005Process } from './0005-process.ts';
+import { migration0006EffectJournalGuards } from './0006-effect-journal-guards.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
@@ -15,4 +16,5 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0003DaemonEpoch,
   migration0004ProviderCapabilities,
   migration0005Process,
+  migration0006EffectJournalGuards,
 ];

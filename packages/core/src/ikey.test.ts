@@ -31,6 +31,23 @@ suite('ikey / parseIkey', () => {
     );
   });
 
+  /**
+   * KAR-06.3 test plan #1. `-` and `_` are both legal inside the components —
+   * `_` in a RunId, `-` in a NodeId — and neither may be mistaken for the
+   * separator. The golden strings are written out rather than computed so a
+   * change to the separator is a diff here, not a silent re-keying of every
+   * effect journal in the field.
+   */
+  it.each([
+    ['run_20260802T141133Z_9f2a1c', 'implement', 0, 0],
+    ['run_20260802T141133Z_9f2a1c', 'migrate-header-component', 1, 7],
+    ['run_20991231T235959Z_ffffff', 'a', 12, 340],
+  ] as const)('is the golden string for %s/%s/%i/%i', (run, node, attempt, ordinal) => {
+    expect(ikey(RunIdSchema.parse(run), NodeIdSchema.parse(node), attempt, ordinal)).toBe(
+      `${run}/${node}/${attempt}/${ordinal}`,
+    );
+  });
+
   it('rejects a malformed key rather than silently mis-parsing it', () => {
     expect(() => parseIkey('not-an-ikey' as never)).toThrow();
   });
