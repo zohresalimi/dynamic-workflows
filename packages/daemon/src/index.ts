@@ -26,6 +26,43 @@ export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
+export type { WorkflowPhase, WorkflowTool } from './mcp/catalog.ts';
+export {
+  ARTIFACT_INLINE_LIMIT_BYTES,
+  isWorkflowPhase,
+  M1_TOOLS,
+  PROPOSE_PLAN_PATCH,
+  READ_ARTIFACT,
+  READ_FACT,
+  toolByName,
+  toolNamesForPhase,
+  toolsForPhase,
+  WORKFLOW_PHASES,
+} from './mcp/catalog.ts';
+// KAR-05.6 — the MCP host: the untagged stdio entry `session/new` carries,
+// the UDS DeFlowd serves workflow tools on, and the `DeFlow-mcp` shim that
+// bridges the two. The MCP SDK is reached through two deep subpaths only
+// (`checkMcpSdkImports`); nothing here loads express or hono.
+export type {
+  ArtifactStore,
+  FactStore,
+  McpGrant,
+  McpGrantRequest,
+  McpHost,
+  McpHostOptions,
+} from './mcp/host.ts';
+export { MCP_SOCKET_DIR, MCP_SOCKET_FILE, startMcpHost } from './mcp/host.ts';
+export type { HostFrame, ShimFrame } from './mcp/protocol.ts';
+export { BRIDGE_VERSION, BridgeProtocolError } from './mcp/protocol.ts';
+export type { McpServerEntryOptions } from './mcp/server-entry.ts';
+export {
+  DEFLOW_MCP_ENTRY,
+  MCP_SERVER_NAME,
+  mcpServerEntry,
+  RUN_TOKEN_ENV,
+} from './mcp/server-entry.ts';
+export type { ShimOptions } from './mcp/shim.ts';
+export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './mcp/shim.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';

@@ -25,7 +25,8 @@
     "ajv-formats": "catalog:",
     "execa": "catalog:",
     "hono": "catalog:",
-    "pino": "catalog:"
+    "pino": "catalog:",
+    "zod": "catalog:"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "catalog:"
