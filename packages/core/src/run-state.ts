@@ -27,6 +27,7 @@ import { z } from 'zod';
 import {
   BUDGET_DIMENSIONS,
   BUDGET_SCOPES,
+  CANCEL_MODES,
   LOCK_KINDS,
   RUN_NEEDS_HUMAN_REASONS,
   RUN_OUTCOMES,
@@ -93,6 +94,15 @@ export const NODE_STATUSES = [
   'suspended',
   'completed',
   'failed',
+  /**
+   * Stopped by the F5.7 kill switch (KAR-06.7). Terminal, and deliberately not
+   * folded into `failed`: the scheduler treats them identically — neither is
+   * running, neither is admissible, both give their locks back — but a run's
+   * own history has to be able to say "the operator stopped this" rather than
+   * "the agent broke", and a status that cannot express that makes every
+   * cancelled node look like an incident afterwards.
+   */
+  'cancelled',
 ] as const;
 
 export type NodeStatus = (typeof NODE_STATUSES)[number];
@@ -219,6 +229,21 @@ export interface SchedulingPolicy {
 
 export const DEFAULT_SCHEDULING_POLICY: SchedulingPolicy = Object.freeze({ globalAgentSlots: 3 });
 
+/**
+ * The kill switch as reduced state (F5.7, KAR-06.7).
+ *
+ * `status: 'cancelling'` alone says a cancel was asked for; this says **which
+ * ladder**, which is the part `decide()` has to still know after a restart. A
+ * daemon that came back to a cancelling run and had to guess between asking the
+ * agent politely and signalling its process group would either leave a wedged
+ * agent burning tokens or throw away a transcript somebody is waiting for.
+ */
+export interface CancelState {
+  readonly mode: 'cooperative' | 'forceful';
+  /** The `seq` of the `run.cancel.requested` that asked, for the timeline. */
+  readonly requestedSeq: number;
+}
+
 /** Why the circuit breaker asked for a human (§9). */
 export interface NeedsHumanState {
   readonly reason: 'churn' | 'budget' | 'reconcile-unknown';
@@ -242,6 +267,8 @@ export interface RunState {
   readonly outcome: RunOutcome | null;
   readonly criteriaSatisfied: readonly CriterionId[];
   readonly needsHuman: NeedsHumanState | null;
+  /** The cancel the operator asked for, or `null` while nobody has. */
+  readonly cancel: CancelState | null;
   /** The plan the run is executing, not the newest one proposed. */
   readonly planHash: PlanHash | null;
   readonly planVersion: number;
@@ -304,13 +331,12 @@ export interface RunState {
  * the cache is a pure optimisation and is allowed to be thrown away, never to
  * be believed when it is stale.
  *
- * The same applies to a change in how an existing field is *derived*, which is
- * what took it to 4: `node.suspended` now fills `NodeState.wakeAt` from its
- * suspension deadline (KAR-06.6). A checkpoint written by 3 has the field, and
- * has it empty for every suspended node — so believing it would leave a
- * six-hour human gate with no wake row and no way to ever come back.
+ * The same applies to how an existing field is *derived*: 4 is `node.suspended`
+ * filling `NodeState.wakeAt` from its deadline (KAR-06.6) — a 3 checkpoint has
+ * the field and has it empty, so believing it strands a six-hour gate with no
+ * wake row. 5 is `RunState.cancel` and the `cancelled` node status (KAR-06.7).
  */
-export const CHECKPOINT_VERSION = 4;
+export const CHECKPOINT_VERSION = 5;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -351,6 +377,7 @@ export function initialRunState(): RunState {
     outcome: null,
     criteriaSatisfied: [],
     needsHuman: null,
+    cancel: null,
     planHash: null,
     planVersion: 0,
     plan: null,
@@ -436,6 +463,13 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   criteriaSatisfied: z.array(CriterionIdSchema),
   needsHuman: z
     .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
+    .nullable(),
+  cancel: z
+    .strictObject({
+      mode: z.enum(CANCEL_MODES),
+      /** The `seq` of the request, and no event has seq 0. */
+      requestedSeq: z.number().int().positive(),
+    })
     .nullable(),
   planHash: PlanHashSchema.nullable(),
   planVersion: wholeCount,

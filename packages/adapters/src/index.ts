@@ -104,6 +104,7 @@ export {
 export type { KillOutcome, KillTreePorts, SweepPorts } from './kill-tree.ts';
 export {
   killTree,
+  liveGroupMembers,
   processStartTime,
   SWEEP_KILL_GRACE_MS,
   startTimeSource,

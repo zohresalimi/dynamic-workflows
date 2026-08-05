@@ -39,6 +39,7 @@ import {
   type LockState,
   lockKey,
   type NodeState,
+  type NodeStatus,
   type RunState,
   type RunStatus,
 } from './run-state.ts';
@@ -46,6 +47,9 @@ import { sumUsage, type TokenUsage, type UsageTotals } from './token-usage.ts';
 
 /** A node nothing is yet known about — see `initialNodeState`. */
 const UNKNOWN_NODE: NodeState = initialNodeState();
+
+/** The statuses an attempt does not come back from. */
+const TERMINAL_NODE_STATUSES: readonly NodeStatus[] = ['completed', 'failed', 'cancelled'];
 
 /** A transition's answer. `null` is "this event changed nothing" — see the watermark. */
 type Transition = RunState | null;
@@ -148,8 +152,23 @@ function project(state: RunState, event: Event): Transition {
     case 'run.resumed':
       return withStatus(state, 'running');
 
-    case 'run.cancel.requested':
-      return withStatus(state, 'cancelling');
+    // KAR-06.7. The *mode* is folded, not just the status: `decide()` has two
+    // inputs, so the only way it can tell a cooperative ladder from a forceful
+    // one after a restart is for the projection to carry it. A later request
+    // replaces an earlier one — an escalation from cooperative to forceful is
+    // the operator saying "stop asking nicely", and a sticky first answer would
+    // ignore them.
+    case 'run.cancel.requested': {
+      const cancel = { mode: event.payload.mode, requestedSeq: seq };
+      if (
+        state.status === 'cancelling' &&
+        state.cancel?.mode === cancel.mode &&
+        state.cancel.requestedSeq === cancel.requestedSeq
+      ) {
+        return null;
+      }
+      return { ...(withStatus(state, 'cancelling') ?? state), cancel };
+    }
 
     case 'run.completed':
       return endRun(state, 'completed', event.payload.outcome, event.payload.criteriaSatisfied);
@@ -258,6 +277,40 @@ function project(state: RunState, event: Event): Transition {
         suspension: null,
       }));
 
+    // KAR-06.7 AC9. Terminal, like `node.completed` and `node.failed`, and for
+    // the property that matters most here: a node that is no longer `running`
+    // is a node whose locks the next `decide()` reclaims. A cancelled attempt
+    // that stayed `running` in the projection would hold the repository write
+    // lock for ever, and the next run would block on a node nobody is waiting
+    // for.
+    //
+    // A node that already reached a terminal status is left alone. That is not
+    // defensive coding, it is the kill switch's real race: `decide()` returns a
+    // `CancelNode`, the node completes while the ladder is being climbed, and
+    // the driver's terminal record lands after it. Overwriting the completion
+    // would discard a result the run has already paid for and tell every
+    // dependent node that its dependency never finished.
+    case 'node.cancelled':
+      return withNode(state, seq, event.payload.node, (current) =>
+        TERMINAL_NODE_STATUSES.includes(current.status)
+          ? current
+          : {
+              ...current,
+              ...attemptOf(current, event.payload.attempt),
+              status: 'cancelled',
+              failure: null,
+              suspension: null,
+              wakeAt: null,
+            },
+      );
+
+    // The rungs of the ladder and the report of a kill that did not take are
+    // evidence for a human, not scheduling input: `decide()` reads the run's
+    // `cancel` and the node's status, and nothing else about cancellation.
+    case 'node.cancel.stage':
+    case 'node.cancel.failed':
+      return null;
+
     case 'node.retry.scheduled':
       return withNode(state, seq, event.payload.node, (current) => ({
         ...current,
@@ -290,6 +343,7 @@ function project(state: RunState, event: Event): Transition {
     case 'effect.started':
     case 'effect.completed':
     case 'effect.failed':
+    case 'effect.cancelled':
       return null;
 
     // Context is rebuilt per attempt from the ledger (F6.x); the packet record

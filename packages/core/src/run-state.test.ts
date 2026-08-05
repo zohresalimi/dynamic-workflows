@@ -92,6 +92,7 @@ const populated: RunState = {
   outcome: null,
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
+  cancel: { mode: 'forceful', requestedSeq: 6 },
   planHash: SHA,
   planVersion: 3,
   plan: graph(SHA),

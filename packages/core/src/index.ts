@@ -80,6 +80,8 @@ export type { EffectRequest } from './effect-request.ts';
 export { requestHash } from './effect-request.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
+  CancelMode,
+  CancelStage,
   CompactionFidelity,
   EffectKind,
   EventKind,
@@ -92,12 +94,15 @@ export {
   BUDGET_SCOPES,
   BudgetConsumedSchema,
   BudgetExceededSchema,
+  CANCEL_MODES,
+  CANCEL_STAGES,
   COMPACTION_FIDELITIES,
   COMPACTION_SCOPES,
   COMPACTION_TRIGGERS,
   ContextBuiltSchema,
   ContextCompactedSchema,
   EFFECT_KINDS,
+  EffectCancelledSchema,
   EffectCompletedSchema,
   EffectFailedSchema,
   EffectStartedSchema,
@@ -117,6 +122,9 @@ export {
   isEventKind,
   LOCK_KINDS,
   LOCK_RELEASE_REASONS,
+  NodeCancelFailedSchema,
+  NodeCancelledSchema,
+  NodeCancelStageSchema,
   NodeCompletedSchema,
   NodeFailedSchema,
   NodeLockReleasedSchema,
@@ -253,9 +261,16 @@ export {
   toNodeFailure,
 } from './node-failure.ts';
 export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
-export type { CompletedNodeResult, NodeResult, NodeSuspension } from './node-result.ts';
+export type {
+  CancellationSource,
+  CancelledNodeResult,
+  CompletedNodeResult,
+  NodeResult,
+  NodeSuspension,
+} from './node-result.ts';
 export {
   CANCELLATION_SOURCES,
+  CancelledNodeResultSchema,
   CompletedNodeResultSchema,
   NodeResultSchema,
   NodeSuspensionSchema,
@@ -361,6 +376,7 @@ export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,
   BudgetState,
+  CancelState,
   LockState,
   NeedsHumanState,
   NodeIdRegistryState,

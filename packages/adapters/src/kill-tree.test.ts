@@ -24,7 +24,7 @@
 import { TestClock } from '@DeFlow/testkit';
 import { expect, it, describe as suite } from 'vitest';
 import { NotImplementedOnWin32 } from './failures.ts';
-import { killTree, startTimeSource, sweepTree } from './kill-tree.ts';
+import { killTree, liveGroupMembers, startTimeSource, sweepTree } from './kill-tree.ts';
 
 /** A recording stand-in for `process.kill`. Never a mocked module: the port is
  * a function parameter precisely so nothing has to be intercepted. */
@@ -146,5 +146,60 @@ suite('the start-time source is platform-specific (EPIC-05-S32 scenario outline)
 
   it('throws the same typed error on win32 as killTree does', () => {
     expect(() => startTimeSource('win32')).toThrow(NotImplementedOnWin32);
+  });
+});
+
+// ── KAR-06.7 AC7 — the Z filter, deterministically ───────────────────────────
+
+/**
+ * A `ps -eo pid,pgid,stat` table, spelled out.
+ *
+ * The filter is proved here rather than against a real kill for one reason: the
+ * zombie window is a race. After a successful group SIGKILL the members linger
+ * in state `Z` until init reaps them, which is *usually* long enough to observe
+ * and, under load or on a fast reaper, is not. A spec that asserted "a zombie is
+ * still listed" would be intermittently red about something that is not the
+ * claim; the claim is what the function does with a `Z` row when it sees one.
+ */
+const PS_TABLE = [
+  '  PID  PGID STAT',
+  ' 4242  4242 Z   ', // the group leader, already dead and awaiting reaping
+  ' 4243  4242 Z+  ', // a grandchild, likewise — `Z+` is still a zombie
+  ' 4244  4242 Ss  ', // the one member that really is still running
+  ' 4250  4250 S   ', // another group entirely, alive, and none of our business
+].join('\n');
+
+suite('liveGroupMembers excludes zombies and other groups (AC7)', () => {
+  const ps = () => PS_TABLE;
+
+  it('counts only the non-Z members of the group asked about', () => {
+    expect(liveGroupMembers(4242, { ps })).toEqual([4244]);
+  });
+
+  it('reports an emptied group as empty even while ps still lists every member', () => {
+    const allDead = PS_TABLE.replace(' 4244  4242 Ss  ', ' 4244  4242 Z   ');
+
+    // Three rows for this pgid, and the honest answer is still "nothing is
+    // running". Counting them is how a working kill reads as a failure.
+    expect(allDead.split('\n').filter((line) => line.includes('4242')).length).toBe(3);
+    expect(liveGroupMembers(4242, { ps: () => allDead })).toEqual([]);
+  });
+
+  it('refuses the pids that are not a group DeFlow created', () => {
+    for (const pgid of [0, 1, -1, 1.5]) {
+      expect(liveGroupMembers(pgid, { ps })).toEqual([]);
+    }
+  });
+
+  it('answers "nothing to report" rather than inventing survivors when ps fails', () => {
+    // A survivor list nobody can name would turn a working kill into a
+    // permanent failure event that no operator can act on.
+    expect(
+      liveGroupMembers(4242, {
+        ps: () => {
+          throw new Error('ps: command not found');
+        },
+      }),
+    ).toEqual([]);
   });
 });
