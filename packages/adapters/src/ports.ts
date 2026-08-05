@@ -252,6 +252,15 @@ export interface AcpPorts {
    */
   readonly maxFrameBytes?: number;
   /**
+   * The environment the golden-recording tee reads (KAR-05.7 AC1).
+   *
+   * A port rather than `process.env` so that a spec can turn recording on for
+   * one turn without mutating the process every other spec in the file shares.
+   * Absent means "off" — the same answer an environment without
+   * `DeFlow_RECORD=1` gives, which is what the daemon passes in production.
+   */
+  readonly record?: NodeJS.ProcessEnv;
+  /**
    * Called immediately before each `session.nextUpdate()`, with the bytes read
    * off the child's stdout so far.
    *

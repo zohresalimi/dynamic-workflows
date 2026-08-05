@@ -45,16 +45,44 @@ export {
   supportsTerminal,
 } from './capabilities.ts';
 export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
+// KAR-05.7 — Layer B: the eight-assertion behavioural contract, as data rather
+// than as test bodies, so `DeFlow doctor` can run it against installed CLIs.
+export type {
+  AdapterFactory,
+  ConformanceAdapter,
+  ConformanceCase,
+  ConformancePorts,
+  ConformanceReport,
+  ConformanceResult,
+  ConformanceStage,
+  ConformanceStatus,
+  ConformanceTarget,
+  ConformanceUnavailable,
+} from './conformance.ts';
+export {
+  CONFORMANCE_CASES,
+  CONFORMANCE_FRAME_CAP_BYTES,
+  describeConformance,
+  HONESTY_METHODS,
+  METHOD_NOT_FOUND,
+  runProviderConformance,
+  UNADVERTISED_METHOD,
+} from './conformance.ts';
 export {
   ACP_PROTOCOL_VERSION,
+  advertisedButUnimplemented,
   agentExited,
   agentTimedOut,
   argvRejected,
   frameTooLarge,
   handshakeMismatch,
+  InvalidRecordingKey,
+  isMethodNotFound,
+  METHOD_NOT_FOUND_CODE,
   NotImplementedOnWin32,
   offendingFrameHead,
   protocolError,
+  RECORDING_DIR_SHAPE,
   registryRefused,
   resolutionFailed,
   spawnRefused,
@@ -128,6 +156,28 @@ export type {
 } from './provider-registry.ts';
 export { PROVIDER_SPECS, providerSpec, spawnPlan } from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
+// KAR-05.7 — the golden-recording tee, and the exact-version key that makes a
+// vendor bump a new directory rather than a silent invalidation.
+export type {
+  RecordedDirection,
+  RecorderOptions,
+  RecordingHeader,
+  RecordingIdentity,
+  TransportRecorder,
+} from './recorder.ts';
+export {
+  DEFAULT_RECORDING_ROOT,
+  HOME_PLACEHOLDER,
+  machineIdentity,
+  openTransportRecorder,
+  RECORD_CASE_ENV,
+  RECORD_DIR_ENV,
+  RECORD_ENV,
+  recordingDirName,
+  redactRecordingText,
+  TMPDIR_PLACEHOLDER,
+  USER_PLACEHOLDER,
+} from './recorder.ts';
 // KAR-05.5 — the prompt a replay resume sends, rebuilt from the ledger and
 // from DeFlow's own blob store. No vendor session file, no vendor API.
 export type {

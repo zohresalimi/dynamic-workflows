@@ -169,6 +169,42 @@ true no-op either way.
 
 ---
 
+## Golden recordings (`pnpm test:record`)
+
+`recordings/<provider>@<exact-version>/<case>.ndjson` is the adapter conformance corpus: real
+transcripts of real, authenticated vendor CLIs, teed at the transport
+(`packages/adapters/src/recorder.ts`) and held to two layers of assertion on every commit — the raw
+frames against `@agentclientprotocol/sdk`'s `schema.json`, and DeFlow's own normalised event
+vocabulary against a snapshot (`test/recordings-conformance.test.ts`).
+
+**`pnpm test:record` is manual, and CI never runs it — now or later.** It spends real quota against
+_your own_ subscription, it needs credentials CI does not have, and it is nondeterministic by
+construction: the same prompt to the same model is different tokens on a different day. The script
+refuses outright when `CI` is set, no workflow mentions it, and `test/conformance-suite.test.ts`
+asserts both of those rather than trusting this paragraph.
+
+```sh
+pnpm test:record --provider claude --case simple-edit --root /opt/homebrew/bin
+```
+
+Three rules for a capture:
+
+- **The directory is keyed on the exact version.** `@latest` is refused. A vendor bump has to land
+  as a _new directory in a pull request_ — that diff is the entire point, and a moving tag would
+  invalidate every golden underneath it in place, silently.
+- **Review the file before committing it.** It is a transcript of a session on your machine. The tee
+  redacts your home directory, your temp directory, your username and your installed slash-command
+  list on the way to disk, and `test/recordings-scrubbed.test.ts` is the backstop — not the filter.
+- **Never edit a committed recording.** Re-record instead. A hand-edited golden asserts against a
+  session that never happened.
+
+The behavioural half of the suite (`providerContract`, `packages/adapters/src/conformance.ts`) runs
+against the mock agent's six capability profiles on every commit, and against an installed vendor CLI
+only behind the `@live` tag, which needs `DeFlow_LIVE=1` **and** `DeFlow_LIVE_BIN` and which no
+workflow selects.
+
+---
+
 ## CI
 
 Three jobs in `.github/workflows/ci.yml`: `check` (Linux, Node 24), `test` (a four-leg matrix,

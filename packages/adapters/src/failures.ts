@@ -226,10 +226,105 @@ export function frameTooLarge(report: FrameTooLargeReport): NodeFailureError {
   return Object.assign(error, { head: report.head });
 }
 
+/**
+ * The agent wrote a complete line that is not JSON at all (conformance
+ * assertion 7).
+ *
+ * A separate reason from `adapter.protocol-error` on purpose:
+ * docs/04-domain-model.md §8 gives the two different `class` values and
+ * therefore different scheduler decisions, and "not JSON" is the one an
+ * adapter mid-release most often produces — a log line written to stdout
+ * instead of stderr, or a banner ahead of the first frame.
+ *
+ * **Permanent, and the session ends.** The SDK's reader drops a line it cannot
+ * parse and carries on, which is right for a transport library and wrong here:
+ * a dropped frame is a hole in the transcript that the ledger keeps for ever
+ * and every replay reproduces, under a node that reported success.
+ *
+ * The first 4 KiB ride along on `head`, exactly as `frameTooLarge` does it, so
+ * `run-node.ts` can attach the bytes that actually arrived.
+ */
+export function malformedOutput(head: Uint8Array, bytes: number): NodeFailureError {
+  const error = new NodeFailureError(
+    `the agent wrote a ${bytes}-byte line that is not JSON; the session was torn down rather ` +
+      'than continuing with a hole in the transcript',
+    {
+      reason: 'adapter.malformed-output',
+      class: 'permanent',
+      detail: { bytes },
+    },
+  );
+  return Object.assign(error, { head });
+}
+
 /** The offending frame's first bytes, when `thrown` is a frame-cap abort. */
 export function offendingFrameHead(thrown: unknown): Uint8Array | null {
   const head = (thrown as { head?: unknown } | null)?.head;
   return head instanceof Uint8Array ? head : null;
+}
+
+/** The shape a recording directory's name must have, quoted in every refusal. */
+export const RECORDING_DIR_SHAPE = '<provider>@<version>';
+
+/**
+ * `DeFlow_RECORD=1` against a version that is not exact (KAR-05.7 AC6).
+ *
+ * A `NodeFailureError` and not a bare `Error` for the same reason as every
+ * other exit in this package: it travels through `toAdapterFailure` into the
+ * ledger, and a stack does not survive `JSON.stringify`, a daemon restart or
+ * the node inspector. `adapter.spawn-failed` because it is decided *before*
+ * the spawn — a capture that silently landed in a moving directory would look
+ * exactly like a good golden until the day the vendor shipped, so the node is
+ * refused instead.
+ */
+export class InvalidRecordingKey extends NodeFailureError {
+  constructor(message: string, detail: Record<string, unknown>) {
+    super(message, { reason: 'adapter.spawn-failed', class: 'permanent', detail });
+    this.name = 'InvalidRecordingKey';
+  }
+}
+
+/** JSON-RPC's "Method not found", which is how an agent refuses a method. */
+export const METHOD_NOT_FOUND_CODE = -32601;
+
+/** `true` when `error` is a JSON-RPC `-32601`, however it was constructed. */
+export function isMethodNotFound(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === METHOD_NOT_FOUND_CODE;
+}
+
+/**
+ * The agent advertised a capability and then answered its method with
+ * `-32601` (EPIC-05-S27).
+ *
+ * **`adapter.capability-missing`, not `adapter.protocol-error`.** The probed
+ * row is the single input the entire routing layer trusts, and this is the
+ * failure that says that input was wrong — which is a different fact, with a
+ * different fix, from an agent that garbled a frame.
+ *
+ * **Permanent, and DeFlow does not downgrade.** Falling back to the replay
+ * strategy on the first `-32601` would paper over the dishonesty and let a
+ * broken adapter keep making routing promises it cannot keep; a row that lies
+ * about one thing cannot be trusted about the rest. The failure is surfaced,
+ * and re-routing is an explicit `PlanPatch` (EPIC-11).
+ *
+ * The message names both halves of the pairing, because the code alone does
+ * not say which promise was broken.
+ */
+export function advertisedButUnimplemented(
+  capability: string,
+  method: string,
+  path: string,
+): NodeFailureError {
+  return new NodeFailureError(
+    `the agent advertised "${capability}" (${path}) and then answered ${method} with JSON-RPC ` +
+      `${METHOD_NOT_FOUND_CODE} Method not found; the capability row DeFlow routed from is wrong, ` +
+      'and DeFlow does not silently fall back to another strategy on a manifest it cannot trust',
+    {
+      reason: 'adapter.capability-missing',
+      class: 'permanent',
+      detail: { capability, method, path },
+    },
+  );
 }
 
 /** The agent broke the protocol in a way the session cannot continue past. */

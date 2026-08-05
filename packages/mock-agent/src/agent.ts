@@ -129,7 +129,16 @@ export function createMockAgent(
 ): acp.AgentApp {
   const ids = createIdFactory(options.seed);
   const clock = createSyntheticClock(options.seed);
-  const sessions = new Set<string>();
+  /**
+   * The open sessions, and the cwd each was opened against.
+   *
+   * A `Map` rather than the `Set` this used to be because `session/list` has
+   * to answer with a `SessionInfo`, and `SessionInfo` requires `cwd` — an
+   * agent that advertised `sessionCapabilities.list` and could only produce
+   * session ids would answer a shape Layer A rejects, which is a subtler
+   * version of the same dishonesty.
+   */
+  const sessions = new Map<string, { cwd: string }>();
   /**
    * The in-flight turn's cancel hook, per session.
    *
@@ -172,12 +181,12 @@ export function createMockAgent(
         agentInfo: { name: AGENT_NAME, version: AGENT_VERSION },
       };
     })
-    .onRequest('session/new', () => {
+    .onRequest('session/new', ({ params }) => {
       // AC4's additionalDirectories case: session/new is the request that
       // capability qualifies, so it is the one a dishonest run refuses.
       if (capabilities.dishonestMethod === 'session/new') refuseAsDishonest();
       const sessionId = ids.session();
-      sessions.add(sessionId);
+      sessions.set(sessionId, { cwd: params.cwd });
       return { sessionId };
     })
     .onRequest('session/prompt', async ({ params, client }) => {
@@ -245,14 +254,60 @@ export function createMockAgent(
       // the session either until it reads its own file, and a mock that
       // insisted on having created it could only ever test a resume inside one
       // process — which is not the case that breaks.
-      sessions.add(params.sessionId);
+      sessions.set(params.sessionId, { cwd: params.cwd });
+      return {};
+    });
+  }
+
+  // The three lifecycle methods an honest agent owes its own manifest.
+  //
+  // Registered on exactly the same rule as `session/resume` above — advertised
+  // means implemented — because that rule is what makes conformance assertion
+  // 6 able to fail at all. KAR-05.7's battery is what found these missing:
+  // the mock advertised fork, list and delete out of the measured capability
+  // matrix and answered all three with -32601, which is the precise lie the
+  // battery exists to catch.
+  if (
+    capabilities.dishonestMethod !== 'session/list' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'list'])
+  ) {
+    agent.onRequest('session/list', ({ params }) => ({
+      sessions: [...sessions.entries()]
+        .filter(([, info]) => params.cwd == null || info.cwd === params.cwd)
+        .map(([sessionId, info]) => ({ sessionId, cwd: info.cwd })),
+    }));
+  }
+
+  if (
+    capabilities.dishonestMethod !== 'session/fork' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'fork'])
+  ) {
+    agent.onRequest('session/fork', ({ params }) => {
+      if (!sessions.has(params.sessionId)) {
+        throw new acp.RequestError(INVALID_PARAMS, `unknown session "${params.sessionId}"`);
+      }
+      // A fork is a *new* session that leaves the original open — that is the
+      // whole operation, and an implementation that returned the same id would
+      // pass a -32601 check while breaking every caller.
+      const sessionId = ids.session();
+      sessions.set(sessionId, { cwd: params.cwd });
+      return { sessionId };
+    });
+  }
+
+  if (
+    capabilities.dishonestMethod !== 'session/delete' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'delete'])
+  ) {
+    agent.onRequest('session/delete', ({ params }) => {
+      sessions.delete(params.sessionId);
       return {};
     });
   }
 
   if (advertises(capabilities.agentCapabilities, ['loadSession'])) {
     agent.onRequest('session/load', async ({ params, client }) => {
-      sessions.add(params.sessionId);
+      sessions.set(params.sessionId, { cwd: params.cwd });
       // The behaviour the design rule warns about, reproduced honestly:
       // `session/load` streams the *entire* conversation history back as
       // `session/update` notifications before it answers. For a days-long run

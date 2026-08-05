@@ -120,6 +120,24 @@ export function parseRecording(text: string, path = '<recording>'): RecordingRes
       continue;
     }
 
+    // The transport tee (KAR-05.7) also records what the agent wrote to stderr
+    // and the status it exited with. Both are facts about the *process* rather
+    // than frames on the wire: a replay serves the wire, so they are skipped
+    // here and read by the conformance suite instead.
+    if (value['stderr'] !== undefined || value['exit'] !== undefined) continue;
+
+    // A line the tee could not parse is recorded verbatim as `raw`, which is
+    // the whole reason the tee sits on the bytes. It is refused here rather
+    // than skipped: a replay that quietly dropped it would serve a session
+    // that never happened, and the frame it dropped is precisely the one
+    // somebody is trying to reproduce.
+    if (value['raw'] !== undefined) {
+      return fail(
+        `line ${number} carries "raw" — a line the recorded agent wrote that is not JSON. ` +
+          'A replay cannot serve it, and dropping it would replay a session that never happened.',
+      );
+    }
+
     const dir = value['dir'];
     if (dir !== 'in' && dir !== 'out') {
       return fail(`line ${number} has dir ${JSON.stringify(dir)}, expected "in" or "out"`);

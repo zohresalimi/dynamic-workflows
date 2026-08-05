@@ -1,0 +1,102 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AC7 — and the normalised vocabulary of the same recording > snapshots the DeFlow event vocabulary through the normalising serializer 1`] = `
+[
+  {
+    "message": "read pending: Read src/index.ts",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-72c32b8a-2 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-72c32b8a-2 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "edit pending: Edit src/index.ts",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-da3b32c0-3 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-da3b32c0-3 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "execute pending: Run the test suite",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-ab73b0ad-4 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-ab73b0ad-4 failed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "search pending: Search for TODO",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-2cc09a8a-5 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "delete pending: Delete build output",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-86cec4d3-6 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-86cec4d3-6 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "move pending: Move the fixture",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-45f24514-7 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-45f24514-7 failed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "think pending: Consider the approach",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-9fef4401-8 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "fetch pending: Fetch the changelog",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-dd8fbf1e-9 in_progress",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "mock-tool-dd8fbf1e-9 completed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "other pending: Something unclassified",
+    "phase": "tool_call",
+  },
+  {
+    "message": "mock-tool-78e9c541-10 failed",
+    "phase": "tool_call_update",
+  },
+]
+`;

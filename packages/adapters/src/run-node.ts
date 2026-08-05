@@ -42,12 +42,15 @@ import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import * as acp from '@agentclientprotocol/sdk';
 import { admit } from './admission.ts';
+import { CAPABILITY_PATHS } from './capabilities.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import {
   ACP_PROTOCOL_VERSION,
+  advertisedButUnimplemented,
   agentExited,
   agentTimedOut,
   handshakeMismatch,
+  isMethodNotFound,
   NotImplementedOnWin32,
   offendingFrameHead,
   spawnRefused,
@@ -56,6 +59,7 @@ import {
 import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime, sweepTree } from './kill-tree.ts';
 import type { AcpNodeRequest, AcpPorts, EventRecord } from './ports.ts';
+import { openTransportRecorder, type TransportRecorder } from './recorder.ts';
 import { agentTransport } from './transport.ts';
 import { describeUpdate, toolCallContentText } from './updates.ts';
 
@@ -376,6 +380,31 @@ export async function runAcpNode(
     capRefusal = error as NodeFailureError;
   }
 
+  // KAR-05.7 AC1/AC6 — opened here, beside the frame cap and for the same
+  // reason: `DeFlow_RECORD=1` against a binary whose version is `latest` is a
+  // misconfiguration of DeFlow, and the honest moment to say so is before a
+  // process exists and before a quota has been spent. A capture that silently
+  // landed in a moving directory would look exactly like a good golden until
+  // the day the vendor shipped.
+  let recorder: TransportRecorder | null = null;
+  let recordingRefusal: NodeFailureError | null = null;
+  try {
+    recorder = openTransportRecorder(ports.record ?? {}, {
+      provider: request.provider,
+      version: request.binary.version,
+      case: request.nodeId,
+      command: request.binary.path,
+      args: request.argv ?? [],
+      cwd: request.worktree,
+      frameCapBytes: maxFrameBytes,
+    });
+  } catch (error) {
+    // Already a tagged `NodeFailureError` (./failures.ts): the tee refuses a
+    // moving version key rather than writing under one, and the refusal is
+    // handled here exactly like the frame cap's — before a process exists.
+    recordingRefusal = error as NodeFailureError;
+  }
+
   // KAR-05.2 AC7 — admission, and the reason it is *here*: before `spawn`,
   // after the scheduling decision is durable. A node whose requirements the
   // probed row does not satisfy is refused as a plan-time fact; discovering it
@@ -384,6 +413,7 @@ export async function runAcpNode(
   // refusal points at — the decision it refused.
   const refusal =
     capRefusal ??
+    recordingRefusal ??
     admit(
       {
         node: request.nodeId,
@@ -415,7 +445,17 @@ export async function runAcpNode(
 
   const { child, started, exited } = spawnAgent(request);
   const pgid = child.pid ?? 0;
-  const transport = agentTransport(child, { maxFrameBytes });
+  const transport = agentTransport(child, {
+    maxFrameBytes,
+    ...(recorder === null ? {} : { recorder }),
+  });
+
+  /** The exit status is a fact about the process, so it is written once the
+   * process has been observed to leave — never when the turn resolved. */
+  const closeRecording = (exit: ProcessExit): void => {
+    recorder?.exit(exit);
+    recorder?.close();
+  };
 
   // One mutable object rather than seven `let`s: every one of these is
   // assigned from inside a callback or the connection closure, and a `let` in
@@ -660,10 +700,24 @@ export async function runAcpNode(
           turn.newSessionRequest = builder.toRequest();
           await builder.withSession(driveTurn);
         } else {
-          await ctx.request('session/resume', {
-            sessionId: request.resume.sessionId,
-            cwd: request.worktree,
-          });
+          try {
+            await ctx.request('session/resume', {
+              sessionId: request.resume.sessionId,
+              cwd: request.worktree,
+            });
+          } catch (error) {
+            // EPIC-05-S27. Reaching this line at all means the probed row said
+            // `resume` — ./resume.ts is the only thing that selects the native
+            // strategy, and it reads that row and nothing else. So a `-32601`
+            // here is not a protocol accident: it is the manifest the router
+            // trusted being wrong, and it deserves a reason that says so.
+            if (!isMethodNotFound(error)) throw error;
+            throw advertisedButUnimplemented(
+              'session.resume',
+              'session/resume',
+              CAPABILITY_PATHS.resume,
+            );
+          }
           const session = resumedSession(ctx, request.resume.sessionId, resumedUpdates);
           try {
             await driveTurn(session);
@@ -677,6 +731,7 @@ export async function runAcpNode(
     disarm();
     signalGroup(pgid, 'SIGKILL');
     const exit = await exited;
+    closeRecording(exit);
     await clearProcessRow(request, ports);
     // Whatever unwound first — the prompt's rejection, the closed connection,
     // the reader — an escalated cancel is a timeout and nothing else. Reading
@@ -723,6 +778,7 @@ export async function runAcpNode(
 
   child.stdin.end();
   const exit = await exited;
+  closeRecording(exit);
   // AC6: cleared once the exit has been *observed*. A row still saying `live`
   // is one a future daemon's reaper will act on, against a pid that by then may
   // belong to somebody else entirely.

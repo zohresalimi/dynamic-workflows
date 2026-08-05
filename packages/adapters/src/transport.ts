@@ -27,8 +27,25 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { frameTooLarge } from './failures.ts';
-import { frameGuard } from './frame-guard.ts';
+import { frameTooLarge, malformedOutput } from './failures.ts';
+import { FRAME_EVIDENCE_BYTES, frameGuard } from './frame-guard.ts';
+import type { TransportRecorder } from './recorder.ts';
+
+const decoder = new TextDecoder();
+const NEWLINE = 0x0a;
+
+/** The pieces of one ndjson line, joined once its newline has arrived. */
+function concat(pieces: readonly Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const piece of pieces) total += piece.byteLength;
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const piece of pieces) {
+    joined.set(piece, at);
+    at += piece.byteLength;
+  }
+  return joined;
+}
 
 /** A gate the pull loop closes for the duration of each durable append. */
 export interface ReadGate {
@@ -57,6 +74,42 @@ export interface AgentTransport {
 export interface TransportOptions {
   /** The frame cap, in bytes since the last newline. Defaults to 8 MiB. */
   readonly maxFrameBytes?: number;
+  /**
+   * KAR-05.7 AC1 — the golden-recording tee, or absent.
+   *
+   * It is wired **here** and not in ./run-node.ts on purpose. This module is
+   * the last place that still has bytes: one line further on they are frames
+   * the SDK parsed, and one line after that they are DeFlow's own event
+   * vocabulary. A tee at either of those points records the normaliser's
+   * reading of the wire, which is structurally unable to see a frame the
+   * normaliser did not understand — the exact change a golden corpus exists to
+   * make visible.
+   */
+  readonly recorder?: TransportRecorder;
+}
+
+/**
+ * The child's stdin, with every byte handed to the recorder on the way past.
+ *
+ * `"in"` because the recording is written from the **agent's** perspective:
+ * what the client writes is what the agent receives. Flipping the label once,
+ * here, is what makes the capture directly replayable by
+ * `DeFlow-mock-agent --replay` instead of needing a conversion step every
+ * reader has to remember.
+ */
+function teedStdin(
+  child: ChildProcessWithoutNullStreams,
+  recorder: TransportRecorder,
+): WritableStream<Uint8Array> {
+  const writer = Writable.toWeb(child.stdin).getWriter();
+  return new WritableStream<Uint8Array>({
+    async write(chunk) {
+      recorder.note('in', chunk);
+      await writer.write(chunk);
+    },
+    close: () => writer.close(),
+    abort: (reason) => writer.abort(reason),
+  });
 }
 
 /**
@@ -128,6 +181,8 @@ export function agentTransport(
   // reads: a frame that arrives in a hundred chunks is one frame, and a counter
   // per chunk would never see it.
   const guard = frameGuard(options.maxFrameBytes);
+  /** The chunks of the line currently being read, cleared at every newline. */
+  const line: Uint8Array[] = [];
   let trip = (_error: unknown): void => {};
   const failed = new Promise<never>((_resolve, reject) => {
     trip = reject;
@@ -162,6 +217,10 @@ export function agentTransport(
           return;
         }
         bytesRead += chunk.byteLength;
+        // Before the guard and before the SDK: a frame that trips the cap, and
+        // a frame nothing in this process can parse, are both things the
+        // corpus has to be able to show you.
+        options.recorder?.note('out', chunk);
 
         // Upstream of `ndJsonStream`, and therefore upstream of the SDK's
         // unbounded `LineBuffer`: a cap applied to the parsed frame is too late
@@ -177,6 +236,40 @@ export function agentTransport(
           return;
         }
 
+        // Conformance assertion 7. The SDK's reader **drops** a line it cannot
+        // parse and carries on — right for a transport library, wrong for
+        // DeFlow: the dropped frame is a hole in a transcript the ledger keeps
+        // for ever, under a node that reported success.
+        //
+        // The chunks are reassembled rather than checked one at a time, and
+        // that is not a detail: `takeFrame` returns *either* the tail of a line
+        // (ending at its newline) *or* a middle piece with no newline in it, so
+        // "this chunk ends in 0x0a" does not mean "this chunk is a whole
+        // frame". Measured — the first version of this check believed it did,
+        // and rejected a legitimate 8 MiB line whose last 64 KiB happened not
+        // to be valid JSON on its own.
+        //
+        // The buffer is bounded by the frame cap the guard above enforces, so
+        // the extra memory is at most one frame's worth and only while a line
+        // is incomplete.
+        line.push(chunk);
+        if (chunk[chunk.length - 1] === NEWLINE) {
+          const complete = line.length === 1 ? chunk : concat(line);
+          line.length = 0;
+          try {
+            JSON.parse(decoder.decode(complete));
+          } catch {
+            const error = malformedOutput(
+              complete.slice(0, FRAME_EVIDENCE_BYTES),
+              complete.byteLength,
+            );
+            trip(error);
+            controller.error(error);
+            child.stdout.destroy();
+            return;
+          }
+        }
+
         controller.enqueue(chunk);
       },
       cancel() {
@@ -186,8 +279,34 @@ export function agentTransport(
     { highWaterMark: 0 },
   );
 
+  // Attached only while recording. Nothing else in DeFlow reads the child's
+  // stderr on this path, and a listener registered unconditionally would change
+  // when the 64 KiB stderr pipe fills — a behaviour difference between a
+  // recorded run and a normal one, in the module whose whole job is to observe
+  // without altering.
+  //
+  // `readable`/`read()` and not `.on('data')`, for the same reason the stdout
+  // side is written that way: flowing mode buffers the stream into the heap
+  // while DeFlow awaits SQLite, which is the OOM this package exists to avoid
+  // and which `test/adapter-shape.test.ts` refuses mechanically.
+  if (options.recorder !== undefined) {
+    const recorder = options.recorder;
+    child.stderr.on('readable', () => {
+      for (;;) {
+        const chunk = child.stderr.read() as Buffer | null;
+        if (chunk === null) return;
+        recorder.stderr(chunk);
+      }
+    });
+  }
+
   return {
-    stream: acp.ndJsonStream(Writable.toWeb(child.stdin), readable),
+    stream: acp.ndJsonStream(
+      options.recorder === undefined
+        ? Writable.toWeb(child.stdin)
+        : teedStdin(child, options.recorder),
+      readable,
+    ),
     gate,
     bytesRead: () => bytesRead,
     failed,

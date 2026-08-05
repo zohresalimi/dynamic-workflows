@@ -20,8 +20,11 @@
     "execa": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/mock-agent": "workspace:*",
+    "@agentclientprotocol/sdk": "catalog:",
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
+    "ajv": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
