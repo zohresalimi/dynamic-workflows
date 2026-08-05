@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  // bin/ holds the DeFlow-mock-agent executable; it ships in the tarball and is
+  // typechecked like the rest of the package.
+  "include": ["src", "bin"]
 }

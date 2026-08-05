@@ -3,6 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "DeFlow-mock-agent": "./bin/mock-agent.ts"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
