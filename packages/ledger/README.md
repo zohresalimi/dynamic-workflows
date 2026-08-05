@@ -225,6 +225,43 @@ this cache can be wrong, and bumping it unnecessarily costs milliseconds of repl
 Set **`DeFlow_NO_CHECKPOINT=1`** to turn the whole thing off. The suite is run with it set, because
 a cache that anything has come to *depend on* is no longer a cache.
 
+## Coming back from a crash
+
+`openAndReplay(dataDir)` is the whole of a daemon start: open, migrate, find every run the
+directory holds, validate each one's checkpoint, fold what came after it, and hand back
+`Map<RunId, RunState>` alongside the connection. `replayAll(db)` is the same thing for a ledger the
+caller has already opened, which is what `boot.ts` uses — it has taken the lease and bumped the
+epoch by then, and a second connection would contend for the write lock the lease exists to make
+unnecessary.
+
+Two rules govern it, and both look like omissions until you know why they are there:
+
+- **A restart is a fresh engine over the same file.** Never the handle you already had, and never
+  `:memory:` — which cannot be reopened at all, cannot exercise WAL recovery, and hides the ordering
+  bugs a restart exists to expose. Every durability test here closes the database and constructs a
+  new one over the same bytes, because that is the code path a daemon restart really takes.
+- **A gap in `seq` is ordinary, not damage.** `AUTOINCREMENT` never reissues a pruned number and one
+  sequence is shared by every run in the directory, so replay walks what is there, raises nothing,
+  and does not invent the missing rows. Nothing asserts contiguity, and nothing may start to.
+
+### The suite that proves it
+
+`pnpm test:fuzz` runs the crash-fuzz slice: a real scripted multi-node run over a real `.DeFlow/`
+with fake agent binaries on `PATH`, `SIGKILL`ed — process group and all — at a seeded random point,
+then restarted over the same directory. It asserts four things: no effect executed twice, the
+reduced state equals the pre-crash projection at every seq the dead process recorded one for,
+`PRAGMA integrity_check` is `ok`, and the run either completes or halts with a typed failure rather
+than wedging.
+
+The first of those is checked against the fake agents' **own side-effect log** — every invocation
+appends `{runId, nodeId, attempt, idempotencyKey}` to a text file — so "executed twice" is a
+duplicate-key check on something the effect journal did not write. Asking the journal whether it
+prevented a second execution only proves the journal agrees with itself.
+
+The seed comes from `$GITHUB_RUN_ID` when CI sets one, so a failure reproduces from the log;
+`DeFlow_CRASH_SEED=<n>` re-runs a specific kill point and `DeFlow_KEEP_TMP=1` leaves the ledger on
+disk to open afterwards.
+
 ## Big payloads spill to the content-addressed blob store
 
 Any event payload whose canonical encoding exceeds **256 KiB** (`MAX_INLINE_PAYLOAD_BYTES`, one

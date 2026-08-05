@@ -272,9 +272,14 @@ export function checkNoDataPlaneReachFromCore(files: readonly SourceFile[]): Vio
  * The symptom is "the UI froze", which is about as far from "someone dropped a
  * LIMIT" as a symptom gets.
  *
- * Counting aggregates are exempt: they return exactly one row, so the result
- * set cannot grow with the ledger.
+ * Aggregate projections are exempt, and the reason is the same one that makes
+ * the rule worth having: `count(*)`, `max(seq)` and `min(seq) … GROUP BY
+ * run_id` return one row — one per run at worst — rather than one row per
+ * event, so the result set cannot grow with the ledger and no cursor is left
+ * open over it. What is banned is a read whose *size* is the ledger's size.
  */
+export const SQL_AGGREGATE_PROJECTION = /\b(count|max|min|sum|avg|total)\s*\(/i;
+
 export function checkLedgerReadsAreBounded(files: readonly SourceFile[]): Violation[] {
   // SQL in this package lives in string or template literals, one statement each.
   const literals = /`[^`]*`|'(?:[^'\\\n]|\\.)*'/g;
@@ -284,7 +289,7 @@ export function checkLedgerReadsAreBounded(files: readonly SourceFile[]): Violat
     for (const literal of file.text.match(literals) ?? []) {
       const reads = /\bSELECT\b/i.test(literal) && /\bFROM\s+(event|io_chunk)\b/i.test(literal);
       if (!reads) continue;
-      if (/\bLIMIT\b/i.test(literal) || /\bcount\s*\(/i.test(literal)) continue;
+      if (/\bLIMIT\b/i.test(literal) || SQL_AGGREGATE_PROJECTION.test(literal)) continue;
       violations.push({
         where: file.path,
         message:

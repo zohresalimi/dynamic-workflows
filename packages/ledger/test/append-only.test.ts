@@ -14,6 +14,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, describe as suite } from 'vitest';
+import { SQL_AGGREGATE_PROJECTION } from '../../../test/support/guards.ts';
 
 interface Source {
   readonly path: string;
@@ -117,9 +118,10 @@ suite('no consumer computes cursor + 1 (EPIC-03-S9 scenario 2, AC3)', () => {
    * the rule can be applied per statement rather than per file. That is
    * stricter than a file-wide scan — a file holding one good window no longer
    * vouches for a bad one next to it — and it is what lets counting aggregates
-   * be exempted honestly (KAR-03.4's `readRunStats`): `count(*)` returns a
-   * single row, holds no cursor and hands nobody a `seq` to resume from, so
-   * there is no window for it to get wrong.
+   * be exempted honestly (KAR-03.4's `readRunStats`, KAR-03.8's run
+   * discovery): `count(*)`, `max(seq)` and `min(seq) … GROUP BY run_id` return
+   * a single row — one per run at worst — hold no cursor and hand nobody a
+   * `seq` to resume from, so there is no window for them to get wrong.
    */
   const SQL_LITERALS = /`[^`]*`|'(?:[^'\\\n]|\\.)*'/g;
 
@@ -132,7 +134,7 @@ suite('no consumer computes cursor + 1 (EPIC-03-S9 scenario 2, AC3)', () => {
     const statements = code(nonMigrationLedgerSources).flatMap(eventReads);
     expect(statements.length).toBeGreaterThan(0);
     for (const { path, sql } of statements) {
-      if (/\bcount\s*\(/i.test(sql)) continue;
+      if (SQL_AGGREGATE_PROJECTION.test(sql)) continue;
       expect(sql, `${path} reads event rows without "seq > ?"`).toMatch(
         /run_id\s*=\s*\?\s+AND\s+seq\s*>\s*\?/i,
       );

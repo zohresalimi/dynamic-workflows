@@ -19,7 +19,8 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:int": "vitest run --project integration",
-    "test:e2e": "vitest run --project e2e"
+    "test:e2e": "vitest run --project e2e",
+    "test:fuzz": "vitest run --project crash-fuzz"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

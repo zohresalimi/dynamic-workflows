@@ -11,7 +11,7 @@ import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
-import { daemonEpoch } from '../runtime.ts';
+import { daemonEpoch, headSeq } from '../runtime.ts';
 
 const http = log.child({ mod: 'http' });
 
@@ -50,9 +50,11 @@ api.get('/health', (c) =>
     apiVersion: API_VERSION,
     build: BUILD,
     // A changed epoch across two reads means the daemon was replaced
-    // (KAR-03.7). `headSeq` waits for the ledger tail in KAR-03.8.
+    // (KAR-03.7). `headSeq` is the ledger's head as this daemon last observed
+    // it — set at boot by KAR-03.8's replay, and the number an SSE client
+    // compares its own cursor against to know how far behind it is.
     daemonEpoch: daemonEpoch(),
-    headSeq: null,
+    headSeq: headSeq(),
     uptimeMs: uptimeMs(),
     pid: process.pid,
     bootId: BOOT_ID,

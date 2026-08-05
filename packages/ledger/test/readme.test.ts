@@ -181,3 +181,40 @@ suite('packages/ledger/README.md explains the blob store', () => {
     expect(section).toMatch(/head\/tail/);
   });
 });
+
+/**
+ * KAR-03.8 — the restart path is written down, because "just fold the events"
+ * hides the two rules a reader will otherwise get wrong: that a gap in `seq`
+ * is ordinary rather than damage, and that `synchronous = NORMAL`'s promise is
+ * about a *process* crash and is proved by a suite anyone can run.
+ *
+ * Verifies: EPIC-03-S24, EPIC-03-S26 · AC2, AC5, AC7
+ */
+suite('packages/ledger/README.md explains coming back from a crash', () => {
+  const section = readme.slice(readme.indexOf('## Coming back from a crash'));
+  const flat = section.replaceAll(/\s+/g, ' ');
+
+  it('has the section, and names the one call a daemon start makes', () => {
+    expect(readme).toMatch(/## Coming back from a crash/);
+    expect(section).toContain('openAndReplay');
+  });
+
+  it('says a fresh engine over the same file is the path, never the open handle', () => {
+    expect(flat).toMatch(/fresh (engine|connection) over the same file/i);
+  });
+
+  it('states that a gap in seq is ordinary and that replay invents nothing', () => {
+    expect(flat).toMatch(/gap/i);
+    expect(flat).toMatch(/invent/i);
+  });
+
+  it('names the suite that proves the process-crash claim, and how to run it', () => {
+    expect(section).toContain('crash-fuzz');
+    expect(section).toContain('pnpm test:fuzz');
+  });
+
+  it('records what a duplicate side effect would be checked against', () => {
+    expect(section).toContain('idempotencyKey');
+    expect(flat).toMatch(/side-effect log/i);
+  });
+});
