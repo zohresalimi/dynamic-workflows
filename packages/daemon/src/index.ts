@@ -152,6 +152,26 @@ export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './m
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+export type { DaemonSeed, SeedEnv } from './random.ts';
+export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
+// KAR-06.9 — crash recovery: the fixed startup sequence, and the three things
+// only a restart can settle — an effect whose fate the ledger cannot tell, an
+// attempt whose daemon is gone, and a child that outlived its parent.
+export type {
+  ConcludedAttempt,
+  ReclaimedLock,
+  ReconciledEffect,
+  ReconcileInheritedEffect,
+  ReconcileVerdict,
+  Recovery,
+  RecoveryPorts,
+  RecoveryStep,
+} from './recovery.ts';
+export { RECOVERED_STEPS, RECOVERY_STEPS, recover } from './recovery.ts';
+// KAR-06.5 — the imperative half of the retry ladder: the classified failure,
+// the wake row and the events, in one transaction.
+export type { RecordedFailure, RecordFailureInput } from './retry.ts';
+export { recordNodeFailure } from './retry.ts';
 export { daemonEpoch, headSeq, setDaemonEpoch, setHeadSeq } from './runtime.ts';
 export type { SchemaDirectory, ValidateValue } from './schema-store.ts';
 export {
