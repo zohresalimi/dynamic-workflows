@@ -227,6 +227,36 @@ export function journalEffect(
   });
 }
 
+/**
+ * The one edit migration 0007 added to a `pending` row: its `result_json`
+ * scaffold (KAR-06.4 AC5).
+ *
+ * A `mutating` shell effect journals the hash of `git status --porcelain`
+ * here **before** it spawns the command, and completes it with the after-hash
+ * the instant the command returns. Both writes have to land while the row is
+ * still `pending`, because the crash they exist to survive is exactly the one
+ * that happens before the row goes terminal: without the before-hash a restart
+ * cannot tell "the command never ran" from "it half-ran", and without the
+ * after-hash it cannot tell "it finished" from either.
+ *
+ * No event is appended. A scaffold is a note this effect leaves for the next
+ * daemon's probe, not something that happened to the run — putting it in the
+ * timeline would add a mechanical row per mutating command that no reducer
+ * reads and every reader has to scroll past.
+ *
+ * `WHERE state = 'pending'` as well as by key, for the reason `COMPLETE_SQL`
+ * has it: the trigger would refuse a terminal row anyway, and refusing here
+ * turns a silent no-op into a loud error.
+ */
+const SCAFFOLD_SQL = `
+  UPDATE effect SET result_json = ? WHERE ikey = ? AND state = 'pending'
+`;
+
+export function scaffoldEffect(db: Db, ikey: string, scaffold: unknown): void {
+  const changed = db.prepare(SCAFFOLD_SQL).run(canonicalJson(scaffold), ikey).changes;
+  if (changed !== 1) throw new EffectNotPending(ikey, readEffect(db, ikey)?.state ?? 'absent');
+}
+
 /** Thrown when a completion names an ikey with no `pending` row — a result for
  * an effect nothing recorded intending to perform. */
 export class EffectNotPending extends Error {

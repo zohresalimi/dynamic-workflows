@@ -104,6 +104,9 @@ export {
   nextOrdinal,
   readEffect,
   readEffects,
+  // KAR-06.4 — the `pending`-row scaffold a mutating shell effect journals its
+  // before/after worktree hashes into, and migration 0007 that permits it.
+  scaffoldEffect,
 } from './effects.ts';
 // KAR-03.7 — the daemon epoch: bumped once per daemon life, stamped on every
 // write, and compared at the append boundary.

@@ -166,6 +166,17 @@ its identity columns (`ikey`, the four key components, `kind`, `request_hash`, `
 never deleted. Re-opening a terminal row would turn "this already happened" into "this never
 happened", and a deleted row is indistinguishable from an effect that never started.
 
+Migration 0007 permits exactly one more edit, and only to a `pending` row: `scaffoldEffect` writes
+`result_json` while the state stays `pending` and `ended_at` stays `NULL`. That is the note a
+`mutating` shell effect leaves for the next daemon's probe — the hash of `git status --porcelain`
+taken before the command is spawned, completed with the after-hash the instant it returns
+([§8.3](../../docs/05-durable-execution.md#83-the-four-effect-types)). Both halves have to be
+durable *while the row is still pending*, because the crash they exist to survive is the one that
+happens before it goes terminal. Nothing else is relaxed: combined with the identity trigger, the
+only column such an update can touch is `result_json`, a terminal row is still frozen, `ended_at`
+still cannot be set on a `pending` row, and no scaffold appends an event — it is a note to a probe,
+not something that happened to the run.
+
 ## The control plane and the data plane are different tables
 
 `event` is small and is what `reduce()` folds. `io_chunk` is huge, holds agent `stdout`, `stderr`

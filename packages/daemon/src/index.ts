@@ -31,6 +31,7 @@ export type {
   EffectMode,
   EffectRunner,
   EffectRunnerOptions,
+  ReconcileHashes,
   ReconcileProbe,
 } from './effects/durable.ts';
 export {
@@ -39,6 +40,70 @@ export {
   EffectNeedsReconciliation,
   EffectRequestHashMismatch,
 } from './effects/durable.ts';
+// KAR-06.4 — the file effect: an atomic write whose recovery story is a
+// filename.
+export type { FileWriteInput, FileWriteResult } from './effects/file-effect.ts';
+export { fileWriteEffect } from './effects/file-effect.ts';
+// KAR-06.4 — the git effects: a commit made findable by its trailer, and a
+// worktree add whose "already exists" is a success.
+export type {
+  GitCommitInput,
+  GitEffectPorts,
+  GitWorktreeAddInput,
+  WorktreeAddResult,
+} from './effects/git-effect.ts';
+export { gitCommitEffect, gitWorktreeAddEffect } from './effects/git-effect.ts';
+// KAR-06.4 — reconciliation per effect type: one probe per kind, and the
+// escalation for the answer none of them can give.
+export type {
+  AgentReconcileInput,
+  AgentReconcileOutcome,
+  SessionIdQuery,
+} from './effects/reconcile/agent.ts';
+export {
+  RESUME_PHASE,
+  readSessionId,
+  reconcileAgent,
+  resumeProgress,
+  SESSION_OPENED_PHASE,
+} from './effects/reconcile/agent.ts';
+export type {
+  Escalation,
+  EscalationInput,
+  ReconcileEvidence,
+} from './effects/reconcile/escalate.ts';
+export {
+  escalateReconcileUnknown,
+  reconcileUnknownDetail,
+  reconcileUnknownFailure,
+  shortDigest,
+} from './effects/reconcile/escalate.ts';
+export type { FileReconcileInput, FileReconcileVerdict } from './effects/reconcile/file.ts';
+export { TMP_SUFFIX, tmpPathFor } from './effects/reconcile/file.ts';
+export type { CommandResult, WorktreeAddOutcome } from './effects/reconcile/git.ts';
+export {
+  classifyWorktreeAdd,
+  commitArgs,
+  commitShaFrom,
+  EFFECT_TRAILER,
+  findCommitArgs,
+  isWorktreeAddSuccess,
+  trailerLine,
+} from './effects/reconcile/git.ts';
+export type {
+  MutatingShellScaffold,
+  ShellClassification,
+  ShellReconcileInput,
+  ShellReconcileVerdict,
+} from './effects/reconcile/shell.ts';
+export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
+// KAR-06.4 — the shell effect: `pure` re-runs, `mutating` journals the
+// worktree it found and the worktree it left.
+export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
+export { shellEffect } from './effects/shell-effect.ts';
+// KAR-06.4 — the spawn half of the git wrapper KAR-07.1 completes.
+export type { GitResult, RunGitOptions } from './git/run-git.ts';
+export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';

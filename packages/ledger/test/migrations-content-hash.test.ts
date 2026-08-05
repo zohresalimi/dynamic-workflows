@@ -41,6 +41,8 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-05, KAR-06.3 — the effect journal's four immutability triggers.
   '0006-effect-journal-guards.ts':
     'ff0ae6979c1050354592c40a7fa17918a9a1bfc4afc3da01ef9df4ca647be01f',
+  // Shipped 2026-08-05, KAR-06.4 — the pending-row result_json scaffold.
+  '0007-effect-scaffold.ts': 'd412b7a0a6a653d37097c4a2de5318fde2f26a306d7f4e8a2b3c58c21936f4a2',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(
