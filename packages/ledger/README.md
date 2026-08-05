@@ -64,6 +64,42 @@ to a remote. Wrap that transaction, and only that transaction, in `withFullSync(
 the transaction, and restores both afterwards including when the callback throws. It costs about
 3 ms per commit.
 
+## The `event` table is append-only
+
+`appendEvents(db, drafts)` and `readRange(db, runId, afterSeq, limit)` are the whole write and read
+surface over `event`, and there is deliberately no third function that writes: no `updateEvent`, no
+`deleteEvent`, no `amendEvent`. `seq` is the identity of an event **outside** the database — an SSE
+frame `id`, a checkpoint's `last_seq`, a browser tab's cursor — so a row that can change is a cursor
+that can lie. A grep test (`test/append-only.test.ts`) fails the build when one appears.
+
+A batch is **one** transaction and every envelope in it is validated before a single row is written,
+so a batch lands whole or not at all. The seq comes back from `INSERT … RETURNING seq` rather than a
+follow-up `SELECT last_insert_rowid()`, which would be a second statement in the hot path for the
+same answer.
+
+### Sequence numbers have gaps
+
+**Resume from strictly greater than your cursor. Never `cursor + 1`.** Every read is
+`WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?`, and the two reasons gaps are ordinary rather
+than a symptom are:
+
+- **Pruning.** `seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` on both `event` and `io_chunk`, and
+  `AUTOINCREMENT` keeps a high-water mark in `sqlite_sequence` that a `DELETE` does not lower — so a
+  pruned number is never reissued and leaves a permanent hole. That is the point of the keyword: with
+  a bare `INTEGER PRIMARY KEY`, deleting the row that held 3 hands 3 straight back to the next
+  insert, and every persisted cursor silently starts pointing at a different event.
+- **One global sequence.** There is one `ledger.db`, keyed by `run_id` throughout — not one database
+  per run. Two active runs interleave in the same `event` table, so a run's cursor walks a strided
+  subsequence and `cursor + 1` is wrong before anything has been deleted at all.
+
+**A rollback does not burn sequence numbers, contrary to what
+[docs/05-durable-execution.md §6](../../docs/05-durable-execution.md#6-autoincrement-is-mandatory)
+originally claimed.** Verified 2026-08-05 on better-sqlite3@13.0.2 / SQLite 3.53.4: `sqlite_sequence`
+is an ordinary table, its high-water update is part of the transaction, and `ROLLBACK` — full or to a
+`SAVEPOINT` — restores it, so the next append reuses the numbers the rolled-back batch was given. The
+consequence for callers is the same either way, and it is the reason `appendEvents` documents its
+return value as provisional: **a `seq` means nothing until the transaction that produced it commits.**
+
 ## Migrations: no `down`, roll forward or restore
 
 Migrations are numbered `.ts` files under `src/migrations/`, append-only and never edited once

@@ -266,9 +266,16 @@ no `delete` on `event` exposed anywhere.
    3, and inserting again yields **3**; against the real schema it yields **4**.
 2. Appending a batch of N events in one transaction returns N sequence numbers, strictly increasing,
    and `sqlite_sequence` reflects the high-water mark.
-3. A transaction that is rolled back **burns** its sequence values, and the next successful append
-   returns a number greater than the burned ones. Consumers are documented as "resume from strictly
-   greater than my cursor" and never "expect `cursor + 1`".
+3. Sequence gaps are legal and consumers are documented as "resume from strictly greater than my
+   cursor", never "expect `cursor + 1`". **Amended 2026-08-05 (KAR-03.3):** this criterion used to
+   read "a rolled-back transaction **burns** its sequence values, and the next successful append
+   returns a number greater than the burned ones". SQLite does not do that — `sqlite_sequence` is an
+   ordinary table and `ROLLBACK` restores its high-water mark, verified on
+   better-sqlite3@13.0.2 / SQLite 3.53.4 — so the criterion now asserts the two mechanisms that do
+   produce gaps (pruning never reissuing a number, and one global `event` table shared by concurrent
+   runs) plus the corollary that a `seq` means nothing until the transaction that produced it
+   commits. See [05-durable-execution §6](../../05-durable-execution.md#6-autoincrement-is-mandatory),
+   corrected on the same date.
 4. `readRange(runId, afterSeq, limit)` returns only that run's events, ordered by `seq`, strictly
    greater than `afterSeq`, at most `limit` rows, and reports whether more remain.
 5. Two runs appending concurrently interleave in the one `event` table without either run's
@@ -283,7 +290,7 @@ no `delete` on `event` exposed anywhere.
 | --- | ----------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | 1   | integration | The rowid-reuse comparison against a scratch table without `AUTOINCREMENT` | `AUTOINCREMENT` was "optimised away"                          |
 | 2   | integration | Batch append of 100 events returns 100 strictly-increasing seqs            | The batch does one insert per statement outside a transaction |
-| 3   | integration | Begin, append, rollback, append; assert a gap                              | Gaps are treated as impossible                                |
+| 3   | integration | Append, roll back, append; then prune a seq and interleave two runs; assert the gaps | Gaps are treated as impossible                  |
 | 4   | integration | `readRange` with `afterSeq` equal to the last returned seq returns []      | The comparison is `>=`                                        |
 | 5   | integration | Two runs' appends interleaved; per-run reads isolated                      | The index is on `seq` alone                                   |
 | 6   | unit        | `append` rejects an envelope missing `epoch`                               | Validation happens at read time only                          |

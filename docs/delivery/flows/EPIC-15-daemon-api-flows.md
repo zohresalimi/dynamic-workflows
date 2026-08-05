@@ -881,8 +881,8 @@ Feature: The cursor contract is "strictly greater than", never "seq + 1"
     And it must never compare it for density
 ```
 
-**Notes:** _"a rolled-back transaction burns `AUTOINCREMENT` values. `seq` 4, 5, 7 is a normal,
-healthy log — `6` was allocated by a transaction that did not commit."_ A client that treats a gap as
+**Notes:** _"`seq` 4, 5, 7 is a normal, healthy log — `6` belongs to another run, or to a pruned
+event whose number `AUTOINCREMENT` will never reissue."_ A client that treats a gap as
 a dropped event reports false data loss on a perfectly correct stream and, worse, may try to "repair"
 by refetching from zero — which on a multi-hour run is minutes of wasted work triggered by nothing.
 **Do not write gap detection.**
