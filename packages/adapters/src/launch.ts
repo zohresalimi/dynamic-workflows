@@ -32,6 +32,7 @@ import process from 'node:process';
 import type { Readable } from 'node:stream';
 import type { ResolvedProvider } from './binary-resolver.ts';
 import { argvRejected, spawnRefused } from './failures.ts';
+import { killTree } from './kill-tree.ts';
 import type { LedgerSink } from './ports.ts';
 import type { ProviderSpec, SpawnPlan } from './provider-registry.ts';
 import { spawnPlan } from './provider-registry.ts';
@@ -108,12 +109,10 @@ interface ProcessExit {
   readonly signal: NodeJS.Signals | null;
 }
 
+/** Through `killTree`, the one abstraction allowed to send a signal (AC5). */
 function signalGroup(pgid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(-pgid, signal);
-  } catch {
-    // Already reaped.
-  }
+  if (pgid <= 1) return;
+  killTree(pgid, signal);
 }
 
 /**

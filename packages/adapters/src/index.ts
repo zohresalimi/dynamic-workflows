@@ -52,12 +52,14 @@ export {
   argvRejected,
   frameTooLarge,
   handshakeMismatch,
+  NotImplementedOnWin32,
   offendingFrameHead,
   protocolError,
   registryRefused,
   resolutionFailed,
   spawnRefused,
   toAdapterFailure,
+  UnsignalablePid,
 } from './failures.ts';
 // KAR-05.4 — the 8 MiB cap, counted upstream of the SDK's unbounded line
 // buffer as bytes since the last newline.
@@ -69,6 +71,16 @@ export {
   InvalidFrameLimit,
   parseFrameLimit,
 } from './frame-guard.ts';
+// KAR-05.9 — the one abstraction allowed to send a signal, plus the PID-reuse
+// guard's input. POSIX at M1; win32 throws rather than silently no-opping.
+export type { KillOutcome, KillTreePorts, SweepPorts } from './kill-tree.ts';
+export {
+  killTree,
+  processStartTime,
+  SWEEP_KILL_GRACE_MS,
+  startTimeSource,
+  sweepTree,
+} from './kill-tree.ts';
 // KAR-05.3 — spawning a provider, with the one bounded retry a flag
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
@@ -77,11 +89,14 @@ export type {
   AcpNodeRequest,
   AcpPorts,
   AgentBinary,
+  AgentProcessKey,
+  AgentProcessRecord,
   CapabilityStore,
   ClientHandlers,
   EventRecord,
   IoRecord,
   LedgerSink,
+  ProcessRegistry,
 } from './ports.ts';
 // KAR-05.2 — spawn, one `initialize`, terminate. Never `session/new`, so a
 // probe costs no quota.

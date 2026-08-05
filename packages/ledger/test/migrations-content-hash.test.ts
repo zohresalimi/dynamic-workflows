@@ -36,6 +36,8 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-05, KAR-05.2 — the probed capability manifest.
   '0004-provider-capabilities.ts':
     '2efbb532aee1382ceaee7bc0bc15ab67af6be5c5211f2012b83719e44539f575',
+  // Shipped 2026-08-05, KAR-05.9 — the process rows the orphan reaper reads.
+  '0005-process.ts': '6f904a3002302ca793d87a468cad3223bfc8e101b2c71090ccf02c0444494fb4',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

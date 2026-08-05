@@ -1,0 +1,17 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "hang-with-grandchildren",
+  "description": "EPIC-05-S31: two processes that outlive the agent, then a wedge a cooperative cancel can end. Stage 1 still produces a clean transcript, and the grandchildren are what stages 2 and 3 exist for — a stopReason ends the turn, not everything the agent started.",
+  "steps": [
+    { "type": "spawnGrandchildren", "count": 2, "lifetimeMs": 30000 },
+    { "type": "chunks", "count": 1, "delayMs": 0, "text": "working" },
+    {
+      "type": "hangForever",
+      "onCancel": {
+        "steps": [{ "type": "message", "text": "flushing tail 1" }],
+        "stopReason": "cancelled"
+      }
+    }
+  ],
+  "stopReason": "end_turn"
+}

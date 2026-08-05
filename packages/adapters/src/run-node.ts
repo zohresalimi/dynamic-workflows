@@ -40,7 +40,6 @@ import {
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import process from 'node:process';
 import * as acp from '@agentclientprotocol/sdk';
 import { admit } from './admission.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
@@ -49,11 +48,13 @@ import {
   agentExited,
   agentTimedOut,
   handshakeMismatch,
+  NotImplementedOnWin32,
   offendingFrameHead,
   spawnRefused,
   toAdapterFailure,
 } from './failures.ts';
 import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
+import { killTree, processStartTime, sweepTree } from './kill-tree.ts';
 import type { AcpNodeRequest, AcpPorts, EventRecord } from './ports.ts';
 import { agentTransport } from './transport.ts';
 import { describeUpdate, toolCallContentText } from './updates.ts';
@@ -182,13 +183,40 @@ function spillOversizeResult(
   return { handle, note: `${bytes} bytes spilled to ${handle}` };
 }
 
-/** Signals the child's whole process group, and says nothing if it is gone. */
+/**
+ * Signals the child's whole process group through the one abstraction that is
+ * allowed to send a signal (KAR-05.9 AC5), and says nothing if it is gone.
+ *
+ * The pid guard is here rather than swallowed inside `killTree`: a `pgid` of 0
+ * is what a spawn that never got a pid leaves behind, and `kill(-0)` is
+ * `kill(0)` — DeFlowd signalling its own process group.
+ */
 function signalGroup(pgid: number, signal: NodeJS.Signals): void {
+  if (pgid <= 1) return;
   try {
-    process.kill(-pgid, signal);
-  } catch {
-    // Already reaped. Nothing to do, and nothing to report.
+    killTree(pgid, signal);
+  } catch (error) {
+    // A platform with no kill switch is a bug to surface, not to swallow: it
+    // is the one case where continuing would report a stopped agent that is
+    // still running. Anything else is an errno about a group that is on its
+    // way out, and nothing here is going to fix it.
+    if (error instanceof NotImplementedOnWin32) throw error;
   }
+}
+
+/**
+ * Marks the `process` row terminal once the child's exit has been observed.
+ *
+ * Deliberately after `await exited` at every call site and never on a timer: a
+ * row cleared before the process is really gone is an orphan no reaper will
+ * look for, which is the failure this whole story exists to prevent.
+ */
+async function clearProcessRow(request: AcpNodeRequest, ports: AcpPorts): Promise<void> {
+  await ports.processes?.clear({
+    runId: request.runId,
+    nodeId: request.nodeId,
+    attempt: request.attempt,
+  });
 }
 
 function spawnAgent(request: AcpNodeRequest): {
@@ -378,22 +406,43 @@ export async function runAcpNode(
 
         // Written *before* the side effect. This record is what makes
         // at-least-once recovery possible at all.
-        lastSeq = await ledger.append(
-          event(
-            'node.started',
-            {
-              node: request.nodeId,
-              attempt: request.attempt,
-              ikey: key,
-              binary: {
-                path: request.binary.path,
-                version: request.binary.version,
-                sha256: request.binary.sha256,
-              },
+        const startedEvent = event(
+          'node.started',
+          {
+            node: request.nodeId,
+            attempt: request.attempt,
+            ikey: key,
+            binary: {
+              path: request.binary.path,
+              version: request.binary.version,
+              sha256: request.binary.sha256,
             },
-            true,
-          ),
+          },
+          true,
         );
+        // AC6 — and the *same transaction* is the whole point. `detached: true`
+        // means this child outlives DeFlowd, so the row below is the only
+        // handle the next daemon has on it; a row written after the event can
+        // be lost to a crash in the window between the two writes, and that
+        // window is the moment a daemon is most likely to die, because it has
+        // just started a child process.
+        lastSeq =
+          ports.processes === undefined
+            ? await ledger.append(startedEvent)
+            : await ports.processes.appendWithProcess(startedEvent, {
+                runId: request.runId,
+                nodeId: request.nodeId,
+                attempt: request.attempt,
+                pid: pgid,
+                pgid,
+                // Read from the OS while the process is alive; `null` when it
+                // could not be read, which leaves the row unverifiable and so
+                // never something a later daemon may signal.
+                startedAt: processStartTime(pgid),
+                binarySha256: request.binary.sha256,
+                worktree: request.worktree,
+                spawnedAt: clock.now(),
+              });
 
         const builder = ctx.buildSession({
           cwd: request.worktree,
@@ -510,6 +559,7 @@ export async function runAcpNode(
     disarm();
     signalGroup(pgid, 'SIGKILL');
     const exit = await exited;
+    await clearProcessRow(request, ports);
     // Whatever unwound first — the prompt's rejection, the closed connection,
     // the reader — an escalated cancel is a timeout and nothing else. Reading
     // the reason off the race would make it a coin toss between three
@@ -555,6 +605,10 @@ export async function runAcpNode(
 
   child.stdin.end();
   const exit = await exited;
+  // AC6: cleared once the exit has been *observed*. A row still saying `live`
+  // is one a future daemon's reaper will act on, against a pid that by then may
+  // belong to somebody else entirely.
+  await clearProcessRow(request, ports);
 
   const common: OutcomeCommon = {
     protocolVersion: turn.protocolVersion,
@@ -566,6 +620,23 @@ export async function runAcpNode(
   };
 
   if (turn.stopReason === 'cancelled') {
+    // Stages 2 and 3 of §9.4, run **because** stage 1 succeeded rather than
+    // instead of it.
+    //
+    // A clean `stopReason: 'cancelled'` ends the *turn*: the agent flushed its
+    // tail and exited politely. It says nothing about what the agent
+    // backgrounded, and those processes are now reparented to init with the
+    // dead agent's pgid as the only thing still naming them together. AC8 is
+    // the measurement — five cancelled agents must leave zero non-`Z`
+    // processes in any of the five groups — and it is only true if the sweep
+    // happens on the successful path too.
+    //
+    // Sent after the child's own exit was observed, which is what keeps
+    // `outcome.exit` the agent's real exit rather than a signal DeFlow sent.
+    // The SIGKILL is left pending on the injected clock rather than awaited:
+    // an operator's cancel must not take two seconds to report.
+    if (pgid > 1) sweepTree(pgid, { clock, killGraceMs: ports.killGraceMs ?? KILL_GRACE_MS });
+
     // The terminal record of a cancelled node.
     //
     // Deliberately a `node.progress` and not a `node.completed`:

@@ -12,6 +12,13 @@
  * write lock the lease exists to make unnecessary. `BOOT_STEPS` is exported
  * and asserted against so the order is a test rather than a convention.
  *
+ * `reap-orphans` sits between the ledger and the first spawn for the same kind
+ * of reason (KAR-05.9 AC7). Agents are started `detached: true` and therefore
+ * survive the daemon that started them, so a crashed DeFlowd leaves real
+ * processes editing a real worktree. They have to be dealt with before this
+ * daemon starts anything of its own, or two generations of agents share a
+ * worktree — and a capability probe is a spawn.
+ *
  * Everything after the lease is fenced by `daemon_epoch` as well, which is the
  * belt to the lease's braces: `flock` semantics on network mounts are
  * unreliable, so the epoch is what makes a daemon that somehow started anyway
@@ -27,9 +34,11 @@ import {
   type RunReplay,
   replayAll,
 } from '@DeFlow/ledger';
+import { systemClock } from './clock.ts';
 import { resolveDataDir } from './data-dir.ts';
 import { DEFAULT_HOSTNAME, DEFAULT_PORT, type StartedHttp, startHttp } from './http/server.ts';
 import { log } from './logging.ts';
+import { type ReapDecision, reapOrphans } from './reaper.ts';
 import { setDaemonEpoch, setHeadSeq } from './runtime.ts';
 
 const daemon = log.child({ mod: 'boot' });
@@ -47,6 +56,7 @@ export const BOOT_STEPS = [
   'resolve-data-dir',
   'lease',
   'migrate',
+  'reap-orphans',
   'probe-providers',
   'bind-port',
 ] as const;
@@ -86,6 +96,9 @@ export interface Booted {
   readonly replays: readonly RunReplay[];
   /** The highest `seq` the ledger held at replay. @see setHeadSeq */
   readonly headSeq: number;
+  /** What the orphan reaper decided about each row the last daemon left
+   * behind — reaped, discarded as a PID reuse, or already gone (KAR-05.9). */
+  readonly reaped: readonly ReapDecision[];
   readonly http: StartedHttp;
   /** Closes the port, the ledger and the lease, in that order. */
   shutdown(): Promise<void>;
@@ -146,6 +159,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   let db: Db;
   let epoch: number;
   let replayed: LedgerReplay;
+  let reaped: readonly ReapDecision[];
   try {
     db = openLedger(dataDir);
     epoch = bumpEpoch(db);
@@ -165,6 +179,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     setHeadSeq(replayed.headSeq);
     reportReplay(replayed.replays);
     step('migrate');
+
+    // KAR-05.9 AC7 — whatever the previous daemon left running, before this
+    // one spawns anything of its own.
+    reaped = await reapOrphans(db, { clock: systemClock, epoch });
+    step('reap-orphans');
 
     // EPIC-05 fills this in. Its position is what KAR-03.7 asserts.
     step('probe-providers');
@@ -200,6 +219,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     runs: replayed.runs,
     replays: replayed.replays,
     headSeq: replayed.headSeq,
+    reaped,
     http,
     async shutdown(): Promise<void> {
       // Reverse order: stop accepting work, then close the ledger, then let

@@ -126,8 +126,10 @@ suite('trailing updates after the cancel are appended, not discarded', () => {
     expect(completion).toBeDefined();
     for (const seq of tailSeqs) expect(seq).toBeLessThan(completion?.seq ?? 0);
 
-    // Stage 1 succeeded, so no signal was ever sent: the child ended on its
-    // own when stdin closed.
+    // Stage 1 succeeded, so the child ended on its own when stdin closed — its
+    // exit is a clean 0 and not a signal. Stages 2 and 3 still run afterwards
+    // (KAR-05.9 AC8), which is what collects anything the agent backgrounded;
+    // they cannot reach *this* process, because it was already gone.
     expect(outcome.exit).toEqual({ code: 0, signal: null });
   });
 });

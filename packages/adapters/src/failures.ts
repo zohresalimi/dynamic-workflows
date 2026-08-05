@@ -150,6 +150,57 @@ export function registryRefused(
 }
 
 /**
+ * A POSIX-only process operation, reached on Windows (KAR-05.9 AC5).
+ *
+ * Not a `NodeFailureError`, and deliberately not routed through
+ * `toAdapterFailure`: this is not a node that failed, it is a daemon running
+ * somewhere it cannot supervise a process tree at all. Windows has no process
+ * groups — the path there is `taskkill /PID <pid> /T /F`, it was never tested,
+ * and the POSIX result does not transfer (M3, NF5). The one response a caller
+ * must not have is "the kill failed, try again", which is what a tagged
+ * transient failure would invite.
+ */
+export class NotImplementedOnWin32 extends Error {
+  /** Which POSIX operation was asked for. */
+  readonly operation: string;
+
+  constructor(operation: string) {
+    super(
+      `${operation} is not implemented on win32. Windows has no process groups: the path there ` +
+        'is `taskkill /PID <pid> /T /F`, it has never been tested against a real agent tree, and ' +
+        'the POSIX result does not transfer. Windows is M3 (NF5); until then DeFlowd must not ' +
+        'claim a kill switch it does not have.',
+    );
+    this.name = 'NotImplementedOnWin32';
+    this.operation = operation;
+  }
+}
+
+/**
+ * A pid that must never be negated and handed to `kill(2)` (KAR-05.9).
+ *
+ * 0 is the caller's own process group — DeFlowd and every agent it is
+ * supervising — 1 is init, and a negative number is already a group, so
+ * negating it would signal one process chosen by arithmetic. All three are
+ * shapes a corrupt or half-written `process` row takes, and none of them is a
+ * group DeFlow ever created. A `RangeError` subclass because that is what it
+ * is; named because a bare one is unreadable once it has been serialised.
+ */
+export class UnsignalablePid extends RangeError {
+  readonly pid: number;
+
+  constructor(pid: number) {
+    super(
+      `killTree refuses pid ${pid}: only a pid DeFlowd spawned can be a process group leader. ` +
+        "kill(-0) signals the caller's own process group — DeFlowd and every agent it is " +
+        'supervising — and kill(-1) signals every process this user may signal.',
+    );
+    this.name = 'UnsignalablePid';
+    this.pid = pid;
+  }
+}
+
+/**
  * A line crossed the frame cap (KAR-05.4 AC1).
  *
  * **Permanent, and no recovery is attempted.** A frame that large means the
