@@ -226,9 +226,12 @@ The working assumption this baseline exists to serve, recorded verbatim:
   of them, `cost: { amount: 0.0836055, currency: "USD" }`. The `Usage` and `UsageUpdate` `$defs`
   are part of the protocol, not a vendor extension.
 - **Compaction state: NO.** No frame in the recording carries a field named for compaction, and
-  the string `compact` appears nowhere in the schema's 262 `$defs`. It does appear in the frame
-  log — as the *name of a slash command* in `available_commands_update`, which is why a plain
-  substring grep answers the wrong question and the check is written against key positions.
+  the string `compact` appears nowhere in the schema's 262 `$defs`. It did appear in the frame log
+  of the live run — as the *name of a slash command* in `available_commands_update`, which is why
+  a plain substring grep answers the wrong question and the check is written against key
+  positions. That frame's `availableCommands` list is empty in the committed recording: it
+  enumerated the recording machine's installed commands, and every recording is scrubbed of local
+  detail on the way to disk (`packages/mock-agent/src/redaction.ts`).
 - **`structured_output`: NO, and structurally so.** It is absent from every result envelope in the
   recording **and from the ACP schema entirely** — zero occurrences across 262 `$defs`. There is
   no version of this protocol in which a vendor could populate it.
