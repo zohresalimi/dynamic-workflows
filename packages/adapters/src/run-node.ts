@@ -811,15 +811,16 @@ export async function runAcpNode(
     // an operator's cancel must not take two seconds to report.
     if (pgid > 1) sweepTree(pgid, { clock, killGraceMs: ports.killGraceMs ?? KILL_GRACE_MS });
 
-    // The terminal record of a cancelled node.
+    // A `node.progress`, and deliberately still not the *terminal* record.
     //
-    // Deliberately a `node.progress` and not a `node.completed`:
     // `node.completed`'s payload is `Extract<NodeResult, {status:'completed'}>`
-    // (docs/04-domain-model.md §9), so the domain has no terminal event that
-    // can carry `{ status: 'cancelled', by }`. Recording it as a completion
-    // would be a lie the ledger keeps for ever. See the follow-up noted on
-    // MET-286: EPIC-06 owns the node's terminal states and should either add a
-    // `node.cancelled` kind or widen `node.completed`.
+    // (docs/04-domain-model.md §9), so recording a cancellation there would be
+    // a lie the ledger keeps for ever. The terminal event is `node.cancelled`,
+    // added by KAR-06.7 and appended by the **orchestrator's** cancel driver
+    // (packages/daemon/src/cancel.ts), because a node's terminal state is a
+    // scheduling fact: it is what makes the next `decide()` reclaim the locks
+    // this attempt held. This line stays a progress note about the turn — what
+    // the adapter saw — which is the honest thing for an adapter to claim.
     await ledger.append(
       event('node.progress', {
         node: request.nodeId,

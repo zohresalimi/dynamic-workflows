@@ -21,6 +21,10 @@ export {
   boot,
   EX_ALREADY_RUNNING,
 } from './boot.ts';
+// KAR-06.7 — the kill switch's mechanics: the four rungs of the escalation
+// ladder, each of them an event, and the pid-reuse refusal in front of them.
+export type { CancelOutcome, CancelPorts, CancelReport } from './cancel.ts';
+export { cancelNode, KILL_VERIFY_MS, TERM_GRACE_MS } from './cancel.ts';
 export { systemClock } from './clock.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of

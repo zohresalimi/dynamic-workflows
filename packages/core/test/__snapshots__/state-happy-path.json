@@ -8,6 +8,7 @@
     "no-v-model-regression"
   ],
   "needsHuman": null,
+  "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "planVersion": 0,
   "plan": null,

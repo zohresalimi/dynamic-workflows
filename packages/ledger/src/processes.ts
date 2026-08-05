@@ -80,6 +80,10 @@ const LIVE_SQL = `
 
 const ALL_SQL = `SELECT ${COLUMNS} FROM process ORDER BY spawned_at, run_id, node_id, attempt`;
 
+const ONE_SQL = `
+  SELECT ${COLUMNS} FROM process WHERE run_id = ? AND node_id = ? AND attempt = ?
+`;
+
 function bindings(row: ProcessRowDraft): (string | number | null)[] {
   return [
     row.runId,
@@ -145,6 +149,22 @@ interface ProcessDbRow {
  */
 export function readLiveProcesses(db: Db): readonly ProcessRow[] {
   return db.prepare<ProcessDbRow>(LIVE_SQL).all().map(toRow);
+}
+
+/**
+ * The row for one attempt, whatever state it is in, or `undefined` when that
+ * attempt never spawned anything.
+ *
+ * The kill switch's input (KAR-06.7): a `CancelNode` names a `(run, node,
+ * attempt)` and needs the pid, the pgid and the recorded start time for exactly
+ * that attempt. Scanning `readProcesses` for it would read every row of every
+ * run to answer a question the primary key already indexes, and would make a
+ * *previous* attempt's row reachable by accident — which is a signal sent to
+ * the wrong pid.
+ */
+export function readProcess(db: Db, key: ProcessKey): ProcessRow | undefined {
+  const stored = db.prepare<ProcessDbRow>(ONE_SQL).get(key.runId, key.nodeId, key.attempt);
+  return stored === undefined ? undefined : toRow(stored);
 }
 
 /** Every row, terminal ones included — the audit view, not the reaper's input. */

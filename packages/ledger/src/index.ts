@@ -99,6 +99,7 @@ export {
   type EffectState,
   type JournalledEffect,
   journalEffect,
+  markEffectCancelled,
   markEffectDone,
   markEffectFailed,
   nextOrdinal,
@@ -179,6 +180,7 @@ export {
   type ProcessRowDraft,
   type ProcessState,
   readLiveProcesses,
+  readProcess,
   readProcesses,
   recordProcess,
 } from './processes.ts';

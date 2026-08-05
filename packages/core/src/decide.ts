@@ -28,6 +28,7 @@
  */
 import type {
   AcquireLock,
+  CancelNode,
   Command,
   EmitEvent,
   ReleaseLock,
@@ -85,6 +86,7 @@ export function decide(state: RunState, now: number): Command[] {
     ...releaseFinishedLocks(state, runId, admission.retained),
     ...admission.acquires,
     ...admission.starts,
+    ...cancelInFlight(state, runId, ended),
     ...scheduleWakes(state, runId, now),
   ];
 }
@@ -431,6 +433,53 @@ function releaseFinishedLocks(
     }));
 
   return sortByEnablement(stale);
+}
+
+// ── cancellation ─────────────────────────────────────────────────────────────
+
+/**
+ * KAR-06.7 — F5.7's kill switch, as the one part of it that is a function of
+ * reduced state: **which nodes are asked to stop, and on which ladder**.
+ *
+ * The mechanics — `session/cancel`, the negative pid, the grace windows, the
+ * `Z`-filtered verification — are the daemon's (packages/daemon/src/cancel.ts).
+ * What lives here is the decision, because it is derivable from the log and
+ * therefore has to survive a restart: a daemon that came back to a cancelling
+ * run and had to be *told* again which nodes to stop would leave every agent
+ * the previous daemon spawned running, detached, burning tokens.
+ *
+ * Restated on every tick while a node is still `running`, exactly as
+ * `ScheduleWake` is and for the same reason: the command is idempotent per
+ * `(node, attempt)`, and a restatement is what survives a daemon that died
+ * between the command and the signal. The moment the node reduces to
+ * `cancelled` — or to any other non-running status — it drops out.
+ *
+ * Not emitted for an `ended` run: a `completed` or `aborted` run has no
+ * in-flight attempt left to stop, and signalling one would be signalling a pid
+ * the ledger has already recorded the exit of.
+ */
+function cancelInFlight(state: RunState, runId: RunId, ended: boolean): CancelNode[] {
+  const cancel = state.cancel;
+  if (cancel === null || ended) return [];
+
+  const inFlight = Object.entries(state.nodes)
+    .filter(([, node]) => node.status === 'running')
+    .map(([id, node]) => ({
+      seq: node.updatedSeq,
+      id,
+      value: {
+        kind: 'CancelNode' as const,
+        runId,
+        node: id as NodeId,
+        // The attempt that is actually in flight, so the driver can find the
+        // `process` row and the effect rows belonging to *this* try rather than
+        // to a previous one it must not touch.
+        attempt: node.attempt,
+        mode: cancel.mode,
+      },
+    }));
+
+  return sortByEnablement(inFlight);
 }
 
 /**

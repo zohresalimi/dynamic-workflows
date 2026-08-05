@@ -926,3 +926,162 @@ suite('EPIC-06-S21 — a 30-day gate is a row, because a 30-day timer is a lie',
     expect(startNodes(state, NOW + hours(2))).toEqual(['recon']);
   });
 });
+
+// ── EPIC-06-S23, EPIC-06-S24 — pause, resume and cancel are events (KAR-06.7) ─
+
+/**
+ * The operator's kill switch as the scheduler sees it. The *mechanics* of the
+ * ladder are the daemon's (packages/daemon/src/cancel.ts); what is decided here
+ * is which nodes are asked to stop and in which mode, because that is the one
+ * part of cancellation that is a function of reduced state.
+ */
+const cancelRequested = (mode: 'cooperative' | 'forceful'): Row => ({
+  kind: 'run.cancel.requested',
+  payload: { mode },
+});
+
+const cancelledNode = (
+  node: string,
+  attempt = 0,
+  by: 'user' | 'policy' | 'parent' = 'user',
+): Row => ({
+  kind: 'node.cancelled',
+  payload: { node, attempt, result: { status: 'cancelled', by } },
+});
+
+suite('EPIC-06-S24 — cancel asks every in-flight node to stop, and starts nothing', () => {
+  const WRITERS: readonly NodeSpec[] = [
+    { id: 'impl-auth', permission: 'worktree', writes: ['src/auth/**'] },
+    { id: 'impl-router', permission: 'worktree', writes: ['src/router/**'] },
+    { id: 'analysis' },
+  ];
+
+  const cancelling = (mode: 'cooperative' | 'forceful', rest: readonly Row[] = []): RunState =>
+    started(
+      WRITERS,
+      [
+        lockAcquired('impl-auth', 'repo', REPO_LOCK),
+        startedNode('impl-auth'),
+        startedNode('analysis'),
+        cancelRequested(mode),
+        ...rest,
+      ],
+      [createdIn()],
+    );
+
+  it('AC1: one CancelNode per running node, carrying the requested mode', () => {
+    expect(of(cancelling('forceful'), 'CancelNode')).toEqual([
+      { kind: 'CancelNode', runId: RUN_ID, node: 'impl-auth', attempt: 0, mode: 'forceful' },
+      { kind: 'CancelNode', runId: RUN_ID, node: 'analysis', attempt: 0, mode: 'forceful' },
+    ]);
+  });
+
+  it('AC1: the mode is the one the request carried, not a default', () => {
+    expect(of(cancelling('cooperative'), 'CancelNode').map((command) => command.mode)).toEqual([
+      'cooperative',
+      'cooperative',
+    ]);
+  });
+
+  it('starts nothing at all while the run is cancelling', () => {
+    expect(startNodes(cancelling('forceful'))).toEqual([]);
+  });
+
+  it('asks again on the next tick while the node is still running', () => {
+    // The driver is idempotent per (node, attempt) for the same reason
+    // ScheduleWake is: a restatement is what survives a daemon that died
+    // between the command and the signal.
+    const state = cancelling('forceful');
+    expect(of(state, 'CancelNode', NOW + 1_000).map((command) => command.node)).toEqual([
+      'impl-auth',
+      'analysis',
+    ]);
+  });
+
+  it('AC9: stops asking once the node reduced to cancelled, and reclaims its lock', () => {
+    const state = cancelling('forceful', [cancelledNode('impl-auth'), cancelledNode('analysis')]);
+
+    expect(of(state, 'CancelNode')).toEqual([]);
+    expect(of(state, 'ReleaseLock')).toEqual([
+      {
+        kind: 'ReleaseLock',
+        runId: RUN_ID,
+        node: 'impl-auth',
+        lock: 'repo',
+        key: REPO_LOCK,
+        reason: 'reclaimed',
+      },
+    ]);
+  });
+
+  it('a cancelled node is not restarted, however many attempts its policy allows', () => {
+    const state = cancelling('forceful', [cancelledNode('impl-auth'), cancelledNode('analysis')]);
+    for (let tick = 0; tick < 100; tick += 1) {
+      expect(startNodes(state, NOW + tick * 1_000)).toEqual([]);
+    }
+  });
+
+  it('a run nobody cancelled returns no CancelNode', () => {
+    const running = started(WRITERS, [startedNode('impl-auth')], [createdIn()]);
+    expect(of(running, 'CancelNode')).toEqual([]);
+  });
+});
+
+suite('EPIC-06-S23 — pause stops admission, resume re-admits under the same locks', () => {
+  const WRITERS: readonly NodeSpec[] = [
+    { id: 'impl-auth', permission: 'worktree', writes: ['src/auth/**'] },
+    { id: 'impl-router', permission: 'worktree', writes: ['src/router/**'] },
+  ];
+
+  /** `impl-auth` is mid-flight, holding the repository lock, when the pause lands. */
+  const PAUSED: readonly Row[] = [
+    lockAcquired('impl-auth', 'repo', REPO_LOCK),
+    startedNode('impl-auth'),
+    { kind: 'run.paused', payload: { by: 'user' } },
+  ];
+
+  it('AC2: the in-flight node is not cancelled and keeps its lock across the pause', () => {
+    const state = started(WRITERS, PAUSED, [createdIn()]);
+
+    expect(of(state, 'CancelNode')).toEqual([]);
+    expect(of(state, 'ReleaseLock')).toEqual([]);
+    expect(state.locks[`repo:${REPO_LOCK}`] ?? state.locks[REPO_LOCK]).toMatchObject({
+      node: 'impl-auth',
+    });
+  });
+
+  it('AC2: its node.completed is accepted normally and the lock comes back', () => {
+    const state = started(WRITERS, [...PAUSED, completed('impl-auth')], [createdIn()]);
+
+    expect(state.nodes['impl-auth']?.status).toBe('completed');
+    expect(of(state, 'ReleaseLock').map((command) => command.node)).toEqual(['impl-auth']);
+    // Still paused, so the competitor is not admitted by the release.
+    expect(startNodes(state)).toEqual([]);
+  });
+
+  it('AC4: resume re-admits, and the lock still held withholds the competitor', () => {
+    const resumed = started(
+      WRITERS,
+      [...PAUSED, { kind: 'run.resumed', payload: { by: 'user' } }],
+      [createdIn()],
+    );
+
+    expect(resumed.status).toBe('running');
+    // `impl-auth` is still running and still holds the repository lock, so the
+    // resume does not hand `impl-router` a lock somebody else has.
+    expect(startNodes(resumed)).toEqual([]);
+    expect(of(resumed, 'AcquireLock')).toEqual([]);
+
+    const finished = started(
+      WRITERS,
+      [
+        ...PAUSED,
+        { kind: 'run.resumed', payload: { by: 'user' } },
+        completed('impl-auth'),
+        lockReleased('impl-auth', 'repo', REPO_LOCK),
+      ],
+      [createdIn()],
+    );
+    expect(startNodes(finished)).toEqual(['impl-router']);
+  });
+});

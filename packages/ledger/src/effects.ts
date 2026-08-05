@@ -330,3 +330,31 @@ export function markEffectFailed(
 ): EventSeq[] {
   return complete(db, ikey, 'failed', failure, endedAt, failed, options);
 }
+
+/**
+ * KAR-06.7 AC9 — closes a `pending` row whose attempt was cancelled, and
+ * appends `effect.cancelled`, in one transaction.
+ *
+ * The state is `failed` because the journal has three of them and this is not a
+ * success. What `result_json` holds is the **`NodeResult`** — `{ status:
+ * 'cancelled', by }` — rather than a `NodeFailure`, because the reason vocabulary
+ * describes ways work goes wrong and an operator pressing stop is not one of
+ * them (docs/04-domain-model.md §8).
+ *
+ * The row exists to be *terminal*, not to be memoised. A cancelled attempt is
+ * over: `decide()` never re-admits a node whose reduced status is `cancelled`,
+ * so nothing re-enters this ikey, and no caller of `durable()` ever reads this
+ * `result_json` back. What closing it buys is that the next daemon life does not
+ * inherit a `pending` row from a prior epoch and ask a human to reconcile an
+ * effect nobody is confused about (AC9's "does not reconcile them as ambiguous").
+ */
+export function markEffectCancelled(
+  db: Db,
+  ikey: string,
+  result: { readonly status: 'cancelled'; readonly by: string },
+  endedAt: number,
+  cancelled: EventDraft,
+  options: AppendOptions = {},
+): EventSeq[] {
+  return complete(db, ikey, 'failed', result, endedAt, cancelled, options);
+}
