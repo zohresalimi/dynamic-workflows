@@ -13,11 +13,32 @@
  * SIGKILLed together with everything it spawned, the fake agents' own
  * side-effect log, and the seed that makes a failing kill point reproducible.
  *
+ * KAR-05.7 adds Layer A of the adapter conformance suite: the ACP schema
+ * oracle and the corpus reader every golden recording is held against.
+ *
  * KAR-04.6 adds the exec-shim half: the same binary, told which vendor CLI to
  * impersonate, reproducing the F3.4 conformance battery on the non-ACP path.
  *
  * Still to come: the FakeEffectRunner (EPIC-06).
  */
+export type {
+  AcpMethodSpec,
+  CapturedFrame,
+  CorpusRecording,
+  FrameDirection,
+  SchemaViolation,
+} from './acp-conformance.ts';
+export {
+  ACP_METHODS,
+  ACP_SCHEMA_DEFS,
+  ACP_SCHEMA_PATH,
+  acpSchema,
+  corpusRecordings,
+  describeViolations,
+  readCapturedFrames,
+  readCorpusDirectories,
+  validateAcpFrames,
+} from './acp-conformance.ts';
 export { type AgentOnPath, FAKE_AGENT_BIN, linkFakeAgent } from './agent.ts';
 export { TestClock } from './clock.ts';
 export {
