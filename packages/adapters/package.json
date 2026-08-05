@@ -19,6 +19,9 @@
     "@agentclientprotocol/sdk": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/ledger": "workspace:*",
+    "@DeFlow/mock-agent": "workspace:*",
+    "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
