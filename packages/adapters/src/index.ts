@@ -45,11 +45,23 @@ export {
   ACP_PROTOCOL_VERSION,
   agentExited,
   agentTimedOut,
+  frameTooLarge,
   handshakeMismatch,
+  offendingFrameHead,
   protocolError,
   spawnRefused,
   toAdapterFailure,
 } from './failures.ts';
+// KAR-05.4 — the 8 MiB cap, counted upstream of the SDK's unbounded line
+// buffer as bytes since the last newline.
+export type { FrameGuard, FrameTooLargeReport } from './frame-guard.ts';
+export {
+  DEFAULT_MAX_FRAME_BYTES,
+  FRAME_EVIDENCE_BYTES,
+  frameGuard,
+  InvalidFrameLimit,
+  parseFrameLimit,
+} from './frame-guard.ts';
 export type {
   AcpNodeRequest,
   AcpPorts,
@@ -75,11 +87,13 @@ export type { AcpNodeOutcome, ProcessExit } from './run-node.ts';
 export {
   AGENT_TURN_SCHEMA_ID,
   CANCEL_GRACE_MS,
+  CONTENT_SPILL_BYTES,
   estimateUsage,
   KILL_GRACE_MS,
+  OUTPUT_INLINE_LIMIT_BYTES,
   runAcpNode,
 } from './run-node.ts';
-export type { AgentTransport, ReadGate } from './transport.ts';
+export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
 export type { UpdateDescription } from './updates.ts';
-export { describeUpdate } from './updates.ts';
+export { describeUpdate, toolCallContentText } from './updates.ts';

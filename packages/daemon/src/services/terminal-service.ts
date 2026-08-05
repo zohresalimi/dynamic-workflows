@@ -16,6 +16,8 @@
  * `detached: true` for the same reason the agent gets it: a command that
  * spawns its own children is only reachable as a process group.
  */
+import type { Handle } from '@DeFlow/core';
+import { Buffer } from 'node:buffer';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -25,13 +27,36 @@ export interface CommandPolicy {
   authorize(command: string, args: readonly string[]): void;
 }
 
+/**
+ * Where a terminal's **full** output goes, so the ring buffer in front of it
+ * can stay bounded (KAR-05.4 AC7).
+ *
+ * A port rather than a direct dependency on the blob store: this service is
+ * transport-neutral and storage-neutral, and the daemon is what knows there is
+ * a `~/.DeFlow/blobs` to spill into. `@DeFlow/ledger`'s `openBlobSpill` is the
+ * implementation it passes in — it hashes as it writes, so nothing here ever
+ * holds the whole of a 40 MB build log.
+ */
+export interface TerminalCapture {
+  write(bytes: Uint8Array): void;
+  /** Publishes what has been captured and returns its handle. Idempotent. */
+  publish(): Handle;
+  discard(): void;
+}
+
 export interface TerminalServiceOptions {
   /** The node's worktree: the default cwd for every command. */
   readonly root: string;
   readonly policy?: CommandPolicy;
-  /** Bytes of output kept per terminal. KAR-05.4 makes this a ring buffer
-   * with blob spilling; the bound itself is §10's. */
+  /** Bytes of output kept per terminal, and answered to `terminal/output`.
+   * The bound is §10's; the ring buffer keeps the tail. */
   readonly captureBytes?: number;
+  /**
+   * Opens the full-output capture for one terminal. Omitted, output beyond the
+   * ring buffer is genuinely gone and `fullOutput` says so by returning null —
+   * which is the honest answer, not a silent prefix.
+   */
+  readonly openCapture?: (terminalId: string) => TerminalCapture;
 }
 
 export const DEFAULT_CAPTURE_BYTES = 1024 * 1024;
@@ -61,6 +86,12 @@ export interface TerminalService {
   waitForExit(terminalId: string): Promise<TerminalExit>;
   kill(terminalId: string): void;
   release(terminalId: string): void;
+  /**
+   * The handle the terminal's **whole** output can be read back through, or
+   * null when no capture was configured. This is what makes the truncation in
+   * `output()` a bound rather than a loss (AC7).
+   */
+  fullOutput(terminalId: string): Handle | null;
   /** Everything every terminal of this session has written, for diagnostics. */
   snapshot(): string;
 }
@@ -72,6 +103,8 @@ interface Terminal {
   bytes: number;
   truncated: boolean;
   exit: TerminalExit | null;
+  readonly capture: TerminalCapture | null;
+  published: Handle | null;
 }
 
 class UnknownTerminal extends Error {
@@ -94,13 +127,34 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
     return terminal;
   };
 
+  /**
+   * The ring buffer, and the whole of AC7's "bounded on the way in".
+   *
+   * Two things it must do that the obvious loop does not. It has to cut
+   * *inside* a chunk once dropping whole ones is not enough, or the bound
+   * becomes "`captureBytes`, or one read, whichever is larger" — which happens
+   * to be 1 MiB + 64 KiB today only because that is how much Node reads from a
+   * pipe at a time, and is not a property of this service. And it has to hand
+   * every byte to the capture *first*, because what the capture holds is the
+   * output this buffer is allowed to forget.
+   */
   const keep = (terminal: Terminal, bytes: Buffer): void => {
+    terminal.capture?.write(bytes);
+
     terminal.chunks.push(bytes);
     terminal.bytes += bytes.byteLength;
-    while (terminal.bytes > capture && terminal.chunks.length > 1) {
-      // The tail is what explains a failure; the head is what scrolled past.
-      terminal.bytes -= (terminal.chunks.shift() as Buffer).byteLength;
+    while (terminal.bytes > capture) {
+      const oldest = terminal.chunks[0] as Buffer;
       terminal.truncated = true;
+      const excess = terminal.bytes - capture;
+      if (excess >= oldest.byteLength) {
+        terminal.chunks.shift();
+        terminal.bytes -= oldest.byteLength;
+        continue;
+      }
+      // The tail is what explains a failure; the head is what scrolled past.
+      terminal.chunks[0] = oldest.subarray(excess);
+      terminal.bytes -= excess;
     }
   };
 
@@ -125,6 +179,8 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
         bytes: 0,
         truncated: false,
         exit: null,
+        capture: options.openCapture?.(terminalId) ?? null,
+        published: null,
         exited: new Promise<TerminalExit>((settle) => {
           child.once('exit', (exitCode, signal) => {
             const exit = { exitCode, signal };
@@ -155,6 +211,15 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
       };
     },
 
+    fullOutput(terminalId) {
+      const terminal = get(terminalId);
+      if (terminal.capture === null) return null;
+      // Published once and remembered: content addressing makes a second
+      // publish harmless, but it is still a rename and an fsync.
+      terminal.published ??= terminal.capture.publish();
+      return terminal.published;
+    },
+
     waitForExit: (terminalId) => get(terminalId).exited,
 
     kill(terminalId) {
@@ -170,6 +235,10 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
     release(terminalId) {
       const terminal = get(terminalId);
       released.push(Buffer.concat(terminal.chunks).toString('utf8'));
+      // An unpublished capture is a staged file nobody will ever ask for, so
+      // releasing the terminal is what unlinks it. A published one is already
+      // in the store under its digest and is not this service's to remove.
+      if (terminal.published === null) terminal.capture?.discard();
       terminal.child.stdout?.destroy();
       terminal.child.stderr?.destroy();
       terminals.delete(terminalId);

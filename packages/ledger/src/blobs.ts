@@ -52,6 +52,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -359,6 +360,106 @@ export function spillBytes(
     mime,
     ...excerpt(bytes),
     truncated: true,
+  };
+}
+
+/**
+ * The staging directory for blobs that are written as a stream.
+ *
+ * Inside `blobs/` so the temp file and its target are on the same filesystem —
+ * `rename(2)` is atomic only within one mount, and a temp under the system
+ * temp directory silently turns the atomic publish into a copy. Named with a
+ * leading dot and no two-hex shape so a walk of the store can tell staging from
+ * content at a glance.
+ */
+export const BLOB_STAGING_DIR = '.incoming';
+
+/**
+ * A blob whose bytes arrive over time and are never all held at once.
+ *
+ * `putBlob` wants a `Uint8Array`, which is right for an event payload and wrong
+ * for a terminal: a `yarn build` with a progress bar emits tens of megabytes,
+ * and buffering all of it in order to hash it is the failure the ring buffer in
+ * front of it exists to prevent (docs/07-provider-adapter-layer.md §10.2). So
+ * the digest is computed on the way past and the file is renamed into place
+ * under it at the end.
+ */
+export interface BlobSpillWriter {
+  write(bytes: Uint8Array): void;
+  /** Publishes what has been written and returns its handle. Idempotent. */
+  publish(): Handle;
+  /** Abandons the capture and removes the staged file. */
+  discard(): void;
+  bytesWritten(): number;
+}
+
+/**
+ * Opens a streaming spill into `<dataDir>/blobs/`.
+ *
+ * `mime` is accepted for symmetry with `putBlob` and is deliberately not stored
+ * beside the file: the store is content-addressed, so the same bytes are one
+ * object however they were labelled, and the label belongs on the reference in
+ * the event rather than on the blob.
+ */
+export function openBlobSpill(dataDir: string, mime: string, ikey?: string): BlobSpillWriter {
+  void mime;
+  const staging = join(dataDir, BLOB_DIR, BLOB_STAGING_DIR);
+  mkdirSync(staging, { recursive: true });
+  const temp = join(
+    staging,
+    `${filenameSafe(ikey ?? `anon-${process.pid}-${anonymousWrites++}`)}-${Date.now()}.tmp`,
+  );
+
+  const hash = createHash('sha256');
+  let bytesWritten = 0;
+  let fd: number | null = openSync(temp, 'w');
+  let handle: Handle | null = null;
+
+  const closeStaged = (): void => {
+    if (fd === null) return;
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = null;
+  };
+
+  return {
+    write(bytes) {
+      if (fd === null) {
+        throw new Error(
+          'this blob stream has already been published or discarded; open another one',
+        );
+      }
+      writeSync(fd, bytes);
+      hash.update(bytes);
+      bytesWritten += bytes.byteLength;
+    },
+    publish() {
+      if (handle !== null) return handle;
+      closeStaged();
+      const sha256 = hash.digest('hex');
+      const target = blobPath(dataDir, sha256);
+      // The same dedupe fast path `putBlob` has: the target's name *is* its
+      // content, so an identical capture that is already stored costs an
+      // unlink rather than a write.
+      if (existingSize(target) === bytesWritten) {
+        unlinkSync(temp);
+      } else {
+        mkdirSync(dirname(target), { recursive: true });
+        renameSync(temp, target);
+        fsyncDir(dirname(target));
+      }
+      handle = blobHandle(sha256);
+      return handle;
+    },
+    discard() {
+      closeStaged();
+      try {
+        unlinkSync(temp);
+      } catch {
+        // Already published or already gone; either way there is nothing to do.
+      }
+    },
+    bytesWritten: () => bytesWritten,
   };
 }
 

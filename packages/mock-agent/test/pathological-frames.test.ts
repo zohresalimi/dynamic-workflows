@@ -23,12 +23,15 @@ import Ajv2020, { type ErrorObject } from 'ajv/dist/2020.js';
 import { expect, it, describe as suite } from 'vitest';
 import {
   HUGE_LINE_TOTAL_BYTES,
+  hugeLineFrameParts,
+  hugeLinePayloadBytes,
   INVALID_FRAME_VARIANTS,
   invalidFrame,
   MALFORMED_LINE,
   malformedLine,
   patternSlice,
   RAW_CHUNK_BYTES,
+  sizedToolContent,
   TRUNCATED_FRAME_PREFIX,
   truncatedFrame,
 } from '../src/pathological.ts';
@@ -186,5 +189,54 @@ suite('AC6 — the 10 MB payload is generated, never random and never checked in
 
   it('is not a single repeated character — a byte counter has to see real bytes', () => {
     expect(new Set(patternSlice(0, 1024)).size).toBeGreaterThan(8);
+  });
+});
+
+/**
+ * KAR-05.4's boundary needs a line of an **exact** length, and the length of
+ * the frame that wraps the payload depends on the session id — which the mock
+ * generates and a client cannot know in advance. So the arithmetic lives here,
+ * beside the frame parts it has to agree with, rather than in a test that
+ * would guess at it and be wrong the day the id format changes.
+ */
+suite('a line of an exact size, framing included (KAR-05.4 EPIC-05-S15)', () => {
+  it.each([256, 8388607, 8388608, 8388609])('builds a line of exactly %i bytes', (lineBytes) => {
+    const { prefix, suffix } = hugeLineFrameParts('mock-session-02ff152c-1');
+    const payload = hugeLinePayloadBytes(prefix, suffix, lineBytes);
+    const line = prefix + patternSlice(0, payload) + suffix;
+    expect(Buffer.byteLength(line, 'utf8')).toBe(lineBytes);
+  });
+
+  it('still produces a frame the ACP schema accepts', () => {
+    const { prefix, suffix } = hugeLineFrameParts('mock-session-02ff152c-1');
+    const payload = hugeLinePayloadBytes(prefix, suffix, 4096);
+    const frame = JSON.parse(prefix + patternSlice(0, payload) + suffix) as {
+      params: { update: unknown };
+    };
+    expect(validateAgainst('SessionNotification', frame.params)).toBeNull();
+  });
+
+  it('builds tool-call content of an exact size that the ACP schema accepts', () => {
+    // KAR-05.4's spill threshold is 256 KiB of *content*, so the mock has to be
+    // able to emit a tool result of a stated size — and it has to still be a
+    // legal `tool_call_update`, or the adapter would be spilling a frame it
+    // should have rejected.
+    const content = sizedToolContent(300 * 1024);
+    expect(JSON.stringify(content).length).toBeGreaterThan(300 * 1024);
+    expect(
+      validateAgainst('SessionNotification', {
+        sessionId: 'mock-session-1',
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 'tc-1', content },
+      }),
+    ).toBeNull();
+  });
+
+  it('produces byte-identical content for the same size, so retries deduplicate', () => {
+    expect(JSON.stringify(sizedToolContent(4096))).toBe(JSON.stringify(sizedToolContent(4096)));
+  });
+
+  it('refuses a line shorter than the framing it has to carry', () => {
+    const { prefix, suffix } = hugeLineFrameParts('mock-session-02ff152c-1');
+    expect(() => hugeLinePayloadBytes(prefix, suffix, 8)).toThrow(RangeError);
   });
 });

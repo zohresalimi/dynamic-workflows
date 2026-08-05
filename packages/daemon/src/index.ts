@@ -64,6 +64,7 @@ export { createPermissionService } from './services/permission-service.ts';
 export type {
   CommandPolicy,
   CreateTerminalRequest,
+  TerminalCapture,
   TerminalExit,
   TerminalOutput,
   TerminalService,

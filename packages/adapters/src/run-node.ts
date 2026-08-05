@@ -30,8 +30,10 @@
 import {
   type CompletedNodeResult,
   type EventSeq,
+  type Handle,
   ikey,
   type NodeFailure,
+  NodeFailureError,
   SchemaIdSchema,
   type TimerHandle,
   type TokenUsage,
@@ -47,12 +49,14 @@ import {
   agentExited,
   agentTimedOut,
   handshakeMismatch,
+  offendingFrameHead,
   spawnRefused,
   toAdapterFailure,
 } from './failures.ts';
+import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
 import type { AcpNodeRequest, AcpPorts, EventRecord } from './ports.ts';
 import { agentTransport } from './transport.ts';
-import { describeUpdate } from './updates.ts';
+import { describeUpdate, toolCallContentText } from './updates.ts';
 
 /** What a plain agent turn produces when the node declares no schema of its
  * own. EPIC-09/EPIC-12 own structured output; this is the honest default. */
@@ -69,6 +73,19 @@ export const AGENT_TURN_SCHEMA_ID = SchemaIdSchema.parse('DeFlow.agentturn.v1');
  */
 export const OUTPUT_INLINE_LIMIT_BYTES = 64 * 1024;
 
+/**
+ * How large a tool result may be before its bytes leave the ledger for the
+ * content-addressed blob store (KAR-05.4 AC5).
+ *
+ * 256 KiB, the same figure as `@DeFlow/ledger`'s `MAX_INLINE_PAYLOAD_BYTES` and
+ * for the same reason — it is the ceiling docs/04-domain-model.md §10 sets on
+ * anything that lands in an append-only table every replay re-reads. It is
+ * restated here rather than imported because @DeFlow/adapters depends on
+ * @DeFlow/core alone (docs/16-repo-layout.md R2), and
+ * `test/integration/blob-spill.test.ts` is where the number is pinned.
+ */
+export const CONTENT_SPILL_BYTES = 256 * 1024;
+
 /** Default cancellation grace, on the injected clock (§9.4 stage 1 → 2). */
 export const CANCEL_GRACE_MS = 5_000;
 /** Default SIGTERM → SIGKILL gap (§9.4 stage 2 → 3). */
@@ -82,6 +99,9 @@ interface TurnState {
   stopReason: acp.StopReason | null;
   /** The concatenated text of every `agent_message_chunk`. */
   agentText: string;
+  /** Handles for the oversized tool results this turn spilled, in order and
+   * without repeats — the same log twice is one artifact, not two. */
+  artifacts: Handle[];
   /** Whether *DeFlow* asked for the cancel, which is what makes it `by: 'user'`. */
   cancelRequested: boolean;
   /** Whether the cooperative cancel went unanswered and the group was signalled. */
@@ -137,6 +157,29 @@ export function estimateUsage(promptText: string, outputText: string): TokenUsag
     outputTokens: Math.ceil(outputText.length / 4),
     source: 'estimated',
   };
+}
+
+/**
+ * Moves an oversized tool result out of the event and into the blob store, or
+ * returns `null` when it is small enough to stay where it is (AC5).
+ *
+ * `note` is what the `node.progress` row says instead of the bytes: the digest
+ * handle and the size, which is enough to fetch the artifact, enough to see
+ * that two attempts produced the same one, and around a hundred characters.
+ * `NodeProgressSchema` is a `strictObject` with a single-line `message`, so
+ * this is the row *pointing at* the output rather than carrying it — the rule
+ * `io_chunk`'s module doc states, and the one that keeps replay fast.
+ */
+function spillOversizeResult(
+  update: acp.SessionUpdate,
+  capture: (evidence: string | Uint8Array) => Handle,
+): { handle: Handle; note: string } | null {
+  const text = toolCallContentText(update);
+  if (text === '') return null;
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes <= CONTENT_SPILL_BYTES) return null;
+  const handle = capture(text);
+  return { handle, note: `${bytes} bytes spilled to ${handle}` };
 }
 
 /** Signals the child's whole process group, and says nothing if it is gone. */
@@ -205,20 +248,36 @@ export async function runAcpNode(
     }),
   );
 
+  // Validated before anything is spawned, and refused the same way an
+  // inadmissible node is. A cap of 0 or `Infinity` is a misconfiguration of
+  // DeFlow rather than a fact about the agent (EPIC-05-S15), and finding out an
+  // hour into a turn — or after starting a process that then has to be killed —
+  // helps nobody. It leaves as a `NodeFailure` and not as a throw, because a
+  // scheduler that expected an outcome does not have a `catch` here.
+  let maxFrameBytes = DEFAULT_MAX_FRAME_BYTES;
+  let capRefusal: NodeFailureError | null = null;
+  try {
+    maxFrameBytes = parseFrameLimit(ports.maxFrameBytes);
+  } catch (error) {
+    capRefusal = error as NodeFailureError;
+  }
+
   // KAR-05.2 AC7 — admission, and the reason it is *here*: before `spawn`,
   // after the scheduling decision is durable. A node whose requirements the
   // probed row does not satisfy is refused as a plan-time fact; discovering it
   // at runtime means a spawned process, a consumed quota and a failure hours
   // from the decision that caused it. `node.scheduled` above is what the
   // refusal points at — the decision it refused.
-  const refusal = admit(
-    {
-      node: request.nodeId,
-      requires: request.requires ?? [],
-      permission: request.permission,
-    },
-    ports.capabilityRow ?? null,
-  );
+  const refusal =
+    capRefusal ??
+    admit(
+      {
+        node: request.nodeId,
+        requires: request.requires ?? [],
+        permission: request.permission,
+      },
+      ports.capabilityRow ?? null,
+    );
   if (refusal !== null) {
     const failure = toAdapterFailure(refusal, {
       occurredAtEvent: lastSeq,
@@ -242,7 +301,7 @@ export async function runAcpNode(
 
   const { child, started, exited } = spawnAgent(request);
   const pgid = child.pid ?? 0;
-  const transport = agentTransport(child);
+  const transport = agentTransport(child, { maxFrameBytes });
 
   // One mutable object rather than seven `let`s: every one of these is
   // assigned from inside a callback or the connection closure, and a `let` in
@@ -255,6 +314,7 @@ export async function runAcpNode(
     sessionId: null,
     stopReason: null,
     agentText: '',
+    artifacts: [],
     cancelRequested: false,
     escalated: false,
     escalation: null,
@@ -295,131 +355,157 @@ export async function runAcpNode(
       );
     }
 
-    await app.connectWith(transport.stream, async (ctx) => {
-      const initialized = await ctx.request('initialize', {
-        protocolVersion: ACP_PROTOCOL_VERSION,
-        clientCapabilities: CLIENT_CAPABILITIES,
-        clientInfo: { ...CLIENT_INFO },
-      });
-
-      const offered: unknown = initialized.protocolVersion;
-      // The type as well as the value: MCP's protocol version is a date string
-      // and `'1' === 1` is false only if you look. No downgrade, ever.
-      if (typeof offered !== 'number' || offered !== ACP_PROTOCOL_VERSION) {
-        throw handshakeMismatch(offered);
-      }
-      turn.protocolVersion = offered;
-
-      // Written *before* the side effect. This record is what makes
-      // at-least-once recovery possible at all.
-      lastSeq = await ledger.append(
-        event(
-          'node.started',
-          {
-            node: request.nodeId,
-            attempt: request.attempt,
-            ikey: key,
-            binary: {
-              path: request.binary.path,
-              version: request.binary.version,
-              sha256: request.binary.sha256,
-            },
-          },
-          true,
-        ),
-      );
-
-      const builder = ctx.buildSession({
-        cwd: request.worktree,
-        mcpServers: [...request.mcpServers],
-      });
-      turn.newSessionRequest = builder.toRequest();
-
-      await builder.withSession(async (session) => {
-        turn.sessionId = session.sessionId;
-        // AC3: the sessionId is durable against the node before a single
-        // update can refer to it.
-        lastSeq = await ledger.append(
-          event('node.progress', {
-            node: request.nodeId,
-            attempt: request.attempt,
-            phase: 'session.opened',
-            message: `sessionId=${session.sessionId}`,
-          }),
-        );
-
-        if (ports.signal !== undefined) {
-          const onAbort = (): void => {
-            turn.cancelRequested = true;
-            // Protocol first, signals later: this is the only stage that
-            // produces a clean transcript.
-            void ctx.notify('session/cancel', { sessionId: session.sessionId });
-            armEscalation();
-          };
-          if (ports.signal.aborted) onAbort();
-          else ports.signal.addEventListener('abort', onAbort, { once: true });
-        }
-
-        const prompt = session.prompt(request.prompt);
-        // The stop is delivered through `nextUpdate()`; this promise exists
-        // only so a rejected prompt ends the loop instead of stranding it.
-        const stranded = prompt.then(
-          () => new Promise<never>(() => {}),
-          (error: unknown) => Promise.reject(error),
-        );
-        stranded.catch(() => {});
-        // The child died before the stop frame arrived. Whether that is a
-        // crash or a cancellation the agent slept through is decided once, at
-        // the boundary below, from `escalated`.
-        const died = exited.then(({ code, signal }) => {
-          throw agentExited(code, signal);
+    // Raced with the connection, not merely with the pull loop: the frame
+    // guard can trip on the `initialize` response, before a session exists and
+    // before anything is awaiting `nextUpdate()`. Without this the turn would
+    // sit on a handshake that can no longer be answered.
+    await Promise.race([
+      transport.failed,
+      app.connectWith(transport.stream, async (ctx) => {
+        const initialized = await ctx.request('initialize', {
+          protocolVersion: ACP_PROTOCOL_VERSION,
+          clientCapabilities: CLIENT_CAPABILITIES,
+          clientInfo: { ...CLIENT_INFO },
         });
-        died.catch(() => {});
 
-        for (let pull = 0; ; pull += 1) {
-          ports.onPull?.(pull, transport.bytesRead());
-          const message = await Promise.race([session.nextUpdate(), stranded, died]);
-
-          if (message.kind === 'stop') {
-            turn.stopReason = message.stopReason;
-            disarm();
-            return;
-          }
-
-          // Nothing is read off the child while this is in flight, which is
-          // what turns "await the append" into real backpressure.
-          transport.gate.close();
-          try {
-            const ioChunkSeq = await ledger.appendIo({
-              nodeId: request.nodeId,
-              attempt: request.attempt,
-              stream: 'agent_json',
-              ts: clock.now(),
-              data: Buffer.from(
-                `${JSON.stringify({ method: 'session/update', params: message.notification })}\n`,
-                'utf8',
-              ),
-            });
-            const described = describeUpdate(message.update);
-            if (message.update.sessionUpdate === 'agent_message_chunk') {
-              const content = message.update.content;
-              if (content.type === 'text') turn.agentText += content.text;
-            }
-            lastSeq = await ledger.append(
-              event('node.progress', {
-                node: request.nodeId,
-                attempt: request.attempt,
-                phase: described.phase,
-                ...(described.message === undefined ? {} : { message: described.message }),
-                ioChunkSeq,
-              }),
-            );
-          } finally {
-            transport.gate.open();
-          }
+        const offered: unknown = initialized.protocolVersion;
+        // The type as well as the value: MCP's protocol version is a date string
+        // and `'1' === 1` is false only if you look. No downgrade, ever.
+        if (typeof offered !== 'number' || offered !== ACP_PROTOCOL_VERSION) {
+          throw handshakeMismatch(offered);
         }
-      });
-    });
+        turn.protocolVersion = offered;
+
+        // Written *before* the side effect. This record is what makes
+        // at-least-once recovery possible at all.
+        lastSeq = await ledger.append(
+          event(
+            'node.started',
+            {
+              node: request.nodeId,
+              attempt: request.attempt,
+              ikey: key,
+              binary: {
+                path: request.binary.path,
+                version: request.binary.version,
+                sha256: request.binary.sha256,
+              },
+            },
+            true,
+          ),
+        );
+
+        const builder = ctx.buildSession({
+          cwd: request.worktree,
+          mcpServers: [...request.mcpServers],
+        });
+        turn.newSessionRequest = builder.toRequest();
+
+        await builder.withSession(async (session) => {
+          turn.sessionId = session.sessionId;
+          // AC3: the sessionId is durable against the node before a single
+          // update can refer to it.
+          lastSeq = await ledger.append(
+            event('node.progress', {
+              node: request.nodeId,
+              attempt: request.attempt,
+              phase: 'session.opened',
+              message: `sessionId=${session.sessionId}`,
+            }),
+          );
+
+          if (ports.signal !== undefined) {
+            const onAbort = (): void => {
+              turn.cancelRequested = true;
+              // Protocol first, signals later: this is the only stage that
+              // produces a clean transcript.
+              void ctx.notify('session/cancel', { sessionId: session.sessionId });
+              armEscalation();
+            };
+            if (ports.signal.aborted) onAbort();
+            else ports.signal.addEventListener('abort', onAbort, { once: true });
+          }
+
+          const prompt = session.prompt(request.prompt);
+          // The stop is delivered through `nextUpdate()`; this promise exists
+          // only so a rejected prompt ends the loop instead of stranding it.
+          const stranded = prompt.then(
+            () => new Promise<never>(() => {}),
+            (error: unknown) => Promise.reject(error),
+          );
+          stranded.catch(() => {});
+          // The child died before the stop frame arrived. Whether that is a
+          // crash or a cancellation the agent slept through is decided once, at
+          // the boundary below, from `escalated`.
+          const died = exited.then(({ code, signal }) => {
+            throw agentExited(code, signal);
+          });
+          died.catch(() => {});
+
+          for (let pull = 0; ; pull += 1) {
+            ports.onPull?.(pull, transport.bytesRead());
+            const message = await Promise.race([
+              session.nextUpdate(),
+              stranded,
+              died,
+              transport.failed,
+            ]);
+
+            if (message.kind === 'stop') {
+              turn.stopReason = message.stopReason;
+              disarm();
+              return;
+            }
+
+            // Nothing is read off the child while this is in flight, which is
+            // what turns "await the append" into real backpressure.
+            transport.gate.close();
+            try {
+              const ioChunkSeq = await ledger.appendIo({
+                nodeId: request.nodeId,
+                attempt: request.attempt,
+                stream: 'agent_json',
+                ts: clock.now(),
+                data: Buffer.from(
+                  `${JSON.stringify({ method: 'session/update', params: message.notification })}\n`,
+                  'utf8',
+                ),
+              });
+              const described = describeUpdate(message.update);
+              if (message.update.sessionUpdate === 'agent_message_chunk') {
+                const content = message.update.content;
+                if (content.type === 'text') turn.agentText += content.text;
+              }
+
+              // AC5. A tool result over the ceiling leaves the control plane for
+              // the blob store, and the row keeps a reference to it. The write is
+              // deliberately inside the closed gate: it is filesystem I/O, and
+              // doing it while the reader was free to run would be the read-ahead
+              // this loop exists to prevent.
+              const spilled = spillOversizeResult(message.update, ports.captureEvidence);
+              if (spilled !== null && !turn.artifacts.includes(spilled.handle)) {
+                turn.artifacts.push(spilled.handle);
+              }
+              const progressMessage = [described.message, spilled?.note]
+                .filter(Boolean)
+                .join(' · ');
+
+              lastSeq = await ledger.append(
+                event('node.progress', {
+                  node: request.nodeId,
+                  attempt: request.attempt,
+                  phase: described.phase,
+                  ...(progressMessage === '' ? {} : { message: progressMessage }),
+                  ioChunkSeq,
+                }),
+              );
+            } finally {
+              transport.gate.open();
+            }
+          }
+        });
+      }),
+    ]);
   } catch (caught) {
     disarm();
     signalGroup(pgid, 'SIGKILL');
@@ -435,11 +521,19 @@ export async function runAcpNode(
           signal: exit.signal,
         })
       : caught;
-    const failure = toAdapterFailure(thrown, {
+    const mapped = toAdapterFailure(thrown, {
       occurredAtEvent: lastSeq,
       attempt: request.attempt,
       captureEvidence: ports.captureEvidence,
     });
+    // AC1: a frame-cap abort carries a second handle — the first 4 KiB of the
+    // line that broke it. The diagnostic handle every failure gets says where
+    // the throw happened; only these bytes say what the agent was sending.
+    const head = offendingFrameHead(thrown);
+    const failure: NodeFailure =
+      head === null
+        ? mapped
+        : { ...mapped, evidence: [...mapped.evidence, ports.captureEvidence(head)] };
     await ledger.append(
       event('node.failed', {
         node: request.nodeId,
@@ -515,7 +609,10 @@ export async function runAcpNode(
     // number beside it is an estimate.
     costUsd: 0,
     producedFacts: [],
-    artifacts: handle === null ? [] : [handle],
+    // Every oversized tool result this turn spilled, plus the turn's own text
+    // when that spilled too. These are the node's artifacts in the domain
+    // sense: addressable, deduplicated, and reachable from the event log.
+    artifacts: handle === null ? turn.artifacts : [...turn.artifacts, handle],
   };
   await ledger.append(
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),

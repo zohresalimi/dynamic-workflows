@@ -27,6 +27,8 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
+import { frameTooLarge } from './failures.ts';
+import { frameGuard } from './frame-guard.ts';
 
 /** A gate the pull loop closes for the duration of each durable append. */
 export interface ReadGate {
@@ -40,6 +42,21 @@ export interface AgentTransport {
   /** Bytes read off the child's stdout so far. The spec that proves the child
    * blocks in `write()` compares this against what has been made durable. */
   bytesRead(): number;
+  /**
+   * Rejects when the frame guard trips, and otherwise never settles.
+   *
+   * A promise rather than a callback because the abort has to reach whichever
+   * `await` the turn happens to be sitting on — the handshake, the prompt, or
+   * `nextUpdate()` — and `Promise.race` is how those are already written
+   * (KAR-05.4 AC1). Erroring the stream alone is not enough: the SDK's reader
+   * would surface it as a closed connection at some later, unrelated await.
+   */
+  readonly failed: Promise<never>;
+}
+
+export interface TransportOptions {
+  /** The frame cap, in bytes since the last newline. Defaults to 8 MiB. */
+  readonly maxFrameBytes?: number;
 }
 
 /**
@@ -100,9 +117,24 @@ function readChunk(stdout: Readable): Promise<Uint8Array | null> {
   });
 }
 
-export function agentTransport(child: ChildProcessWithoutNullStreams): AgentTransport {
+export function agentTransport(
+  child: ChildProcessWithoutNullStreams,
+  options: TransportOptions = {},
+): AgentTransport {
   let bytesRead = 0;
   let closed: { promise: Promise<void>; open: () => void } | null = null;
+
+  // One guard for the whole session, so "bytes since the last newline" spans
+  // reads: a frame that arrives in a hundred chunks is one frame, and a counter
+  // per chunk would never see it.
+  const guard = frameGuard(options.maxFrameBytes);
+  let trip = (_error: unknown): void => {};
+  const failed = new Promise<never>((_resolve, reject) => {
+    trip = reject;
+  });
+  // Nobody is racing it until the turn starts, and a rejection nobody is
+  // listening to yet is an unhandled rejection that takes the process down.
+  failed.catch(() => {});
 
   const gate: ReadGate = {
     close() {
@@ -130,6 +162,21 @@ export function agentTransport(child: ChildProcessWithoutNullStreams): AgentTran
           return;
         }
         bytesRead += chunk.byteLength;
+
+        // Upstream of `ndJsonStream`, and therefore upstream of the SDK's
+        // unbounded `LineBuffer`: a cap applied to the parsed frame is too late
+        // because the buffer has already grown (§10.1). Nothing is enqueued
+        // once the guard trips — the offending bytes must not reach the SDK at
+        // all — and no recovery is attempted.
+        const report = guard.inspect(chunk);
+        if (report !== null) {
+          const error = frameTooLarge(report);
+          trip(error);
+          controller.error(error);
+          child.stdout.destroy();
+          return;
+        }
+
         controller.enqueue(chunk);
       },
       cancel() {
@@ -143,5 +190,6 @@ export function agentTransport(child: ChildProcessWithoutNullStreams): AgentTran
     stream: acp.ndJsonStream(Writable.toWeb(child.stdin), readable),
     gate,
     bytesRead: () => bytesRead,
+    failed,
   };
 }

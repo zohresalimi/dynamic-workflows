@@ -16,6 +16,27 @@
 import { toSingleLine } from '@DeFlow/core';
 import type * as acp from '@agentclientprotocol/sdk';
 
+/**
+ * The text a tool call is reporting as its result, concatenated, or `''`.
+ *
+ * This is the payload docs/07-provider-adapter-layer.md §10.2 names first when
+ * it says what has to be spilled: a `tool_call_update` carrying a build log or
+ * a captured test failure. Only `content` blocks are read — a `diff` block is a
+ * structured value the plan layer owns, and a `terminal` block is a reference
+ * to output the terminal service has already bounded (AC7), so neither is
+ * bytes this layer should be copying anywhere.
+ */
+export function toolCallContentText(update: acp.SessionUpdate): string {
+  if (update.sessionUpdate !== 'tool_call' && update.sessionUpdate !== 'tool_call_update') {
+    return '';
+  }
+  let text = '';
+  for (const block of update.content ?? []) {
+    if (block.type === 'content') text += textOf(block.content);
+  }
+  return text;
+}
+
 /** What one update contributes to the node's progress record. */
 export interface UpdateDescription {
   /** The ACP discriminator, carried through unabridged — including one this

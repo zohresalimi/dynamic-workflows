@@ -51,8 +51,12 @@ suite('flowing mode is not reachable (EPIC-05-S3 scenario 3)', () => {
 
   it('the transport pulls, one chunk at a time, with no buffer of its own', async () => {
     const files = await sources();
-    const transport = files.filter((file) => file.text.includes('ndJsonStream'));
-    expect(transport.length).toBeGreaterThan(0);
+    // `codeOnly`, not the raw text: several files in this package *discuss*
+    // `ndJsonStream` in their module docs — the frame guard's whole reason to
+    // exist is that it sits upstream of it — and only the file that calls it is
+    // the transport.
+    const transport = files.filter((file) => codeOnly(file.text).includes('ndJsonStream('));
+    expect(transport).toHaveLength(1);
     for (const file of transport) {
       // A web ReadableStream whose `pull` reads the paused child stream, with
       // `highWaterMark: 0` so the stream never tops up a buffer of its own.

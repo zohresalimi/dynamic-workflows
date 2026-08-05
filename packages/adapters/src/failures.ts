@@ -17,6 +17,7 @@
 import type { NodeFailure, ToNodeFailureContext } from '@DeFlow/core';
 import { NodeFailureError, toNodeFailure } from '@DeFlow/core';
 import * as acp from '@agentclientprotocol/sdk';
+import type { FrameTooLargeReport } from './frame-guard.ts';
 
 /**
  * The wire version DeFlow negotiates: the **integer** `1`, read from the SDK
@@ -71,6 +72,38 @@ export function spawnRefused(path: string, cause: unknown): unknown {
     class: 'permanent',
     detail: { path },
   });
+}
+
+/**
+ * A line crossed the frame cap (KAR-05.4 AC1).
+ *
+ * **Permanent, and no recovery is attempted.** A frame that large means the
+ * agent is misbehaving rather than merely verbose, and the next attempt would
+ * read the same runaway output from the same build of the same binary. By the
+ * time this is constructed the session is already being torn down.
+ *
+ * The first 4 KiB of the offending line rides along on `head` — as bytes,
+ * because evidence is what actually arrived. `run-node.ts` turns it into the
+ * failure's second evidence handle; it is deliberately not in `detail`, which
+ * is JSON that every replay re-reads.
+ */
+export function frameTooLarge(report: FrameTooLargeReport): NodeFailureError {
+  const error = new NodeFailureError(
+    `the agent wrote ${report.bytes} bytes with no newline, over the ${report.limit}-byte frame ` +
+      'cap; the session was aborted and the agent killed rather than buffered',
+    {
+      reason: 'adapter.frame-too-large',
+      class: 'permanent',
+      detail: { bytes: report.bytes, limit: report.limit },
+    },
+  );
+  return Object.assign(error, { head: report.head });
+}
+
+/** The offending frame's first bytes, when `thrown` is a frame-cap abort. */
+export function offendingFrameHead(thrown: unknown): Uint8Array | null {
+  const head = (thrown as { head?: unknown } | null)?.head;
+  return head instanceof Uint8Array ? head : null;
 }
 
 /** The agent broke the protocol in a way the session cannot continue past. */
