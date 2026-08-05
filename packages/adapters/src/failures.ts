@@ -75,6 +75,81 @@ export function spawnRefused(path: string, cause: unknown): unknown {
 }
 
 /**
+ * Nothing at any searched location is an executable file (KAR-05.3 AC4).
+ *
+ * Permanent, and deliberately *not* a raw `ENOENT`: the errno alone names
+ * neither the vendor nor the paths, so the operator reading it in the ledger
+ * three hours later cannot tell whether the CLI is missing, installed
+ * somewhere DeFlow was not told about, or present without an execute bit. Each
+ * candidate keeps its own errno for the same reason — an install and a `chmod`
+ * are different fixes.
+ */
+export function resolutionFailed(
+  provider: string,
+  bin: string,
+  searched: readonly { readonly path: string; readonly code: string }[],
+): NodeFailureError {
+  const where =
+    searched.length === 0
+      ? 'no location was configured to search'
+      : `${searched.length} location${searched.length === 1 ? '' : 's'} searched`;
+  return new NodeFailureError(
+    `${provider}: no executable "${bin}" found — ${where}. DeFlow resolves every vendor binary ` +
+      "from a configured location and never from PATH, because DeFlowd's PATH is not the user's " +
+      'login-shell PATH',
+    {
+      reason: 'adapter.spawn-failed',
+      class: 'permanent',
+      detail: { provider, bin, searched: searched as never },
+    },
+  );
+}
+
+/**
+ * The vendor CLI rejected the argv DeFlow invoked it with (KAR-05.3 AC5).
+ *
+ * Permanent: the same build of the same binary parses the same argv the same
+ * way on the next attempt, and where a flag is mid-deprecation the one
+ * fallback has already been spent by the time this is constructed. `stderr` is
+ * the tail the child actually printed, which is what makes a flag rename
+ * readable in the ledger rather than a guess.
+ */
+export function argvRejected(
+  provider: string,
+  attempts: readonly (readonly string[])[],
+  stderr: string,
+  exit: { readonly code: number | null; readonly signal: string | null },
+): NodeFailureError {
+  const tried = attempts.map((argv) => (argv.length === 0 ? '(no arguments)' : argv.join(' ')));
+  return new NodeFailureError(
+    `${provider} rejected the invocation DeFlow uses (tried ${tried.join(' then ')}) and exited ` +
+      `with code ${exit.code ?? 'null'}; its flag surface has moved and the registry entry needs ` +
+      're-verifying against --help',
+    {
+      reason: 'adapter.spawn-failed',
+      class: 'permanent',
+      detail: { provider, attempts: tried, stderr: stderr.slice(-2048), exitCode: exit.code },
+    },
+  );
+}
+
+/**
+ * The registry was asked for an invocation it does not have — an argv variant
+ * past the last one, or an adapter's environment without the companion binary
+ * that environment exists to point at.
+ */
+export function registryRefused(
+  message: string,
+  detail: Record<string, unknown>,
+): NodeFailureError {
+  return new NodeFailureError(message, {
+    reason: 'adapter.spawn-failed',
+    class: 'permanent',
+    detail,
+  });
+}
+
+/**
  * A line crossed the frame cap (KAR-05.4 AC1).
  *
  * **Permanent, and no recovery is attempted.** A frame that large means the

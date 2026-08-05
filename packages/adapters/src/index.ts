@@ -20,6 +20,10 @@ export {
   CAPABILITY_REQUIREMENTS,
   type CapabilityRequirement,
 } from './admission.ts';
+// KAR-05.3 — an absolute path or a failure that names what was looked for and
+// where. PATH is never consulted (§4.3).
+export type { ResolveContext, ResolvedProvider, SearchedPath } from './binary-resolver.ts';
+export { resolveExecutable } from './binary-resolver.ts';
 // KAR-05.2 — every routing question, answered from the probed row and from
 // nothing else. There is no provider name in that module, by construction.
 export {
@@ -45,10 +49,13 @@ export {
   ACP_PROTOCOL_VERSION,
   agentExited,
   agentTimedOut,
+  argvRejected,
   frameTooLarge,
   handshakeMismatch,
   offendingFrameHead,
   protocolError,
+  registryRefused,
+  resolutionFailed,
   spawnRefused,
   toAdapterFailure,
 } from './failures.ts';
@@ -62,6 +69,10 @@ export {
   InvalidFrameLimit,
   parseFrameLimit,
 } from './frame-guard.ts';
+// KAR-05.3 — spawning a provider, with the one bounded retry a flag
+// mid-deprecation earns and no vendor knowledge of its own.
+export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
+export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
 export type {
   AcpNodeRequest,
   AcpPorts,
@@ -82,6 +93,25 @@ export {
   type ProbeRequest,
   probeProvider,
 } from './probe.ts';
+// KAR-05.3 — availability as a value the planner routes around (NF7), and an
+// `authMethods` payload rendered for a human. Never executed (AR-1).
+export type {
+  AuthInstruction,
+  AvailabilityInput,
+  AvailabilityStatus,
+  ProviderAvailability,
+} from './provider-availability.ts';
+export { renderAuthMethods, reportAvailability } from './provider-availability.ts';
+// KAR-05.3 — the verified provider table, encoded once. The only file in this
+// package that names a vendor, and it names no capability.
+export type {
+  KnownProviderId,
+  ProviderKind,
+  ProviderSpec,
+  SpawnContext,
+  SpawnPlan,
+} from './provider-registry.ts';
+export { PROVIDER_SPECS, providerSpec, spawnPlan } from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
 export type { AcpNodeOutcome, ProcessExit } from './run-node.ts';
 export {
