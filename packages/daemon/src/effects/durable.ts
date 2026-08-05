@@ -53,7 +53,8 @@ import type {
 } from '@DeFlow/core';
 import { ikey as buildIkey, NodeFailureError } from '@DeFlow/core';
 import type { AppendOptions, EffectRow, EventDraft } from '@DeFlow/ledger';
-import { journalEffect, markEffectDone, nextOrdinal } from '@DeFlow/ledger';
+import { journalEffect, markEffectDone, nextOrdinal, scaffoldEffect } from '@DeFlow/ledger';
+import { escalateReconcileUnknown } from './reconcile/escalate.ts';
 
 /**
  * Which of the two operations that look identical this is (EPIC-06-S17).
@@ -74,6 +75,20 @@ export interface EffectCtx {
   readonly row: EffectRow;
   /** ms epoch at which the daemon running this effect started. */
   readonly daemonStartedAt: number;
+  /**
+   * Journals a note onto **this effect's own `pending` row** (KAR-06.4 AC5).
+   *
+   * The one thing an effect can make durable between "I am about to act" and
+   * "here is what happened". A `mutating` shell command writes the hash of
+   * `git status --porcelain` through it before it spawns anything, and again
+   * the instant the command returns, so that a crash anywhere in between can
+   * be told apart from a crash before the command ever ran.
+   *
+   * Synchronous, because it must be *committed* before the next line runs; the
+   * value is read back by the next daemon life as `ctx.row.resultJson`, and is
+   * replaced wholesale by the real result when the row goes `done`.
+   */
+  readonly scaffold: (value: unknown) => void;
 }
 
 /**
@@ -87,7 +102,25 @@ export interface EffectCtx {
 export type ReconcileProbe<T> =
   | { readonly status: 'done'; readonly result: T }
   | { readonly status: 'not-started' }
-  | { readonly status: 'unknown'; readonly detail?: string };
+  | {
+      readonly status: 'unknown';
+      readonly detail?: string;
+      /**
+       * The hashes the probe compared, for the human who now has to decide
+       * (KAR-06.4 AC10). A prose `detail` alone is what EPIC-06-S15 calls
+       * "a message rather than evidence".
+       */
+      readonly evidence?: ReconcileHashes;
+    };
+
+/** What a probe measured, in the three slots every kind maps onto: what the
+ * world looked like before, what it would look like after, and what it looks
+ * like now. `null` where a kind has no such hash to give. */
+export interface ReconcileHashes {
+  readonly before?: string | null;
+  readonly after?: string | null;
+  readonly observed?: string | null;
+}
 
 /**
  * One side-effecting operation, described well enough to be journalled before
@@ -191,16 +224,19 @@ export class EffectRequestHashMismatch extends NodeFailureError {
  */
 export class EffectNeedsReconciliation extends NodeFailureError {
   readonly ikey: string;
+  /** The `NodeFailure` that was appended to the ledger, evidence and all. */
+  readonly failure: NodeFailure;
 
-  constructor(ikey: string, detail: string) {
+  constructor(ikey: string, detail: string, failure: NodeFailure) {
     super(
       `effect ${ikey} was left pending by a previous daemon life and cannot be resolved: ${detail}. ` +
         'Whether it landed is unknown, and re-performing it might apply it twice — so this escalates ' +
         'to a human rather than guessing.',
-      { reason: 'effect.reconcile-unknown', class: 'gate', detail: { ikey } },
+      { reason: 'effect.reconcile-unknown', class: 'gate', detail: { ...failure.detail, ikey } },
     );
     this.name = 'EffectNeedsReconciliation';
     this.ikey = ikey;
+    this.failure = failure;
   }
 }
 
@@ -301,6 +337,9 @@ export function createEffectRunner(options: EffectRunnerOptions): EffectRunner {
       mode: created ? 'fresh' : 'resume',
       row,
       daemonStartedAt,
+      scaffold: (value: unknown) => {
+        scaffoldEffect(db, key, value);
+      },
     };
 
     // Before every other branch, including the memoised one: a stale hash must
@@ -324,16 +363,61 @@ export function createEffectRunner(options: EffectRunnerOptions): EffectRunner {
     // falls straight past here — it is a concurrent caller, not a crash.
     if (row.startedAt < daemonStartedAt) {
       if (effect.reconcile === undefined) {
-        throw new EffectNeedsReconciliation(key, 'the effect declares no reconcile probe');
+        throw escalate(effect, key, 'the effect declares no reconcile probe', {});
       }
       const probe = await effect.reconcile(ctx);
       if (probe.status === 'done') return record(effect, key, probe.result, true);
       if (probe.status === 'unknown') {
-        throw new EffectNeedsReconciliation(key, probe.detail ?? 'the probe returned unknown');
+        throw escalate(
+          effect,
+          key,
+          probe.detail ?? 'the probe returned unknown',
+          probe.evidence ?? {},
+        );
       }
     }
 
     return record(effect, key, await effect.perform(ctx), false);
+  }
+
+  /**
+   * KAR-06.4 AC6, AC9 — `unknown` is recorded before it is thrown.
+   *
+   * The events go in first and the throw follows, in that order, because the
+   * scheduler is what stops the run: `run.needs_human` moves the projected
+   * status out of `running`, and `decide()` admits nothing at all unless the
+   * run is `running`. A throw alone would leave the node's caller holding an
+   * error while every other node kept starting — which is exactly the
+   * "unknown falls through to retry" failure EPIC-06-S15 exists to prevent.
+   *
+   * The effect row is deliberately left `pending`. Moving it to `failed` would
+   * be a claim about the world nobody has made yet: the human's answer is
+   * "it ran" or "it didn't", and only that answer can close the row.
+   */
+  function escalate(
+    effect: Effect<unknown>,
+    key: IdempotencyKey,
+    detail: string,
+    hashes: ReconcileHashes,
+  ): EffectNeedsReconciliation {
+    const { failure } = escalateReconcileUnknown(db, {
+      runId: effect.runId,
+      nodeId: effect.nodeId,
+      attempt: effect.attempt,
+      epoch,
+      ts: clock.now(),
+      evidence: {
+        ikey: key,
+        kind: effect.kind,
+        requestHash: effect.requestHash,
+        before: hashes.before ?? null,
+        after: hashes.after ?? null,
+        observed: hashes.observed ?? null,
+        note: detail,
+      },
+      appendOptions,
+    });
+    return new EffectNeedsReconciliation(key, detail, failure);
   }
 
   function record<T>(effect: Effect<T>, key: IdempotencyKey, result: T, reconciled: boolean): T {
