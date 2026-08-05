@@ -21,7 +21,24 @@ export {
   boot,
   EX_ALREADY_RUNNING,
 } from './boot.ts';
+export { systemClock } from './clock.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
+// KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
+// `durable()` are four genuinely different real situations.
+export type {
+  Effect,
+  EffectCtx,
+  EffectMode,
+  EffectRunner,
+  EffectRunnerOptions,
+  ReconcileProbe,
+} from './effects/durable.ts';
+export {
+  createEffectRunner,
+  EffectFailed,
+  EffectNeedsReconciliation,
+  EffectRequestHashMismatch,
+} from './effects/durable.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';

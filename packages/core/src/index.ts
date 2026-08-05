@@ -73,6 +73,11 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-06.1 — the whole scheduling policy, as a pure function of state and one
 // instant.
 export { decide } from './decide.ts';
+// KAR-06.3 — what the effect journal remembers about what was asked for, so a
+// plan edit landing under a journalled effect cannot return the memoised
+// result of the operation it replaced.
+export type { EffectRequest } from './effect-request.ts';
+export { requestHash } from './effect-request.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
   CompactionFidelity,
@@ -197,8 +202,9 @@ export {
 } from './ids.ts';
 export type { ParsedIkey } from './ikey.ts';
 // IdempotencyKeySchema is deliberately not exported (AC4) — ikey() below is
-// the only legal constructor.
-export { ikey, parseIkey } from './ikey.ts';
+// the only legal constructor. KAR-06.3 adds the short-hex form the atomic file
+// write embeds in a temp filename, where the raw key's `/` cannot go.
+export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 export type { JsonSchemaDocument, SchemaRegistration } from './json-schema.ts';
 export {

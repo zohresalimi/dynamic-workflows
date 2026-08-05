@@ -139,6 +139,33 @@ same machine and nothing else: normalising it would invent precision the source 
 the reaper uses it to decide whether a pid still belongs to the agent that was recorded. Trusting a
 bare pid instead is how an orphan reaper kills an unrelated user process.
 
+## The `effect` journal is written before the side effect, and never rewritten
+
+A row in `effect` records that a side effect was *intended*, keyed by
+`ikey = ${run_id}/${node_id}/${attempt}/${ordinal}`. `journalEffect` writes it together with the
+`effect.started` event in **one** transaction, before anything is performed, so a crash between the
+two is impossible by construction and a crash immediately after leaves a `pending` row — which is
+the point. `pending` from a previous daemon life means "we died mid-effect and cannot tell"; from
+this one it means "another caller is mid-flight". Those are different situations and the runner
+treats them differently ([durable execution §8.2](../../docs/05-durable-execution.md#82-the-write-ahead-effect-journal)).
+
+The insert is `ON CONFLICT (ikey) DO NOTHING` followed by a `SELECT`, never an upsert: the row
+already there is the truth about that ikey — it may be `done`, with a result somebody is about to
+memoise — and overwriting it with a fresh intent is exactly the failure the journal exists to
+prevent.
+
+`nextOrdinal` counts the rows of a `(run_id, node_id, attempt)` triple. It is deliberately a query
+rather than a counter: a counter resets to zero when the process restarts, so the second effect of
+an interrupted attempt would come back as ordinal 0, collide with the first, and memoise the wrong
+result with no error anywhere. `packages/daemon/test/no-ordinal-counter.test.ts` is what keeps that
+honest.
+
+Migration 0006 adds four triggers, because the rule is about *transitions* and a `CHECK` cannot see
+the row's previous values: a row is born `pending`, moves once to `done` or `failed`, never changes
+its identity columns (`ikey`, the four key components, `kind`, `request_hash`, `started_at`) and is
+never deleted. Re-opening a terminal row would turn "this already happened" into "this never
+happened", and a deleted row is indistinguishable from an effect that never started.
+
 ## The control plane and the data plane are different tables
 
 `event` is small and is what `reduce()` folds. `io_chunk` is huge, holds agent `stdout`, `stderr`
