@@ -225,6 +225,39 @@ this cache can be wrong, and bumping it unnecessarily costs milliseconds of repl
 Set **`DeFlow_NO_CHECKPOINT=1`** to turn the whole thing off. The suite is run with it set, because
 a cache that anything has come to *depend on* is no longer a cache.
 
+## Two daemons: the lease and the epoch
+
+The failure is common rather than exotic — **a user runs `npx DeFlow up` in two terminals**, and it
+happens the first week. SQLite protects the *database* (a second connection's `BEGIN IMMEDIATE`
+returns `SQLITE_BUSY`) but nothing about it stops two schedulers interleaving *effect execution*:
+both reduce the same ledger, both derive the same ready set, both spawn the same agent, both burn
+tokens, and both commit to the same branch. Two mechanisms ship together, because they cover
+different failures.
+
+**`acquireLease(dataDir)`** takes an exclusive lock on `<dataDir>/DeFlow.lock` and holds it for the
+life of the process. A second daemon fails immediately with one sentence —
+`DeFlowd is already running (pid 4711) — data dir …` — and no stack trace. It is called **first** in
+boot, before the ledger is opened for writing, before providers are probed, before the port is
+bound: a second daemon that gets as far as spawning a capability probe has already changed the world
+before failing.
+
+The lock is a *file lock the kernel holds*, not a pid file, because the property that matters is
+that it is released when the holder dies — `SIGKILL` included, with no handler and no cleanup. Node
+exposes no `flock(2)` and the npm package that does needs `node-gyp` at install time, which NF6
+forbids. What is already here, already compiled, is SQLite, whose unix VFS takes ordinary `fcntl`
+advisory locks: an open `BEGIN IMMEDIATE` on `DeFlow.lock` holds one for exactly as long as the
+process lives. The holder's pid is committed to the lock file *before* the held transaction is
+re-taken, which is why a reader can still name it.
+
+**`bumpEpoch(db)`** is the belt to that lock's braces. It advances `daemon.epoch` once per daemon
+life in a single `UPDATE … RETURNING` (never a read followed by a write — that hands two racing
+daemons the same number), and every appended event carries the result. `appendEvents` compares each
+draft against the persisted epoch *inside* the append transaction and refuses the whole batch with
+`StaleEpoch` if any of them is lower. The epoch is what covers the cases the lock cannot: `flock`
+semantics on network mounts, a debugger-suspended process, a container restart that inherited the
+file. A daemon that somehow starts anyway cannot put a row in this ledger — and the reducer skips
+any stale-epoch row already on disk and counts it in `RunState.staleEpochSkipped`.
+
 ## Testing this package
 
 **`:memory:` is for pure projection unit tests only** — files named `*.projection.test.ts`, and a

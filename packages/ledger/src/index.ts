@@ -9,7 +9,9 @@
  * KAR-03.1 ships the connection layer. KAR-03.2 adds the migration runner,
  * migration 0001's six-table schema, and `openLedger`. KAR-03.3 adds the
  * append-only event log. KAR-03.4 adds the data plane — `io_chunk`, the bounded
- * drains and the per-run counters. The rest of EPIC-03 fills the rest in.
+ * drains and the per-run counters. KAR-03.7 adds the fence: the
+ * single-instance lease and the daemon epoch. The rest of EPIC-03 fills the
+ * rest in.
  *
  * Note what is not here and never will be: an `updateEvent`, a `deleteEvent`
  * or an `amendEvent`. The `event` table is append-only, and
@@ -54,6 +56,9 @@ export {
 } from './checkpoint.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
+// KAR-03.7 — the daemon epoch: bumped once per daemon life, stamped on every
+// write, and compared at the append boundary.
+export { bumpEpoch, readEpoch, StaleEpoch } from './epoch.ts';
 // KAR-03.1 — the driver adapter behind the Db port declared in @DeFlow/core.
 export { LedgerAlreadyOpen, LedgerTooNew } from './errors.ts';
 // KAR-03.4 — the data plane: agent bytes land here and never in `event`.
@@ -70,6 +75,9 @@ export {
   readIoChunks,
   type StoredIoChunk,
 } from './io-chunk.ts';
+// KAR-03.7 — the single-instance lease. Taken first in boot, before anything
+// else can change the world.
+export { acquireLease, DaemonAlreadyRunning, type Lease, LOCK_FILE } from './lease.ts';
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
