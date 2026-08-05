@@ -10,9 +10,16 @@
  *
  * These recordings are the seed of `recordings/<provider>@<exact-version>/`
  * that EPIC-05's golden suite replays.
+ *
+ * Which is also why nothing reaches the file un-redacted. A capture is a
+ * transcript of a real session on somebody's laptop and `recordings/` is
+ * public, so the tee writes through `RecordingRedactor` — the same class the
+ * replay-side converter uses, imported from its source because this spike
+ * carries its own two dependencies and must not gain a third.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { RecordingRedactor } from '../../../packages/mock-agent/src/redaction.ts';
 import { CappedLineFramer } from './framing.ts';
 
 export type Direction = 'in' | 'out';
@@ -50,17 +57,40 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [k: s
 
 const decoder = new TextDecoder();
 
-/** Appends raw chunks to an ndjson file, header first. */
+/**
+ * Appends redacted chunks to an ndjson file, header first.
+ *
+ * A chunk is written when it completes at least one frame, carrying every frame
+ * it completed — which is the chunk whose receipt time the recording already
+ * attributed to those frames, so no timing moves. A frame that spans two chunks
+ * is held until the second, because half a frame cannot be redacted.
+ */
 export class Recorder {
   readonly #path: string;
+  readonly #redactor = new RecordingRedactor();
+  /** Receipt time of the last chunk seen in each direction, for `close()`. */
+  readonly #lastT = new Map<Direction, number>();
 
   constructor(path: string, header: RecordingHeader) {
     this.#path = path;
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify({ header })}\n`);
+    writeFileSync(path, `${this.#redactor.frame(JSON.stringify({ header }))}\n`);
   }
 
   note(t: number, dir: Direction, bytes: Uint8Array): void {
+    this.#lastT.set(dir, t);
+    this.#append(t, dir, this.#redactor.chunk(dir, bytes));
+  }
+
+  /** Writes out a frame the session ended in the middle of, and nothing else. */
+  close(): void {
+    for (const dir of ['in', 'out'] as const) {
+      this.#append(this.#lastT.get(dir) ?? 0, dir, this.#redactor.flush(dir));
+    }
+  }
+
+  #append(t: number, dir: Direction, bytes: Uint8Array): void {
+    if (bytes.length === 0) return;
     const line = JSON.stringify({
       t: Number(t.toFixed(3)),
       dir,

@@ -2157,3 +2157,79 @@ export function checkNoDeprecatedAcpPackages(
 
   return violations;
 }
+
+/** Who and where the machine running the check is, for the recording scan. */
+export interface RecordingIdentity {
+  /** Home directory of whoever is running the check. */
+  readonly home: string;
+  /** Their login name. */
+  readonly username: string;
+  /** The platform temporary directory. */
+  readonly tmpdir: string;
+}
+
+/**
+ * `recordings/` is committed to a public repository, and every file in it is a
+ * transcript of a real session on somebody's laptop. None of what this guard
+ * looks for is a credential — which is exactly why it survives review.
+ *
+ * The scan reads through base64: a raw transport capture stores its frames as
+ * `b64` chunks, so a plain grep over the file finds nothing and means nothing.
+ *
+ * The redactor in `packages/mock-agent/src/redaction.ts` is what keeps these
+ * out, in the two paths that write recordings. This guard is the backstop that
+ * says one of them was bypassed.
+ */
+export function checkRecordingsAreScrubbed(
+  files: readonly SourceFile[],
+  identity: RecordingIdentity,
+): Violation[] {
+  const violations: Violation[] = [];
+  const why = 'recordings/ is public; packages/mock-agent/src/redaction.ts is what removes it';
+
+  for (const file of files) {
+    const text = `${file.text}\n${decodedFrames(file.text)}`;
+    const report = (message: string) => {
+      violations.push({ where: file.path, message: `${file.path} ${message}. ${why}.` });
+    };
+
+    const home = /\/(?:Users|home)\/[^/\s"'\\]+/.exec(text)?.[0];
+    if (home !== undefined) report(`carries the home-directory path "${home}"`);
+    if (identity.home.length > 1 && text.includes(identity.home)) {
+      report(`carries this machine's home directory "${identity.home}"`);
+    }
+    // Two characters is a substring, not a name; anything shorter would make
+    // the rule fire on unrelated text and be turned off within the week.
+    if (identity.username.length >= 3 && text.includes(identity.username)) {
+      report(`names the user "${identity.username}"`);
+    }
+    if (identity.tmpdir.length > 1 && text.includes(identity.tmpdir)) {
+      report(`carries this machine's temporary directory "${identity.tmpdir}"`);
+    }
+    const temp = /(?:\/private)?\/var\/folders\/[^/\s"'\\]+\/[^/\s"'\\]+\/T/.exec(text)?.[0];
+    if (temp !== undefined) report(`carries the capture temporary directory "${temp}"`);
+    const commands = /"availableCommands"\s*:\s*\[\s*[^\s\]]/.exec(text);
+    if (commands !== null) {
+      report('lists availableCommands entries, which enumerate the recording machine’s commands');
+    }
+  }
+
+  return violations;
+}
+
+/** Every base64 chunk in an ndjson recording, decoded, so the scan can read it. */
+function decodedFrames(text: string): string {
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.includes('"b64"')) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const b64 = (parsed as { b64?: unknown }).b64;
+    if (typeof b64 === 'string') out.push(Buffer.from(b64, 'base64').toString('utf8'));
+  }
+  return out.join('\n');
+}
