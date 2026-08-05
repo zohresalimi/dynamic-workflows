@@ -112,19 +112,49 @@ suite('no consumer computes cursor + 1 (EPIC-03-S9 scenario 2, AC3)', () => {
     expect(matching(code(planted), CURSOR_ARITHMETIC)).toHaveLength(1);
   });
 
+  /**
+   * SQL in this package lives one statement to a string or template literal, so
+   * the rule can be applied per statement rather than per file. That is
+   * stricter than a file-wide scan — a file holding one good window no longer
+   * vouches for a bad one next to it — and it is what lets counting aggregates
+   * be exempted honestly (KAR-03.4's `readRunStats`): `count(*)` returns a
+   * single row, holds no cursor and hands nobody a `seq` to resume from, so
+   * there is no window for it to get wrong.
+   */
+  const SQL_LITERALS = /`[^`]*`|'(?:[^'\\\n]|\\.)*'/g;
+
+  const eventReads = (source: Source): { path: string; sql: string }[] =>
+    (source.text.match(SQL_LITERALS) ?? [])
+      .filter((sql) => /\bSELECT\b/i.test(sql) && /\bFROM\s+event\b/i.test(sql))
+      .map((sql) => ({ path: source.path, sql }));
+
   it('every event read in the ledger is a strictly-greater-than window', () => {
-    const reads = code(nonMigrationLedgerSources).filter((source) =>
-      /FROM event\b/i.test(source.text),
-    );
-    expect(reads.length).toBeGreaterThan(0);
-    for (const source of reads) {
-      expect(source.text, `${source.path} reads event without "seq > ?"`).toMatch(
+    const statements = code(nonMigrationLedgerSources).flatMap(eventReads);
+    expect(statements.length).toBeGreaterThan(0);
+    for (const { path, sql } of statements) {
+      if (/\bcount\s*\(/i.test(sql)) continue;
+      expect(sql, `${path} reads event rows without "seq > ?"`).toMatch(
         /run_id\s*=\s*\?\s+AND\s+seq\s*>\s*\?/i,
       );
+    }
+    // `>=` is wrong everywhere, aggregate or not: it re-delivers the event the
+    // caller's cursor already named.
+    for (const source of code(nonMigrationLedgerSources)) {
       expect(source.text, `${source.path} uses >= where the contract is >`).not.toMatch(
         /\bseq\s*>=\s*\?/i,
       );
     }
+  });
+
+  it('and that per-statement scan is a real result, not an empty match', () => {
+    const planted: Source[] = [
+      {
+        path: 'planted.ts',
+        text: "const SQL = 'SELECT seq FROM event WHERE run_id = ? ORDER BY seq LIMIT ?';",
+      },
+    ];
+    const [found] = code(planted).flatMap(eventReads);
+    expect(found?.sql).not.toMatch(/run_id\s*=\s*\?\s+AND\s+seq\s*>\s*\?/i);
   });
 });
 

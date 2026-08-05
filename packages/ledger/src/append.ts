@@ -31,6 +31,7 @@ import {
   type NodeId,
   type RunId,
 } from '@DeFlow/core';
+import { Buffer } from 'node:buffer';
 
 /**
  * An event on its way in: the envelope of docs/04-domain-model.md §9 minus
@@ -78,12 +79,56 @@ export class InvalidEventEnvelope extends Error {
   }
 }
 
+/**
+ * The ceiling on an inline `event.payload`, as one exported constant
+ * (docs/04-domain-model.md §10, KAR-03.4 AC7).
+ *
+ * `event` is append-only and is read in full by every replay for the life of
+ * the run, so a 4 MB tool transcript written into it is permanent *and*
+ * recurring cost — precisely what the control-plane / data-plane split exists
+ * to keep out. Above this line a payload belongs in the content-addressed blob
+ * store, with the event keeping `{ sha256, bytes, mime, head, tail }`.
+ */
+export const MAX_INLINE_PAYLOAD_BYTES = 256 * 1024;
+
+/**
+ * A payload too large to live inline.
+ *
+ * Until KAR-03.9's blob store lands this is refused rather than spilled, and
+ * that is the honest failure: refusing is recoverable, and a row written into
+ * an append-only table is not.
+ */
+export class PayloadTooLarge extends Error {
+  readonly index: number;
+  readonly bytes: number;
+
+  constructor(index: number, kind: string, bytes: number) {
+    super(
+      `event ${index} of this batch ("${kind}") has a ${bytes}-byte payload, over the ` +
+        `${MAX_INLINE_PAYLOAD_BYTES}-byte inline ceiling, so none of the batch was appended. ` +
+        'Anything this size belongs in the content-addressed blob store (KAR-03.9), with the ' +
+        'event carrying { sha256, bytes, mime, head, tail } instead of the bytes: `event` is ' +
+        'append-only and is re-read by every replay, so an oversized payload is permanent and ' +
+        'recurring cost. Agent output belongs in io_chunk (appendIoChunk), never here.',
+    );
+    this.name = 'PayloadTooLarge';
+    this.index = index;
+    this.bytes = bytes;
+  }
+}
+
 const INSERT_EVENT = `INSERT INTO event (run_id, ts, kind, v, epoch, node_id, attempt, ikey, payload)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   RETURNING seq`;
 
+/** A validated draft and its already-encoded payload, so nothing is encoded twice. */
+interface Appendable {
+  readonly draft: EventDraft;
+  readonly payload: string;
+}
+
 /** Column order matches INSERT_EVENT; `?? null` is how an absent optional reaches a nullable column. */
-const bindings = (draft: EventDraft): (string | number | null)[] => [
+const bindings = ({ draft, payload }: Appendable): (string | number | null)[] => [
   draft.runId,
   draft.ts,
   draft.kind,
@@ -92,13 +137,10 @@ const bindings = (draft: EventDraft): (string | number | null)[] => [
   draft.nodeId ?? null,
   draft.attempt ?? null,
   draft.ikey ?? null,
-  // canonicalJson, not JSON.stringify: the payload of an event is hashed by
-  // the checkpoint and compared across daemon versions, and it refuses a Date
-  // or a NaN rather than coercing one into a row nobody can fix afterwards.
-  canonicalJson(draft.payload),
+  payload,
 ];
 
-function validate(drafts: readonly EventDraft[]): EventDraft[] {
+function validate(drafts: readonly EventDraft[]): Appendable[] {
   return drafts.map((draft, index) => {
     const parsed = EventDraftSchema.safeParse(draft);
     if (!parsed.success) {
@@ -107,7 +149,18 @@ function validate(drafts: readonly EventDraft[]): EventDraft[] {
         parsed.error.issues.map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`),
       );
     }
-    return parsed.data as EventDraft;
+    const validated = parsed.data as EventDraft;
+    // canonicalJson, not JSON.stringify: the payload of an event is hashed by
+    // the checkpoint and compared across daemon versions, and it refuses a Date
+    // or a NaN rather than coercing one into a row nobody can fix afterwards.
+    const payload = canonicalJson(validated.payload);
+    // The encoded bytes, not the object graph: the ceiling is about what lands
+    // in the row and is re-read by every replay.
+    const bytes = Buffer.byteLength(payload, 'utf8');
+    if (bytes > MAX_INLINE_PAYLOAD_BYTES) {
+      throw new PayloadTooLarge(index, validated.kind, bytes);
+    }
+    return { draft: validated, payload };
   });
 }
 
@@ -130,8 +183,8 @@ export function appendEvents(db: Db, drafts: readonly EventDraft[]): EventSeq[] 
 
   const insert = db.prepare<{ seq: number }>(INSERT_EVENT);
   return db.transaction(() =>
-    validated.map((draft) => {
-      const assigned = insert.get(...bindings(draft));
+    validated.map((appendable) => {
+      const assigned = insert.get(...bindings(appendable));
       if (assigned === undefined) {
         throw new Error('INSERT INTO event … RETURNING seq returned no row');
       }
@@ -140,7 +193,12 @@ export function appendEvents(db: Db, drafts: readonly EventDraft[]): EventSeq[] 
   );
 }
 
-const SELECT_RANGE = `SELECT seq, run_id, ts, kind, v, epoch, node_id, attempt, ikey, payload
+/**
+ * The SSE tail query, exported because the statement is the contract: it is the
+ * hottest read in the system and the shape `EXPLAIN QUERY PLAN` is asserted
+ * against in `test/integration/control-plane-split.test.ts`.
+ */
+export const EVENT_TAIL_SQL = `SELECT seq, run_id, ts, kind, v, epoch, node_id, attempt, ikey, payload
   FROM event
   WHERE run_id = ? AND seq > ?
   ORDER BY seq
@@ -203,7 +261,7 @@ export function readRange(db: Db, runId: RunId, afterSeq: number, limit: number)
 
   // One row more than asked for: whether it came back is the answer to
   // "is there more", and it is discarded rather than returned.
-  const rows = db.prepare<EventRow>(SELECT_RANGE).all(runId, afterSeq, limit + 1);
+  const rows = db.prepare<EventRow>(EVENT_TAIL_SQL).all(runId, afterSeq, limit + 1);
   return {
     events: rows.slice(0, limit).map(toEnvelope),
     hasMore: rows.length > limit,

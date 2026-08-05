@@ -100,6 +100,83 @@ is an ordinary table, its high-water update is part of the transaction, and `ROL
 consequence for callers is the same either way, and it is the reason `appendEvents` documents its
 return value as provisional: **a `seq` means nothing until the transaction that produced it commits.**
 
+## The control plane and the data plane are different tables
+
+`event` is small and is what `reduce()` folds. `io_chunk` is huge, holds agent `stdout`, `stderr`
+and raw `agent_json` frames, and **the reducer never opens it**. `appendIoChunk` /
+`appendIoChunks` write it, `readIoChunks` / `drainIoChunks` read it, and a `node.progress` event
+may carry an `ioChunkSeq` pointer into it but never the bytes.
+
+That separation is *physical* rather than a `kind` predicate or a partial index, which is strictly
+better: there is no index to misdeclare and nothing to keep in sync. It buys three things.
+
+- **No snapshotting.** **Measured 2026-08-02:** 500,000 events in one combined table is 193 MB and a
+  full scan is 416 ms; the 10,000-row control-plane subset reduces to state in **29 ms**. A 40-node
+  multi-hour run is on the order of **2,000** control-plane events, so folding one from scratch is
+  single-digit milliseconds. There is no snapshot table and none is planned.
+- **A meaningful progress watermark, for free.** An agent producing megabytes while accomplishing
+  nothing writes only to `io_chunk`, so it does not advance the F4.7 watermark; an agent thinking
+  silently for eight minutes does not falsely trip the stall detector either.
+- **A structural guarantee, not a convention.** `@DeFlow/core` declares no dependency on
+  `@DeFlow/ledger` or on a driver, and no file under `packages/core/src` may name `io_chunk` —
+  `packages/core/test/purity.test.ts` fails the build if one does.
+
+`readRunStats(db, runId)` reports `controlEventCount` beside `ioChunkCount`, so the ~2,000 figure
+above stays a measurement. Roadmap **A1-3** is that per-tool-call events would be 10-100x it;
+`CONTROL_EVENT_BUDGET` (20,000) is the assertion that catches that, and real snapshots are worth
+revisiting only past `SNAPSHOT_REVISIT_THRESHOLD` (100,000) control events in a single run. If file
+*size* becomes the concern first, the cheaper move is putting `io_chunk` in a second SQLite file via
+`ATTACH`. When KAR-03.6 writes the `run` projection row, it carries this count onto the run record;
+until then it is computed on read, which cannot go stale.
+
+Anything over `MAX_INLINE_PAYLOAD_BYTES` (256 KiB) is refused at the append boundary with
+`PayloadTooLarge` rather than written into `event.payload`. KAR-03.9 turns that refusal into a spill
+to the content-addressed blob store; until then, refusing is the honest failure, because `event` is
+append-only and is re-read by every replay.
+
+## The tail query is served by the index, and every read is bounded
+
+The SSE tail — `WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT 500` — is the hottest read in the
+system. **Measured 2026-08-02:** 1,000 of them over 500,000 events took 196 ms total, ~0.2 ms each.
+`EXPLAIN QUERY PLAN` is asserted rather than hoped for, so dropping or reordering `event_run_seq`
+fails the build.
+
+**Correction, verified 2026-08-05 (KAR-03.4).** The architecture records that plan as
+`SEARCH event USING COVERING INDEX event_run_seq`. On better-sqlite3@13.0.2 / SQLite 3.53.4 that
+string appears only when the query asks for nothing outside `(run_id, seq)` — the seq-only cursor
+probe. The shipped tail selects the whole envelope, so it fetches the row and plans as
+`SEARCH event USING INDEX event_run_seq (run_id=? AND seq>?)`. Both are asserted. The properties
+that actually matter are the same either way and are asserted too: **no `SCAN event`** and **no
+`USE TEMP B-TREE FOR ORDER BY`**.
+
+**better-sqlite3 is fully synchronous**, so an unbounded or unindexed read on the write connection
+does not make one endpoint slow — it stops the event loop, and every in-flight SSE stream and HTTP
+request in the daemon **stalls** behind it. A guard (`test/bounded-reads.test.ts`) fails the build on
+a `SELECT` over `event` or `io_chunk` in this package without a `LIMIT`; counting aggregates, which
+return one row, are exempt.
+
+### Never a lazy `iterate()` cursor across a stream
+
+Read more rows than fit in one window with `drainEvents` / `drainIoChunks`: bounded `LIMIT` queries
+in a loop, each batch preparing and discarding its statement, nothing held open between batches.
+
+A lazy `stmt.iterate()` piped into an SSE response is the shape a reasonable engineer reaches for,
+and it is a trap. An open read statement holds a read transaction open, and SQLite cannot checkpoint
+WAL frames past the oldest live reader, so every row written while the stream is connected
+accumulates in `ledger.db-wal` and **no checkpoint can reclaim it**.
+
+**Verified on this machine 2026-08-05**, writing 20,000 4 KiB rows while one cursor was held open on
+a reader connection: the `-wal` file reached **96 MB**, `PRAGMA wal_checkpoint(TRUNCATE)` came back
+`{ busy: 1, log: 23318, checkpointed: 248 }` — 248 frames of 23,318, and not one byte returned to
+the filesystem — and the space came back only after the cursor was closed. The same 20,000 rows
+through the bounded drain held `-wal` at **5.8 MB** and truncated cleanly. (The architecture's note
+records 82.6 MB and `{busy:0, log:0, checkpointed:0}` for this; the magnitude reproduces, the exact
+`wal_checkpoint` row does not — `busy: 1` with a near-zero `checkpointed` is what a blocked TRUNCATE
+actually returns here, and `{0,0,0}` is what it returns *after* the cursor closes.) Both halves are
+asserted in
+`test/integration/wal-held-cursor.test.ts`, the bad one on purpose, so nobody simplifies the drain
+back into an iterator.
+
 ## Migrations: no `down`, roll forward or restore
 
 Migrations are numbered `.ts` files under `src/migrations/`, append-only and never edited once
