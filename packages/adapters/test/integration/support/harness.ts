@@ -27,13 +27,17 @@ import {
 } from '@DeFlow/core';
 import {
   appendEvents,
+  appendEventsWithProcess,
   appendIoChunk,
   type BlobRef,
   blobHandle,
+  clearProcess,
   getBlob,
   openLedger,
+  type ProcessRow,
   readEpoch,
   readIoChunks,
+  readProcesses,
   readProviderCapabilities,
   readRange,
   recordProviderCapabilities,
@@ -46,11 +50,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   AgentBinary,
+  AgentProcessKey,
+  AgentProcessRecord,
   CapabilityRow,
   CapabilityStore,
   EventRecord,
   IoRecord,
   LedgerSink,
+  ProcessRegistry,
 } from '../../../src/index.ts';
 
 /** The binary under test, absolute. Never a bare name looked up on PATH. */
@@ -84,6 +91,11 @@ export interface TestLedger {
    * through — the real SQLite one, because a manifest that only lived in a Map
    * could not answer "what did the last daemon see". */
   readonly capabilities: CapabilityStore;
+  /** The real `process` table, behind the port `runAcpNode` writes through —
+   * the row a *later* daemon's reaper reads (KAR-05.9 AC6). */
+  readonly processes: ProcessRegistry;
+  /** Every `process` row, terminal ones included. */
+  processRows(): readonly ProcessRow[];
   readonly captureEvidence: (evidence: string | Uint8Array) => Handle;
   /** Every control-plane event for the run, in `seq` order. */
   events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
@@ -173,10 +185,45 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
       })),
   };
 
+  const processes: ProcessRegistry = {
+    async appendWithProcess(event: EventRecord, row: AgentProcessRecord): Promise<EventSeq> {
+      options.onAppend?.(event.kind);
+      if (options.appendDelayMs !== undefined) await delay(options.appendDelayMs);
+      // One transaction for the pair: `appendEventsWithProcess` is the whole
+      // point of the port, and a harness that wrote them separately would make
+      // AC6 untestable while looking identical from outside.
+      const [seq] = appendEventsWithProcess(
+        db,
+        [
+          {
+            runId: RUN_ID,
+            ts: event.ts,
+            kind: event.kind,
+            v: event.v,
+            epoch,
+            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+            ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+            payload: event.payload,
+          },
+        ],
+        row,
+        { spillTo: dataDir },
+      );
+      appends.push({ at: performance.now(), kind: event.kind });
+      return seq as EventSeq;
+    },
+    async clear(key: AgentProcessKey): Promise<void> {
+      clearProcess(db, key);
+    },
+  };
+
   return {
     db,
     sink,
     capabilities,
+    processes,
+    processRows: () => readProcesses(db),
     appends,
     appendRunEvent(kind: string, payload: unknown): EventSeq {
       const [seq] = appendEvents(db, [{ runId: RUN_ID, ts: 0, kind, v: 1, epoch, payload }]);

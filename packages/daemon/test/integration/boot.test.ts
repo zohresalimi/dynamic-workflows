@@ -19,6 +19,8 @@ import {
   HOLDER_FILE,
   type Lease,
   LOCK_FILE,
+  readLiveProcesses,
+  recordProcess,
 } from '@DeFlow/ledger';
 import { it } from '@DeFlow/testkit';
 import { existsSync, readdirSync } from 'node:fs';
@@ -80,9 +82,43 @@ suite('the boot sequence takes its steps in order (EPIC-03-S21 scenario 2)', () 
       'resolve-data-dir',
       'lease',
       'migrate',
+      // KAR-05.9 AC7: **before** anything is spawned. A probe starts a child,
+      // and starting one while the previous daemon's agents are still running
+      // puts two generations of agents in the same worktree.
+      'reap-orphans',
       'probe-providers',
       'bind-port',
     ]);
+  });
+
+  it('reaps what the previous daemon left behind, before it probes anything', async ({ tmp }) => {
+    const first = await boot({ dataDir: tmp, port: await freePort(), dev: false });
+    // A row the way a spawn writes it, with a pid that is certainly gone: the
+    // fingerprint of a daemon that died with an agent running.
+    recordProcess(first.db, {
+      runId: 'run_20260805T090000Z_5c1d2e',
+      nodeId: 'n1',
+      attempt: 0,
+      pid: 4_194_303,
+      pgid: 4_194_303,
+      startedAt: 'Wed Aug  5 10:15:00 2026',
+      binarySha256: 'a'.repeat(64),
+      worktree: null,
+      spawnedAt: 1_754_313_093_000,
+    });
+    await first.shutdown();
+
+    const steps: BootStep[] = [];
+    booted = await boot({
+      dataDir: tmp,
+      port: await freePort(),
+      dev: false,
+      onStep: (step) => steps.push(step),
+    });
+
+    expect(booted.reaped.map((decision) => decision.outcome)).toEqual(['gone']);
+    expect(readLiveProcesses(booted.db)).toEqual([]);
+    expect(steps.indexOf('reap-orphans')).toBeLessThan(steps.indexOf('probe-providers'));
   });
 
   it('bumps the epoch once per daemon life and reports it', async ({ tmp }) => {

@@ -1,8 +1,9 @@
 # @DeFlow/ledger
 
 The SQLite event store. The append-only `event` log, the `io_chunk` data plane, the `effect`
-journal, the `plan` / `run` / `node_wake` tables, the `provider_capabilities` manifest,
-`PRAGMA user_version` migrations, the content-addressed blob store and the SSE tail queries.
+journal, the `plan` / `run` / `node_wake` tables, the `provider_capabilities` manifest, the
+`process` rows an orphan reaper reads, `PRAGMA user_version` migrations, the content-addressed
+blob store and the SSE tail queries.
 
 Architecture: [docs/05-durable-execution.md](../../docs/05-durable-execution.md). Delivery:
 [EPIC-03](../../docs/delivery/epics/EPIC-03-event-ledger.md).
@@ -119,6 +120,24 @@ and it is what stops this table from becoming a hardcoded capability matrix in a
 Two checks are applied and both refuse rather than repair: `binary_path` must be absolute, and
 `caps_json` must parse. There is no `run_id` column — what a binary can do is a fact about the
 machine, and it outlives every run that read it.
+
+## `process` outlives the daemon that wrote it
+
+Migration 0005's table exists because agents are spawned `detached: true`, which is what makes a
+wedged agent and everything it started reachable with one signal — and which means **the agent
+survives DeFlowd's death**. A daemon that crashed mid-run left real processes editing a real
+worktree, and these rows are the only handle the next daemon has on them
+([provider adapter layer §9.5](../../docs/07-provider-adapter-layer.md)).
+
+`appendEventsWithProcess` writes the row **inside the same transaction as `node.started`**. Two
+separate writes would leave a window, and that window is the moment a daemon is most likely to die,
+because it has just started a child process.
+
+`started_at` is stored verbatim as the OS printed it — `ps -o lstart=` on darwin, `/proc/<pid>/stat`
+field 22 on linux — and is never parsed. It is compared for equality against the same source on the
+same machine and nothing else: normalising it would invent precision the source does not have, and
+the reaper uses it to decide whether a pid still belongs to the agent that was recorded. Trusting a
+bare pid instead is how an orphan reaper kills an unrelated user process.
 
 ## The control plane and the data plane are different tables
 

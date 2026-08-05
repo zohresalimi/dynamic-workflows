@@ -130,6 +130,21 @@ export {
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
 export { applyPragmas, LEDGER_PRAGMAS, SYNCHRONOUS, withFullSync } from './pragmas.ts';
+// KAR-05.9 — the `process` table: written in the same transaction as
+// `node.started`, and the next daemon's only handle on an orphaned agent.
+export {
+  appendEventsWithProcess,
+  clearProcess,
+  markProcess,
+  PROCESS_STATES,
+  type ProcessKey,
+  type ProcessRow,
+  type ProcessRowDraft,
+  type ProcessState,
+  readLiveProcesses,
+  readProcesses,
+  recordProcess,
+} from './processes.ts';
 // KAR-05.2 — the probed capability manifest: a history keyed on
 // (provider, version, binary_sha256), never a table that is updated in place.
 export {

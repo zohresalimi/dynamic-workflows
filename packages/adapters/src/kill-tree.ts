@@ -1,0 +1,198 @@
+/**
+ * KAR-05.9 — the process tree: one way to signal it, one way to identify it.
+ *
+ * `detached: true` on every agent spawn buys two things and costs one. It buys
+ * a process group led by the child, so a wedged agent *and everything it went
+ * on to spawn* are reachable with a single signal; and it stops that signal
+ * from also reaching DeFlowd, which is what would happen if the grandchildren
+ * had stayed in the daemon's own group (§9.3, measured — see
+ * `test/integration/process-group.test.ts`). It costs the fact that **the agent
+ * survives DeFlowd's death**, which is why `processStartTime` exists at all.
+ *
+ * Everything that sends a signal in this daemon goes through `killTree`, and
+ * `killTree` has exactly one job: turn a pid into `-pid`. That is not a wrapper
+ * for its own sake —
+ *
+ * - `process.kill(pid)` and `process.kill(-pid)` differ by one character and by
+ *   the entire behaviour under test. The positive form leaves every grandchild
+ *   running with `ppid=1`; the regression test that proves it is scenario 3 of
+ *   EPIC-05-S31, and it exists because the positive form looks like a
+ *   simplification.
+ * - Windows has **no process groups**. The path there is
+ *   `taskkill /PID <pid> /T /F`, it was never tested, and the POSIX result does
+ *   not transfer (M3, NF5). A single abstraction is what makes that a typed
+ *   throw at one place instead of a silent no-op at five.
+ * - `-0` is `0`, and `process.kill(0, …)` signals **the caller's own process
+ *   group** — that is, DeFlowd and everything it is supervising. A pid of 0 is
+ *   exactly what a `process` row written by a spawn that never got a pid holds,
+ *   so the guard below is on the shortest path from a stale row to an outage.
+ */
+import type { Clock, TimerHandle } from '@DeFlow/core';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import nodeProcess from 'node:process';
+import { NotImplementedOnWin32, UnsignalablePid } from './failures.ts';
+
+/** Default SIGTERM → SIGKILL gap, on the injected clock (§9.4 stage 2 → 3). */
+export const SWEEP_KILL_GRACE_MS = 2_000;
+
+/** Whether a signal was delivered, or the group had already been reaped. */
+export type KillOutcome = 'signalled' | 'gone';
+
+export interface KillTreePorts {
+  /** Defaults to this process's platform. Injected so the win32 refusal is
+   * testable from a POSIX machine — the only way it ever gets tested at M1. */
+  readonly platform?: NodeJS.Platform;
+  /** Defaults to `process.kill`. */
+  readonly kill?: (pid: number, signal: NodeJS.Signals) => void;
+}
+
+/**
+ * The pids that must never be negated and handed to `kill(2)`.
+ *
+ * 0 is the caller's own group, 1 is init, and a negative number is already a
+ * group — negating it would signal a single process chosen at random by
+ * arithmetic. All three are what a corrupt or half-written `process` row looks
+ * like, and none of them is a group DeFlow ever created.
+ */
+function requireSpawnedPid(pid: number): void {
+  if (!Number.isInteger(pid) || pid <= 1) throw new UnsignalablePid(pid);
+}
+
+/** Whether an error from `kill(2)` means "there was nothing left to signal". */
+function alreadyGone(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === 'ESRCH';
+}
+
+/**
+ * Signals the whole process group led by `pid`.
+ *
+ * The single abstraction of AC5: POSIX negates the pid, win32 throws. Returns
+ * `'gone'` — rather than throwing — when the group has already been reaped,
+ * because "there is nothing left to kill" is the outcome every caller wanted.
+ */
+export function killTree(
+  pid: number,
+  signal: NodeJS.Signals,
+  ports: KillTreePorts = {},
+): KillOutcome {
+  const platform = ports.platform ?? nodeProcess.platform;
+  if (platform === 'win32') throw new NotImplementedOnWin32('killTree');
+  requireSpawnedPid(pid);
+
+  const kill =
+    ports.kill ?? ((target: number, sent: NodeJS.Signals) => nodeProcess.kill(target, sent));
+  try {
+    // The negation is the whole function.
+    kill(-pid, signal);
+    return 'signalled';
+  } catch (error) {
+    if (alreadyGone(error)) return 'gone';
+    throw error;
+  }
+}
+
+export interface SweepPorts extends KillTreePorts {
+  /** Time enters here and nowhere else (NF9). */
+  readonly clock: Clock;
+  /** How long after SIGTERM before SIGKILL. Defaults to `SWEEP_KILL_GRACE_MS`. */
+  readonly killGraceMs?: number;
+}
+
+/**
+ * Stages 2 and 3 of §9.4: SIGTERM the group now, SIGKILL it once the grace has
+ * elapsed on the injected clock.
+ *
+ * Returns the pending SIGKILL's handle rather than awaiting it. A cancelled
+ * node's outcome must not sit behind two seconds of wall clock, and the group
+ * is almost always empty long before the timer comes due — the timer is the
+ * answer to an agent that ignores SIGTERM, not the normal path.
+ *
+ * The SIGKILL is sent unconditionally rather than after checking whether the
+ * group still has non-`Z` members. Reading that answer costs a `ps` child
+ * process to decide whether to send a signal that is a no-op when the group is
+ * empty, and `Z`-state members would make the check say "still alive" about
+ * processes that are already dead (AC4).
+ */
+export function sweepTree(pgid: number, ports: SweepPorts): TimerHandle {
+  killTree(pgid, 'SIGTERM', ports);
+  return ports.clock.setTimer(ports.killGraceMs ?? SWEEP_KILL_GRACE_MS, () => {
+    killTree(pgid, 'SIGKILL', ports);
+  });
+}
+
+/**
+ * Where a process's start time is read from, per platform.
+ *
+ * Exported as a string because it is documentation the reaper's log lines
+ * carry: when a row is discarded as a PID reuse, the operator is told which two
+ * start times disagreed and where they came from.
+ */
+export function startTimeSource(platform: NodeJS.Platform = nodeProcess.platform): string {
+  if (platform === 'linux') return '/proc/<pid>/stat field 22';
+  if (platform === 'darwin') return 'ps -o lstart= -p <pid>';
+  throw new NotImplementedOnWin32('startTimeSource');
+}
+
+/**
+ * The `starttime` field of `/proc/<pid>/stat`, in clock ticks since boot.
+ *
+ * Parsed from the last `)` rather than by splitting the line: field 2 is the
+ * executable name **in parentheses and unescaped**, so a process called
+ * `sleep 300) 0 0` would otherwise shift every subsequent field. Field 22
+ * counting from 1 is index 19 counting from the field after the `)`.
+ */
+function linuxStartTime(pid: number): string | null {
+  let stat: string;
+  try {
+    stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+  } catch {
+    return null;
+  }
+  const afterComm = stat.slice(stat.lastIndexOf(')') + 1).trim();
+  const fields = afterComm.split(/\s+/);
+  // fields[0] is field 3 (state), so field 22 is fields[19].
+  return fields[19] ?? null;
+}
+
+/**
+ * `ps -o lstart=`, which prints the process's start time to the second.
+ *
+ * `/bin/ps` absolutely, never `ps` for `PATH` to answer: DeFlowd's `PATH` at
+ * daemon start is not the user's login-shell `PATH` (§4.3), and this runs on
+ * the boot path where a wrong answer means either killing an unrelated process
+ * or leaving an agent running.
+ */
+function darwinStartTime(pid: number): string | null {
+  try {
+    const out = execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const line = out.trim();
+    return line === '' ? null : line;
+  } catch {
+    // `ps` exits non-zero when the pid does not exist, which is the answer.
+    return null;
+  }
+}
+
+/**
+ * When the process with this pid started, as the OS reports it, or `null` when
+ * there is no such process.
+ *
+ * The value is **opaque and platform-specific on purpose**: it is only ever
+ * compared for equality against the value recorded at spawn. Normalising it
+ * into a timestamp would invent precision the source does not have — `lstart`
+ * is second-resolution, and `/proc` ticks are relative to a boot that may
+ * itself have changed — and a comparison that is nearly right is what kills an
+ * unrelated user process (EPIC-05-S32).
+ */
+export function processStartTime(
+  pid: number,
+  platform: NodeJS.Platform = nodeProcess.platform,
+): string | null {
+  if (platform === 'win32') throw new NotImplementedOnWin32('processStartTime');
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  return platform === 'linux' ? linuxStartTime(pid) : darwinStartTime(pid);
+}

@@ -97,6 +97,59 @@ export interface LedgerSink {
 }
 
 /**
+ * What is true about a spawned agent at the instant it started (KAR-05.9 AC6).
+ *
+ * `pgid` is stored beside `pid` rather than derived from it. They are equal for
+ * every tree DeFlow spawns — that is what `detached: true` buys — but the pgid
+ * is what a signal goes to, and once the leader is dead it is the only thing
+ * that still names the descendants together.
+ */
+export interface AgentProcessRecord {
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  /** 0-based, matching the event envelope. */
+  readonly attempt: number;
+  readonly pid: number;
+  readonly pgid: number;
+  /**
+   * The OS's own start time for `pid`, verbatim — the guard against PID reuse.
+   * `null` when it could not be read, which makes the row unverifiable and so
+   * never a thing a later daemon may signal.
+   */
+  readonly startedAt: string | null;
+  readonly binarySha256: string;
+  /** The worktree the agent is editing, whose lock a dead orphan still holds. */
+  readonly worktree: string | null;
+  /** ms epoch, from the injected `Clock`. */
+  readonly spawnedAt: number;
+}
+
+/** Which spawned process a caller means. A retry is a different one. */
+export interface AgentProcessKey {
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  readonly attempt: number;
+}
+
+/**
+ * The `process` table, as the adapter needs it (KAR-05.9).
+ *
+ * A port for the same reason `LedgerSink` is one — the SQL lives in
+ * @DeFlow/ledger and @DeFlow/adapters depends on @DeFlow/core alone
+ * (docs/16-repo-layout.md R2) — but with one method that could not be composed
+ * from `LedgerSink`: `appendWithProcess` writes the row **inside the same
+ * transaction** as `node.started`. Two calls would leave a window, and that
+ * window is precisely when the daemon is most likely to die, because it has
+ * just started a child process.
+ */
+export interface ProcessRegistry {
+  /** Appends `event` and writes `row` atomically, resolving with the `seq`. */
+  appendWithProcess(event: EventRecord, row: AgentProcessRecord): Promise<EventSeq>;
+  /** Marks the row terminal once the process's exit has been observed. */
+  clear(key: AgentProcessKey): Promise<void>;
+}
+
+/**
  * The client-side ACP request handlers, by method name.
  *
  * `session/request_permission`, `fs/read_text_file`, `fs/write_text_file` and
@@ -143,6 +196,13 @@ export interface AcpPorts {
   /** Time enters here and nowhere else (NF9). */
   readonly clock: Clock;
   readonly ledger: LedgerSink;
+  /**
+   * Where the spawned process is recorded so a *later* daemon can find it
+   * (KAR-05.9). Absent means nothing is persisted about the child, which is
+   * honest for a probe and wrong for a node: `detached: true` means the agent
+   * outlives DeFlowd, and an unrecorded agent is one nobody will ever reap.
+   */
+  readonly processes?: ProcessRegistry;
   /**
    * Stores a diagnostic and returns the handle it can be read back through —
    * the daemon's blob store. Failures carry handles, never stacks.
