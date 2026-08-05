@@ -1,0 +1,14 @@
+{
+  "name": "write-files",
+  "description": "Writes one file inside the worktree and one above it. The escape is the point: on the ACP path DeFlow refuses the write at fs/write_text_file and the violation never reaches the filesystem, so this is the only way to give path-scope detection a genuine positive case to find.",
+  "writeFiles": [
+    { "path": "inside.txt", "content": "written by the fake agent\n" },
+    { "path": "nested/deeper/inside.txt", "content": "written below the worktree root\n" },
+    { "path": "../outside.txt", "content": "written OUTSIDE the worktree\n" }
+  ],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "wrote 3 files"
+  }
+}

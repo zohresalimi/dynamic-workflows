@@ -13,8 +13,10 @@
  * SIGKILLed together with everything it spawned, the fake agents' own
  * side-effect log, and the seed that makes a failing kill point reproducible.
  *
- * Still to come: the fake agent's full F3.4 scenario vocabulary (EPIC-04/05)
- * and the FakeEffectRunner (EPIC-06).
+ * KAR-04.6 adds the exec-shim half: the same binary, told which vendor CLI to
+ * impersonate, reproducing the F3.4 conformance battery on the non-ACP path.
+ *
+ * Still to come: the FakeEffectRunner (EPIC-06).
  */
 export { type AgentOnPath, FAKE_AGENT_BIN, linkFakeAgent } from './agent.ts';
 export { TestClock } from './clock.ts';
@@ -28,6 +30,45 @@ export {
   waitFor,
 } from './crash.ts';
 export { dbContract } from './db-contract.ts';
+export {
+  CLAUDE_VERBOSE_REQUIRED,
+  type CliDecision,
+  DIALECT_ENV,
+  DIALECTS,
+  type Dialect,
+  decideCli,
+  type OutputFormat,
+  readDialect,
+} from './exec-shim/dialects.ts';
+export {
+  type ClaudeStreamJson,
+  claudeStreamJson,
+  codexJsonl,
+  copilotJson,
+  type FrameContext,
+  patternSlice,
+  uuidsFromSeed,
+} from './exec-shim/frames.ts';
+export { createProcessPorts } from './exec-shim/ports.ts';
+export {
+  EXIT_CODE_ENV,
+  type ExecShimPorts,
+  NOW_ENV,
+  runExecShim,
+  SEED_ENV,
+  seedFrom,
+} from './exec-shim/run.ts';
+export {
+  EXEC_SHIM_SCENARIO_DIR,
+  type ExecShimScenario,
+  type ExecStep,
+  loadExecShimScenario,
+  parseExecShimScenario,
+  RESULT_SUBTYPES,
+  type ResultScript,
+  type ResultSubtype,
+  SCENARIO_ENV,
+} from './exec-shim/scenario.ts';
 export { FakeDb, FakeDbClosed, FakeDbUnsupportedSql } from './fake-db.ts';
 export { type DeFlowFixtures, it } from './fixtures.ts';
 export { GIT_ENV, type GitResult, git, tryGit } from './git.ts';
@@ -43,7 +84,13 @@ export { type MakeRepoOptions, makeRepo, type Repo } from './repo.ts';
 export {
   type DuplicateEffect,
   duplicateIdempotencyKeys,
+  IDEMPOTENCY_FIELDS,
+  IDEMPOTENCY_FLAGS,
+  LEGACY_SIDE_EFFECT_LOG_ENV,
+  readInvocation,
   readSideEffectLog,
+  recordInvocation,
+  SIDE_EFFECT_LOG_ENV,
   type SideEffect,
   type SideEffectLog,
 } from './side-effect-log.ts';
