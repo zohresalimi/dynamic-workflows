@@ -30,6 +30,28 @@ export {
   readRange,
   type StoredEvent,
 } from './append.ts';
+// KAR-03.6 — the checkpoint cache: written with the events it covers, and
+// discarded rather than believed whenever it might be stale.
+export {
+  CHECKPOINT_EVENT_INTERVAL,
+  type Checkpoint,
+  CheckpointAheadOfLedger,
+  type CheckpointEnv,
+  type CheckpointerOptions,
+  type CheckpointRead,
+  type CheckpointRejection,
+  type CheckpointRejectionReason,
+  type CheckpointWrite,
+  checkpointsEnabled,
+  describeCheckpointRejection,
+  NO_CHECKPOINT_ENV,
+  type ReplayOptions,
+  type ReplayResult,
+  RunCheckpointer,
+  readCheckpoint,
+  replayRun,
+  writeCheckpoint,
+} from './checkpoint.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
 // KAR-03.1 — the driver adapter behind the Db port declared in @DeFlow/core.

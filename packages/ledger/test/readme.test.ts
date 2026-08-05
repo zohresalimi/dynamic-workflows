@@ -96,3 +96,44 @@ suite('packages/ledger/README.md states both downgrade rules as a pair', () => {
     expect(section).toMatch(/constraint it does not know exists/);
   });
 });
+
+/**
+ * KAR-03.6 — the checkpoint's contract is written down, because the two ways
+ * to get it wrong are both invisible in code review.
+ *
+ * The first is treating the cache as state: someone reads `run.state_json` and
+ * concludes it is where a run lives. The second is editing `RunState` without
+ * bumping `CHECKPOINT_VERSION`, which is the only way this cache can produce a
+ * wrong answer — and the README is where a reader learns that the bump costs
+ * nothing but a replay.
+ *
+ * Verifies: EPIC-03-S19, EPIC-03-S20 · AC6, AC7
+ */
+suite('packages/ledger/README.md says the checkpoint is optional and disposable', () => {
+  const section = readme.slice(readme.indexOf('## The checkpoint is a cache'));
+
+  it('calls it a pure optimisation rather than state', () => {
+    expect(section).toMatch(/pure optimisation/i);
+  });
+
+  it('states the same-transaction rule and what it removes', () => {
+    expect(section).toMatch(/same transaction as the events it covers/i);
+    expect(section).toMatch(/SIGKILL/);
+    expect(section).toContain('run.last_seq <= max(event.seq)');
+  });
+
+  it('lists what makes a cache be discarded, and that discarding it is correct', () => {
+    expect(section).toContain('checkpoint_version');
+    expect(section).toContain('RunStateSchema');
+    expect(section).toMatch(/replay from seq 0|replay from seq 0\./i);
+  });
+
+  it('tells the reader to bump CHECKPOINT_VERSION on a shape change', () => {
+    expect(section).toMatch(/Bump it whenever the shape of `RunState` changes/);
+  });
+
+  it('names the flag that turns it off, and why the suite runs with it set', () => {
+    expect(section).toContain('DeFlow_NO_CHECKPOINT=1');
+    expect(section).toMatch(/depend on/i);
+  });
+});
