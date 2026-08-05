@@ -43,6 +43,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 52
     },
@@ -73,6 +74,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 102
     },
@@ -103,6 +105,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 152
     },
@@ -133,6 +136,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 202
     },
@@ -163,6 +167,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 253
     },
@@ -193,6 +198,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 303
     },
@@ -223,6 +229,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 353
     },
@@ -253,6 +260,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 403
     },
@@ -283,6 +291,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 454
     },
@@ -313,6 +322,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 504
     },
@@ -345,6 +355,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 555
     },
@@ -375,6 +386,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 605
     },
@@ -405,6 +417,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 656
     },
@@ -435,6 +448,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 706
     },
@@ -465,6 +479,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 756
     },
@@ -495,6 +510,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 806
     },
@@ -525,6 +541,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 857
     },
@@ -555,6 +572,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 907
     },
@@ -585,6 +603,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 957
     },
@@ -615,6 +634,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1007
     },
@@ -647,6 +667,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1060
     },
@@ -677,6 +698,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1109
     },
@@ -707,6 +729,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1158
     },
@@ -737,6 +760,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1207
     },
@@ -767,6 +791,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1257
     },
@@ -797,6 +822,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1306
     },
@@ -827,6 +853,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1355
     },
@@ -857,6 +884,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1404
     },
@@ -887,6 +915,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1454
     },
@@ -917,6 +946,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1503
     },
@@ -949,6 +979,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1553
     },
@@ -979,6 +1010,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1602
     },
@@ -1009,6 +1041,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1652
     },
@@ -1039,6 +1072,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1701
     },
@@ -1069,6 +1103,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1750
     },
@@ -1099,6 +1134,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1799
     },
@@ -1129,6 +1165,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1849
     },
@@ -1159,6 +1196,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1898
     },
@@ -1189,6 +1227,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1947
     },
@@ -1219,6 +1258,7 @@
       },
       "failure": null,
       "suspension": null,
+      "requestHash": null,
       "wakeAt": null,
       "updatedSeq": 1996
     }
@@ -1270,7 +1310,16 @@
     "retired": []
   },
   "policy": {
-    "globalAgentSlots": 3
+    "globalAgentSlots": 3,
+    "noProgress": {
+      "detectors": true,
+      "stallThresholdMs": 600000,
+      "churnRepeats": 5,
+      "flatReplans": 3,
+      "maxAttemptsPerNode": 3,
+      "maxRunWallClockMs": null,
+      "maxTotalNodeExecutions": null
+    }
   },
   "budget": {
     "costUsd": 8.2,
@@ -1285,6 +1334,136 @@
     "breaches": []
   },
   "watermarkSeq": 2000,
+  "watermarkTs": 1754324285000,
+  "startedTs": 1754308309000,
+  "stalledAtSeq": 0,
+  "churnWindow": [
+    {
+      "node": "step-21",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1060
+    },
+    {
+      "node": "step-22",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1109
+    },
+    {
+      "node": "step-23",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1158
+    },
+    {
+      "node": "step-24",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1207
+    },
+    {
+      "node": "step-25",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1257
+    },
+    {
+      "node": "step-26",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1306
+    },
+    {
+      "node": "step-27",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1355
+    },
+    {
+      "node": "step-28",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1404
+    },
+    {
+      "node": "step-29",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1454
+    },
+    {
+      "node": "step-30",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1503
+    },
+    {
+      "node": "step-31",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1553
+    },
+    {
+      "node": "step-32",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1602
+    },
+    {
+      "node": "step-33",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1652
+    },
+    {
+      "node": "step-34",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1701
+    },
+    {
+      "node": "step-35",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1750
+    },
+    {
+      "node": "step-36",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1799
+    },
+    {
+      "node": "step-37",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1849
+    },
+    {
+      "node": "step-38",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1898
+    },
+    {
+      "node": "step-39",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1947
+    },
+    {
+      "node": "step-40",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1996
+    }
+  ],
+  "replans": {
+    "flat": 0,
+    "completed": 0,
+    "versions": []
+  },
   "epoch": 1,
   "staleEpochSkipped": 0
 }

@@ -25,6 +25,7 @@ import {
   RunIdSchema,
   SchemaIdSchema,
 } from './ids.ts';
+import { DEFAULT_NO_PROGRESS_POLICY } from './no-progress.ts';
 import {
   CHECKPOINT_VERSION,
   initialRunState,
@@ -117,6 +118,7 @@ const populated: RunState = {
       },
       failure: null,
       suspension: null,
+      requestHash: `sha256-${'f'.repeat(64)}`,
       wakeAt: null,
       updatedSeq: 8,
     },
@@ -125,7 +127,7 @@ const populated: RunState = {
     [lockKey('repo', 'repo')]: { lock: 'repo', key: 'repo', node: NODE, sinceSeq: 7 },
   },
   nodeIds: { active: [NODE], retired: [NodeIdSchema.parse('retired-step')] },
-  policy: { globalAgentSlots: 5 },
+  policy: { globalAgentSlots: 5, noProgress: DEFAULT_NO_PROGRESS_POLICY },
   budget: {
     costUsd: 0.42,
     usage: {
@@ -135,6 +137,11 @@ const populated: RunState = {
     breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2 }],
   },
   watermarkSeq: 9,
+  watermarkTs: 1_754_150_000_000,
+  startedTs: 1_754_149_000_000,
+  stalledAtSeq: 9,
+  churnWindow: [{ node: NODE, requestHash: `sha256-${'f'.repeat(64)}`, attempt: 1, seq: 8 }],
+  replans: { flat: 2, completed: 3, versions: [2, 3] },
   epoch: 2,
   staleEpochSkipped: 1,
 };

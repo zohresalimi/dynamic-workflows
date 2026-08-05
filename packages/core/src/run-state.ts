@@ -45,6 +45,14 @@ import {
   type RunId,
   RunIdSchema,
 } from './ids.ts';
+import {
+  CHURN_WINDOW,
+  type CompletedAttempt,
+  DEFAULT_NO_PROGRESS_POLICY,
+  INITIAL_REPLAN_STREAK,
+  type NoProgressPolicy,
+  type ReplanStreak,
+} from './no-progress.ts';
 import { type BudgetBreach, type NodeFailure, NodeFailureSchema } from './node-failure.ts';
 import {
   type CompletedNodeResult,
@@ -134,6 +142,23 @@ export interface NodeState {
   readonly failure: NodeFailure | null;
   /** What a suspended node is waiting for; `null` unless `status` is `suspended`. */
   readonly suspension: NodeSuspension | null;
+  /**
+   * KAR-06.8. The `requestHash` of the first effect this node's *current*
+   * attempt journalled — the digest of what was asked for, from
+   * `effect.started` (./effect-request.ts).
+   *
+   * It is the churn breaker's only input that cannot be recomputed inside
+   * `decide()`: the digest is a sha256, `sha256Hex` is asynchronous, and
+   * `decide` is a synchronous pure function of two arguments. So the one place
+   * it can arrive from is the ledger, and the one place a scheduler may read it
+   * from is the projection. `null` means the attempt journalled no effect yet —
+   * a completion the window still counts, but cannot call "the same work" as
+   * any other.
+   *
+   * Reset when the attempt index advances, because it describes an attempt and
+   * not a node.
+   */
+  readonly requestHash: string | null;
   /**
    * ms epoch a retry or a suspension is due at, from the event that scheduled
    * it — `node.retry.scheduled`'s `wakeAt`, or a `node.suspended` whose
@@ -225,9 +250,19 @@ export interface SchedulingPolicy {
    * bounded by laptop RAM and vendor rate limits, not by anything intrinsic.
    */
   readonly globalAgentSlots: number;
+  /**
+   * F4.7's tuning constants (KAR-06.8). Config for the same reason the slot
+   * count is: the stall threshold will look wrong the first time a thirty-minute
+   * test suite runs under it, and an operator has to be able to fix that without
+   * a release.
+   */
+  readonly noProgress: NoProgressPolicy;
 }
 
-export const DEFAULT_SCHEDULING_POLICY: SchedulingPolicy = Object.freeze({ globalAgentSlots: 3 });
+export const DEFAULT_SCHEDULING_POLICY: SchedulingPolicy = Object.freeze({
+  globalAgentSlots: 3,
+  noProgress: DEFAULT_NO_PROGRESS_POLICY,
+});
 
 /**
  * The kill switch as reduced state (F5.7, KAR-06.7).
@@ -308,6 +343,49 @@ export interface RunState {
    * `0` means "nothing has been projected yet"; a real `EventSeq` is positive.
    */
   readonly watermarkSeq: number;
+  /**
+   * F4.7, KAR-06.8. The envelope `ts` of that same event — the instant the run
+   * last actually got somewhere, which is what `now - watermarkTs` in §11.2 is
+   * measured against.
+   *
+   * `ts` is informational for *ordering* (order is `seq`, always), but it is
+   * the only wall-clock fact the ledger records about when a transition
+   * happened, and the stall detector is a question about wall-clock time by
+   * construction. Monotone, so a laptop whose clock steps backwards mid-run
+   * cannot make the projection claim the run got somewhere earlier than it did.
+   *
+   * `0` means "nothing has been projected yet".
+   */
+  readonly watermarkTs: number;
+  /**
+   * KAR-06.8. The `ts` of the `run.started` that put this run in flight, which
+   * §11.4's `maxRunWallClock` is measured from. `0` before the run starts.
+   *
+   * It is not reset by a pause: an operator who pauses a run for a week and
+   * resumes it has a run that really has been alive for a week, and a cap that
+   * quietly forgave the pause would be a cap on nothing in particular.
+   */
+  readonly startedTs: number;
+  /**
+   * KAR-06.8 AC2. The `watermarkSeq` a `run.stalled` has already been appended
+   * for, so a stall is reported once per *episode* rather than once per tick.
+   * `0` means no episode has been reported.
+   *
+   * This is the one field whose event — `run.stalled` — is folded *without*
+   * advancing the watermark, and it has to be: an episode is identified by the
+   * seq the run stopped progressing at, so a report that moved the watermark
+   * would end the very episode it describes and re-report it ten minutes later,
+   * for ever.
+   */
+  readonly stalledAtSeq: number;
+  /**
+   * §11.3's sliding window: the last `CHURN_WINDOW` completed node attempts,
+   * oldest first. Bounded by construction, so it costs a fixed number of bytes
+   * in `run.state_json` however long the run is.
+   */
+  readonly churnWindow: readonly CompletedAttempt[];
+  /** §11.3's second detector: consecutive replans that moved nothing. */
+  readonly replans: ReplanStreak;
   /** The highest daemon epoch seen (KAR-03.7). */
   readonly epoch: number;
   /** How many events were skipped for carrying an older epoch (AC8). */
@@ -332,11 +410,12 @@ export interface RunState {
  * be believed when it is stale.
  *
  * The same applies to how an existing field is *derived*: 4 is `node.suspended`
- * filling `NodeState.wakeAt` from its deadline (KAR-06.6) — a 3 checkpoint has
- * the field and has it empty, so believing it strands a six-hour gate with no
- * wake row. 5 is `RunState.cancel` and the `cancelled` node status (KAR-06.7).
+ * filling `NodeState.wakeAt` from its deadline (KAR-06.6). 5 is
+ * `RunState.cancel` and the `cancelled` node status (KAR-06.7). 6 is F4.7's
+ * no-progress fields (KAR-06.8) — an empty churn window believed rather than
+ * replayed is a livelock the breaker cannot see.
  */
-export const CHECKPOINT_VERSION = 5;
+export const CHECKPOINT_VERSION = 6;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -359,6 +438,7 @@ export function initialNodeState(): NodeState {
     result: null,
     failure: null,
     suspension: null,
+    requestHash: null,
     wakeAt: null,
     updatedSeq: 0,
   };
@@ -388,6 +468,11 @@ export function initialRunState(): RunState {
     policy: { ...DEFAULT_SCHEDULING_POLICY },
     budget: { costUsd: 0, usage: { vendorReported: null, estimated: null }, breaches: [] },
     watermarkSeq: 0,
+    watermarkTs: 0,
+    startedTs: 0,
+    stalledAtSeq: 0,
+    churnWindow: [],
+    replans: INITIAL_REPLAN_STREAK,
     epoch: 0,
     staleEpochSkipped: 0,
   };
@@ -397,6 +482,12 @@ export function initialRunState(): RunState {
 
 /** A count, an index or a watermark: `0` is legal, a fraction is not. */
 const wholeCount = z.number().int().nonnegative();
+
+/** The `sha256-<64 hex>` shape `effect.started.requestHash` carries. Spelled
+ * again rather than imported because ./event-payloads.ts keeps its copy
+ * private, and a checkpoint decoder that accepted any string here would let a
+ * corrupted window key the churn detector on garbage. */
+const requestHash = z.string().regex(/^sha256-[0-9a-f]{64}$/, 'must be sha256-<64 hex>');
 
 const NodeStateSchema = z.strictObject({
   status: z.enum(NODE_STATUSES),
@@ -409,8 +500,33 @@ const NodeStateSchema = z.strictObject({
   result: CompletedNodeResultSchema.nullable(),
   failure: NodeFailureSchema.nullable(),
   suspension: NodeSuspensionSchema.nullable(),
+  requestHash: requestHash.nullable(),
   wakeAt: wholeCount.nullable(),
   updatedSeq: wholeCount,
+});
+
+const CompletedAttemptSchema: z.ZodType<CompletedAttempt, unknown> = z.strictObject({
+  node: NodeIdSchema,
+  requestHash: requestHash.nullable(),
+  attempt: wholeCount,
+  /** The seq of the completion, and no event has seq 0. */
+  seq: z.number().int().positive(),
+});
+
+const ReplanStreakSchema: z.ZodType<ReplanStreak, unknown> = z.strictObject({
+  flat: wholeCount,
+  completed: wholeCount,
+  versions: z.array(z.number().int().positive()),
+});
+
+const NoProgressPolicySchema: z.ZodType<NoProgressPolicy, unknown> = z.strictObject({
+  detectors: z.boolean(),
+  stallThresholdMs: wholeCount,
+  churnRepeats: wholeCount,
+  flatReplans: wholeCount,
+  maxAttemptsPerNode: z.number().int().positive(),
+  maxRunWallClockMs: wholeCount.nullable(),
+  maxTotalNodeExecutions: wholeCount.nullable(),
 });
 
 const LockStateSchema = z.strictObject({
@@ -478,9 +594,17 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   nodes: z.record(z.string(), NodeStateSchema),
   locks: z.record(z.string(), LockStateSchema),
   nodeIds: NodeIdRegistryStateSchema,
-  policy: z.strictObject({ globalAgentSlots: z.number().int().nonnegative() }),
+  policy: z.strictObject({
+    globalAgentSlots: z.number().int().nonnegative(),
+    noProgress: NoProgressPolicySchema,
+  }),
   budget: BudgetStateSchema,
   watermarkSeq: wholeCount,
+  watermarkTs: wholeCount,
+  startedTs: wholeCount,
+  stalledAtSeq: wholeCount,
+  churnWindow: z.array(CompletedAttemptSchema).max(CHURN_WINDOW),
+  replans: ReplanStreakSchema,
   epoch: wholeCount,
   staleEpochSkipped: wholeCount,
 });
