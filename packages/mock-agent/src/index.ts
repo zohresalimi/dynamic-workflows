@@ -15,7 +15,9 @@
  * KAR-04.4 adds configurable `agentCapabilities` — named profiles generated
  * from `fixtures/capability-matrix.json`, an arbitrary `--capabilities-file`,
  * and `--dishonest-capabilities` for a capability advertised but refused.
- * Recording replay is KAR-04.5.
+ * KAR-04.5 adds `--replay <file>`, which serves a golden recording of a real,
+ * authenticated vendor session instead of generating a turn — the one mode in
+ * which nothing here decides what the bytes say.
  */
 export {
   AGENT_NAME,
@@ -47,12 +49,21 @@ export {
   PATHOLOGICAL_FLAGS,
   type ParsedArgv,
   parseArgv,
+  type ReplaySelection,
   SCENARIO_ENV,
   USAGE,
 } from './cli.ts';
 export { type Clock, createSyntheticClock, MOCK_CLOCK_STEP_MS, MOCK_EPOCH_MS } from './clock.ts';
+export { type UnifiedDiffOptions, unifiedDiff } from './diff.ts';
 export { createIdFactory, type IdFactory } from './ids.ts';
-export { CAPABILITIES_EXIT_CODE, type Io, run, SCENARIO_EXIT_CODE, serve } from './main.ts';
+export {
+  CAPABILITIES_EXIT_CODE,
+  type Io,
+  RECORDING_EXIT_CODE,
+  run,
+  SCENARIO_EXIT_CODE,
+  serve,
+} from './main.ts';
 export {
   HUGE_LINE_TOTAL_BYTES,
   hugeLineFrameParts,
@@ -70,6 +81,35 @@ export {
 } from './pathological.ts';
 export { createProcessPorts, type MockAgentPorts } from './ports.ts';
 export { mulberry32 } from './random.ts';
+export {
+  type CaptureConversionOptions,
+  comparableText,
+  type Direction,
+  frameDiff,
+  framesEqual,
+  fromTransportCapture,
+  type Json,
+  type JsonObject,
+  parseRecording,
+  parseRecordingKey,
+  RECORDING_DIR_SHAPE,
+  type RecordedFrame,
+  type RecordingKey,
+  type RecordingKeyResult,
+  type RecordingResult,
+} from './recording.ts';
+export {
+  DEFAULT_REPLAY_SPEED,
+  lines,
+  REPLAY_MISMATCH_EXIT_CODE,
+  REPLAY_SPEEDS,
+  REPLAY_STDIN_EXIT_CODE,
+  REPLAY_TRUNCATED_EXIT_CODE,
+  type ReplayIo,
+  type ReplayRun,
+  type ReplaySpeed,
+  runReplay,
+} from './replay.ts';
 export {
   type Branch,
   type ChunksStep,

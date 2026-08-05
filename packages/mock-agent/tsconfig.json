@@ -2,5 +2,8 @@
   "extends": "../../tsconfig.base.json",
   // bin/ holds the DeFlow-mock-agent executable; it ships in the tarball and is
   // typechecked like the rest of the package.
-  "include": ["src", "bin"]
+  // scripts/ holds the capture-to-replay converter that generates the goldens
+  // under recordings/. It does not ship, but it is the reason those files are
+  // reproducible rather than hand-edited, so it is typechecked with the rest.
+  "include": ["src", "bin", "scripts"]
 }
