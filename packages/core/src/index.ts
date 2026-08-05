@@ -134,6 +134,14 @@ export {
   keyMatchesKind,
   ProvenanceSchema,
 } from './fact.ts';
+// KAR-03.5 — the read path into the reducer: parse, upcast, fold, tally.
+export type {
+  FoldOptions,
+  FoldRejection,
+  FoldRejectionReason,
+  FoldReport,
+} from './fold-events.ts';
+export { describeSkipped, foldEvents } from './fold-events.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -306,7 +314,21 @@ export {
 } from './plan-patch.ts';
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
+// KAR-03.5 — the pure, total reducer and the projection it folds into.
+export { reduce } from './reduce.ts';
 export { mintRunId } from './run-id.ts';
+export type {
+  BudgetBreach,
+  BudgetState,
+  LockState,
+  NeedsHumanState,
+  NodeIdRegistryState,
+  NodeState,
+  NodeStatus,
+  RunState,
+  RunStatus,
+} from './run-state.ts';
+export { initialRunState, lockKey, NODE_STATUSES, RUN_STATUSES } from './run-state.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,
