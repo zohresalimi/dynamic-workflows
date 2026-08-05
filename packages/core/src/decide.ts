@@ -27,6 +27,7 @@
  * AC1, AC3, AC4, AC5, AC6, AC7, AC8
  */
 import type {
+  AcquireLock,
   Command,
   EmitEvent,
   ReleaseLock,
@@ -35,8 +36,9 @@ import type {
   WakeReason,
 } from './command.ts';
 import type { EventSeq, NodeId, RunId } from './ids.ts';
+import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
 import type { PlanGraph, PlanNode } from './plan-graph.ts';
-import { initialNodeState, lockKey, type NodeState, type RunState } from './run-state.ts';
+import { initialNodeState, type NodeState, type RunState } from './run-state.ts';
 
 /**
  * The two node statuses that describe work not yet in flight: never started,
@@ -67,14 +69,21 @@ export function decide(state: RunState, now: number): Command[] {
   const plan = state.plan;
   const poisoned = ended ? new Map<NodeId, number>() : poisonedBranches(state, plan);
 
+  // Admission runs before the release sweep because it is the only thing that
+  // knows which held locks are about to be kept: a node that already holds its
+  // lock and is starting this tick must not have it reclaimed out from under
+  // it in the same command list.
+  const admission = admitReadyNodes(state, runId, now, plan, poisoned);
+
   // Concatenated in COMMAND_ORDER, each group sorted by the seq of the event
   // that enabled it and then by node id (AC6). Grouping first and sorting
   // within is the same total order as one comparator over the whole list, and
   // it keeps each rule's ordering argument beside the rule.
   return [
     ...propagateDependencyFailures(state, runId, poisoned),
-    ...releaseFinishedLocks(state, runId),
-    ...startReadyNodes(state, runId, now, plan, poisoned),
+    ...releaseFinishedLocks(state, runId, admission.retained),
+    ...admission.acquires,
+    ...admission.starts,
     ...scheduleWakes(state, runId, now),
   ];
 }
@@ -100,27 +109,17 @@ export function decide(state: RunState, now: number): Command[] {
  * run is `running` (a paused, cancelling or needs-human run starts nothing),
  * and never more in flight than `policy.globalAgentSlots`.
  */
-function startReadyNodes(
+function readySet(
   state: RunState,
-  runId: RunId,
   now: number,
-  plan: PlanGraph | null,
+  plan: PlanGraph,
   poisoned: ReadonlyMap<NodeId, number>,
-): StartNode[] {
-  if (plan === null || state.status !== 'running') return [];
-
-  const slots = state.policy.globalAgentSlots - countRunning(state);
-  if (slots <= 0) return [];
-
-  const ready = plan.nodes.filter((node) => isReady(state, node, now, poisoned));
-
+): PlanNode[] {
   return sortByEnablement(
-    ready.map((node) => ({
-      seq: enablingSeq(state, node),
-      id: node.id,
-      value: startNode(state, runId, node),
-    })),
-  ).slice(0, slots);
+    plan.nodes
+      .filter((node) => isReady(state, node, now, poisoned))
+      .map((node) => ({ seq: enablingSeq(state, node), id: node.id, value: node })),
+  );
 }
 
 function isReady(
@@ -138,6 +137,106 @@ function isReady(
   if ((current.wakeAt ?? 0) > now) return false;
 
   return node.deps.every((dep) => nodeState(state, dep).status === 'completed');
+}
+
+/** What the run may start this tick, and the lock traffic that goes with it. */
+interface Admission {
+  readonly acquires: readonly AcquireLock[];
+  readonly starts: readonly StartNode[];
+  /**
+   * `claimId`s an admitted node already holds. They are not swept up by the
+   * reclaim pass, because their owner is about to use them: that is the
+   * crash-between-lock-and-start window, where the acquisition landed and the
+   * `node.started` did not.
+   */
+  readonly retained: readonly string[];
+}
+
+const NOTHING_ADMITTED: Admission = { acquires: [], starts: [], retained: [] };
+
+/**
+ * AC1, AC2, AC6, AC7 — the per-resource-class admission of §10.2:
+ *
+ * ```
+ * admit = min(globalAgentSlots - running.length, classSlots(n) - runningInClass(n))
+ * ```
+ *
+ * Greedy over the ready set in its enablement order, which is what makes the
+ * answer deterministic: with two writers contending for one repository, the
+ * one enabled earlier wins, and the loser is withheld whole — no lock command,
+ * no start, and **no global slot consumed**, so a node blocked on a lock never
+ * costs a slot some unrelated analysis node could have used.
+ */
+function admitReadyNodes(
+  state: RunState,
+  runId: RunId,
+  now: number,
+  plan: PlanGraph | null,
+  poisoned: ReadonlyMap<NodeId, number>,
+): Admission {
+  if (plan === null || state.status !== 'running') return NOTHING_ADMITTED;
+
+  const acquires: AcquireLock[] = [];
+  const starts: StartNode[] = [];
+  const retained: string[] = [];
+  // Claims handed out earlier in this same tick. It is not a second home for
+  // lock ownership — it is discarded when this function returns, and the
+  // ledger remains the only record — but two writers ready on the same tick
+  // must not both be admitted against a lock that is free right now and will
+  // not be a moment from now.
+  const promised: string[] = [];
+
+  let slots = state.policy.globalAgentSlots - countRunning(state);
+
+  for (const node of readySet(state, now, plan, poisoned)) {
+    if (slots <= 0) break;
+
+    const claims = lockClaims(state, node);
+    if (!claims.every((claim) => isAvailable(state, node.id, claim, promised))) continue;
+
+    for (const claim of claims) {
+      promised.push(claimId(claim));
+      if (lockHolder(state, claim) === node.id) {
+        retained.push(claimId(claim));
+        continue;
+      }
+      acquires.push({
+        kind: 'AcquireLock',
+        runId,
+        node: node.id,
+        lock: claim.lock,
+        key: claim.key,
+      });
+    }
+
+    starts.push(startNode(state, runId, node));
+    slots -= 1;
+  }
+
+  return { acquires, starts, retained };
+}
+
+/**
+ * Whether `node` may take `claim` on this tick.
+ *
+ * Three ways yes: the lock is free, this node already holds it, or its holder
+ * is no longer running. The last is the reclaim — `ReleaseLock` precedes
+ * `AcquireLock` in `COMMAND_ORDER`, so by the time the runner acts on the
+ * acquisition the lock really has been given back, and a node whose owner died
+ * mid-attempt is admitted on the same tick rather than a tick later.
+ */
+function isAvailable(
+  state: RunState,
+  node: NodeId,
+  claim: LockClaim,
+  promised: readonly string[],
+): boolean {
+  if (promised.includes(claimId(claim))) return false;
+
+  const holder = lockHolder(state, claim);
+  if (holder === null || holder === node) return true;
+
+  return nodeState(state, holder).status !== 'running';
 }
 
 /**
@@ -169,6 +268,9 @@ function startNode(state: RunState, runId: RunId, node: PlanNode): StartNode {
     // is how a system silently escalates.
     permission: node.permission,
     pathScopes: node.pathScopes,
+    // The worktree the ledger assigned this node, whose exclusive lock the
+    // commands above have just taken. The runner spawns into it without asking.
+    worktree: current.worktree,
     retry: node.retry,
   };
 }
@@ -295,23 +397,39 @@ function dependencyFailed(state: RunState, runId: RunId, node: NodeId, cause: nu
 // ── locks and wakes ──────────────────────────────────────────────────────────
 
 /**
- * AC7. A lock is released when the node holding it is no longer running —
- * including while the run is paused, because a pause that leaves the
- * repository write lock held blocks the next run as well as this one, and the
- * lock lives in the ledger precisely so it cannot be forgotten.
+ * AC5, AC7. A lock is reclaimed the moment the node holding it stops running —
+ * whether it completed, failed, was cancelled into a failure, or suspended —
+ * and including while the run is paused, because a pause that leaves the
+ * repository write lock held blocks the next run as well as this one.
+ *
+ * This is also the whole of the post-crash story, and it needs no special
+ * case: a daemon that died with a lock in hand left a `node.lock.acquired`
+ * with no matching release, and the node it named is not running in the new
+ * process either. The first tick after the restart therefore reclaims it, and
+ * the event names the node that *held* it, which is the only way to read the
+ * timeline afterwards and see what happened.
+ *
+ * `retained` is the exception: a lock its own holder is starting with on this
+ * same tick is not stale, it is in use.
  */
-function releaseFinishedLocks(state: RunState, runId: RunId): ReleaseLock[] {
+function releaseFinishedLocks(
+  state: RunState,
+  runId: RunId,
+  retained: readonly string[],
+): ReleaseLock[] {
   const stale = Object.values(state.locks)
     .filter((held) => nodeState(state, held.node).status !== 'running')
+    .filter((held) => !retained.includes(claimId(held)))
     .map((held) => ({
       seq: held.sinceSeq,
-      id: `${held.node}/${lockKey(held.lock, held.key)}`,
+      id: `${held.node}/${claimId(held)}`,
       value: {
         kind: 'ReleaseLock' as const,
         runId,
         node: held.node,
         lock: held.lock,
         key: held.key,
+        reason: 'reclaimed' as const,
       },
     }));
 

@@ -110,6 +110,16 @@ export interface NodeState {
   readonly provider: ProviderId | null;
   readonly model: string | null;
   readonly permission: PermissionLevel | null;
+  /**
+   * The worktree this node was assigned, from `node.scheduled`; `null` for the
+   * main checkout.
+   *
+   * F5.2's per-worktree exclusive lock is keyed on it, which is why it is a
+   * projection rather than something the daemon remembers: two nodes sharing a
+   * checkout have to still be serialised on the first tick after a crash, and
+   * an assignment that lived in a `Map` would let both in.
+   */
+  readonly worktree: string | null;
   readonly result: CompletedNodeResult | null;
   readonly failure: NodeFailure | null;
   /** What a suspended node is waiting for; `null` unless `status` is `suspended`. */
@@ -211,6 +221,17 @@ export interface NeedsHumanState {
 export interface RunState {
   readonly runId: RunId | null;
   readonly status: RunStatus;
+  /**
+   * The repository the run executes against, from `run.created.cwd`; `null`
+   * before that event is folded.
+   *
+   * F5.2's per-repository write lock is keyed on it. It is read out of the
+   * projection rather than out of the daemon's own working directory for the
+   * usual reason: `decide()` has two inputs, and a scheduler that asks the
+   * process where it is running would give a different answer during a replay
+   * than it gave live.
+   */
+  readonly repoRoot: string | null;
   readonly outcome: RunOutcome | null;
   readonly criteriaSatisfied: readonly CriterionId[];
   readonly needsHuman: NeedsHumanState | null;
@@ -276,7 +297,7 @@ export interface RunState {
  * the cache is a pure optimisation and is allowed to be thrown away, never to
  * be believed when it is stale.
  */
-export const CHECKPOINT_VERSION = 2;
+export const CHECKPOINT_VERSION = 3;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -295,6 +316,7 @@ export function initialNodeState(): NodeState {
     provider: null,
     model: null,
     permission: null,
+    worktree: null,
     result: null,
     failure: null,
     suspension: null,
@@ -312,6 +334,7 @@ export function initialRunState(): RunState {
   return {
     runId: null,
     status: 'created',
+    repoRoot: null,
     outcome: null,
     criteriaSatisfied: [],
     needsHuman: null,
@@ -342,6 +365,7 @@ const NodeStateSchema = z.strictObject({
   provider: ProviderIdSchema.nullable(),
   model: z.string().min(1).nullable(),
   permission: PermissionLevelSchema.nullable(),
+  worktree: z.string().min(1).nullable(),
   result: CompletedNodeResultSchema.nullable(),
   failure: NodeFailureSchema.nullable(),
   suspension: NodeSuspensionSchema.nullable(),
@@ -394,6 +418,7 @@ const BudgetStateSchema = z.strictObject({
 export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   runId: RunIdSchema.nullable(),
   status: z.enum(RUN_STATUSES),
+  repoRoot: z.string().min(1).nullable(),
   outcome: z.enum(RUN_OUTCOMES).nullable(),
   criteriaSatisfied: z.array(CriterionIdSchema),
   needsHuman: z

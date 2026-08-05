@@ -16,7 +16,7 @@
  *
  * Verifies: EPIC-06-S1, EPIC-06-S3, EPIC-06-S4 · AC5, AC6, AC7
  */
-import type { EventKind, EventPayloadOf } from './event-payloads.ts';
+import type { EventKind, EventPayloadOf, LockReleaseReason } from './event-payloads.ts';
 import type { NodeId, ProviderId, RunId } from './ids.ts';
 import type { NodeType, PathScope, PermissionLevel, RetryPolicy } from './plan-graph.ts';
 
@@ -45,6 +45,13 @@ export interface StartNode {
   readonly model: string | null;
   readonly permission: PermissionLevel;
   readonly pathScopes: PathScope;
+  /**
+   * The worktree this attempt runs in, or `null` for the main checkout. The
+   * scheduler has already taken the per-worktree exclusive lock over this path
+   * by the time the runner sees the command (F5.2), so the runner spawns into
+   * it without asking anything.
+   */
+  readonly worktree: string | null;
   /** Carried so the runner can classify and schedule a failure without state. */
   readonly retry: RetryPolicy;
 }
@@ -81,12 +88,25 @@ export interface AcquireLock {
   readonly key: string;
 }
 
+/**
+ * Give a lock back.
+ *
+ * `node` is the node that **held** it, never the one waiting for it: the
+ * release is a fact about the old owner, and an event naming the new one would
+ * make a reclaimed lock indistinguishable from a handover in the timeline.
+ *
+ * Every `ReleaseLock` `decide()` returns carries `reason: 'reclaimed'`, because
+ * the only lock a pure scheduler can see is one whose holder has already
+ * stopped running — a node that finished its attempt cleanly and gave the lock
+ * back inside the same transaction never reaches this command at all.
+ */
 export interface ReleaseLock {
   readonly kind: 'ReleaseLock';
   readonly runId: RunId;
   readonly node: NodeId;
   readonly lock: 'repo' | 'worktree';
   readonly key: string;
+  readonly reason: LockReleaseReason;
 }
 
 /** Why a node is asleep. Mirrors the `node_wake.reason` column (§5). */

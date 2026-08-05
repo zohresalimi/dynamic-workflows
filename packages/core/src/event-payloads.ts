@@ -198,6 +198,18 @@ export const NodeScheduledSchema = z.strictObject({
   provider: ProviderIdSchema,
   model: z.string().min(1).optional(),
   permission: PermissionLevelSchema,
+  /**
+   * The worktree this node was assigned, when it was assigned one. Absent
+   * means the node runs against the main checkout — a read-only analysis node
+   * usually does.
+   *
+   * It is recorded here, beside the provider and the permission level, because
+   * it is the same kind of fact: a resolution the scheduler made and the run
+   * has to be able to rebuild after a restart. F5.2's per-worktree exclusive
+   * lock is keyed on it, so a worktree assignment that lived only in memory
+   * would let two agents into one checkout on the first tick after a crash.
+   */
+  worktree: z.string().min(1).optional(),
 });
 
 /** F5.2 — locks live in the ledger so they survive a restart. */
@@ -205,6 +217,27 @@ export const NodeLockSchema = z.strictObject({
   node: NodeIdSchema,
   lock: z.enum(LOCK_KINDS),
   key: z.string().min(1),
+});
+
+/**
+ * Why a held lock was given back.
+ *
+ * `reclaimed` is the scheduler taking a lock away from a node that is no
+ * longer running — the crash case above all, where the holder died with the
+ * lock in hand and nothing it could have run would ever release it. An
+ * ordinary release, appended by whatever is finishing an attempt, carries no
+ * reason at all: it needs no explanation, and inventing one for it would make
+ * the interesting case indistinguishable in the timeline.
+ */
+export const LOCK_RELEASE_REASONS = ['reclaimed'] as const;
+
+export type LockReleaseReason = (typeof LOCK_RELEASE_REASONS)[number];
+
+export const NodeLockReleasedSchema = z.strictObject({
+  node: NodeIdSchema,
+  lock: z.enum(LOCK_KINDS),
+  key: z.string().min(1),
+  reason: z.enum(LOCK_RELEASE_REASONS).optional(),
 });
 
 /** Written *before* the side effect. This record is what makes at-least-once
@@ -479,7 +512,7 @@ export const EVENT_SCHEMAS = {
   'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
-  'node.lock.released': { v: 1, payload: NodeLockSchema },
+  'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },
   'node.started': { v: 1, payload: NodeStartedSchema },
   'node.progress': { v: 1, payload: NodeProgressSchema },
   'node.completed': { v: 1, payload: NodeCompletedSchema },

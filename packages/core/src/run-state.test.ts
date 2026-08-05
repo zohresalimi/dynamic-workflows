@@ -88,6 +88,7 @@ const PROPOSED_HASH = `sha256-${'e'.repeat(64)}`;
 const populated: RunState = {
   runId: RUN_ID,
   status: 'needs-human',
+  repoRoot: '/home/u/proj',
   outcome: null,
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
@@ -103,6 +104,7 @@ const populated: RunState = {
       provider: ProviderIdSchema.parse('claude-code'),
       model: 'claude-opus-4-6',
       permission: 'worktree',
+      worktree: `.DeFlow/wt/${RUN_ID}__${NODE}`,
       result: {
         status: 'completed',
         output: { summary: 'done' },
