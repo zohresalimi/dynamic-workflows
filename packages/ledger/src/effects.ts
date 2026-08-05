@@ -114,6 +114,21 @@ const SELECT_RUN_SQL = `
 `;
 
 /**
+ * KAR-06.9 — the rows a daemon that is gone left mid-effect.
+ *
+ * `started_at < ?` and nothing else: the comparison is against the instant
+ * *this* daemon life began, so a `pending` row stamped at or after it belongs
+ * to a caller inside this process and is ordinary concurrency rather than a
+ * crash. Ordered by `started_at` so recovery reconciles them oldest-first,
+ * which is the order they were attempted in.
+ */
+const SELECT_INHERITED_SQL = `
+  SELECT ${COLUMNS} FROM effect
+   WHERE state = 'pending' AND started_at < ?
+   ORDER BY started_at, ikey
+`;
+
+/**
  * The whole of ordinal derivation. `count(*)` over a triple returns one row,
  * holds no cursor and hands nobody a `seq` to resume from.
  */
@@ -165,6 +180,19 @@ export function readEffect(db: Db, ikey: string): EffectRow | undefined {
 /** Every journalled effect of one run, in node/attempt/ordinal order. */
 export function readEffects(db: Db, runId: string): readonly EffectRow[] {
   return db.prepare<EffectDbRow>(SELECT_RUN_SQL).all(runId).map(toRow);
+}
+
+/**
+ * Every `pending` row claimed before `daemonStartedAt`, across every run
+ * (KAR-06.9 AC2).
+ *
+ * The startup reconciliation's whole input. It is deliberately not scoped to a
+ * run: a data directory supervises several, and a daemon that reconciled only
+ * the run it happened to be asked about would leave the others' inherited rows
+ * to be re-probed for ever.
+ */
+export function readInheritedEffects(db: Db, daemonStartedAt: number): readonly EffectRow[] {
+  return db.prepare<EffectDbRow>(SELECT_INHERITED_SQL).all(daemonStartedAt).map(toRow);
 }
 
 /**

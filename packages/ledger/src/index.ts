@@ -105,6 +105,9 @@ export {
   nextOrdinal,
   readEffect,
   readEffects,
+  // KAR-06.9 — the rows a dead daemon left mid-effect: startup reconciliation's
+  // whole input.
+  readInheritedEffects,
   // KAR-06.4 — the `pending`-row scaffold a mutating shell effect journals its
   // before/after worktree hashes into, and migration 0007 that permits it.
   scaffoldEffect,
