@@ -33,14 +33,23 @@ import {
   openLedger,
   readEpoch,
   readIoChunks,
+  readProviderCapabilities,
   readRange,
+  recordProviderCapabilities,
   spillBytes,
 } from '@DeFlow/ledger';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgentBinary, EventRecord, IoRecord, LedgerSink } from '../../../src/index.ts';
+import type {
+  AgentBinary,
+  CapabilityRow,
+  CapabilityStore,
+  EventRecord,
+  IoRecord,
+  LedgerSink,
+} from '../../../src/index.ts';
 
 /** The binary under test, absolute. Never a bare name looked up on PATH. */
 export const MOCK_AGENT_BIN = fileURLToPath(
@@ -69,6 +78,10 @@ export function mockAgentBinary(): AgentBinary {
 export interface TestLedger {
   readonly db: Db;
   readonly sink: LedgerSink;
+  /** The `provider_capabilities` table, behind the port the probe writes
+   * through — the real SQLite one, because a manifest that only lived in a Map
+   * could not answer "what did the last daemon see". */
+  readonly capabilities: CapabilityStore;
   readonly captureEvidence: (text: string) => Handle;
   /** Every control-plane event for the run, in `seq` order. */
   events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
@@ -112,8 +125,11 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
           kind: event.kind,
           v: event.v,
           epoch,
-          nodeId: event.nodeId,
-          attempt: event.attempt,
+          // Spread rather than assigned: a probe is not part of a node, so
+          // `provider.probed` carries neither, and a bound `undefined` is not
+          // the same thing as an absent column.
+          ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+          ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
           ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
           payload: event.payload,
         },
@@ -136,9 +152,19 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
     },
   };
 
+  const capabilities: CapabilityStore = {
+    record: (row: CapabilityRow) => recordProviderCapabilities(db, row),
+    read: (provider: ProviderId): readonly CapabilityRow[] =>
+      readProviderCapabilities(db, provider).map((stored) => ({
+        ...stored,
+        provider: ProviderIdSchema.parse(stored.provider),
+      })),
+  };
+
   return {
     db,
     sink,
+    capabilities,
     appends,
     appendRunEvent(kind: string, payload: unknown): EventSeq {
       const [seq] = appendEvents(db, [{ runId: RUN_ID, ts: 0, kind, v: 1, epoch, payload }]);

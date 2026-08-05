@@ -6,9 +6,11 @@ import type { Migration } from '../migrate.ts';
 import { migration0001InitialSchema } from './0001-initial-schema.ts';
 import { migration0002EventEpoch } from './0002-event-epoch.ts';
 import { migration0003DaemonEpoch } from './0003-daemon-epoch.ts';
+import { migration0004ProviderCapabilities } from './0004-provider-capabilities.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
   migration0002EventEpoch,
   migration0003DaemonEpoch,
+  migration0004ProviderCapabilities,
 ];

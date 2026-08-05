@@ -33,6 +33,9 @@ const SHIPPED: Record<string, string> = {
   '0002-event-epoch.ts': '60c4b67cd912c12f807fb1175a381036b03492b562bc5e49d8b995fe17f5c548',
   // Shipped 2026-08-05, KAR-03.7 — the daemon epoch counter.
   '0003-daemon-epoch.ts': '583b917b806f13161f5c1d16188dd1d9fbdb5615193920772f45c51489954f87',
+  // Shipped 2026-08-05, KAR-05.2 — the probed capability manifest.
+  '0004-provider-capabilities.ts':
+    '2efbb532aee1382ceaee7bc0bc15ab67af6be5c5211f2012b83719e44539f575',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

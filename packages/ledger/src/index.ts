@@ -127,6 +127,14 @@ export {
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
 export { applyPragmas, LEDGER_PRAGMAS, SYNCHRONOUS, withFullSync } from './pragmas.ts';
+// KAR-05.2 — the probed capability manifest: a history keyed on
+// (provider, version, binary_sha256), never a table that is updated in place.
+export {
+  type ProviderCapabilityRow,
+  type RecordProbeResult,
+  readProviderCapabilities,
+  recordProviderCapabilities,
+} from './provider-capabilities.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
 export {
   CONTROL_EVENT_BUDGET,

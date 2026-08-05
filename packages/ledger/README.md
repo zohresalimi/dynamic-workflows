@@ -1,8 +1,8 @@
 # @DeFlow/ledger
 
 The SQLite event store. The append-only `event` log, the `io_chunk` data plane, the `effect`
-journal, the `plan` / `run` / `node_wake` tables, `PRAGMA user_version` migrations, the
-content-addressed blob store and the SSE tail queries.
+journal, the `plan` / `run` / `node_wake` tables, the `provider_capabilities` manifest,
+`PRAGMA user_version` migrations, the content-addressed blob store and the SSE tail queries.
 
 Architecture: [docs/05-durable-execution.md](../../docs/05-durable-execution.md). Delivery:
 [EPIC-03](../../docs/delivery/epics/EPIC-03-event-ledger.md).
@@ -99,6 +99,26 @@ is an ordinary table, its high-water update is part of the transaction, and `ROL
 `SAVEPOINT` — restores it, so the next append reuses the numbers the rolled-back batch was given. The
 consequence for callers is the same either way, and it is the reason `appendEvents` documents its
 return value as provisional: **a `seq` means nothing until the transaction that produced it commits.**
+
+## `provider_capabilities` is a history, not a lookup table
+
+Migration 0004's table holds what each installed agent said it could do, keyed on
+`(provider, version, binary_sha256)` — three parts on purpose. A version bump or a rebuilt binary
+writes a **new row**, so what an agent could do *at the time a run started* is still readable after
+it is upgraded, which is exactly what the resume poisoning guard
+([provider adapter layer §6.1](../../docs/07-provider-adapter-layer.md)) compares against.
+
+`recordProviderCapabilities` upserts, and the only column a repeat probe moves is `probed_at`:
+"when did we last see this binary" is worth recording, "what did it say" is not worth overwriting
+with a second opinion from the same bytes. It reports `{ inserted }` so a caller can tell a new
+binary from a familiar one without counting rows.
+
+`caps_json` is the **entire `initialize` response, unmodified** — not a set of extracted columns.
+Persisting it verbatim is what lets a later DeFlow answer a question nobody has thought to ask yet,
+and it is what stops this table from becoming a hardcoded capability matrix in a different costume.
+Two checks are applied and both refuse rather than repair: `binary_path` must be absolute, and
+`caps_json` must parse. There is no `run_id` column — what a binary can do is a fact about the
+machine, and it outlives every run that read it.
 
 ## The control plane and the data plane are different tables
 
