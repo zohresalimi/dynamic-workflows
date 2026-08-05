@@ -143,9 +143,16 @@ export interface AcpPorts {
   /** Time enters here and nowhere else (NF9). */
   readonly clock: Clock;
   readonly ledger: LedgerSink;
-  /** Stores a diagnostic and returns the handle it can be read back through —
-   * the daemon's blob store. Failures carry handles, never stacks. */
-  readonly captureEvidence: (text: string) => Handle;
+  /**
+   * Stores a diagnostic and returns the handle it can be read back through —
+   * the daemon's blob store. Failures carry handles, never stacks.
+   *
+   * Takes bytes as well as text because some evidence *is* bytes: the first
+   * 4 KiB of a frame that broke the size cap has to be readable back at
+   * exactly the length it arrived at, and a round trip through a string
+   * re-encodes anything that was not valid UTF-8 (KAR-05.4 AC1).
+   */
+  readonly captureEvidence: (evidence: string | Uint8Array) => Handle;
   /** The daemon's thin ACP fronts. */
   readonly handlers?: ClientHandlers;
   /**
@@ -168,6 +175,12 @@ export interface AcpPorts {
   readonly cancelGraceMs?: number;
   /** How long after `SIGTERM` before `SIGKILL`. */
   readonly killGraceMs?: number;
+  /**
+   * The frame cap in bytes since the last newline, defaulting to 8 MiB
+   * (KAR-05.4). A run may lower it; it can never be turned off, and
+   * `parseFrameLimit` is where that is refused.
+   */
+  readonly maxFrameBytes?: number;
   /**
    * Called immediately before each `session.nextUpdate()`, with the bytes read
    * off the child's stdout so far.

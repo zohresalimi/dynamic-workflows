@@ -69,6 +69,7 @@ export {
 export {
   HUGE_LINE_TOTAL_BYTES,
   hugeLineFrameParts,
+  hugeLinePayloadBytes,
   INVALID_FRAME_VARIANTS,
   type InvalidFrameSpec,
   type InvalidFrameVariant,
@@ -78,6 +79,7 @@ export {
   NO_NEWLINE_INTERVAL_MS,
   patternSlice,
   RAW_CHUNK_BYTES,
+  sizedToolContent,
   TRUNCATED_FRAME_PREFIX,
   truncatedFrame,
 } from './pathological.ts';

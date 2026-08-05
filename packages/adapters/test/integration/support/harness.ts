@@ -30,6 +30,7 @@ import {
   appendIoChunk,
   type BlobRef,
   blobHandle,
+  getBlob,
   openLedger,
   readEpoch,
   readIoChunks,
@@ -38,6 +39,7 @@ import {
   recordProviderCapabilities,
   spillBytes,
 } from '@DeFlow/ledger';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -82,7 +84,7 @@ export interface TestLedger {
    * through — the real SQLite one, because a manifest that only lived in a Map
    * could not answer "what did the last daemon see". */
   readonly capabilities: CapabilityStore;
-  readonly captureEvidence: (text: string) => Handle;
+  readonly captureEvidence: (evidence: string | Uint8Array) => Handle;
   /** Every control-plane event for the run, in `seq` order. */
   events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
   /** Every data-plane chunk for the node attempt, in `seq` order. */
@@ -118,22 +120,32 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
     async append(event: EventRecord): Promise<EventSeq> {
       options.onAppend?.(event.kind);
       if (options.appendDelayMs !== undefined) await delay(options.appendDelayMs);
-      const [seq] = appendEvents(db, [
-        {
-          runId: RUN_ID,
-          ts: event.ts,
-          kind: event.kind,
-          v: event.v,
-          epoch,
-          // Spread rather than assigned: a probe is not part of a node, so
-          // `provider.probed` carries neither, and a bound `undefined` is not
-          // the same thing as an absent column.
-          ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-          ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-          ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-          payload: event.payload,
-        },
-      ]);
+      // `spillTo` is what makes AC5 true of *every* event and not only of the
+      // ones the adapter thought to spill itself: a payload over 256 KiB is
+      // written to `<dataDir>/blobs/` and the row keeps
+      // `{ sha256, bytes, mime, head, tail }` (KAR-03.9). Without it the ledger
+      // refuses the batch, which is the right default for a caller that has not
+      // wired a blob store and the wrong one for a daemon that has.
+      const [seq] = appendEvents(
+        db,
+        [
+          {
+            runId: RUN_ID,
+            ts: event.ts,
+            kind: event.kind,
+            v: event.v,
+            epoch,
+            // Spread rather than assigned: a probe is not part of a node, so
+            // `provider.probed` carries neither, and a bound `undefined` is not
+            // the same thing as an absent column.
+            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+            ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+            payload: event.payload,
+          },
+        ],
+        { spillTo: dataDir },
+      );
       appends.push({ at: performance.now(), kind: event.kind });
       return seq as EventSeq;
     },
@@ -170,8 +182,16 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
       const [seq] = appendEvents(db, [{ runId: RUN_ID, ts: 0, kind, v: 1, epoch, payload }]);
       return seq as EventSeq;
     },
-    captureEvidence: (text: string): Handle => {
-      const ref: BlobRef = spillBytes(dataDir, Buffer.from(text, 'utf8'), 'text/plain');
+    captureEvidence: (evidence: string | Uint8Array): Handle => {
+      // Bytes stay bytes: the frame-cap evidence is a byte-exact slice of what
+      // arrived, and re-encoding it through a string would change its length.
+      const bytes =
+        typeof evidence === 'string' ? Buffer.from(evidence, 'utf8') : Buffer.from(evidence);
+      const ref: BlobRef = spillBytes(
+        dataDir,
+        bytes,
+        typeof evidence === 'string' ? 'text/plain' : 'application/octet-stream',
+      );
       return HandleSchema.parse(blobHandle(ref.sha256));
     },
     events() {
@@ -211,6 +231,30 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
       db.close();
     },
   };
+}
+
+/**
+ * Live processes in the child's group, **excluding zombies**.
+ *
+ * After a successful group SIGKILL the OS still lists the members as `Z` until
+ * their parent collects them, and an assertion that counts those concludes the
+ * kill failed when it did not (docs/14-testing-strategy.md §10).
+ */
+export function liveInGroup(pgid: number): string[] {
+  try {
+    return execFileSync('ps', ['-o', 'pid=,stat=', '-g', String(pgid)], { encoding: 'utf8' })
+      .split('\n')
+      .map((row) => row.trim())
+      .filter((row) => row !== '' && !/\sZ/.test(row) && !row.endsWith('Z'));
+  } catch {
+    // `ps` exits non-zero when the group is empty, which is the answer.
+    return [];
+  }
+}
+
+/** The bytes behind an evidence handle, verified against their own digest. */
+export function readEvidence(dataDir: string, handle: Handle | string): Uint8Array {
+  return getBlob(dataDir, handle);
 }
 
 /** The payload of the one event of `kind`, or undefined if there is none. */
