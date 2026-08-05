@@ -23,8 +23,10 @@ export {
 } from './agent.ts';
 export {
   BIN_NAME,
+  BUILTIN_SCENARIO_DIR,
   DEFAULT_SEED,
   type MockAgentOptions,
+  PATHOLOGICAL_FLAGS,
   type ParsedArgv,
   parseArgv,
   SCENARIO_ENV,
@@ -33,6 +35,22 @@ export {
 export { type Clock, createSyntheticClock, MOCK_CLOCK_STEP_MS, MOCK_EPOCH_MS } from './clock.ts';
 export { createIdFactory, type IdFactory } from './ids.ts';
 export { type Io, run, SCENARIO_EXIT_CODE, serve } from './main.ts';
+export {
+  HUGE_LINE_TOTAL_BYTES,
+  hugeLineFrameParts,
+  INVALID_FRAME_VARIANTS,
+  type InvalidFrameSpec,
+  type InvalidFrameVariant,
+  invalidFrame,
+  MALFORMED_LINE,
+  malformedLine,
+  NO_NEWLINE_INTERVAL_MS,
+  patternSlice,
+  RAW_CHUNK_BYTES,
+  TRUNCATED_FRAME_PREFIX,
+  truncatedFrame,
+} from './pathological.ts';
+export { createProcessPorts, type MockAgentPorts } from './ports.ts';
 export { mulberry32 } from './random.ts';
 export {
   type Branch,
@@ -40,13 +58,21 @@ export {
   CLIENT_METHODS,
   type ClientCallStep,
   type ClientMethod,
+  type ExitStep,
+  type HangForeverIgnoringCancelStep,
+  type HangForeverStep,
+  type HugeLineStep,
+  type InvalidFrameStep,
+  type MalformedLineStep,
   type MessageStep,
+  type NoNewlineStep,
   PERMISSION_OPTION_KINDS,
   type PermissionStep,
   type PlanStep,
   parseScenario,
   type Scenario,
   type ScenarioParseResult,
+  type SpawnGrandchildrenStep,
   STOP_REASONS,
   type Step,
   stripJsonComments,

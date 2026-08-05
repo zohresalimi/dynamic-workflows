@@ -25,6 +25,7 @@ import * as acp from '@agentclientprotocol/sdk';
 import type { MockAgentOptions } from './cli.ts';
 import { createSyntheticClock } from './clock.ts';
 import { createIdFactory } from './ids.ts';
+import { createProcessPorts, type MockAgentPorts } from './ports.ts';
 import type { Scenario } from './scenario.ts';
 import { realSleep, runScenario } from './scripted.ts';
 
@@ -69,10 +70,21 @@ export function turnChunks(prompt: readonly acp.ContentBlock[]): string[] {
 export function createMockAgent(
   options: MockAgentOptions,
   scenario: Scenario | null = null,
+  ports: MockAgentPorts = createProcessPorts(),
 ): acp.AgentApp {
   const ids = createIdFactory(options.seed);
   const clock = createSyntheticClock(options.seed);
   const sessions = new Set<string>();
+  /**
+   * The in-flight turn's cancel hook, per session.
+   *
+   * `session/cancel` is a notification, and the SDK dispatches inbound
+   * messages without awaiting the previous handler, so it really does arrive
+   * while `session/prompt` is still pending. That is the only reason a wedged
+   * turn can be cancelled at all — and per adapter layer §2.5 the answer is a
+   * prompt *response* with `stopReason: 'cancelled'`, not a teardown.
+   */
+  const cancels = new Map<string, () => void>();
   /**
    * What the client said it could do, remembered from the handshake.
    *
@@ -113,18 +125,30 @@ export function createMockAgent(
       }
 
       if (scenario !== null) {
-        const turn = await runScenario(scenario, {
-          sessionId: params.sessionId,
-          client,
-          ids,
-          clock,
-          capabilities,
-          sleep: realSleep,
+        let cancelled = (): void => {};
+        const waitForCancel = new Promise<void>((resolve) => {
+          cancelled = resolve;
         });
-        // The trace rides back on `_meta` so a spec can assert what the agent
-        // *saw* — that it received the client's rejection — rather than only
-        // that a request went out.
-        return { stopReason: turn.stopReason, _meta: { trace: turn.trace } };
+        cancels.set(params.sessionId, cancelled);
+
+        try {
+          const turn = await runScenario(scenario, {
+            sessionId: params.sessionId,
+            client,
+            ids,
+            clock,
+            capabilities,
+            sleep: realSleep,
+            ports,
+            waitForCancel: () => waitForCancel,
+          });
+          // The trace rides back on `_meta` so a spec can assert what the agent
+          // *saw* — that it received the client's rejection — rather than only
+          // that a request went out.
+          return { stopReason: turn.stopReason, _meta: { trace: turn.trace } };
+        } finally {
+          cancels.delete(params.sessionId);
+        }
       }
 
       for (const text of turnChunks(params.prompt)) {
@@ -135,6 +159,12 @@ export function createMockAgent(
         });
       }
       return { stopReason: 'end_turn' };
+    })
+    .onNotification('session/cancel', ({ params }) => {
+      // Unknown session, or no turn in flight: nothing to cancel, and
+      // certainly nothing to fail over. A cancel that raced the end of a turn
+      // is normal client behaviour, not an error.
+      cancels.get(params.sessionId)?.();
     })
     .onRequest('session/close', ({ params }) => {
       sessions.delete(params.sessionId);

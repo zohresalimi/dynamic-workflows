@@ -26,6 +26,14 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import type { Clock } from './clock.ts';
 import type { IdFactory } from './ids.ts';
+import {
+  hugeLineFrameParts,
+  invalidFrame,
+  malformedLine,
+  patternSlice,
+  truncatedFrame,
+} from './pathological.ts';
+import type { MockAgentPorts } from './ports.ts';
 import type { Branch, ClientMethod, Scenario, Step } from './scenario.ts';
 
 /** One outbound call, and what came back. */
@@ -51,6 +59,14 @@ export interface TurnIo {
   /** What the client said it could do at `initialize`. */
   readonly capabilities: acp.ClientCapabilities;
   sleep(ms: number): Promise<void>;
+  /** Raw writes, process exit and grandchildren — the pathological effects. */
+  readonly ports: MockAgentPorts;
+  /**
+   * Resolves when a `session/cancel` for this session arrives, and never
+   * otherwise. A wedged turn is only observable if the process is still there
+   * to receive the cancel, so this is a promise rather than a signal check.
+   */
+  waitForCancel(): Promise<void>;
 }
 
 /** A real sleep. Injected so a caller can say so explicitly, never faked. */
@@ -88,12 +104,35 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
   let terminalId: string | null = null;
   let lastError = '';
 
+  /**
+   * The armed mid-turn crash, if a step armed one.
+   *
+   * It is a countdown over *notifications* rather than a step index, because
+   * "die two frames from now" is the shape of the failure: the knife has to
+   * land inside the frame the script is in the middle of writing, not between
+   * two steps where every buffer happens to be clean.
+   */
+  let crash: { remaining: number; code: number; truncate: boolean } | null = null;
+  /** JSON-RPC ids for raw frames, kept away from the SDK's own counter. */
+  let rawRequestId = 9_000;
+
+  async function detonate(armed: NonNullable<typeof crash>): Promise<never> {
+    // Written and flushed *before* exiting: `process.exit` drops whatever is
+    // still queued on a pipe, so a truncation that was not awaited would
+    // sometimes not be on the wire at all and the spec would flake.
+    if (armed.truncate) await io.ports.writeRaw(truncatedFrame(io.sessionId));
+    return io.ports.exit(armed.code);
+  }
+
   const notify = async (update: acp.SessionUpdate): Promise<void> => {
     await io.client.notify('session/update', {
       sessionId: io.sessionId,
       update,
       _meta: { timestampMs: io.clock.now() },
     });
+    if (crash === null) return;
+    crash.remaining -= 1;
+    if (crash.remaining <= 0) await detonate(crash);
   };
 
   const say = (text: string): Promise<void> =>
@@ -183,6 +222,78 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
       return runBranch(
         chosen?.kind.startsWith('allow') === true ? step.onAllowed : step.onRejected,
       );
+    }
+
+    if (step.type === 'hangForever') {
+      // Nothing is written and nothing is closed. The turn simply stops here
+      // until a cancel arrives — a wedge, not an EOF.
+      await io.waitForCancel();
+      return runBranch(step.onCancel);
+    }
+
+    if (step.type === 'hangForeverIgnoringCancel') {
+      // A promise nothing resolves. The process stays up, stdin stays open,
+      // and only a signal ends it: the target the SIGTERM escalation needs.
+      await new Promise<never>(() => {});
+      return null;
+    }
+
+    if (step.type === 'exit') {
+      crash = {
+        remaining: step.afterFrames,
+        code: step.code,
+        truncate: step.truncateMidFrame,
+      };
+      if (step.afterFrames === 0) await detonate(crash);
+      return null;
+    }
+
+    if (step.type === 'malformedLine') {
+      await io.ports.writeRaw(malformedLine(step.text));
+      return null;
+    }
+
+    if (step.type === 'invalidFrame') {
+      rawRequestId += 1;
+      await io.ports.writeRaw(
+        invalidFrame(step.variant, { sessionId: io.sessionId, requestId: rawRequestId }).line,
+      );
+      return null;
+    }
+
+    if (step.type === 'hugeLine') {
+      const { prefix, suffix } = hugeLineFrameParts(io.sessionId);
+      await io.ports.writeRaw(prefix);
+      for (let written = 0; written < step.totalBytes; ) {
+        const size = Math.min(step.chunkBytes, step.totalBytes - written);
+        await io.ports.writeRaw(patternSlice(written, size));
+        written += size;
+      }
+      // The newline is what makes it *one line*: without it this would be the
+      // noNewline hazard, which is a different failure with a different cause.
+      await io.ports.writeRaw(`${suffix}\n`);
+      return null;
+    }
+
+    if (step.type === 'noNewline') {
+      for (let written = 0; step.totalBytes === null || written < step.totalBytes; ) {
+        const remaining = step.totalBytes === null ? step.chunkBytes : step.totalBytes - written;
+        const size = Math.min(step.chunkBytes, remaining);
+        await io.ports.writeRaw(patternSlice(written, size));
+        written += size;
+        if (step.intervalMs > 0) await io.sleep(step.intervalMs);
+      }
+      return null;
+    }
+
+    if (step.type === 'spawnGrandchildren') {
+      const pids = Array.from({ length: step.count }, () =>
+        io.ports.spawnGrandchild(step.lifetimeMs),
+      );
+      // Announced on the wire because a test cannot otherwise learn the pids
+      // of processes whose whole point is to outlive the process it spawned.
+      await say(`grandchildren: ${pids.join(',')}`);
+      return null;
     }
 
     // clientCall

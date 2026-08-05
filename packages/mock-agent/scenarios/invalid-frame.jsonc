@@ -1,0 +1,10 @@
+{
+  "$schema": "../schema/mock-scenario.v1.json",
+  "name": "invalid-frame",
+  "description": "EPIC-04-S11: syntactically perfect JSON whose sessionUpdate discriminator no version of ACP defines. JSON.parse succeeds and schema.json rejects it — the input for adapter.protocol-error, which is a different reason from adapter.malformed-output.",
+  "steps": [
+    { "type": "message", "text": "a valid frame first" },
+    { "type": "invalidFrame", "variant": "unknownSessionUpdate" }
+  ],
+  "stopReason": "end_turn"
+}
