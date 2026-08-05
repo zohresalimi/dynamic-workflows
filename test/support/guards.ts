@@ -2233,3 +2233,63 @@ function decodedFrames(text: string): string {
   }
   return out.join('\n');
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-05.6 — the MCP SDK is imported through two deep subpaths, or not at all.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The only two specifiers of `@modelcontextprotocol/sdk` this workspace may
+ * name (docs/07-provider-adapter-layer.md §7.3).
+ *
+ * The SDK is not lightweight: its dependencies include `express`, `hono`,
+ * `cors`, `jose`, `eventsource`, `pkce-challenge` and `express-rate-limit`.
+ * For a stdio-only server that is all dead weight, and a root import *loads*
+ * it — which is the difference between an install cost and a startup cost that
+ * `npx DeFlow up` pays every time (NF6).
+ */
+export const ALLOWED_MCP_SDK_SUBPATHS = ['server/mcp.js', 'server/stdio.js'] as const;
+
+/** The package whose reach this guard bounds, spelled once. */
+export const MCP_SDK_PACKAGE = '@modelcontextprotocol/sdk';
+
+/**
+ * EPIC-05-S22, scenarios 3 and 4: no root-package import anywhere, no
+ * subpath outside the allowlist, and in particular no `sse.js` on either side
+ * — legacy HTTP+SSE is deprecated as of the 2026-07-28 MCP spec and still
+ * ships in 1.30.0, so it is reachable, plausible and wrong.
+ */
+export function checkMcpSdkImports(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  const allowed: readonly string[] = ALLOWED_MCP_SDK_SUBPATHS;
+  const allowedList = allowed.map((subpath) => `${MCP_SDK_PACKAGE}/${subpath}`).join(' and ');
+
+  for (const file of files) {
+    for (const { line, specifier } of specifiersIn(file.text)) {
+      if (specifier !== MCP_SDK_PACKAGE && !specifier.startsWith(`${MCP_SDK_PACKAGE}/`)) continue;
+      if (specifier === MCP_SDK_PACKAGE) {
+        violations.push({
+          where: `${file.path}:${line}`,
+          message:
+            `${file.path} imports "${specifier}" at the package root, which loads express, hono, ` +
+            `cors, jose and eventsource into a stdio-only server. Import ${allowedList} instead ` +
+            '(docs/07-provider-adapter-layer.md §7.3).',
+        });
+        continue;
+      }
+      const subpath = specifier.slice(MCP_SDK_PACKAGE.length + 1);
+      if (allowed.includes(subpath)) continue;
+      const sse = subpath.endsWith('sse.js')
+        ? ' Legacy HTTP+SSE is deprecated as of the 2026-07-28 MCP spec and must not be built on.'
+        : '';
+      violations.push({
+        where: `${file.path}:${line}`,
+        message:
+          `${file.path} imports "${specifier}". The MCP host is stdio-only and may name ${allowedList} ` +
+          `and nothing else.${sse}`,
+      });
+    }
+  }
+
+  return violations;
+}

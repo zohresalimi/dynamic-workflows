@@ -74,6 +74,32 @@ function refuseAsDishonest(): never {
   throw new acp.RequestError(-32601, 'Method not found');
 }
 
+/**
+ * Whether the block this run advertises grants `path` — the mock's own,
+ * deliberately small reading of what it was told to say.
+ *
+ * KAR-05.5 needs an agent that implements exactly what it advertises: one
+ * advertising `sessionCapabilities.resume` must answer `session/resume` for a
+ * session **this process never created**, the way a restarted vendor CLI does
+ * after reading its own session file, and one that does not must answer
+ * -32601. Registering the handlers unconditionally would make "DeFlow did not
+ * send the frame" and "the agent had no handler" indistinguishable in exactly
+ * the specs that need to tell them apart.
+ *
+ * `{}` counts as granted, matching the wire: one probed adapter answered
+ * `sessionCapabilities: { list: {} }`, which advertises the capability while
+ * claiming nothing further about it.
+ */
+function advertises(agentCapabilities: unknown, path: readonly string[]): boolean {
+  let cursor: unknown = agentCapabilities;
+  for (const segment of path) {
+    if (typeof cursor !== 'object' || cursor === null) return false;
+    if (!Object.hasOwn(cursor, segment)) return false;
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  return cursor === true || (typeof cursor === 'object' && cursor !== null);
+}
+
 /** The text blocks of a prompt, concatenated. Non-text blocks are ignored. */
 function promptText(blocks: readonly acp.ContentBlock[]): string {
   return blocks
@@ -103,7 +129,16 @@ export function createMockAgent(
 ): acp.AgentApp {
   const ids = createIdFactory(options.seed);
   const clock = createSyntheticClock(options.seed);
-  const sessions = new Set<string>();
+  /**
+   * The open sessions, and the cwd each was opened against.
+   *
+   * A `Map` rather than the `Set` this used to be because `session/list` has
+   * to answer with a `SessionInfo`, and `SessionInfo` requires `cwd` — an
+   * agent that advertised `sessionCapabilities.list` and could only produce
+   * session ids would answer a shape Layer A rejects, which is a subtler
+   * version of the same dishonesty.
+   */
+  const sessions = new Map<string, { cwd: string }>();
   /**
    * The in-flight turn's cancel hook, per session.
    *
@@ -146,12 +181,12 @@ export function createMockAgent(
         agentInfo: { name: AGENT_NAME, version: AGENT_VERSION },
       };
     })
-    .onRequest('session/new', () => {
+    .onRequest('session/new', ({ params }) => {
       // AC4's additionalDirectories case: session/new is the request that
       // capability qualifies, so it is the one a dishonest run refuses.
       if (capabilities.dishonestMethod === 'session/new') refuseAsDishonest();
       const sessionId = ids.session();
-      sessions.add(sessionId);
+      sessions.set(sessionId, { cwd: params.cwd });
       return { sessionId };
     })
     .onRequest('session/prompt', async ({ params, client }) => {
@@ -205,6 +240,91 @@ export function createMockAgent(
       sessions.delete(params.sessionId);
       return {};
     });
+
+  // KAR-05.5 — the two lifecycle methods a resume spec needs, each registered
+  // only when this run's profile advertises it. An honest agent implements
+  // what it advertised and refuses what it did not.
+  if (
+    capabilities.dishonestMethod !== 'session/resume' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'resume'])
+  ) {
+    agent.onRequest('session/resume', ({ params }) => {
+      // Deliberately accepted for an id this process never issued: that is the
+      // whole operation. A vendor CLI restarted after a crash has no memory of
+      // the session either until it reads its own file, and a mock that
+      // insisted on having created it could only ever test a resume inside one
+      // process — which is not the case that breaks.
+      sessions.set(params.sessionId, { cwd: params.cwd });
+      return {};
+    });
+  }
+
+  // The three lifecycle methods an honest agent owes its own manifest.
+  //
+  // Registered on exactly the same rule as `session/resume` above — advertised
+  // means implemented — because that rule is what makes conformance assertion
+  // 6 able to fail at all. KAR-05.7's battery is what found these missing:
+  // the mock advertised fork, list and delete out of the measured capability
+  // matrix and answered all three with -32601, which is the precise lie the
+  // battery exists to catch.
+  if (
+    capabilities.dishonestMethod !== 'session/list' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'list'])
+  ) {
+    agent.onRequest('session/list', ({ params }) => ({
+      sessions: [...sessions.entries()]
+        .filter(([, info]) => params.cwd == null || info.cwd === params.cwd)
+        .map(([sessionId, info]) => ({ sessionId, cwd: info.cwd })),
+    }));
+  }
+
+  if (
+    capabilities.dishonestMethod !== 'session/fork' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'fork'])
+  ) {
+    agent.onRequest('session/fork', ({ params }) => {
+      if (!sessions.has(params.sessionId)) {
+        throw new acp.RequestError(INVALID_PARAMS, `unknown session "${params.sessionId}"`);
+      }
+      // A fork is a *new* session that leaves the original open — that is the
+      // whole operation, and an implementation that returned the same id would
+      // pass a -32601 check while breaking every caller.
+      const sessionId = ids.session();
+      sessions.set(sessionId, { cwd: params.cwd });
+      return { sessionId };
+    });
+  }
+
+  if (
+    capabilities.dishonestMethod !== 'session/delete' &&
+    advertises(capabilities.agentCapabilities, ['sessionCapabilities', 'delete'])
+  ) {
+    agent.onRequest('session/delete', ({ params }) => {
+      sessions.delete(params.sessionId);
+      return {};
+    });
+  }
+
+  if (advertises(capabilities.agentCapabilities, ['loadSession'])) {
+    agent.onRequest('session/load', async ({ params, client }) => {
+      sessions.set(params.sessionId, { cwd: params.cwd });
+      // The behaviour the design rule warns about, reproduced honestly:
+      // `session/load` streams the *entire* conversation history back as
+      // `session/update` notifications before it answers. For a days-long run
+      // this is tens of thousands of frames nobody asked for.
+      for (let index = 0; index < options.loadHistory; index += 1) {
+        await client.notify('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: `replayed frame ${index}` },
+          },
+          _meta: { timestampMs: clock.now(), replayed: true },
+        });
+      }
+      return {};
+    });
+  }
 
   // AC4, the four lifecycle methods this mock does not otherwise implement:
   // registered only when named as the one dishonest capability, so an honest

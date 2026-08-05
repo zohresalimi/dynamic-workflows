@@ -67,8 +67,20 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         )
         .all()
         .map((row) => row.name);
-      // `daemon` is migration 0003's single-row epoch counter (KAR-03.7).
-      expect(tables).toEqual(['daemon', 'effect', 'event', 'io_chunk', 'node_wake', 'plan', 'run']);
+      // `daemon` is migration 0003's single-row epoch counter (KAR-03.7);
+      // `provider_capabilities` is migration 0004's probed manifest (KAR-05.2);
+      // `process` is migration 0005's orphan-reaping handle (KAR-05.9).
+      expect(tables).toEqual([
+        'daemon',
+        'effect',
+        'event',
+        'io_chunk',
+        'node_wake',
+        'plan',
+        'process',
+        'provider_capabilities',
+        'run',
+      ]);
 
       const sqlByTable = new Map(
         db
@@ -86,7 +98,16 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         )
         .all()
         .map((row) => row.name);
-      expect(indexes).toEqual(['effect_run_state', 'event_run_seq', 'io_run_seq', 'node_wake_due']);
+      expect(indexes).toEqual([
+        'effect_run_state',
+        'event_run_seq',
+        'io_run_seq',
+        'node_wake_due',
+        // Partial, on state = 'live': a long-lived data directory keeps one
+        // terminal row per node attempt for ever, and the reaper reads none of
+        // them (KAR-05.9).
+        'process_live',
+      ]);
     } finally {
       db.close();
     }

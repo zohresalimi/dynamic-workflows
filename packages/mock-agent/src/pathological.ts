@@ -93,6 +93,42 @@ export function hugeLineFrameParts(sessionId: string): { prefix: string; suffix:
   };
 }
 
+/**
+ * How many payload bytes make the whole line exactly `lineBytes` long.
+ *
+ * KAR-05.4's cap is asserted from both sides — 8388607 delivered, 8388609
+ * refused — and "both sides" is meaningless unless the line really is that
+ * many bytes. The framing's own length depends on the session id, which the
+ * mock invents at run time and a client cannot predict, so the subtraction
+ * belongs here rather than in a test that would guess and be quietly wrong.
+ *
+ * Everything involved is ASCII by construction — the pattern alphabet needs no
+ * JSON escaping and the ids are hex — so a character count is a byte count.
+ */
+export function hugeLinePayloadBytes(prefix: string, suffix: string, lineBytes: number): number {
+  const framing = prefix.length + suffix.length;
+  if (!Number.isInteger(lineBytes) || lineBytes < framing) {
+    throw new RangeError(
+      `a line of ${lineBytes} bytes cannot carry this frame: its framing alone is ${framing} bytes`,
+    );
+  }
+  return lineBytes - framing;
+}
+
+/**
+ * A tool call's result, `totalBytes` of it, as one ACP `content` block.
+ *
+ * The stimulus for KAR-05.4's 256 KiB spill threshold: a `tool_call_update`
+ * carrying a build log or a test failure, which is the payload the domain model
+ * says must never be allowed to sit inline in the event row. Generated from the
+ * same offset-keyed pattern as the huge line, so **the same size is the same
+ * bytes** — which is what makes the three-identical-retries deduplication case
+ * expressible at all.
+ */
+export function sizedToolContent(totalBytes: number): { type: 'content'; content: unknown }[] {
+  return [{ type: 'content', content: { type: 'text', text: patternSlice(0, totalBytes) } }];
+}
+
 // ---------------------------------------------------------------------------
 // Valid JSON the ACP schema rejects
 // ---------------------------------------------------------------------------

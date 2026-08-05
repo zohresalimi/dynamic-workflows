@@ -1,0 +1,172 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AC7 — the normalised DeFlow event vocabulary each recording produces > claude-agent-acp@0.64.1/full-cycle.ndjson 1`] = `
+[
+  {
+    "phase": "available_commands_update",
+  },
+  {
+    "message": "21121/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "I",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "'ll create that file.",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "edit pending: Write",
+    "phase": "tool_call",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca updated",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca updated",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "21264/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "21264/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca failed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "21285/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "The",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "write was denied — permission for that tool call was refused, so \`forbidden.txt\` was",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "not created. If you'd like it created, you can approve the t",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "ool call on a retry, or tell me a different path or filename to use.",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "21352/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "21352/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "phase": "session_info_update",
+  },
+  {
+    "message": "24274/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "24274/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "phase": "session_info_update",
+  },
+]
+`;
+
+exports[`AC7 — the normalised DeFlow event vocabulary each recording produces > claude-agent-acp@0.64.1/simple-edit.ndjson 1`] = `
+[
+  {
+    "phase": "available_commands_update",
+  },
+  {
+    "message": "21121/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "I",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "'ll create that file.",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "edit pending: Write",
+    "phase": "tool_call",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca updated",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca updated",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "21264/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "21264/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "toolu_012orqaSqTZd4XRpZaDKd2ca failed",
+    "phase": "tool_call_update",
+  },
+  {
+    "message": "21285/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "The",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "write was denied — permission for that tool call was refused, so \`forbidden.txt\` was",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "not created. If you'd like it created, you can approve the t",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "ool call on a retry, or tell me a different path or filename to use.",
+    "phase": "agent_message_chunk",
+  },
+  {
+    "message": "21352/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+  {
+    "message": "21352/1000000 tokens in context",
+    "phase": "usage_update",
+  },
+]
+`;
+
+exports[`AC7 — the normalised DeFlow event vocabulary each recording produces > gemini-cli@0.53.1/full-cycle.ndjson 1`] = `[]`;
+
+exports[`AC7 — the normalised DeFlow event vocabulary each recording produces > understands every update in the corpus — an unknown phase is a finding 1`] = `
+[
+  "agent_message_chunk",
+  "available_commands_update",
+  "session_info_update",
+  "tool_call",
+  "tool_call_update",
+  "usage_update",
+]
+`;

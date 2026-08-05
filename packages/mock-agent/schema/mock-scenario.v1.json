@@ -150,7 +150,12 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/toolCallStatus" }
         },
-        "delayMs": { "type": "integer", "minimum": 0 }
+        "delayMs": { "type": "integer", "minimum": 0 },
+        "contentBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Attaches a generated tool result of this many bytes to every update after the first — the payload a client spills to its blob store above 256 KiB. The bytes are a function of the size alone, so the same size is the same content and therefore the same digest."
+        }
       }
     },
     "permissionStep": {
@@ -281,7 +286,12 @@
       "properties": {
         "type": { "const": "hugeLine" },
         "totalBytes": { "type": "integer", "minimum": 1, "description": "Default 10485760." },
-        "chunkBytes": { "type": "integer", "minimum": 1, "description": "Default 65536." }
+        "chunkBytes": { "type": "integer", "minimum": 1, "description": "Default 65536." },
+        "lineBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The size of the whole line, framing included. Overrides totalBytes; omit to let totalBytes decide. The framing's length depends on the generated session id, so this is the only way to ask for a line of an exact size."
+        }
       }
     },
     "noNewlineStep": {

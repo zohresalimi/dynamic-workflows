@@ -117,6 +117,14 @@ export interface ToolCallStep {
   readonly path: string;
   readonly statuses: readonly acp.ToolCallStatus[];
   readonly delayMs: number;
+  /**
+   * Attaches a generated tool result of this many bytes to every update after
+   * the first — a build log or a test failure, which is the payload KAR-05.4
+   * spills to the blob store above 256 KiB. The bytes are a function of the
+   * size alone, so two attempts that ask for the same size produce the same
+   * content and therefore the same digest.
+   */
+  readonly contentBytes: number | null;
 }
 
 export interface PermissionOptionScript {
@@ -208,6 +216,13 @@ export interface HugeLineStep {
   readonly type: 'hugeLine';
   readonly totalBytes: number;
   readonly chunkBytes: number;
+  /**
+   * The size of the **whole line**, framing included, when the exact number
+   * matters — KAR-05.4 asserts its 8 MiB cap from both sides, and a payload
+   * size cannot express that because the framing's length depends on the
+   * session id. Overrides `totalBytes`; null means "let `totalBytes` decide".
+   */
+  readonly lineBytes: number | null;
 }
 
 /** The same flood with no newline, ever. `totalBytes: null` means never stop. */
@@ -453,7 +468,7 @@ const STEP_KEYS: Record<string, readonly string[]> = {
   plan: ['type', 'entries'],
   chunks: ['type', 'count', 'delayMs', 'text', 'sizeBytes'],
   message: ['type', 'text'],
-  toolCall: ['type', 'title', 'toolKind', 'path', 'statuses', 'delayMs'],
+  toolCall: ['type', 'title', 'toolKind', 'path', 'statuses', 'delayMs', 'contentBytes'],
   permission: [
     'type',
     'title',
@@ -470,7 +485,7 @@ const STEP_KEYS: Record<string, readonly string[]> = {
   exit: ['type', 'code', 'afterFrames', 'truncateMidFrame'],
   malformedLine: ['type', 'text'],
   invalidFrame: ['type', 'variant'],
-  hugeLine: ['type', 'totalBytes', 'chunkBytes'],
+  hugeLine: ['type', 'totalBytes', 'chunkBytes', 'lineBytes'],
   noNewline: ['type', 'chunkBytes', 'intervalMs', 'totalBytes'],
   spawnGrandchildren: ['type', 'count', 'lifetimeMs'],
 };
@@ -551,6 +566,7 @@ function parseStep(value: unknown, at: string): Step {
       path: requireString(object, 'path', at),
       statuses,
       delayMs: optionalCount(object, 'delayMs', at, 0) as number,
+      contentBytes: optionalCount(object, 'contentBytes', at, null),
     };
   }
 
@@ -631,6 +647,7 @@ function parseStep(value: unknown, at: string): Step {
       type: 'hugeLine',
       totalBytes: positiveCount(object, 'totalBytes', at, HUGE_LINE_TOTAL_BYTES),
       chunkBytes: positiveCount(object, 'chunkBytes', at, RAW_CHUNK_BYTES),
+      lineBytes: optionalCount(object, 'lineBytes', at, null),
     };
   }
 

@@ -1,4 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  // bin/ holds the DeFlow-mcp executable — the second bin of the published
+  // DeFlow package (docs/07-provider-adapter-layer.md §7.2). It ships, so it
+  // is typechecked like the rest of the package.
+  "include": ["src", "bin"]
 }

@@ -45,6 +45,7 @@ export {
   DISHONEST_CAPABILITY_METHODS,
   type DishonestCapability,
   type DishonestMethod,
+  MOCK_AGENT_VERSION,
   type MockAgentOptions,
   PATHOLOGICAL_FLAGS,
   type ParsedArgv,
@@ -52,6 +53,7 @@ export {
   type ReplaySelection,
   SCENARIO_ENV,
   USAGE,
+  VERSION_ENV,
 } from './cli.ts';
 export { type Clock, createSyntheticClock, MOCK_CLOCK_STEP_MS, MOCK_EPOCH_MS } from './clock.ts';
 export { type UnifiedDiffOptions, unifiedDiff } from './diff.ts';
@@ -67,6 +69,7 @@ export {
 export {
   HUGE_LINE_TOTAL_BYTES,
   hugeLineFrameParts,
+  hugeLinePayloadBytes,
   INVALID_FRAME_VARIANTS,
   type InvalidFrameSpec,
   type InvalidFrameVariant,
@@ -76,6 +79,7 @@ export {
   NO_NEWLINE_INTERVAL_MS,
   patternSlice,
   RAW_CHUNK_BYTES,
+  sizedToolContent,
   TRUNCATED_FRAME_PREFIX,
   truncatedFrame,
 } from './pathological.ts';

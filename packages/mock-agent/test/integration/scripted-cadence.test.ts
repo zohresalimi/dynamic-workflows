@@ -51,10 +51,12 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
       clientCapabilities: CLIENT_CAPABILITIES,
     });
     const session = await connection.agent.request('session/new', { cwd, mcpServers: [] });
+    const startedAt = performance.now();
     const prompted = await connection.agent.request('session/prompt', {
       sessionId: session.sessionId,
       prompt: [{ type: 'text', text: 'stream please' }],
     });
+    const turnMs = performance.now() - startedAt;
 
     expect(updates[0]?.update.sessionUpdate).toBe('plan');
     const kinds = updates.map((notification) => notification.update.sessionUpdate);
@@ -67,12 +69,24 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
       'agent_message_chunk',
     ]);
 
-    // Four gaps between the five chunks. 40 ms rather than 50 because the
-    // assertion is "the agent slept" and a scheduler may round a timer down by
-    // a millisecond or two; a burst would put every gap under one.
+    // "The agent slept", asserted where no scheduler can forge it: the scenario
+    // sleeps 50 ms *between* chunks — four sleeps for five chunks — so the turn
+    // cannot come back in under 200 ms however the reader was scheduled. A late
+    // reader can only make this number bigger. 190 rather than 200 leaves a
+    // millisecond per timer for a runtime that rounds a sleep down.
+    expect(turnMs).toBeGreaterThanOrEqual(190);
+
+    // Four gaps between the five chunks, and none of them the sub-millisecond
+    // spacing of frames read out of one buffer. The floor is 10 ms rather than
+    // the scripted 50 because arrival times are the *reader's*: descheduling
+    // this process for a few milliseconds delays chunk N and leaves chunk N+1
+    // already waiting in the pipe, which moves time out of one gap and into its
+    // neighbour without the agent having behaved differently. That redistribution
+    // is what a 39.9 ms gap next to a 60 ms one is, and it is why the "it slept"
+    // half of the claim is asserted on the turn's duration above instead.
     const chunkGaps = gaps(arrivals.slice(1));
     expect(chunkGaps).toHaveLength(4);
-    for (const gap of chunkGaps) expect(gap).toBeGreaterThanOrEqual(40);
+    for (const gap of chunkGaps) expect(gap).toBeGreaterThanOrEqual(10);
 
     // No two chunks share an arrival instant — the failure a single
     // read()-of-everything at the end would produce.
