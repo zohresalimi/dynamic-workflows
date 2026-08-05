@@ -41,14 +41,14 @@
  *
  * Verifies: EPIC-05-S10 · AC1, AC2, AC3
  */
-import type { ProviderId } from '@DeFlow/core';
+import type { PermissionLevel, ProviderId } from '@DeFlow/core';
 import { ProviderIdSchema } from '@DeFlow/core';
 import {
   type ResolveContext,
   type ResolvedProvider,
   resolveExecutable,
 } from './binary-resolver.ts';
-import { registryRefused } from './failures.ts';
+import { permissionInexpressible, registryRefused, unsupportedOutputFormat } from './failures.ts';
 
 /**
  * `native` speaks ACP itself; `adapter` reaches it through a bridge package
@@ -86,6 +86,97 @@ export interface SpawnPlan {
   readonly env: NodeJS.ProcessEnv;
 }
 
+/**
+ * The wire an exec-shim invocation asks the vendor for (KAR-05.8).
+ *
+ * `jsonl` is not a fourth spelling of `stream-json`: the two are both
+ * one-JSON-object-per-line and are still not the same format, and collapsing
+ * them in the type is how a shim ends up parsing one as the other.
+ */
+export const SHIM_FORMATS = ['text', 'json', 'stream-json', 'jsonl'] as const;
+export type ShimFormat = (typeof SHIM_FORMATS)[number];
+
+/**
+ * Which parser family reads the vendor's output.
+ *
+ * `document` is a single JSON object for the whole invocation rather than a
+ * stream of lines, and it is what a vendor with no streaming format leaves you
+ * with — no incremental progress, and one `uuid`-less result to file.
+ */
+export type ShimDialect = 'stream-json' | 'jsonl' | 'document';
+
+/** Everything one shim invocation can depend on. */
+export interface ShimContext {
+  /** The **vendor CLI** itself, not the ACP bridge — the shim needs no bridge. */
+  readonly resolved: ResolvedProvider;
+  readonly worktree: string;
+  readonly prompt: string;
+  /** Client-chosen, and verified honoured verbatim in every emitted frame. */
+  readonly sessionId: string;
+  readonly permission: PermissionLevel;
+  /** Omitted means the vendor's richest streaming format. */
+  readonly format?: ShimFormat;
+}
+
+/**
+ * How one vendor is driven headlessly, as data.
+ *
+ * Separate from the ACP `bin`/`argv` above because the two are genuinely
+ * different invocations of different binaries: KAR-05.3 spawns the bridge that
+ * speaks ACP, and this spawns the CLI the bridge would have driven.
+ */
+export interface ShimSpec {
+  readonly bin: string;
+  /** Every `--output-format` value this vendor accepts. Not uniform. */
+  readonly formats: readonly ShimFormat[];
+  /** The default: the richest streaming format the vendor has. */
+  readonly stream: ShimFormat;
+  readonly dialect: ShimDialect;
+  /**
+   * The permission levels this vendor's own flags can express.
+   *
+   * A level absent from this list is **refused**, never approximated. On the
+   * shim path DeFlow is not in front of the agent's file access, so the
+   * vendor's flag is the only enforcement there is; picking the nearest one
+   * would run the node at a level nobody chose.
+   */
+  readonly permissions: readonly PermissionLevel[];
+  /** Absolute paths for the vendor CLI, or a tagged `adapter.spawn-failed`. */
+  resolve(ctx: ResolveContext): ResolvedProvider;
+  /**
+   * The validated argv for one invocation.
+   *
+   * Refuses an unsupported format and an inexpressible permission level before
+   * returning a single string, which is what makes AC3's rejection a
+   * construction-time fact rather than a stderr line from a spawned process.
+   */
+  argv(ctx: ShimContext): readonly string[];
+}
+
+/** One resolved shim invocation, plus what the parser needs to read it back. */
+export interface ShimPlan extends SpawnPlan {
+  readonly format: ShimFormat;
+  readonly dialect: ShimDialect;
+}
+
+interface ShimEntry {
+  readonly bin: string;
+  readonly formats: readonly ShimFormat[];
+  readonly stream: ShimFormat;
+  readonly dialect: ShimDialect;
+  /**
+   * The flags that express each level. A level missing from the record is one
+   * this vendor cannot express; an empty array is one its **default** already
+   * is, which is not the same claim and is why the two are spelled apart.
+   */
+  readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
+  build(
+    ctx: ShimContext,
+    format: ShimFormat,
+    permissionFlags: readonly string[],
+  ): readonly string[];
+}
+
 export interface ProviderSpec {
   readonly id: ProviderId;
   readonly kind: ProviderKind;
@@ -101,6 +192,8 @@ export interface ProviderSpec {
   resolve(ctx: ResolveContext): ResolvedProvider;
   argv(ctx: SpawnContext): readonly string[];
   env(ctx: SpawnContext): NodeJS.ProcessEnv;
+  /** KAR-05.8 — the non-ACP fallback: the same vendor, driven by flags. */
+  readonly shim: ShimSpec;
 }
 
 interface SpecEntry {
@@ -116,13 +209,58 @@ interface SpecEntry {
    */
   readonly variants: readonly ((ctx: SpawnContext) => readonly string[])[];
   readonly env?: (ctx: SpawnContext) => NodeJS.ProcessEnv;
+  readonly shim: ShimEntry;
 }
 
 const NO_ENV: NodeJS.ProcessEnv = {};
 
+/**
+ * The two refusals every shim invocation is checked against, in one place.
+ *
+ * Both are construction-time on purpose. A format the vendor does not have
+ * becomes a stderr line and a non-zero exit if it reaches the process, which
+ * costs a spawn to learn something the table already knew; and a permission
+ * level the vendor cannot express must never reach a process at all, because
+ * the process is the thing that would then run at the wrong level.
+ */
+function shimInvocation(
+  id: string,
+  entry: ShimEntry,
+  ctx: ShimContext,
+): { format: ShimFormat; argv: readonly string[] } {
+  const format = ctx.format ?? entry.stream;
+  if (!entry.formats.includes(format)) {
+    throw unsupportedOutputFormat(id, format, entry.formats);
+  }
+
+  const flags = entry.permissions[ctx.permission];
+  if (flags === undefined) {
+    throw permissionInexpressible(id, ctx.permission, Object.keys(entry.permissions));
+  }
+
+  return { format, argv: entry.build(ctx, format, flags) };
+}
+
+function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
+  const id = ProviderIdSchema.parse(rawId);
+  return {
+    bin: entry.bin,
+    formats: entry.formats,
+    stream: entry.stream,
+    dialect: entry.dialect,
+    permissions: Object.keys(entry.permissions) as readonly PermissionLevel[],
+    resolve: (ctx: ResolveContext): ResolvedProvider => ({
+      provider: id,
+      path: resolveExecutable(id, entry.bin, ctx),
+    }),
+    argv: (ctx: ShimContext): readonly string[] => shimInvocation(id, entry, ctx).argv,
+  };
+}
+
 function defineSpec(entry: SpecEntry): ProviderSpec {
   const id = ProviderIdSchema.parse(entry.id);
   return {
+    shim: defineShim(entry.id, entry.shim),
     id,
     kind: entry.kind,
     bin: entry.bin,
@@ -172,6 +310,30 @@ export const PROVIDER_SPECS = {
     // `--experimental-acp` still exists, and `--help` marks it "(deprecated,
     // use --acp instead)". Current flag first, one bounded fallback second.
     variants: [(): readonly string[] => ['--acp'], (): readonly string[] => ['--experimental-acp']],
+    // Gemini CLI 0.53.1: `-p/--prompt`, `-o/--output-format
+    // text|json|stream-json`, `--approval-mode default|auto_edit|yolo|plan`,
+    // `--session-id`, `-r/--resume latest|<index>`. `--allowed-tools` is marked
+    // "[DEPRECATED: Use Policy Engine instead]" and is deliberately unused.
+    shim: {
+      bin: 'gemini',
+      formats: ['text', 'json', 'stream-json'],
+      stream: 'stream-json',
+      dialect: 'stream-json',
+      permissions: {
+        read: [],
+        worktree: ['--approval-mode', 'auto_edit'],
+        full: ['--approval-mode', 'yolo'],
+      },
+      build: (ctx, format, flags) => [
+        '-p',
+        ctx.prompt,
+        '--output-format',
+        format,
+        '--session-id',
+        ctx.sessionId,
+        ...flags,
+      ],
+    },
   }),
   copilot: defineSpec({
     id: 'copilot',
@@ -179,6 +341,23 @@ export const PROVIDER_SPECS = {
     bin: 'copilot',
     package: '@github/copilot',
     variants: [(): readonly string[] => ['--acp']],
+    // Copilot CLI 1.0.77: `-p/--prompt`, `--output-format text|json` — **no
+    // `stream-json`** — `--stream on|off`, `--session-id`, `--allow-all-tools`
+    // (required for non-interactive), `--secret-env-vars`.
+    //
+    // `--allow-all-tools` is unconditional because the CLI does nothing
+    // headless without it, which means this vendor cannot express a level
+    // *below* all-tools at all. That is recorded here as "only `read` is
+    // expressible" rather than papered over: on this path DeFlow cannot
+    // mediate anyway, and `read` is the one level that needs no mediation.
+    shim: {
+      bin: 'copilot',
+      formats: ['text', 'json'],
+      stream: 'json',
+      dialect: 'document',
+      permissions: { read: [] },
+      build: (ctx, format) => ['-p', ctx.prompt, '--output-format', format, '--allow-all-tools'],
+    },
   }),
   opencode: defineSpec({
     id: 'opencode',
@@ -187,6 +366,17 @@ export const PROVIDER_SPECS = {
     package: 'opencode-ai',
     // A subcommand, not a flag — and it takes the worktree itself.
     variants: [(ctx): readonly string[] => ['acp', '--cwd', ctx.worktree]],
+    // OpenCode 1.18.11: `opencode run [message..] --format default|json`,
+    // `-c/--continue`, `-s/--session`, `--fork`. There is no permission flag of
+    // any kind, so `read` is the only level it can be asked for.
+    shim: {
+      bin: 'opencode',
+      formats: ['text', 'json'],
+      stream: 'json',
+      dialect: 'document',
+      permissions: { read: [] },
+      build: (ctx, format, flags) => ['run', '--format', format, ...flags, ctx.prompt],
+    },
   }),
   claude: defineSpec({
     id: 'claude',
@@ -194,6 +384,38 @@ export const PROVIDER_SPECS = {
     bin: 'claude-agent-acp',
     package: '@agentclientprotocol/claude-agent-acp',
     variants: [(): readonly string[] => []],
+    // Claude Code 2.1.220: `-p/--print`, `--output-format
+    // text|json|stream-json`, `--permission-mode
+    // acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`, `--session-id`,
+    // `-r/--resume [id]`, `--json-schema`, `--max-budget-usd`.
+    // `--permission-prompt-tool` is no longer in `--help`.
+    //
+    // The shim drives the vendor CLI itself — `claude`, not the ACP bridge —
+    // which is the whole point of a fallback for an agent with no ACP path.
+    shim: {
+      bin: 'claude',
+      formats: ['text', 'json', 'stream-json'],
+      stream: 'stream-json',
+      dialect: 'stream-json',
+      permissions: {
+        read: [],
+        worktree: ['--permission-mode', 'acceptEdits'],
+        full: ['--permission-mode', 'bypassPermissions'],
+      },
+      // `--verbose` is **required** alongside `-p --output-format stream-json`
+      // or the process exits printing
+      // `Error: When using --print, --output-format=stream-json requires
+      // --verbose`. It is emitted from the format rather than from a caller's
+      // flag so that the requirement cannot be forgotten at a call site (AC2).
+      build: (ctx, format, flags) => [
+        '-p',
+        ctx.prompt,
+        '--output-format',
+        format,
+        ...(format === 'stream-json' ? ['--verbose'] : []),
+        ...flags,
+      ],
+    },
   }),
   codex: defineSpec({
     id: 'codex',
@@ -202,6 +424,34 @@ export const PROVIDER_SPECS = {
     package: '@agentclientprotocol/codex-acp',
     companionBin: 'codex',
     variants: [(): readonly string[] => []],
+    // Codex CLI 0.146.0: `codex exec [PROMPT]`, `--json`,
+    // `-o/--output-last-message`, `--output-schema <FILE>`, `-s/--sandbox
+    // read-only|workspace-write|danger-full-access`, `-C/--cd`,
+    // `--skip-git-repo-check`, `--ephemeral`. `--full-auto` is gone.
+    //
+    // `--skip-git-repo-check` is unconditional: a DeFlow worktree is a real
+    // git worktree, but the CLI's own check has refused often enough on
+    // detached-HEAD checkouts that relying on it is a coin toss.
+    shim: {
+      bin: 'codex',
+      formats: ['text', 'jsonl'],
+      stream: 'jsonl',
+      dialect: 'jsonl',
+      permissions: {
+        read: [],
+        worktree: ['--sandbox', 'workspace-write'],
+        full: ['--sandbox', 'danger-full-access'],
+      },
+      build: (ctx, format, flags) => [
+        'exec',
+        ...(format === 'jsonl' ? ['--json'] : []),
+        '--skip-git-repo-check',
+        '-C',
+        ctx.worktree,
+        ...flags,
+        ctx.prompt,
+      ],
+    },
     // The bridge honours CODEX_PATH to select the CLI it drives. Using it is
     // what keeps the resolution DeFlow already did from being redone against a
     // PATH DeFlow does not control.
@@ -235,5 +485,28 @@ export function spawnPlan(spec: ProviderSpec, ctx: SpawnContext): SpawnPlan {
     command: ctx.resolved.path,
     argv: spec.argv(ctx),
     env: spec.env(ctx),
+  };
+}
+
+/**
+ * KAR-05.8 — the complete **exec-shim** invocation, or a refusal.
+ *
+ * Throws before it returns anything when the vendor has no such
+ * `--output-format` (AC3) or no flag for the requested permission level. Both
+ * refusals are tagged `NodeFailureError`s, so a caller that wants them as a
+ * `NodeFailure` rather than as a throw sends them through
+ * `toAdapterFailure` like every other adapter failure.
+ *
+ * The shim needs no vendor environment: everything a headless invocation
+ * depends on is in the argv, which is what makes the argv snapshot the whole
+ * review surface for a flag change.
+ */
+export function shimPlan(spec: ProviderSpec, ctx: ShimContext): ShimPlan {
+  return {
+    command: ctx.resolved.path,
+    argv: spec.shim.argv(ctx),
+    env: NO_ENV,
+    format: ctx.format ?? spec.shim.stream,
+    dialect: spec.shim.dialect,
   };
 }

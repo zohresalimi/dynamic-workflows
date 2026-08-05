@@ -1,0 +1,120 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`each vendor’s headless invocation (EPIC-05-S29, AC1) > is a snapshot for read-only and for worktree-write nodes 1`] = `
+[
+  {
+    "bin": "gemini",
+    "dialect": "stream-json",
+    "formats": [
+      "text",
+      "json",
+      "stream-json",
+    ],
+    "provider": "gemini",
+    "read": [
+      "-p",
+      "summarise the failing test",
+      "--output-format",
+      "stream-json",
+      "--session-id",
+      "<uuid>",
+    ],
+    "worktree": [
+      "-p",
+      "summarise the failing test",
+      "--output-format",
+      "stream-json",
+      "--session-id",
+      "<uuid>",
+      "--approval-mode",
+      "auto_edit",
+    ],
+  },
+  {
+    "bin": "copilot",
+    "dialect": "document",
+    "formats": [
+      "text",
+      "json",
+    ],
+    "provider": "copilot",
+    "read": [
+      "-p",
+      "summarise the failing test",
+      "--output-format",
+      "json",
+      "--allow-all-tools",
+    ],
+    "worktree": "refused: the vendor has no flag for this level",
+  },
+  {
+    "bin": "opencode",
+    "dialect": "document",
+    "formats": [
+      "text",
+      "json",
+    ],
+    "provider": "opencode",
+    "read": [
+      "run",
+      "--format",
+      "json",
+      "summarise the failing test",
+    ],
+    "worktree": "refused: the vendor has no flag for this level",
+  },
+  {
+    "bin": "claude",
+    "dialect": "stream-json",
+    "formats": [
+      "text",
+      "json",
+      "stream-json",
+    ],
+    "provider": "claude",
+    "read": [
+      "-p",
+      "summarise the failing test",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ],
+    "worktree": [
+      "-p",
+      "summarise the failing test",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--permission-mode",
+      "acceptEdits",
+    ],
+  },
+  {
+    "bin": "codex",
+    "dialect": "jsonl",
+    "formats": [
+      "text",
+      "jsonl",
+    ],
+    "provider": "codex",
+    "read": [
+      "exec",
+      "--json",
+      "--skip-git-repo-check",
+      "-C",
+      "/tmp/DeFlow/wt/n1",
+      "summarise the failing test",
+    ],
+    "worktree": [
+      "exec",
+      "--json",
+      "--skip-git-repo-check",
+      "-C",
+      "/tmp/DeFlow/wt/n1",
+      "--sandbox",
+      "workspace-write",
+      "summarise the failing test",
+    ],
+  },
+]
+`;
