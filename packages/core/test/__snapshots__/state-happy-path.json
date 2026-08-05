@@ -9,6 +9,8 @@
   "needsHuman": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "planVersion": 0,
+  "plan": null,
+  "proposedPlans": {},
   "nodes": {
     "step-01": {
       "status": "completed",
@@ -38,7 +40,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 52
     },
     "step-02": {
       "status": "completed",
@@ -66,7 +69,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 102
     },
     "step-03": {
       "status": "completed",
@@ -94,7 +98,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 152
     },
     "step-04": {
       "status": "completed",
@@ -122,7 +127,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 202
     },
     "step-05": {
       "status": "completed",
@@ -150,7 +156,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 253
     },
     "step-06": {
       "status": "completed",
@@ -178,7 +185,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 303
     },
     "step-07": {
       "status": "completed",
@@ -206,7 +214,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 353
     },
     "step-08": {
       "status": "completed",
@@ -234,7 +243,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 403
     },
     "step-09": {
       "status": "completed",
@@ -262,7 +272,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 454
     },
     "step-10": {
       "status": "completed",
@@ -290,7 +301,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 504
     },
     "step-11": {
       "status": "completed",
@@ -320,7 +332,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 555
     },
     "step-12": {
       "status": "completed",
@@ -348,7 +361,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 605
     },
     "step-13": {
       "status": "completed",
@@ -376,7 +390,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 656
     },
     "step-14": {
       "status": "completed",
@@ -404,7 +419,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 706
     },
     "step-15": {
       "status": "completed",
@@ -432,7 +448,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 756
     },
     "step-16": {
       "status": "completed",
@@ -460,7 +477,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 806
     },
     "step-17": {
       "status": "completed",
@@ -488,7 +506,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 857
     },
     "step-18": {
       "status": "completed",
@@ -516,7 +535,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 907
     },
     "step-19": {
       "status": "completed",
@@ -544,7 +564,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 957
     },
     "step-20": {
       "status": "completed",
@@ -572,7 +593,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1007
     },
     "step-21": {
       "status": "completed",
@@ -602,7 +624,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1060
     },
     "step-22": {
       "status": "completed",
@@ -630,7 +653,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1109
     },
     "step-23": {
       "status": "completed",
@@ -658,7 +682,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1158
     },
     "step-24": {
       "status": "completed",
@@ -686,7 +711,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1207
     },
     "step-25": {
       "status": "completed",
@@ -714,7 +740,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1257
     },
     "step-26": {
       "status": "completed",
@@ -742,7 +769,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1306
     },
     "step-27": {
       "status": "completed",
@@ -770,7 +798,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1355
     },
     "step-28": {
       "status": "completed",
@@ -798,7 +827,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1404
     },
     "step-29": {
       "status": "completed",
@@ -826,7 +856,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1454
     },
     "step-30": {
       "status": "completed",
@@ -854,7 +885,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1503
     },
     "step-31": {
       "status": "completed",
@@ -884,7 +916,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1553
     },
     "step-32": {
       "status": "completed",
@@ -912,7 +945,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1602
     },
     "step-33": {
       "status": "completed",
@@ -940,7 +974,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1652
     },
     "step-34": {
       "status": "completed",
@@ -968,7 +1003,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1701
     },
     "step-35": {
       "status": "completed",
@@ -996,7 +1032,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1750
     },
     "step-36": {
       "status": "completed",
@@ -1024,7 +1061,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1799
     },
     "step-37": {
       "status": "completed",
@@ -1052,7 +1090,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1849
     },
     "step-38": {
       "status": "completed",
@@ -1080,7 +1119,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1898
     },
     "step-39": {
       "status": "completed",
@@ -1108,7 +1148,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1947
     },
     "step-40": {
       "status": "completed",
@@ -1136,7 +1177,8 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "wakeAt": null,
+      "updatedSeq": 1996
     }
   },
   "locks": {},
@@ -1184,6 +1226,9 @@
       "step-40"
     ],
     "retired": []
+  },
+  "policy": {
+    "globalAgentSlots": 3
   },
   "budget": {
     "costUsd": 8.2,

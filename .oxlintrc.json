@@ -29,6 +29,51 @@
     {
       "files": ["packages/core/src/**/*.ts"],
       "rules": {
+        // KAR-06.1 / NF9. `decide(state, now)` takes the instant as a
+        // parameter, and the corollary is that nothing in core reads one for
+        // itself. Each identifier is named individually rather than covered by
+        // a category, because what goes wrong differs every time: setTimeout is
+        // a durability bug (Node fires a delay above 2^31-1 ms after 1 ms —
+        // verified 2026-08-02 — and no timer survives a restart), Math.random
+        // is a replay bug, Date.now is both.
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "A wait is a node_wake row, never a timer (docs/05-durable-execution.md §10.1). The ~1 Hz ticker in @DeFlow/daemon is the only setTimeout in the system, and it is a sleep hint rather than a wait."
+          },
+          {
+            "name": "setInterval",
+            "message": "The ~1 Hz tick loop belongs to @DeFlow/daemon. @DeFlow/core returns Command[] and holds no loop."
+          },
+          {
+            "name": "setImmediate",
+            "message": "Scheduling work on the event loop is the imperative shell's job. @DeFlow/core is synchronous and total."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "Date",
+            "property": "now",
+            "message": "The instant arrives as decide()'s `now` parameter and inside event payloads. A clock read here makes replay disagree with the live run — intermittently, in a run nobody can reproduce. Use the Clock port (packages/core/src/clock.ts)."
+          },
+          {
+            "object": "Math",
+            "property": "random",
+            "message": "Jitter and ids come from a seeded generator injected as a port, so a failing run can be replayed exactly (docs/14-testing-strategy.md §8)."
+          },
+          {
+            "object": "process",
+            "property": "hrtime",
+            "message": "A monotonic clock is still a clock, and `process` is not in scope in a package that performs no I/O."
+          },
+          {
+            "object": "performance",
+            "property": "now",
+            "message": "Measuring elapsed time inside the pure core is a clock read wearing a different name."
+          }
+        ],
         "no-restricted-imports": [
           "error",
           {

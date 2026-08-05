@@ -2293,3 +2293,141 @@ export function checkMcpSdkImports(files: readonly SourceFile[]): Violation[] {
 
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-06.1 — the deterministic core reads no clock, timer or random source.
+ *
+ * `decide(state, now)` takes the instant as a parameter. The corollary,
+ * docs/05-durable-execution.md §4 states it as a hard rule, is that nothing
+ * under packages/core/src may read one for itself: a `Date.now()` in the
+ * scheduler makes two calls with the same `(state, now)` disagree, and it does
+ * so intermittently, in a run nobody can reproduce.
+ *
+ * Each identifier is named individually rather than being covered by a
+ * category, because the message that has to appear in front of the person
+ * typing it is different every time — `setTimeout` is a durability bug (a
+ * 30-day gate fires after 1 ms, verified 2026-08-02), `Math.random` is a
+ * replay bug, `Date.now` is both.
+ *
+ * The patterns are *built* from the object and member names rather than
+ * written out, so this file can never be its own first violation.
+ * -------------------------------------------------------------------------- */
+
+export interface BannedNondeterminism {
+  /** How a reader names it: `Date.now`, `setTimeout`. */
+  readonly identifier: string;
+  /** The object a member read goes through, or `null` for a bare global. */
+  readonly object: string | null;
+  /** The member or global name itself. */
+  readonly member: string;
+  /** What goes wrong when it is used, in one line. */
+  readonly why: string;
+}
+
+export const BANNED_NONDETERMINISM: readonly BannedNondeterminism[] = [
+  {
+    identifier: 'Date.now',
+    object: 'Date',
+    member: 'now',
+    why: 'the instant arrives as decide()’s `now` parameter and inside event payloads; a clock read makes replay disagree with the live run',
+  },
+  {
+    identifier: 'setTimeout',
+    object: null,
+    member: 'setTimeout',
+    why: 'a wait is a node_wake row, never a timer — Node fires a delay above 2^31-1 ms after 1 ms, and no timer survives a restart',
+  },
+  {
+    identifier: 'setInterval',
+    object: null,
+    member: 'setInterval',
+    why: 'the ~1 Hz ticker belongs to the daemon; core returns commands and holds no loop',
+  },
+  {
+    identifier: 'setImmediate',
+    object: null,
+    member: 'setImmediate',
+    why: 'scheduling work on the event loop is the imperative shell’s job; core is synchronous and total',
+  },
+  {
+    identifier: 'Math.random',
+    object: 'Math',
+    member: 'random',
+    why: 'jitter and ids come from a seeded generator injected as a port, so a failing run can be replayed exactly',
+  },
+  {
+    identifier: 'process.hrtime',
+    object: 'process',
+    member: 'hrtime',
+    why: 'a monotonic clock is still a clock, and `process` is not in scope in a package that performs no I/O',
+  },
+  {
+    identifier: 'performance.now',
+    object: 'performance',
+    member: 'now',
+    why: 'measuring elapsed time inside the pure core is a clock read wearing a different name',
+  },
+];
+
+/** `Date\.now\s*\(` and friends, assembled so the literal never appears here. */
+function nondeterminismPattern(banned: BannedNondeterminism): RegExp {
+  const prefix = banned.object === null ? '(?<![.\\w])' : `\\b${banned.object}\\.`;
+  return new RegExp(`${prefix}${banned.member}\\s*\\(`);
+}
+
+/**
+ * AC1 / EPIC-06-S2 scenario 3: no file under `packages/core/src` reads a
+ * clock, a timer or a random number. Runs over the source with whole-line
+ * comments blanked out, so a doc comment explaining why `Date.now()` is banned
+ * is not the rule's own first violation.
+ */
+export function checkNoNondeterminism(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const lines = codeOnly(file.text).split('\n');
+    for (const [index, line] of lines.entries()) {
+      for (const banned of BANNED_NONDETERMINISM) {
+        if (!nondeterminismPattern(banned).test(line)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} reads ${banned.identifier}. @DeFlow/core is deterministic: ` +
+            `${banned.why}. Time enters through the Clock port (packages/core/src/clock.ts), ` +
+            'implemented by SystemClock in @DeFlow/daemon and TestClock in @DeFlow/testkit.',
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * The other half of the same rule: the linter refuses it in the editor, at the
+ * moment it is typed, and it names each identifier explicitly so the message
+ * the author sees is about the bug they are about to write.
+ *
+ * Checked against the raw text of `.oxlintrc.json` rather than a parse,
+ * because that file is JSONC — it carries the comments that explain each
+ * restriction, and dropping them to satisfy a parser would remove the reason
+ * the rule exists from the only place anyone reads it.
+ */
+export function checkNondeterminismIsLinted(config: string): Violation[] {
+  const violations: Violation[] = [];
+  for (const banned of BANNED_NONDETERMINISM) {
+    const named =
+      banned.object === null
+        ? new RegExp(`"name"\\s*:\\s*"${banned.member}"`).test(config)
+        : new RegExp(
+            `\\{[^{}]*"object"\\s*:\\s*"${banned.object}"[^{}]*"property"\\s*:\\s*"${banned.member}"[^{}]*\\}`,
+          ).test(config);
+    if (named) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `.oxlintrc.json does not restrict ${banned.identifier} under packages/core/src. ` +
+        `${banned.why}. A test-time scan catches it after it is written; the lint rule catches ` +
+        'it as it is typed, which is the only one of the two that arrives before the commit.',
+    });
+  }
+  return violations;
+}
