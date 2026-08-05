@@ -38,9 +38,15 @@ import type {
 } from './command.ts';
 import type { EventSeq, NodeId, RunId } from './ids.ts';
 import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
+import { needsHumanOf, noProgress } from './no-progress.ts';
 import { dependencyFailedFailure } from './node-failure.ts';
 import type { PlanGraph, PlanNode } from './plan-graph.ts';
-import { initialNodeState, type NodeState, type RunState } from './run-state.ts';
+import {
+  initialNodeState,
+  type NeedsHumanState,
+  type NodeState,
+  type RunState,
+} from './run-state.ts';
 
 /**
  * The two node statuses that describe work not yet in flight: never started,
@@ -71,17 +77,29 @@ export function decide(state: RunState, now: number): Command[] {
   const plan = state.plan;
   const poisoned = ended ? new Map<NodeId, number>() : poisonedBranches(state, plan);
 
+  // KAR-06.8. Both of F4.7's detectors and the caps behind them, as one pure
+  // read of `(state, now)`. The stall half is a *report* and changes nothing
+  // else on this tick; the churn half halts admission.
+  const found = noProgress(state, now);
+  const ask = needsHumanOf(found);
+  // In-flight nodes are allowed to finish (AC7): halting withholds new work and
+  // issues no `CancelNode`, because a breaker that killed the attempts already
+  // running would throw away exactly the evidence the human is being asked to
+  // look at.
+  const halted = ask !== null || state.needsHuman !== null;
+
   // Admission runs before the release sweep because it is the only thing that
   // knows which held locks are about to be kept: a node that already holds its
   // lock and is starting this tick must not have it reclaimed out from under
   // it in the same command list.
-  const admission = admitReadyNodes(state, runId, now, plan, poisoned);
+  const admission = halted ? NOTHING_ADMITTED : admitReadyNodes(state, runId, now, plan, poisoned);
 
   // Concatenated in COMMAND_ORDER, each group sorted by the seq of the event
   // that enabled it and then by node id (AC6). Grouping first and sorting
   // within is the same total order as one comparator over the whole list, and
   // it keeps each rule's ordering argument beside the rule.
   return [
+    ...reportNoProgress(state, runId, found.stall, ask),
     ...propagateDependencyFailures(state, runId, poisoned),
     ...releaseFinishedLocks(state, runId, admission.retained),
     ...admission.acquires,
@@ -89,6 +107,61 @@ export function decide(state: RunState, now: number): Command[] {
     ...cancelInFlight(state, runId, ended),
     ...scheduleWakes(state, runId, now),
   ];
+}
+
+// ── no progress ──────────────────────────────────────────────────────────────
+
+/**
+ * KAR-06.8. The two run-scoped conclusions F4.7 draws from state alone.
+ *
+ * `run.stalled` is a **report**. Nothing else on this tick differs because of
+ * it: no node is cancelled, failed or rescheduled, and the scheduling commands
+ * are the ones the previous tick returned. A legitimately long build, a large
+ * test suite and a wedged agent are indistinguishable from here, and killing a
+ * forty-minute integration run because it went quiet for ten minutes is a worse
+ * failure than the one being prevented (AC3).
+ *
+ * `run.needs_human` is the circuit breaker, and it is emitted **once**: the
+ * moment it is folded, `state.needsHuman` is set and this returns nothing more,
+ * which is what stops a halted run appending one row per tick for as long as
+ * nobody is awake to answer it (AC7).
+ */
+function reportNoProgress(
+  state: RunState,
+  runId: RunId,
+  stall: ReturnType<typeof noProgress>['stall'],
+  ask: NeedsHumanState | null,
+): EmitEvent[] {
+  const commands: EmitEvent[] = [];
+
+  if (stall !== null) {
+    commands.push({
+      kind: 'EmitEvent',
+      runId,
+      node: null,
+      attempt: null,
+      event: {
+        kind: 'run.stalled',
+        payload: {
+          watermarkSeq: eventSeq(stall.watermarkSeq),
+          idleMs: stall.idleMs,
+          runningNodes: [...stall.runningNodes],
+        },
+      },
+    });
+  }
+
+  if (ask !== null && state.needsHuman === null) {
+    commands.push({
+      kind: 'EmitEvent',
+      runId,
+      node: null,
+      attempt: null,
+      event: { kind: 'run.needs_human', payload: { reason: ask.reason, detail: ask.detail } },
+    });
+  }
+
+  return commands;
 }
 
 // ── the ready set ────────────────────────────────────────────────────────────

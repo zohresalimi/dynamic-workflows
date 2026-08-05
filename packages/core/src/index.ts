@@ -234,6 +234,26 @@ export type { LockClaim } from './locks.ts';
 export { claimId, lockClaims, lockHolder, repoLockKey } from './locks.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
+// KAR-06.8 — F4.7's stall detector, churn circuit breaker and hard caps, all
+// pure reads of `(RunState, now)`.
+export type {
+  CapBreach,
+  ChurnTrip,
+  CompletedAttempt,
+  NoProgress,
+  NoProgressPolicy,
+  ReplanStreak,
+  RunCap,
+  StallReport,
+} from './no-progress.ts';
+export {
+  CHURN_WINDOW,
+  DEFAULT_NO_PROGRESS_POLICY,
+  INITIAL_REPLAN_STREAK,
+  needsHumanOf,
+  noProgress,
+  RUN_CAPS,
+} from './no-progress.ts';
 // KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy.
 export type {
   FailureClass,

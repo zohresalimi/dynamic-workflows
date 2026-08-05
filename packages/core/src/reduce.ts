@@ -33,6 +33,7 @@
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
 import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
+import { CHURN_WINDOW, type CompletedAttempt, type ReplanStreak } from './no-progress.ts';
 import type { PlanGraph } from './plan-graph.ts';
 import {
   initialNodeState,
@@ -55,6 +56,19 @@ const TERMINAL_NODE_STATUSES: readonly NodeStatus[] = ['completed', 'failed', 'c
 type Transition = RunState | null;
 
 /**
+ * The one kind that is *derived from* the watermark, and therefore may not
+ * advance it (KAR-06.8 AC2).
+ *
+ * `run.stalled` says "the projection has not moved since seq N". Folding it is
+ * necessary — the seq it names is how the next tick knows the episode has
+ * already been reported — but letting it move the watermark would end the very
+ * episode it describes, and the run would be re-reported as freshly stalled
+ * every ten minutes, for ever. It is the projection reading its own reflection,
+ * and the fix is one line rather than a special case in the detector.
+ */
+const DERIVED_FROM_WATERMARK: readonly string[] = ['run.stalled'];
+
+/**
  * Folds one event into `state`.
  *
  * Total: every input returns a `RunState`, including an event kind this build
@@ -66,6 +80,7 @@ export function reduce(state: RunState, event: Event): RunState {
     kind: unknown;
     payload: unknown;
     seq: unknown;
+    ts: unknown;
     epoch: unknown;
     runId: unknown;
   }>;
@@ -95,8 +110,10 @@ export function reduce(state: RunState, event: Event): RunState {
   }
 
   const seq = typeof envelope.seq === 'number' ? envelope.seq : state.watermarkSeq;
+  const ts = typeof envelope.ts === 'number' ? envelope.ts : state.watermarkTs;
   const runId =
     projected.runId ?? (typeof envelope.runId === 'string' ? (envelope.runId as RunId) : null);
+  const advances = !DERIVED_FROM_WATERMARK.includes(envelope.kind);
 
   return {
     ...projected,
@@ -104,7 +121,12 @@ export function reduce(state: RunState, event: Event): RunState {
     epoch,
     // Monotone by construction: `seq` is the total order of the system, and a
     // cursor that can go backwards is a cursor that can lie.
-    watermarkSeq: Math.max(state.watermarkSeq, seq),
+    watermarkSeq: advances ? Math.max(state.watermarkSeq, seq) : state.watermarkSeq,
+    // Monotone for a different reason: `ts` is a wall clock, and a laptop that
+    // stepped its clock backwards mid-run must not be able to make the run look
+    // like it progressed earlier than it did — which is what would let a stall
+    // go unreported for as long as the step was large.
+    watermarkTs: advances ? Math.max(state.watermarkTs, ts) : state.watermarkTs,
   };
 }
 
@@ -120,6 +142,8 @@ function project(state: RunState, event: Event): Transition {
   // envelope that never came through `parseEvent` is answered, not thrown at.
   const rawSeq: unknown = (event as { seq?: unknown }).seq;
   const seq = typeof rawSeq === 'number' ? rawSeq : 0;
+  const rawTs: unknown = (event as { ts?: unknown }).ts;
+  const ts = typeof rawTs === 'number' ? rawTs : 0;
 
   switch (event.kind) {
     // `cwd` is the repository the run executes against, and it is folded here
@@ -141,7 +165,12 @@ function project(state: RunState, event: Event): Transition {
     case 'run.started': {
       const planHash = event.payload.planHash;
       if (state.status === 'running' && state.planHash === planHash) return null;
-      return withActivePlan({ ...state, status: 'running', planHash }, planHash);
+      // §11.4's `maxRunWallClock` runs from here, and only from the first one:
+      // a `run.started` folded a second time is a re-adoption of a plan, not a
+      // second birth, and restarting the clock would make the cap forgive
+      // everything that came before it (KAR-06.8 AC8).
+      const startedTs = state.startedTs === 0 ? ts : state.startedTs;
+      return withActivePlan({ ...state, status: 'running', planHash, startedTs }, planHash);
     }
 
     // F4.4: pause is an event and never an in-memory flag, because a flag does
@@ -176,11 +205,15 @@ function project(state: RunState, event: Event): Transition {
     case 'run.aborted':
       return endRun(state, 'aborted', event.payload.outcome, event.payload.criteriaSatisfied);
 
-    // F4.7 is surfaced, never auto-killed — and it is *derived* from the
-    // watermark, so recording it would be the projection reading its own
-    // reflection. A long build and a wedged agent look identical from here.
-    case 'run.stalled':
-      return null;
+    // F4.7 is surfaced, never auto-killed: a long build and a wedged agent look
+    // identical from here. What *is* recorded is which episode has already been
+    // reported, so the next tick does not report it again (KAR-06.8 AC2) — and
+    // recording it must not advance the watermark, which is what
+    // `DERIVED_FROM_WATERMARK` above guarantees.
+    case 'run.stalled': {
+      const episode = event.payload.watermarkSeq;
+      return state.stalledAtSeq === episode ? null : { ...state, stalledAtSeq: episode };
+    }
 
     case 'run.needs_human': {
       const flagged = withStatus(state, 'needs-human') ?? state;
@@ -211,6 +244,7 @@ function project(state: RunState, event: Event): Transition {
           ...state,
           planHash: event.payload.toHash,
           planVersion: Math.max(state.planVersion, event.payload.version),
+          replans: replanned(state, event.payload.version),
         },
         event.payload.toHash,
       );
@@ -249,6 +283,10 @@ function project(state: RunState, event: Event): Transition {
         status: 'running',
         failure: null,
         suspension: null,
+        // The request hash describes an attempt, not a node: a new attempt has
+        // not asked for anything yet, and inheriting the previous attempt's
+        // digest would let the churn window count work that was never redone.
+        requestHash: event.payload.attempt > current.attempt ? null : current.requestHash,
         wakeAt: null,
       }));
 
@@ -257,16 +295,33 @@ function project(state: RunState, event: Event): Transition {
     case 'node.progress':
       return null;
 
-    case 'node.completed':
-      return withNode(state, seq, event.payload.node, (current) => ({
+    case 'node.completed': {
+      const node = event.payload.node;
+      const attempt = event.payload.attempt;
+      const asked = (state.nodes[node] ?? UNKNOWN_NODE).requestHash;
+      const closed = withNode(state, seq, node, (current) => ({
         ...current,
-        ...attemptOf(current, event.payload.attempt),
+        ...attemptOf(current, attempt),
         status: 'completed',
         result: event.payload.result,
         failure: null,
         suspension: null,
         wakeAt: null,
       }));
+      if (closed === null) return null;
+
+      // §11.3's window is of *completed attempts*, not of events and not of
+      // seconds, which is why it is appended to here and nowhere else.
+      return {
+        ...closed,
+        churnWindow: slideWindow(closed.churnWindow, {
+          node,
+          requestHash: asked,
+          attempt,
+          seq,
+        }),
+      };
+    }
 
     case 'node.failed':
       return withNode(state, seq, event.payload.node, (current) => ({
@@ -337,10 +392,34 @@ function project(state: RunState, event: Event): Transition {
         wakeAt: suspensionWakeAt(event.payload.until.wakeAt) ?? current.wakeAt,
       }));
 
-    // The effect journal is its own table (§8.3) and its own read model: a
-    // memoised effect result is not run state, and duplicating it here would
-    // give the same fact two homes that can disagree.
-    case 'effect.started':
+    /**
+     * The effect journal is its own table (§8.3) and its own read model — a
+     * memoised effect *result* is not run state, and duplicating it here would
+     * give the same fact two homes that can disagree.
+     *
+     * The one field taken off it is `requestHash`, and only for the attempt's
+     * first effect. It is not a copy of the journal: it is the churn breaker's
+     * sole input that cannot be recomputed inside `decide()`, because the
+     * digest is asynchronous and `decide` is a synchronous function of state
+     * and `now` (KAR-06.8 AC5). A later ordinal in the same attempt does not
+     * overwrite it — an agent node's first effect is the agent invocation, and
+     * the git commit that follows it is not what was asked for.
+     */
+    case 'effect.started': {
+      const node = event.nodeId;
+      const attempt = event.attempt;
+      if (node === undefined || attempt === undefined) return null;
+      return withNode(state, seq, node, (current) => {
+        if (attempt < current.attempt) return current;
+        if (attempt === current.attempt && current.requestHash !== null) return current;
+        return {
+          ...current,
+          ...attemptOf(current, attempt),
+          requestHash: event.payload.requestHash,
+        };
+      });
+    }
+
     case 'effect.completed':
     case 'effect.failed':
     case 'effect.cancelled':
@@ -429,6 +508,47 @@ function project(state: RunState, event: Event): Transition {
       return null;
   }
 }
+
+/**
+ * KAR-06.8 §11.3. Appends one completed attempt and drops whatever falls off
+ * the front, so the window is `CHURN_WINDOW` entries at its widest and
+ * `run.state_json` costs the same whether the run has ten attempts behind it or
+ * ten thousand.
+ */
+function slideWindow(
+  window: readonly CompletedAttempt[],
+  entry: CompletedAttempt,
+): readonly CompletedAttempt[] {
+  return [...window, entry].slice(-CHURN_WINDOW);
+}
+
+/**
+ * KAR-06.8 §11.3. The replan streak after one more `plan.patched`.
+ *
+ * A replan that follows real progress restarts the count *from itself* rather
+ * than zeroing it: the planner patching a plan on the back of a completed node
+ * is doing its job, and the next two flat patches after it are two, not three.
+ * `completed` is therefore the count as of the replan the streak began at, and
+ * the comparison is against that rather than against the previous patch —
+ * three patches that each fail to move a count of 7 are the deck chairs §11.3
+ * names, whichever order the nodes finished in.
+ */
+function replanned(state: RunState, version: number): ReplanStreak {
+  const completed = Object.values(state.nodes).filter((node) => node.status === 'completed').length;
+  const streak = state.replans;
+
+  if (completed > streak.completed) return { flat: 1, completed, versions: [version] };
+
+  return {
+    flat: streak.flat + 1,
+    completed,
+    versions: [...streak.versions, version].slice(-MAX_STREAK_VERSIONS),
+  };
+}
+
+/** See `no-progress.ts`: the streak trips long before this, so the bound only
+ * matters to a run whose detectors are switched off. */
+const MAX_STREAK_VERSIONS = 8;
 
 /** Only a real change is a change: an idempotent repeat returns `null`. */
 function withStatus(state: RunState, status: RunStatus): Transition {
