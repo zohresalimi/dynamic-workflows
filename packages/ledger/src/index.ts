@@ -117,6 +117,20 @@ export {
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
+// KAR-06.6 — the `node_wake` table: every wait in the system, from a 2-second
+// retry backoff to a 30-day human gate, as one row and zero CPU. Never a timer.
+export {
+  appendEventsConsumingWakes,
+  clearWake,
+  dueWakes,
+  InvalidWakeReason,
+  type NodeWakeKey,
+  type NodeWakeRow,
+  nextWakeAt,
+  readWakes,
+  scheduleWake,
+  scheduleWakeIfChanged,
+} from './node-wake.ts';
 // KAR-03.8 — the daemon's start-of-life rebuild: every run in a data
 // directory, folded from the ledger a dead process left behind.
 export {

@@ -126,6 +126,40 @@
       }
     },
     {
+      // KAR-06.6 AC1. @DeFlow/daemon is the orchestrator's imperative shell,
+      // and it is allowed exactly one timer. Everything else that waits — a
+      // 2-second retry backoff, a six-hour human gate, a 30-day one — is a
+      // `node_wake` row on the ~1 Hz ticker (docs/05-durable-execution.md
+      // §10.1), because verified 2026-08-02: Node fires setTimeout(2**31)
+      // after 1 ms instead of clamping, and no timer fires during laptop sleep
+      // or survives a restart. A wait written as a timer is a durability bug
+      // that produces no log line at all.
+      "files": ["packages/daemon/src/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "A wait is a node_wake row, never a timer. Sleep through the Clock port (systemClock in packages/daemon/src/clock.ts), which is the single allowlisted call site — the ticker's sleep hint, min(nextWakeAt - now, 1000), goes through it too."
+          },
+          {
+            "name": "setInterval",
+            "message": "The ~1 Hz tick loop is startTicker() in packages/daemon/src/ticker.ts, which reschedules one Clock timer per tick rather than holding an interval — an interval fires while the previous tick is still in flight, over the same ledger."
+          }
+        ]
+      }
+    },
+    {
+      // The one exemption, named here rather than merely skipped, so it is
+      // visible to whoever next edits the file. This is the `Clock` port's
+      // implementation: its entire job is to be the daemon's only setTimeout,
+      // and every grace window and sleep hint in the process goes through it.
+      "files": ["packages/daemon/src/clock.ts"],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
+    },
+    {
       // Specs are not the published surface, and a spec that parses a fixture
       // needs node:fs. The purity guard scopes itself the same way
       // (`productionSources` skips *.test.ts), so the two agree on what "core

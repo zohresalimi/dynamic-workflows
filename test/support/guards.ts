@@ -2431,3 +2431,120 @@ export function checkNondeterminismIsLinted(config: string): Violation[] {
   }
   return violations;
 }
+
+/* ── KAR-06.6 AC1 — one timer in the orchestrator, and it is a hint ─────────
+ *
+ * @DeFlow/core may not name a timer at all (see BANNED_NONDETERMINISM above).
+ * The daemon is the imperative shell and therefore has to own exactly one, so
+ * the rule here is not "none" but "one, named, and everywhere else a
+ * `node_wake` row".
+ *
+ * The allowlisted file is the `Clock` port's implementation rather than the
+ * ticker, which is the shape the whole design rests on: the ticker asks the
+ * port to sleep and never names a global, so the ticker's sleep hint, the
+ * shutdown hard-exit and every future grace window are one `setTimeout` in one
+ * file whose entire job is to be that one.
+ *
+ * Why it matters more here than anywhere else: **verified 2026-08-02**, Node
+ * fires `setTimeout(2**31)` after ~1 ms instead of clamping, so a 30-day human
+ * gate written as a timer fires instantly and nothing in the logs says
+ * "durability failure". Below that ceiling timers still do not fire during
+ * laptop sleep and do not survive a restart.
+ * -------------------------------------------------------------------------- */
+
+/** The globals a wait must never be written with. */
+export const TIMER_GLOBALS = ['setTimeout', 'setInterval'] as const;
+
+/**
+ * The only production sources allowed to name one, repo-relative. Exported so
+ * the spec asserts the list rather than trusting it, and so the lint config
+ * and the scan cannot drift apart.
+ */
+export const TIMER_ALLOWLIST: readonly string[] = ['packages/daemon/src/clock.ts'];
+
+/** `setTimeout(` and friends, assembled so this file never trips its own rule. */
+const timerPattern = (global: string): RegExp => new RegExp(`(?<![.\\w])${global}\\s*\\(`);
+
+/**
+ * AC1. Every production source of a package that names a timer global, except
+ * the allowlisted ones. Comment-only lines are blanked first, so the prose
+ * explaining why the rule exists is not the rule's own first violation.
+ */
+export function checkNoTimerWaits(
+  files: readonly SourceFile[],
+  allowed: readonly string[] = TIMER_ALLOWLIST,
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    const lines = codeOnly(file.text).split('\n');
+    for (const [index, line] of lines.entries()) {
+      for (const global of TIMER_GLOBALS) {
+        if (!timerPattern(global).test(line)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} calls ${global}. A wait is a node_wake row, never a timer ` +
+            '(docs/05-durable-execution.md §10.1): Node fires a delay above 2^31-1 ms after ' +
+            '1 ms rather than clamping — verified 2026-08-02 — and no timer fires during ' +
+            `laptop sleep or survives a restart. Sleep through the Clock port instead; ${allowed.join(
+              ', ',
+            )} is the one file allowed to implement it.`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * The other half of the same rule: oxlint refuses a second call site in the
+ * editor, at the moment it is typed, and the allowlisted path is named in the
+ * config so the exemption is a decision somebody wrote down rather than a file
+ * that happened to be skipped.
+ *
+ * Checked against the raw text of `.oxlintrc.json` rather than a parse,
+ * because that file is JSONC — the comments carry the reasons, and dropping
+ * them to satisfy a parser would delete the explanation from the only place
+ * anyone reads it.
+ */
+export function checkTimerAllowlistIsLinted(config: string): Violation[] {
+  const violations: Violation[] = [];
+
+  const restricts = (global: string): boolean =>
+    new RegExp(`"name"\\s*:\\s*"${global}"`).test(config);
+
+  for (const global of TIMER_GLOBALS) {
+    if (restricts(global)) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `.oxlintrc.json does not restrict ${global}. A wait written as a timer is a durability ` +
+        'bug that is invisible in the logs, so the linter has to refuse it as it is typed — a ' +
+        'test-time scan only catches it once it is already written.',
+    });
+  }
+
+  if (!/"files"\s*:\s*\[\s*"packages\/daemon\/src\/\*\*\/\*\.ts"\s*\]/.test(config)) {
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        'no override covers packages/daemon/src/**/*.ts, so the timer restriction reaches the ' +
+        'orchestrator’s shell only by accident. The scheduling half of DeFlow is @DeFlow/core ' +
+        'plus this package, and core is already covered by its own override.',
+    });
+  }
+
+  for (const allowed of TIMER_ALLOWLIST) {
+    if (config.includes(`"${allowed}"`)) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `${allowed} is the one call site the scan allows, but the lint config never names it. ` +
+        'An exemption that exists in a test file and not in the rule is an exemption nobody ' +
+        'editing that file will ever see.',
+    });
+  }
+
+  return violations;
+}

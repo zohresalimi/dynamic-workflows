@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
 import type { Command } from './command.ts';
+import { WAKE_REASONS } from './command.ts';
 import { decide } from './decide.ts';
 import type { EventKind } from './event-payloads.ts';
 import { EVENT_SCHEMAS } from './event-payloads.ts';
@@ -808,5 +809,120 @@ suite('EPIC-06-S7 — one agent per worktree, always', () => {
       { kind: 'AcquireLock', runId: RUN_ID, node: 'fix-1', lock: 'repo', key: REPO_LOCK },
       { kind: 'AcquireLock', runId: RUN_ID, node: 'fix-1', lock: 'worktree', key: REPO },
     ]);
+  });
+});
+
+// ── EPIC-06-S21, EPIC-06-S22 — every wait is a node_wake row ─────────────────
+
+/** Durations, spelled the way the flow scenarios spell them. */
+const hours = (count: number): number => count * 3_600_000;
+const days = (count: number): number => count * 86_400_000;
+
+/** Node's ceiling: `setTimeout(2**31)` fires after ~1 ms instead of clamping. */
+const MAX_TIMER_DELAY = 2 ** 31 - 1;
+
+/**
+ * A human gate with a deadline. The instant is carried as ISO-8601 inside the
+ * payload and as an integer ms epoch in the projection — `wakeAt` is an
+ * instant, never a duration, because a duration is only meaningful relative to
+ * a process that is still running.
+ */
+const suspendedUntil = (node: string, wakeAt: number): Row => ({
+  kind: 'node.suspended',
+  payload: { node, until: { kind: 'human', wakeAt: new Date(wakeAt).toISOString() } },
+});
+
+const backoffTo = (node: string, wakeAt: number): readonly Row[] => [
+  startedNode('recon'),
+  failed(node, 'transient'),
+  retryScheduled(node, 1, wakeAt),
+];
+
+suite('EPIC-06-S22 — a suspended node waits as a row, not a timer (KAR-06.6)', () => {
+  it('AC4: the reason vocabulary is the closed set the node_wake column stores', () => {
+    expect(WAKE_REASONS).toEqual(['backoff', 'human_gate', 'poll']);
+  });
+
+  it('AC4: a six-hour human gate asks for exactly one row, with reason human_gate', () => {
+    const wakeAt = NOW + hours(6);
+    const state = started(CHAIN, [startedNode('recon'), suspendedUntil('recon', wakeAt)]);
+
+    expect(of(state, 'ScheduleWake')).toEqual([
+      { kind: 'ScheduleWake', runId: RUN_ID, node: 'recon', wakeAt, reason: 'human_gate' },
+    ]);
+  });
+
+  it('AC7: and it holds no slot and no lock while it sleeps', () => {
+    const wakeAt = NOW + hours(6);
+    const state = started(
+      [{ id: 'gate', permission: 'worktree', writes: ['src/**'] }, { id: 'analysis' }],
+      [
+        lockAcquired('gate', 'repo', REPO_LOCK),
+        startedNode('gate'),
+        suspendedUntil('gate', wakeAt),
+      ],
+      [createdIn()],
+    );
+
+    // The lock goes back on the same tick the suspension is observed …
+    expect(of(state, 'ReleaseLock').map((command) => command.node)).toEqual(['gate']);
+    // … and the slot it was occupying is spent on unrelated work, not held.
+    expect(startNodes(state)).toEqual(['analysis']);
+  });
+
+  it('AC4: a backoff and a poll are told apart in the row, not in the reader’s head', () => {
+    const backoff = started(CHAIN, backoffTo('recon', NOW + 4_000));
+    expect(of(backoff, 'ScheduleWake')[0]?.reason).toBe('backoff');
+
+    const external = started(CHAIN, [
+      startedNode('recon'),
+      {
+        kind: 'node.suspended',
+        payload: {
+          node: 'recon',
+          until: { kind: 'external', wakeAt: new Date(NOW + 4_000).toISOString() },
+        },
+      },
+    ]);
+    expect(of(external, 'ScheduleWake')[0]?.reason).toBe('poll');
+  });
+});
+
+suite('EPIC-06-S21 — a 30-day gate is a row, because a 30-day timer is a lie', () => {
+  const wakeAt = NOW + days(30);
+
+  it('AC5: the wake is a plain integer ms epoch, and it is one no timer could hold', () => {
+    const state = started(CHAIN, backoffTo('recon', wakeAt));
+    const [wake] = of(state, 'ScheduleWake');
+
+    expect(wake).toEqual({
+      kind: 'ScheduleWake',
+      runId: RUN_ID,
+      node: 'recon',
+      wakeAt,
+      reason: 'backoff',
+    });
+    expect(Number.isSafeInteger(wake?.wakeAt)).toBe(true);
+    // The whole reason the row exists: as a *delay* this overflows Node's
+    // timer, and Node does not clamp — it fires after ~1 ms.
+    expect(wakeAt - NOW).toBeGreaterThan(MAX_TIMER_DELAY);
+  });
+
+  it('AC5: and it is honoured exactly — nothing at 29 days, once at 30', () => {
+    const state = started(CHAIN, backoffTo('recon', wakeAt));
+
+    expect(startNodes(state, NOW + days(29))).toEqual([]);
+    expect(startNodes(state, wakeAt)).toEqual(['recon']);
+  });
+
+  it('AC8: a clock that jumps backwards skips nothing and fires nothing twice', () => {
+    const state = started(CHAIN, backoffTo('recon', NOW + hours(2)));
+
+    // now moves BACKWARDS by an hour, as laptop sleep and NTP correction do.
+    expect(startNodes(state, NOW - hours(1))).toEqual([]);
+    // The row is restated unchanged — the same instant, not a recomputed delay.
+    expect(of(state, 'ScheduleWake', NOW - hours(1))[0]?.wakeAt).toBe(NOW + hours(2));
+    // And then forward across it: exactly one start, at the instant on the row.
+    expect(startNodes(state, NOW + hours(2))).toEqual(['recon']);
   });
 });

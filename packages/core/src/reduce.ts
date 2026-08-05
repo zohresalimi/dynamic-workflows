@@ -273,6 +273,15 @@ function project(state: RunState, event: Event): Transition {
         ...current,
         status: 'suspended',
         suspension: event.payload.until,
+        // KAR-06.6. A suspension with a deadline is a `node_wake` row and
+        // nothing else — a six-hour human gate, a poll for an external signal
+        // and a 2-second retry backoff all reach `decide()` through this one
+        // field. The payload carries the instant as ISO-8601 and the
+        // projection as an integer ms epoch; both are instants rather than
+        // durations, because a duration is only meaningful relative to a
+        // process that is still running, and the point of the row is to
+        // outlive one that is not.
+        wakeAt: suspensionWakeAt(event.payload.until.wakeAt) ?? current.wakeAt,
       }));
 
     // The effect journal is its own table (§8.3) and its own read model: a
@@ -391,6 +400,25 @@ function withCriteria(state: RunState, criteria: readonly CriterionId[]): Transi
 }
 
 const dedupe = <T>(values: readonly T[]): T[] => [...new Set(values)];
+
+/**
+ * KAR-06.6. A suspension's deadline as the integer ms epoch the `node_wake`
+ * row stores, or `null` for an indefinite wait — a human gate with no timeout
+ * is woken by `human.responded`, not by the ticker, and giving it a wake row
+ * would poll a question nobody has answered.
+ *
+ * `Date.parse` is arithmetic over a string, not a clock read: the same input
+ * yields the same number in this process, in a replay and on another machine,
+ * which is the only property the purity rule is protecting. An unparseable
+ * instant reads as absent rather than as `NaN`, so a payload from a newer
+ * DeFlowd degrades the projection instead of poisoning every comparison
+ * against it — `NaN > now` is false, which would silently mean "due now".
+ */
+function suspensionWakeAt(iso: string | undefined): number | null {
+  if (iso === undefined) return null;
+  const at = Date.parse(iso);
+  return Number.isFinite(at) ? at : null;
+}
 
 /** `attempt` is the observed index; `attempts` is derived from it, never counted. */
 function attemptOf(current: NodeState, attempt: number): Pick<NodeState, 'attempt' | 'attempts'> {
