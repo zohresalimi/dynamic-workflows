@@ -4,5 +4,9 @@
  */
 import type { Migration } from '../migrate.ts';
 import { migration0001InitialSchema } from './0001-initial-schema.ts';
+import { migration0002EventEpoch } from './0002-event-epoch.ts';
 
-export const MIGRATIONS: readonly Migration[] = [migration0001InitialSchema];
+export const MIGRATIONS: readonly Migration[] = [
+  migration0001InitialSchema,
+  migration0002EventEpoch,
+];

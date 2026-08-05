@@ -7,9 +7,23 @@
  * (docs/16-repo-layout.md §8).
  *
  * KAR-03.1 ships the connection layer. KAR-03.2 adds the migration runner,
- * migration 0001's six-table schema, and `openLedger`. The rest of EPIC-03
- * fills the rest in.
+ * migration 0001's six-table schema, and `openLedger`. KAR-03.3 adds the
+ * append-only event log. The rest of EPIC-03 fills the rest in.
+ *
+ * Note what is not here and never will be: an `updateEvent`, a `deleteEvent`
+ * or an `amendEvent`. The `event` table is append-only, and
+ * `test/append-only.test.ts` fails the build if one appears.
  */
+// KAR-03.3 — the append-only event log: append(), readRange() and nothing that writes twice.
+export {
+  appendEvents,
+  type EventDraft,
+  EventDraftSchema,
+  type EventPage,
+  InvalidEventEnvelope,
+  readRange,
+  type StoredEvent,
+} from './append.ts';
 // KAR-03.1 — the driver adapter behind the Db port declared in @DeFlow/core.
 export { LedgerAlreadyOpen, LedgerTooNew } from './errors.ts';
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.

@@ -47,7 +47,7 @@ Background:
 | EPIC-03-S6  | A failing migration rolls back completely                              | KAR-03.2                     | Failure     |
 | EPIC-03-S7  | A ledger newer than the binary refuses to open                         | KAR-03.2, KAR-03.5           | Failure     |
 | EPIC-03-S8  | Pruning reuses a sequence number without `AUTOINCREMENT`               | KAR-03.3                     | Failure     |
-| EPIC-03-S9  | A rolled-back transaction burns a sequence value                       | KAR-03.3                     | Edge case   |
+| EPIC-03-S9  | Sequence gaps are legal and the cursor is strictly greater than        | KAR-03.3                     | Edge case   |
 | EPIC-03-S10 | Two runs interleave in one global event table                          | KAR-03.3                     | Concurrency |
 | EPIC-03-S11 | Agent output reaches `io_chunk` and never the reducer                  | KAR-03.4, KAR-03.5           | Happy path  |
 | EPIC-03-S12 | Control-plane replay stays fast beside a huge data plane               | KAR-03.4                     | Performance |
@@ -330,19 +330,30 @@ cost of `AUTOINCREMENT` is one extra `sqlite_sequence` row update per insert.
 
 ---
 
-## EPIC-03-S9 — A rolled-back transaction burns a sequence value
+## EPIC-03-S9 — Sequence gaps are legal and the cursor is strictly greater than
 
 **Verifies:** KAR-03.3 · **Type:** Edge case · **Automated at:** integration
 
 ```gherkin
 Feature: Sequence gaps are legal
 
-  Scenario: a rollback leaves a hole
+  Scenario: a rollback leaves no rows, and does not burn the numbers either
     Given the last committed event has seq 100
     When a transaction appends 3 events and is rolled back
-    And a subsequent transaction appends 1 event
-    Then that event's seq is greater than 100 and is not 101
-    And readRange(runId, 100, 10) returns exactly that one event
+    Then none of those 3 events is in the ledger
+    And sqlite_sequence still reads 100, because ROLLBACK restores it
+    And a subsequent append is handed 101 — a seq means nothing until its transaction commits
+
+  Scenario: pruning is what leaves a hole
+    Given events with seqs 1, 2 and 3
+    When the row holding seq 2 is deleted and another event is appended
+    Then the new event's seq is 4, because AUTOINCREMENT never reissues 2
+    And readRange(runId, 1, 10) returns seqs 3 and 4, skipping the hole
+
+  Scenario: two runs in one table leave a hole in each run's view
+    Given runs "run_A" and "run_B" appending alternately
+    Then run_A's seqs are 1, 3, 5, 7
+    And readRange("run_A", 1, 10) returns 3 next, never 2
 
   Scenario: the cursor contract is "strictly greater than"
     Given a consumer holding cursor 100
@@ -352,10 +363,20 @@ Feature: Sequence gaps are legal
     And a test asserts no source file in packages/ledger or packages/daemon contains "seq + 1" as a cursor expression
 ```
 
-**Notes:** This contract propagates all the way to the SSE endpoint in
+**Notes:** **Amended 2026-08-05 (KAR-03.3).** This scenario used to be titled "A rolled-back
+transaction burns a sequence value" and asserted that the append after a rollback skips the burned
+numbers. It does not: `sqlite_sequence` is an ordinary table, a `ROLLBACK` — full or to a
+`SAVEPOINT` — restores its high-water mark, and the next append is handed 101. Verified on
+better-sqlite3@13.0.2 / SQLite 3.53.4 before the scenario was rewritten, and
+[05-durable-execution §6](../../05-durable-execution.md#6-autoincrement-is-mandatory) was corrected
+at the same time. The contract is unchanged and now rests on the two mechanisms that genuinely
+produce gaps — pruning, and one global `event` table shared by concurrent runs — which is a stronger
+footing, because both are permanent rather than incidental.
+
+This contract propagates all the way to the SSE endpoint in
 [EPIC-15](../epics/EPIC-15-daemon-api.md): resume is always "strictly greater than `n`", never
-"expect `n+1`". A UI that assumed contiguity would show a permanent phantom gap after the first
-rolled-back transaction.
+"expect `n+1`". A UI that assumed contiguity would show a permanent phantom gap the first time two
+runs are active at once.
 
 ---
 

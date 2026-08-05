@@ -29,6 +29,8 @@ const hashOf = (filename: string): string =>
 const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-05, KAR-03.2.
   '0001-initial-schema.ts': 'ce9aa2b46a0614760259a9c9f5e14758a4249fc67dbafa0676072afd71650529',
+  // Shipped 2026-08-05, KAR-03.3 — event.epoch.
+  '0002-event-epoch.ts': '60c4b67cd912c12f807fb1175a381036b03492b562bc5e49d8b995fe17f5c548',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(
