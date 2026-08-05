@@ -10,8 +10,9 @@
  * migration 0001's six-table schema, and `openLedger`. KAR-03.3 adds the
  * append-only event log. KAR-03.4 adds the data plane — `io_chunk`, the bounded
  * drains and the per-run counters. KAR-03.7 adds the fence: the
- * single-instance lease and the daemon epoch. The rest of EPIC-03 fills the
- * rest in.
+ * single-instance lease and the daemon epoch. KAR-03.9 adds the
+ * content-addressed blob store an oversized payload spills into. The rest of
+ * EPIC-03 fills the rest in.
  *
  * Note what is not here and never will be: an `updateEvent`, a `deleteEvent`
  * or an `amendEvent`. The `event` table is append-only, and
@@ -21,17 +22,43 @@
  */
 // KAR-03.3 — the append-only event log: append(), readRange() and nothing that writes twice.
 export {
+  type AppendOptions,
   appendEvents,
   EVENT_TAIL_SQL,
   type EventDraft,
   EventDraftSchema,
   type EventPage,
   InvalidEventEnvelope,
-  MAX_INLINE_PAYLOAD_BYTES,
   PayloadTooLarge,
   readRange,
   type StoredEvent,
 } from './append.ts';
+// KAR-03.9 — the content-addressed blob store: what an oversized payload
+// becomes, and the excerpt that keeps a lost artifact renderable.
+export {
+  ARTIFACT_FAILED_INTEGRITY,
+  ARTIFACT_UNAVAILABLE,
+  type ArtifactStatus,
+  type ArtifactView,
+  BLOB_DIR,
+  BlobCorrupt,
+  BlobMissing,
+  type BlobRef,
+  blobHandle,
+  blobPath,
+  blobTempPath,
+  EXCERPT_BYTES,
+  getBlob,
+  InvalidBlobHandle,
+  inspectArtifact,
+  isBlobRef,
+  MAX_INLINE_PAYLOAD_BYTES,
+  PAYLOAD_MIME,
+  putBlob,
+  type SpillResult,
+  spillBytes,
+  spillIfLarge,
+} from './blobs.ts';
 // KAR-03.6 — the checkpoint cache: written with the events it covers, and
 // discarded rather than believed whenever it might be stale.
 export {
