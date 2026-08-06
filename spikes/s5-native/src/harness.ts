@@ -176,6 +176,52 @@ export async function runBench(events: number, outPath?: string): Promise<BenchR
   return parseBenchCsv(readFileSync(out, 'utf8'));
 }
 
+/** How many interleaved rounds the shape sampler takes, and how big each is. */
+export const SHAPE_ROUNDS = 5;
+export const SHAPE_EVENTS = 50_000;
+
+const SHAPE_MARKER = '---S5-SHAPE-JSON---';
+
+/**
+ * The four `fullfsync = 0` configurations, measured **interleaved**: all four,
+ * then all four again, `rounds` times over.
+ *
+ * This exists because every claim about the *shape* of the numbers is a ratio,
+ * and `runBench` measures each configuration once, to completion, in turn — so
+ * the two halves of a ratio come from moments minutes apart. That is fine on an
+ * idle laptop and worthless on a loaded one. Interleaved, the halves are
+ * adjacent and the load cancels; repeated, a round that met a spike anyway is
+ * outvoted by the median.
+ *
+ * `SHAPE_EVENTS` is five times the story's 10,000 for the same reason: at
+ * 10,000 the batched configurations finish in nine to thirteen milliseconds,
+ * and a nine-millisecond window on a busy box is not a measurement. At 50,000
+ * the shortest of the four runs about 63 ms and the whole round about 3.4 s.
+ * The story's own 10,000 is untouched — that is `runBench`, and it is what the
+ * committed CSV and the decision note are made of. This is a separate question:
+ * not *what does an append cost*, which is a recorded finding, but *does the
+ * shape hold*, which is a per-run check.
+ */
+export async function runShapeRounds(
+  rounds: number = SHAPE_ROUNDS,
+  events: number = SHAPE_EVENTS,
+): Promise<BenchRow[][]> {
+  const { stdout, stderr, code } = await run(process.execPath, [
+    join(SPIKE_ROOT, 'bench.mjs'),
+    '--rounds',
+    String(rounds),
+    '--events',
+    String(events),
+    '--fullfsync',
+    '0',
+  ]);
+  const marker = stdout.indexOf(SHAPE_MARKER);
+  if (code !== 0 || marker === -1) {
+    throw new Error(`bench.mjs --rounds exited ${code}\n${stdout}\n${stderr}`);
+  }
+  return JSON.parse(stdout.slice(marker + SHAPE_MARKER.length)) as BenchRow[][];
+}
+
 /** The committed run, as it stands in the repository. */
 export function committedBench(): BenchRow[] {
   return parseBenchCsv(readFileSync(join(MEASUREMENTS_DIR, 'append-throughput.csv'), 'utf8'));

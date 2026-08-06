@@ -26,7 +26,7 @@
 import { beforeAll, expect, it, describe as suite } from 'vitest';
 import {
   type BenchRow,
-  compareShape,
+  compareShapeRounds,
   REQUIRED_CELLS,
   requireRow,
 } from '../../spikes/s5-native/src/analysis.ts';
@@ -38,6 +38,7 @@ import {
   type ProbeReport,
   runBench,
   runProbe,
+  runShapeRounds,
   UPSTREAM_PTY_SPEC,
 } from '../../spikes/s5-native/src/harness.ts';
 
@@ -152,9 +153,11 @@ suite('EPIC-00-S17 — FTS5 is compiled in and the tokenizer holds (AC2)', () =>
 
 suite('EPIC-00-S18 — the APFS append benchmark (AC3)', () => {
   let rows: BenchRow[];
+  let shapeRounds: BenchRow[][];
 
   beforeAll(async () => {
     rows = await runBench(10_000);
+    shapeRounds = await runShapeRounds();
   }, 900_000);
 
   it('measured the four configurations the story asks for, 10,000 events each', () => {
@@ -181,18 +184,63 @@ suite('EPIC-00-S18 — the APFS append benchmark (AC3)', () => {
     for (const measurement of rows) expect(measurement.filesystem).toBe('apfs');
   });
 
-  it('costs more per commit at FULL than at NORMAL, at both fullfsync settings', () => {
-    for (const fullfsync of [0, 1] as const) {
-      expect(requireRow(rows, 'FULL', 'single', fullfsync).eventsPerSecond).toBeLessThan(
-        requireRow(rows, 'NORMAL', 'single', fullfsync).eventsPerSecond,
-      );
-    }
+  /**
+   * The two claims below are about the *shape* of the numbers rather than about
+   * the numbers, and both are ratios between two configurations. Read off the
+   * recorded run they were measured minutes apart, once each, and that is what
+   * made them flake: the recorded run's batched configurations finish in nine to
+   * thirteen milliseconds, and nine milliseconds on a box running a hundred
+   * forked test workers measures the scheduler and not the filesystem.
+   * `batchingGainNormal` was observed at 0.82 on a full-suite run — batching
+   * reported as a *loss* — with nothing wrong except that the machine was busy.
+   *
+   * So they are asserted against `runShapeRounds()` instead: the same four
+   * `fullfsync = 0` configurations measured interleaved, all four then all four
+   * again, five times over, at 50,000 events so the shortest window is about
+   * 63 ms rather than 9 ms. Each round yields its own ratios from numbers taken
+   * seconds apart, so the load one half meets is the load the other meets, and
+   * the median across rounds outvotes a round that met a spike anyway. Never a
+   * ratio of aggregates: one pathological round moves a sum and cannot move a
+   * median.
+   *
+   * The story's 10,000 events are untouched. That is `rows`, the recorded
+   * finding, and it is what the committed CSV and the decision note are made of
+   * — asserted above and in test/spike-s5-fsync.test.ts. This is the other
+   * question: not what an append costs, but whether the shape held.
+   */
+  const shape = () => compareShapeRounds(shapeRounds, 0);
+  const seen = (): string =>
+    `per round: ${JSON.stringify(
+      shape().perRound.map((round) => ({
+        penalty: round.fullPenalty,
+        full: round.batchingGainFull,
+        normal: round.batchingGainNormal,
+      })),
+    )}`;
+
+  it('costs more per commit at FULL than at NORMAL, at the darwin default', () => {
+    // Expressed as the penalty ratio rather than as two throughputs so it is the
+    // paired, per-round number that is asserted.
+    expect(shape().fullPenalty, seen()).toBeGreaterThan(1);
   });
 
-  it('gains from batching at both settings', () => {
-    const shape = compareShape(rows, 0);
-    expect(shape.batchingGainFull).toBeGreaterThan(1);
-    expect(shape.batchingGainNormal).toBeGreaterThan(1);
+  it('costs more per commit at FULL than at NORMAL with fullfsync on as well', () => {
+    // This half stays on the recorded run, and the reason is measured rather
+    // than assumed: at `fullfsync = 1` a single-commit FULL run issues one
+    // `F_FULLFSYNC` per event and manages about 335 events per second against
+    // NORMAL's 48,143 — a separation of 143x, where the pair above is separated
+    // by 3.3x. Two orders of magnitude do not invert because a box is busy, and
+    // the event count that gives the ff0 quartet honest windows would make an
+    // ff1 round take minutes, so interleaving it would buy nothing and cost a
+    // great deal.
+    expect(requireRow(rows, 'FULL', 'single', 1).eventsPerSecond).toBeLessThan(
+      requireRow(rows, 'NORMAL', 'single', 1).eventsPerSecond,
+    );
+  });
+
+  it('gains from batching at both durability settings', () => {
+    expect(shape().batchingGainFull, seen()).toBeGreaterThan(1);
+    expect(shape().batchingGainNormal, seen()).toBeGreaterThan(1);
   });
 
   it('agrees with the committed run about which configurations exist', () => {

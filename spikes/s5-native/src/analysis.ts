@@ -143,6 +143,59 @@ export function compareShape(rows: readonly BenchRow[], fullfsync: 0 | 1 = 0): S
   };
 }
 
+/**
+ * The same three ratios as `compareShape`, taken one round at a time and then
+ * reduced by median rather than computed once over aggregated numbers.
+ *
+ * The distinction is the whole point. A ratio of two throughputs measured
+ * minutes apart is a claim about two different moments, and on a busy machine
+ * those moments differ by more than the effect being measured — at 10,000
+ * events the batched configurations finish in about ten milliseconds, and ten
+ * milliseconds beside a saturated test suite is scheduler noise with a
+ * benchmark wrapped around it. `batchingGainNormal` has been observed at 0.82
+ * that way, reporting batching as a loss.
+ *
+ * So each round measures all four configurations back to back, each round
+ * yields its own three ratios from numbers taken seconds apart, and the median
+ * across rounds discards the round that met a spike. Never a ratio of sums: one
+ * pathological round would move a sum, and it cannot move a median.
+ */
+export interface ShapeRounds {
+  readonly fullfsync: 0 | 1;
+  readonly rounds: number;
+  readonly fullPenalty: number;
+  readonly batchingGainFull: number;
+  readonly batchingGainNormal: number;
+  /** Every round's ratios, so a failure can print what it actually saw. */
+  readonly perRound: readonly ShapeComparison[];
+}
+
+export function median(values: readonly number[]): number {
+  if (values.length === 0) throw new Error('no samples to take a median of');
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle] as number;
+  return ((sorted[middle - 1] as number) + (sorted[middle] as number)) / 2;
+}
+
+export function compareShapeRounds(
+  rounds: readonly (readonly BenchRow[])[],
+  fullfsync: 0 | 1 = 0,
+): ShapeRounds {
+  if (rounds.length === 0) {
+    throw new Error('no rounds were measured. A shape nobody sampled is not a shape that held.');
+  }
+  const perRound = rounds.map((rows) => compareShape(rows, fullfsync));
+  return {
+    fullfsync,
+    rounds: rounds.length,
+    fullPenalty: round(median(perRound.map((shape) => shape.fullPenalty))),
+    batchingGainFull: round(median(perRound.map((shape) => shape.batchingGainFull))),
+    batchingGainNormal: round(median(perRound.map((shape) => shape.batchingGainNormal))),
+    perRound,
+  };
+}
+
 export interface MatrixCell {
   readonly id: string;
   readonly platform: string;

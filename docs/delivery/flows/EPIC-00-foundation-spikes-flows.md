@@ -924,7 +924,38 @@ Feature: The durability setting is chosen from a number measured on the machine 
     Then the note states whether FULL remains roughly 20 to 25 times more expensive per commit
     And whether batching still gives roughly a 7 times improvement
     And the note names the shipped "synchronous=" value in one sentence with its reason
+
+  Scenario: the shape holds across repeated interleaved rounds, not in one sweep
+    Given the four fullfsync=0 configurations are measured all four at a time, five times over
+    And each round measures 50,000 events so its shortest window is tens of milliseconds
+    When each round's own FULL penalty and batching gains are computed from that round alone
+    Then the median across rounds says batching gained and FULL cost more
+    And a single round that met a scheduling spike does not decide it
 ```
+
+**Amended 2026-08-06** (EPIC-07 gate): the second scenario's two claims — *FULL costs more per
+commit* and *batching gains* — are **ratios**, and they were being read off the recorded sweep,
+which measures each of the eight configurations once, to completion, in turn. So the two halves of
+each ratio came from moments minutes apart. At the story's 10,000 events the batched configurations
+finish in **9–13 ms**, and a 9 ms window on a box running a hundred forked test workers measures the
+scheduler: `batchingGainNormal` was observed at **0.82** in a full-suite run — batching reported as a
+*loss* — with nothing wrong except that the machine was busy.
+
+The recorded sweep is unchanged; it is the finding, and the committed CSV and the note are still made
+of it. The shape claims now come from a separate **interleaved** sampler: all four `fullfsync = 0`
+configurations, then all four again, **five rounds**, at **50,000 events** so the shortest window is
+about **63 ms**. Each round yields its own ratios from numbers taken seconds apart, and the median
+across rounds decides. Measured 2026-08-06 on an 8-core macOS box, `batchingGainNormal` by median:
+**6.59** idle, **5.23** and **6.21** under twelve CPU hogs, **7.18** beside a live integration slice —
+where the old single sweep, measured in the same minute beside that slice, gave **2.02**. Verified
+red on the regressions: batching that no longer batches (one commit per transaction) gave per-round
+gains of 0.85–1.07 and failed; the FULL/NORMAL relationship inverted gave per-round penalties of
+0.07–0.19 and failed both halves.
+
+The `fullfsync = 1` half of the FULL-costs-more claim stays on the recorded sweep, and the reason is
+measured: there FULL manages **335** ev/s against NORMAL's **48,143**, a separation of **143x**
+against the ff0 pair's **3.3x**. Two orders of magnitude do not invert because a box is busy, and the
+event count that gives the ff0 quartet honest windows would make an ff1 round take minutes.
 
 **Notes:** Every fsync-sensitive number in
 [05-durable-execution.md](../../05-durable-execution.md) was measured on Linux, likely on
