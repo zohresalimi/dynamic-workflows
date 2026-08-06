@@ -273,6 +273,8 @@ Feature: One typecheck command covers nine packages in dependency order
     Then "tsc -b" runs the packages in dependency order
     And "vue-tsc --noEmit" runs against packages/web
     And both exit 0
+    And the spec allows the solution build 120 s, not the slice's 30 s default,
+        because a cold nine-package check is the suite's most expensive subprocess
 
   Scenario: a type error in core surfaces in the package that consumes it
     Given packages/core exports a function whose signature changes incompatibly
@@ -298,6 +300,19 @@ which is not an acceptable trade for a faster `tsc`. The third scenario is a gua
 behaviour because these options are each individually load-bearing —
 `rewriteRelativeImportExtensions` in particular is what lets `node src/main.ts` and a published
 bundle both work from the same source.
+
+**Amended 2026-08-06** (EPIC-07 gate): the first scenario did not fail an assertion — it ran out of
+time. The integration slice's 30 s default was sized on an idle machine and the solution build is
+the most expensive single subprocess the suite starts, so beside a full-suite run it was the ceiling
+that broke, not the build. It is cold on every invocation: with `noEmit` the referenced projects are
+not composite, so `.tsbuildinfo` buys nothing. **Measured 2026-08-06** on an 8-core macOS box,
+TypeScript 6.0.3: **4.90 s, 5.03 s, 5.10 s and 5.20 s** idle — indistinguishable with and without
+the buildinfo files present — against **13.8 s** beside twelve CPU hogs and **24.1 s** beside a live
+full suite, having exceeded 30 s on the gate run itself. The spec now carries its own **120 s**
+timeout: 24× the idle build and 5× the worst honest sample, still short enough to fail in reasonable
+time if `tsc` wedges. What it asserts is unchanged — exit 0, with the compiler's own output as the
+failure message. The neighbouring `vue-tsc` spec keeps the default; it covers one package and
+measures **1.33 s** idle.
 
 ---
 
