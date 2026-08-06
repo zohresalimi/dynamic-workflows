@@ -164,16 +164,37 @@ suite(
   },
 );
 
-// This project's testTimeout is 30s (vitest.config.ts), which is generous
-// enough for a cold "tsc -b"/"vue-tsc" run against nine tiny packages.
 suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
+  // This spec's timeout is its own, not the integration slice's 30 s default,
+  // and the number is measured rather than guessed. A whole `tsc -b` over the
+  // nine-package solution graph is the most expensive single subprocess the
+  // suite starts, and it is cold every time: with `noEmit` the projects are not
+  // composite, so `.tsbuildinfo` buys nothing and the run is a full check on
+  // every invocation — measured 2026-08-06, TypeScript 6.0.3, on an 8-core
+  // machine: 4.90 s, 5.03 s, 5.10 s and 5.20 s, with and without the
+  // buildinfo files present, which is why they are indistinguishable.
+  //
+  // What the 30 s default was actually measuring was the box. The same cold
+  // build takes 13.8 s beside twelve CPU hogs and 24.1 s beside a live full
+  // suite — a hundred forked workers, several of them driving real agent
+  // subprocesses — and on the EPIC-07 gate run it went past 30 s and killed the
+  // spec. Nothing was wrong with the build: it was the ceiling that had been
+  // sized on an idle machine.
+  //
+  // 120 s is 24x the idle build and 5x the worst honest sample measured, which
+  // leaves room for a box more saturated than any of those, while still failing
+  // in reasonable time if `tsc` ever genuinely wedges. It buys no slack in what
+  // is asserted — exit 0, with the compiler's own output as the message.
+  //
+  // The neighbouring `vue-tsc` spec keeps the default: it covers one package,
+  // measures 1.33 s idle, and has never been near the ceiling.
   it('"tsc -b" typechecks all nine packages in dependency order and exits 0', () => {
     const result = spawnSync(TSC, ['-b', join(repoRoot, 'tsconfig.json')], {
       cwd: repoRoot,
       encoding: 'utf8',
     });
     expect(result.status, `${result.stdout ?? ''}${result.stderr ?? ''}`).toBe(0);
-  });
+  }, 120_000);
 
   it('"vue-tsc --noEmit" passes against packages/web on an empty workspace', () => {
     expect(existsSync(join(repoRoot, 'packages/web/node_modules/.bin/vue-tsc'))).toBe(true);
