@@ -41,6 +41,13 @@ export interface RunReport {
   readonly version: string;
   readonly mode: 'live' | 'replay';
   readonly recordingPath: string;
+  /**
+   * Where the generated capability fixture was written, or null if
+   * `initialize` never completed. A replay's copy lands outside the working
+   * tree — test/integration/no-tracked-file-churn.test.ts is what holds it
+   * there.
+   */
+  readonly fixturePath: string | null;
   readonly frameCapBytes: number;
   readonly steps: StepObservation[];
   readonly protocolVersion: number | null;

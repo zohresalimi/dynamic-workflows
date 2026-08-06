@@ -125,6 +125,33 @@ suite('EPIC-00-S4 — the six steps complete against the real adapter (AC1–AC6
     expect(fixture.agentCapabilities).toEqual(report.agentCapabilities);
   });
 
+  it('and it is still generated on this run — into a temporary directory, matching the committed one', () => {
+    // A0-9 asks for a fixture that is generated rather than authored, so the
+    // generation path has to run. What it must not do is rewrite the committed
+    // file: a replay is not a probe, and restamping `probedAt` from the wall
+    // clock left a clean checkout dirty after every `pnpm test`. So the replay
+    // writes its copy outside the repository and the two are compared here.
+    expect(report.fixturePath).not.toBeNull();
+    const generated = JSON.parse(readFileSync(report.fixturePath ?? '', 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const committed = JSON.parse(readFileSync(fixturePath(CLAUDE), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+
+    // `probedAt` is the one field a replay cannot reproduce, and the one field
+    // it has no business claiming: the probe happened once, on the date the
+    // committed fixture records. Everything else — the verbatim capabilities
+    // block, the derived matrix, the divergence list — must still agree.
+    const { probedAt: generatedAt, ...generatedRest } = generated;
+    const { probedAt: committedAt, ...committedRest } = committed;
+    expect(generatedRest).toEqual(committedRest);
+    expect(committedAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+    expect(generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+  });
+
   it('session/new returns a session id and accepts DeFlow’s own stdio MCP server (AC3)', () => {
     expect(report.sessionId).toMatch(/[0-9a-f-]{8,}/);
     expect(report.mcp.declared).toBe(true);
