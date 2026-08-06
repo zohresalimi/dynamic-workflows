@@ -740,6 +740,10 @@ estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0
 8. Tier 3 is reachable **only** when the user supplied their own key through the F3.3 direct-API
    adapter. On the subscription path the call site is unreachable, and a test asserts that no HTTP
    request to `/v1/messages/count_tokens` is made during a full subscription-path run.
+   **Note, 2026-08-06:** F3.3 moved to M2, so at M1 there is no adapter that can reach tier 3 at all.
+   Build the tier-3 call site and its selection logic anyway — it is what makes the three-tier design
+   honest — but only the negative assertion above is exercisable at M1, and the positive path stays
+   unverified until the M2 adapter lands. Record that rather than letting a green suite imply tier 3 works.
 9. `tokenAccounting: 'none'` in a capability manifest produces a **blank** cost cell in the
    projected payload, not a zero — the honest degradation from
    [§7](../../08-context-and-memory.md).

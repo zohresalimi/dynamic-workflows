@@ -798,12 +798,23 @@ effectively frozen — vendor or wrap it, never depend on it directly.
 
 ---
 
-### KAR-05.10 — Direct API adapter on a user-supplied key _(added)_
+### KAR-05.10 — Direct API adapter on a user-supplied key _(added; deferred to M2 on 2026-08-06)_
+
+> **Decision, 2026-08-06 (owner).** This story is **not built at M1**. PRD §11's M1 line was amended to
+> `F3.1, F3.2, F3.4–F3.7` and F3.3 moved to M2, taking the second of the two options this story itself
+> offers. Reasoning: no HTTP client package was ever selected, and the adapter inverts the AR-1 credential
+> posture — at M1, DeFlow possesses no credential at all. The accepted cost is that provider-neutrality is
+> demonstrated only across subprocess adapters at M1, so "the abstraction is not merely ACP-shaped" stays
+> an unverified claim until this lands. Two parameters were settled in advance: the vendor is chosen
+> during the story and recorded in [02-tech-stack.md](../../02-tech-stack.md) with its pin policy, and the
+> credential comes from an env var **named from** `.DeFlow/config.yaml` (AC1/AC2 below already assume
+> this). Everything below is retained verbatim as the M2 specification. No Linear issue exists for it by
+> design — Linear tracks M1.
 
 |                 |                                       |
 | --------------- | ------------------------------------- |
-| **Status**      | Not started                           |
-| **Priority**    | P0                                    |
+| **Status**      | Deferred to M2                        |
+| **Priority**    | P0 (of M2)                            |
 | **Size**        | M                                     |
 | **Depends on**  | KAR-05.2, KAR-05.7                    |
 | **PRD**         | F3.3                                  |
@@ -894,9 +905,13 @@ reconciled board found it was the only P0 requirement in PRD §11's M1 line with
 The architecture scopes it to M2 ([§12](../../07-provider-adapter-layer.md)) on two real grounds — no
 package selection was verified on 2026-08-02, and it inverts the AR-1 credential posture — so KAR-05.10 is
 deliberately minimal: one vendor, `read`-level only, explicit per-provider opt-in, with a mechanical
-sentinel test proving the key never reaches disk. **If the author would rather not build it at M1, the
-correct alternative is to amend PRD §11 to `F3.1, F3.2, F3.4–F3.7` and move F3.3 to M2 — not to leave the
-requirement in the M1 line uncovered.** Record whichever decision is taken.
+sentinel test proving the key never reaches disk.
+
+**Decision taken on 2026-08-06: the alternative.** PRD §11's M1 line now reads `F3.1, F3.2, F3.4–F3.7` and
+F3.3 is listed under M2, with the AR-1 reasoning attached in the PRD itself. KAR-05.10 is retained above
+in full as the M2 specification and has no Linear issue. **EPIC-05's Definition of Done therefore covers
+its nine M1 stories (KAR-05.1 … KAR-05.9), and scenarios EPIC-05-S33–S35 stay unautomated until M2** —
+recorded here rather than left as a silent gap in the flow file's coverage count.
 
 F3.2 (CLI exec shim) is covered only by **KAR-05.8**, which is also this epic's named scope-cut candidate.
 Those two facts are in tension: cutting it leaves a P0 requirement met only by KAR-04.6, which is a test
