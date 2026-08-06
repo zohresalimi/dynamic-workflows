@@ -28,6 +28,8 @@
 import type { NodeId, RunId } from '@DeFlow/core';
 import { NodeFailureError } from '@DeFlow/core';
 import { realpath } from 'node:fs/promises';
+import { WORKTREE_LIST_ARGS } from '../git/worktree-args.ts';
+import { parseWorktreeList } from '../git/worktree-porcelain.ts';
 import type { Effect, EffectCtx, ReconcileProbe } from './durable.ts';
 import {
   type CommandResult,
@@ -35,6 +37,7 @@ import {
   commitArgs,
   commitShaFrom,
   findCommitArgs,
+  mergeArgs,
   type WorktreeAddOutcome,
 } from './reconcile/git.ts';
 
@@ -149,23 +152,23 @@ async function resolved(path: string): Promise<string> {
   }
 }
 
-/** Whether `path` really is a registered worktree on `branch`, per git. */
+/**
+ * Whether `path` really is a registered worktree on `branch`, per git.
+ *
+ * Read through KAR-07.2's `--porcelain -z` parser: the non-porcelain form pads
+ * path, oid and branch onto one line with spaces, so a worktree under
+ * `~/my projects` would answer this question wrongly rather than failing to
+ * answer it — and this question decides whether another node's working tree
+ * gets handed to this one (docs/09-workspace-and-safety.md §4.3, AC5).
+ */
 async function worktreeIsAt(ports: GitEffectPorts, path: string, branch: string): Promise<boolean> {
-  const listed = await ports.run(['worktree', 'list', '--porcelain']);
+  const listed = await ports.run(WORKTREE_LIST_ARGS);
   if (listed.exitCode !== 0) return false;
 
   const wanted = await resolved(path);
-  let current: string | null = null;
-
-  for (const line of listed.stdout.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      const at = line.slice('worktree '.length);
-      current = at === path || (await resolved(at)) === wanted ? at : null;
-      continue;
-    }
-    if (current !== null && line.startsWith('branch ')) {
-      return line.slice('branch '.length) === `${HEAD_REF}${branch}`;
-    }
+  for (const entry of parseWorktreeList(listed.stdout)) {
+    if (entry.path !== path && (await resolved(entry.path)) !== wanted) continue;
+    return entry.branch === `${HEAD_REF}${branch}`;
   }
   return false;
 }
@@ -218,6 +221,186 @@ export function gitWorktreeAddEffect(
       // Idempotent by construction: the cheapest correct probe is to do it
       // again and let `already exists` be the answer.
       return Promise.resolve({ status: 'not-started' });
+    },
+  };
+}
+
+// ── KAR-07.7 — the integration branch and its merges ─────────────────────────
+
+export interface GitIntegrationBranchInput extends GitEffectIdentity {
+  /** `DeFlow/int/<runId>`, composed by KAR-07.3's `integrationBranch`. */
+  readonly branch: string;
+  /** Absolute path of the integration worktree. */
+  readonly path: string;
+  /** The run's base ref — what the integration branch starts from (AC1). */
+  readonly baseRef: string;
+  /** `worktree add --reason`'s payload, so `git worktree list` says whose. */
+  readonly lockReason: string;
+}
+
+export interface IntegrationBranchResult {
+  readonly branch: string;
+  readonly path: string;
+  readonly outcome: WorktreeAddOutcome;
+}
+
+/**
+ * KAR-07.7 AC1 — `DeFlow/int/<runId>` and its locked worktree, created by one
+ * `git worktree add` and journalled (docs/09-workspace-and-safety.md §7.1).
+ *
+ * One command, for KAR-07.2's reason restated: `add` then `lock` leaves a
+ * window in which the boot reaper can prune the worktree the whole run is
+ * about to merge into. And one *effect*, because AC1 asks for the branch's
+ * creation to be journalled — a run that crashes between creating the branch
+ * and scheduling its first node must come back to the branch it already has,
+ * not to a second attempt that fails on `already exists` and takes the run
+ * down with it.
+ *
+ * `reconcile` is `not-started` unconditionally for `gitWorktreeAddEffect`'s
+ * reason: re-performing is safe by construction here, because `perform` asks
+ * git what exists before it asks git to create anything.
+ */
+export function gitIntegrationBranchEffect(
+  input: GitIntegrationBranchInput,
+  ports: GitEffectPorts,
+): Effect<IntegrationBranchResult> {
+  return {
+    runId: input.runId,
+    nodeId: input.nodeId,
+    attempt: input.attempt,
+    ...(input.ordinal === undefined ? {} : { ordinal: input.ordinal }),
+    kind: 'git',
+    requestHash: input.requestHash,
+
+    async perform(): Promise<IntegrationBranchResult> {
+      const exists =
+        (await ports.run(['rev-parse', '--verify', '--quiet', `${HEAD_REF}${input.branch}`]))
+          .exitCode === 0;
+      if (exists && (await worktreeIsAt(ports, input.path, input.branch))) {
+        return { branch: input.branch, path: input.path, outcome: 'already-exists' };
+      }
+
+      const result = await ports.run([
+        'worktree',
+        'add',
+        '--lock',
+        '--reason',
+        input.lockReason,
+        ...(exists ? [] : ['-b', input.branch]),
+        '--',
+        input.path,
+        exists ? input.branch : input.baseRef,
+      ]);
+
+      const outcome = classifyWorktreeAdd(result);
+      if (outcome === 'created') return { branch: input.branch, path: input.path, outcome };
+      if (outcome === 'already-exists' && (await worktreeIsAt(ports, input.path, input.branch))) {
+        return { branch: input.branch, path: input.path, outcome };
+      }
+      throw gitFailed('git worktree add (integration)', result);
+    },
+
+    reconcile(): Promise<ReconcileProbe<IntegrationBranchResult>> {
+      return Promise.resolve({ status: 'not-started' });
+    },
+  };
+}
+
+export interface GitMergeInput extends GitEffectIdentity {
+  /** The node branch being integrated. */
+  readonly branch: string;
+  /** The merge commit's subject — AC6 requires it to name the run and node. */
+  readonly subject: string;
+}
+
+/**
+ * What one `git merge` attempt did. A conflict is a *result*, not a failure:
+ * it is the normal input to §7.2's resolution node, and an effect that threw
+ * on it would turn the cheapest branch of the design into an error path.
+ */
+export type MergeAttempt =
+  | { readonly merged: true; readonly commit: string }
+  | { readonly merged: false };
+
+/** `git rev-parse --verify --quiet MERGE_HEAD` — whether this worktree is in
+ * the middle of a merge right now. */
+const MERGE_HEAD_ARGS: readonly string[] = ['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'];
+
+/**
+ * KAR-07.7 AC6 — `git merge --no-ff -m <subject + trailer> -- <branch>`,
+ * reconciled by the same `--grep` a commit is.
+ *
+ * `--no-ff` is the acceptance criterion, not a preference: a fast-forward
+ * merge leaves no commit of its own, so a run whose branches happened to be
+ * linear would produce an integration branch whose history cannot say which
+ * node contributed what. One merge commit per node branch is the reviewable
+ * artefact the whole loop exists to produce.
+ *
+ * There is deliberately **no strategy option** here. `-X ours`, `-X theirs`
+ * and `--strategy=ours` are the blind auto-resolution §7.2 forbids, and their
+ * absence is asserted by the integration spec over the recorded argv rather
+ * than left to review.
+ *
+ * **A conflict is left in place, not aborted.** The conflicted worktree *is*
+ * the resolution node's workspace (§7.2 puts the node on the integration
+ * worktree for exactly this reason): the markers are there, `MERGE_HEAD` is
+ * there, and the resolver's own `git commit` therefore produces a real merge
+ * commit with the node branch as its second parent, carrying the message —
+ * and the ikey trailer — this effect already wrote into `MERGE_MSG`. Aborting
+ * and asking the resolver to "produce a commit" instead would leave the node
+ * branch permanently unmerged, and no amount of later work would put it into
+ * the integration branch's history.
+ *
+ * That is also why `perform` looks for `MERGE_HEAD` first: a daemon that died
+ * mid-conflict comes back to a worktree with a merge already open, and
+ * re-issuing `git merge` there fails with *you have not concluded your merge*.
+ */
+export function gitMergeEffect(input: GitMergeInput, ports: GitEffectPorts): Effect<MergeAttempt> {
+  const find = async (ikey: string): Promise<string | null> =>
+    commitShaFrom(await ports.run(findCommitArgs(ikey)));
+
+  const merging = async (): Promise<boolean> => (await ports.run(MERGE_HEAD_ARGS)).exitCode === 0;
+
+  return {
+    runId: input.runId,
+    nodeId: input.nodeId,
+    attempt: input.attempt,
+    ...(input.ordinal === undefined ? {} : { ordinal: input.ordinal }),
+    kind: 'git',
+    requestHash: input.requestHash,
+
+    async perform(ctx: EffectCtx): Promise<MergeAttempt> {
+      if (await merging()) return { merged: false };
+
+      const result = await ports.run(mergeArgs(input.subject, ctx.ikey, input.branch));
+      if (result.exitCode !== 0) {
+        // A conflict leaves MERGE_HEAD behind; anything else did not start a
+        // merge at all and is a real failure with git's own words attached.
+        if (await merging()) return { merged: false };
+        throw gitFailed('git merge --no-ff', result);
+      }
+
+      const sha = await find(ctx.ikey);
+      if (sha === null) {
+        throw new NodeFailureError(
+          `git merge succeeded but no commit carries ${ctx.ikey} as a DeFlow-Effect-Id trailer. ` +
+            'The trailer is how a restart finds this merge again, so a merge without one is not ' +
+            'a merge this system can recover. A branch already contained in the integration ' +
+            'branch produces exactly this, and must not reach the merge queue.',
+          { reason: 'internal', class: 'permanent', detail: { ikey: ctx.ikey } },
+        );
+      }
+      return { merged: true, commit: sha };
+    },
+
+    async reconcile(ctx: EffectCtx): Promise<ReconcileProbe<MergeAttempt>> {
+      const sha = await find(ctx.ikey);
+      // Found: the merge landed before the crash, whoever committed it. Absent:
+      // either nothing happened or a conflict is still open, and `perform`
+      // tells those two apart from MERGE_HEAD rather than guessing here.
+      return sha === null
+        ? { status: 'not-started' }
+        : { status: 'done', result: { merged: true, commit: sha } };
     },
   };
 }

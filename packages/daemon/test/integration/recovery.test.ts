@@ -556,10 +556,10 @@ suite('the pid-reuse guard (AC4, EPIC-06-S25)', () => {
         onReapDecision: (fields: Record<string, unknown>) => logged.push(fields),
       });
 
-      expect(recovered.reaped).toEqual([expect.objectContaining({ outcome: 'pid-reused' })]);
+      expect(recovered.reaped).toEqual([expect.objectContaining({ outcome: 'pid-recycled' })]);
       expect(() => process.kill(reused, 0)).not.toThrow();
       expect(readProcesses(db).map((row) => row.state)).toEqual(['discarded']);
-      expect(logged.some((fields) => fields.outcome === 'pid-reused')).toBe(true);
+      expect(logged.some((fields) => fields.outcome === 'pid-recycled')).toBe(true);
     } finally {
       db.close();
     }

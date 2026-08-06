@@ -88,6 +88,7 @@ export type {
   EventPayloadOf,
   LockReleaseReason,
   RunOutcome,
+  WorktreeOccupantKind,
 } from './event-payloads.ts';
 export {
   BUDGET_DIMENSIONS,
@@ -122,6 +123,7 @@ export {
   isEventKind,
   LOCK_KINDS,
   LOCK_RELEASE_REASONS,
+  NodeBlockedSchema,
   NodeCancelFailedSchema,
   NodeCancelledSchema,
   NodeCancelStageSchema,
@@ -151,6 +153,19 @@ export {
   RunSpecApprovedSchema,
   RunStalledSchema,
   RunStartedSchema,
+  WORKTREE_OCCUPANT_KINDS,
+  WorkspaceBranchOccupiedSchema,
+  WorkspaceDirtyOnRemoveSchema,
+  WorkspaceIncludedFileSchema,
+  WorkspaceMergeQueueReorderedSchema,
+  WorkspaceOrphanReapedSchema,
+  WorkspacePidRecycledSchema,
+  WorkspaceReconciledSchema,
+  WorkspaceSetupCacheHitSchema,
+  WorkspaceStatusEntrySchema,
+  WorkspaceWipSalvagedSchema,
+  WorkspaceWorktreeCreatedSchema,
+  WorkspaceWorktreeRemovedSchema,
 } from './event-payloads.ts';
 // KAR-02.7 — the envelope and the total, forward-compatible reader.
 export type { Event, EventEnvelope, ParseEventResult } from './events.ts';
@@ -418,6 +433,9 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
+export type { ScopeCollision } from './scope-collision.ts';
+export { scopeCollisions } from './scope-collision.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,

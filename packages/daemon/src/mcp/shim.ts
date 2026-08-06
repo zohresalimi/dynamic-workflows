@@ -172,18 +172,33 @@ export function runMcpShim(options: ShimOptions): Promise<number> {
       ),
     }));
 
-    /** Applies the daemon's tool list and announces the change (AC6). */
+    /**
+     * Applies the daemon's tool list and announces the change exactly once (AC6).
+     *
+     * The announcement is a barrier, and that is why the whole set is applied
+     * before any of it is announced. `handle.enable()`/`handle.disable()` are
+     * not used here for precisely that reason: each of them announces on its
+     * own, from *inside* the loop, so a phase that moved two tools pushed one
+     * `list_changed` while the second tool was still stale, and then a second
+     * one afterwards. A client that re-listed on the first notification — which
+     * is the only thing a client can do with it — got a half-applied list, and
+     * a client counting notifications counted two changes where one happened.
+     *
+     * `enabled` is the field `tools/list` and `tools/call` both read off the
+     * registered-tool record, and `handle` *is* that record; the SDK's
+     * `enable()`/`disable()` do nothing to it except assign this field and then
+     * announce. So this is the same state change with the premature
+     * announcement taken out, not a way around the SDK's API.
+     */
     const applyTools = (tools: readonly string[], announce: boolean): void => {
       permitted = new Set(tools);
       for (const entry of registered) {
-        const allowed = permitted.has(entry.tool.name);
-        if (entry.handle.enabled === allowed) continue;
-        // enable()/disable() each send their own list_changed; the explicit
-        // call below is what makes the *set* change one announcement rather
-        // than one per tool.
-        if (allowed) entry.handle.enable();
-        else entry.handle.disable();
+        entry.handle.enabled = permitted.has(entry.tool.name);
       }
+      // Announced whenever the daemon pushed a list, changed or not: the daemon
+      // is the authority on what a phase permits, and a shim that stayed silent
+      // because it happened to agree would leave the agent with no way to tell
+      // that the transition had landed.
       if (announce) server.sendToolListChanged();
     };
 

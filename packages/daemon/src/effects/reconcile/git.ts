@@ -49,6 +49,23 @@ export function commitArgs(subject: string, ikey: string): string[] {
 }
 
 /**
+ * KAR-07.7 AC6 — `git merge --no-ff -m "<subject>\n\n<trailer>" -- <branch>`.
+ *
+ * One `-m`, unlike `commitArgs`: `git merge` takes a single message and the
+ * blank line inside it is what makes the last paragraph a trailer block. The
+ * `--` separator is KAR-07.3 AC6's rule — the branch name is generated, and a
+ * generated name must never occupy a bare positional slot.
+ *
+ * `--no-ff` is load-bearing: without it a linear branch merges by moving the
+ * ref, leaving no commit to carry either the trailer or the provenance, and
+ * both the idempotency probe and the reviewable one-commit-per-node history
+ * quietly stop existing.
+ */
+export function mergeArgs(subject: string, ikey: string, branch: string): string[] {
+  return ['merge', '--no-ff', '-m', `${subject}\n\n${trailerLine(ikey)}`, '--', branch];
+}
+
+/**
  * `git log --fixed-strings --grep=<trailer> --format=%H -1` — the newest
  * commit carrying this ikey, or no output at all.
  *

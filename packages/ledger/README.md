@@ -2,8 +2,15 @@
 
 The SQLite event store. The append-only `event` log, the `io_chunk` data plane, the `effect`
 journal, the `plan` / `run` / `node_wake` tables, the `provider_capabilities` manifest, the
-`process` rows an orphan reaper reads, `PRAGMA user_version` migrations, the content-addressed
-blob store and the SSE tail queries.
+`process` rows an orphan reaper reads, the `worktrees` projection over git,
+`PRAGMA user_version` migrations, the content-addressed blob store and the SSE tail queries.
+
+One table here is deliberately **not** a source of truth. `worktrees` (migration 0008) is an index
+over `git worktree list --porcelain -z`, replaced whole on every refresh by `replaceWorktrees`,
+because git is the authority: the moment an operator runs `git worktree remove` in their own
+terminal — and they will — a SQLite-authoritative design is wrong and does not know it. There is no
+partial-update API for it, on purpose. See
+[docs/09-workspace-and-safety.md §4.3](../../docs/09-workspace-and-safety.md).
 
 Architecture: [docs/05-durable-execution.md](../../docs/05-durable-execution.md). Delivery:
 [EPIC-03](../../docs/delivery/epics/EPIC-03-event-ledger.md).

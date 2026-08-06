@@ -102,6 +102,17 @@ export const EFFECT_KINDS = ['agent', 'shell', 'git', 'file'] as const;
 
 export const LOCK_KINDS = ['repo', 'worktree'] as const;
 
+/**
+ * Who is sitting on a branch DeFlow wanted
+ * (docs/09-workspace-and-safety.md §3.2, KAR-07.2).
+ *
+ * Two values because the operator's own checkout is a genuinely different
+ * situation from another node's worktree: it is the common real-world hit, it
+ * lands on the very first run, and the message it deserves is about *their*
+ * branch and the base-ref choice — not about a collision they had no part in.
+ */
+export const WORKTREE_OCCUPANT_KINDS = ['worktree', 'main-checkout'] as const;
+
 export const COMPACTION_SCOPES = ['DeFlow.packet', 'vendor.session'] as const;
 
 export const COMPACTION_FIDELITIES = ['exact', 'partial'] as const;
@@ -119,6 +130,7 @@ export const EXPORT_BLOCK_REASONS = ['redaction-failed', 'findings'] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type CompactionFidelity = (typeof COMPACTION_FIDELITIES)[number];
+export type WorktreeOccupantKind = (typeof WORKTREE_OCCUPANT_KINDS)[number];
 
 // ── run lifecycle ────────────────────────────────────────────────────────────
 
@@ -304,6 +316,33 @@ export const NodeSuspendedSchema = z.strictObject({
 });
 
 /**
+ * KAR-07.6 — the scheduling half of Decision D14
+ * (docs/09-workspace-and-safety.md §6.2, §7.3).
+ *
+ * `git merge-tree --write-tree` said these two in-flight branches have started
+ * to conflict, and the later-*starting* node is demoted so the earlier one can
+ * finish. Later-starting rather than lower-priority or smaller: the node that
+ * has been running longest has the most work to lose, and start time is the
+ * one ordering both a scheduler and a human reading the timeline agree on.
+ *
+ * The payload has to answer "why is this node not running?" without a second
+ * query. `conflictsWith` is the counterpart it collided with — its node id,
+ * not its branch, because the board shows nodes — and `paths` is what
+ * `merge-tree --name-only` actually reported, which is the difference between
+ * "these branches conflict" and a diagnosis. Both branches are named too, so
+ * the matching `conflict_probe` row is findable from the event alone.
+ */
+export const NodeBlockedSchema = z.strictObject({
+  node: NodeIdSchema,
+  /** The in-flight node this one conflicts with; it keeps running. */
+  conflictsWith: NodeIdSchema,
+  branch: z.string().min(1),
+  otherBranch: z.string().min(1),
+  /** Non-empty by construction: a clean probe never blocks anything. */
+  paths: z.array(z.string().min(1)).min(1),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -363,6 +402,246 @@ export const NodeCancelFailedSchema = z.strictObject({
    * are excluded: they are already dead and counting them reports a working
    * kill as a failure (§11.2). */
   survivors: z.array(z.number().int().positive()).min(1),
+});
+
+// ── workspace isolation ──────────────────────────────────────────────────────
+
+/**
+ * A worktree existing is a **domain fact**, not a log line
+ * (docs/09-workspace-and-safety.md §4.1, KAR-07.2).
+ *
+ * `detached` and `branch` move together and are both stated: a read node gets
+ * `--detach` and no branch at all, which is what sidesteps branch uniqueness
+ * for it, and a reader who saw only `branch: null` could not tell that from a
+ * write node whose branch record was lost. `lockReason` is git's own — the same
+ * string `worktree list --porcelain` reports back — so the event and the
+ * repository can be compared without a translation step.
+ */
+export const WorkspaceWorktreeCreatedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** `null` exactly when `detached` is true. */
+  branch: z.string().min(1).nullable(),
+  /** What the worktree started from. Never checked out as a branch. */
+  baseRef: z.string().min(1),
+  detached: z.boolean(),
+  lockReason: z.string().min(1),
+});
+
+/**
+ * The refusal that happens **before** `git worktree add` runs (§3.1).
+ *
+ * There is no `stderr` field, on purpose. The real message is
+ * `fatal: '<branch>' is already used by worktree at '<path>'` — not the
+ * widely-quoted `already checked out at` — and recording git's wording here
+ * would invite the next reader to start matching on it. `occupiedBy` is the
+ * path the porcelain list gave, which is the same answer without the
+ * dependency on a message that is one git release from changing.
+ */
+export const WorkspaceBranchOccupiedSchema = z.strictObject({
+  node: NodeIdSchema,
+  branch: z.string().min(1),
+  occupiedBy: z.string().min(1),
+  occupantKind: z.enum(WORKTREE_OCCUPANT_KINDS),
+});
+
+/**
+ * One `.worktreeinclude` file copied into a fresh worktree
+ * (§5.1 Layer 1, KAR-07.5 AC2).
+ *
+ * **The path, and never the contents.** The whole point of this layer is that
+ * `.env`-shaped files reach the agent's worktree, so by construction every
+ * event here names a file that probably holds a credential. A `strictObject`
+ * is what makes "no contents field" enforceable rather than a convention: a
+ * payload that grew a `contents` key would be refused at the append boundary.
+ *
+ * `mode` is the *source's* mode in octal (`'0600'`), recorded because AC2's
+ * guarantee is that the copy did not widen it — the assertion needs the number
+ * it was compared against to be in the ledger too.
+ */
+export const WorkspaceIncludedFileSchema = z.strictObject({
+  node: NodeIdSchema,
+  /** Repo-relative, as `git ls-files` reported it. */
+  path: z.string().min(1),
+  /** Four-digit octal, e.g. `'0600'`. */
+  mode: z.string().regex(/^[0-7]{4}$/),
+});
+
+/**
+ * `workspace.setup` was skipped because its inputs are unchanged
+ * (§5.1 Layer 3, KAR-07.5 AC5).
+ *
+ * `key` is the marker: the sha256 of the `setupCacheKey` files' contents, so a
+ * lockfile that changes and changes back is correctly a hit, where a timestamp
+ * or a boolean would have been a miss or a lie respectively. `files` is what
+ * went into it, in the order the config declared, because "why was this a hit"
+ * is unanswerable from a hash alone.
+ */
+export const WorkspaceSetupCacheHitSchema = z.strictObject({
+  node: NodeIdSchema,
+  key: Sha256Schema,
+  files: z.array(z.string().min(1)),
+});
+
+/** One entry of `git status --porcelain=v2 -z`, as the salvage path parsed it.
+ * `origPath` is set only for a rename or a copy, and `xy` is `null` for an
+ * untracked or ignored entry, because git prints those without a code. */
+export const WorkspaceStatusEntrySchema = z.strictObject({
+  kind: z.enum(['changed', 'renamed', 'unmerged', 'untracked', 'ignored']),
+  xy: z.string().min(1).nullable(),
+  path: z.string().min(1),
+  origPath: z.string().min(1).nullable(),
+});
+
+/**
+ * What the agent left behind, captured **before** anything was committed or
+ * removed (§4.4, KAR-07.4 AC1).
+ *
+ * This is the evidence, and its position in the ledger is half of what it says:
+ * it is appended off the `status --porcelain=v2 -z` read alone, while the
+ * worktree is still dirty and still on disk, so a reader can tell that DeFlow
+ * looked before it acted. A summary written after the salvage commit would be
+ * indistinguishable from one written after a blind `--force`.
+ */
+export const WorkspaceDirtyOnRemoveSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** Non-empty by construction: a clean worktree never produces this event —
+   * which is also why a worktree holding only gitignored files does not (AC5). */
+  entries: z.array(WorkspaceStatusEntrySchema).min(1),
+});
+
+/**
+ * The work is now recoverable by ref (§4.4 step 2, KAR-07.4 AC2).
+ *
+ * `oid` is the whole point: `--force` becomes acceptable only once this event
+ * is durable, so this row is the precondition of the removal that follows it,
+ * not a note about one. `branch` is where the commit actually landed — the
+ * node's own branch normally, and a throwaway `DeFlow/salvage/<runId>__<nodeId>`
+ * when `detached` is true, because a detached read-node checkout has no branch
+ * for a commit to advance.
+ */
+export const WorkspaceWipSalvagedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  branch: z.string().min(1),
+  detached: z.boolean(),
+  oid: z.string().regex(/^[0-9a-f]{40,64}$/),
+  /** How many status entries the commit swept up. */
+  files: z.number().int().nonnegative(),
+});
+
+/**
+ * Removing the worktree must never remove the work (§4.4, F5.5).
+ *
+ * `tipOid` is the point: the branch is the deliverable and it outlives its
+ * worktree, so the tip recorded here is what the integration loop merges later
+ * — and what makes a removal auditable without re-reading the repository.
+ */
+export const WorkspaceWorktreeRemovedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** `null` for a read node's detached checkout, which produced no branch. */
+  branch: z.string().min(1).nullable(),
+  /** `null` when the branch had no commits, or for a detached checkout. */
+  tipOid: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/)
+    .nullable(),
+});
+
+/**
+ * The `worktrees` projection caught up with git (§4.3).
+ *
+ * "Git is the authority; SQLite is an index over it." The moment an operator
+ * runs `git worktree remove` in their own terminal — and they will — a
+ * SQLite-authoritative design is wrong and does not know it. This event is what
+ * a reconcile looks like when it is a normal, expected, non-error outcome:
+ * three lists, no failure, no run touched.
+ */
+export const WorkspaceReconciledSchema = z.strictObject({
+  /** Paths git reports that the projection had not seen. */
+  added: z.array(z.string().min(1)),
+  /** Paths the projection held that git no longer reports. */
+  removed: z.array(z.string().min(1)),
+  /** Paths git still lists but marks `prunable` — scheduled for the next reap,
+   * never treated as live. */
+  prunable: z.array(z.string().min(1)),
+});
+
+/**
+ * A recorded pid is alive, and it is **not ours** (§11.3 step 1, KAR-07.8 AC2).
+ *
+ * The one event whose whole content is a refusal. The pid in the row exists, so
+ * a reaper that checked bare liveness would have signalled it; the start time
+ * the OS reports for it is not the one recorded at spawn, so the number has
+ * been recycled and the process behind it belongs to somebody else — a browser,
+ * a build, an editor. Both times travel in the payload because "we did not kill
+ * this" is only a defensible decision if the evidence for it is readable
+ * afterwards.
+ *
+ * The values are opaque strings, straight from `ps -o lstart=` or
+ * `/proc/<pid>/stat` field 22, and are only ever compared for equality.
+ * Normalising them into timestamps would invent precision the source does not
+ * have, and a comparison that is nearly right is exactly what kills a
+ * stranger's process.
+ *
+ * The worktree the row named is still unlocked and still cleaned up: the run
+ * that owned it is over either way, and a lock nobody releases is a worktree
+ * `prune` will refuse to touch for ever.
+ */
+export const WorkspacePidRecycledSchema = z.strictObject({
+  node: NodeIdSchema,
+  pid: z.number().int().positive(),
+  /** The start time recorded at spawn. `null` when it could never be read,
+   * which is treated the same way — unverifiable is not killable. */
+  recorded: z.string().min(1).nullable(),
+  /** What the OS says now about that pid. */
+  observed: z.string().min(1).nullable(),
+});
+
+/**
+ * A worktree whose owning process did not survive the restart is gone
+ * (§4.5, §11.3 steps 3–4, KAR-07.8 AC5).
+ *
+ * Emitted after `unlock` and `remove -f -f`, in that order and only once the
+ * owner is *provably* gone — pid **and** recorded process start time, never
+ * bare liveness. The branch is untouched, because the branch is the deliverable
+ * (F5.5) and this event is about reclaiming a checkout, not discarding work.
+ *
+ * `pid` is `null` when no `process` row was ever written for the node — a
+ * worktree provisioned by a daemon that died before it spawned the agent, which
+ * is a real crash window and not an error.
+ */
+export const WorkspaceOrphanReapedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  pid: z.number().int().positive().nullable(),
+});
+
+/**
+ * The integration loop re-sorted its merge queue (§7.1, KAR-07.7 AC3).
+ *
+ * Re-sorting is not an optimisation: a merge changes every remaining branch's
+ * conflict count against the integration branch, so an order computed once is
+ * stale the instant the first branch lands. `before` and `after` are both
+ * recorded because a reordering nobody can see is indistinguishable from an
+ * order that never changed — this is what puts the decision in the run
+ * timeline instead of inside the scheduler's head.
+ *
+ * Emitted after **every** merge, including one that empties the queue, which
+ * is what makes "what is left to merge" answerable from the newest such event
+ * alone rather than by replaying merges against a starting order.
+ */
+export const WorkspaceMergeQueueReorderedSchema = z.strictObject({
+  /** `DeFlow/int/<runId>` — the branch the queue is ordered against. */
+  branch: z.string().min(1),
+  /** The node whose merge invalidated the previous order. */
+  mergedNode: NodeIdSchema,
+  /** The queue as it stood, minus the branch that has just merged. */
+  before: z.array(NodeIdSchema),
+  /** The queue after re-probing every remaining branch against the new tip. */
+  after: z.array(NodeIdSchema),
 });
 
 // ── the effect journal ───────────────────────────────────────────────────────
@@ -616,9 +895,21 @@ export const EVENT_SCHEMAS = {
   'node.failed': { v: 1, payload: NodeFailedSchema },
   'node.retry.scheduled': { v: 1, payload: NodeRetryScheduledSchema },
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
+  'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
+  'workspace.worktree_created': { v: 1, payload: WorkspaceWorktreeCreatedSchema },
+  'workspace.branch_occupied': { v: 1, payload: WorkspaceBranchOccupiedSchema },
+  'workspace.included_file': { v: 1, payload: WorkspaceIncludedFileSchema },
+  'workspace.setup_cache_hit': { v: 1, payload: WorkspaceSetupCacheHitSchema },
+  'workspace.dirty_on_remove': { v: 1, payload: WorkspaceDirtyOnRemoveSchema },
+  'workspace.wip_salvaged': { v: 1, payload: WorkspaceWipSalvagedSchema },
+  'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
+  'workspace.reconciled': { v: 1, payload: WorkspaceReconciledSchema },
+  'workspace.pid_recycled': { v: 1, payload: WorkspacePidRecycledSchema },
+  'workspace.orphan_reaped': { v: 1, payload: WorkspaceOrphanReapedSchema },
+  'workspace.merge_queue_reordered': { v: 1, payload: WorkspaceMergeQueueReorderedSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },
   'effect.completed': { v: 1, payload: EffectCompletedSchema },
   'effect.failed': { v: 1, payload: EffectFailedSchema },

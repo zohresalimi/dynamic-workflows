@@ -60,6 +60,21 @@ export interface McpChild {
   listTools(): Promise<ToolDescriptor[]>;
   /** Resolves once `method` has been seen at least `count` times. */
   waitForNotification(method: string, count?: number): Promise<void>;
+  /**
+   * A barrier for one *specific* push: it counts what has already arrived and
+   * resolves on the next `method` after that.
+   *
+   * `waitForNotification(method, n)` cannot express this. It is a claim about a
+   * running total, so it is satisfied by anything that already happened — and
+   * the caller that wants a barrier is always the caller that just did
+   * something and needs to know that *that* has landed. Await this before
+   * causing the change, not after:
+   *
+   *     const applied = agent.nextNotification(TOOL_LIST_CHANGED);
+   *     grant.setPhase('analysis');
+   *     await applied;
+   */
+  nextNotification(method: string): Promise<void>;
   /** EOF on the child's stdin — what an agent's death looks like from here. */
   closeStdin(): void;
   stderr(): string;
@@ -157,6 +172,12 @@ export function spawnMcpServer(
       return new Promise<void>((resolve) => {
         notificationWaiters.push({ method, count, resolve });
       });
+    },
+    nextNotification(method) {
+      return api.waitForNotification(
+        method,
+        notifications.filter((n) => n.method === method).length + 1,
+      );
     },
     closeStdin: () => child.stdin.end(),
     stderr: () => stderrText,

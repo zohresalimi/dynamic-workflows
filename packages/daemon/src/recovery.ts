@@ -71,9 +71,12 @@ import {
 import { systemClock } from './clock.ts';
 import type { ReconcileProbe } from './effects/durable.ts';
 import { escalateReconcileUnknown } from './effects/reconcile/escalate.ts';
+import { Git } from './git/git.ts';
+import type { WorkspaceGit } from './git/worktree-manager.ts';
 import { log } from './logging.ts';
 import { type ReapDecision, reapOrphans } from './reaper.ts';
 import { recordNodeFailure } from './retry.ts';
+import { reapWorktrees, type WorktreeReapReport } from './workspace/worktree-reaper.ts';
 
 const recovery = log.child({ mod: 'recovery' });
 
@@ -141,6 +144,11 @@ export interface RecoveryPorts {
   readonly onStep?: (step: RecoveryStep) => void;
   /** Every reap decision, for an operator log a spec can also read. */
   readonly onReapDecision?: (fields: Record<string, unknown>, message: string) => void;
+  /**
+   * The `Git` chokepoint for one repository, so KAR-07.8's worktree sweep can
+   * be pointed at a fixture. Defaults to a real `Git` bound to that repository.
+   */
+  readonly gitFor?: (repoRoot: string) => WorkspaceGit;
   /** Data directory an oversized event payload spills into (KAR-03.9). */
   readonly spillTo?: string;
 }
@@ -185,6 +193,9 @@ export interface Recovery {
   readonly concluded: readonly ConcludedAttempt[];
   readonly released: readonly ReclaimedLock[];
   readonly reaped: readonly ReapDecision[];
+  /** What the boot worktree sweep found in every repository the ledger names
+   * (KAR-07.8) — unlocked and reclaimed, adopted, or left to its owner. */
+  readonly sweptWorktrees: WorktreeReapReport;
   /** The wakes already due at `clock.now()`. Loaded, never consumed here. */
   readonly due: readonly NodeWakeRow[];
   readonly headSeq: number;
@@ -284,10 +295,24 @@ export async function recover(ports: RecoveryPorts): Promise<Recovery> {
   step('reclaim-locks');
   if (concluded.length > 0 || released.length > 0) replayed = replayAll(db);
 
-  // ── 6. whatever the previous daemon left running ───────────────────────────
+  // ── 6. whatever the previous daemon left running, and what it was holding ──
+  //
+  // Reap, then unlock, then prune — §4.5's order, and it is load-bearing rather
+  // than tidy: **locked worktrees are immune to `prune`**, so a sweep that
+  // pruned before the locks of dead processes were released would exit 0 and do
+  // nothing (KAR-07.8 AC1). Both halves are inside the one `reap-orphans` step
+  // because between them the repository is in the state neither of them wants
+  // to be interrupted in: processes killed, worktrees still locked.
   const reaped = await reapOrphans(db, {
     clock,
     epoch,
+    ...(ports.onReapDecision === undefined ? {} : { onDecision: ports.onReapDecision }),
+  });
+  const sweptWorktrees = await reapWorktrees({
+    db,
+    clock,
+    epoch,
+    repos: repositoriesOf(replayed.runs, ports.gitFor ?? ((root) => new Git(root))),
     ...(ports.onReapDecision === undefined ? {} : { onDecision: ports.onReapDecision }),
   });
   step('reap-orphans');
@@ -307,6 +332,7 @@ export async function recover(ports: RecoveryPorts): Promise<Recovery> {
       concluded: concluded.length,
       released: released.length,
       reaped: reaped.filter((decision) => decision.outcome === 'reaped').length,
+      worktrees: sweptWorktrees.decisions.filter((one) => one.action === 'reaped').length,
       due: due.length,
     },
     'recovery complete; the ticker may start',
@@ -318,9 +344,31 @@ export async function recover(ports: RecoveryPorts): Promise<Recovery> {
     concluded,
     released,
     reaped,
+    sweptWorktrees,
     due,
     headSeq: headSeq(db),
   };
+}
+
+/**
+ * Every repository the ledger knows about, once each (KAR-07.8).
+ *
+ * From `RunState.repoRoot` — folded out of `run.created.cwd` — rather than from
+ * this process's own working directory, for the reason NF9 gives everywhere
+ * else: a daemon supervises whatever repositories its ledger names, and asking
+ * the process where it happens to be running would sweep the wrong one, or
+ * none. Deduplicated, because several runs share one repository and a second
+ * sweep of it would be a second `prune`.
+ */
+function repositoriesOf(
+  runs: ReadonlyMap<RunId, RunState>,
+  gitFor: (repoRoot: string) => WorkspaceGit,
+): { readonly repoRoot: string; readonly git: WorkspaceGit }[] {
+  const roots = new Set<string>();
+  for (const state of runs.values()) {
+    if (state.repoRoot !== null) roots.add(state.repoRoot);
+  }
+  return [...roots].toSorted().map((repoRoot) => ({ repoRoot, git: gitFor(repoRoot) }));
 }
 
 /**

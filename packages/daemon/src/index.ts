@@ -53,10 +53,19 @@ export { fileWriteEffect } from './effects/file-effect.ts';
 export type {
   GitCommitInput,
   GitEffectPorts,
+  GitIntegrationBranchInput,
+  GitMergeInput,
   GitWorktreeAddInput,
+  IntegrationBranchResult,
+  MergeAttempt,
   WorktreeAddResult,
 } from './effects/git-effect.ts';
-export { gitCommitEffect, gitWorktreeAddEffect } from './effects/git-effect.ts';
+export {
+  gitCommitEffect,
+  gitIntegrationBranchEffect,
+  gitMergeEffect,
+  gitWorktreeAddEffect,
+} from './effects/git-effect.ts';
 // KAR-06.4 — reconciliation per effect type: one probe per kind, and the
 // escalation for the answer none of them can give.
 export type {
@@ -92,6 +101,7 @@ export {
   EFFECT_TRAILER,
   findCommitArgs,
   isWorktreeAddSuccess,
+  mergeArgs,
   trailerLine,
 } from './effects/reconcile/git.ts';
 export type {
@@ -105,9 +115,144 @@ export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
 // worktree it found and the worktree it left.
 export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
 export { shellEffect } from './effects/shell-effect.ts';
+// KAR-07.1 — the two forbidden-argument assertions the Git wrapper runs
+// before every spawn (§3.3, §10.6).
+export {
+  assertNoForcedWorktreeAdd,
+  assertNotDefaultBranchWrite,
+  isDefaultBranchWriteShaped,
+} from './git/assertions.ts';
+// KAR-07.3 — the flat D13 branch scheme and the domain-layer half of
+// ref-name validation: BRANCH_SAFE, applied to runId/nodeId separately,
+// before either value can reach git (§2, §2.1).
+export {
+  type BranchIdComponent,
+  integrationBranch,
+  nodeBranch,
+  salvageBranch,
+  UnsafeRefError,
+} from './git/branch-name.ts';
+// KAR-07.1 — default branch resolution (§10.6): origin/HEAD, falling back to
+// the HEAD symref. `Git.resolveDefaultBranch()` is the cached, per-instance
+// entry point most callers want; this is the uncached primitive it wraps.
+export {
+  DefaultBranchUnresolvedError,
+  resolveDefaultBranchUncached,
+} from './git/default-branch.ts';
+// KAR-07.3 AC6 — the static check behind "every call site that passes a
+// generated name to git uses a '--' separator or '--branch=<value>'".
+export type { UnguardedCall } from './git/generated-ref-usage.ts';
+export { findUnguardedGeneratedRefCalls } from './git/generated-ref-usage.ts';
+// KAR-07.1 — the Git wrapper itself: one chokepoint, built on the spawn half
+// KAR-06.4 left in ./git/run-git.ts for exactly this.
+export { Git, type GitOptions, type GitRunOptions } from './git/git.ts';
+// KAR-07.6 — a git invocation whose non-zero exit is not a result the caller
+// can read as a value. The wrapper itself still never throws.
+export { GitError } from './git/git-error.ts';
+// KAR-07.6 — `merge-tree --write-tree` as a side-effect-free conflict probe
+// (Decision D14).
+export type {
+  ConflictStage,
+  GitPort,
+  MergeTreeResult,
+  MergeTreeStages,
+} from './git/merge-tree.ts';
+export {
+  MERGE_TREE_ARGS,
+  MERGE_TREE_STAGES_ARGS,
+  mergeTree,
+  mergeTreeArgs,
+  mergeTreeStagesArgs,
+  parseMergeTreeOutput,
+  parseMergeTreeStages,
+} from './git/merge-tree.ts';
+// KAR-07.3 AC3 — the git-verified half of ref-name validation:
+// `check-ref-format --branch`, cached per composed name.
+export { RefFormatChecker, type RefFormatRunner } from './git/ref-format.ts';
 // KAR-06.4 — the spawn half of the git wrapper KAR-07.1 completes.
 export type { GitResult, RunGitOptions } from './git/run-git.ts';
 export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';
+// KAR-07.4 — the one way DeFlow reads a worktree's dirtiness (§4.4).
+export type { StatusEntry, StatusEntryKind } from './git/status-porcelain.ts';
+export { isDirty, parseStatusPorcelainV2, STATUS_ARGS } from './git/status-porcelain.ts';
+// KAR-07.1 — the git version floor (§1.2): DeFlow doctor's git check
+// (EPIC-18, KAR-18.4) and, ahead of that command existing, the run-start
+// gate a below-floor git throws through.
+export {
+  assertGitVersionSupported,
+  checkGitVersion,
+  classifyGitVersion,
+  type GitVersion,
+  type GitVersionCheck,
+  type GitVersionStatus,
+  GitVersionTooOldError,
+  MIN_GIT_VERSION,
+  PREFERRED_GIT_VERSION,
+  parseGitVersion,
+} from './git/version.ts';
+// KAR-07.2 — the worktree lifecycle's argv, stated once (§4.1, §4.3, §4.4).
+// There is deliberately no `worktreeLockArgs`: --lock is inside the add.
+export type {
+  ReadWorktreeSpec,
+  WorktreeMode,
+  WorktreeSpec,
+  WriteWorktreeSpec,
+} from './git/worktree-args.ts';
+export {
+  lockReasonFor,
+  parseLockReason,
+  WORKTREE_LIST_ARGS,
+  WORKTREE_PRUNE_ARGS,
+  worktreeAddArgs,
+  worktreePathFor,
+  worktreeRemoveArgs,
+  worktreeUnlockArgs,
+} from './git/worktree-args.ts';
+// KAR-07.2 AC7 — the double force, reachable only from KAR-07.8's reaper.
+export { reaperForceRemoveArgs } from './git/worktree-force-remove.ts';
+// KAR-07.2 AC5 — the static check behind "worktree list is only ever
+// list --porcelain -z".
+export type { UnporcelainedListCall } from './git/worktree-list-usage.ts';
+export { findUnporcelainedWorktreeList } from './git/worktree-list-usage.ts';
+// KAR-07.2 — the Workspace Manager: create locked in one invocation, refuse an
+// occupied branch before git is asked, unlock then remove, reconcile against
+// git rather than trusting SQLite.
+export type {
+  ProvisionRead,
+  ProvisionRequest,
+  ProvisionResult,
+  ProvisionWrite,
+  ReconcileReport,
+  RemoveRequest,
+  RemoveResult,
+  SalvageResult,
+  SalvageStep,
+  WorkspaceGit,
+  WorkspacePorts,
+} from './git/worktree-manager.ts';
+export {
+  BranchOccupiedError,
+  WipSalvageFailed,
+  WorkspaceManager,
+  WorktreeCreateFailed,
+  WorktreeRemovalRefused,
+} from './git/worktree-manager.ts';
+// KAR-07.2 — the only way DeFlow reads git's worktree list, and the occupancy
+// pre-check over it (§3.1, §4.3).
+export type { WorktreeEntry, WorktreeOccupant } from './git/worktree-porcelain.ts';
+export { findOccupant, parseWorktreeList, shortBranch } from './git/worktree-porcelain.ts';
+// KAR-07.2 — one porcelain entry as one `worktrees` row, shared by the manager
+// and by KAR-07.8's boot sweep so the two cannot disagree about ownership.
+export { worktreeRowFor } from './git/worktree-projection.ts';
+// KAR-07.4 — the salvage sequence's argv, and the single `--force` it is the
+// only route to on the node-completion path (§4.4).
+export {
+  SALVAGE_COMMIT_SUBJECT,
+  salvageAddArgs,
+  salvageBranchArgs,
+  salvageCommitArgs,
+  salvagedRemoveArgs,
+} from './git/worktree-salvage.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
@@ -214,3 +359,152 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+// KAR-07.7 — the integration branch and the ordered merge loop: probe, sort,
+// merge the cheapest, re-probe, re-sort, gate (§7).
+export type { AutoResolveUse } from './workspace/auto-resolve-usage.ts';
+export {
+  findAutoResolveStrategies,
+  stripComments,
+} from './workspace/auto-resolve-usage.ts';
+export type { ConflictedFile } from './workspace/conflict-hunks.ts';
+export {
+  conflictedFiles,
+  conflictedPaths,
+  extractConflictHunks,
+  MalformedConflictError,
+} from './workspace/conflict-hunks.ts';
+// KAR-07.6 — the live conflict matrix: which pairs to probe, which stored row
+// may still be believed, and which node a detected conflict demotes.
+export type {
+  Demotion,
+  InFlightBranch,
+  ProbedTips,
+  ProbeVerdict,
+} from './workspace/conflict-matrix.ts';
+export { demotions, isProbeStale, probeTargets } from './workspace/conflict-matrix.ts';
+export type {
+  BranchTip,
+  ConflictProberPorts,
+  ProbeAfterCommitRequest,
+  ProbeReport,
+} from './workspace/conflict-prober.ts';
+export { ConflictProber } from './workspace/conflict-prober.ts';
+// KAR-07.5 — the three layers that make a fresh worktree usable: gitignored
+// config copied by `.worktreeinclude`, the lockfile's own install, and
+// `workspace.setup` cached on the sha256 of its inputs (§5).
+export type {
+  DiskEstimate,
+  DiskEstimateInput,
+  DiskEstimateTerm,
+  MeasuredRepo,
+} from './workspace/disk-estimate.ts';
+export {
+  estimateFanOutDisk,
+  formatBytes,
+  measureRepoDisk,
+  renderDiskEstimate,
+} from './workspace/disk-estimate.ts';
+export type {
+  GatePort,
+  GateRequest,
+  IntegrationOutcome,
+  IntegrationPorts,
+  IntegrationRun,
+  MergedNode,
+  MergeRecord,
+  ResolutionConfig,
+} from './workspace/integration-loop.ts';
+export {
+  INTEGRATION_NODE_ID,
+  IntegrationLoop,
+  IntentUnavailableError,
+  integrationLockReason,
+  ledgerIntent,
+  mergeSubject,
+  NoMergedCounterpartError,
+  parseMergeSubject,
+  remainingMergeQueue,
+} from './workspace/integration-loop.ts';
+export type { MergeCandidate, QueuedMerge } from './workspace/merge-queue.ts';
+export {
+  conflictCountAgainst,
+  mergeQueue,
+  queueOrder,
+  reorderPayload,
+  UnprobedBranchError,
+} from './workspace/merge-queue.ts';
+export type { PackageManager, PackageManagerSetup } from './workspace/package-manager.ts';
+export {
+  AmbiguousLockfileError,
+  detectPackageManager,
+  LOCKFILES,
+} from './workspace/package-manager.ts';
+export type {
+  CloneStep,
+  CopyStep,
+  IncludedFile,
+  PlanInput,
+  ProvisionPlan,
+  ProvisionStep,
+  RunStep,
+  SymlinkStep,
+} from './workspace/provision-plan.ts';
+export {
+  assertNoSharedNodeModules,
+  planWorktreeProvision,
+  SharedNodeModulesRefused,
+} from './workspace/provision-plan.ts';
+export type {
+  EnvironmentRequest,
+  EnvironmentResult,
+  ProvisionedWorkspace,
+  ProvisionerPorts,
+  ProvisionWorkspaceRequest,
+  WorkspaceConfig,
+} from './workspace/provisioner.ts';
+export {
+  SETUP_STDERR_TAIL_BYTES,
+  WorkspaceProvisioner,
+  WorkspaceSetupFailed,
+} from './workspace/provisioner.ts';
+export type { ReflinkProbe } from './workspace/reflink.ts';
+export { cloneTree, probeReflink } from './workspace/reflink.ts';
+export type {
+  IntentSummary,
+  ResolutionNodeSpec,
+  ResolutionRequest,
+} from './workspace/resolution-node.ts';
+export {
+  RESOLUTION_SEGMENT_KINDS,
+  resolutionNode,
+  resolutionNodeId,
+} from './workspace/resolution-node.ts';
+export type {
+  SetupCommandRequest,
+  SetupOutcome,
+  SetupRunner,
+  SetupStream,
+} from './workspace/run-setup.ts';
+export { setupChildEnv, spawnSetup } from './workspace/run-setup.ts';
+export type { CacheKeyFile } from './workspace/setup-cache.ts';
+export { markerFileName, setupCacheKey } from './workspace/setup-cache.ts';
+export type { IncludeCandidate } from './workspace/worktree-include.ts';
+export {
+  GITIGNORED_AMONG_ARGS,
+  INCLUDE_MATCH_ARGS_TRACKED,
+  INCLUDE_MATCH_ARGS_UNTRACKED,
+  includedFiles,
+  splitNul,
+  WORKTREE_INCLUDE_FILE,
+} from './workspace/worktree-include.ts';
+// KAR-07.8 — the boot sweep: reap, then unlock, then prune, and never a
+// worktree whose owning process is still verifiably alive.
+export type {
+  PrunedEntry,
+  ReapRepo,
+  WorktreeReapAction,
+  WorktreeReapDecision,
+  WorktreeReapPorts,
+  WorktreeReapReport,
+} from './workspace/worktree-reaper.ts';
+export { reapWorktrees } from './workspace/worktree-reaper.ts';
