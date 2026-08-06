@@ -393,6 +393,24 @@ function project(state: RunState, event: Event): Transition {
       }));
 
     /**
+     * KAR-07.6 AC6. A detected conflict is a scheduling demotion, not a
+     * failure and not a result: nothing about the node's attempt, its
+     * suspension or its retry budget changes, only its admissibility.
+     *
+     * A node that already reached a terminal status is left alone, for the
+     * same race `node.cancelled` documents next door — the probe runs on the
+     * back of a commit, and the node can complete while its own commit is
+     * still being probed. Recording a completed node as blocked would hold a
+     * conflict against work that is already done.
+     */
+    case 'node.blocked':
+      return withNode(state, seq, event.payload.node, (current) =>
+        TERMINAL_NODE_STATUSES.includes(current.status)
+          ? current
+          : { ...current, status: 'blocked' },
+      );
+
+    /**
      * The effect journal is its own table (§8.3) and its own read model — a
      * memoised effect *result* is not run state, and duplicating it here would
      * give the same fact two homes that can disagree.

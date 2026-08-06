@@ -1085,3 +1085,37 @@ suite('EPIC-06-S23 — pause stops admission, resume re-admits under the same lo
     expect(startNodes(finished)).toEqual(['impl-router']);
   });
 });
+
+// ── KAR-07.6 — a node the conflict probe demoted is not admitted ─────────────
+
+suite('KAR-07.6 — a detected conflict withholds the later starter (AC6)', () => {
+  const PARALLEL: readonly NodeSpec[] = [{ id: 'n1' }, { id: 'n2' }];
+
+  const blocked = (node: string): Row => ({
+    kind: 'node.blocked',
+    payload: {
+      node,
+      conflictsWith: node === 'n2' ? 'n1' : 'n2',
+      branch: `DeFlow/r1__${node}`,
+      otherBranch: `DeFlow/r1__${node === 'n2' ? 'n1' : 'n2'}`,
+      paths: ['src/a.ts'],
+    },
+  });
+
+  it('admits both while the probe says nothing — a declared overlap alone never serializes', () => {
+    expect(startNodes(started(PARALLEL))).toEqual(['n1', 'n2']);
+  });
+
+  it('withholds the demoted node and leaves its counterpart admissible', () => {
+    const state = started(PARALLEL, [blocked('n2')]);
+
+    expect(state.nodes.n2?.status).toBe('blocked');
+    expect(startNodes(state)).toEqual(['n1']);
+  });
+
+  it('does not overwrite a node that already completed — the probe races its own commit', () => {
+    const state = started(PARALLEL, [startedNode('n2'), completed('n2'), blocked('n2')]);
+
+    expect(state.nodes.n2?.status).toBe('completed');
+  });
+});

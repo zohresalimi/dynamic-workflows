@@ -100,6 +100,20 @@ export const NODE_STATUSES = [
   'running',
   'awaiting-retry',
   'suspended',
+  /**
+   * KAR-07.6 / Decision D14. Demoted because `git merge-tree` found this
+   * node's branch conflicting with an earlier-started node's
+   * (docs/09-workspace-and-safety.md §7.3).
+   *
+   * Not `suspended`: a suspension is something the node itself asked for and
+   * carries what it is waiting for, while this is done *to* the node by the
+   * scheduler on evidence from outside it. And not terminal — the work is
+   * still on the branch and still wanted; what changed is that it may not
+   * proceed in parallel with the node it collides with. `ADMISSIBLE_STATUSES`
+   * in ./decide.ts does not include it, which is the whole of the scheduling
+   * effect.
+   */
+  'blocked',
   'completed',
   'failed',
   /**

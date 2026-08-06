@@ -85,6 +85,15 @@ export {
   replayRun,
   writeCheckpoint,
 } from './checkpoint.ts';
+// KAR-07.6 — the live pairwise conflict matrix, keyed on a canonical pair and
+// carrying both tips so a stale row is detectable rather than trusted.
+export {
+  type ConflictProbeRow,
+  canonicalPair,
+  readConflictProbe,
+  readConflictProbes,
+  upsertConflictProbe,
+} from './conflict-probe.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
 // KAR-06.3 — the write-ahead effect journal: the intent row written before the
