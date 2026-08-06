@@ -76,18 +76,38 @@ suite('tools appear when the plan advances (AC6)', () => {
     expect(await toolNames()).toEqual([READ_ARTIFACT, READ_FACT].sort());
     const pidBefore = agent.pid;
 
+    const unlocked = agent.nextNotification(TOOL_LIST_CHANGED);
     grant.setPhase('implementation');
-    await agent.waitForNotification(TOOL_LIST_CHANGED);
+    await unlocked;
 
     expect(await toolNames()).toEqual([READ_ARTIFACT, READ_FACT, PROPOSE_PLAN_PATCH].sort());
+
+    // One push per transition, not one per tool the transition moved.
+    //
+    // This is not decoration: it is what makes an announcement a barrier. A
+    // transition that announced twice would let the *next* `nextNotification`
+    // be satisfied by this transition's leftover, which is exactly the bug the
+    // withdrawal spec below used to have.
+    //
+    // Counted after the `tools/list` above rather than straight after the
+    // await, and that ordering is the whole of its reliability. Awaiting the
+    // announcement says only that the first frame arrived; a second one may
+    // still be in flight, and counting there measures which of two writes won
+    // a race — this assertion was itself flaky, one run in five, before it was
+    // moved. `tools/list` is a full round trip through the shim's stdin and
+    // back out of its stdout, and a stream writes in order, so everything the
+    // shim emitted for this transition is already read by the time the reply
+    // is.
+    expect(agent.notifications.filter((n) => n.method === TOOL_LIST_CHANGED)).toHaveLength(1);
     // Nothing was torn down and rebuilt: same process, same socket connection.
     expect(agent.pid).toBe(pidBefore);
     expect(host.connections).toBe(1);
   });
 
   it('lets the unlocked tool through to DeFlowd', async () => {
+    const unlocked = agent.nextNotification(TOOL_LIST_CHANGED);
     grant.setPhase('implementation');
-    await agent.waitForNotification(TOOL_LIST_CHANGED);
+    await unlocked;
 
     const result = await agent.request('tools/call', {
       name: PROPOSE_PLAN_PATCH,
@@ -103,11 +123,31 @@ suite('tools appear when the plan advances (AC6)', () => {
 
 suite('a tool a phase withdraws is no longer callable (AC6)', () => {
   it('returns a tool error and records the attempt', async () => {
+    // Each barrier is taken *before* the change it is a barrier for, and each
+    // waits for the push that change causes rather than for a running total.
+    //
+    // The running total was the bug. `setPhase` is synchronous and pushes over
+    // the daemon's socket; `tools/list` below travels over the agent's stdin,
+    // which is a different pipe with no ordering relation to it. So the only
+    // thing that says the withdrawal has been applied is the shim's own
+    // announcement of it — and `waitForNotification(TOOL_LIST_CHANGED, 2)` was
+    // not that. The first transition announced twice (the SDK announces from
+    // inside `enable()`, and the shim announced the set as well), both frames
+    // arrived in one read, and the count was already 2 before the second
+    // `setPhase` frame had left the daemon. The wait returned immediately and
+    // the spec then raced the socket against stdin, which it lost whenever the
+    // box was busy enough to service them out of order.
+    //
+    // The shim now announces a set exactly once, after the whole set is
+    // applied, so one announcement is one transition and the announcement is
+    // evidence the state behind it is already in place.
+    const unlocked = agent.nextNotification(TOOL_LIST_CHANGED);
     grant.setPhase('implementation');
-    await agent.waitForNotification(TOOL_LIST_CHANGED, 1);
+    await unlocked;
 
+    const withdrawn = agent.nextNotification(TOOL_LIST_CHANGED);
     grant.setPhase('analysis');
-    await agent.waitForNotification(TOOL_LIST_CHANGED, 2);
+    await withdrawn;
 
     expect(await toolNames()).not.toContain(PROPOSE_PLAN_PATCH);
 
