@@ -133,6 +133,41 @@ export class ConflictProber {
     return { probes, blocked };
   }
 
+  /**
+   * KAR-07.7 AC2/AC3 — every candidate branch against the integration branch,
+   * with all the tips resolved in one `rev-parse`.
+   *
+   * The merge queue's input, and the reason it can be *re-*sorted cheaply
+   * after every merge: the integration tip has moved, so every stored row for
+   * it is stale by `isProbeStale`'s own definition and is re-probed rather
+   * than believed. Returned in the order `branches` was given, so a caller
+   * lining rows up against candidates does not have to search.
+   */
+  async probeAgainst(
+    runId: string,
+    integrationBranch: string,
+    branches: readonly string[],
+  ): Promise<ConflictProbeRow[]> {
+    if (branches.length === 0) return [];
+    const tips = await this.#resolveTips(
+      runId,
+      [integrationBranch, ...branches],
+      integrationBranch,
+    );
+
+    const rows: ConflictProbeRow[] = [];
+    for (const branch of branches) {
+      rows.push(
+        await this.conflictState(
+          runId,
+          { branch: integrationBranch, commit: tipOf(tips, integrationBranch) },
+          { branch, commit: tipOf(tips, branch) },
+        ),
+      );
+    }
+    return rows;
+  }
+
   /** One real probe, canonicalised, stored, and returned as the row it wrote. */
   async #probe(runId: string, a: BranchTip, b: BranchTip): Promise<ConflictProbeRow> {
     const pair = canonicalPair(a.branch, b.branch, a.commit, b.commit);

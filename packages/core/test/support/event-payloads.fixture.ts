@@ -225,6 +225,12 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     removed: ['/tmp/repo/.DeFlow/wt/gone'],
     prunable: ['/tmp/repo/.DeFlow/wt/rm-rfed'],
   },
+  'workspace.merge_queue_reordered': {
+    branch: `DeFlow/int/${RUN_ID}`,
+    mergedNode: NODE,
+    before: ['plan-migration', 'run-lint'],
+    after: ['run-lint', 'plan-migration'],
+  },
   'effect.started': { ikey: IKEY, kind: 'git', requestHash: SHA },
   'effect.completed': { ikey: IKEY, result: { commit: BARE_SHA }, reconciled: false },
   'effect.failed': { ikey: IKEY, failure: nodeFailure },

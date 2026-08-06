@@ -569,6 +569,31 @@ export const WorkspaceReconciledSchema = z.strictObject({
   prunable: z.array(z.string().min(1)),
 });
 
+/**
+ * The integration loop re-sorted its merge queue (§7.1, KAR-07.7 AC3).
+ *
+ * Re-sorting is not an optimisation: a merge changes every remaining branch's
+ * conflict count against the integration branch, so an order computed once is
+ * stale the instant the first branch lands. `before` and `after` are both
+ * recorded because a reordering nobody can see is indistinguishable from an
+ * order that never changed — this is what puts the decision in the run
+ * timeline instead of inside the scheduler's head.
+ *
+ * Emitted after **every** merge, including one that empties the queue, which
+ * is what makes "what is left to merge" answerable from the newest such event
+ * alone rather than by replaying merges against a starting order.
+ */
+export const WorkspaceMergeQueueReorderedSchema = z.strictObject({
+  /** `DeFlow/int/<runId>` — the branch the queue is ordered against. */
+  branch: z.string().min(1),
+  /** The node whose merge invalidated the previous order. */
+  mergedNode: NodeIdSchema,
+  /** The queue as it stood, minus the branch that has just merged. */
+  before: z.array(NodeIdSchema),
+  /** The queue after re-probing every remaining branch against the new tip. */
+  after: z.array(NodeIdSchema),
+});
+
 // ── the effect journal ───────────────────────────────────────────────────────
 
 export const EffectStartedSchema = z.strictObject({
@@ -832,6 +857,7 @@ export const EVENT_SCHEMAS = {
   'workspace.wip_salvaged': { v: 1, payload: WorkspaceWipSalvagedSchema },
   'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
   'workspace.reconciled': { v: 1, payload: WorkspaceReconciledSchema },
+  'workspace.merge_queue_reordered': { v: 1, payload: WorkspaceMergeQueueReorderedSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },
   'effect.completed': { v: 1, payload: EffectCompletedSchema },
   'effect.failed': { v: 1, payload: EffectFailedSchema },

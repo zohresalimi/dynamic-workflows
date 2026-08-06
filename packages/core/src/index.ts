@@ -157,6 +157,7 @@ export {
   WorkspaceBranchOccupiedSchema,
   WorkspaceDirtyOnRemoveSchema,
   WorkspaceIncludedFileSchema,
+  WorkspaceMergeQueueReorderedSchema,
   WorkspaceReconciledSchema,
   WorkspaceSetupCacheHitSchema,
   WorkspaceStatusEntrySchema,

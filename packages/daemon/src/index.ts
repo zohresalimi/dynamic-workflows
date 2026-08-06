@@ -53,10 +53,19 @@ export { fileWriteEffect } from './effects/file-effect.ts';
 export type {
   GitCommitInput,
   GitEffectPorts,
+  GitIntegrationBranchInput,
+  GitMergeInput,
   GitWorktreeAddInput,
+  IntegrationBranchResult,
+  MergeAttempt,
   WorktreeAddResult,
 } from './effects/git-effect.ts';
-export { gitCommitEffect, gitWorktreeAddEffect } from './effects/git-effect.ts';
+export {
+  gitCommitEffect,
+  gitIntegrationBranchEffect,
+  gitMergeEffect,
+  gitWorktreeAddEffect,
+} from './effects/git-effect.ts';
 // KAR-06.4 — reconciliation per effect type: one probe per kind, and the
 // escalation for the answer none of them can give.
 export type {
@@ -92,6 +101,7 @@ export {
   EFFECT_TRAILER,
   findCommitArgs,
   isWorktreeAddSuccess,
+  mergeArgs,
   trailerLine,
 } from './effects/reconcile/git.ts';
 export type {
@@ -141,12 +151,20 @@ export { Git, type GitOptions, type GitRunOptions } from './git/git.ts';
 export { GitError } from './git/git-error.ts';
 // KAR-07.6 — `merge-tree --write-tree` as a side-effect-free conflict probe
 // (Decision D14).
-export type { GitPort, MergeTreeResult } from './git/merge-tree.ts';
+export type {
+  ConflictStage,
+  GitPort,
+  MergeTreeResult,
+  MergeTreeStages,
+} from './git/merge-tree.ts';
 export {
   MERGE_TREE_ARGS,
+  MERGE_TREE_STAGES_ARGS,
   mergeTree,
   mergeTreeArgs,
+  mergeTreeStagesArgs,
   parseMergeTreeOutput,
+  parseMergeTreeStages,
 } from './git/merge-tree.ts';
 // KAR-07.3 AC3 — the git-verified half of ref-name validation:
 // `check-ref-format --branch`, cached per composed name.
@@ -337,6 +355,20 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+// KAR-07.7 — the integration branch and the ordered merge loop: probe, sort,
+// merge the cheapest, re-probe, re-sort, gate (§7).
+export type { AutoResolveUse } from './workspace/auto-resolve-usage.ts';
+export {
+  findAutoResolveStrategies,
+  stripComments,
+} from './workspace/auto-resolve-usage.ts';
+export type { ConflictedFile } from './workspace/conflict-hunks.ts';
+export {
+  conflictedFiles,
+  conflictedPaths,
+  extractConflictHunks,
+  MalformedConflictError,
+} from './workspace/conflict-hunks.ts';
 // KAR-07.6 — the live conflict matrix: which pairs to probe, which stored row
 // may still be believed, and which node a detected conflict demotes.
 export type {
@@ -368,6 +400,35 @@ export {
   measureRepoDisk,
   renderDiskEstimate,
 } from './workspace/disk-estimate.ts';
+export type {
+  GatePort,
+  GateRequest,
+  IntegrationOutcome,
+  IntegrationPorts,
+  IntegrationRun,
+  MergedNode,
+  MergeRecord,
+  ResolutionConfig,
+} from './workspace/integration-loop.ts';
+export {
+  INTEGRATION_NODE_ID,
+  IntegrationLoop,
+  IntentUnavailableError,
+  integrationLockReason,
+  ledgerIntent,
+  mergeSubject,
+  NoMergedCounterpartError,
+  parseMergeSubject,
+  remainingMergeQueue,
+} from './workspace/integration-loop.ts';
+export type { MergeCandidate, QueuedMerge } from './workspace/merge-queue.ts';
+export {
+  conflictCountAgainst,
+  mergeQueue,
+  queueOrder,
+  reorderPayload,
+  UnprobedBranchError,
+} from './workspace/merge-queue.ts';
 export type { PackageManager, PackageManagerSetup } from './workspace/package-manager.ts';
 export {
   AmbiguousLockfileError,
@@ -404,6 +465,16 @@ export {
 } from './workspace/provisioner.ts';
 export type { ReflinkProbe } from './workspace/reflink.ts';
 export { cloneTree, probeReflink } from './workspace/reflink.ts';
+export type {
+  IntentSummary,
+  ResolutionNodeSpec,
+  ResolutionRequest,
+} from './workspace/resolution-node.ts';
+export {
+  RESOLUTION_SEGMENT_KINDS,
+  resolutionNode,
+  resolutionNodeId,
+} from './workspace/resolution-node.ts';
 export type {
   SetupCommandRequest,
   SetupOutcome,
