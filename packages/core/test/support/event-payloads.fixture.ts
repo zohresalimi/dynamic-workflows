@@ -164,6 +164,13 @@ export const PAYLOADS: Record<EventKind, unknown> = {
   'node.failed': { node: NODE, attempt: 1, failure: nodeFailure },
   'node.retry.scheduled': { node: NODE, nextAttempt: 2, wakeAt: 1_754_313_093_000 },
   'node.suspended': { node: NODE, until: { kind: 'wake', wakeAt: AT } },
+  'node.blocked': {
+    node: NODE,
+    conflictsWith: 'implement-auth',
+    branch: `DeFlow/r1__${NODE}`,
+    otherBranch: 'DeFlow/r1__implement-auth',
+    paths: ['src/a.ts'],
+  },
   'node.cancelled': { node: NODE, attempt: 1, result: { status: 'cancelled', by: 'user' } },
   'node.cancel.stage': {
     node: NODE,

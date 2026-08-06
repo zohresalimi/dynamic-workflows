@@ -136,6 +136,18 @@ export { findUnguardedGeneratedRefCalls } from './git/generated-ref-usage.ts';
 // KAR-07.1 — the Git wrapper itself: one chokepoint, built on the spawn half
 // KAR-06.4 left in ./git/run-git.ts for exactly this.
 export { Git, type GitOptions, type GitRunOptions } from './git/git.ts';
+// KAR-07.6 — a git invocation whose non-zero exit is not a result the caller
+// can read as a value. The wrapper itself still never throws.
+export { GitError } from './git/git-error.ts';
+// KAR-07.6 — `merge-tree --write-tree` as a side-effect-free conflict probe
+// (Decision D14).
+export type { GitPort, MergeTreeResult } from './git/merge-tree.ts';
+export {
+  MERGE_TREE_ARGS,
+  mergeTree,
+  mergeTreeArgs,
+  parseMergeTreeOutput,
+} from './git/merge-tree.ts';
 // KAR-07.3 AC3 — the git-verified half of ref-name validation:
 // `check-ref-format --branch`, cached per composed name.
 export { RefFormatChecker, type RefFormatRunner } from './git/ref-format.ts';
@@ -325,6 +337,22 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+// KAR-07.6 — the live conflict matrix: which pairs to probe, which stored row
+// may still be believed, and which node a detected conflict demotes.
+export type {
+  Demotion,
+  InFlightBranch,
+  ProbedTips,
+  ProbeVerdict,
+} from './workspace/conflict-matrix.ts';
+export { demotions, isProbeStale, probeTargets } from './workspace/conflict-matrix.ts';
+export type {
+  BranchTip,
+  ConflictProberPorts,
+  ProbeAfterCommitRequest,
+  ProbeReport,
+} from './workspace/conflict-prober.ts';
+export { ConflictProber } from './workspace/conflict-prober.ts';
 // KAR-07.5 — the three layers that make a fresh worktree usable: gitignored
 // config copied by `.worktreeinclude`, the lockfile's own install, and
 // `workspace.setup` cached on the sha256 of its inputs (§5).

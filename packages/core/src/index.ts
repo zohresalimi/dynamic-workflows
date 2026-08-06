@@ -123,6 +123,7 @@ export {
   isEventKind,
   LOCK_KINDS,
   LOCK_RELEASE_REASONS,
+  NodeBlockedSchema,
   NodeCancelFailedSchema,
   NodeCancelledSchema,
   NodeCancelStageSchema,
@@ -429,6 +430,9 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
+export type { ScopeCollision } from './scope-collision.ts';
+export { scopeCollisions } from './scope-collision.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,

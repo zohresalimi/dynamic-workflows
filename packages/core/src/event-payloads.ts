@@ -316,6 +316,33 @@ export const NodeSuspendedSchema = z.strictObject({
 });
 
 /**
+ * KAR-07.6 — the scheduling half of Decision D14
+ * (docs/09-workspace-and-safety.md §6.2, §7.3).
+ *
+ * `git merge-tree --write-tree` said these two in-flight branches have started
+ * to conflict, and the later-*starting* node is demoted so the earlier one can
+ * finish. Later-starting rather than lower-priority or smaller: the node that
+ * has been running longest has the most work to lose, and start time is the
+ * one ordering both a scheduler and a human reading the timeline agree on.
+ *
+ * The payload has to answer "why is this node not running?" without a second
+ * query. `conflictsWith` is the counterpart it collided with — its node id,
+ * not its branch, because the board shows nodes — and `paths` is what
+ * `merge-tree --name-only` actually reported, which is the difference between
+ * "these branches conflict" and a diagnosis. Both branches are named too, so
+ * the matching `conflict_probe` row is findable from the event alone.
+ */
+export const NodeBlockedSchema = z.strictObject({
+  node: NodeIdSchema,
+  /** The in-flight node this one conflicts with; it keeps running. */
+  conflictsWith: NodeIdSchema,
+  branch: z.string().min(1),
+  otherBranch: z.string().min(1),
+  /** Non-empty by construction: a clean probe never blocks anything. */
+  paths: z.array(z.string().min(1)).min(1),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -793,6 +820,7 @@ export const EVENT_SCHEMAS = {
   'node.failed': { v: 1, payload: NodeFailedSchema },
   'node.retry.scheduled': { v: 1, payload: NodeRetryScheduledSchema },
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
+  'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },

@@ -46,6 +46,8 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-06, KAR-07.2 — the `worktrees` projection over git's own
   // `worktree list --porcelain -z`.
   '0008-worktrees.ts': 'bbb4d7918881571f37af14cc40ae727218f3cf7eb5aa358e399a4862f1f1f741',
+  // Shipped 2026-08-06, KAR-07.6 — the live pairwise `merge-tree` matrix.
+  '0009-conflict-probe.ts': '9a498836ae869331696f4dc2fcee206055cc9e20f3ed1e23dff4482111829ab6',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(
