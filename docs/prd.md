@@ -575,12 +575,25 @@ Prove the two riskiest assumptions before building anything else.
 
 ### M1 — Personal tool (target: usable daily)
 
-F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9.
+F1.1–F1.3, F2.1–F2.6, F3.1, F3.2, F3.4–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9.
+
+**F3.3 moved to M2 on 2026-08-06** (owner decision, recorded here rather than left implicit). Two grounds,
+both from [07-provider-adapter-layer.md §12](07-provider-adapter-layer.md): no HTTP client package was ever
+selected or verified, and a direct API adapter inverts the AR-1 credential posture — at M1, DeFlow never
+possesses a credential of any kind, and keeping it that way is worth more than the coverage. The
+consequence is accepted explicitly: **at M1 provider-neutrality is demonstrated only across subprocess
+adapters, so "the adapter abstraction is provider-neutral rather than merely ACP-shaped" stays an
+unverified claim** until the M2 story lands and passes the F3.4 conformance battery unmodified.
+
+When it is built (see `KAR-05.10` in `docs/delivery/epics/EPIC-05-provider-adapters.md`, which is retained
+in full as the M2 specification): the vendor is chosen during the story and recorded in
+[02-tech-stack.md](02-tech-stack.md) with its pin policy; the credential is supplied by an env var **named
+from** `.DeFlow/config.yaml`, never stored by DeFlow and never read without the per-provider opt-in.
 Daemon + browser UI. macOS + Linux. **Definition of done: you complete a real multi-hour task at work with it, from spec to merged PR, and the visualization tells you why every step happened.**
 
 ### M2 — Shareable (before showing colleagues)
 
-Secret redaction (F5.9), container isolation (F5.8), run replay (F10.10), OTel export (F10.12), notifications (F8.4), plan templates (F2.8), custom gates (F7.6), Windows support, install docs, and 3–5 packaged workflow templates for real Voyado tasks.
+Direct API adapter (F3.3, moved from M1 on 2026-08-06 — see above), secret redaction (F5.9), container isolation (F5.8), run replay (F10.10), OTel export (F10.12), notifications (F8.4), plan templates (F2.8), custom gates (F7.6), Windows support, install docs, and 3–5 packaged workflow templates for real Voyado tasks.
 **Definition of done: a colleague installs it unaided and finishes a real task.**
 
 ### M3 — Team
