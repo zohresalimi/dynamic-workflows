@@ -119,6 +119,7 @@ export {
   type BranchIdComponent,
   integrationBranch,
   nodeBranch,
+  salvageBranch,
   UnsafeRefError,
 } from './git/branch-name.ts';
 // KAR-07.1 — default branch resolution (§10.6): origin/HEAD, falling back to
@@ -141,6 +142,9 @@ export { RefFormatChecker, type RefFormatRunner } from './git/ref-format.ts';
 // KAR-06.4 — the spawn half of the git wrapper KAR-07.1 completes.
 export type { GitResult, RunGitOptions } from './git/run-git.ts';
 export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';
+// KAR-07.4 — the one way DeFlow reads a worktree's dirtiness (§4.4).
+export type { StatusEntry, StatusEntryKind } from './git/status-porcelain.ts';
+export { isDirty, parseStatusPorcelainV2, STATUS_ARGS } from './git/status-porcelain.ts';
 // KAR-07.1 — the git version floor (§1.2): DeFlow doctor's git check
 // (EPIC-18, KAR-18.4) and, ahead of that command existing, the run-start
 // gate a below-floor git throws through.
@@ -190,11 +194,14 @@ export type {
   ReconcileReport,
   RemoveRequest,
   RemoveResult,
+  SalvageResult,
+  SalvageStep,
   WorkspaceGit,
   WorkspacePorts,
 } from './git/worktree-manager.ts';
 export {
   BranchOccupiedError,
+  WipSalvageFailed,
   WorkspaceManager,
   WorktreeCreateFailed,
   WorktreeRemovalRefused,
@@ -203,6 +210,15 @@ export {
 // pre-check over it (§3.1, §4.3).
 export type { WorktreeEntry, WorktreeOccupant } from './git/worktree-porcelain.ts';
 export { findOccupant, parseWorktreeList, shortBranch } from './git/worktree-porcelain.ts';
+// KAR-07.4 — the salvage sequence's argv, and the single `--force` it is the
+// only route to on the node-completion path (§4.4).
+export {
+  SALVAGE_COMMIT_SUBJECT,
+  salvageAddArgs,
+  salvageBranchArgs,
+  salvageCommitArgs,
+  salvagedRemoveArgs,
+} from './git/worktree-salvage.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';

@@ -36,15 +36,23 @@
  *
  * Verifies: EPIC-07-S9 … EPIC-07-S16 · AC1–AC8
  */
-import type { Clock, Db, NodeId, RunId, WorktreeOccupantKind } from '@DeFlow/core';
+import type { Clock, Db, EventSeq, NodeId, RunId, WorktreeOccupantKind } from '@DeFlow/core';
 import {
   appendEvents,
   type EventDraft,
+  readRange,
   readWorktrees,
   replaceWorktrees,
   type WorktreeRow,
 } from '@DeFlow/ledger';
+import { salvageBranch } from './branch-name.ts';
 import type { GitResult } from './run-git.ts';
+import {
+  isDirty,
+  parseStatusPorcelainV2,
+  STATUS_ARGS,
+  type StatusEntry,
+} from './status-porcelain.ts';
 import {
   lockReasonFor,
   parseLockReason,
@@ -59,6 +67,12 @@ import {
   shortBranch,
   type WorktreeEntry,
 } from './worktree-porcelain.ts';
+import {
+  salvageAddArgs,
+  salvageBranchArgs,
+  salvageCommitArgs,
+  salvagedRemoveArgs,
+} from './worktree-salvage.ts';
 
 /** The one way this module reaches git: the `Git` wrapper's own shape, injected
  * so a spec can record the argv while real git still does the work. */
@@ -111,12 +125,36 @@ export interface RemoveRequest {
   /** The node's branch, so its tip can be recorded before the worktree goes.
    * Absent for a read node's detached checkout. */
   readonly branch?: string;
+  /**
+   * KAR-07.4 AC6 — where a *detached* checkout's salvage commit is made
+   * reachable, when it turns out to be dirty. Composed by `salvageBranch` and
+   * supplied by the caller for the same reason `branch` is: the ids a run uses
+   * are not always the ids a ref may be named after (`BRANCH_SAFE`), and this
+   * module never transforms an id to make one fit. Omitted, it is composed from
+   * `runId`/`nodeId` — which throws `UnsafeRefError` rather than inventing a
+   * name, and throwing here leaves the worktree present and dirty.
+   */
+  readonly salvageBranch?: string;
+}
+
+/** What the salvage sequence did, when it ran at all (KAR-07.4 AC2). */
+export interface SalvageResult {
+  /** Where the commit landed: the node's branch, or the throwaway salvage ref. */
+  readonly branch: string;
+  /** True when the checkout had no branch of its own to commit to. */
+  readonly detached: boolean;
+  readonly oid: string;
+  /** The status entries the commit swept up. */
+  readonly entries: readonly StatusEntry[];
 }
 
 export interface RemoveResult {
   readonly path: string;
   readonly branch: string | null;
   readonly tipOid: string | null;
+  /** `null` when the worktree was clean — the ordinary case, and the one AC5
+   * insists stays free of salvage machinery. */
+  readonly salvage: SalvageResult | null;
 }
 
 export interface ReconcileReport {
@@ -180,6 +218,36 @@ export class WorktreeRemovalRefused extends Error {
     this.name = 'WorktreeRemovalRefused';
     this.path = path;
     this.stderr = result.stderr;
+  }
+}
+
+/** Which step of §4.4's salvage sequence gave up. */
+export type SalvageStep = 'status' | 'add' | 'commit' | 'resolve' | 'branch' | 'durability';
+
+/**
+ * The salvage sequence stopped, so the worktree is still there and still dirty
+ * — which is the *correct* outcome of a failure here, not a leak (KAR-07.4).
+ *
+ * Nothing has been removed and nothing has been forced. A repository-authored
+ * `pre-commit` hook that refuses the salvage commit lands here, and the run
+ * keeps its worktree until a human or a later attempt resolves it. The
+ * alternative — forcing anyway — is the exact data loss this story exists to
+ * prevent.
+ */
+export class WipSalvageFailed extends Error {
+  readonly step: SalvageStep;
+  readonly path: string;
+  readonly stderr: string;
+
+  constructor(step: SalvageStep, path: string, detail: string) {
+    super(
+      `the WIP salvage of "${path}" failed at the ${step} step, so the worktree was left ` +
+        `present and dirty and no forced removal was attempted: ${detail.trim()}`,
+    );
+    this.name = 'WipSalvageFailed';
+    this.step = step;
+    this.path = path;
+    this.stderr = detail;
   }
 }
 
@@ -287,7 +355,20 @@ export class WorkspaceManager {
   }
 
   /**
-   * §4.4's happy path (AC7): unlock, then remove. Never `--force`.
+   * §4.4 — dirtiness is decided **first**, and everything else follows from it.
+   *
+   * The clean path is KAR-07.2's happy path unchanged (AC7): unlock, then
+   * remove, never `--force`. The dirty path is KAR-07.4's salvage sequence:
+   * capture, commit, and only then a single force, in that order and no other.
+   *
+   * Asking `status --porcelain=v2 -z` up front, rather than running `remove`
+   * and reading its error, is the same decision the occupancy pre-check makes
+   * for `add` (§3.1): the failure string
+   * (`contains modified or untracked files, use --force to delete it`) is one
+   * git release from changing, and a design that branches on it would one day
+   * decide every worktree is clean and force-remove them all. It also makes
+   * AC5 fall out for free — a worktree holding only `node_modules/` reports no
+   * entries at all, so nothing special-cases gitignored files anywhere.
    *
    * The tip is read *before* the removal, so the event records what the node
    * actually produced even though the worktree is about to stop existing. The
@@ -296,11 +377,16 @@ export class WorkspaceManager {
    * that is the state this call wanted anyway.
    */
   async remove(request: RemoveRequest): Promise<RemoveResult> {
+    const entries = await this.#captureStatus(request.path);
+    const salvage = isDirty(entries) ? await this.#salvage(request, entries) : null;
+
     const branch = request.branch ?? null;
     const tipOid = branch === null ? null : await branchTip(this.#ports.git, branch);
 
     await this.#ports.git.run(worktreeUnlockArgs(request.path));
-    const removed = await this.#ports.git.run(worktreeRemoveArgs(request.path));
+    const removeArgs =
+      salvage === null ? worktreeRemoveArgs(request.path) : salvagedRemoveArgs(request.path);
+    const removed = await this.#ports.git.run(removeArgs);
     if (removed.exitCode !== 0) throw new WorktreeRemovalRefused(request.path, removed);
 
     this.#append(request.runId, request.nodeId, 'workspace.worktree_removed', {
@@ -310,7 +396,7 @@ export class WorkspaceManager {
       tipOid,
     });
 
-    return { path: request.path, branch, tipOid };
+    return { path: request.path, branch, tipOid, salvage };
   }
 
   /**
@@ -353,6 +439,96 @@ export class WorkspaceManager {
     return { added, removed, prunable, changed, entries };
   }
 
+  /** §4.4 step 1's read, run **inside** the worktree — `status` reports on the
+   * checkout it is run in, and the main repository's own cleanliness has
+   * nothing to do with whether this worktree may be removed. */
+  async #captureStatus(path: string): Promise<StatusEntry[]> {
+    const result = await this.#ports.git.run(STATUS_ARGS, { cwd: path });
+    if (result.exitCode !== 0) throw new WipSalvageFailed('status', path, result.stderr);
+    return parseStatusPorcelainV2(result.stdout);
+  }
+
+  /**
+   * §4.4's dirty path (KAR-07.4 AC1–AC4, AC6), in the order that is the story:
+   *
+   * 1. `workspace.dirty_on_remove` — the evidence, appended while the worktree
+   *    is still dirty and still on disk.
+   * 2. `add -A`, `commit -m "DeFlow: WIP salvage"` — the untracked file
+   *    included, because it is exactly what a blind force would have destroyed.
+   * 3. For a detached checkout, a throwaway branch created *at* that commit,
+   *    because a detached HEAD leaves nothing for the work to be found by.
+   * 4. `workspace.wip_salvaged`, **read back out of SQLite** before returning.
+   *
+   * Step 4 is not ceremony. AC4 says force is reachable only once the salvage
+   * event is durable, and the only way to know a row is durable is to read it
+   * back from the database rather than to trust the `seq` an uncommitted
+   * transaction handed out. Every failure in here throws, which leaves the
+   * worktree present, dirty, and un-forced.
+   */
+  async #salvage(request: RemoveRequest, entries: readonly StatusEntry[]): Promise<SalvageResult> {
+    const { runId, nodeId, path } = request;
+    this.#append(runId, nodeId, 'workspace.dirty_on_remove', { node: nodeId, path, entries });
+
+    const staged = await this.#ports.git.run(salvageAddArgs(), { cwd: path });
+    if (staged.exitCode !== 0) throw new WipSalvageFailed('add', path, staged.stderr);
+
+    const committed = await this.#ports.git.run(salvageCommitArgs(), { cwd: path });
+    if (committed.exitCode !== 0) {
+      // A repository-authored `pre-commit` hook is the expected way to get
+      // here. @see ./worktree-salvage.ts on why hooks are not suppressed.
+      throw new WipSalvageFailed('commit', path, `${committed.stdout}\n${committed.stderr}`);
+    }
+
+    const resolved = await this.#ports.git.run(['rev-parse', 'HEAD'], { cwd: path });
+    const oid = resolved.stdout.trim();
+    if (resolved.exitCode !== 0 || oid === '') {
+      throw new WipSalvageFailed('resolve', path, resolved.stderr);
+    }
+
+    // A detached checkout has no branch for the commit to advance, so the
+    // commit is made first and a throwaway ref is created *at* it (AC6).
+    const nodeOwnBranch = request.branch;
+    const detached = nodeOwnBranch === undefined;
+    const branch = nodeOwnBranch ?? (await this.#createSalvageBranch(request, oid));
+
+    const seq = this.#append(runId, nodeId, 'workspace.wip_salvaged', {
+      node: nodeId,
+      path,
+      branch,
+      detached,
+      oid,
+      files: entries.length,
+    });
+    this.#assertDurable(seq, runId, 'workspace.wip_salvaged', path);
+
+    return { branch, detached, oid, entries };
+  }
+
+  /** AC6 — the throwaway ref a detached checkout's commit is made reachable by,
+   * created at the commit rather than checked out before it. */
+  async #createSalvageBranch(request: RemoveRequest, oid: string): Promise<string> {
+    const branch = request.salvageBranch ?? salvageBranch(request.runId, request.nodeId);
+
+    const created = await this.#ports.git.run(salvageBranchArgs(branch, oid));
+    if (created.exitCode !== 0) throw new WipSalvageFailed('branch', request.path, created.stderr);
+    return branch;
+  }
+
+  /**
+   * AC4's precondition, made mechanical: the event is read back out of SQLite,
+   * so `--force` is unreachable from a life in which the append did not commit.
+   */
+  #assertDurable(seq: EventSeq, runId: string, kind: string, path: string): void {
+    const readBack = readRange(this.#ports.db, runId as RunId, seq - 1, 1).events.at(0);
+    if (readBack === undefined || readBack.seq !== seq || readBack.kind !== kind) {
+      throw new WipSalvageFailed(
+        'durability',
+        path,
+        `the ${kind} event at seq ${seq} could not be read back, so --force was not reached`,
+      );
+    }
+  }
+
   /** AC3, AC4 — the pre-check, from git's list and nothing else. The event is
    * appended before the throw, so the refusal is in the run's history whether
    * or not anything catches the error. */
@@ -369,9 +545,10 @@ export class WorkspaceManager {
     throw new BranchOccupiedError(shortBranch(request.branch), occupant.path, occupant.kind);
   }
 
-  /** One event, in this daemon life's epoch, attributed to a node. */
-  #append(runId: string, nodeId: string, kind: string, payload: unknown): void {
-    this.#appendDraft({
+  /** One event, in this daemon life's epoch, attributed to a node. Returns the
+   * `seq` SQLite assigned it, which is what `#assertDurable` reads back. */
+  #append(runId: string, nodeId: string, kind: string, payload: unknown): EventSeq {
+    return this.#appendDraft({
       runId: runId as RunId,
       ts: this.#ports.clock.now(),
       kind,
@@ -395,7 +572,9 @@ export class WorkspaceManager {
     });
   }
 
-  #appendDraft(draft: EventDraft): void {
-    appendEvents(this.#ports.db, [draft]);
+  #appendDraft(draft: EventDraft): EventSeq {
+    const [seq] = appendEvents(this.#ports.db, [draft]);
+    if (seq === undefined) throw new Error(`appendEvents returned no seq for ${draft.kind}`);
+    return seq;
   }
 }

@@ -8,7 +8,7 @@
  */
 import { mulberry32 } from '@DeFlow/testkit';
 import { expect, it, describe as suite } from 'vitest';
-import { integrationBranch, nodeBranch, UnsafeRefError } from './branch-name.ts';
+import { integrationBranch, nodeBranch, salvageBranch, UnsafeRefError } from './branch-name.ts';
 
 suite('S5: names are composed (test plan row 1)', () => {
   it('nodeBranch("r1", "n1") returns the flat scheme', () => {
@@ -69,22 +69,22 @@ suite('S7: the domain layer rejects before git is ever asked (test plan row 2)',
   });
 });
 
-suite("S6: DeFlow's own generator can never produce the hierarchical shape", () => {
-  const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-  function randomValidId(random: () => number): string {
-    const length = 1 + Math.floor(random() * 12);
-    let id = '';
-    for (let i = 0; i < length; i += 1) {
-      id += ALPHABET[Math.floor(random() * ALPHABET.length)];
-    }
-    // The generator above can produce a leading digit-only id that still
-    // matches BRANCH_SAFE (digits are a valid first character too), so no
-    // extra fixup is needed — every character it emits is already in
-    // BRANCH_SAFE's class and it never emits ".lock" or "..".
-    return id;
+function randomValidId(random: () => number): string {
+  const length = 1 + Math.floor(random() * 12);
+  let id = '';
+  for (let i = 0; i < length; i += 1) {
+    id += ALPHABET[Math.floor(random() * ALPHABET.length)];
   }
+  // The generator above can produce a leading digit-only id that still
+  // matches BRANCH_SAFE (digits are a valid first character too), so no
+  // extra fixup is needed — every character it emits is already in
+  // BRANCH_SAFE's class and it never emits ".lock" or "..".
+  return id;
+}
 
+suite("S6: DeFlow's own generator can never produce the hierarchical shape", () => {
   it('200 random valid (runId, nodeId) pairs never produce more than two "/"', () => {
     const random = mulberry32(0x0705_0703); // KAR-07.3, fixed for reproducibility
     for (let i = 0; i < 200; i += 1) {
@@ -116,5 +116,40 @@ suite("S6: DeFlow's own generator can never produce the hierarchical shape", () 
     const node = nodeBranch('r1', 'n1');
     expect(node.startsWith(`${int}/`)).toBe(false);
     expect(int.startsWith(`${node}/`)).toBe(false);
+  });
+});
+
+suite('KAR-07.4 AC6: the throwaway branch a detached salvage lands on', () => {
+  it('composes DeFlow/salvage/<runId>__<nodeId>', () => {
+    expect(salvageBranch('r1', 'n2')).toBe('DeFlow/salvage/r1__n2');
+  });
+
+  it('validates both components with the same rule, naming the one that failed', () => {
+    let caught: unknown;
+    try {
+      salvageBranch('r1', '-n2');
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(UnsafeRefError);
+    expect((caught as UnsafeRefError).component).toBe('nodeId');
+    expect(() => salvageBranch('R1', 'n2')).toThrow(UnsafeRefError);
+  });
+
+  it('cannot collide with a node branch: no id pair composes to the bare name "salvage"', () => {
+    const random = mulberry32(0x0705_0704); // KAR-07.4, fixed for reproducibility
+    for (let i = 0; i < 200; i += 1) {
+      const runId = randomValidId(random);
+      const nodeId = randomValidId(random);
+      // refs/heads/DeFlow/salvage/ is a *directory*; every node branch is a
+      // file directly under refs/heads/DeFlow/, and the `__` separator is
+      // always there, so `DeFlow/salvage` is not a name nodeBranch can emit.
+      expect(nodeBranch(runId, nodeId)).not.toBe('DeFlow/salvage');
+      expect(salvageBranch(runId, nodeId).startsWith('DeFlow/salvage/')).toBe(true);
+    }
+  });
+
+  it('is never flag-shaped, so the -- separator is belt and braces rather than the only guard', () => {
+    expect(salvageBranch('r1', 'n2').startsWith('-')).toBe(false);
   });
 });

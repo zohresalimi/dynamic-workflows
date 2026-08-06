@@ -637,20 +637,24 @@ suite('EPIC-07-S15: removal is unlock then remove (AC7)', () => {
     }
   });
 
-  it('a dirty worktree refuses removal rather than being forced — KAR-07.4 salvages it', async ({
+  it('raw git still refuses a dirty worktree — which is why KAR-07.4 salvages before removing', async ({
     tmp,
   }) => {
     const s = await scene(tmp);
     try {
       const path = await s.provisionWrite('r1', 'n1');
       await writeFile(join(path, 'untracked.txt'), 'work an agent left behind\n');
+      await git(s.repo, ['worktree', 'unlock', path]);
 
-      const thrown = await s.manager
-        .remove({ runId: RUN, nodeId: 'n1', path, branch: nodeBranch('r1', 'n1') })
-        .catch((error: unknown) => error);
+      const raw = await tryGit(s.repo, ['worktree', 'remove', path]);
 
-      expect((thrown as Error).name).toBe('WorktreeRemovalRefused');
-      expect((thrown as Error).message).toContain('contains modified or untracked files');
+      // The verified message, pinned. KAR-07.2's `remove` never sees it: the
+      // Workspace Manager asks `status --porcelain=v2 -z` first and takes
+      // §4.4's salvage path (../integration/worktree-salvage.test.ts), because
+      // branching on a git string is how a design ends up force-removing every
+      // worktree the day the string changes.
+      expect(raw.exitCode).not.toBe(0);
+      expect(raw.stderr).toContain('contains modified or untracked files');
       expect((await stat(path)).isDirectory()).toBe(true);
       expect(kinds(s.db)).not.toContain('workspace.worktree_removed');
     } finally {
