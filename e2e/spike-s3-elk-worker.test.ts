@@ -13,19 +13,25 @@
  * DOM lib, and these bodies are serialised into the browser rather than run
  * here — where the two names are the same object anyway.
  *
+ * Every number below is measured fresh on every run — that is what makes it a
+ * measurement — and written to `measurementsOutDir()`, which is a temporary
+ * directory unless `pnpm spike:s3:record` says otherwise. What is committed
+ * under `measurements/` is the golden this run is compared against, so a
+ * `pnpm test` leaves the working tree clean while still re-deriving every
+ * number in the note.
+ *
  * Verifies: EPIC-00-S14 (scenarios 1 and 3), EPIC-00-S15, EPIC-00-S16
  * · AC1, AC3, AC4, AC5.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { type Browser, chromium, type Page } from 'playwright';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
   type BuildResult,
   build,
-  MEASUREMENTS_DIR,
+  readMeasurement,
   type StaticServer,
   serveDist,
+  writeMeasurement,
 } from '../spikes/s3-elk-worker/src/harness.ts';
 
 interface Point {
@@ -68,7 +74,19 @@ interface S3Api {
   dagreSixty(): Promise<{ count: number; positions: Positions; version: string }>;
 }
 
-const jsonOf = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+/** The committed shape of `measurements/browser-layout.json`. */
+interface BrowserLayoutMeasurement {
+  readonly nodes: number;
+  readonly durationMs: number;
+  readonly heartbeatTicks: number;
+  /**
+   * The worker's path, not its URL: the static server binds an ephemeral port,
+   * so recording the origin would put a different number in a tracked file on
+   * every run. The path is the part the spike is about — a hashed asset,
+   * resolved from the built bundle.
+   */
+  readonly workerAsset: string;
+}
 
 let built: BuildResult;
 let server: StaticServer;
@@ -101,7 +119,6 @@ beforeAll(async () => {
     undefined,
     { timeout: 30_000 },
   );
-  mkdirSync(MEASUREMENTS_DIR, { recursive: true });
 }, 180_000);
 
 afterAll(async () => {
@@ -136,15 +153,26 @@ suite('EPIC-00-S14 — the built worker loads from its hashed URL (AC1, AC3)', (
       `layout took ${result.durationMs} ms and the main thread ticked ${result.heartbeatDelta} times`,
     ).toBeGreaterThanOrEqual(5);
 
-    writeFileSync(
-      join(MEASUREMENTS_DIR, 'browser-layout.json'),
-      jsonOf({
-        nodes: result.count,
-        durationMs: result.durationMs,
-        heartbeatTicks: result.heartbeatDelta,
-        workerUrl: result.workerUrl,
-      }),
-    );
+    const measured: BrowserLayoutMeasurement = {
+      nodes: result.count,
+      // One decimal, because that is the resolution `performance.now()` gives
+      // in Chromium and the rest is float noise from the subtraction.
+      durationMs: Number(result.durationMs.toFixed(1)),
+      heartbeatTicks: result.heartbeatDelta,
+      workerAsset: new URL(result.workerUrl ?? '', server.origin).pathname,
+    };
+    writeMeasurement('browser-layout.json', measured);
+
+    // The committed copy is a golden. A duration and a tick count are different
+    // numbers on every machine and cannot be asserted equal — the assertions
+    // that matter are above, on this run's own numbers — but what the recording
+    // claims has to stay recognisable as the same measurement, and the recorded
+    // run has to be one that would pass AC3 today.
+    const golden = readMeasurement<BrowserLayoutMeasurement>('browser-layout.json');
+    expect(measured.nodes).toBe(golden.nodes);
+    expect(measured.workerAsset).toBe(golden.workerAsset);
+    expect(golden.heartbeatTicks).toBeGreaterThanOrEqual(5);
+    expect(golden.durationMs).toBeGreaterThan(0);
   });
 });
 
@@ -208,9 +236,12 @@ suite('EPIC-00-S15 — one layout over the union keeps positions still (AC4)', (
       'if a per-version layout never moves anything, this fixture cannot tell the two mechanisms apart',
     ).toBeGreaterThan(0);
 
-    writeFileSync(
-      join(MEASUREMENTS_DIR, 'union-vs-per-version.json'),
-      jsonOf({ perVersionMoves: moved.length, moved }),
+    const measured = { perVersionMoves: moved.length, moved };
+    writeMeasurement('union-vs-per-version.json', measured);
+    // Same layout, same fixture, same engine: this one is not a timing, so the
+    // golden can be held to the number the note quotes.
+    expect(measured.perVersionMoves).toBe(
+      readMeasurement<{ perVersionMoves: number }>('union-vs-per-version.json').perVersionMoves,
     );
   });
 });
@@ -277,27 +308,29 @@ suite('EPIC-00-S16 — the constraint recipe, actually tried (AC5)', () => {
       'the constraint changed the INTERACTIVE layout — it is being honoured after all, and the note is wrong',
     ).toBe(JSON.stringify(probe.interactiveStrategyNoConstraint));
 
-    writeFileSync(
-      join(MEASUREMENTS_DIR, 'constraint-probe.json'),
-      jsonOf({
-        targetNode: probe.targetNode,
-        baselineLayer: probe.baselineLayer,
-        requestedLayer: probe.requestedLayer,
-        optionIsKnown: probe.optionIsKnown,
-        layers: probe.layers,
-        ignoredWithoutInteractiveLayout:
-          JSON.stringify(probe.withoutInteractive) === JSON.stringify(probe.baseline),
-        changedWithInteractiveLayout:
-          JSON.stringify(probe.withInteractive) !== JSON.stringify(probe.baseline),
-        changedWithInteractiveLayeringStrategy:
-          JSON.stringify(probe.withInteractiveStrategy) !== JSON.stringify(probe.baseline),
-        interactiveStrategyHonouredTheConstraint:
-          JSON.stringify(probe.withInteractiveStrategy) !==
-          JSON.stringify(probe.interactiveStrategyNoConstraint),
-        changedWithSemiInteractivePosition:
-          JSON.stringify(probe.semiInteractivePosition) !== JSON.stringify(probe.baseline),
-        errors: probe.errors,
-      }),
+    const measured = {
+      targetNode: probe.targetNode,
+      baselineLayer: probe.baselineLayer,
+      requestedLayer: probe.requestedLayer,
+      optionIsKnown: probe.optionIsKnown,
+      layers: probe.layers,
+      ignoredWithoutInteractiveLayout:
+        JSON.stringify(probe.withoutInteractive) === JSON.stringify(probe.baseline),
+      changedWithInteractiveLayout:
+        JSON.stringify(probe.withInteractive) !== JSON.stringify(probe.baseline),
+      changedWithInteractiveLayeringStrategy:
+        JSON.stringify(probe.withInteractiveStrategy) !== JSON.stringify(probe.baseline),
+      interactiveStrategyHonouredTheConstraint:
+        JSON.stringify(probe.withInteractiveStrategy) !==
+        JSON.stringify(probe.interactiveStrategyNoConstraint),
+      changedWithSemiInteractivePosition:
+        JSON.stringify(probe.semiInteractivePosition) !== JSON.stringify(probe.baseline),
+      errors: probe.errors,
+    };
+    writeMeasurement('constraint-probe.json', measured);
+    // Layer numbers, not timings: the golden holds them.
+    expect(measured.layers).toEqual(
+      readMeasurement<{ layers: Record<string, number> }>('constraint-probe.json').layers,
     );
   });
 });

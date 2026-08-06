@@ -13,13 +13,69 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
 import { extname, join, posix, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const SPIKE_ROOT = fileURLToPath(new URL('../', import.meta.url));
+
+/**
+ * The committed measurements: the numbers `docs/spikes/S3-elk-worker.md`
+ * quotes, and the evidence the spike leaves behind. They are goldens, so a test
+ * run writes what it just measured somewhere else and compares — see
+ * `measurementsOutDir` below.
+ */
 export const MEASUREMENTS_DIR = fileURLToPath(new URL('../measurements/', import.meta.url));
+
+/**
+ * The opt-in that rewrites the committed measurements, spelled the way the rest
+ * of the repository spells "this run rewrites something a human has to look at
+ * and commit" (`pnpm test:record`, `DeFlow_MANUAL_VENDOR_CLI`).
+ *
+ *   pnpm spike:s3:record
+ *
+ * Without it the browser measurement is fresh on every run — it has to be, it
+ * is the measurement — but it lands in a temporary directory instead of
+ * restamping a tracked file with a new duration, a new tick count and a new
+ * ephemeral port.
+ */
+export const RECORD_MEASUREMENTS_ENV = 'DeFlow_RECORD_MEASUREMENTS';
+
+let scratchMeasurements: string | undefined;
+
+/** Where this process's measurements are written. */
+export function measurementsOutDir(env: NodeJS.ProcessEnv = process.env): string {
+  if (env[RECORD_MEASUREMENTS_ENV] === '1') return MEASUREMENTS_DIR;
+  scratchMeasurements ??= mkdtempSync(join(tmpdir(), 'deflow-s3-measurements-'));
+  return scratchMeasurements;
+}
+
+/** Writes one measurement as JSON and returns the path it landed on. */
+export function writeMeasurement(
+  name: string,
+  value: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const directory = measurementsOutDir(env);
+  mkdirSync(directory, { recursive: true });
+  const path = join(directory, name);
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  return path;
+}
+
+/** The committed golden for `name`, whatever this run happens to write. */
+export function readMeasurement<T>(name: string): T {
+  return JSON.parse(readFileSync(join(MEASUREMENTS_DIR, name), 'utf8')) as T;
+}
 
 /**
  * `elk` is the app as it is meant to be shipped. `no-elk` is the same app with

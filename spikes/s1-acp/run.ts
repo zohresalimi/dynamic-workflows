@@ -12,7 +12,9 @@
  * `recordings/<agent>@<version>/full-cycle.ndjson`, and writes the generated
  * capability fixture to `fixtures/capabilities/`. A replay run drives the same
  * client from that recording, so the cycle is re-runnable for ever without
- * spending another credit.
+ * spending another credit — and generates its own copy of the fixture into a
+ * temporary directory rather than restamping the committed one with the time
+ * of the replay (src/paths.ts).
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +24,7 @@ import { agentSpec } from './src/agents.ts';
 import type { Channel, Clock } from './src/client.ts';
 import { runCycle } from './src/cycle.ts';
 import { DEFAULT_FRAME_CAP_BYTES } from './src/framing.ts';
+import { fixtureDirFor, isCommittedFixture } from './src/paths.ts';
 import { Recorder, readFrames, readHeader, readRecording } from './src/recording.ts';
 import { type RunReport, renderTable } from './src/report.ts';
 import { replayChannel, spawnChannel } from './src/transports.ts';
@@ -52,7 +55,9 @@ const recordingRoot =
 const recordingDir = join(recordingRoot, `${agent.name}@${agent.version}`);
 const recordingPath = join(recordingDir, 'full-cycle.ndjson');
 const mcpLogPath = join(recordingDir, 'mcp-handshake.txt');
-const fixtureDir = flag('fixture-dir') ?? join(repoRoot, 'fixtures/capabilities');
+// Only a live probe of a real vendor writes the committed fixture; every other
+// run generates its own into a temporary directory (see src/paths.ts).
+const fixtureDir = flag('fixture-dir') ?? fixtureDirFor(replay ? 'replay' : 'live', agent.kind);
 
 let cwd: string;
 let channel: Channel;
@@ -103,9 +108,16 @@ const report: RunReport = await runCycle(channel, {
   ...(recorder ? { tee: recorder.note.bind(recorder) } : {}),
   ...(replayClock ? { clock: replayClock } : {}),
   writeFixture: (path, contents) => {
-    // Fakes must never overwrite a vendor fixture; the test points them at a
-    // scratch directory, and this is the belt to that pair of braces.
-    if (agent.kind === 'fake' && fixtureDir.startsWith(join(repoRoot, 'fixtures'))) return;
+    // The belt to src/paths.ts's braces. A fake agent must never overwrite a
+    // vendor fixture, and a replay must never restamp one: its `probedAt` would
+    // be the time of the replay rather than of the probe, which is how a clean
+    // checkout used to come back dirty from `pnpm test`. Loud rather than
+    // silent, because either would only ever happen by mistake.
+    if (isCommittedFixture(path) && (replay || agent.kind === 'fake')) {
+      throw new Error(
+        `refusing to write ${path}: only a live vendor probe writes the committed fixtures`,
+      );
+    }
     writeFileSync(path, contents);
   },
 });
