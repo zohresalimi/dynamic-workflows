@@ -17,8 +17,10 @@ import {
   type BenchRow,
   CSV_HEADER,
   compareShape,
+  compareShapeRounds,
   formatBenchCsv,
   LINUX_BASELINE,
+  median,
   parseBenchCsv,
   REQUIRED_CELLS,
   requireRow,
@@ -115,6 +117,65 @@ suite('the four numbers become the two baseline ratios (AC3, EPIC-00-S18)', () =
   it('carries the Linux baseline it is comparing against', () => {
     expect(LINUX_BASELINE.fullSingle).toBe(979);
     expect(LINUX_BASELINE.normalSingle).toBe(22_982);
+  });
+});
+
+suite('a shape is decided by a vote of rounds, not by one measurement (AC3)', () => {
+  const quartet = (
+    fullSingle: number,
+    fullBatched: number,
+    normalSingle: number,
+    normalBatched: number,
+  ): BenchRow[] => [
+    row('FULL', 'single', fullSingle),
+    row('FULL', 'batched', fullBatched),
+    row('NORMAL', 'single', normalSingle),
+    row('NORMAL', 'batched', normalBatched),
+  ];
+
+  /** A round where the machine behaved, five times over. */
+  const honest = (): BenchRow[][] =>
+    Array.from({ length: 5 }, () => quartet(1000, 7000, 22_000, 44_000));
+
+  it('reports the median of the per-round ratios, not the ratio of the totals', () => {
+    const shape = compareShapeRounds(honest());
+    expect(shape.rounds).toBe(5);
+    expect(shape.fullPenalty).toBe(22);
+    expect(shape.batchingGainFull).toBe(7);
+    expect(shape.batchingGainNormal).toBe(2);
+  });
+
+  it('outvotes the one round the scheduler ruined', () => {
+    // The observed flake, reproduced as data: one round in which the batched
+    // NORMAL measurement was descheduled hard enough to report batching as a
+    // loss. Four honest rounds outvote it, where a mean would be dragged down
+    // by it and a single measurement would simply be it.
+    const rounds = honest();
+    rounds[2] = quartet(1000, 7000, 22_000, 18_000);
+    const shape = compareShapeRounds(rounds);
+    expect(
+      shape.perRound[2]?.batchingGainNormal,
+      'the bad round is still in the record',
+    ).toBeLessThan(1);
+    expect(shape.batchingGainNormal).toBe(2);
+  });
+
+  it('still fails when the shape really did not hold, in most rounds', () => {
+    // Three of five rounds say batching lost. That is not a spike, and the
+    // median must not launder it.
+    const rounds = honest();
+    for (const index of [0, 1, 2]) rounds[index] = quartet(1000, 7000, 22_000, 18_000);
+    expect(compareShapeRounds(rounds).batchingGainNormal).toBeLessThan(1);
+  });
+
+  it('refuses to answer when nothing was sampled', () => {
+    expect(() => compareShapeRounds([])).toThrow(/no rounds/);
+  });
+
+  it('takes the middle of an even count rather than the larger half', () => {
+    expect(median([1, 2, 3, 4])).toBe(2.5);
+    expect(median([3, 1, 2])).toBe(2);
+    expect(() => median([])).toThrow(/no samples/);
   });
 });
 
