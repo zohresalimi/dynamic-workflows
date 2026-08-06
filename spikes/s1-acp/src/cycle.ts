@@ -101,6 +101,7 @@ export async function runCycle(channel: Channel, context: CycleContext): Promise
   let agentCapabilities: unknown = null;
   let capabilityMatrix: CapabilityMatrix | null = null;
   let capabilityDivergence: string[] = [];
+  let fixturePath: string | null = null;
 
   const client = new AcpClient(channel, {
     frameCapBytes: context.frameCapBytes,
@@ -176,8 +177,9 @@ export async function runCycle(channel: Channel, context: CycleContext): Promise
     // Written before anything else can fail, because the capability fixture is
     // the one artefact of this spike that survives into production use.
     mkdirSync(context.fixtureDir, { recursive: true });
+    fixturePath = join(context.fixtureDir, `${context.agent.name}@${context.agent.version}.json`);
     context.writeFixture(
-      join(context.fixtureDir, `${context.agent.name}@${context.agent.version}.json`),
+      fixturePath,
       `${JSON.stringify(
         buildFixture({
           agent: context.agent.name,
@@ -365,6 +367,7 @@ export async function runCycle(channel: Channel, context: CycleContext): Promise
     version: context.agent.version,
     mode: context.mode,
     recordingPath: context.recordingPath,
+    fixturePath,
     frameCapBytes: context.frameCapBytes,
     steps: [...steps.values()],
     protocolVersion,

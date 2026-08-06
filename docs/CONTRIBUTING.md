@@ -205,6 +205,31 @@ workflow selects.
 
 ---
 
+## `pnpm test` never rewrites a tracked file
+
+A clean checkout is clean again after a test run. That is not a convention, it is asserted:
+`test/integration/no-tracked-file-churn.test.ts` drives the two writers that used to break it and
+fails if either lands inside the working tree.
+
+Both wrote a real artefact into a tracked file on every run — a capability fixture restamped with
+the time of a *replay* rather than of the probe, and a browser measurement carrying a fresh
+duration, a fresh tick count and whichever ephemeral port the static server bound. Six consecutive
+epic gates opened with a `git restore`. Neither artefact was dropped: both are still produced on
+every run, into a temporary directory, and compared against the committed copy.
+
+If you need to refresh what is committed, say so explicitly:
+
+```sh
+pnpm spike:s3:record                        # spikes/s3-elk-worker/measurements/*.json
+node spikes/s1-acp/run.ts --agent <name>    # fixtures/capabilities/ — a live probe, spends quota
+```
+
+A replay (`--replay`) refuses to write `fixtures/capabilities/` at all, and so does any fake agent.
+The same rule applies to anything you add: if a test produces a file, it belongs in a tmpdir unless
+a human asked for it by name.
+
+---
+
 ## CI
 
 Three jobs in `.github/workflows/ci.yml`: `check` (Linux, Node 24), `test` (a four-leg matrix,
