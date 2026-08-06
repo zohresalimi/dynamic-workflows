@@ -321,9 +321,19 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
         noise.all();
         scheduler.push(performance.now() - noiseBefore);
       }
-      // Summed from the samples rather than read off the wall clock, because the
-      // wall clock now spans the interleaved probe as well.
-      const perQuery = each.reduce((total, sample) => total + sample, 0) / 1000;
+      /** The middle sample, which is what "what a query costs" means here. */
+      const middle = (samples: readonly number[]): number => {
+        const sorted = [...samples].sort((left, right) => left - right);
+        return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
+      };
+      // The median, not the mean, and not the wall clock either — the wall clock
+      // now spans the interleaved probe as well. A mean of a thousand
+      // fifth-of-a-millisecond samples is whatever the worst stall in the window
+      // was, divided by a thousand: this spec has been measured with one query
+      // at 3,014.7 ms beside a live slice, which on its own adds 3 ms to a mean
+      // whose honest value is 0.2. The ratio below went red at 1.36x that way on
+      // a full-suite run with the plan untouched.
+      const perQuery = middle(each);
 
       expect(cursor).toBe(500_000);
       // A probe that never ran would make the two ceilings below meaningless.
@@ -341,13 +351,31 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
       // it cancels; a plan regression moves only one.
       expect(plan(db, SCAN_CONTROL_SQL, [RUN_A, 0, 500])).toContain('USE TEMP B-TREE FOR ORDER BY');
       const control = db.prepare<{ seq: number }>(SCAN_CONTROL_SQL);
-      const controlStarted = performance.now();
-      for (let query = 0; query < 3; query++) control.all(RUN_A, query * 1000, 500);
-      const controlPerQuery = (performance.now() - controlStarted) / 3;
+      // Five samples reduced by median rather than three reduced by mean, so
+      // that both sides of the ratio are the same kind of number. One stall on
+      // one of three samples moves a mean by a third; it cannot move a median.
+      const controlEach: number[] = [];
+      for (let query = 0; query < 5; query++) {
+        const before = performance.now();
+        control.all(RUN_A, query * 1000, 500);
+        controlEach.push(performance.now() - before);
+      }
+      const controlPerQuery = middle(controlEach);
 
       // Measured 2026-08-02: 0.2 ms indexed against 28.7 ms through the b-tree,
       // a factor of ~135. 25 is the floor, not the expectation.
-      expect(perQuery * 25).toBeLessThan(controlPerQuery);
+      //
+      // Measured 2026-08-06 as median against median, seven honest samples:
+      // 5.5x and 5.5x of headroom idle, 7.9x and 7.0x under twelve CPU hogs,
+      // and 5.4x, 6.4x and 15.4x beside a live integration slice, while the mean
+      // form of the same ratio failed at 1.36x. Forced onto the forbidden plan
+      // the medians are 22.8 ms against a 30.1 ms control idle and 52.4 against
+      // 77.6 under hogs, which fails by 19x and 17x.
+      expect(
+        perQuery * 25,
+        `median query ${perQuery.toFixed(3)} ms against a median control query of ` +
+          `${controlPerQuery.toFixed(1)} ms on this machine`,
+      ).toBeLessThan(controlPerQuery);
       // The scenario's "no single query exceeds 5 ms", asserted at p99 rather
       // than at the maximum. The integration slice runs several heavy specs in
       // parallel forks, so a query here and there meets a GC pause or the OS
