@@ -570,6 +570,56 @@ export const WorkspaceReconciledSchema = z.strictObject({
 });
 
 /**
+ * A recorded pid is alive, and it is **not ours** (§11.3 step 1, KAR-07.8 AC2).
+ *
+ * The one event whose whole content is a refusal. The pid in the row exists, so
+ * a reaper that checked bare liveness would have signalled it; the start time
+ * the OS reports for it is not the one recorded at spawn, so the number has
+ * been recycled and the process behind it belongs to somebody else — a browser,
+ * a build, an editor. Both times travel in the payload because "we did not kill
+ * this" is only a defensible decision if the evidence for it is readable
+ * afterwards.
+ *
+ * The values are opaque strings, straight from `ps -o lstart=` or
+ * `/proc/<pid>/stat` field 22, and are only ever compared for equality.
+ * Normalising them into timestamps would invent precision the source does not
+ * have, and a comparison that is nearly right is exactly what kills a
+ * stranger's process.
+ *
+ * The worktree the row named is still unlocked and still cleaned up: the run
+ * that owned it is over either way, and a lock nobody releases is a worktree
+ * `prune` will refuse to touch for ever.
+ */
+export const WorkspacePidRecycledSchema = z.strictObject({
+  node: NodeIdSchema,
+  pid: z.number().int().positive(),
+  /** The start time recorded at spawn. `null` when it could never be read,
+   * which is treated the same way — unverifiable is not killable. */
+  recorded: z.string().min(1).nullable(),
+  /** What the OS says now about that pid. */
+  observed: z.string().min(1).nullable(),
+});
+
+/**
+ * A worktree whose owning process did not survive the restart is gone
+ * (§4.5, §11.3 steps 3–4, KAR-07.8 AC5).
+ *
+ * Emitted after `unlock` and `remove -f -f`, in that order and only once the
+ * owner is *provably* gone — pid **and** recorded process start time, never
+ * bare liveness. The branch is untouched, because the branch is the deliverable
+ * (F5.5) and this event is about reclaiming a checkout, not discarding work.
+ *
+ * `pid` is `null` when no `process` row was ever written for the node — a
+ * worktree provisioned by a daemon that died before it spawned the agent, which
+ * is a real crash window and not an error.
+ */
+export const WorkspaceOrphanReapedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  pid: z.number().int().positive().nullable(),
+});
+
+/**
  * The integration loop re-sorted its merge queue (§7.1, KAR-07.7 AC3).
  *
  * Re-sorting is not an optimisation: a merge changes every remaining branch's
@@ -857,6 +907,8 @@ export const EVENT_SCHEMAS = {
   'workspace.wip_salvaged': { v: 1, payload: WorkspaceWipSalvagedSchema },
   'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
   'workspace.reconciled': { v: 1, payload: WorkspaceReconciledSchema },
+  'workspace.pid_recycled': { v: 1, payload: WorkspacePidRecycledSchema },
+  'workspace.orphan_reaped': { v: 1, payload: WorkspaceOrphanReapedSchema },
   'workspace.merge_queue_reordered': { v: 1, payload: WorkspaceMergeQueueReorderedSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },
   'effect.completed': { v: 1, payload: EffectCompletedSchema },

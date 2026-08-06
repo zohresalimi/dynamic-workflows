@@ -131,12 +131,12 @@ suite('the PID-reuse guard (EPIC-05-S32 scenario 2)', () => {
         onDecision: (fields, message) => logged.push({ fields, message }),
       });
 
-      expect(reaped).toEqual([expect.objectContaining({ outcome: 'pid-reused' })]);
+      expect(reaped).toEqual([expect.objectContaining({ outcome: 'pid-recycled' })]);
       // The unrelated process is untouched, which is the entire point.
       expect(() => process.kill(pid, 0)).not.toThrow();
       expect(readProcesses(db).map((stored) => stored.state)).toEqual(['discarded']);
 
-      const discard = logged.find((entry) => entry.fields.outcome === 'pid-reused');
+      const discard = logged.find((entry) => entry.fields.outcome === 'pid-recycled');
       expect(discard, 'the discard has to be visible to an operator').toBeDefined();
       // Both start times, so the operator can see *why* it was discarded.
       expect(discard?.fields).toMatchObject({
@@ -145,8 +145,18 @@ suite('the PID-reuse guard (EPIC-05-S32 scenario 2)', () => {
         observedStartedAt: processStartTime(pid),
       });
 
-      // And nothing is appended: no orphan was reaped.
-      expect(readRange(db, RUN, 0, 10).events).toEqual([]);
+      // No orphan was reaped, so no `node.progress` says one was — but the
+      // refusal itself is a domain fact (KAR-07.8 AC2), because "an orphan the
+      // operator can see running was deliberately left alone" has to be
+      // answerable from the run's timeline and not only from a log nobody kept.
+      const appended = readRange(db, RUN, 0, 10).events;
+      expect(appended.map((event) => event.kind)).toEqual(['workspace.pid_recycled']);
+      expect(appended[0]?.payload).toEqual({
+        node: 'n1',
+        pid,
+        recorded: 'Tue Jan  1 00:00:00 2019',
+        observed: processStartTime(pid),
+      });
     } finally {
       db.close();
     }

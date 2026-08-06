@@ -225,6 +225,17 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     removed: ['/tmp/repo/.DeFlow/wt/gone'],
     prunable: ['/tmp/repo/.DeFlow/wt/rm-rfed'],
   },
+  'workspace.pid_recycled': {
+    node: NODE,
+    pid: 41_233,
+    recorded: 'Wed Aug  5 10:15:00 2026',
+    observed: 'Thu Aug  6 09:02:11 2026',
+  },
+  'workspace.orphan_reaped': {
+    node: NODE,
+    path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,
+    pid: 41_233,
+  },
   'workspace.merge_queue_reordered': {
     branch: `DeFlow/int/${RUN_ID}`,
     mergedNode: NODE,

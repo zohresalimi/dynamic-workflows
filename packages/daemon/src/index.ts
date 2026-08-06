@@ -202,6 +202,7 @@ export {
   lockReasonFor,
   parseLockReason,
   WORKTREE_LIST_ARGS,
+  WORKTREE_PRUNE_ARGS,
   worktreeAddArgs,
   worktreePathFor,
   worktreeRemoveArgs,
@@ -240,6 +241,9 @@ export {
 // pre-check over it (§3.1, §4.3).
 export type { WorktreeEntry, WorktreeOccupant } from './git/worktree-porcelain.ts';
 export { findOccupant, parseWorktreeList, shortBranch } from './git/worktree-porcelain.ts';
+// KAR-07.2 — one porcelain entry as one `worktrees` row, shared by the manager
+// and by KAR-07.8's boot sweep so the two cannot disagree about ownership.
+export { worktreeRowFor } from './git/worktree-projection.ts';
 // KAR-07.4 — the salvage sequence's argv, and the single `--force` it is the
 // only route to on the node-completion path (§4.4).
 export {
@@ -493,3 +497,14 @@ export {
   splitNul,
   WORKTREE_INCLUDE_FILE,
 } from './workspace/worktree-include.ts';
+// KAR-07.8 — the boot sweep: reap, then unlock, then prune, and never a
+// worktree whose owning process is still verifiably alive.
+export type {
+  PrunedEntry,
+  ReapRepo,
+  WorktreeReapAction,
+  WorktreeReapDecision,
+  WorktreeReapPorts,
+  WorktreeReapReport,
+} from './workspace/worktree-reaper.ts';
+export { reapWorktrees } from './workspace/worktree-reaper.ts';

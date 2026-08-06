@@ -35,6 +35,31 @@ import { join } from 'node:path';
 /** §4.3, and the only form `worktree list` is ever invoked in (AC5). */
 export const WORKTREE_LIST_ARGS: readonly string[] = ['worktree', 'list', '--porcelain', '-z'];
 
+/**
+ * §4.5's boot prune, verbatim — KAR-07.8's last step and never its first.
+ *
+ * **`--expire` narrows, it does not widen.** `git worktree prune` with no
+ * expiry uses `TIME_MAX`, which prunes every prunable entry; passing
+ * `2.weeks.ago` restricts it to entries whose `.git/worktrees/<name>/index` has
+ * not been touched for a fortnight (verified on git 2.50.1, 2026-08-06, pinned
+ * in ../../test/integration/worktree-reaping.test.ts). So this is a
+ * conservative sweep of long-dead administrative entries, deliberately: it will
+ * not remove the worktree of an agent that died an hour ago, and it must not,
+ * because an entry that young may belong to a run this daemon is about to
+ * resume. Reclaiming *those* is `reaperForceRemoveArgs`, on the reaper path
+ * only, once the owning process is proven gone (§11.3).
+ *
+ * `-v` because the reaper reads back which entries git said it removed, and
+ * emphatically not `-n`, which would make the whole sweep a no-op that logs.
+ */
+export const WORKTREE_PRUNE_ARGS: readonly string[] = [
+  'worktree',
+  'prune',
+  '-v',
+  '--expire',
+  '2.weeks.ago',
+];
+
 /** A write node owns a branch; a read node owns a detached checkout. */
 export type WorktreeMode = 'write' | 'read';
 

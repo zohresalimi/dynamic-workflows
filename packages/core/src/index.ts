@@ -158,6 +158,8 @@ export {
   WorkspaceDirtyOnRemoveSchema,
   WorkspaceIncludedFileSchema,
   WorkspaceMergeQueueReorderedSchema,
+  WorkspaceOrphanReapedSchema,
+  WorkspacePidRecycledSchema,
   WorkspaceReconciledSchema,
   WorkspaceSetupCacheHitSchema,
   WorkspaceStatusEntrySchema,
