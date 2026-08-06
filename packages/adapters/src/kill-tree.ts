@@ -122,6 +122,58 @@ export function sweepTree(pgid: number, ports: SweepPorts): TimerHandle {
 }
 
 /**
+ * The members of `pgid` that are **actually still running** — the one honest
+ * answer to "did the kill work?" (KAR-06.7 AC7, docs/09-workspace-and-safety.md
+ * §11.2).
+ *
+ * This is the AC's own command, minus the `awk`:
+ *
+ * ```bash
+ * ps -eo pid,pgid,stat | awk -v g="$PGID" '$2==g && $3 !~ /Z/'
+ * ```
+ *
+ * **Verified.** After a *successful* group SIGKILL, `ps` still lists every
+ * grandchild — in state `Z`, `ppid = 1`, already dead and waiting for init to
+ * reap them. An implementation that counted those reports a working kill as a
+ * failure, and it bites hardest inside containers where reaping lags and the
+ * test is the only thing that ever notices.
+ *
+ * `-eo` and a filter in this process rather than `-g`, because `ps -g` means
+ * "session leader or effective group name" on GNU ps and "process group" on
+ * BSD ps — the same flag, two different questions, and the wrong answer here is
+ * either a signal that was never sent or one that was sent twice.
+ */
+export function liveGroupMembers(
+  pgid: number,
+  ports: { readonly ps?: () => string } = {},
+): number[] {
+  if (!Number.isInteger(pgid) || pgid <= 1) return [];
+
+  let out: string;
+  try {
+    out = (ports.ps ?? readProcessTable)();
+  } catch {
+    // `ps` itself failing is not "the group is empty" — but there is nothing
+    // truthful to return, and claiming survivors nobody can name would turn a
+    // working kill into a permanent failure event.
+    return [];
+  }
+
+  return out
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) => parts.length >= 3 && /^\d+$/.test(parts[0] ?? ''))
+    .filter((parts) => Number(parts[1]) === pgid && !(parts[2] as string).includes('Z'))
+    .map((parts) => Number(parts[0]));
+}
+
+const readProcessTable = (): string =>
+  execFileSync('/bin/ps', ['-eo', 'pid,pgid,stat'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+
+/**
  * Where a process's start time is read from, per platform.
  *
  * Exported as a string because it is documentation the reaper's log lines

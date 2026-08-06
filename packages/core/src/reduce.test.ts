@@ -196,6 +196,76 @@ suite('AC5 — pause is an event, never an in-memory flag', () => {
   });
 });
 
+// ── KAR-06.7 — cancel is an event too, and it remembers which ladder ─────────
+
+const cancelRequested = (seq: number, mode: 'cooperative' | 'forceful'): Event =>
+  event('run.cancel.requested', { mode }, { seq });
+
+const nodeCancelled = (seq: number, by: 'user' | 'policy' | 'parent' = 'user'): Event =>
+  event('node.cancelled', { node: NODE, attempt: 0, result: { status: 'cancelled', by } }, { seq });
+
+suite('KAR-06.7 — the cancel request is reduced, not merely observed', () => {
+  it('moves the run to cancelling and keeps the mode the operator asked for', () => {
+    const state = fold([started(1), cancelRequested(9, 'forceful')]);
+
+    expect(state.status).toBe('cancelling');
+    // The mode has to survive into the projection or `decide()` cannot tell a
+    // cooperative ladder from a forceful one after a restart — which is the
+    // whole reason cancellation is an event rather than a call.
+    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 9 });
+  });
+
+  it('a cooperative request is a different projection, not a different code path', () => {
+    expect(fold([started(1), cancelRequested(9, 'cooperative')]).cancel).toEqual({
+      mode: 'cooperative',
+      requestedSeq: 9,
+    });
+  });
+
+  it('an escalation to forceful is recorded, and the earlier request is not sticky', () => {
+    const state = fold([
+      started(1),
+      cancelRequested(9, 'cooperative'),
+      cancelRequested(12, 'forceful'),
+    ]);
+
+    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 12 });
+  });
+
+  it('is idempotent: restating the same request changes nothing', () => {
+    const once = fold([started(1), cancelRequested(9, 'forceful')]);
+
+    expect(reduce(once, cancelRequested(9, 'forceful'))).toBe(once);
+  });
+});
+
+suite('KAR-06.7 — node.cancelled is the terminal record of a cancelled attempt', () => {
+  it('leaves the node cancelled rather than running, so its lock is reclaimable', () => {
+    const state = fold([started(1), nodeStarted(2), lockAcquired(3), nodeCancelled(4)]);
+
+    expect(state.nodes[NODE]?.status).toBe('cancelled');
+    expect(state.nodes[NODE]?.wakeAt).toBeNull();
+  });
+
+  it('advances the watermark, because a node stopping is a real state change', () => {
+    const state = fold([started(1), nodeStarted(2), nodeCancelled(9)]);
+
+    expect(state.watermarkSeq).toBe(9);
+  });
+
+  it('cannot un-complete a node that finished before the signal landed', () => {
+    // The race the kill switch really has: `decide()` returns a CancelNode, the
+    // node completes, and the driver's terminal record arrives afterwards.
+    // Overwriting the completion would throw away a result the run paid for and
+    // would tell every downstream node its dependency never finished.
+    const finished = fold([started(1), nodeStarted(2), nodeCompleted(3)]);
+
+    expect(reduce(finished, nodeCancelled(4))).toBe(finished);
+    expect(finished.nodes[NODE]?.status).toBe('completed');
+    expect(finished.nodes[NODE]?.result).not.toBeNull();
+  });
+});
+
 suite('AC6 — node.progress does not advance the progress watermark', () => {
   it('leaves the watermark where node.started put it, across 50 progress events', () => {
     const events = [

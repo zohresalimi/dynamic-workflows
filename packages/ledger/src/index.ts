@@ -12,7 +12,8 @@
  * drains and the per-run counters. KAR-03.7 adds the fence: the
  * single-instance lease and the daemon epoch. KAR-03.9 adds the
  * content-addressed blob store an oversized payload spills into. The rest of
- * EPIC-03 fills the rest in.
+ * EPIC-03 fills the rest in. KAR-06.3 adds the write-ahead effect journal and
+ * migration 0006's triggers, which make an `effect` row's history unrewritable.
  *
  * Note what is not here and never will be: an `updateEvent`, a `deleteEvent`
  * or an `amendEvent`. The `event` table is append-only, and
@@ -86,6 +87,31 @@ export {
 } from './checkpoint.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
+// KAR-06.3 — the write-ahead effect journal: the intent row written before the
+// side effect, the ordinal derived from it rather than counted, and the four
+// triggers (migration 0006) that stop anything reopening a terminal row.
+export {
+  EFFECT_STATES,
+  type EffectAttemptKey,
+  EffectNotPending,
+  type EffectRow,
+  type EffectRowDraft,
+  type EffectState,
+  type JournalledEffect,
+  journalEffect,
+  markEffectCancelled,
+  markEffectDone,
+  markEffectFailed,
+  nextOrdinal,
+  readEffect,
+  readEffects,
+  // KAR-06.9 — the rows a dead daemon left mid-effect: startup reconciliation's
+  // whole input.
+  readInheritedEffects,
+  // KAR-06.4 — the `pending`-row scaffold a mutating shell effect journals its
+  // before/after worktree hashes into, and migration 0007 that permits it.
+  scaffoldEffect,
+} from './effects.ts';
 // KAR-03.7 — the daemon epoch: bumped once per daemon life, stamped on every
 // write, and compared at the append boundary.
 export { bumpEpoch, readEpoch, StaleEpoch } from './epoch.ts';
@@ -117,6 +143,21 @@ export {
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
+// KAR-06.6 — the `node_wake` table: every wait in the system, from a 2-second
+// retry backoff to a 30-day human gate, as one row and zero CPU. Never a timer.
+export {
+  appendEventsConsumingWakes,
+  clearWake,
+  dueWakes,
+  InvalidWakeReason,
+  type NodeWakeKey,
+  type NodeWakeRow,
+  nextWakeAt,
+  readWake,
+  readWakes,
+  scheduleWake,
+  scheduleWakeIfChanged,
+} from './node-wake.ts';
 // KAR-03.8 — the daemon's start-of-life rebuild: every run in a data
 // directory, folded from the ledger a dead process left behind.
 export {
@@ -142,6 +183,7 @@ export {
   type ProcessRowDraft,
   type ProcessState,
   readLiveProcesses,
+  readProcess,
   readProcesses,
   recordProcess,
 } from './processes.ts';

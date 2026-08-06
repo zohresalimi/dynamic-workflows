@@ -95,11 +95,30 @@ jobs:
           # nothing, silently. test/integration/ci-artifact-path.test.ts holds
           # the path and the fixture to the same glob.
           TMPDIR: ${{ runner.temp }}
-      # EPIC-03 adds the fifth vitest project — the SIGKILL/restart slice — and
-      # the step that runs it, here, together. vitest.config.ts holds a
-      # deliberately empty slot for it; a step naming a project that does not
-      # exist is a red build on every commit, and a guard test keeps the name
-      # out of this file until the project is real.
+      # The fifth vitest project: the SIGKILL/restart slice. KAR-03.8 filled the
+      # slot vitest.config.ts was holding (ledger crash/restart) and KAR-06.9
+      # added the daemon half (orchestrator crash recovery), so the project is
+      # real and this step runs it — EPIC-06's Definition of Done is that the
+      # crash-fuzz suite is green in CI, not just on a laptop.
+      #
+      # Its own step, not another --project on the line above, for two reasons:
+      # the slice is serialised and measured in minutes rather than seconds, so
+      # folding it in hides which half of the job the wall clock went to, and it
+      # is the step whose failure you will actually want the uploaded tmpdir
+      # for.
+      #
+      # The kill point is randomised and seeded from $GITHUB_RUN_ID, which the
+      # runner sets for us (packages/testkit/src/random.ts) — so a red leg
+      # reproduces locally from the seed it prints. The mock agents are pinned
+      # by --seed inside the harness, leaving where the knife lands as the only
+      # variable.
+      - run: pnpm vitest run --project crash-fuzz
+        env:
+          # Same two as above, and for the same reasons — a crash-fuzz failure
+          # is the case where a ledger you cannot open is the difference between
+          # a diagnosis and a shrug.
+          DeFlow_KEEP_TMP: "1"
+          TMPDIR: ${{ runner.temp }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

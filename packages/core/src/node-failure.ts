@@ -105,6 +105,20 @@ function isGateOnly(reason: NodeFailureReason): boolean {
   return (GATE_ONLY_REASONS as readonly NodeFailureReason[]).includes(reason);
 }
 
+/**
+ * Whether this reason escalates to a human no matter what anything else says
+ * (KAR-06.5 AC9).
+ *
+ * Exported because the retry ladder needs the question answered without naming
+ * a reason: `retry.onFailure` may override the class default for any *other*
+ * reason, and this is what keeps an `{ when: 'budget.cost-exceeded', action:
+ * 'retry' }` entry from smuggling a retry past a ceiling the schema already
+ * refuses to classify as anything but `gate`.
+ */
+export function escalatesToHuman(reason: NodeFailureReason): boolean {
+  return isGateOnly(reason);
+}
+
 export const NodeFailureSchema = z
   .strictObject({
     reason: NodeFailureReasonSchema,
@@ -353,4 +367,117 @@ export function toNodeFailure(thrown: unknown, ctx: ToNodeFailureContext): NodeF
     occurredAtEvent: ctx.occurredAtEvent,
     attempt: ctx.attempt,
   };
+}
+
+// ── the constructors the scheduler uses instead of naming a reason ───────────
+
+/**
+ * KAR-06.5 AC1. Everything below exists so that no *scheduling* module ever
+ * writes a `NodeFailureReason` literal.
+ *
+ * That is not tidiness. `class` is assigned where the failure is constructed
+ * because that is the only place the context exists —
+ * `provider.unavailable` is transient for a rate-limited vendor and permanent
+ * for a binary the user uninstalled mid-run — so the moment a scheduler
+ * re-derives anything from `reason`, the two cases become one. The rule is
+ * enforced structurally by `packages/core/test/scheduler-reads-class.test.ts`,
+ * which scans the scheduling modules and exempts exactly this file.
+ */
+
+/**
+ * The failure a node inherits from a dependency that failed permanently
+ * (KAR-06.1 AC5, KAR-06.5 AC3).
+ *
+ * `cause` is the `seq` of the failure that poisoned the branch — the one thing
+ * that turns a wall of poisoned nodes back into the single event to look at.
+ */
+export function dependencyFailedFailure(cause: EventSeq, attempt: number): NodeFailure {
+  return {
+    reason: 'dependency.failed',
+    class: 'permanent',
+    message: 'a dependency failed permanently, so this node can never run',
+    evidence: [],
+    occurredAtEvent: cause,
+    attempt,
+  };
+}
+
+/** One F4.6 ceiling breach: which budget, on what, and by how much. */
+export interface BudgetBreach {
+  readonly scope: 'node' | 'run';
+  readonly dimension: 'cost' | 'wallclock';
+  readonly limit: number;
+  readonly actual: number;
+}
+
+const BudgetBreachSchema = z.strictObject({
+  scope: z.enum(['node', 'run']),
+  dimension: z.enum(['cost', 'wallclock']),
+  limit: z.number().nonnegative(),
+  actual: z.number().nonnegative(),
+});
+
+/** Which reason a breach of each dimension is reported under. */
+const BUDGET_REASONS: Readonly<Record<BudgetBreach['dimension'], NodeFailureReason>> = {
+  cost: 'budget.cost-exceeded',
+  wallclock: 'budget.wallclock-exceeded',
+};
+
+/**
+ * A ceiling breach as a failure (F4.6, AC9).
+ *
+ * `class` is `gate` and the schema refuses anything else: hitting a ceiling
+ * **pauses the run for a human decision** rather than dying with hours of work
+ * half-done. The breach travels in `detail` so the scheduler can raise
+ * `budget.exceeded` from it without knowing which reason it is looking at.
+ */
+export function budgetExceededFailure(
+  breach: BudgetBreach,
+  context: Pick<ToNodeFailureContext, 'occurredAtEvent' | 'attempt'>,
+): NodeFailure {
+  return {
+    reason: BUDGET_REASONS[breach.dimension],
+    class: 'gate',
+    message: `${breach.scope} ${breach.dimension} ceiling exceeded: ${breach.actual} against a limit of ${breach.limit}`,
+    detail: { ...breach },
+    evidence: [],
+    occurredAtEvent: context.occurredAtEvent,
+    attempt: context.attempt,
+  };
+}
+
+/**
+ * The breach a failure describes, or `null` when it is not about a budget
+ * (AC9).
+ *
+ * The scheduler asks this rather than comparing `reason`, which is what lets it
+ * pause the run on a ceiling and ask a human on every other gate without a
+ * single reason literal of its own. A budget failure whose `detail` is missing
+ * or malformed reads as `null`: the run still gates, it simply cannot claim
+ * numbers nobody supplied.
+ */
+export function budgetBreachOf(failure: NodeFailure): BudgetBreach | null {
+  const reasons: readonly NodeFailureReason[] = Object.values(BUDGET_REASONS);
+  if (!reasons.includes(failure.reason)) return null;
+  const parsed = BudgetBreachSchema.safeParse(failure.detail);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Which of the circuit breaker's three categories a gate belongs to
+ * (docs/04-domain-model.md §9 — `run.needs_human.reason`).
+ *
+ * The vocabulary is closed at three and the taxonomy has twenty-five reasons,
+ * so this is a *category*, not a restatement: the specific reason travels in
+ * `run.needs_human.detail` and on the `node.failed` payload, both of which the
+ * inspector renders. `churn` is the default because §11.3's trip means "the run
+ * is not going anywhere on its own" — which is exactly what a gate with no
+ * ceiling breached and no reconcile ambiguity is.
+ */
+export function needsHumanCategory(
+  reason: NodeFailureReason,
+): 'churn' | 'budget' | 'reconcile-unknown' {
+  if (reason === 'effect.reconcile-unknown') return 'reconcile-unknown';
+  const budget: readonly NodeFailureReason[] = Object.values(BUDGET_REASONS);
+  return budget.includes(reason) ? 'budget' : 'churn';
 }

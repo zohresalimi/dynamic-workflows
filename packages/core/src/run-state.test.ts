@@ -25,6 +25,7 @@ import {
   RunIdSchema,
   SchemaIdSchema,
 } from './ids.ts';
+import { DEFAULT_NO_PROGRESS_POLICY } from './no-progress.ts';
 import {
   CHECKPOINT_VERSION,
   initialRunState,
@@ -46,14 +47,57 @@ const HANDLE = HandleSchema.parse(`artifact://${'b'.repeat(64)}`);
  * Typed as `RunState` rather than inferred, so the compiler refuses a fixture
  * the reducer could not have produced.
  */
+/**
+ * One `agent` node, spelled out to the last default, so the round trip through
+ * the row is an identity: `PlanGraphSchema` fills `retry`, `budget` and
+ * `returns.maxTokens` in when they are absent, and a fixture that leaned on
+ * that would compare a defaulted decode against an undefaulted fixture.
+ */
+const graph = (planHash: string): NonNullable<RunState['plan']> => ({
+  schemaId: 'DeFlow.plangraph.v1',
+  runId: RUN_ID,
+  version: 3,
+  planHash: PlanHashSchema.parse(planHash),
+  parent: null,
+  taskSpecHash: `sha256-${'c'.repeat(64)}`,
+  createdBy: 'planner',
+  createdAt: '2026-08-02T14:11:33.000Z',
+  nodes: [
+    {
+      id: NODE,
+      title: 'Survey the auth surface',
+      type: 'agent',
+      deps: [],
+      lifecycle: 'active',
+      reads: [],
+      writes: [],
+      permission: 'worktree',
+      pathScopes: { write: [] },
+      returns: { schemaId: SchemaIdSchema.parse('DeFlow.finding.v1'), maxTokens: 1500 },
+      retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+      budget: {},
+      brief: 'Survey how the auth module verifies tokens.',
+      provider: { prefer: [ProviderIdSchema.parse('claude-code')], requires: [] },
+      resume: 'always-replay',
+    },
+  ],
+  edges: [],
+});
+
+const PROPOSED_HASH = `sha256-${'e'.repeat(64)}`;
+
 const populated: RunState = {
   runId: RUN_ID,
   status: 'needs-human',
+  repoRoot: '/home/u/proj',
   outcome: null,
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
+  cancel: { mode: 'forceful', requestedSeq: 6 },
   planHash: SHA,
   planVersion: 3,
+  plan: graph(SHA),
+  proposedPlans: { [PROPOSED_HASH]: graph(PROPOSED_HASH) },
   nodes: {
     [NODE]: {
       status: 'completed',
@@ -62,6 +106,7 @@ const populated: RunState = {
       provider: ProviderIdSchema.parse('claude-code'),
       model: 'claude-opus-4-6',
       permission: 'worktree',
+      worktree: `.DeFlow/wt/${RUN_ID}__${NODE}`,
       result: {
         status: 'completed',
         output: { summary: 'done' },
@@ -73,13 +118,16 @@ const populated: RunState = {
       },
       failure: null,
       suspension: null,
+      requestHash: `sha256-${'f'.repeat(64)}`,
       wakeAt: null,
+      updatedSeq: 8,
     },
   },
   locks: {
     [lockKey('repo', 'repo')]: { lock: 'repo', key: 'repo', node: NODE, sinceSeq: 7 },
   },
   nodeIds: { active: [NODE], retired: [NodeIdSchema.parse('retired-step')] },
+  policy: { globalAgentSlots: 5, noProgress: DEFAULT_NO_PROGRESS_POLICY },
   budget: {
     costUsd: 0.42,
     usage: {
@@ -89,6 +137,11 @@ const populated: RunState = {
     breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2 }],
   },
   watermarkSeq: 9,
+  watermarkTs: 1_754_150_000_000,
+  startedTs: 1_754_149_000_000,
+  stalledAtSeq: 9,
+  churnWindow: [{ node: NODE, requestHash: `sha256-${'f'.repeat(64)}`, attempt: 1, seq: 8 }],
+  replans: { flat: 2, completed: 3, versions: [2, 3] },
   epoch: 2,
   staleEpochSkipped: 1,
 };

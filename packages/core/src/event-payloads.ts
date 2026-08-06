@@ -39,7 +39,11 @@ import {
 } from './ids.ts';
 import { parseIkey } from './ikey.ts';
 import { NodeFailureSchema } from './node-failure.ts';
-import { CompletedNodeResultSchema, NodeSuspensionSchema } from './node-result.ts';
+import {
+  CancelledNodeResultSchema,
+  CompletedNodeResultSchema,
+  NodeSuspensionSchema,
+} from './node-result.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
 import { PatchDecisionSchema, PlanPatchSchema, ProposedBySchema } from './plan-patch.ts';
 import { TaskSpecSchema } from './task-spec.ts';
@@ -143,8 +147,18 @@ export const RunPauseToggledSchema = z.strictObject({
   reason: singleLine().optional(),
 });
 
+/**
+ * F5.7's two ladders. `cooperative` asks the agent to stop over the protocol
+ * and lets it flush its transcript; `forceful` goes straight to the process
+ * group. Which one is a *scheduling* decision, so it travels in the event and
+ * reaches `decide()` through the projection rather than through a call.
+ */
+export const CANCEL_MODES = ['cooperative', 'forceful'] as const;
+
+export type CancelMode = (typeof CANCEL_MODES)[number];
+
 export const RunCancelRequestedSchema = z.strictObject({
-  mode: z.enum(['cooperative', 'forceful']),
+  mode: z.enum(CANCEL_MODES),
 });
 
 export const RunEndedSchema = z.strictObject({
@@ -198,6 +212,18 @@ export const NodeScheduledSchema = z.strictObject({
   provider: ProviderIdSchema,
   model: z.string().min(1).optional(),
   permission: PermissionLevelSchema,
+  /**
+   * The worktree this node was assigned, when it was assigned one. Absent
+   * means the node runs against the main checkout — a read-only analysis node
+   * usually does.
+   *
+   * It is recorded here, beside the provider and the permission level, because
+   * it is the same kind of fact: a resolution the scheduler made and the run
+   * has to be able to rebuild after a restart. F5.2's per-worktree exclusive
+   * lock is keyed on it, so a worktree assignment that lived only in memory
+   * would let two agents into one checkout on the first tick after a crash.
+   */
+  worktree: z.string().min(1).optional(),
 });
 
 /** F5.2 — locks live in the ledger so they survive a restart. */
@@ -205,6 +231,27 @@ export const NodeLockSchema = z.strictObject({
   node: NodeIdSchema,
   lock: z.enum(LOCK_KINDS),
   key: z.string().min(1),
+});
+
+/**
+ * Why a held lock was given back.
+ *
+ * `reclaimed` is the scheduler taking a lock away from a node that is no
+ * longer running — the crash case above all, where the holder died with the
+ * lock in hand and nothing it could have run would ever release it. An
+ * ordinary release, appended by whatever is finishing an attempt, carries no
+ * reason at all: it needs no explanation, and inventing one for it would make
+ * the interesting case indistinguishable in the timeline.
+ */
+export const LOCK_RELEASE_REASONS = ['reclaimed'] as const;
+
+export type LockReleaseReason = (typeof LOCK_RELEASE_REASONS)[number];
+
+export const NodeLockReleasedSchema = z.strictObject({
+  node: NodeIdSchema,
+  lock: z.enum(LOCK_KINDS),
+  key: z.string().min(1),
+  reason: z.enum(LOCK_RELEASE_REASONS).optional(),
 });
 
 /** Written *before* the side effect. This record is what makes at-least-once
@@ -256,6 +303,68 @@ export const NodeSuspendedSchema = z.strictObject({
   until: NodeSuspensionSchema,
 });
 
+/**
+ * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
+ *
+ * Its own kind rather than a `node.completed` carrying a cancelled result:
+ * `node.completed`'s payload is `Extract<NodeResult, {status:'completed'}>`,
+ * so recording a cancellation there would be a lie the ledger keeps for ever.
+ * And its own kind rather than a `node.failed`, because a node the operator
+ * stopped did not fail — the run's own history has to be able to tell "I
+ * pressed the button" apart from "the agent crashed", which is the difference
+ * between reading a timeline and guessing at one.
+ */
+export const NodeCancelledSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  result: CancelledNodeResultSchema,
+});
+
+/** The rungs of §11.1's escalation ladder, in the order they are climbed. */
+export const CANCEL_STAGES = ['protocol', 'sigterm', 'sigkill', 'verified'] as const;
+
+export type CancelStage = (typeof CANCEL_STAGES)[number];
+
+/**
+ * KAR-06.7 AC6 — one event per rung of the ladder, each naming the pid and the
+ * **pgid**.
+ *
+ * Both, and not just the pid, because they are different claims: the pid is the
+ * agent DeFlow spawned, and the pgid is the group every process it went on to
+ * spawn shares. A timeline that recorded only the pid would say nothing about
+ * what the signal actually reached, and the negative-pid form — the whole point
+ * of `detached: true` — would be invisible to an operator reading afterwards.
+ */
+export const NodeCancelStageSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  stage: z.enum(CANCEL_STAGES),
+  mode: z.enum(CANCEL_MODES),
+  /** The agent's own pid, as recorded at spawn. */
+  pid: z.number().int().positive(),
+  /** The group that was signalled — `kill(-pgid, …)`, never `kill(pid, …)`. */
+  pgid: z.number().int().positive(),
+});
+
+/**
+ * KAR-06.7 AC8 — a kill that did not take is an event, not a silent condition.
+ *
+ * `survivors` is the evidence and the reason this is typed rather than a log
+ * line: an operator whose kill switch failed needs the pids to go and look at,
+ * and a future reader needs to know the run stopped admitting work because
+ * something out there is still running, not because it finished.
+ */
+export const NodeCancelFailedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  pid: z.number().int().positive(),
+  pgid: z.number().int().positive(),
+  /** Non-`Z` members of the group still present after the last rung. Zombies
+   * are excluded: they are already dead and counting them reports a working
+   * kill as a failure (§11.2). */
+  survivors: z.array(z.number().int().positive()).min(1),
+});
+
 // ── the effect journal ───────────────────────────────────────────────────────
 
 export const EffectStartedSchema = z.strictObject({
@@ -269,6 +378,27 @@ export const EffectCompletedSchema = z.strictObject({
   ikey: IkeySchema,
   result: z.unknown(),
   reconciled: z.boolean(),
+});
+
+/**
+ * KAR-06.7 AC9 — an effect closed because the attempt that journalled it was
+ * cancelled.
+ *
+ * Its own kind rather than an `effect.failed`, for the reason `node.cancelled`
+ * is its own kind: `effect.failed` carries a `NodeFailure`, whose `reason` is a
+ * closed set describing ways work *goes wrong*, and an operator pressing stop
+ * is not one of them. Forcing it into that union would either invent a reason
+ * for every terminal state or file the kill switch under "something broke".
+ *
+ * The row still moves to `failed` — the journal has three states and this is
+ * not a success — but what it stores is the `NodeResult` the node itself got.
+ * The point of closing it at all is that a `pending` row is how the next daemon
+ * life recognises "we died mid-effect" and asks a human to reconcile it; there
+ * is nothing to reconcile about an effect somebody deliberately stopped.
+ */
+export const EffectCancelledSchema = z.strictObject({
+  ikey: IkeySchema,
+  result: CancelledNodeResultSchema,
 });
 
 export const EffectFailedSchema = z.strictObject({
@@ -479,16 +609,20 @@ export const EVENT_SCHEMAS = {
   'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
-  'node.lock.released': { v: 1, payload: NodeLockSchema },
+  'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },
   'node.started': { v: 1, payload: NodeStartedSchema },
   'node.progress': { v: 1, payload: NodeProgressSchema },
   'node.completed': { v: 1, payload: NodeCompletedSchema },
   'node.failed': { v: 1, payload: NodeFailedSchema },
   'node.retry.scheduled': { v: 1, payload: NodeRetryScheduledSchema },
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
+  'node.cancelled': { v: 1, payload: NodeCancelledSchema },
+  'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
+  'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },
   'effect.completed': { v: 1, payload: EffectCompletedSchema },
   'effect.failed': { v: 1, payload: EffectFailedSchema },
+  'effect.cancelled': { v: 1, payload: EffectCancelledSchema },
   'context.built': { v: 1, payload: ContextBuiltSchema },
   'context.compacted': { v: 1, payload: ContextCompactedSchema },
   'pin.integrity_violated': { v: 1, payload: PinIntegrityViolatedSchema },

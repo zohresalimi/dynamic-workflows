@@ -34,6 +34,17 @@ export const CompletedNodeResultSchema = z.strictObject({
   artifacts: z.array(HandleSchema),
 });
 
+/**
+ * The `cancelled` arm on its own, for the same reason the `completed` one is
+ * named separately: `node.cancelled`'s payload carries exactly this object
+ * (§9, KAR-06.7), and a member of a `z.discriminatedUnion` is not reachable as
+ * a schema once it is inside one.
+ */
+export const CancelledNodeResultSchema = z.strictObject({
+  status: z.literal('cancelled'),
+  by: z.enum(CANCELLATION_SOURCES),
+});
+
 /** What a suspended node is waiting for. Named separately because
  * `node.suspended`'s payload carries exactly this object (§9). */
 export const NodeSuspensionSchema = z.strictObject({
@@ -53,12 +64,11 @@ export const NodeResultSchema = z.discriminatedUnion('status', [
     status: z.literal('suspended'),
     until: NodeSuspensionSchema,
   }),
-  z.strictObject({
-    status: z.literal('cancelled'),
-    by: z.enum(CANCELLATION_SOURCES),
-  }),
+  CancelledNodeResultSchema,
 ]);
 
 export type NodeResult = z.infer<typeof NodeResultSchema>;
 export type CompletedNodeResult = z.infer<typeof CompletedNodeResultSchema>;
+export type CancelledNodeResult = z.infer<typeof CancelledNodeResultSchema>;
+export type CancellationSource = (typeof CANCELLATION_SOURCES)[number];
 export type NodeSuspension = z.infer<typeof NodeSuspensionSchema>;

@@ -5,6 +5,13 @@ The pure domain and engine logic: `TaskSpec`, `PlanGraph`, `PlanPatch`, `Fact`, 
 I/O — `zod` is the only runtime dependency, and time, randomness and ids arrive through ports
 declared here and implemented in `@DeFlow/daemon` or `@DeFlow/testkit` (R1).
 
+The engine half is two functions and one union: `reduce(state, event)` folds the log into
+`RunState`, `decide(state, now)` turns that state into `Command[]`, and the `EffectRunner` in
+`@DeFlow/daemon` is the only thing that performs one. `now` is a parameter rather than a call, and
+`packages/core/test/purity.test.ts` fails the build if `Date.now`, `setTimeout`, `setInterval`,
+`setImmediate`, `Math.random`, `process.hrtime` or `performance.now` appears under `src/` — the
+lint rules in `.oxlintrc.json` refuse each of them by name in the editor as well.
+
 `src/index.ts` is the whole contract. Deep imports across packages are banned, so anything meant to
 be shared is exported there or it is internal.
 
