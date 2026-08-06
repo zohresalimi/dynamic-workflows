@@ -103,10 +103,20 @@ export {
 } from './frame-guard.ts';
 // KAR-05.9 — the one abstraction allowed to send a signal, plus the PID-reuse
 // guard's input. POSIX at M1; win32 throws rather than silently no-opping.
-export type { KillOutcome, KillTreePorts, SweepPorts } from './kill-tree.ts';
+export type {
+  DrainPorts,
+  GroupMember,
+  KillOutcome,
+  KillTreePorts,
+  SweepPorts,
+} from './kill-tree.ts';
 export {
+  awaitGroupDrained,
+  GROUP_POLL_MS,
+  KILL_VERIFY_WINDOW_MS,
   killTree,
   liveGroupMembers,
+  liveGroupRows,
   processStartTime,
   SWEEP_KILL_GRACE_MS,
   startTimeSource,

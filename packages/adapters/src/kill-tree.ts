@@ -147,6 +147,28 @@ export function liveGroupMembers(
   pgid: number,
   ports: { readonly ps?: () => string } = {},
 ): number[] {
+  return liveGroupRows(pgid, ports).map((row) => row.pid);
+}
+
+/** A survivor, and the state that makes it one. */
+export interface GroupMember {
+  readonly pid: number;
+  /** The `STAT` column: `S`, `Ss`, `R+`, `D`. Never `Z` — see above. */
+  readonly stat: string;
+}
+
+/**
+ * `liveGroupMembers`, with the evidence kept (KAR-08.6 AC6).
+ *
+ * "pid 4244 survived" and "pid 4244 survived in state `D`, uninterruptible in
+ * a syscall" are different sentences: the second tells an operator why SIGKILL
+ * did not land, and the first invites a bug report. `run.kill_failed` carries
+ * the state for that reason.
+ */
+export function liveGroupRows(
+  pgid: number,
+  ports: { readonly ps?: () => string } = {},
+): GroupMember[] {
   if (!Number.isInteger(pgid) || pgid <= 1) return [];
 
   let out: string;
@@ -164,7 +186,54 @@ export function liveGroupMembers(
     .map((line) => line.trim().split(/\s+/))
     .filter((parts) => parts.length >= 3 && /^\d+$/.test(parts[0] ?? ''))
     .filter((parts) => Number(parts[1]) === pgid && !(parts[2] as string).includes('Z'))
-    .map((parts) => Number(parts[0]));
+    .map((parts) => ({ pid: Number(parts[0]), stat: parts[2] as string }));
+}
+
+/** How long after SIGKILL the group has to actually empty (§11.1 rung 4). */
+export const KILL_VERIFY_WINDOW_MS = 2_000;
+
+/** How often the window is re-read. */
+export const GROUP_POLL_MS = 250;
+
+export interface DrainPorts {
+  /** Time enters here and nowhere else (NF9). */
+  readonly clock: Clock;
+  /** Total time the group is given to empty. Defaults to `KILL_VERIFY_WINDOW_MS`. */
+  readonly windowMs?: number;
+  /** Defaults to `GROUP_POLL_MS`. */
+  readonly pollMs?: number;
+  /** Defaults to the `Z`-filtered `ps` read. */
+  readonly members?: (pgid: number) => GroupMember[];
+}
+
+/**
+ * The non-`Z` members of `pgid` still present after `windowMs` — empty when the
+ * kill took.
+ *
+ * **A window, not a snapshot** (EPIC-08-S27, last scenario). Zombie reaping is
+ * prompt under launchd and systemd and *lags badly inside containers*, which is
+ * where this runs in CI: a verification that read one instantaneous `ps` would
+ * report survivors for a group that is already dead, which is the same false
+ * negative the `Z` filter exists to prevent arriving through the other door.
+ *
+ * It asks once up front, so the ordinary case — the group went on SIGTERM —
+ * costs one `ps` and no waiting at all, and a cancelled node's outcome does not
+ * sit behind two seconds of clock that had nothing to wait for.
+ */
+export async function awaitGroupDrained(pgid: number, ports: DrainPorts): Promise<GroupMember[]> {
+  const members = ports.members ?? ((group: number) => liveGroupRows(group));
+  const windowMs = ports.windowMs ?? KILL_VERIFY_WINDOW_MS;
+  const pollMs = Math.max(1, ports.pollMs ?? GROUP_POLL_MS);
+
+  let survivors = members(pgid);
+  let waited = 0;
+  while (survivors.length > 0 && waited < windowMs) {
+    const step = Math.min(pollMs, windowMs - waited);
+    await ports.clock.sleep(step);
+    waited += step;
+    survivors = members(pgid);
+  }
+  return survivors;
 }
 
 const readProcessTable = (): string =>

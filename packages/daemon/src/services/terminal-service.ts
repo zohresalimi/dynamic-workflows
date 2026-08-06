@@ -23,11 +23,11 @@
  * `detached: true` for the same reason the agent gets it: a command that
  * spawns its own children is only reachable as a process group.
  */
+import { killTree } from '@DeFlow/adapters';
 import type { Handle } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import process from 'node:process';
 
 /**
  * What EPIC-08 plugs in. Throws to refuse; returns the cwd to run in.
@@ -267,14 +267,21 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
 
     waitForExit: (terminalId) => get(terminalId).exited,
 
+    /**
+     * ACP `terminal/kill`, which is a **group** kill: the command was spawned
+     * `detached`, and anything it spawned in turn shares its pgid.
+     *
+     * Through `killTree` like every other signal in the daemon (KAR-08.6 AC1).
+     * A local `process.kill(-pid, …)` here was a second copy of the one
+     * function whose positive-pid variant leaves grandchildren compiling — and
+     * it had no answer for `pid === 0`, where the negation signals DeFlowd's own
+     * process group. `killTree` refuses that pid instead of taking the daemon
+     * down; a group that has already been reaped comes back as `'gone'`.
+     */
     kill(terminalId) {
       const pid = get(terminalId).child.pid;
       if (pid === undefined) return;
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {
-        // Already gone.
-      }
+      killTree(pid, 'SIGKILL');
     },
 
     release(terminalId) {

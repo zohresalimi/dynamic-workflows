@@ -364,6 +364,11 @@ function project(state: RunState, event: Event): Transition {
     // `cancel` and the node's status, and nothing else about cancellation.
     case 'node.cancel.stage':
     case 'node.cancel.failed':
+    // KAR-08.6 AC6 is the run-scoped version of the same thing: the operator
+    // has to be told which pids outlived the kill switch, and `decide()` has
+    // nothing to do about it — a process DeFlow cannot signal is not a
+    // scheduling problem it can solve by scheduling differently.
+    case 'run.kill_failed':
       return null;
 
     case 'node.retry.scheduled':

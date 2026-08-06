@@ -29,12 +29,12 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import process from 'node:process';
 import { createInterface } from 'node:readline';
 import { text } from 'node:stream/consumers';
 import type { CapabilityRow } from './capabilities.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import { ACP_PROTOCOL_VERSION, spawnRefused } from './failures.ts';
+import { killTree } from './kill-tree.ts';
 import type { CapabilityStore, LedgerSink } from './ports.ts';
 import { sliceMember } from './raw-frame.ts';
 import type { ProcessExit } from './run-node.ts';
@@ -100,11 +100,25 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
+/**
+ * A probe child is spawned `detached`, so tearing it down is a *group* kill —
+ * and it goes through the one seam like every other signal in the daemon
+ * (KAR-08.6 AC1). `killTree` is what negates the pid; a local
+ * `process.kill(-pgid, …)` here was a second implementation of the one function
+ * whose positive-pid variant is the difference between a kill switch and a
+ * leak, and it did not carry the refusal of pid 0 — which `-0` turns into "this
+ * daemon's own process group".
+ *
+ * Failures are swallowed rather than raised because this runs on the teardown
+ * path of a probe that has already produced its answer: `killTree` returns
+ * `'gone'` for a group that has been reaped, and anything else it can throw
+ * (a refused pid, `EPERM`) must not become the reported probe result.
+ */
 function signalGroup(pgid: number, signal: NodeJS.Signals): void {
   try {
-    process.kill(-pgid, signal);
+    killTree(pgid, signal);
   } catch {
-    // Already reaped.
+    // Nothing left to signal, or nothing safe to signal.
   }
 }
 

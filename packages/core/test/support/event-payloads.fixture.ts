@@ -134,6 +134,9 @@ export const PAYLOADS: Record<EventKind, unknown> = {
   'run.completed': { outcome: 'succeeded', criteriaSatisfied: ['unit-tests-pass'] },
   'run.aborted': { outcome: 'failed', criteriaSatisfied: [] },
   'run.stalled': { watermarkSeq: 8000, idleMs: 900_000, runningNodes: [NODE] },
+  'run.kill_failed': {
+    survivors: [{ node: NODE, attempt: 1, pid: 48_215, pgid: 48_213, stat: 'D' }],
+  },
   'run.needs_human': { reason: 'churn', detail: 'four replans in twelve minutes' },
   'plan.proposed': { version: 1, planHash: SHA, graph: planGraph, by: 'planner' },
   'plan.patch.proposed': { patch: planPatch },
@@ -203,6 +206,7 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     mode: 'forceful',
     pid: 48_213,
     pgid: 48_213,
+    elapsedMs: 0,
   },
   'node.cancel.failed': { node: NODE, attempt: 1, pid: 48_213, pgid: 48_213, survivors: [48_215] },
   'workspace.worktree_created': {

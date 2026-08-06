@@ -188,11 +188,29 @@ suite('EPIC-06-S24 scenario 2 — forceful cancel escalates and records every st
 
       expect(report.outcome).toBe('signalled');
       expect(report.survivors).toEqual([]);
+      const rung = (stage: string, elapsedMs: unknown) => ({
+        node: AUTH,
+        attempt: 0,
+        stage,
+        mode: 'forceful',
+        pid: pgid,
+        pgid,
+        elapsedMs,
+      });
+      // KAR-08.6 AC2: each rung carries the milliseconds the injected clock
+      // says it took to reach it. Rungs 2 and 3 are exact — the grace *is* the
+      // gap between them. Rung 4 is bounded rather than pinned: the group's
+      // last member goes when the OS says so, and the verification returns on
+      // whichever poll of the two-second window observes it, so an exact value
+      // would be asserting on the reaper's timing rather than on the ladder's.
       expect(stagesIn(db)).toEqual([
-        { node: AUTH, attempt: 0, stage: 'sigterm', mode: 'forceful', pid: pgid, pgid },
-        { node: AUTH, attempt: 0, stage: 'sigkill', mode: 'forceful', pid: pgid, pgid },
-        { node: AUTH, attempt: 0, stage: 'verified', mode: 'forceful', pid: pgid, pgid },
+        rung('sigterm', 0),
+        rung('sigkill', TERM_GRACE_MS),
+        rung('verified', expect.any(Number)),
       ]);
+      const verified = stagesIn(db)[2]?.elapsedMs as number;
+      expect(verified).toBeGreaterThanOrEqual(TERM_GRACE_MS);
+      expect(verified).toBeLessThanOrEqual(TERM_GRACE_MS + KILL_VERIFY_MS);
       // Verified the way §11.2 says it must be: nothing non-`Z` is left. Any
       // row `ps` is still listing for this group is a zombie awaiting reaping,
       // and a `verified` rung was only claimed because those were excluded.

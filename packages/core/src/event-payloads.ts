@@ -491,6 +491,18 @@ export const NodeCancelStageSchema = z.strictObject({
   pid: z.number().int().positive(),
   /** The group that was signalled — `kill(-pgid, …)`, never `kill(pid, …)`. */
   pgid: z.number().int().positive(),
+  /**
+   * KAR-08.6 AC2 — milliseconds from the first rung to this one, on the
+   * injected `Clock`.
+   *
+   * The ladder is a sequence of *deadlines* (5 s to SIGKILL, a further 2 s to
+   * report), and the question an operator asks afterwards is never "which rungs
+   * were climbed" but "where did the seven seconds go". A timeline that
+   * recorded only the rung leaves them subtracting wall-clock timestamps that
+   * belong to whichever clock happened to be injected; this is the elapsed time
+   * the ladder itself measured.
+   */
+  elapsedMs: nonNegativeInt,
 });
 
 /**
@@ -510,6 +522,40 @@ export const NodeCancelFailedSchema = z.strictObject({
    * are excluded: they are already dead and counting them reports a working
    * kill as a failure (§11.2). */
   survivors: z.array(z.number().int().positive()).min(1),
+});
+
+/**
+ * KAR-08.6 AC6 — the operator's kill switch, when it did not take.
+ *
+ * The run-scoped counterpart of `node.cancel.failed`: the kill switch stops
+ * *every* attempt in a run, so the thing an operator needs is one record naming
+ * everything that outlived it, across nodes, rather than a record per node they
+ * have to assemble themselves. It is the event the UI surfaces, and its
+ * presence is what stops a run reading as cleanly stopped while children of it
+ * are still running (EPIC-08-S29).
+ *
+ * `stat` travels with each pid because "pid 4244 survived" invites a bug report
+ * and "pid 4244 survived in state `D`" says why SIGKILL did not land —
+ * uninterruptible in a syscall is not a DeFlow bug and is not fixable by
+ * signalling harder. `Z` never appears here: a zombie is already dead, and
+ * counting one reports a working kill as a failure (§11.2).
+ */
+export const RunKillFailedSchema = z.strictObject({
+  survivors: z
+    .array(
+      z.strictObject({
+        /** The node whose attempt was being stopped. */
+        node: NodeIdSchema,
+        attempt,
+        /** The process still running — the thing an operator goes and looks at. */
+        pid: z.number().int().positive(),
+        /** The group that was signalled, and did not empty. */
+        pgid: z.number().int().positive(),
+        /** Its `ps` `STAT` column, never `Z`. */
+        stat: singleLine(),
+      }),
+    )
+    .min(1),
 });
 
 // ── workspace isolation ──────────────────────────────────────────────────────
@@ -999,6 +1045,7 @@ export const EVENT_SCHEMAS = {
   'run.completed': { v: 1, payload: RunEndedSchema },
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
+  'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 1, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 1, payload: PlanProposedSchema },
   'plan.patch.proposed': { v: 1, payload: PlanPatchProposedSchema },

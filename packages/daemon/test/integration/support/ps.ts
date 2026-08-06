@@ -14,16 +14,20 @@ import { execFileSync } from 'node:child_process';
 
 export interface PsRow {
   readonly pid: number;
+  /**
+   * The parent. `1` is the evidence that init adopted an orphan — which is
+   * what a positive-pid kill leaves behind (EPIC-08-S28).
+   */
+  readonly ppid: number;
   readonly pgid: number;
   /** The `STAT` column: `S`, `Ss`, `Z`, `R+`, … */
   readonly stat: string;
 }
 
-/** Every process in `pgid`, **zombies included**. */
-export function groupRows(pgid: number): PsRow[] {
+function readTable(): PsRow[] {
   let out: string;
   try {
-    out = execFileSync('/bin/ps', ['-eo', 'pid,pgid,stat'], {
+    out = execFileSync('/bin/ps', ['-eo', 'pid,ppid,pgid,stat'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
@@ -33,14 +37,22 @@ export function groupRows(pgid: number): PsRow[] {
   return out
     .split('\n')
     .map((line) => line.trim().split(/\s+/))
-    .filter((parts) => parts.length >= 3 && /^\d+$/.test(parts[0] ?? ''))
+    .filter((parts) => parts.length >= 4 && /^\d+$/.test(parts[0] ?? ''))
     .map((parts) => ({
       pid: Number(parts[0]),
-      pgid: Number(parts[1]),
-      stat: parts[2] as string,
-    }))
-    .filter((row) => row.pgid === pgid);
+      ppid: Number(parts[1]),
+      pgid: Number(parts[2]),
+      stat: parts[3] as string,
+    }));
 }
+
+/** Every process in `pgid`, **zombies included**. */
+export function groupRows(pgid: number): PsRow[] {
+  return readTable().filter((row) => row.pgid === pgid);
+}
+
+/** One process's row, wherever it is, or `undefined` when it is gone. */
+export const rowOf = (pid: number): PsRow | undefined => readTable().find((row) => row.pid === pid);
 
 /** The `$3 !~ /Z/` half of AC7's command: dead-but-unreaped is not a survivor. */
 export const liveRows = (pgid: number): PsRow[] =>
