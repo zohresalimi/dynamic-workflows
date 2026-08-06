@@ -297,6 +297,22 @@ export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './m
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+// KAR-08.4 — the child environment, built from an allowlist. The control
+// that would actually have prevented the Kiro incident (docs/15-security-
+// model.md §4).
+export type { BuildChildEnvOptions, BuiltChildEnv } from './proc/env.ts';
+export {
+  AGENT_BASE_KEYS,
+  AGENT_ENV_KEYS,
+  buildChildEnv,
+  createRunTmpdir,
+  envDeclaredPayload,
+  isNeverImplicit,
+  resetLoginShellPathCache,
+  resolveLoginShellPath,
+  resolveLoginShellPathOnce,
+  VENDOR_CONFIG_DIR_VARS,
+} from './proc/env.ts';
 export type { DaemonSeed, SeedEnv } from './random.ts';
 export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
 // KAR-06.9 — crash recovery: the fixed startup sequence, and the three things

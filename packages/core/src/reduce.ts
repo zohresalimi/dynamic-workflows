@@ -430,6 +430,15 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     /**
+     * KAR-08.4 AC6 — evidence for the node inspector and the run report, not
+     * run state: nothing about scheduling changes because a variable reached
+     * the child, and the ledger scan for its *value* is a property of the
+     * schema (no `value` field exists to find), not of anything reduced here.
+     */
+    case 'env.declared':
+      return null;
+
+    /**
      * The effect journal is its own table (§8.3) and its own read model — a
      * memoised effect *result* is not run state, and duplicating it here would
      * give the same fact two homes that can disagree.

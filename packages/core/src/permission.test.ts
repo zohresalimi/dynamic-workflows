@@ -29,12 +29,14 @@
 import { expect, it, describe as suite } from 'vitest';
 import {
   decidePermission,
+  EnvDeclarationAtReadLevelError,
   PERMISSION_DENY_CODES,
   PERMISSION_GATE_CODES,
   PERMISSION_OUTCOMES,
   type PermissionRequest,
   type PermissionScope,
   reasonCode,
+  validateEnvDeclaration,
 } from './permission.ts';
 import type { PermissionLevel } from './plan-graph.ts';
 
@@ -276,5 +278,35 @@ suite('every cell of the table is a decision, and no cell throws', () => {
 
     expect(first).toEqual(second);
     expect(JSON.stringify(SCOPE)).toBe(before);
+  });
+});
+
+// KAR-08.4 AC6 · EPIC-08-S19 scenario 3 — a `read` node cannot declare env.
+suite('validateEnvDeclaration — a read node cannot declare env (KAR-08.4 AC6)', () => {
+  it('refuses any declaration at read level', () => {
+    expect(() => validateEnvDeclaration('read', ['NPM_TOKEN'])).toThrow(
+      EnvDeclarationAtReadLevelError,
+    );
+  });
+
+  it('names every declared variable in the error, never a value', () => {
+    try {
+      validateEnvDeclaration('read', ['NPM_TOKEN', 'DATABASE_URL']);
+      throw new Error('unreachable');
+    } catch (error) {
+      expect(error).toBeInstanceOf(EnvDeclarationAtReadLevelError);
+      expect((error as EnvDeclarationAtReadLevelError).declared).toEqual([
+        'NPM_TOKEN',
+        'DATABASE_URL',
+      ]);
+    }
+  });
+
+  it('allows an empty declaration at read level', () => {
+    expect(() => validateEnvDeclaration('read', [])).not.toThrow();
+  });
+
+  it.each(['worktree', 'worktree+net', 'full'] as const)('allows a declaration at %s', (level) => {
+    expect(() => validateEnvDeclaration(level, ['NPM_TOKEN'])).not.toThrow();
   });
 });

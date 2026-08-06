@@ -111,6 +111,7 @@ export {
   EffectCompletedSchema,
   EffectFailedSchema,
   EffectStartedSchema,
+  EnvDeclaredSchema,
   EVENT_CURRENT_VERSIONS,
   EVENT_KINDS,
   EVENT_SCHEMAS,
@@ -346,6 +347,7 @@ export type {
 } from './permission.ts';
 export {
   decidePermission,
+  EnvDeclarationAtReadLevelError,
   OFFERED_PERMISSION_OPTIONS,
   optionIdFor,
   PERMISSION_DENY_CODES,
@@ -354,6 +356,7 @@ export {
   PERMISSION_OUTCOMES,
   permissionScopeFrom,
   reasonCode,
+  validateEnvDeclaration,
 } from './permission.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {

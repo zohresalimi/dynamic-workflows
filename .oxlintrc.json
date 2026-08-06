@@ -168,6 +168,29 @@
       "rules": {
         "no-restricted-imports": "off"
       }
+    },
+    {
+      // KAR-08.4 AC7's lint half. `terminal/create` is an ACP method the
+      // *agent* invokes, and this is the one file that used to answer it by
+      // spreading `process.env` straight into the child (the Kiro bug,
+      // docs/15-security-model.md §4). Reading `process.env` here at all is
+      // refused, so the fix cannot regress one line at a time: the only way
+      // to give this file an environment is the `childEnv` option, built
+      // once by the caller with `buildChildEnv()`
+      // (packages/daemon/src/proc/env.ts). The grep half of the same check —
+      // covering every other file, not just this known one — is
+      // packages/daemon/test/no-inline-child-env.test.ts.
+      "files": ["packages/daemon/src/services/terminal-service.ts"],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "process",
+            "property": "env",
+            "message": "KAR-08.4: this file must not read process.env. Build the environment once with buildChildEnv() (packages/daemon/src/proc/env.ts) and pass it in as TerminalServiceOptions.childEnv."
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": [

@@ -411,6 +411,19 @@ export const PermissionDeniedSchema = z.strictObject({
 });
 
 /**
+ * KAR-08.4 AC6 — a node declared a variable `buildChildEnv()` would otherwise
+ * have scrubbed, and it reached the child. `name` only: this schema has no
+ * `value` field to put one in, which is what makes "the value never enters
+ * the ledger" a property of the shape rather than of a habit (15-security-
+ * model.md §4.1).
+ */
+export const EnvDeclaredSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be an environment variable name'),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -976,6 +989,7 @@ export const EVENT_SCHEMAS = {
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
   'permission.denied': { v: 1, payload: PermissionDeniedSchema },
+  'env.declared': { v: 1, payload: EnvDeclaredSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },

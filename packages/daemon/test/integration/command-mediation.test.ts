@@ -55,11 +55,13 @@ import {
 import { makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   acpFsHandlers,
   acpTerminalHandlers,
+  buildChildEnv,
   type CommandApproval,
   type CommandDecision,
   type CommandDenial,
@@ -187,6 +189,14 @@ afterEach(async () => {
 const scopeFor = (commands: CommandsConfig = COMMANDS): PermissionScope =>
   permissionScopeFrom(commands, { worktree, scrubbedEnv: [] });
 
+/** KAR-08.4: `createTerminalService` requires a built `childEnv`. This suite
+ * exercises the command boundary, not scrubbing itself (see
+ * test/integration/env-scrubbing.test.ts for that) — the fake binaries are
+ * shell scripts invoked by absolute path and use only shell builtins, so the
+ * content of `PATH` is not load-bearing here. */
+const testChildEnv = (): Record<string, string> =>
+  buildChildEnv({ base: process.env, loginPath: process.env.PATH ?? '', tmpdir: dir }).env;
+
 // ── the wiring under test ────────────────────────────────────────────────────
 
 interface Observed {
@@ -255,6 +265,7 @@ async function runScenario(
 
   const terminal = createTerminalService({
     root: worktree,
+    childEnv: testChildEnv(),
     policy: worktreeCommandPolicy(mediator, {
       onDenied: (denial) => {
         observed.denials.push(denial);

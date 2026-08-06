@@ -4,10 +4,16 @@
  *
  * The command allowlist and the permission ladder plug in behind
  * `CommandPolicy` (KAR-08.3, ./command-mediation.ts); environment scrubbing is
- * KAR-08.4 and plugs in behind the same seam. The 1 MiB ring buffer and blob
- * spilling are KAR-05.4; what is here is a bounded buffer that keeps the
- * **tail**, because a truncated head is what you want when a build fails after
- * ten thousand lines of progress output.
+ * KAR-08.4's `childEnv` option, below. `terminal/create` is an ACP method the
+ * *agent* invokes, which makes this exactly the boundary the Kiro incident
+ * crossed: `childEnv` is required, never defaulted to `process.env`, because
+ * a service that fell back to the daemon's own environment when a caller
+ * forgot to build one would be the ambient-authority bug wearing an optional
+ * parameter (docs/15-security-model.md §4). Build it once with
+ * `buildChildEnv()` (../proc/env.ts) and pass the result in. The 1 MiB ring
+ * buffer and blob spilling are KAR-05.4; what is here is a bounded buffer
+ * that keeps the **tail**, because a truncated head is what you want when a
+ * build fails after ten thousand lines of progress output.
  *
  * A plain `spawn`, not a pty, at M1. §9.2 reserves the pty for the cases that
  * genuinely need one (a vendor CLI that refuses to run without a TTY), and
@@ -62,6 +68,13 @@ export interface TerminalCapture {
 export interface TerminalServiceOptions {
   /** The node's worktree: the default cwd for every command. */
   readonly root: string;
+  /**
+   * The environment every terminal this service creates receives (KAR-08.4).
+   * Build it once with `buildChildEnv()` — required, never defaulted to
+   * `process.env`, so a caller cannot silently reintroduce the Kiro bug by
+   * omitting it.
+   */
+  readonly childEnv: Readonly<Record<string, string>>;
   readonly policy?: CommandPolicy;
   /** Bytes of output kept per terminal, and answered to `terminal/output`.
    * The bound is §10's; the ring buffer keeps the tail. */
@@ -193,10 +206,16 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
         cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
-        env:
-          request.env === undefined || request.env === null
-            ? process.env
-            : { ...process.env, ...Object.fromEntries(request.env.map((e) => [e.name, e.value])) },
+        // KAR-08.4: the scrubbed base first, then the agent's own explicit
+        // `terminal/create` env — an agent may still *set* a value for its
+        // own command (e.g. `NODE_ENV=test`), which grants it nothing it did
+        // not already have. What it can no longer do is inherit DeFlowd's.
+        env: {
+          ...options.childEnv,
+          ...(request.env === undefined || request.env === null
+            ? {}
+            : Object.fromEntries(request.env.map((e) => [e.name, e.value]))),
+        },
       });
 
       const terminal: Terminal = {

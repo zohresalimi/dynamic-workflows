@@ -186,6 +186,7 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     requested: '../../etc/passwd',
     reason: { code: 'path-escape', detail: 'traversal' },
   },
+  'env.declared': { node: NODE, attempt: 0, name: 'NPM_TOKEN' },
   'node.cancelled': { node: NODE, attempt: 1, result: { status: 'cancelled', by: 'user' } },
   'node.cancel.stage': {
     node: NODE,

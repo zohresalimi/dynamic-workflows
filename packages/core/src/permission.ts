@@ -192,6 +192,41 @@ export interface CommandsConfig {
   readonly allowDomains?: readonly string[];
 }
 
+/**
+ * KAR-08.4 AC6/EPIC-08-S19 scenario 3 — a node may declare a scrubbed
+ * environment variable only if it can execute at all.
+ *
+ * `read` never runs a command (§8's table), so a `read` node declaring
+ * `NPM_TOKEN` cannot mean anything: nothing at `read` will ever spend it.
+ * Refusing it here, at plan-validation time, is what turns a silently-ignored
+ * declaration into a rejected plan the operator can fix before the run
+ * starts, rather than a token quietly never reaching the one command that
+ * needed it.
+ *
+ * Pure and total, like the rest of this file: no plan schema depends on it
+ * yet (declared-env is not a `PlanGraph` field at M1), but the check is ready
+ * to be called from wherever that validation lands.
+ */
+export class EnvDeclarationAtReadLevelError extends Error {
+  /** The declared variable names, verbatim — never a value. */
+  readonly declared: readonly string[];
+
+  constructor(declared: readonly string[]) {
+    super(
+      `a node at level "read" cannot declare env vars (declared: ${declared.join(', ')}); ` +
+        'read-level nodes never run a command that could spend one',
+    );
+    this.name = 'EnvDeclarationAtReadLevelError';
+    this.declared = declared;
+  }
+}
+
+export function validateEnvDeclaration(level: PermissionLevel, declared: readonly string[]): void {
+  if (level === 'read' && declared.length > 0) {
+    throw new EnvDeclarationAtReadLevelError(declared);
+  }
+}
+
 /** The node's boundary, assembled from the repository's config and the two
  * things only the run knows: where its worktree is, and what was scrubbed. */
 export function permissionScopeFrom(

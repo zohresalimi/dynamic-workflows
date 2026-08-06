@@ -31,6 +31,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
+  buildChildEnv,
   createTerminalService,
   DEFAULT_CAPTURE_BYTES,
   type TerminalService,
@@ -49,10 +50,17 @@ afterEach(async () => {
   await removeTempDir(dir);
 });
 
+/** KAR-08.4: `createTerminalService` requires a built `childEnv`. This suite
+ * exercises the ring buffer and blob spilling, not scrubbing itself (see
+ * test/integration/env-scrubbing.test.ts for that). */
+const testChildEnv = (): Record<string, string> =>
+  buildChildEnv({ base: process.env, loginPath: process.env.PATH ?? '', tmpdir: dir }).env;
+
 /** A service whose full-output capture goes to the real blob store. */
 function service(): TerminalService {
   return createTerminalService({
     root: worktree,
+    childEnv: testChildEnv(),
     openCapture: () => openBlobSpill(dir, 'text/plain'),
   });
 }
@@ -139,7 +147,11 @@ suite('the bound is the code’s, not the pipe’s', () => {
     // "1 MiB" bound would silently be "1 MiB, or one chunk, whichever is
     // larger". That holds today only because Node reads a pipe 64 KiB at a
     // time, which is a property of the runtime and not of this service.
-    const terminals = createTerminalService({ root: worktree, captureBytes: 1024 });
+    const terminals = createTerminalService({
+      root: worktree,
+      childEnv: testChildEnv(),
+      captureBytes: 1024,
+    });
     const id = await terminals.create({
       command: process.execPath,
       args: ['-e', 'process.stdout.write("z".repeat(50000) + "TAIL")'],
@@ -155,7 +167,11 @@ suite('the bound is the code’s, not the pipe’s', () => {
 
 suite('the cap is per terminal, not global', () => {
   it('gives two concurrent terminals a buffer each', async () => {
-    const terminals = createTerminalService({ root: worktree, captureBytes: 1024 * 1024 });
+    const terminals = createTerminalService({
+      root: worktree,
+      childEnv: testChildEnv(),
+      captureBytes: 1024 * 1024,
+    });
     const first = await terminals.create(noisyCommand(2, 'FIRST TERMINAL TRAILER'));
     const second = await terminals.create(noisyCommand(2, 'SECOND TERMINAL TRAILER'));
     await Promise.all([terminals.waitForExit(first), terminals.waitForExit(second)]);
