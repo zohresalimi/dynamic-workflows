@@ -60,7 +60,7 @@ proved nothing about the thing at risk.
 | 5   | The difference AC2 caps at 100 KB                                    | **5555 B** — the `elk-api.js` promise wrapper and the worker-URL reference, nothing else                                   |
 | 6   | ELK fingerprints in the entry chunk                                  | **none** (`org.eclipse.elk.alg`, `elk.alg.layered`, `ELK Layered` all absent)                                               |
 | 7   | The built app in Chromium, over plain HTTP                           | worker fetched from `/assets/elk-worker.min-COjlAv4s.js`, **200**, no 404 and no failed request anywhere on the page        |
-| 8   | 60-node layout                                                       | coordinates for all 60, **95 ms** (re-measured on every e2e run)                                                                                        |
+| 8   | 60-node layout                                                       | coordinates for all 60, **93.7 ms** (re-measured on every e2e run; the recorded figure is `measurements/browser-layout.json`)                            |
 | 9   | Main-thread 10 ms heartbeat across that call                         | **9 ticks** (AC3 asks for ≥ 5) — the main thread was never blocked                                                          |
 | 10  | Union graph laid out once, stepped v1 → v5                           | **30 surviving-node comparisons, all byte-identical**; no node moved on any step                                            |
 | 11  | The same five versions laid out independently                        | **15 surviving nodes moved**, across three of the four steps                                                               |
@@ -72,7 +72,14 @@ proved nothing about the thing at risk.
 
 Rows 1–6 are asserted by `test/integration/spike-s3-elk-worker.test.ts` and re-derivable in one
 command with `node spikes/s3-elk-worker/check.mjs`; rows 7–16 by `e2e/spike-s3-elk-worker.test.ts`
-against a real Chromium, with the numbers written to `spikes/s3-elk-worker/measurements/`.
+against a real Chromium.
+
+Every one of those numbers is measured again on every run — a measurement nobody re-takes is a
+comment — but a test run writes what it measured to a temporary directory and compares it with the
+copy committed under `spikes/s3-elk-worker/measurements/`, which is what the table quotes. Only
+`pnpm spike:s3:record` rewrites the committed copy, so `pnpm test` leaves the working tree clean
+instead of restamping a tracked file with a new duration, a new tick count and whichever ephemeral
+port the static server bound this time.
 
 ### Rows 3–5: ELK is not "kept out of" the entry chunk, it is never in it
 
@@ -157,4 +164,4 @@ Whether it is **fast enough**. Vue Flow's rendering ceiling is still an estimate
 React Flow guidance and remains **Unverified** (A3-2); it is measured in week one of W10 against a
 400-node fixture, and it is that measurement — not this one — that decides whether the
 memory/data-flow view (F10.4) survives to M1. What is measured here is one 60-node ELK layout at
-~95 ms, in a worker, which says nothing about rendering.
+~94 ms, in a worker, which says nothing about rendering.

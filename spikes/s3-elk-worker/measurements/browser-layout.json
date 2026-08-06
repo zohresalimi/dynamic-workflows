@@ -1,6 +1,6 @@
 {
   "nodes": 60,
-  "durationMs": 86.5,
-  "heartbeatTicks": 8,
-  "workerUrl": "http://127.0.0.1:61206/assets/elk-worker.min-COjlAv4s.js"
+  "durationMs": 93.7,
+  "heartbeatTicks": 9,
+  "workerAsset": "/assets/elk-worker.min-COjlAv4s.js"
 }

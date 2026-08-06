@@ -21,7 +21,8 @@
     "test:int": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "test:fuzz": "vitest run --project crash-fuzz",
-    "test:record": "node packages/adapters/scripts/record-goldens.ts"
+    "test:record": "node packages/adapters/scripts/record-goldens.ts",
+    "spike:s3:record": "DeFlow_RECORD_MEASUREMENTS=1 vitest run --project e2e e2e/spike-s3-elk-worker.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
