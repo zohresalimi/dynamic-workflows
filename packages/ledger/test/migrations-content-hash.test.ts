@@ -38,6 +38,11 @@ const SHIPPED: Record<string, string> = {
     '2efbb532aee1382ceaee7bc0bc15ab67af6be5c5211f2012b83719e44539f575',
   // Shipped 2026-08-05, KAR-05.9 — the process rows the orphan reaper reads.
   '0005-process.ts': '6f904a3002302ca793d87a468cad3223bfc8e101b2c71090ccf02c0444494fb4',
+  // Shipped 2026-08-05, KAR-06.3 — the effect journal's four immutability triggers.
+  '0006-effect-journal-guards.ts':
+    'ff0ae6979c1050354592c40a7fa17918a9a1bfc4afc3da01ef9df4ca647be01f',
+  // Shipped 2026-08-05, KAR-06.4 — the pending-row result_json scaffold.
+  '0007-effect-scaffold.ts': 'd412b7a0a6a653d37097c4a2de5318fde2f26a306d7f4e8a2b3c58c21936f4a2',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

@@ -24,6 +24,21 @@ export { acceptFact } from './accept-fact.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
+// KAR-06.1 — the closed Command union decide() returns and the EffectRunner
+// performs. Every member carries what the runner needs, so the shell never
+// reads RunState.
+export type {
+  AcquireLock,
+  CancelNode,
+  Command,
+  EmitEvent,
+  EmittedEvent,
+  ReleaseLock,
+  ScheduleWake,
+  StartNode,
+  WakeReason,
+} from './command.ts';
+export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
 // KAR-02.6 — ContextPacket and typed segments.
 export type {
   ContextBudget,
@@ -55,12 +70,23 @@ export {
 // KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
 // @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
 export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
+// KAR-06.1 — the whole scheduling policy, as a pure function of state and one
+// instant.
+export { decide } from './decide.ts';
+// KAR-06.3 — what the effect journal remembers about what was asked for, so a
+// plan edit landing under a journalled effect cannot return the memoised
+// result of the operation it replaced.
+export type { EffectRequest } from './effect-request.ts';
+export { requestHash } from './effect-request.ts';
 // KAR-02.7 — the ~40 event payload schemas and the §9 registry.
 export type {
+  CancelMode,
+  CancelStage,
   CompactionFidelity,
   EffectKind,
   EventKind,
   EventPayloadOf,
+  LockReleaseReason,
   RunOutcome,
 } from './event-payloads.ts';
 export {
@@ -68,12 +94,15 @@ export {
   BUDGET_SCOPES,
   BudgetConsumedSchema,
   BudgetExceededSchema,
+  CANCEL_MODES,
+  CANCEL_STAGES,
   COMPACTION_FIDELITIES,
   COMPACTION_SCOPES,
   COMPACTION_TRIGGERS,
   ContextBuiltSchema,
   ContextCompactedSchema,
   EFFECT_KINDS,
+  EffectCancelledSchema,
   EffectCompletedSchema,
   EffectFailedSchema,
   EffectStartedSchema,
@@ -92,8 +121,13 @@ export {
   HumanRespondedSchema,
   isEventKind,
   LOCK_KINDS,
+  LOCK_RELEASE_REASONS,
+  NodeCancelFailedSchema,
+  NodeCancelledSchema,
+  NodeCancelStageSchema,
   NodeCompletedSchema,
   NodeFailedSchema,
+  NodeLockReleasedSchema,
   NodeLockSchema,
   NodeProgressSchema,
   NodeRetryScheduledSchema,
@@ -176,8 +210,9 @@ export {
 } from './ids.ts';
 export type { ParsedIkey } from './ikey.ts';
 // IdempotencyKeySchema is deliberately not exported (AC4) — ikey() below is
-// the only legal constructor.
-export { ikey, parseIkey } from './ikey.ts';
+// the only legal constructor. KAR-06.3 adds the short-hex form the atomic file
+// write embeds in a temp filename, where the raw key's `/` cannot go.
+export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 export type { JsonSchemaDocument, SchemaRegistration } from './json-schema.ts';
 export {
@@ -193,8 +228,32 @@ export {
   toJsonSchemaDocuments,
   UnknownSchemaId,
 } from './json-schema.ts';
+// KAR-06.2 — F5.2's per-resource-class locks: what a node claims, and who
+// holds it. State-derived; the ledger is the only record.
+export type { LockClaim } from './locks.ts';
+export { claimId, lockClaims, lockHolder, repoLockKey } from './locks.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
+// KAR-06.8 — F4.7's stall detector, churn circuit breaker and hard caps, all
+// pure reads of `(RunState, now)`.
+export type {
+  CapBreach,
+  ChurnTrip,
+  CompletedAttempt,
+  NoProgress,
+  NoProgressPolicy,
+  ReplanStreak,
+  RunCap,
+  StallReport,
+} from './no-progress.ts';
+export {
+  CHURN_WINDOW,
+  DEFAULT_NO_PROGRESS_POLICY,
+  INITIAL_REPLAN_STREAK,
+  needsHumanOf,
+  noProgress,
+  RUN_CAPS,
+} from './no-progress.ts';
 // KAR-02.10 — NodeResult, NodeFailure and the closed failure taxonomy.
 export type {
   FailureClass,
@@ -204,6 +263,10 @@ export type {
   ToNodeFailureContext,
 } from './node-failure.ts';
 export {
+  budgetBreachOf,
+  budgetExceededFailure,
+  dependencyFailedFailure,
+  escalatesToHuman,
   FAILURE_CLASSES,
   FAILURE_TAG,
   FailureClassSchema,
@@ -212,14 +275,22 @@ export {
   NodeFailureError,
   NodeFailureReasonSchema,
   NodeFailureSchema,
+  needsHumanCategory,
   readInternalFailureCount,
   resetInternalFailureCount,
   toNodeFailure,
 } from './node-failure.ts';
 export { NodeIdRegistry, NodeIdReused } from './node-id-registry.ts';
-export type { CompletedNodeResult, NodeResult, NodeSuspension } from './node-result.ts';
+export type {
+  CancellationSource,
+  CancelledNodeResult,
+  CompletedNodeResult,
+  NodeResult,
+  NodeSuspension,
+} from './node-result.ts';
 export {
   CANCELLATION_SOURCES,
+  CancelledNodeResultSchema,
   CompletedNodeResultSchema,
   NodeResultSchema,
   NodeSuspensionSchema,
@@ -312,14 +383,20 @@ export {
   retirementsOf,
   SplitNodeOpSchema,
 } from './plan-patch.ts';
+export type { Random } from './random.ts';
+export { seededRandom } from './random.ts';
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
+// KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
+export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
+export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,
   BudgetState,
+  CancelState,
   LockState,
   NeedsHumanState,
   NodeIdRegistryState,
@@ -327,11 +404,14 @@ export type {
   NodeStatus,
   RunState,
   RunStatus,
+  SchedulingPolicy,
 } from './run-state.ts';
 // KAR-03.6 — CHECKPOINT_VERSION stamps the cache; RunStateSchema is what a
 // decoded `run.state_json` has to survive before it may become state.
 export {
   CHECKPOINT_VERSION,
+  DEFAULT_SCHEDULING_POLICY,
+  initialNodeState,
   initialRunState,
   lockKey,
   NODE_STATUSES,

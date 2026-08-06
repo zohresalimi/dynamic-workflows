@@ -7,13 +7,36 @@
  * SQLite transaction assigning a real `seq` observes that
  * (docs/14-testing-strategy.md §7).
  */
-import type { EventRecord, IoRecord, LedgerSink } from '@DeFlow/adapters';
+import type {
+  AgentProcessKey,
+  AgentProcessRecord,
+  EventRecord,
+  IoRecord,
+  LedgerSink,
+  ProcessRegistry,
+} from '@DeFlow/adapters';
 import type { Db, EventSeq, RunId } from '@DeFlow/core';
-import { appendEvents, appendIoChunk, openLedger, readEpoch, readRange } from '@DeFlow/ledger';
+import {
+  appendEvents,
+  appendEventsWithProcess,
+  appendIoChunk,
+  clearProcess,
+  openLedger,
+  readEpoch,
+  readRange,
+} from '@DeFlow/ledger';
 
 export interface TestLedger {
   readonly db: Db;
   readonly sink: LedgerSink;
+  /**
+   * The real `process` table, behind the port `runAcpNode` writes through.
+   *
+   * A spec that cancels a live agent needs the row the kill switch reads: pid,
+   * pgid and the OS's own start time, written in the same transaction as
+   * `node.started` (KAR-05.9 AC6).
+   */
+  readonly processes: ProcessRegistry;
   events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
   eventsOf(kind: string): Record<string, unknown>[];
   close(): void;
@@ -78,9 +101,38 @@ export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
     }
   };
 
+  const processes: ProcessRegistry = {
+    appendWithProcess(event: EventRecord, row: AgentProcessRecord): Promise<EventSeq> {
+      const [seq] = appendEventsWithProcess(
+        db,
+        [
+          {
+            runId,
+            ts: event.ts,
+            kind: event.kind,
+            v: event.v,
+            epoch,
+            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+            ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+            payload: event.payload,
+          },
+        ],
+        row,
+        { spillTo: dataDir },
+      );
+      return Promise.resolve(seq as EventSeq);
+    },
+    clear(key: AgentProcessKey): Promise<void> {
+      clearProcess(db, key);
+      return Promise.resolve();
+    },
+  };
+
   return {
     db,
     sink,
+    processes,
     events,
     eventsOf: (kind: string) =>
       events()

@@ -14,6 +14,7 @@
 
 import { DaemonAlreadyRunning } from '@DeFlow/ledger';
 import { type Booted, boot, EX_ALREADY_RUNNING } from './boot.ts';
+import { systemClock } from './clock.ts';
 import { DEFAULT_PORT } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
@@ -72,8 +73,12 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
 
   // node --watch spawns the replacement as soon as this process is gone, so the
   // port has to be released promptly or the next life fails with EADDRINUSE.
-  const hardExit = setTimeout(() => process.exit(0), 2_000);
-  hardExit.unref();
+  //
+  // Through the Clock port rather than a bare `setTimeout` (KAR-06.6 AC1): the
+  // daemon owns exactly one timer, in clock.ts, and everything that waits goes
+  // through it or is a `node_wake` row. `systemClock.setTimer` already
+  // `unref()`s, so this deadline cannot be the reason DeFlowd stays alive.
+  systemClock.setTimer(2_000, () => process.exit(0));
 
   // Port, then ledger, then lease: the next daemon may only get in once this
   // one has stopped writing.

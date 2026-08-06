@@ -38,7 +38,9 @@ import { systemClock } from './clock.ts';
 import { resolveDataDir } from './data-dir.ts';
 import { DEFAULT_HOSTNAME, DEFAULT_PORT, type StartedHttp, startHttp } from './http/server.ts';
 import { log } from './logging.ts';
-import { type ReapDecision, reapOrphans } from './reaper.ts';
+import { daemonRandom } from './random.ts';
+import type { ReapDecision } from './reaper.ts';
+import { type Recovery, recover } from './recovery.ts';
 import { setDaemonEpoch, setHeadSeq } from './runtime.ts';
 
 const daemon = log.child({ mod: 'boot' });
@@ -159,7 +161,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   let db: Db;
   let epoch: number;
   let replayed: LedgerReplay;
-  let reaped: readonly ReapDecision[];
+  let recovered: Recovery;
   try {
     db = openLedger(dataDir);
     epoch = bumpEpoch(db);
@@ -180,10 +182,33 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     reportReplay(replayed.replays);
     step('migrate');
 
-    // KAR-05.9 AC7 — whatever the previous daemon left running, before this
-    // one spawns anything of its own.
-    reaped = await reapOrphans(db, { clock: systemClock, epoch });
-    step('reap-orphans');
+    // KAR-06.9 — the rest of §12's startup sequence: reconcile every effect a
+    // dead daemon left `pending`, conclude the attempts that died holding
+    // things, reap whatever is still running, and load the wakes that came due
+    // while nothing was. `reap-orphans` is the one of the five that is also a
+    // `BOOT_STEP`, because it is the one that changes something outside this
+    // process — it signals other people's processes — and it must happen before
+    // this daemon spawns anything of its own (KAR-05.9 AC7).
+    //
+    // The reconciliation runs with **no probes registered**, which means an
+    // inherited `pending` row escalates to a human rather than being guessed
+    // at. That is the same rule `durable()` applies to an effect that declares
+    // no `reconcile`, and it is the conservative half of the two: the daemon
+    // has no run driver yet, so nothing here journals effects, and the day one
+    // does it must pass its probes in rather than inherit silence.
+    recovered = await recover({
+      db,
+      clock: systemClock,
+      epoch,
+      daemonStartedAt: systemClock.now(),
+      random: daemonRandom(),
+      replayed,
+      spillTo: dataDir,
+      onStep: (name) => {
+        if (name === 'reap-orphans') step('reap-orphans');
+      },
+    });
+    replayed = { ...replayed, runs: recovered.runs };
 
     // EPIC-05 fills this in. Its position is what KAR-03.7 asserts.
     step('probe-providers');
@@ -219,7 +244,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     runs: replayed.runs,
     replays: replayed.replays,
     headSeq: replayed.headSeq,
-    reaped,
+    reaped: recovered.reaped,
     http,
     async shutdown(): Promise<void> {
       // Reverse order: stop accepting work, then close the ledger, then let

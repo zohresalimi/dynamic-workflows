@@ -1985,23 +1985,51 @@ export function checkRunnerImagesArePinned(files: readonly SourceFile[]): Violat
 
 /**
  * AC11, EPIC-01-S23 last scenario. The strategy document's example workflow
- * includes a crash-fuzz step, and copying it produces a red build on the first
- * commit because the project has nothing to run until EPIC-03 adds it.
+ * includes a `--project crash-fuzz` step, and copying it while vitest.config.ts
+ * still held an empty slot for that project produced a red build on every
+ * commit. The original guard therefore banned that one literal string.
+ *
+ * That ban expired the moment KAR-03.8 filled the slot, and it then did real
+ * damage: it stood between the crash-fuzz suite and the CI job EPIC-06's
+ * Definition of Done requires it to run in. What the ban was protecting is kept
+ * here in the form that does not go stale — a workflow may name any vitest
+ * project the runner config actually declares, and no others. Pass the declared
+ * names in; do not restate them here, or this guard becomes the second place
+ * the project list lives.
  */
-export function checkNoCrashFuzzProject(files: readonly SourceFile[]): Violation[] {
+export function checkWorkflowProjectsExist(
+  files: readonly SourceFile[],
+  declaredProjects: readonly string[],
+): Violation[] {
   const violations: Violation[] = [];
+  const known = new Set(declaredProjects);
+  const named = /--project[=\s]+([A-Za-z0-9_./-]+)/g;
+
   for (const file of files) {
     for (const [index, line] of file.text.split('\n').entries()) {
-      if (!/--project\s+crash-fuzz/.test(line)) continue;
-      violations.push({
-        where: `${file.path}:${index + 1}`,
-        message:
-          `${file.path} line ${index + 1} references "--project crash-fuzz", which does not exist ` +
-          'yet — vitest.config.ts holds a deliberately empty slot for it. EPIC-03 adds the project ' +
-          'and this step together; until then this is a red build on every commit.',
-      });
+      // Only lines that actually invoke the runner. Prose about the flag is not
+      // a step — but a *commented-out* vitest command still is, one keystroke
+      // from being live, so the filter is the word "vitest" rather than "run:".
+      if (!line.includes('vitest')) continue;
+      named.lastIndex = 0;
+      let match = named.exec(line);
+      while (match !== null) {
+        const project = match[1] ?? '';
+        if (!known.has(project)) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message:
+              `${file.path} line ${index + 1} runs "--project ${project}", which vitest.config.ts ` +
+              `does not declare. The projects that exist are ${[...known].join(', ')}. A step ` +
+              'naming a project that is only a slot is a red build on every commit, and the ' +
+              'failure reads as a test failure rather than as a configuration one.',
+          });
+        }
+        match = named.exec(line);
+      }
     }
   }
+
   return violations;
 }
 
@@ -2288,6 +2316,308 @@ export function checkMcpSdkImports(files: readonly SourceFile[]): Violation[] {
           `${file.path} imports "${specifier}". The MCP host is stdio-only and may name ${allowedList} ` +
           `and nothing else.${sse}`,
       });
+    }
+  }
+
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-06.1 — the deterministic core reads no clock, timer or random source.
+ *
+ * `decide(state, now)` takes the instant as a parameter. The corollary,
+ * docs/05-durable-execution.md §4 states it as a hard rule, is that nothing
+ * under packages/core/src may read one for itself: a `Date.now()` in the
+ * scheduler makes two calls with the same `(state, now)` disagree, and it does
+ * so intermittently, in a run nobody can reproduce.
+ *
+ * Each identifier is named individually rather than being covered by a
+ * category, because the message that has to appear in front of the person
+ * typing it is different every time — `setTimeout` is a durability bug (a
+ * 30-day gate fires after 1 ms, verified 2026-08-02), `Math.random` is a
+ * replay bug, `Date.now` is both.
+ *
+ * The patterns are *built* from the object and member names rather than
+ * written out, so this file can never be its own first violation.
+ * -------------------------------------------------------------------------- */
+
+export interface BannedNondeterminism {
+  /** How a reader names it: `Date.now`, `setTimeout`. */
+  readonly identifier: string;
+  /** The object a member read goes through, or `null` for a bare global. */
+  readonly object: string | null;
+  /** The member or global name itself. */
+  readonly member: string;
+  /** What goes wrong when it is used, in one line. */
+  readonly why: string;
+}
+
+export const BANNED_NONDETERMINISM: readonly BannedNondeterminism[] = [
+  {
+    identifier: 'Date.now',
+    object: 'Date',
+    member: 'now',
+    why: 'the instant arrives as decide()’s `now` parameter and inside event payloads; a clock read makes replay disagree with the live run',
+  },
+  {
+    identifier: 'setTimeout',
+    object: null,
+    member: 'setTimeout',
+    why: 'a wait is a node_wake row, never a timer — Node fires a delay above 2^31-1 ms after 1 ms, and no timer survives a restart',
+  },
+  {
+    identifier: 'setInterval',
+    object: null,
+    member: 'setInterval',
+    why: 'the ~1 Hz ticker belongs to the daemon; core returns commands and holds no loop',
+  },
+  {
+    identifier: 'setImmediate',
+    object: null,
+    member: 'setImmediate',
+    why: 'scheduling work on the event loop is the imperative shell’s job; core is synchronous and total',
+  },
+  {
+    identifier: 'Math.random',
+    object: 'Math',
+    member: 'random',
+    why: 'jitter and ids come from a seeded generator injected as a port, so a failing run can be replayed exactly',
+  },
+  {
+    identifier: 'process.hrtime',
+    object: 'process',
+    member: 'hrtime',
+    why: 'a monotonic clock is still a clock, and `process` is not in scope in a package that performs no I/O',
+  },
+  {
+    identifier: 'performance.now',
+    object: 'performance',
+    member: 'now',
+    why: 'measuring elapsed time inside the pure core is a clock read wearing a different name',
+  },
+];
+
+/** `Date\.now\s*\(` and friends, assembled so the literal never appears here. */
+function nondeterminismPattern(banned: BannedNondeterminism): RegExp {
+  const prefix = banned.object === null ? '(?<![.\\w])' : `\\b${banned.object}\\.`;
+  return new RegExp(`${prefix}${banned.member}\\s*\\(`);
+}
+
+/**
+ * AC1 / EPIC-06-S2 scenario 3: no file under `packages/core/src` reads a
+ * clock, a timer or a random number. Runs over the source with whole-line
+ * comments blanked out, so a doc comment explaining why `Date.now()` is banned
+ * is not the rule's own first violation.
+ */
+export function checkNoNondeterminism(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const lines = codeOnly(file.text).split('\n');
+    for (const [index, line] of lines.entries()) {
+      for (const banned of BANNED_NONDETERMINISM) {
+        if (!nondeterminismPattern(banned).test(line)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} reads ${banned.identifier}. @DeFlow/core is deterministic: ` +
+            `${banned.why}. Time enters through the Clock port (packages/core/src/clock.ts), ` +
+            'implemented by SystemClock in @DeFlow/daemon and TestClock in @DeFlow/testkit.',
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * The other half of the same rule: the linter refuses it in the editor, at the
+ * moment it is typed, and it names each identifier explicitly so the message
+ * the author sees is about the bug they are about to write.
+ *
+ * Checked against the raw text of `.oxlintrc.json` rather than a parse,
+ * because that file is JSONC — it carries the comments that explain each
+ * restriction, and dropping them to satisfy a parser would remove the reason
+ * the rule exists from the only place anyone reads it.
+ */
+export function checkNondeterminismIsLinted(config: string): Violation[] {
+  const violations: Violation[] = [];
+  for (const banned of BANNED_NONDETERMINISM) {
+    const named =
+      banned.object === null
+        ? new RegExp(`"name"\\s*:\\s*"${banned.member}"`).test(config)
+        : new RegExp(
+            `\\{[^{}]*"object"\\s*:\\s*"${banned.object}"[^{}]*"property"\\s*:\\s*"${banned.member}"[^{}]*\\}`,
+          ).test(config);
+    if (named) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `.oxlintrc.json does not restrict ${banned.identifier} under packages/core/src. ` +
+        `${banned.why}. A test-time scan catches it after it is written; the lint rule catches ` +
+        'it as it is typed, which is the only one of the two that arrives before the commit.',
+    });
+  }
+  return violations;
+}
+
+/* ── KAR-06.6 AC1 — one timer in the orchestrator, and it is a hint ─────────
+ *
+ * @DeFlow/core may not name a timer at all (see BANNED_NONDETERMINISM above).
+ * The daemon is the imperative shell and therefore has to own exactly one, so
+ * the rule here is not "none" but "one, named, and everywhere else a
+ * `node_wake` row".
+ *
+ * The allowlisted file is the `Clock` port's implementation rather than the
+ * ticker, which is the shape the whole design rests on: the ticker asks the
+ * port to sleep and never names a global, so the ticker's sleep hint, the
+ * shutdown hard-exit and every future grace window are one `setTimeout` in one
+ * file whose entire job is to be that one.
+ *
+ * Why it matters more here than anywhere else: **verified 2026-08-02**, Node
+ * fires `setTimeout(2**31)` after ~1 ms instead of clamping, so a 30-day human
+ * gate written as a timer fires instantly and nothing in the logs says
+ * "durability failure". Below that ceiling timers still do not fire during
+ * laptop sleep and do not survive a restart.
+ * -------------------------------------------------------------------------- */
+
+/** The globals a wait must never be written with. */
+export const TIMER_GLOBALS = ['setTimeout', 'setInterval'] as const;
+
+/**
+ * The only production sources allowed to name one, repo-relative. Exported so
+ * the spec asserts the list rather than trusting it, and so the lint config
+ * and the scan cannot drift apart.
+ */
+export const TIMER_ALLOWLIST: readonly string[] = ['packages/daemon/src/clock.ts'];
+
+/** `setTimeout(` and friends, assembled so this file never trips its own rule. */
+const timerPattern = (global: string): RegExp => new RegExp(`(?<![.\\w])${global}\\s*\\(`);
+
+/**
+ * AC1. Every production source of a package that names a timer global, except
+ * the allowlisted ones. Comment-only lines are blanked first, so the prose
+ * explaining why the rule exists is not the rule's own first violation.
+ */
+export function checkNoTimerWaits(
+  files: readonly SourceFile[],
+  allowed: readonly string[] = TIMER_ALLOWLIST,
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    const lines = codeOnly(file.text).split('\n');
+    for (const [index, line] of lines.entries()) {
+      for (const global of TIMER_GLOBALS) {
+        if (!timerPattern(global).test(line)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} calls ${global}. A wait is a node_wake row, never a timer ` +
+            '(docs/05-durable-execution.md §10.1): Node fires a delay above 2^31-1 ms after ' +
+            '1 ms rather than clamping — verified 2026-08-02 — and no timer fires during ' +
+            `laptop sleep or survives a restart. Sleep through the Clock port instead; ${allowed.join(
+              ', ',
+            )} is the one file allowed to implement it.`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * The other half of the same rule: oxlint refuses a second call site in the
+ * editor, at the moment it is typed, and the allowlisted path is named in the
+ * config so the exemption is a decision somebody wrote down rather than a file
+ * that happened to be skipped.
+ *
+ * Checked against the raw text of `.oxlintrc.json` rather than a parse,
+ * because that file is JSONC — the comments carry the reasons, and dropping
+ * them to satisfy a parser would delete the explanation from the only place
+ * anyone reads it.
+ */
+export function checkTimerAllowlistIsLinted(config: string): Violation[] {
+  const violations: Violation[] = [];
+
+  const restricts = (global: string): boolean =>
+    new RegExp(`"name"\\s*:\\s*"${global}"`).test(config);
+
+  for (const global of TIMER_GLOBALS) {
+    if (restricts(global)) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `.oxlintrc.json does not restrict ${global}. A wait written as a timer is a durability ` +
+        'bug that is invisible in the logs, so the linter has to refuse it as it is typed — a ' +
+        'test-time scan only catches it once it is already written.',
+    });
+  }
+
+  if (!/"files"\s*:\s*\[\s*"packages\/daemon\/src\/\*\*\/\*\.ts"\s*\]/.test(config)) {
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        'no override covers packages/daemon/src/**/*.ts, so the timer restriction reaches the ' +
+        'orchestrator’s shell only by accident. The scheduling half of DeFlow is @DeFlow/core ' +
+        'plus this package, and core is already covered by its own override.',
+    });
+  }
+
+  for (const allowed of TIMER_ALLOWLIST) {
+    if (config.includes(`"${allowed}"`)) continue;
+    violations.push({
+      where: '.oxlintrc.json',
+      message:
+        `${allowed} is the one call site the scan allows, but the lint config never names it. ` +
+        'An exemption that exists in a test file and not in the rule is an exemption nobody ' +
+        'editing that file will ever see.',
+    });
+  }
+
+  return violations;
+}
+
+/**
+ * KAR-06.5 AC1 — the scheduler reads `class` and nothing else.
+ *
+ * `class` is assigned when a `NodeFailure` is *constructed*, by the code that
+ * knows which situation it is in: `provider.unavailable` is transient for a
+ * rate-limited vendor and permanent for a binary the user uninstalled mid-run.
+ * The moment the scheduler re-derives a decision from `reason`, that context is
+ * gone and the two cases become one — silently, and only in production.
+ *
+ * So no `NodeFailureReason` string literal may appear in a scheduling module.
+ * Comparing `entry.when === failure.reason` is fine and is what
+ * `retry.onFailure` is for: that is data flowing from the plan, not a branch
+ * compiled into the scheduler.
+ *
+ * The one module allowed to name reasons is the classifier — that is what
+ * `classifierPaths` is, and it is a parameter rather than a constant so the
+ * test states which file it is exempting where a reader will see it.
+ */
+export function checkSchedulerBranchesOnClassOnly(
+  files: readonly SourceFile[],
+  reasons: readonly string[],
+  classifierPaths: readonly string[],
+): Violation[] {
+  const exempt = new Set(classifierPaths);
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    if (exempt.has(file.path)) continue;
+    const code = codeOnly(file.text);
+    for (const [index, line] of code.split('\n').entries()) {
+      for (const reason of reasons) {
+        if (!line.includes(`'${reason}'`) && !line.includes(`"${reason}"`)) continue;
+        violations.push({
+          where: `${file.path}:${index + 1}`,
+          message:
+            `${file.path} names the NodeFailureReason "${reason}" as a literal. The scheduler ` +
+            'reads `class` and nothing else: the same reason is transient or permanent depending ' +
+            'on context, so classification happens where the failure is constructed ' +
+            `(${classifierPaths.join(', ')}) and never at the point a decision is taken.`,
+        });
+      }
     }
   }
 

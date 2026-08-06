@@ -18,16 +18,18 @@
  */
 import { expect, it, describe as suite } from 'vitest';
 import { TMP_PREFIX } from '../packages/testkit/src/tmp.ts';
+import webConfig from '../packages/web/vitest.config.ts';
+import rootConfig from '../vitest.config.ts';
 import {
   type CiWorkflow,
   checkCiWorkflow,
   checkJobLevelContexts,
   checkNoCorepack,
-  checkNoCrashFuzzProject,
   checkRecordedCiRuntime,
   checkRunnerImagesArePinned,
   checkTempDirPrefixes,
   checkWorkflowExecutablesAreDeclared,
+  checkWorkflowProjectsExist,
   EXPECTED_TEST_MATRIX,
   expandMatrixTemplate,
   PINNED_ACTIONS,
@@ -44,6 +46,20 @@ import {
 
 const CI = '.github/workflows/ci.yml';
 const workflow = (): CiWorkflow => readYaml<CiWorkflow>(CI);
+
+/**
+ * Every vitest project name the repository actually declares, read out of the
+ * configs rather than listed a second time here — the whole point of the guard
+ * below is that the workflow and the runner config cannot drift apart.
+ */
+function declaredProjects(): string[] {
+  const entries = (rootConfig as { test?: { projects?: readonly unknown[] } }).test?.projects ?? [];
+  const inline = entries.flatMap((entry) =>
+    typeof entry === 'string' ? [] : [(entry as { test?: { name?: string } }).test?.name ?? ''],
+  );
+  const web = (webConfig as { test?: { name?: string } }).test?.name;
+  return [...inline, ...(web === undefined ? [] : [web])].filter((name) => name !== '');
+}
 
 suite('the three jobs and their pinned actions (AC6, EPIC-01-S23)', () => {
   it('declares check, test and browser-e2e exactly as the design records', () => {
@@ -107,17 +123,76 @@ suite('corepack appears nowhere (AC8, test plan #6)', () => {
   });
 });
 
-suite('crash-fuzz is not referenced yet (AC11, test plan #8, EPIC-01-S23 last scenario)', () => {
-  it('no workflow runs "--project crash-fuzz"', () => {
-    expect(render(checkNoCrashFuzzProject(readSources(workflowFiles())))).toBe('');
+suite('every "--project" a workflow names is a project that exists (AC11, test plan #8)', () => {
+  // This replaces a narrower guard that simply forbade the string
+  // "--project crash-fuzz" anywhere in a workflow. That prohibition was correct
+  // for exactly as long as the project was an empty slot in vitest.config.ts,
+  // and it went stale the moment KAR-03.8 filled the slot — after which it was
+  // no longer protecting the build, it was blocking the wiring the strategy
+  // document asks for. The durable form of the same protection is the one that
+  // does not need revisiting per project: whatever a workflow names, the runner
+  // config must declare, or the step is a red build on every commit.
+  it('the workflows name only projects vitest.config.ts declares', () => {
+    expect(
+      render(checkWorkflowProjectsExist(readSources(workflowFiles()), declaredProjects())),
+    ).toBe('');
   });
 
-  it('flags the example step the strategy document itself shows', () => {
-    const violations = checkNoCrashFuzzProject([
-      { path: 'ci.yml', text: '      - run: pnpm vitest run --project crash-fuzz\n' },
-    ]);
+  it('flags a step naming a project the runner config has no slot for', () => {
+    const violations = checkWorkflowProjectsExist(
+      [{ path: 'ci.yml', text: '      - run: pnpm vitest run --project crash-fzz\n' }],
+      declaredProjects(),
+    );
     expect(violations).toHaveLength(1);
-    expect(render(violations)).toContain('EPIC-03');
+    expect(render(violations)).toContain('crash-fzz');
+    expect(render(violations)).toContain('vitest.config.ts');
+  });
+
+  it('accepts the crash-fuzz project now that KAR-03.8 and KAR-06.9 have filled it', () => {
+    expect(declaredProjects()).toContain('crash-fuzz');
+    expect(
+      checkWorkflowProjectsExist(
+        [{ path: 'ci.yml', text: '      - run: pnpm vitest run --project crash-fuzz\n' }],
+        declaredProjects(),
+      ),
+    ).toEqual([]);
+  });
+});
+
+suite('the crash-fuzz slice is wired into the test legs (KAR-06.9 AC7)', () => {
+  // KAR-03.8 filled the fifth vitest project and KAR-06.9 added the daemon
+  // half, so the "not referenced yet" prohibition this suite used to carry is
+  // over. What replaces it is the assertion the prohibition was standing in
+  // for: the workflow names the project, on the matrix legs, so that the
+  // durability suite is a thing CI runs rather than a thing the README claims.
+  //
+  // The `test` job is separately held back by `vars.RUN_TESTS_IN_CI` (owner's
+  // decision, 2026-08-05) — that gate is deliberately not asserted here. This
+  // suite holds the *wiring*: when the variable is set, crash-fuzz runs with
+  // everything else, and until then nobody has to remember to come back and
+  // add a step.
+  const testJob = () => workflow().jobs?.test;
+
+  it('runs "pnpm vitest run --project crash-fuzz" on every matrix leg', () => {
+    const runs = (testJob()?.steps ?? []).flatMap((step) =>
+      step.run === undefined ? [] : [step.run],
+    );
+    expect(runs).toContain('pnpm vitest run --project crash-fuzz');
+  });
+
+  it('gives every vitest step in the job the tmpdir wiring the upload step needs', () => {
+    // Not just the first one. A crash-fuzz leg that fails without
+    // DeFlow_KEEP_TMP leaves the ledger it died on nowhere, and a CI-only
+    // durability failure with no artefacts is close to undiagnosable — which is
+    // the one thing KAR-06.9's own notes say to wire from the first CI run.
+    const vitestSteps = (testJob()?.steps ?? []).filter((step) =>
+      step.run?.startsWith('pnpm vitest run'),
+    );
+    expect(vitestSteps.length).toBeGreaterThanOrEqual(2);
+    for (const step of vitestSteps) {
+      expect(step.env?.DeFlow_KEEP_TMP, `step "${step.run}"`).toBe('1');
+      expect(step.env?.TMPDIR, `step "${step.run}"`).toBe('${{ runner.temp }}');
+    }
   });
 });
 

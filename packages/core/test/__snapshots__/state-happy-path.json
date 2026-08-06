@@ -1,14 +1,18 @@
 {
   "runId": "run_20260802T141133Z_9f2a1c",
   "status": "completed",
+  "repoRoot": "/Users/dev/projects/shop",
   "outcome": "succeeded",
   "criteriaSatisfied": [
     "unit-tests-pass",
     "no-v-model-regression"
   ],
   "needsHuman": null,
+  "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "planVersion": 0,
+  "plan": null,
+  "proposedPlans": {},
   "nodes": {
     "step-01": {
       "status": "completed",
@@ -17,6 +21,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -38,7 +43,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 52
     },
     "step-02": {
       "status": "completed",
@@ -47,6 +54,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -66,7 +74,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 102
     },
     "step-03": {
       "status": "completed",
@@ -75,6 +85,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -94,7 +105,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 152
     },
     "step-04": {
       "status": "completed",
@@ -103,6 +116,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -122,7 +136,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 202
     },
     "step-05": {
       "status": "completed",
@@ -131,6 +147,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -150,7 +167,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 253
     },
     "step-06": {
       "status": "completed",
@@ -159,6 +178,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -178,7 +198,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 303
     },
     "step-07": {
       "status": "completed",
@@ -187,6 +209,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -206,7 +229,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 353
     },
     "step-08": {
       "status": "completed",
@@ -215,6 +240,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -234,7 +260,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 403
     },
     "step-09": {
       "status": "completed",
@@ -243,6 +271,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -262,7 +291,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 454
     },
     "step-10": {
       "status": "completed",
@@ -271,6 +302,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -290,7 +322,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 504
     },
     "step-11": {
       "status": "completed",
@@ -299,6 +333,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -320,7 +355,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 555
     },
     "step-12": {
       "status": "completed",
@@ -329,6 +366,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -348,7 +386,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 605
     },
     "step-13": {
       "status": "completed",
@@ -357,6 +397,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -376,7 +417,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 656
     },
     "step-14": {
       "status": "completed",
@@ -385,6 +428,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -404,7 +448,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 706
     },
     "step-15": {
       "status": "completed",
@@ -413,6 +459,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -432,7 +479,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 756
     },
     "step-16": {
       "status": "completed",
@@ -441,6 +490,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -460,7 +510,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 806
     },
     "step-17": {
       "status": "completed",
@@ -469,6 +521,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -488,7 +541,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 857
     },
     "step-18": {
       "status": "completed",
@@ -497,6 +552,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -516,7 +572,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 907
     },
     "step-19": {
       "status": "completed",
@@ -525,6 +583,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -544,7 +603,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 957
     },
     "step-20": {
       "status": "completed",
@@ -553,6 +614,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -572,7 +634,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1007
     },
     "step-21": {
       "status": "completed",
@@ -581,6 +645,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -602,7 +667,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1060
     },
     "step-22": {
       "status": "completed",
@@ -611,6 +678,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -630,7 +698,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1109
     },
     "step-23": {
       "status": "completed",
@@ -639,6 +709,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -658,7 +729,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1158
     },
     "step-24": {
       "status": "completed",
@@ -667,6 +740,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -686,7 +760,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1207
     },
     "step-25": {
       "status": "completed",
@@ -695,6 +771,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -714,7 +791,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1257
     },
     "step-26": {
       "status": "completed",
@@ -723,6 +802,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -742,7 +822,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1306
     },
     "step-27": {
       "status": "completed",
@@ -751,6 +833,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -770,7 +853,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1355
     },
     "step-28": {
       "status": "completed",
@@ -779,6 +864,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -798,7 +884,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1404
     },
     "step-29": {
       "status": "completed",
@@ -807,6 +895,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -826,7 +915,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1454
     },
     "step-30": {
       "status": "completed",
@@ -835,6 +926,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -854,7 +946,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1503
     },
     "step-31": {
       "status": "completed",
@@ -863,6 +957,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -884,7 +979,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1553
     },
     "step-32": {
       "status": "completed",
@@ -893,6 +990,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -912,7 +1010,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1602
     },
     "step-33": {
       "status": "completed",
@@ -921,6 +1021,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -940,7 +1041,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1652
     },
     "step-34": {
       "status": "completed",
@@ -949,6 +1052,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -968,7 +1072,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1701
     },
     "step-35": {
       "status": "completed",
@@ -977,6 +1083,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -996,7 +1103,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1750
     },
     "step-36": {
       "status": "completed",
@@ -1005,6 +1114,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1024,7 +1134,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1799
     },
     "step-37": {
       "status": "completed",
@@ -1033,6 +1145,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1052,7 +1165,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1849
     },
     "step-38": {
       "status": "completed",
@@ -1061,6 +1176,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1080,7 +1196,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1898
     },
     "step-39": {
       "status": "completed",
@@ -1089,6 +1207,7 @@
       "provider": "claude-code",
       "model": "claude-sonnet-4-6",
       "permission": "worktree",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1108,7 +1227,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1947
     },
     "step-40": {
       "status": "completed",
@@ -1117,6 +1238,7 @@
       "provider": "codex",
       "model": "gpt-5-codex",
       "permission": "read",
+      "worktree": null,
       "result": {
         "status": "completed",
         "output": {
@@ -1136,7 +1258,9 @@
       },
       "failure": null,
       "suspension": null,
-      "wakeAt": null
+      "requestHash": null,
+      "wakeAt": null,
+      "updatedSeq": 1996
     }
   },
   "locks": {},
@@ -1185,6 +1309,18 @@
     ],
     "retired": []
   },
+  "policy": {
+    "globalAgentSlots": 3,
+    "noProgress": {
+      "detectors": true,
+      "stallThresholdMs": 600000,
+      "churnRepeats": 5,
+      "flatReplans": 3,
+      "maxAttemptsPerNode": 3,
+      "maxRunWallClockMs": null,
+      "maxTotalNodeExecutions": null
+    }
+  },
   "budget": {
     "costUsd": 8.2,
     "usage": {
@@ -1198,6 +1334,136 @@
     "breaches": []
   },
   "watermarkSeq": 2000,
+  "watermarkTs": 1754324285000,
+  "startedTs": 1754308309000,
+  "stalledAtSeq": 0,
+  "churnWindow": [
+    {
+      "node": "step-21",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1060
+    },
+    {
+      "node": "step-22",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1109
+    },
+    {
+      "node": "step-23",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1158
+    },
+    {
+      "node": "step-24",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1207
+    },
+    {
+      "node": "step-25",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1257
+    },
+    {
+      "node": "step-26",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1306
+    },
+    {
+      "node": "step-27",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1355
+    },
+    {
+      "node": "step-28",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1404
+    },
+    {
+      "node": "step-29",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1454
+    },
+    {
+      "node": "step-30",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1503
+    },
+    {
+      "node": "step-31",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1553
+    },
+    {
+      "node": "step-32",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1602
+    },
+    {
+      "node": "step-33",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1652
+    },
+    {
+      "node": "step-34",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1701
+    },
+    {
+      "node": "step-35",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1750
+    },
+    {
+      "node": "step-36",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1799
+    },
+    {
+      "node": "step-37",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1849
+    },
+    {
+      "node": "step-38",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1898
+    },
+    {
+      "node": "step-39",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1947
+    },
+    {
+      "node": "step-40",
+      "requestHash": null,
+      "attempt": 0,
+      "seq": 1996
+    }
+  ],
+  "replans": {
+    "flat": 0,
+    "completed": 0,
+    "versions": []
+  },
   "epoch": 1,
   "staleEpochSkipped": 0
 }
