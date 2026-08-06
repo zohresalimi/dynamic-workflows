@@ -105,9 +105,41 @@ export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
 // worktree it found and the worktree it left.
 export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
 export { shellEffect } from './effects/shell-effect.ts';
+// KAR-07.1 — the two forbidden-argument assertions the Git wrapper runs
+// before every spawn (§3.3, §10.6).
+export {
+  assertNoForcedWorktreeAdd,
+  assertNotDefaultBranchWrite,
+  isDefaultBranchWriteShaped,
+} from './git/assertions.ts';
+// KAR-07.1 — default branch resolution (§10.6): origin/HEAD, falling back to
+// the HEAD symref. `Git.resolveDefaultBranch()` is the cached, per-instance
+// entry point most callers want; this is the uncached primitive it wraps.
+export {
+  DefaultBranchUnresolvedError,
+  resolveDefaultBranchUncached,
+} from './git/default-branch.ts';
+// KAR-07.1 — the Git wrapper itself: one chokepoint, built on the spawn half
+// KAR-06.4 left in ./git/run-git.ts for exactly this.
+export { Git, type GitOptions, type GitRunOptions } from './git/git.ts';
 // KAR-06.4 — the spawn half of the git wrapper KAR-07.1 completes.
 export type { GitResult, RunGitOptions } from './git/run-git.ts';
 export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';
+// KAR-07.1 — the git version floor (§1.2): DeFlow doctor's git check
+// (EPIC-18, KAR-18.4) and, ahead of that command existing, the run-start
+// gate a below-floor git throws through.
+export {
+  assertGitVersionSupported,
+  checkGitVersion,
+  classifyGitVersion,
+  type GitVersion,
+  type GitVersionCheck,
+  type GitVersionStatus,
+  GitVersionTooOldError,
+  MIN_GIT_VERSION,
+  PREFERRED_GIT_VERSION,
+  parseGitVersion,
+} from './git/version.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
