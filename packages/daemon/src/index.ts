@@ -325,3 +325,72 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+// KAR-07.5 — the three layers that make a fresh worktree usable: gitignored
+// config copied by `.worktreeinclude`, the lockfile's own install, and
+// `workspace.setup` cached on the sha256 of its inputs (§5).
+export type {
+  DiskEstimate,
+  DiskEstimateInput,
+  DiskEstimateTerm,
+  MeasuredRepo,
+} from './workspace/disk-estimate.ts';
+export {
+  estimateFanOutDisk,
+  formatBytes,
+  measureRepoDisk,
+  renderDiskEstimate,
+} from './workspace/disk-estimate.ts';
+export type { PackageManager, PackageManagerSetup } from './workspace/package-manager.ts';
+export {
+  AmbiguousLockfileError,
+  detectPackageManager,
+  LOCKFILES,
+} from './workspace/package-manager.ts';
+export type {
+  CloneStep,
+  CopyStep,
+  IncludedFile,
+  PlanInput,
+  ProvisionPlan,
+  ProvisionStep,
+  RunStep,
+  SymlinkStep,
+} from './workspace/provision-plan.ts';
+export {
+  assertNoSharedNodeModules,
+  planWorktreeProvision,
+  SharedNodeModulesRefused,
+} from './workspace/provision-plan.ts';
+export type {
+  EnvironmentRequest,
+  EnvironmentResult,
+  ProvisionedWorkspace,
+  ProvisionerPorts,
+  ProvisionWorkspaceRequest,
+  WorkspaceConfig,
+} from './workspace/provisioner.ts';
+export {
+  SETUP_STDERR_TAIL_BYTES,
+  WorkspaceProvisioner,
+  WorkspaceSetupFailed,
+} from './workspace/provisioner.ts';
+export type { ReflinkProbe } from './workspace/reflink.ts';
+export { cloneTree, probeReflink } from './workspace/reflink.ts';
+export type {
+  SetupCommandRequest,
+  SetupOutcome,
+  SetupRunner,
+  SetupStream,
+} from './workspace/run-setup.ts';
+export { setupChildEnv, spawnSetup } from './workspace/run-setup.ts';
+export type { CacheKeyFile } from './workspace/setup-cache.ts';
+export { markerFileName, setupCacheKey } from './workspace/setup-cache.ts';
+export type { IncludeCandidate } from './workspace/worktree-include.ts';
+export {
+  GITIGNORED_AMONG_ARGS,
+  INCLUDE_MATCH_ARGS_TRACKED,
+  INCLUDE_MATCH_ARGS_UNTRACKED,
+  includedFiles,
+  splitNul,
+  WORKTREE_INCLUDE_FILE,
+} from './workspace/worktree-include.ts';

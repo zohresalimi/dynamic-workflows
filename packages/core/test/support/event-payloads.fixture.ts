@@ -188,6 +188,8 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     occupiedBy: '/tmp/repo',
     occupantKind: 'main-checkout',
   },
+  'workspace.included_file': { node: NODE, path: '.env', mode: '0600' },
+  'workspace.setup_cache_hit': { node: NODE, key: SHA, files: ['pnpm-lock.yaml'] },
   'workspace.dirty_on_remove': {
     node: NODE,
     path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,

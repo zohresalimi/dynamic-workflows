@@ -418,6 +418,44 @@ export const WorkspaceBranchOccupiedSchema = z.strictObject({
   occupantKind: z.enum(WORKTREE_OCCUPANT_KINDS),
 });
 
+/**
+ * One `.worktreeinclude` file copied into a fresh worktree
+ * (§5.1 Layer 1, KAR-07.5 AC2).
+ *
+ * **The path, and never the contents.** The whole point of this layer is that
+ * `.env`-shaped files reach the agent's worktree, so by construction every
+ * event here names a file that probably holds a credential. A `strictObject`
+ * is what makes "no contents field" enforceable rather than a convention: a
+ * payload that grew a `contents` key would be refused at the append boundary.
+ *
+ * `mode` is the *source's* mode in octal (`'0600'`), recorded because AC2's
+ * guarantee is that the copy did not widen it — the assertion needs the number
+ * it was compared against to be in the ledger too.
+ */
+export const WorkspaceIncludedFileSchema = z.strictObject({
+  node: NodeIdSchema,
+  /** Repo-relative, as `git ls-files` reported it. */
+  path: z.string().min(1),
+  /** Four-digit octal, e.g. `'0600'`. */
+  mode: z.string().regex(/^[0-7]{4}$/),
+});
+
+/**
+ * `workspace.setup` was skipped because its inputs are unchanged
+ * (§5.1 Layer 3, KAR-07.5 AC5).
+ *
+ * `key` is the marker: the sha256 of the `setupCacheKey` files' contents, so a
+ * lockfile that changes and changes back is correctly a hit, where a timestamp
+ * or a boolean would have been a miss or a lie respectively. `files` is what
+ * went into it, in the order the config declared, because "why was this a hit"
+ * is unanswerable from a hash alone.
+ */
+export const WorkspaceSetupCacheHitSchema = z.strictObject({
+  node: NodeIdSchema,
+  key: Sha256Schema,
+  files: z.array(z.string().min(1)),
+});
+
 /** One entry of `git status --porcelain=v2 -z`, as the salvage path parsed it.
  * `origPath` is set only for a rename or a copy, and `xy` is `null` for an
  * untracked or ignored entry, because git prints those without a code. */
@@ -760,6 +798,8 @@ export const EVENT_SCHEMAS = {
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
   'workspace.worktree_created': { v: 1, payload: WorkspaceWorktreeCreatedSchema },
   'workspace.branch_occupied': { v: 1, payload: WorkspaceBranchOccupiedSchema },
+  'workspace.included_file': { v: 1, payload: WorkspaceIncludedFileSchema },
+  'workspace.setup_cache_hit': { v: 1, payload: WorkspaceSetupCacheHitSchema },
   'workspace.dirty_on_remove': { v: 1, payload: WorkspaceDirtyOnRemoveSchema },
   'workspace.wip_salvaged': { v: 1, payload: WorkspaceWipSalvagedSchema },
   'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
