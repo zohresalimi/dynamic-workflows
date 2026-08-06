@@ -268,6 +268,10 @@ export type { LockClaim } from './locks.ts';
 export { claimId, lockClaims, lockHolder, repoLockKey } from './locks.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
+// §4.1's never-implicit environment families, shared by KAR-08.4's scrubbing
+// and KAR-08.5's delegated credential policy so the two cannot drift.
+export type { NeverImplicitFamily } from './never-implicit.ts';
+export { isNeverImplicit, NEVER_IMPLICIT_FAMILIES } from './never-implicit.ts';
 // KAR-06.8 — F4.7's stall detector, churn circuit breaker and hard caps, all
 // pure reads of `(RunState, now)`.
 export type {
@@ -480,6 +484,41 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-08.5 — the per-node sandbox policy, in each enforcement engine's own
+// dialect. Pure: this package generates the documents, `@DeFlow/adapters` puts
+// them on an argv (D12 — DeFlow owns policy, the vendor owns enforcement).
+export type {
+  ClaudeGatedKey,
+  ClaudeSandboxInput,
+  ClaudeSandboxPolicy,
+  ClaudeSandboxSettings,
+  CodexSandboxPolicy,
+  CodexWorkspaceWrite,
+  GateDisposition,
+  SandboxDegradation,
+  SandboxPolicyInput,
+  SandboxRuntimeConfig,
+  SandboxStrategy,
+} from './sandbox-policy.ts';
+export {
+  CLAUDE_SANDBOX_GATES,
+  CODEX_WORKSPACE_WRITE_KEYS,
+  CREDENTIAL_GATED_KEYS,
+  claudeSandboxPolicy,
+  codexSandboxPolicy,
+  compareVersions,
+  LINUX_SANDBOX_DEPENDENCIES,
+  SANDBOX_CREDENTIAL_FILES,
+  SANDBOX_DEPENDENCY_NAMES,
+  SANDBOX_RUNTIME_BIN,
+  SANDBOX_RUNTIME_PACKAGE,
+  SANDBOX_RUNTIME_VERSION,
+  SANDBOX_STRATEGIES,
+  sandboxDependencies,
+  sandboxRuntimeConfig,
+  sandboxStrategy,
+  VENDOR_SANDBOX_PROVIDERS,
+} from './sandbox-policy.ts';
 // The primitives both of the above are expressed in.
 export {
   binaryName,

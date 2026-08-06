@@ -187,6 +187,14 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     reason: { code: 'path-escape', detail: 'traversal' },
   },
   'env.declared': { node: NODE, attempt: 0, name: 'NPM_TOKEN' },
+  'sandbox.degraded': {
+    node: NODE,
+    attempt: 0,
+    provider: 'claude',
+    key: 'sandbox.network.strictAllowlist',
+    detected: '2.1.218',
+    required: '2.1.219',
+  },
   'node.cancelled': { node: NODE, attempt: 1, result: { status: 'cancelled', by: 'user' } },
   'node.cancel.stage': {
     node: NODE,

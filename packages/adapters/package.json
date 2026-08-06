@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@DeFlow/core": "workspace:*",
-    "@agentclientprotocol/sdk": "catalog:"
+    "@agentclientprotocol/sdk": "catalog:",
+    "@anthropic-ai/sandbox-runtime": "catalog:"
   },
   "devDependencies": {
     "@DeFlow/ledger": "workspace:*",

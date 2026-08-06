@@ -85,6 +85,8 @@ export {
   RECORDING_DIR_SHAPE,
   registryRefused,
   resolutionFailed,
+  SANDBOX_UNAVAILABLE_CAUSE,
+  sandboxUnavailable,
   spawnRefused,
   toAdapterFailure,
   UnsignalablePid,
@@ -246,6 +248,14 @@ export type {
   WakeRegistry,
 } from './run-shim-node.ts';
 export { runShimNode, shimCapabilityRow, WAKE_REASON_QUOTA } from './run-shim-node.ts';
+// KAR-08.5 — the node's sandbox policy, on the argv. D12: DeFlow owns policy,
+// the vendor owns enforcement, and nothing here opens a user config directory.
+export type { SandboxedShimPlan, SandboxInvocation } from './sandbox.ts';
+export {
+  checkSandboxDependencies,
+  SANDBOX_RUNTIME_SETTINGS_FILE,
+  sandboxedShimPlan,
+} from './sandbox.ts';
 // KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
 // DeFlow's own event ids, and never selected automatically.
 export type {

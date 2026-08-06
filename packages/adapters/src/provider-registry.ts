@@ -41,8 +41,13 @@
  *
  * Verifies: EPIC-05-S10 · AC1, AC2, AC3
  */
-import type { PermissionLevel, ProviderId } from '@DeFlow/core';
-import { ProviderIdSchema } from '@DeFlow/core';
+import type {
+  ClaudeSandboxInput,
+  PermissionLevel,
+  ProviderId,
+  SandboxDegradation,
+} from '@DeFlow/core';
+import { claudeSandboxPolicy, ProviderIdSchema } from '@DeFlow/core';
 import {
   type ResolveContext,
   type ResolvedProvider,
@@ -141,6 +146,27 @@ export interface ShimSpec {
    * would run the node at a level nobody chose.
    */
   readonly permissions: readonly PermissionLevel[];
+  /**
+   * KAR-08.5 — how this vendor takes a complete sandbox policy inline, when it
+   * can take one at all.
+   *
+   * Absent for every vendor but Claude Code, whose acceptance of a whole
+   * settings document *as a string on the argv* is what makes per-node policy
+   * possible without DeFlow reading or writing the operator's own settings
+   * files. Both halves live here for the same reason the argv builders do —
+   * which flag a vendor accepts, and which dialect it speaks, cannot be
+   * probed, and this is the one file allowed to know either.
+   */
+  readonly sandbox?: SandboxSettingsInjection;
+  /**
+   * KAR-08.5 / EPIC-08-S23 — the flag this vendor takes a list of variable
+   * names to strip from the environments of processes *it* spawns (and to
+   * redact from its output).
+   *
+   * Only Copilot CLI has one. It is one more enforcement point on the same
+   * secret, past the boundary `buildChildEnv()` can see.
+   */
+  readonly secretEnvFlag?: string;
   /** Absolute paths for the vendor CLI, or a tagged `adapter.spawn-failed`. */
   resolve(ctx: ResolveContext): ResolvedProvider;
   /**
@@ -151,6 +177,23 @@ export interface ShimSpec {
    * construction-time fact rather than a stderr line from a spawned process.
    */
   argv(ctx: ShimContext): readonly string[];
+}
+
+/**
+ * KAR-08.5 — one vendor's inline sandbox policy: the flag, and the generator
+ * that speaks its dialect.
+ *
+ * The generator lives in `@DeFlow/core` (pure, golden-filed); what is recorded
+ * here is only *which* one this vendor understands, which is invocation
+ * knowledge like every other field on `ShimSpec`.
+ */
+export interface SandboxSettingsInjection {
+  /** The flag the document rides on. One argument follows it: the JSON. */
+  readonly flag: string;
+  build(input: ClaudeSandboxInput): {
+    readonly settings: unknown;
+    readonly degraded: readonly SandboxDegradation[];
+  };
 }
 
 /** One resolved shim invocation, plus what the parser needs to read it back. */
@@ -170,6 +213,8 @@ interface ShimEntry {
    * is, which is not the same claim and is why the two are spelled apart.
    */
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
+  readonly sandbox?: SandboxSettingsInjection;
+  readonly secretEnvFlag?: string;
   build(
     ctx: ShimContext,
     format: ShimFormat,
@@ -249,6 +294,8 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     stream: entry.stream,
     dialect: entry.dialect,
     permissions: Object.keys(entry.permissions) as readonly PermissionLevel[],
+    ...(entry.sandbox === undefined ? {} : { sandbox: entry.sandbox }),
+    ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
       path: resolveExecutable(id, entry.bin, ctx),
@@ -356,6 +403,10 @@ export const PROVIDER_SPECS = {
       stream: 'json',
       dialect: 'document',
       permissions: { read: [] },
+      // Verified in `--help` on 2026-08-02. KAR-08.5 fills it from the names
+      // `buildChildEnv()` dropped; the flag is stated here because whether a
+      // vendor has one is invocation, not capability.
+      secretEnvFlag: '--secret-env-vars',
       build: (ctx, format) => ['-p', ctx.prompt, '--output-format', format, '--allow-all-tools'],
     },
   }),
@@ -400,8 +451,20 @@ export const PROVIDER_SPECS = {
       permissions: {
         read: [],
         worktree: ['--permission-mode', 'acceptEdits'],
+        // Expressible only *because* of `--settings` (KAR-08.5): the flag is
+        // the same as `worktree`, and what differs is the injected policy's
+        // `sandbox.network.allowedDomains`. Without the injection this level
+        // would be `worktree` with egress silently unconstrained, which is why
+        // `sandboxedShimPlan` — not `shimPlan` — is what production spawns
+        // through (`test/sandbox-plan-chokepoint.test.ts`).
+        'worktree+net': ['--permission-mode', 'acceptEdits'],
         full: ['--permission-mode', 'bypassPermissions'],
       },
+      // **The crucial integration fact of KAR-08.5.** The CLI accepts a whole
+      // settings document as an inline JSON string, so a complete per-node
+      // sandbox policy goes on the command line and no file under `~/.claude`
+      // is ever opened (docs/09-workspace-and-safety.md §9.2).
+      sandbox: { flag: '--settings', build: claudeSandboxPolicy },
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires

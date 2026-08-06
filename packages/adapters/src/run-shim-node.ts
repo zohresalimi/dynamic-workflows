@@ -57,6 +57,8 @@ import {
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
@@ -73,13 +75,14 @@ import { frameGuard, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime } from './kill-tree.ts';
 import { STDERR_TAIL_BYTES } from './launch.ts';
 import type { AgentBinary, EventRecord, LedgerSink, ProcessRegistry } from './ports.ts';
-import { providerSpec, type ShimFormat, shimPlan } from './provider-registry.ts';
+import { providerSpec, type ShimFormat } from './provider-registry.ts';
 import {
   AGENT_TURN_SCHEMA_ID,
   CONTENT_SPILL_BYTES,
   OUTPUT_INLINE_LIMIT_BYTES,
   type ProcessExit,
 } from './run-node.ts';
+import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } from './sandbox.ts';
 import {
   parseShimLine,
   shimRateLimit,
@@ -171,6 +174,17 @@ export interface ShimNodeRequest {
   readonly outputSchemaId?: SchemaId;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * KAR-08.5 — everything the node's sandbox policy depends on that is not the
+   * vendor's invocation: the detected CLI version, the platform, the roots the
+   * sandbox prerequisites are looked for on, and where a wrapper config goes.
+   *
+   * **Required, not optional.** The whole story is that a level DeFlow cannot
+   * enforce must fail before a process exists; an optional field would make
+   * "the caller forgot" indistinguishable from "there is nothing to enforce",
+   * and the compiler is the only reviewer that never forgets.
+   */
+  readonly sandbox: SandboxInvocation;
 }
 
 export interface ShimPorts {
@@ -324,7 +338,7 @@ export async function runShimNode(
   // flag table, then admission. Each of the three is a plan-time fact, and
   // finding one out an hour into a turn helps nobody.
   let maxFrameBytes: number;
-  let plan: ReturnType<typeof shimPlan>;
+  let plan: SandboxedShimPlan;
   try {
     maxFrameBytes = parseFrameLimit(ports.maxFrameBytes);
 
@@ -337,15 +351,20 @@ export async function runShimNode(
       );
     }
 
-    // AC3 and the permission refusal both raise from in here, before a spawn.
-    plan = shimPlan(spec, {
-      resolved: { provider: request.provider, path: request.binary.path },
-      worktree: request.worktree,
-      prompt: request.prompt,
-      sessionId: request.sessionId,
-      permission: request.permission,
-      ...(request.format === undefined ? {} : { format: request.format }),
-    });
+    // AC3, the permission refusal and KAR-08.5's missing-sandbox refusal all
+    // raise from in here, before a spawn.
+    plan = sandboxedShimPlan(
+      spec,
+      {
+        resolved: { provider: request.provider, path: request.binary.path },
+        worktree: request.worktree,
+        prompt: request.prompt,
+        sessionId: request.sessionId,
+        permission: request.permission,
+        ...(request.format === undefined ? {} : { format: request.format }),
+      },
+      request.sandbox,
+    );
   } catch (error) {
     return refuse(error);
   }
@@ -358,6 +377,20 @@ export async function runShimNode(
     ports.capabilityRow ?? null,
   );
   if (refusal !== null) return refuse(refusal);
+
+  // KAR-08.5 — the sandbox wrapper reads its policy from a file, so the file
+  // has to exist before the wrapper does. Written into a directory DeFlow
+  // made, never into the operator's `~/.srt-settings.json`, and written here
+  // rather than inside the plan builder so that `sandboxedShimPlan` stays a
+  // pure, construction-time refusal.
+  if (plan.runtimeConfig !== null) {
+    try {
+      await mkdir(dirname(plan.runtimeConfig.path), { recursive: true });
+      await writeFile(plan.runtimeConfig.path, JSON.stringify(plan.runtimeConfig.document), 'utf8');
+    } catch (error) {
+      return refuse(spawnRefused(plan.command, error));
+    }
+  }
 
   const child: ChildProcessWithoutNullStreams = spawn(plan.command, [...plan.argv], {
     cwd: request.worktree,

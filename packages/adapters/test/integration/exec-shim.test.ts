@@ -92,6 +92,15 @@ async function harness(
       version: '2.1.220',
       sha256: createHash('sha256').update(readFileSync(binary)).digest('hex'),
     },
+    // KAR-08.5. `darwin` because Seatbelt needs nothing installed, which keeps
+    // this file about the shim rather than about the sandbox — the Linux
+    // prerequisites have their own spec (`sandbox-injection.test.ts`).
+    sandbox: {
+      version: '2.1.220',
+      platform: 'darwin',
+      roots: [join(tmp, 'bin')],
+      configDir: join(tmp, 'sandbox'),
+    },
     env: {
       ...process.env,
       DeFlow_FAKE_DIALECT: 'claude-stream-json',

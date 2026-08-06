@@ -439,6 +439,15 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     /**
+     * KAR-08.5 AC6 — also evidence rather than run state. A degraded key does
+     * not change what is schedulable: the disposition that produced it already
+     * did that, by either omitting the key or refusing the node outright, and
+     * a second decision here would be able to disagree with the first.
+     */
+    case 'sandbox.degraded':
+      return null;
+
+    /**
      * The effect journal is its own table (§8.3) and its own read model — a
      * memoised effect *result* is not run state, and duplicating it here would
      * give the same fact two homes that can disagree.

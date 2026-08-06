@@ -424,6 +424,33 @@ export const EnvDeclaredSchema = z.strictObject({
 });
 
 /**
+ * KAR-08.5 AC6 — a sandbox setting the installed vendor CLI is too old to
+ * understand, omitted rather than emitted.
+ *
+ * An **event** rather than a log line, and the distinction is the whole point
+ * (A5-1, rated High). Claude Code's sandbox settings are version-gated at fine
+ * granularity and an unknown key is *ignored* rather than rejected, so a
+ * policy the operator believes is in force can silently not be. Recording the
+ * key, the version that was detected and the version it needs makes the gap
+ * something the node inspector renders beside the permission level and the run
+ * report can be read for — instead of something nobody finds out about.
+ *
+ * `key` is a settings path (`sandbox.network.strictAllowlist`), never prose:
+ * it is what a reader searches the vendor's release notes for.
+ */
+export const SandboxDegradedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  /** The settings path that was left out, dotted. */
+  key: z.string().regex(/^[a-z][A-Za-z0-9]*(\.[a-zA-Z][A-Za-z0-9]*)+$/, 'must be a settings path'),
+  /** The vendor CLI version DeFlow detected — never assumed. */
+  detected: singleLine(),
+  /** The version the key was introduced in. */
+  required: singleLine(),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -990,6 +1017,7 @@ export const EVENT_SCHEMAS = {
   'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
   'permission.denied': { v: 1, payload: PermissionDeniedSchema },
   'env.declared': { v: 1, payload: EnvDeclaredSchema },
+  'sandbox.degraded': { v: 1, payload: SandboxDegradedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },

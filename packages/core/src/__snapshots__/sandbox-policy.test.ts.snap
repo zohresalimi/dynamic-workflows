@@ -1,0 +1,293 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the generated policy is a golden file (AC8) > claude full 1`] = `
+{
+  "degraded": [],
+  "settings": {
+    "sandbox": {
+      "enabled": false,
+    },
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > claude read 1`] = `
+{
+  "degraded": [],
+  "settings": {
+    "sandbox": {
+      "allowUnsandboxedCommands": false,
+      "credentials": {
+        "envVars": {
+          "mode": "mask",
+          "names": [
+            "AWS_*",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_CLOUD_*",
+            "KUBECONFIG",
+            "DATABASE_*",
+            "TF_*",
+            "TERRAFORM_*",
+            "VAULT_*",
+            "DOCKER_*",
+            "REGISTRY_*",
+            "SSH_AUTH_SOCK",
+            "*_TOKEN",
+            "*_API_KEY",
+            "*_SECRET",
+            "*_PASSWORD",
+            "*_CREDENTIALS",
+          ],
+        },
+        "files": {
+          "mode": "deny",
+          "paths": [
+            "~/.aws/credentials",
+            "~/.ssh/**",
+            "~/.config/gh/**",
+            "~/Library/Keychains/**",
+          ],
+        },
+      },
+      "enabled": true,
+      "excludedCommands": [],
+      "failIfUnavailable": true,
+      "filesystem": {
+        "allowWrite": [],
+        "denyWrite": [],
+        "disabled": false,
+      },
+      "network": {
+        "allowedDomains": [],
+        "deniedDomains": [],
+        "strictAllowlist": true,
+      },
+    },
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > claude worktree 1`] = `
+{
+  "degraded": [],
+  "settings": {
+    "sandbox": {
+      "allowUnsandboxedCommands": false,
+      "credentials": {
+        "envVars": {
+          "mode": "mask",
+          "names": [
+            "AWS_*",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_CLOUD_*",
+            "KUBECONFIG",
+            "DATABASE_*",
+            "TF_*",
+            "TERRAFORM_*",
+            "VAULT_*",
+            "DOCKER_*",
+            "REGISTRY_*",
+            "SSH_AUTH_SOCK",
+            "*_TOKEN",
+            "*_API_KEY",
+            "*_SECRET",
+            "*_PASSWORD",
+            "*_CREDENTIALS",
+          ],
+        },
+        "files": {
+          "mode": "deny",
+          "paths": [
+            "~/.aws/credentials",
+            "~/.ssh/**",
+            "~/.config/gh/**",
+            "~/Library/Keychains/**",
+          ],
+        },
+      },
+      "enabled": true,
+      "excludedCommands": [],
+      "failIfUnavailable": true,
+      "filesystem": {
+        "allowWrite": [
+          "/tmp/DeFlow/wt/n1",
+        ],
+        "denyWrite": [],
+        "disabled": false,
+      },
+      "network": {
+        "allowedDomains": [],
+        "deniedDomains": [],
+        "strictAllowlist": true,
+      },
+    },
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > claude worktree+net 1`] = `
+{
+  "degraded": [],
+  "settings": {
+    "sandbox": {
+      "allowUnsandboxedCommands": false,
+      "credentials": {
+        "envVars": {
+          "mode": "mask",
+          "names": [
+            "AWS_*",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_CLOUD_*",
+            "KUBECONFIG",
+            "DATABASE_*",
+            "TF_*",
+            "TERRAFORM_*",
+            "VAULT_*",
+            "DOCKER_*",
+            "REGISTRY_*",
+            "SSH_AUTH_SOCK",
+            "*_TOKEN",
+            "*_API_KEY",
+            "*_SECRET",
+            "*_PASSWORD",
+            "*_CREDENTIALS",
+          ],
+        },
+        "files": {
+          "mode": "deny",
+          "paths": [
+            "~/.aws/credentials",
+            "~/.ssh/**",
+            "~/.config/gh/**",
+            "~/Library/Keychains/**",
+          ],
+        },
+      },
+      "enabled": true,
+      "excludedCommands": [],
+      "failIfUnavailable": true,
+      "filesystem": {
+        "allowWrite": [
+          "/tmp/DeFlow/wt/n1",
+        ],
+        "denyWrite": [],
+        "disabled": false,
+      },
+      "network": {
+        "allowedDomains": [
+          "registry.npmjs.org",
+          "github.com",
+        ],
+        "deniedDomains": [],
+        "strictAllowlist": true,
+      },
+    },
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > codex full 1`] = `
+{
+  "sandbox_mode": "danger-full-access",
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > codex read 1`] = `
+{
+  "sandbox_mode": "read-only",
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > codex worktree 1`] = `
+{
+  "sandbox_mode": "workspace-write",
+  "sandbox_workspace_write": {
+    "exclude_slash_tmp": true,
+    "exclude_tmpdir_env_var": false,
+    "network_access": false,
+    "writable_roots": [
+      "/tmp/DeFlow/wt/n1",
+    ],
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > codex worktree+net 1`] = `
+{
+  "sandbox_mode": "workspace-write",
+  "sandbox_workspace_write": {
+    "exclude_slash_tmp": true,
+    "exclude_tmpdir_env_var": false,
+    "network_access": true,
+    "writable_roots": [
+      "/tmp/DeFlow/wt/n1",
+    ],
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > sandbox-runtime full 1`] = `null`;
+
+exports[`the generated policy is a golden file (AC8) > sandbox-runtime read 1`] = `
+{
+  "filesystem": {
+    "allowWrite": [],
+    "denyRead": [
+      "~/.aws/credentials",
+      "~/.ssh/**",
+      "~/.config/gh/**",
+      "~/Library/Keychains/**",
+    ],
+    "denyWrite": [],
+  },
+  "network": {
+    "allowedDomains": [],
+    "deniedDomains": [],
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > sandbox-runtime worktree 1`] = `
+{
+  "filesystem": {
+    "allowWrite": [
+      "/tmp/DeFlow/wt/n1",
+    ],
+    "denyRead": [
+      "~/.aws/credentials",
+      "~/.ssh/**",
+      "~/.config/gh/**",
+      "~/Library/Keychains/**",
+    ],
+    "denyWrite": [],
+  },
+  "network": {
+    "allowedDomains": [],
+    "deniedDomains": [],
+  },
+}
+`;
+
+exports[`the generated policy is a golden file (AC8) > sandbox-runtime worktree+net 1`] = `
+{
+  "filesystem": {
+    "allowWrite": [
+      "/tmp/DeFlow/wt/n1",
+    ],
+    "denyRead": [
+      "~/.aws/credentials",
+      "~/.ssh/**",
+      "~/.config/gh/**",
+      "~/Library/Keychains/**",
+    ],
+    "denyWrite": [],
+  },
+  "network": {
+    "allowedDomains": [
+      "registry.npmjs.org",
+      "github.com",
+    ],
+    "deniedDomains": [],
+  },
+}
+`;

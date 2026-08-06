@@ -54,10 +54,28 @@ export const AGENT_BASE_KEYS = [
   'USER',
 ] as const;
 
-/** `AGENT_BASE_KEYS` plus the two DeFlow always sets itself — the full kept
+/**
+ * Claude Code's own subprocess env scrub (KAR-08.5, EPIC-08-S23 scenario 4).
+ *
+ * DeFlow's scrubbing covers the *agent* process. It does not cover a process
+ * the agent spawns after DeFlowd has stopped watching, and that is a boundary
+ * DeFlow cannot reach from out here — so the vendor's own control is set, for
+ * the same defence-in-depth reason `sandbox.credentials` is populated.
+ *
+ * **Set, never forwarded.** DeFlowd asserts `'1'`; a `'0'` in the operator's
+ * environment is not a preference this passes along.
+ */
+export const SUBPROCESS_ENV_SCRUB_VAR = 'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB';
+
+/** `AGENT_BASE_KEYS` plus the three DeFlow always sets itself — the full kept
  * set a caller with no declarations and no vendor config-dir var sees
  * (EPIC-08-S17 scenario 1's snapshot). */
-export const AGENT_ENV_KEYS = [...AGENT_BASE_KEYS, 'PATH', 'TMPDIR'] as const;
+export const AGENT_ENV_KEYS = [
+  ...AGENT_BASE_KEYS,
+  'PATH',
+  'TMPDIR',
+  SUBPROCESS_ENV_SCRUB_VAR,
+] as const;
 
 /**
  * Vendor config-dir variables (§4.1's table). Passed through **only** when
@@ -68,39 +86,18 @@ export const AGENT_ENV_KEYS = [...AGENT_BASE_KEYS, 'PATH', 'TMPDIR'] as const;
 export const VENDOR_CONFIG_DIR_VARS = ['CLAUDE_CONFIG_DIR', 'CODEX_HOME'] as const;
 
 /**
- * The never-implicit families (docs/15-security-model.md §4.1), as
- * case-insensitive patterns rather than a list of literal names — AC7 test
- * #7 exists precisely because a name-list misses `x_api_key` (lowercase) and
- * every secret nobody has thought to enumerate yet. A *family* is the only
- * thing that generalises to the secret a future integration adds.
+ * The never-implicit families (docs/15-security-model.md §4.1) live in
+ * `@DeFlow/core` because two enforcement layers need the same answer: this
+ * one, which *drops* a matching variable, and KAR-08.5's sandbox policy, which
+ * hands the same families to the vendor's own credential layer. Re-exported
+ * here so `PermissionScope.scrubbedEnv` producers and tests can ask the
+ * question where they already look for it.
+ *
+ * They are families rather than literal names — AC7 test #7 exists precisely
+ * because a name-list misses `x_api_key` (lowercase) and every secret nobody
+ * has thought to enumerate yet.
  */
-const NEVER_IMPLICIT_PATTERNS: readonly RegExp[] = [
-  /^AWS_/i,
-  /^GOOGLE_APPLICATION_CREDENTIALS$/i,
-  /^GOOGLE_CLOUD_/i,
-  /^KUBECONFIG$/i,
-  /^DATABASE_URL$/i,
-  /^DATABASE_/i,
-  /^TF_/i,
-  /^TERRAFORM_/i,
-  /^VAULT_/i,
-  /^DOCKER_/i,
-  /^REGISTRY_/i,
-  /^SSH_AUTH_SOCK$/i,
-  /_TOKEN$/i,
-  /_API_KEY$/i,
-  /_SECRET$/i,
-  /_PASSWORD$/i,
-  /_CREDENTIALS$/i,
-];
-
-/** Whether `name` belongs to one of §4.1's never-implicit families. Exported
- * so `PermissionScope.scrubbedEnv` producers and tests can ask the same
- * question `buildChildEnv()` answers internally, without a second copy of the
- * pattern list. */
-export function isNeverImplicit(name: string): boolean {
-  return NEVER_IMPLICIT_PATTERNS.some((pattern) => pattern.test(name));
-}
+export { isNeverImplicit, NEVER_IMPLICIT_FAMILIES } from '@DeFlow/core';
 
 export interface BuildChildEnvOptions {
   /** DeFlowd's own environment, or a fixture in a test. Defaults to
@@ -148,7 +145,7 @@ export function buildChildEnv(options: BuildChildEnvOptions): BuiltChildEnv {
   const base = options.base ?? process.env;
   const declared = new Set(options.declared ?? []);
   const env: Record<string, string> = {};
-  const kept = new Set<string>(['PATH', 'TMPDIR']);
+  const kept = new Set<string>(['PATH', 'TMPDIR', SUBPROCESS_ENV_SCRUB_VAR]);
 
   for (const key of AGENT_BASE_KEYS) {
     const value = base[key];
@@ -174,6 +171,7 @@ export function buildChildEnv(options: BuildChildEnvOptions): BuiltChildEnv {
 
   env.PATH = options.loginPath;
   env.TMPDIR = options.tmpdir;
+  env[SUBPROCESS_ENV_SCRUB_VAR] = '1';
 
   const scrubbed = Object.keys(base).filter((key) => base[key] !== undefined && !kept.has(key));
 

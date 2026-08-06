@@ -80,9 +80,10 @@ suite('the Kiro control: buildChildEnv() starts from {} (KAR-08.4 AC1)', () => {
     }
   });
 
-  it('the kept set is exactly the base allowlist plus PATH and TMPDIR — a snapshot', () => {
+  it('the kept set is exactly the base allowlist plus the three DeFlow sets — a snapshot', () => {
     const { env } = buildChildEnv({ base: BASE, loginPath: LOGIN_PATH, tmpdir: TMPDIR });
     expect(Object.keys(env).toSorted()).toEqual([
+      'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB',
       'HOME',
       'LANG',
       'LC_ALL',
@@ -107,8 +108,9 @@ suite('the Kiro control: buildChildEnv() starts from {} (KAR-08.4 AC1)', () => {
     expect(scrubbed).not.toContain('TMPDIR');
   });
 
-  it('AGENT_ENV_KEYS names the ten base keys', () => {
+  it('AGENT_ENV_KEYS names the eleven base keys', () => {
     expect([...AGENT_ENV_KEYS].toSorted()).toEqual([
+      'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB',
       'HOME',
       'LANG',
       'LC_ALL',
@@ -120,6 +122,34 @@ suite('the Kiro control: buildChildEnv() starts from {} (KAR-08.4 AC1)', () => {
       'TZ',
       'USER',
     ]);
+  });
+});
+
+/**
+ * KAR-08.5 / EPIC-08-S23 scenario 4 — the boundary DeFlow cannot see past.
+ *
+ * `buildChildEnv()` covers the agent process. It does not cover a command the
+ * agent runs that inherits from somewhere else, or a process the agent spawns
+ * after DeFlowd has stopped watching. Claude Code scrubs its own subprocesses
+ * when this is set, which is one more enforcement point on the same secret —
+ * belonging, like the vendor sandbox, to someone else's release cycle.
+ */
+suite('CLAUDE_CODE_SUBPROCESS_ENV_SCRUB reinforces the process boundary', () => {
+  it('is set by DeFlow, not copied from the operator', () => {
+    const { env } = buildChildEnv({
+      base: { ...BASE, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '0' },
+      loginPath: LOGIN_PATH,
+      tmpdir: TMPDIR,
+    });
+
+    // '0' in the daemon's own environment must not reach the child: this is a
+    // safety default DeFlow asserts, not a preference it forwards.
+    expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe('1');
+  });
+
+  it('is set for every provider, because a name is not a promise about a binary', () => {
+    const { env } = buildChildEnv({ base: BASE, loginPath: LOGIN_PATH, tmpdir: TMPDIR });
+    expect(env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe('1');
   });
 });
 
