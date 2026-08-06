@@ -26,7 +26,7 @@ import { expect, describe as suite } from 'vitest';
 import { integrationBranch, nodeBranch } from '../../src/git/branch-name.ts';
 import { Git } from '../../src/git/git.ts';
 import { GitError } from '../../src/git/git-error.ts';
-import { type GitPort, mergeTree } from '../../src/git/merge-tree.ts';
+import { type GitPort, mergeTree, mergeTreeArgs } from '../../src/git/merge-tree.ts';
 import { ConflictProber } from '../../src/workspace/conflict-prober.ts';
 
 const RUN = 'run_20260806T090000Z_5c1d2e';
@@ -543,20 +543,45 @@ suite('AC8: a five-branch run probes ten pairs (test plan row 7)', () => {
       // records at length: the integration slice runs a hundred forked specs,
       // several of them driving real subprocesses, so an absolute millisecond
       // budget over ten fork+exec pairs measures the scheduler under that load
-      // rather than the probe. The control is ten bare `git rev-parse HEAD`
-      // invocations — the same ten spawns with the merge taken away — so load
-      // moves both halves together and cancels, while a probe that grew a
-      // second invocation per pair moves only one.
+      // rather than the probe.
+      //
+      // The control is the ten `merge-tree` invocations themselves, run bare
+      // over the same ten pairs — the probe with everything *except* its one
+      // spawn per pair taken away: no row upsert, no event append, no cache
+      // lookup, no tip bookkeeping. That is the claim in the title of this
+      // spec, measured directly.
+      //
+      // It used to be ten `git rev-parse HEAD` instead, and that was the wrong
+      // control: `rev-parse` is very nearly bare fork+exec, while `merge-tree`
+      // reads and merges three trees. Idle the gap is invisible (1.26), but a
+      // loaded box stretches real work further than it stretches a spawn, and
+      // the ratio drifted to 2.70 in a full-suite run — measuring how unlike
+      // the two commands are, not what the probe costs.
       const controlStartedAt = performance.now();
-      for (let spawn = 0; spawn < 10; spawn++) await tryGit(s.repo, ['rev-parse', 'HEAD']);
+      for (const [left, right] of pairs) {
+        await tryGit(s.repo, mergeTreeArgs(known.get(left) as string, known.get(right) as string));
+      }
       const control = performance.now() - controlStartedAt;
 
-      // Measured idle, 2026-08-06, git 2.50.1: ten probes in 126 ms against a
-      // 100 ms control — a ratio of 1.26, and comfortably inside AC8's 500 ms.
-      // The absolute number is the one that cannot be asserted here: the same
-      // ten spawns beside a saturated integration slice cost several times
-      // that, which measures the box and not the probe.
-      expect(elapsed).toBeLessThan(control * 2.5);
+      // Measured 2026-08-06, git 2.50.1, seven samples: idle, ten probes in
+      // 124 ms against a 124 ms control — a ratio of 1.00, comfortably inside
+      // AC8's 500 ms. Beside a live integration slice, six more samples ran
+      // 0.88, 0.91, 0.93, 1.16, 1.22, 1.27 — the probe's own bookkeeping is
+      // lost in the noise of ten fork+execs, which is the point.
+      //
+      // The 1.6 is calibrated against the regression, not guessed. One extra
+      // `rev-parse` spawn per pair inside `#probe` — a second shell-out that
+      // `mergeTreeCalls()` above would not see — measured 1.78, 1.82 and 1.85
+      // idle and 1.91, 2.15 and 2.68 loaded. So 1.6 sits 26% above the worst
+      // honest sample and below every regressed one.
+      //
+      // The absolute millisecond number is the one thing that cannot be
+      // asserted here: the same ten spawns beside a saturated suite cost four
+      // times what they cost idle, which measures the box and not the probe.
+      expect(
+        elapsed,
+        `ten bare merge-tree invocations on this machine took ${control.toFixed(0)} ms`,
+      ).toBeLessThan(control * 1.6);
     } finally {
       s.close();
     }
