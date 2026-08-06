@@ -248,12 +248,32 @@ suite('the two-second budget (AC3, test plan #3, EPIC-01-S21 scenario 1)', () =>
   const RUNS = 5;
   const FILES = 20;
 
+  /**
+   * The two jobs the budget was written for, spelled out here rather than read
+   * back out of `lefthook.yml`.
+   *
+   * That is the whole point of them: this is the *sanctioned* work, and a
+   * control derived from whatever the hook currently declares would grow with
+   * the hook and make the ceiling vacuous — a third job would appear on both
+   * sides and cancel itself out. Written down, a hook that grows past its
+   * sanctioned work has nowhere to hide. If these two commands ever legitimately
+   * change, this list changes with them, deliberately and in review, which is
+   * the same bar `lefthook.yml` itself is held to.
+   *
+   * Run in parallel because the hook runs them in parallel (`parallel: true`),
+   * so the control is the hook's own wall clock with lefthook taken out of it.
+   */
+  const SANCTIONED_JOBS = [
+    ['biome', 'check', '--write', '--no-errors-on-unmatched'],
+    ['oxlint', '--no-error-on-unmatched-pattern'],
+  ] as const;
+
   // Measured in the *real* repository rather than the scratch one, because the
   // number this defends is the one a developer waits for: real dependency
   // counts, real pnpm startup, real config. `--force --no-stage-fixed` over an
   // explicit file list is a full run of both jobs that cannot touch the index,
   // and the assertion below proves it changed nothing on disk either.
-  it('the median wall-clock time over 20 staged files stays under 2 s', async () => {
+  it('the median wall-clock time over 20 staged files stays inside its own two jobs', async () => {
     const tracked = (await run('git', ['ls-files', '*.ts'], repoRoot)).output
       .split('\n')
       .map((line) => line.trim())
@@ -273,23 +293,74 @@ suite('the two-second budget (AC3, test plan #3, EPIC-01-S21 scenario 1)', () =>
       expect(result.code, result.output).toBe(0);
     }
 
-    // The measurement must not have been bought by mutating the repository.
+    // The control, on the same machine seconds later: the hook's own two jobs,
+    // run bare and in parallel over the same twenty files. Every cost the hook
+    // has except lefthook itself — the same `pnpm` startups, the same binaries,
+    // the same inputs — which is the budget's sanctioned work measured directly.
+    const controls: number[] = [];
+    for (let attempt = 0; attempt < RUNS; attempt += 1) {
+      const started = process.hrtime.bigint();
+      const results = await Promise.all(
+        SANCTIONED_JOBS.map((job) => run('pnpm', [...job, ...tracked], repoRoot)),
+      );
+      controls.push(Number(process.hrtime.bigint() - started) / 1e6);
+      // A control that failed instantly would make the ceiling meaningless.
+      for (const result of results) expect(result.code, result.output).toBe(0);
+    }
+
+    // The measurement must not have been bought by mutating the repository, and
+    // that covers the control too: it runs `biome check --write` for real.
     expect((await run('git', ['diff', '--name-only', ...tracked], repoRoot)).output).toBe(before);
 
-    const median = [...timings].sort((a, b) => a - b)[Math.floor(RUNS / 2)] ?? Number.NaN;
+    const median = (samples: readonly number[]): number =>
+      [...samples].sort((a, b) => a - b)[Math.floor(RUNS / 2)] ?? Number.NaN;
+    const hook = median(timings);
+    const control = median(controls);
     // Printed, not merely asserted: docs/CONTRIBUTING.md records a number, and a
     // number nobody can reproduce from a test log is folklore.
     console.log(
-      `pre-commit over ${FILES} files: median ${median.toFixed(0)} ms ` +
-        `(${timings.map((value) => value.toFixed(0)).join('/')} ms)`,
+      `pre-commit over ${FILES} files: median ${hook.toFixed(0)} ms ` +
+        `(${timings.map((value) => value.toFixed(0)).join('/')} ms), against its own two jobs ` +
+        `bare at ${control.toFixed(0)} ms (${controls.map((value) => value.toFixed(0)).join('/')} ms)`,
     );
 
+    // The 2 s is the budget EPIC-01 wrote down and it is kept, as the floor. It
+    // was a *ceiling* until 2026-08-06, and as a ceiling it had stopped
+    // measuring the hook: this spec runs in the integration slice beside a
+    // hundred forked workers, several of them driving real subprocesses, and
+    // the identical five runs measure a median of about 800 ms idle but 1.3-1.7 s
+    // under twelve CPU hogs and 3.4-4.6 s beside a live slice. It went red on
+    // three consecutive full-slice runs at 2957, 4812 and 5021 ms with nothing
+    // whatsoever added to the hook.
+    //
+    // What is stable is the hook measured against its own sanctioned work.
+    // Measured 2026-08-06, 8 cores, nine samples of hook median ÷ control
+    // median: 1.11, 1.11, 1.14 idle; 0.99, 1.02, 1.11 under twelve CPU hogs;
+    // 0.98, 1.19, 1.34 beside a live integration slice — a 1.38x spread while
+    // the hook's own median moved by 5.7x. The ratio is a shade over 1 because
+    // what it measures is lefthook: about 85 ms of Go binary, config parse and
+    // glob matching on top of the two `pnpm` spawns it exists to run.
+    //
+    // 2 is calibrated against the regression rather than guessed. The regression
+    // is the one the message below names — a job that belongs on pre-push
+    // wandering into pre-commit. `pnpm typecheck` as a third job measured 10.88
+    // and 11.43; `pnpm vitest run --project unit` measured 9.16 and 10.81. So 2
+    // sits 1.5x above the worst honest sample and 4.6x below the cheapest
+    // regressed one. (`--type-aware` on the lint job is *not* in that set: over
+    // twenty files it costs about 100 ms and measures 1.27, inside the honest
+    // band. It is forbidden by AC1 and asserted by name in the floating-promise
+    // suite above, which is where a rule change belongs — not here, where it
+    // would be a budget claim that the budget cannot see.)
+    //
+    // Idle, twice the control is about 1.4 s, so the 2 s floor is what binds and
+    // a quiet machine is held to exactly the number EPIC-01 wrote down.
     expect(
-      median,
-      `The pre-commit hook's median is ${median.toFixed(0)} ms over ${FILES} files, past the ` +
+      hook,
+      `The pre-commit hook's median is ${hook.toFixed(0)} ms over ${FILES} files, against the ` +
+        `${control.toFixed(0)} ms its own two jobs cost bare on this machine, and past the ` +
         `${BUDGET_MS} ms budget. Do not raise the budget — the moment you type "--no-verify" the ` +
         'hooks stop existing and you have paid the setup cost for nothing. Typecheck, type-aware ' +
         'lint and the full suite belong on pre-push and in CI.',
-    ).toBeLessThan(BUDGET_MS);
-  });
+    ).toBeLessThan(Math.max(BUDGET_MS, control * 2));
+  }, 120_000);
 });
