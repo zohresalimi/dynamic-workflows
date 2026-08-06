@@ -55,7 +55,6 @@ import {
 } from './status-porcelain.ts';
 import {
   lockReasonFor,
-  parseLockReason,
   WORKTREE_LIST_ARGS,
   worktreeAddArgs,
   worktreeRemoveArgs,
@@ -67,6 +66,7 @@ import {
   shortBranch,
   type WorktreeEntry,
 } from './worktree-porcelain.ts';
+import { worktreeRowFor } from './worktree-projection.ts';
 import {
   salvageAddArgs,
   salvageBranchArgs,
@@ -288,24 +288,6 @@ async function branchTip(git: WorkspaceGit, branch: string): Promise<string | nu
   return result.exitCode === 0 && oid !== '' ? oid : null;
 }
 
-function rowFor(entry: WorktreeEntry, refreshedAt: number): WorktreeRow {
-  const owner = parseLockReason(entry.lockReason);
-  return {
-    path: entry.path,
-    head: entry.head,
-    branch: entry.branch,
-    detached: entry.detached,
-    bare: entry.bare,
-    locked: entry.locked,
-    lockReason: entry.lockReason,
-    prunable: entry.prunable,
-    prunableReason: entry.prunableReason,
-    runId: owner?.runId ?? null,
-    nodeId: owner?.nodeId ?? null,
-    refreshedAt,
-  };
-}
-
 /** Everything but `refreshedAt`, which changes on every refresh and would make
  * every refresh look like a change. */
 const comparable = (row: WorktreeRow): string => JSON.stringify({ ...row, refreshedAt: 0 });
@@ -414,7 +396,7 @@ export class WorkspaceManager {
   async refresh(runId: string): Promise<ReconcileReport> {
     const entries = await this.list();
     const now = this.#ports.clock.now();
-    const next = entries.map((entry) => rowFor(entry, now));
+    const next = entries.map((entry) => worktreeRowFor(entry, now));
 
     const previous = readWorktrees(this.#ports.db);
     const previousByPath = new Map(previous.map((row) => [row.path, row]));

@@ -15,6 +15,7 @@ import {
   lockReasonFor,
   parseLockReason,
   WORKTREE_LIST_ARGS,
+  WORKTREE_PRUNE_ARGS,
   worktreeAddArgs,
   worktreePathFor,
   worktreeRemoveArgs,
@@ -86,6 +87,21 @@ suite('AC2: a read node gets --detach and no branch', () => {
 suite('AC5: worktree list is only ever the porcelain -z form', () => {
   it('is exactly ["worktree","list","--porcelain","-z"]', () => {
     expect(WORKTREE_LIST_ARGS).toEqual(['worktree', 'list', '--porcelain', '-z']);
+  });
+});
+
+suite('KAR-07.8: prune is §4.5 verbatim, and it is the last step, never the first', () => {
+  it('is exactly ["worktree","prune","-v","--expire","2.weeks.ago"]', () => {
+    expect(WORKTREE_PRUNE_ARGS).toEqual(['worktree', 'prune', '-v', '--expire', '2.weeks.ago']);
+  });
+
+  it('carries -v, because the reaper reads which entries git said it removed', () => {
+    expect(WORKTREE_PRUNE_ARGS).toContain('-v');
+  });
+
+  it('is not a dry run — -n would make the whole boot sweep a no-op that logs', () => {
+    expect(WORKTREE_PRUNE_ARGS).not.toContain('-n');
+    expect(WORKTREE_PRUNE_ARGS).not.toContain('--dry-run');
   });
 });
 

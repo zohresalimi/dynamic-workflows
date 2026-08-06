@@ -304,6 +304,23 @@ worktrees are skipped, which is the point of §4.2.
 Prune runs once at daemon boot, after orphan reaping (§11.3) has released the locks belonging to
 processes that did not survive the restart. Order matters: reap, unlock, prune.
 
+**Three corrections, measured on git 2.50.1 while KAR-07.8 was built (2026-08-06), pinned in
+`packages/daemon/test/integration/worktree-reaping.test.ts`:**
+
+1. **A _locked_ worktree whose directory is gone is not reported `prunable` at all**, and `prune`
+   says nothing about it. Unlocking is what makes it prunable. This is the ordering above, but the
+   reason is stronger than "prune skips locked entries": until the lock is released the entry does
+   not even appear as a candidate.
+2. **`--expire` narrows prune; it does not widen it.** Bare `git worktree prune` uses `TIME_MAX` and
+   removes everything prunable; `--expire 2.weeks.ago` restricts removal to entries whose
+   `.git/worktrees/<name>/index` has not been touched for a fortnight. So this command is a
+   conservative sweep of _long-dead_ administrative entries and will **not** reclaim the worktree of
+   an agent that died an hour ago — which is correct, because an entry that young may belong to a
+   run this daemon is about to resume. The instrument that reclaims a fresh orphan is
+   `worktree remove -f -f`, on the reaper path only, once the owning process is proven gone (§11.3).
+3. **`prune -v` reports on stderr, not stdout.** A reader that took stdout alone would conclude,
+   every time, that nothing had been pruned.
+
 ---
 
 ## 5. `node_modules` across worktrees

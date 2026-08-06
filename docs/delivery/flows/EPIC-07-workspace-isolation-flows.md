@@ -1143,10 +1143,14 @@ Feature: Daemon-boot recovery of orphaned worktrees
     And the recorded git invocation order shows unlock strictly before prune
 
   Scenario: Pruning before unlocking would silently do nothing
-    Given a locked, orphaned worktree
+    Given a locked, orphaned worktree whose directory has been "rm -rf"'d
+    When "git worktree list --porcelain -z" runs
+    Then the entry carries no "prunable" record at all, because it is still locked
     When "git worktree prune -v --expire 2.weeks.ago" is run without unlocking first
-    Then the worktree is still listed and its directory still exists
+    Then the worktree is still listed
     And prune reported no removal for it
+    When the same worktree is unlocked
+    Then the entry does carry a "prunable" record
 
   Scenario: Reaping is idempotent
     When the reaper is run a second time immediately after the first
@@ -1256,10 +1260,17 @@ Feature: Prune the dead, never the living
     Given a worktree at "<path>" that was unlocked and then "rm -rf"'d
     When "git worktree list --porcelain -z" runs
     Then the entry is present with a "prunable" record
+    And ".git/worktrees/<name>/index" has not been touched for more than two weeks
     When "git worktree prune -v --expire 2.weeks.ago" runs
-    Then stdout contains "Removing worktrees/<name>: gitdir file points to non-existent location"
+    Then its output contains "Removing worktrees/<name>: gitdir file points to non-existent location"
     And the entry is gone from the list
     And the "worktrees" projection row is dropped
+
+  Scenario: The same entry, orphaned an hour ago, is deliberately left listed
+    Given the same prunable entry, created minutes ago
+    When "git worktree prune -v --expire 2.weeks.ago" runs
+    Then it removes nothing, because the expiry is measured against that entry's own age
+    And reclaiming it is "worktree remove -f -f", once its owning process is proven gone
 
   Scenario: A locked worktree whose owning process is alive survives untouched
     Given a locked worktree whose recorded pid and procStartTime both match a live process
@@ -1276,11 +1287,23 @@ Feature: Prune the dead, never the living
     And a "workspace.orphan_reaped" event names the run, the node and the path
 ```
 
-**Notes:** "Adopt rather than kill" in the second scenario is what makes a daemon restart during a
+**Notes:** "Adopt rather than kill" in the third scenario is what makes a daemon restart during a
 long run survivable — `detached: true` means the agent genuinely outlived DeFlowd, and the correct
 response to a healthy orphan is to reattach to its output, not to destroy an hour of work. The
 adoption path itself belongs to [EPIC-06](../epics/EPIC-06-orchestrator.md); this scenario asserts
-only that the reaper leaves it alone.
+only that the reaper leaves it alone. The worktree sweep states that as a property of the
+_worktree_ — "never touched while its owner is verifiably alive" — rather than as a consequence of
+what the process reaper decided a moment earlier, so it stays true when a kill does not take and
+when EPIC-06's adoption arrives.
+
+**Amended 2026-08-06 (KAR-07.8), measured against real git 2.50.1.** The first scenario originally
+asserted that `prune -v --expire 2.weeks.ago` removes a freshly `rm -rf`'d entry. It does not:
+`--expire` **narrows** prune rather than widening it — bare `prune` uses `TIME_MAX`, and an expiry
+restricts removal to entries whose `.git/worktrees/<name>/index` has not been touched since. The
+scenario now states that precondition and a second one pins the behaviour it replaced, because that
+is what makes `remove -f -f` the reaper's actual instrument rather than an optimisation. It also
+said `stdout`; `prune -v` writes to `stderr`. See
+[09-workspace-and-safety §4.5](../../09-workspace-and-safety.md).
 
 ---
 
