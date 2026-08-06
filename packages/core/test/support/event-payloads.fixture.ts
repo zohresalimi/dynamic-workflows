@@ -171,6 +171,13 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     otherBranch: 'DeFlow/r1__implement-auth',
     paths: ['src/a.ts'],
   },
+  'node.unschedulable': {
+    node: NODE,
+    provider: 'claude-code',
+    version: '2.1.220',
+    permission: 'worktree',
+    reason: 'mediatedExecution:false',
+  },
   'node.cancelled': { node: NODE, attempt: 1, result: { status: 'cancelled', by: 'user' } },
   'node.cancel.stage': {
     node: NODE,

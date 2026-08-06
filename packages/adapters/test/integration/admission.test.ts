@@ -186,6 +186,44 @@ suite('an adapter that cannot mediate execution is refused, not escalated', () =
     const { outcome } = await schedule({ row, requires: [], permission: 'full' });
     expect(outcome.status).toBe('completed');
   });
+
+  /**
+   * KAR-08.1 AC4 / EPIC-08-S3. The refusal is already a `node.failed`, but a
+   * failure is where a node *ended* and this is a fact about why it never
+   * began. The operator's question is "which provider, and which bit", and the
+   * answer has to be structured — the inspector renders it, and a run report
+   * that says "one node was unschedulable" without naming the capability sends
+   * the reader to the logs.
+   */
+  it('appends node.unschedulable naming the provider and the bit', async () => {
+    const capsFile = join(dir, 'no-mediation.json');
+    writeFileSync(capsFile, JSON.stringify({ _meta: { mediatedExecution: false } }));
+    const row = await probe('mock', ['--capabilities-file', capsFile]);
+
+    await schedule({ row, requires: [], permission: 'worktree+net' });
+
+    const events = ledger.events();
+    const unschedulable = eventOf(events, 'node.unschedulable');
+    expect(unschedulable).toMatchObject({
+      node: NodeIdSchema.parse('n1'),
+      provider: 'mock',
+      permission: 'worktree+net',
+      reason: 'mediatedExecution:false',
+    });
+
+    // It precedes the failure it explains, so a reader walking the timeline
+    // meets the cause before the effect.
+    const kinds = events.map((event) => event.kind);
+    expect(kinds).toContain('node.unschedulable');
+    expect(kinds.indexOf('node.unschedulable')).toBeLessThan(kinds.indexOf('node.failed'));
+  });
+
+  it('does not append it for a refusal that has nothing to do with mediation', async () => {
+    const row = await probe('codex', ['--capabilities', 'codex']);
+    await schedule({ row, requires: ['session.fork'], permission: 'worktree' });
+
+    expect(eventOf(ledger.events(), 'node.unschedulable')).toBeUndefined();
+  });
 });
 
 suite('the refusal is a node the operator can act on', () => {

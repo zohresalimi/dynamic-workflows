@@ -343,6 +343,32 @@ export const NodeBlockedSchema = z.strictObject({
 });
 
 /**
+ * KAR-08.1 AC4 / EPIC-08-S3 — F5.4's refusal, narrowed to one capability bit.
+ *
+ * An adapter that does not route `fs/*` and `terminal/*` through DeFlow leaves
+ * DeFlow enforcing nothing, so a node above `read` is refused rather than run
+ * at a level nobody is checking. There is deliberately no third answer: a
+ * silent downgrade would be ODW's binary permission model, which F5.4 exists
+ * to avoid, and a silent escalation is the Kiro incident.
+ *
+ * Its own kind rather than only the `node.failed` that follows it. A failure
+ * is where a node *ended*; this is why it never began, and the two answer
+ * different questions on a run report. `reason` is a code — the operator's
+ * question is "which provider, and which bit" — so a UI can group by it and a
+ * future capability can join the same shape.
+ */
+export const NodeUnschedulableSchema = z.strictObject({
+  node: NodeIdSchema,
+  provider: ProviderIdSchema,
+  /** The probed binary's version, so "upgrade and retry" is answerable. */
+  version: z.string().min(1),
+  /** The level that could not be enforced, not the one it might be run at. */
+  permission: PermissionLevelSchema,
+  /** `<capability>:<value>`, e.g. `mediatedExecution:false`. */
+  reason: singleLine(),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -896,6 +922,7 @@ export const EVENT_SCHEMAS = {
   'node.retry.scheduled': { v: 1, payload: NodeRetryScheduledSchema },
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
+  'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },

@@ -411,6 +411,15 @@ function project(state: RunState, event: Event): Transition {
       );
 
     /**
+     * KAR-08.1 AC4. Deliberately no status transition: the refusal is a fact
+     * about the *decision*, and the `node.failed` written in the same breath
+     * is what moves the node. Transitioning here too would give the same
+     * transition two authors, and the second one would win by ordering.
+     */
+    case 'node.unschedulable':
+      return null;
+
+    /**
      * The effect journal is its own table (§8.3) and its own read model — a
      * memoised effect *result* is not run state, and duplicating it here would
      * give the same fact two homes that can disagree.

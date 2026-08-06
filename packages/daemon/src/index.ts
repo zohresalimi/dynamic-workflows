@@ -340,6 +340,15 @@ export type {
   WriteTextRequest,
 } from './services/fs-service.ts';
 export { createFsService } from './services/fs-service.ts';
+// KAR-08.1 — the decider that answers `session/request_permission` from
+// @DeFlow/core's ladder, auto-answering routine requests and escalating only
+// the gated categories.
+export type {
+  GatedPermissionRequest,
+  LadderDecision,
+  LadderPorts,
+} from './services/permission-ladder.ts';
+export { ladderDecider } from './services/permission-ladder.ts';
 export type {
   PermissionDecider,
   PermissionDecision,

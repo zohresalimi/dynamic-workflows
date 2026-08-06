@@ -136,6 +136,7 @@ export {
   NodeScheduledSchema,
   NodeStartedSchema,
   NodeSuspendedSchema,
+  NodeUnschedulableSchema,
   PinIntegrityViolatedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -191,6 +192,16 @@ export type {
   FoldReport,
 } from './fold-events.ts';
 export { describeSkipped, foldEvents } from './fold-events.ts';
+// KAR-08.1 AC5 — `full` is an explicit per-run opt-in a PlanPatch cannot
+// acquire on its own authority.
+export type { FullEscalationRuling, FullPermissionOptIn } from './full-permission.ts';
+export {
+  FULL_IS_NOT_A_SANDBOX,
+  FULL_OPT_IN_RULE,
+  FullPermissionOptInSchema,
+  fullEscalationRuling,
+  fullPermissionIssues,
+} from './full-permission.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -311,6 +322,34 @@ export {
   NodeSuspensionSchema,
   SUSPENSION_KINDS,
 } from './node-result.ts';
+// KAR-08.1 — F5.4's four-level ladder as one pure function of
+// `(level, request, scope)`. No I/O, no vendor CLI, no clock.
+export type {
+  OfferedPermissionOption,
+  PermissionAnswer,
+  PermissionDenyCode,
+  PermissionGateCode,
+  PermissionMethod,
+  PermissionOptionKind,
+  PermissionOutcomeKind,
+  PermissionReason,
+  PermissionRequest,
+  PermissionScope,
+} from './permission.ts';
+export {
+  binaryName,
+  DESTRUCTIVE_COMMANDS,
+  decidePermission,
+  hostOf,
+  OFFERED_PERMISSION_OPTIONS,
+  optionIdFor,
+  PERMISSION_DENY_CODES,
+  PERMISSION_GATE_CODES,
+  PERMISSION_OPTION_KINDS,
+  PERMISSION_OUTCOMES,
+  pathIsInside,
+  reasonCode,
+} from './permission.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,

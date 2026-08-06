@@ -423,6 +423,24 @@ export async function runAcpNode(
       ports.capabilityRow ?? null,
     );
   if (refusal !== null) {
+    // KAR-08.1 AC4 / EPIC-08-S3. The `node.failed` below is where the node
+    // ended; this is why it never began, and only one of the two answers "which
+    // provider, and which capability". Appended *before* the failure so a
+    // reader walking the timeline meets the cause before the effect, and only
+    // for the mediation refusal — a missing `session.fork` is a capability
+    // story, not a safety one.
+    if (refusal.deflowFailure.reason === 'safety.permission-unschedulable') {
+      const row = ports.capabilityRow;
+      lastSeq = await ledger.append(
+        event('node.unschedulable', {
+          node: request.nodeId,
+          provider: row?.provider ?? request.provider,
+          version: row?.version ?? request.binary.version,
+          permission: request.permission,
+          reason: 'mediatedExecution:false',
+        }),
+      );
+    }
     const failure = toAdapterFailure(refusal, {
       occurredAtEvent: lastSeq,
       attempt: request.attempt,
