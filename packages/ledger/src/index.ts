@@ -203,3 +203,6 @@ export {
   SNAPSHOT_REVISIT_THRESHOLD,
 } from './run-stats.ts';
 export { openRead, openWrite } from './sqlite-db.ts';
+// KAR-07.2 — the `worktrees` projection: an index over `git worktree list
+// --porcelain -z`, replaced whole on every refresh, never the source of truth.
+export { readWorktrees, replaceWorktrees, type WorktreeRow } from './worktrees.ts';

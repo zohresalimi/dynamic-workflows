@@ -102,6 +102,17 @@ export const EFFECT_KINDS = ['agent', 'shell', 'git', 'file'] as const;
 
 export const LOCK_KINDS = ['repo', 'worktree'] as const;
 
+/**
+ * Who is sitting on a branch DeFlow wanted
+ * (docs/09-workspace-and-safety.md §3.2, KAR-07.2).
+ *
+ * Two values because the operator's own checkout is a genuinely different
+ * situation from another node's worktree: it is the common real-world hit, it
+ * lands on the very first run, and the message it deserves is about *their*
+ * branch and the base-ref choice — not about a collision they had no part in.
+ */
+export const WORKTREE_OCCUPANT_KINDS = ['worktree', 'main-checkout'] as const;
+
 export const COMPACTION_SCOPES = ['DeFlow.packet', 'vendor.session'] as const;
 
 export const COMPACTION_FIDELITIES = ['exact', 'partial'] as const;
@@ -119,6 +130,7 @@ export const EXPORT_BLOCK_REASONS = ['redaction-failed', 'findings'] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type CompactionFidelity = (typeof COMPACTION_FIDELITIES)[number];
+export type WorktreeOccupantKind = (typeof WORKTREE_OCCUPANT_KINDS)[number];
 
 // ── run lifecycle ────────────────────────────────────────────────────────────
 
@@ -363,6 +375,85 @@ export const NodeCancelFailedSchema = z.strictObject({
    * are excluded: they are already dead and counting them reports a working
    * kill as a failure (§11.2). */
   survivors: z.array(z.number().int().positive()).min(1),
+});
+
+// ── workspace isolation ──────────────────────────────────────────────────────
+
+/**
+ * A worktree existing is a **domain fact**, not a log line
+ * (docs/09-workspace-and-safety.md §4.1, KAR-07.2).
+ *
+ * `detached` and `branch` move together and are both stated: a read node gets
+ * `--detach` and no branch at all, which is what sidesteps branch uniqueness
+ * for it, and a reader who saw only `branch: null` could not tell that from a
+ * write node whose branch record was lost. `lockReason` is git's own — the same
+ * string `worktree list --porcelain` reports back — so the event and the
+ * repository can be compared without a translation step.
+ */
+export const WorkspaceWorktreeCreatedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** `null` exactly when `detached` is true. */
+  branch: z.string().min(1).nullable(),
+  /** What the worktree started from. Never checked out as a branch. */
+  baseRef: z.string().min(1),
+  detached: z.boolean(),
+  lockReason: z.string().min(1),
+});
+
+/**
+ * The refusal that happens **before** `git worktree add` runs (§3.1).
+ *
+ * There is no `stderr` field, on purpose. The real message is
+ * `fatal: '<branch>' is already used by worktree at '<path>'` — not the
+ * widely-quoted `already checked out at` — and recording git's wording here
+ * would invite the next reader to start matching on it. `occupiedBy` is the
+ * path the porcelain list gave, which is the same answer without the
+ * dependency on a message that is one git release from changing.
+ */
+export const WorkspaceBranchOccupiedSchema = z.strictObject({
+  node: NodeIdSchema,
+  branch: z.string().min(1),
+  occupiedBy: z.string().min(1),
+  occupantKind: z.enum(WORKTREE_OCCUPANT_KINDS),
+});
+
+/**
+ * Removing the worktree must never remove the work (§4.4, F5.5).
+ *
+ * `tipOid` is the point: the branch is the deliverable and it outlives its
+ * worktree, so the tip recorded here is what the integration loop merges later
+ * — and what makes a removal auditable without re-reading the repository.
+ */
+export const WorkspaceWorktreeRemovedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** `null` for a read node's detached checkout, which produced no branch. */
+  branch: z.string().min(1).nullable(),
+  /** `null` when the branch had no commits, or for a detached checkout. */
+  tipOid: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/)
+    .nullable(),
+});
+
+/**
+ * The `worktrees` projection caught up with git (§4.3).
+ *
+ * "Git is the authority; SQLite is an index over it." The moment an operator
+ * runs `git worktree remove` in their own terminal — and they will — a
+ * SQLite-authoritative design is wrong and does not know it. This event is what
+ * a reconcile looks like when it is a normal, expected, non-error outcome:
+ * three lists, no failure, no run touched.
+ */
+export const WorkspaceReconciledSchema = z.strictObject({
+  /** Paths git reports that the projection had not seen. */
+  added: z.array(z.string().min(1)),
+  /** Paths the projection held that git no longer reports. */
+  removed: z.array(z.string().min(1)),
+  /** Paths git still lists but marks `prunable` — scheduled for the next reap,
+   * never treated as live. */
+  prunable: z.array(z.string().min(1)),
 });
 
 // ── the effect journal ───────────────────────────────────────────────────────
@@ -619,6 +710,10 @@ export const EVENT_SCHEMAS = {
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
+  'workspace.worktree_created': { v: 1, payload: WorkspaceWorktreeCreatedSchema },
+  'workspace.branch_occupied': { v: 1, payload: WorkspaceBranchOccupiedSchema },
+  'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
+  'workspace.reconciled': { v: 1, payload: WorkspaceReconciledSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },
   'effect.completed': { v: 1, payload: EffectCompletedSchema },
   'effect.failed': { v: 1, payload: EffectFailedSchema },

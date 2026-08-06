@@ -43,6 +43,9 @@ const SHIPPED: Record<string, string> = {
     'ff0ae6979c1050354592c40a7fa17918a9a1bfc4afc3da01ef9df4ca647be01f',
   // Shipped 2026-08-05, KAR-06.4 — the pending-row result_json scaffold.
   '0007-effect-scaffold.ts': 'd412b7a0a6a653d37097c4a2de5318fde2f26a306d7f4e8a2b3c58c21936f4a2',
+  // Shipped 2026-08-06, KAR-07.2 — the `worktrees` projection over git's own
+  // `worktree list --porcelain -z`.
+  '0008-worktrees.ts': 'bbb4d7918881571f37af14cc40ae727218f3cf7eb5aa358e399a4862f1f1f741',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

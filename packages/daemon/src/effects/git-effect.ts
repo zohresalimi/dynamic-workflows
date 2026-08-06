@@ -28,6 +28,8 @@
 import type { NodeId, RunId } from '@DeFlow/core';
 import { NodeFailureError } from '@DeFlow/core';
 import { realpath } from 'node:fs/promises';
+import { WORKTREE_LIST_ARGS } from '../git/worktree-args.ts';
+import { parseWorktreeList } from '../git/worktree-porcelain.ts';
 import type { Effect, EffectCtx, ReconcileProbe } from './durable.ts';
 import {
   type CommandResult,
@@ -149,23 +151,23 @@ async function resolved(path: string): Promise<string> {
   }
 }
 
-/** Whether `path` really is a registered worktree on `branch`, per git. */
+/**
+ * Whether `path` really is a registered worktree on `branch`, per git.
+ *
+ * Read through KAR-07.2's `--porcelain -z` parser: the non-porcelain form pads
+ * path, oid and branch onto one line with spaces, so a worktree under
+ * `~/my projects` would answer this question wrongly rather than failing to
+ * answer it — and this question decides whether another node's working tree
+ * gets handed to this one (docs/09-workspace-and-safety.md §4.3, AC5).
+ */
 async function worktreeIsAt(ports: GitEffectPorts, path: string, branch: string): Promise<boolean> {
-  const listed = await ports.run(['worktree', 'list', '--porcelain']);
+  const listed = await ports.run(WORKTREE_LIST_ARGS);
   if (listed.exitCode !== 0) return false;
 
   const wanted = await resolved(path);
-  let current: string | null = null;
-
-  for (const line of listed.stdout.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      const at = line.slice('worktree '.length);
-      current = at === path || (await resolved(at)) === wanted ? at : null;
-      continue;
-    }
-    if (current !== null && line.startsWith('branch ')) {
-      return line.slice('branch '.length) === `${HEAD_REF}${branch}`;
-    }
+  for (const entry of parseWorktreeList(listed.stdout)) {
+    if (entry.path !== path && (await resolved(entry.path)) !== wanted) continue;
+    return entry.branch === `${HEAD_REF}${branch}`;
   }
   return false;
 }

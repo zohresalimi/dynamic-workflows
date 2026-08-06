@@ -156,6 +156,53 @@ export {
   PREFERRED_GIT_VERSION,
   parseGitVersion,
 } from './git/version.ts';
+// KAR-07.2 — the worktree lifecycle's argv, stated once (§4.1, §4.3, §4.4).
+// There is deliberately no `worktreeLockArgs`: --lock is inside the add.
+export type {
+  ReadWorktreeSpec,
+  WorktreeMode,
+  WorktreeSpec,
+  WriteWorktreeSpec,
+} from './git/worktree-args.ts';
+export {
+  lockReasonFor,
+  parseLockReason,
+  WORKTREE_LIST_ARGS,
+  worktreeAddArgs,
+  worktreePathFor,
+  worktreeRemoveArgs,
+  worktreeUnlockArgs,
+} from './git/worktree-args.ts';
+// KAR-07.2 AC7 — the double force, reachable only from KAR-07.8's reaper.
+export { reaperForceRemoveArgs } from './git/worktree-force-remove.ts';
+// KAR-07.2 AC5 — the static check behind "worktree list is only ever
+// list --porcelain -z".
+export type { UnporcelainedListCall } from './git/worktree-list-usage.ts';
+export { findUnporcelainedWorktreeList } from './git/worktree-list-usage.ts';
+// KAR-07.2 — the Workspace Manager: create locked in one invocation, refuse an
+// occupied branch before git is asked, unlock then remove, reconcile against
+// git rather than trusting SQLite.
+export type {
+  ProvisionRead,
+  ProvisionRequest,
+  ProvisionResult,
+  ProvisionWrite,
+  ReconcileReport,
+  RemoveRequest,
+  RemoveResult,
+  WorkspaceGit,
+  WorkspacePorts,
+} from './git/worktree-manager.ts';
+export {
+  BranchOccupiedError,
+  WorkspaceManager,
+  WorktreeCreateFailed,
+  WorktreeRemovalRefused,
+} from './git/worktree-manager.ts';
+// KAR-07.2 — the only way DeFlow reads git's worktree list, and the occupancy
+// pre-check over it (§3.1, §4.3).
+export type { WorktreeEntry, WorktreeOccupant } from './git/worktree-porcelain.ts';
+export { findOccupant, parseWorktreeList, shortBranch } from './git/worktree-porcelain.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';
