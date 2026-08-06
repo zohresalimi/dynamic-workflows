@@ -112,6 +112,15 @@ export {
   assertNotDefaultBranchWrite,
   isDefaultBranchWriteShaped,
 } from './git/assertions.ts';
+// KAR-07.3 — the flat D13 branch scheme and the domain-layer half of
+// ref-name validation: BRANCH_SAFE, applied to runId/nodeId separately,
+// before either value can reach git (§2, §2.1).
+export {
+  type BranchIdComponent,
+  integrationBranch,
+  nodeBranch,
+  UnsafeRefError,
+} from './git/branch-name.ts';
 // KAR-07.1 — default branch resolution (§10.6): origin/HEAD, falling back to
 // the HEAD symref. `Git.resolveDefaultBranch()` is the cached, per-instance
 // entry point most callers want; this is the uncached primitive it wraps.
@@ -119,9 +128,16 @@ export {
   DefaultBranchUnresolvedError,
   resolveDefaultBranchUncached,
 } from './git/default-branch.ts';
+// KAR-07.3 AC6 — the static check behind "every call site that passes a
+// generated name to git uses a '--' separator or '--branch=<value>'".
+export type { UnguardedCall } from './git/generated-ref-usage.ts';
+export { findUnguardedGeneratedRefCalls } from './git/generated-ref-usage.ts';
 // KAR-07.1 — the Git wrapper itself: one chokepoint, built on the spawn half
 // KAR-06.4 left in ./git/run-git.ts for exactly this.
 export { Git, type GitOptions, type GitRunOptions } from './git/git.ts';
+// KAR-07.3 AC3 — the git-verified half of ref-name validation:
+// `check-ref-format --branch`, cached per composed name.
+export { RefFormatChecker, type RefFormatRunner } from './git/ref-format.ts';
 // KAR-06.4 — the spawn half of the git wrapper KAR-07.1 completes.
 export type { GitResult, RunGitOptions } from './git/run-git.ts';
 export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';

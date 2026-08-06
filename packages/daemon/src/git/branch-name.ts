@@ -1,0 +1,81 @@
+/**
+ * KAR-07.3 — flat branch naming and the domain-layer half of ref-name
+ * validation (docs/09-workspace-and-safety.md §2, §2.1; Decision D13).
+ *
+ * D13 overrides the PRD's hierarchical `DeFlow/<runId>/<nodeId>` scheme: git's
+ * refs storage cannot have both a file and a directory at
+ * `refs/heads/DeFlow/<runId>`, so once a node branch exists under a run, a
+ * run-level integration branch can never be created (and the reverse fails
+ * symmetrically) — verified on real git in
+ * ../../test/integration/branch-name.test.ts (EPIC-07-S6). Flat naming,
+ * `DeFlow/<runId>__<nodeId>`, removes the whole class of bug.
+ *
+ * `BRANCH_SAFE` is deliberately stricter than git's own ref-name rules: it is
+ * lowercase-only (so two ids differing only in case can never compose into
+ * worktree paths that collide on a case-insensitive filesystem — AC5, without
+ * DeFlow ever having to transform an id's case) and it rejects a leading `-`
+ * outright, because a dash-led id reaching git as a bare positional argument
+ * is parsed as a flag, not a name (the "-n trap": see ./ref-format.ts and
+ * EPIC-07-S8). Two further checks — a `.lock` suffix and a `..` sequence —
+ * are the same two of git's own reference-naming rules that the character
+ * class alone does not exclude (both `.` and the alphanumerics it forbids-by-
+ * omission are otherwise inside `[a-z0-9._-]`), and are applied explicitly so
+ * they are still refused here, at the domain layer, before any value can
+ * reach git at all (AC2, AC4).
+ */
+
+const BRANCH_SAFE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export type BranchIdComponent = 'runId' | 'nodeId';
+
+/** Thrown by `nodeBranch`/`integrationBranch` before any git process is
+ * spawned, naming which component failed and why (AC2). */
+export class UnsafeRefError extends Error {
+  readonly component: BranchIdComponent;
+  readonly value: string;
+
+  constructor(component: BranchIdComponent, value: string) {
+    super(
+      `unsafe ${component} ${JSON.stringify(value)}: must match ${BRANCH_SAFE.source} ` +
+        'and must not end with ".lock" or contain a ".." sequence',
+    );
+    this.name = 'UnsafeRefError';
+    this.component = component;
+    this.value = value;
+  }
+}
+
+/** The two rules `BRANCH_SAFE`'s character class cannot express on its own:
+ * both use only characters the regex already allows. */
+function hasDisallowedSequence(value: string): boolean {
+  return value.endsWith('.lock') || value.includes('..');
+}
+
+function isBranchSafe(value: string): boolean {
+  return BRANCH_SAFE.test(value) && !hasDisallowedSequence(value);
+}
+
+function assertBranchSafe(component: BranchIdComponent, value: string): void {
+  if (!isBranchSafe(value)) throw new UnsafeRefError(component, value);
+}
+
+/**
+ * D13: the one place a node's branch name is composed. `runId` and `nodeId`
+ * are validated separately, so the thrown error always names the offending
+ * component — before either value can reach git (AC1, AC2).
+ */
+export function nodeBranch(runId: string, nodeId: string): string {
+  assertBranchSafe('runId', runId);
+  assertBranchSafe('nodeId', nodeId);
+  return `DeFlow/${runId}__${nodeId}`;
+}
+
+/**
+ * D13: the run-level integration branch, under a prefix (`DeFlow/int/`) that
+ * cannot collide with any node branch `nodeBranch` can produce (AC1). `runId`
+ * is validated with the same rule `nodeBranch` applies to it.
+ */
+export function integrationBranch(runId: string): string {
+  assertBranchSafe('runId', runId);
+  return `DeFlow/int/${runId}`;
+}
