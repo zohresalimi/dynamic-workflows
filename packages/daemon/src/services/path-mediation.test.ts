@@ -33,6 +33,7 @@ const SCOPE: PermissionScope = {
   allowlist: ['git', 'pnpm'],
   readOnlyCommands: ['git status'],
   allowedDomains: [],
+  scrubbedEnv: [],
 };
 
 /**

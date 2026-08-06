@@ -77,7 +77,7 @@ function noisyCommand(mb: number, trailer = ''): { command: string; args: string
 suite('a noisy build is bounded on the way in', () => {
   it('returns at most 1 MiB of a 5 MB command and says it truncated', async () => {
     const terminals = service();
-    const id = terminals.create(noisyCommand(5));
+    const id = await terminals.create(noisyCommand(5));
     await terminals.waitForExit(id);
 
     const output = terminals.output(id);
@@ -91,7 +91,7 @@ suite('a noisy build is bounded on the way in', () => {
 
   it('keeps the full output reachable as a spilled blob handle', async () => {
     const terminals = service();
-    const id = terminals.create(noisyCommand(5, 'ERROR: the build failed'));
+    const id = await terminals.create(noisyCommand(5, 'ERROR: the build failed'));
     await terminals.waitForExit(id);
     terminals.output(id);
 
@@ -106,7 +106,10 @@ suite('a noisy build is bounded on the way in', () => {
 
   it('does not truncate, and reports no truncation, for a small command', async () => {
     const terminals = service();
-    const id = terminals.create({ command: process.execPath, args: ['-e', 'console.log("ok")'] });
+    const id = await terminals.create({
+      command: process.execPath,
+      args: ['-e', 'console.log("ok")'],
+    });
     await terminals.waitForExit(id);
 
     const output = terminals.output(id);
@@ -118,7 +121,7 @@ suite('a noisy build is bounded on the way in', () => {
 suite('the ring buffer keeps the tail, not the head', () => {
   it('ends with the error the command printed last', async () => {
     const terminals = service();
-    const id = terminals.create(noisyCommand(3, 'FAILED: 1 test did not pass'));
+    const id = await terminals.create(noisyCommand(3, 'FAILED: 1 test did not pass'));
     await terminals.waitForExit(id);
 
     const output = terminals.output(id);
@@ -137,7 +140,7 @@ suite('the bound is the code’s, not the pipe’s', () => {
     // larger". That holds today only because Node reads a pipe 64 KiB at a
     // time, which is a property of the runtime and not of this service.
     const terminals = createTerminalService({ root: worktree, captureBytes: 1024 });
-    const id = terminals.create({
+    const id = await terminals.create({
       command: process.execPath,
       args: ['-e', 'process.stdout.write("z".repeat(50000) + "TAIL")'],
     });
@@ -153,8 +156,8 @@ suite('the bound is the code’s, not the pipe’s', () => {
 suite('the cap is per terminal, not global', () => {
   it('gives two concurrent terminals a buffer each', async () => {
     const terminals = createTerminalService({ root: worktree, captureBytes: 1024 * 1024 });
-    const first = terminals.create(noisyCommand(2, 'FIRST TERMINAL TRAILER'));
-    const second = terminals.create(noisyCommand(2, 'SECOND TERMINAL TRAILER'));
+    const first = await terminals.create(noisyCommand(2, 'FIRST TERMINAL TRAILER'));
+    const second = await terminals.create(noisyCommand(2, 'SECOND TERMINAL TRAILER'));
     await Promise.all([terminals.waitForExit(first), terminals.waitForExit(second)]);
 
     const a = terminals.output(first);

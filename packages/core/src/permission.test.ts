@@ -50,6 +50,7 @@ const SCOPE: PermissionScope = {
   allowlist: ['git', 'pnpm', 'npm', 'node', 'pytest', 'make', 'cargo', 'go', 'tsc', 'eslint'],
   readOnlyCommands: ['git status', 'git log', 'git diff', 'ls', 'cat'],
   allowedDomains: ['registry.npmjs.org'],
+  scrubbedEnv: [],
 };
 
 const write = (path: string): PermissionRequest => ({ method: 'fs/write_text_file', path });
@@ -73,6 +74,9 @@ suite('the three outcomes are a closed set (AC2)', () => {
       'not-allowlisted',
       'domain-not-allowlisted',
       'destructive-command',
+      // KAR-08.3: a command that needs a variable KAR-08.4 removed cannot
+      // work, so it is a question rather than a confusing failure.
+      'scrubbed-env',
     ]);
   });
 

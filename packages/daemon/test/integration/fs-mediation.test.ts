@@ -120,6 +120,7 @@ const scopeFor = (): PermissionScope => ({
   allowlist: ['git', 'pnpm'],
   readOnlyCommands: ['git status'],
   allowedDomains: [],
+  scrubbedEnv: [],
 });
 
 /** The mediator as the daemon builds it: the real filesystem, the real home. */

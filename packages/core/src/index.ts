@@ -73,6 +73,10 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-06.1 — the whole scheduling policy, as a pure function of state and one
 // instant.
 export { decide } from './decide.ts';
+// KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
+// ladder: an allowlisted binary at an identity or infrastructure boundary.
+export type { CommandContext, DestructiveReason } from './destructive-command.ts';
+export { DESTRUCTIVE_COMMANDS, destructiveCommand } from './destructive-command.ts';
 // KAR-06.3 — what the effect journal remembers about what was asked for, so a
 // plan edit landing under a journalled effect cannot return the memoised
 // result of the operation it replaced.
@@ -328,6 +332,7 @@ export {
 // KAR-08.1 — F5.4's four-level ladder as one pure function of
 // `(level, request, scope)`. No I/O, no vendor CLI, no clock.
 export type {
+  CommandsConfig,
   OfferedPermissionOption,
   PermissionAnswer,
   PermissionDenyCode,
@@ -340,17 +345,14 @@ export type {
   PermissionScope,
 } from './permission.ts';
 export {
-  binaryName,
-  DESTRUCTIVE_COMMANDS,
   decidePermission,
-  hostOf,
   OFFERED_PERMISSION_OPTIONS,
   optionIdFor,
   PERMISSION_DENY_CODES,
   PERMISSION_GATE_CODES,
   PERMISSION_OPTION_KINDS,
   PERMISSION_OUTCOMES,
-  pathIsInside,
+  permissionScopeFrom,
   reasonCode,
 } from './permission.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
@@ -475,6 +477,16 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// The primitives both of the above are expressed in.
+export {
+  binaryName,
+  domainAllowed,
+  hostOf,
+  isLoopback,
+  pathDepth,
+  pathIsInside,
+  resolvePosix,
+} from './scope.ts';
 // KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
 export type { ScopeCollision } from './scope-collision.ts';
 export { scopeCollisions } from './scope-collision.ts';

@@ -59,7 +59,8 @@ import { homedir } from 'node:os';
 import { isAbsolute, resolve } from 'node:path';
 import type { PathPolicy } from './fs-service.ts';
 
-/** The two ACP methods this mediates. `terminal/create` is KAR-08.3. */
+/** The two ACP methods this mediates. `terminal/create` is KAR-08.3's, and it
+ * reuses `contain` below for the one path a command carries: its cwd. */
 export type PathMethod = 'fs/read_text_file' | 'fs/write_text_file';
 
 /**
@@ -74,18 +75,50 @@ export const PATH_ESCAPE_ROUTES = ['traversal', 'symlink', 'absolute', 'invalid'
 
 export type PathEscapeRoute = (typeof PATH_ESCAPE_ROUTES)[number];
 
-/** Everything a `permission.denied` event and an ACP rejection need. */
-export interface PathDenial {
+/**
+ * Everything a `permission.denied` event and an ACP rejection need, for any
+ * request the safety layer refused.
+ *
+ * One shape across `fs/*` and `terminal/create` because the ledger row is one
+ * shape: `permission.denied` names the method rather than having a variant per
+ * method, and the node inspector renders one table.
+ *
+ * The reason may be a *gate* code — `not-allowlisted:rsync` on a request the
+ * operator rejected is a denial, and recording it as anything else would lose
+ * the only information in it.
+ */
+export interface MediationDenial {
   readonly level: PermissionLevel;
-  readonly method: PathMethod;
+  readonly method: PathMethod | 'terminal/create';
   /** The agent's own string, before any resolution. */
   readonly requested: string;
+  readonly reason: PermissionReason;
+}
+
+/** A refused `fs/*` request: the denial above, narrowed to what this file
+ * decides. */
+export interface PathDenial extends MediationDenial {
+  readonly method: PathMethod;
   readonly reason: PermissionReason<PermissionDenyCode>;
 }
 
 export type PathMediation =
   | { readonly outcome: 'allow'; readonly path: string }
   | { readonly outcome: 'deny'; readonly denial: PathDenial };
+
+/**
+ * Containment on its own, with no level row in front of it: the resolved path
+ * to use, or the route by which the request left the worktree.
+ *
+ * Exposed because `terminal/create` needs exactly this and nothing else for
+ * its `cwd` — the ladder has already decided what the *command* may do, and
+ * what is left is the same "where would this actually land" question the four
+ * escape routes are about. A second implementation of it for commands is how
+ * one of the two ends up missing route 4.
+ */
+export type PathContainment =
+  | { readonly outcome: 'inside'; readonly path: string }
+  | { readonly outcome: 'outside'; readonly route: PathEscapeRoute };
 
 /**
  * The filesystem, as containment needs to see it.
@@ -133,6 +166,8 @@ export interface PathMediatorPorts {
 export interface PathMediator {
   /** Resolves `requested` against the node's worktree and decides it. */
   mediate(method: PathMethod, requested: string): Promise<PathMediation>;
+  /** The containment half alone, for callers whose level row is elsewhere. */
+  contain(requested: string): Promise<PathContainment>;
 }
 
 /** A path with no NUL and something in it. Everything else — including a
@@ -223,52 +258,65 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
     return caseRule;
   };
 
+  const contain = async (requested: string): Promise<PathContainment> => {
+    const insensitive = await foldsCase();
+    const fold = (path: string): string => (insensitive ? path.toLowerCase() : path);
+    const resolution = resolveLexically(requested, root, home);
+    // A path this layer refuses to guess about — empty, or carrying a NUL that
+    // every C-level filesystem API would truncate at. `resolve()` turns both
+    // into the worktree root, so a containment check alone would call them
+    // *inside* it.
+    if (resolution.path === '') return { outcome: 'outside', route: resolution.route };
+
+    // Routes 1 and 2, lexically. Both sides of the comparison are folded when
+    // the filesystem folds, which is the only place the case rule can be
+    // applied without duplicating the predicate.
+    if (!pathIsInside(fold(root), fold(resolution.path))) {
+      return { outcome: 'outside', route: resolution.route };
+    }
+
+    // Route 3 and route 4: lexically inside, really somewhere else. The root
+    // is realpath'd too — `/var` is a symlink to `/private/var` on macOS, so
+    // comparing a resolved target against an unresolved root would deny every
+    // write DeFlow makes on a developer's laptop.
+    const [rootReal, target] = await Promise.all([
+      realpathDeepest(fs, root),
+      realpathDeepest(fs, resolution.path),
+    ]);
+    if (!pathIsInside(fold(rootReal), fold(target))) {
+      return { outcome: 'outside', route: 'symlink' };
+    }
+    return { outcome: 'inside', path: resolution.path };
+  };
+
   return {
+    contain,
+
     async mediate(method, requested) {
       const insensitive = await foldsCase();
       const fold = (path: string): string => (insensitive ? path.toLowerCase() : path);
-
       const resolution = resolveLexically(requested, root, home);
-      const deny = (route: PathEscapeRoute): PathMediation => ({
+      const deny = (reason: PermissionReason<PermissionDenyCode>): PathMediation => ({
         outcome: 'deny',
-        denial: {
-          level: ports.level,
-          method,
-          requested,
-          reason: { code: 'path-escape', detail: route },
-        },
+        denial: { level: ports.level, method, requested, reason },
       });
 
       // KAR-08.1's ordering, re-used rather than restated: the level row runs
-      // first, and the lexical containment below it is the ladder's own. Both
-      // sides of the comparison are folded when the filesystem folds, which is
-      // the only place the case rule can be applied without duplicating the
-      // predicate.
+      // first, and only then does anything look at where the path points. A
+      // `read` node's write is `level-read` whatever path it named.
       const lexical = decidePermission(
         ports.level,
         { method, path: fold(resolution.path) },
         { ...ports.scope, worktree: fold(root) },
       );
-      if (lexical.outcome === 'deny') {
-        return lexical.reason.code === 'path-escape'
-          ? deny(resolution.route)
-          : {
-              outcome: 'deny',
-              denial: { level: ports.level, method, requested, reason: lexical.reason },
-            };
+      if (lexical.outcome === 'deny' && lexical.reason.code !== 'path-escape') {
+        return deny(lexical.reason);
       }
 
-      // Route 3 and route 4: lexically inside, really somewhere else. The root
-      // is realpath'd too — `/var` is a symlink to `/private/var` on macOS, so
-      // comparing a resolved target against an unresolved root would deny
-      // every write DeFlow makes on a developer's laptop.
-      const [rootReal, target] = await Promise.all([
-        realpathDeepest(fs, root),
-        realpathDeepest(fs, resolution.path),
-      ]);
-      if (!pathIsInside(fold(rootReal), fold(target))) return deny('symlink');
-
-      return { outcome: 'allow', path: resolution.path };
+      const contained = await contain(requested);
+      return contained.outcome === 'inside'
+        ? { outcome: 'allow', path: contained.path }
+        : deny({ code: 'path-escape', detail: contained.route });
     },
   };
 }
@@ -284,9 +332,9 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
  * do it.
  */
 export class PermissionDeniedError extends Error {
-  readonly denial: PathDenial;
+  readonly denial: MediationDenial;
 
-  constructor(denial: PathDenial) {
+  constructor(denial: MediationDenial) {
     const { code, detail } = denial.reason;
     super(`${denial.method} denied: ${detail === undefined ? code : `${code}:${detail}`}`);
     this.name = 'PermissionDeniedError';
@@ -328,13 +376,13 @@ export function worktreePathPolicy(
  * the audit trail, and the audit trail is most of the point.
  */
 export function permissionDeniedPayload(
-  denial: PathDenial,
+  denial: MediationDenial,
   node: { readonly node: NodeId; readonly attempt: number },
 ): {
   node: NodeId;
   attempt: number;
   permission: PermissionLevel;
-  method: PathMethod;
+  method: MediationDenial['method'];
   requested: string;
   reason: { code: string; detail?: string };
 } {

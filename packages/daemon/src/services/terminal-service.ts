@@ -2,11 +2,12 @@
  * The transport-neutral terminal service (docs/07-provider-adapter-layer.md
  * §3, §9.2).
  *
- * The command allowlist, environment scrubbing and the permission ladder are
- * EPIC-08 (KAR-08.4) and plug in behind `CommandPolicy`. The 1 MiB ring buffer
- * and blob spilling are KAR-05.4; what is here is a bounded buffer that keeps
- * the **tail**, because a truncated head is what you want when a build fails
- * after ten thousand lines of progress output.
+ * The command allowlist and the permission ladder plug in behind
+ * `CommandPolicy` (KAR-08.3, ./command-mediation.ts); environment scrubbing is
+ * KAR-08.4 and plugs in behind the same seam. The 1 MiB ring buffer and blob
+ * spilling are KAR-05.4; what is here is a bounded buffer that keeps the
+ * **tail**, because a truncated head is what you want when a build fails after
+ * ten thousand lines of progress output.
  *
  * A plain `spawn`, not a pty, at M1. §9.2 reserves the pty for the cases that
  * genuinely need one (a vendor CLI that refuses to run without a TTY), and
@@ -22,9 +23,23 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import process from 'node:process';
 
-/** What EPIC-08 plugs in. Throws to refuse; returns to allow. */
+/**
+ * What EPIC-08 plugs in. Throws to refuse; returns the cwd to run in.
+ *
+ * It answers with a path rather than with a boolean because the resolution and
+ * the decision have to be the same act: a service that resolved the cwd itself
+ * and then asked whether the policy liked the result would have two
+ * resolutions of one string, and the one `spawn` received would be the one
+ * nobody checked. Same rule as `PathPolicy` in ./fs-service.ts, and the same
+ * reason.
+ *
+ * It is `async` because a gated command **waits for a human** — the request is
+ * suspended, not pre-authorised, and nothing is spawned until the operator has
+ * answered. A rejection is a thrown `PermissionDeniedError`, and by the time
+ * it is thrown no process exists to have to clean up.
+ */
 export interface CommandPolicy {
-  authorize(command: string, args: readonly string[]): void;
+  authorize(request: CreateTerminalRequest): Promise<string>;
 }
 
 /**
@@ -81,7 +96,9 @@ export interface TerminalOutput {
 }
 
 export interface TerminalService {
-  create(request: CreateTerminalRequest): string;
+  /** Resolves once the policy has answered — which, for a gated command, is
+   * once the operator has. No process exists before then. */
+  create(request: CreateTerminalRequest): Promise<string>;
   output(terminalId: string): TerminalOutput;
   waitForExit(terminalId: string): Promise<TerminalExit>;
   kill(terminalId: string): void;
@@ -159,12 +176,21 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
   };
 
   return {
-    create(request) {
-      options.policy?.authorize(request.command, request.args ?? []);
+    async create(request) {
+      // The policy answers with the cwd, and there is no other source for one:
+      // resolving it again here is how the path that was checked and the path
+      // that is used come apart. Its rejection propagates — the ACP front
+      // turns it into a JSON-RPC error — and nothing below has run by then.
+      const cwd =
+        options.policy === undefined
+          ? request.cwd === undefined || request.cwd === null
+            ? root
+            : resolve(root, request.cwd)
+          : await options.policy.authorize(request);
       next += 1;
       const terminalId = `term-${next}`;
       const child = spawn(request.command, [...(request.args ?? [])], {
-        cwd: request.cwd === undefined || request.cwd === null ? root : resolve(root, request.cwd),
+        cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
         env:

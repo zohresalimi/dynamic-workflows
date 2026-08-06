@@ -28,6 +28,7 @@ const SCOPE: PermissionScope = {
   allowlist: ['git', 'pnpm', 'node', 'eslint'],
   readOnlyCommands: ['git status', 'git log', 'ls', 'cat'],
   allowedDomains: ['registry.npmjs.org'],
+  scrubbedEnv: [],
 };
 
 const OPTIONS = [

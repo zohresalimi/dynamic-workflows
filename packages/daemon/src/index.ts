@@ -326,6 +326,29 @@ export {
   SchemaCompilationFailed,
   UnknownSchemaFile,
 } from './schema-store.ts';
+// KAR-08.3 — the command half: default-deny on the binary, the syntactic
+// second layer, and the human gate the rest is shaped to keep rare.
+export type {
+  CommandApproval,
+  CommandDecision,
+  CommandDenial,
+  CommandGate,
+  CommandGatePayload,
+  CommandMediation,
+  CommandMediator,
+  CommandMediatorPorts,
+  CommandRequest,
+  HumanCommandGatePorts,
+  ResolvedCommand,
+  WorktreeCommandPolicyOptions,
+} from './services/command-mediation.ts';
+export {
+  COMMAND_GATE_OPTIONS,
+  commandGatePayload,
+  createCommandMediator,
+  humanCommandGate,
+  worktreeCommandPolicy,
+} from './services/command-mediation.ts';
 export { acpFsHandlers } from './services/fronts/acp-fs.ts';
 export { acpPermissionHandlers } from './services/fronts/acp-permission.ts';
 export { acpTerminalHandlers } from './services/fronts/acp-terminal.ts';
@@ -344,6 +367,8 @@ export { createFsService } from './services/fs-service.ts';
 // KAR-08.2 — the fs half of the ladder: the agent's path resolved against the
 // node's worktree, `realpath`ed, and decided before anything is opened.
 export type {
+  MediationDenial,
+  PathContainment,
   PathDenial,
   PathEscapeRoute,
   PathFs,

@@ -876,6 +876,16 @@ export const HumanRequestedSchema = z.strictObject({
   /** The same option vocabulary a `human` node declares (§3). */
   options: HumanNodeSchema.shape.options,
   deadline: HumanNodeSchema.shape.deadline,
+  /**
+   * KAR-08.3 AC8 — why the safety layer escalated, as a `PermissionReason`.
+   *
+   * Absent for the escalations that are not a permission decision at all: a
+   * `human` node's own prompt, a verification gate that ran out of attempts, a
+   * clarifying question. Present, it is what the approval queue groups by and
+   * what the §10.5 gate budget counts — the prompt above is for the operator
+   * to read, and reading is not something a budget assertion can do.
+   */
+  reason: PermissionDeniedSchema.shape.reason.optional(),
 });
 
 export const HumanRespondedSchema = z.strictObject({

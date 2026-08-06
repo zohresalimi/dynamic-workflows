@@ -50,14 +50,15 @@
  * catches `..` traversal and absolute paths but **not** a symlink pointing out
  * of the worktree. KAR-08.2 resolves the deepest existing ancestor and applies
  * *this* predicate to the result; that story owns the four escape routes and
- * their `path-escape:<route>` details. Nor is the full syntactic set here —
- * KAR-08.3 owns `git push --force`, the `rm -r` depth rule, the non-localhost
- * database host and the scrubbed-variable check, and extends the small table
- * below in place.
+ * their `path-escape:<route>` details. Nor is the syntactic set here —
+ * KAR-08.3 owns it, in ./destructive-command.ts, and this file calls it at the
+ * one point in the ordering where it belongs.
  *
  * Verifies: EPIC-08-S1, EPIC-08-S2 · AC1, AC2, AC3
  */
+import { type CommandContext, destructiveCommand } from './destructive-command.ts';
 import type { PermissionLevel } from './plan-graph.ts';
+import { binaryName, domainAllowed, hostOf, isLoopback, pathIsInside } from './scope.ts';
 
 /** AC2 — exactly three, and the union below has no fourth arm. */
 export const PERMISSION_OUTCOMES = ['allow', 'deny', 'gate'] as const;
@@ -88,11 +89,16 @@ export type PermissionDenyCode = (typeof PERMISSION_DENY_CODES)[number];
  *   domain allowlist; the detail is the host.
  * - `destructive-command` — the cheap syntactic second layer (§10.4): an
  *   identity- or infrastructure-boundary operation, gated regardless of level.
+ *   The detail names the rule that fired (`git-push-force`, `terraform-apply`).
+ * - `scrubbed-env` — the command references a variable KAR-08.4 removed from
+ *   the child environment; the detail is the variable name. It cannot work, so
+ *   the operator is asked rather than shown a confusing failure.
  */
 export const PERMISSION_GATE_CODES = [
   'not-allowlisted',
   'domain-not-allowlisted',
   'destructive-command',
+  'scrubbed-env',
 ] as const;
 
 export type PermissionGateCode = (typeof PERMISSION_GATE_CODES)[number];
@@ -156,44 +162,52 @@ export interface PermissionScope {
   /** Consulted only at `worktree+net`. A bare domain matches itself and any
    * subdomain of it. */
   readonly allowedDomains: readonly string[];
+  /**
+   * The variable names KAR-08.4 removed from the child environment, so a
+   * command that needs one can be gated with `scrubbed-env:<VARNAME>` instead
+   * of running and failing confusingly (AC5).
+   *
+   * Empty means nothing was removed — which is the truth at `full`, and the
+   * truth for a node whose level asked for no scrubbing — not "the check is
+   * off". Stated rather than defaulted: this is a safety boundary, and a scope
+   * that silently omits half of one is how a check stops being applied without
+   * anybody deciding to stop applying it.
+   */
+  readonly scrubbedEnv: readonly string[];
+}
+
+/**
+ * `DeFlow.config.ts`'s `commands` block (§10.3) — the repository's own verbs.
+ *
+ * The two optional members are optional because most repositories have nothing
+ * to say about them, and their absent value is the *closed* one: no read-only
+ * subset and no reachable domain.
+ */
+export interface CommandsConfig {
+  /** The project's actual verbs: `git`, `pnpm`, `pytest`, `cargo`, … */
+  readonly allow: readonly string[];
+  /** The subset a `read`-level node may run. Entries may be multi-word. */
+  readonly readOnly?: readonly string[];
+  /** Domains reachable at `worktree+net`. */
+  readonly allowDomains?: readonly string[];
+}
+
+/** The node's boundary, assembled from the repository's config and the two
+ * things only the run knows: where its worktree is, and what was scrubbed. */
+export function permissionScopeFrom(
+  commands: CommandsConfig,
+  node: { readonly worktree: string; readonly scrubbedEnv: readonly string[] },
+): PermissionScope {
+  return {
+    worktree: node.worktree,
+    allowlist: commands.allow,
+    readOnlyCommands: commands.readOnly ?? [],
+    allowedDomains: commands.allowDomains ?? [],
+    scrubbedEnv: node.scrubbedEnv,
+  };
 }
 
 // ── paths ────────────────────────────────────────────────────────────────────
-
-/**
- * POSIX `path.resolve` semantics, without `node:path` — core imports no
- * builtin (R1), and the containment rule is four lines of string handling.
- *
- * Windows is M3; the ACP fs methods carry POSIX-shaped absolute paths on the
- * two platforms M1 supports.
- */
-function resolvePosix(base: string, path: string): string {
-  const raw = path.startsWith('/') ? path : `${base}/${path}`;
-  const out: string[] = [];
-  for (const part of raw.split('/')) {
-    if (part === '' || part === '.') continue;
-    if (part === '..') {
-      out.pop();
-      continue;
-    }
-    out.push(part);
-  }
-  return `/${out.join('/')}`;
-}
-
-/**
- * Whether `path` is the worktree root or something beneath it, lexically.
- *
- * Segment-wise rather than by string prefix, so `<tmp>/wt-other` is not inside
- * `<tmp>/wt`. **Lexical only** — see the module note: a symlink inside the
- * worktree pointing at `/etc` satisfies this predicate, and KAR-08.2 is what
- * closes that by feeding it a `realpath`-resolved path.
- */
-export function pathIsInside(root: string, path: string): boolean {
-  const base = resolvePosix('/', root);
-  const target = resolvePosix(base, path);
-  return target === base || target.startsWith(base === '/' ? '/' : `${base}/`);
-}
 
 /** ACP's fs methods carry absolute paths. A relative one is not a path this
  * layer can reason about — notably `~/.aws/credentials`, which is a *shell*
@@ -206,17 +220,6 @@ function containment(root: string, path: string): PermissionReason<'path-escape'
 
 // ── commands ─────────────────────────────────────────────────────────────────
 
-/**
- * The binary the operator would recognise: `./node_modules/.bin/vitest` is
- * `vitest`. Allowlist matching is on this and never on the raw string, or the
- * repository's own tooling gates on every invocation and the gate budget
- * (§10.5) is blown by the second node.
- */
-export function binaryName(command: string): string {
-  const at = command.lastIndexOf('/');
-  return at === -1 ? command : command.slice(at + 1);
-}
-
 function matchesReadOnly(line: readonly string[], entries: readonly string[]): boolean {
   return entries.some((entry) => {
     const tokens = entry.split(' ').filter((token) => token !== '');
@@ -225,80 +228,7 @@ function matchesReadOnly(line: readonly string[], entries: readonly string[]): b
   });
 }
 
-/**
- * The cheap syntactic second layer, as far as KAR-08.1 needs it.
- *
- * Deliberately **not** static analysis of shell strings — that is undecidable
- * and gives false confidence (§10.4). These are identity- and
- * infrastructure-boundary binaries: the operations where §10.5 says a human
- * gate belongs, whatever the level. A `null` `subcommands` gates every
- * invocation of the binary.
- *
- * KAR-08.3 extends this table with `git push --force`, the `rm -r` depth rule,
- * the non-localhost database host, `prisma migrate deploy`, `drizzle-kit push`
- * and `flyway migrate`, plus the `scrubbed-env:<VAR>` check.
- */
-export const DESTRUCTIVE_COMMANDS: readonly {
-  readonly binary: string;
-  readonly subcommands: readonly string[] | null;
-}[] = [
-  { binary: 'terraform', subcommands: ['apply', 'destroy'] },
-  { binary: 'kubectl', subcommands: ['delete', 'apply'] },
-  { binary: 'aws', subcommands: null },
-  { binary: 'gcloud', subcommands: null },
-  { binary: 'az', subcommands: null },
-];
-
-function destructive(
-  binary: string,
-  args: readonly string[],
-): PermissionReason<'destructive-command'> | null {
-  for (const check of DESTRUCTIVE_COMMANDS) {
-    if (check.binary !== binary) continue;
-    if (check.subcommands === null) return { code: 'destructive-command', detail: binary };
-    const subcommand = args.find((arg) => !arg.startsWith('-'));
-    if (subcommand !== undefined && check.subcommands.includes(subcommand)) {
-      return { code: 'destructive-command', detail: `${binary}-${subcommand}` };
-    }
-  }
-  return null;
-}
-
 // ── network ──────────────────────────────────────────────────────────────────
-
-const URL_LIKE = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i;
-
-/** The host of a URL-shaped string, lowercased, port and userinfo removed, or
- * `null` when the string is not URL-shaped. Hand-rolled rather than `new URL`
- * because this must be total: an agent-supplied string that throws is a crash
- * on the safety path. */
-export function hostOf(value: string): string | null {
-  const match = URL_LIKE.exec(value);
-  if (match === null) return null;
-  const authority = (match[1] ?? '').slice((match[1] ?? '').lastIndexOf('@') + 1);
-  if (authority.startsWith('[')) {
-    const end = authority.indexOf(']');
-    return (end === -1 ? authority : authority.slice(0, end + 1)).toLowerCase();
-  }
-  const colon = authority.indexOf(':');
-  return (colon === -1 ? authority : authority.slice(0, colon)).toLowerCase();
-}
-
-/** §10.5's rule is "reaches a **non-localhost** host". A dev server on
- * 127.0.0.1 is inside the boundary, and gating it would be exactly the run
- * with 200 gates that the frequency argument forbids. */
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0', '[::]']);
-
-function isLoopback(host: string): boolean {
-  return LOOPBACK.has(host) || host.endsWith('.localhost');
-}
-
-function domainAllowed(host: string, allowed: readonly string[]): boolean {
-  return allowed.some((domain) => {
-    const entry = domain.toLowerCase();
-    return host === entry || host.endsWith(`.${entry}`);
-  });
-}
 
 /** The network row, shared by the `network` method and by a `terminal/create`
  * whose argv names a remote host. */
@@ -345,7 +275,17 @@ function decideTerminal(
     return { outcome: 'deny', reason: { code: 'level-read' } };
   }
 
-  const boundary = destructive(binary, args);
+  // §10.4's second layer, orthogonal to the ladder: an identity- or
+  // infrastructure-boundary operation is a question at every level, `full`
+  // included — `full` means "the provider allows it", not "DeFlow stops
+  // looking". Relative arguments resolve against where the command would
+  // actually run, which is the worktree unless the agent named another cwd.
+  const context: CommandContext = {
+    worktree: scope.worktree,
+    cwd: request.cwd ?? scope.worktree,
+    scrubbedEnv: scope.scrubbedEnv,
+  };
+  const boundary = destructiveCommand(request.command, args, context);
   if (boundary !== null) return { outcome: 'gate', reason: boundary };
 
   // An allowlisted `git` with a cwd outside the worktree is a full escape with

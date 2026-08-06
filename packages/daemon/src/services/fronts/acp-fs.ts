@@ -1,25 +1,11 @@
 /** The ACP front for `fs/*`: unwrap params, call ./../fs-service.ts, wrap the
  * result. No policy — see the service. ACP v2 deletes both methods from the
  * client, at which point this file is deleted and mcp-fs.ts is re-pointed.
- * KAR-08.2 AC7/AC8 — a refusal becomes a JSON-RPC error response, so the
- * agent's *request* fails and its session does not. The structured denial
- * rides on `data` rather than in the message, because the node inspector
- * renders it; `-32602` is what a refused parameter gets, ACP having no
- * permission-denied code. */
+ * KAR-08.2 AC7/AC8 — a refusal becomes a JSON-RPC error response; ./reject.ts
+ * owns how, and ./acp-terminal.ts uses the same one. */
 import type * as acp from '@agentclientprotocol/sdk';
-import { RequestError } from '@agentclientprotocol/sdk';
 import type { FsService } from '../fs-service.ts';
-import { PermissionDeniedError } from '../path-mediation.ts';
-
-const rejecting = async <T>(op: () => Promise<T>): Promise<T> => {
-  try {
-    return await op();
-  } catch (error) {
-    throw error instanceof PermissionDeniedError
-      ? new RequestError(-32602, error.message, { ...error.denial })
-      : error;
-  }
-};
+import { rejecting } from './reject.ts';
 
 export function acpFsHandlers(fs: FsService): Record<string, (params: never) => unknown> {
   return {
