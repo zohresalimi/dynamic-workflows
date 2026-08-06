@@ -12,6 +12,7 @@ import {
   appendEvents,
   appendIoChunks,
   drainEvents,
+  drainIoChunks,
   EVENT_TAIL_SQL,
   IO_CHUNK_TAIL_SQL,
   openLedger,
@@ -88,9 +89,12 @@ function seedControlPlane(db: Db, count: number): void {
   }
 }
 
+/** Bytes per `io_chunk` row, so the control below can prove it read them all. */
+const CHUNK_BYTES = 256;
+
 /** 500,000 data-plane rows for the same run. */
 function seedDataPlane(db: Db, count: number): void {
-  const data = new TextEncoder().encode('y'.repeat(256));
+  const data = new TextEncoder().encode('y'.repeat(CHUNK_BYTES));
   for (let batch = 0; batch < count; batch += 10_000) {
     appendIoChunks(
       db,
@@ -107,7 +111,7 @@ function seedDataPlane(db: Db, count: number): void {
 }
 
 suite('500k data-plane rows do not slow the fold (EPIC-03-S12, AC3)', () => {
-  it('folds 10,000 control-plane events beside 500,000 io_chunk rows in under 100 ms', ({
+  it('folds 10,000 control-plane events beside 500,000 io_chunk rows for a fraction of what reading that data plane costs', ({
     tmp,
   }) => {
     const db = openLedger(tmp);
@@ -123,9 +127,58 @@ suite('500k data-plane rows do not slow the fold (EPIC-03-S12, AC3)', () => {
 
       expect(state.seen).toBe(10_000);
       expect(state.completed).toBe(1000);
-      // Budget is ~3x the 29 ms the architecture measured, so a shared runner
-      // does not flake but a reducer that started reading io_chunk does fail.
-      expect(elapsed).toBeLessThan(100);
+
+      // The control, on the same machine seconds later: the data plane this
+      // fold refused to look at, drained through the same bounded reader. It is
+      // this spec's own regression measured directly — a reducer that started
+      // reading io_chunk would pay exactly this — so the two halves are the
+      // honest fold and the dishonest one, side by side.
+      //
+      // It runs through `db` rather than `watched` on purpose: the control must
+      // not appear in `sql`, which the statement assertions below read.
+      const controlStarted = performance.now();
+      let controlBytes = 0;
+      for (const chunk of drainIoChunks(db, { runId: RUN_A, nodeId: NODE, attempt: 1 })) {
+        controlBytes += chunk.data.byteLength;
+      }
+      const control = performance.now() - controlStarted;
+      // A control that read nothing would make the ceiling below meaningless,
+      // so it has to prove it read all 128 MB of it.
+      expect(controlBytes, 'the control must actually read the data plane').toBe(
+        500_000 * CHUNK_BYTES,
+      );
+
+      // The scenario's "under 100 ms on CI hardware", kept as the floor and
+      // expressed against that control above it. The flat number was measuring
+      // the box: this spec runs in the integration slice beside a hundred
+      // forked workers, several of them driving real subprocesses, and the same
+      // fold costs 6.8-8.3 ms idle but 24.8 ms beside a live full suite — and
+      // on the EPIC-07 gate run, 110.04 ms against the 100 ms ceiling. Nothing
+      // had touched the reducer; the box was busy. (S13 below went the same way
+      // and was fixed the same way.)
+      //
+      // The ratio is what is stable, because load moves both halves together
+      // and cancels. Measured 2026-08-06, 8 cores, better-sqlite3 in WAL:
+      // 0.0172, 0.0182, 0.0206 and 0.0220 idle, 0.0220 beside a live full suite
+      // and 0.0231 beside twelve CPU hogs — six samples inside a 1.34x spread
+      // while the absolute fold moved by 3.6x.
+      //
+      // A quarter is calibrated against the regression, not guessed. A fold
+      // that reaches into the data plane pays what the control pays, so its
+      // ratio is about 1: forced to drain io_chunk inside the timed region it
+      // measured 1.0534 idle and 1.0205 under twelve CPU hogs, and went red
+      // both times — by 4.0x and 4.1x — and green again on removal. So the
+      // ceiling sits ~11x above the worst honest sample and ~4x below a
+      // regressed one.
+      //
+      // The 100 ms floor is the scenario's own budget, kept intact: idle, a
+      // quarter of the control is ~95 ms, so a quiet machine is held to exactly
+      // the number EPIC-03 wrote down.
+      expect(
+        elapsed,
+        `draining the 500,000 io_chunk rows beside it took ${control.toFixed(0)} ms on this machine`,
+      ).toBeLessThan(Math.max(100, control / 4));
+
       // The stronger half of the same claim: it is not that the fold is fast
       // despite the data plane, it is that it never looks at it. The first
       // assertion is what stops the second from passing on an empty log.
@@ -134,7 +187,12 @@ suite('500k data-plane rows do not slow the fold (EPIC-03-S12, AC3)', () => {
     } finally {
       db.close();
     }
-  });
+    // The slice's 30 s default would be the old flat budget by the back door:
+    // this spec seeds 510,000 rows and then reads 128 MB of them back, and the
+    // point of it is that both halves are slow when the box is loaded. Measured
+    // end to end at 2.3 s idle and 6.4 s beside twelve CPU hogs, so 60 s is 9x
+    // the worst honest run where the default was 4.7x.
+  }, 60_000);
 
   it('folds a realistic ~2,000-event run in single-digit milliseconds', ({ tmp }) => {
     const db = openLedger(tmp);

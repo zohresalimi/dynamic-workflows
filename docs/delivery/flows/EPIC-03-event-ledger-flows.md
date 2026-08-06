@@ -450,7 +450,9 @@ Feature: Replay performance without snapshotting
   Scenario: 500k data-plane rows do not slow the fold
     Given a ledger seeded with 10,000 event rows and 500,000 io_chunk rows for one run
     When openAndReplay folds that run's control plane into RunState
-    Then it completes in under 100 ms on CI hardware
+    Then it costs at most a quarter of what draining those 500,000 io_chunk rows
+        costs, measured on the same machine seconds later
+    And it completes in under 100 ms whenever that quarter is more generous than 100 ms
     And the io_chunk table is never queried during the fold
 
   Scenario: a realistic run is single-digit milliseconds
@@ -468,6 +470,23 @@ no index to get wrong and no `kind` predicate to keep in sync. The CI budget is 
 measured figure so it catches a regression without flaking on a slow shared runner; roadmap **A1-1**
 notes those numbers came from Linux, likely overlayfs, so the macOS budget is set from M0-S5's
 re-measurement.
+
+**Amended 2026-08-06** (EPIC-07 gate): the first scenario asserted an absolute *under 100 ms on CI
+hardware* and flaked at **110.04 ms** in a full-suite run — the same failure mode as S13 below, and
+fixed the same way. The fold itself had not changed: measured on an 8-core macOS box it costs
+**6.8–8.3 ms** idle and **24.8 ms** beside a live full suite, so a flat ceiling three times an idle
+measurement is reporting how busy the machine is.
+
+It is now a ratio against a control run on the same machine seconds later — the 500,000 `io_chunk`
+rows the fold refused to look at, drained through the same bounded reader, which is this scenario's
+own regression measured directly. Six samples of `fold ÷ control` spanned **0.0172, 0.0182, 0.0206,
+0.0220** idle, **0.0220** beside a live full suite and **0.0231** beside twelve CPU hogs — a 1.34×
+spread while the absolute fold moved by 3.6×. A fold that does read the data plane pays what the
+control pays, so its ratio is about **1**: forced to drain `io_chunk` inside the timed region it
+measured **1.0534** idle and **1.0205** under load, and failed by 4.0× and 4.1×. The ceiling of a
+quarter therefore sits ~11× above the worst honest sample and ~4× below a regressed one. The
+scenario's 100 ms stays as the floor — a quarter of the idle control is ~95 ms — so a quiet machine
+is held to exactly the budget EPIC-03 wrote down.
 
 ---
 
