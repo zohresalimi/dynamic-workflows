@@ -99,3 +99,69 @@ export async function mergeTree(git: GitPort, a: string, b: string): Promise<Mer
 
   return { clean: false, paths: parsed.paths };
 }
+
+// ── KAR-07.7 — the same subcommand, without `--name-only` ────────────────────
+//
+// The second form lives here rather than beside its caller because the whole
+// package spells `'merge-tree'` in exactly one file (asserted by
+// ../../test/no-piped-git.test.ts), and that rule is what stops a second call
+// site being introduced somewhere that pipes the output and destroys the exit
+// code the conflict signal *is*.
+//
+// `--name-only` reduces the answer to "which paths"; §7.2 needs "and what does
+// the conflict look like", which is the stage entries plus the tree
+// `--write-tree` writes — a tree in which every conflicted file holds git's own
+// conflict-marked merge.
+
+/** The `--write-tree` form without `--name-only`: the stage lines are what
+ * `--name-only` throws away, and they are what §7.2 names as the source. */
+export const MERGE_TREE_STAGES_ARGS: readonly string[] = ['merge-tree', '--write-tree', '-z'];
+
+export function mergeTreeStagesArgs(a: string, b: string): string[] {
+  return [...MERGE_TREE_STAGES_ARGS, a, b];
+}
+
+/** One `<mode> <oid> <stage>\t<path>` entry. Stage 1 is the merge base, 2 is
+ * the first parent's side, 3 is the second's. */
+export interface ConflictStage {
+  readonly mode: string;
+  readonly oid: string;
+  readonly stage: number;
+  readonly path: string;
+}
+
+export interface MergeTreeStages {
+  /** The tree `--write-tree` wrote, in which each conflicted path holds git's
+   * own conflict-marked merge. */
+  readonly treeOid: string;
+  readonly stages: readonly ConflictStage[];
+}
+
+const STAGE_LINE = /^(?<mode>[0-7]{6}) (?<oid>[0-9a-f]{40,64}) (?<stage>[123])\t(?<path>.+)$/s;
+
+/**
+ * The stage section of `merge-tree --write-tree -z`, or `null` when stdout
+ * does not begin with a tree oid — the same structural signal
+ * `parseMergeTreeOutput` uses, and for the same reason: exit 1 alone cannot
+ * tell a conflict from an invocation that never ran.
+ */
+export function parseMergeTreeStages(stdout: string): MergeTreeStages | null {
+  const [treeOid, ...rest] = stdout.split('\0');
+  if (treeOid === undefined || !OID.test(treeOid)) return null;
+
+  const end = rest.indexOf('');
+  const entries = end === -1 ? rest.filter((field) => field !== '') : rest.slice(0, end);
+
+  const stages: ConflictStage[] = [];
+  for (const entry of entries) {
+    const groups = STAGE_LINE.exec(entry)?.groups;
+    if (groups === undefined) continue;
+    stages.push({
+      mode: groups.mode as string,
+      oid: groups.oid as string,
+      stage: Number(groups.stage),
+      path: groups.path as string,
+    });
+  }
+  return { treeOid, stages };
+}

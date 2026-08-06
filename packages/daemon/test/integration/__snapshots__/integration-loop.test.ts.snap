@@ -1,0 +1,23 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`EPIC-07-S27: a conflicting merge spawns a narrow resolution node (AC5, AC8) > assembles the same packet every time 1`] = `
+[
+  {
+    "kind": "tool.output",
+    "text": "shared.ts
+<<<<<<< DeFlow/int/r1
+region-a by n3
+=======
+region-a by n4
+>>>>>>> DeFlow/<worktree>",
+  },
+  {
+    "kind": "fact",
+    "text": "n4 intended: n4 rewrote its own region of the shared file",
+  },
+  {
+    "kind": "fact",
+    "text": "n3 intended: n3 rewrote its own region of the shared file",
+  },
+]
+`;
