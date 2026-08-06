@@ -10,6 +10,7 @@ import { migration0004ProviderCapabilities } from './0004-provider-capabilities.
 import { migration0005Process } from './0005-process.ts';
 import { migration0006EffectJournalGuards } from './0006-effect-journal-guards.ts';
 import { migration0007EffectScaffold } from './0007-effect-scaffold.ts';
+import { migration0008Worktrees } from './0008-worktrees.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
@@ -19,4 +20,5 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0005Process,
   migration0006EffectJournalGuards,
   migration0007EffectScaffold,
+  migration0008Worktrees,
 ];

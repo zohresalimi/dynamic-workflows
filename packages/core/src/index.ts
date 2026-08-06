@@ -88,6 +88,7 @@ export type {
   EventPayloadOf,
   LockReleaseReason,
   RunOutcome,
+  WorktreeOccupantKind,
 } from './event-payloads.ts';
 export {
   BUDGET_DIMENSIONS,
@@ -151,6 +152,11 @@ export {
   RunSpecApprovedSchema,
   RunStalledSchema,
   RunStartedSchema,
+  WORKTREE_OCCUPANT_KINDS,
+  WorkspaceBranchOccupiedSchema,
+  WorkspaceReconciledSchema,
+  WorkspaceWorktreeCreatedSchema,
+  WorkspaceWorktreeRemovedSchema,
 } from './event-payloads.ts';
 // KAR-02.7 — the envelope and the total, forward-compatible reader.
 export type { Event, EventEnvelope, ParseEventResult } from './events.ts';
