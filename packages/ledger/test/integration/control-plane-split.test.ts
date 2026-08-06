@@ -291,18 +291,43 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
       seedControlPlane(db, 500_000);
       const statement = db.prepare<{ seq: number }>(EVENT_TAIL_SQL);
 
+      /**
+       * The box's own tail, sampled inside the same loop as the queries.
+       *
+       * A recursive CTE counting to 5,000 is pure arithmetic inside SQLite: it
+       * reads no table, so no index and no query plan can change what it costs,
+       * and 5,000 makes one of them about half a millisecond against a tail
+       * query's fifth of one. Being the same order of magnitude is the whole
+       * requirement — what it measures is how often the scheduler takes the CPU
+       * away *during a sub-millisecond window*, and a probe a hundred times
+       * shorter than the subject would be hit a hundred times less often and
+       * would report a tail that is not the subject's.
+       */
+      const noise = db.prepare<{ counted: number }>(
+        'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 5000) ' +
+          'SELECT count(*) AS counted FROM c',
+      );
+
       let cursor = 0;
       const each: number[] = [];
-      const started = performance.now();
+      const scheduler: number[] = [];
       for (let query = 0; query < 1000; query++) {
         const before = performance.now();
         const rows = statement.all(RUN_A, cursor, 500);
         each.push(performance.now() - before);
         cursor = rows.at(-1)?.seq ?? 0;
+
+        const noiseBefore = performance.now();
+        noise.all();
+        scheduler.push(performance.now() - noiseBefore);
       }
-      const perQuery = (performance.now() - started) / 1000;
+      // Summed from the samples rather than read off the wall clock, because the
+      // wall clock now spans the interleaved probe as well.
+      const perQuery = each.reduce((total, sample) => total + sample, 0) / 1000;
 
       expect(cursor).toBe(500_000);
+      // A probe that never ran would make the two ceilings below meaningless.
+      expect(scheduler, 'the scheduler probe must have been sampled too').toHaveLength(1000);
 
       // The control: the same query over the same 500,000 rows on the same
       // machine seconds later, with only the property under test taken away —
@@ -324,30 +349,66 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
       // a factor of ~135. 25 is the floor, not the expectation.
       expect(perQuery * 25).toBeLessThan(controlPerQuery);
       // The scenario's "no single query exceeds 5 ms", asserted at p99 rather
-      // than at the maximum, and against the same control as the ratio above
-      // rather than as a flat number of milliseconds. The integration slice
-      // runs several heavy specs in parallel forks, so a query here and there
-      // meets a GC pause or the OS descheduling the worker — an outlier that
-      // measures the scheduler, not the query plan.
+      // than at the maximum. The integration slice runs several heavy specs in
+      // parallel forks, so a query here and there meets a GC pause or the OS
+      // descheduling the worker — an outlier that measures the scheduler, not
+      // the query plan.
       //
-      // Both flat ceilings had already been overtaken by that: measured
-      // 2026-08-06 over four samples beside a live integration slice, the p99
+      // Both of these were flat millisecond ceilings until 2026-08-06 and were
+      // demonstrably measuring the box: beside a live integration slice the p99
       // ran 2.7, 3.5, 5.8 and 8.5 ms against a 5 ms ceiling, and the worst
-      // single query ran 21.6, 54.6, 67.2 and 76.4 ms against a 100 ms one.
-      // Idle the same spec measures a p99 of 0.23 ms and a worst query of
-      // 1.9 ms, so what those ceilings were catching was the box.
+      // single query 21.6, 54.6, 67.2 and 76.4 ms against a 100 ms one, where
+      // idle the same spec measures 0.23 ms and 1.9 ms.
       //
-      // Expressed against the control, the separation is wide and stable: the
-      // p99 was 0.008 of one control query idle and 0.028, 0.041, 0.061 and
-      // 0.108 of it loaded, where a tail query that lost its index would cost
-      // about a whole one. A quarter is 2.3x above the worst honest sample and
-      // 4x below a regression. Both floors are the scenario's own numbers, so
-      // a quiet machine is still held to exactly what it was.
+      // Expressing them against `controlPerQuery` was the first fix and it was
+      // not enough: the p99 went red again at 0.348 of the control where the
+      // worst sample behind that ceiling had been 0.108. The reason is that the
+      // two halves are not the same kind of number. The subject is the *tail* of
+      // a thousand fifth-of-a-millisecond samples; the control is the *mean* of
+      // three 28 ms ones. Scheduler noise is additive — a 10 ms stall lands
+      // whole on whichever sample it hits — so it moves a tail of tiny samples
+      // enormously and a mean of large ones barely at all, and no constant makes
+      // that a ratio.
+      //
+      // So the tail is measured against a tail, sampled in the same loop: the
+      // scheduler probe above, which is the same order of duration, is sampled
+      // the same thousand times, and cannot be touched by a query plan. What it
+      // reports is exactly the term that was inflating the p99, and it is added
+      // to the ceiling rather than divided into it, because that is how the
+      // noise enters.
+      //
+      // Measured 2026-08-06, 8 cores, better-sqlite3 in WAL, thirteen honest
+      // samples. Idle, a p99 of 0.216-0.266 ms against a probe p99 of 0.50-0.53
+      // and a ceiling of ~7.5 — 29x of headroom. Under twelve CPU hogs, a p99 of
+      // 1.34, 6.53, 8.66 and 9.98 against probe p99s of 12.4-14.9, ceilings of
+      // 25-34, closest margin 3.2x. Beside a live integration slice, 4.69, 7.33,
+      // 8.35, 17.04 and 22.37 against probe p99s of 3.0-37.2, ceilings of 23-84,
+      // closest margin 3.7x. The probe's own p99 reaching 37 ms while the median
+      // query stayed at 0.6 ms is the finding: the tail was the box.
+      //
+      // Calibrated against the regression, not guessed. The tail query forced
+      // onto the plan the specs above forbid — the same `seq + 0` the control
+      // uses — measured a p99 of 26.86 ms against a 7.10 ceiling idle and 80.07
+      // against a 34.21 ceiling under twelve hogs, failing by 3.8x and 2.3x. So
+      // the ceiling sits at worst 3.2x above an honest sample and 2.3x below a
+      // regressed one.
+      //
+      // Both floors are the scenario's own numbers, kept intact: idle the probe
+      // contributes half a millisecond and a quarter of the control is ~7 ms, so
+      // a quiet machine is held to what it always was.
       const sorted = [...each].sort((left, right) => left - right);
       const p99 = sorted[989] ?? Infinity;
-      const note = `one control query cost ${controlPerQuery.toFixed(1)} ms on this machine`;
-      expect(p99, note).toBeLessThan(Math.max(5, controlPerQuery / 4));
-      expect(Math.max(...each), note).toBeLessThan(Math.max(100, controlPerQuery * 2));
+      const schedulerSorted = [...scheduler].sort((left, right) => left - right);
+      const schedulerP99 = schedulerSorted[989] ?? 0;
+      const schedulerWorst = Math.max(...scheduler);
+      const note =
+        `one control query cost ${controlPerQuery.toFixed(1)} ms on this machine, and the ` +
+        `scheduler probe beside these queries ran to ${schedulerP99.toFixed(1)} ms at p99 and ` +
+        `${schedulerWorst.toFixed(1)} ms at worst`;
+      expect(p99, note).toBeLessThan(Math.max(5, controlPerQuery / 4) + schedulerP99);
+      expect(Math.max(...each), note).toBeLessThan(
+        Math.max(100, controlPerQuery * 2) + schedulerWorst,
+      );
     } finally {
       db.close();
     }
