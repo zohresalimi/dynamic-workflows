@@ -418,6 +418,54 @@ export const WorkspaceBranchOccupiedSchema = z.strictObject({
   occupantKind: z.enum(WORKTREE_OCCUPANT_KINDS),
 });
 
+/** One entry of `git status --porcelain=v2 -z`, as the salvage path parsed it.
+ * `origPath` is set only for a rename or a copy, and `xy` is `null` for an
+ * untracked or ignored entry, because git prints those without a code. */
+export const WorkspaceStatusEntrySchema = z.strictObject({
+  kind: z.enum(['changed', 'renamed', 'unmerged', 'untracked', 'ignored']),
+  xy: z.string().min(1).nullable(),
+  path: z.string().min(1),
+  origPath: z.string().min(1).nullable(),
+});
+
+/**
+ * What the agent left behind, captured **before** anything was committed or
+ * removed (§4.4, KAR-07.4 AC1).
+ *
+ * This is the evidence, and its position in the ledger is half of what it says:
+ * it is appended off the `status --porcelain=v2 -z` read alone, while the
+ * worktree is still dirty and still on disk, so a reader can tell that DeFlow
+ * looked before it acted. A summary written after the salvage commit would be
+ * indistinguishable from one written after a blind `--force`.
+ */
+export const WorkspaceDirtyOnRemoveSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** Non-empty by construction: a clean worktree never produces this event —
+   * which is also why a worktree holding only gitignored files does not (AC5). */
+  entries: z.array(WorkspaceStatusEntrySchema).min(1),
+});
+
+/**
+ * The work is now recoverable by ref (§4.4 step 2, KAR-07.4 AC2).
+ *
+ * `oid` is the whole point: `--force` becomes acceptable only once this event
+ * is durable, so this row is the precondition of the removal that follows it,
+ * not a note about one. `branch` is where the commit actually landed — the
+ * node's own branch normally, and a throwaway `DeFlow/salvage/<runId>__<nodeId>`
+ * when `detached` is true, because a detached read-node checkout has no branch
+ * for a commit to advance.
+ */
+export const WorkspaceWipSalvagedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  branch: z.string().min(1),
+  detached: z.boolean(),
+  oid: z.string().regex(/^[0-9a-f]{40,64}$/),
+  /** How many status entries the commit swept up. */
+  files: z.number().int().nonnegative(),
+});
+
 /**
  * Removing the worktree must never remove the work (§4.4, F5.5).
  *
@@ -712,6 +760,8 @@ export const EVENT_SCHEMAS = {
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
   'workspace.worktree_created': { v: 1, payload: WorkspaceWorktreeCreatedSchema },
   'workspace.branch_occupied': { v: 1, payload: WorkspaceBranchOccupiedSchema },
+  'workspace.dirty_on_remove': { v: 1, payload: WorkspaceDirtyOnRemoveSchema },
+  'workspace.wip_salvaged': { v: 1, payload: WorkspaceWipSalvagedSchema },
   'workspace.worktree_removed': { v: 1, payload: WorkspaceWorktreeRemovedSchema },
   'workspace.reconciled': { v: 1, payload: WorkspaceReconciledSchema },
   'effect.started': { v: 1, payload: EffectStartedSchema },

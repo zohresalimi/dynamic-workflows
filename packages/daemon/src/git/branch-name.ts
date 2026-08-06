@@ -79,3 +79,29 @@ export function integrationBranch(runId: string): string {
   assertBranchSafe('runId', runId);
   return `DeFlow/int/${runId}`;
 }
+
+/**
+ * KAR-07.4 AC6 — where a **detached** node's salvage commit goes.
+ *
+ * A read node is checked out with `--detach` (§4.1), so when one is somehow
+ * left dirty there is no branch for `git commit` to advance and nothing for the
+ * work to be recoverable by. This composes the throwaway ref it lands on
+ * instead. Throwaway is the word: nothing merges it, and its only job is that
+ * `git show DeFlow/salvage/<runId>__<nodeId>` still answers after the worktree
+ * is gone.
+ *
+ * The `DeFlow/salvage/` prefix cannot collide with anything `nodeBranch`
+ * produces, for exactly D13's reason: every node branch is a *file* named
+ * `<runId>__<nodeId>` directly under `refs/heads/DeFlow/`, and no id pair can
+ * compose to the bare name `salvage`, because the `__` separator is always
+ * there. Same argument as `DeFlow/int/`.
+ *
+ * The composed value only ever reaches git behind the `--` separator
+ * ./worktree-salvage.ts writes (`git branch -- <name> <oid>`), which is
+ * KAR-07.3 AC6's rule; it is never handed to a bare positional slot.
+ */
+export function salvageBranch(runId: string, nodeId: string): string {
+  assertBranchSafe('runId', runId);
+  assertBranchSafe('nodeId', nodeId);
+  return `DeFlow/salvage/${runId}__${nodeId}`;
+}

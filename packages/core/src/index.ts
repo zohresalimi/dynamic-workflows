@@ -154,7 +154,10 @@ export {
   RunStartedSchema,
   WORKTREE_OCCUPANT_KINDS,
   WorkspaceBranchOccupiedSchema,
+  WorkspaceDirtyOnRemoveSchema,
   WorkspaceReconciledSchema,
+  WorkspaceStatusEntrySchema,
+  WorkspaceWipSalvagedSchema,
   WorkspaceWorktreeCreatedSchema,
   WorkspaceWorktreeRemovedSchema,
 } from './event-payloads.ts';

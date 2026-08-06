@@ -188,6 +188,23 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     occupiedBy: '/tmp/repo',
     occupantKind: 'main-checkout',
   },
+  'workspace.dirty_on_remove': {
+    node: NODE,
+    path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,
+    entries: [
+      { kind: 'changed', xy: '.M', path: 'src/a.ts', origPath: null },
+      { kind: 'renamed', xy: 'R.', path: 'src/new name.ts', origPath: 'src/old name.ts' },
+      { kind: 'untracked', xy: null, path: 'src/new.ts', origPath: null },
+    ],
+  },
+  'workspace.wip_salvaged': {
+    node: NODE,
+    path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,
+    branch: `DeFlow/${RUN_ID}__${NODE}`,
+    detached: false,
+    oid: BARE_SHA.slice(0, 40),
+    files: 3,
+  },
   'workspace.worktree_removed': {
     node: NODE,
     path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,

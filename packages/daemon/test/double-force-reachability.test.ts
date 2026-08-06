@@ -28,6 +28,9 @@ const SRC = fileURLToPath(new URL('../src/', import.meta.url));
  * worktree removal can reach. */
 const ENTRY = resolve(SRC, 'git/worktree-manager.ts');
 const FORCE_REMOVE = resolve(SRC, 'git/worktree-force-remove.ts');
+/** KAR-07.4's salvage module — the one place on this path that may spell a
+ * *single* `--force`, and only as step 3 of §4.4's sequence. */
+const SALVAGE = resolve(SRC, 'git/worktree-salvage.ts');
 
 const RELATIVE_IMPORT = /from\s+'(\.[^']+)'/g;
 
@@ -60,13 +63,25 @@ suite('the double force is unreachable from the node-completion path', () => {
     expect([...graph].filter((file) => file === FORCE_REMOVE)).toEqual([]);
   });
 
-  it('contains no force flag literal anywhere in the graph', () => {
-    const offenders = [...graph].filter((file) => {
-      const source = readFileSync(file, 'utf8');
-      return source.includes(`'-f'`) || source.includes(`'--force'`);
-    });
+  it('contains no short -f anywhere in the graph, which is what the double force is spelled with', () => {
+    const offenders = [...graph].filter((file) => readFileSync(file, 'utf8').includes(`'-f'`));
 
     expect(offenders.map((file) => relative(SRC, file))).toEqual([]);
+  });
+
+  it('spells --force in exactly one module: KAR-07.4’s salvage step 3', () => {
+    // KAR-07.4 makes a *single* `--force` legitimate on this path, but only
+    // after the `workspace.wip_salvaged` event is durable (§4.4). Keeping it to
+    // one named module is what keeps "force is reachable only through the
+    // salvage" a fact about the import graph rather than a comment — the same
+    // technique the reaper's double force uses, one level less strict.
+    const offenders = [...graph].filter(
+      (file) => file !== SALVAGE && readFileSync(file, 'utf8').includes(`'--force'`),
+    );
+
+    expect(offenders.map((file) => relative(SRC, file))).toEqual([]);
+    expect(graph.has(SALVAGE)).toBe(true);
+    expect(readFileSync(SALVAGE, 'utf8')).toContain(`'--force'`);
   });
 });
 
