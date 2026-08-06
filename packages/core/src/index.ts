@@ -137,6 +137,7 @@ export {
   NodeStartedSchema,
   NodeSuspendedSchema,
   NodeUnschedulableSchema,
+  PermissionDeniedSchema,
   PinIntegrityViolatedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -144,6 +145,8 @@ export {
   PlanProposedSchema,
   ProviderProbedSchema,
   ProviderRateLimitedSchema,
+  // KAR-08.2 — the ceiling on the agent-supplied path a denial keeps verbatim.
+  REQUESTED_PATH_MAX,
   RUN_NEEDS_HUMAN_REASONS,
   RUN_OUTCOMES,
   RunCancelRequestedSchema,

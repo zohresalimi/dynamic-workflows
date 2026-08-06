@@ -333,6 +333,7 @@ export { acpTerminalHandlers } from './services/fronts/acp-terminal.ts';
 // thin ACP fronts wired into the client. ACP v2 deletes the fronts; the
 // services outlive them.
 export type {
+  FsIo,
   FsService,
   FsServiceOptions,
   PathPolicy,
@@ -340,6 +341,26 @@ export type {
   WriteTextRequest,
 } from './services/fs-service.ts';
 export { createFsService } from './services/fs-service.ts';
+// KAR-08.2 — the fs half of the ladder: the agent's path resolved against the
+// node's worktree, `realpath`ed, and decided before anything is opened.
+export type {
+  PathDenial,
+  PathEscapeRoute,
+  PathFs,
+  PathMediation,
+  PathMediator,
+  PathMediatorPorts,
+  PathMethod,
+  WorktreePathPolicyOptions,
+} from './services/path-mediation.ts';
+export {
+  createPathMediator,
+  nodePathFs,
+  PATH_ESCAPE_ROUTES,
+  PermissionDeniedError,
+  permissionDeniedPayload,
+  worktreePathPolicy,
+} from './services/path-mediation.ts';
 // KAR-08.1 — the decider that answers `session/request_permission` from
 // @DeFlow/core's ladder, auto-answering routine requests and escalating only
 // the gated categories.

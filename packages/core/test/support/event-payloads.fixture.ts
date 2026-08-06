@@ -178,6 +178,14 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     permission: 'worktree',
     reason: 'mediatedExecution:false',
   },
+  'permission.denied': {
+    node: NODE,
+    attempt: 0,
+    permission: 'worktree',
+    method: 'fs/write_text_file',
+    requested: '../../etc/passwd',
+    reason: { code: 'path-escape', detail: 'traversal' },
+  },
   'node.cancelled': { node: NODE, attempt: 1, result: { status: 'cancelled', by: 'user' } },
   'node.cancel.stage': {
     node: NODE,

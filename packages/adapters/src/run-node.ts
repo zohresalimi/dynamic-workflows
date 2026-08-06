@@ -713,6 +713,13 @@ export async function runAcpNode(
         if (request.resume === undefined) {
           const builder = ctx.buildSession({
             cwd: request.worktree,
+            // KAR-08.2 AC6 — present and empty, at every level. DeFlow's own
+            // mediation is what enforces the boundary (EPIC-08), and this is
+            // the defence in depth beside it: a vendor that honours the field
+            // has been told that nothing outside the worktree is in scope,
+            // even nominally. Omitting it means the same thing to a compliant
+            // agent and nothing at all to a reader of the transcript.
+            additionalDirectories: [],
             mcpServers: [...request.mcpServers],
           });
           turn.newSessionRequest = builder.toRequest();

@@ -420,6 +420,16 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     /**
+     * KAR-08.2 AC7/AC8. Also no transition, and for a stronger reason than
+     * above: a denial is explicitly **not** a failure. The agent receives the
+     * rejection and carries on, so a node that had one is still running, and
+     * anything that moved it here would turn "the safety model worked" into
+     * "the node broke".
+     */
+    case 'permission.denied':
+      return null;
+
+    /**
      * The effect journal is its own table (§8.3) and its own read model — a
      * memoised effect *result* is not run state, and duplicating it here would
      * give the same fact two homes that can disagree.

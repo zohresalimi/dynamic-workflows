@@ -9,21 +9,47 @@
  * re-pointed at this service and `fronts/acp-fs.ts` is deleted. That is only a
  * deletion if none of the security-sensitive code was ever in the front.
  *
- * What is here at M1 is real: real reads, real writes, paths resolved against
- * the node's worktree, and a `PathPolicy` seam. What is deliberately **not**
- * here is the policy behind that seam — path-scope enforcement (F5.3) and the
- * permission ladder are EPIC-08 (KAR-08.2, KAR-08.3). `createFsService` takes
- * the policy as a required-by-design port with a documented open default, so
- * that wiring it into a running daemon is a decision someone has to make
- * rather than something that already happened by omission.
+ * KAR-08.2 filled in the `PathPolicy` seam EPIC-05 left open, and in doing so
+ * changed its shape for one reason worth stating: **the policy resolves the
+ * path, and the service touches nothing else.** A service that resolved the
+ * path itself and then asked the policy whether it liked the result would have
+ * two resolutions of the same string — and the one the filesystem sees would
+ * be the one nobody checked. Resolve once, decide on the result, act on the
+ * result. See ./path-mediation.ts.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 
-/** What EPIC-08 plugs in. Throws to refuse; returns to allow. */
+/**
+ * What EPIC-08 plugs in: the agent's requested path in, the absolute path to
+ * actually touch out. Throwing refuses the request — ./path-mediation.ts
+ * throws `PermissionDeniedError`, which the ACP front turns into a rejection.
+ */
 export interface PathPolicy {
-  authorize(operation: 'read' | 'write', absolutePath: string): void;
+  resolve(operation: 'read' | 'write', requestedPath: string): Promise<string>;
 }
+
+/**
+ * The filesystem itself, as a port.
+ *
+ * Not a mocking seam — the default below is the real thing. It exists because
+ * EPIC-08-S10's claim is a *negative* one: a denied read must never open the
+ * file, and "the bytes were never in this process" is not observable from
+ * outside without a double that can say "zero opens".
+ */
+export interface FsIo {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
+  mkdir(path: string): Promise<void>;
+}
+
+const nodeFsIo: FsIo = {
+  readFile: (path) => readFile(path, 'utf8'),
+  writeFile: (path, content) => writeFile(path, content, 'utf8'),
+  mkdir: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
+};
 
 export interface FsServiceOptions {
   /** The node's worktree. Relative paths resolve against it. */
@@ -34,6 +60,7 @@ export interface FsServiceOptions {
    * is what supplies it.
    */
   readonly policy?: PathPolicy;
+  readonly io?: FsIo;
 }
 
 export interface ReadTextRequest {
@@ -64,23 +91,30 @@ function window(content: string, line: number | null, limit: number | null): str
 
 export function createFsService(options: FsServiceOptions): FsService {
   const root = resolve(options.root);
-  const within = (path: string): string => (isAbsolute(path) ? resolve(path) : resolve(root, path));
+  const io = options.io ?? nodeFsIo;
+  /** The policy's answer is the path, always. The unpoliced fallback is the
+   * documented open default, and the *only* place this service resolves
+   * anything itself. */
+  const within = async (operation: 'read' | 'write', path: string): Promise<string> =>
+    options.policy === undefined
+      ? isAbsolute(path)
+        ? resolve(path)
+        : resolve(root, path)
+      : await options.policy.resolve(operation, path);
 
   return {
     async readText(request) {
-      const path = within(request.path);
-      options.policy?.authorize('read', path);
-      const content = await readFile(path, 'utf8');
+      const path = await within('read', request.path);
+      const content = await io.readFile(path);
       return window(content, request.line ?? null, request.limit ?? null);
     },
     async writeText(request) {
-      const path = within(request.path);
-      options.policy?.authorize('write', path);
+      const path = await within('write', request.path);
       // The agent asked for a file, not for a directory tree; creating the
       // parent is what makes "write the report to docs/out/report.md" work on
       // a fresh worktree.
-      await mkdir(resolve(path, '..'), { recursive: true });
-      await writeFile(path, request.content, 'utf8');
+      await io.mkdir(resolve(path, '..'));
+      await io.writeFile(path, request.content);
     },
   };
 }

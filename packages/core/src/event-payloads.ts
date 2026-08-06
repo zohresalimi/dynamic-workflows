@@ -369,6 +369,48 @@ export const NodeUnschedulableSchema = z.strictObject({
 });
 
 /**
+ * The longest requested path this record keeps verbatim.
+ *
+ * 4096 rather than `SINGLE_LINE_MAX`, and not `singleLine()` at all, because
+ * the value is the **agent's own string**: `PATH_MAX` is 4096 on Linux, and a
+ * POSIX filename may legally contain a newline. A schema that refused one
+ * would mean an attacker could make a denial unrecordable by choosing a funny
+ * filename, which is a worse failure than a long value in a payload nobody
+ * renders as a log line.
+ */
+export const REQUESTED_PATH_MAX = 4096;
+
+/**
+ * KAR-08.2 AC7 — a mediated request that was refused, as the node inspector
+ * needs to render it.
+ *
+ * Structured, not a sentence. The inspector renders `path-escape:symlink`
+ * differently from `level-read`, KAR-08.3's gate budget counts by code, and
+ * `requested` has to stay the agent's own string so that "what did it ask
+ * for" and "what did that resolve to" remain two different questions. A prose
+ * `message` field would make all three impossible, and it is the shape every
+ * implementation reaches for first.
+ *
+ * `permission` is the level the request was decided at, so a denial can be
+ * read without joining back to `node.scheduled`.
+ */
+export const PermissionDeniedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  /** The level the request was decided at. */
+  permission: PermissionLevelSchema,
+  /** The ACP method DeFlow mediated, in `PermissionRequest`'s own vocabulary. */
+  method: z.enum(['fs/read_text_file', 'fs/write_text_file', 'terminal/create', 'network']),
+  /** Verbatim, before any resolution — see `REQUESTED_PATH_MAX`. */
+  requested: z.string().max(REQUESTED_PATH_MAX),
+  /** `PermissionReason`: a code plus an optional route, binary or host. */
+  reason: z.strictObject({
+    code: z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a reason code, not prose'),
+    detail: singleLine().optional(),
+  }),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -923,6 +965,7 @@ export const EVENT_SCHEMAS = {
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
+  'permission.denied': { v: 1, payload: PermissionDeniedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
