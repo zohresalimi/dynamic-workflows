@@ -18,8 +18,8 @@
 | **Scenarios**                   | 635                                                                                          |
 | **Estimated size**              | **~310 working days** (sum of the epics' own declared totals)                                |
 | **Longest dependency chain**    | **~228 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17          |
-| **P0 requirements in M1 scope** | 56 functional + NF1–NF10 + AR-1                                                              |
-| **Uncovered P0 requirements**   | **1 — F3.3** (see [§5](#5-prd-requirement-coverage-matrix))                                  |
+| **P0 requirements in M1 scope** | 55 functional + NF1–NF10 + AR-1 — F3.3 moved to M2 on 2026-08-06                             |
+| **Uncovered P0 requirements**   | **0** — F3.3 was the one gap and is now out of the M1 line (see [§7.1](#71-the-one-uncovered-requirement)) |
 | **Traceability breaks**         | **0** — the three the first reconciliation found are fixed (see [§6](#6-traceability-check)) |
 
 **Status counts**
@@ -349,7 +349,7 @@ All 137 stories, in epic order. `Verified by` is the story's own declaration; §
 | F2.6     | Every plan version retained and scrubbable                                                 | KAR-02.1, KAR-02.9, KAR-11.3, KAR-11.5, KAR-15.6, KAR-17.2                                                                                                     | Covered                                                                                                                                                                                                                                                                             |
 | F3.1     | ACP-first — DeFlow is an ACP client                                                        | KAR-00.1, KAR-00.7, KAR-05.1, KAR-05.3, KAR-05.6                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
 | F3.2     | CLI shim fallback for non-ACP agents                                                       | KAR-00.7, KAR-04.6, KAR-05.8                                                                                                                                   | **At risk** — KAR-05.8 is EPIC-05's named scope-cut candidate; if it is deferred (the epic's own Risks row costs it at −4–5 days) F3.2 goes **knowingly unmet at M1** and only the _test_ shim KAR-04.6 remains.                                                                    |
-| **F3.3** | **Direct API adapter** when the user supplies their own key                                | —                                                                                                                                                              | **UNCOVERED**                                                                                                                                                                                                                                                                       |
+| **F3.3** | **Direct API adapter** when the user supplies their own key                                | — (KAR-05.10, M2)                                                                                                                                              | **Moved to M2 on 2026-08-06** — PRD §11's M1 line amended to `F3.1, F3.2, F3.4–F3.7`. Not an M1 gap; see [§7.1](#71-the-one-uncovered-requirement).                                                                                                                                 |
 | F3.4     | Adapter conformance suite — the fixed battery, run on `doctor`                             | KAR-00.1, KAR-04.2, KAR-04.3, KAR-04.5, KAR-04.6, KAR-05.4, KAR-05.7, KAR-05.8, KAR-18.4                                                                       | Covered                                                                                                                                                                                                                                                                             |
 | F3.5     | Capability manifest per adapter; planner cannot schedule against an unsupported capability | KAR-00.1, KAR-02.8, KAR-04.4, KAR-05.2, KAR-05.5, KAR-11.1, KAR-11.2, KAR-15.6, KAR-18.4                                                                       | Covered                                                                                                                                                                                                                                                                             |
 | F3.6     | Pin and record the exact CLI version per run; warn on drift                                | KAR-05.2, KAR-05.3, KAR-05.7, KAR-15.6, KAR-18.4                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
@@ -395,7 +395,9 @@ All 137 stories, in epic order. `Verified by` is the story's own declaration; §
 | F10.8    | Acceptance criteria board with live status and gate evidence                               | KAR-12.4, KAR-17.7                                                                                                                                             | Covered                                                                                                                                                                                                                                                                             |
 | F10.9    | Run timeline — Gantt of parallel agents with cost overlaid                                 | KAR-14.1, KAR-16.1, KAR-16.3, KAR-16.5, KAR-17.8                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
 
-**55 of 56 P0 functional requirements are covered. 1 is not: F3.3.**
+**All 55 P0 functional requirements in the M1 line are covered.** F3.3 was the 56th and the only gap; it
+moved to M2 on 2026-08-06 and PRD §11's M1 line was amended to match, so the backlog now delivers M1 as
+the PRD defines it.
 
 ### 5.2 Non-functional requirements and AR-1
 
@@ -481,7 +483,7 @@ silently — but it does not make the gap smaller.
 
 **What it meant:** as originally written, this backlog did not deliver M1 as PRD §11 defines M1.
 
-**Resolved — option 2 was taken.** [KAR-05.10 — Direct API adapter on a user-supplied
+**Step 1 — option 2 was drafted.** [KAR-05.10 — Direct API adapter on a user-supplied
 key](./epics/EPIC-05-provider-adapters.md) was added: `M`, `P0`, one vendor, `read`-level only, behind an
 explicit per-provider opt-in in `.DeFlow/config.yaml`, verified by EPIC-05-S33/S34/S35. It is shaped to
 respect both of the architecture's objections rather than overrule them — the AR-1 concern is answered by
@@ -489,15 +491,24 @@ requiring explicit consent (a key present in the environment is _not_ consent) a
 sentinel test proving the key never reaches disk, and the unverified-package concern is answered by
 leaving the package choice to the story and recording it in the tech stack when made.
 
-It also buys something the ACP-only backlog could not: the capability manifest and the conformance
-battery were both designed against ACP, so until a non-subprocess adapter passes them unmodified,
-"provider-neutral adapter abstraction" is an untested claim.
+**Step 2 — RESOLVED 2026-08-06 (owner): option 1 was taken instead.** PRD §11's M1 line now reads
+`F3.1, F3.2, F3.4–F3.7`, F3.3 is listed under M2, and KAR-05.10 is retained in the EPIC-05 file in full as
+the **M2 specification** with a decision note at its head. It has no Linear issue by design — Linear
+tracks M1. The reasoning is recorded in the PRD itself, not only here: no HTTP client package was ever
+selected, and a direct API adapter inverts the AR-1 credential posture, which at M1 keeps DeFlow holding
+no credential of any kind.
 
-**The alternative remains open and is legitimate.** If the author would rather not build it at M1,
-option 1 — amend PRD §11 to `F3.1, F3.2, F3.4–F3.7` and move F3.3 to M2 with the AR-1 reasoning attached
-— is the honest way to close the gap, and EPIC-05's argument is genuinely strong. What is not legitimate
-is leaving F3.3 in the M1 line with nothing delivering it. Either way, **record the decision** — this is
-the "three quiet cuts" failure mode the [delivery plan §9](./README.md#9-changing-the-plan) warns about.
+**The cost is accepted explicitly rather than absorbed silently.** The capability manifest and the
+conformance battery were both designed against ACP, so until a non-subprocess adapter passes them
+unmodified, **"provider-neutral adapter abstraction" remains an untested claim at M1** — the abstraction
+may be provider-neutral or it may be merely ACP-shaped, and nothing in the M1 backlog distinguishes the
+two. Downstream consequence: EPIC-09's KAR-09.7 tier-3 exact token counting is reachable only through this
+adapter, so at M1 only its negative assertion (no `/v1/messages/count_tokens` request on the subscription
+path) is exercisable.
+
+Two parameters were settled in advance so the M2 story does not reopen them: the vendor is chosen during
+the story and recorded in [02-tech-stack.md](../02-tech-stack.md) with its pin policy, and the credential
+comes from an env var **named from** `.DeFlow/config.yaml`, never stored by DeFlow.
 
 ### 7.2 Two requirements covered on paper but at risk in practice
 

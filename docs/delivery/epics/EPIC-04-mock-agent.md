@@ -502,8 +502,9 @@ Do not cut it entirely: the kill-path fixtures have no other home.
 
 **Requirement coverage note.** F3.3 (direct API adapter) has no story in this epic and none in EPIC-05
 either — [adapter layer §12](../../07-provider-adapter-layer.md) scopes it to M2 with no verified package
-selection, and the mock agent has nothing to say about it. This is a deliberate, recorded gap, not an
-oversight.
+selection, and the mock agent has nothing to say about it. **Settled on 2026-08-06: F3.3 moved to M2 and
+PRD §11's M1 line was amended to `F3.1, F3.2, F3.4–F3.7`**, so this is no longer a gap in the M1 line at
+all. See [board §7.1](../board.md) and `KAR-05.10`, retained in the EPIC-05 file as the M2 specification.
 
 ---
 
