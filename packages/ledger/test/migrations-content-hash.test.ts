@@ -48,6 +48,15 @@ const SHIPPED: Record<string, string> = {
   '0008-worktrees.ts': 'bbb4d7918881571f37af14cc40ae727218f3cf7eb5aa358e399a4862f1f1f741',
   // Shipped 2026-08-06, KAR-07.6 — the live pairwise `merge-tree` matrix.
   '0009-conflict-probe.ts': '9a498836ae869331696f4dc2fcee206055cc9e20f3ed1e23dff4482111829ab6',
+  // Shipped 2026-08-07, KAR-09.7 — the learned `tokenEstimateFactor` per
+  // (provider, model).
+  '0010-token-calibration.ts': '2460e6594c6be09a14f2902b78d4b3929aad9637193677ee910939643012abb6',
+  // Shipped 2026-08-07, KAR-09.8 — `fact` and `fact_edges`, the blackboard as
+  // a droppable materialised view of the `fact.*` events.
+  '0011-blackboard.ts': '7b5e59f58929bb841167f2968d56b952f2bb6dcf347d029cf19c8493b30af72c',
+  // Shipped 2026-08-07, KAR-09.10 — `artifact_fts`, the FTS5 index over run
+  // artifacts, and its `artifact_fts_provenance` companion table.
+  '0012-artifact-fts.ts': 'b4938bab1dd766eafcd49711cdf6f123aa9efbff29cc9a6f1ff4c9f53641ffe5',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

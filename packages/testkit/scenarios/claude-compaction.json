@@ -1,0 +1,16 @@
+{
+  "name": "claude-compaction",
+  "description": "The turn KAR-09.6 is about: a little work, the vendor's own auto-compaction (the live status frame followed by the compact_boundary frame carrying pre_tokens and nothing else), more work, and a result envelope whose modelUsage reports the input tokens of the turn after the compaction. The pre_tokens and inputTokens figures match test/fixtures/streams/compact-boundary.stream-json.jsonl, so the parser specs and the process specs are asserting the same numbers.",
+  "steps": [
+    { "type": "message", "text": "reading the checkout module" },
+    { "type": "compaction", "trigger": "auto", "preTokens": 167000 },
+    { "type": "message", "text": "continuing after the compaction" }
+  ],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "done",
+    "totalCostUsd": 0.4213,
+    "inputTokens": 84210
+  }
+}

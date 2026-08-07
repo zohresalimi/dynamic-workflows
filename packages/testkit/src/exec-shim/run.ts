@@ -25,6 +25,7 @@ import {
   type OutputFormat,
   readDialect,
   type ShimEnv,
+  schemaPathIn,
 } from './dialects.ts';
 import {
   claudeStreamJson,
@@ -63,6 +64,9 @@ export interface ExecShimPorts {
   cwd(): string;
   /** `resolve(cwd, path)`, kept a port so the runner stays free of node:path. */
   resolvePath(from: string, relative: string): string;
+  /** The process environment, read only by the `envEcho` step. A port rather
+   * than `process.env` so the runner stays testable without a process. */
+  env(): Readonly<Record<string, string | undefined>>;
 }
 
 /** The seed for a run: `--seed` in argv, else `$DeFlow_FAKE_SEED`, else none. */
@@ -117,6 +121,27 @@ async function writeHugeLine(
 /** A step a dialect has no frame for. Loud, never skipped. */
 class UnrepresentableStep extends Error {}
 
+/**
+ * KAR-09.9 AC2 — a scripted `structured_output` survives only if the
+ * invocation actually carried a schema flag.
+ *
+ * The real CLI populates the field for a `--json-schema` run and omits it
+ * otherwise. Reproducing that is the whole value of the fake here: a shim that
+ * stopped passing the flag has to *fail* — an absent structured output is a
+ * contract failure (docs/08-context-and-memory.md §9.1) — and it cannot fail if
+ * the double hands the object over regardless.
+ */
+function withStructuredOutputFor(
+  scenario: ExecShimScenario,
+  argv: readonly string[],
+): ExecShimScenario {
+  if (scenario.result?.structuredOutput === undefined) return scenario;
+  if (schemaPathIn(argv) !== null) return scenario;
+
+  const { structuredOutput: _dropped, ...rest } = scenario.result;
+  return { ...scenario, result: rest };
+}
+
 async function emitClaudeStream(
   scenario: ExecShimScenario,
   context: FrameContext,
@@ -139,6 +164,16 @@ async function emitClaudeStream(
       await ports.writeOut(line(frames.assistant(step.text)));
     } else if (step.type === 'rateLimit') {
       await ports.writeOut(line(frames.rateLimit(step.status, step.resetsInSeconds)));
+    } else if (step.type === 'compaction') {
+      // The spinner frame first, then the boundary — the order a real
+      // compaction arrives in, and the pair a consumer has to collapse into one
+      // event (EPIC-09-S31, second scenario).
+      await ports.writeOut(line(frames.compactingStatus()));
+      await ports.writeOut(line(frames.compactBoundary(step.trigger, step.preTokens)));
+    } else if (step.type === 'envEcho') {
+      for (const name of step.names) {
+        await ports.writeOut(line(frames.assistant(`${name}=${ports.env()[name] ?? ''}`)));
+      }
     } else if (step.type === 'malformedLine') {
       await ports.writeOut(`${step.text}\n`);
     } else {
@@ -174,6 +209,17 @@ async function emitCodexJsonl(
       throw new UnrepresentableStep(
         'the codex-jsonl dialect has no rate_limit_event frame — script that step under claude-stream-json',
       );
+    } else if (step.type === 'compaction') {
+      // Same rule, and the one that matters most here: Codex reports no
+      // compaction boundary at all, so a fake that emitted one would teach a
+      // parser that every vendor announces its compactions.
+      throw new UnrepresentableStep(
+        'the codex-jsonl dialect has no compact_boundary frame — script that step under claude-stream-json',
+      );
+    } else if (step.type === 'envEcho') {
+      for (const name of step.names) {
+        await ports.writeOut(line(frames.agentMessage(`${name}=${ports.env()[name] ?? ''}`)));
+      }
     } else if (step.type === 'malformedLine') {
       await ports.writeOut(`${step.text}\n`);
     } else {
@@ -250,7 +296,7 @@ export async function runExecShim(
     ports.writeErr(`fake-agent: ${loaded.message}\n`);
     return DATA_ERROR;
   }
-  const scenario = loaded.scenario;
+  const scenario = withStructuredOutputFor(loaded.scenario, argv);
 
   const decision = decideCli(dialect.dialect, argv);
   if (!decision.ok) {

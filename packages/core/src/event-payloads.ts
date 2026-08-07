@@ -236,6 +236,25 @@ export const NodeScheduledSchema = z.strictObject({
    * would let two agents into one checkout on the first tick after a crash.
    */
   worktree: z.string().min(1).optional(),
+  /**
+   * KAR-09.6 AC7, AC8 — the compaction lever this node was scheduled with.
+   *
+   * Recorded here rather than inferred from the config later, for the reason
+   * AC8 gives: a node that dies of context exhaustion mid-turn is only
+   * *attributable* if the run can say afterwards whether auto-compaction was
+   * disabled for it and at what percentage it was set to fire. The config file
+   * is mutable and the run is not.
+   *
+   * Absent means "the vendor's own defaults, untouched", which is what every
+   * provider with no such lever gets.
+   */
+  compaction: z
+    .strictObject({
+      /** `null` leaves the vendor's threshold alone. */
+      autocompactPct: z.union([z.number().int().min(1).max(100), z.null()]),
+      autoCompactDisabled: z.boolean(),
+    })
+    .optional(),
 });
 
 /** F5.2 — locks live in the ledger so they survive a restart. */
@@ -923,9 +942,13 @@ export const ContextBuiltSchema = z.strictObject({
 /**
  * §9.1. `fidelity: 'partial'` means the numbers are vendor-reported and
  * incomplete, and the schema enforces that the missing ones stay missing:
- * `after` must be `null`, `droppedSegments` must be `[]`, and there is no
- * handle to the original. Supplying any of them under `partial` is the
- * fabrication this discriminator exists to prevent (AC6, EPIC-02-S23).
+ * `after` must be `null` and `droppedSegments` must be `[]`. Supplying either
+ * of them under `partial` is the fabrication this discriminator exists to
+ * prevent (AC6, EPIC-02-S23).
+ *
+ * The type-level half of the same rule — that no code path can *construct* a
+ * `vendor.session` event with `fidelity: 'exact'` — is `Compaction` in
+ * ./compaction.ts, which is what a producer builds these payloads through.
  */
 export const ContextCompactedSchema = z
   .strictObject({
@@ -964,15 +987,14 @@ export const ContextCompactedSchema = z
             'droppedSegments must be []',
         });
       }
-      if (payload.originalHandle !== null) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['originalHandle'],
-          message:
-            'a partial (vendor-reported) compaction leaves no handle to the original ' +
-            'context: originalHandle must be null',
-        });
-      }
+      // `originalHandle` is deliberately *not* constrained here. KAR-02.7 AC6
+      // constrains the two fields a chart would fabricate — `after` and
+      // `droppedSegments` — and this one is not vendor-reported at all:
+      // KAR-09.6 AC6's transcript snapshot is a file DeFlow copies into the
+      // run's artifact store itself on receiving the boundary frame, so a
+      // handle here is a fact about DeFlow's own filesystem rather than a
+      // claim about what the vendor dropped. It stays nullable because that
+      // path is Unverified — a missing file is `null`, never an error.
       return;
     }
     if (payload.after === null) {

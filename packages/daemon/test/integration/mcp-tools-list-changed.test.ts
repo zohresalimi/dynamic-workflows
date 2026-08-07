@@ -10,7 +10,13 @@
  *
  * Verifies: EPIC-05-S24 · AC6 · test plan #6
  */
-import { type NodeId, NodeIdSchema, type RunId, RunIdSchema } from '@DeFlow/core';
+import {
+  type HandleRefusal,
+  type NodeId,
+  NodeIdSchema,
+  type RunId,
+  RunIdSchema,
+} from '@DeFlow/core';
 import { makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +34,13 @@ import { type McpChild, spawnMcpServer } from './support/mcp-client.ts';
 
 const RUN_ID: RunId = RunIdSchema.parse('run_20260805T101500Z_ac0506');
 const NODE_ID: NodeId = NodeIdSchema.parse('n1');
+
+/** These specs never resolve a handle; the port has to be supplied, and a
+ * refusal is the honest thing for a host with no artifact store behind it. */
+const NO_ARTIFACTS: HandleRefusal = {
+  code: 'artifact-unknown',
+  message: 'this spec wired no artifact store',
+};
 
 /** KAR-02.4's three-op fixture: a patch the domain model already agrees is
  * well-formed, so a rejection here is about the tool and not about the data. */
@@ -54,7 +67,7 @@ beforeEach(async () => {
     clock: new TestClock(),
     ledger: ledger.sink,
     facts: { read: () => null },
-    artifacts: { read: () => null },
+    artifacts: { resolve: () => Promise.resolve({ ok: false, refusal: NO_ARTIFACTS }) },
   });
   grant = host.grant({ runId: RUN_ID, nodeId: NODE_ID, attempt: 0, phase: 'analysis' });
   const spawned = spawnMcpServer(grant.mcpServer);

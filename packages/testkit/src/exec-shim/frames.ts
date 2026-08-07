@@ -97,11 +97,44 @@ export interface HugeLineParts {
   readonly suffix: string;
 }
 
+const INPUT_TOKENS = 1_024;
+const CACHE_READ_TOKENS = 900;
+const CACHE_CREATION_TOKENS = 12;
+
+/**
+ * The window and output ceiling the envelope reports back.
+ *
+ * Present because the real CLI reports them, and because KAR-09.7 reads the
+ * window off the turn rather than off a per-model table — a fake that omitted
+ * them would let a parser that *did* keep a table pass its specs.
+ */
+const CONTEXT_WINDOW = 200_000;
+const MAX_OUTPUT_TOKENS = 64_000;
+
+const outputTokensOf = (script: ResultScript): number => Math.max(1, script.text.length);
+
+/** What the turn reports as its input tokens. Scriptable because KAR-09.6's
+ * partial recovery reads exactly this number off the turn *after* a
+ * compaction, and a constant here would let the recovery be asserted against
+ * the fake's own default rather than against a figure the scenario chose. */
+const inputTokensOf = (script: ResultScript): number => script.inputTokens ?? INPUT_TOKENS;
+
+/**
+ * The envelope's `usage` block: the raw Anthropic object the CLI passes
+ * through, snake_cased, and typed `z.unknown()` in the CLI's own schema.
+ *
+ * DeFlow never reads it (KAR-09.7 AC2) — it is emitted because the vendor emits
+ * it, and a fake that dropped it would stop being a reproduction of the wire.
+ * Its figures agree with `modelUsage` for the same reason: the real CLI's do,
+ * and a fake that made them disagree would be a detector rather than a double.
+ * The detector lives in `packages/adapters/test/tier1-model-usage.test.ts`,
+ * where a synthetic envelope populates the trap with numbers nothing may read.
+ */
 const usageOf = (script: ResultScript): Line => ({
-  input_tokens: 1_024,
-  output_tokens: Math.max(1, script.text.length),
-  cache_creation_input_tokens: 0,
-  cache_read_input_tokens: 0,
+  input_tokens: inputTokensOf(script),
+  output_tokens: outputTokensOf(script),
+  cache_creation_input_tokens: CACHE_CREATION_TOKENS,
+  cache_read_input_tokens: CACHE_READ_TOKENS,
 });
 
 export interface ClaudeStreamJson {
@@ -109,6 +142,13 @@ export interface ClaudeStreamJson {
   activeGoal(goal: string): Line;
   assistant(text: string): Line;
   rateLimit(status: string, resetsInSeconds: number): Line;
+  /** The live indicator that precedes a compaction. Drives a spinner and
+   * nothing else — a consumer that appended an event for it would double
+   * every compaction (EPIC-09-S31, second scenario). */
+  compactingStatus(): Line;
+  /** `system` / `compact_boundary`, whose `compact_metadata` carries
+   * `pre_tokens` and nothing else (KAR-09.6). */
+  compactBoundary(trigger: 'auto' | 'manual', preTokens: number): Line;
   result(script: ResultScript): Line;
   hugeLineParts(): HugeLineParts;
 }
@@ -161,6 +201,19 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         },
       }),
 
+    compactingStatus: () => stamp({ type: 'system', subtype: 'status', status: 'compacting' }),
+
+    // `pre_tokens` is the only figure the frame carries: no post count, no
+    // dropped list, no handle to the pre-compaction transcript. A fake that
+    // invented a `post_tokens` here would let a parser that read one pass, and
+    // the whole of KAR-09.6 is about not drawing a bar nobody measured.
+    compactBoundary: (trigger, preTokens) =>
+      stamp({
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger, pre_tokens: preTokens },
+      }),
+
     result: (script) =>
       stamp({
         type: 'result',
@@ -171,9 +224,14 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         usage: usageOf(script),
         modelUsage: {
           [model]: {
-            inputTokens: 1_024,
-            outputTokens: Math.max(1, script.text.length),
+            inputTokens: inputTokensOf(script),
+            outputTokens: outputTokensOf(script),
+            cacheReadInputTokens: CACHE_READ_TOKENS,
+            cacheCreationInputTokens: CACHE_CREATION_TOKENS,
+            webSearchRequests: 0,
             costUSD: script.totalCostUsd,
+            contextWindow: CONTEXT_WINDOW,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
           },
         },
         permission_denials: script.permissionDenials.map((denial) => ({
@@ -183,6 +241,13 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         })),
         terminal_reason: script.isError ? 'error' : 'complete',
         result: script.text,
+        // Optional in the recorded envelope, and absent unless the scenario
+        // scripted one — the CLI populates it only for an invocation that
+        // carried `--json-schema`, and `run.ts` is what enforces that here
+        // (KAR-09.9 AC2).
+        ...(script.structuredOutput === undefined
+          ? {}
+          : { structured_output: script.structuredOutput }),
       }),
 
     hugeLineParts: () => {

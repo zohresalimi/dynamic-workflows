@@ -208,6 +208,7 @@ export function createMockAgent(
             ids,
             clock,
             capabilities: clientCapabilities,
+            prompt: promptText(params.prompt),
             sleep: realSleep,
             ports,
             waitForCancel: () => waitForCancel,

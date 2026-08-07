@@ -34,10 +34,61 @@ export {
   readRange,
   type StoredEvent,
 } from './append.ts';
+// KAR-09.10 — `artifact_fts`: the FTS5 index over run artifacts, its one
+// documented query, opt-in retrieval, and the rebuild a tokenizer change
+// requires in place of an ALTER it cannot do.
+export {
+  ARTIFACT_FTS_SCHEMA,
+  ARTIFACT_FTS_TOKENIZE,
+  type ArtifactFtsAvailability,
+  type ArtifactFtsHit,
+  type ArtifactFtsRebuild,
+  type ArtifactIndexEntry,
+  artifactFtsAvailability,
+  createArtifactFtsTables,
+  ftsPhraseQuery,
+  indexArtifact,
+  queryArtifactFts,
+  type RetrievalDeclaration,
+  rebuildArtifactFts,
+  resolveRetrieval,
+} from './artifact-index.ts';
+// KAR-09.8 — the blackboard: `fact` and `fact_edges` as a materialised view of
+// the `fact.*` events, and the only module that writes them. Droppable by
+// construction — `rebuildBlackboard` puts both tables back from seq 0.
+export {
+  BLACKBOARD_SCHEMA,
+  type BlackboardRebuild,
+  createBlackboardTables,
+  FACT_EVENT_KINDS,
+  type FactEdgeDirection,
+  type FactEdgeRow,
+  type FactEventEnvelope,
+  type FactEventKind,
+  type FactInvalidation,
+  type InvalidateFactOptions,
+  invalidateFact,
+  isFactEventKind,
+  projectFactEvent,
+  type ResolvedFactRead,
+  type ResolveReadsOptions,
+  readersBefore,
+  readFactByKey,
+  readFactEdges,
+  readFacts,
+  readTaintedNodes,
+  rebuildBlackboard,
+  resolveDeclaredReads,
+  type StoredFact,
+  type TaintedNode,
+  type WriteFactResult,
+  writeFact,
+} from './blackboard.ts';
 // KAR-03.9 — the content-addressed blob store: what an oversized payload
 // becomes, and the excerpt that keeps a lost artifact renderable.
 export {
   ARTIFACT_FAILED_INTEGRITY,
+  ARTIFACT_SCHEME,
   ARTIFACT_UNAVAILABLE,
   type ArtifactStatus,
   type ArtifactView,
@@ -94,6 +145,23 @@ export {
   readConflictProbes,
   upsertConflictProbe,
 } from './conflict-probe.ts';
+// KAR-09.2 — persisting a ContextPacket: the manifest into `context.built`,
+// the segment text into the blob store, and prompt.txt onto disk as a derived,
+// non-authoritative artifact (NF8).
+export {
+  DERIVED_MANIFEST,
+  type DerivedPromptCheck,
+  handleForContentHash,
+  nodeDirOf,
+  type PersistedPacket,
+  type PersistPacketOptions,
+  persistContextPacket,
+  promptPathOf,
+  RenderedPromptHandleMismatch,
+  rehydratePacket,
+  SEGMENT_MIME,
+  verifyDerivedPrompt,
+} from './context-store.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
 // KAR-06.3 — the write-ahead effect journal: the intent row written before the
@@ -204,6 +272,19 @@ export {
   readProviderCapabilities,
   recordProviderCapabilities,
 } from './provider-capabilities.ts';
+// KAR-09.5 — the run's artifact index: which digests this run offloaded, and
+// what each one is. The bytes stay in the global blob store; this is what makes
+// a handle resolvable from the run that recorded it and no other.
+export {
+  listRunArtifacts,
+  RUN_ARTIFACT_DIR,
+  RUN_ARTIFACT_ENTRY,
+  type RunArtifactEntry,
+  readRunArtifact,
+  recordRunArtifact,
+  runArtifactDirOf,
+  runArtifactsDirOf,
+} from './run-artifacts.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
 export {
   CONTROL_EVENT_BUDGET,
@@ -212,6 +293,27 @@ export {
   SNAPSHOT_REVISIT_THRESHOLD,
 } from './run-stats.ts';
 export { openRead, openWrite } from './sqlite-db.ts';
+// KAR-09.7 — the learned half of the capability manifest: `tokenEstimateFactor`
+// per (provider, model), overwritten after every node and read before every
+// pre-flight budget.
+export {
+  readTokenCalibration,
+  readTokenCalibrations,
+  recordTokenSample,
+  type TokenCalibrationRow,
+  type TokenSample,
+} from './token-calibration.ts';
+// KAR-09.6 — §6.3's transcript snapshot: one file copy on a compaction
+// boundary, tagged so F5.9's redaction pass can find it. A missing file is
+// null, never an error.
+export {
+  listRawTranscripts,
+  RAW_TRANSCRIPT,
+  snapshotTranscript,
+  TRANSCRIPT_MIME,
+  TRANSCRIPT_SNAPSHOT_REASON,
+  type TranscriptSnapshotInput,
+} from './transcript-snapshot.ts';
 // KAR-07.2 — the `worktrees` projection: an index over `git worktree list
 // --porcelain -z`, replaced whole on every refresh, never the source of truth.
 export { readWorktrees, replaceWorktrees, type WorktreeRow } from './worktrees.ts';

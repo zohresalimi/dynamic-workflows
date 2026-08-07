@@ -121,6 +121,18 @@ export interface ShimContext {
   readonly permission: PermissionLevel;
   /** Omitted means the vendor's richest streaming format. */
   readonly format?: ShimFormat;
+  /**
+   * KAR-09.9 AC2 — the emitted JSON Schema document this turn must return
+   * against, as an absolute path under `.DeFlow/schemas/`.
+   *
+   * Omitted means no return contract was declared, or the vendor has no flag
+   * for one — and in the second case the argv is unchanged rather than
+   * approximated, because the schema then travels in the prompt instead
+   * (`structured-output.ts`). A path here on a vendor with no
+   * `structuredOutputFlag` is silently *not* passed, which is the one place
+   * that would be a lie if the mechanism were not also recorded.
+   */
+  readonly schemaPath?: string;
 }
 
 /**
@@ -158,6 +170,19 @@ export interface ShimSpec {
    * probed, and this is the one file allowed to know either.
    */
   readonly sandbox?: SandboxSettingsInjection;
+  /**
+   * KAR-09.9 AC2 — the flag this vendor takes a JSON Schema file on, so a
+   * return contract is enforced by the CLI rather than by a paragraph of
+   * prompt.
+   *
+   * Absent for every vendor that has none, and absence is the *answer* rather
+   * than a gap: `structured-output.ts` reads it to decide between `'native'`
+   * and `'prompt-only'`, and the manifest records which was used. It is
+   * invocation knowledge like every other field here — nothing in an ACP
+   * `initialize` response advertises structured output, which is precisely why
+   * it cannot be probed.
+   */
+  readonly structuredOutputFlag?: string;
   /**
    * KAR-08.5 / EPIC-08-S23 — the flag this vendor takes a list of variable
    * names to strip from the environments of processes *it* spawns (and to
@@ -214,6 +239,7 @@ interface ShimEntry {
    */
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
   readonly sandbox?: SandboxSettingsInjection;
+  readonly structuredOutputFlag?: string;
   readonly secretEnvFlag?: string;
   build(
     ctx: ShimContext,
@@ -225,6 +251,28 @@ interface ShimEntry {
 export interface ProviderSpec {
   readonly id: ProviderId;
   readonly kind: ProviderKind;
+  /**
+   * KAR-09.7 — which model family this vendor's CLI drives, and therefore
+   * which token-estimate seed applies before measurement replaces it.
+   *
+   * Here rather than in `capabilities.ts` because it is not a capability: it
+   * cannot be probed, it does not change when the binary is upgraded, and it
+   * is the same kind of fact as "OpenCode takes a subcommand". `'default'` is
+   * a real answer and the honest one for every vendor whose token accounting
+   * is Unverified (roadmap A4-3) — it selects a 1.05 correction that five
+   * completed nodes then replace with the measured ratio.
+   */
+  readonly family: string;
+  /**
+   * KAR-09.6 AC7, AC8 — how this vendor's own auto-compaction is steered, or
+   * absent for a vendor that exposes no such lever.
+   *
+   * It belongs in this file for the same reason argv does: it is a fact about
+   * *invocation* that cannot be probed. It is not a capability — nothing routes
+   * on it, and a vendor without it degrades to "the vendor's own defaults",
+   * which is what every provider got before this existed.
+   */
+  readonly compaction?: CompactionSpec;
   /** The bin name of the package that actually speaks ACP. */
   readonly bin: string;
   /** That package, at the version the spawn was verified against. */
@@ -241,9 +289,43 @@ export interface ProviderSpec {
   readonly shim: ShimSpec;
 }
 
+/**
+ * One vendor's compaction lever, decoded from its shipping bundle.
+ *
+ * **Every number and name here came from Claude Code 2.1.220**, they are
+ * private implementation details with no compatibility guarantee, and they will
+ * change. Nothing derived from them hardcodes a *window*: `contextWindow` and
+ * `maxOutputTokens` are read off the turn's `modelUsage` at runtime, and these
+ * two constants are the offsets applied to whatever the turn reported. That is
+ * why they sit in the registry beside the flags rather than in `@DeFlow/core`,
+ * and why `checkCompactionShape` exists to catch the day they stop being true.
+ */
+export interface CompactionSpec {
+  /** The variable that moves the auto-compaction threshold (AC7). */
+  readonly pctEnv: string;
+  /**
+   * Where this vendor keeps a session's own transcript, as path segments under
+   * `$HOME`, or absent for a vendor that documents none.
+   *
+   * **Unverified** (AC6): the convention was read from the bundle and never
+   * exercised against a live authenticated session, so a caller treats a
+   * missing file as `originalHandle: null` rather than as an error.
+   */
+  readonly transcriptDir?: readonly string[];
+  /** The variable that turns auto-compaction off entirely (AC8). */
+  readonly disableEnv: string;
+  /** The largest output reservation subtracted from the reported window. */
+  readonly outputReserve: number;
+  /** How far below the effective window auto-compaction fires. */
+  readonly autoCompactOffset: number;
+}
+
 interface SpecEntry {
   readonly id: string;
   readonly kind: ProviderKind;
+  readonly compaction?: CompactionSpec;
+  /** Absent means `'default'` — see `ProviderSpec.family`. */
+  readonly family?: string;
   readonly bin: string;
   readonly package: string;
   readonly companionBin?: string;
@@ -258,6 +340,9 @@ interface SpecEntry {
 }
 
 const NO_ENV: NodeJS.ProcessEnv = {};
+
+/** The family a vendor nobody has measured belongs to (KAR-09.7 AC5). */
+export const DEFAULT_MODEL_FAMILY = 'default';
 
 /**
  * The two refusals every shim invocation is checked against, in one place.
@@ -283,7 +368,17 @@ function shimInvocation(
     throw permissionInexpressible(id, ctx.permission, Object.keys(entry.permissions));
   }
 
-  return { format, argv: entry.build(ctx, format, flags) };
+  // The schema rides in beside the permission flags rather than being placed by
+  // each vendor's own `build`, because every builder already positions `flags`
+  // where the vendor accepts options — Codex takes its prompt as a trailing
+  // positional, so a flag appended after the whole argv would land as prompt
+  // text. One insertion point, and no builder to forget it.
+  const schema =
+    entry.structuredOutputFlag !== undefined && ctx.schemaPath !== undefined
+      ? [entry.structuredOutputFlag, ctx.schemaPath]
+      : [];
+
+  return { format, argv: entry.build(ctx, format, [...flags, ...schema]) };
 }
 
 function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
@@ -295,6 +390,9 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     dialect: entry.dialect,
     permissions: Object.keys(entry.permissions) as readonly PermissionLevel[],
     ...(entry.sandbox === undefined ? {} : { sandbox: entry.sandbox }),
+    ...(entry.structuredOutputFlag === undefined
+      ? {}
+      : { structuredOutputFlag: entry.structuredOutputFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
@@ -310,6 +408,8 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     shim: defineShim(entry.id, entry.shim),
     id,
     kind: entry.kind,
+    family: entry.family ?? DEFAULT_MODEL_FAMILY,
+    ...(entry.compaction === undefined ? {} : { compaction: entry.compaction }),
     bin: entry.bin,
     package: entry.package,
     ...(entry.companionBin === undefined ? {} : { companionBin: entry.companionBin }),
@@ -431,7 +531,22 @@ export const PROVIDER_SPECS = {
   }),
   claude: defineSpec({
     id: 'claude',
+    family: 'anthropic',
     kind: 'adapter',
+    // Decoded from the 2.1.220 bundle: the CLI reserves
+    // `min(maxOutputTokens, 20_000)` of the reported window and auto-compacts
+    // 13_000 tokens below what is left, and it applies the percentage override
+    // as `Math.min(pct × effectiveWindow, defaultThreshold)` — so the override
+    // can only ever move compaction *earlier* (EPIC-09-S35).
+    compaction: {
+      pctEnv: 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE',
+      disableEnv: 'DISABLE_AUTO_COMPACT',
+      // `~/.claude/projects/<project>/<session_id>.jsonl`, where <project> is
+      // the working directory with its separators replaced by dashes.
+      transcriptDir: ['.claude', 'projects'],
+      outputReserve: 20_000,
+      autoCompactOffset: 13_000,
+    },
     bin: 'claude-agent-acp',
     package: '@agentclientprotocol/claude-agent-acp',
     variants: [(): readonly string[] => []],
@@ -465,6 +580,10 @@ export const PROVIDER_SPECS = {
       // sandbox policy goes on the command line and no file under `~/.claude`
       // is ever opened (docs/09-workspace-and-safety.md §9.2).
       sandbox: { flag: '--settings', build: claudeSandboxPolicy },
+      // KAR-09.9 AC2. **Verified 2026-08-02** from the 2.1.220 bundle's flag
+      // table and zod schema: `--json-schema <file>` is accepted and the parsed
+      // object arrives in the result envelope's `structured_output` field.
+      structuredOutputFlag: '--json-schema',
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires
@@ -482,6 +601,7 @@ export const PROVIDER_SPECS = {
   }),
   codex: defineSpec({
     id: 'codex',
+    family: 'openai',
     kind: 'adapter',
     bin: 'codex-acp',
     package: '@agentclientprotocol/codex-acp',
@@ -505,6 +625,11 @@ export const PROVIDER_SPECS = {
         worktree: ['--sandbox', 'workspace-write'],
         full: ['--sandbox', 'danger-full-access'],
       },
+      // KAR-09.9 AC2 — the same mechanism under a different spelling. Read from
+      // `codex exec --help` on 2026-08-02; unlike Claude Code's, the *shape* of
+      // what comes back has never been exercised here, so nothing downstream
+      // may assume it arrives in a field named `structured_output`.
+      structuredOutputFlag: '--output-schema',
       build: (ctx, format, flags) => [
         'exec',
         ...(format === 'jsonl' ? ['--json'] : []),
@@ -540,6 +665,19 @@ export function providerSpec(id: string): ProviderSpec | undefined {
   return Object.hasOwn(PROVIDER_SPECS, id)
     ? (PROVIDER_SPECS as Record<string, ProviderSpec>)[id]
     : undefined;
+}
+
+/**
+ * KAR-09.7 AC5 — the model family whose token-estimate seed applies to this
+ * provider, or `'default'` for one that is not registered at all.
+ *
+ * A total function rather than an optional lookup: a caller budgeting a node's
+ * packet needs a number, and `undefined` here would push a fallback decision
+ * onto every call site — which is how two of them end up disagreeing about
+ * what an unmeasured vendor should be corrected by.
+ */
+export function providerFamily(id: string): string {
+  return providerSpec(id)?.family ?? DEFAULT_MODEL_FAMILY;
 }
 
 /** The complete invocation for one attempt: command, argv and env overlay. */

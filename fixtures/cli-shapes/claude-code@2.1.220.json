@@ -2,13 +2,19 @@
   "binary": "claude",
   "version": "2.1.220 (Claude Code)",
   "capturedAt": "2026-08-02",
-  "capturedBy": "reading the installed binary's own --help and running it; transcribed into docs/07-provider-adapter-layer.md §8.1 on 2026-08-02, and into this file from that record",
+  "capturedBy": "reading the installed binary's own --help and running it; transcribed into docs/07-provider-adapter-layer.md \u00a78.1 on 2026-08-02, and into this file from that record",
   "note": "The one wire shape in this repository that was verified by execution against a real vendor CLI. packages/testkit's fake exec-shim agent is checked against it so the fake cannot drift into a shape no real Claude Code ever emitted.",
   "outputFormats": ["text", "json", "stream-json"],
   "streamJson": {
     "everyLineCarries": ["session_id", "uuid"],
     "lineTypes": ["system", "active_goal", "assistant", "rate_limit_event", "result"],
-    "systemSubtypes": ["init", "commands_changed", "post_turn_summary"],
+    "systemSubtypes": [
+      "init",
+      "commands_changed",
+      "post_turn_summary",
+      "status",
+      "compact_boundary"
+    ],
     "resultEnvelopeKeys": [
       "type",
       "subtype",
@@ -23,8 +29,23 @@
       "session_id",
       "uuid"
     ],
+    "resultEnvelopeOptionalKeys": ["structured_output"],
+    "resultEnvelopeOptionalKeysNote": "structured_output is optional and appears only for an invocation that carried --json-schema; transcribed from the same 2026-08-02 record as the rest of this file (docs/08-context-and-memory.md §8.1 prints it as structured_output?). Whether it is populated in every success case of such a run is Unverified — which is why an absent field is read as absent rather than as an empty object.",
     "rateLimitEventKeys": ["type", "rate_limit_info", "session_id", "uuid"],
     "rateLimitInfoKeys": ["status", "resetsAt"],
-    "verboseRequiredError": "Error: When using --print, --output-format=stream-json requires --verbose"
+    "verboseRequiredError": "Error: When using --print, --output-format=stream-json requires --verbose",
+    "compactBoundaryKeys": ["type", "subtype", "compact_metadata", "session_id", "uuid"],
+    "compactMetadataKeys": ["trigger", "pre_tokens"],
+    "compactMetadataNote": "Decoded from the same 2.1.220 bundle's zod schemas on 2026-08-02 rather than captured from a live compaction: compact_metadata carries pre_tokens only \u2014 no post_tokens, no dropped list, no handle to the pre-compaction transcript. The live { subtype: 'status', status: 'compacting' } frame precedes it and is an indicator, not a boundary.",
+    "modelUsageKeys": [
+      "inputTokens",
+      "outputTokens",
+      "cacheReadInputTokens",
+      "cacheCreationInputTokens",
+      "webSearchRequests",
+      "costUSD",
+      "contextWindow",
+      "maxOutputTokens"
+    ]
   }
 }

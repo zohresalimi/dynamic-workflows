@@ -133,9 +133,12 @@ export type NodeBudget = z.infer<typeof NodeBudgetSchema>;
 
 /**
  * F6.2. A read is declared or it does not happen. `{ kind: 'fact' }` accepts
- * both an exact key and the `finding/*` prefix form; `readsAreSatisfiable`
- * (./reads-satisfiable.ts) is what decides whether the declaration is
- * reachable from an ancestor's write.
+ * both an exact key and the `finding/*` prefix form — as does `WriteDecl`, so
+ * the prefix can appear on either side of the match. `validateDeclaredReads`
+ * (./validate-declared-reads.ts) is what decides whether the declaration is
+ * reachable from an ancestor's write; `readsAreSatisfiable`
+ * (./reads-satisfiable.ts) is the same gate under KAR-02.3's name and return
+ * shape, delegating to it rather than walking the graph a second time.
  */
 export const ReadDeclSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('fact'), key: z.string().min(1) }),

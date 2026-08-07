@@ -71,18 +71,37 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // `provider_capabilities` is migration 0004's probed manifest (KAR-05.2);
       // `process` is migration 0005's orphan-reaping handle (KAR-05.9);
       // `worktrees` is migration 0008's projection over git (KAR-07.2);
-      // `conflict_probe` is migration 0009's live merge-tree matrix (KAR-07.6).
+      // `conflict_probe` is migration 0009's live merge-tree matrix (KAR-07.6);
+      // `token_calibration` is migration 0010's learned tokenEstimateFactor
+      // per (provider, model) (KAR-09.7); `fact` and `fact_edges` are
+      // migration 0011's blackboard, the one pair here that may be dropped
+      // and rebuilt from the ledger (KAR-09.8); `artifact_fts` is migration
+      // 0012's FTS5 index (KAR-09.10) — `artifact_fts_config`,
+      // `_content`, `_data`, `_docsize` and `_idx` are the shadow tables FTS5
+      // itself creates and are not this migration's own DDL, and
+      // `artifact_fts_provenance` is the companion table that maps a search
+      // hit back to its handle and sourceEvent.
       expect(tables).toEqual([
+        'artifact_fts',
+        'artifact_fts_config',
+        'artifact_fts_content',
+        'artifact_fts_data',
+        'artifact_fts_docsize',
+        'artifact_fts_idx',
+        'artifact_fts_provenance',
         'conflict_probe',
         'daemon',
         'effect',
         'event',
+        'fact',
+        'fact_edges',
         'io_chunk',
         'node_wake',
         'plan',
         'process',
         'provider_capabilities',
         'run',
+        'token_calibration',
         'worktrees',
       ]);
 
@@ -94,7 +113,21 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
           .all()
           .map((row) => [row.name, row.sql]),
       );
-      for (const table of tables) expect(sqlByTable.get(table)).toMatch(/STRICT\s*$/);
+      // `artifact_fts` is a virtual table (FTS5's own storage, not ordinary
+      // STRICT DDL) and its shadow tables are SQLite-internal, not this
+      // migration's own schema — everything else here is STRICT.
+      const nonStrict = new Set([
+        'artifact_fts',
+        'artifact_fts_config',
+        'artifact_fts_content',
+        'artifact_fts_data',
+        'artifact_fts_docsize',
+        'artifact_fts_idx',
+      ]);
+      for (const table of tables) {
+        if (nonStrict.has(table)) continue;
+        expect(sqlByTable.get(table)).toMatch(/STRICT\s*$/);
+      }
 
       const indexes = db
         .prepare<{ name: string }>(
@@ -103,8 +136,18 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         .all()
         .map((row) => row.name);
       expect(indexes).toEqual([
+        // Migration 0012's lookup for "is this handle already indexed" —
+        // `indexArtifact`'s first-writer-wins check (KAR-09.10).
+        'artifact_fts_provenance_by_handle',
         'effect_run_state',
         'event_run_seq',
+        // The blackboard's three (KAR-09.8): one to resolve a declared read
+        // against a run's facts, and two for the directions F10.4's memory
+        // graph is walked in — "who touched this fact" and "what did this node
+        // touch". §8.2's taint query is the first of those two, filtered.
+        'fact_by_run_key',
+        'fact_edges_by_fact',
+        'fact_edges_by_node',
         'io_run_seq',
         'node_wake_due',
         // Partial, on state = 'live': a long-lived data directory keeps one

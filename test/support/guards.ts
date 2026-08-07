@@ -2727,3 +2727,170 @@ export function checkNoExecaKillOptions(files: readonly SourceFile[]): Violation
 
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.3 AC1 — the `pinned` flag has exactly one producer.
+ * -------------------------------------------------------------------------- */
+
+export const PINNED_FLAG_MESSAGE =
+  'sets Segment.pinned to true. The pinned set is exactly the five content types in ' +
+  'docs/08-context-and-memory.md §4.1, and a sixth one added anywhere else is invisible ' +
+  'afterwards: it is never compacted, always rendered first, and hash-checked before every ' +
+  'dispatch. Build it through buildPinnedSegments() in packages/core/src/pinned-set.ts.';
+
+/** `pinned: true`, however it is spaced. */
+const PINNED_TRUE = /\bpinned\s*:\s*true\b/;
+
+/**
+ * AC1 asks for a type-level constraint rather than a review convention, and
+ * `contextSegment` is that: its `kind` cannot name a `pinned.*` kind and it has
+ * no `pinned` parameter. This scan covers what a type cannot — a module that
+ * builds a `Segment` object literal by hand.
+ */
+export function checkPinnedFlagHasOneProducer(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!PINNED_TRUE.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${PINNED_FLAG_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.8 — the blackboard is a projection, and only one module writes it.
+ * -------------------------------------------------------------------------- */
+
+export const FACT_WRITE_MESSAGE =
+  'writes the `fact` or `fact_edges` tables directly. Those tables are a materialised view of ' +
+  'the `fact.written` / `fact.read` / `fact.invalidated` events and nothing else ' +
+  '(docs/04-domain-model.md §5.1): if the blackboard ever becomes independently mutable, NF9 ' +
+  '(replay determinism) and NF10 (auditability) are both gone. Append the event and let the ' +
+  'projection in packages/ledger/src/blackboard.ts apply it. This guard exists because the ' +
+  'change that breaks the rule arrives disguised as a fan-out performance optimisation and ' +
+  'looks reasonable in review.';
+
+/** `INSERT INTO fact`, `UPDATE fact SET`, `DELETE FROM fact_edges`, however spaced. */
+const FACT_TABLE_WRITE =
+  /\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+(?:fact|fact_edges)\b/i;
+
+/**
+ * AC3. Every write to the blackboard tables outside the projection module.
+ *
+ * `allowed` is the projection module itself — one path, and the rule is that
+ * the list stays one path long.
+ */
+export function checkFactWritesAreProjectionOnly(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!FACT_TABLE_WRITE.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${FACT_WRITE_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+export const FACT_CACHE_MESSAGE =
+  'holds facts in a module-level mutable collection. A cache that survives a tick is a second ' +
+  'home for the blackboard, and the two disagree the first time a fact is invalidated ' +
+  '(EPIC-09-S42). Read the projection through @DeFlow/ledger on each use — it is an indexed ' +
+  'SQLite read of a table holding tens of rows, not a network call.';
+
+/**
+ * EPIC-09-S42 scenario 2, second half: no module-level mutable fact collection
+ * anywhere in the workspace.
+ *
+ * Module level specifically — a `Map` built inside a function lives and dies
+ * with the call, and it is the one that outlives the tick that can drift.
+ * Matched at column zero, which is what "module level" looks like in a file
+ * this repository's formatter has touched.
+ */
+const MODULE_LEVEL_FACT_COLLECTION =
+  /^(?:const|let|var)\s+\w*[fF]act\w*\s*(?::[^=]+)?=\s*new\s+(?:Map|Set|WeakMap|WeakSet)\b/;
+
+export function checkNoFactCache(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!MODULE_LEVEL_FACT_COLLECTION.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${FACT_CACHE_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.2 AC5 / EPIC-09-S28 — the demotion path cannot reach a provider.
+ * -------------------------------------------------------------------------- */
+
+export const DEMOTION_IMPORT_MESSAGE =
+  'imports something outside @DeFlow/core. The packet builder and its demotion ladder must be ' +
+  'unable to summarise: "offload, don\'t summarise" (docs/08-context-and-memory.md §5.2) is ' +
+  'only a rule while it is enforced by a review, and a structural property once the module ' +
+  'cannot reach a provider, an adapter or a process at all. Selection and ordering happen ' +
+  'here; tokenising is the Tokenizer port, fetching is the blackboard and the CAS, and ' +
+  'summarising is the explicit continuation path in a different module. If a change makes ' +
+  'buildPacket need a network call, the change is wrong.';
+
+/** The only bare specifiers a pure `@DeFlow/core` module may name. */
+const DEMOTION_ALLOWED_BARE_IMPORTS: readonly string[] = ['zod'];
+
+/**
+ * EPIC-09-S28's third scenario, as a property rather than a promise: *"the
+ * demotion module has no dependency on any provider or adapter type"*.
+ *
+ * Enforced by allowlist rather than by a denylist of vendor names, because a
+ * denylist is one `import { spawn }` away from being wrong and nobody notices
+ * until a packet build starts costing quota.
+ */
+export function checkDemotionIsProviderFree(
+  files: readonly SourceFile[],
+  modules: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!modules.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      DEEP_IMPORT_SPECIFIER.lastIndex = 0;
+      let match: RegExpExecArray | null = DEEP_IMPORT_SPECIFIER.exec(line);
+      while (match !== null) {
+        const specifier = match[1] ?? match[2] ?? '';
+        const pure =
+          specifier.startsWith('./') ||
+          specifier.startsWith('../') ||
+          DEMOTION_ALLOWED_BARE_IMPORTS.includes(specifier);
+        if (!pure) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message: `${file.path} line ${index + 1} ${DEMOTION_IMPORT_MESSAGE} Found: "${specifier}".`,
+          });
+        }
+        match = DEEP_IMPORT_SPECIFIER.exec(line);
+      }
+    }
+  }
+  return violations;
+}

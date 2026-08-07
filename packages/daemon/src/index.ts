@@ -26,6 +26,14 @@ export {
 export type { CancelOutcome, CancelPorts, CancelReport } from './cancel.ts';
 export { cancelNode, KILL_VERIFY_MS, TERM_GRACE_MS } from './cancel.ts';
 export { systemClock } from './clock.ts';
+// KAR-09.7 — token accounting in three tiers. `preflightBudget` reserves,
+// `foldCalibrationSample` corrects, `o200kTokenizer` is the only implementation
+// of core's `Tokenizer` port, and `exact-count.ts` is the tier-3 call site that
+// nothing on the subscription path can reach.
+// KAR-09.4 — `.DeFlow/config.yaml` off disk, and the constraint section of
+// `DeFlow doctor` (the command itself is EPIC-18, KAR-18.4).
+export { CONFIG_RELATIVE_PATH, loadWorkspaceConfig } from './config/workspace-config.ts';
+export { renderConstraintReport, workspaceConstraintReport } from './constraints/doctor.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
@@ -275,7 +283,6 @@ export {
 // bridges the two. The MCP SDK is reached through two deep subpaths only
 // (`checkMcpSdkImports`); nothing here loads express or hono.
 export type {
-  ArtifactStore,
   FactStore,
   McpGrant,
   McpGrantRequest,
@@ -285,6 +292,16 @@ export type {
 export { MCP_SOCKET_DIR, MCP_SOCKET_FILE, startMcpHost } from './mcp/host.ts';
 export type { HostFrame, ShimFrame } from './mcp/protocol.ts';
 export { BRIDGE_VERSION, BridgeProtocolError } from './mcp/protocol.ts';
+// KAR-09.5 — handle resolution behind `DeFlow_read_artifact`: the run's
+// artifact index, the line range, and the permission check that keeps a
+// DeFlow-hosted tool from being a way around the ACP fs/* boundary.
+export type {
+  ArtifactResolveRequest,
+  ArtifactStore,
+  HandleResolution,
+  RunArtifactStorePorts,
+} from './mcp/resolve-handle.ts';
+export { digestOf, runArtifactStore } from './mcp/resolve-handle.ts';
 export type { McpServerEntryOptions } from './mcp/server-entry.ts';
 export {
   DEFLOW_MCP_ENTRY,
@@ -456,6 +473,24 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';
+export { foldCalibrationSample, preflightBudget } from './tokens/calibrate.ts';
+export {
+  renderTokenCalibrationReport,
+  tokenCalibrationLines,
+  tokenCalibrationReport,
+} from './tokens/doctor.ts';
+export type {
+  DirectApiCredential,
+  ExactCountRequest,
+  ExactCountTransport,
+} from './tokens/exact-count.ts';
+export {
+  COUNT_TOKENS_PATH,
+  countTokensExact,
+  ExactCountUnavailable,
+} from './tokens/exact-count.ts';
+export { o200kTokenizer } from './tokens/tokenizer.ts';
 // KAR-07.7 — the integration branch and the ordered merge loop: probe, sort,
 // merge the cheapest, re-probe, re-sort, gate (§7).
 export type { AutoResolveUse } from './workspace/auto-resolve-usage.ts';

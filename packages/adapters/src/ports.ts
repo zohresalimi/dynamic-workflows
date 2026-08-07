@@ -23,6 +23,7 @@ import type {
   IdempotencyKey,
   NodeId,
   PermissionLevel,
+  PinnedSegmentView,
   ProviderId,
   RunId,
   SchemaId,
@@ -161,6 +162,19 @@ export interface ProcessRegistry {
  */
 export type ClientHandlers = Readonly<Record<string, (params: never) => unknown>>;
 
+/** KAR-09.4 — how many `session/prompt` turns this node may take, and what
+ * DeFlow says to ask for another one. */
+export interface TurnBudget {
+  /** Work turns, the first prompt included. */
+  readonly max: number;
+  /**
+   * What a continuation turn says. Deliberately content-free: the node's
+   * instruction is in the packet, and repeating it would be a second copy that
+   * can drift from the pinned one.
+   */
+  readonly continuation?: string;
+}
+
 /** What the node needs to run, as the scheduler decided it. */
 export interface AcpNodeRequest {
   readonly runId: RunId;
@@ -199,6 +213,46 @@ export interface AcpNodeRequest {
   readonly resume?: { readonly sessionId: string };
   /** The assembled context packet, as text. */
   readonly prompt: string;
+  /**
+   * KAR-09.3 — the packet's pinned segments, carried down so the F6.6
+   * integrity check can run against the prompt that is really about to be
+   * sent.
+   *
+   * The pinned slice rather than the whole packet, because this is the only
+   * thing the adapter is entitled to an opinion about: `prompt` is derived and
+   * `pins` is what it must still contain. Absent means the caller assembled no
+   * packet — a probe, a conformance turn — and there is nothing to check;
+   * present is checked before anything is spawned, and a mismatch fails the
+   * node with `safety.pin-integrity-violated` rather than sending a prompt
+   * whose constraints went missing.
+   */
+  readonly pins?: readonly PinnedSegmentView[];
+  /**
+   * KAR-09.4 — how far DeFlow will continue this node's session.
+   *
+   * Absent is one `session/prompt` and nothing more, which is what a probe, a
+   * conformance turn and every node before this story wanted. Present lets the
+   * node span several turns: DeFlow sends `continuation` again for as long as
+   * the agent answers `stopReason: 'max_turn_requests'` — the one stop reason
+   * that means *"I have more to do"* — and stops at `max` whatever it says.
+   *
+   * The cap is DeFlow's, not the agent's: an agent that always asks for another
+   * turn would otherwise run until the wall-clock budget, and "the scheduler
+   * decided how many turns this node gets" is a plan fact worth having.
+   */
+  readonly turns?: TurnBudget;
+  /**
+   * KAR-09.4 §4.2(a) — re-inject the pinned set every `everyTurns` turns.
+   *
+   * Whether it can actually be delivered is *not* here: it is read from
+   * `AcpPorts.capabilityRow` through `supportsSteering`, so the behaviour is
+   * driven by what the adapter advertised rather than by a provider name
+   * (EPIC-09-S24). Absent, or an adapter that does not advertise mid-session
+   * steering, means no injection turn is attempted at all — the honest
+   * degradation is the packet builder's planning warning, not a fabricated
+   * turn against a method the agent never claimed.
+   */
+  readonly reinject?: { readonly everyTurns: number };
   /** What the node's structured output is validated against (EPIC-09/EPIC-12). */
   readonly outputSchemaId?: SchemaId;
   /**

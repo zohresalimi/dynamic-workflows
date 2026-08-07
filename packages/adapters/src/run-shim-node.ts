@@ -42,7 +42,9 @@
  */
 import {
   type Clock,
+  type CompactionLever,
   type CompletedNodeResult,
+  compactionLever,
   type EventSeq,
   type Handle,
   ikey,
@@ -53,15 +55,19 @@ import {
   type ProviderId,
   type RunId,
   type SchemaId,
+  type StructuredOutput,
   type TokenUsage,
+  vendorCompaction,
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import process from 'node:process';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
+import { compactionEnv } from './compaction.ts';
 import {
   agentExited,
   frameTooLarge,
@@ -75,7 +81,7 @@ import { frameGuard, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime } from './kill-tree.ts';
 import { STDERR_TAIL_BYTES } from './launch.ts';
 import type { AgentBinary, EventRecord, LedgerSink, ProcessRegistry } from './ports.ts';
-import { providerSpec, type ShimFormat } from './provider-registry.ts';
+import { type ProviderSpec, providerSpec, type ShimFormat } from './provider-registry.ts';
 import {
   AGENT_TURN_SCHEMA_ID,
   CONTENT_SPILL_BYTES,
@@ -86,10 +92,12 @@ import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } fro
 import { auditCompletionScope, type ScopeAudit, scopeAuditRefusal } from './scope-audit.ts';
 import {
   parseShimLine,
+  shimCompactBoundary,
   shimRateLimit,
   shimResultCostUsd,
   shimResultFailure,
   shimResultUsage,
+  shimStructuredOutput,
   shimText,
 } from './shim-frames.ts';
 
@@ -115,6 +123,15 @@ export interface NodeWakeRow {
 export interface WakeRegistry {
   schedule(row: NodeWakeRow): Promise<void>;
 }
+
+/**
+ * The lever a node runs with when its own resolution was refused.
+ *
+ * Only reachable on the refusal path, where the spawn never happens — it exists
+ * so the spawn expression has no `null` to branch on rather than as a default
+ * anybody gets.
+ */
+const NO_LEVER: CompactionLever = { autocompactPct: null, autoCompactDisabled: false };
 
 /** The `node_wake.reason` a provider-side quota limit writes. */
 export const WAKE_REASON_QUOTA = 'quota';
@@ -173,6 +190,17 @@ export interface ShimNodeRequest {
   /** Omitted means the vendor's richest streaming format. */
   readonly format?: ShimFormat;
   readonly outputSchemaId?: SchemaId;
+  /**
+   * KAR-09.9 AC2 — the emitted JSON Schema document this node's return is
+   * contracted to, as an absolute path under the run's `.DeFlow/schemas/`.
+   *
+   * Present only where the vendor has a flag for it — `structuredOutputContract`
+   * is what decides that, and a prompt-only adapter is handed the schema in its
+   * prompt instead. Passing it to a vendor with no flag changes nothing about
+   * the argv, which is safe precisely because the mechanism is also recorded in
+   * the manifest rather than assumed.
+   */
+  readonly schemaPath?: string;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -196,6 +224,19 @@ export interface ShimNodeRequest {
    * it is refused before the spawn.
    */
   readonly pathScope?: readonly string[];
+  /**
+   * KAR-09.6 AC7, AC8 — what the operator configured about this vendor's own
+   * auto-compaction, before the node's permission level is applied to it.
+   *
+   * The *policy* (70% for write-capable nodes, the opt-out scoped to `read`)
+   * is `compactionLever` in `@DeFlow/core`; what arrives here is the raw
+   * `providers.<id>` slice, so the refusal of a write-capable opt-out happens
+   * in one place rather than at every caller.
+   */
+  readonly compaction?: {
+    readonly autocompactPct?: number;
+    readonly disableAutoCompact?: boolean;
+  };
 }
 
 export interface ShimPorts {
@@ -222,6 +263,24 @@ export interface ShimPorts {
    * nothing here would append the whole transcript a second time.
    */
   readonly seenUuids?: Iterable<string>;
+  /**
+   * KAR-09.6 AC6 — §6.3's transcript snapshot, behind a port for the reason
+   * every port here is one: the bytes go into `@DeFlow/ledger`'s blob store and
+   * this package owns no store. Absent means no snapshot is attempted, which
+   * is `originalHandle: null` — the documented degradation, not an error.
+   */
+  readonly transcripts?: TranscriptSnapshots;
+}
+
+/** Copies the vendor's own session transcript into the run's artifact store. */
+export interface TranscriptSnapshots {
+  /** The handle, or `null` when there was nothing to copy. Never throws for an
+   * absent file — the path convention is Unverified (AC6). */
+  snapshot(input: {
+    readonly sessionId: string;
+    readonly node: NodeId;
+    readonly attempt: number;
+  }): Promise<Handle | null>;
 }
 
 interface ShimOutcomeCommon {
@@ -234,6 +293,16 @@ interface ShimOutcomeCommon {
   readonly pgid: number;
   /** The tail of the child's stderr — where a vendor prints a flag refusal. */
   readonly stderr: string;
+  /**
+   * KAR-09.9 AC2 — the parsed object the `result` envelope carried, or
+   * `{ present: false }` when it carried none.
+   *
+   * On the common arm rather than only on `completed`, because "the turn
+   * failed *and* produced no structured output" and "the turn failed after
+   * producing one" are different diagnoses, and the second one is the case
+   * where the schema is fine and something else broke.
+   */
+  readonly structuredOutput: StructuredOutput;
 }
 
 export type ShimNodeOutcome = ShimOutcomeCommon &
@@ -310,11 +379,37 @@ export async function runShimNode(
     payload,
   });
 
+  // KAR-09.6 AC7, AC8. Resolved *before* the scheduling event so the event can
+  // carry it: a lever that only existed in the child's environment would leave
+  // a mid-node context exhaustion unattributable, which is the whole reason AC8
+  // asks for it to be recorded rather than merely set.
+  //
+  // A refused combination (a write-capable node asking to disable
+  // auto-compaction) is held rather than thrown, so the scheduling event still
+  // exists to attribute the refusal to. It is re-raised below with the rest of
+  // what is decided without a process.
+  let lever: CompactionLever | null = null;
+  let leverRefusal: unknown = null;
+  try {
+    lever = compactionLever({
+      permission: request.permission,
+      ...(request.compaction?.autocompactPct === undefined
+        ? {}
+        : { autocompactPct: request.compaction.autocompactPct }),
+      ...(request.compaction?.disableAutoCompact === undefined
+        ? {}
+        : { disableAutoCompact: request.compaction.disableAutoCompact }),
+    });
+  } catch (error) {
+    leverRefusal = error;
+  }
+
   let lastSeq: EventSeq = await ledger.append(
     event('node.scheduled', {
       node: request.nodeId,
       provider: request.provider,
       permission: request.permission,
+      ...(lever === null ? {} : { compaction: lever }),
     }),
   );
 
@@ -344,6 +439,9 @@ export async function runShimNode(
       exit: null,
       pgid: 0,
       stderr: stderrTail(),
+      // Nothing was spawned, so nothing came back — and absent is the answer,
+      // not a gap (KAR-09.9 AC2).
+      structuredOutput: { present: false },
       ...common,
     };
   };
@@ -354,7 +452,17 @@ export async function runShimNode(
   // finding one out an hour into a turn helps nobody.
   let maxFrameBytes: number;
   let plan: SandboxedShimPlan;
+  let spec: ProviderSpec;
   try {
+    // KAR-09.6 AC8's refusal, raised here so it is refused the same way every
+    // other plan-time fact is: before a process exists, and as a `NodeFailure`.
+    if (leverRefusal !== null) {
+      throw registryRefused(
+        leverRefusal instanceof Error ? leverRefusal.message : 'the compaction lever was refused',
+        { provider: request.provider, permission: request.permission },
+      );
+    }
+
     maxFrameBytes = parseFrameLimit(ports.maxFrameBytes);
 
     // KAR-08.7 AC3 — a declared scope with no auditor wired behind it, refused
@@ -364,14 +472,15 @@ export async function runShimNode(
     const unwired = scopeAuditRefusal(request.pathScope, ports.scopeAudit);
     if (unwired !== null) throw unwired;
 
-    const spec = providerSpec(request.provider);
-    if (spec === undefined) {
+    const resolved = providerSpec(request.provider);
+    if (resolved === undefined) {
       throw registryRefused(
         `no invocation is registered for provider ${request.provider}, so the exec shim has no ` +
           'flags to drive it with; the registry is the one place a vendor is named',
         { provider: request.provider },
       );
     }
+    spec = resolved;
 
     // AC3, the permission refusal and KAR-08.5's missing-sandbox refusal all
     // raise from in here, before a spawn.
@@ -384,6 +493,7 @@ export async function runShimNode(
         sessionId: request.sessionId,
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
+        ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
       },
       request.sandbox,
     );
@@ -420,7 +530,12 @@ export async function runShimNode(
     // Mandatory (§9.3): the child leads its own group, so a wedged CLI and
     // everything it spawned can be reached with one signal.
     detached: true,
-    ...(request.env === undefined ? {} : { env: request.env }),
+    // KAR-09.6 AC7, AC8 — the compaction lever, merged over whatever
+    // environment the daemon built. It is applied here rather than by the
+    // caller so that "the lever recorded on node.scheduled is the lever the
+    // child got" is true by construction; `compactionEnv` answers `{}` for a
+    // vendor with no such variables, which is every vendor but one.
+    env: { ...(request.env ?? process.env), ...compactionEnv(spec, lever ?? NO_LEVER) },
   });
   const pgid = child.pid ?? 0;
 
@@ -442,6 +557,10 @@ export async function runShimNode(
     }
   });
 
+  // KAR-09.9 AC2 — absent until a `result` envelope says otherwise, and absent
+  // is a real answer rather than a missing one (see `shimStructuredOutput`).
+  let structuredOutput: StructuredOutput = { present: false };
+
   const common = (exit: ProcessExit | null): ShimOutcomeCommon => ({
     argv: plan.argv,
     format: plan.format,
@@ -449,6 +568,7 @@ export async function runShimNode(
     exit,
     pgid,
     stderr: stderrTail(),
+    structuredOutput,
   });
 
   const seen = new Set(ports.seenUuids ?? []);
@@ -499,6 +619,45 @@ export async function runShimNode(
         phase: `shim.${type === '' ? 'line' : type}`,
         message: `uuid=${uuid ?? 'none'}${note}`,
         ioChunkSeq,
+      }),
+    );
+  };
+
+  /**
+   * Files one vendor compaction: §6.3's transcript snapshot first, then the
+   * event that points at it.
+   *
+   * In that order because the handle is only honest if the bytes are already
+   * in the store — an event naming a snapshot a later crash lost is exactly the
+   * dangling reference content addressing cannot repair. The snapshot is
+   * best-effort by construction: `snapshot` answers `null` for an absent file,
+   * and a *thrown* error is swallowed here for the same reason, because the
+   * path convention is Unverified and a node must not die of it (AC6).
+   *
+   * What it never does is fill in what the vendor did not say. `after`,
+   * `droppedSegments` and `demotedToHandles` are typed empty on this arm of
+   * `Compaction`, so there is no expression that could put a number there.
+   */
+  const recordCompaction = async (boundary: {
+    readonly trigger: 'auto' | 'manual';
+    readonly preTokens: number;
+  }): Promise<void> => {
+    let originalHandle: Handle | null = null;
+    try {
+      originalHandle =
+        (await ports.transcripts?.snapshot({
+          sessionId: request.sessionId,
+          node: request.nodeId,
+          attempt: request.attempt,
+        })) ?? null;
+    } catch {
+      originalHandle = null;
+    }
+
+    lastSeq = await ledger.append(
+      event('context.compacted', {
+        node: request.nodeId,
+        ...vendorCompaction({ ...boundary, originalHandle }),
       }),
     );
   };
@@ -591,10 +750,19 @@ export async function runShimNode(
           });
         }
 
+        // KAR-09.6 AC2 — the vendor compacted its own session. Gated on the
+        // dedup key like every other append: a replayed transcript must produce
+        // one compaction event, not one per replay.
+        const boundary = shimCompactBoundary(line);
+        if (boundary !== null && !(line.uuid !== null && seen.has(line.uuid))) {
+          await recordCompaction(boundary);
+        }
+
         if (line.type === 'result') {
           sawResult = true;
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
+          structuredOutput = shimStructuredOutput(line);
           resultFailure = shimResultFailure(line);
         }
 
@@ -610,6 +778,7 @@ export async function runShimNode(
           sawResult = true;
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
+          structuredOutput = shimStructuredOutput(line);
           resultFailure = shimResultFailure(line);
         }
         await fileLine(pending, line.uuid, line.type);

@@ -35,6 +35,8 @@ export function createProcessPorts(): ExecShimPorts {
       process.stderr.write(text);
     },
 
+    env: () => process.env,
+
     sleep: (ms) =>
       new Promise((done) => {
         setTimeout(done, ms);

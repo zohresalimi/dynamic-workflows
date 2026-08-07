@@ -177,14 +177,27 @@ Feature: Undeclared reads are a plan validation failure
 
   Scenario: validation is affordable on a wide plan
     Given a generated map fan-out of 400 child nodes, each declaring two reads
-    When validateDeclaredReads(graph) is called
-    Then it completes in under 50 ms
-    And the ancestor set for each node was computed once, not once per read
+    And the same fan-out with one read per child as a control
+    When validateDeclaredReads is timed over both, alternately, 50 times each
+    Then the median cost of the two-read graph is under 1.4x the control's
+    And the ancestor set for each node was therefore computed once, not once per read
 ```
 
 **Notes:** The third scenario guards a specific implementation trap. Recomputing the ancestor set per
 _read_ rather than per _node_ is invisible at ten nodes and turns an O(V+E) walk into O(V·E) at four
 hundred — and four hundred is exactly the `map` fan-out size the stress fixture uses.
+
+**Amended 2026-08-07** (EPIC-09 gate): AC7's "under 50 ms" was asserted as a flat wall-clock budget on
+one cold call, which made it a measurement of the machine — it took **104.7 ms** beside a full suite
+and went red having found nothing, the same failure EPIC-05's two timing budgets had. It is now a
+ratio against a control that shares every cost except the one under test: the identical fan-out with
+one read per child instead of two. Doubling the reads costs only 400 extra set lookups when the
+ancestor set is computed per node, and doubles the walks when it is computed per read, so the trap
+the scenario names is exactly what the ratio moves on. Measured over 50 alternating samples, taking
+medians rather than sums (a single 10 ms deschedule otherwise dominates a 2 ms validation — the same
+correction EPIC-03-S13's tail-query ratio needed): **1.03–1.05** idle and **0.88–1.25** under sixteen
+CPU hogs on eight cores against the shipped implementation, against **1.79–1.81** for a deliberately
+per-read one, which went red on all three attempts.
 
 ---
 

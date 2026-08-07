@@ -13,6 +13,7 @@
 import { expect, it, describe as suite } from 'vitest';
 import { type PlanGraph, PlanGraphSchema } from './plan-graph.ts';
 import { readsAreSatisfiable } from './reads-satisfiable.ts';
+import { validateDeclaredReads } from './validate-declared-reads.ts';
 
 interface Shape {
   /** Does `recon-auth-surface` declare the write that `implement-auth` reads? */
@@ -232,7 +233,7 @@ suite('readsAreSatisfiable — the walk itself', () => {
     expect(violations).toEqual([{ node: 'orphan', read: 'finding/x' }]);
   });
 
-  it('reports one violation per unsatisfied read, in node order', () => {
+  it('reports one violation per unsatisfied read, in deterministic (node, read) order', () => {
     const violations = readsAreSatisfiable(
       graphOf([
         agent('first', [], { reads: [{ kind: 'fact', key: 'finding/a' }] }),
@@ -249,5 +250,113 @@ suite('readsAreSatisfiable — the walk itself', () => {
       { node: 'second', read: 'finding/b' },
       { node: 'second', read: 'finding/c' },
     ]);
+  });
+});
+
+/**
+ * KAR-02.3 and KAR-09.1 are the same gate — "every declared read is satisfied
+ * by an ancestor's declared write or by the pinned spec", PRD F6.2 — described
+ * once in [04-domain-model §3.1] and once in [08-context-and-memory §2.1].
+ * They are two names in the public API because both epics' acceptance criteria
+ * name their own, and both are already exported; they must never again be two
+ * *implementations*, because two implementations is how a graph gets accepted
+ * on the `plan.proposed` path and rejected on the `plan.patched` path.
+ *
+ * `readsAreSatisfiable` is therefore the KAR-02.3-shaped view of
+ * `validateDeclaredReads`, and this suite is what holds it there.
+ */
+suite('readsAreSatisfiable — one gate, one implementation (KAR-02.3 / KAR-09.1)', () => {
+  const GLOB_WRITE = { kind: 'fact', key: 'finding/*', schemaId: 'DeFlow.finding.v1' };
+
+  it('accepts an exact read against an ancestor that writes the finding/* prefix form', () => {
+    // A `WriteDecl` may carry the prefix form just as a `ReadDecl` may: a recon
+    // node that cannot know its findings' names up front declares the
+    // namespace it produces into. Matching only the read side makes that a
+    // false rejection of a sound plan.
+    const violations = readsAreSatisfiable(
+      graphOf([
+        agent('recon-auth-surface', [], { writes: [GLOB_WRITE] }),
+        agent('implement', ['recon-auth-surface'], { reads: [{ kind: 'fact', key: AUTH_FACT }] }),
+      ]),
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it('still refuses a near-miss where neither side carries a glob to anchor on', () => {
+    const violations = readsAreSatisfiable(
+      graphOf([
+        agent('recon', [], {
+          writes: [{ kind: 'fact', key: 'finding/auth', schemaId: 'DeFlow.finding.v1' }],
+        }),
+        agent('implement', ['recon'], { reads: [{ kind: 'fact', key: 'finding/authz' }] }),
+      ]),
+    );
+    expect(violations).toEqual([{ node: 'implement', read: 'finding/authz' }]);
+  });
+
+  const corpus: { readonly name: string; readonly graph: PlanGraph }[] = [
+    {
+      name: 'a sound twelve-node plan',
+      graph: twelveNodePlan({
+        reconWrites: true,
+        reconIsSibling: false,
+        summariseReadsPrefix: true,
+      }),
+    },
+    {
+      name: 'a twelve-node plan with a dangling read',
+      graph: twelveNodePlan({
+        reconWrites: false,
+        reconIsSibling: false,
+        summariseReadsPrefix: true,
+      }),
+    },
+    {
+      name: 'a twelve-node plan whose producer is a sibling',
+      graph: twelveNodePlan({
+        reconWrites: true,
+        reconIsSibling: true,
+        summariseReadsPrefix: false,
+      }),
+    },
+    {
+      name: 'an ancestor writing the glob form',
+      graph: graphOf([
+        agent('recon-auth-surface', [], { writes: [GLOB_WRITE] }),
+        agent('implement', ['recon-auth-surface'], { reads: [{ kind: 'fact', key: AUTH_FACT }] }),
+      ]),
+    },
+    {
+      name: 'a spec read with no ancestor at all',
+      graph: graphOf([agent('frame', [], { reads: [{ kind: 'spec', section: 'criteria' }] })]),
+    },
+    {
+      name: 'an artifact read',
+      graph: graphOf([
+        agent('reads-an-artifact', [], {
+          reads: [{ kind: 'artifact', handle: `artifact://${'b'.repeat(64)}` }],
+        }),
+      ]),
+    },
+    {
+      name: 'violations declared out of alphabetical order',
+      graph: graphOf([
+        agent('zeta', [], { reads: [{ kind: 'fact', key: 'finding/z' }] }),
+        agent('alpha', [], { reads: [{ kind: 'fact', key: 'finding/a' }] }),
+      ]),
+    },
+    {
+      name: 'a dependency cycle',
+      graph: graphOf([
+        agent('a', ['b'], { reads: [{ kind: 'fact', key: 'finding/x' }] }),
+        agent('b', ['a']),
+      ]),
+    },
+  ];
+
+  it.each(corpus)('agrees with validateDeclaredReads on $name', ({ graph }) => {
+    expect(readsAreSatisfiable(graph)).toEqual(
+      validateDeclaredReads(graph).map((error) => ({ node: error.node, read: error.key })),
+    );
   });
 });

@@ -51,9 +51,17 @@ function omit(value: Record<string, unknown>, keys: readonly string[]): Record<s
 /** AC7: `planHash` never depends on its own prior value. */
 const PLAN_HASH_OMIT_KEYS = ['planHash'] as const;
 
-/** AC7: `specHash` never depends on approval state, so re-approving an
- * unchanged spec does not change its identity (EPIC-02-S6). */
-const SPEC_HASH_OMIT_KEYS = ['approvedBy'] as const;
+/**
+ * AC7: `specHash` never depends on approval state, so re-approving an
+ * unchanged spec does not change its identity (EPIC-02-S6).
+ *
+ * `specHash` itself is omitted for the same reason `planHash` omits `planHash`
+ * — a digest cannot be part of what it digests. KAR-09.4 AC8 is what makes it
+ * load-bearing rather than tidy: a verification gate resolves its criteria from
+ * the ledger *by* `specHash`, and a document that cannot be verified against
+ * its own recorded digest gives the gate nothing to select on.
+ */
+const SPEC_HASH_OMIT_KEYS = ['approvedBy', 'specHash'] as const;
 
 /**
  * sha256 of the canonical encoding of `doc`, excluding the `planHash` field

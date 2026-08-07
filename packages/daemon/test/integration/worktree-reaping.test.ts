@@ -346,7 +346,18 @@ suite('EPIC-07-S29: the full recovery on restart (AC1, AC3)', () => {
     } finally {
       s.close();
     }
-  });
+    // The budget above is the assertion; this timeout must not quietly become a
+    // second, flat one. The spec runs something like a hundred real git
+    // subprocesses — 20 worktree provisions in setup, 20 more for the control,
+    // and the ~63 the sweep itself spends — and every one of them competes with
+    // seven other forked workers doing the same on an 8-core box. Measured
+    // 2026-08-07: 4.3 s isolated, and past 30 s beside a full suite, which is
+    // the red this gate opened on. The slice default was therefore measuring
+    // how busy the machine was, which is exactly what the control multiple
+    // above exists to avoid (project-slices makes the same argument for the
+    // same reason). 120 s is ~28x the isolated cost: far enough out that a
+    // timeout here means the reaper wedged, not that the box was loaded.
+  }, 120_000);
 });
 
 // ── EPIC-07-S31 — the PID-reuse guard ───────────────────────────────────────

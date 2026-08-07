@@ -1,0 +1,4 @@
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.

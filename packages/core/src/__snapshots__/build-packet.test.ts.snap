@@ -1,0 +1,254 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden packets per node archetype (EPIC-09-S6, test plan #1, #2) > matches the committed snapshot, with a pinned segment first in every one 1`] = `
+{
+  "gate": {
+    "kinds": [
+      "pinned.spec",
+      "pinned.spec",
+      "pinned.constraints",
+      "pinned.pathscope",
+      "pinned.constraints",
+      "task.brief",
+      "artifact.handle",
+    ],
+    "prompt": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Judge criterion no-v-model-regression.
+
+artifact://deadbeef - diff, 412 lines",
+    "totals": {
+      "byKind": {
+        "artifact.handle": 10,
+        "fact": 0,
+        "history.summary": 0,
+        "pinned.constraints": 36,
+        "pinned.pathscope": 22,
+        "pinned.spec": 127,
+        "retrieved": 0,
+        "task.brief": 10,
+        "tool.output": 0,
+      },
+      "tokens": 205,
+    },
+  },
+  "human": {
+    "kinds": [
+      "pinned.spec",
+      "pinned.spec",
+      "pinned.constraints",
+      "pinned.pathscope",
+      "pinned.constraints",
+      "task.brief",
+      "history.summary",
+    ],
+    "prompt": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Summarise the change for approval.
+
+Turns 1-9 summarised.",
+    "totals": {
+      "byKind": {
+        "artifact.handle": 0,
+        "fact": 0,
+        "history.summary": 6,
+        "pinned.constraints": 36,
+        "pinned.pathscope": 22,
+        "pinned.spec": 127,
+        "retrieved": 0,
+        "task.brief": 9,
+        "tool.output": 0,
+      },
+      "tokens": 200,
+    },
+  },
+  "implement": {
+    "kinds": [
+      "pinned.spec",
+      "pinned.spec",
+      "pinned.constraints",
+      "pinned.pathscope",
+      "pinned.constraints",
+      "task.brief",
+      "fact",
+      "tool.output",
+    ],
+    "prompt": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations
+
+Declared path scopes (pinned):
+- write: src/checkout/**
+
+Permission level (pinned): worktree
+
+Port CheckoutForm to <script setup>.
+
+finding/auth-uses-jwt = true
+
+vitest: 12 passed",
+    "totals": {
+      "byKind": {
+        "artifact.handle": 0,
+        "fact": 7,
+        "history.summary": 0,
+        "pinned.constraints": 37,
+        "pinned.pathscope": 14,
+        "pinned.spec": 127,
+        "retrieved": 0,
+        "task.brief": 9,
+        "tool.output": 5,
+      },
+      "tokens": 199,
+    },
+  },
+  "map-child": {
+    "kinds": [
+      "pinned.spec",
+      "pinned.spec",
+      "pinned.constraints",
+      "pinned.pathscope",
+      "pinned.constraints",
+      "task.brief",
+      "fact",
+    ],
+    "prompt": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations
+
+Declared path scopes (pinned):
+- write: src/checkout/steps/**
+
+Permission level (pinned): worktree
+
+Port one step component.
+
+shard = steps/Address.vue",
+    "totals": {
+      "byKind": {
+        "artifact.handle": 0,
+        "fact": 7,
+        "history.summary": 0,
+        "pinned.constraints": 37,
+        "pinned.pathscope": 16,
+        "pinned.spec": 127,
+        "retrieved": 0,
+        "task.brief": 6,
+        "tool.output": 0,
+      },
+      "tokens": 193,
+    },
+  },
+  "recon": {
+    "kinds": [
+      "pinned.spec",
+      "pinned.spec",
+      "pinned.constraints",
+      "pinned.pathscope",
+      "pinned.constraints",
+      "task.brief",
+      "retrieved",
+    ],
+    "prompt": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Map the checkout module.
+
+ADR-0010: ESM only.",
+    "totals": {
+      "byKind": {
+        "artifact.handle": 0,
+        "fact": 0,
+        "history.summary": 0,
+        "pinned.constraints": 36,
+        "pinned.pathscope": 22,
+        "pinned.spec": 127,
+        "retrieved": 5,
+        "task.brief": 6,
+        "tool.output": 0,
+      },
+      "tokens": 196,
+    },
+  },
+}
+`;

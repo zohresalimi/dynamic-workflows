@@ -82,6 +82,13 @@ suite('there is no classify(reason) in core (AC2, EPIC-02-S28)', () => {
         } catch {
           continue; // it rejected a bare reason string, which is the point
         }
+        // An async export rejects rather than throwing, and an unobserved
+        // rejection would fail this file for a reason that has nothing to do
+        // with the taxonomy. A promise is never a `FailureClass` either way.
+        if (returned instanceof Promise) {
+          returned.catch(() => undefined);
+          continue;
+        }
         if (typeof returned === 'string' && classes.includes(returned)) {
           offenders.push(`${name}(${reason}) -> ${returned}`);
         }

@@ -29,6 +29,7 @@ import {
   loadSession,
   mcpAcp,
   mediatedExecution,
+  supportsSteering,
   supportsTerminal,
 } from '../src/index.ts';
 
@@ -188,5 +189,42 @@ suite('a row whose caps_json cannot be read answers absent, and never throws', (
       capsJson: JSON.stringify({ agentCapabilities: { sessionCapabilities: 'yes' } }),
     };
     expect(capability(row, 'resume').reason).toBe('capability-absent');
+  });
+});
+
+/**
+ * KAR-09.4 AC5/AC6 — mid-session steering, read from the manifest.
+ *
+ * EPIC-09-S24's outline is the whole rule: `true` re-injects on the interval,
+ * `false` and *unadvertised* both do nothing. There is no provider name in the
+ * decision, which is what the `_meta` path buys — an adapter that starts
+ * advertising it is believed without a code change, and today's five honestly
+ * answer "absent".
+ */
+suite('mid-session steering (KAR-09.4 AC5, EPIC-09-S24)', () => {
+  it('is unadvertised on every measured row, so nobody is steered by accident', () => {
+    for (const row of [claude, codex, opencode, copilot, gemini]) {
+      expect(capability(row, 'steering').reason).toBe('capability-absent');
+      expect(supportsSteering(row)).toBeUndefined();
+    }
+  });
+
+  it('is granted when the manifest says so', () => {
+    const row: CapabilityRow = {
+      ...claude,
+      capsJson: JSON.stringify({ agentCapabilities: { _meta: { midSessionSteering: true } } }),
+    };
+
+    expect(supportsSteering(row)).toBe(true);
+  });
+
+  it('tells a refusal from a silence, because only one of them is a decision', () => {
+    const row: CapabilityRow = {
+      ...claude,
+      capsJson: JSON.stringify({ agentCapabilities: { _meta: { midSessionSteering: false } } }),
+    };
+
+    expect(supportsSteering(row)).toBe(false);
+    expect(capability(row, 'steering').reason).toBe('capability-denied');
   });
 });

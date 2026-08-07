@@ -21,6 +21,44 @@ export type {
   SchemaIssue,
 } from './accept-fact.ts';
 export { acceptFact } from './accept-fact.ts';
+// KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
+// behind.
+export {
+  byteLengthOf,
+  defaultDescription,
+  exceedsInlineThreshold,
+  formatByteSize,
+  handleForSegment,
+  handleStubText,
+  INLINE_THRESHOLD_BYTES_DEFAULT,
+  lineCountOf,
+  READ_ARTIFACT_TOOL,
+  truncatedDigest,
+} from './artifact-offload.ts';
+// KAR-09.2 — packet assembly under a token budget: fill order, the budget
+// ceiling, and the demotion ladder that offloads rather than summarises.
+export type {
+  BudgetInput,
+  BudgetResolution,
+  DemotedBody,
+  DemotionReason,
+  PacketBuild,
+  PacketBuildInput,
+  PacketDemotion,
+  PacketPinnedInput,
+  PacketReinjectionInput,
+  PacketTarget,
+} from './build-packet.ts';
+export {
+  BUDGET_FRACTION_CEILING,
+  BUDGET_FRACTION_DEFAULT,
+  buildPacket,
+  DEMOTION_REASONS,
+  FILL_ORDER,
+  PinnedSegmentSuppliedLate,
+  resolveContextBudget,
+  SegmentContentHashMismatch,
+} from './build-packet.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
@@ -39,6 +77,63 @@ export type {
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
+// KAR-09.6 — compaction with a fidelity discriminator: the union that makes
+// "a vendor.session event is never exact" a compile error, the F10.5
+// projection that labels an inferred figure, and the auto-compact arithmetic.
+export type {
+  AutoCompactConstants,
+  Compaction,
+  CompactionBar,
+  CompactionBarStyle,
+  CompactionChart,
+  CompactionLever,
+  CompactionTrigger,
+  CompactionView,
+  DroppedSegmentEntry,
+  PacketCompaction,
+  ReportedWindow,
+  VendorCompaction,
+  VendorCompactTrigger,
+} from './compaction.ts';
+export {
+  AutoCompactDisableRefused,
+  compactionChart,
+  compactionLever,
+  compactionTriggerOf,
+  compactionView,
+  DEFAULT_AUTOCOMPACT_PCT,
+  defaultAutoCompactThreshold,
+  effectiveWindowOf,
+  INFERRED_AFTER_TOOLTIP,
+  INFERRED_LABEL,
+  NOT_REPORTED_LABEL,
+  overriddenAutoCompactThreshold,
+  packetCompaction,
+  VENDOR_UNREPORTED_NOTE,
+  vendorCompaction,
+} from './compaction.ts';
+// KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
+// the forbid ratio DeFlow doctor reports.
+export type {
+  AllowOnlyConstraint,
+  AllowOnlySubject,
+  Constraint,
+  ConstraintCounts,
+  ForbidConstraint,
+} from './constraint.ts';
+export {
+  ALLOW_ONLY_SUBJECTS,
+  AllowOnlyConstraintSchema,
+  ConstraintSchema,
+  convertibleForbids,
+  countConstraintForms,
+  ForbidConstraintSchema,
+  forbidRatio,
+  orderPinnedConstraints,
+  RequireConstraintSchema,
+  restateAsRequirement,
+  restateForbidAsAllowOnly,
+} from './constraint.ts';
 // KAR-02.6 — ContextPacket and typed segments.
 export type {
   ContextBudget,
@@ -75,6 +170,19 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 export { decide } from './decide.ts';
 // KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
+// KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
+// run-config constraints are read from. The file itself is read in the daemon.
+export type { ContextConfig, DeFlowConfig, ProviderConfig } from './deflow-config.ts';
+export {
+  ContextConfigSchema,
+  compactionLeverFor,
+  configuredConstraints,
+  DeFlowConfigSchema,
+  inlineThresholdBytesOf,
+  ProviderConfigSchema,
+  parseDeFlowConfig,
+  pinReinjectTurnsFor,
+} from './deflow-config.ts';
 export type { CommandContext, DestructiveReason } from './destructive-command.ts';
 export { DESTRUCTIVE_COMMANDS, destructiveCommand } from './destructive-command.ts';
 // KAR-06.3 — what the effect journal remembers about what was asked for, so a
@@ -217,6 +325,47 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
+// agent's context.
+export type { GateSpecUnavailableReason, LedgerSpec } from './gate-spec.ts';
+export { GateSpecUnavailable, gateSpecFromLedger } from './gate-spec.ts';
+// KAR-09.5 — the handle grammar, the line range, and the permission check
+// DeFlow_read_artifact needs because it sits outside the ACP fs/* path.
+export type {
+  HandleDenial,
+  HandleRefusal,
+  HandleRefusalCode,
+  NodeHandleAccess,
+  ParsedArtifactHandle,
+  ParsedFileHandle,
+  ParsedHandle,
+} from './handle-access.ts';
+export { decideFileHandleAccess, parseHandle, sliceLines } from './handle-access.ts';
+// KAR-09.9 — the enforced return budget, the one bounded repair, and the rule
+// that there is no truncation path anywhere on the handoff.
+export type {
+  AgentRole,
+  HandoffCause,
+  HandoffInput,
+  HandoffJudgement,
+  HandoffOutcome,
+  HandoffOversize,
+  HandoffOversizeRate,
+  HandoffSample,
+  StructuredOutput,
+} from './handoff.ts';
+export {
+  agentRoleOf,
+  DEFAULT_RETURN_BUDGET,
+  defaultReturnBudget,
+  HANDOFF_REPAIR_LIMIT,
+  handoffOversizeRates,
+  judgeHandoff,
+  judgeVendorFailure,
+  RETURN_BUDGET_DEFAULTS,
+  repairPromptFor,
+  withReturnBudgetDefaults,
+} from './handoff.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -374,6 +523,43 @@ export {
   reasonCode,
   validateEnvDeclaration,
 } from './permission.ts';
+// KAR-09.3 — the F6.6 integrity check: the pinned bytes are in the prompt that
+// was actually sent, or the node fails and a human is asked.
+export type {
+  PinnedPacketView,
+  PinnedSegmentView,
+  PinViolation,
+  PinViolationKind,
+} from './pin-integrity.ts';
+export {
+  assertPinIntegrity,
+  findPinViolations,
+  PinIntegrityViolation,
+  pinnedKept,
+} from './pin-integrity.ts';
+// KAR-09.3 — the five pinned content types and the one producer of the flag.
+export type {
+  ContextSegmentInput,
+  DemotionResult,
+  PinnedBuildInput,
+  PinnedContentType,
+  PinnedSegmentKind,
+  SegmentedPacket,
+  TokenEstimator,
+  UnpinnedSegmentKind,
+} from './pinned-set.ts';
+export {
+  assertPinnedSetFitsBudget,
+  buildPinnedSegments,
+  contextSegment,
+  demoteToBudget,
+  demotionLadder,
+  heuristicTokens,
+  PINNED_CONTENT_TYPES,
+  PinnedSetExceedsBudget,
+  pinnedConstraintsOf,
+  selectCompactionCandidates,
+} from './pinned-set.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -463,10 +649,35 @@ export {
 } from './plan-patch.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
+// KAR-02.3 — the F6.2 read-reachability gate under its EPIC-02 name and
+// `{ node, read }` return shape. One implementation, in
+// ./validate-declared-reads.ts; this is a view over it, not a second walk.
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
+// KAR-09.4 §4.2(a) — when the pinned set is due for re-injection, and the
+// planning warning where a turn boundary cannot be steered.
+export type { ReinjectCounter, ReinjectionPlanningInput, TurnTick } from './reinjection.ts';
+export {
+  afterReinjection,
+  afterTurn,
+  PIN_REINJECT_TURNS_DEFAULT,
+  reinjectionPlanningWarning,
+  startReinjection,
+} from './reinjection.ts';
+// KAR-09.3 — the pure render, whose only opinion this story owns is that the
+// pinned block leads it.
+export { FreeProsePinnedSegment, renderPacket } from './render-packet.ts';
+// KAR-09.10 — an `artifact_fts` hit, turned into a `retrieved` segment: the
+// pull-line text and the 20-row ceiling, single-sourced against the ledger's
+// `LIMIT`.
+export type { ArtifactRetrievalHit } from './retrieval.ts';
+export {
+  RETRIEVED_ARTIFACT_LIMIT,
+  retrievedSegmentsOf,
+  retrievedSegmentText,
+} from './retrieval.ts';
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
@@ -568,6 +779,33 @@ export {
   TaskSpecSchema,
 } from './task-spec.ts';
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
+// KAR-09.7 — three measurement tiers, and the honest blank when none can answer.
+export type {
+  NodeCostInput,
+  ProjectedNodeCost,
+  TokenAccounting,
+  TokenTier,
+  TokenTierInput,
+} from './token-accounting.ts';
+export {
+  projectNodeCost,
+  selectTokenTier,
+  TOKEN_ACCOUNTING_MODES,
+  TOKEN_TIERS,
+  TokenAccountingSchema,
+} from './token-accounting.ts';
+// KAR-09.7 — the self-calibrating Tier-2 correction factor.
+export type { Calibration } from './token-calibration.ts';
+export {
+  appliedFactor,
+  CALIBRATION_ALPHA,
+  CALIBRATION_MIN_SAMPLES,
+  CALIBRATION_SEEDS,
+  calibratedEstimate,
+  seededCalibration,
+  seedFactor,
+  updateCalibration,
+} from './token-calibration.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
 export {
   sumUsage,
@@ -575,6 +813,10 @@ export {
   TokenUsageSourceSchema,
   UsageTotalsSchema,
 } from './token-usage.ts';
+// KAR-09.7 — the Tier-2 `Tokenizer` port. Implemented in @DeFlow/daemon, in the
+// same style as `Clock` and `Db`; core owns no BPE table.
+export type { Tokenizer } from './tokenizer.ts';
+export { contextFillPercent } from './tokenizer.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,
@@ -595,6 +837,10 @@ export {
   UpcasterRegistry,
   upcast,
 } from './upcasters.ts';
+// KAR-09.1 — declared reads validated at plan time: the cheapest correctness
+// gate in the system, run on every plan.proposed and plan.patched.
+export type { UndeclaredReadError } from './validate-declared-reads.ts';
+export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
 export type { Finding, Verdict } from './verdict.ts';
 export {
   CRITERION_STATUSES,

@@ -1,0 +1,6 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the rendered handle line matches the documented format (AC3, test plan #3) > carries the truncated digest, the description, the lines, the size and the route 1`] = `
+"artifact://e630…263  build-log for \`pnpm -r build\` (fail)  · 412 lines · 38.4 KB
+  → pull with the \`DeFlow_read_artifact\` MCP tool: artifact://e6300e73d6c33c3933486d88abea3a0f198e2e3377404d57302853915c7ff263"
+`;

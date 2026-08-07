@@ -86,7 +86,11 @@ export const ARTIFACT_UNAVAILABLE = 'full artifact unavailable';
 /** The notice the inspector shows when the artifact no longer hashes (AC6). */
 export const ARTIFACT_FAILED_INTEGRITY = 'artifact failed integrity';
 
-const ARTIFACT_SCHEME = 'artifact://';
+/** The scheme half of an `artifact://` handle. Exported because the run's
+ * artifact index and the MCP handle resolver both split handles on it, and a
+ * second spelling of a constant this load-bearing is how two components come
+ * to disagree about what a digest is. */
+export const ARTIFACT_SCHEME = 'artifact://';
 const ARTIFACT_HANDLE = /^artifact:\/\/[0-9a-f]{64}$/;
 
 /**

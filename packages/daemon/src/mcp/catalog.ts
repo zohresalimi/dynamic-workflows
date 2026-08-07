@@ -31,7 +31,18 @@ export function isWorkflowPhase(value: string): value is WorkflowPhase {
 }
 
 export const READ_FACT = 'DeFlow.readFact';
-export const READ_ARTIFACT = 'DeFlow.readArtifact';
+/**
+ * KAR-09.5 AC3 — `DeFlow_read_artifact`, spelled exactly as the handle line
+ * every offloaded body leaves in the prompt spells it
+ * (docs/08-context-and-memory.md §5.2).
+ *
+ * The odd one out in this file, and deliberately: a tool name the agent is
+ * *told to call in prose* has to match the tool the host serves, or the line
+ * costs a wasted turn and a confused model. The underscore spelling is also the
+ * portable one — a `.` is legal in MCP and illegal in the Anthropic API's tool
+ * names, which is what an `mcp__<server>__<tool>` bridge produces.
+ */
+export const READ_ARTIFACT = 'DeFlow_read_artifact';
 export const PROPOSE_PLAN_PATCH = 'DeFlow.proposePlanPatch';
 
 /** How much of an artifact a tool result will inline before it truncates.
@@ -74,10 +85,20 @@ const readArtifact: WorkflowTool = {
   name: READ_ARTIFACT,
   title: 'Read an artifact by handle',
   description:
-    "Fetch the content behind an artifact:// handle from the run's content-addressed " +
-    'store. Content above the inline limit comes back truncated with "truncated": true.',
+    'Fetch the content behind a handle. An artifact:// handle resolves to the full body ' +
+    "from the run's content-addressed store — this is how you pull back a body the " +
+    'context packet replaced with a one-line handle. A file://<path>#L12-L40 handle ' +
+    'resolves to exactly those lines of that file in your worktree, subject to the same ' +
+    'permission level and path scope as any other read. Content above the inline limit ' +
+    'comes back truncated with "truncated": true.',
   inputSchema: {
-    handle: z.string().min(1).describe('An artifact:// handle taken from a fact or an event.'),
+    handle: z
+      .string()
+      .min(1)
+      .describe(
+        'artifact://<64 hex sha256> as printed in a handle line, or ' +
+          'file://<repo-relative path>#L12-L40.',
+      ),
   },
   outputSchema: {
     handle: z.string(),

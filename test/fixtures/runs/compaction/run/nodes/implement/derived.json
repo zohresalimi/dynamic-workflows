@@ -1,0 +1,9 @@
+{
+  "derived": [
+    {
+      "path": "prompt.txt",
+      "handle": "artifact://44b9b9c5f9e5e10bde4785ae348db9c01346c63c6bf49d4c776979b8349ed421",
+      "rebuildFrom": "context.built"
+    }
+  ]
+}

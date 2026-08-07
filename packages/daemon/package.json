@@ -24,8 +24,10 @@
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
     "execa": "catalog:",
+    "gpt-tokenizer": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "optionalDependencies": {

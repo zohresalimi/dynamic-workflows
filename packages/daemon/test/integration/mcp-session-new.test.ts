@@ -21,6 +21,7 @@
 import { RECORD_CASE_ENV, RECORD_DIR_ENV, RECORD_ENV, runAcpNode } from '@DeFlow/adapters';
 import {
   type Handle,
+  type HandleRefusal,
   HandleSchema,
   type NodeId,
   NodeIdSchema,
@@ -48,6 +49,14 @@ const MOCK_AGENT_BIN = fileURLToPath(
 
 const RUN_ID: RunId = RunIdSchema.parse('run_20260805T101500Z_ac0506');
 const NODE_ID: NodeId = NodeIdSchema.parse('n1');
+
+/** These specs never resolve a handle; the port has to be supplied, and a
+ * refusal is the honest thing for a host with no artifact store behind it. */
+const NO_ARTIFACTS: HandleRefusal = {
+  code: 'artifact-unknown',
+  message: 'this spec wired no artifact store',
+};
+
 const PROVIDER: ProviderId = ProviderIdSchema.parse('mock');
 
 /**
@@ -88,7 +97,7 @@ beforeEach(async () => {
     clock: new TestClock(),
     ledger: ledger.sink,
     facts: { read: () => null },
-    artifacts: { read: () => null },
+    artifacts: { resolve: () => Promise.resolve({ ok: false, refusal: NO_ARTIFACTS }) },
   });
 });
 

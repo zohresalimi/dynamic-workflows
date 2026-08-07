@@ -42,9 +42,18 @@ export {
   loadSession,
   mcpAcp,
   mediatedExecution,
+  supportsSteering,
   supportsTerminal,
 } from './capabilities.ts';
 export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
+// KAR-09.6 — the compaction lever as one vendor's environment, and the shape
+// check that catches the day a decoded constant stops being true.
+export {
+  autoCompactConstants,
+  checkCompactionShape,
+  compactionEnv,
+  vendorTranscriptPath,
+} from './compaction.ts';
 // KAR-05.7 — Layer B: the eight-assertion behavioural contract, as data rather
 // than as test bodies, so `DeFlow doctor` can run it against installed CLIs.
 export type {
@@ -161,6 +170,7 @@ export { renderAuthMethods, reportAvailability } from './provider-availability.t
 // KAR-05.3 — the verified provider table, encoded once. The only file in this
 // package that names a vendor, and it names no capability.
 export type {
+  CompactionSpec,
   KnownProviderId,
   ProviderKind,
   ProviderSpec,
@@ -173,7 +183,9 @@ export type {
   SpawnPlan,
 } from './provider-registry.ts';
 export {
+  DEFAULT_MODEL_FAMILY,
   PROVIDER_SPECS,
+  providerFamily,
   providerSpec,
   SHIM_FORMATS,
   shimPlan,
@@ -296,17 +308,42 @@ export {
 } from './session-load.ts';
 // KAR-05.8 — the per-line parser: uuid as the dedup key, the vendor-reported
 // usage envelope, and the rate limit's epoch-seconds `resetsAt`.
-export type { ShimLine, ShimRateLimit } from './shim-frames.ts';
+export type {
+  ShimCompactBoundary,
+  ShimLine,
+  ShimRateLimit,
+  VendorUsageReport,
+} from './shim-frames.ts';
 export {
+  COMPACT_BOUNDARY_SUBTYPE,
   parseShimLine,
   RESULT_SUBTYPE_REASONS,
+  shimCompactBoundary,
   shimRateLimit,
   shimResultCostUsd,
   shimResultFailure,
+  shimResultReport,
   shimResultUsage,
+  shimStructuredOutput,
   shimText,
 } from './shim-frames.ts';
+// KAR-09.9 — which mechanism carried the return schema to this vendor, and the
+// manifest field that says so when the answer is the softer one.
+export type {
+  StructuredOutputContract,
+  StructuredOutputManifest,
+  StructuredOutputMechanism,
+  StructuredOutputRequest,
+} from './structured-output.ts';
+export {
+  providerStructuredOutput,
+  SCHEMA_PLACEHOLDER,
+  STRUCTURED_OUTPUT_MECHANISMS,
+  structuredOutputContract,
+} from './structured-output.ts';
 export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
+// KAR-09.7 — Tier 1 on the jsonl dialect, normalised into the same report.
+export { TURN_COMPLETED_TYPE, turnCompletedReport } from './turn-frames.ts';
 export type { UpdateDescription } from './updates.ts';
 export { describeUpdate, toolCallContentText } from './updates.ts';

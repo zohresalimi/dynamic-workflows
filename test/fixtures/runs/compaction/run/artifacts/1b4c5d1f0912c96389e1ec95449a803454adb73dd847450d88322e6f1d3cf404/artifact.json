@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "sha256": "1b4c5d1f0912c96389e1ec95449a803454adb73dd847450d88322e6f1d3cf404",
+  "handle": "artifact://1b4c5d1f0912c96389e1ec95449a803454adb73dd847450d88322e6f1d3cf404",
+  "bytes": 12014,
+  "lines": 2,
+  "mime": "text/plain",
+  "description": "tool.output body \"build-log\"",
+  "node": "implement",
+  "segment": "build-log",
+  "reason": "inline-threshold"
+}
