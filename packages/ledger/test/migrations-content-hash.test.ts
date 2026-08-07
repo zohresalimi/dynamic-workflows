@@ -51,6 +51,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-09.7 — the learned `tokenEstimateFactor` per
   // (provider, model).
   '0010-token-calibration.ts': '2460e6594c6be09a14f2902b78d4b3929aad9637193677ee910939643012abb6',
+  // Shipped 2026-08-07, KAR-09.8 — `fact` and `fact_edges`, the blackboard as
+  // a droppable materialised view of the `fact.*` events.
+  '0011-blackboard.ts': '7b5e59f58929bb841167f2968d56b952f2bb6dcf347d029cf19c8493b30af72c',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

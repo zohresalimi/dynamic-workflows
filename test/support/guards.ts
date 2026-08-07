@@ -2764,3 +2764,80 @@ export function checkPinnedFlagHasOneProducer(
   }
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.8 — the blackboard is a projection, and only one module writes it.
+ * -------------------------------------------------------------------------- */
+
+export const FACT_WRITE_MESSAGE =
+  'writes the `fact` or `fact_edges` tables directly. Those tables are a materialised view of ' +
+  'the `fact.written` / `fact.read` / `fact.invalidated` events and nothing else ' +
+  '(docs/04-domain-model.md §5.1): if the blackboard ever becomes independently mutable, NF9 ' +
+  '(replay determinism) and NF10 (auditability) are both gone. Append the event and let the ' +
+  'projection in packages/ledger/src/blackboard.ts apply it. This guard exists because the ' +
+  'change that breaks the rule arrives disguised as a fan-out performance optimisation and ' +
+  'looks reasonable in review.';
+
+/** `INSERT INTO fact`, `UPDATE fact SET`, `DELETE FROM fact_edges`, however spaced. */
+const FACT_TABLE_WRITE =
+  /\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+(?:fact|fact_edges)\b/i;
+
+/**
+ * AC3. Every write to the blackboard tables outside the projection module.
+ *
+ * `allowed` is the projection module itself — one path, and the rule is that
+ * the list stays one path long.
+ */
+export function checkFactWritesAreProjectionOnly(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!FACT_TABLE_WRITE.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${FACT_WRITE_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+export const FACT_CACHE_MESSAGE =
+  'holds facts in a module-level mutable collection. A cache that survives a tick is a second ' +
+  'home for the blackboard, and the two disagree the first time a fact is invalidated ' +
+  '(EPIC-09-S42). Read the projection through @DeFlow/ledger on each use — it is an indexed ' +
+  'SQLite read of a table holding tens of rows, not a network call.';
+
+/**
+ * EPIC-09-S42 scenario 2, second half: no module-level mutable fact collection
+ * anywhere in the workspace.
+ *
+ * Module level specifically — a `Map` built inside a function lives and dies
+ * with the call, and it is the one that outlives the tick that can drift.
+ * Matched at column zero, which is what "module level" looks like in a file
+ * this repository's formatter has touched.
+ */
+const MODULE_LEVEL_FACT_COLLECTION =
+  /^(?:const|let|var)\s+\w*[fF]act\w*\s*(?::[^=]+)?=\s*new\s+(?:Map|Set|WeakMap|WeakSet)\b/;
+
+export function checkNoFactCache(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!MODULE_LEVEL_FACT_COLLECTION.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${FACT_CACHE_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}

@@ -34,6 +34,37 @@ export {
   readRange,
   type StoredEvent,
 } from './append.ts';
+// KAR-09.8 — the blackboard: `fact` and `fact_edges` as a materialised view of
+// the `fact.*` events, and the only module that writes them. Droppable by
+// construction — `rebuildBlackboard` puts both tables back from seq 0.
+export {
+  BLACKBOARD_SCHEMA,
+  type BlackboardRebuild,
+  createBlackboardTables,
+  FACT_EVENT_KINDS,
+  type FactEdgeDirection,
+  type FactEdgeRow,
+  type FactEventEnvelope,
+  type FactEventKind,
+  type FactInvalidation,
+  type InvalidateFactOptions,
+  invalidateFact,
+  isFactEventKind,
+  projectFactEvent,
+  type ResolvedFactRead,
+  type ResolveReadsOptions,
+  readersBefore,
+  readFactByKey,
+  readFactEdges,
+  readFacts,
+  readTaintedNodes,
+  rebuildBlackboard,
+  resolveDeclaredReads,
+  type StoredFact,
+  type TaintedNode,
+  type WriteFactResult,
+  writeFact,
+} from './blackboard.ts';
 // KAR-03.9 — the content-addressed blob store: what an oversized payload
 // becomes, and the excerpt that keeps a lost artifact renderable.
 export {

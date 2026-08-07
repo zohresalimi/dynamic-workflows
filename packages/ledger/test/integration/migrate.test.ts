@@ -73,12 +73,16 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // `worktrees` is migration 0008's projection over git (KAR-07.2);
       // `conflict_probe` is migration 0009's live merge-tree matrix (KAR-07.6);
       // `token_calibration` is migration 0010's learned tokenEstimateFactor
-      // per (provider, model) (KAR-09.7).
+      // per (provider, model) (KAR-09.7); `fact` and `fact_edges` are
+      // migration 0011's blackboard, the one pair here that may be dropped
+      // and rebuilt from the ledger (KAR-09.8).
       expect(tables).toEqual([
         'conflict_probe',
         'daemon',
         'effect',
         'event',
+        'fact',
+        'fact_edges',
         'io_chunk',
         'node_wake',
         'plan',
@@ -108,6 +112,13 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       expect(indexes).toEqual([
         'effect_run_state',
         'event_run_seq',
+        // The blackboard's three (KAR-09.8): one to resolve a declared read
+        // against a run's facts, and two for the directions F10.4's memory
+        // graph is walked in — "who touched this fact" and "what did this node
+        // touch". §8.2's taint query is the first of those two, filtered.
+        'fact_by_run_key',
+        'fact_edges_by_fact',
+        'fact_edges_by_node',
         'io_run_seq',
         'node_wake_due',
         // Partial, on state = 'live': a long-lived data directory keeps one
