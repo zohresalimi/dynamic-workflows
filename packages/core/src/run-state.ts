@@ -438,17 +438,18 @@ export interface RunState {
  * one thing: ignore the cached state and replay the run's events from zero.
  * That is why forgetting to bump it is the only way the checkpoint can be
  * wrong, and why bumping it costs nothing but a few milliseconds of replay —
- * the cache is a pure optimisation and is allowed to be thrown away, never to
- * be believed when it is stale.
+ * the cache is a pure optimisation, free to be thrown away and never to be
+ * believed when stale.
  *
- * The same applies to how an existing field is *derived*: 4 is
- * `NodeState.wakeAt` (KAR-06.6), 5 is `RunState.cancel` (KAR-06.7), 6 is
- * F4.7's no-progress fields (KAR-06.8), 7 is KAR-14.1's per-node cost rollup
- * replacing `budget`'s single scalar, and 8 is KAR-14.2's `ceilings` and
- * `NodeState.startedTs` — restored from a checkpoint that predates them, a
- * paused run would come back with no ceiling in force.
+ * The same applies to how an existing field is *derived*. The bumps:
+ * 4 `NodeState.wakeAt` (KAR-06.6); 5 `RunState.cancel` (KAR-06.7); 6 F4.7's
+ * no-progress fields (KAR-06.8); 7 KAR-14.1's per-node cost rollup, replacing
+ * `budget`'s scalar; 8 KAR-14.2's `ceilings` and `NodeState.startedTs`,
+ * without which a paused run returns with no ceiling in force; 9 KAR-14.3's
+ * reconciled estimate; 10 KAR-14.1's `CostRollup.authModes`, without which an
+ * unpriceable API-key node returns with its credential path erased.
  */
-export const CHECKPOINT_VERSION = 9;
+export const CHECKPOINT_VERSION = 10;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event

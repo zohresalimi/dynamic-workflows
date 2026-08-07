@@ -1377,7 +1377,10 @@
         },
         "estimated": null
       },
-      "unaccounted": []
+      "unaccounted": [],
+      "authModes": [
+        "subscription"
+      ]
     },
     "nodes": {
       "step-01": {
@@ -1396,6 +1399,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-02": {
@@ -1414,6 +1420,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-03": {
@@ -1432,6 +1441,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-04": {
@@ -1450,6 +1462,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-05": {
@@ -1468,6 +1483,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-06": {
@@ -1486,6 +1504,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-07": {
@@ -1504,6 +1525,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-08": {
@@ -1522,6 +1546,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-09": {
@@ -1540,6 +1567,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-10": {
@@ -1558,6 +1588,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-11": {
@@ -1576,6 +1609,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-12": {
@@ -1594,6 +1630,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-13": {
@@ -1612,6 +1651,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-14": {
@@ -1630,6 +1672,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-15": {
@@ -1648,6 +1693,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-16": {
@@ -1666,6 +1714,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-17": {
@@ -1684,6 +1735,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-18": {
@@ -1702,6 +1756,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-19": {
@@ -1720,6 +1777,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-20": {
@@ -1738,6 +1798,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-21": {
@@ -1756,6 +1819,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-22": {
@@ -1774,6 +1840,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-23": {
@@ -1792,6 +1861,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-24": {
@@ -1810,6 +1882,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-25": {
@@ -1828,6 +1903,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-26": {
@@ -1846,6 +1924,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-27": {
@@ -1864,6 +1945,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-28": {
@@ -1882,6 +1966,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-29": {
@@ -1900,6 +1987,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-30": {
@@ -1918,6 +2008,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-31": {
@@ -1936,6 +2029,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-32": {
@@ -1954,6 +2050,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-33": {
@@ -1972,6 +2071,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-34": {
@@ -1990,6 +2092,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-35": {
@@ -2008,6 +2113,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-36": {
@@ -2026,6 +2134,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-37": {
@@ -2044,6 +2155,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-38": {
@@ -2062,6 +2176,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-39": {
@@ -2080,6 +2197,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       },
       "step-40": {
@@ -2098,6 +2218,9 @@
           "estimated": null
         },
         "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
         "attempts": []
       }
     },
@@ -2117,7 +2240,10 @@
           },
           "estimated": null
         },
-        "unaccounted": []
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ]
       },
       "claude-code": {
         "costUsd": {
@@ -2134,7 +2260,10 @@
           },
           "estimated": null
         },
-        "unaccounted": []
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ]
       }
     },
     "breaches": [],

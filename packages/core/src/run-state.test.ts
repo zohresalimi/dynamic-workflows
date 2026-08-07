@@ -137,6 +137,7 @@ const populated: RunState = {
         estimated: null,
       },
       unaccounted: [],
+      authModes: ['subscription' as const],
     },
     nodes: {
       [NODE]: {
@@ -146,6 +147,7 @@ const populated: RunState = {
           estimated: null,
         },
         unaccounted: [],
+        authModes: ['subscription' as const],
         attempts: [
           {
             attempt: 1,
@@ -155,6 +157,7 @@ const populated: RunState = {
               estimated: null,
             },
             unaccounted: [],
+            authModes: ['subscription' as const],
           },
         ],
       },
@@ -167,6 +170,7 @@ const populated: RunState = {
           estimated: null,
         },
         unaccounted: [],
+        authModes: ['subscription' as const],
       },
     },
     breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2, firedBy: 'deflow' }],

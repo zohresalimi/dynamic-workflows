@@ -32,7 +32,7 @@
  */
 import { z } from 'zod';
 import type { TokenCountMethod } from './context-packet.ts';
-import type { ProviderAuthMode } from './event-payloads.ts';
+import { PROVIDER_AUTH_MODES, type ProviderAuthMode } from './event-payloads.ts';
 import {
   type NodeId,
   NodeIdSchema,
@@ -75,6 +75,24 @@ export interface CostRollup {
    * can act on and "plus gemini and copilot" is.
    */
   readonly unaccounted: readonly ProviderId[];
+  /**
+   * Which credential paths contributed to this keying — beside the money
+   * rather than inside it (EPIC-14-S4).
+   *
+   * The four cost cells already partition spend by auth mode, so this looks
+   * redundant until the money is `null`. A node on the explicit API-key path
+   * whose provider reports `tokenAccounting: 'none'` lands in *no* cell: every
+   * figure is blank, and the fact that real currency was spent has vanished
+   * from the payload that renders it. The flow file's note for EPIC-14-S4
+   * names the invariant that forbids exactly this — the effective auth mode is
+   * *"a recorded, rendered fact and never something the user has to infer from
+   * a bill"* — and a reader deducing it from which cell is non-`null` is
+   * inferring.
+   *
+   * Sorted, so a replay produces the same bytes whatever order the ledger
+   * interleaved the two paths in.
+   */
+  readonly authModes: readonly ProviderAuthMode[];
 }
 
 /** One attempt's own figures. A retry does not refund the attempt it replaced. */
@@ -199,6 +217,7 @@ export function emptyCostRollup(): CostRollup {
     costUsd: { ...EMPTY_FIGURES },
     usage: { vendorReported: null, estimated: null },
     unaccounted: [],
+    authModes: [],
   };
 }
 
@@ -283,6 +302,12 @@ function addTo(rollup: CostRollup, entry: Consumption): CostRollup {
       costUsd !== null || rollup.unaccounted.includes(provider)
         ? rollup.unaccounted
         : [...rollup.unaccounted, provider],
+    // Recorded whether or not the spend could be priced — that is the whole
+    // point of the field. Rebuilt in `PROVIDER_AUTH_MODES` order rather than
+    // appended, so the list is a set with a fixed spelling.
+    authModes: rollup.authModes.includes(authMode)
+      ? rollup.authModes
+      : PROVIDER_AUTH_MODES.filter((mode) => mode === authMode || rollup.authModes.includes(mode)),
   };
 }
 
@@ -354,6 +379,11 @@ const CostRollupShape = {
   costUsd: CostFiguresSchema,
   usage: UsageTotalsSchema,
   unaccounted: z.array(ProviderIdSchema),
+  // Required, not defaulted. A checkpoint written before the field existed is
+  // rejected by `CHECKPOINT_VERSION` long before it reaches this schema, and a
+  // `.default([])` here would let one through claiming no credential path was
+  // used — which is the inference the field exists to make impossible.
+  authModes: z.array(z.enum(PROVIDER_AUTH_MODES)),
 };
 
 export const CostRollupSchema: z.ZodType<CostRollup, unknown> = z.strictObject(CostRollupShape);
