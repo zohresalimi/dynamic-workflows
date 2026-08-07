@@ -319,6 +319,14 @@ function project(state: RunState, event: Event): Transition {
       // changes state. The audit trail is the event, not the projection.
       return null;
 
+    case 'plan.validation_failed':
+      // 06 §3.5. A version that did not validate never became a plan: no row,
+      // no ids allocated, nothing to promote. Recording it changes the ledger
+      // and not the projection, which is what "diagnostics are events, not
+      // exceptions" means at this end — the retry is scheduled by the compiler
+      // from the returned diagnostics, not by a flag the reducer sets.
+      return null;
+
     case 'plan.patched':
       return withActivePlan(
         {

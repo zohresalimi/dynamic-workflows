@@ -165,7 +165,30 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     survivors: [{ node: NODE, attempt: 1, pid: 48_215, pgid: 48_213, stat: 'D' }],
   },
   'run.needs_human': { reason: 'churn', detail: 'four replans in twelve minutes' },
-  'plan.proposed': { version: 1, planHash: SHA, graph: planGraph, by: 'planner' },
+  'plan.proposed': {
+    version: 1,
+    planHash: SHA,
+    graph: planGraph,
+    by: 'planner',
+    planner: { model: 'the-model-the-plan-was-compiled-on', effort: 'max', tier: 'strongest' },
+  },
+  'plan.validation_failed': {
+    version: 1,
+    planHash: OTHER_SHA,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'READ_UNREACHABLE',
+        node: NODE,
+        key: 'finding/db-schema',
+        message:
+          "node 'recon-auth-surface' reads 'finding/db-schema' but no ancestor writes it and " +
+          'it is not in the pinned spec',
+      },
+    ],
+  },
   'plan.patch.proposed': { patch: planPatch },
   'plan.patched': {
     version: 2,

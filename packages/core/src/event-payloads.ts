@@ -50,6 +50,7 @@ import {
   CompletedNodeResultSchema,
   NodeSuspensionSchema,
 } from './node-result.ts';
+import { PLAN_DIAGNOSTIC_CODES, PLAN_DIAGNOSTIC_SEVERITIES } from './plan-diagnostics.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
 import {
   PATCH_CAUSES,
@@ -115,12 +116,19 @@ export const RUN_OUTCOMES = ['succeeded', 'partial', 'failed'] as const;
  * plan no longer satisfies. It arrives at `run.needs_human` **v2** — widening a
  * closed vocabulary is a shape change, so an older daemon reading a newer
  * ledger says so instead of guessing (./upcasters.ts).
+ *
+ * `plan-invalid` is KAR-11.1's, at **v3**, for the same reason and with the
+ * same distinction: 06 §3.5 allows the planner exactly one retry with the
+ * diagnostics as input, and the second failure is answered by a human reading
+ * the diagnostics and supplying a corrected plan — not by raising a ceiling and
+ * not by a third automatic attempt, which is the churn shape arriving early.
  */
 export const RUN_NEEDS_HUMAN_REASONS = [
   'churn',
   'budget',
   'reconcile-unknown',
   'spec-revalidation',
+  'plan-invalid',
 ] as const;
 
 /** The four effect types of docs/05-durable-execution.md §8.3 — each has its
@@ -294,11 +302,87 @@ export const RunNeedsHumanSchema = z.strictObject({
 
 // ── planning ─────────────────────────────────────────────────────────────────
 
+/**
+ * KAR-11.1 AC6 — the two tiers 06 §6 proposes, and no third.
+ *
+ * A closed vocabulary rather than a free string because the whole purpose of
+ * the field is a join: the measurement is *"alternate the routine-patch tier
+ * per run for ~20 runs and compare"*, and a dimension whose values are typed by
+ * hand at each call site cannot be grouped by.
+ *
+ * **This story builds no tier-switching logic.** 06 §6 is explicit that the
+ * tier proposal is *"a proposal with a measurement plan attached, not a
+ * finding"*; the vocabulary exists so the measurement is possible later without
+ * an upcaster, which is the entirety of AC6.
+ */
+export const PLANNER_TIERS = ['strongest', 'cheap'] as const;
+
+export type PlannerTier = (typeof PLANNER_TIERS)[number];
+
+/**
+ * Which model planned, at what reasoning effort, in which tier.
+ *
+ * `effort` is nullable rather than optional: *"where the adapter exposes a
+ * reasoning-effort control"* (AC8) means some adapters expose none, and `null`
+ * records that as an answer. An omitted field would be indistinguishable from
+ * "nobody recorded it", which is the state this whole field exists to end.
+ */
+export const PlannerAttributionSchema = z.strictObject({
+  model: singleLine(),
+  effort: singleLine().nullable(),
+  tier: z.enum(PLANNER_TIERS),
+});
+
+export type PlannerAttribution = z.infer<typeof PlannerAttributionSchema>;
+
+/**
+ * KAR-11.1 AC5, AC6 — v2 adds `planner`. See schemas/CHANGELOG.md.
+ *
+ * Optional, and the v1 → v2 upcaster is the identity, because a v1 payload
+ * genuinely does not know which model planned: 06 §6's measurement is a join
+ * over runs, and a fabricated `model` would poison exactly the comparison the
+ * field was added to make possible. Every proposal DeFlow writes carries it —
+ * `compilePlanV1` has no path that omits it — so the gap is confined to
+ * ledgers written before the field existed.
+ */
 export const PlanProposedSchema = z.strictObject({
   version: z.number().int().positive(),
   planHash: PlanHashSchema,
   graph: PlanGraphSchema,
   by: ProposedBySchema,
+  planner: PlannerAttributionSchema.optional(),
+});
+
+/**
+ * KAR-11.1 / 06 §3.5 — a plan version that did not validate.
+ *
+ * *"Diagnostics are events, not exceptions."* The document itself is
+ * deliberately **not** carried: a plan that failed validation is never
+ * persisted to the `plan` table (AC5's insert is on the accepted document
+ * only), and putting the rejected graph in the event would put a document into
+ * the ledger that no `plan` row backs — which is the torn state the
+ * content-addressed table exists to make impossible. The hash identifies it;
+ * the diagnostics say what was wrong with it; the retry's packet carries them
+ * verbatim.
+ */
+export const PlanValidationFailedSchema = z.strictObject({
+  version: z.number().int().positive(),
+  /** The rejected document's hash. Nothing stores the document under it. */
+  planHash: PlanHashSchema,
+  by: ProposedBySchema,
+  /** 0 for the first attempt, 1 for the one retry 06 §3.5 allows. */
+  attempt: z.number().int().nonnegative(),
+  diagnostics: z
+    .array(
+      z.strictObject({
+        severity: z.enum(PLAN_DIAGNOSTIC_SEVERITIES),
+        code: z.enum(PLAN_DIAGNOSTIC_CODES),
+        node: NodeIdSchema,
+        key: z.string().min(1),
+        message: singleLine(),
+      }),
+    )
+    .min(1),
 });
 
 /** F2.4 — the proposal is recorded even when it is rejected, which is the
@@ -1435,8 +1519,9 @@ export const EVENT_SCHEMAS = {
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
-  'run.needs_human': { v: 2, payload: RunNeedsHumanSchema },
-  'plan.proposed': { v: 1, payload: PlanProposedSchema },
+  'run.needs_human': { v: 3, payload: RunNeedsHumanSchema },
+  'plan.proposed': { v: 2, payload: PlanProposedSchema },
+  'plan.validation_failed': { v: 1, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
   'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },

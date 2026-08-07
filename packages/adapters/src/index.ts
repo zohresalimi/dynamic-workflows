@@ -152,6 +152,12 @@ export {
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
 export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
+// KAR-11.1 — the planner's third input, projected from probed rows, and the
+// reasoning-effort control the initial plan is compiled at (06 §2.2, §6).
+export type { ProbedRow } from './planner-capabilities.ts';
+export { PLANNER_CAPABILITY_KEYS, plannerCapabilityList } from './planner-capabilities.ts';
+export type { PlannerEffort, ResolvedEffort } from './planner-effort.ts';
+export { PLANNER_EFFORTS, strongestEffort } from './planner-effort.ts';
 export type {
   AcpNodeRequest,
   AcpPorts,

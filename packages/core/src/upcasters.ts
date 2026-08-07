@@ -34,6 +34,7 @@ import {
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
   PlanPatchProposedSchema,
+  PlanProposedSchema,
   RunNeedsHumanSchema,
 } from './event-payloads.ts';
 
@@ -507,6 +508,82 @@ registerUpcaster({
       findings: [],
       summary: 'Every criterion this gate speaks to is satisfied.',
     },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `run.needs_human` v2 → v3 (KAR-11.1). See schemas/CHANGELOG.md.
+ *
+ * v3 widens `reason` by one member, `plan-invalid`, and changes nothing else,
+ * so the hop is the identity for exactly the reason the v1 → v2 hop above is:
+ * every v2 payload is already a valid v3 one, and what the version buys is the
+ * *other* direction — a daemon that predates `plan-invalid` refuses the event
+ * instead of rendering an escalation whose reason it cannot name.
+ */
+registerUpcaster({
+  kind: 'run.needs_human',
+  from: 2,
+  to: RunNeedsHumanSchema,
+  fixture: {
+    reason: 'spec-revalidation',
+    detail: 'the amended spec adds a criterion the current plan does not cover',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.proposed` v1 → v2 (KAR-11.1). See schemas/CHANGELOG.md.
+ *
+ * v2 adds the optional `planner` attribution — which model planned, at what
+ * reasoning effort, in which tier (06 §6, AC6) — so the hop is the identity and
+ * the field is left **absent**.
+ *
+ * There is no honest value to lift, and the shape of the dishonesty is worth
+ * naming because it is tempting: the run's *current* planner model is right
+ * there in the config, and stamping it on a historical proposal would make the
+ * one measurement this field exists for — join the tier against gate first-pass
+ * rate and replans-per-run — report a comparison between a model and itself.
+ * Absent is a value the analysis can exclude; a plausible wrong one is not.
+ */
+registerUpcaster({
+  kind: 'plan.proposed',
+  from: 1,
+  to: PlanProposedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'a'.repeat(64)}`,
+    graph: {
+      schemaId: 'DeFlow.plangraph.v1',
+      runId: 'run_20260802T141133Z_9f2a1c',
+      version: 1,
+      planHash: `sha256-${'a'.repeat(64)}`,
+      parent: null,
+      taskSpecHash: `sha256-${'b'.repeat(64)}`,
+      createdBy: 'planner',
+      createdAt: '2026-08-02T14:11:33.000Z',
+      nodes: [
+        {
+          id: 'implement',
+          title: 'Implement the change',
+          type: 'agent',
+          deps: [],
+          lifecycle: 'active',
+          reads: [{ kind: 'spec', section: 'goal' }],
+          writes: [],
+          permission: 'worktree',
+          pathScopes: { write: ['packages/ui/**'] },
+          returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+          retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+          budget: {},
+          brief: 'Migrate the components named in the spec.',
+          provider: { prefer: ['claude'], requires: ['structuredOutput'] },
+          resume: 'always-replay',
+        },
+      ],
+      edges: [],
+    },
+    by: 'planner',
   },
   up: (payload) => payload,
 });

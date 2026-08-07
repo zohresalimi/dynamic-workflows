@@ -1,0 +1,457 @@
+/**
+ * KAR-11.1 — compiling `PlanGraph` v1 from the three inputs
+ * (docs/06-planning-and-replanning.md §2, §3.5).
+ *
+ * The shape of this file is the story, and the order of the steps is what makes
+ * each one honest:
+ *
+ *   1. **Refuse before spawning** (AC3, EPIC-11-S3 third scenario). The planner
+ *      is the one node whose whole output is a structured document, so an
+ *      adapter that cannot enforce a schema cannot run it. The check is a table
+ *      read and a registry lookup, so the refusal costs a query rather than a
+ *      process — *"no tokens were spent"*.
+ *   2. **Materialise the capability list from `provider_capabilities`** (AC2).
+ *      Every plan compilation re-reads the table. There is no cache to
+ *      invalidate because there is nothing cached: 06 §2.2 says a hardcoded
+ *      matrix *"will be wrong within a month"*, and a memoised one goes stale
+ *      the first time somebody upgrades a CLI mid-run.
+ *   3. **Assemble the packet from exactly three input groups** (AC1) —
+ *      `buildPlannerPacket` is where the F6.1 allowlist lives, and a recon
+ *      transcript is refused there rather than filtered out here.
+ *   4. **Take the return as structured output, and validate it with Ajv**
+ *      (AC3). A prose answer fails. **There is no fenced-block extraction, no
+ *      regex and no heuristic parse** — 06 §8: *"a regex over prose is how the
+ *      planner layer starts breaking on every CLI update"*. The absence is the
+ *      feature; `packages/daemon/test/no-plan-extraction.test.ts` scans this
+ *      file for the parse that would undo it.
+ *   5. **Stamp the envelope DeFlow owns, then compute the hash** (AC4). The
+ *      planner supplies nodes and edges; it cannot know the run id, the pinned
+ *      spec's digest, or its own document's content address. Overwriting those
+ *      is not leniency — it is the difference between a document DeFlow can
+ *      address and one it has to trust an agent about.
+ *   6. **Validate the plan and, on failure, retry exactly once** (§3.5). The
+ *      diagnostics are appended as `plan.validation_failed` and handed back to
+ *      the planner verbatim; a second failure is `run.needs_human`. **Two
+ *      attempts, not three** — an unbounded planner retry loop is the same
+ *      failure shape the churn breaker exists to stop, arriving earlier — and
+ *      the bound is a constant with no configuration path, so raising it is a
+ *      code change a reviewer sees.
+ *   7. **Persist**, which is one call into `persistPlanVersion`: the row, the
+ *      file and `plan.proposed` in one transaction, or none of them.
+ *
+ * **Nothing here decides whether the run continues.** Every arm returns a value
+ * — `compiled`, `failed` or `needs-human` — because that is the scheduler's
+ * decision to make and it needs the outcome as data (04 §8).
+ *
+ * Verifies: EPIC-11-S1, EPIC-11-S2, EPIC-11-S3, EPIC-11-S5 · AC1, AC2, AC3,
+ * AC4, AC5, AC6, AC7, AC8
+ */
+
+import { plannerCapabilityList, strongestEffort } from '@DeFlow/adapters';
+import type {
+  Constraint,
+  Db,
+  NodeId,
+  PlanDiagnostic,
+  PlanGraph,
+  PlannerFact,
+  PlannerTier,
+  RunId,
+  SchemaIssue,
+  Segment,
+  StructuredOutput,
+  TaskSpec,
+} from '@DeFlow/core';
+import {
+  buildPlannerPacket,
+  type ContextPacket,
+  contextSegment,
+  EventSeqSchema,
+  hasBlockingDiagnostic,
+  NodeFailureError,
+  PLANGRAPH_SCHEMA_ID,
+  parsePlanGraph,
+  planDiagnostics,
+  planHash,
+  renderPacket,
+  renderPlanDiagnostics,
+  schemaFileName,
+} from '@DeFlow/core';
+import { appendEvents, listProviderCapabilities, persistPlanVersion } from '@DeFlow/ledger';
+import { join } from 'node:path';
+import type { HandoffValidator } from '../handoff/enforce.ts';
+
+/**
+ * 06 §3.5's bound: *"Two attempts, not three."*
+ *
+ * A named constant referenced in exactly one place, and the escalation after it
+ * is unconditional — there is no configuration path, no `options.maxAttempts`
+ * and no caller that can pass a larger number. §3.5's reason for the bound is
+ * that *"an unbounded planner retry loop is the same failure shape the churn
+ * breaker exists to stop, arriving earlier"*, so raising it has to be a code
+ * change a reviewer sees rather than a value in a YAML file.
+ */
+export const PLANNER_ATTEMPT_LIMIT = 2;
+
+/** The tier 06 §6 assigns to the initial `PlanGraph`: one call per run, and the
+ * single highest-leverage inference in the system. No switching logic ships in
+ * M1 — AC6's fields exist so the measurement is possible later. */
+export const PLAN_V1_TIER: PlannerTier = 'strongest';
+
+/** One planner turn. */
+export interface PlannerRequest {
+  readonly prompt: string;
+  /** 0 for the first attempt, 1 for the one retry. */
+  readonly attempt: number;
+  /** The strongest setting this adapter exposes, or `null` where it exposes
+   * none. Passed rather than resolved inside the port so a recording of the
+   * turn shows what was actually asked for. */
+  readonly effort: string | null;
+  /** The emitted `DeFlow.plangraph.v1.json` the adapter enforces (AC3). */
+  readonly schemaPath: string;
+}
+
+export interface PlannerTurn {
+  readonly structuredOutput: StructuredOutput;
+}
+
+/** Opens a fresh session and prompts it once. A port, because what a scripted
+ * session cannot prove — that the vendor honours `--json-schema` — belongs to
+ * the conformance battery, not here. */
+export interface PlannerAgent {
+  plan(request: PlannerRequest): Promise<PlannerTurn>;
+}
+
+export interface CompilePlanOptions {
+  readonly db: Db;
+  readonly runId: RunId;
+  readonly node: NodeId;
+  readonly epoch: number;
+  /** From the injected `Clock`, never `Date.now()`. */
+  readonly ts: number;
+  /** `<target-repo>/.DeFlow/runs/<runId>`. */
+  readonly runDir: string;
+  /** The pinned spec — planner input one. */
+  readonly spec: TaskSpec;
+  /** The run's safety constraints, pinned alongside it (F5.6). */
+  readonly constraints?: readonly Constraint[];
+  /** The recon facts — planner input two. */
+  readonly facts: readonly PlannerFact[];
+  /** The `provider.probed` seq the capability segment's provenance points at. */
+  readonly probedEvent: number;
+  readonly provider: string;
+  readonly model: string;
+  readonly maxContext: number;
+  /** Ajv over `.DeFlow/schemas/`, `strict: true`, `allErrors: true`. */
+  readonly schemas: HandoffValidator;
+  /** Where the emitted documents live, so the adapter can be handed a path. */
+  readonly schemasDir: string;
+  readonly agent: PlannerAgent;
+}
+
+export type CompilePlanOutcome =
+  | {
+      readonly outcome: 'compiled';
+      readonly plan: PlanGraph;
+      /** The packet the accepted attempt was prompted with. */
+      readonly packet: ContextPacket;
+      readonly seq: number;
+      readonly path: string;
+      /** 1 or 2. */
+      readonly attempts: number;
+    }
+  | {
+      readonly outcome: 'failed';
+      readonly failure: NodeFailureError;
+      readonly attempts: number;
+    }
+  | {
+      readonly outcome: 'needs-human';
+      readonly diagnostics: readonly PlanDiagnostic[];
+      readonly attempts: number;
+    };
+
+/**
+ * AC3's first half — the refusal that costs a table read.
+ *
+ * Two conditions, and they are different failures wearing the same reason. A
+ * provider with **no probed row** is one DeFlow has never shaken hands with,
+ * and 07 §6.1's rule is that a documentation claim is never believed over a
+ * handshake. A provider whose row exists but whose adapter is `prompt-only` can
+ * be spawned — it simply cannot be *held* to a schema, and a planner whose
+ * output is only checked after the fact is a planner that has already spent the
+ * quota by the time the contract fails.
+ */
+function admitPlanner(
+  node: NodeId,
+  provider: string,
+  capabilities: readonly { provider: string; structuredOutput: string }[],
+): NodeFailureError | null {
+  const entry = capabilities.find((candidate) => candidate.provider === provider);
+  if (entry === undefined) {
+    return new NodeFailureError(
+      `the planner is scheduled onto ${provider}, which has no row in provider_capabilities: ` +
+        'DeFlow never believes a documentation claim over a handshake, so the node is refused ' +
+        'before it is spawned rather than discovered to be unschedulable mid-turn',
+      {
+        reason: 'adapter.capability-missing',
+        class: 'permanent',
+        detail: { node, provider, code: 'PROVIDER_NOT_PROBED' },
+      },
+    );
+  }
+  if (entry.structuredOutput !== 'native') {
+    return new NodeFailureError(
+      `the planner is scheduled onto ${provider}, which takes no schema flag, so its return ` +
+        'contract could only be enforced after the tokens were spent. The plan is data, not ' +
+        'prose (F2.1): the node is refused before it is spawned',
+      {
+        reason: 'adapter.capability-missing',
+        class: 'permanent',
+        detail: { node, provider, code: 'NO_STRUCTURED_OUTPUT' },
+      },
+    );
+  }
+  return null;
+}
+
+/** A return that is not a schema-valid `PlanGraph`, with Ajv's own pointers. */
+function schemaInvalid(node: NodeId, attempt: number, issues: readonly SchemaIssue[]) {
+  return new NodeFailureError(
+    `the planner's return does not validate against ${PLANGRAPH_SCHEMA_ID}` +
+      (issues.length === 0
+        ? ": nothing arrived in the result envelope's structured output field"
+        : `: ${issues.map((issue) => `${issue.pointer || '/'} ${issue.message}`).join('; ')}`),
+    {
+      reason: 'contract.schema-invalid',
+      class: 'permanent',
+      detail: { node, attempt, issues: issues.map((issue) => ({ ...issue })) },
+    },
+  );
+}
+
+/**
+ * The envelope fields DeFlow owns, stamped over whatever the planner wrote.
+ *
+ * Not leniency and not repair: a planner cannot know the run id it is planning
+ * for, the digest of the spec it was handed, or the content address of the
+ * document it is still writing. Accepting its guesses would make the `plan`
+ * table's primary key a value an agent chose.
+ */
+function stampEnvelope(
+  returned: Record<string, unknown>,
+  options: CompilePlanOptions,
+): Record<string, unknown> {
+  return {
+    ...returned,
+    schemaId: PLANGRAPH_SCHEMA_ID,
+    runId: options.runId,
+    version: 1,
+    parent: null,
+    taskSpecHash: options.spec.specHash,
+    createdBy: 'planner',
+    createdAt: new Date(options.ts).toISOString(),
+  };
+}
+
+function appendValidationFailed(
+  options: CompilePlanOptions,
+  attempt: number,
+  hash: string,
+  diagnostics: readonly PlanDiagnostic[],
+): void {
+  appendEvents(options.db, [
+    {
+      runId: options.runId,
+      ts: options.ts,
+      kind: 'plan.validation_failed',
+      v: 1,
+      epoch: options.epoch,
+      nodeId: options.node,
+      attempt,
+      payload: {
+        version: 1,
+        planHash: hash,
+        by: 'planner',
+        attempt,
+        diagnostics: diagnostics.map((diagnostic) => ({ ...diagnostic })),
+      },
+    },
+  ]);
+}
+
+function appendNeedsHuman(
+  options: CompilePlanOptions,
+  diagnostics: readonly PlanDiagnostic[],
+): void {
+  appendEvents(options.db, [
+    {
+      runId: options.runId,
+      ts: options.ts,
+      kind: 'run.needs_human',
+      v: 3,
+      epoch: options.epoch,
+      payload: {
+        reason: 'plan-invalid',
+        // Rendered on one line, because `run.needs_human.detail` is a
+        // single-line field and the Operator's board cell is one row. The full
+        // multi-line rendering is on each `plan.validation_failed`, which is
+        // what the escalation view links through to.
+        detail: renderPlanDiagnostics(diagnostics).replaceAll('\n', ' · '),
+      },
+    },
+  ]);
+}
+
+/**
+ * Compiles, validates and persists `PlanGraph` v1.
+ *
+ * Returns on every arm; appends `plan.validation_failed` and `run.needs_human`
+ * itself, because those are records of what the compiler did rather than
+ * decisions about what happens next.
+ */
+export async function compilePlanV1(options: CompilePlanOptions): Promise<CompilePlanOutcome> {
+  // AC2 — read at plan time, every time. Nothing is cached, so nothing is stale.
+  const rows = listProviderCapabilities(options.db);
+  const capabilities = plannerCapabilityList(rows, options.probedEvent);
+
+  const refusal = admitPlanner(options.node, options.provider, capabilities);
+  if (refusal !== null) return { outcome: 'failed', failure: refusal, attempts: 0 };
+
+  const effort = strongestEffort(options.provider)?.effort ?? null;
+  const schemaPath = join(options.schemasDir, schemaFileName(PLANGRAPH_SCHEMA_ID));
+
+  let carried: readonly PlanDiagnostic[] = [];
+
+  for (let attempt = 0; attempt < PLANNER_ATTEMPT_LIMIT; attempt += 1) {
+    const packet = await buildPlannerPacket({
+      runId: options.runId,
+      nodeId: options.node,
+      attempt,
+      builtAtEvent: options.probedEvent,
+      target: {
+        provider: options.provider,
+        model: options.model,
+        maxContext: options.maxContext,
+      },
+      spec: options.spec,
+      ...(options.constraints === undefined ? {} : { constraints: options.constraints }),
+      facts: options.facts,
+      capabilities,
+      // §3.5 — the retry's packet carries the diagnostics **verbatim**. A
+      // `task.brief`, not a fact: this is an instruction to the planner about
+      // the document it just wrote, not something anybody measured.
+      ...(carried.length === 0
+        ? {}
+        : {
+            segments: [await plannerDiagnosticsSegment(carried, options.probedEvent)],
+          }),
+    });
+
+    const prompt = renderPacket(packet);
+    const turn = await options.agent.plan({ prompt, attempt, effort, schemaPath });
+
+    // AC3 — the document is read from the result envelope's structured output
+    // field, or it is not read at all. No extraction, no regex, no fallback.
+    if (!turn.structuredOutput.present) {
+      return {
+        outcome: 'failed',
+        failure: schemaInvalid(options.node, attempt, []),
+        attempts: attempt + 1,
+      };
+    }
+
+    const issues = options.schemas.validate(PLANGRAPH_SCHEMA_ID, turn.structuredOutput.value);
+    if (issues.length > 0) {
+      return {
+        outcome: 'failed',
+        failure: schemaInvalid(options.node, attempt, issues),
+        attempts: attempt + 1,
+      };
+    }
+
+    const stamped = stampEnvelope(turn.structuredOutput.value as Record<string, unknown>, options);
+    const parsed = parsePlanGraph(stamped);
+    if (!parsed.success) {
+      return {
+        outcome: 'failed',
+        failure: schemaInvalid(
+          options.node,
+          attempt,
+          parsed.issues.map((issue) => ({
+            pointer: `/${issue.path.join('/')}`,
+            message: issue.message,
+          })),
+        ),
+        attempts: attempt + 1,
+      };
+    }
+
+    // AC4 — the identity is computed here, over the document as it will be
+    // stored, and never taken from what the planner asserted.
+    const graph: PlanGraph = {
+      ...parsed.data,
+      planHash: await planHash(parsed.data as unknown as Record<string, unknown>),
+    };
+
+    const diagnostics = planDiagnostics(graph);
+    if (hasBlockingDiagnostic(diagnostics)) {
+      appendValidationFailed(options, attempt, graph.planHash, diagnostics);
+      carried = diagnostics;
+      continue;
+    }
+
+    const persisted = await persistPlanVersion(options.db, {
+      runDir: options.runDir,
+      graph,
+      by: 'planner',
+      planner: { model: options.model, effort, tier: PLAN_V1_TIER },
+      ts: options.ts,
+      epoch: options.epoch,
+      nodeId: options.node,
+      attempt,
+    });
+
+    return {
+      outcome: 'compiled',
+      plan: graph,
+      packet,
+      seq: persisted.seq,
+      path: persisted.path,
+      attempts: attempt + 1,
+    };
+  }
+
+  // Both attempts produced a plan that did not validate. §3.5: escalate with
+  // the diagnostics rendered, and make no third automatic attempt.
+  appendNeedsHuman(options, carried);
+  return { outcome: 'needs-human', diagnostics: carried, attempts: PLANNER_ATTEMPT_LIMIT };
+}
+
+/**
+ * The diagnostics the retry is handed (§3.5), as a segment the planner
+ * allowlist accepts.
+ *
+ * A `task.brief` rather than a `fact`, and the distinction is not cosmetic: a
+ * fact is something DeFlow measured about the repository, and this is an
+ * instruction about the document the planner just wrote. Filing it as a fact
+ * would put DeFlow's own complaint on the same footing as
+ * `finding/test-command`.
+ *
+ * `sourceEvent` is the `plan.validation_failed` that carries the same
+ * diagnostics, so F10.3's click-through from this segment lands on the record
+ * of the failure rather than on the packet that reported it.
+ */
+function plannerDiagnosticsSegment(
+  diagnostics: readonly PlanDiagnostic[],
+  sourceEvent: number,
+): Promise<Segment> {
+  return contextSegment({
+    id: 'plan-diagnostics',
+    kind: 'task.brief',
+    text:
+      'Your previous plan did not pass validation. Fix exactly these, and change nothing ' +
+      `else:\n\n${renderPlanDiagnostics(diagnostics)}`,
+    sourceEvent: EventSeqSchema.parse(sourceEvent),
+  });
+}

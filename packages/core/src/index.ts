@@ -291,6 +291,8 @@ export type {
   EventKind,
   EventPayloadOf,
   LockReleaseReason,
+  PlannerAttribution,
+  PlannerTier,
   ProviderAuthMode,
   RunOutcome,
   WorktreeOccupantKind,
@@ -348,10 +350,13 @@ export {
   NodeUnschedulableSchema,
   PermissionDeniedSchema,
   PinIntegrityViolatedSchema,
+  PLANNER_TIERS,
+  PlannerAttributionSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
   PlanProposedSchema,
+  PlanValidationFailedSchema,
   PROVIDER_AUTH_MODES,
   ProviderAuthModeSchema,
   ProviderAuthShadowStrippedSchema,
@@ -717,6 +722,20 @@ export {
   pinnedConstraintsOf,
   selectCompactionCandidates,
 } from './pinned-set.ts';
+// KAR-11.1 — plan validation diagnostics as values (06 §3, §3.5). KAR-11.2
+// grows the set; the shape and the rendering are fixed here.
+export type {
+  PlanDiagnostic,
+  PlanDiagnosticCode,
+  PlanDiagnosticSeverity,
+} from './plan-diagnostics.ts';
+export {
+  hasBlockingDiagnostic,
+  PLAN_DIAGNOSTIC_CODES,
+  PLAN_DIAGNOSTIC_SEVERITIES,
+  planDiagnostics,
+  renderPlanDiagnostics,
+} from './plan-diagnostics.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -809,11 +828,19 @@ export {
 } from './plan-patch.ts';
 // KAR-10.5 AC7 — what the planner reads: the pinned spec and the recon facts,
 // and no recon transcript (F6.1).
-export type { PlannerFact, PlannerPacketInput, PlannerSegmentKind } from './planner-packet.ts';
+export type {
+  PlannerCapability,
+  PlannerCapabilityAnswer,
+  PlannerFact,
+  PlannerPacketInput,
+  PlannerSegmentKind,
+} from './planner-packet.ts';
 export {
   buildPlannerPacket,
+  CAPABILITY_SEGMENT_ID,
   ForeignSegmentInPlannerPacket,
   PLANNER_SEGMENT_KINDS,
+  renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
 export type { Random } from './random.ts';

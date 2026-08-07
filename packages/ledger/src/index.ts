@@ -250,6 +250,17 @@ export {
   replayAll,
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
+// KAR-11.1 — one immutable, content-addressed plan version: the row, the file
+// under `.DeFlow/runs/<runId>/plan/` and `plan.proposed`, or none of the three.
+export type { PersistedPlan, PersistPlanOptions } from './plans.ts';
+export {
+  PlanHashMismatch,
+  persistPlanVersion,
+  planDirOf,
+  planPathOf,
+  RUN_PLAN_DIR,
+  readPlanDoc,
+} from './plans.ts';
 export { applyPragmas, LEDGER_PRAGMAS, SYNCHRONOUS, withFullSync } from './pragmas.ts';
 // KAR-05.9 — the `process` table: written in the same transaction as
 // `node.started`, and the next daemon's only handle on an orphaned agent.
@@ -270,6 +281,7 @@ export {
 // KAR-05.2 — the probed capability manifest: a history keyed on
 // (provider, version, binary_sha256), never a table that is updated in place.
 export {
+  listProviderCapabilities,
   type ProviderCapabilityRow,
   type RecordProbeResult,
   readProviderCapabilities,

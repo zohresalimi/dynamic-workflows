@@ -62,6 +62,46 @@ file is where you record it.
 
 ## Entries
 
+### plan.proposed v2
+
+**KAR-11.1.** The proposal now records **which model planned**:
+`planner: { model, effort, tier }`, optional.
+[06 §6](../docs/06-planning-and-replanning.md) is explicit that the planner-tier proposal is
+_"Unverified — a proposal with a measurement plan attached, not a finding"_, and the measurement it
+names is a join of these three fields against the cross-run dashboard's gate first-pass rate and
+replans-per-run. EPIC-11-S1 states the trade in one line: _"recording them now costs a field; adding
+them later costs an upcaster."_
+
+| Change                                        | Kind     | Why it is not lossy                                                              |
+| --------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| adds optional `planner: { model; effort; tier }` | widening | Every v1 payload is already a valid v2 one, and the hop leaves the field **absent**. |
+
+`effort` is `string | null` rather than optional, because _"where the adapter exposes a
+reasoning-effort control"_ means some expose none, and `null` is that answer. An omitted field could
+not be told apart from "nobody recorded it", which is the state the field exists to end.
+
+**The hop is deliberately the identity, and the dishonest alternative is worth naming.** The run's
+current planner model sits in the config, and stamping it onto a historical proposal would make the
+one comparison this field enables report a model against itself. Absent is a value the analysis can
+exclude; a plausible wrong one is not.
+
+### run.needs_human v3
+
+**KAR-11.1.** The escalation vocabulary gains a fifth reason, `plan-invalid`:
+[06 §3.5](../docs/06-planning-and-replanning.md) allows a failing plan version exactly one retry with
+the diagnostics as input, and _"a second failure escalates to a `human` node with the diagnostics
+rendered"_.
+
+| Change                          | Kind     | Why it is not lossy                                                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `reason` gains `'plan-invalid'` | widening | Every v2 payload is already a valid v3 one — the hop is the identity — and no v2 payload can have carried it. |
+
+A fifth reason rather than a `detail` on `churn`, for the same reason `spec-revalidation` is a fourth:
+the operator's next action differs in kind. Churn is answered by changing the approach; this one is
+answered by reading the diagnostics and supplying a plan that satisfies them. It is also the reason a
+third automatic attempt is not made — an unbounded planner retry loop is the churn shape arriving
+earlier.
+
 ### DeFlow.verdict.v2
 
 **KAR-10.4.** A verdict now names the contract it judged:
