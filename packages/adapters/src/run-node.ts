@@ -30,10 +30,12 @@
 import {
   type CompletedNodeResult,
   type EventSeq,
+  findPinViolations,
   type Handle,
   ikey,
   type NodeFailure,
   NodeFailureError,
+  PinIntegrityViolation,
   SchemaIdSchema,
   type TimerHandle,
   type TokenUsage,
@@ -406,6 +408,22 @@ export async function runAcpNode(
     recordingRefusal = error as NodeFailureError;
   }
 
+  // KAR-09.3 AC5/AC6 — the F6.6 integrity check, and the reason it is *here*
+  // and not in the packet builder: the failure it exists to catch is a
+  // rendering path nobody expected, so it has to run against the bytes that
+  // are about to go out rather than against the manifest they were built from.
+  // Checking the manifest against itself would be a tautology.
+  //
+  // First among the refusals below, because it is the only one that is about
+  // what the agent will be *told*: a prompt whose safety constraints went
+  // missing must not be sent whatever else is or is not misconfigured.
+  const pinRefusal =
+    request.pins === undefined || request.pins.length === 0
+      ? null
+      : await findPinViolations({ segments: request.pins }, request.prompt).then((violations) =>
+          violations.length === 0 ? null : new PinIntegrityViolation(violations),
+        );
+
   // KAR-05.2 AC7 — admission, and the reason it is *here*: before `spawn`,
   // after the scheduling decision is durable. A node whose requirements the
   // probed row does not satisfy is refused as a plan-time fact; discovering it
@@ -413,6 +431,7 @@ export async function runAcpNode(
   // from the decision that caused it. `node.scheduled` above is what the
   // refusal points at — the decision it refused.
   const refusal =
+    pinRefusal ??
     capRefusal ??
     recordingRefusal ??
     // KAR-08.7 AC3 — a declared path scope with no auditor behind it is
@@ -435,6 +454,21 @@ export async function runAcpNode(
     // reader walking the timeline meets the cause before the effect, and only
     // for the mediation refusal — a missing `session.fork` is a capability
     // story, not a safety one.
+    // KAR-09.3 AC6 — the same shape, for the same reason: `node.failed` says
+    // the node ended, and this says which pinned segments were not in the
+    // prompt. Without it the ledger records that a node failed on a safety
+    // reason and nothing about which bytes went missing, which is the one
+    // question a human woken by this failure needs answered.
+    if (refusal instanceof PinIntegrityViolation) {
+      lastSeq = await ledger.append(
+        event('pin.integrity_violated', {
+          node: request.nodeId,
+          attempt: request.attempt,
+          missingDigests: [...refusal.missingDigests],
+          segmentIds: [...refusal.segmentIds],
+        }),
+      );
+    }
     if (refusal.deflowFailure.reason === 'safety.permission-unschedulable') {
       const row = ports.capabilityRow;
       lastSeq = await ledger.append(

@@ -1,0 +1,118 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`render order (AC3) > renders the five archetypes the way the golden file says 1`] = `
+{
+  "gate": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Judge criterion no-v-model-regression.
+
+artifact://deadbeef — diff, 412 lines",
+  "human": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Summarise the change for approval.
+
+Turns 1-9 summarised.",
+  "implement": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+
+Declared path scopes (pinned):
+- write: src/checkout/**
+
+Permission level (pinned): worktree
+
+Port CheckoutForm to <script setup>.
+
+finding/auth-uses-jwt = true
+
+vitest: 12 passed",
+  "map-child": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+
+Declared path scopes (pinned):
+- write: src/checkout/steps/**
+
+Permission level (pinned): worktree
+
+Port one step component.
+
+shard = steps/Address.vue",
+  "recon": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+
+Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.
+
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+
+Declared path scopes (pinned):
+- this node declares no write scope and must not write
+
+Permission level (pinned): read
+
+Map the checkout module.
+
+ADR-0010: ESM only.",
+}
+`;

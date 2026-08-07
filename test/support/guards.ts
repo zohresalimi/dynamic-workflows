@@ -2727,3 +2727,40 @@ export function checkNoExecaKillOptions(files: readonly SourceFile[]): Violation
 
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.3 AC1 — the `pinned` flag has exactly one producer.
+ * -------------------------------------------------------------------------- */
+
+export const PINNED_FLAG_MESSAGE =
+  'sets Segment.pinned to true. The pinned set is exactly the five content types in ' +
+  'docs/08-context-and-memory.md §4.1, and a sixth one added anywhere else is invisible ' +
+  'afterwards: it is never compacted, always rendered first, and hash-checked before every ' +
+  'dispatch. Build it through buildPinnedSegments() in packages/core/src/pinned-set.ts.';
+
+/** `pinned: true`, however it is spaced. */
+const PINNED_TRUE = /\bpinned\s*:\s*true\b/;
+
+/**
+ * AC1 asks for a type-level constraint rather than a review convention, and
+ * `contextSegment` is that: its `kind` cannot name a `pinned.*` kind and it has
+ * no `pinned` parameter. This scan covers what a type cannot — a module that
+ * builds a `Segment` object literal by hand.
+ */
+export function checkPinnedFlagHasOneProducer(
+  files: readonly SourceFile[],
+  allowed: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (allowed.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!PINNED_TRUE.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${PINNED_FLAG_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}

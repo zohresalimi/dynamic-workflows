@@ -23,6 +23,7 @@ import type {
   IdempotencyKey,
   NodeId,
   PermissionLevel,
+  PinnedSegmentView,
   ProviderId,
   RunId,
   SchemaId,
@@ -199,6 +200,20 @@ export interface AcpNodeRequest {
   readonly resume?: { readonly sessionId: string };
   /** The assembled context packet, as text. */
   readonly prompt: string;
+  /**
+   * KAR-09.3 — the packet's pinned segments, carried down so the F6.6
+   * integrity check can run against the prompt that is really about to be
+   * sent.
+   *
+   * The pinned slice rather than the whole packet, because this is the only
+   * thing the adapter is entitled to an opinion about: `prompt` is derived and
+   * `pins` is what it must still contain. Absent means the caller assembled no
+   * packet — a probe, a conformance turn — and there is nothing to check;
+   * present is checked before anything is spawned, and a mismatch fails the
+   * node with `safety.pin-integrity-violated` rather than sending a prompt
+   * whose constraints went missing.
+   */
+  readonly pins?: readonly PinnedSegmentView[];
   /** What the node's structured output is validated against (EPIC-09/EPIC-12). */
   readonly outputSchemaId?: SchemaId;
   /**

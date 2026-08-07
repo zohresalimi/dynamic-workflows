@@ -60,6 +60,11 @@ export interface TurnIo {
   readonly clock: Clock;
   /** What the client said it could do at `initialize`. */
   readonly capabilities: acp.ClientCapabilities;
+  /**
+   * The prompt this turn was given, as text — what a `whenPromptContains` step
+   * branches on. Empty when the caller sent no text blocks.
+   */
+  readonly prompt: string;
   sleep(ms: number): Promise<void>;
   /** Raw writes, process exit and grandchildren — the pathological effects. */
   readonly ports: MockAgentPorts;
@@ -231,6 +236,11 @@ export async function runScenario(scenario: Scenario, io: TurnIo): Promise<TurnR
       return runBranch(
         chosen?.kind.startsWith('allow') === true ? step.onAllowed : step.onRejected,
       );
+    }
+
+    if (step.type === 'whenPromptContains') {
+      // Bytes, not meaning: see the step's declaration in ./scenario.ts.
+      return runBranch(io.prompt.includes(step.text) ? step.present : step.absent);
     }
 
     if (step.type === 'hangForever') {

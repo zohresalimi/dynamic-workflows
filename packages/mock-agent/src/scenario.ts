@@ -163,6 +163,25 @@ export interface ClientCallStep {
   readonly onError: Branch | null;
 }
 
+/**
+ * KAR-09.3 — branch on what the prompt actually said.
+ *
+ * The one thing the ConstraintRot suite needs that scripting alone cannot give
+ * it: a turn whose *tool call* depends on whether a constraint survived into
+ * the prompt. Without it the suite would compare a tape against itself.
+ *
+ * `text` is compared as bytes, deliberately. A paraphrase is an absence here
+ * for the same reason it is a violation in `assertPinIntegrity`: the finding
+ * the suite guards is about verbatim re-injection, and a mock that accepted
+ * "close enough" would be measuring something else.
+ */
+export interface WhenPromptContainsStep {
+  readonly type: 'whenPromptContains';
+  readonly text: string;
+  readonly present: Branch;
+  readonly absent: Branch;
+}
+
 // ---------------------------------------------------------------------------
 // The pathological steps (KAR-04.3)
 // ---------------------------------------------------------------------------
@@ -247,6 +266,7 @@ export type Step =
   | ToolCallStep
   | PermissionStep
   | ClientCallStep
+  | WhenPromptContainsStep
   | HangForeverStep
   | HangForeverIgnoringCancelStep
   | ExitStep
@@ -480,6 +500,7 @@ const STEP_KEYS: Record<string, readonly string[]> = {
     'onCancelled',
   ],
   clientCall: ['type', 'method', 'params', 'onError'],
+  whenPromptContains: ['type', 'text', 'present', 'absent'],
   hangForever: ['type', 'onCancel'],
   hangForeverIgnoringCancel: ['type'],
   exit: ['type', 'code', 'afterFrames', 'truncateMidFrame'],
@@ -600,6 +621,16 @@ function parseStep(value: unknown, at: string): Step {
         object.onCancelled === undefined
           ? NO_BRANCH
           : parseBranch(object.onCancelled, `${at}.onCancelled`),
+    };
+  }
+
+  if (type === 'whenPromptContains') {
+    return {
+      type: 'whenPromptContains',
+      text: requireString(object, 'text', at),
+      present:
+        object.present === undefined ? NO_BRANCH : parseBranch(object.present, `${at}.present`),
+      absent: object.absent === undefined ? NO_BRANCH : parseBranch(object.absent, `${at}.absent`),
     };
   }
 

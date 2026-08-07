@@ -39,6 +39,24 @@ export type {
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
+// KAR-09.3 — the Constraint union and the slice of §4.2's restatement AC9
+// needs. KAR-09.4 owns the rest of that mechanism.
+export type {
+  AllowOnlyConstraint,
+  AllowOnlySubject,
+  Constraint,
+  ForbidConstraint,
+} from './constraint.ts';
+export {
+  ALLOW_ONLY_SUBJECTS,
+  AllowOnlyConstraintSchema,
+  ConstraintSchema,
+  ForbidConstraintSchema,
+  orderPinnedConstraints,
+  RequireConstraintSchema,
+  restateAsRequirement,
+  restateForbidAsAllowOnly,
+} from './constraint.ts';
 // KAR-02.6 — ContextPacket and typed segments.
 export type {
   ContextBudget,
@@ -374,6 +392,41 @@ export {
   reasonCode,
   validateEnvDeclaration,
 } from './permission.ts';
+// KAR-09.3 — the F6.6 integrity check: the pinned bytes are in the prompt that
+// was actually sent, or the node fails and a human is asked.
+export type {
+  PinnedPacketView,
+  PinnedSegmentView,
+  PinViolation,
+  PinViolationKind,
+} from './pin-integrity.ts';
+export {
+  assertPinIntegrity,
+  findPinViolations,
+  PinIntegrityViolation,
+  pinnedKept,
+} from './pin-integrity.ts';
+// KAR-09.3 — the five pinned content types and the one producer of the flag.
+export type {
+  ContextSegmentInput,
+  DemotionResult,
+  PinnedBuildInput,
+  PinnedContentType,
+  PinnedSegmentKind,
+  SegmentedPacket,
+  TokenEstimator,
+  UnpinnedSegmentKind,
+} from './pinned-set.ts';
+export {
+  assertPinnedSetFitsBudget,
+  buildPinnedSegments,
+  contextSegment,
+  demoteToBudget,
+  heuristicTokens,
+  PINNED_CONTENT_TYPES,
+  PinnedSetExceedsBudget,
+  selectCompactionCandidates,
+} from './pinned-set.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -470,6 +523,9 @@ export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
+// KAR-09.3 — the pure render, whose only opinion this story owns is that the
+// pinned block leads it.
+export { renderPacket } from './render-packet.ts';
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';

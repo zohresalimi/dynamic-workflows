@@ -73,6 +73,7 @@
         { "$ref": "#/$defs/toolCallStep" },
         { "$ref": "#/$defs/permissionStep" },
         { "$ref": "#/$defs/clientCallStep" },
+        { "$ref": "#/$defs/whenPromptContainsStep" },
         { "$ref": "#/$defs/hangForeverStep" },
         { "$ref": "#/$defs/hangForeverIgnoringCancelStep" },
         { "$ref": "#/$defs/exitStep" },
@@ -204,6 +205,24 @@
           "description": "Merged over sessionId, and over terminalId when a terminal has been created."
         },
         "onError": { "$ref": "#/$defs/branch" }
+      }
+    },
+    "whenPromptContainsStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "description": "KAR-09.3 — branches on whether text appears verbatim in the prompt this turn was given. The comparison is a byte substring test, deliberately: a paraphrase is an absence, because the finding the ConstraintRot suite guards is about verbatim re-injection.",
+      "properties": {
+        "type": { "const": "whenPromptContains" },
+        "text": { "type": "string", "minLength": 1 },
+        "present": {
+          "$ref": "#/$defs/branch",
+          "description": "Taken when the prompt contains text."
+        },
+        "absent": {
+          "$ref": "#/$defs/branch",
+          "description": "Taken when it does not. Defaults to doing nothing."
+        }
       }
     },
     "hangForeverStep": {
