@@ -24,6 +24,7 @@
  * thrown away, never to be wrong.
  */
 import { z } from 'zod';
+import { initialCeilings, type RunCeilings, RunCeilingsSchema } from './budget-ceiling.ts';
 import { type BudgetRollup, BudgetRollupSchema, initialBudgetRollup } from './cost-rollup.ts';
 import {
   CANCEL_MODES,
@@ -180,6 +181,16 @@ export interface NodeState {
    * ticker.
    */
   readonly wakeAt: number | null;
+  /**
+   * KAR-14.2. The envelope `ts` of the node's **first** `node.started`, which a
+   * per-node wall-clock ceiling is measured from. `0` before it has ever run.
+   *
+   * First rather than latest, and across attempts rather than per attempt: a
+   * repair loop that burned ten minutes over three tries has burned ten
+   * minutes, and a per-attempt measure would never notice. It is not reset by a
+   * retry for the same reason `startedTs` is not reset by a pause.
+   */
+  readonly startedTs: number;
   /**
    * The `seq` of the last event that *changed* this node's projection — the
    * per-node counterpart of `watermarkSeq`, and for the same reason.
@@ -345,6 +356,16 @@ export interface RunState {
   readonly policy: SchedulingPolicy;
   readonly budget: BudgetState;
   /**
+   * KAR-14.2 — F4.6's ceilings, as the ledger has pinned them.
+   *
+   * Reduced from `budget.ceiling.set` rather than read from
+   * `.DeFlow/config.yaml` on each tick, which is the whole of AC1: a mid-run
+   * edit to the file cannot move a ceiling a running run is measured against,
+   * and a ceiling an operator raised to answer a pause survives the restart
+   * that so often follows one.
+   */
+  readonly ceilings: RunCeilings;
+  /**
    * F4.7. The `seq` of the last event that actually changed this projection —
    * which is why `node.progress` and agent output cannot advance it. An agent
    * producing megabytes while accomplishing nothing leaves it where it was,
@@ -422,12 +443,12 @@ export interface RunState {
  *
  * The same applies to how an existing field is *derived*: 4 is
  * `NodeState.wakeAt` (KAR-06.6), 5 is `RunState.cancel` (KAR-06.7), 6 is
- * F4.7's no-progress fields (KAR-06.8), and 7 is KAR-14.1's per-node,
- * per-provider cost rollup replacing `budget`'s single scalar — a cached total
- * that cannot say which credential paid for it is the mixed figure an F4.6
- * ceiling must never be evaluated against.
+ * F4.7's no-progress fields (KAR-06.8), 7 is KAR-14.1's per-node cost rollup
+ * replacing `budget`'s single scalar, and 8 is KAR-14.2's `ceilings` and
+ * `NodeState.startedTs` — restored from a checkpoint that predates them, a
+ * paused run would come back with no ceiling in force.
  */
-export const CHECKPOINT_VERSION = 7;
+export const CHECKPOINT_VERSION = 8;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -452,6 +473,7 @@ export function initialNodeState(): NodeState {
     suspension: null,
     requestHash: null,
     wakeAt: null,
+    startedTs: 0,
     updatedSeq: 0,
   };
 }
@@ -479,6 +501,7 @@ export function initialRunState(): RunState {
     nodeIds: { active: [], retired: [] },
     policy: { ...DEFAULT_SCHEDULING_POLICY },
     budget: initialBudgetRollup(),
+    ceilings: initialCeilings(),
     watermarkSeq: 0,
     watermarkTs: 0,
     startedTs: 0,
@@ -514,6 +537,7 @@ const NodeStateSchema = z.strictObject({
   suspension: NodeSuspensionSchema.nullable(),
   requestHash: requestHash.nullable(),
   wakeAt: wholeCount.nullable(),
+  startedTs: wholeCount,
   updatedSeq: wholeCount,
 });
 
@@ -598,6 +622,7 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
     noProgress: NoProgressPolicySchema,
   }),
   budget: BudgetRollupSchema,
+  ceilings: RunCeilingsSchema,
   watermarkSeq: wholeCount,
   watermarkTs: wholeCount,
   startedTs: wholeCount,

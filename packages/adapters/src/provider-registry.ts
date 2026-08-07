@@ -134,6 +134,17 @@ export interface ShimContext {
    * that would be a lie if the mechanism were not also recorded.
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-14.2 AC9 — the node's own cost ceiling, in USD, armed on the vendor's
+   * *own* budget flag as defence in depth below DeFlow's.
+   *
+   * Omitted means no ceiling was set for this node, and the argv is unchanged.
+   * A vendor with no `costCeilingFlag` is also unchanged rather than
+   * approximated: DeFlow's ceiling still applies either way, and a spawn that
+   * dies on an unknown option is a worse outcome than an unarmed second line of
+   * defence.
+   */
+  readonly costCeilingUsd?: number;
 }
 
 /**
@@ -184,6 +195,15 @@ export interface ShimSpec {
    * it cannot be probed.
    */
   readonly structuredOutputFlag?: string;
+  /**
+   * KAR-14.2 AC9 — the flag this vendor takes its own spend ceiling on.
+   *
+   * Only Claude Code has one (`--max-budget-usd <amt>`, verified 2026-08-02
+   * from the 2.1.220 flag table). Copilot CLI's `--max-ai-credits` is the same
+   * shape in a different unit and belongs here once its exit behaviour has been
+   * verified — an unverified row would arm a ceiling nobody has watched fire.
+   */
+  readonly costCeilingFlag?: string;
   /**
    * KAR-08.5 / EPIC-08-S23 — the flag this vendor takes a list of variable
    * names to strip from the environments of processes *it* spawns (and to
@@ -241,6 +261,8 @@ interface ShimEntry {
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
   readonly sandbox?: SandboxSettingsInjection;
   readonly structuredOutputFlag?: string;
+  /** KAR-14.2 AC9 — the vendor's own spend ceiling flag; see `ShimSpec`. */
+  readonly costCeilingFlag?: string;
   readonly secretEnvFlag?: string;
   build(
     ctx: ShimContext,
@@ -407,7 +429,14 @@ function shimInvocation(
       ? [entry.structuredOutputFlag, ctx.schemaPath]
       : [];
 
-  return { format, argv: entry.build(ctx, format, [...flags, ...schema]) };
+  // KAR-14.2 AC9, and it rides in beside the schema for the same reason: one
+  // insertion point, and no vendor builder to forget it.
+  const ceiling =
+    entry.costCeilingFlag !== undefined && ctx.costCeilingUsd !== undefined
+      ? [entry.costCeilingFlag, String(ctx.costCeilingUsd)]
+      : [];
+
+  return { format, argv: entry.build(ctx, format, [...flags, ...schema, ...ceiling]) };
 }
 
 function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
@@ -422,6 +451,7 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     ...(entry.structuredOutputFlag === undefined
       ? {}
       : { structuredOutputFlag: entry.structuredOutputFlag }),
+    ...(entry.costCeilingFlag === undefined ? {} : { costCeilingFlag: entry.costCeilingFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
@@ -616,6 +646,10 @@ export const PROVIDER_SPECS = {
       // table and zod schema: `--json-schema <file>` is accepted and the parsed
       // object arrives in the result envelope's `structured_output` field.
       structuredOutputFlag: '--json-schema',
+      // KAR-14.2 AC9. **Verified 2026-08-02** from the same 2.1.220 flag table:
+      // `--max-budget-usd <amt>`, whose refusal comes back as the
+      // `error_max_budget_usd` result subtype the classifier maps to `gate`.
+      costCeilingFlag: '--max-budget-usd',
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires

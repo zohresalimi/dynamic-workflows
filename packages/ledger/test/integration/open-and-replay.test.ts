@@ -250,7 +250,13 @@ suite('a ledger holding kinds this build never heard of still opens (AC4)', () =
     const opened = openAndReplay(tmp);
     try {
       const state = opened.runs.get(CHECKPOINT_RUN);
-      expect(state?.status).toBe('needs-human');
+      // The corpus ends on F4.6's pause: `run.paused` and then
+      // `run.needs_human { reason: 'budget' }`, both in one transaction. The
+      // status stays `paused` because pause is the stronger statement about
+      // admission and the one a resume reverses (KAR-14.2 AC5); the ask is kept
+      // beside it rather than instead of it.
+      expect(state?.status).toBe('paused');
+      expect(state?.needsHuman).toMatchObject({ reason: 'budget' });
       expect(Object.keys(state?.nodes ?? {})).toHaveLength(20);
       for (const node of Object.values(state?.nodes ?? {})) {
         // Completed-without-having-run is the shape a skipped lifecycle event

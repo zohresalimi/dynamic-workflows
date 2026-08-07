@@ -36,6 +36,7 @@
 import {
   NodeFailureError,
   type NodeFailureReason,
+  type NodeId,
   type StructuredOutput,
   type TokenUsage,
 } from '@DeFlow/core';
@@ -345,6 +346,9 @@ export const RESULT_SUBTYPE_REASONS: Readonly<
   error_max_budget_usd: { reason: 'budget.cost-exceeded', class: 'gate' },
 };
 
+/** The subtype `--max-budget-usd` refuses with (KAR-14.2 AC9). */
+const VENDOR_BUDGET_SUBTYPE = 'error_max_budget_usd';
+
 /**
  * The failure a `result` envelope reports, or `null` when the turn succeeded.
  *
@@ -354,7 +358,26 @@ export const RESULT_SUBTYPE_REASONS: Readonly<
  * rather than having broken, which is `agent.refused` and permanent — the same
  * argv would be denied the same way next time.
  */
-export function shimResultFailure(line: ShimLine): NodeFailureError | null {
+export interface ShimFailureContext {
+  /**
+   * KAR-14.2 AC9 — the ceiling DeFlow armed the vendor with, when it armed one.
+   *
+   * Supplied by the caller because only it knows: the envelope reports what was
+   * spent and never what the limit was. Absent means DeFlow passed no
+   * `--max-budget-usd`, and the failure then carries no `limit` rather than an
+   * invented one — the class is what the scheduler reads, and it is a `gate`
+   * either way.
+   */
+  readonly ceiling?: {
+    readonly node: NodeId;
+    readonly limitUsd: number;
+  };
+}
+
+export function shimResultFailure(
+  line: ShimLine,
+  context: ShimFailureContext = {},
+): NodeFailureError | null {
   const subtype = asString(line.raw.subtype) ?? '';
   const isError = line.raw.is_error === true;
   if (!isError && !subtype.startsWith('error')) return null;
@@ -377,9 +400,39 @@ export function shimResultFailure(line: ShimLine): NodeFailureError | null {
         stopReason,
         permissionDenials: denials.length,
         ...(line.uuid === null ? {} : { uuid: line.uuid }),
+        ...vendorBreach(line, subtype, context),
       },
     },
   );
+}
+
+/**
+ * The breach a vendor-ceiling refusal carries, nested under `breach` so the
+ * vendor's own diagnostics can sit beside it rather than be replaced by it.
+ *
+ * `firedBy: 'vendor'` is the field that makes the difference actionable: the
+ * pause looks identical to a DeFlow-side trip, and an operator who raised the
+ * wrong ceiling would watch the run stop in exactly the same place.
+ */
+function vendorBreach(
+  line: ShimLine,
+  subtype: string,
+  context: ShimFailureContext,
+): { breach?: Record<string, unknown> } {
+  const ceiling = context.ceiling;
+  if (subtype !== VENDOR_BUDGET_SUBTYPE || ceiling === undefined) return {};
+  return {
+    breach: {
+      scope: 'node',
+      node: ceiling.node,
+      dimension: 'cost',
+      limit: ceiling.limitUsd,
+      // What the vendor says it spent before stopping. The CLI stops *after*
+      // the turn that crossed its ceiling, so this is above the limit.
+      actual: shimResultCostUsd(line),
+      firedBy: 'vendor',
+    },
+  };
 }
 
 /** A parsed rate-limit frame: the status, and the instant to schedule against. */

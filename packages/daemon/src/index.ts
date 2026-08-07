@@ -21,6 +21,10 @@ export {
   boot,
   EX_ALREADY_RUNNING,
 } from './boot.ts';
+// KAR-14.2 AC8 — the ceiling section of `DeFlow doctor` (the command is
+// EPIC-18, KAR-18.4).
+export type { BudgetCeilingReportInput } from './budget/doctor.ts';
+export { budgetCeilingLines, renderBudgetCeilingReport } from './budget/doctor.ts';
 // KAR-06.7 — the kill switch's mechanics: the four rungs of the escalation
 // ladder, each of them an event, and the pid-reuse refusal in front of them.
 export type { CancelOutcome, CancelPorts, CancelReport } from './cancel.ts';

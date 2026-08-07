@@ -50,6 +50,7 @@ import type {
 } from '@DeFlow/core';
 import {
   budgetBreachOf,
+  EVENT_CURRENT_VERSIONS,
   needsHumanCategory,
   planRetry,
   reroutePatch,
@@ -149,7 +150,11 @@ const envelope = (
   runId: input.runId,
   ts: input.ts,
   kind,
-  v: 1,
+  // The version this build writes, read off the registry rather than spelled
+  // as a literal: a literal is right until the first version bump and then
+  // wrong silently — an event written at `v: 1` carrying a v2 payload is
+  // refused at replay time, hours later, in a run nobody can repeat.
+  v: (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1,
   epoch: input.epoch,
   ...(scoped ? { nodeId: input.nodeId, attempt: input.failure.attempt } : {}),
   payload,
@@ -218,11 +223,40 @@ function gateDrafts(input: RecordFailureInput): EventDraft[] {
   if (breach !== null) {
     return [
       suspended,
-      envelope(input, 'budget.exceeded', { ...breach }, false),
+      envelope(
+        input,
+        'budget.exceeded',
+        {
+          ...breach,
+          // A breach that reached *here* came from an adapter reporting a
+          // vendor's own refusal — DeFlow's own ceiling is checked in
+          // `decide()` and never becomes a node failure — so an unstated owner
+          // is the vendor rather than the `deflow` default of the wire format.
+          firedBy: breach.firedBy ?? 'vendor',
+          // From the failure, so the class on the ledger is the taxonomy's
+          // answer rather than this module's opinion (KAR-14.2 AC2). The
+          // schema refuses anything but `gate`.
+          failureClass: input.failure.class,
+        },
+        false,
+      ),
       envelope(
         input,
         'run.paused',
         { by: 'policy', reason: toSingleLine(input.failure.message) },
+        false,
+      ),
+      // The same three events a DeFlow-side trip appends, in the same order and
+      // the same transaction: a budget pause that did not raise the ask would
+      // never reach the approval queue, and an operator would find a stopped
+      // run with nothing telling them it is theirs to answer.
+      envelope(
+        input,
+        'run.needs_human',
+        {
+          reason: needsHumanCategory(input.failure.reason),
+          detail: toSingleLine(`${input.nodeId}: ${input.failure.message}`),
+        },
         false,
       ),
     ];

@@ -62,6 +62,21 @@ file is where you record it.
 
 ## Entries
 
+### budget.exceeded v2
+
+**KAR-14.2.** F4.6's ceiling trip became self-describing: a reader of a paused run can now see which
+class the breach was recorded under, whose ceiling fired, and whether the figure that stopped the run
+was billed by a vendor or estimated by DeFlow.
+
+| Change                        | Kind                               | Why it is not lossy                                                                                                                                                     |
+| ----------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `+ failureClass` (required)   | required field, computable default | Filled with `'gate'` — the only value the v2 schema accepts, and the only class `NodeFailureSchema` has ever accepted for a budget reason. A v1 breach *was* a gate.       |
+| `+ firedBy` (required)        | required field, computable default | Filled with `'deflow'`. A v1 payload predates the vendor-ceiling path (`--max-budget-usd`) entirely, so every breach written under it came from DeFlow's admission check. |
+| `+ node` (optional)           | optional field                     | Left absent. v1 recorded no node on a node-scoped breach, and naming one would be an invention.                                                                          |
+| `+ basis` (optional)          | optional field                     | Left absent. v1 carried no rollup breakdown, and a fabricated one would put a figure nobody measured beside a pause somebody has to act on.                              |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
 ### budget.consumed v2
 
 **KAR-14.1.** The accounting record became self-contained, so the per-node / per-provider / per-run

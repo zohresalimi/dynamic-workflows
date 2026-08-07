@@ -97,9 +97,16 @@ const MIXED = fold([
   ),
 ]);
 
+/**
+ * KAR-14.2 AC8's second input: what the capability manifest says each provider
+ * reports. A stub here rather than the registry, because these specs are about
+ * the rollup and a registry lookup would tie them to a vendor table.
+ */
+const EXACT = (): 'exact' => 'exact';
+
 suite('the run summary carries the rollup the reducer produced (AC8)', () => {
   it('reports the run-level cost figures without collapsing them', () => {
-    const summary = runSummary(RUN, MIXED, 4);
+    const summary = runSummary(RUN, MIXED, 4, EXACT);
 
     expect(summary.runId).toBe(RUN);
     expect(summary.budget.run.costUsd.subscription).toBeCloseTo(0.42, 6);
@@ -109,19 +116,19 @@ suite('the run summary carries the rollup the reducer produced (AC8)', () => {
   });
 
   it('names the unmeasurable provider rather than counting it as zero (AC4)', () => {
-    const summary = runSummary(RUN, MIXED, 4);
+    const summary = runSummary(RUN, MIXED, 4, EXACT);
     expect(summary.budget.run.unaccounted).toEqual(['gemini']);
   });
 
   it('keys the same spend by node and by provider', () => {
-    const summary = runSummary(RUN, MIXED, 4);
+    const summary = runSummary(RUN, MIXED, 4, EXACT);
     expect(Object.keys(summary.budget.nodes).sort()).toEqual(['n-docs', 'n-impl', 'n-review']);
     expect(Object.keys(summary.budget.providers).sort()).toEqual(['claude', 'codex', 'gemini']);
     expect(summary.budget.nodes['n-impl']?.attempts).toHaveLength(1);
   });
 
   it('adds no summed cost field anywhere in the serialised body (AC3)', () => {
-    const body = JSON.parse(JSON.stringify(runSummary(RUN, MIXED, 4))) as unknown;
+    const body = JSON.parse(JSON.stringify(runSummary(RUN, MIXED, 4, EXACT))) as unknown;
 
     const totals: string[] = [];
     const walk = (value: unknown, path: string): void => {
@@ -147,7 +154,7 @@ suite('the run summary carries the rollup the reducer produced (AC8)', () => {
   });
 
   it('reports the run status, plan version, node counts and head seq', () => {
-    const summary = runSummary(RUN, MIXED, 4);
+    const summary = runSummary(RUN, MIXED, 4, EXACT);
     expect(summary.status).toBe(MIXED.status);
     expect(summary.planVersion).toBe(MIXED.planVersion);
     expect(summary.headSeq).toBe(4);
@@ -162,7 +169,7 @@ suite('the run summary carries the rollup the reducer produced (AC8)', () => {
       event('node.scheduled', { node: 'n-a', provider: 'claude', permission: 'read' }, 2),
       event('node.scheduled', { node: 'n-b', provider: 'claude', permission: 'read' }, 3),
     ]);
-    const summary = runSummary(RUN, withNodes, 3);
+    const summary = runSummary(RUN, withNodes, 3, EXACT);
     expect(summary.nodeCounts).toEqual({ scheduled: 2 });
   });
 });

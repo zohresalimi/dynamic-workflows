@@ -178,8 +178,14 @@ function project(state: RunState, event: Event): Transition {
     case 'run.paused':
       return withStatus(state, 'paused');
 
+    // F4.4's other half, and KAR-14.2 AC4's: a resume is the human's answer, so
+    // it clears the ask as well as the pause. Leaving `needsHuman` set would
+    // make a resumed run one `decide()` halts on for ever — the operator raised
+    // the ceiling, said continue, and nothing moved.
     case 'run.resumed':
-      return withStatus(state, 'running');
+      return state.status === 'running' && state.needsHuman === null
+        ? null
+        : { ...state, status: 'running', needsHuman: null };
 
     // KAR-06.7. The *mode* is folded, not just the status: `decide()` has two
     // inputs, so the only way it can tell a cooperative ladder from a forceful
@@ -216,7 +222,13 @@ function project(state: RunState, event: Event): Transition {
     }
 
     case 'run.needs_human': {
-      const flagged = withStatus(state, 'needs-human') ?? state;
+      // A paused run that also needs a human is still **paused** (KAR-14.2
+      // AC5): pause is the stronger statement about admission and the one a
+      // resume reverses, and F4.6's trip appends both. Both facts are kept —
+      // the status says paused, `needsHuman` says why — so a restart
+      // reconstructs the pause rather than a needs-human run nobody can resume.
+      const flagged =
+        state.status === 'paused' ? state : (withStatus(state, 'needs-human') ?? state);
       return {
         ...flagged,
         needsHuman: { reason: event.payload.reason, detail: event.payload.detail },
@@ -283,6 +295,10 @@ function project(state: RunState, event: Event): Transition {
         status: 'running',
         failure: null,
         suspension: null,
+        // KAR-14.2. The instant a per-node wall-clock ceiling is measured from,
+        // and it is the *first* start rather than this one: three attempts that
+        // burned ten minutes between them burned ten minutes.
+        startedTs: current.startedTs === 0 ? ts : current.startedTs,
         // The request hash describes an attempt, not a node: a new attempt has
         // not asked for anything yet, and inheriting the previous attempt's
         // digest would let the churn window count work that was never redone.
@@ -574,13 +590,46 @@ function project(state: RunState, event: Event): Transition {
             ...state.budget.breaches,
             {
               scope: event.payload.scope,
+              ...(event.payload.node === undefined ? {} : { node: event.payload.node }),
               dimension: event.payload.dimension,
               limit: event.payload.limit,
               actual: event.payload.actual,
+              firedBy: event.payload.firedBy,
             },
           ],
         },
       };
+
+    /**
+     * KAR-14.2 AC1 — the ceiling in force, from this seq onwards.
+     *
+     * The same event sets the ceiling at run creation and raises it afterwards,
+     * because both are the same fact. Folding it here rather than reading
+     * `.DeFlow/config.yaml` per tick is what makes a mid-run edit to that file
+     * unable to move a ceiling silently, and what makes a raised ceiling
+     * survive the restart that so often follows the pause it answered.
+     */
+    case 'budget.ceiling.set': {
+      const ceiling = {
+        costUsd: event.payload.costUsd,
+        wallclockMs: event.payload.wallclockMs,
+      };
+      const ceilings = state.ceilings;
+      if (event.payload.scope === 'run') {
+        return { ...state, ceilings: { ...ceilings, run: ceiling, hash: event.payload.hash } };
+      }
+      const node = event.payload.node;
+      return {
+        ...state,
+        ceilings: {
+          ...ceilings,
+          ...(node === undefined
+            ? { node: ceiling }
+            : { nodes: { ...ceilings.nodes, [node]: ceiling } }),
+          hash: event.payload.hash,
+        },
+      };
+    }
 
     // Provider capabilities and rate-limit frames are per-binary facts read
     // from the probe cache, not per-run state; an export decision is an

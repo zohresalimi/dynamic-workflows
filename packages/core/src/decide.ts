@@ -26,6 +26,7 @@
  * Verifies: EPIC-06-S1, EPIC-06-S2, EPIC-06-S3, EPIC-06-S4 ·
  * AC1, AC3, AC4, AC5, AC6, AC7, AC8
  */
+import { BUDGET_FAILURE_CLASS, type BudgetTrip, budgetTrips } from './budget-ceiling.ts';
 import type {
   AcquireLock,
   CancelNode,
@@ -39,7 +40,7 @@ import type {
 import type { EventSeq, NodeId, RunId } from './ids.ts';
 import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
 import { needsHumanOf, noProgress } from './no-progress.ts';
-import { dependencyFailedFailure } from './node-failure.ts';
+import { type BudgetBreach, dependencyFailedFailure } from './node-failure.ts';
 import type { PlanGraph, PlanNode } from './plan-graph.ts';
 import {
   initialNodeState,
@@ -47,6 +48,7 @@ import {
   type NodeState,
   type RunState,
 } from './run-state.ts';
+import { toSingleLine } from './text.ts';
 
 /**
  * The two node statuses that describe work not yet in flight: never started,
@@ -82,17 +84,32 @@ export function decide(state: RunState, now: number): Command[] {
   // else on this tick; the churn half halts admission.
   const found = noProgress(state, now);
   const ask = needsHumanOf(found);
+
+  // KAR-14.2. F4.6's ceilings, asked of the same two inputs. A run-scoped trip
+  // halts admission exactly as the churn breaker does; a node-scoped one
+  // withholds that node alone and leaves its siblings admissible, which is the
+  // whole observable difference between the two scopes (AC6).
+  const trips = ended ? NO_TRIPS : budgetTrips(state, now);
+  const runTripped = trips.some((trip) => trip.breach.scope === 'run');
+  const trippedNodes = trips
+    .map((trip) => trip.breach.node)
+    .filter((node): node is NodeId => node !== undefined);
+
   // In-flight nodes are allowed to finish (AC7): halting withholds new work and
   // issues no `CancelNode`, because a breaker that killed the attempts already
   // running would throw away exactly the evidence the human is being asked to
-  // look at.
-  const halted = ask !== null || state.needsHuman !== null;
+  // look at. A budget pause is the same shape for a stronger reason — tearing
+  // down a node most of the way through a build to save a few cents turns a
+  // pause into a partial failure (KAR-14.2's note on the story).
+  const halted = ask !== null || state.needsHuman !== null || runTripped;
 
   // Admission runs before the release sweep because it is the only thing that
   // knows which held locks are about to be kept: a node that already holds its
   // lock and is starting this tick must not have it reclaimed out from under
   // it in the same command list.
-  const admission = halted ? NOTHING_ADMITTED : admitReadyNodes(state, runId, now, plan, poisoned);
+  const admission = halted
+    ? NOTHING_ADMITTED
+    : admitReadyNodes(state, runId, now, plan, poisoned, trippedNodes);
 
   // Concatenated in COMMAND_ORDER, each group sorted by the seq of the event
   // that enabled it and then by node id (AC6). Grouping first and sorting
@@ -100,6 +117,7 @@ export function decide(state: RunState, now: number): Command[] {
   // it keeps each rule's ordering argument beside the rule.
   return [
     ...reportNoProgress(state, runId, found.stall, ask),
+    ...reportBudgetTrips(state, runId, trips),
     ...propagateDependencyFailures(state, runId, poisoned),
     ...releaseFinishedLocks(state, runId, admission.retained),
     ...admission.acquires,
@@ -163,6 +181,105 @@ function reportNoProgress(
 
   return commands;
 }
+
+// ── budget ceilings ──────────────────────────────────────────────────────────
+
+const NO_TRIPS: readonly BudgetTrip[] = [];
+
+/**
+ * KAR-14.2 AC2, AC6 — a ceiling crossing, as the events F4.6 asks for.
+ *
+ * A **run** trip appends three, in this order and in one transaction:
+ * `budget.exceeded`, then `run.paused { by: 'policy' }`, then
+ * `run.needs_human { reason: 'budget' }`. The order is the order EPIC-14-S8
+ * spells, and it is load-bearing — the reducer keeps `paused` as the status and
+ * files the ask beside it, so a restart reconstructs a *paused* run and the
+ * resume that answers it has something to reverse.
+ *
+ * A **node** trip appends two: `budget.exceeded` naming the node, and
+ * `node.suspended { until: { kind: 'human' } }`. Deliberately no
+ * `run.needs_human` — that halts admission run-wide, and a node ceiling that
+ * stopped its siblings would be a run ceiling with a node's name on it.
+ *
+ * Nothing here cancels anything. Admission is the lever; termination is the
+ * kill switch, and it lives in EPIC-08.
+ */
+function reportBudgetTrips(
+  state: RunState,
+  runId: RunId,
+  trips: readonly BudgetTrip[],
+): EmitEvent[] {
+  const commands: EmitEvent[] = [];
+
+  for (const trip of trips) {
+    const { breach, basis } = trip;
+    const node = breach.node;
+    commands.push({
+      kind: 'EmitEvent',
+      runId,
+      node: node ?? null,
+      attempt: node === undefined ? null : (state.nodes[node]?.attempt ?? 0),
+      event: {
+        kind: 'budget.exceeded',
+        payload: {
+          scope: breach.scope,
+          ...(node === undefined ? {} : { node }),
+          dimension: breach.dimension,
+          limit: breach.limit,
+          actual: breach.actual,
+          // The class comes from the taxonomy, not from an opinion here: the
+          // schema refuses anything but `gate` for a ceiling, and this module
+          // never names a failure reason (KAR-06.5 AC1).
+          failureClass: BUDGET_FAILURE_CLASS,
+          firedBy: breach.firedBy ?? 'deflow',
+          ...(basis === null ? {} : { basis }),
+        },
+      },
+    });
+
+    if (breach.scope === 'run' || node === undefined) {
+      commands.push(
+        {
+          kind: 'EmitEvent',
+          runId,
+          node: null,
+          attempt: null,
+          event: { kind: 'run.paused', payload: { by: 'policy', reason: breachReason(breach) } },
+        },
+        {
+          kind: 'EmitEvent',
+          runId,
+          node: null,
+          attempt: null,
+          event: {
+            kind: 'run.needs_human',
+            payload: { reason: 'budget', detail: breachReason(breach) },
+          },
+        },
+      );
+      continue;
+    }
+
+    commands.push({
+      kind: 'EmitEvent',
+      runId,
+      node,
+      attempt: state.nodes[node]?.attempt ?? 0,
+      event: {
+        kind: 'node.suspended',
+        payload: { node, until: { kind: 'human' } },
+      },
+    });
+  }
+
+  return commands;
+}
+
+/** One line an operator can act on, and the same one in both events. */
+const breachReason = (breach: BudgetBreach): string =>
+  toSingleLine(
+    `${breach.scope} ${breach.dimension} ceiling exceeded: ${breach.actual} against a limit of ${breach.limit}`,
+  );
 
 // ── the ready set ────────────────────────────────────────────────────────────
 
@@ -249,6 +366,8 @@ function admitReadyNodes(
   now: number,
   plan: PlanGraph | null,
   poisoned: ReadonlyMap<NodeId, number>,
+  /** Nodes whose own ceiling tripped on this same tick (KAR-14.2 AC6). */
+  withheld: readonly NodeId[],
 ): Admission {
   if (plan === null || state.status !== 'running') return NOTHING_ADMITTED;
 
@@ -266,6 +385,10 @@ function admitReadyNodes(
 
   for (const node of readySet(state, now, plan, poisoned)) {
     if (slots <= 0) break;
+    // Withheld whole, and without spending a slot: the node is about to be
+    // suspended by the trip emitted earlier in this same command list, and
+    // admitting it here would start the attempt the ceiling exists to withhold.
+    if (withheld.includes(node.id)) continue;
 
     const claims = lockClaims(state, node);
     if (!claims.every((claim) => isAvailable(state, node.id, claim, promised))) continue;

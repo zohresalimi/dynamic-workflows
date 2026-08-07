@@ -27,6 +27,30 @@ What keeps it honest is that nothing downstream is allowed to trust it alone:
 The `system` / `status` line before the boundary is deliberate: it drives a spinner and must **not**
 produce a second `context.compacted` event (EPIC-09-S31, second scenario).
 
+## `max-budget-usd.stream-json.jsonl`
+
+KAR-14.2's half of the corpus: a turn that ends in
+`{ "type": "result", "subtype": "error_max_budget_usd", "is_error": true }`, which is what Claude
+Code returns when its own `--max-budget-usd <amt>` ceiling fires. It is the stimulus for EPIC-14-S14
+— the classification that makes a vendor ceiling a `gate` rather than a `transient` failure worth
+retrying — and a taxonomy branch whose stimulus cannot be produced is a branch nobody has ever run.
+
+**It is synthetic, and for the same reasons as the file above.** The subtype is recorded in
+`docs/08-context-and-memory.md` §7 from Claude Code 2.1.220 (`error_during_execution |
+error_max_turns | error_max_budget_usd | …`), and the envelope's field set is the one
+`compact-boundary.stream-json.jsonl` was written from; the bytes were written by hand, because
+producing a real one costs real quota against a developer's own subscription and would put a
+transcript of somebody's machine into the repository. Every identifier here is fabricated.
+
+Two things about it are deliberate:
+
+- **`total_cost_usd` is above the ceiling the flag would have carried**, because that is what a
+  vendor ceiling looks like from outside: the CLI stops *after* the turn that crossed it, so the
+  reported spend exceeds the limit rather than landing exactly on it.
+- **`is_error` is `true` and `stop_reason` is `max_budget`.** A parser that keyed only on `is_error`
+  would classify this as an ordinary failed turn and retry it — three more spawns, three more
+  refusals — which is exactly what the `gate` classification exists to prevent.
+
 ## `codex-turn-completed.jsonl`
 
 The other half of KAR-14.1's Tier-1 corpus: `codex exec --json`'s JSONL, ending in the

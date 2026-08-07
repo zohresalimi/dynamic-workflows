@@ -32,6 +32,7 @@ import {
   type Command,
   type Db,
   decide,
+  EVENT_CURRENT_VERSIONS,
   type EventSeq,
   foldEvents,
   type Handle,
@@ -67,6 +68,16 @@ import {
 
 const AGENT_SHA256 = 'f'.repeat(64);
 
+/**
+ * The payload version this build writes for `kind`, read off the registry.
+ *
+ * A literal `1` at each call site is right until the first version bump and
+ * then wrong silently: an event written at `v: 1` carrying a v2 payload is
+ * refused at replay time, hours later, in a run nobody can repeat.
+ */
+const eventVersionOf = (kind: string): number =>
+  (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
+
 export interface RunLoopOptions {
   readonly db: Db;
   readonly runId: RunId;
@@ -95,6 +106,16 @@ export interface RunLoopOptions {
   readonly settleMs?: number;
   /** Real-time budget. Exceeding it is a wedge, and a wedge is a failure. */
   readonly budgetMs?: number;
+  /**
+   * KAR-14.2 — what each node's completion reports having spent, in USD.
+   *
+   * Opt-in, because most specs here are not about money and a run that
+   * accounted for spend nobody asked about would move a rollup they assert
+   * nothing about. When present, the `budget.consumed` it produces is appended
+   * in the same transaction as the `node.completed`, which is where the real
+   * adapter puts it.
+   */
+  readonly costUsdPerNode?: (node: NodeId) => number;
 }
 
 export interface RunLoopResult {
@@ -186,7 +207,18 @@ const completedResult = (node: NodeId): Record<string, unknown> => ({
 });
 
 /**
- * Runs the loop until the run reaches a terminal status.
+ * The statuses that mean *deliberately stopped*, as opposed to finished.
+ *
+ * A run halted by F4.4's pause or by the circuit breaker has commands left to
+ * issue and nodes left to run; it is waiting for a person. Concluding it as a
+ * failed run — which is what "nothing to do and nothing in flight" would
+ * otherwise mean — would turn every budget pause into an `run.aborted` and make
+ * KAR-14.2's resume path untestable.
+ */
+const HALTED_STATUSES: readonly string[] = ['paused', 'needs-human'];
+
+/**
+ * Runs the loop until the run reaches a terminal status, or halts.
  *
  * "Nothing left to do" is `decide()` returning no commands with nothing in
  * flight, and it is the only termination condition other than the budget: a
@@ -211,11 +243,14 @@ export async function runUntilSettled(
   const tickStep = options.tickStepMs ?? 1_000;
   let ticks = 0;
 
-  const append = (draft: Omit<EventDraft, 'runId' | 'ts' | 'v' | 'epoch'>): void => {
-    const [seq] = appendEvents(db, [
-      { runId, ts: clock.now(), v: 1, epoch: options.epoch, ...draft },
-    ]);
-    if (seq !== undefined) options.onEvent?.(seq, fold(db, runId));
+  const append = (...drafts: readonly Omit<EventDraft, 'runId' | 'ts' | 'epoch'>[]): void => {
+    if (drafts.length === 0) return;
+    const seqs = appendEvents(
+      db,
+      drafts.map((draft) => ({ runId, ts: clock.now(), epoch: options.epoch, ...draft })),
+    );
+    const last = seqs.at(-1);
+    if (last !== undefined) options.onEvent?.(last, fold(db, runId));
   };
 
   for (;;) {
@@ -227,13 +262,41 @@ export async function runUntilSettled(
     const commands = decide(state, clock.now());
     ticks += 1;
 
+    // Consecutive `EmitEvent`s are appended as **one batch**, which is one
+    // `BEGIN IMMEDIATE`. That is not a convenience: KAR-14.2 AC2 requires the
+    // three events of a ceiling trip — `budget.exceeded`, `run.paused`,
+    // `run.needs_human` — to land in one transaction, so no crash can leave a
+    // ledger recording that a ceiling was crossed and not that the run stopped.
+    let batch: Omit<EventDraft, 'runId' | 'ts' | 'epoch'>[] = [];
+    const flush = (): void => {
+      append(...batch);
+      batch = [];
+    };
+
     for (const command of commands) {
       options.onCommand?.(command);
+      if (command.kind === 'EmitEvent') {
+        batch.push({
+          kind: command.event.kind,
+          v: eventVersionOf(command.event.kind),
+          ...(command.node === null ? {} : { nodeId: command.node }),
+          ...(command.attempt === null ? {} : { attempt: command.attempt }),
+          payload: command.event.payload,
+        });
+        continue;
+      }
+      flush();
       perform(command);
     }
+    flush();
     if (thrown.length > 0) throw thrown[0];
 
     if (commands.length === 0 && inflight.size === 0) {
+      // A halted run is waiting for a person, not finished: leave it exactly as
+      // it is, so a spec can raise the ceiling and resume it.
+      if (HALTED_STATUSES.includes(state.status)) {
+        return { state, ticks, started, failure: endingFailure(state) };
+      }
       concludeRun(state);
       continue;
     }
@@ -254,6 +317,7 @@ export async function runUntilSettled(
     const done = active.every((node) => state.nodes[node.id]?.status === 'completed');
     append({
       kind: done ? 'run.completed' : 'run.aborted',
+      v: eventVersionOf(done ? 'run.completed' : 'run.aborted'),
       payload: { outcome: done ? 'succeeded' : 'failed', criteriaSatisfied: [] },
     });
   }
@@ -268,6 +332,7 @@ export async function runUntilSettled(
       case 'AcquireLock':
         append({
           kind: 'node.lock.acquired',
+          v: eventVersionOf('node.lock.acquired'),
           nodeId: command.node,
           payload: { node: command.node, lock: command.lock, key: command.key },
         });
@@ -276,6 +341,7 @@ export async function runUntilSettled(
       case 'ReleaseLock':
         append({
           kind: 'node.lock.released',
+          v: eventVersionOf('node.lock.released'),
           nodeId: command.node,
           payload: {
             node: command.node,
@@ -287,13 +353,10 @@ export async function runUntilSettled(
         return;
 
       case 'EmitEvent':
-        append({
-          kind: command.event.kind,
-          ...(command.node === null ? {} : { nodeId: command.node }),
-          ...(command.attempt === null ? {} : { attempt: command.attempt }),
-          payload: command.event.payload,
-        });
-        return;
+        // Batched by the tick loop above, so that a group of events `decide()`
+        // emitted together commits together. Reaching here would mean a caller
+        // performed one out of band.
+        throw new Error('EmitEvent is appended in a batch by the tick loop, never one at a time');
 
       case 'ScheduleWake':
         scheduleWakeIfChanged(db, {
@@ -317,6 +380,7 @@ export async function runUntilSettled(
 
     append({
       kind: 'node.started',
+      v: eventVersionOf('node.started'),
       nodeId: command.node,
       attempt: command.attempt,
       ikey: key,
@@ -330,16 +394,40 @@ export async function runUntilSettled(
 
     const finished = attemptOf(command).then(
       () => {
-        append({
-          kind: 'node.completed',
-          nodeId: command.node,
-          attempt: command.attempt,
-          payload: {
-            node: command.node,
+        append(
+          {
+            kind: 'node.completed',
+            v: eventVersionOf('node.completed'),
+            nodeId: command.node,
             attempt: command.attempt,
-            result: completedResult(command.node),
+            payload: {
+              node: command.node,
+              attempt: command.attempt,
+              result: completedResult(command.node),
+            },
           },
-        });
+          // KAR-14.1's pair, in the same transaction as the completion, exactly
+          // as `runShimNode` writes it: a crash between a node finishing and the
+          // run knowing what it cost is not a state the ledger can be in.
+          ...(options.costUsdPerNode === undefined
+            ? []
+            : [
+                {
+                  kind: 'budget.consumed',
+                  v: eventVersionOf('budget.consumed'),
+                  nodeId: command.node,
+                  attempt: command.attempt,
+                  payload: {
+                    node: command.node,
+                    attempt: command.attempt,
+                    provider: 'claude-code',
+                    usage: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+                    costUsd: options.costUsdPerNode(command.node),
+                    authMode: 'subscription',
+                  },
+                },
+              ]),
+        );
       },
       (error: unknown) => {
         const failure = toNodeFailure(error, {
@@ -351,6 +439,26 @@ export async function runUntilSettled(
           // nothing in the log to say why.
           captureEvidence: () => `artifact://${'0'.repeat(64)}` as Handle,
         });
+
+        // KAR-14.1 AC5 — a failed attempt's spend counts. The money is gone
+        // whether or not the attempt produced anything, and a rollup that
+        // forgave it would let a repair loop spend three times what it reports.
+        if (options.costUsdPerNode !== undefined) {
+          append({
+            kind: 'budget.consumed',
+            v: eventVersionOf('budget.consumed'),
+            nodeId: command.node,
+            attempt: command.attempt,
+            payload: {
+              node: command.node,
+              attempt: command.attempt,
+              provider: 'claude-code',
+              usage: { inputTokens: 900, outputTokens: 120, source: 'vendor-reported' },
+              costUsd: options.costUsdPerNode(command.node),
+              authMode: 'subscription',
+            },
+          });
+        }
 
         // The row first. `durable()` deliberately does not classify a throw
         // from `perform()` — the layer that knows which situation it came from

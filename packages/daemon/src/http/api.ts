@@ -15,6 +15,7 @@
  * carries; a second endpoint would be a second source, and two sources of one
  * number is how an F4.6 ceiling ends up evaluated against the wrong figure.
  */
+import { providerTokenAccounting } from '@DeFlow/adapters';
 import type { RunId } from '@DeFlow/core';
 import type { StoredEvent } from '@DeFlow/ledger';
 import { Hono } from 'hono';
@@ -120,7 +121,10 @@ api.get('/runs/:id', (c) => {
     return c.json({ error: 'not_found', path: c.req.path }, 404);
   }
 
-  return c.json(runSummary(runId, state, view.headSeq()));
+  // The accounting fidelity comes from the provider registry, which is where
+  // the capability manifest lands (KAR-05.2): a summary that assumed `'exact'`
+  // for an unknown vendor would report an enforceable ceiling that never fires.
+  return c.json(runSummary(runId, state, view.headSeq(), providerTokenAccounting));
 });
 
 /** `?runs=a,b` as the `RunId`s it names; anything unparseable is dropped. */

@@ -237,11 +237,22 @@ suite('EPIC-14-S7 — the data plane moves no accounting figure (AC7)', () => {
 suite('the ceiling breach still lands beside the figures', () => {
   it('records a breach without touching a cost cell', () => {
     const state = fold([
-      event('budget.exceeded', { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4 }, 1),
+      event(
+        'budget.exceeded',
+        {
+          scope: 'run',
+          dimension: 'cost',
+          limit: 20,
+          actual: 21.4,
+          failureClass: 'gate',
+          firedBy: 'deflow',
+        },
+        1,
+      ),
     ]);
 
     expect(state.budget.breaches).toEqual([
-      { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4 },
+      { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4, firedBy: 'deflow' },
     ]);
     expect(state.budget.run.costUsd.subscription).toBeNull();
   });

@@ -35,6 +35,27 @@ export {
   READ_ARTIFACT_TOOL,
   truncatedDigest,
 } from './artifact-offload.ts';
+// KAR-14.2 — F4.6's ceilings: what is in force, and what has been crossed.
+export type {
+  BudgetEnforceability,
+  BudgetTrip,
+  Ceiling,
+  EffectiveCeilings,
+  RequestedBudget,
+  RunCeilings,
+  UnmeasurableProvider,
+} from './budget-ceiling.ts';
+export {
+  BUDGET_FAILURE_CLASS,
+  budgetEnforceability,
+  budgetTripFailure,
+  budgetTrips,
+  ceilingHash,
+  initialCeilings,
+  nodeCeiling,
+  RunCeilingsSchema,
+  resolveCeilings,
+} from './budget-ceiling.ts';
 // KAR-09.2 — packet assembly under a token budget: fill order, the budget
 // ceiling, and the demotion ladder that offloads rather than summarises.
 export type {
@@ -191,7 +212,13 @@ export { decide } from './decide.ts';
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
 // KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
 // run-config constraints are read from. The file itself is read in the daemon.
-export type { ContextConfig, DeFlowConfig, ProviderConfig } from './deflow-config.ts';
+export type {
+  BudgetCeilingConfig,
+  BudgetConfig,
+  ContextConfig,
+  DeFlowConfig,
+  ProviderConfig,
+} from './deflow-config.ts';
 export {
   ContextConfigSchema,
   compactionLeverFor,

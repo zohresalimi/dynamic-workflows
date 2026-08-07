@@ -106,6 +106,7 @@ import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } fro
 import { auditCompletionScope, type ScopeAudit, scopeAuditRefusal } from './scope-audit.ts';
 import {
   parseShimLine,
+  type ShimFailureContext,
   shimCompactBoundary,
   shimRateLimit,
   shimResultCostUsd,
@@ -114,6 +115,16 @@ import {
   shimStructuredOutput,
   shimText,
 } from './shim-frames.ts';
+
+/**
+ * KAR-14.2 AC9 — what the vendor's own refusal is measured against, when
+ * DeFlow armed one. Absent leaves the failure a `gate` carrying no numbers,
+ * which is the honest answer for a ceiling nobody here set.
+ */
+const vendorCeiling = (request: ShimNodeRequest): ShimFailureContext =>
+  request.costCeilingUsd === undefined
+    ? {}
+    : { ceiling: { node: request.nodeId, limitUsd: request.costCeilingUsd } };
 
 /**
  * A durable timer row (`node_wake`), as the adapter needs to write one.
@@ -226,6 +237,17 @@ export interface ShimNodeRequest {
    * the manifest rather than assumed.
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-14.2 AC9 — this node's own cost ceiling in USD, armed on the vendor's
+   * own budget flag as defence in depth *below* DeFlow's admission check.
+   *
+   * Two things follow from passing it. The vendor stops the turn itself rather
+   * than running to the end of a plan DeFlow would have paused anyway, and the
+   * refusal that comes back can carry a `limit` — the envelope reports what was
+   * spent and never what the ceiling was, so a run that armed nothing gets a
+   * `gate` with no numbers rather than invented ones.
+   */
+  readonly costCeilingUsd?: number;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -535,6 +557,7 @@ export async function runShimNode(
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
         ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
+        ...(request.costCeilingUsd === undefined ? {} : { costCeilingUsd: request.costCeilingUsd }),
       },
       request.sandbox,
     );
@@ -828,7 +851,7 @@ export async function runShimNode(
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
           structuredOutput = shimStructuredOutput(line);
-          resultFailure = shimResultFailure(line);
+          resultFailure = shimResultFailure(line, vendorCeiling(request));
         }
 
         await fileLine(text, line.uuid, line.type);
@@ -844,7 +867,7 @@ export async function runShimNode(
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
           structuredOutput = shimStructuredOutput(line);
-          resultFailure = shimResultFailure(line);
+          resultFailure = shimResultFailure(line, vendorCeiling(request));
         }
         await fileLine(pending, line.uuid, line.type);
       }

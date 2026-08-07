@@ -28,7 +28,11 @@
  * Verifies: EPIC-02-S20, EPIC-02-S21, EPIC-02-S22 · AC2, AC4, AC5, AC8
  */
 import type { z } from 'zod';
-import { BudgetConsumedSchema, EVENT_CURRENT_VERSIONS } from './event-payloads.ts';
+import {
+  BudgetConsumedSchema,
+  BudgetExceededSchema,
+  EVENT_CURRENT_VERSIONS,
+} from './event-payloads.ts';
 
 /** A single hop: version `n` in, version `n + 1` out. Pure. */
 export type Upcaster = (payload: unknown) => unknown;
@@ -360,4 +364,32 @@ registerUpcaster({
     costUsd: 0.42,
   },
   up: (payload) => ({ ...(payload as Record<string, unknown>), authMode: 'subscription' }),
+});
+
+/**
+ * `budget.exceeded` v1 → v2 (KAR-14.2). See schemas/CHANGELOG.md.
+ *
+ * v2 adds three fields and widens nothing, so every v1 payload still fits:
+ *
+ * - `failureClass`, filled with `'gate'`. Not a guess — it is the only value the
+ *   v2 schema accepts, and the only one `NodeFailureSchema` has ever accepted
+ *   for `budget.cost-exceeded` and `budget.wallclock-exceeded`. A v1 breach was
+ *   a gate; the field merely says so on the log.
+ * - `firedBy`, filled with `'deflow'`. A v1 payload predates the vendor-ceiling
+ *   path entirely (`--max-budget-usd`, AC9), so every breach written under it
+ *   came from DeFlow's own admission check.
+ * - `basis` and `node`, left **absent**. v1 recorded neither the rollup
+ *   breakdown nor which node a node-scoped breach was about, and inventing
+ *   either would put a figure on the timeline nobody measured.
+ */
+registerUpcaster({
+  kind: 'budget.exceeded',
+  from: 1,
+  to: BudgetExceededSchema,
+  fixture: { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4 },
+  up: (payload) => ({
+    ...(payload as Record<string, unknown>),
+    failureClass: 'gate',
+    firedBy: 'deflow',
+  }),
 });

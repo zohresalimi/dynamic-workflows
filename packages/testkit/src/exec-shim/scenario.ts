@@ -35,12 +35,18 @@ export const SCENARIO_ENV = 'DeFlow_FAKE_SCENARIO';
  * it is the only honest source for `agent.schema-repair-exhausted`
  * (docs/04-domain-model.md §8), and a taxonomy entry with no way to produce its
  * stimulus is a branch nobody has ever run.
+ *
+ * `error_max_budget_usd` is the second (KAR-14.2 AC9): it is what
+ * `--max-budget-usd` refuses with, and the only stimulus for the classification
+ * that makes a vendor ceiling a `gate` rather than a `transient` failure worth
+ * three more spawns.
  */
 export const RESULT_SUBTYPES = [
   'success',
   'error_during_execution',
   'error_max_turns',
   'error_max_structured_output_retries',
+  'error_max_budget_usd',
 ] as const;
 export type ResultSubtype = (typeof RESULT_SUBTYPES)[number];
 

@@ -24,14 +24,19 @@
  * Verifies: EPIC-14-S1 · KAR-14.1 AC3, AC4, AC8
  */
 import type {
+  BudgetEnforceability,
   BudgetRollup,
   NodeStatus,
   PlanHash,
+  ProviderId,
+  RunCeilings,
   RunId,
   RunOutcome,
   RunState,
   RunStatus,
+  TokenAccounting,
 } from '@DeFlow/core';
+import { budgetEnforceability } from '@DeFlow/core';
 
 export interface RunSummary {
   readonly runId: RunId;
@@ -47,6 +52,21 @@ export interface RunSummary {
   readonly nodeCounts: Readonly<Partial<Record<NodeStatus, number>>>;
   /** KAR-14.1's projection, verbatim. @see @DeFlow/core's cost-rollup.ts */
   readonly budget: BudgetRollup;
+  /** KAR-14.2 — the ceilings in force, as the ledger pinned them. */
+  readonly ceilings: RunCeilings;
+  /**
+   * KAR-14.2 AC8 — **the marker**: `false` when this run sets a cost ceiling
+   * DeFlow cannot measure, because a provider it schedules reports no usage at
+   * all.
+   *
+   * A boolean beside the detail rather than only inside it, because that is
+   * what a surface renders: the spec-approval screen has to be able to say
+   * "this ceiling will not fire" without reasoning about a list, and it has to
+   * be able to say it *before* execution begins.
+   */
+  readonly budgetEnforceable: boolean;
+  /** Which dimension is unenforceable and whose accounting made it so. */
+  readonly budgetEnforceability: BudgetEnforceability;
   /** The `seq` of the last event that moved this projection (F4.7). */
   readonly watermarkSeq: number;
   /**
@@ -74,7 +94,18 @@ function countNodes(state: RunState): Readonly<Partial<Record<NodeStatus, number
  * the caller resolved the run by is the truer answer than `null` — the route
  * has already established that the ledger holds this run.
  */
-export function runSummary(runId: RunId, state: RunState, headSeq: number): RunSummary {
+export function runSummary(
+  runId: RunId,
+  state: RunState,
+  headSeq: number,
+  /**
+   * The capability manifest's accounting fidelity for a provider. A parameter
+   * because @DeFlow/core owns no provider registry, and because a summary that
+   * looked one up itself would answer differently in a test than in production.
+   */
+  accounting: (provider: ProviderId) => TokenAccounting,
+): RunSummary {
+  const enforceability = budgetEnforceability(state, accounting);
   return {
     runId,
     status: state.status,
@@ -83,6 +114,9 @@ export function runSummary(runId: RunId, state: RunState, headSeq: number): RunS
     planVersion: state.planVersion,
     nodeCounts: countNodes(state),
     budget: state.budget,
+    ceilings: state.ceilings,
+    budgetEnforceable: enforceability.cost,
+    budgetEnforceability: enforceability,
     watermarkSeq: state.watermarkSeq,
     headSeq,
   };

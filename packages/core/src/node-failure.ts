@@ -33,8 +33,8 @@
  * Verifies: EPIC-02-S27, EPIC-02-S28 · AC1–AC6
  */
 import { z } from 'zod';
-import type { EventSeq, Handle } from './ids.ts';
-import { EventSeqSchema, HandleSchema } from './ids.ts';
+import type { EventSeq, Handle, NodeId } from './ids.ts';
+import { EventSeqSchema, HandleSchema, NodeIdSchema } from './ids.ts';
 import { singleLine, toSingleLine } from './text.ts';
 
 /**
@@ -405,16 +405,26 @@ export function dependencyFailedFailure(cause: EventSeq, attempt: number): NodeF
 /** One F4.6 ceiling breach: which budget, on what, and by how much. */
 export interface BudgetBreach {
   readonly scope: 'node' | 'run';
+  /** The node a `node`-scoped breach is about. */
+  readonly node?: NodeId | undefined;
   readonly dimension: 'cost' | 'wallclock';
   readonly limit: number;
   readonly actual: number;
+  /**
+   * Whose ceiling fired: DeFlow's own admission check, or the vendor's own
+   * (`--max-budget-usd`, KAR-14.2 AC9). Absent reads as `deflow`, which is what
+   * every breach constructed before the vendor path existed was.
+   */
+  readonly firedBy?: 'deflow' | 'vendor' | undefined;
 }
 
 export const BudgetBreachSchema = z.strictObject({
   scope: z.enum(['node', 'run']),
+  node: NodeIdSchema.optional(),
   dimension: z.enum(['cost', 'wallclock']),
   limit: z.number().nonnegative(),
   actual: z.number().nonnegative(),
+  firedBy: z.enum(['deflow', 'vendor']).optional(),
 });
 
 /** Which reason a breach of each dimension is reported under. */
@@ -459,7 +469,13 @@ export function budgetExceededFailure(
 export function budgetBreachOf(failure: NodeFailure): BudgetBreach | null {
   const reasons: readonly NodeFailureReason[] = Object.values(BUDGET_REASONS);
   if (!reasons.includes(failure.reason)) return null;
-  const parsed = BudgetBreachSchema.safeParse(failure.detail);
+  // Two shapes, because two constructors: DeFlow's own trip puts the breach at
+  // the root of `detail`, while an adapter reporting a *vendor's* ceiling has
+  // its own diagnostic fields there and nests the breach under `breach`. Both
+  // are read here rather than normalised at one of the call sites, so neither
+  // can quietly stop being recognised as a budget event and start being retried.
+  const nested = (failure.detail as { breach?: unknown } | undefined)?.breach;
+  const parsed = BudgetBreachSchema.safeParse(nested ?? failure.detail);
   return parsed.success ? parsed.data : null;
 }
 

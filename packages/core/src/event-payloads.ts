@@ -38,7 +38,7 @@ import {
   SegmentIdSchema,
 } from './ids.ts';
 import { parseIkey } from './ikey.ts';
-import { NodeFailureSchema } from './node-failure.ts';
+import { FailureClassSchema, NodeFailureSchema } from './node-failure.ts';
 import {
   CancelledNodeResultSchema,
   CompletedNodeResultSchema,
@@ -122,6 +122,16 @@ export const COMPACTION_TRIGGERS = ['threshold', 'manual', 'vendor.auto'] as con
 export const BUDGET_SCOPES = ['node', 'run'] as const;
 
 export const BUDGET_DIMENSIONS = ['cost', 'wallclock'] as const;
+
+/**
+ * Whose ceiling fired (KAR-14.2 AC9).
+ *
+ * `vendor` is Claude Code's `--max-budget-usd` and its `error_max_budget_usd`
+ * result subtype — defence in depth *below* DeFlow's own ceiling. Both pause
+ * the run identically; which one fired is the difference between raising
+ * DeFlow's ceiling and raising the vendor's, and the numbers alone cannot say.
+ */
+export const BUDGET_CEILING_OWNERS = ['deflow', 'vendor'] as const;
 
 export const EXPORT_TARGETS = ['report', 'hub'] as const;
 
@@ -1113,13 +1123,121 @@ export const BudgetConsumedSchema = z.strictObject({
   authMode: z.enum(PROVIDER_AUTH_MODES),
 });
 
-/** F4.6 — pauses the run, does not fail it. */
-export const BudgetExceededSchema = z.strictObject({
-  scope: z.enum(BUDGET_SCOPES),
-  dimension: z.enum(BUDGET_DIMENSIONS),
-  limit: z.number().nonnegative(),
-  actual: z.number().nonnegative(),
+/**
+ * KAR-14.2 AC7 — KAR-14.1's rollup breakdown, travelling with a ceiling trip.
+ *
+ * It exists so an operator looking at a paused run can see *what stopped it*.
+ * A pause driven wholly by DeFlow's own Tier-2 estimate — which carries a known
+ * 15–20% undercount on prose and worse on code — is a different conversation
+ * from one driven by a figure the vendor billed, and the two are
+ * indistinguishable from the `actual` alone.
+ *
+ * `authMode` names which substance crossed, because there is no total: §12 of
+ * docs/07-provider-adapter-layer.md keeps subscription quota and real currency
+ * apart, so a ceiling is evaluated against each and the trip says which one it
+ * was.
+ */
+export const BudgetBasisSchema = z.strictObject({
+  authMode: z.enum(PROVIDER_AUTH_MODES),
+  vendorReported: z.number().nonnegative().nullable(),
+  estimated: z.number().nonnegative().nullable(),
+  /** No vendor-reported figure contributed to the trip at all. */
+  estimateDriven: z.boolean(),
+  /** Providers that spent something nobody could price (KAR-14.1). */
+  unaccounted: z.array(ProviderIdSchema),
 });
+
+export type BudgetBasis = z.infer<typeof BudgetBasisSchema>;
+
+/**
+ * F4.6 — the ceiling that pauses the run rather than failing it. **v2.**
+ *
+ * `failureClass` is a field rather than an assumption because AC2 is a claim
+ * about the ledger: *"the failure class recorded is `gate`"*. The schema
+ * refuses `permanent` and `transient` outright, which is the same discipline
+ * `NodeFailureSchema` applies to the three gate-only reasons — a ceiling that
+ * could be recorded as `transient` is a ceiling something downstream would
+ * retry into, spending the remaining allowance discovering the same wall.
+ *
+ * `firedBy` distinguishes DeFlow's own admission check from the vendor's ceiling
+ * below it (`--max-budget-usd`, AC9). Both pause the run identically; which one
+ * fired is the difference between raising DeFlow's ceiling and raising the
+ * vendor's, and an operator cannot guess it from the numbers.
+ *
+ * `basis` is KAR-14.1's rollup breakdown travelling with the trip (AC7), so a
+ * pause caused wholly by DeFlow's own Tier-2 estimate says so wherever it is
+ * displayed. Absent for a wall-clock trip: there is no money to attribute.
+ */
+export const BudgetExceededSchema = z
+  .strictObject({
+    scope: z.enum(BUDGET_SCOPES),
+    /** Present exactly when `scope` is `node`. */
+    node: NodeIdSchema.optional(),
+    dimension: z.enum(BUDGET_DIMENSIONS),
+    limit: z.number().nonnegative(),
+    actual: z.number().nonnegative(),
+    failureClass: FailureClassSchema,
+    firedBy: z.enum(BUDGET_CEILING_OWNERS),
+    basis: BudgetBasisSchema.optional(),
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.failureClass !== 'gate') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['failureClass'],
+        message:
+          'a budget breach pauses for a human decision: failureClass must be "gate", not ' +
+          `"${payload.failureClass}"`,
+      });
+    }
+    if ((payload.scope === 'node') !== (payload.node !== undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['node'],
+        message: 'a node-scoped breach names its node, and a run-scoped one names none',
+      });
+    }
+  });
+
+/**
+ * KAR-14.2 AC1 — the effective ceiling, pinned in the log.
+ *
+ * Appended beside `run.created` from `POST /api/runs`'s `budget` block over
+ * `.DeFlow/config.yaml`'s defaults, and again with `source: 'operator'` when a
+ * paused run's ceiling is raised. Both are the same event because both are the
+ * same fact: *this is the ceiling in force from this seq onwards*.
+ *
+ * It is an event rather than config read per tick for the reason F4.4 makes
+ * pause an event — a ceiling that lived in a file could be edited mid-run and
+ * would silently change what a running run is measured against, and a raised
+ * ceiling that lived in memory would not survive the restart that follows the
+ * pause it was raised to answer.
+ *
+ * `hash` is the sha256 of the effective ceiling document at the moment it was
+ * set, so a later reader can tell a run whose config file has since been edited
+ * from one whose has not.
+ */
+export const BudgetCeilingSetSchema = z
+  .strictObject({
+    scope: z.enum(BUDGET_SCOPES),
+    /** A node-scoped ceiling for one node; absent sets the default every node
+     * inherits, which is how `.DeFlow/config.yaml` expresses a per-node cap. */
+    node: NodeIdSchema.optional(),
+    /** `null` is "no ceiling in this dimension", never `0`. */
+    costUsd: z.number().nonnegative().nullable(),
+    wallclockMs: z.number().int().nonnegative().nullable(),
+    source: z.enum(['request', 'config', 'operator']),
+    hash: Sha256Schema,
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.scope === 'run' && payload.node !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['node'],
+        message: 'a run-scoped ceiling names no node',
+      });
+    }
+  });
 
 /** F3.4/F3.5 — capabilities are derived from a probe, never hardcoded. */
 export const ProviderProbedSchema = z.strictObject({
@@ -1218,7 +1336,8 @@ export const EVENT_SCHEMAS = {
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 2, payload: BudgetConsumedSchema },
-  'budget.exceeded': { v: 1, payload: BudgetExceededSchema },
+  'budget.exceeded': { v: 2, payload: BudgetExceededSchema },
+  'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },
   'provider.probed': { v: 1, payload: ProviderProbedSchema },
   'provider.rate_limited': { v: 1, payload: ProviderRateLimitedSchema },
   'export.blocked': { v: 1, payload: ExportBlockedSchema },

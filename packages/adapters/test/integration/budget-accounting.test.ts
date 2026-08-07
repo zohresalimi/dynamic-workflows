@@ -21,8 +21,10 @@
  * test plan #8, #10, #11
  */
 import {
+  budgetBreachOf,
   type Event,
   initialRunState,
+  type NodeFailure,
   type NodeId,
   type ProviderId,
   ProviderIdSchema,
@@ -157,6 +159,60 @@ function project(ledger: TestLedger): RunState {
     .filter((event): event is Event => event !== null);
   return events.reduce(reduce, initialRunState());
 }
+
+/**
+ * EPIC-14-S14 — the vendor's own ceiling fires, out of a real process.
+ *
+ * The fake exec-shim agent is scripted with the subtype Claude Code returns
+ * when `--max-budget-usd` refuses, so the classification under test is driven by
+ * bytes that crossed a pipe rather than by a value a spec constructed.
+ */
+const VENDOR_CEILING_TURN = JSON.stringify({
+  name: 'kar-14-2-vendor-ceiling',
+  description: "One turn that ends on the vendor's own --max-budget-usd ceiling.",
+  steps: [{ type: 'message', text: 'refactoring' }],
+  result: {
+    subtype: 'error_max_budget_usd',
+    isError: true,
+    stopReason: 'max_budget',
+    text: 'Stopped: the configured budget was exhausted.',
+    totalCostUsd: 2.0104,
+  },
+});
+
+suite('EPIC-14-S14 — the vendor ceiling pauses; it is never retried (KAR-14.2 AC9)', () => {
+  it('arms the vendor flag and returns a gate carrying the breach', async ({ tmp }) => {
+    const agent = await linkFakeAgent(tmp, 'claude');
+    const test = await harness(tmp, agent.binary, VENDOR_CEILING_TURN);
+
+    const outcome = await test.run({ costCeilingUsd: 2 });
+
+    // The ceiling really was armed on the child's command line.
+    const at = outcome.argv.indexOf('--max-budget-usd');
+    expect(at).toBeGreaterThan(-1);
+    expect(outcome.argv[at + 1]).toBe('2');
+
+    expect(outcome.status).toBe('failed');
+    const failure = outcome.status === 'failed' ? outcome.failure : null;
+    expect(failure?.class).toBe('gate');
+    expect(failure?.class).not.toBe('transient');
+    expect(budgetBreachOf(failure as NodeFailure)).toEqual({
+      scope: 'node',
+      node: NODE,
+      dimension: 'cost',
+      limit: 2,
+      actual: 2.0104,
+      firedBy: 'vendor',
+    });
+
+    // The spend still lands: the money is gone whether or not the turn produced
+    // anything (KAR-14.1 AC5).
+    const consumed = test.ledger.events().filter((event) => event.kind === 'budget.consumed');
+    expect(consumed).toHaveLength(1);
+    expect(consumed[0]?.payload).toMatchObject({ costUsd: 2.0104 });
+    test.ledger.close();
+  });
+});
 
 suite('EPIC-14-S1 — a completed node’s spend lands with provenance (AC1)', () => {
   it('appends exactly one budget.consumed for the attempt, carrying usage.source', async ({
