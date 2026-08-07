@@ -52,6 +52,7 @@ import {
   type NodeFailureError,
   type NodeId,
   type PermissionLevel,
+  type PreflightEstimate,
   type ProviderAuthMode,
   type ProviderId,
   type RunId,
@@ -248,6 +249,18 @@ export interface ShimNodeRequest {
    * `gate` with no numbers rather than invented ones.
    */
   readonly costCeilingUsd?: number;
+  /**
+   * KAR-14.3 AC8 — what this attempt was estimated to cost **before** it was
+   * admitted, echoed onto the accounting record so the estimate and the actual
+   * can be reconciled without a join.
+   *
+   * Supplied by the caller because the estimator needs a real tokenizer and the
+   * learned calibration, and this package has neither: @DeFlow/adapters depends
+   * on @DeFlow/core alone, and the BPE table and the ledger both live elsewhere.
+   * Absent means nobody estimated the attempt, which is a fact, and is recorded
+   * as an absence rather than as a zero.
+   */
+  readonly preflight?: PreflightEstimate;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -665,6 +678,7 @@ export async function runShimNode(
       authMode: request.authMode ?? 'subscription',
       reported: usage === null ? null : { usage, costUsd },
       estimate: estimateUsage(request.prompt, agentText),
+      preflight: request.preflight,
     });
 
   /**

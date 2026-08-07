@@ -53,6 +53,7 @@ export {
   ceilingHash,
   initialCeilings,
   nodeCeiling,
+  plannedNodes,
   RunCeilingsSchema,
   resolveCeilings,
 } from './budget-ceiling.ts';
@@ -183,6 +184,30 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-14.3 — the pre-flight estimator: what a plan, or a patch, is about to
+// cost, with the method, the calibration factor and the price-table version on
+// every figure — and `null`, never `0`, for anything it cannot price.
+export type {
+  AppliedCalibration,
+  EstimatorInputs,
+  ModelRate,
+  NodeEstimate,
+  PatchEstimate,
+  PatchEstimatorInputs,
+  PlanEstimate,
+  PriceTable,
+  UnpriceableNode,
+  UnpriceableReason,
+} from './cost-estimate.ts';
+export {
+  DEFAULT_PRICE_TABLE,
+  estimateNode,
+  estimatePatch,
+  estimatePlan,
+  PRICE_TABLE_VERSION,
+  priceKey,
+  UNPRICEABLE_REASONS,
+} from './cost-estimate.ts';
 // KAR-14.1 — the accounting projection: per node, per provider, per run, with
 // subscription quota and real currency as two figures and `null` as the only
 // honest blank.
@@ -192,7 +217,9 @@ export type {
   Consumption,
   CostFigures,
   CostRollup,
+  EstimateAccuracy,
   NodeCostRollup,
+  PreflightEstimate,
 } from './cost-rollup.ts';
 export {
   addConsumption,
@@ -536,6 +563,26 @@ export {
   NodeSuspensionSchema,
   SUSPENSION_KINDS,
 } from './node-result.ts';
+// KAR-14.3 — F2.5's patch policy engine: the estimate turned into a decision,
+// first match wins, and a `null` cost matching no numeric rule.
+export type {
+  PatchPolicyDecision,
+  PatchPolicyInput,
+  PatchPolicyRuling,
+  PatchRule,
+  RulablePatchEstimate,
+} from './patch-policy.ts';
+export {
+  BUDGET_EXHAUSTED_FRACTION,
+  DEFAULT_PATCH_RULES,
+  EXPENSIVE_COST_USD,
+  elapsedBudgetFraction,
+  evaluatePatchPolicy,
+  MAX_REPLAN_DEPTH,
+  PATCH_POLICY_DECISIONS,
+  patchDecisionOutcome,
+  WIDE_BLAST_RADIUS_FILES,
+} from './patch-policy.ts';
 // KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
 // it agreeing with KAR-08.2's containment check, and the plan-time check that
 // a write node's pathScope is not empty.

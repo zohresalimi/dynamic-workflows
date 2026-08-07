@@ -15,8 +15,8 @@
  * carries; a second endpoint would be a second source, and two sources of one
  * number is how an F4.6 ceiling ends up evaluated against the wrong figure.
  */
-import { providerTokenAccounting } from '@DeFlow/adapters';
-import type { RunId } from '@DeFlow/core';
+import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
+import type { EstimatorInputs, RunId } from '@DeFlow/core';
 import type { StoredEvent } from '@DeFlow/ledger';
 import { Hono } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
@@ -24,6 +24,7 @@ import { streamSSE } from 'hono/streaming';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
+import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { runSummary } from './run-summary.ts';
 
@@ -124,8 +125,29 @@ api.get('/runs/:id', (c) => {
   // The accounting fidelity comes from the provider registry, which is where
   // the capability manifest lands (KAR-05.2): a summary that assumed `'exact'`
   // for an unknown vendor would report an enforceable ceiling that never fires.
-  return c.json(runSummary(runId, state, view.headSeq(), providerTokenAccounting));
+  return c.json(
+    runSummary(runId, state, view.headSeq(), providerTokenAccounting, preflightEstimator(view)),
+  );
 });
+
+/**
+ * KAR-14.3 AC3 — the inputs the pre-flight estimate is computed from, assembled
+ * at the edge.
+ *
+ * All four are the *real* ones: the real `o200k_base` tokenizer, the real
+ * provider registry's family and accounting columns, and the real learned
+ * calibration out of the ledger. `estimatePlan` itself is pure and knows none of
+ * them, which is what makes the figure on this response reproducible from the
+ * same four inputs months later.
+ */
+function preflightEstimator(view: LedgerView): EstimatorInputs {
+  return {
+    tokenizer: o200kTokenizer(),
+    accounting: providerTokenAccounting,
+    family: providerFamily,
+    calibration: (provider, model) => view.calibration(provider, model, providerFamily(provider)),
+  };
+}
 
 /** `?runs=a,b` as the `RunId`s it names; anything unparseable is dropped. */
 function subscribedRuns(query: string | undefined): readonly RunId[] {

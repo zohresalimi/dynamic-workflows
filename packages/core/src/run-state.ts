@@ -448,7 +448,7 @@ export interface RunState {
  * `NodeState.startedTs` — restored from a checkpoint that predates them, a
  * paused run would come back with no ceiling in force.
  */
-export const CHECKPOINT_VERSION = 8;
+export const CHECKPOINT_VERSION = 9;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event

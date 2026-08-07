@@ -248,3 +248,88 @@ suite('EPIC-14-S4 — subscription quota and API-key currency are two totals', (
     expect(numbers).not.toContain(1990);
   });
 });
+
+/**
+ * KAR-14.3 AC8, AC9 — the estimate reconciled against the actual.
+ *
+ * The reconciliation is the step that is easy to leave out, and leaving it out
+ * fails silently: the calibration factor never moves, every estimate stays
+ * seed-based for ever, and nothing anywhere reports that DeFlow's pre-flight
+ * figures are consistently wrong. So the projection carries the two figures
+ * *side by side and separately named* — never one number for both, which is
+ * exactly the collapse AC9 forbids.
+ *
+ * Verifies: EPIC-14-S20 · KAR-14.3 AC8, AC9
+ */
+suite('the per-run estimate-accuracy figure (KAR-14.3 AC8)', () => {
+  const withEstimate = (costUsd: number, estimateUsd: number, tokens: number): Consumption =>
+    spend({
+      costUsd,
+      usage: vendor(tokens, 10),
+      estimate: {
+        costUsd: estimateUsd,
+        inputTokens: Math.round(tokens / 1.18),
+        method: 'gpt-tokenizer/o200k_base',
+        tokenEstimateFactor: 1.2,
+        samples: 0,
+        seedBased: true,
+      },
+    });
+
+  it('is null until something has been reconciled', () => {
+    expect(initialBudgetRollup().estimateAccuracy).toBeNull();
+    expect([spend()].reduce(addConsumption, initialBudgetRollup()).estimateAccuracy).toBeNull();
+  });
+
+  it('carries the estimate and the actual as two figures, never one', () => {
+    const rollup = [withEstimate(1, 0.8, 1180), withEstimate(2, 1.6, 2360)].reduce(
+      addConsumption,
+      initialBudgetRollup(),
+    );
+
+    expect(rollup.estimateAccuracy).toEqual({
+      samples: 2,
+      estimatedCostUsd: 2.4,
+      actualCostUsd: 3,
+      costRatio: 1.25,
+      estimatedInputTokens: 3000,
+      actualInputTokens: 3540,
+      tokenRatio: 1.18,
+    });
+  });
+
+  it('leaves the billing figures untouched: an estimate is not spend', () => {
+    const rollup = [withEstimate(1, 0.8, 1180)].reduce(addConsumption, initialBudgetRollup());
+    expect(rollup.run.costUsd.subscription).toBe(1);
+    expect(rollup.run.costUsd.vendorReported).toBe(1);
+    // 0.8 is the estimate, and it appears nowhere in the money the run spent.
+    expect(numbersIn(rollup.run.costUsd)).not.toContain(0.8);
+  });
+
+  it('counts a record whose estimate could not be priced without inventing a cost', () => {
+    const rollup = [
+      spend({
+        costUsd: null,
+        usage: estimated(1000, 10),
+        estimate: {
+          costUsd: null,
+          inputTokens: 900,
+          method: 'gpt-tokenizer/o200k_base',
+          tokenEstimateFactor: 1.05,
+          samples: 0,
+          seedBased: true,
+        },
+      }),
+    ].reduce(addConsumption, initialBudgetRollup());
+
+    expect(rollup.estimateAccuracy).toEqual({
+      samples: 1,
+      estimatedCostUsd: null,
+      actualCostUsd: null,
+      costRatio: null,
+      estimatedInputTokens: 900,
+      actualInputTokens: 1000,
+      tokenRatio: 1000 / 900,
+    });
+  });
+});

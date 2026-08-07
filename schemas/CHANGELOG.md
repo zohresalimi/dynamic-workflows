@@ -77,6 +77,24 @@ was billed by a vendor or estimated by DeFlow.
 
 The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
 
+### budget.consumed v3
+
+**KAR-14.3.** The accounting record gained the figure it was *admitted* on, so an estimate and the
+actual it was measured against travel together and the per-run estimate-accuracy figure is a fold
+over one event kind rather than a join across two.
+
+| Change                | Kind           | Why it is not lossy                                                                                                                                                                        |
+| --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ estimate` (optional) | optional field | Left **absent**. A v2 payload was written before a pre-flight estimator existed, so there is no figure to lift — and filling it in with the actual would make every historical attempt read as perfectly estimated and drag the accuracy figure toward a 1.0 nobody measured. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the estimate rides on the accounting record rather than in a table of its own.** The two
+numbers only mean anything as a pair: an estimate compared against a different turn's actual
+converges on nothing, and one that has lost its actual cannot be reconciled at all. Everything the
+comparison needs is therefore in one payload, which is the same property that makes KAR-14.1's
+rollup a fold over one kind.
+
 ### budget.consumed v2
 
 **KAR-14.1.** The accounting record became self-contained, so the per-node / per-provider / per-run

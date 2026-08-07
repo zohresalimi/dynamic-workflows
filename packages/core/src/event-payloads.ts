@@ -23,7 +23,7 @@
  * Verifies: EPIC-02-S23 · AC6, AC8 (the rule's target set)
  */
 import { z } from 'zod';
-import { ContextPacketRecordSchema } from './context-packet.ts';
+import { ContextPacketRecordSchema, TokenCountMethodSchema } from './context-packet.ts';
 import { FactSchema } from './fact.ts';
 import type { IdempotencyKey } from './ids.ts';
 import {
@@ -1089,7 +1089,27 @@ export const HumanRespondedSchema = z.strictObject({
 // ── money and providers ──────────────────────────────────────────────────────
 
 /**
- * F9.1 — the single accounting record (KAR-14.1). **v2.**
+ * KAR-14.3 AC8 — the pre-flight figure an attempt was admitted on, as it
+ * travels on the accounting record.
+ *
+ * Every field is one the reconciliation needs and none of them is derivable
+ * afterwards: `inputTokens` is what the actual is measured against, and the
+ * factor, the sample count and the method are what say whether a wrong estimate
+ * was a wrong *guess* (a family seed, `samples < 5`) or a wrong *measurement*.
+ * `costUsd` is nullable for the same reason the record's own is: a turn nobody
+ * could price was estimated at nothing knowable, not at zero.
+ */
+export const PreflightEstimateSchema = z.strictObject({
+  costUsd: z.number().nonnegative().nullable(),
+  inputTokens: nonNegativeInt,
+  method: TokenCountMethodSchema,
+  tokenEstimateFactor: z.number().positive(),
+  samples: nonNegativeInt,
+  seedBased: z.boolean(),
+});
+
+/**
+ * F9.1 — the single accounting record (KAR-14.1). **v3.**
  *
  * Self-contained on purpose: everything the per-node, per-provider and
  * per-run rollup needs is in this one payload, so the projection is a fold
@@ -1121,6 +1141,15 @@ export const BudgetConsumedSchema = z.strictObject({
   costUsd: z.number().nonnegative().nullable(),
   /** KAR-08.8's effective auth mode for this spend. */
   authMode: z.enum(PROVIDER_AUTH_MODES),
+  /**
+   * KAR-14.3 AC8 — what this attempt was estimated to cost, before it ran.
+   *
+   * Optional, because an attempt admitted before the estimator existed — or by
+   * a caller that has no tokenizer — genuinely has no such figure, and a
+   * fabricated one would corrupt the accuracy it exists to measure. Present, it
+   * is what makes the estimate and the actual reconcilable without a join.
+   */
+  estimate: PreflightEstimateSchema.optional(),
 });
 
 /**
@@ -1335,7 +1364,7 @@ export const EVENT_SCHEMAS = {
   'gate.evaluated': { v: 1, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
-  'budget.consumed': { v: 2, payload: BudgetConsumedSchema },
+  'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },
   'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },
   'provider.probed': { v: 1, payload: ProviderProbedSchema },

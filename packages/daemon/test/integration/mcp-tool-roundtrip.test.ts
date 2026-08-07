@@ -250,6 +250,109 @@ suite('the shim dies with its agent (AC7)', () => {
   });
 });
 
+/**
+ * KAR-14.3 AC4 — a patch reaches the policy engine with a populated estimate
+ * block or it does not reach it at all.
+ *
+ * The block is what the F2.5 rule table predicates over, so a patch that cannot
+ * fill it in is a patch nothing can rule on — and the tempting failure is to
+ * default it, which would file every unfillable patch under `costDeltaUsd: 0`
+ * and `escalatesPermission: null`, the two values that reach `auto`. Refusing at
+ * the tool boundary is also the kinder failure: the agent is still inside its
+ * own tool loop and can answer the error, which it cannot do if the patch is
+ * accepted now and rejected by a policy engine ten minutes later.
+ *
+ * Verifies: KAR-14.3 AC4 · test plan #7
+ */
+suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 AC4)', () => {
+  const ops = [
+    {
+      op: 'insert-nodes',
+      nodes: [
+        {
+          id: 'n-extra',
+          title: 'analyse the three packages recon found',
+          type: 'agent',
+          deps: [],
+          lifecycle: 'active',
+          reads: [],
+          writes: [],
+          permission: 'read',
+          pathScopes: { write: [] },
+          returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1200 },
+          retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+          budget: {},
+          brief: 'read the three packages and report what they import',
+          provider: { prefer: ['claude'], requires: [] },
+          model: 'claude-sonnet-4-5',
+          resume: 'always-replay',
+        },
+      ],
+      edges: [],
+    },
+  ];
+
+  const patch = (policy: Record<string, unknown> | undefined) => ({
+    schemaId: 'DeFlow.planpatch.v1',
+    id: 'patch-1',
+    proposedBy: NODE_ID,
+    reason: 'recon found three more packages importing the v2 API',
+    ops,
+    ...(policy === undefined ? {} : { policy }),
+  });
+
+  const FULL_POLICY = {
+    estimatedCostDeltaUsd: 0.4,
+    estimatedWallClockDeltaMs: 60_000,
+    blastRadius: { paths: [], nodeCount: 1 },
+    replanDepth: 1,
+    escalatesPermission: null,
+    addsWriteCapability: false,
+  };
+
+  it('names the missing block in the error and appends nothing', async () => {
+    const { agent } = await connect();
+
+    const result = await agent.request('tools/call', {
+      name: PROPOSE_PLAN_PATCH,
+      arguments: { patch: patch(undefined) },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('policy');
+    expect(ledger.eventsOf('plan.patch.proposed')).toEqual([]);
+  });
+
+  it('refuses a half-populated block rather than filling in the rest', async () => {
+    const { agent } = await connect();
+
+    const result = await agent.request('tools/call', {
+      name: PROPOSE_PLAN_PATCH,
+      arguments: {
+        patch: patch({ estimatedCostDeltaUsd: 0.4, replanDepth: 1 }),
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(ledger.eventsOf('plan.patch.proposed')).toEqual([]);
+  });
+
+  it('records the proposal once the block is complete, so the rule is not simply a wall', async () => {
+    const { agent } = await connect();
+
+    const result = await agent.request('tools/call', {
+      name: PROPOSE_PLAN_PATCH,
+      arguments: { patch: patch(FULL_POLICY) },
+    });
+
+    expect(result.isError).toBeFalsy();
+    // Proposing is not applying: the tool says so, and the policy engine is
+    // what decides afterwards.
+    expect(result.structuredContent).toMatchObject({ patchId: 'patch-1', accepted: false });
+    await expect.poll(() => ledger.eventsOf('plan.patch.proposed').length).toBe(1);
+  });
+});
+
 suite('a tool the phase does not include is not served (AC6)', () => {
   it('refuses proposePlanPatch during analysis and records the attempt', async () => {
     const { agent } = await connect('analysis');

@@ -31,6 +31,7 @@
  * Verifies: EPIC-14-S2, EPIC-14-S3, EPIC-14-S4 · KAR-14.1 AC3, AC4, AC5
  */
 import { z } from 'zod';
+import type { TokenCountMethod } from './context-packet.ts';
 import type { ProviderAuthMode } from './event-payloads.ts';
 import {
   type NodeId,
@@ -94,6 +95,52 @@ export interface NodeCostRollup extends CostRollup {
   readonly attempts: readonly AttemptCostRollup[];
 }
 
+/**
+ * KAR-14.3 — the pre-flight figure one attempt was admitted on, travelling with
+ * the record of what it actually cost.
+ *
+ * On the accounting record rather than in a table of its own, because the two
+ * numbers only mean anything as a *pair*: an estimate compared against a
+ * different turn's actual converges on nothing, and one that has lost its actual
+ * cannot be reconciled at all. Everything the comparison needs is here, so the
+ * accuracy figure is a fold over one kind — the same property KAR-14.1's rollup
+ * has, and for the same reason.
+ */
+export interface PreflightEstimate {
+  /** `null` when nothing could price it — never `0` (KAR-14.3 AC7). */
+  readonly costUsd: number | null;
+  /** Tier-2 count of the prompt, after the calibration factor. */
+  readonly inputTokens: number;
+  /** The tokenizer's own label: which tier produced the count. */
+  readonly method: TokenCountMethod;
+  readonly tokenEstimateFactor: number;
+  readonly samples: number;
+  readonly seedBased: boolean;
+}
+
+/**
+ * KAR-14.3 AC8 — how close this run's estimates have been, so far.
+ *
+ * Both figures, separately named, and their ratio — never a single "accuracy"
+ * number that has silently chosen one of them. AC9's rule is that an estimate
+ * and an actual appearing together must be *labelled* rather than merged, and a
+ * projection is where that is either kept or lost for every surface at once.
+ *
+ * `null` where nothing can be said: a run nobody has reconciled has no accuracy,
+ * and a ratio whose denominator is zero or unpriceable is not zero accuracy.
+ */
+export interface EstimateAccuracy {
+  /** How many reconciled attempts are behind the figures. */
+  readonly samples: number;
+  readonly estimatedCostUsd: number | null;
+  readonly actualCostUsd: number | null;
+  /** `actual / estimated`: above 1 means DeFlow under-estimated. */
+  readonly costRatio: number | null;
+  readonly estimatedInputTokens: number;
+  readonly actualInputTokens: number;
+  readonly tokenRatio: number | null;
+}
+
 /** The accounting projection, in the three keyings KAR-14.1 asks for. */
 export interface BudgetRollup {
   readonly run: CostRollup;
@@ -101,6 +148,8 @@ export interface BudgetRollup {
   readonly providers: Readonly<Record<string, CostRollup>>;
   /** F4.6 ceiling breaches, kept here because they pause the run rather than failing it. */
   readonly breaches: readonly BudgetBreach[];
+  /** KAR-14.3 AC8 — `null` until an attempt carrying an estimate has landed. */
+  readonly estimateAccuracy: EstimateAccuracy | null;
 }
 
 /**
@@ -116,6 +165,10 @@ export interface Consumption {
   readonly usage: TokenUsage;
   readonly costUsd: number | null;
   readonly authMode: ProviderAuthMode;
+  /** KAR-14.3 — the pre-flight figure this attempt was admitted on, when there
+   * was one. Absent for an attempt nobody estimated; never a zero standing in
+   * for one. */
+  readonly estimate?: PreflightEstimate | null | undefined;
 }
 
 /**
@@ -151,7 +204,51 @@ export function emptyCostRollup(): CostRollup {
 
 /** The projection before the first `budget.consumed`. */
 export function initialBudgetRollup(): BudgetRollup {
-  return { run: emptyCostRollup(), nodes: {}, providers: {}, breaches: [] };
+  return { run: emptyCostRollup(), nodes: {}, providers: {}, breaches: [], estimateAccuracy: null };
+}
+
+/**
+ * Folds one reconciled attempt into the run's accuracy figure.
+ *
+ * A ratio is computed only where both sides are real: an unpriceable estimate
+ * or an unpriceable actual contributes its tokens and no money, because a
+ * money ratio with a blank on either side would be a number with no meaning
+ * beside two numbers that have one.
+ */
+function addAccuracy(
+  accuracy: EstimateAccuracy | null,
+  entry: Consumption,
+): EstimateAccuracy | null {
+  const estimate = entry.estimate ?? null;
+  if (estimate === null) return accuracy;
+
+  const before = accuracy ?? {
+    samples: 0,
+    estimatedCostUsd: null,
+    actualCostUsd: null,
+    costRatio: null,
+    estimatedInputTokens: 0,
+    actualInputTokens: 0,
+    tokenRatio: null,
+  };
+
+  const estimatedCostUsd = into(before.estimatedCostUsd, estimate.costUsd);
+  const actualCostUsd = into(before.actualCostUsd, entry.costUsd);
+  const estimatedInputTokens = before.estimatedInputTokens + estimate.inputTokens;
+  const actualInputTokens = before.actualInputTokens + entry.usage.inputTokens;
+
+  return {
+    samples: before.samples + 1,
+    estimatedCostUsd,
+    actualCostUsd,
+    costRatio:
+      estimatedCostUsd === null || actualCostUsd === null || estimatedCostUsd === 0
+        ? null
+        : actualCostUsd / estimatedCostUsd,
+    estimatedInputTokens,
+    actualInputTokens,
+    tokenRatio: estimatedInputTokens === 0 ? null : actualInputTokens / estimatedInputTokens,
+  };
 }
 
 /**
@@ -227,6 +324,7 @@ export function addConsumption(rollup: BudgetRollup, entry: Consumption): Budget
   return {
     ...rollup,
     run: addTo(rollup.run, entry),
+    estimateAccuracy: addAccuracy(rollup.estimateAccuracy, entry),
     nodes: node,
     providers: {
       ...rollup.providers,
@@ -260,6 +358,21 @@ const CostRollupShape = {
 
 export const CostRollupSchema: z.ZodType<CostRollup, unknown> = z.strictObject(CostRollupShape);
 
+/**
+ * A cached accuracy figure. `nullable` and never defaulted, for the reason the
+ * cost cells are: a checkpoint written before the figure existed decodes as
+ * "nothing reconciled", which is true, rather than as an accuracy of zero.
+ */
+const EstimateAccuracySchema = z.strictObject({
+  samples: z.number().int().nonnegative(),
+  estimatedCostUsd: cell,
+  actualCostUsd: cell,
+  costRatio: z.number().nullable(),
+  estimatedInputTokens: z.number().int().nonnegative(),
+  actualInputTokens: z.number().int().nonnegative(),
+  tokenRatio: z.number().nullable(),
+});
+
 export const BudgetRollupSchema: z.ZodType<BudgetRollup, unknown> = z.strictObject({
   run: CostRollupSchema,
   nodes: z.record(
@@ -273,6 +386,7 @@ export const BudgetRollupSchema: z.ZodType<BudgetRollup, unknown> = z.strictObje
   ),
   providers: z.record(z.string(), CostRollupSchema),
   breaches: z.array(BudgetBreachSchema),
+  estimateAccuracy: EstimateAccuracySchema.nullable(),
 });
 
 /**

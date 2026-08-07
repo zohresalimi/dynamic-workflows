@@ -24,6 +24,7 @@
  */
 import type {
   NodeId,
+  PreflightEstimate,
   ProviderAuthMode,
   ProviderId,
   TokenAccounting,
@@ -60,6 +61,20 @@ export interface SpendInput {
    * projection; this is its counterpart at the point of record.
    */
   readonly estimate: TokenUsage;
+  /**
+   * KAR-14.3 AC8 — the pre-flight figure this attempt was **admitted** on.
+   *
+   * Echoed onto the record rather than recomputed here, and the distinction is
+   * the whole of the reconciliation: the accuracy figure has to compare the
+   * actual against the number the admission decision actually used. A fresh
+   * count of the same prompt taken after the turn would converge on 1.0 and
+   * measure nothing.
+   *
+   * Absent when nobody estimated the attempt — a caller with no tokenizer, or a
+   * path that predates the estimator. Absent, never a zero: an invented
+   * estimate corrupts the very figure it would be feeding.
+   */
+  readonly preflight?: PreflightEstimate | null | undefined;
 }
 
 /** `budget.consumed`'s payload at v2. Structural, so @DeFlow/core stays the schema's home. */
@@ -70,6 +85,8 @@ export interface BudgetConsumedPayload {
   readonly usage: TokenUsage;
   readonly costUsd: number | null;
   readonly authMode: ProviderAuthMode;
+  /** Present exactly when the caller supplied a `preflight` (KAR-14.3 AC8). */
+  readonly estimate?: PreflightEstimate;
 }
 
 /**
@@ -86,6 +103,12 @@ export function budgetConsumed(input: SpendInput): BudgetConsumedPayload {
     attempt: input.attempt,
     provider: input.provider,
     authMode: input.authMode,
+    // Spread rather than assigned, so an attempt nobody estimated carries no
+    // `estimate` key at all: `undefined` and absent are the same to a reader
+    // but not to `strictObject`, to `toEqual`, or to canonical JSON.
+    ...(input.preflight === undefined || input.preflight === null
+      ? {}
+      : { estimate: input.preflight }),
   };
 
   // The manifest decides which tier answers, and it answers for the tokens as

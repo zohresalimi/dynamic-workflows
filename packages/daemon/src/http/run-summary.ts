@@ -26,7 +26,9 @@
 import type {
   BudgetEnforceability,
   BudgetRollup,
+  EstimatorInputs,
   NodeStatus,
+  PlanEstimate,
   PlanHash,
   ProviderId,
   RunCeilings,
@@ -36,7 +38,7 @@ import type {
   RunStatus,
   TokenAccounting,
 } from '@DeFlow/core';
-import { budgetEnforceability } from '@DeFlow/core';
+import { budgetEnforceability, estimatePlan, plannedNodes } from '@DeFlow/core';
 
 export interface RunSummary {
   readonly runId: RunId;
@@ -67,6 +69,21 @@ export interface RunSummary {
   readonly budgetEnforceable: boolean;
   /** Which dimension is unenforceable and whose accounting made it so. */
   readonly budgetEnforceability: BudgetEnforceability;
+  /**
+   * KAR-14.3 AC3, AC9 — what this plan is expected to cost, *before* it runs.
+   *
+   * A sibling of `budget` and never a part of it. The two answer different
+   * questions with different authority: `budget` is what a vendor billed, and
+   * this is what DeFlow thinks a plan nobody has executed will cost, carrying
+   * the tokenizer method, the calibration factor and the price-table version
+   * that produced it. AC9 forbids rendering an estimate in the same channel as
+   * billing truth, and a projection that folded one into the other would make
+   * every downstream surface get it wrong at once.
+   *
+   * `null` when no estimator was supplied — a caller that cannot count tokens
+   * has no figure, and a zero would be a claim that the plan is free.
+   */
+  readonly estimate: PlanEstimate | null;
   /** The `seq` of the last event that moved this projection (F4.7). */
   readonly watermarkSeq: number;
   /**
@@ -75,6 +92,30 @@ export interface RunSummary {
    * the same name, and the client would conclude it had lost events.
    */
   readonly headSeq: number;
+}
+
+/**
+ * The estimator inputs, with the run's own scheduling decisions folded in.
+ *
+ * `node.scheduled` records the provider and model the scheduler resolved
+ * against probed capabilities, and that answer beats re-deriving `prefer[0]`
+ * from the plan — the same precedence `budgetEnforceability` applies, and for
+ * the same reason: re-deriving would silently undo an F3.9 re-route and price
+ * the node against a provider it is no longer running on.
+ *
+ * A caller that supplied its own `routing` keeps it: an explicit answer beats
+ * this one.
+ */
+function withRouting(state: RunState, estimator: EstimatorInputs): EstimatorInputs {
+  if (estimator.routing !== undefined) return estimator;
+  return {
+    ...estimator,
+    routing: (node) => {
+      const scheduled = state.nodes[node.id];
+      if (scheduled === undefined) return null;
+      return { provider: scheduled.provider, model: scheduled.model };
+    },
+  };
 }
 
 /** Counts by status, in the order the statuses were first met. */
@@ -104,6 +145,15 @@ export function runSummary(
    * looked one up itself would answer differently in a test than in production.
    */
   accounting: (provider: ProviderId) => TokenAccounting,
+  /**
+   * KAR-14.3 — the tokenizer, the manifest and the learned calibration the
+   * pre-flight estimate is computed from.
+   *
+   * Injected for the same reason `accounting` is: `estimatePlan` is a pure
+   * function of its inputs, and a summary that reached for a tokenizer or a
+   * database itself would answer differently in a test than in production.
+   */
+  estimator?: EstimatorInputs | null,
 ): RunSummary {
   const enforceability = budgetEnforceability(state, accounting);
   return {
@@ -117,6 +167,13 @@ export function runSummary(
     ceilings: state.ceilings,
     budgetEnforceable: enforceability.cost,
     budgetEnforceability: enforceability,
+    // Over the same node set the enforceability marker is about: the executing
+    // plan, or — before `run.started` — the proposal awaiting approval, which
+    // is the only moment at which the figure can still change a decision.
+    estimate:
+      estimator === undefined || estimator === null
+        ? null
+        : estimatePlan({ nodes: plannedNodes(state) }, withRouting(state, estimator)),
     watermarkSeq: state.watermarkSeq,
     headSeq,
   };

@@ -108,3 +108,44 @@ suite('a turn nobody can price falls back to DeFlow’s own count (AC4)', () => 
     expect(budgetConsumed(spend({ reported: { usage: REPORTED, costUsd: 0 } })).costUsd).toBe(0);
   });
 });
+
+/**
+ * KAR-14.3 AC8 — the figure the attempt was admitted on, riding back out on the
+ * record of what it actually cost.
+ *
+ * Echoed rather than recomputed, and that is the point: the estimate the
+ * accuracy figure is measured against has to be the one the *admission decision*
+ * used, not a fresh count of the same prompt taken afterwards. A recount would
+ * converge on 1.0 and prove nothing.
+ */
+suite('the pre-flight estimate travels with the actual (KAR-14.3 AC8)', () => {
+  const PREFLIGHT = {
+    costUsd: 0.35,
+    inputTokens: 15_600,
+    method: 'gpt-tokenizer/o200k_base',
+    tokenEstimateFactor: 1.2,
+    samples: 0,
+    seedBased: true,
+  } as const;
+
+  it('carries it verbatim beside the vendor-reported figures', () => {
+    expect(budgetConsumed(spend({ preflight: PREFLIGHT }))).toMatchObject({
+      costUsd: 0.42,
+      usage: REPORTED,
+      estimate: PREFLIGHT,
+    });
+  });
+
+  it('carries it on an unpriceable turn too, where it is the only figure there is', () => {
+    const payload = budgetConsumed(
+      spend({ accounting: 'none', preflight: { ...PREFLIGHT, costUsd: null } }),
+    );
+    expect(payload.costUsd).toBeNull();
+    expect(payload.estimate?.costUsd).toBeNull();
+    expect(payload.estimate?.inputTokens).toBe(15_600);
+  });
+
+  it('omits the field entirely when nobody estimated the attempt', () => {
+    expect(budgetConsumed(spend())).not.toHaveProperty('estimate');
+  });
+});

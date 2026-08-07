@@ -21,6 +21,7 @@
  * Verifies: EPIC-14-S1 · KAR-14.1 AC3, AC4, AC8
  */
 import {
+  type EstimatorInputs,
   EVENT_SCHEMAS,
   type Event,
   type EventKind,
@@ -171,5 +172,143 @@ suite('the run summary carries the rollup the reducer produced (AC8)', () => {
     ]);
     const summary = runSummary(RUN, withNodes, 3, EXACT);
     expect(summary.nodeCounts).toEqual({ scheduled: 2 });
+  });
+});
+
+/**
+ * KAR-14.3 AC3, AC9 — the pre-flight estimate travels beside the rollup, and
+ * never inside it.
+ *
+ * The two figures answer different questions with different authority: the
+ * rollup is what a vendor billed, the estimate is what DeFlow thinks a plan
+ * nobody has run will cost. AC9 forbids rendering them in the same channel, and
+ * the projection is where that is either kept or lost — a summary that folded an
+ * estimate into `budget.run.costUsd.estimated` would make every downstream
+ * surface render a guess as a measurement, correctly, for ever.
+ */
+const PLAN_HASH = `sha256-${'a'.repeat(64)}`;
+const SPEC_HASH = `sha256-${'c'.repeat(64)}`;
+
+const proposedNode = (id: string): Record<string, unknown> => ({
+  id,
+  title: `node ${id}`,
+  type: 'agent',
+  deps: [],
+  lifecycle: 'active',
+  reads: [],
+  writes: [],
+  permission: 'read',
+  pathScopes: { write: [] },
+  returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+  retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+  budget: {},
+  brief: `brief for ${id}`,
+  provider: { prefer: ['claude'], requires: [] },
+  model: 'claude-sonnet-4-5',
+  resume: 'always-replay',
+});
+
+/** A run with a proposal and no `run.started`: the spec-approval surface. */
+const PROPOSED = fold([
+  event(
+    'plan.proposed',
+    {
+      version: 1,
+      planHash: PLAN_HASH,
+      graph: {
+        schemaId: 'DeFlow.plangraph.v1',
+        runId: RUN,
+        version: 1,
+        planHash: PLAN_HASH,
+        parent: null,
+        taskSpecHash: SPEC_HASH,
+        createdBy: 'planner',
+        createdAt: '2026-08-07T09:00:00.000Z',
+        nodes: [proposedNode('n-a'), proposedNode('n-b')],
+        edges: [],
+      },
+      by: 'planner',
+    },
+    2,
+  ),
+]);
+
+const ESTIMATOR: EstimatorInputs = {
+  tokenizer: {
+    method: 'heuristic',
+    count: (text) => ({ estimated: text.length, method: 'heuristic' }),
+  },
+  accounting: () => 'exact',
+  family: () => 'anthropic',
+  calibration: () => ({ n: 24, ratio: 1.18 }),
+};
+
+suite('the pre-flight estimate on the approval surface (KAR-14.3 AC3, AC9)', () => {
+  it('is present before run.started, over the plan that is only proposed', () => {
+    const summary = runSummary(RUN, PROPOSED, 2, EXACT, ESTIMATOR);
+    expect(summary.status).toBe('created');
+    expect(summary.estimate?.nodes).toHaveLength(2);
+    expect(summary.estimate?.costUsd).toBeGreaterThan(0);
+  });
+
+  it('labels every figure with its method, factor and sample count', () => {
+    const summary = runSummary(RUN, PROPOSED, 2, EXACT, ESTIMATOR);
+    expect(summary.estimate?.nodes ?? []).not.toHaveLength(0);
+    for (const node of summary.estimate?.nodes ?? []) {
+      expect(node.method).toBe('heuristic');
+      expect(node.calibration).toMatchObject({ tokenEstimateFactor: 1.18, samples: 24 });
+    }
+  });
+
+  it('keeps the estimate out of the rollup entirely', () => {
+    const summary = runSummary(RUN, PROPOSED, 2, EXACT, ESTIMATOR);
+    // Nothing has run, so nothing has been spent — and the estimate did not
+    // quietly become a cost cell on the way through.
+    expect(summary.budget.run.costUsd).toEqual({
+      subscription: null,
+      apiKey: null,
+      vendorReported: null,
+      estimated: null,
+    });
+    expect(Object.keys(summary)).toContain('estimate');
+  });
+
+  it('is null when no estimator was supplied, rather than an invented zero', () => {
+    expect(runSummary(RUN, PROPOSED, 2, EXACT).estimate).toBeNull();
+  });
+
+  it('serves the per-run estimate-accuracy figure the reducer folded (AC8)', () => {
+    const reconciled = fold([
+      event(
+        'budget.consumed',
+        {
+          node: 'n-impl',
+          attempt: 0,
+          provider: 'claude',
+          usage: { inputTokens: 18_420, outputTokens: 2310, source: 'vendor-reported' },
+          costUsd: 0.42,
+          authMode: 'subscription',
+          estimate: {
+            costUsd: 0.35,
+            inputTokens: 15_600,
+            method: 'gpt-tokenizer/o200k_base',
+            tokenEstimateFactor: 1.2,
+            samples: 0,
+            seedBased: true,
+          },
+        },
+        2,
+      ),
+    ]);
+
+    const accuracy = runSummary(RUN, reconciled, 2, EXACT).budget.estimateAccuracy;
+    expect(accuracy).toMatchObject({
+      samples: 1,
+      estimatedCostUsd: 0.35,
+      actualCostUsd: 0.42,
+    });
+    // Both figures, separately named. Never one number that has silently
+    // chosen between a guess and a bill (AC9).
+    expect(accuracy?.estimatedCostUsd).not.toBe(accuracy?.actualCostUsd);
   });
 });

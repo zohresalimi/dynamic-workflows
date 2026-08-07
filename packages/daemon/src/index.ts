@@ -25,6 +25,10 @@ export {
 // EPIC-18, KAR-18.4).
 export type { BudgetCeilingReportInput } from './budget/doctor.ts';
 export { budgetCeilingLines, renderBudgetCeilingReport } from './budget/doctor.ts';
+// KAR-14.3 AC5, AC6 — the pre-flight gate a proposed patch passes through:
+// estimate, then the F2.5 rule table, then the rejection on the record.
+export type { PatchGateInput, PatchRuling } from './budget/patch-gate.ts';
+export { rulePatch } from './budget/patch-gate.ts';
 // KAR-06.7 — the kill switch's mechanics: the four rungs of the escalation
 // ladder, each of them an event, and the pid-reuse refusal in front of them.
 export type { CancelOutcome, CancelPorts, CancelReport } from './cancel.ts';

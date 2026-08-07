@@ -367,6 +367,30 @@ registerUpcaster({
 });
 
 /**
+ * `budget.consumed` v2 → v3 (KAR-14.3). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field, `estimate`, and it is left **absent**. A v2
+ * payload was written before there was a pre-flight estimator, so there is no
+ * figure to lift and none to invent: filling it in with the actual would make
+ * every historical attempt read as perfectly estimated and drag the per-run
+ * accuracy figure toward a 1.0 nobody measured.
+ */
+registerUpcaster({
+  kind: 'budget.consumed',
+  from: 2,
+  to: BudgetConsumedSchema,
+  fixture: {
+    node: 'n-impl',
+    attempt: 0,
+    provider: 'claude',
+    usage: { inputTokens: 18_420, outputTokens: 2310, source: 'vendor-reported' },
+    costUsd: 0.42,
+    authMode: 'subscription',
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `budget.exceeded` v1 → v2 (KAR-14.2). See schemas/CHANGELOG.md.
  *
  * v2 adds three fields and widens nothing, so every v1 payload still fits:

@@ -575,6 +575,9 @@ function project(state: RunState, event: Event): Transition {
           usage: event.payload.usage,
           costUsd: event.payload.costUsd,
           authMode: event.payload.authMode,
+          // KAR-14.3 AC8 — the estimate this attempt was admitted on, folded
+          // into the run's accuracy figure beside what it actually cost.
+          estimate: event.payload.estimate ?? null,
         }),
       };
 

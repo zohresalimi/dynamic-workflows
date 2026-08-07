@@ -26,13 +26,14 @@
  * client holds stays current without a second endpoint to poll. EPIC-15 owns
  * the rest of §6's route table and will widen this port rather than add another.
  */
-import type { Db, RunId, RunState } from '@DeFlow/core';
+import type { Calibration, Db, RunId, RunState } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
 import {
   headSeq as ledgerHeadSeq,
   listRunIds,
   openRead,
   readRange,
+  readTokenCalibration,
   replayRun,
   type StoredEvent,
 } from '@DeFlow/ledger';
@@ -51,6 +52,16 @@ export interface LedgerView {
   tail(runId: RunId, afterSeq: number, limit: number): readonly StoredEvent[];
   /** The head `seq` across every run — the number §4.2's cursor is compared to. */
   headSeq(): number;
+  /**
+   * KAR-14.3 — what has been learned about this (provider, model), for the
+   * pre-flight estimate.
+   *
+   * One bounded statement like everything else here, and a *read* in the
+   * strictest sense: `readTokenCalibration` invents no row for a pair nobody
+   * has run, it answers with the family seed and `n: 0`. A `GET` that wrote
+   * would be a `GET` that wrote.
+   */
+  calibration(provider: string, model: string, family: string): Calibration;
 }
 
 export interface OpenedLedgerView extends LedgerView {
@@ -76,6 +87,10 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
     runState: (runId) => (holdsRun(db, runId) ? replayRun(db, runId).state : null),
     tail: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit).events,
     headSeq: () => ledgerHeadSeq(db),
+    calibration: (provider, model, family) => {
+      const row = readTokenCalibration(db, provider, model, family);
+      return { n: row.samples, ratio: row.tokenEstimateFactor };
+    },
     close: () => db.close(),
   };
 }

@@ -436,9 +436,14 @@ export function budgetEnforceability(
  * until the first node had already spent money on a ceiling that will never
  * fire.
  *
+ * KAR-14.3's pre-flight estimate is the second caller and needs exactly the
+ * same set for exactly the same reason, which is why this is exported rather
+ * than spelled twice: two answers to "which nodes is this run about" would
+ * disagree the first time one of them learned about a lifecycle.
+ *
  * Deduplicated by id, because two proposals can name the same node.
  */
-function plannedNodes(state: RunState): readonly PlanNode[] {
+export function plannedNodes(state: RunState): readonly PlanNode[] {
   const planned = state.plan?.nodes ?? Object.values(state.proposedPlans).flatMap((g) => g.nodes);
   const seen = new Set<string>();
   return planned.filter((node) => {

@@ -357,3 +357,88 @@ suite('EPIC-14-S7 — megabytes of stdout move no cost figure (AC7, test plan #1
     test.ledger.close();
   });
 });
+
+/**
+ * EPIC-14-S20, first half — the estimate and the actual land on the same record
+ * (KAR-14.3 AC8).
+ *
+ * The reconciliation is what teaches the estimator, and it is the step that is
+ * easy to leave out: leave it out and the calibration factor never moves, every
+ * estimate stays seed-based for ever, and nothing reports that DeFlow's
+ * pre-flight figures are consistently wrong. Both numbers therefore have to
+ * reach the ledger *together*, out of a real turn, which is what this asserts.
+ *
+ * The second half — twenty samples moving a stored factor from the 1.2 seed
+ * toward 1.18 — is `@DeFlow/daemon`'s
+ * `test/integration/token-calibration-loop.test.ts`, because the EWMA and its
+ * table belong to EPIC-09 and this package may not reach them.
+ *
+ * Verifies: EPIC-14-S20 · KAR-14.3 AC8 · test plan #8
+ */
+suite('EPIC-14-S20 — the pre-flight estimate is reconciled against the actual', () => {
+  /** What a caller estimated this attempt at, before it was admitted. */
+  const PREFLIGHT = {
+    costUsd: 0.35,
+    inputTokens: 15_600,
+    method: 'gpt-tokenizer/o200k_base',
+    tokenEstimateFactor: 1.2,
+    samples: 0,
+    seedBased: true,
+  } as const;
+
+  it('records both figures on budget.consumed, out of a real turn', async ({ tmp }) => {
+    const agent = await linkFakeAgent(tmp, 'claude');
+    const test = await harness(tmp, agent.binary, S1_TURN);
+
+    const outcome = await test.run({ preflight: PREFLIGHT });
+    expect(outcome.status).toBe('completed');
+
+    const consumed = test.ledger.events().filter((event) => event.kind === 'budget.consumed');
+    expect(consumed).toHaveLength(1);
+    expect(consumed[0]?.v).toBe(3);
+    expect(consumed[0]?.payload).toMatchObject({
+      // Tier 1, as the vendor's own envelope reported it…
+      costUsd: 0.42,
+      usage: { source: 'vendor-reported', inputTokens: 18_420 },
+      // …and the figure the attempt was admitted on, unchanged.
+      estimate: PREFLIGHT,
+    });
+    test.ledger.close();
+  });
+
+  it('exposes the delta as a per-run accuracy figure, both sides labelled (AC8, AC9)', async ({
+    tmp,
+  }) => {
+    const agent = await linkFakeAgent(tmp, 'claude');
+    const test = await harness(tmp, agent.binary, S1_TURN);
+
+    await test.run({ preflight: PREFLIGHT });
+    const accuracy = project(test.ledger).budget.estimateAccuracy;
+
+    expect(accuracy).toEqual({
+      samples: 1,
+      estimatedCostUsd: 0.35,
+      actualCostUsd: 0.42,
+      costRatio: 0.42 / 0.35,
+      estimatedInputTokens: 15_600,
+      actualInputTokens: 18_420,
+      tokenRatio: 18_420 / 15_600,
+    });
+    // The under-estimate is visible as a ratio above 1 — the dangerous
+    // direction, and the one the factor exists to correct.
+    expect(accuracy?.tokenRatio).toBeGreaterThan(1);
+    test.ledger.close();
+  });
+
+  it('stays null for an attempt nobody estimated, rather than reading as perfect', async ({
+    tmp,
+  }) => {
+    const agent = await linkFakeAgent(tmp, 'claude');
+    const test = await harness(tmp, agent.binary, S1_TURN);
+
+    await test.run();
+
+    expect(project(test.ledger).budget.estimateAccuracy).toBeNull();
+    test.ledger.close();
+  });
+});

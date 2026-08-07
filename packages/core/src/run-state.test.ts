@@ -170,6 +170,17 @@ const populated: RunState = {
       },
     },
     breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2, firedBy: 'deflow' }],
+    // KAR-14.3 — one attempt reconciled: the estimate and the actual side by
+    // side, and the ratio between them.
+    estimateAccuracy: {
+      samples: 1,
+      estimatedCostUsd: 0.35,
+      actualCostUsd: 0.42,
+      costRatio: 1.2,
+      estimatedInputTokens: 1000,
+      actualInputTokens: 1200,
+      tokenRatio: 1.2,
+    },
   },
   ceilings: {
     run: { costUsd: 5, wallclockMs: 14_400_000 },
