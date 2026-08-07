@@ -146,6 +146,13 @@ function project(state: RunState, event: Event): Transition {
   const ts = typeof rawTs === 'number' ? rawTs : 0;
 
   switch (event.kind) {
+    // KAR-10.1: intake's one event. It carries the raw task and its
+    // provenance for the ledger to answer "what did I actually ask for?" —
+    // nothing in it is projection state. `run.created` (below) is what moves
+    // `RunState`, once framing has produced a spec to run against.
+    case 'task.submitted':
+      return null;
+
     // `cwd` is the repository the run executes against, and it is folded here
     // rather than read from the daemon's process because F5.2's write lock is
     // keyed on it: a scheduler that asked `process.cwd()` would key the lock

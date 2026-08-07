@@ -439,7 +439,7 @@ export {
   repairPromptFor,
   withReturnBudgetDefaults,
 } from './handoff.ts';
-export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
+export { contentHash, planHash, sha256Hex, sha256HexBytes, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
   Brand,
@@ -868,6 +868,26 @@ export {
 // KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
 export type { ScopeCollision } from './scope-collision.ts';
 export { scopeCollisions } from './scope-collision.ts';
+// KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
+export type {
+  IntakeKind,
+  IntakeSubmitter,
+  NormaliseFileInput,
+  NormaliseInput,
+  NormaliseInputPorts,
+  NormaliseIssueInput,
+  NormaliseTextInput,
+  TaskProvenance,
+  TaskSubmitted,
+} from './task-intake.ts';
+export {
+  INTAKE_INLINE_THRESHOLD_BYTES,
+  INTAKE_KINDS,
+  INTAKE_SUBMITTERS,
+  normaliseInput,
+  TaskProvenanceSchema,
+  TaskSubmittedSchema,
+} from './task-intake.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,

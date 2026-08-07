@@ -121,6 +121,11 @@ const packetRecord = {
 
 /** One representative payload per kind, in §9's order. */
 export const PAYLOADS: Record<EventKind, unknown> = {
+  'task.submitted': {
+    sha256: BARE_SHA,
+    raw: 'Migrate the design system across packages/ui',
+    provenance: { kind: 'text', by: 'ui', submittedAt: 1_754_308_293_000 },
+  },
   'run.created': {
     spec: taskSpec,
     cwd: '/Users/dev/projects/shop',

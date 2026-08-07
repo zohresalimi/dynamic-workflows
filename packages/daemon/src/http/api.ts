@@ -21,10 +21,12 @@ import type { StoredEvent } from '@DeFlow/ledger';
 import { Hono } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
+import { submitTask } from '../intake/intake.ts';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
+import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { runSummary } from './run-summary.ts';
 
@@ -94,6 +96,52 @@ api.get('/health', (c) =>
     bootId: BOOT_ID,
   }),
 );
+
+/**
+ * KAR-10.1 AC1 — `POST /api/runs`: task intake from text, a file, an issue
+ * reference or a spec document.
+ *
+ * Creating a run does **not** start execution — the 201 body's
+ * `status: "awaiting-spec-approval"` is a fixed literal, not a read of
+ * `RunState.status`, because a run intake creates has no `RunState` folded
+ * for it yet (no event moves `RunState` until `run.created`, which is
+ * KAR-10.2's to append).
+ * All this route does is normalise the input into one `task.submitted` event;
+ * `submitTask` (../intake/intake.ts) owns everything else, so `DeFlow run` can
+ * call the exact same function rather than re-implementing this route (AC7).
+ *
+ * AC7 also asks for `provenance.by: 'cli'` from the CLI and `'ui'` from
+ * anything else — a distinction the *documented* request body carries no field
+ * for (docs/11-api-and-realtime.md §7.1's example is `input`/`cwd`/`budget`/
+ * `permission` only). `X-DeFlow-Submitted-By` is that one bit, sent only by
+ * `DeFlow run` (@DeFlow/cli): a header rather than a body field, so the wire
+ * shape AC1 documents stays exactly what it documents.
+ */
+api.post('/runs', async (c) => {
+  const ports = intakePorts();
+  if (ports === null) {
+    return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_request', field: '<root>', message: 'body is not JSON' }, 400);
+  }
+
+  const idempotencyKey = c.req.header('Idempotency-Key');
+  const by = c.req.header('X-DeFlow-Submitted-By') === 'cli' ? 'cli' : 'ui';
+  const result = await submitTask(
+    { body, by, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) },
+    ports,
+  );
+
+  if (result.outcome === 'rejected') {
+    return c.json({ error: 'invalid_request', field: result.field, message: result.message }, 400);
+  }
+  return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
+});
 
 /**
  * KAR-14.1 AC8 — the run summary, cost rollup included.

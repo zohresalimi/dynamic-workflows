@@ -404,8 +404,12 @@ All paths are relative to `/api`. All responses are JSON unless stated. All requ
 { "runId": "r_01JXQ…", "seq": 10433, "status": "awaiting-spec-approval" }
 ```
 
-Creating a run does **not** start execution. It appends `run.created` and runs the framing
-interview; execution begins only after `POST /runs/:id/spec/approve` (F1.3).
+Creating a run does **not** start execution. It appends `task.submitted` (KAR-10.1) and, once the
+framing interview (KAR-10.2) has produced a `TaskSpec` to run against, `run.created`; execution
+begins only after `POST /runs/:id/spec/approve` (F1.3). `run.created`'s payload carries the spec
+itself (§9 of [the domain model](./04-domain-model.md)), which intake cannot honestly produce —
+"no interpretation happens here" ([06 §1.1](./06-planning-and-replanning.md)) — so it is framing's
+event to append, not intake's.
 
 ### 7.2 `GET /api/runs/:id/events?since=<seq>`
 

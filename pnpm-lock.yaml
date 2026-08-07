@@ -189,6 +189,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@DeFlow/core':
+        specifier: workspace:*
+        version: link:../core
       '@DeFlow/daemon':
         specifier: workspace:*
         version: link:../daemon
@@ -196,6 +199,12 @@ importers:
         specifier: workspace:*
         version: link:../mock-agent
     devDependencies:
+      '@DeFlow/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@DeFlow/testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3

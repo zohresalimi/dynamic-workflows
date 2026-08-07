@@ -28,12 +28,28 @@ function toHex(bytes: Uint8Array): string {
   return hex;
 }
 
+/**
+ * The sha256 digest of `bytes` directly — not of a string encoding of them.
+ *
+ * KAR-10.1's intake path hashes a submitted file's bytes as they were read,
+ * before any decision about how to decode them for display: a byte-exact
+ * digest has to be computed over the bytes themselves, or a file that is not
+ * valid UTF-8 would hash differently from what was actually submitted.
+ */
+export async function sha256HexBytes(bytes: Uint8Array): Promise<string> {
+  // Copied into a fresh `Uint8Array<ArrayBuffer>`: a caller's bytes may be a
+  // `Buffer` or another view whose backing store TypeScript can only type as
+  // `ArrayBufferLike` (which admits a `SharedArrayBuffer`), and `BufferSource`
+  // requires a plain `ArrayBuffer`. The copy is the honest fix — a cast would
+  // paper over a real possibility rather than rule it out.
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
+  return toHex(new Uint8Array(digest));
+}
+
 /** The sha256 digest of `input`'s UTF-8 bytes, as 64 lowercase hex
  * characters. The one primitive every hash in this module is built from. */
 export async function sha256Hex(input: string): Promise<string> {
-  const bytes = new TextEncoder().encode(input);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
-  return toHex(new Uint8Array(digest));
+  return sha256HexBytes(new TextEncoder().encode(input));
 }
 
 /** Returns a shallow copy of `value` with every key in `keys` removed. The

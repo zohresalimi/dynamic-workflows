@@ -194,6 +194,9 @@ export {
 export { bumpEpoch, readEpoch, StaleEpoch } from './epoch.ts';
 // KAR-03.1 — the driver adapter behind the Db port declared in @DeFlow/core.
 export { LedgerAlreadyOpen, LedgerTooNew } from './errors.ts';
+// KAR-10.1 AC6 — `intake_key`: whether an `Idempotency-Key` has already
+// minted a run, checked before a `RunId` even exists to key an effect on.
+export { lookupIntakeKey, recordIntakeKey } from './intake-keys.ts';
 // KAR-03.4 — the data plane: agent bytes land here and never in `event`.
 export {
   appendIoChunk,

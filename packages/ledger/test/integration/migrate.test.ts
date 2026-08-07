@@ -95,6 +95,7 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         'event',
         'fact',
         'fact_edges',
+        'intake_key',
         'io_chunk',
         'node_wake',
         'plan',

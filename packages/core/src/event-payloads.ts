@@ -51,6 +51,7 @@ import {
   PlanPatchSchema,
   ProposedBySchema,
 } from './plan-patch.ts';
+import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
@@ -146,6 +147,15 @@ export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type CompactionFidelity = (typeof COMPACTION_FIDELITIES)[number];
 export type WorktreeOccupantKind = (typeof WORKTREE_OCCUPANT_KINDS)[number];
+
+// ── task intake ──────────────────────────────────────────────────────────────
+//
+// KAR-10.1: `task.submitted` is the one event intake ever writes. It is its
+// own kind, ahead of `run.created` in this file's table order, because it is
+// the run's actual first event on the wire — POST /api/runs mints the RunId
+// and appends this and only this. `TaskSubmittedSchema` and `normaliseInput`
+// live in ./task-intake.ts rather than here, alongside their own AC2/AC3
+// rationale; this file only registers the schema in the table below.
 
 // ── run lifecycle ────────────────────────────────────────────────────────────
 
@@ -1327,6 +1337,7 @@ export const ExportBlockedSchema = z.strictObject({
  * Events are never rewritten on disk.
  */
 export const EVENT_SCHEMAS = {
+  'task.submitted': { v: 1, payload: TaskSubmittedSchema },
   'run.created': { v: 1, payload: RunCreatedSchema },
   'run.spec.approved': { v: 1, payload: RunSpecApprovedSchema },
   'run.started': { v: 1, payload: RunStartedSchema },
