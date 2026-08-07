@@ -37,7 +37,7 @@ import type { PatchEstimate } from './cost-estimate.ts';
 import type { CostRollup } from './cost-rollup.ts';
 import type { ProviderAuthMode } from './event-payloads.ts';
 import { PERMISSION_LEVELS, type PermissionLevel } from './plan-graph.ts';
-import type { PatchDecisionOutcome } from './plan-patch.ts';
+import type { PatchCause, PatchDecisionOutcome } from './plan-patch.ts';
 
 /** The three decisions the rule table can reach, in F2.5's own vocabulary. */
 export const PATCH_POLICY_DECISIONS = ['auto', 'approve', 'reject'] as const;
@@ -59,8 +59,35 @@ export type RulablePatchEstimate = Pick<
   'costUsdDelta' | 'blastRadiusFiles' | 'maxPermission' | 'replanDepth'
 >;
 
+/**
+ * KAR-14.4 AC7 — everything the `quota-reroute-equivalent` rule asks about a
+ * proposed provider swap (docs/06-planning-and-replanning.md §4.4).
+ *
+ * Supplied by the caller rather than derived here, for the reason this module
+ * derives nothing: it *rules*, it does not inspect. `capabilitySuperset` and
+ * `permissionUnchanged` are computed in @DeFlow/adapters from the **probed
+ * rows** — the measured capability matrix, which is a fixture to re-probe and
+ * never a constant — and this package has no probe cache to read.
+ */
+export interface RerouteEquivalence {
+  /** Why the scheduler is proposing the swap. */
+  readonly cause: PatchCause;
+  /** `onlyOps: [reroute]` — every op in the patch is a provider swap. */
+  readonly onlyReroutes: boolean;
+  /** The target adapter advertises everything the node requires. */
+  readonly capabilitySuperset: boolean;
+  /** The swap does not widen what the node may do. */
+  readonly permissionUnchanged: boolean;
+}
+
 export interface PatchPolicyInput {
   readonly estimate: RulablePatchEstimate;
+  /**
+   * Present only for a patch that swaps a provider *because of* something the
+   * scheduler observed. Absent means the ordinary table applies, which is what
+   * every planner-proposed patch gets.
+   */
+  readonly reroute?: RerouteEquivalence | undefined;
   /** The permission level the run itself is executing at. */
   readonly ambientPermission: PermissionLevel;
   /** KAR-14.1's rollup against KAR-14.2's ceiling — see below. */
@@ -101,6 +128,19 @@ const lte = (value: number | null, threshold: number): boolean =>
   value !== null && value <= threshold;
 
 /**
+ * KAR-14.4 AC7 — the causes `quota-reroute-equivalent` is willing to
+ * auto-apply, as its own list rather than as `PATCH_CAUSES`.
+ *
+ * Typed `readonly string[]` so it stays a membership test: `PATCH_CAUSES` has
+ * exactly one member today, and comparing against it would be a tautology the
+ * compiler is entitled to fold away — which is the same thing as the rule
+ * silently accepting whatever cause is invented next. A new cause has to be
+ * added here on purpose, by somebody who has decided a swap made for that
+ * reason is equivalent.
+ */
+const AUTO_REROUTE_CAUSES: readonly string[] = ['quota'];
+
+/**
  * The default rule table, verbatim from §4.3 and in its order.
  *
  * First match wins, so the order *is* the policy: permission and the execution
@@ -128,6 +168,30 @@ export const DEFAULT_PATCH_RULES: readonly PatchRule[] = Object.freeze([
     id: 'budget-exhausted',
     decision: 'reject',
     matches: (input) => input.elapsedBudgetFraction >= BUDGET_EXHAUSTED_FRACTION,
+  },
+  /**
+   * KAR-14.4 AC7 — §4.4's one added rule, and it is *added* rather than
+   * promoted: it sits below every escalate and reject arm above it, so no
+   * `cause: 'quota'` can carry a patch past a permission escalation, the
+   * execution boundary, a runaway replan or an exhausted budget.
+   *
+   * All four conditions are required, and each guards a distinct failure. Drop
+   * `onlyReroutes` and any patch may claim the cause; drop `cause` and every
+   * provider swap becomes automatic, including the ones a planner proposed for
+   * its own reasons; drop `capabilitySuperset` and a node that must resume is
+   * moved onto an adapter that cannot; drop `permissionUnchanged` and the swap
+   * silently widens what the node may do. _"A reroute onto a weaker adapter is
+   * not equivalent and is not auto."_
+   */
+  {
+    id: 'quota-reroute-equivalent',
+    decision: 'auto',
+    matches: (input) =>
+      input.reroute !== undefined &&
+      AUTO_REROUTE_CAUSES.includes(input.reroute.cause) &&
+      input.reroute.onlyReroutes &&
+      input.reroute.capabilitySuperset &&
+      input.reroute.permissionUnchanged,
   },
   {
     id: 'expensive',

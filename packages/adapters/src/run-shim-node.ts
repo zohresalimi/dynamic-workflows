@@ -49,13 +49,16 @@ import {
   type Handle,
   ikey,
   type NodeFailure,
-  type NodeFailureError,
+  NodeFailureError,
   type NodeId,
   type PermissionLevel,
   type PreflightEstimate,
   type ProviderAuthMode,
   type ProviderId,
+  type RateLimit,
   type RunId,
+  rateLimitFailureTag,
+  rateLimitMessage,
   type SchemaId,
   type StructuredOutput,
   type TokenUsage,
@@ -158,6 +161,30 @@ export interface WakeRegistry {
  * anybody gets.
  */
 const NO_LEVER: CompactionLever = { autocompactPct: null, autoCompactDisabled: false };
+
+/**
+ * KAR-14.4 AC1, AC9, EPIC-14-S27 — a rate limit signalled only by an exit code.
+ *
+ * `null` unless the caller declared this code, which is the whole guard: an
+ * undeclared non-zero exit stays `agent.nonzero-exit`, because DeFlow does not
+ * invent a rate limit any more than it invents a reset time. The two halves of
+ * the honesty are the same rule read in both directions.
+ *
+ * `raw` is the exit itself, verbatim, so a later parser has the same bytes this
+ * build had — and `resetsAt` is simply not there, which is what
+ * `describeRateLimit` renders as *"rate limited, reset time unknown"*.
+ */
+function blindRateLimit(
+  request: ShimNodeRequest,
+  exit: ProcessExit,
+): { readonly thrown: NodeFailureError; readonly raw: unknown } | null {
+  const declared = request.rateLimitExitCodes ?? [];
+  if (exit.code === null || !declared.includes(exit.code)) return null;
+
+  const raw = { exitCode: exit.code, signal: exit.signal };
+  const limit: RateLimit = { provider: request.provider, resetsAt: null, raw };
+  return { raw, thrown: new NodeFailureError(rateLimitMessage(limit), rateLimitFailureTag(limit)) };
+}
 
 /** The `node_wake.reason` a provider-side quota limit writes. */
 export const WAKE_REASON_QUOTA = 'quota';
@@ -263,6 +290,23 @@ export interface ShimNodeRequest {
   readonly preflight?: PreflightEstimate;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * KAR-14.4 AC1, EPIC-14-S27 — the exit codes this provider is known to use
+   * to mean *"rate limited"*, when it says so no other way.
+   *
+   * Data supplied by the caller, and **empty by default** — which is a claim
+   * rather than an omission. As of the 2026-08-02 probe no vendor has published
+   * an exit code that means a rate limit, so DeFlow declares none and guesses
+   * none: an invented table would classify an ordinary crash as a limit and
+   * back a run off for five minutes against a provider that is simply broken.
+   * The mechanism exists because the degradation path has to be real code
+   * rather than a plan, and it becomes live the day a vendor documents a code.
+   *
+   * No vendor is named here, and none may be: which codes a provider uses is a
+   * fact about invocation and belongs to the registry
+   * (`test/no-capability-table.test.ts` greps this directory).
+   */
+  readonly rateLimitExitCodes?: readonly number[];
   /**
    * KAR-08.5 — everything the node's sandbox policy depends on that is not the
    * vendor's invocation: the detected CLI version, the platform, the roots the
@@ -901,6 +945,22 @@ export async function runShimNode(
   if (resultFailure !== null) return refuse(resultFailure, common(exit), true);
 
   if (!sawResult) {
+    // KAR-14.4 AC1, EPIC-14-S27 — the honest degradation. The vendor said
+    // nothing machine-readable, but the caller declared this exit code to mean
+    // a rate limit, so the failure is recorded as one: `transient`, retryable,
+    // and with `resetsAt` **absent** rather than invented. A fabricated reset
+    // is worse than an honest gap for the reason a fabricated compaction figure
+    // is — the operator schedules their afternoon around it — so this path
+    // writes no `node_wake` row at all and the retry ladder's full jitter is
+    // what schedules the next attempt.
+    const blind = blindRateLimit(request, exit);
+    if (blind !== null) {
+      await ledger.append(
+        event('provider.rate_limited', { provider: request.provider, raw: blind.raw }),
+      );
+      return refuse(blind.thrown, common(exit));
+    }
+
     // Exit without a result envelope, whatever the code. The worst outcome in
     // the conformance battery is the *quiet* one — a node that looks successful
     // and carries nothing — so an absent envelope fails rather than completing

@@ -113,3 +113,22 @@ The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
 `docs/08-context-and-memory.md` §7 names — _a blank cost cell, not a zero_ — and which makes an F4.6
 cost ceiling silently unenforceable, because a run whose spend is unmeasurable would read as a run
 that has spent nothing.
+
+### plan.patch.proposed v2
+
+**KAR-14.4.** A proposal says *why* it was made, so the plan scrubber can tell a planner's own
+provider choice from a vendor refusing to serve — which is the distinction F3.9's wording rests on
+and the one `quota-reroute-equivalent` auto-applies against.
+
+| Change             | Kind           | Why it is not lossy                                                                                                                                                                                              |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `+ cause` (optional) | optional field | Left **absent**. A v1 payload was written before the reactive rate-limit path existed, so a quota cannot have been its reason, and filling one in would make every historical planner patch read as a vendor swap. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the cause is on the proposal and not on the `PlanPatch`.** `DeFlow.planpatch.v1` is a shipped
+document schema whose bytes are content-pinned by `packages/core/test/schemas-append-only.test.ts`;
+a field there is a `.v2` document, which belongs to EPIC-11's patch application rather than to a
+rate-limit story. It is also the better home on the merits: the same `replace-provider` op is a
+routine planner decision or a vendor outage depending on who asked for it, and that is a fact about
+the proposal rather than about the ops.

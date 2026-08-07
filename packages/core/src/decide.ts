@@ -706,7 +706,20 @@ function scheduleWakes(state: RunState, runId: RunId, now: number): ScheduleWake
   return sortByEnablement(waiting);
 }
 
+/**
+ * Which of the four reasons this node's row carries.
+ *
+ * `quota` is asked **first**, before the `awaiting-retry` status, and that
+ * order is KAR-14.4 AC2 rather than a preference. A quota suspension is
+ * recorded as a suspension *and* a scheduled retry in one transaction — the
+ * node has to become admissible again when the vendor's reset arrives, and
+ * `ADMISSIBLE_STATUSES` does not include `suspended` — so a node asleep on a
+ * vendor's own `resetsAt` is `awaiting-retry` with a `quota` suspension on it.
+ * Asking the status first would restate the row as `backoff` on the very next
+ * tick and silently overwrite the reason the operator needs to read.
+ */
 function wakeReason(node: NodeState): WakeReason {
+  if (node.suspension?.kind === 'quota') return 'quota';
   if (node.status === 'awaiting-retry') return 'backoff';
   if (node.suspension?.kind === 'human') return 'human_gate';
   return 'poll';

@@ -264,6 +264,45 @@ export function retirementsOf(patch: PlanPatch): PatchRetirement[] {
   return retirements;
 }
 
+/**
+ * KAR-14.4 AC7 — why a patch was proposed, as a closed vocabulary
+ * (docs/06-planning-and-replanning.md §4.4).
+ *
+ * One value today. It is a set rather than a boolean because the rule table
+ * matches on it (`cause: quota`) and the next cause — a provider that failed
+ * its health probe, say — must be able to arrive without every existing rule
+ * silently starting to match it.
+ *
+ * Deliberately **not** a field of `PlanPatchSchema`. `DeFlow.planpatch.v1` is a
+ * shipped, content-pinned document schema (schemas/CHANGELOG.md, and
+ * `packages/core/test/schemas-append-only.test.ts` holds its hash), so adding a
+ * field to it means publishing `.v2` — which belongs to EPIC-11's patch
+ * application rather than to a rate-limit story. The cause is a fact about the
+ * *proposal* anyway, and that is where it travels: on `plan.patch.proposed`,
+ * beside the patch.
+ */
+export const PATCH_CAUSES = ['quota'] as const;
+
+export type PatchCause = (typeof PATCH_CAUSES)[number];
+
+/**
+ * KAR-14.4 AC7 — `onlyOps: [reroute]`, the first condition of the
+ * `quota-reroute-equivalent` rule (docs/06-planning-and-replanning.md §4.4).
+ *
+ * Structural rather than a claim the proposer makes about itself. The rule
+ * auto-applies a patch on the strength of two capability facts, and those facts
+ * are only about *swapping which vendor runs an existing node* — they say
+ * nothing about an insert riding along in the same patch. A patch that inserts
+ * a node and swaps a provider is not equivalent to the plan it replaces, whoever
+ * proposed it and whatever cause they gave.
+ *
+ * An empty `ops` array cannot occur — the schema requires at least one — so
+ * `every` has no vacuous-truth hole to fall through.
+ */
+export function isReroutePatch(patch: PlanPatch): boolean {
+  return patch.ops.every((op) => op.op === 'replace-provider');
+}
+
 export const PATCH_ERROR_KINDS = [
   /** The op names a node the graph does not contain. */
   'unknown-node',

@@ -366,6 +366,11 @@ export {
   resolveLoginShellPathOnce,
   VENDOR_CONFIG_DIR_VARS,
 } from './proc/env.ts';
+// KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor` (the command is
+// EPIC-18, KAR-18.4): per provider, the most recent `provider.rate_limited`
+// and its `resetsAt`, with an unknown reset said out loud rather than invented.
+export type { RateLimitReportInput } from './providers/rate-limit-doctor.ts';
+export { rateLimitLines, renderRateLimitReport } from './providers/rate-limit-doctor.ts';
 export type { DaemonSeed, SeedEnv } from './random.ts';
 export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
 // KAR-06.9 — crash recovery: the fixed startup sequence, and the three things

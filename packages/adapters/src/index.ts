@@ -39,9 +39,14 @@ export {
   canList,
   canResume,
   capability,
+  // KAR-14.4 AC7 — the two questions a quota re-route has to answer, both
+  // computed from the probed row.
+  capabilitySuperset,
   loadSession,
   mcpAcp,
   mediatedExecution,
+  mediationUnchanged,
+  missingCapabilities,
   supportsSteering,
   supportsTerminal,
 } from './capabilities.ts';

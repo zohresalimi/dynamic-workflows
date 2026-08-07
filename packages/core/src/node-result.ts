@@ -17,7 +17,23 @@ import { FactIdSchema, HandleSchema, SchemaIdSchema } from './ids.ts';
 import { NodeFailureSchema } from './node-failure.ts';
 import { TokenUsageSchema } from './token-usage.ts';
 
-export const SUSPENSION_KINDS = ['human', 'wake', 'external'] as const;
+/**
+ * What a suspended node is waiting for.
+ *
+ * `quota` is KAR-14.4's, and it is deliberately not folded into `wake`. Both
+ * are woken by the ticker at an instant, so a scheduler treats them the same —
+ * but `wake` is DeFlow's own deadline and `quota` is the *vendor's* statement
+ * of when it will serve this node again, read off a `rate_limit_event` frame.
+ * The timeline has to be able to say which, because "asleep for four hours"
+ * with no answer to "waiting on what?" is exactly the state NF10 forbids. It
+ * also carries through to `node_wake.reason` unchanged (`WAKE_REASONS` in
+ * ./command.ts), so the reason on the row is the reason in the payload.
+ *
+ * The set only ever grows. Widening it leaves every payload already on disk
+ * valid — a `v1` `node.suspended` written last month still parses — which is
+ * why this is not a version bump (schemas/CHANGELOG.md).
+ */
+export const SUSPENSION_KINDS = ['human', 'wake', 'external', 'quota'] as const;
 
 export const CANCELLATION_SOURCES = ['user', 'policy', 'parent'] as const;
 

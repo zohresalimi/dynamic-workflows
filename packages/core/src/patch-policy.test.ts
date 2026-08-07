@@ -105,6 +105,10 @@ suite('the three worked examples reproduce exactly (S16 · test plan #4)', () =>
       'touches-execution-boundary',
       'replan-depth-exceeded',
       'budget-exhausted',
+      // §4.4's added rule (KAR-14.4), and its position is the claim: below
+      // every escalate and reject arm above it, so a `cause: 'quota'` cannot
+      // carry a patch past a permission escalation or an exhausted budget.
+      'quota-reroute-equivalent',
       'expensive',
       'wide-blast-radius',
       'read-only-analysis',

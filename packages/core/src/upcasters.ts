@@ -32,6 +32,7 @@ import {
   BudgetConsumedSchema,
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
+  PlanPatchProposedSchema,
 } from './event-payloads.ts';
 
 /** A single hop: version `n` in, version `n + 1` out. Pure. */
@@ -416,4 +417,37 @@ registerUpcaster({
     failureClass: 'gate',
     firedBy: 'deflow',
   }),
+});
+
+/**
+ * `plan.patch.proposed` v1 → v2 (KAR-14.4). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field, `cause`, and it is left **absent**. A v1 payload
+ * was written before the reactive rate-limit path existed, so a quota cannot
+ * have been the reason for it — and filling one in would make every historical
+ * planner-proposed patch read as a vendor swap in the plan scrubber, which is
+ * the one surface F3.9 exists to make trustworthy.
+ */
+registerUpcaster({
+  kind: 'plan.patch.proposed',
+  from: 1,
+  to: PlanPatchProposedSchema,
+  fixture: {
+    patch: {
+      schemaId: 'DeFlow.planpatch.v1',
+      id: 'reroute-run_20260802T141133Z_9f2a1c-impl-1-1',
+      proposedBy: 'scheduler',
+      reason: 'impl-1 failed with provider.rate-limited; retrying attempt 1 on codex',
+      ops: [{ op: 'replace-provider', node: 'impl-1', provider: 'codex' }],
+      policy: {
+        estimatedCostDeltaUsd: 0,
+        estimatedWallClockDeltaMs: 0,
+        blastRadius: { paths: [], nodeCount: 1 },
+        replanDepth: 0,
+        escalatesPermission: null,
+        addsWriteCapability: false,
+      },
+    },
+  },
+  up: (payload) => payload,
 });

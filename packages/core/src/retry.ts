@@ -32,7 +32,7 @@
 import type { NodeId, ProviderId, RunId } from './ids.ts';
 import { escalatesToHuman, type NodeFailure } from './node-failure.ts';
 import type { RetryPolicy } from './plan-graph.ts';
-import { PLANPATCH_SCHEMA_ID, type PlanPatch } from './plan-patch.ts';
+import { type PatchCause, PLANPATCH_SCHEMA_ID, type PlanPatch } from './plan-patch.ts';
 import { toSingleLine } from './text.ts';
 
 /** The exponential window an attempt's delay is drawn from, in milliseconds. */
@@ -203,6 +203,15 @@ export interface ReroutePatchInput {
   readonly provider: ProviderId;
   readonly nextAttempt: number;
   readonly failure: NodeFailure;
+  /**
+   * KAR-14.4 AC7 — why the scheduler is moving this node, when it knows.
+   *
+   * Rendered into the patch's own `reason`, which the scrubber prints verbatim,
+   * and carried as data on `plan.patch.proposed` beside the patch. Absent for a
+   * reroute driven by an ordinary `onFailure: reroute` entry, which is a policy
+   * the plan asked for rather than a vendor refusing to serve.
+   */
+  readonly cause?: PatchCause | undefined;
 }
 
 /**
@@ -230,7 +239,12 @@ export function reroutePatch(input: ReroutePatchInput): PlanPatch {
     id: `reroute-${input.runId}-${input.node}-${input.nextAttempt}`,
     proposedBy: 'scheduler',
     reason: toSingleLine(
-      `${input.node} failed with ${input.failure.reason}; retrying attempt ${input.nextAttempt} on ${input.provider}`,
+      `${input.node} failed with ${input.failure.reason}${
+        // Named in the prose as well as carried as data, because this string is
+        // what the plan scrubber renders and F3.9's whole point is that the
+        // swap is explicable there without opening the ledger.
+        input.cause === undefined ? '' : ` (cause: ${input.cause})`
+      }; retrying attempt ${input.nextAttempt} on ${input.provider}`,
     ),
     ops: [{ op: 'replace-provider', node: input.node, provider: input.provider }],
     policy: {

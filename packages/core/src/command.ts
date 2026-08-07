@@ -113,8 +113,17 @@ export interface ReleaseLock {
  * Why a node is asleep. Mirrors the `node_wake.reason` column (§5) verbatim,
  * underscore included, so the value the timeline renders is the value on the
  * row and no translation table sits between them (KAR-06.6 AC4).
+ *
+ * `quota` is KAR-14.4's, and it is a fourth reason rather than a `backoff` with
+ * a longer delay because the two answer different questions. A `backoff` is
+ * DeFlow's own guess at when to try again; a `quota` is the *vendor's own
+ * statement* of when it will serve this node — read off a `rate_limit_event`
+ * frame's `resetsAt` — and an operator looking at a run that has been asleep
+ * for four hours needs to be able to tell "we are waiting on Anthropic" from
+ * "we are backing off". docs/05-durable-execution.md §5 leaves the column's
+ * vocabulary open (`'backoff' | 'human_gate' | 'poll' | …`) for exactly this.
  */
-export const WAKE_REASONS = ['backoff', 'human_gate', 'poll'] as const;
+export const WAKE_REASONS = ['backoff', 'human_gate', 'poll', 'quota'] as const;
 
 export type WakeReason = (typeof WAKE_REASONS)[number];
 

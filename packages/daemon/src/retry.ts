@@ -47,12 +47,17 @@ import type {
   RetryPlan,
   RetryPolicy,
   RunId,
+  WakeReason,
 } from '@DeFlow/core';
 import {
   budgetBreachOf,
   EVENT_CURRENT_VERSIONS,
   needsHumanCategory,
   planRetry,
+  QUOTA_CAUSE,
+  QUOTA_WAKE_REASON,
+  quotaWake,
+  rateLimitOf,
   reroutePatch,
   toSingleLine,
 } from '@DeFlow/core';
@@ -116,10 +121,33 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
 
     const drafts: EventDraft[] = [nodeFailed(input)];
     let wakeAt: number | null = null;
+    let reason: WakeReason = 'backoff';
 
     if (plan.action === 'retry' || plan.action === 'reroute') {
+      // KAR-14.4 AC2, AC6. A rate limit that named its own reset overrides the
+      // jittered draw entirely: the vendor said when it will serve this node,
+      // and a shorter wait is a request it has already refused. One that named
+      // no reset leaves both alone and the ordinary backoff applies — blind,
+      // and labelled `backoff` rather than `quota` so the row never claims
+      // DeFlow knows something it does not.
+      const quota = quotaWake({
+        failure: input.failure,
+        retry: input.retry,
+        now: input.ts,
+        draw: 0,
+      });
+      const scheduled =
+        quota?.reason === QUOTA_WAKE_REASON ? quota : { wakeAt: plan.wakeAt, reason };
+
       // The row wins over a fresh draw: see AC7 above.
-      wakeAt = outstanding?.reason === 'backoff' ? outstanding.wakeAt : plan.wakeAt;
+      wakeAt = outstanding?.reason === scheduled.reason ? outstanding.wakeAt : scheduled.wakeAt;
+      reason = scheduled.reason;
+
+      // AC2, and in this order: the suspension says what the node is waiting
+      // for, the retry says the attempt is still coming. `node.suspended` last
+      // would leave the node `suspended`, which `ADMISSIBLE_STATUSES` excludes
+      // — a node that never wakes, four hours from now, for no visible reason.
+      if (reason === QUOTA_WAKE_REASON) drafts.push(quotaSuspended(input, wakeAt));
       drafts.push(retryScheduled(input, plan.nextAttempt, wakeAt));
       if (plan.action === 'reroute')
         drafts.push(patchProposed(input, plan.provider, plan.nextAttempt));
@@ -129,17 +157,32 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
 
     const seqs = appendEvents(db, drafts, input.appendOptions ?? {});
     if (wakeAt !== null) {
-      scheduleWake(db, {
-        runId: input.runId,
-        nodeId: input.nodeId,
-        wakeAt,
-        reason: 'backoff',
-      });
+      scheduleWake(db, { runId: input.runId, nodeId: input.nodeId, wakeAt, reason });
     }
 
     return { plan, seqs, wakeAt };
   });
 }
+
+/**
+ * KAR-14.4 AC2 — `node.suspended { until }` for a node asleep on a vendor's
+ * own quota reset.
+ *
+ * `kind: 'quota'` rather than `'wake'`, because the timeline has to be able to
+ * say *what* the node is waiting for. It carries straight through to
+ * `node_wake.reason` unchanged, so the reason on the row and the reason in the
+ * payload are one value rather than two that can drift.
+ *
+ * The instant is ISO-8601 in the payload and an integer ms epoch on the row.
+ * Both are instants rather than durations, because a duration is only
+ * meaningful relative to a process that is still running and the point of the
+ * row is to outlive one that is not.
+ */
+const quotaSuspended = (input: RecordFailureInput, wakeAt: number): EventDraft =>
+  envelope(input, 'node.suspended', {
+    node: input.nodeId,
+    until: { kind: QUOTA_WAKE_REASON, wakeAt: new Date(wakeAt).toISOString() },
+  });
 
 const envelope = (
   input: RecordFailureInput,
@@ -186,16 +229,26 @@ const patchProposed = (
   input: RecordFailureInput,
   provider: ProviderId,
   nextAttempt: number,
-): EventDraft =>
-  envelope(input, 'plan.patch.proposed', {
+): EventDraft => {
+  // KAR-14.4 AC7 — why the swap is being asked for, when the scheduler knows.
+  // Absent for every other reroute, which is honest rather than tidy: a node
+  // whose `onFailure` reroutes on a timeout is following the plan's policy, and
+  // labelling that `quota` would let `quota-reroute-equivalent` auto-apply a
+  // patch nobody's vendor asked for. `rateLimitOf` is how the question is asked
+  // without naming a reason, the same shape `budgetBreachOf` has above.
+  const cause = rateLimitOf(input.failure) === null ? undefined : QUOTA_CAUSE;
+  return envelope(input, 'plan.patch.proposed', {
     patch: reroutePatch({
       runId: input.runId,
       node: input.nodeId,
       provider,
       nextAttempt,
       failure: input.failure,
+      cause,
     }),
+    ...(cause === undefined ? {} : { cause }),
   });
+};
 
 /**
  * AC4, AC9 — a gate suspends the node and stops the run, and how it stops

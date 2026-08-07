@@ -45,7 +45,12 @@ import {
   NodeSuspensionSchema,
 } from './node-result.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
-import { PatchDecisionSchema, PlanPatchSchema, ProposedBySchema } from './plan-patch.ts';
+import {
+  PATCH_CAUSES,
+  PatchDecisionSchema,
+  PlanPatchSchema,
+  ProposedBySchema,
+} from './plan-patch.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
@@ -211,7 +216,25 @@ export const PlanProposedSchema = z.strictObject({
 
 /** F2.4 — the proposal is recorded even when it is rejected, which is the
  * whole point of a separate event from `plan.patched`. */
-export const PlanPatchProposedSchema = z.strictObject({ patch: PlanPatchSchema });
+/**
+ * KAR-14.4 AC7 — v2 adds `cause`: why the scheduler proposed this patch.
+ *
+ * On the proposal rather than on the `PlanPatch` itself, and that is a
+ * deliberate boundary rather than a convenience. `DeFlow.planpatch.v1` is a
+ * shipped, content-hashed document schema (schemas/CHANGELOG.md), so a field
+ * there means publishing `.v2` — EPIC-11's change, not a rate-limit story's.
+ * And the cause belongs to the proposal in any case: the same
+ * `replace-provider` op is a routine planner decision or a vendor refusing to
+ * serve, and which of the two it is decides whether
+ * `quota-reroute-equivalent` may auto-apply it.
+ *
+ * Optional, because a planner-proposed patch genuinely has no cause to state
+ * and `'unknown'` would be a value nobody could act on.
+ */
+export const PlanPatchProposedSchema = z.strictObject({
+  patch: PlanPatchSchema,
+  cause: z.enum(PATCH_CAUSES).optional(),
+});
 
 export const PlanPatchedSchema = z.strictObject({
   version: z.number().int().positive(),
@@ -1316,7 +1339,7 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 1, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 1, payload: PlanProposedSchema },
-  'plan.patch.proposed': { v: 1, payload: PlanPatchProposedSchema },
+  'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
   'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },

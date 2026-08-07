@@ -570,6 +570,7 @@ export type {
   PatchPolicyInput,
   PatchPolicyRuling,
   PatchRule,
+  RerouteEquivalence,
   RulablePatchEstimate,
 } from './patch-policy.ts';
 export {
@@ -707,6 +708,7 @@ export {
 // KAR-02.4 — PlanPatch, PatchDecision and the structural well-formedness check.
 export type {
   BlastRadius,
+  PatchCause,
   PatchDecision,
   PatchDecisionOutcome,
   PatchError,
@@ -725,6 +727,8 @@ export {
   BlastRadiusSchema,
   ExtendLoopOpSchema,
   InsertNodesOpSchema,
+  isReroutePatch,
+  PATCH_CAUSES,
   PATCH_DECISIONS,
   PATCH_ERROR_KINDS,
   PATCH_OPS,
@@ -742,6 +746,21 @@ export {
 } from './plan-patch.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
+// KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept
+// verbatim, classified `transient`, and turned into a durable wake at the
+// vendor's own reset rather than a retry storm.
+export type { QuotaWake, QuotaWakeInput, RateLimit } from './rate-limit.ts';
+export {
+  describeRateLimit,
+  QUOTA_CAUSE,
+  QUOTA_WAKE_REASON,
+  quotaWake,
+  RATE_LIMIT_BACKOFF,
+  rateLimitedFailure,
+  rateLimitFailureTag,
+  rateLimitMessage,
+  rateLimitOf,
+} from './rate-limit.ts';
 // KAR-02.3 — the F6.2 read-reachability gate under its EPIC-02 name and
 // `{ node, read }` return shape. One implementation, in
 // ./validate-declared-reads.ts; this is a view over it, not a second walk.
