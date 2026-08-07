@@ -34,6 +34,25 @@ export {
   readRange,
   type StoredEvent,
 } from './append.ts';
+// KAR-09.10 — `artifact_fts`: the FTS5 index over run artifacts, its one
+// documented query, opt-in retrieval, and the rebuild a tokenizer change
+// requires in place of an ALTER it cannot do.
+export {
+  ARTIFACT_FTS_SCHEMA,
+  ARTIFACT_FTS_TOKENIZE,
+  type ArtifactFtsAvailability,
+  type ArtifactFtsHit,
+  type ArtifactFtsRebuild,
+  type ArtifactIndexEntry,
+  artifactFtsAvailability,
+  createArtifactFtsTables,
+  ftsPhraseQuery,
+  indexArtifact,
+  queryArtifactFts,
+  type RetrievalDeclaration,
+  rebuildArtifactFts,
+  resolveRetrieval,
+} from './artifact-index.ts';
 // KAR-09.8 — the blackboard: `fact` and `fact_edges` as a materialised view of
 // the `fact.*` events, and the only module that writes them. Droppable by
 // construction — `rebuildBlackboard` puts both tables back from seq 0.

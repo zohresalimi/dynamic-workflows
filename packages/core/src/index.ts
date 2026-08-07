@@ -669,6 +669,15 @@ export {
 // KAR-09.3 — the pure render, whose only opinion this story owns is that the
 // pinned block leads it.
 export { FreeProsePinnedSegment, renderPacket } from './render-packet.ts';
+// KAR-09.10 — an `artifact_fts` hit, turned into a `retrieved` segment: the
+// pull-line text and the 20-row ceiling, single-sourced against the ledger's
+// `LIMIT`.
+export type { ArtifactRetrievalHit } from './retrieval.ts';
+export {
+  RETRIEVED_ARTIFACT_LIMIT,
+  retrievedSegmentsOf,
+  retrievedSegmentText,
+} from './retrieval.ts';
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';

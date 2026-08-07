@@ -54,6 +54,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-09.8 — `fact` and `fact_edges`, the blackboard as
   // a droppable materialised view of the `fact.*` events.
   '0011-blackboard.ts': '7b5e59f58929bb841167f2968d56b952f2bb6dcf347d029cf19c8493b30af72c',
+  // Shipped 2026-08-07, KAR-09.10 — `artifact_fts`, the FTS5 index over run
+  // artifacts, and its `artifact_fts_provenance` companion table.
+  '0012-artifact-fts.ts': 'b4938bab1dd766eafcd49711cdf6f123aa9efbff29cc9a6f1ff4c9f53641ffe5',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(
