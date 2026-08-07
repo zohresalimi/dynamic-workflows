@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/DeFlow.reconsurvey.v1.json",
+  "title": "DeFlow.reconsurvey.v1",
+  "description": "What a recon session claims about the repository: language, package manager and the commands it believes exist — claims only, measured against what DeFlow read (F2.2).",
+  "type": "object",
+  "properties": {
+    "schemaId": {
+      "type": "string",
+      "const": "DeFlow.reconsurvey.v1"
+    },
+    "toolchain": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "frameworks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "test": {
+          "type": "string",
+          "minLength": 1
+        },
+        "build": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "typecheck": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaId",
+    "toolchain",
+    "commands"
+  ],
+  "additionalProperties": false
+}

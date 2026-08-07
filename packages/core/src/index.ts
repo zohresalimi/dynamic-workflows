@@ -807,6 +807,15 @@ export {
   retirementsOf,
   SplitNodeOpSchema,
 } from './plan-patch.ts';
+// KAR-10.5 AC7 — what the planner reads: the pinned spec and the recon facts,
+// and no recon transcript (F6.1).
+export type { PlannerFact, PlannerPacketInput, PlannerSegmentKind } from './planner-packet.ts';
+export {
+  buildPlannerPacket,
+  ForeignSegmentInPlannerPacket,
+  PLANNER_SEGMENT_KINDS,
+  renderFactSegmentText,
+} from './planner-packet.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
 // KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept
@@ -830,6 +839,35 @@ export {
 // ./validate-declared-reads.ts; this is a view over it, not a second walk.
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
+// KAR-10.5 — repository reconnaissance: the agent claims, the daemon observes,
+// and `confidence` is what the join between them produces (F2.2).
+export type {
+  DeriveReconFactsInput,
+  GateObservation,
+  ManifestKind,
+  ManifestObservation,
+  ReconCommandRole,
+  ReconFactCandidate,
+  ReconFactValue,
+  ReconSurvey,
+  RepoObservation,
+  ScopeObservation,
+} from './recon.ts';
+export {
+  deriveReconFacts,
+  fileEvidenceHandle,
+  jsonScriptLineRange,
+  MANIFEST_KINDS,
+  RECON_COMMAND_ROLES,
+  RECON_FACT_SCHEMA_ID,
+  RECON_PERMISSION,
+  RECON_RETURN_MAX_TOKENS,
+  RECON_SURVEY_SCHEMA_ID,
+  ReconFactValueSchema,
+  ReconSurveySchema,
+  reconReturns,
+  scriptKeyOf,
+} from './recon.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
 // KAR-09.4 §4.2(a) — when the pinned set is due for re-injection, and the

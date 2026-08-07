@@ -39,6 +39,11 @@ const SHIPPED: Record<string, string> = {
   'DeFlow.plangraph.v1': '95d378c35d62a39a716912f510601b439f7b55b22ab72fc22e6dba72fcd5b827',
   'DeFlow.planpatch.v1': '7552c451fdaa297ff8b18cecc17b139fb15b3f3f1e3768c35c6cda716d144779',
   'DeFlow.taskspec.v1': '4a3543cd4abd3bd3360f4751321af3e662d30a1eb228308ac8c4c24849dae8a8',
+  // Shipped 2026-08-07, KAR-10.5 — repository reconnaissance: what a recon
+  // session claims, and the value of every fact derived from measuring those
+  // claims against what DeFlow read off the worktree.
+  'DeFlow.reconfact.v1': 'a45898693ec80c9d54f734324aaa48f423afb190e77668c41686b76bf4f3ecf2',
+  'DeFlow.reconsurvey.v1': 'afceebd62e6dd92764fe67ede48977b1f2010113b442ca6bb288585012a29b8a',
   // Shipped 2026-08-07, KAR-10.2 — the framing interview's return contract.
   'DeFlow.taskspecdraft.v1': 'dc33cef5a3dd88eedaa7a285cbb9cb5810f4b16cb0fadc13ed12e90d2f61d4ea',
   'DeFlow.verdict.v1': 'c089c51606833975418c288e8be97bf3839e8fc4582adce448c7b69394e8843d',

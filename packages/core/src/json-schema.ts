@@ -43,6 +43,12 @@ import { FACT_SCHEMA_ID, FactSchema } from './fact.ts';
 import { TASKSPEC_DRAFT_SCHEMA_ID, TaskSpecDraftSchema } from './framing.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from './plan-graph.ts';
 import { PLANPATCH_SCHEMA_ID, PlanPatchSchema } from './plan-patch.ts';
+import {
+  RECON_FACT_SCHEMA_ID,
+  RECON_SURVEY_SCHEMA_ID,
+  ReconFactValueSchema,
+  ReconSurveySchema,
+} from './recon.ts';
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
 import {
   FINDING_SCHEMA_ID,
@@ -121,6 +127,21 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schemaId: PLANPATCH_SCHEMA_ID,
     summary: 'A proposed plan evolution: the five ops, its blast radius and its rationale (F2.3).',
     schema: PlanPatchSchema,
+  },
+  {
+    schemaId: RECON_FACT_SCHEMA_ID,
+    summary:
+      'The value of a reconnaissance fact: a toolchain, a command and whether the manifest ' +
+      'really declares it, a counted path set, the gates already in the repo, or a stated ' +
+      'detection failure (F2.2).',
+    schema: ReconFactValueSchema,
+  },
+  {
+    schemaId: RECON_SURVEY_SCHEMA_ID,
+    summary:
+      'What a recon session claims about the repository: language, package manager and the ' +
+      'commands it believes exist — claims only, measured against what DeFlow read (F2.2).',
+    schema: ReconSurveySchema,
   },
   {
     schemaId: TASKSPEC_DRAFT_SCHEMA_ID,

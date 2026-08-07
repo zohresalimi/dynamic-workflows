@@ -1,0 +1,6 @@
+{
+  "reconKind": "command",
+  "role": "test",
+  "command": "pnpm test",
+  "script": "vitest run"
+}
