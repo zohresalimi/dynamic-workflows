@@ -23,6 +23,7 @@
  *
  * Verifies: EPIC-08-S30 · AC3, AC5, AC6
  */
+import type { NodeScopeWarning, ScopeAudit } from '@DeFlow/adapters';
 import { type NodeId, pathScopeMatches, relativeToWorktree } from '@DeFlow/core';
 import { type RunGitOptions, runGit } from '../git/run-git.ts';
 import { parseStatusPorcelainV2 } from '../git/status-porcelain.ts';
@@ -79,14 +80,15 @@ export function outOfScopePaths(
   return paths.filter((path) => !pathScopeMatches(declared, relativeToWorktree(worktree, path)));
 }
 
-/** The `node.scope_warning` payload — `@DeFlow/core`'s `NodeScopeWarningSchema`
- * shape, exactly. */
-export interface ScopeWarningPayload {
-  readonly node: NodeId;
-  readonly attempt: number;
-  readonly declared: readonly string[];
-  readonly paths: readonly string[];
-}
+/**
+ * The `node.scope_warning` payload — `@DeFlow/core`'s `NodeScopeWarningSchema`
+ * shape, exactly, by way of the port the adapter declares.
+ *
+ * Aliased rather than restated: this is the value that crosses the boundary
+ * into `runAcpNode`, and two hand-written copies of one payload shape are two
+ * things that can drift while both still compile.
+ */
+export type ScopeWarningPayload = NodeScopeWarning;
 
 /**
  * AC3, AC5: the warning `paths`' violations are, or `null` when every change
@@ -101,5 +103,29 @@ export function scopeWarningOf(
   paths: readonly string[],
 ): ScopeWarningPayload | null {
   const outOfScope = outOfScopePaths(worktree, declared, paths);
-  return outOfScope.length === 0 ? null : { node, attempt, declared, paths: outOfScope };
+  return outOfScope.length === 0
+    ? null
+    : { node, attempt, declared: [...declared], paths: outOfScope };
+}
+
+/**
+ * The two halves above, wired into the port `runAcpNode` and `runShimNode`
+ * call on completion (KAR-08.7 AC3) — this is what makes the backstop part of
+ * the running system rather than a library beside it.
+ *
+ * Built as a factory rather than exported as a bare function so the `git`
+ * environment is decided once, by the daemon, at the place that knows it: a
+ * hermetic test passes `GIT_ENV`, and DeFlowd passes nothing and gets the
+ * user's own configuration, which is the only environment their repository
+ * actually works in (`run-git.ts`).
+ */
+export function createScopeAudit(options: RunGitOptions = {}): ScopeAudit {
+  return async (request): Promise<NodeScopeWarning | null> =>
+    scopeWarningOf(
+      request.node,
+      request.attempt,
+      request.worktree,
+      request.declared,
+      await changedPaths(request.worktree, options),
+    );
 }

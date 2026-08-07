@@ -60,6 +60,7 @@ import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime, sweepTree } from './kill-tree.ts';
 import type { AcpNodeRequest, AcpPorts, EventRecord } from './ports.ts';
 import { openTransportRecorder, type TransportRecorder } from './recorder.ts';
+import { auditCompletionScope, scopeAuditRefusal } from './scope-audit.ts';
 import { agentTransport } from './transport.ts';
 import { describeUpdate, toolCallContentText } from './updates.ts';
 
@@ -414,6 +415,11 @@ export async function runAcpNode(
   const refusal =
     capRefusal ??
     recordingRefusal ??
+    // KAR-08.7 AC3 — a declared path scope with no auditor behind it is
+    // refused here, beside the other two misconfigurations, and for the same
+    // reason: the completion-time backstop could never fire, and a node that
+    // completed without it looks exactly like a node that behaved.
+    scopeAuditRefusal(request.pathScope, ports.scopeAudit) ??
     admit(
       {
         node: request.nodeId,
@@ -885,6 +891,19 @@ export async function runAcpNode(
     // sense: addressable, deduplicated, and reachable from the event log.
     artifacts: handle === null ? turn.artifacts : [...turn.artifacts, handle],
   };
+  // KAR-08.7 AC3 — the backstop, and this is the only moment it can run: the
+  // child has exited, so the worktree is final, and the node has not been
+  // declared finished yet. A **warning** and nothing else — the completion
+  // below is unconditional, whatever the diff says (D14, §6.3).
+  await auditCompletionScope(
+    {
+      node: request.nodeId,
+      attempt: request.attempt,
+      worktree: request.worktree,
+      declared: request.pathScope,
+    },
+    ports,
+  );
   await ledger.append(
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
   );

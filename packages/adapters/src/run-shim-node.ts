@@ -83,6 +83,7 @@ import {
   type ProcessExit,
 } from './run-node.ts';
 import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } from './sandbox.ts';
+import { auditCompletionScope, type ScopeAudit, scopeAuditRefusal } from './scope-audit.ts';
 import {
   parseShimLine,
   shimRateLimit,
@@ -185,6 +186,16 @@ export interface ShimNodeRequest {
    * and the compiler is the only reviewer that never forgets.
    */
   readonly sandbox: SandboxInvocation;
+  /**
+   * KAR-08.7 — the write globs the plan declared for this node.
+   *
+   * It matters *more* here than on the ACP path, not less: this is the
+   * unmediated path, so DeFlow is not in front of the vendor's file access at
+   * all and the completion-time diff is the only detection there is. Absent is
+   * a node that declared none; present with no `ShimPorts.scopeAudit` behind
+   * it is refused before the spawn.
+   */
+  readonly pathScope?: readonly string[];
 }
 
 export interface ShimPorts {
@@ -198,6 +209,10 @@ export interface ShimPorts {
   /** Where a rate limit's `resetsAt` becomes a durable wake (AC6). */
   readonly wakes?: WakeRegistry;
   readonly maxFrameBytes?: number;
+  /** KAR-08.7 AC3 — the completion-time scope backstop, the same port
+   * `AcpPorts` takes and for the same reason: the answer comes from `git`, and
+   * the daemon owns the one place a `git` child is spawned. */
+  readonly scopeAudit?: ScopeAudit;
   /**
    * The line uuids this node attempt has already made durable.
    *
@@ -341,6 +356,13 @@ export async function runShimNode(
   let plan: SandboxedShimPlan;
   try {
     maxFrameBytes = parseFrameLimit(ports.maxFrameBytes);
+
+    // KAR-08.7 AC3 — a declared scope with no auditor wired behind it, refused
+    // with the rest of what can be decided without a process. Completing a node
+    // whose backstop was never there is indistinguishable from an agent that
+    // stayed inside its scope, and on this path there is no second mechanism.
+    const unwired = scopeAuditRefusal(request.pathScope, ports.scopeAudit);
+    if (unwired !== null) throw unwired;
 
     const spec = providerSpec(request.provider);
     if (spec === undefined) {
@@ -630,6 +652,18 @@ export async function runShimNode(
     producedFacts: [],
     artifacts: handle === null ? artifacts : [...artifacts, handle],
   };
+  // KAR-08.7 AC3 — the same backstop the ACP path runs, at the same moment and
+  // through the same chokepoint: the vendor has exited, so the worktree is
+  // final, and the node is not finished until the line below.
+  await auditCompletionScope(
+    {
+      node: request.nodeId,
+      attempt: request.attempt,
+      worktree: request.worktree,
+      declared: request.pathScope,
+    },
+    ports,
+  );
   await ledger.append(
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
   );

@@ -424,7 +424,12 @@ export { createPermissionService } from './services/permission-service.ts';
 // real `git status`, and warn (never gate) on anything that landed outside
 // the node's declared write scope.
 export type { ScopeWarningPayload } from './services/scope-diff.ts';
-export { changedPaths, outOfScopePaths, scopeWarningOf } from './services/scope-diff.ts';
+export {
+  changedPaths,
+  createScopeAudit,
+  outOfScopePaths,
+  scopeWarningOf,
+} from './services/scope-diff.ts';
 export type {
   CommandPolicy,
   CreateTerminalRequest,

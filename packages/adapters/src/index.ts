@@ -266,6 +266,17 @@ export {
   SANDBOX_RUNTIME_SETTINGS_FILE,
   sandboxedShimPlan,
 } from './sandbox.ts';
+// KAR-08.7 AC3, AC5 — the completion-time scope backstop: the one place a node
+// runner asks "did this land outside what the plan declared", and the one place
+// `node.scope_warning` is written.
+export type {
+  NodeScopeWarning,
+  ScopeAudit,
+  ScopeAuditPorts,
+  ScopeAuditRequest,
+  ScopeAuditSubject,
+} from './scope-audit.ts';
+export { auditCompletionScope, scopeAuditRefusal } from './scope-audit.ts';
 // KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
 // DeFlow's own event ids, and never selected automatically.
 export type {
