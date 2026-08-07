@@ -589,8 +589,9 @@ effect journal, which is precisely the invariant that makes crash recovery sound
    `409 patch_already_decided` including the original decision and who made it.
 5. `POST /api/runs` with an `Idempotency-Key` returns the original `201` body on a repeat rather than
    creating a second run, and the key is stored in the effect journal.
-6. `POST /api/runs` **does not start execution**: it appends `run.created`, returns
-   `{ runId, seq, status: 'awaiting-spec-approval' }`, and execution begins only at
+6. `POST /api/runs` **does not start execution**: it appends `task.submitted` (`run.created`
+   follows from the framing interview, `KAR-10.2` AC11 — see that story's note of 7 August 2026),
+   returns `{ runId, seq, status: 'awaiting-spec-approval' }`, and execution begins only at
    `POST /runs/:id/spec/approve`. Acting on an unapproved run returns `422 spec_not_approved`.
 7. `POST /runs/:id/interject` returns `202` with `{ seq, delivery: 'queued' | 'delivered' |
 'unsupported' }`. `unsupported` is a `202`, never an error, so the UI renders honestly rather than

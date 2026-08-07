@@ -104,7 +104,8 @@ Feature: Task intake
     And the response carries a runId and the seq of the appended event
     And the ledger contains a "task.submitted" event whose payload.raw is byte-identical to
         "Migrate the design system across packages/ui"
-    And the ledger contains a "run.created" event carrying repo.head and repo.branch "main"
+    And the ledger contains NO "run.created" event — intake has no TaskSpec to put in its
+        payload, so the framing interview appends it (EPIC-10-S6)
     And the ledger contains NO "node.scheduled" event for any node other than the framing node
     And the ledger contains NO "plan.proposed" event
 
@@ -114,7 +115,13 @@ Feature: Task intake
     And task.submitted provenance records by: 'cli'
 ```
 
-**Notes:** The last two Then clauses of the first scenario are the point of the scenario. Creating a
+**Notes:** `run.created` used to be asserted here and moved to EPIC-10-S6 on 7 August 2026 — its
+payload carries the `TaskSpec` ([04 §9](../../04-domain-model.md)) and the repo head at the moment
+framing runs, neither of which intake may invent
+([06 §1.1](../../06-planning-and-replanning.md): _"no interpretation happens here"_). Its absence is
+now a positive assertion rather than an omission, so nobody quietly re-adds it to intake.
+
+The last two Then clauses of the first scenario are the point of the scenario. Creating a
 run must not start it — [11 §7.1](../../11-api-and-realtime.md) is explicit that _"execution begins
 only after `POST /runs/:id/spec/approve`"_, and the cheapest way to get this wrong is to have the
 scheduler's tick loop treat "a run exists" as "a run is runnable".
@@ -248,12 +255,12 @@ Feature: Run creation is idempotent under retry
     When the Operator sends POST /api/runs with Idempotency-Key "k-1"
     And the same request is sent again with Idempotency-Key "k-1"
     Then both responses carry the same runId
-    And exactly one "run.created" event exists
+    And exactly one "task.submitted" event exists, and no "run.created" event exists
 
   Scenario: a different key is a different run
     When the same body is sent with Idempotency-Key "k-2"
     Then a second runId is returned
-    And two "run.created" events exist
+    And two "task.submitted" events exist
 
   Scenario: a flaky client that never saw the first 201
     Given the first response was lost in transit
@@ -291,6 +298,8 @@ Feature: The framing interview (F1.2)
         acceptanceCriteria and knownFailureModes
     And every acceptanceCriteria entry has an id matching /^AC-\d+$/ and a single testable statement
     And every knownFailureModes entry has both a description and a detection
+    And exactly one "run.created" event is appended after the node succeeds, carrying that spec,
+        the cwd and repo.head with repo.branch "main"
     And the run status becomes "awaiting-spec-approval"
 
   Scenario: the framing node's return budget is set for its type
@@ -491,6 +500,7 @@ Feature: Handoff contract validation on the framing return (F6.9)
     Given both returns omit knownFailureModes
     Then the node fails with reason 'contract.schema-invalid'
     And no TaskSpec was written to the ledger — not a partial one, not a defaulted one
+    And no "run.created" event was appended, since its payload is that TaskSpec
     And the run does not advance to "awaiting-spec-approval"
 
   Scenario: the vendor exhausted its own repair loop first

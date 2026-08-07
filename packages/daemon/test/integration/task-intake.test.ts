@@ -36,6 +36,16 @@ function eventCount(db: Awaited<ReturnType<typeof ports>>['db']): number {
   return row?.c ?? -1;
 }
 
+/** Every event kind in the whole ledger, in `seq` order — the assertion that
+ * names what intake appended *and* what it did not. A bare `count(*)` cannot
+ * tell one `task.submitted` from one `run.created`. */
+function eventKinds(db: Awaited<ReturnType<typeof ports>>['db']): string[] {
+  return db
+    .prepare<{ kind: string }>('SELECT kind FROM event ORDER BY seq')
+    .all()
+    .map((row) => row.kind);
+}
+
 const TEXT_INPUT = { kind: 'text' as const, text: 'Migrate the design system across packages/ui' };
 
 suite('EPIC-10-S1 — happy path: free text in, run id out, nothing executed', () => {
@@ -67,6 +77,28 @@ suite('EPIC-10-S1 — happy path: free text in, run id out, nothing executed', (
       });
       // No node was scheduled — KAR-10.1 schedules nothing, ever.
       expect(events.some((event) => event.kind === 'node.scheduled')).toBe(false);
+    } finally {
+      p.db.close();
+    }
+  });
+
+  it('appends no run.created: intake has no TaskSpec to put in it (KAR-10.2 owns that event)', async ({
+    tmp,
+  }) => {
+    const p = await ports(tmp);
+    try {
+      const result = await submitTask(
+        { body: { input: TEXT_INPUT, cwd: tmp, permission: 'worktree' }, by: 'ui' },
+        p,
+      );
+      expect(result.outcome).toBe('created');
+
+      // The whole ledger, not just this run's range: a successful intake writes
+      // one event and it is `task.submitted`. `run.created`'s payload carries
+      // the `TaskSpec` (docs/04-domain-model.md §9), which intake may not
+      // invent — docs/06-planning-and-replanning.md §1.1, "no interpretation
+      // happens here" — so the framing interview appends it, not this path.
+      expect(eventKinds(p.db)).toEqual(['task.submitted']);
     } finally {
       p.db.close();
     }
@@ -354,7 +386,8 @@ suite('EPIC-10-S5 — Idempotency-Key makes a retried submission free', () => {
 
       expect(first.outcome).toBe('created');
       expect(second).toEqual(first);
-      expect(eventCount(p.db)).toBe(1);
+      // Exactly one intake event, and it is the only kind intake writes.
+      expect(eventKinds(p.db)).toEqual(['task.submitted']);
     } finally {
       p.db.close();
     }
@@ -384,7 +417,7 @@ suite('EPIC-10-S5 — Idempotency-Key makes a retried submission free', () => {
         throw new Error('unreachable');
       }
       expect(second.runId).not.toBe(first.runId);
-      expect(eventCount(p.db)).toBe(2);
+      expect(eventKinds(p.db)).toEqual(['task.submitted', 'task.submitted']);
     } finally {
       p.db.close();
     }

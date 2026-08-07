@@ -322,7 +322,9 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
    for piping; `--json` and the human renderer are two renderers over one event stream, not two
    clients.
 8. Intake accepts free text, `--file <path>`, `--issue <ref>` and `--spec <path>` (F1.1), and each
-   is recorded on `run.created` so the run's provenance is inspectable on disk (NF8).
+   is recorded in `task.submitted`'s provenance so the run's source is inspectable on disk (NF8).
+   (`run.created` carried this until 7 August 2026; the locator lives on the intake event now —
+   `KAR-10.1` AC2.)
 
 **Test plan (TDD)**
 
@@ -335,7 +337,7 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 | 5   | integration | Drop the SSE socket at a scripted point using the `crash-resume-seq-gap` fixture; assert the reconnect used `?since=` and the event set is exactly equal, gap included                   | The client assumes `seq + 1` and reports data loss on a healthy gap                             |
 | 6   | unit        | `Scenario Outline` over terminal states → exit codes, driven by a table of reduced `RunState` values                                                                                     | Exit code is derived at three call sites and they disagree on `paused`                          |
 | 7   | integration | `DeFlow run --json` with stdout piped to a file; assert every line parses and no line contains `[`                                                                                       | The renderer detects TTY once at import and colours the JSON path                               |
-| 8   | integration | Intake outline over text / `--file` / `--issue` / `--spec`; assert the `run.created` payload records source kind and locator                                                             | `--file` inlines the content and loses which file it came from                                  |
+| 8   | integration | Intake outline over text / `--file` / `--issue` / `--spec`; assert the `task.submitted` payload's provenance records source kind and locator                                             | `--file` inlines the content and loses which file it came from                                  |
 
 **Notes / risks** — [roadmap §2.3](../../17-roadmap.md) makes this story a prerequisite for the view
 work: _"Do not start W11 until at least one full run completes headlessly."_ The fixtures in

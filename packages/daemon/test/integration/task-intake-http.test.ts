@@ -24,6 +24,15 @@ async function bootAt(
   return { booted, origin: `http://127.0.0.1:${address.port}` };
 }
 
+/** Every event kind the daemon's ledger holds, in `seq` order. The route's
+ * effect on the log is part of its contract, and a status code cannot show it. */
+function eventKinds(booted: Booted): string[] {
+  return booted.db
+    .prepare<{ kind: string }>('SELECT kind FROM event ORDER BY seq')
+    .all()
+    .map((row) => row.kind);
+}
+
 suite('POST /api/runs — the wire contract (AC1)', () => {
   it('returns 201 { runId, seq, status: "awaiting-spec-approval" } for free text', async ({
     tmp,
@@ -47,6 +56,10 @@ suite('POST /api/runs — the wire contract (AC1)', () => {
       expect(body.runId).toMatch(/^run_\d{8}T\d{6}Z_[0-9a-f]{6}$/);
       expect(body.seq).toBeGreaterThan(0);
       expect(body.status).toBe('awaiting-spec-approval');
+      // EPIC-10-S1: creating a run appends `task.submitted` and stops. No
+      // `run.created` — its payload carries the `TaskSpec` the framing
+      // interview (KAR-10.2) has not produced yet — and no `node.scheduled`.
+      expect(eventKinds(booted)).toEqual(['task.submitted']);
     } finally {
       await booted.shutdown();
     }
@@ -101,6 +114,9 @@ suite('POST /api/runs — the wire contract (AC1)', () => {
       const firstBody = (await first.json()) as { runId: string };
       const secondBody = (await second.json()) as { runId: string };
       expect(secondBody.runId).toBe(firstBody.runId);
+      // EPIC-10-S5: one submission's worth of events for two POSTs — the
+      // retry appended nothing at all.
+      expect(eventKinds(booted)).toEqual(['task.submitted']);
     } finally {
       await booted.shutdown();
     }
