@@ -87,6 +87,16 @@ export interface RunArtifactEntry {
   readonly segment: string;
   /** `inline-threshold` or `budget` — see `DemotionReason`. */
   readonly reason: string;
+  /**
+   * KAR-09.6 AC6 — what kind of sensitive these bytes are, when they are.
+   *
+   * Absent is the ordinary case: a demoted packet body is repository content
+   * the agent was already shown. `'raw-transcript'` marks a verbatim vendor
+   * session transcript (§6.3's snapshot), which is the artifact leakage PRD
+   * G14 is about — nothing in this epic exports an artifact, and the tag is
+   * what lets F5.9's redaction pass find them when something does.
+   */
+  readonly sensitivity?: string;
 }
 
 /**

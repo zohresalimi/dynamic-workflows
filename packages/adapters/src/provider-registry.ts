@@ -237,6 +237,16 @@ export interface ProviderSpec {
    * completed nodes then replace with the measured ratio.
    */
   readonly family: string;
+  /**
+   * KAR-09.6 AC7, AC8 — how this vendor's own auto-compaction is steered, or
+   * absent for a vendor that exposes no such lever.
+   *
+   * It belongs in this file for the same reason argv does: it is a fact about
+   * *invocation* that cannot be probed. It is not a capability — nothing routes
+   * on it, and a vendor without it degrades to "the vendor's own defaults",
+   * which is what every provider got before this existed.
+   */
+  readonly compaction?: CompactionSpec;
   /** The bin name of the package that actually speaks ACP. */
   readonly bin: string;
   /** That package, at the version the spawn was verified against. */
@@ -253,9 +263,41 @@ export interface ProviderSpec {
   readonly shim: ShimSpec;
 }
 
+/**
+ * One vendor's compaction lever, decoded from its shipping bundle.
+ *
+ * **Every number and name here came from Claude Code 2.1.220**, they are
+ * private implementation details with no compatibility guarantee, and they will
+ * change. Nothing derived from them hardcodes a *window*: `contextWindow` and
+ * `maxOutputTokens` are read off the turn's `modelUsage` at runtime, and these
+ * two constants are the offsets applied to whatever the turn reported. That is
+ * why they sit in the registry beside the flags rather than in `@DeFlow/core`,
+ * and why `checkCompactionShape` exists to catch the day they stop being true.
+ */
+export interface CompactionSpec {
+  /** The variable that moves the auto-compaction threshold (AC7). */
+  readonly pctEnv: string;
+  /**
+   * Where this vendor keeps a session's own transcript, as path segments under
+   * `$HOME`, or absent for a vendor that documents none.
+   *
+   * **Unverified** (AC6): the convention was read from the bundle and never
+   * exercised against a live authenticated session, so a caller treats a
+   * missing file as `originalHandle: null` rather than as an error.
+   */
+  readonly transcriptDir?: readonly string[];
+  /** The variable that turns auto-compaction off entirely (AC8). */
+  readonly disableEnv: string;
+  /** The largest output reservation subtracted from the reported window. */
+  readonly outputReserve: number;
+  /** How far below the effective window auto-compaction fires. */
+  readonly autoCompactOffset: number;
+}
+
 interface SpecEntry {
   readonly id: string;
   readonly kind: ProviderKind;
+  readonly compaction?: CompactionSpec;
   /** Absent means `'default'` — see `ProviderSpec.family`. */
   readonly family?: string;
   readonly bin: string;
@@ -328,6 +370,7 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     id,
     kind: entry.kind,
     family: entry.family ?? DEFAULT_MODEL_FAMILY,
+    ...(entry.compaction === undefined ? {} : { compaction: entry.compaction }),
     bin: entry.bin,
     package: entry.package,
     ...(entry.companionBin === undefined ? {} : { companionBin: entry.companionBin }),
@@ -451,6 +494,20 @@ export const PROVIDER_SPECS = {
     id: 'claude',
     family: 'anthropic',
     kind: 'adapter',
+    // Decoded from the 2.1.220 bundle: the CLI reserves
+    // `min(maxOutputTokens, 20_000)` of the reported window and auto-compacts
+    // 13_000 tokens below what is left, and it applies the percentage override
+    // as `Math.min(pct × effectiveWindow, defaultThreshold)` — so the override
+    // can only ever move compaction *earlier* (EPIC-09-S35).
+    compaction: {
+      pctEnv: 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE',
+      disableEnv: 'DISABLE_AUTO_COMPACT',
+      // `~/.claude/projects/<project>/<session_id>.jsonl`, where <project> is
+      // the working directory with its separators replaced by dashes.
+      transcriptDir: ['.claude', 'projects'],
+      outputReserve: 20_000,
+      autoCompactOffset: 13_000,
+    },
     bin: 'claude-agent-acp',
     package: '@agentclientprotocol/claude-agent-acp',
     variants: [(): readonly string[] => []],

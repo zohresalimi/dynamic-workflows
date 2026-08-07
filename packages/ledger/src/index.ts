@@ -284,6 +284,17 @@ export {
   type TokenCalibrationRow,
   type TokenSample,
 } from './token-calibration.ts';
+// KAR-09.6 — §6.3's transcript snapshot: one file copy on a compaction
+// boundary, tagged so F5.9's redaction pass can find it. A missing file is
+// null, never an error.
+export {
+  listRawTranscripts,
+  RAW_TRANSCRIPT,
+  snapshotTranscript,
+  TRANSCRIPT_MIME,
+  TRANSCRIPT_SNAPSHOT_REASON,
+  type TranscriptSnapshotInput,
+} from './transcript-snapshot.ts';
 // KAR-07.2 — the `worktrees` projection: an index over `git worktree list
 // --porcelain -z`, replaced whole on every refresh, never the source of truth.
 export { readWorktrees, replaceWorktrees, type WorktreeRow } from './worktrees.ts';

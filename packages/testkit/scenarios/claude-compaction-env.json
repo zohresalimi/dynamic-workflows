@@ -1,0 +1,15 @@
+{
+  "name": "claude-compaction-env",
+  "description": "Echoes the two compaction-lever variables back as assistant lines, so 'the variable reached the process' is an observation rather than an inference from whatever the spawner says it passed. Emits a compaction as well, because the lever and the boundary frame are the two halves of the same mechanism.",
+  "steps": [
+    { "type": "envEcho", "names": ["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "DISABLE_AUTO_COMPACT"] },
+    { "type": "compaction", "trigger": "auto", "preTokens": 167000 }
+  ],
+  "result": {
+    "subtype": "success",
+    "stopReason": "end_turn",
+    "text": "done",
+    "totalCostUsd": 0.01,
+    "inputTokens": 84210
+  }
+}

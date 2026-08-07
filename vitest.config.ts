@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // vitest.workspace.ts and defineWorkspace were REMOVED in Vitest 4. Any tutorial
 // showing them is pre-3.2 and will not run — and the failure is not a clean
@@ -27,6 +27,13 @@ export default defineConfig({
           environment: 'node',
           pool: 'threads',
           include: ['packages/*/src/**/*.test.ts', 'packages/*/test/*.test.ts', 'test/*.test.ts'],
+          // `@DeFlow/web`'s specs live under `src/` like everybody else's and
+          // are the one set this slice must not take: they mount Vue
+          // components and need a real Chromium, which the `web` project below
+          // gives them. Without this they are collected here too, where
+          // `document` does not exist — and the failure reads as a broken
+          // component rather than as the wrong runner.
+          exclude: [...configDefaults.exclude, 'packages/web/**'],
         },
       },
       {

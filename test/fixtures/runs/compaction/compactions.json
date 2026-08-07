@@ -1,0 +1,45 @@
+{
+  "runId": "run_20260806T120000Z_c0ffee",
+  "compactions": [
+    {
+      "after": 211,
+      "before": 3165,
+      "demotedToHandles": [
+        "artifact://1b4c5d1f0912c96389e1ec95449a803454adb73dd847450d88322e6f1d3cf404"
+      ],
+      "droppedSegments": [
+        "build-log"
+      ],
+      "fidelity": "exact",
+      "node": "implement",
+      "originalHandle": "artifact://820c387f09b46c3598f167ef8c9ded9fbc14167219492bbc88b8561a768d226a",
+      "pinnedKept": [
+        "sha256-aacd366f09f3c8b831f0d2f385eed98ddd6698b8591b2f081bd160f09bf15375",
+        "sha256-108dc27d5bb76909f882482e20b7f6c5c66508488509362360378b9db7a6600f",
+        "sha256-befb240de4877578b20fa0fe16a75e27dc70d01688bcaee94a6dc751428c06d1",
+        "sha256-c43dc21c50aaec5a95a087257fd6f8f3e88ca1d1116577a0d282379e50cb22eb",
+        "sha256-7ef9fab2e21e77e3ed62e022ee7dc3cdbbe67f91d00d923828e75ff723d22d71"
+      ],
+      "scope": "DeFlow.packet",
+      "trigger": "threshold"
+    },
+    {
+      "after": null,
+      "before": 167000,
+      "demotedToHandles": [],
+      "droppedSegments": [],
+      "fidelity": "partial",
+      "node": "implement",
+      "originalHandle": null,
+      "pinnedKept": [
+        "sha256-aacd366f09f3c8b831f0d2f385eed98ddd6698b8591b2f081bd160f09bf15375",
+        "sha256-108dc27d5bb76909f882482e20b7f6c5c66508488509362360378b9db7a6600f",
+        "sha256-befb240de4877578b20fa0fe16a75e27dc70d01688bcaee94a6dc751428c06d1",
+        "sha256-c43dc21c50aaec5a95a087257fd6f8f3e88ca1d1116577a0d282379e50cb22eb",
+        "sha256-7ef9fab2e21e77e3ed62e022ee7dc3cdbbe67f91d00d923828e75ff723d22d71"
+      ],
+      "scope": "vendor.session",
+      "trigger": "vendor.auto"
+    }
+  ]
+}

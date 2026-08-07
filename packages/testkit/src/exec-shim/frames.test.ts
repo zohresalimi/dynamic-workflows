@@ -24,6 +24,10 @@ interface RecordedShape {
     readonly resultEnvelopeKeys: readonly string[];
     readonly rateLimitEventKeys: readonly string[];
     readonly rateLimitInfoKeys: readonly string[];
+    readonly systemSubtypes: readonly string[];
+    readonly compactBoundaryKeys: readonly string[];
+    readonly compactMetadataKeys: readonly string[];
+    readonly modelUsageKeys: readonly string[];
   };
 }
 
@@ -187,5 +191,50 @@ suite('rate_limit_event carries a resetsAt a scheduler can use (AC5)', () => {
     expect(Object.keys(info).sort()).toEqual([...recorded.streamJson.rateLimitInfoKeys].sort());
     expect(info.status).toBe('allowed_warning');
     expect(info.resetsAt).toBe(Math.floor(NOW_MS / 1000) + 900);
+  });
+});
+
+suite('the compaction frames are the recorded ones (KAR-09.6)', () => {
+  it('emits compact_boundary with exactly the recorded keys', () => {
+    const boundary = writer().compactBoundary('auto', 167_000);
+
+    expect(keysOf(boundary)).toEqual([...recorded.streamJson.compactBoundaryKeys].sort());
+    expect(recorded.streamJson.systemSubtypes).toContain('compact_boundary');
+  });
+
+  it('carries pre_tokens and nothing a real frame does not carry', () => {
+    const boundary = writer().compactBoundary('manual', 148_000);
+    const metadata = boundary.compact_metadata as Record<string, unknown>;
+
+    expect(keysOf(metadata)).toEqual([...recorded.streamJson.compactMetadataKeys].sort());
+    expect(metadata).toEqual({ trigger: 'manual', pre_tokens: 148_000 });
+    // The absence is the assertion: inventing a post count here would let a
+    // parser that read one pass its specs against a CLI that emits none.
+    expect(metadata).not.toHaveProperty('post_tokens');
+  });
+
+  it('emits the live status frame as an indicator, under its own subtype', () => {
+    const status = writer().compactingStatus();
+
+    expect(status).toMatchObject({ type: 'system', subtype: 'status', status: 'compacting' });
+    expect(recorded.streamJson.systemSubtypes).toContain('status');
+  });
+
+  it('reports the window fields the auto-compact threshold is derived from', () => {
+    const result = writer().result({
+      subtype: 'success',
+      isError: false,
+      stopReason: 'end_turn',
+      text: 'ok',
+      totalCostUsd: 0,
+      permissionDenials: [],
+      inputTokens: 84_210,
+    });
+    const usage = Object.values(result.modelUsage as Record<string, Record<string, unknown>>)[0];
+
+    expect(usage).toBeDefined();
+    if (usage === undefined) throw new Error('unreachable');
+    expect(keysOf(usage)).toEqual([...recorded.streamJson.modelUsageKeys].sort());
+    expect(usage.inputTokens).toBe(84_210);
   });
 });

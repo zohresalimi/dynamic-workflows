@@ -113,6 +113,12 @@ const MAX_OUTPUT_TOKENS = 64_000;
 
 const outputTokensOf = (script: ResultScript): number => Math.max(1, script.text.length);
 
+/** What the turn reports as its input tokens. Scriptable because KAR-09.6's
+ * partial recovery reads exactly this number off the turn *after* a
+ * compaction, and a constant here would let the recovery be asserted against
+ * the fake's own default rather than against a figure the scenario chose. */
+const inputTokensOf = (script: ResultScript): number => script.inputTokens ?? INPUT_TOKENS;
+
 /**
  * The envelope's `usage` block: the raw Anthropic object the CLI passes
  * through, snake_cased, and typed `z.unknown()` in the CLI's own schema.
@@ -125,7 +131,7 @@ const outputTokensOf = (script: ResultScript): number => Math.max(1, script.text
  * where a synthetic envelope populates the trap with numbers nothing may read.
  */
 const usageOf = (script: ResultScript): Line => ({
-  input_tokens: INPUT_TOKENS,
+  input_tokens: inputTokensOf(script),
   output_tokens: outputTokensOf(script),
   cache_creation_input_tokens: CACHE_CREATION_TOKENS,
   cache_read_input_tokens: CACHE_READ_TOKENS,
@@ -136,6 +142,13 @@ export interface ClaudeStreamJson {
   activeGoal(goal: string): Line;
   assistant(text: string): Line;
   rateLimit(status: string, resetsInSeconds: number): Line;
+  /** The live indicator that precedes a compaction. Drives a spinner and
+   * nothing else — a consumer that appended an event for it would double
+   * every compaction (EPIC-09-S31, second scenario). */
+  compactingStatus(): Line;
+  /** `system` / `compact_boundary`, whose `compact_metadata` carries
+   * `pre_tokens` and nothing else (KAR-09.6). */
+  compactBoundary(trigger: 'auto' | 'manual', preTokens: number): Line;
   result(script: ResultScript): Line;
   hugeLineParts(): HugeLineParts;
 }
@@ -188,6 +201,19 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         },
       }),
 
+    compactingStatus: () => stamp({ type: 'system', subtype: 'status', status: 'compacting' }),
+
+    // `pre_tokens` is the only figure the frame carries: no post count, no
+    // dropped list, no handle to the pre-compaction transcript. A fake that
+    // invented a `post_tokens` here would let a parser that read one pass, and
+    // the whole of KAR-09.6 is about not drawing a bar nobody measured.
+    compactBoundary: (trigger, preTokens) =>
+      stamp({
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger, pre_tokens: preTokens },
+      }),
+
     result: (script) =>
       stamp({
         type: 'result',
@@ -198,7 +224,7 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         usage: usageOf(script),
         modelUsage: {
           [model]: {
-            inputTokens: INPUT_TOKENS,
+            inputTokens: inputTokensOf(script),
             outputTokens: outputTokensOf(script),
             cacheReadInputTokens: CACHE_READ_TOKENS,
             cacheCreationInputTokens: CACHE_CREATION_TOKENS,

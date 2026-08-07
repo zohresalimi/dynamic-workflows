@@ -8,7 +8,13 @@
  * Verifies: EPIC-09-S23 (background), EPIC-09-S22 (third scenario) · AC4, AC5
  */
 import { expect, it, describe as suite } from 'vitest';
-import { configuredConstraints, parseDeFlowConfig, pinReinjectTurnsFor } from './deflow-config.ts';
+import { DEFAULT_AUTOCOMPACT_PCT } from './compaction.ts';
+import {
+  compactionLeverFor,
+  configuredConstraints,
+  parseDeFlowConfig,
+  pinReinjectTurnsFor,
+} from './deflow-config.ts';
 import { PIN_REINJECT_TURNS_DEFAULT } from './reinjection.ts';
 
 suite('pinReinjectTurnsFor (AC5)', () => {
@@ -69,5 +75,41 @@ suite('the rest of the file', () => {
     const config = parseDeFlowConfig({ scheduling: { maxParallel: 3 } });
 
     expect(config).toMatchObject({ scheduling: { maxParallel: 3 } });
+  });
+});
+
+suite('the compaction lever, per provider (KAR-09.6 AC7, AC8)', () => {
+  it('reads autocompactPct for the named provider', () => {
+    const config = parseDeFlowConfig({ providers: { claude: { autocompactPct: 55 } } });
+
+    expect(compactionLeverFor(config, 'claude', 'worktree')).toEqual({
+      autocompactPct: 55,
+      autoCompactDisabled: false,
+    });
+  });
+
+  it('defaults a write-capable node to 70% when the file says nothing', () => {
+    expect(compactionLeverFor(parseDeFlowConfig(null), 'claude', 'full')).toEqual({
+      autocompactPct: DEFAULT_AUTOCOMPACT_PCT,
+      autoCompactDisabled: false,
+    });
+  });
+
+  it('carries a read node’s DISABLE_AUTO_COMPACT opt-in through', () => {
+    const config = parseDeFlowConfig({ providers: { claude: { disableAutoCompact: true } } });
+
+    expect(compactionLeverFor(config, 'claude', 'read')).toEqual({
+      autocompactPct: null,
+      autoCompactDisabled: true,
+    });
+  });
+
+  it('refuses a percentage outside 1–100 rather than clamping one nobody typed', () => {
+    expect(() => parseDeFlowConfig({ providers: { claude: { autocompactPct: 0 } } })).toThrow(
+      /autocompactPct/,
+    );
+    expect(() => parseDeFlowConfig({ providers: { claude: { autocompactPct: 101 } } })).toThrow(
+      /autocompactPct/,
+    );
   });
 });

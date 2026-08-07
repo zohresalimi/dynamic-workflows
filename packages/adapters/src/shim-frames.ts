@@ -221,6 +221,48 @@ export function shimResultReport(line: ShimLine): VendorUsageReport | null {
 }
 
 /**
+ * KAR-09.6 AC2 — the vendor's own compaction, as much of it as exists.
+ *
+ * `{ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger,
+ * pre_tokens } }`, and `compact_metadata` carries **`pre_tokens` only** — no
+ * post count, no dropped list, no handle to what was summarised away. So this
+ * returns those two fields and stops; the caller turns them into a
+ * `vendor.session` compaction, whose type has nowhere to put the rest.
+ *
+ * A frame with no usable `pre_tokens` is `null` rather than `{ preTokens: 0 }`.
+ * "The vendor reported nothing" and "the vendor reported no tokens" are
+ * different claims and only one of them draws a bar.
+ *
+ * The sibling `{ subtype: 'status', status: 'compacting' }` frame is
+ * deliberately not matched here: it is a live indicator, and treating it as a
+ * boundary would append a second compaction event for one compaction
+ * (EPIC-09-S31, second scenario).
+ */
+export interface ShimCompactBoundary {
+  /** The vendor's own word: `'auto'` (its threshold) or `'manual'` (a human). */
+  readonly trigger: 'auto' | 'manual';
+  /** `compact_metadata.pre_tokens` — the only number the frame carries. */
+  readonly preTokens: number;
+}
+
+export const COMPACT_BOUNDARY_SUBTYPE = 'compact_boundary';
+
+export function shimCompactBoundary(line: ShimLine): ShimCompactBoundary | null {
+  if (line.type !== 'system' || line.raw.subtype !== COMPACT_BOUNDARY_SUBTYPE) return null;
+
+  const metadata = asRecord(line.raw.compact_metadata);
+  if (metadata === null) return null;
+
+  const preTokens = asCount(metadata.pre_tokens);
+  if (preTokens === undefined) return null;
+
+  // An unrecognised trigger reads as the vendor's own threshold rather than as
+  // a human's request: `manual` is a claim that somebody asked for this, and
+  // inventing that claim would put a compaction in the operator's lap.
+  return { trigger: metadata.trigger === 'manual' ? 'manual' : 'auto', preTokens };
+}
+
+/**
  * The `result` envelope as a domain `TokenUsage`.
  *
  * `source: 'vendor-reported'` is not a decoration: it is what keeps this figure

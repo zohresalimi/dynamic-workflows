@@ -46,6 +46,14 @@ export {
   supportsTerminal,
 } from './capabilities.ts';
 export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
+// KAR-09.6 — the compaction lever as one vendor's environment, and the shape
+// check that catches the day a decoded constant stops being true.
+export {
+  autoCompactConstants,
+  checkCompactionShape,
+  compactionEnv,
+  vendorTranscriptPath,
+} from './compaction.ts';
 // KAR-05.7 — Layer B: the eight-assertion behavioural contract, as data rather
 // than as test bodies, so `DeFlow doctor` can run it against installed CLIs.
 export type {
@@ -162,6 +170,7 @@ export { renderAuthMethods, reportAvailability } from './provider-availability.t
 // KAR-05.3 — the verified provider table, encoded once. The only file in this
 // package that names a vendor, and it names no capability.
 export type {
+  CompactionSpec,
   KnownProviderId,
   ProviderKind,
   ProviderSpec,
@@ -299,10 +308,17 @@ export {
 } from './session-load.ts';
 // KAR-05.8 — the per-line parser: uuid as the dedup key, the vendor-reported
 // usage envelope, and the rate limit's epoch-seconds `resetsAt`.
-export type { ShimLine, ShimRateLimit, VendorUsageReport } from './shim-frames.ts';
+export type {
+  ShimCompactBoundary,
+  ShimLine,
+  ShimRateLimit,
+  VendorUsageReport,
+} from './shim-frames.ts';
 export {
+  COMPACT_BOUNDARY_SUBTYPE,
   parseShimLine,
   RESULT_SUBTYPE_REASONS,
+  shimCompactBoundary,
   shimRateLimit,
   shimResultCostUsd,
   shimResultFailure,

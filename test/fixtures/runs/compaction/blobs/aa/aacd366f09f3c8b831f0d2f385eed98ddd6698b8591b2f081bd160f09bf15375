@@ -1,0 +1,5 @@
+Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration

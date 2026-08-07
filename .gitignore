@@ -9,6 +9,17 @@ coverage/
 *.local
 *.tsbuildinfo
 
+# SQLite's WAL sidecars. The committed fixture ledgers are the .db files; the
+# -wal and -shm beside them are created by whichever process last opened one
+# and are never part of the fixture.
+*.db-wal
+*.db-shm
+
+# Vitest browser mode writes a PNG for a failing spec, in one of two places
+# depending on how it was run. Useful locally, never a repository artefact.
+__screenshots__/
+.vitest-attachments/
+
 # A run's own data directory, and local tool scratch. Neither is ever the
 # repository's: they hold ledgers, blobs and machine-local paths.
 .DeFlow/

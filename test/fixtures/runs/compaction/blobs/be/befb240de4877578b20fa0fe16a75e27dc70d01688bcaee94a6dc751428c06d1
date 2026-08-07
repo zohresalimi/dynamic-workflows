@@ -1,0 +1,2 @@
+Safety constraints (pinned):
+- must not change the public API of @voyado/ui

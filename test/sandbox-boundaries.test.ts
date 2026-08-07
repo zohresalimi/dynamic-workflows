@@ -58,6 +58,25 @@ const sources: readonly SourceFile[] = allWorkspaceSources();
  */
 const DENY_LIST_OWNER = 'packages/core/src/sandbox-policy.ts';
 
+/**
+ * The second exemption, added by KAR-09.6 AC6 and narrower than it looks.
+ *
+ * §6.3's transcript snapshot is a **read**: on a `compact_boundary` frame,
+ * DeFlow copies the vendor's own session transcript into the run's artifact
+ * store so `context.compacted.originalHandle` has something to point at, and
+ * the file it copies is `~/.claude/projects/<project>/<session_id>.jsonl`.
+ * Naming that location is unavoidable — a path cannot be read without being
+ * named — and it is named in the one file already allowed to know which vendor
+ * is which.
+ *
+ * The exemption is paid for below: this file may name the directory and may not
+ * *touch* it. It imports no filesystem module at all, so what it produces is a
+ * string, and the read happens in `@DeFlow/ledger`, against a path a caller
+ * handed in. AR-1 is about DeFlow mutating a user's vendor configuration; this
+ * writes nothing anywhere near it.
+ */
+const TRANSCRIPT_PATH_OWNER = 'packages/adapters/src/provider-registry.ts';
+
 suite('no production source reaches into a user configuration directory (AC1)', () => {
   it('found sources to check at all', () => {
     expect(sources.length).toBeGreaterThan(50);
@@ -81,7 +100,7 @@ suite('no production source reaches into a user configuration directory (AC1)', 
   it('names no vendor config directory, no credential store and no wrapper default', () => {
     const offenders: string[] = [];
     for (const file of sources) {
-      if (file.path === DENY_LIST_OWNER) continue;
+      if (file.path === DENY_LIST_OWNER || file.path === TRANSCRIPT_PATH_OWNER) continue;
       const code = codeOnly(file.text);
       for (const pattern of FORBIDDEN) {
         if (pattern.test(code)) offenders.push(`${file.path} matches ${pattern}`);
@@ -98,6 +117,20 @@ suite('no production source reaches into a user configuration directory (AC1)', 
 
     const code = codeOnly(owner?.text ?? '');
     expect(code).toContain('~/.aws/credentials');
+    expect(code).not.toMatch(/\breadFile|\bopen\(|\bwriteFile|node:fs/);
+  });
+
+  it('the transcript-path owner names a location and cannot reach it', () => {
+    const owner = sources.find((file) => file.path === TRANSCRIPT_PATH_OWNER);
+    expect(owner, `${TRANSCRIPT_PATH_OWNER} is missing`).toBeDefined();
+
+    const code = codeOnly(owner?.text ?? '');
+    // It names the directory — that is why it is exempt …
+    expect(code).toContain("'.claude'");
+    // … and it names nothing else, so the exemption cannot quietly widen.
+    expect(code).not.toMatch(/['"`][^'"`]*\.claude\/|['"`][^'"`]*\.claude\.json/);
+    expect(code).not.toMatch(/\bsettings\.json|credentials|\.credentials\.json/);
+    // … and it cannot open, read or write anything at all.
     expect(code).not.toMatch(/\breadFile|\bopen\(|\bwriteFile|node:fs/);
   });
 

@@ -215,6 +215,17 @@ export interface PacketDemotion {
   readonly demotedToHandles: readonly Handle[];
   /** The demoted bodies themselves, for the caller to persist. */
   readonly bodies: readonly DemotedBody[];
+  /**
+   * KAR-09.6 AC1 — the segments as they stood *before* the ladder ran.
+   *
+   * Carried so the caller can persist the pre-compaction manifest and put its
+   * handle in `context.compacted.originalHandle`: F6.6 asks for a handle to
+   * the original, and the only moment that list exists is this one. It is the
+   * whole segment array rather than a diff, for the same reason
+   * `droppedSegments` is a list of ids — a compaction audit built out of two
+   * large strings is a diff nobody can act on (EPIC-09-S30).
+   */
+  readonly preCompaction: readonly Segment[];
   readonly before: number;
   readonly after: number;
   /** False when the pass ran out of candidates before it reached the budget.
@@ -567,6 +578,7 @@ async function demote(assembled: readonly Segment[], input: DemotionInput): Prom
       droppedSegments,
       demotedToHandles,
       bodies,
+      preCompaction: assembled,
       before,
       after: tokens,
       fits: tokens <= limitTokens,

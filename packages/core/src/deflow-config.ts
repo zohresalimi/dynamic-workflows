@@ -27,7 +27,9 @@
  */
 import { z } from 'zod';
 import { INLINE_THRESHOLD_BYTES_DEFAULT } from './artifact-offload.ts';
+import { type CompactionLever, compactionLever } from './compaction.ts';
 import { type Constraint, ConstraintSchema } from './constraint.ts';
+import type { PermissionLevel } from './plan-graph.ts';
 import { PIN_REINJECT_TURNS_DEFAULT } from './reinjection.ts';
 
 export const ProviderConfigSchema = z.looseObject({
@@ -42,6 +44,25 @@ export const ProviderConfigSchema = z.looseObject({
     .int()
     .positive('pinReinjectTurns must be a positive integer')
     .optional(),
+  /**
+   * KAR-09.6 AC7 — where the vendor's auto-compaction fires, as a percentage of
+   * the window it reported for the turn.
+   *
+   * Bounded 1–100 rather than clamped: a `0` or a `150` is a typo, and clamping
+   * one silently gives the operator a threshold they did not ask for. The
+   * bounds are also the only honest range — the CLI applies
+   * `Math.min(pct × effectiveWindow, defaultThreshold)`, so anything above 100
+   * would be indistinguishable from the default anyway.
+   */
+  autocompactPct: z
+    .number()
+    .int()
+    .min(1, 'autocompactPct must be between 1 and 100')
+    .max(100, 'autocompactPct must be between 1 and 100')
+    .optional(),
+  /** KAR-09.6 AC8 — a `read` node's opt-out. Refused above `read` by
+   * `compactionLever`, not here: the file cannot know a node's level. */
+  disableAutoCompact: z.boolean().optional(),
 });
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
@@ -84,6 +105,29 @@ export function parseDeFlowConfig(value: unknown): DeFlowConfig {
 /** AC5 — `pinReinjectTurns` for one provider, defaulting to 8. */
 export function pinReinjectTurnsFor(config: DeFlowConfig, provider: string): number {
   return config.providers?.[provider]?.pinReinjectTurns ?? PIN_REINJECT_TURNS_DEFAULT;
+}
+
+/**
+ * KAR-09.6 AC7, AC8 — the compaction lever one node runs with: what the file
+ * says for its provider, resolved against the node's permission level.
+ *
+ * The level is the second argument because the default is not a property of the
+ * provider: **70% for write-capable nodes**, and nothing at all for a `read`
+ * node, whose worst case is a lost analysis rather than lost work.
+ */
+export function compactionLeverFor(
+  config: DeFlowConfig,
+  provider: string,
+  permission: PermissionLevel,
+): CompactionLever {
+  const entry = config.providers?.[provider];
+  return compactionLever({
+    permission,
+    ...(entry?.autocompactPct === undefined ? {} : { autocompactPct: entry.autocompactPct }),
+    ...(entry?.disableAutoCompact === undefined
+      ? {}
+      : { disableAutoCompact: entry.disableAutoCompact }),
+  });
 }
 
 /** KAR-09.5 AC1 — the inline threshold in bytes, defaulting to 8 KB. */

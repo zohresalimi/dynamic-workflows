@@ -5,7 +5,7 @@
  * Verifies: EPIC-02-S19, EPIC-02-S23 · AC1, AC3, AC6, AC7
  */
 import { expect, it, describe as suite } from 'vitest';
-import { ContextCompactedSchema } from './event-payloads.ts';
+import { ContextCompactedSchema, NodeScheduledSchema } from './event-payloads.ts';
 import { EventEnvelopeSchema, parseEvent } from './events.ts';
 
 const RUN_ID = 'run_20260802T141133Z_9f2a1c';
@@ -199,12 +199,19 @@ suite('context.compacted cannot fabricate an "after" (AC6, EPIC-02-S23)', () => 
     expect(parsed.error.issues.map((issue) => issue.path.join('.'))).toContain('droppedSegments');
   });
 
-  it('rejects partial + a handle to the original, which the vendor never gives us', () => {
+  it('accepts partial + the transcript snapshot DeFlow copied itself (KAR-09.6 AC6)', () => {
+    // The vendor gives no handle to what it summarised away, and this schema
+    // still refuses to invent one. `originalHandle` on a partial event is not
+    // vendor-reported: §6.3's snapshot is `~/.claude/projects/<project>/
+    // <session_id>.jsonl`, copied into the run's artifact store by DeFlow on
+    // receiving the boundary frame. KAR-02.7 AC6 constrains `after` and
+    // `droppedSegments` — the two numbers a chart would fabricate — and says
+    // nothing about this field; KAR-09.6 AC6 requires it, so the rule that
+    // forbade it here was one story's implementation detail rather than the
+    // plan's.
     const parsed = ContextCompactedSchema.safeParse({ ...partial, originalHandle: handle });
 
-    expect(parsed.success).toBe(false);
-    if (parsed.success) throw new Error('unreachable');
-    expect(parsed.error.issues.map((issue) => issue.path.join('.'))).toContain('originalHandle');
+    expect(parsed.success, JSON.stringify(parsed, null, 2)).toBe(true);
   });
 
   it('rejects exact + a null after — an exact compaction knows its own numbers', () => {
@@ -213,5 +220,45 @@ suite('context.compacted cannot fabricate an "after" (AC6, EPIC-02-S23)', () => 
     expect(parsed.success).toBe(false);
     if (parsed.success) throw new Error('unreachable');
     expect(parsed.error.issues.map((issue) => issue.path.join('.'))).toContain('after');
+  });
+});
+
+suite('node.scheduled records the compaction lever (KAR-09.6 AC7, AC8)', () => {
+  const scheduled = {
+    node: 'recon-auth-surface',
+    provider: 'claude',
+    permission: 'read',
+  };
+
+  it('accepts a node scheduled without one — most nodes need no lever', () => {
+    expect(NodeScheduledSchema.safeParse(scheduled).success).toBe(true);
+  });
+
+  it("records a read node's opt-out, so a context exhaustion is attributable", () => {
+    const parsed = NodeScheduledSchema.safeParse({
+      ...scheduled,
+      compaction: { autocompactPct: null, autoCompactDisabled: true },
+    });
+
+    expect(parsed.success, JSON.stringify(parsed, null, 2)).toBe(true);
+  });
+
+  it('records the percentage a write-capable node runs with', () => {
+    const parsed = NodeScheduledSchema.safeParse({
+      ...scheduled,
+      permission: 'worktree',
+      compaction: { autocompactPct: 70, autoCompactDisabled: false },
+    });
+
+    expect(parsed.success, JSON.stringify(parsed, null, 2)).toBe(true);
+  });
+
+  it('refuses a percentage outside the range the CLI can express', () => {
+    const parsed = NodeScheduledSchema.safeParse({
+      ...scheduled,
+      compaction: { autocompactPct: 0, autoCompactDisabled: false },
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

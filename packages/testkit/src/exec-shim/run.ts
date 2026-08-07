@@ -63,6 +63,9 @@ export interface ExecShimPorts {
   cwd(): string;
   /** `resolve(cwd, path)`, kept a port so the runner stays free of node:path. */
   resolvePath(from: string, relative: string): string;
+  /** The process environment, read only by the `envEcho` step. A port rather
+   * than `process.env` so the runner stays testable without a process. */
+  env(): Readonly<Record<string, string | undefined>>;
 }
 
 /** The seed for a run: `--seed` in argv, else `$DeFlow_FAKE_SEED`, else none. */
@@ -139,6 +142,16 @@ async function emitClaudeStream(
       await ports.writeOut(line(frames.assistant(step.text)));
     } else if (step.type === 'rateLimit') {
       await ports.writeOut(line(frames.rateLimit(step.status, step.resetsInSeconds)));
+    } else if (step.type === 'compaction') {
+      // The spinner frame first, then the boundary — the order a real
+      // compaction arrives in, and the pair a consumer has to collapse into one
+      // event (EPIC-09-S31, second scenario).
+      await ports.writeOut(line(frames.compactingStatus()));
+      await ports.writeOut(line(frames.compactBoundary(step.trigger, step.preTokens)));
+    } else if (step.type === 'envEcho') {
+      for (const name of step.names) {
+        await ports.writeOut(line(frames.assistant(`${name}=${ports.env()[name] ?? ''}`)));
+      }
     } else if (step.type === 'malformedLine') {
       await ports.writeOut(`${step.text}\n`);
     } else {
@@ -174,6 +187,17 @@ async function emitCodexJsonl(
       throw new UnrepresentableStep(
         'the codex-jsonl dialect has no rate_limit_event frame — script that step under claude-stream-json',
       );
+    } else if (step.type === 'compaction') {
+      // Same rule, and the one that matters most here: Codex reports no
+      // compaction boundary at all, so a fake that emitted one would teach a
+      // parser that every vendor announces its compactions.
+      throw new UnrepresentableStep(
+        'the codex-jsonl dialect has no compact_boundary frame — script that step under claude-stream-json',
+      );
+    } else if (step.type === 'envEcho') {
+      for (const name of step.names) {
+        await ports.writeOut(line(frames.agentMessage(`${name}=${ports.env()[name] ?? ''}`)));
+      }
     } else if (step.type === 'malformedLine') {
       await ports.writeOut(`${step.text}\n`);
     } else {

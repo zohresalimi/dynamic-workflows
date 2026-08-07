@@ -43,7 +43,12 @@ import type {
   PacketDemotion,
   Segment,
 } from '@DeFlow/core';
-import { ContextPacketRecordSchema, ContextPacketSchema, renderPacket } from '@DeFlow/core';
+import {
+  ContextPacketRecordSchema,
+  ContextPacketSchema,
+  renderPacket,
+  SEGMENT_KINDS,
+} from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import {
   closeSync,
@@ -145,6 +150,61 @@ function recordOf(packet: ContextPacket): ContextPacketRecord {
   });
 }
 
+/** The mime a stored manifest carries. It is a document, not a prompt. */
+export const MANIFEST_MIME = 'application/json';
+
+/**
+ * KAR-09.6 AC1 — the pre-compaction manifest, stored so `originalHandle` has
+ * something to point at.
+ *
+ * The *manifest* rather than the pre-compaction prompt, because the manifest is
+ * the authoritative form everywhere else in this file and because it is what
+ * makes the original recoverable rather than merely viewable: every demoted
+ * body is already in the store under its own `contentHash`, so
+ * `rehydratePacket` turns this document back into the packet that existed
+ * before the ladder ran, and `renderPacket` over that reproduces the
+ * pre-compaction prompt byte for byte (EPIC-09-S30, second scenario).
+ *
+ * `totals` and `renderedPromptHandle` are recomputed for the pre-compaction
+ * segment list rather than copied from the packet: copying them would produce a
+ * manifest whose numbers describe a different packet, which is precisely the
+ * kind of quiet inconsistency the F6.6 audit exists to make impossible.
+ */
+function storePreCompactionManifest(
+  dataDir: string,
+  packet: ContextPacket,
+  preCompaction: readonly Segment[],
+  ikey?: IdempotencyKey,
+): Handle {
+  const prompt = renderPacket({ segments: preCompaction });
+  const renderedPromptHandle = putBlob(dataDir, encode(prompt), SEGMENT_MIME, ikey);
+  const record = recordOf(
+    ContextPacketSchema.parse({
+      ...packet,
+      segments: preCompaction,
+      totals: totalsOf(preCompaction),
+      renderedPromptHandle,
+    }),
+  );
+  return putBlob(dataDir, encode(`${JSON.stringify(record, null, 2)}\n`), MANIFEST_MIME, ikey);
+}
+
+/** `totals` for an arbitrary segment list — the same sums `buildPacket` writes,
+ * recomputed here because the pre-compaction list is a different packet. */
+function totalsOf(segments: readonly Segment[]): {
+  tokens: number;
+  byKind: Record<string, number>;
+} {
+  const sum = (subset: readonly Segment[]): number =>
+    subset.reduce((total, segment) => total + segment.tokens.estimated, 0);
+  return {
+    tokens: sum(segments),
+    byKind: Object.fromEntries(
+      SEGMENT_KINDS.map((kind) => [kind, sum(segments.filter((s) => s.kind === kind))]),
+    ),
+  };
+}
+
 /**
  * Stores the packet's bytes, writes `prompt.txt`, and appends `context.built`.
  *
@@ -234,10 +294,15 @@ export function persistContextPacket(
         droppedSegments: [...demotion.droppedSegments],
         demotedToHandles: [...demotion.demotedToHandles],
         pinnedKept: packet.pinnedDigests,
-        // §6.3's transcript snapshot is KAR-09.6's story. A DeFlow-side
-        // demotion loses nothing — every dropped body is in the store under
-        // its own handle — so there is no "original" to point at beyond them.
-        originalHandle: null,
+        // KAR-09.6 AC1 — the pre-compaction manifest, stored above. Every
+        // dropped body is already in the store under its own handle; this is
+        // the document that says how they went back together.
+        originalHandle: storePreCompactionManifest(
+          dataDir,
+          packet,
+          demotion.preCompaction,
+          options.ikey,
+        ),
       },
     });
   }

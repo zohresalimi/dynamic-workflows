@@ -77,6 +77,41 @@ export type {
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
+// KAR-09.6 — compaction with a fidelity discriminator: the union that makes
+// "a vendor.session event is never exact" a compile error, the F10.5
+// projection that labels an inferred figure, and the auto-compact arithmetic.
+export type {
+  AutoCompactConstants,
+  Compaction,
+  CompactionBar,
+  CompactionBarStyle,
+  CompactionChart,
+  CompactionLever,
+  CompactionTrigger,
+  CompactionView,
+  DroppedSegmentEntry,
+  PacketCompaction,
+  ReportedWindow,
+  VendorCompaction,
+  VendorCompactTrigger,
+} from './compaction.ts';
+export {
+  AutoCompactDisableRefused,
+  compactionChart,
+  compactionLever,
+  compactionTriggerOf,
+  compactionView,
+  DEFAULT_AUTOCOMPACT_PCT,
+  defaultAutoCompactThreshold,
+  effectiveWindowOf,
+  INFERRED_AFTER_TOOLTIP,
+  INFERRED_LABEL,
+  NOT_REPORTED_LABEL,
+  overriddenAutoCompactThreshold,
+  packetCompaction,
+  VENDOR_UNREPORTED_NOTE,
+  vendorCompaction,
+} from './compaction.ts';
 // KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
 // the forbid ratio DeFlow doctor reports.
 export type {
@@ -140,6 +175,7 @@ export { decide } from './decide.ts';
 export type { ContextConfig, DeFlowConfig, ProviderConfig } from './deflow-config.ts';
 export {
   ContextConfigSchema,
+  compactionLeverFor,
   configuredConstraints,
   DeFlowConfigSchema,
   inlineThresholdBytesOf,

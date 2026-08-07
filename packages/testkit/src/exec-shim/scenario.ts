@@ -57,6 +57,15 @@ export interface ResultScript {
   readonly text: string;
   readonly totalCostUsd: number;
   readonly permissionDenials: readonly PermissionDenial[];
+  /**
+   * What `modelUsage[model].inputTokens` reports, when the scenario cares.
+   *
+   * It exists for KAR-09.6: §6.2's partial recovery reads the *next* turn's
+   * input tokens as an approximate post-compaction figure, and a scenario that
+   * could not vary that number could only ever assert the recovery against the
+   * fake's own constant.
+   */
+  readonly inputTokens?: number;
 }
 
 /** N assistant lines, `delayMs` apart. */
@@ -79,6 +88,30 @@ export interface RateLimitStep {
   readonly status: string;
 }
 
+/**
+ * A vendor-side compaction: the live status frame, then the boundary frame
+ * carrying `pre_tokens` (KAR-09.6). Both, because the pair is what proves a
+ * consumer appends one event rather than two (EPIC-09-S31, second scenario).
+ */
+export interface CompactionStep {
+  readonly type: 'compaction';
+  readonly trigger: 'auto' | 'manual';
+  readonly preTokens: number;
+}
+
+/**
+ * One assistant line per named environment variable, `NAME=value`.
+ *
+ * The fake is how "the variable reached the process" becomes an observation
+ * instead of an inference from whatever the spawner says it passed. It echoes
+ * only the names a scenario asks for, so nothing about the machine leaks into a
+ * transcript by default.
+ */
+export interface EnvEchoStep {
+  readonly type: 'envEcho';
+  readonly names: readonly string[];
+}
+
 /** A complete line that is not JSON at all. */
 export interface MalformedLineStep {
   readonly type: 'malformedLine';
@@ -92,7 +125,14 @@ export interface HugeLineStep {
   readonly chunkBytes: number;
 }
 
-export type ExecStep = ChunksStep | MessageStep | RateLimitStep | MalformedLineStep | HugeLineStep;
+export type ExecStep =
+  | ChunksStep
+  | MessageStep
+  | RateLimitStep
+  | CompactionStep
+  | EnvEchoStep
+  | MalformedLineStep
+  | HugeLineStep;
 
 /** `count` backgrounded `sleep <sleepSeconds>` children (AC6). */
 export interface GrandchildrenScript {
@@ -259,6 +299,8 @@ const STEP_KEYS: Record<string, readonly string[]> = {
   chunks: ['type', 'count', 'delayMs', 'text'],
   message: ['type', 'text'],
   rateLimit: ['type', 'resetsInSeconds', 'status'],
+  compaction: ['type', 'trigger', 'preTokens'],
+  envEcho: ['type', 'names'],
   malformedLine: ['type', 'text'],
   hugeLine: ['type', 'totalBytes', 'chunkBytes'],
 };
@@ -300,6 +342,28 @@ function parseStep(value: unknown, at: string): ExecStep {
     };
   }
 
+  if (type === 'compaction') {
+    return {
+      type: 'compaction',
+      trigger: object.trigger === 'manual' ? 'manual' : 'auto',
+      preTokens: positiveCount(object, 'preTokens', at, 1),
+    };
+  }
+
+  if (type === 'envEcho') {
+    return {
+      type: 'envEcho',
+      names: asArray(object.names, at, 'names').map((name, index) =>
+        typeof name === 'string' && name !== ''
+          ? name
+          : fail(
+              `${at}.names[${index}]`,
+              'an environment variable name must be a non-empty string',
+            ),
+      ),
+    };
+  }
+
   if (type === 'malformedLine') {
     return { type: 'malformedLine', text: optionalString(object, 'text', at, '{"type":') };
   }
@@ -315,7 +379,15 @@ function parseResult(value: unknown, at: string): ResultScript {
   const object = asObject(value, at, 'a result envelope');
   rejectUnknownKeys(
     object,
-    ['subtype', 'isError', 'stopReason', 'text', 'totalCostUsd', 'permissionDenials'],
+    [
+      'subtype',
+      'isError',
+      'stopReason',
+      'text',
+      'totalCostUsd',
+      'permissionDenials',
+      'inputTokens',
+    ],
     at,
   );
 
@@ -352,6 +424,9 @@ function parseResult(value: unknown, at: string): ResultScript {
     text: optionalString(object, 'text', at, ''),
     totalCostUsd: optionalNumber(object, 'totalCostUsd', at, 0),
     permissionDenials: denials,
+    ...(object.inputTokens === undefined
+      ? {}
+      : { inputTokens: positiveCount(object, 'inputTokens', at, 1) }),
   };
 }
 
