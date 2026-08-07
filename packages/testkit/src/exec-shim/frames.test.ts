@@ -22,6 +22,7 @@ interface RecordedShape {
   readonly streamJson: {
     readonly everyLineCarries: readonly string[];
     readonly resultEnvelopeKeys: readonly string[];
+    readonly resultEnvelopeOptionalKeys: readonly string[];
     readonly rateLimitEventKeys: readonly string[];
     readonly rateLimitInfoKeys: readonly string[];
     readonly systemSubtypes: readonly string[];
@@ -127,6 +128,31 @@ suite('the result envelope is the recorded one (test plan row 3)', () => {
     expect(line.is_error).toBe(false);
     expect(line.total_cost_usd).toBe(0.0123);
     expect(line.result).toBe('ok');
+  });
+
+  it('adds structured_output only when the scenario scripted one (KAR-09.9)', () => {
+    const script = {
+      subtype: 'success' as const,
+      isError: false,
+      stopReason: 'end_turn',
+      text: 'ok',
+      totalCostUsd: 0.01,
+      permissionDenials: [],
+    };
+
+    // Absent by default: the recorded key set is exactly the required one.
+    expect(keysOf(writer().result(script))).toEqual(
+      [...recorded.streamJson.resultEnvelopeKeys].sort(),
+    );
+
+    const withSchema = writer().result({ ...script, structuredOutput: { id: 'f-1' } });
+    expect(keysOf(withSchema)).toEqual(
+      [
+        ...recorded.streamJson.resultEnvelopeKeys,
+        ...recorded.streamJson.resultEnvelopeOptionalKeys,
+      ].sort(),
+    );
+    expect(withSchema.structured_output).toEqual({ id: 'f-1' });
   });
 
   it('offers the failure subtypes the taxonomy needs a source for', () => {

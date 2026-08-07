@@ -25,6 +25,7 @@ import {
   type OutputFormat,
   readDialect,
   type ShimEnv,
+  schemaPathIn,
 } from './dialects.ts';
 import {
   claudeStreamJson,
@@ -119,6 +120,27 @@ async function writeHugeLine(
 
 /** A step a dialect has no frame for. Loud, never skipped. */
 class UnrepresentableStep extends Error {}
+
+/**
+ * KAR-09.9 AC2 — a scripted `structured_output` survives only if the
+ * invocation actually carried a schema flag.
+ *
+ * The real CLI populates the field for a `--json-schema` run and omits it
+ * otherwise. Reproducing that is the whole value of the fake here: a shim that
+ * stopped passing the flag has to *fail* — an absent structured output is a
+ * contract failure (docs/08-context-and-memory.md §9.1) — and it cannot fail if
+ * the double hands the object over regardless.
+ */
+function withStructuredOutputFor(
+  scenario: ExecShimScenario,
+  argv: readonly string[],
+): ExecShimScenario {
+  if (scenario.result?.structuredOutput === undefined) return scenario;
+  if (schemaPathIn(argv) !== null) return scenario;
+
+  const { structuredOutput: _dropped, ...rest } = scenario.result;
+  return { ...scenario, result: rest };
+}
 
 async function emitClaudeStream(
   scenario: ExecShimScenario,
@@ -274,7 +296,7 @@ export async function runExecShim(
     ports.writeErr(`fake-agent: ${loaded.message}\n`);
     return DATA_ERROR;
   }
-  const scenario = loaded.scenario;
+  const scenario = withStructuredOutputFor(loaded.scenario, argv);
 
   const decision = decideCli(dialect.dialect, argv);
   if (!decision.ok) {

@@ -66,6 +66,17 @@ export interface ResultScript {
    * fake's own constant.
    */
   readonly inputTokens?: number;
+  /**
+   * KAR-09.9 — what the envelope's optional `structured_output` field holds.
+   *
+   * Emitted **only when the invocation actually carried a schema flag**, which
+   * is the vendor's own behaviour and the reason this is scriptable at all: a
+   * fake that always emitted the field would let a shim that forgot
+   * `--json-schema` pass, and the failure it hides — an absent structured
+   * output read as an empty object — is precisely the one docs/08 §9.1 says
+   * must be a contract failure.
+   */
+  readonly structuredOutput?: unknown;
 }
 
 /** N assistant lines, `delayMs` apart. */
@@ -387,6 +398,7 @@ function parseResult(value: unknown, at: string): ResultScript {
       'totalCostUsd',
       'permissionDenials',
       'inputTokens',
+      'structuredOutput',
     ],
     at,
   );
@@ -427,6 +439,18 @@ function parseResult(value: unknown, at: string): ResultScript {
     ...(object.inputTokens === undefined
       ? {}
       : { inputTokens: positiveCount(object, 'inputTokens', at, 1) }),
+    // A JSON *object*, like the field the CLI populates from a schema whose
+    // root is an object. A bare string or array here would be a shape no
+    // `--json-schema` invocation produces.
+    ...(object.structuredOutput === undefined
+      ? {}
+      : {
+          structuredOutput: asObject(
+            object.structuredOutput,
+            `${at}.structuredOutput`,
+            'structuredOutput',
+          ),
+        }),
   };
 }
 

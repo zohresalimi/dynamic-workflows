@@ -33,7 +33,12 @@
  * Verifies: EPIC-05-S29 · KAR-05.8 AC4, AC5, AC6
  */
 
-import { NodeFailureError, type NodeFailureReason, type TokenUsage } from '@DeFlow/core';
+import {
+  NodeFailureError,
+  type NodeFailureReason,
+  type StructuredOutput,
+  type TokenUsage,
+} from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { malformedOutput } from './failures.ts';
 
@@ -273,6 +278,28 @@ export function shimCompactBoundary(line: ShimLine): ShimCompactBoundary | null 
  */
 export function shimResultUsage(line: ShimLine): TokenUsage {
   return shimResultReport(line)?.usage ?? vendorUsage({ input: 0, output: 0 });
+}
+
+/**
+ * KAR-09.9 AC2 — the parsed object the vendor produced against the schema this
+ * invocation passed, as a tagged presence rather than a nullable value.
+ *
+ * `{ present: false }` and `{ present: true, value: {} }` are different
+ * answers and the difference is the story: docs/08-context-and-memory.md §9.1
+ * records that whether `structured_output` is populated in *every* Claude Code
+ * success case is **Unverified**, and rules that an absent field on an
+ * otherwise-successful result is a contract failure with a clear message — not
+ * an empty object. `?? {}` here would erase exactly that, and would do it
+ * silently: an empty object validates against any schema with no required
+ * properties.
+ *
+ * `null` is read as present-and-null rather than absent, because a schema
+ * whose root is nullable can legitimately produce one, and the handoff's own
+ * validator is what should reject it if it cannot.
+ */
+export function shimStructuredOutput(line: ShimLine): StructuredOutput {
+  if (!Object.hasOwn(line.raw, 'structured_output')) return { present: false };
+  return { present: true, value: line.raw.structured_output };
 }
 
 /** What the envelope says the turn cost, in USD, or 0 when it said nothing. */

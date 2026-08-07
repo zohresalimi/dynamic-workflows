@@ -93,6 +93,31 @@ const has = (argv: readonly string[], ...flags: readonly string[]): boolean =>
   flags.some((flag) => argv.includes(flag));
 
 /**
+ * The flags a vendor takes a JSON Schema file on (KAR-09.9 AC2).
+ *
+ * Both spellings in one place because the fake impersonates both vendors and
+ * the question it asks is the same one either way: *was this invocation given a
+ * schema at all?*
+ */
+export const SCHEMA_FLAGS = ['--json-schema', '--output-schema'] as const;
+
+/**
+ * The schema file this invocation was handed, or `null`.
+ *
+ * `null` is what makes the fake reproduce the behaviour that matters: a turn
+ * run without a schema flag comes back with **no** `structured_output` field,
+ * so a shim that dropped the flag cannot be rescued by a fake that emitted the
+ * field anyway.
+ */
+export function schemaPathIn(argv: readonly string[]): string | null {
+  for (const flag of SCHEMA_FLAGS) {
+    const value = valueOf(argv, flag);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+/**
  * Claude Code 2.1.220: `--output-format text|json|stream-json`, and the
  * `--verbose` requirement that only applies to one of the three.
  */

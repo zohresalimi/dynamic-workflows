@@ -55,6 +55,7 @@ import {
   type ProviderId,
   type RunId,
   type SchemaId,
+  type StructuredOutput,
   type TokenUsage,
   vendorCompaction,
 } from '@DeFlow/core';
@@ -96,6 +97,7 @@ import {
   shimResultCostUsd,
   shimResultFailure,
   shimResultUsage,
+  shimStructuredOutput,
   shimText,
 } from './shim-frames.ts';
 
@@ -188,6 +190,17 @@ export interface ShimNodeRequest {
   /** Omitted means the vendor's richest streaming format. */
   readonly format?: ShimFormat;
   readonly outputSchemaId?: SchemaId;
+  /**
+   * KAR-09.9 AC2 — the emitted JSON Schema document this node's return is
+   * contracted to, as an absolute path under the run's `.DeFlow/schemas/`.
+   *
+   * Present only where the vendor has a flag for it — `structuredOutputContract`
+   * is what decides that, and a prompt-only adapter is handed the schema in its
+   * prompt instead. Passing it to a vendor with no flag changes nothing about
+   * the argv, which is safe precisely because the mechanism is also recorded in
+   * the manifest rather than assumed.
+   */
+  readonly schemaPath?: string;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
   /**
@@ -280,6 +293,16 @@ interface ShimOutcomeCommon {
   readonly pgid: number;
   /** The tail of the child's stderr — where a vendor prints a flag refusal. */
   readonly stderr: string;
+  /**
+   * KAR-09.9 AC2 — the parsed object the `result` envelope carried, or
+   * `{ present: false }` when it carried none.
+   *
+   * On the common arm rather than only on `completed`, because "the turn
+   * failed *and* produced no structured output" and "the turn failed after
+   * producing one" are different diagnoses, and the second one is the case
+   * where the schema is fine and something else broke.
+   */
+  readonly structuredOutput: StructuredOutput;
 }
 
 export type ShimNodeOutcome = ShimOutcomeCommon &
@@ -416,6 +439,9 @@ export async function runShimNode(
       exit: null,
       pgid: 0,
       stderr: stderrTail(),
+      // Nothing was spawned, so nothing came back — and absent is the answer,
+      // not a gap (KAR-09.9 AC2).
+      structuredOutput: { present: false },
       ...common,
     };
   };
@@ -467,6 +493,7 @@ export async function runShimNode(
         sessionId: request.sessionId,
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
+        ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
       },
       request.sandbox,
     );
@@ -530,6 +557,10 @@ export async function runShimNode(
     }
   });
 
+  // KAR-09.9 AC2 — absent until a `result` envelope says otherwise, and absent
+  // is a real answer rather than a missing one (see `shimStructuredOutput`).
+  let structuredOutput: StructuredOutput = { present: false };
+
   const common = (exit: ProcessExit | null): ShimOutcomeCommon => ({
     argv: plan.argv,
     format: plan.format,
@@ -537,6 +568,7 @@ export async function runShimNode(
     exit,
     pgid,
     stderr: stderrTail(),
+    structuredOutput,
   });
 
   const seen = new Set(ports.seenUuids ?? []);
@@ -730,6 +762,7 @@ export async function runShimNode(
           sawResult = true;
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
+          structuredOutput = shimStructuredOutput(line);
           resultFailure = shimResultFailure(line);
         }
 
@@ -745,6 +778,7 @@ export async function runShimNode(
           sawResult = true;
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
+          structuredOutput = shimStructuredOutput(line);
           resultFailure = shimResultFailure(line);
         }
         await fileLine(pending, line.uuid, line.type);

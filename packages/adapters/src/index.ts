@@ -324,8 +324,23 @@ export {
   shimResultFailure,
   shimResultReport,
   shimResultUsage,
+  shimStructuredOutput,
   shimText,
 } from './shim-frames.ts';
+// KAR-09.9 — which mechanism carried the return schema to this vendor, and the
+// manifest field that says so when the answer is the softer one.
+export type {
+  StructuredOutputContract,
+  StructuredOutputManifest,
+  StructuredOutputMechanism,
+  StructuredOutputRequest,
+} from './structured-output.ts';
+export {
+  providerStructuredOutput,
+  SCHEMA_PLACEHOLDER,
+  STRUCTURED_OUTPUT_MECHANISMS,
+  structuredOutputContract,
+} from './structured-output.ts';
 export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
 // KAR-09.7 — Tier 1 on the jsonl dialect, normalised into the same report.

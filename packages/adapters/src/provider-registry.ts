@@ -121,6 +121,18 @@ export interface ShimContext {
   readonly permission: PermissionLevel;
   /** Omitted means the vendor's richest streaming format. */
   readonly format?: ShimFormat;
+  /**
+   * KAR-09.9 AC2 — the emitted JSON Schema document this turn must return
+   * against, as an absolute path under `.DeFlow/schemas/`.
+   *
+   * Omitted means no return contract was declared, or the vendor has no flag
+   * for one — and in the second case the argv is unchanged rather than
+   * approximated, because the schema then travels in the prompt instead
+   * (`structured-output.ts`). A path here on a vendor with no
+   * `structuredOutputFlag` is silently *not* passed, which is the one place
+   * that would be a lie if the mechanism were not also recorded.
+   */
+  readonly schemaPath?: string;
 }
 
 /**
@@ -158,6 +170,19 @@ export interface ShimSpec {
    * probed, and this is the one file allowed to know either.
    */
   readonly sandbox?: SandboxSettingsInjection;
+  /**
+   * KAR-09.9 AC2 — the flag this vendor takes a JSON Schema file on, so a
+   * return contract is enforced by the CLI rather than by a paragraph of
+   * prompt.
+   *
+   * Absent for every vendor that has none, and absence is the *answer* rather
+   * than a gap: `structured-output.ts` reads it to decide between `'native'`
+   * and `'prompt-only'`, and the manifest records which was used. It is
+   * invocation knowledge like every other field here — nothing in an ACP
+   * `initialize` response advertises structured output, which is precisely why
+   * it cannot be probed.
+   */
+  readonly structuredOutputFlag?: string;
   /**
    * KAR-08.5 / EPIC-08-S23 — the flag this vendor takes a list of variable
    * names to strip from the environments of processes *it* spawns (and to
@@ -214,6 +239,7 @@ interface ShimEntry {
    */
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
   readonly sandbox?: SandboxSettingsInjection;
+  readonly structuredOutputFlag?: string;
   readonly secretEnvFlag?: string;
   build(
     ctx: ShimContext,
@@ -342,7 +368,17 @@ function shimInvocation(
     throw permissionInexpressible(id, ctx.permission, Object.keys(entry.permissions));
   }
 
-  return { format, argv: entry.build(ctx, format, flags) };
+  // The schema rides in beside the permission flags rather than being placed by
+  // each vendor's own `build`, because every builder already positions `flags`
+  // where the vendor accepts options — Codex takes its prompt as a trailing
+  // positional, so a flag appended after the whole argv would land as prompt
+  // text. One insertion point, and no builder to forget it.
+  const schema =
+    entry.structuredOutputFlag !== undefined && ctx.schemaPath !== undefined
+      ? [entry.structuredOutputFlag, ctx.schemaPath]
+      : [];
+
+  return { format, argv: entry.build(ctx, format, [...flags, ...schema]) };
 }
 
 function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
@@ -354,6 +390,9 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     dialect: entry.dialect,
     permissions: Object.keys(entry.permissions) as readonly PermissionLevel[],
     ...(entry.sandbox === undefined ? {} : { sandbox: entry.sandbox }),
+    ...(entry.structuredOutputFlag === undefined
+      ? {}
+      : { structuredOutputFlag: entry.structuredOutputFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
@@ -541,6 +580,10 @@ export const PROVIDER_SPECS = {
       // sandbox policy goes on the command line and no file under `~/.claude`
       // is ever opened (docs/09-workspace-and-safety.md §9.2).
       sandbox: { flag: '--settings', build: claudeSandboxPolicy },
+      // KAR-09.9 AC2. **Verified 2026-08-02** from the 2.1.220 bundle's flag
+      // table and zod schema: `--json-schema <file>` is accepted and the parsed
+      // object arrives in the result envelope's `structured_output` field.
+      structuredOutputFlag: '--json-schema',
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires
@@ -582,6 +625,11 @@ export const PROVIDER_SPECS = {
         worktree: ['--sandbox', 'workspace-write'],
         full: ['--sandbox', 'danger-full-access'],
       },
+      // KAR-09.9 AC2 — the same mechanism under a different spelling. Read from
+      // `codex exec --help` on 2026-08-02; unlike Claude Code's, the *shape* of
+      // what comes back has never been exercised here, so nothing downstream
+      // may assume it arrives in a field named `structured_output`.
+      structuredOutputFlag: '--output-schema',
       build: (ctx, format, flags) => [
         'exec',
         ...(format === 'jsonl' ? ['--json'] : []),

@@ -341,6 +341,31 @@ export type {
   ParsedHandle,
 } from './handle-access.ts';
 export { decideFileHandleAccess, parseHandle, sliceLines } from './handle-access.ts';
+// KAR-09.9 — the enforced return budget, the one bounded repair, and the rule
+// that there is no truncation path anywhere on the handoff.
+export type {
+  AgentRole,
+  HandoffCause,
+  HandoffInput,
+  HandoffJudgement,
+  HandoffOutcome,
+  HandoffOversize,
+  HandoffOversizeRate,
+  HandoffSample,
+  StructuredOutput,
+} from './handoff.ts';
+export {
+  agentRoleOf,
+  DEFAULT_RETURN_BUDGET,
+  defaultReturnBudget,
+  HANDOFF_REPAIR_LIMIT,
+  handoffOversizeRates,
+  judgeHandoff,
+  judgeVendorFailure,
+  RETURN_BUDGET_DEFAULTS,
+  repairPromptFor,
+  withReturnBudgetDefaults,
+} from './handoff.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {

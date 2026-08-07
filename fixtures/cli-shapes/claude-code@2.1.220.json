@@ -29,6 +29,8 @@
       "session_id",
       "uuid"
     ],
+    "resultEnvelopeOptionalKeys": ["structured_output"],
+    "resultEnvelopeOptionalKeysNote": "structured_output is optional and appears only for an invocation that carried --json-schema; transcribed from the same 2026-08-02 record as the rest of this file (docs/08-context-and-memory.md §8.1 prints it as structured_output?). Whether it is populated in every success case of such a run is Unverified — which is why an absent field is read as absent rather than as an empty object.",
     "rateLimitEventKeys": ["type", "rate_limit_info", "session_id", "uuid"],
     "rateLimitInfoKeys": ["status", "resetsAt"],
     "verboseRequiredError": "Error: When using --print, --output-format=stream-json requires --verbose",

@@ -241,6 +241,13 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         })),
         terminal_reason: script.isError ? 'error' : 'complete',
         result: script.text,
+        // Optional in the recorded envelope, and absent unless the scenario
+        // scripted one — the CLI populates it only for an invocation that
+        // carried `--json-schema`, and `run.ts` is what enforces that here
+        // (KAR-09.9 AC2).
+        ...(script.structuredOutput === undefined
+          ? {}
+          : { structured_output: script.structuredOutput }),
       }),
 
     hugeLineParts: () => {
