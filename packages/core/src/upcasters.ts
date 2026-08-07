@@ -28,7 +28,7 @@
  * Verifies: EPIC-02-S20, EPIC-02-S21, EPIC-02-S22 · AC2, AC4, AC5, AC8
  */
 import type { z } from 'zod';
-import { EVENT_CURRENT_VERSIONS } from './event-payloads.ts';
+import { BudgetConsumedSchema, EVENT_CURRENT_VERSIONS } from './event-payloads.ts';
 
 /** A single hop: version `n` in, version `n + 1` out. Pure. */
 export type Upcaster = (payload: unknown) => unknown;
@@ -312,11 +312,11 @@ function requiredKeysOf(schema: z.ZodType): string[] | null {
  * The registry the daemon reads events through: every event kind this build
  * knows, at the version this build writes.
  *
- * It is empty of hops today — every kind is at v1, so there is nothing to
- * lift — and that is the correct honest state for a ledger with no history.
- * The first `v: 2` in ./event-payloads.ts must arrive with its
- * `registerUpcaster` call in the same commit, or `assertUpcasterChainsComplete`
- * fails in the unit suite and at daemon boot.
+ * A `v: 2` in ./event-payloads.ts must arrive with its `registerUpcaster` call
+ * in the same commit, or `assertUpcasterChainsComplete` fails in the unit suite
+ * and at daemon boot. The registrations themselves are at the bottom of this
+ * file rather than in a module of their own, because a registration in a file
+ * nobody imports is a hop that silently does not exist.
  */
 export const eventUpcasters = new UpcasterRegistry(EVENT_CURRENT_VERSIONS);
 
@@ -331,3 +331,33 @@ export function upcast(kind: string, v: number, payload: unknown): unknown {
 export function assertUpcasterChainsComplete(registry: UpcasterRegistry = eventUpcasters): void {
   registry.assertChainsComplete();
 }
+
+// ── registered hops ──────────────────────────────────────────────────────────
+
+/**
+ * `budget.consumed` v1 → v2 (KAR-14.1). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `costUsd` from `number` to `number | null` — every v1 value still
+ * fits — and adds two fields:
+ *
+ * - `authMode`, defaulted to `'subscription'`. It is a **computable** default
+ *   rather than a guess: KAR-08.8 makes `'api_key'` something a plan can only
+ *   reach by explicitly opting in, so a payload written before the field
+ *   existed cannot have been an api-key spend.
+ * - `attempt`, left absent, because v1 recorded no attempt and inventing `0`
+ *   would file a retry's spend under the attempt it replaced. Absent reads as
+ *   "this contribution belongs to the node's cumulative figure and to no
+ *   single attempt", which is exactly what a v1 payload knows.
+ */
+registerUpcaster({
+  kind: 'budget.consumed',
+  from: 1,
+  to: BudgetConsumedSchema,
+  fixture: {
+    node: 'n-impl',
+    provider: 'claude',
+    usage: { inputTokens: 18_420, outputTokens: 2310, source: 'vendor-reported' },
+    costUsd: 0.42,
+  },
+  up: (payload) => ({ ...(payload as Record<string, unknown>), authMode: 'subscription' }),
+});

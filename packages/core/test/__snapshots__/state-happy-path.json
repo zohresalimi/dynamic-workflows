@@ -1322,14 +1322,780 @@
     }
   },
   "budget": {
-    "costUsd": 8.2,
-    "usage": {
-      "vendorReported": {
-        "inputTokens": 55800,
-        "outputTokens": 14380,
-        "source": "vendor-reported"
+    "run": {
+      "costUsd": {
+        "subscription": 8.2,
+        "apiKey": null,
+        "vendorReported": 8.2,
+        "estimated": null
       },
-      "estimated": null
+      "usage": {
+        "vendorReported": {
+          "inputTokens": 55800,
+          "outputTokens": 14380,
+          "source": "vendor-reported"
+        },
+        "estimated": null
+      },
+      "unaccounted": []
+    },
+    "nodes": {
+      "step-01": {
+        "costUsd": {
+          "subscription": 0.01,
+          "apiKey": null,
+          "vendorReported": 0.01,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1200,
+            "outputTokens": 340,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-02": {
+        "costUsd": {
+          "subscription": 0.02,
+          "apiKey": null,
+          "vendorReported": 0.02,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1210,
+            "outputTokens": 341,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-03": {
+        "costUsd": {
+          "subscription": 0.03,
+          "apiKey": null,
+          "vendorReported": 0.03,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1220,
+            "outputTokens": 342,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-04": {
+        "costUsd": {
+          "subscription": 0.04,
+          "apiKey": null,
+          "vendorReported": 0.04,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1230,
+            "outputTokens": 343,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-05": {
+        "costUsd": {
+          "subscription": 0.05,
+          "apiKey": null,
+          "vendorReported": 0.05,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1240,
+            "outputTokens": 344,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-06": {
+        "costUsd": {
+          "subscription": 0.06,
+          "apiKey": null,
+          "vendorReported": 0.06,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1250,
+            "outputTokens": 345,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-07": {
+        "costUsd": {
+          "subscription": 0.07,
+          "apiKey": null,
+          "vendorReported": 0.07,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1260,
+            "outputTokens": 346,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-08": {
+        "costUsd": {
+          "subscription": 0.08,
+          "apiKey": null,
+          "vendorReported": 0.08,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1270,
+            "outputTokens": 347,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-09": {
+        "costUsd": {
+          "subscription": 0.09,
+          "apiKey": null,
+          "vendorReported": 0.09,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1280,
+            "outputTokens": 348,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-10": {
+        "costUsd": {
+          "subscription": 0.1,
+          "apiKey": null,
+          "vendorReported": 0.1,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1290,
+            "outputTokens": 349,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-11": {
+        "costUsd": {
+          "subscription": 0.11,
+          "apiKey": null,
+          "vendorReported": 0.11,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1300,
+            "outputTokens": 350,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-12": {
+        "costUsd": {
+          "subscription": 0.12,
+          "apiKey": null,
+          "vendorReported": 0.12,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1310,
+            "outputTokens": 351,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-13": {
+        "costUsd": {
+          "subscription": 0.13,
+          "apiKey": null,
+          "vendorReported": 0.13,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1320,
+            "outputTokens": 352,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-14": {
+        "costUsd": {
+          "subscription": 0.14,
+          "apiKey": null,
+          "vendorReported": 0.14,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1330,
+            "outputTokens": 353,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-15": {
+        "costUsd": {
+          "subscription": 0.15,
+          "apiKey": null,
+          "vendorReported": 0.15,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1340,
+            "outputTokens": 354,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-16": {
+        "costUsd": {
+          "subscription": 0.16,
+          "apiKey": null,
+          "vendorReported": 0.16,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1350,
+            "outputTokens": 355,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-17": {
+        "costUsd": {
+          "subscription": 0.17,
+          "apiKey": null,
+          "vendorReported": 0.17,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1360,
+            "outputTokens": 356,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-18": {
+        "costUsd": {
+          "subscription": 0.18,
+          "apiKey": null,
+          "vendorReported": 0.18,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1370,
+            "outputTokens": 357,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-19": {
+        "costUsd": {
+          "subscription": 0.19,
+          "apiKey": null,
+          "vendorReported": 0.19,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1380,
+            "outputTokens": 358,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-20": {
+        "costUsd": {
+          "subscription": 0.2,
+          "apiKey": null,
+          "vendorReported": 0.2,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1390,
+            "outputTokens": 359,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-21": {
+        "costUsd": {
+          "subscription": 0.21,
+          "apiKey": null,
+          "vendorReported": 0.21,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1400,
+            "outputTokens": 360,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-22": {
+        "costUsd": {
+          "subscription": 0.22,
+          "apiKey": null,
+          "vendorReported": 0.22,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1410,
+            "outputTokens": 361,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-23": {
+        "costUsd": {
+          "subscription": 0.23,
+          "apiKey": null,
+          "vendorReported": 0.23,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1420,
+            "outputTokens": 362,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-24": {
+        "costUsd": {
+          "subscription": 0.24,
+          "apiKey": null,
+          "vendorReported": 0.24,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1430,
+            "outputTokens": 363,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-25": {
+        "costUsd": {
+          "subscription": 0.25,
+          "apiKey": null,
+          "vendorReported": 0.25,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1440,
+            "outputTokens": 364,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-26": {
+        "costUsd": {
+          "subscription": 0.26,
+          "apiKey": null,
+          "vendorReported": 0.26,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1450,
+            "outputTokens": 365,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-27": {
+        "costUsd": {
+          "subscription": 0.27,
+          "apiKey": null,
+          "vendorReported": 0.27,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1460,
+            "outputTokens": 366,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-28": {
+        "costUsd": {
+          "subscription": 0.28,
+          "apiKey": null,
+          "vendorReported": 0.28,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1470,
+            "outputTokens": 367,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-29": {
+        "costUsd": {
+          "subscription": 0.29,
+          "apiKey": null,
+          "vendorReported": 0.29,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1480,
+            "outputTokens": 368,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-30": {
+        "costUsd": {
+          "subscription": 0.3,
+          "apiKey": null,
+          "vendorReported": 0.3,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1490,
+            "outputTokens": 369,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-31": {
+        "costUsd": {
+          "subscription": 0.31,
+          "apiKey": null,
+          "vendorReported": 0.31,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1500,
+            "outputTokens": 370,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-32": {
+        "costUsd": {
+          "subscription": 0.32,
+          "apiKey": null,
+          "vendorReported": 0.32,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1510,
+            "outputTokens": 371,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-33": {
+        "costUsd": {
+          "subscription": 0.33,
+          "apiKey": null,
+          "vendorReported": 0.33,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1520,
+            "outputTokens": 372,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-34": {
+        "costUsd": {
+          "subscription": 0.34,
+          "apiKey": null,
+          "vendorReported": 0.34,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1530,
+            "outputTokens": 373,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-35": {
+        "costUsd": {
+          "subscription": 0.35,
+          "apiKey": null,
+          "vendorReported": 0.35,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1540,
+            "outputTokens": 374,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-36": {
+        "costUsd": {
+          "subscription": 0.36,
+          "apiKey": null,
+          "vendorReported": 0.36,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1550,
+            "outputTokens": 375,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-37": {
+        "costUsd": {
+          "subscription": 0.37,
+          "apiKey": null,
+          "vendorReported": 0.37,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1560,
+            "outputTokens": 376,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-38": {
+        "costUsd": {
+          "subscription": 0.38,
+          "apiKey": null,
+          "vendorReported": 0.38,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1570,
+            "outputTokens": 377,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-39": {
+        "costUsd": {
+          "subscription": 0.39,
+          "apiKey": null,
+          "vendorReported": 0.39,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1580,
+            "outputTokens": 378,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      },
+      "step-40": {
+        "costUsd": {
+          "subscription": 0.4,
+          "apiKey": null,
+          "vendorReported": 0.4,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1590,
+            "outputTokens": 379,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "attempts": []
+      }
+    },
+    "providers": {
+      "codex": {
+        "costUsd": {
+          "subscription": 2.87,
+          "apiKey": null,
+          "vendorReported": 2.87,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 19530,
+            "outputTokens": 5033,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": []
+      },
+      "claude-code": {
+        "costUsd": {
+          "subscription": 5.33,
+          "apiKey": null,
+          "vendorReported": 5.33,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 36270,
+            "outputTokens": 9347,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": []
+      }
     },
     "breaches": []
   },

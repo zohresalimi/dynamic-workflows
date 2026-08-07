@@ -52,6 +52,7 @@ import {
   type NodeFailureError,
   type NodeId,
   type PermissionLevel,
+  type ProviderAuthMode,
   type ProviderId,
   type RunId,
   type SchemaId,
@@ -66,6 +67,7 @@ import { dirname } from 'node:path';
 import process from 'node:process';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
+import { budgetConsumed } from './budget-consumed.ts';
 import type { CapabilityRow } from './capabilities.ts';
 import { compactionEnv } from './compaction.ts';
 import {
@@ -80,11 +82,23 @@ import {
 import { frameGuard, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime } from './kill-tree.ts';
 import { STDERR_TAIL_BYTES } from './launch.ts';
-import type { AgentBinary, EventRecord, LedgerSink, ProcessRegistry } from './ports.ts';
-import { type ProviderSpec, providerSpec, type ShimFormat } from './provider-registry.ts';
+import {
+  type AgentBinary,
+  type EventRecord,
+  eventVersion,
+  type LedgerSink,
+  type ProcessRegistry,
+} from './ports.ts';
+import {
+  type ProviderSpec,
+  providerSpec,
+  providerTokenAccounting,
+  type ShimFormat,
+} from './provider-registry.ts';
 import {
   AGENT_TURN_SCHEMA_ID,
   CONTENT_SPILL_BYTES,
+  estimateUsage,
   OUTPUT_INLINE_LIMIT_BYTES,
   type ProcessExit,
 } from './run-node.ts';
@@ -181,6 +195,17 @@ export interface ShimNodeRequest {
   /** 0-based, matching the event envelope. */
   readonly attempt: number;
   readonly provider: ProviderId;
+  /**
+   * KAR-08.8's effective auth mode for this attempt, from
+   * `resolveProviderAuth`. Absent means `'subscription'` — the default that
+   * function itself uses, and the only honest one, because `'api_key'` is
+   * reached solely by an explicit opt-in and DeFlow never invents it.
+   *
+   * It is on the request rather than derived here because KAR-14.1 AC3 turns
+   * on it: subscription quota and real currency are two figures and must never
+   * be summed, so the accounting record has to carry which one it is.
+   */
+  readonly authMode?: ProviderAuthMode;
   readonly permission: PermissionLevel;
   readonly worktree: string;
   readonly binary: AgentBinary;
@@ -371,7 +396,7 @@ export async function runShimNode(
 
   const event = (kind: string, payload: unknown, withIkey = false): EventRecord => ({
     kind,
-    v: 1,
+    v: eventVersion(kind),
     ts: clock.now(),
     nodeId: request.nodeId,
     attempt: request.attempt,
@@ -416,6 +441,15 @@ export async function runShimNode(
   const refuse = async (
     thrown: unknown,
     common: Partial<ShimOutcomeCommon> = {},
+    /**
+     * KAR-14.1 AC5 — what this attempt spent before it failed, when a `result`
+     * envelope had already reported something.
+     *
+     * Absent for every refusal that happens before a process exists: there is
+     * nothing to account for, and appending a zero would put a free turn on a
+     * chart for a turn that never ran.
+     */
+    spent = false,
   ): Promise<ShimNodeOutcome> => {
     const mapped = toAdapterFailure(thrown, {
       occurredAtEvent: lastSeq,
@@ -427,9 +461,16 @@ export async function runShimNode(
       head === null
         ? mapped
         : { ...mapped, evidence: [...mapped.evidence, ports.captureEvidence(head)] };
-    await ledger.append(
-      event('node.failed', { node: request.nodeId, attempt: request.attempt, failure }),
-    );
+    const failed = event('node.failed', {
+      node: request.nodeId,
+      attempt: request.attempt,
+      failure,
+    });
+    // The same one-transaction rule the completion path keeps: a failed
+    // attempt's spend is still spend, and a crash between the two events would
+    // lose it exactly as it would lose a successful one.
+    if (spent) await ledger.appendAll([event('budget.consumed', spendPayload()), failed]);
+    else await ledger.append(failed);
     return {
       status: 'failed',
       failure,
@@ -578,6 +619,30 @@ export async function runShimNode(
   let costUsd = 0;
   let resultFailure: NodeFailureError | null = null;
   let sawResult = false;
+
+  /**
+   * KAR-14.1 — this attempt's accounting record, judged against the manifest.
+   *
+   * `providerTokenAccounting` is what decides whether the envelope's figures
+   * may be priced at all: a provider whose fidelity nobody has verified
+   * (roadmap A4-3) contributes a blank cost and its name to the rollup's
+   * `unaccounted` list, rather than a number that would be charted as truth.
+   *
+   * The fallback is DeFlow's own count of the prompt it sent and the text it
+   * read back, never zero: a turn that produced megabytes of output did not
+   * read and write nothing, and the estimate is the only figure left once the
+   * vendor's is refused.
+   */
+  const spendPayload = (): unknown =>
+    budgetConsumed({
+      node: request.nodeId,
+      attempt: request.attempt,
+      provider: request.provider,
+      accounting: providerTokenAccounting(request.provider),
+      authMode: request.authMode ?? 'subscription',
+      reported: usage === null ? null : { usage, costUsd },
+      estimate: estimateUsage(request.prompt, agentText),
+    });
 
   /**
    * Files one already-parsed line: the raw bytes into the data plane, one
@@ -796,7 +861,7 @@ export async function runShimNode(
   // The vendor's own verdict wins over the exit code: a `result` envelope
   // naming its subtype says *why*, and the exit code that follows it says only
   // that something went wrong.
-  if (resultFailure !== null) return refuse(resultFailure, common(exit));
+  if (resultFailure !== null) return refuse(resultFailure, common(exit), true);
 
   if (!sawResult) {
     // Exit without a result envelope, whatever the code. The worst outcome in
@@ -833,9 +898,14 @@ export async function runShimNode(
     },
     ports,
   );
-  await ledger.append(
+  // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`, so a
+  // crash cannot leave a node that finished and a run that does not know what
+  // it cost. Ordered spend-first, so any reader that has seen the completion
+  // has already seen what it was paid for.
+  await ledger.appendAll([
+    event('budget.consumed', spendPayload()),
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
-  );
+  ]);
 
   return { ...common(exit), status: 'completed', result };
 }

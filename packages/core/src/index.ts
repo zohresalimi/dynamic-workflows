@@ -162,6 +162,25 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-14.1 — the accounting projection: per node, per provider, per run, with
+// subscription quota and real currency as two figures and `null` as the only
+// honest blank.
+export type {
+  AttemptCostRollup,
+  BudgetRollup,
+  Consumption,
+  CostFigures,
+  CostRollup,
+  NodeCostRollup,
+} from './cost-rollup.ts';
+export {
+  addConsumption,
+  BudgetRollupSchema,
+  CostRollupSchema,
+  consumptionKey,
+  emptyCostRollup,
+  initialBudgetRollup,
+} from './cost-rollup.ts';
 // KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
 // @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
 export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';

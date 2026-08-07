@@ -129,10 +129,44 @@ const populated: RunState = {
   nodeIds: { active: [NODE], retired: [NodeIdSchema.parse('retired-step')] },
   policy: { globalAgentSlots: 5, noProgress: DEFAULT_NO_PROGRESS_POLICY },
   budget: {
-    costUsd: 0.42,
-    usage: {
-      vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
-      estimated: null,
+    run: {
+      costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+      usage: {
+        vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+        estimated: null,
+      },
+      unaccounted: [],
+    },
+    nodes: {
+      [NODE]: {
+        costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+        usage: {
+          vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+          estimated: null,
+        },
+        unaccounted: [],
+        attempts: [
+          {
+            attempt: 1,
+            costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+            usage: {
+              vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+              estimated: null,
+            },
+            unaccounted: [],
+          },
+        ],
+      },
+    },
+    providers: {
+      claude: {
+        costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+        usage: {
+          vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+          estimated: null,
+        },
+        unaccounted: [],
+      },
     },
     breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2 }],
   },

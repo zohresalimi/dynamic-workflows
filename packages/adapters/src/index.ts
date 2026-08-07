@@ -187,9 +187,11 @@ export {
   PROVIDER_SPECS,
   providerFamily,
   providerSpec,
+  providerTokenAccounting,
   SHIM_FORMATS,
   shimPlan,
   spawnPlan,
+  UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
 // KAR-05.7 — the golden-recording tee, and the exact-version key that makes a

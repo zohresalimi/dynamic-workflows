@@ -58,6 +58,7 @@ import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import * as acp from '@agentclientprotocol/sdk';
 import { admit } from './admission.ts';
+import { budgetConsumed } from './budget-consumed.ts';
 import { CAPABILITY_PATHS, supportsSteering } from './capabilities.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import {
@@ -74,7 +75,8 @@ import {
 } from './failures.ts';
 import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime, sweepTree } from './kill-tree.ts';
-import type { AcpNodeRequest, AcpPorts, EventRecord } from './ports.ts';
+import { type AcpNodeRequest, type AcpPorts, type EventRecord, eventVersion } from './ports.ts';
+import { providerTokenAccounting } from './provider-registry.ts';
 import { openTransportRecorder, type TransportRecorder } from './recorder.ts';
 import { auditCompletionScope, scopeAuditRefusal } from './scope-audit.ts';
 import { agentTransport } from './transport.ts';
@@ -394,7 +396,7 @@ export async function runAcpNode(
 
   const event = (kind: string, payload: unknown, withIkey = false): EventRecord => ({
     kind,
-    v: 1,
+    v: eventVersion(kind),
     ts: clock.now(),
     nodeId: request.nodeId,
     attempt: request.attempt,
@@ -1065,9 +1067,31 @@ export async function runAcpNode(
     },
     ports,
   );
-  await ledger.append(
+  // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`.
+  //
+  // `reported: null` on this path is the honest answer, not a gap: whether ACP
+  // surfaces token usage at all is **Unverified** and rated High (roadmap
+  // A0-3), so nothing here is a vendor figure. What the record carries is
+  // DeFlow's own Tier-2 count of the prompt it rendered and the text it read
+  // back, labelled `estimated`, and a blank cost — a `0` would chart the turn
+  // as free. The provider therefore appears in the rollup's `unaccounted`
+  // list, which is exactly the signal an operator needs before setting a cost
+  // ceiling on this path.
+  await ledger.appendAll([
+    event(
+      'budget.consumed',
+      budgetConsumed({
+        node: request.nodeId,
+        attempt: request.attempt,
+        provider: request.provider,
+        accounting: providerTokenAccounting(request.provider),
+        authMode: request.authMode ?? 'subscription',
+        reported: null,
+        estimate: result.usage,
+      }),
+    ),
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
-  );
+  ]);
 
   return { ...common, status: 'completed', stopReason: turn.stopReason ?? 'end_turn', result };
 }

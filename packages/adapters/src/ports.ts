@@ -16,6 +16,7 @@
  *   importing the daemon, and what makes deleting the ACP front a one-line
  *   change when v2 lands.
  */
+
 import type {
   Clock,
   EventSeq,
@@ -24,10 +25,12 @@ import type {
   NodeId,
   PermissionLevel,
   PinnedSegmentView,
+  ProviderAuthMode,
   ProviderId,
   RunId,
   SchemaId,
 } from '@DeFlow/core';
+import { EVENT_CURRENT_VERSIONS } from '@DeFlow/core';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { CapabilityRequirement } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
@@ -55,6 +58,20 @@ export interface EventRecord {
   readonly attempt?: number;
   readonly ikey?: IdempotencyKey;
   readonly payload: unknown;
+}
+
+/**
+ * The payload version this build writes for `kind`.
+ *
+ * Read from `@DeFlow/core`'s registry rather than written as a literal at each
+ * call site, because a literal is only right until the first version bump and
+ * then wrong silently: an event written at `v: 1` carrying a v2 payload is
+ * refused by `parseEvent` at replay time, hours later, in a run nobody can
+ * repeat. `1` for a kind this build has never heard of, which cannot happen
+ * for a kind it is writing.
+ */
+export function eventVersion(kind: string): number {
+  return (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
 }
 
 /** One data-plane chunk: the frame as it came off the wire, kept verbatim. */
@@ -94,6 +111,19 @@ export interface CapabilityStore {
 export interface LedgerSink {
   /** Appends one event and resolves with the `seq` the ledger assigned it. */
   append(event: EventRecord): Promise<EventSeq>;
+  /**
+   * Appends a whole batch **in one transaction**, resolving with the `seq`
+   * each event was assigned, in order.
+   *
+   * A separate method rather than a loop over `append`, for the reason
+   * `ProcessRegistry.appendWithProcess` is one: KAR-14.1 AC1 requires
+   * `budget.consumed` and `node.completed` to be written together, so that
+   * there is no instant at which a node has finished and its spend has not
+   * been recorded. Two `append` calls are indistinguishable from this one
+   * until the crash that lands between them, at which point the run has
+   * silently spent money the ledger cannot account for.
+   */
+  appendAll(events: readonly EventRecord[]): Promise<readonly EventSeq[]>;
   /** Appends one chunk of agent output and resolves with its `seq`. */
   appendIo(chunk: IoRecord): Promise<EventSeq>;
 }
@@ -182,6 +212,16 @@ export interface AcpNodeRequest {
   /** 0-based, matching the event envelope. */
   readonly attempt: number;
   readonly provider: ProviderId;
+  /**
+   * KAR-08.8's effective auth mode for this attempt. Absent means
+   * `'subscription'` — the default `resolveProviderAuth` itself uses, because
+   * `'api_key'` is only ever reached by an explicit opt-in.
+   *
+   * KAR-14.1 AC3 is why the run path needs it: subscription quota and real
+   * currency are two figures that must never be summed, so the accounting
+   * record has to carry which one this spend was.
+   */
+  readonly authMode?: ProviderAuthMode;
   readonly permission: PermissionLevel;
   readonly model?: string;
   /** The node's worktree. Becomes `session/new`'s `cwd`. */

@@ -24,9 +24,8 @@
  * thrown away, never to be wrong.
  */
 import { z } from 'zod';
+import { type BudgetRollup, BudgetRollupSchema, initialBudgetRollup } from './cost-rollup.ts';
 import {
-  BUDGET_DIMENSIONS,
-  BUDGET_SCOPES,
   CANCEL_MODES,
   LOCK_KINDS,
   RUN_NEEDS_HUMAN_REASONS,
@@ -67,7 +66,6 @@ import {
   PlanGraphSchema,
 } from './plan-graph.ts';
 import { singleLine } from './text.ts';
-import { type UsageTotals, UsageTotalsSchema } from './token-usage.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -235,17 +233,16 @@ export interface NodeIdRegistryState {
  */
 export type { BudgetBreach };
 
-export interface BudgetState {
-  readonly costUsd: number;
-  /**
-   * Vendor-reported and estimated totals, kept apart all the way to the chart
-   * (§8). A single mixed number is not a slightly-wrong number, it is a number
-   * with no meaning, and a ceiling computed from it fires at the wrong time in
-   * both directions.
-   */
-  readonly usage: UsageTotals;
-  readonly breaches: readonly BudgetBreach[];
-}
+/**
+ * KAR-14.1 — the accounting projection, per node, per provider and per run.
+ *
+ * It is `BudgetRollup` rather than a scalar and a token pair because a run's
+ * spend is not one number: subscription quota and real currency are different
+ * substances (docs/07-provider-adapter-layer.md §12) and vendor-reported and
+ * estimated figures are different claims (docs/08-context-and-memory.md §7).
+ * ./cost-rollup.ts is where the shape and the reasons live.
+ */
+export type BudgetState = BudgetRollup;
 
 /**
  * The bounds `decide()` admits work within (F5.2, EPIC-06-S4).
@@ -423,13 +420,14 @@ export interface RunState {
  * the cache is a pure optimisation and is allowed to be thrown away, never to
  * be believed when it is stale.
  *
- * The same applies to how an existing field is *derived*: 4 is `node.suspended`
- * filling `NodeState.wakeAt` from its deadline (KAR-06.6). 5 is
- * `RunState.cancel` and the `cancelled` node status (KAR-06.7). 6 is F4.7's
- * no-progress fields (KAR-06.8) — an empty churn window believed rather than
- * replayed is a livelock the breaker cannot see.
+ * The same applies to how an existing field is *derived*: 4 is
+ * `NodeState.wakeAt` (KAR-06.6), 5 is `RunState.cancel` (KAR-06.7), 6 is
+ * F4.7's no-progress fields (KAR-06.8), and 7 is KAR-14.1's per-node,
+ * per-provider cost rollup replacing `budget`'s single scalar — a cached total
+ * that cannot say which credential paid for it is the mixed figure an F4.6
+ * ceiling must never be evaluated against.
  */
-export const CHECKPOINT_VERSION = 6;
+export const CHECKPOINT_VERSION = 7;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -480,7 +478,7 @@ export function initialRunState(): RunState {
     locks: {},
     nodeIds: { active: [], retired: [] },
     policy: { ...DEFAULT_SCHEDULING_POLICY },
-    budget: { costUsd: 0, usage: { vendorReported: null, estimated: null }, breaches: [] },
+    budget: initialBudgetRollup(),
     watermarkSeq: 0,
     watermarkTs: 0,
     startedTs: 0,
@@ -556,19 +554,6 @@ const NodeIdRegistryStateSchema = z.strictObject({
   retired: z.array(NodeIdSchema),
 });
 
-const BudgetStateSchema = z.strictObject({
-  costUsd: z.number().nonnegative(),
-  usage: UsageTotalsSchema,
-  breaches: z.array(
-    z.strictObject({
-      scope: z.enum(BUDGET_SCOPES),
-      dimension: z.enum(BUDGET_DIMENSIONS),
-      limit: z.number().nonnegative(),
-      actual: z.number().nonnegative(),
-    }),
-  ),
-});
-
 /**
  * `RunState` as a value that can be *validated*, which is what a checkpoint
  * decoder needs and `JSON.parse` cannot give it (KAR-03.6 AC5).
@@ -612,7 +597,7 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
     globalAgentSlots: z.number().int().nonnegative(),
     noProgress: NoProgressPolicySchema,
   }),
-  budget: BudgetStateSchema,
+  budget: BudgetRollupSchema,
   watermarkSeq: wholeCount,
   watermarkTs: wholeCount,
   startedTs: wholeCount,

@@ -1078,12 +1078,39 @@ export const HumanRespondedSchema = z.strictObject({
 
 // ── money and providers ──────────────────────────────────────────────────────
 
+/**
+ * F9.1 — the single accounting record (KAR-14.1). **v2.**
+ *
+ * Self-contained on purpose: everything the per-node, per-provider and
+ * per-run rollup needs is in this one payload, so the projection is a fold
+ * over one kind rather than a join across three that can arrive out of order.
+ *
+ * Two fields carry the whole of the story's honesty.
+ *
+ * `costUsd` is **nullable**, and that is the difference between a report and a
+ * lie. A provider whose capability manifest says `tokenAccounting: 'none'`
+ * cannot be priced, and `0` would be a claim that nothing was spent
+ * (docs/08-context-and-memory.md §7: *a blank cost cell, not a zero*). A `null`
+ * here is what puts the provider into the rollup's `unaccounted` list.
+ *
+ * `authMode` is here rather than inferred from the separate
+ * `provider.auth_mode` event because §12 of docs/07-provider-adapter-layer.md
+ * makes subscription-quota spend and real-currency spend two different
+ * substances that *"must not be summed into one number"* — and a rollup that
+ * had to correlate two event kinds to know which was which would report the
+ * wrong one for any event pair the ledger happened to interleave.
+ */
 export const BudgetConsumedSchema = z.strictObject({
   /** Absent for run-level consumption that no single node owns. */
   node: NodeIdSchema.optional(),
+  /** Which attempt spent it, 0-based. Absent exactly when `node` is. */
+  attempt: attempt.optional(),
   provider: ProviderIdSchema,
   usage: TokenUsageSchema,
-  costUsd: z.number().nonnegative(),
+  /** `null` when the provider reports nothing machine-readable — never `0`. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** KAR-08.8's effective auth mode for this spend. */
+  authMode: z.enum(PROVIDER_AUTH_MODES),
 });
 
 /** F4.6 — pauses the run, does not fail it. */
@@ -1190,7 +1217,7 @@ export const EVENT_SCHEMAS = {
   'gate.evaluated': { v: 1, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
-  'budget.consumed': { v: 1, payload: BudgetConsumedSchema },
+  'budget.consumed': { v: 2, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 1, payload: BudgetExceededSchema },
   'provider.probed': { v: 1, payload: ProviderProbedSchema },
   'provider.rate_limited': { v: 1, payload: ProviderRateLimitedSchema },

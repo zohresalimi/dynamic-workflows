@@ -19,7 +19,10 @@
  *    one prompt (a short continuation vs the packet rebuilt from the ledger).
  *    The observable node outcome is the same; the token cost is not, and that
  *    difference is written to the ledger as `budget.consumed` rather than left
- *    to be inferred.
+ *    to be inferred — by `runAcpNode`, which writes exactly one such record
+ *    per node attempt (KAR-14.1 AC1), so the two strategies are compared on
+ *    the same ledger rows as every other node rather than on a second record
+ *    only resumed nodes have.
  */
 import type { EventSeq, NodeFailure, NodeId } from '@DeFlow/core';
 import { toAdapterFailure } from './failures.ts';
@@ -36,7 +39,7 @@ import {
   type ResumeStrategyName,
   selectResumeStrategy,
 } from './resume.ts';
-import { type AcpNodeOutcome, estimateUsage, runAcpNode } from './run-node.ts';
+import { type AcpNodeOutcome, runAcpNode } from './run-node.ts';
 
 /**
  * What DeFlow says after `session/resume`.
@@ -255,19 +258,12 @@ export async function resumeAcpNode(
     ports,
   );
 
-  // AC4: the difference between the two strategies is token cost, and it is
-  // recorded rather than reasoned about. `estimateUsage` is the same
-  // character-count estimate `runAcpNode` puts on the node result, labelled
-  // `estimated` — EPIC-14 replaces the arithmetic, not the labelling.
-  const usage = outcome.status === 'completed' ? outcome.result.usage : estimateUsage(prompt, '');
-  await ledger.append(
-    event('budget.consumed', {
-      node: request.nodeId,
-      provider: request.provider,
-      usage,
-      costUsd: 0,
-    }),
-  );
-
+  // KAR-05.5 AC4 — the difference between the two strategies is token cost,
+  // and it is recorded rather than reasoned about. The record itself is
+  // `runAcpNode`'s, not this function's: KAR-14.1 makes `budget.consumed` the
+  // single accounting record, one per node attempt, written in the same
+  // transaction as the event that ends the attempt. A second one here would
+  // double every resumed node's spend in the rollup — silently, and only ever
+  // after a restart, which is the hardest place to notice a wrong number.
   return { ...outcome, strategy };
 }

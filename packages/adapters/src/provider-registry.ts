@@ -46,6 +46,7 @@ import type {
   PermissionLevel,
   ProviderId,
   SandboxDegradation,
+  TokenAccounting,
 } from '@DeFlow/core';
 import { claudeSandboxPolicy, ProviderIdSchema } from '@DeFlow/core';
 import {
@@ -264,6 +265,21 @@ export interface ProviderSpec {
    */
   readonly family: string;
   /**
+   * KAR-14.1 AC4 — what this vendor's CLI reports about what a turn cost, and
+   * therefore whether a cost figure attributed to it means anything.
+   *
+   * Here for the same reason `family` is: it cannot be probed. An `initialize`
+   * response describes what an agent can *do*; nothing in it says whether the
+   * binary underneath prints a token count when it finishes. It is also not a
+   * capability — nothing routes on it, and a provider that reports nothing is
+   * scheduled exactly as before; what changes is that its cost cell is blank
+   * instead of zero.
+   *
+   * `'none'` is the honest default and the one this table mostly holds:
+   * roadmap A4-3 records that only two of the five adapters were ever checked.
+   */
+  readonly tokenAccounting: TokenAccounting;
+  /**
    * KAR-09.6 AC7, AC8 — how this vendor's own auto-compaction is steered, or
    * absent for a vendor that exposes no such lever.
    *
@@ -326,6 +342,8 @@ interface SpecEntry {
   readonly compaction?: CompactionSpec;
   /** Absent means `'default'` — see `ProviderSpec.family`. */
   readonly family?: string;
+  /** Absent means `'none'` — see `ProviderSpec.tokenAccounting`. */
+  readonly tokenAccounting?: TokenAccounting;
   readonly bin: string;
   readonly package: string;
   readonly companionBin?: string;
@@ -343,6 +361,17 @@ const NO_ENV: NodeJS.ProcessEnv = {};
 
 /** The family a vendor nobody has measured belongs to (KAR-09.7 AC5). */
 export const DEFAULT_MODEL_FAMILY = 'default';
+
+/**
+ * What an unstated accounting fidelity means: DeFlow cannot price this
+ * provider's turns.
+ *
+ * Not `'estimated'`. An estimate is a number somebody would chart, and
+ * charting a number for a vendor nobody has measured is how an F4.6 ceiling
+ * ends up enforced against fiction. `'none'` produces a blank cost cell, which
+ * is recoverable — the operator sees that DeFlow does not know.
+ */
+export const UNMEASURED_TOKEN_ACCOUNTING: TokenAccounting = 'none';
 
 /**
  * The two refusals every shim invocation is checked against, in one place.
@@ -409,6 +438,7 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     id,
     kind: entry.kind,
     family: entry.family ?? DEFAULT_MODEL_FAMILY,
+    tokenAccounting: entry.tokenAccounting ?? UNMEASURED_TOKEN_ACCOUNTING,
     ...(entry.compaction === undefined ? {} : { compaction: entry.compaction }),
     bin: entry.bin,
     package: entry.package,
@@ -531,6 +561,8 @@ export const PROVIDER_SPECS = {
   }),
   claude: defineSpec({
     id: 'claude',
+    // Verified 2026-08-02: the result envelope carries a typed `modelUsage`.
+    tokenAccounting: 'exact',
     family: 'anthropic',
     kind: 'adapter',
     // Decoded from the 2.1.220 bundle: the CLI reserves
@@ -601,6 +633,8 @@ export const PROVIDER_SPECS = {
   }),
   codex: defineSpec({
     id: 'codex',
+    // Verified 2026-08-02: `turn.completed` carries a typed `usage`.
+    tokenAccounting: 'exact',
     family: 'openai',
     kind: 'adapter',
     bin: 'codex-acp',
@@ -678,6 +712,19 @@ export function providerSpec(id: string): ProviderSpec | undefined {
  */
 export function providerFamily(id: string): string {
   return providerSpec(id)?.family ?? DEFAULT_MODEL_FAMILY;
+}
+
+/**
+ * KAR-14.1 AC4 — this provider's accounting fidelity, or `'none'` for one that
+ * is not registered at all.
+ *
+ * Total for the same reason `providerFamily` is, and the fallback matters more
+ * here: a caller that had to invent one for an unknown provider would sooner or
+ * later invent `'exact'`, and every zero-cost turn on that provider would be
+ * charted as free rather than as unknown.
+ */
+export function providerTokenAccounting(id: string): TokenAccounting {
+  return providerSpec(id)?.tokenAccounting ?? UNMEASURED_TOKEN_ACCOUNTING;
 }
 
 /** The complete invocation for one attempt: command, argv and env overlay. */

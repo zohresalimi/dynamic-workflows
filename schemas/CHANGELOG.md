@@ -62,4 +62,21 @@ file is where you record it.
 
 ## Entries
 
-_None yet. Every event kind is at `v1`: the ledger has no history to be compatible with._
+### budget.consumed v2
+
+**KAR-14.1.** The accounting record became self-contained, so the per-node / per-provider / per-run
+rollup is a fold over one event kind rather than a join across three that can arrive in any order.
+
+| Change                              | Kind                                | Why it is not lossy                                                                                                                                                       |
+| ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `costUsd: number` → `number \| null` | widening                            | Every v1 value still fits. `null` is new vocabulary — a provider whose manifest says `tokenAccounting: 'none'` cannot be priced, and `0` would be a claim that it was free. |
+| `+ authMode` (required)             | required field, computable default  | Defaulted to `'subscription'`. Not a guess: KAR-08.8 makes `'api_key'` reachable only by an explicit opt-in, so a payload written before the field existed cannot be one.  |
+| `+ attempt` (optional)              | optional field                      | Left absent. v1 recorded no attempt, and inventing `0` would file a retry's spend under the attempt it replaced.                                                            |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `costUsd` had to become nullable rather than stay a number.** The alternative was to append
+`costUsd: 0` for a provider that reports nothing, which is the exact failure
+`docs/08-context-and-memory.md` §7 names — _a blank cost cell, not a zero_ — and which makes an F4.6
+cost ceiling silently unenforceable, because a run whose spend is unmeasurable would read as a run
+that has spent nothing.

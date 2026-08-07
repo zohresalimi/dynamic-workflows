@@ -35,6 +35,14 @@ function recordingSink(): { readonly sink: LedgerSink; readonly appended: EventR
       appended.push(event);
       return Promise.resolve(EventSeqSchema.parse(appended.length));
     },
+    appendAll: (events) => {
+      appended.push(...events);
+      return Promise.resolve(
+        events.map((_event, index) =>
+          EventSeqSchema.parse(appended.length - events.length + index + 1),
+        ),
+      );
+    },
     appendIo: () => Promise.resolve(EventSeqSchema.parse(1)),
   };
   return { sink, appended };

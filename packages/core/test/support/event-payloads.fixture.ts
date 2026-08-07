@@ -329,7 +329,14 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     deadline: { wakeAt: AT, onTimeout: 'escalate' },
   },
   'human.responded': { node: 'approve-migration', optionId: 'yes', at: AT },
-  'budget.consumed': { node: NODE, provider: 'claude-code', usage, costUsd: 0.42 },
+  'budget.consumed': {
+    node: NODE,
+    attempt: 0,
+    provider: 'claude-code',
+    usage,
+    costUsd: 0.42,
+    authMode: 'subscription',
+  },
   'budget.exceeded': { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4 },
   'provider.probed': {
     provider: 'claude-code',

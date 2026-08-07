@@ -42,30 +42,55 @@ export interface TestLedger {
   close(): void;
 }
 
-export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
-  const db = openLedger(dataDir);
-  const epoch = readEpoch(db);
+export interface SinkOptions {
+  readonly db: Db;
+  readonly runId: RunId;
+  readonly epoch: number;
+  /** Where an oversized payload spills. Omitted means the ledger refuses one. */
+  readonly dataDir?: string;
+}
 
-  const sink: LedgerSink = {
+/** One `EventRecord` as the ledger's own draft, with the absent fields absent. */
+const draftOf = (event: EventRecord, runId: RunId, epoch: number) => ({
+  runId,
+  ts: event.ts,
+  kind: event.kind,
+  v: event.v,
+  epoch,
+  ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+  ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+  ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+  payload: event.payload,
+});
+
+/**
+ * The `LedgerSink` every integration spec that drives a real agent turn writes
+ * through, over a real file-backed database.
+ *
+ * One factory rather than a copy per spec, because `appendAll` is not
+ * decoration: KAR-14.1 AC1 requires `budget.consumed` and the event that ends
+ * the attempt to reach the file in **one** transaction, and a sink that
+ * satisfied the port by looping over `append` would pass every assertion in
+ * this repository while losing exactly the guarantee the port exists for.
+ */
+export function sqliteLedgerSink(options: SinkOptions): LedgerSink {
+  const { db, runId, epoch } = options;
+  const appendOptions = options.dataDir === undefined ? {} : { spillTo: options.dataDir };
+
+  return {
     append(event: EventRecord): Promise<EventSeq> {
-      const [seq] = appendEvents(
-        db,
-        [
-          {
-            runId,
-            ts: event.ts,
-            kind: event.kind,
-            v: event.v,
-            epoch,
-            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-            ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-            payload: event.payload,
-          },
-        ],
-        { spillTo: dataDir },
-      );
+      const [seq] = appendEvents(db, [draftOf(event, runId, epoch)], appendOptions);
       return Promise.resolve(seq as EventSeq);
+    },
+    appendAll(events: readonly EventRecord[]): Promise<readonly EventSeq[]> {
+      // One `appendEvents` call is one `BEGIN IMMEDIATE`: the batch lands whole
+      // or leaves the ledger exactly as it was.
+      const seqs = appendEvents(
+        db,
+        events.map((event) => draftOf(event, runId, epoch)),
+        appendOptions,
+      );
+      return Promise.resolve(seqs as EventSeq[]);
     },
     appendIo(chunk: IoRecord): Promise<EventSeq> {
       // The MCP host writes none of these; a real ACP turn writes many, and
@@ -83,6 +108,13 @@ export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
       );
     },
   };
+}
+
+export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
+  const db = openLedger(dataDir);
+  const epoch = readEpoch(db);
+
+  const sink = sqliteLedgerSink({ db, runId, epoch, dataDir });
 
   const events = (): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[] => {
     const collected: { seq: EventSeq; kind: string; payload: Record<string, unknown> }[] = [];

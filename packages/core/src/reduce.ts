@@ -30,6 +30,7 @@
  * Verifies: EPIC-03-S15, EPIC-03-S16, EPIC-03-S17 · AC1, AC2, AC3, AC5, AC6,
  * AC7, AC8
  */
+import { addConsumption } from './cost-rollup.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
 import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
@@ -44,7 +45,6 @@ import {
   type RunState,
   type RunStatus,
 } from './run-state.ts';
-import { sumUsage, type TokenUsage, type UsageTotals } from './token-usage.ts';
 
 /** A node nothing is yet known about — see `initialNodeState`. */
 const UNKNOWN_NODE: NodeState = initialNodeState();
@@ -543,14 +543,23 @@ function project(state: RunState, event: Event): Transition {
           : current,
       );
 
+    /**
+     * KAR-14.1 — the one accounting record, folded into the one accounting
+     * projection. There is no second mutable table and no running total in the
+     * daemon, which is what makes the rollup survive a `kill -9` for free
+     * (EPIC-14-S6).
+     */
     case 'budget.consumed':
       return {
         ...state,
-        budget: {
-          ...state.budget,
-          costUsd: addMoney(state.budget.costUsd, event.payload.costUsd),
-          usage: addUsage(state.budget.usage, event.payload.usage),
-        },
+        budget: addConsumption(state.budget, {
+          node: event.payload.node ?? null,
+          attempt: event.payload.attempt ?? null,
+          provider: event.payload.provider,
+          usage: event.payload.usage,
+          costUsd: event.payload.costUsd,
+          authMode: event.payload.authMode,
+        }),
       };
 
     // F4.6 pauses the run rather than failing it — and the pause arrives as
@@ -787,26 +796,4 @@ function withoutLock(state: RunState, lock: string, key: string): Transition {
 
   const { [held]: _released, ...remaining } = state.locks;
   return { ...state, locks: remaining };
-}
-
-/**
- * Money to the micro-dollar. Token prices are quoted per million tokens, so
- * six decimals is the smallest unit that is real; the rounding is what stops a
- * 2,000-event fold from accumulating `8.610000000000001` in a snapshot.
- */
-const addMoney = (total: number, amount: number): number =>
-  Math.round((total + amount) * 1_000_000) / 1_000_000;
-
-/**
- * Vendor-reported and estimated totals stay apart all the way to the chart
- * (§8). `sumUsage` is the only function allowed to add two usages, and it
- * refuses to add across sources — a mixed total is not a slightly-wrong
- * number, it is a number with no meaning.
- */
-function addUsage(totals: UsageTotals, usage: TokenUsage): UsageTotals {
-  const contributions: TokenUsage[] = [];
-  if (totals.vendorReported !== null) contributions.push(totals.vendorReported);
-  if (totals.estimated !== null) contributions.push(totals.estimated);
-  contributions.push(usage);
-  return sumUsage(contributions);
 }

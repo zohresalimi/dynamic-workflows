@@ -298,6 +298,11 @@ function countingSink(sink: LedgerSink, onEvent: (event: EventRecord) => void): 
       onEvent(event);
       return seq;
     },
+    async appendAll(events) {
+      const seqs = await sink.appendAll(events);
+      for (const event of events) onEvent(event);
+      return seqs;
+    },
     appendIo: (chunk) => sink.appendIo(chunk),
   };
 }

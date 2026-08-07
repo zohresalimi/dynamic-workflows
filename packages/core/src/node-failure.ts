@@ -410,7 +410,7 @@ export interface BudgetBreach {
   readonly actual: number;
 }
 
-const BudgetBreachSchema = z.strictObject({
+export const BudgetBreachSchema = z.strictObject({
   scope: z.enum(['node', 'run']),
   dimension: z.enum(['cost', 'wallclock']),
   limit: z.number().nonnegative(),

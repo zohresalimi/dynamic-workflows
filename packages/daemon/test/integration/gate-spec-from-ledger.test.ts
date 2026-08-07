@@ -35,6 +35,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
+import { sqliteLedgerSink } from './support/ledger.ts';
 
 /** The workspace mock agent, absolute — never a bare name looked up on PATH. */
 const MOCK_AGENT_BIN = fileURLToPath(
@@ -165,22 +166,7 @@ async function runStrippedGateNode(db: ReturnType<typeof openLedger>, epoch: num
     {
       clock: new TestClock(),
       ledger: {
-        async append(event) {
-          const [seq] = appendEvents(db, [
-            {
-              runId: RUN_ID,
-              ts: event.ts,
-              kind: event.kind,
-              v: event.v,
-              epoch,
-              ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-              ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-              ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-              payload: event.payload,
-            },
-          ]);
-          return seq as never;
-        },
+        ...sqliteLedgerSink({ db, runId: RUN_ID, epoch }),
         async appendIo(chunk) {
           chunks.push(Buffer.from(chunk.data).toString('utf8'));
           return 0 as never;
