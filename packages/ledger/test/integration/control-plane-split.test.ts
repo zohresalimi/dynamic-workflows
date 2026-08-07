@@ -466,5 +466,13 @@ suite('the tail query is served by the index (EPIC-03-S13, AC4)', () => {
     } finally {
       db.close();
     }
-  });
+    // Every budget in this spec is already relative to a control measured on
+    // the same box seconds later, so that load cancels. The slice's 30 s
+    // default was the one number left that was not: building 500,000 events and
+    // serving 1,000 interleaved tail queries costs 9.8 s beside a live
+    // integration slice (measured 2026-08-07), which leaves it about 3x from
+    // becoming a flat wall-clock budget by the back door — the exact failure
+    // the ratios above exist to avoid. 60 s matches the sibling spec at the top
+    // of this file, which does the same work for the same reason.
+  }, 60_000);
 });
