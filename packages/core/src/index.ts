@@ -595,6 +595,10 @@ export {
   UpcasterRegistry,
   upcast,
 } from './upcasters.ts';
+// KAR-09.1 — declared reads validated at plan time: the cheapest correctness
+// gate in the system, run on every plan.proposed and plan.patched.
+export type { UndeclaredReadError } from './validate-declared-reads.ts';
+export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
 export type { Finding, Verdict } from './verdict.ts';
 export {
   CRITERION_STATUSES,
