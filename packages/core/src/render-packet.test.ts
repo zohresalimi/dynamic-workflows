@@ -21,7 +21,7 @@ import {
 } from './context-packet.ts';
 import { type EventSeq, EventSeqSchema } from './ids.ts';
 import { buildPinnedSegments, contextSegment } from './pinned-set.ts';
-import { renderPacket } from './render-packet.ts';
+import { FreeProsePinnedSegment, renderPacket } from './render-packet.ts';
 import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
 
 const fixturePath = fileURLToPath(
@@ -179,5 +179,50 @@ suite('render order (AC3)', () => {
     for (const name of ARCHETYPE_NAMES) golden[name] = renderPacket(await archetypePacket(name));
 
     expect(golden).toMatchSnapshot();
+  });
+});
+
+/**
+ * KAR-09.4 AC1, test plan #3 — there is no free-prose path into a
+ * `pinned.constraints` segment.
+ *
+ * `contextSegment` cannot name a `pinned.*` kind and `buildPacket` refuses a
+ * segment that arrives already flagged, so the only hole left is an object
+ * literal wearing a pinned kind without the flag. The renderer is where that
+ * has to be caught, because it is the last thing between a hand-written string
+ * and the prompt.
+ */
+suite('a pinned kind that did not come from the pinned builder (AC1)', () => {
+  const prose: Segment = {
+    id: 'hand-written' as Segment['id'],
+    kind: 'pinned.constraints',
+    sourceEvent: seq(4),
+    contentHash: `sha256-${'0'.repeat(64)}`,
+    tokens: { estimated: 3, method: 'heuristic' },
+    pinned: false,
+    compactable: true,
+    text: 'do not write outside src/checkout',
+  };
+
+  it('is refused rather than rendered', async () => {
+    const packet = await archetypePacket('implement');
+
+    expect(() => renderPacket({ segments: [...packet.segments, prose] })).toThrow(
+      FreeProsePinnedSegment,
+    );
+  });
+
+  it('names the segment and the one producer a pinned segment may come from', async () => {
+    const packet = await archetypePacket('implement');
+
+    expect(() => renderPacket({ segments: [...packet.segments, prose] })).toThrow(
+      /hand-written[\s\S]*buildPinnedSegments/,
+    );
+  });
+
+  it('leaves a real pinned block alone', async () => {
+    const packet = await archetypePacket('implement');
+
+    expect(() => renderPacket(packet)).not.toThrow();
   });
 });

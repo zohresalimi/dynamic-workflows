@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
+import { type Constraint, restateForbidAsAllowOnly } from './constraint.ts';
 import {
   type ContextPacket,
   ContextPacketSchema,
@@ -305,5 +306,54 @@ suite('an unbudgetable pinned set is a plan error (EPIC-09-S8)', () => {
     expect(() => {
       assertPinnedSetFitsBudget(packetOf(pinned));
     }).not.toThrow();
+  });
+});
+
+/**
+ * KAR-09.4 — the restatement is a *build-time transformation*, and it happens
+ * before the digest is taken.
+ *
+ * EPIC-09-S21's third scenario is the one that matters for KAR-09.3's hash
+ * equality: `contentHash` is the hash of the RESTATED text, so re-injection
+ * re-injects the restated bytes. Restating after hashing would make every
+ * re-injection a pin-integrity violation, and the symptom — a node failing on
+ * `safety.pin-integrity-violated` for no visible reason — would point at the
+ * wrong half of the system.
+ */
+suite('restatement happens before hashing (EPIC-09-S21 third scenario)', () => {
+  it("the pinned segment's contentHash is the digest of the restated text", async () => {
+    const segments = await buildPinnedSegments({
+      spec: TaskSpecSchema.parse({ ...approvedSpec(), constraints: [] }),
+      node: NODE,
+      constraints: [
+        // Authored carelessly, as a prohibition object over a subject that does
+        // have a closed positive form.
+        restateForbidAsAllowOnly(
+          { form: 'forbid', subject: 'write-path', forbidden: ['src/shared/**'] },
+          ['src/checkout/**'],
+        ) as Constraint,
+      ],
+      sourceEvent: SOURCE,
+    });
+    const block = segments.find((segment) => segment.id === 'pinned-constraints-safety');
+
+    // The emitted text is the positive form …
+    expect(block?.text).toContain('only write files under src/checkout/**');
+    expect(block?.text).not.toContain('do not write');
+    // … and the digest is the digest of *that*.
+    expect(block?.contentHash).toBe(await contentHash(block?.text ?? ''));
+  });
+
+  it('a prohibition with no closed positive form stays one, and is still hashed as emitted', async () => {
+    const segments = await buildPinnedSegments({
+      spec: TaskSpecSchema.parse({ ...approvedSpec(), constraints: [] }),
+      node: NODE,
+      constraints: [{ form: 'forbid', subject: 'exfiltrate credentials', forbidden: ['.env'] }],
+      sourceEvent: SOURCE,
+    });
+    const block = segments.find((segment) => segment.id === 'pinned-constraints-safety');
+
+    expect(block?.text).toContain('do not exfiltrate credentials: .env');
+    expect(block?.contentHash).toBe(await contentHash(block?.text ?? ''));
   });
 });

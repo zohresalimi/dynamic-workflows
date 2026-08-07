@@ -651,3 +651,107 @@ suite('the estimator is a port, not a call (AC2)', () => {
     expect(heuristicTokens('abcd').method).toBe('heuristic');
   });
 });
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.4
+ * -------------------------------------------------------------------------- */
+
+suite('the build counts what it pinned (AC4, EPIC-09-S22, test plan #4)', () => {
+  it('reports every constraint form, spec prose folded in as require', async () => {
+    // The fixture spec carries two prose constraints, which are `require`.
+    const build = await buildPacket(
+      input({
+        pinned: {
+          spec: approvedSpec(),
+          node: { pathScopes: ['src/checkout/**'], permission: 'worktree' },
+          sourceEvent: seq(9),
+          constraints: [
+            { form: 'allow-only', subject: 'write-path', allowed: ['src/checkout/**'] },
+            { form: 'allow-only', subject: 'branch', allowed: ['DeFlow/r1__implement'] },
+            { form: 'allow-only', subject: 'command', allowed: ['pnpm test'] },
+            { form: 'forbid', subject: 'exfiltrate credentials', forbidden: ['.env'] },
+          ],
+        },
+      }),
+    );
+
+    expect(build.constraints).toEqual({ allowOnly: 3, require: 2, forbid: 1 });
+  });
+
+  it('is zero for every form when nothing was declared', async () => {
+    const spec = TaskSpecSchema.parse({ ...approvedSpec(), constraints: [] });
+    const build = await buildPacket(
+      input({
+        pinned: {
+          spec,
+          node: { pathScopes: ['src/checkout/**'], permission: 'worktree' },
+          sourceEvent: seq(9),
+        },
+      }),
+    );
+
+    expect(build.constraints).toEqual({ allowOnly: 0, require: 0, forbid: 0 });
+  });
+
+  it('renders the forbid last in the pinned block whatever order it was authored in (AC3)', async () => {
+    const build = await buildPacket(
+      input({
+        pinned: {
+          spec: TaskSpecSchema.parse({ ...approvedSpec(), constraints: [] }),
+          node: { pathScopes: ['src/checkout/**'], permission: 'worktree' },
+          sourceEvent: seq(9),
+          constraints: [
+            { form: 'forbid', subject: 'exfiltrate credentials', forbidden: ['.env'] },
+            { form: 'allow-only', subject: 'write-path', allowed: ['src/checkout/**'] },
+            {
+              form: 'require',
+              statement: 'stop after at most 3 fix attempts and escalate to a human',
+            },
+          ],
+        },
+      }),
+    );
+    const block = build.packet.segments.find(
+      (segment) => segment.id === 'pinned-constraints-safety',
+    );
+
+    const lines = (block?.text ?? '').split('\n');
+    expect(lines.at(-1)).toBe('- do not exfiltrate credentials: .env');
+    expect(lines).toContain('- only write files under src/checkout/**');
+  });
+});
+
+suite('the AC6 planning warning (EPIC-09-S24)', () => {
+  const reinjection = { pinReinjectTurns: 8, expectedTurns: 30 };
+
+  it('warns exactly once when the adapter cannot be steered', async () => {
+    const build = await buildPacket(input({ reinjection: { ...reinjection, steering: false } }));
+
+    const warnings = build.warnings.filter((warning) => warning.includes('re-injection'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('implement');
+    expect(warnings[0]).toContain('30');
+  });
+
+  it('does not warn where the adapter advertises mid-session steering', async () => {
+    const build = await buildPacket(input({ reinjection: { ...reinjection, steering: true } }));
+
+    expect(build.warnings).toEqual([]);
+  });
+
+  it('warns for an unadvertised capability exactly as for a refused one', async () => {
+    const build = await buildPacket(
+      input({ reinjection: { ...reinjection, steering: undefined } }),
+    );
+
+    expect(build.warnings.filter((warning) => warning.includes('re-injection'))).toHaveLength(1);
+  });
+
+  it('says nothing when the node is expected to stay inside the interval', async () => {
+    const build = await buildPacket(
+      input({ reinjection: { pinReinjectTurns: 8, expectedTurns: 5, steering: false } }),
+    );
+
+    expect(build.warnings).toEqual([]);
+  });
+});

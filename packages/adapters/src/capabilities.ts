@@ -52,14 +52,16 @@ export interface CapabilityRow {
 /**
  * Where each routing question lives inside an `initialize` response.
  *
- * `terminal` and `mediatedExecution` sit under `_meta` because ACP v1 has no
- * field for either: the client advertises `terminal`, not the agent, and
- * `mediatedExecution` is DeFlow's own bit — the one that decides whether the
- * permission ladder can be enforced at all (docs/09-workspace-and-safety.md
- * §8.3). `_meta` is the extension point the protocol reserves for exactly
- * this, and reading them from there means an adapter that starts advertising
- * them is believed without a code change, while today's five honestly answer
- * "absent".
+ * `terminal`, `mediatedExecution` and `steering` sit under `_meta` because ACP
+ * v1 has no field for any of them: the client advertises `terminal`, not the
+ * agent; `mediatedExecution` is DeFlow's own bit — the one that decides whether
+ * the permission ladder can be enforced at all (docs/09-workspace-and-safety.md
+ * §8.3); and `midSessionSteering` is whether a live session will accept a
+ * further `session/prompt` continuation, which is what an interval re-injection
+ * of the pinned set is delivered as (docs/08-context-and-memory.md §4.2(a)).
+ * `_meta` is the extension point the protocol reserves for exactly this, and
+ * reading them from there means an adapter that starts advertising them is
+ * believed without a code change, while today's five honestly answer "absent".
  */
 export const CAPABILITY_PATHS = {
   loadSession: 'agentCapabilities.loadSession',
@@ -77,6 +79,7 @@ export const CAPABILITY_PATHS = {
   mcpAcp: 'agentCapabilities.mcpCapabilities.acp',
   terminal: 'agentCapabilities._meta.terminal',
   mediatedExecution: 'agentCapabilities._meta.mediatedExecution',
+  steering: 'agentCapabilities._meta.midSessionSteering',
 } as const;
 
 export type CapabilityKey = keyof typeof CAPABILITY_PATHS;
@@ -226,4 +229,20 @@ export function mcpAcp(row: CapabilityRow): boolean | undefined {
  */
 export function mediatedExecution(row: CapabilityRow): boolean | undefined {
   return capability(row, 'mediatedExecution').supported;
+}
+
+/**
+ * KAR-09.4 AC5/AC6 — whether a live session accepts a further `session/prompt`
+ * continuation, which is how an interval re-injection of the pinned set is
+ * delivered.
+ *
+ * `boolean | undefined` for the same reason as the two above, and here the
+ * distinction is what keeps the mechanism honest rather than merely precise: an
+ * unadvertised capability must produce the AC6 planning warning, not a
+ * fabricated injection turn against a method the agent never claimed. Both
+ * `false` and `undefined` therefore route to "warn and keep nodes short"; only
+ * a grant re-injects.
+ */
+export function supportsSteering(row: CapabilityRow): boolean | undefined {
+  return capability(row, 'steering').supported;
 }

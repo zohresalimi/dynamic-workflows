@@ -103,6 +103,28 @@ export interface PinnedBuildInput {
 const bullets = (lines: readonly string[]): string => lines.map((line) => `- ${line}`).join('\n');
 
 /**
+ * Every constraint that reaches the pinned block, in render order.
+ *
+ * The spec's own prose constraints are folded in as `require` statements, which
+ * is the honest reading of a hand-written line: it is a commission-type
+ * constraint until somebody restates it, and §4.2 measured that commission
+ * compliance is the half that does not decay.
+ *
+ * Exported because `buildPacket` counts these (KAR-09.4 AC4) and must count the
+ * same list this renders. Two implementations of "which constraints are pinned"
+ * is how the doctor's forbid ratio and the prompt come to disagree.
+ */
+export function pinnedConstraintsOf(
+  spec: TaskSpec,
+  constraints: readonly Constraint[] = [],
+): readonly Constraint[] {
+  return orderPinnedConstraints([
+    ...spec.constraints.map((statement): Constraint => ({ form: 'require', statement })),
+    ...constraints,
+  ]);
+}
+
+/**
  * The five pinned segments, in §4.1's order, as a pure function of the spec
  * and the node.
  *
@@ -114,10 +136,7 @@ export async function buildPinnedSegments(input: PinnedBuildInput): Promise<read
   const { spec, node } = input;
   const estimate = input.estimate ?? heuristicTokens;
 
-  const constraints = orderPinnedConstraints([
-    ...spec.constraints.map((statement): Constraint => ({ form: 'require', statement })),
-    ...(input.constraints ?? []),
-  ]);
+  const constraints = pinnedConstraintsOf(spec, input.constraints ?? []);
 
   const texts: readonly string[] = [
     `Goal (pinned, verbatim from the approved spec):\n${spec.goal}\n\nNon-goals:\n${

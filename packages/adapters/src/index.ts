@@ -42,6 +42,7 @@ export {
   loadSession,
   mcpAcp,
   mediatedExecution,
+  supportsSteering,
   supportsTerminal,
 } from './capabilities.ts';
 export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';

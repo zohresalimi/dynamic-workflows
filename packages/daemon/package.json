@@ -27,6 +27,7 @@
     "gpt-tokenizer": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "optionalDependencies": {

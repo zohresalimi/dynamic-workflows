@@ -54,6 +54,21 @@ suite('planHash — excludes planHash itself (AC7)', () => {
 });
 
 suite('specHash — excludes approvedBy (AC7)', () => {
+  /**
+   * KAR-09.4 AC8. A gate resolves its criteria from the ledger *by specHash*,
+   * which is only possible if recomputing the digest of a spec that already
+   * carries one reproduces it — exactly as `planHash` omits `planHash`. The
+   * schema in ./task-spec.ts has always said "over everything except this field
+   * and approvedBy"; before this the field itself was hashed, so no document on
+   * record could be verified against its own digest.
+   */
+  it('is unchanged by the specHash field it computes, so a spec verifies against itself', async () => {
+    const spec = { schemaId: 'DeFlow.taskspec.v1', goal: 'ship the thing', approvedBy: null };
+    const identity = await specHash(spec);
+
+    expect(await specHash({ ...spec, specHash: identity })).toBe(identity);
+  });
+
   it('is unchanged when approvedBy changes from null to an approval record', async () => {
     const base = { schemaId: 'DeFlow.taskspec.v1', goal: 'ship the thing' };
     const before = await specHash({ ...base, approvedBy: null });

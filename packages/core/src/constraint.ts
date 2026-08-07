@@ -1,6 +1,5 @@
 /**
- * KAR-09.3 — the `Constraint` union, and the smallest honest slice of the
- * §4.2 restatement that AC9 needs.
+ * KAR-09.3, KAR-09.4 — the `Constraint` union and the §4.2 restatement.
  *
  * Constraints are authored as structured objects rather than prose so that
  * "restate every prohibition as a positive requirement" is a *render choice*
@@ -10,17 +9,20 @@
  * Pinning fixes the compaction half of the decay problem and does nothing at
  * all about that one.
  *
- * **KAR-09.4 owns this mechanism.** What lives here is what KAR-09.3's AC9
- * requires in order to be testable at all: at least three ConstraintRot
- * scenarios exercise the `forbid` → `allow-only` restatement, so the union and
- * the restatement have to exist before the suite can exercise them. KAR-09.4
- * adds the rest — the transformation applied to *every* constraint at build
- * time, the `forbid`/`allow-only` ratio in `DeFlow doctor`, the planning
- * warning, and interval re-injection. The four positive templates below are
- * already spelled the way KAR-09.4 AC2 spells them, so that story extends this
- * file rather than replacing it.
+ * The transformation runs at *build time* and applies to every constraint,
+ * carelessly authored ones included — `buildPinnedSegments` composes each line
+ * through the fixed templates below and there is no free-prose path into a
+ * `pinned.constraints` segment (KAR-09.4 AC1). It also runs **before** hashing,
+ * which is what makes verbatim re-injection possible at all: restating after
+ * the digest was taken would make every re-injection a pin-integrity violation.
  *
- * Verifies: EPIC-09-S20 (restatement half of the background) · AC9
+ * `forbid` survives as the last resort and is *counted*: `countConstraintForms`
+ * and `forbidRatio` are what `DeFlow doctor` reports, because a rising forbid
+ * ratio is a leading indicator of exactly the decay this module exists to
+ * prevent.
+ *
+ * Verifies: EPIC-09-S20, EPIC-09-S21, EPIC-09-S22 · KAR-09.3 AC9 ·
+ * KAR-09.4 AC1, AC2, AC3, AC4
  */
 import { z } from 'zod';
 
@@ -127,4 +129,52 @@ export function orderPinnedConstraints(constraints: readonly Constraint[]): read
       (a, b) => FORM_ORDER[a.constraint.form] - FORM_ORDER[b.constraint.form] || a.index - b.index,
     )
     .map((entry) => entry.constraint);
+}
+
+/** One count per form. Every form is present with a zero rather than omitted:
+ * a missing key and a zero read the same in a report and mean different
+ * things. */
+export interface ConstraintCounts {
+  readonly allowOnly: number;
+  readonly require: number;
+  readonly forbid: number;
+}
+
+/** AC4 — what the build records about what it pinned. */
+export function countConstraintForms(constraints: readonly Constraint[]): ConstraintCounts {
+  return {
+    allowOnly: constraints.filter((constraint) => constraint.form === 'allow-only').length,
+    require: constraints.filter((constraint) => constraint.form === 'require').length,
+    forbid: constraints.filter((constraint) => constraint.form === 'forbid').length,
+  };
+}
+
+/**
+ * `forbid` over `allow-only`, or `null` when nothing positive was declared.
+ *
+ * `null` rather than `Infinity`: a spec with prohibitions and no positive
+ * constraints has no ratio, and printing `Infinity` invites a reader to treat
+ * it as a very large number on the same scale as 3.
+ */
+export function forbidRatio(counts: ConstraintCounts): number | null {
+  return counts.allowOnly === 0 ? null : counts.forbid / counts.allowOnly;
+}
+
+/**
+ * The prohibitions that *do* have a closed positive form — a review smell, not
+ * an error (EPIC-09-S22 fourth scenario).
+ *
+ * The build succeeds either way. What this buys is `DeFlow doctor` being able
+ * to name the constraint rather than only report a number, because "your forbid
+ * ratio is 3" is not actionable and "`forbid write-path` has an `allow-only`
+ * form" is.
+ */
+export function convertibleForbids(
+  constraints: readonly Constraint[],
+): readonly ForbidConstraint[] {
+  const subjects: readonly string[] = ALLOW_ONLY_SUBJECTS;
+  return constraints.filter(
+    (constraint): constraint is ForbidConstraint =>
+      constraint.form === 'forbid' && subjects.includes(constraint.subject),
+  );
 }

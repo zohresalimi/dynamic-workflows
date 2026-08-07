@@ -25,10 +25,22 @@
  * **Nothing leaves here as a thrown `Error`.** Every exit is a `NodeFailure`
  * through `toAdapterFailure`, with a closed reason, a class chosen where the
  * failure happened, a one-line message and evidence as handles (AC7).
+ *
+ * KAR-09.4 adds one loop around that shape and nothing else. A node with no
+ * `turns` budget still sends exactly one `session/prompt`; one with a budget
+ * continues for as long as the agent answers `stopReason: 'max_turn_requests'`,
+ * which is ACP's *"I have more to do"*. Every `pinReinjectTurns` of those turns
+ * the pinned set is appended again, verbatim, on adapters that advertise
+ * mid-session steering — because prohibitions decay with turn depth even when
+ * nothing was compacted (docs/08-context-and-memory.md §4.2). On adapters that
+ * do not advertise it, nothing is attempted: the honest mitigation there is the
+ * packet builder's planning warning and keeping nodes short.
  */
 
 import {
+  afterTurn,
   type CompletedNodeResult,
+  contentHash,
   type EventSeq,
   findPinViolations,
   type Handle,
@@ -36,7 +48,9 @@ import {
   type NodeFailure,
   NodeFailureError,
   PinIntegrityViolation,
+  type ReinjectCounter,
   SchemaIdSchema,
+  startReinjection,
   type TimerHandle,
   type TokenUsage,
 } from '@DeFlow/core';
@@ -44,7 +58,7 @@ import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import * as acp from '@agentclientprotocol/sdk';
 import { admit } from './admission.ts';
-import { CAPABILITY_PATHS } from './capabilities.ts';
+import { CAPABILITY_PATHS, supportsSteering } from './capabilities.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import {
   ACP_PROTOCOL_VERSION,
@@ -94,6 +108,16 @@ export const OUTPUT_INLINE_LIMIT_BYTES = 64 * 1024;
  */
 export const CONTENT_SPILL_BYTES = 256 * 1024;
 
+/**
+ * KAR-09.4 — what a continuation turn says when the caller supplies no text.
+ *
+ * Content-free on purpose. The node's instruction is in the packet and the
+ * constraints are in the pinned block; a continuation that restated either
+ * would be a second copy of pinned bytes that nothing hashes, which is the
+ * drift the whole epic exists to prevent.
+ */
+export const CONTINUATION_PROMPT = 'Continue.';
+
 /** Default cancellation grace, on the injected clock (§9.4 stage 1 → 2). */
 export const CANCEL_GRACE_MS = 5_000;
 /** Default SIGTERM → SIGKILL gap (§9.4 stage 2 → 3). */
@@ -107,6 +131,16 @@ interface TurnState {
   stopReason: acp.StopReason | null;
   /** The concatenated text of every `agent_message_chunk`. */
   agentText: string;
+  /**
+   * Every prompt this node sent, joined — the packet, each continuation and
+   * each re-injection turn (KAR-09.4).
+   *
+   * Accumulated rather than taken from `request.prompt` because a multi-turn
+   * node's input cost is every turn's input, and reporting only the first would
+   * under-count a twenty-turn node by nineteen turns. A single-turn node's
+   * value is byte-identical to `request.prompt`.
+   */
+  promptText: string;
   /** Handles for the oversized tool results this turn spilled, in order and
    * without repeats — the same log twice is one artifact, not two. */
   artifacts: Handle[];
@@ -534,6 +568,7 @@ export async function runAcpNode(
     sessionId: null,
     stopReason: null,
     agentText: '',
+    promptText: '',
     artifacts: [],
     cancelRequested: false,
     escalated: false,
@@ -675,82 +710,166 @@ export async function runAcpNode(
             else ports.signal.addEventListener('abort', onAbort, { once: true });
           }
 
-          const prompt = session.prompt(request.prompt);
-          // The stop is delivered through `nextUpdate()`; this promise exists
-          // only so a rejected prompt ends the loop instead of stranding it.
-          const stranded = prompt.then(
-            () => new Promise<never>(() => {}),
-            (error: unknown) => Promise.reject(error),
-          );
-          stranded.catch(() => {});
           // The child died before the stop frame arrived. Whether that is a
           // crash or a cancellation the agent slept through is decided once, at
-          // the boundary below, from `escalated`.
+          // the boundary below, from `escalated`. Registered once for the whole
+          // session rather than per turn: the process exits at most once, and a
+          // second listener per continuation would leak one per turn.
           const died = exited.then(({ code, signal }) => {
             throw agentExited(code, signal);
           });
           died.catch(() => {});
 
-          for (let pull = 0; ; pull += 1) {
-            ports.onPull?.(pull, transport.bytesRead());
-            const message = await Promise.race([
-              session.nextUpdate(),
-              stranded,
-              died,
-              transport.failed,
-            ]);
+          /** One `session/prompt`, driven to its stop frame. */
+          const pumpTurn = async (text: string): Promise<void> => {
+            turn.promptText += turn.promptText === '' ? text : `\n\n${text}`;
+            const prompt = session.prompt(text);
+            // The stop is delivered through `nextUpdate()`; this promise exists
+            // only so a rejected prompt ends the loop instead of stranding it.
+            const stranded = prompt.then(
+              () => new Promise<never>(() => {}),
+              (error: unknown) => Promise.reject(error),
+            );
+            stranded.catch(() => {});
 
-            if (message.kind === 'stop') {
-              turn.stopReason = message.stopReason;
-              disarm();
-              return;
-            }
+            for (let pull = 0; ; pull += 1) {
+              ports.onPull?.(pull, transport.bytesRead());
+              const message = await Promise.race([
+                session.nextUpdate(),
+                stranded,
+                died,
+                transport.failed,
+              ]);
 
-            // Nothing is read off the child while this is in flight, which is
-            // what turns "await the append" into real backpressure.
-            transport.gate.close();
-            try {
-              const ioChunkSeq = await ledger.appendIo({
-                nodeId: request.nodeId,
-                attempt: request.attempt,
-                stream: 'agent_json',
-                ts: clock.now(),
-                data: Buffer.from(
-                  `${JSON.stringify({ method: 'session/update', params: message.notification })}\n`,
-                  'utf8',
-                ),
-              });
-              const described = describeUpdate(message.update);
-              if (message.update.sessionUpdate === 'agent_message_chunk') {
-                const content = message.update.content;
-                if (content.type === 'text') turn.agentText += content.text;
+              if (message.kind === 'stop') {
+                turn.stopReason = message.stopReason;
+                disarm();
+                return;
               }
 
-              // AC5. A tool result over the ceiling leaves the control plane for
-              // the blob store, and the row keeps a reference to it. The write is
-              // deliberately inside the closed gate: it is filesystem I/O, and
-              // doing it while the reader was free to run would be the read-ahead
-              // this loop exists to prevent.
-              const spilled = spillOversizeResult(message.update, ports.captureEvidence);
-              if (spilled !== null && !turn.artifacts.includes(spilled.handle)) {
-                turn.artifacts.push(spilled.handle);
-              }
-              const progressMessage = [described.message, spilled?.note]
-                .filter(Boolean)
-                .join(' · ');
-
-              lastSeq = await ledger.append(
-                event('node.progress', {
-                  node: request.nodeId,
+              // Nothing is read off the child while this is in flight, which is
+              // what turns "await the append" into real backpressure.
+              transport.gate.close();
+              try {
+                const ioChunkSeq = await ledger.appendIo({
+                  nodeId: request.nodeId,
                   attempt: request.attempt,
-                  phase: described.phase,
-                  ...(progressMessage === '' ? {} : { message: progressMessage }),
-                  ioChunkSeq,
-                }),
-              );
-            } finally {
-              transport.gate.open();
+                  stream: 'agent_json',
+                  ts: clock.now(),
+                  data: Buffer.from(
+                    `${JSON.stringify({ method: 'session/update', params: message.notification })}\n`,
+                    'utf8',
+                  ),
+                });
+                const described = describeUpdate(message.update);
+                if (message.update.sessionUpdate === 'agent_message_chunk') {
+                  const content = message.update.content;
+                  if (content.type === 'text') turn.agentText += content.text;
+                }
+
+                // AC5. A tool result over the ceiling leaves the control plane for
+                // the blob store, and the row keeps a reference to it. The write is
+                // deliberately inside the closed gate: it is filesystem I/O, and
+                // doing it while the reader was free to run would be the read-ahead
+                // this loop exists to prevent.
+                const spilled = spillOversizeResult(message.update, ports.captureEvidence);
+                if (spilled !== null && !turn.artifacts.includes(spilled.handle)) {
+                  turn.artifacts.push(spilled.handle);
+                }
+                const progressMessage = [described.message, spilled?.note]
+                  .filter(Boolean)
+                  .join(' · ');
+
+                lastSeq = await ledger.append(
+                  event('node.progress', {
+                    node: request.nodeId,
+                    attempt: request.attempt,
+                    phase: described.phase,
+                    ...(progressMessage === '' ? {} : { message: progressMessage }),
+                    ioChunkSeq,
+                  }),
+                );
+              } finally {
+                transport.gate.open();
+              }
             }
+          };
+
+          /**
+           * The appended turn that carries the pinned segments verbatim (AC5).
+           *
+           * The text is the pinned slice joined exactly as `renderPacket` joins
+           * segments, so it is byte-identical to the block that went out in the
+           * packet — KAR-09.3 AC4 applies to it, and `findPinViolations` runs
+           * against it before it is sent rather than being trusted because it
+           * was derived. The progress row carries the digest of what was sent,
+           * which is the positive evidence that the re-injection happened *and*
+           * that the bytes were the right ones: "it ran and passed" and "it
+           * never ran" are otherwise indistinguishable in the ledger.
+           */
+          const reinjectPins = async (afterTurnNumber: number): Promise<void> => {
+            const pins = request.pins ?? [];
+            const text = pins.map((pin) => pin.text).join('\n\n');
+            const violations = await findPinViolations({ segments: pins }, text);
+            if (violations.length > 0) throw new PinIntegrityViolation(violations);
+
+            // Written before the side effect, like every other record of what
+            // DeFlow is about to tell the agent.
+            lastSeq = await ledger.append(
+              event('node.progress', {
+                node: request.nodeId,
+                attempt: request.attempt,
+                phase: 'pin.reinjected',
+                message:
+                  `turn ${afterTurnNumber} · re-injected ${pins.length} pinned segments ` +
+                  `verbatim · ${await contentHash(text)}`,
+              }),
+            );
+            await pumpTurn(text);
+          };
+
+          // ── KAR-09.4: the turn loop, and the interval re-injection in it ──
+          //
+          // Turn 1 is the packet. Everything after it exists only because the
+          // agent asked for it: `max_turn_requests` is ACP's *"I have more to
+          // do"*, and DeFlow answers with a continuation until the node's turn
+          // budget runs out. A node with no budget is one prompt, exactly as
+          // before this story.
+          const budget = request.turns;
+          const continuation = budget?.continuation ?? CONTINUATION_PROMPT;
+          // Only a *grant* delivers (EPIC-09-S24's outline): `false` and
+          // "never advertised" both mean no injection turn is attempted, and
+          // the honest mitigation on that path is the packet builder's
+          // planning warning plus keeping nodes short.
+          // An unprobed provider has advertised nothing, which is the same
+          // answer as a refusal here: nothing is attempted.
+          const probed = ports.capabilityRow ?? null;
+          const steerable = probed !== null && supportsSteering(probed) === true;
+          let counter: ReinjectCounter | null =
+            request.reinject !== undefined && (request.pins ?? []).length > 0 && steerable
+              ? startReinjection(request.reinject.everyTurns)
+              : null;
+
+          let turnsRun = 0;
+          /** True when the interval came due at the end of the turn just run. */
+          const runWorkTurn = async (text: string): Promise<boolean> => {
+            await pumpTurn(text);
+            turnsRun += 1;
+            if (counter === null) return false;
+            const tick = afterTurn(counter);
+            counter = tick.counter;
+            return tick.reinject;
+          };
+
+          let due = await runWorkTurn(request.prompt);
+          while (
+            budget !== undefined &&
+            turnsRun < budget.max &&
+            turn.stopReason === 'max_turn_requests' &&
+            !turn.cancelRequested
+          ) {
+            if (due) await reinjectPins(turnsRun);
+            due = await runWorkTurn(continuation);
           }
         };
 
@@ -922,7 +1041,7 @@ export async function runAcpNode(
     status: 'completed',
     output: handle === null ? { text: turn.agentText } : { textHandle: handle, bytes },
     outputSchemaId: request.outputSchemaId ?? AGENT_TURN_SCHEMA_ID,
-    usage: estimateUsage(request.prompt, turn.agentText),
+    usage: estimateUsage(turn.promptText, turn.agentText),
     // No price list is installed at M1; EPIC-14 supplies one. Zero is what
     // this run actually cost the user, and `usage.source` is what says the
     // number beside it is an estimate.

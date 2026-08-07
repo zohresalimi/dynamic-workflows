@@ -26,6 +26,14 @@ export {
 export type { CancelOutcome, CancelPorts, CancelReport } from './cancel.ts';
 export { cancelNode, KILL_VERIFY_MS, TERM_GRACE_MS } from './cancel.ts';
 export { systemClock } from './clock.ts';
+// KAR-09.7 — token accounting in three tiers. `preflightBudget` reserves,
+// `foldCalibrationSample` corrects, `o200kTokenizer` is the only implementation
+// of core's `Tokenizer` port, and `exact-count.ts` is the tier-3 call site that
+// nothing on the subscription path can reach.
+// KAR-09.4 — `.DeFlow/config.yaml` off disk, and the constraint section of
+// `DeFlow doctor` (the command itself is EPIC-18, KAR-18.4).
+export { CONFIG_RELATIVE_PATH, loadWorkspaceConfig } from './config/workspace-config.ts';
+export { renderConstraintReport, workspaceConstraintReport } from './constraints/doctor.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
@@ -456,10 +464,6 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
-// KAR-09.7 — token accounting in three tiers. `preflightBudget` reserves,
-// `foldCalibrationSample` corrects, `o200kTokenizer` is the only implementation
-// of core's `Tokenizer` port, and `exact-count.ts` is the tier-3 call site that
-// nothing on the subscription path can reach.
 export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';
 export { foldCalibrationSample, preflightBudget } from './tokens/calibrate.ts';
 export {

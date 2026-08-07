@@ -46,7 +46,7 @@
  * Verifies: EPIC-09-S6, EPIC-09-S7, EPIC-09-S8, EPIC-09-S9, EPIC-09-S10,
  * EPIC-09-S11, EPIC-09-S12, EPIC-09-S28 · AC1-AC9
  */
-import type { Constraint } from './constraint.ts';
+import { type Constraint, type ConstraintCounts, countConstraintForms } from './constraint.ts';
 import {
   type ContextBudget,
   type ContextPacket,
@@ -61,9 +61,11 @@ import {
   demotionLadder,
   heuristicTokens,
   PinnedSetExceedsBudget,
+  pinnedConstraintsOf,
   type TokenEstimator,
   type UnpinnedSegmentKind,
 } from './pinned-set.ts';
+import { reinjectionPlanningWarning } from './reinjection.ts';
 import { renderPacket } from './render-packet.ts';
 import type { PinnedNodeContext, TaskSpec } from './task-spec.ts';
 
@@ -253,14 +255,43 @@ export interface PacketBuildInput {
   readonly segments?: readonly Segment[];
   /** The `Tokenizer` port. Defaults to the labelled heuristic. */
   readonly estimate?: TokenEstimator;
+  /**
+   * KAR-09.4 AC6 — what the interval re-injection mechanism knows at build
+   * time: the configured interval, whether the target adapter can be steered
+   * mid-session, and what the plan expects this node to cost in turns.
+   *
+   * Absent means the caller has not wired it, and the builder says nothing —
+   * a warning derived from three values none of which were supplied would be
+   * an invention. Present and unsteerable produces exactly one warning.
+   */
+  readonly reinjection?: PacketReinjectionInput;
+}
+
+export interface PacketReinjectionInput {
+  readonly pinReinjectTurns: number;
+  /** From the probed capability manifest. `undefined` — never advertised — is
+   * treated exactly like a refusal (EPIC-09-S24's outline). */
+  readonly steering: boolean | undefined;
+  readonly expectedTurns?: number;
 }
 
 export interface PacketBuild {
   readonly packet: ContextPacket;
-  /** The budget clamp, when one happened. Carried out rather than logged: this
-   * module has no logger and should not acquire one. */
+  /**
+   * The budget clamp and the AC6 planning warning, when either happened.
+   * Carried out rather than logged: this module has no logger and should not
+   * acquire one.
+   */
   readonly warnings: readonly string[];
   readonly demotion: PacketDemotion;
+  /**
+   * KAR-09.4 AC4 — how many constraints of each form this build pinned.
+   *
+   * Recorded per build rather than derived later because the ratio is a leading
+   * indicator: `DeFlow doctor` reports forbid-over-allow-only, and a rising one
+   * is the early warning for exactly the decay §4.2 describes.
+   */
+  readonly constraints: ConstraintCounts;
 }
 
 /**
@@ -383,7 +414,30 @@ export async function buildPacket(input: PacketBuildInput): Promise<PacketBuild>
     segments,
   });
 
-  return { packet, warnings: warning === null ? [] : [warning], demotion: demotion.result };
+  // AC6 — the planning smell, raised beside the budget clamp because both are
+  // facts about this build that only the caller can act on.
+  const planning =
+    input.reinjection === undefined
+      ? null
+      : reinjectionPlanningWarning({
+          node: input.nodeId,
+          pinReinjectTurns: input.reinjection.pinReinjectTurns,
+          steering: input.reinjection.steering,
+          ...(input.reinjection.expectedTurns === undefined
+            ? {}
+            : { expectedTurns: input.reinjection.expectedTurns }),
+        });
+
+  return {
+    packet,
+    warnings: [warning, planning].filter((text): text is string => text !== null),
+    demotion: demotion.result,
+    // The same list `buildPinnedSegments` rendered, counted rather than
+    // re-derived — see `pinnedConstraintsOf`.
+    constraints: countConstraintForms(
+      pinnedConstraintsOf(input.pinned.spec, input.pinned.constraints ?? []),
+    ),
+  };
 }
 
 /**

@@ -31,6 +31,7 @@ export type {
   PacketBuildInput,
   PacketDemotion,
   PacketPinnedInput,
+  PacketReinjectionInput,
   PacketTarget,
 } from './build-packet.ts';
 export {
@@ -62,19 +63,23 @@ export type {
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
-// KAR-09.3 — the Constraint union and the slice of §4.2's restatement AC9
-// needs. KAR-09.4 owns the rest of that mechanism.
+// KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
+// the forbid ratio DeFlow doctor reports.
 export type {
   AllowOnlyConstraint,
   AllowOnlySubject,
   Constraint,
+  ConstraintCounts,
   ForbidConstraint,
 } from './constraint.ts';
 export {
   ALLOW_ONLY_SUBJECTS,
   AllowOnlyConstraintSchema,
   ConstraintSchema,
+  convertibleForbids,
+  countConstraintForms,
   ForbidConstraintSchema,
+  forbidRatio,
   orderPinnedConstraints,
   RequireConstraintSchema,
   restateAsRequirement,
@@ -116,6 +121,16 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 export { decide } from './decide.ts';
 // KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
+// KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
+// run-config constraints are read from. The file itself is read in the daemon.
+export type { DeFlowConfig, ProviderConfig } from './deflow-config.ts';
+export {
+  configuredConstraints,
+  DeFlowConfigSchema,
+  ProviderConfigSchema,
+  parseDeFlowConfig,
+  pinReinjectTurnsFor,
+} from './deflow-config.ts';
 export type { CommandContext, DestructiveReason } from './destructive-command.ts';
 export { DESTRUCTIVE_COMMANDS, destructiveCommand } from './destructive-command.ts';
 // KAR-06.3 — what the effect journal remembers about what was asked for, so a
@@ -258,6 +273,10 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
+// agent's context.
+export type { GateSpecUnavailableReason, LedgerSpec } from './gate-spec.ts';
+export { GateSpecUnavailable, gateSpecFromLedger } from './gate-spec.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -449,6 +468,7 @@ export {
   heuristicTokens,
   PINNED_CONTENT_TYPES,
   PinnedSetExceedsBudget,
+  pinnedConstraintsOf,
   selectCompactionCandidates,
 } from './pinned-set.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
@@ -547,9 +567,19 @@ export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
+// KAR-09.4 §4.2(a) — when the pinned set is due for re-injection, and the
+// planning warning where a turn boundary cannot be steered.
+export type { ReinjectCounter, ReinjectionPlanningInput, TurnTick } from './reinjection.ts';
+export {
+  afterReinjection,
+  afterTurn,
+  PIN_REINJECT_TURNS_DEFAULT,
+  reinjectionPlanningWarning,
+  startReinjection,
+} from './reinjection.ts';
 // KAR-09.3 — the pure render, whose only opinion this story owns is that the
 // pinned block leads it.
-export { renderPacket } from './render-packet.ts';
+export { FreeProsePinnedSegment, renderPacket } from './render-packet.ts';
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
