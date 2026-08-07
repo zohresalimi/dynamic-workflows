@@ -120,7 +120,10 @@ suite('the unit slice stays fast enough to run on every save (AC2)', () => {
   // door.
   it('runs the whole slice in a small multiple of the cost of collecting it', async () => {
     const run = await runVitest(['--project', 'unit']);
-    expect(run.code).toBe(0);
+    // A bare `expect(code).toBe(0)` reports "expected 1 to be +0" and nothing
+    // else: the nested runner's own failure output is inside `run.output`,
+    // where no reporter will ever look. Carry it into the message.
+    expect(run.code, `nested run output:\n${run.output}`).toBe(0);
 
     const control = await runVitestArgv(['list', '--project', 'unit']);
     expect(control.code, 'the control must actually collect the slice').toBe(0);

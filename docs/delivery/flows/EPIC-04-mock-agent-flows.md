@@ -177,7 +177,7 @@ Feature: Scripted chunk cadence
     And the harness awaits a 5 ms simulated durable write between each nextUpdate() call
     When the turn runs to completion
     Then every chunk is delivered exactly once, in order, with none dropped
-    And the harness's peak RSS growth stays under 32 MiB
+    And the whole turn is already buffered by the harness while the consumer is five chunks in
 ```
 
 **Amended 2026-08-05** (EPIC-05 gate): the first scenario used to assert every inter-arrival gap at
@@ -188,11 +188,30 @@ already buffered, moving time out of one gap and into its neighbour — a 39.9 m
 duration, which no amount of reader lateness can shorten, and the per-gap floor is left only to
 catch a burst (measured at **0.1 ms** per gap when `delayMs` is 0, a hundredfold margin).
 
+**Amended 2026-08-07** (EPIC-09 gate): the second scenario used to close on "the harness's peak RSS
+growth stays under 32 MiB", and that assertion could never have caught what it was written for.
+`spawnMockAgent` tees the child's stdout with `child.stdout.on('data')`, and attaching a `data`
+listener *is* flowing mode — the harness drains the pipe as fast as the kernel fills it, so the agent
+is never blocked in `write()` here whatever the session does. Measured: by the time the consumer has
+handled 5 of the 200 chunks the harness has already buffered all **1,682,049** bytes of the turn,
+identical to the byte across runs. The assertion passed because 1.6 MiB of payload cannot reach
+32 MiB, not because backpressure held. What it actually measured was V8 heap growth over the loop's
+~1 s, spread **12.1–17.0 MiB** across identical isolated runs and **38.5 MiB** beside a full suite —
+noise wider than its own budget, which is the red the gate opened on. RSS is now sampled and not
+asserted on, exactly as [EPIC-05-S9's soak](../../../packages/adapters/test/integration/backpressure-soak.test.ts)
+already records for the same quantity at the same layer. The replacement is exact and in bytes of
+stream: the whole turn is in flight while the consumer is five chunks in, which is what makes the
+exactly-once and in-order assertions above a claim about a genuinely stalled reader. Checked red
+against a trickling producer (`delayMs: 3` → 67,632 of 1,682,049 bytes in flight).
+
 **Notes:** The second scenario is the pull loop's whole point. `session.nextUpdate()` is a pull loop, not
 a callback registration — DeFlow does not request the next frame until it has finished with the current
 one, the OS pipe fills at 64 KiB (measured `highWaterMark`, 2026-08-02) and the agent blocks in `write()`
 ([adapter layer §2.3](../../07-provider-adapter-layer.md)). It is also the only legal place to `await` the
-SQLite append. If this scenario shows unbounded RSS growth, someone has reintroduced flowing mode.
+SQLite append. Flowing mode in the *product* is caught where it is observable through the real
+transport and measured in bytes of read-ahead — EPIC-05-S3 · AC4,
+[`pull-loop.test.ts`](../../../packages/adapters/test/integration/pull-loop.test.ts) — not here, where
+the harness is in flowing mode by construction.
 
 ---
 

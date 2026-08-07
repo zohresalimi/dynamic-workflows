@@ -115,8 +115,13 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
       clientCapabilities: CLIENT_CAPABILITIES,
     });
 
+    // Sampled for a human debugging a regression, and deliberately not asserted
+    // on — see the note above the `bufferedEarly` assertion below.
     const baselineRss = process.memoryUsage().rss;
     let peakRss = baselineRss;
+    // How much of the turn the *harness* had already drained off the pipe while
+    // the consumer was still on its fifth chunk.
+    let bufferedEarly = -1;
 
     const session = await connection.agent.buildSession({ cwd, mcpServers: [] }).start();
     const promptDone = session.prompt([{ type: 'text', text: 'flood me' }]);
@@ -132,6 +137,7 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
       // The simulated durable write. This is the only legal place to await a
       // SQLite append, so the loop has to survive one.
       await new Promise((resolve) => setTimeout(resolve, 5));
+      if (texts.length === 5) bufferedEarly = agent.stdout().length;
       peakRss = Math.max(peakRss, process.memoryUsage().rss);
     }
 
@@ -144,7 +150,42 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     );
     for (const text of texts) expect(text.length).toBeGreaterThanOrEqual(8 * 1024);
 
-    expect(peakRss - baselineRss).toBeLessThan(32 * 1024 * 1024);
+    // This spec used to close with `peakRss - baselineRss < 32 MiB`, on the
+    // theory that unbounded RSS growth here would mean someone had reintroduced
+    // flowing mode. It could never have caught that, and it flaked for the
+    // reason it could never catch it.
+    //
+    // `spawnMockAgent` tees the child's stdout with `child.stdout.on('data')`,
+    // and attaching a `data` listener *is* flowing mode: the harness drains the
+    // pipe as fast as the kernel fills it, so the child is never blocked in
+    // `write()` no matter what the session does. Measured 2026-08-07: by the
+    // time the consumer has handled 5 of the 200 chunks, the harness has
+    // already buffered all 1,682,049 bytes of the turn — 100% of it, identical
+    // to the byte across runs. The assertion was passing because 1.6 MiB of
+    // payload cannot reach 32 MiB, not because backpressure was working.
+    //
+    // What it measured instead was V8's heap growth over the loop's ~1 s, whose
+    // run-to-run spread on identical code is wider than its own threshold:
+    // 12.1, 12.7, 13.1, 15.0, 15.6, 16.1, 16.7, 17.0 MiB across isolated runs,
+    // and 38.5 MiB beside a full suite — which is the red this gate opened on.
+    // An assertion whose noise exceeds its budget cannot tell a pass from a
+    // failure, so RSS is sampled here and not asserted on, exactly as
+    // `packages/adapters/test/integration/backpressure-soak.test.ts` records
+    // for the same quantity at the same layer.
+    //
+    // The exact instrument replaces it. `bufferedEarly` is measured in bytes of
+    // stream rather than bytes of heap, and it pins the stimulus this spec is
+    // actually about: the whole turn is in flight and buffered while the
+    // consumer is five chunks in, so the exactly-once and in-order assertions
+    // above are being made against a genuinely stalled reader rather than
+    // against a producer that was politely waiting for it.
+    //
+    // Flowing mode in the *product* is caught where it is observable through
+    // the real transport, quantitatively and in bytes of read-ahead:
+    // `packages/adapters/test/integration/pull-loop.test.ts` (EPIC-05-S3 · AC4).
+    expect(bufferedEarly, 'the consumer never reached its fifth chunk').toBeGreaterThan(0);
+    expect(bufferedEarly).toBe(agent.stdout().length);
+    expect(peakRss).toBeGreaterThanOrEqual(baselineRss);
 
     session.dispose();
     expect(await agent.finish()).toEqual({ code: 0, signal: null });
