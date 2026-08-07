@@ -160,9 +160,9 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     // pipe as fast as the kernel fills it, so the child is never blocked in
     // `write()` no matter what the session does. Measured 2026-08-07: by the
     // time the consumer has handled 5 of the 200 chunks, the harness has
-    // already buffered all 1,682,049 bytes of the turn — 100% of it, identical
-    // to the byte across runs. The assertion was passing because 1.6 MiB of
-    // payload cannot reach 32 MiB, not because backpressure was working.
+    // already drained 1.49–1.68 MB of the turn's 1,682,049 bytes. The assertion
+    // was passing because 1.6 MiB of payload cannot reach 32 MiB, not because
+    // backpressure was working.
     //
     // What it measured instead was V8's heap growth over the loop's ~1 s, whose
     // run-to-run spread on identical code is wider than its own threshold:
@@ -175,16 +175,26 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     //
     // The exact instrument replaces it. `bufferedEarly` is measured in bytes of
     // stream rather than bytes of heap, and it pins the stimulus this spec is
-    // actually about: the whole turn is in flight and buffered while the
-    // consumer is five chunks in, so the exactly-once and in-order assertions
-    // above are being made against a genuinely stalled reader rather than
-    // against a producer that was politely waiting for it.
+    // actually about: the reader runs far ahead of the consumer, so the
+    // exactly-once and in-order assertions above are being made against a
+    // genuinely stalled reader rather than against a producer that was politely
+    // waiting for it.
+    //
+    // The threshold separates two regimes that are three-quarters of a megabyte
+    // apart, and is not a tuned budget. A backpressured pull-loop reader could
+    // hold at most the five frames the consumer has taken plus one 64 KiB pipe
+    // plus a frame in hand — about 110 KiB. This harness holds 1.49–1.68 MB,
+    // the spread being how far the *producer* got before the consumer reached
+    // its fifth chunk, which is the one part of this that load does move: 100%
+    // of the turn idle, 88.7% beside a full suite. 512 KiB sits ~4.6x above
+    // what backpressure permits and ~2.9x below the loaded measurement, so
+    // neither a busy box nor a quiet one can move it across.
     //
     // Flowing mode in the *product* is caught where it is observable through
     // the real transport, quantitatively and in bytes of read-ahead:
     // `packages/adapters/test/integration/pull-loop.test.ts` (EPIC-05-S3 · AC4).
     expect(bufferedEarly, 'the consumer never reached its fifth chunk').toBeGreaterThan(0);
-    expect(bufferedEarly).toBe(agent.stdout().length);
+    expect(bufferedEarly).toBeGreaterThan(512 * 1024);
     expect(peakRss).toBeGreaterThanOrEqual(baselineRss);
 
     session.dispose();

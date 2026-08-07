@@ -177,7 +177,7 @@ Feature: Scripted chunk cadence
     And the harness awaits a 5 ms simulated durable write between each nextUpdate() call
     When the turn runs to completion
     Then every chunk is delivered exactly once, in order, with none dropped
-    And the whole turn is already buffered by the harness while the consumer is five chunks in
+    And the harness has drained over 512 KiB of the turn while the consumer is five chunks in
 ```
 
 **Amended 2026-08-05** (EPIC-05 gate): the first scenario used to assert every inter-arrival gap at
@@ -193,16 +193,21 @@ growth stays under 32 MiB", and that assertion could never have caught what it w
 `spawnMockAgent` tees the child's stdout with `child.stdout.on('data')`, and attaching a `data`
 listener *is* flowing mode — the harness drains the pipe as fast as the kernel fills it, so the agent
 is never blocked in `write()` here whatever the session does. Measured: by the time the consumer has
-handled 5 of the 200 chunks the harness has already buffered all **1,682,049** bytes of the turn,
-identical to the byte across runs. The assertion passed because 1.6 MiB of payload cannot reach
-32 MiB, not because backpressure held. What it actually measured was V8 heap growth over the loop's
-~1 s, spread **12.1–17.0 MiB** across identical isolated runs and **38.5 MiB** beside a full suite —
-noise wider than its own budget, which is the red the gate opened on. RSS is now sampled and not
-asserted on, exactly as [EPIC-05-S9's soak](../../../packages/adapters/test/integration/backpressure-soak.test.ts)
-already records for the same quantity at the same layer. The replacement is exact and in bytes of
-stream: the whole turn is in flight while the consumer is five chunks in, which is what makes the
-exactly-once and in-order assertions above a claim about a genuinely stalled reader. Checked red
-against a trickling producer (`delayMs: 3` → 67,632 of 1,682,049 bytes in flight).
+handled 5 of the 200 chunks the harness has already drained **1.49–1.68 MB** of the turn's
+**1,682,049** bytes. The assertion passed because 1.6 MiB of payload cannot reach 32 MiB, not because
+backpressure held. What it actually measured was V8 heap growth over the loop's ~1 s, spread
+**12.1–17.0 MiB** across identical isolated runs and **38.5 MiB** beside a full suite — noise wider
+than its own budget, which is the red the gate opened on. RSS is now sampled and not asserted on,
+exactly as [EPIC-05-S9's soak](../../../packages/adapters/test/integration/backpressure-soak.test.ts)
+already records for the same quantity at the same layer.
+
+The replacement is exact and in bytes of stream: the reader runs far ahead of the consumer, which is
+what makes the exactly-once and in-order assertions above a claim about a genuinely stalled reader.
+The 512 KiB threshold separates two regimes three-quarters of a megabyte apart rather than tuning a
+budget — a backpressured pull-loop reader could hold at most ~110 KiB (five taken frames, one 64 KiB
+pipe, one frame in hand), this harness holds 1.49–1.68 MB, and the spread is only how far the
+*producer* got before the consumer reached its fifth chunk (100% of the turn idle, 88.7% beside a
+full suite). Checked red against a trickling producer (`delayMs: 3` → 59,224 bytes in flight).
 
 **Notes:** The second scenario is the pull loop's whole point. `session.nextUpdate()` is a pull loop, not
 a callback registration — DeFlow does not request the next frame until it has finished with the current
