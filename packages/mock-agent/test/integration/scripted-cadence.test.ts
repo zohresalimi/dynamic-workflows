@@ -116,12 +116,14 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     });
 
     // Sampled for a human debugging a regression, and deliberately not asserted
-    // on — see the note above the `bufferedEarly` assertion below.
+    // on — see the note above the `peakLead` assertion below.
     const baselineRss = process.memoryUsage().rss;
     let peakRss = baselineRss;
-    // How much of the turn the *harness* had already drained off the pipe while
-    // the consumer was still on its fifth chunk.
-    let bufferedEarly = -1;
+    // The furthest the *harness* ever got ahead of the consumer, in bytes of
+    // stream: what it had drained off the pipe, less what the consumer had
+    // taken, sampled every iteration and kept at its maximum.
+    let peakLead = 0;
+    let consumedBytes = 0;
 
     const session = await connection.agent.buildSession({ cwd, mcpServers: [] }).start();
     const promptDone = session.prompt([{ type: 'text', text: 'flood me' }]);
@@ -132,12 +134,15 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
       if (message.kind === 'stop') break;
       if (message.update.sessionUpdate === 'agent_message_chunk') {
         const content = message.update.content;
-        if (content.type === 'text') texts.push(content.text);
+        if (content.type === 'text') {
+          texts.push(content.text);
+          consumedBytes += content.text.length;
+        }
       }
       // The simulated durable write. This is the only legal place to await a
       // SQLite append, so the loop has to survive one.
       await new Promise((resolve) => setTimeout(resolve, 5));
-      if (texts.length === 5) bufferedEarly = agent.stdout().length;
+      peakLead = Math.max(peakLead, agent.stdout().length - consumedBytes);
       peakRss = Math.max(peakRss, process.memoryUsage().rss);
     }
 
@@ -158,11 +163,10 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     // `spawnMockAgent` tees the child's stdout with `child.stdout.on('data')`,
     // and attaching a `data` listener *is* flowing mode: the harness drains the
     // pipe as fast as the kernel fills it, so the child is never blocked in
-    // `write()` no matter what the session does. Measured 2026-08-07: by the
-    // time the consumer has handled 5 of the 200 chunks, the harness has
-    // already drained 1.49–1.68 MB of the turn's 1,682,049 bytes. The assertion
-    // was passing because 1.6 MiB of payload cannot reach 32 MiB, not because
-    // backpressure was working.
+    // `write()` no matter what the session does — it drains the whole
+    // 1,682,049-byte turn long before the consumer's 200 × 5 ms loop is done.
+    // The assertion was passing because 1.6 MiB of payload cannot reach 32 MiB,
+    // not because backpressure was working.
     //
     // What it measured instead was V8's heap growth over the loop's ~1 s, whose
     // run-to-run spread on identical code is wider than its own threshold:
@@ -173,28 +177,35 @@ suite('EPIC-04-S4 — chunks arrive one at a time, not in one burst', () => {
     // `packages/adapters/test/integration/backpressure-soak.test.ts` records
     // for the same quantity at the same layer.
     //
-    // The exact instrument replaces it. `bufferedEarly` is measured in bytes of
+    // The exact instrument replaces it. `peakLead` is measured in bytes of
     // stream rather than bytes of heap, and it pins the stimulus this spec is
     // actually about: the reader runs far ahead of the consumer, so the
     // exactly-once and in-order assertions above are being made against a
     // genuinely stalled reader rather than against a producer that was politely
     // waiting for it.
     //
-    // The threshold separates two regimes that are three-quarters of a megabyte
-    // apart, and is not a tuned budget. A backpressured pull-loop reader could
-    // hold at most the five frames the consumer has taken plus one 64 KiB pipe
-    // plus a frame in hand — about 110 KiB. This harness holds 1.49–1.68 MB,
-    // the spread being how far the *producer* got before the consumer reached
-    // its fifth chunk, which is the one part of this that load does move: 100%
-    // of the turn idle, 88.7% beside a full suite. 512 KiB sits ~4.6x above
-    // what backpressure permits and ~2.9x below the loaded measurement, so
-    // neither a busy box nor a quiet one can move it across.
+    // It is the *peak* lead over the whole loop, not a sample at a fixed chunk,
+    // and that distinction is the difference between an instrument and a race.
+    // A single reading at the consumer's fifth chunk asks how far the producer
+    // happened to have got in the first ~25 ms, which is exactly the quantity a
+    // loaded box perturbs: it measured 1,682,049 bytes idle, 1,491,808 beside a
+    // full suite, and 518,208 beside a heavier one — a 3x swing on identical
+    // code, and the last of those went red against a 512 KiB floor. The peak is
+    // stable instead because it does not care *when* the producer finishes,
+    // only that it finishes while the consumer is still sleeping its way
+    // through a 1 s loop, which it always does when nothing throttles it.
+    //
+    // The two regimes are an order of magnitude apart. A backpressured pull-loop
+    // reader can never lead by more than one 64 KiB pipe plus a frame in hand —
+    // about 72 KiB, since the child is blocked in `write()` for the rest of the
+    // turn. This harness leads by megabytes. 256 KiB sits ~3.5x above what
+    // backpressure permits and far below what flowing mode produces, so neither
+    // a busy box nor a quiet one can move it across.
     //
     // Flowing mode in the *product* is caught where it is observable through
     // the real transport, quantitatively and in bytes of read-ahead:
     // `packages/adapters/test/integration/pull-loop.test.ts` (EPIC-05-S3 · AC4).
-    expect(bufferedEarly, 'the consumer never reached its fifth chunk').toBeGreaterThan(0);
-    expect(bufferedEarly).toBeGreaterThan(512 * 1024);
+    expect(peakLead).toBeGreaterThan(256 * 1024);
     expect(peakRss).toBeGreaterThanOrEqual(baselineRss);
 
     session.dispose();
