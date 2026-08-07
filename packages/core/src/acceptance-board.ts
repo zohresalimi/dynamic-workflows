@@ -29,9 +29,20 @@
  * **Absence is void.** See `VerdictV2Schema` — a verdict that names no contract
  * is not evidence about this one.
  *
- * Verifies: EPIC-10-S22, EPIC-10-S29 (third scenario) · AC5
+ * **A constraint is a row, not a footnote** (EPIC-10-S21's third scenario). The
+ * spec's prohibitions are part of the contract and no acceptance criterion
+ * speaks to them, so a board built from `acceptanceCriteria` alone is a board on
+ * which a violated prohibition is *absent* while every gate reads green — which
+ * is [docs/08-context-and-memory.md §4.3]'s Security-Recall Divergence rendered
+ * as a UI: *"invisible to standard monitoring, because the commission-type audit
+ * signals stay healthy while the prohibitions rot"*. So `constraints` is a
+ * required input, every constraint gets a criterion of its own, and that row is
+ * decided by a verdict entry naming it or by nothing at all.
+ *
+ * Verifies: EPIC-10-S21 (third scenario), EPIC-10-S22, EPIC-10-S29 (third
+ * scenario) · AC4, AC5
  */
-import { type CriterionId, type NodeId, SchemaIdSchema } from './ids.ts';
+import { type CriterionId, CriterionIdSchema, type NodeId, SchemaIdSchema } from './ids.ts';
 import { type CriterionStatus, VERDICT_V2_SCHEMA_ID, type VerdictV2 } from './verdict.ts';
 
 /** The criterion fields a board row needs. An `AcceptanceCriterion` has both. */
@@ -58,8 +69,10 @@ export interface BoardRow {
   readonly status: BoardStatus;
   /** The gate node whose verdict decided — or invalidated — this row. */
   readonly decidedBy: NodeId | null;
-  /** Why the row reads the way it does, when that needs saying. Non-null
-   * exactly for `revalidating`, where it names the old and the new hash. */
+  /** Why the row reads the way it does, when that needs saying: for
+   * `revalidating`, naming the old and the new hash; and for a constraint no
+   * verdict has spoken to, saying why the green rows beside it are not evidence
+   * about it. Null everywhere else. */
   readonly note: string | null;
 }
 
@@ -89,9 +102,44 @@ export function isVerdictVoid(
   return verdict.specHash !== currentSpecHash;
 }
 
+/**
+ * The prefix of a criterion minted for a constraint. Reserved: a hand-authored
+ * criterion may not use it (see `acceptanceBoard`), because two rows under one
+ * id is precisely how a prohibition comes to inherit somebody else's verdict.
+ */
+export const CONSTRAINT_CRITERION_PREFIX = 'constraint-';
+
+/**
+ * The criterion a constraint is checked under: `constraint-1`, `constraint-2`,
+ * … in the spec's own order.
+ *
+ * Positional rather than derived from the constraint's text, and that is safe
+ * for one reason only: a spec edit that reorders or rewords the constraints
+ * changes `specHash`, and every verdict formed against the old one is void
+ * (AC5). The id is therefore never reused across contracts — within one
+ * contract it is stable, and between contracts nothing survives to be confused.
+ *
+ * The statement is the constraint **verbatim**. A board row is what a human
+ * reads before deciding whether the run honoured its contract, and a paraphrase
+ * there is the same drift F1.5 pins the prompt against.
+ */
+export function constraintCriteria(constraints: readonly string[]): readonly BoardCriterion[] {
+  return constraints.map((statement, index) => ({
+    id: CriterionIdSchema.parse(`${CONSTRAINT_CRITERION_PREFIX}${index + 1}`),
+    statement,
+  }));
+}
+
 export interface AcceptanceBoardInput {
   /** The criteria of the spec at `specHash` — the contract now in force. */
   readonly criteria: readonly BoardCriterion[];
+  /**
+   * The constraints of that same spec, verbatim. Required rather than optional:
+   * a caller who omits them gets a board that is silent about every prohibition
+   * in the contract, and silence beside a column of green rows reads as
+   * approval.
+   */
+  readonly constraints: readonly string[];
   /** Every verdict the run has produced, oldest first. */
   readonly verdicts: readonly VerdictV2[];
   /** The run's current `specHash`, as `run.spec.approved` last recorded it. */
@@ -112,10 +160,27 @@ export interface AcceptanceBoardInput {
  * and the ledger it reads keeps every voided verdict exactly where it was.
  */
 export function acceptanceBoard(input: AcceptanceBoardInput): readonly BoardRow[] {
-  return input.criteria.map((criterion) => row(criterion, input));
+  const constraints = constraintCriteria(input.constraints);
+  const collision = input.criteria.find((criterion) =>
+    constraints.some((entry) => entry.id === criterion.id),
+  );
+  if (collision !== undefined) {
+    throw new Error(
+      `the spec authors an acceptance criterion named '${collision.id}', which collides with the ` +
+        `criterion this board mints for constraint ${collision.id.slice(
+          CONSTRAINT_CRITERION_PREFIX.length,
+        )}. Ids beginning '${CONSTRAINT_CRITERION_PREFIX}' are reserved: two rows under one id ` +
+        'means a verdict entry decides both, and a prohibition would inherit a verdict formed ' +
+        'about something else. Rename the acceptance criterion.',
+    );
+  }
+  return [
+    ...input.criteria.map((criterion) => row(criterion, input)),
+    ...constraints.map((criterion) => row(criterion, input, true)),
+  ];
 }
 
-function row(criterion: BoardCriterion, input: AcceptanceBoardInput): BoardRow {
+function row(criterion: BoardCriterion, input: AcceptanceBoardInput, constraint = false): BoardRow {
   const spoken = input.verdicts.filter((verdict) =>
     verdict.criteria.some((entry) => entry.id === criterion.id),
   );
@@ -143,7 +208,11 @@ function row(criterion: BoardCriterion, input: AcceptanceBoardInput): BoardRow {
       statement: criterion.statement,
       status: 'pending',
       decidedBy: null,
-      note: null,
+      // An unjudged criterion is work nobody has reached yet, and the blank row
+      // says so on its own. An unjudged *constraint* beside a column of green
+      // rows says something else to a reader — it looks covered — so this one
+      // row states the §4.3 rule rather than leaving it to be inferred.
+      note: constraint ? unjudgedConstraintNote(criterion.id) : null,
     };
   }
 
@@ -157,6 +226,22 @@ function row(criterion: BoardCriterion, input: AcceptanceBoardInput): BoardRow {
       `${stale.specHash ?? '(none recorded)'} and the run is now at ${input.specHash}, so that ` +
       'verdict is void. The reviewer formed its judgement against a different contract.',
   };
+}
+
+/**
+ * Why a constraint's row is blank, said out loud.
+ *
+ * The sentence is the whole point of the row existing: *"passing gates are not
+ * evidence that prohibitions were honoured"* (EPIC-10-S21), because
+ * Security-Recall Divergence is invisible to exactly the monitoring a green
+ * board provides.
+ */
+function unjudgedConstraintNote(criterion: CriterionId): string {
+  return (
+    'no gate has spoken to this constraint. A gate that passed on some other criterion is not ' +
+    'evidence that a prohibition was honoured (docs/08-context-and-memory.md §4.3), so this row ' +
+    `stays pending until a verdict entry names ${criterion} and says what it found.`
+  );
 }
 
 /**

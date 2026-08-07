@@ -23,6 +23,7 @@ import {
   assertPinIntegrity,
   buildPacket,
   compilePinnedSegments,
+  constraintCriteria,
   findPinViolations,
   gateSpecFromLedger,
   initialRunState,
@@ -34,7 +35,7 @@ import {
 } from '@DeFlow/core';
 import { appendEvents, openLedger, readRange, replayAll } from '@DeFlow/ledger';
 import { it, makeRepo } from '@DeFlow/testkit';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, describe as suite } from 'vitest';
 import { approveSpec, editSpec } from '../../src/spec/gate.ts';
@@ -88,6 +89,44 @@ async function packetFor(
   });
   return build.packet;
 }
+
+/** A gate's pass, sealed against the contract in force. The gate defaults to
+ * the codemod review because that is the one EPIC-10-S22's cases re-run; the
+ * parameter is what lets EPIC-10-S21's third scenario stand up a whole green
+ * board of *different* deterministic gates. */
+const passingVerdict = (specHash: string, criterion: string, gate = 'codemod-review'): VerdictV2 =>
+  verdictAgainst(
+    {
+      schemaId: 'DeFlow.verdict.v2',
+      outcome: 'pass',
+      gate,
+      evaluatedNode: 'node-agent',
+      by: { node: `gate-${gate}`, provider: 'claude-code', model: 'the-reviewing-model' },
+      criteria: [{ id: criterion, status: 'satisfied' }],
+      findings: [],
+      summary: 'the criterion holds',
+    } as VerdictV2,
+    specHash,
+  );
+
+const recordVerdict = (db: Db, verdict: VerdictV2): void => {
+  appendEvents(db, [
+    {
+      runId: SPEC_RUN,
+      ts: T0,
+      kind: 'gate.evaluated',
+      v: 2,
+      epoch: 1,
+      nodeId: verdict.by.node,
+      payload: { gate: verdict.gate, node: 'node-agent', verdict },
+    },
+  ]);
+};
+
+const verdictsOf = (db: Db): readonly VerdictV2[] =>
+  events(db)
+    .filter((event) => event.kind === 'gate.evaluated')
+    .map((event) => (event.payload as { verdict: VerdictV2 }).verdict);
 
 // ── EPIC-10-S20 / test plan #4 — pinned first, everywhere ────────────────────
 
@@ -371,41 +410,166 @@ suite('EPIC-10-S21 — the gate is judged against the pinned spec, not the code 
   });
 });
 
-// ── EPIC-10-S22 / EPIC-10-S29 / test plan #7 — the void verdict ──────────────
+/**
+ * EPIC-10-S21's third scenario — *"passing gates are not evidence that
+ * prohibitions were honoured"*.
+ *
+ * The fixture spec's one constraint **is** the scenario's prohibition, in the
+ * fixture's own wording for the shared ui package: *"must not change the public
+ * API of the shared ui package"*. What the run then does is change it — the
+ * barrel drops an export — while every deterministic gate the plan has goes
+ * green, because none of them was ever asked about the constraint.
+ *
+ * That is Security-Recall Divergence exactly as [08 §4.3] states it: *"invisible
+ * to standard monitoring, because the commission-type audit signals stay healthy
+ * while the prohibitions rot"*. A green board is the signal that stays healthy,
+ * so the board must not be allowed to speak for the constraint at all.
+ */
+const UI_BARREL = 'packages/ui/src/index.ts';
 
-const passingVerdict = (specHash: string, criterion: string): VerdictV2 =>
-  verdictAgainst(
-    {
-      schemaId: 'DeFlow.verdict.v2',
-      outcome: 'pass',
-      gate: 'codemod-review',
-      evaluatedNode: 'node-agent',
-      by: { node: 'gate-codemod-review', provider: 'claude-code', model: 'the-reviewing-model' },
-      criteria: [{ id: criterion, status: 'satisfied' }],
-      findings: [],
-      summary: 'the criterion holds',
-    } as VerdictV2,
+const UI_PUBLIC_API =
+  "export { Button } from './Button.vue';\nexport { Modal } from './Modal.vue';\n";
+
+/** The same barrel after the run: `Modal` is gone, which is a public API change
+ * whatever the test suite says about it. */
+const UI_PUBLIC_API_DRIFTED = "export { Button } from './Button.vue';\n";
+
+/** The deterministic gates the plan actually has, and the criterion each one
+ * decides. `ac-3` is deliberately absent: the fixture marks it unverifiable and
+ * routes it to a human, so a "deterministic gate" that passed it would be the
+ * test cheating on the scenario's own premise. */
+const DETERMINISTIC_GATES: readonly (readonly [string, string])[] = [
+  ['ac-1', 'unit-tests'],
+  ['ac-2', 'typecheck'],
+];
+
+/**
+ * The run in the state the scenario describes: approved, a real worktree whose
+ * real `git diff` changes the public API, and every deterministic gate green at
+ * the contract in force.
+ */
+async function driftedRunWithGreenGates(tmp: string) {
+  const approved = await approvedRun(tmp);
+  const repo = await makeRepo({ dir: join(tmp, 'work'), files: { [UI_BARREL]: UI_PUBLIC_API } });
+  await writeFile(join(repo.dir, UI_BARREL), UI_PUBLIC_API_DRIFTED, 'utf8');
+
+  for (const [criterion, gate] of DETERMINISTIC_GATES) {
+    recordVerdict(approved.db, passingVerdict(approved.specHash, criterion, gate));
+  }
+
+  return { ...approved, diff: await repo.git('diff', '--unified=0') };
+}
+
+const boardFor = (
+  spec: Awaited<ReturnType<typeof approvedRun>>['spec'],
+  db: Db,
+  specHash: string,
+) =>
+  acceptanceBoard({
+    criteria: spec.acceptanceCriteria,
+    constraints: spec.constraints,
+    verdicts: verdictsOf(db),
     specHash,
-  );
+  });
 
-const recordVerdict = (db: Db, verdict: VerdictV2): void => {
-  appendEvents(db, [
-    {
-      runId: SPEC_RUN,
-      ts: T0,
-      kind: 'gate.evaluated',
-      v: 2,
-      epoch: 1,
-      nodeId: 'gate-codemod-review',
-      payload: { gate: 'codemod-review', node: 'node-agent', verdict },
-    },
-  ]);
-};
+suite('EPIC-10-S21 — green gates are not evidence a prohibition held (AC4)', () => {
+  it('does not report the constraint satisfied on the strength of the green gates', async ({
+    tmp,
+  }) => {
+    const { db, spec, specHash, diff } = await driftedRunWithGreenGates(tmp);
 
-const verdictsOf = (db: Db): readonly VerdictV2[] =>
-  events(db)
-    .filter((event) => event.kind === 'gate.evaluated')
-    .map((event) => (event.payload as { verdict: VerdictV2 }).verdict);
+    // The premise, not assumed: the prohibition is in the spec, and the diff
+    // breaks it.
+    expect(spec.constraints).toContain('must not change the public API of the shared ui package');
+    expect(diff).toContain("-export { Modal } from './Modal.vue';");
+
+    const board = boardFor(spec, db, specHash);
+    const statusOf = (criterion: string) =>
+      board.find((row) => row.criterion === criterion)?.status;
+
+    // Green everywhere a gate spoke.
+    expect(statusOf('ac-1')).toBe('satisfied');
+    expect(statusOf('ac-2')).toBe('satisfied');
+
+    // And not one word of that is about the constraint. Its row exists, it is
+    // not green, and it says why a reader must not read the green rows as
+    // covering it.
+    const row = board.find((entry) => entry.criterion === 'constraint-1');
+    expect(row?.statement).toBe(spec.constraints[0]);
+    expect(row?.status).toBe('pending');
+    expect(row?.decidedBy).toBeNull();
+    expect(row?.note).toContain('not evidence that a prohibition was honoured');
+
+    // `ac-3` is pending too — nobody has reviewed it — and carries no such
+    // note. The two kinds of blank are different and the board says which.
+    expect(statusOf('ac-3')).toBe('pending');
+    expect(board.find((entry) => entry.criterion === 'ac-3')?.note).toBeNull();
+
+    // The run-level fold agrees with the board: what the run would report as
+    // satisfied at `run.completed` is the two green criteria and nothing else.
+    const state = replayAll(db).runs.get(SPEC_RUN) ?? initialRunState();
+    expect(state.criteriaSatisfied).toEqual(['ac-1', 'ac-2']);
+
+    // No passing verdict so much as mentions it, which is why none of them
+    // could have decided it.
+    const spokenTo = verdictsOf(db).flatMap((verdict) =>
+      verdict.criteria.map((entry) => entry.id as string),
+    );
+    expect(spokenTo).not.toContain('constraint-1');
+  });
+
+  /**
+   * The second half of the Then: *"the constraint is checked explicitly, with
+   * its own criterion and its own verdict entry"*. The check reads the
+   * constraint from the ledger — never from the worktree, which is the thing
+   * under suspicion — judges the real diff against it, and files a verdict
+   * entry of its own. Only then does the row move.
+   */
+  it('is checked explicitly, in its own criterion and its own verdict entry', async ({ tmp }) => {
+    const { db, spec, specHash, diff } = await driftedRunWithGreenGates(tmp);
+
+    const resolved = await gateSpecFromLedger(events(db));
+    const criterion = constraintCriteria(resolved.spec.constraints)[0];
+    expect(criterion?.statement).toBe(resolved.spec.constraints[0]);
+
+    // The gate's own judgement, against the diff and against the constraint as
+    // the ledger holds it.
+    const honoured = !diff.includes("-export { Modal } from './Modal.vue';");
+    recordVerdict(
+      db,
+      verdictAgainst(
+        {
+          schemaId: 'DeFlow.verdict.v2',
+          outcome: 'fail',
+          gate: 'public-api-check',
+          evaluatedNode: 'node-agent',
+          by: {
+            node: 'gate-public-api-check',
+            provider: 'claude-code',
+            model: 'the-reviewing-model',
+          },
+          criteria: [{ id: criterion?.id, status: honoured ? 'satisfied' : 'unsatisfied' }],
+          findings: [],
+          summary: `judged against: ${criterion?.statement ?? ''}`,
+        } as VerdictV2,
+        resolved.specHash,
+      ),
+    );
+
+    const row = boardFor(spec, db, specHash).find((entry) => entry.criterion === 'constraint-1');
+
+    expect(row?.status).toBe('unsatisfied');
+    expect(row?.decidedBy).toBe('gate-public-api-check');
+    expect(row?.note).toBeNull();
+
+    // The green gates are still green, and the run still does not count the
+    // constraint as satisfied — now because it was checked and failed.
+    const state = replayAll(db).runs.get(SPEC_RUN) ?? initialRunState();
+    expect(state.criteriaSatisfied).toEqual(['ac-1', 'ac-2']);
+  });
+});
+
+// ── EPIC-10-S22 / EPIC-10-S29 / test plan #7 — the void verdict ──────────────
 
 suite('EPIC-10-S22 — a verdict at a stale specHash is void and the gate re-runs (AC5)', () => {
   it('excludes the verdict from the board, names both hashes, and re-schedules the gate', async ({
@@ -415,11 +579,7 @@ suite('EPIC-10-S22 — a verdict at a stale specHash is void and the gate re-run
     recordVerdict(db, passingVerdict(specHash, 'ac-2'));
 
     // Green while the contract holds.
-    const before = acceptanceBoard({
-      criteria: spec.acceptanceCriteria,
-      verdicts: verdictsOf(db),
-      specHash,
-    });
+    const before = boardFor(spec, db, specHash);
     expect(before.find((row) => row.criterion === 'ac-2')?.status).toBe('satisfied');
 
     // The operator sharpens ac-2 mid-run. `editSpec` re-approves at B in the
@@ -440,11 +600,7 @@ suite('EPIC-10-S22 — a verdict at a stale specHash is void and the gate re-run
 
     expect(amendment.to).not.toBe(specHash);
 
-    const after = acceptanceBoard({
-      criteria: amendment.spec.acceptanceCriteria,
-      verdicts: verdictsOf(db),
-      specHash: amendment.to,
-    });
+    const after = boardFor(amendment.spec, db, amendment.to);
     const row = after.find((entry) => entry.criterion === 'ac-2');
 
     // Not blank and not green — "re-running against the amended spec".

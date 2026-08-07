@@ -10,16 +10,26 @@
  * state beside green and blank, and these tests are what stop it collapsing
  * back into two.
  *
- * Verifies: EPIC-10-S22, EPIC-10-S29 (third scenario) · AC5
+ * The second half of this file is EPIC-10-S21's third scenario, which is the
+ * same mechanism pointed at the other kind of failure: a board that is green
+ * everywhere a gate spoke says *nothing* about a prohibition no gate was asked
+ * to check. Security-Recall Divergence is *"invisible to standard monitoring,
+ * because the commission-type audit signals stay healthy while the prohibitions
+ * rot"* (docs/08-context-and-memory.md §4.3), so a constraint gets a row of its
+ * own and that row is only ever decided by a verdict entry that names it.
+ *
+ * Verifies: EPIC-10-S21 (third scenario), EPIC-10-S22, EPIC-10-S29 (third
+ * scenario) · AC5
  */
 import { expect, it, describe as suite } from 'vitest';
 import {
   acceptanceBoard,
+  constraintCriteria,
   isVerdictVoid,
   staleGateNodes,
   verdictAgainst,
 } from './acceptance-board.ts';
-import { CriterionIdSchema, GateIdSchema, NodeIdSchema } from './ids.ts';
+import { CriterionIdSchema, GateIdSchema, NodeIdSchema, ProviderIdSchema } from './ids.ts';
 import type { VerdictV2 } from './verdict.ts';
 
 const HASH_A = `sha256-${'a'.repeat(64)}`;
@@ -70,6 +80,7 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
   it('renders a criterion decided at the current hash as satisfied', () => {
     const board = acceptanceBoard({
       criteria: CRITERIA,
+      constraints: [],
       verdicts: [verdict({ specHash: HASH_A })],
       specHash: HASH_A,
     });
@@ -85,6 +96,7 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
   it('renders a criterion whose only verdict is stale as re-running, naming both hashes', () => {
     const board = acceptanceBoard({
       criteria: CRITERIA,
+      constraints: [],
       verdicts: [verdict({ specHash: HASH_A })],
       specHash: HASH_B,
     });
@@ -99,6 +111,7 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
   it('does not count a void pass toward the satisfied set', () => {
     const board = acceptanceBoard({
       criteria: CRITERIA,
+      constraints: [],
       verdicts: [verdict({ specHash: HASH_A })],
       specHash: HASH_B,
     });
@@ -108,6 +121,7 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
   it('re-approving an unchanged spec voids nothing', () => {
     const board = acceptanceBoard({
       criteria: CRITERIA,
+      constraints: [],
       verdicts: [verdict({ specHash: HASH_A })],
       specHash: HASH_A,
     });
@@ -128,7 +142,12 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
         { id: CriterionIdSchema.parse('ac-8'), status: 'satisfied' },
       ],
     });
-    const board = acceptanceBoard({ criteria: CRITERIA, verdicts: [wide], specHash: HASH_B });
+    const board = acceptanceBoard({
+      criteria: CRITERIA,
+      constraints: [],
+      verdicts: [wide],
+      specHash: HASH_B,
+    });
 
     expect(board.map((row) => row.status)).toEqual(['revalidating', 'revalidating']);
   });
@@ -142,6 +161,7 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
   it('lets a re-run at the current hash decide the row', () => {
     const board = acceptanceBoard({
       criteria: CRITERIA,
+      constraints: [],
       verdicts: [verdict({ specHash: HASH_A }), verdict({ specHash: HASH_B })],
       specHash: HASH_B,
     });
@@ -150,5 +170,134 @@ suite('the acceptance board excludes void verdicts (AC5, EPIC-10-S22)', () => {
     expect(
       staleGateNodes([verdict({ specHash: HASH_A }), verdict({ specHash: HASH_B })], HASH_B),
     ).toEqual([]);
+  });
+});
+
+// ── EPIC-10-S21, third scenario — a green board is not evidence ──────────────
+
+const PROHIBITION = 'must not change the public API of the shared ui package';
+const SECOND_CONSTRAINT = 'run only the commands listed in the allowed-commands set';
+
+/** Every acceptance criterion green, decided by a gate at the hash in force —
+ * the "every deterministic gate passes" half of the scenario. */
+const ALL_GREEN = verdict({
+  criteria: CRITERIA.map((criterion) => ({ id: criterion.id, status: 'satisfied' as const })),
+  summary: 'every criterion holds.',
+});
+
+suite('a prohibition is checked explicitly, never inferred from green gates (EPIC-10-S21)', () => {
+  it('gives every constraint its own criterion, carrying the constraint verbatim', () => {
+    const criteria = constraintCriteria([PROHIBITION, SECOND_CONSTRAINT]);
+
+    expect(criteria.map((criterion) => criterion.id)).toEqual(['constraint-1', 'constraint-2']);
+    expect(criteria.map((criterion) => criterion.statement)).toEqual([
+      PROHIBITION,
+      SECOND_CONSTRAINT,
+    ]);
+  });
+
+  /**
+   * The scenario, stated as the board states it: every gate passed, and the
+   * constraint's row is *not* satisfied. `pending` and not green is the whole
+   * claim — a run that reported it satisfied here would be reporting on the
+   * strength of gates that were never asked about it.
+   */
+  it('leaves the constraint pending while every acceptance criterion is green', () => {
+    const board = acceptanceBoard({
+      criteria: CRITERIA,
+      constraints: [PROHIBITION],
+      verdicts: [ALL_GREEN],
+      specHash: HASH_A,
+    });
+
+    expect(board.filter((row) => row.criterion.startsWith('ac-')).map((row) => row.status)).toEqual(
+      ['satisfied', 'satisfied'],
+    );
+
+    const row = board.find((entry) => entry.criterion === 'constraint-1');
+    expect(row?.statement).toBe(PROHIBITION);
+    expect(row?.status).toBe('pending');
+    expect(row?.decidedBy).toBeNull();
+  });
+
+  /** A blank row beside two green ones reads as "nobody got to it yet", which
+   * is exactly the misreading §4.3 warns about. The row says why. */
+  it('says on the row why the green gates are not evidence about it', () => {
+    const board = acceptanceBoard({
+      criteria: CRITERIA,
+      constraints: [PROHIBITION],
+      verdicts: [ALL_GREEN],
+      specHash: HASH_A,
+    });
+    const row = board.find((entry) => entry.criterion === 'constraint-1');
+
+    expect(row?.note).toContain('not evidence that a prohibition was honoured');
+    expect(row?.note).toContain('constraint-1');
+  });
+
+  /** The other half of the Then: *"the constraint is checked explicitly, with
+   * its own criterion and its own verdict entry"*. Only an entry naming the
+   * constraint's criterion moves the row — in either direction. */
+  it('is decided only by a verdict entry that names the constraint’s criterion', () => {
+    const checked = verdict({
+      gate: GateIdSchema.parse('public-api-check'),
+      by: {
+        node: NodeIdSchema.parse('gate-public-api-check'),
+        provider: ProviderIdSchema.parse('claude-code'),
+        model: 'sonnet',
+      },
+      outcome: 'fail',
+      criteria: [{ id: CriterionIdSchema.parse('constraint-1'), status: 'unsatisfied' }],
+      summary: 'the diff removes an export from the shared ui package.',
+    });
+
+    const board = acceptanceBoard({
+      criteria: CRITERIA,
+      constraints: [PROHIBITION],
+      verdicts: [ALL_GREEN, checked],
+      specHash: HASH_A,
+    });
+    const row = board.find((entry) => entry.criterion === 'constraint-1');
+
+    expect(row?.status).toBe('unsatisfied');
+    expect(row?.decidedBy).toBe('gate-public-api-check');
+    expect(row?.note).toBeNull();
+  });
+
+  /** Constraint rows are rows: the void rule reaches them exactly as it reaches
+   * the criteria, or a spec edit would leave a prohibition green on a verdict
+   * formed against a contract that no longer exists. */
+  it('voids a constraint’s verdict when the spec moves under it', () => {
+    const checked = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('constraint-1'), status: 'satisfied' }],
+      specHash: HASH_A,
+    });
+
+    const board = acceptanceBoard({
+      criteria: CRITERIA,
+      constraints: [PROHIBITION],
+      verdicts: [checked],
+      specHash: HASH_B,
+    });
+
+    expect(board.find((entry) => entry.criterion === 'constraint-1')?.status).toBe('revalidating');
+  });
+
+  /**
+   * Two rows with one id is how a constraint quietly inherits somebody else's
+   * verdict. Refused rather than resolved: at that point no reader can tell
+   * which row a verdict entry spoke to.
+   */
+  it('refuses a spec whose own criterion id collides with a constraint row', () => {
+    expect(() =>
+      acceptanceBoard({
+        criteria: [
+          { id: CriterionIdSchema.parse('constraint-1'), statement: 'a hand-written criterion' },
+        ],
+        constraints: [PROHIBITION],
+        verdicts: [],
+        specHash: HASH_A,
+      }),
+    ).toThrow(/constraint-1/);
   });
 });

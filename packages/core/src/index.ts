@@ -31,6 +31,8 @@ export type {
 } from './acceptance-board.ts';
 export {
   acceptanceBoard,
+  CONSTRAINT_CRITERION_PREFIX,
+  constraintCriteria,
   isVerdictVoid,
   staleGateNodes,
   verdictAgainst,
