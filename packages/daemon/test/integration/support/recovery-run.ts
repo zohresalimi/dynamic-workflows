@@ -138,6 +138,10 @@ export function seedRecoveryRun(db: Db, options: SeedOptions = {}): void {
       cwd: REPO,
       repo: { head: 'e83c516', branch: 'main' },
     }),
+    // KAR-10.3 AC3 — F1.3's gate. `decide()` admits nothing until the ledger
+    // carries an approval, so a fixture for a run that is genuinely executing
+    // has to carry the row every executing run has.
+    draft('run.spec.approved', { specHash: SPEC_HASH, by: 'ui' }),
     draft('plan.proposed', {
       version: 1,
       planHash: PLAN_HASH,

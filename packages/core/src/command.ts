@@ -128,6 +128,27 @@ export const WAKE_REASONS = ['backoff', 'human_gate', 'poll', 'quota'] as const;
 export type WakeReason = (typeof WAKE_REASONS)[number];
 
 /**
+ * `wake_at` for a wait that has **no deadline** — the largest instant a
+ * JavaScript `Date` can hold (8.64e15 ms, ECMA-262 §21.4.1.1), comfortably
+ * inside SQLite's `INTEGER` and inside `Number.isSafeInteger`.
+ *
+ * KAR-10.3's F1.3 gate is the first wait of this shape: §1.3 is explicit that a
+ * six-hour think about a spec is a legitimate thing to do, so the gate declares
+ * no timeout, and EPIC-10-S16's third scenario asserts that six hours pass with
+ * nothing firing. But the row still has to exist — it is what makes the
+ * suspension durable and what answers *"why is this node asleep"* in the
+ * timeline — and `node_wake.wake_at` is `INTEGER NOT NULL` in a shipped,
+ * content-hash-pinned migration.
+ *
+ * So the row is real and its due time is never: no `now` a clock will produce
+ * satisfies `wake_at <= now`, and the ticker's `sleepHint` caps at one second
+ * regardless, so it cannot become a 273-million-year timer either. The
+ * alternative — a nullable column — is migration 0002 and a different
+ * `WHERE wake_at <= ?` for every reader, to express what this constant says.
+ */
+export const NO_DEADLINE_WAKE_AT = 8_640_000_000_000_000;
+
+/**
  * Write the `node_wake` row that replaces `setTimeout` for every wait in the
  * system, from a 2-second backoff to a 30-day human gate (§10.1).
  *

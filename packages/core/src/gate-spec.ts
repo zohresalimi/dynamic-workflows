@@ -28,6 +28,7 @@
  * Verifies: EPIC-09-S25 · AC8
  */
 import type { Event } from './events.ts';
+import { sealTaskSpec } from './framing.ts';
 import { specHash } from './hash.ts';
 import type { AcceptanceCriterion, TaskSpec } from './task-spec.ts';
 
@@ -65,10 +66,19 @@ export async function gateSpecFromLedger(events: readonly Event[]): Promise<Ledg
   let spec: TaskSpec | null = null;
   let approved: string | null = null;
 
-  // Last write wins on both, in `seq` order as the ledger hands them over: a
-  // re-approval is a later approval, not a second opinion.
+  // Last write wins on all three, in `seq` order as the ledger hands them over:
+  // a re-approval is a later approval, not a second opinion.
+  //
+  // KAR-10.3 AC8 — `spec.amended` moves the spec on record. Without this line an
+  // amended run would reconcile its *original* document against an approval of
+  // the amended one and refuse every verdict as a hash mismatch, which is a gate
+  // that stops working the moment somebody sharpens a criterion. The document is
+  // re-sealed rather than patched into place because `sealTaskSpec` is the one
+  // door a `TaskSpec` comes through (./framing.ts), and a second way to build
+  // one is a second thing the digest can disagree with.
   for (const event of events) {
     if (event.kind === 'run.created') spec = event.payload.spec;
+    if (event.kind === 'spec.amended') spec = await sealTaskSpec(event.payload.document);
     if (event.kind === 'run.spec.approved') approved = event.payload.specHash;
   }
 

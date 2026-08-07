@@ -199,6 +199,48 @@ function contentType(id: string): PinnedContentType {
   return type;
 }
 
+export interface SpecPinnedInput {
+  readonly spec: TaskSpec;
+  /** The run's safety constraints (F5.6); the spec's own prose constraints are
+   * folded in by `pinnedConstraintsOf`. */
+  readonly constraints?: readonly Constraint[];
+  readonly sourceEvent: EventSeq;
+  readonly estimate?: TokenEstimator;
+}
+
+/**
+ * KAR-10.3 AC4 — the pinned rows that are a function of the **approved spec
+ * alone**: three of the five, minted at approval time.
+ *
+ * `pinned-pathscope` and `pinned-constraints-permission` are the other two and
+ * they are deliberately absent, for the same reason `buildFramingPinnedSegments`
+ * omits three: they are properties of a *node* — its declared write scope and
+ * its permission level — and at the moment the operator approves there is no
+ * plan and therefore no node. Filling them in with the run's ceiling would put
+ * a digest on the ledger under the heading "verbatim from the approved spec"
+ * that no packet will ever match, which is precisely the failure
+ * `assertPinIntegrity` exists to catch.
+ *
+ * Built by the same `pinnedSegment` every other pinned row goes through, so the
+ * single-producer rule (rule 1 in the header) still holds and the bytes a packet
+ * renders are the bytes these digests are of.
+ */
+export async function buildSpecPinnedSegments(input: SpecPinnedInput): Promise<readonly Segment[]> {
+  const all = await buildPinnedSegments({
+    spec: input.spec,
+    node: { pathScopes: [], permission: 'read' },
+    ...(input.constraints === undefined ? {} : { constraints: input.constraints }),
+    sourceEvent: input.sourceEvent,
+    ...(input.estimate === undefined ? {} : { estimate: input.estimate }),
+  });
+  const specDerived: readonly string[] = [
+    'pinned-spec-goal',
+    'pinned-spec-criteria',
+    'pinned-constraints-safety',
+  ];
+  return all.filter((segment) => specDerived.includes(segment.id));
+}
+
 export interface FramingPinnedInput {
   /** The run's safety constraints (F5.6). */
   readonly constraints: readonly Constraint[];

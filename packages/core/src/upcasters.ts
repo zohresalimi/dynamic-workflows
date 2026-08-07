@@ -33,6 +33,7 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   PlanPatchProposedSchema,
+  RunNeedsHumanSchema,
 } from './event-payloads.ts';
 
 /** A single hop: version `n` in, version `n + 1` out. Pure. */
@@ -448,6 +449,27 @@ registerUpcaster({
         addsWriteCapability: false,
       },
     },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `run.needs_human` v1 → v2 (KAR-10.3). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `reason` by one member, `spec-revalidation`, and changes nothing
+ * else — so the hop is the identity and every v1 payload is already a valid v2
+ * one. It is still a version, because the direction that matters is the other
+ * one: a v2 payload carrying the new reason must be *refused* by a daemon that
+ * predates it rather than folded into a `needsHuman` whose reason that build
+ * cannot render.
+ */
+registerUpcaster({
+  kind: 'run.needs_human',
+  from: 1,
+  to: RunNeedsHumanSchema,
+  fixture: {
+    reason: 'churn',
+    detail: 'three replans moved nothing; the plan rests on a premise only you can supply',
   },
   up: (payload) => payload,
 });

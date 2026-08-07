@@ -45,6 +45,7 @@ import {
   type RunState,
   type RunStatus,
 } from './run-state.ts';
+import { SPEC_GATE_NODE } from './spec-approval.ts';
 
 /** A node nothing is yet known about — see `initialNodeState`. */
 const UNKNOWN_NODE: NodeState = initialNodeState();
@@ -159,15 +160,59 @@ function project(state: RunState, event: Event): Transition {
     // differently during a replay than it did live.
     case 'run.created': {
       const repoRoot = event.payload.cwd;
+      const specHash = event.payload.spec.specHash;
       return state.runId === event.runId &&
         state.status === 'created' &&
-        state.repoRoot === repoRoot
+        state.repoRoot === repoRoot &&
+        state.specHash === specHash
         ? null
-        : { ...state, runId: event.runId, status: 'created', repoRoot };
+        : { ...state, runId: event.runId, status: 'created', repoRoot, specHash };
     }
 
-    case 'run.spec.approved':
-      return withStatus(state, 'spec-approved');
+    /**
+     * KAR-10.3 AC5, AC8. An amendment moves the run's *current* identity and
+     * touches nothing else — in particular it does not clear `specApproved`,
+     * because a mid-run edit is the operator approving the edited spec in the
+     * same breath (the daemon appends the approval beside it) and a projection
+     * that un-approved the run here would stop the world between two rows of
+     * one transaction.
+     *
+     * The pre-edit spec is untouched, as it must be: it is still
+     * `run.created.spec`, still at `from`, and every verdict that cited it is
+     * still addressable (EPIC-10-S29's last scenario).
+     */
+    case 'spec.amended':
+      return state.specHash === event.payload.to ? null : { ...state, specHash: event.payload.to };
+
+    /**
+     * KAR-10.3 AC4 / KAR-10.4. The digests are evidence, not projection state:
+     * what a packet re-injects is rebuilt from the spec by
+     * `buildPinnedSegments`, and `assertPinIntegrity` compares the render
+     * against this row in the ledger. Folding it would create a second copy of
+     * the pinned set that could disagree with the first.
+     */
+    case 'spec.pinned':
+      return null;
+
+    /**
+     * KAR-10.3 AC4. The approval is folded as a *fact* — which digest, approved
+     * by which surface — and the status only advances from the gate.
+     *
+     * A run that is already `running` stays running: a mid-run edit re-approves
+     * at the new hash (AC8) in the same transaction as the amendment, and a
+     * transition back to `spec-approved` there would un-start a run that never
+     * stopped, throwing away `planHash` in `withStatus`'s wake for a decision
+     * that changed no plan.
+     */
+    case 'run.spec.approved': {
+      const approved = { specHash: event.payload.specHash, by: event.payload.by };
+      const same =
+        state.specApproved?.specHash === approved.specHash && state.specApproved.by === approved.by;
+      const advances = state.status === 'created' || state.status === 'awaiting-spec-approval';
+      if (same && !advances) return null;
+      const moved = advances ? { ...state, status: 'spec-approved' as RunStatus } : state;
+      return { ...moved, specApproved: approved };
+    }
 
     case 'run.started': {
       const planHash = event.payload.planHash;
@@ -552,12 +597,34 @@ function project(state: RunState, event: Event): Transition {
           .map((criterion) => criterion.id),
       );
 
-    case 'human.requested':
-      return withNode(state, seq, event.payload.node, (current) => ({
+    /**
+     * KAR-10.3 AC1. Every `human.requested` suspends its node; the one on the
+     * F1.3 gate node *also* moves the run, which is what makes
+     * `awaiting-spec-approval` a fold of the log rather than a status somebody
+     * set (EPIC-10-S13's third scenario).
+     *
+     * Keyed on the node id and not on the option set, because the options are
+     * the operator's affordances and a future story is free to add a fifth. The
+     * id is `SPEC_GATE_NODE` — one gate per run, so the projection can answer
+     * "is the spec still waiting?" without scanning the log.
+     *
+     * A gate opened after an approval — a re-opened gate following an edit
+     * (AC8) — moves the status back, which is correct: work stops until the
+     * operator answers again. `specApproved` is left where it is; it records
+     * what was approved, not whether anything is pending.
+     */
+    case 'human.requested': {
+      const suspended = withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'suspended',
         suspension: { kind: 'human' },
       }));
+      if (event.payload.node !== SPEC_GATE_NODE) return suspended;
+      const base = suspended ?? state;
+      return base.status === 'awaiting-spec-approval'
+        ? suspended
+        : { ...base, status: 'awaiting-spec-approval' };
+    }
 
     case 'human.responded':
       return withNode(state, seq, event.payload.node, (current) =>

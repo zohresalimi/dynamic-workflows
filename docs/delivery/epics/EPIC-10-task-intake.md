@@ -407,6 +407,39 @@ explicit that pause is an event and never an in-memory flag.
 9. A run may be abandoned from the gate; that appends `run.aborted` and leaves every artifact
    inspectable on disk (NF8).
 
+**Shipped shape, recorded 7 August 2026.** Four decisions this story had to make, each with a
+tempting alternative:
+
+- **The operator edits the framed document, not the sealed `TaskSpec`.** EPIC-10-S14's third
+  scenario is an edit that removes a criterion's `verifiedBy` — and `verifiedBy` is
+  `DeFlow.taskspecdraft.v1`'s vocabulary, not `DeFlow.taskspec.v1`'s. So `POST
+  /runs/:id/spec/edit` takes a whole replacement framed document, `validateTaskSpecDraft` refuses it
+  with the *same function's* message text as the framing node's, and `sealTaskSpec` re-mints the v1
+  spec. Editing the sealed spec cannot express the scenario at all, and would launder a criterion
+  naming two gates into one naming none, because v1's `check` has no way to hold two.
+- **`spec.amended` carries the amended document *and* an RFC 6902 patch of the two sealed specs.**
+  The patch is over the hashable form — `specHash` and `approvedBy` excluded, for the same reason
+  the hash excludes them — so a diff panel never opens on an operation that replaced the digest of
+  the document it is a patch for. `rfc6902@5.3.0` lives in `@DeFlow/daemon`, not `@DeFlow/core`: R1
+  keeps `zod` core's single dependency, so core owns *what a patch is* (`JsonPatchOperationSchema`)
+  and *what is diffed* (`hashableSpec`), and the daemon owns computing one.
+- **`abandon` rides on `effect: 'reject'`, told apart by its option id.** The four-value `effect`
+  vocabulary lives in `DeFlow.plangraph.v1`, which is content-hash-pinned and append-only; a fifth
+  member would mean publishing `plangraph.v2` to record a distinction `human.responded.optionId`
+  already carries losslessly. Both options are refusals of the draft — what differs is what DeFlow
+  does next, which is a decision and not a node-level effect.
+- **A gate with no deadline is still one row.** `node_wake.wake_at` is `INTEGER NOT NULL` in a
+  shipped migration and AC2 requires the row, so a deadline-less wait uses
+  `NO_DEADLINE_WAKE_AT` (8.64e15, the largest instant a `Date` holds): the row is real, no `now`
+  makes it due, and `sleepHint`'s one-second cap keeps it from becoming a timer. A nullable column
+  is migration 0002 and a different `WHERE` for every reader.
+
+A mid-run edit (AC8) appends `run.spec.approved` at the new hash **in the same transaction** as
+`spec.amended` and `spec.pinned`. Without it the run would execute against `B` while every gate
+resolved `A`, and `gateSpecFromLedger` would refuse every verdict rather than judge it. Revalidation
+failure appends `run.needs_human` at a fourth reason, `spec-revalidation`, which is why
+`run.needs_human` is at **v2** (`schemas/CHANGELOG.md`).
+
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
 | #   | Level       | Test                                                                                                                                                                   | Red when                                                                         |

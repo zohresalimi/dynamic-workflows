@@ -77,6 +77,18 @@ import { singleLine } from './text.ts';
  */
 export const RUN_STATUSES = [
   'created',
+  /**
+   * KAR-10.3 — the F1.3 gate is open: framing produced a `TaskSpec` and a
+   * blocking `human` node is waiting for the operator to approve, edit, reject
+   * or abandon it (docs/06-planning-and-replanning.md §1.3).
+   *
+   * A status rather than a flag beside `created`, and folded from
+   * `human.requested` on the gate node rather than set by whoever opened it,
+   * because docs/05 §'s rule about pause applies here word for word: a boolean
+   * does not survive the restart it exists to protect against, and a six-hour
+   * think about a spec is exactly the wait a restart happens inside of.
+   */
+  'awaiting-spec-approval',
   'spec-approved',
   'running',
   'paused',
@@ -303,8 +315,15 @@ export interface CancelState {
 
 /** Why the circuit breaker asked for a human (§9). */
 export interface NeedsHumanState {
-  readonly reason: 'churn' | 'budget' | 'reconcile-unknown';
+  readonly reason: (typeof RUN_NEEDS_HUMAN_REASONS)[number];
   readonly detail: string;
+}
+
+/** KAR-10.3 — F1.3's answer, as the ledger recorded it. */
+export interface SpecApprovalState {
+  /** The digest that was approved — never recomputed, always the one on the event. */
+  readonly specHash: string;
+  readonly by: 'ui' | 'cli';
 }
 
 export interface RunState {
@@ -321,6 +340,30 @@ export interface RunState {
    * than it gave live.
    */
   readonly repoRoot: string | null;
+  /**
+   * KAR-10.3 AC3 — the approval, as the ledger recorded it, or `null` while
+   * F1.3's gate has not been answered.
+   *
+   * This is the scheduling gate's only input, and it is the reason the gate is
+   * a *property of `decide()`* rather than a check somewhere on the way in:
+   * *"before `run.spec.approved` exists in the ledger, no node other than
+   * framing and recon is ever scheduled"* is asserted over events, so the
+   * scheduler has to be unable to admit anything without one — including after
+   * a restart, including on a replay, including when a plan was somehow already
+   * proposed.
+   *
+   * `specHash` is the digest that was approved, which is not necessarily the
+   * run's current one: a mid-run edit (AC8) moves `specHash` below and
+   * re-approves, and a verdict carrying the older digest is void
+   * (docs/10-verification-gates.md §5.2).
+   */
+  readonly specApproved: SpecApprovalState | null;
+  /**
+   * The `specHash` of the spec the run is currently judged against — from
+   * `run.created`, then moved by each `spec.amended`. `null` before framing has
+   * produced one.
+   */
+  readonly specHash: string | null;
   readonly outcome: RunOutcome | null;
   readonly criteriaSatisfied: readonly CriterionId[];
   readonly needsHuman: NeedsHumanState | null;
@@ -442,14 +485,13 @@ export interface RunState {
  * believed when stale.
  *
  * The same applies to how an existing field is *derived*. The bumps:
- * 4 `NodeState.wakeAt` (KAR-06.6); 5 `RunState.cancel` (KAR-06.7); 6 F4.7's
- * no-progress fields (KAR-06.8); 7 KAR-14.1's per-node cost rollup, replacing
- * `budget`'s scalar; 8 KAR-14.2's `ceilings` and `NodeState.startedTs`,
- * without which a paused run returns with no ceiling in force; 9 KAR-14.3's
- * reconciled estimate; 10 KAR-14.1's `CostRollup.authModes`, without which an
- * unpriceable API-key node returns with its credential path erased.
+ * 4 `NodeState.wakeAt`; 5 `RunState.cancel`; 6 F4.7's no-progress fields;
+ * 7 the per-node cost rollup; 8 `ceilings` and `NodeState.startedTs`;
+ * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 KAR-10.3's
+ * `specApproved`, without which a daemon restored from a cached checkpoint
+ * would derive a ready set for a run nobody approved — F1.3 lost to a cache.
  */
-export const CHECKPOINT_VERSION = 10;
+export const CHECKPOINT_VERSION = 11;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -489,6 +531,8 @@ export function initialRunState(): RunState {
     runId: null,
     status: 'created',
     repoRoot: null,
+    specApproved: null,
+    specHash: null,
     outcome: null,
     criteriaSatisfied: [],
     needsHuman: null,
@@ -519,11 +563,11 @@ export function initialRunState(): RunState {
 /** A count, an index or a watermark: `0` is legal, a fraction is not. */
 const wholeCount = z.number().int().nonnegative();
 
-/** The `sha256-<64 hex>` shape `effect.started.requestHash` carries. Spelled
- * again rather than imported because ./event-payloads.ts keeps its copy
- * private, and a checkpoint decoder that accepted any string here would let a
- * corrupted window key the churn detector on garbage. */
-const requestHash = z.string().regex(/^sha256-[0-9a-f]{64}$/, 'must be sha256-<64 hex>');
+/** The `sha256-<64 hex>` shape `effect.started.requestHash` and `specHash`
+ * both carry. Spelled again rather than imported because ./event-payloads.ts
+ * keeps its copy private, and a checkpoint decoder that accepted any string
+ * here would let a corrupted window key the churn detector on garbage. */
+const sha256Digest = z.string().regex(/^sha256-[0-9a-f]{64}$/, 'must be sha256-<64 hex>');
 
 const NodeStateSchema = z.strictObject({
   status: z.enum(NODE_STATUSES),
@@ -536,7 +580,7 @@ const NodeStateSchema = z.strictObject({
   result: CompletedNodeResultSchema.nullable(),
   failure: NodeFailureSchema.nullable(),
   suspension: NodeSuspensionSchema.nullable(),
-  requestHash: requestHash.nullable(),
+  requestHash: sha256Digest.nullable(),
   wakeAt: wholeCount.nullable(),
   startedTs: wholeCount,
   updatedSeq: wholeCount,
@@ -544,7 +588,7 @@ const NodeStateSchema = z.strictObject({
 
 const CompletedAttemptSchema: z.ZodType<CompletedAttempt, unknown> = z.strictObject({
   node: NodeIdSchema,
-  requestHash: requestHash.nullable(),
+  requestHash: sha256Digest.nullable(),
   attempt: wholeCount,
   /** The seq of the completion, and no event has seq 0. */
   seq: z.number().int().positive(),
@@ -599,6 +643,8 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   runId: RunIdSchema.nullable(),
   status: z.enum(RUN_STATUSES),
   repoRoot: z.string().min(1).nullable(),
+  specApproved: z.strictObject({ specHash: sha256Digest, by: z.enum(['ui', 'cli']) }).nullable(),
+  specHash: sha256Digest.nullable(),
   outcome: z.enum(RUN_OUTCOMES).nullable(),
   criteriaSatisfied: z.array(CriterionIdSchema),
   needsHuman: z

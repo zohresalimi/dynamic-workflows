@@ -312,6 +312,9 @@ All paths are relative to `/api`. All responses are JSON unless stated. All requ
 | `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc  | F1.1 |
 | `GET`  | `/runs/:id`                    | Run summary: status, plan version, counts, cost, head seq |      |
 | `POST` | `/runs/:id/spec/approve`       | Approve the `TaskSpec` — the real gate before execution   | F1.3 |
+| `POST` | `/runs/:id/spec/edit`          | Replace the framed document; appends `spec.amended`       | F1.3 |
+| `POST` | `/runs/:id/spec/reject`        | Reject with a reason and re-run the framing interview     | F1.3 |
+| `POST` | `/runs/:id/spec/abandon`       | End the run from the gate; appends `run.aborted`          | F1.3 |
 
 ### Stream and hydration
 

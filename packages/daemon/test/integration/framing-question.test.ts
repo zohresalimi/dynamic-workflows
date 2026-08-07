@@ -19,7 +19,13 @@
  */
 import { shimCapabilityRow } from '@DeFlow/adapters';
 import type { Db, NodeId, RunId, StructuredOutput } from '@DeFlow/core';
-import { buildFramingPacket, HandleSchema, NodeIdSchema, RunIdSchema } from '@DeFlow/core';
+import {
+  buildFramingPacket,
+  HandleSchema,
+  NodeIdSchema,
+  RunIdSchema,
+  SPEC_GATE_NODE,
+} from '@DeFlow/core';
 import {
   appendEvents,
   dueWakes,
@@ -272,8 +278,11 @@ suite('EPIC-10-S7 — the run suspends on the question and resumes on the answer
 
     expect(resumed.delivery).toBe('steered');
     expect(live.prompts).toEqual([ANSWER]);
-    // The wake is consumed in the same transaction as the response.
-    expect(readWakes(db, RUN)).toEqual([]);
+    // The clarifying question's wake is consumed in the same transaction as the
+    // response. The row that is left is the F1.3 approval gate's: the interview
+    // completed, so KAR-10.3's gate opened in the same transaction as
+    // `run.created` and the run is now waiting on the operator, not on the agent.
+    expect(readWakes(db, RUN).map((row) => row.nodeId)).toEqual([SPEC_GATE_NODE]);
 
     const responded = payloadsOf(db, 'human.responded');
     expect(responded).toHaveLength(1);

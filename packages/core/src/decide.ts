@@ -95,13 +95,29 @@ export function decide(state: RunState, now: number): Command[] {
     .map((trip) => trip.breach.node)
     .filter((node): node is NodeId => node !== undefined);
 
+  // KAR-10.3 AC3 — F1.3's gate, as a property of the scheduler rather than as a
+  // check on the way in. *"Before `run.spec.approved` exists in the ledger, no
+  // node other than framing and recon is ever scheduled"*, and the framing and
+  // recon nodes are exactly the ones that never come through here: they are
+  // driven by the daemon before a plan exists, so an unapproved run has nothing
+  // this function may admit.
+  //
+  // Stated rather than left to fall out of `plan === null`. It would fall out
+  // today — nothing proposes a plan before approval — but "the ready set is
+  // empty because there is no plan" is an accident of ordering, and the whole
+  // point of the epic's headline assertion is that it must not be. A plan
+  // proposed early, a checkpoint restored from a newer build, a replay that
+  // reordered nothing: none of them may put work in flight against a spec
+  // nobody signed.
+  const unapproved = !ended && state.specApproved === null;
+
   // In-flight nodes are allowed to finish (AC7): halting withholds new work and
   // issues no `CancelNode`, because a breaker that killed the attempts already
   // running would throw away exactly the evidence the human is being asked to
   // look at. A budget pause is the same shape for a stronger reason — tearing
   // down a node most of the way through a build to save a few cents turns a
   // pause into a partial failure (KAR-14.2's note on the story).
-  const halted = ask !== null || state.needsHuman !== null || runTripped;
+  const halted = ask !== null || state.needsHuman !== null || runTripped || unapproved;
 
   // Admission runs before the release sweep because it is the only thing that
   // knows which held locks are about to be kept: a node that already holds its

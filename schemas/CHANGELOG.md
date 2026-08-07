@@ -132,3 +132,24 @@ a field there is a `.v2` document, which belongs to EPIC-11's patch application 
 rate-limit story. It is also the better home on the merits: the same `replace-provider` op is a
 routine planner decision or a vendor outage depending on who asked for it, and that is a fact about
 the proposal rather than about the ops.
+
+### run.needs_human v2
+
+**KAR-10.3.** The circuit breaker gained a fourth trip reason, `spec-revalidation`: a mid-run spec
+edit whose new `specHash` the current plan no longer satisfies, which
+[06 §1.3](../docs/06-planning-and-replanning.md) requires to go to `needs_human` *"rather than
+continuing against a spec it no longer satisfies"*.
+
+| Change                                | Kind     | Why it is not lossy                                                                                        |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `reason` gains `'spec-revalidation'` | widening | Every v1 payload is already a valid v2 one — the hop is the identity — and no v1 payload can have carried it. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why a widening still gets a version.** The direction that matters is the other one. A v2 payload
+carrying the new reason must be *refused* by a daemon that predates it, rather than folded into a
+`needsHuman` whose reason that build cannot render — which is exactly what `v` is for
+([04 §9.2](../docs/04-domain-model.md) rule 3). A fourth reason rather than a `detail` on one of the
+other three because the operator's next action differs in kind: churn and budget are answered by
+raising a ceiling or changing the approach, and this one by covering a criterion the plan no longer
+reaches.

@@ -47,6 +47,11 @@ catalog:
   # the daemon for no accuracy gain, and packages/daemon/test/token-entrypoint.test.ts
   # is what stops the barrel creeping back in. Pure JS, no wasm, no native build (NF6).
   gpt-tokenizer: ^3.4.0
+  # KAR-10.3. The RFC 6902 differ behind `spec.amended` — and, later, behind the
+  # plan-evolution scrubber (docs/11-api-and-realtime.md §7.4), which is why the
+  # two histories render through one component. `rfc6902`, never
+  # `fast-json-patch`: that package last shipped in 2022 (docs/02 §4).
+  rfc6902: ^5.3.0
   pino: 10.3.1
   "@biomejs/biome": 2.5.6 # exact: a patch bump that reflows the repo makes the next commit unreviewable
   oxlint: 1.76.0

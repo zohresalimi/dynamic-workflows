@@ -72,7 +72,10 @@ suite('an unreleased lock is still held after kill -9 (AC4)', () => {
           lock: 'repo',
           key: REPO_LOCK,
           node: HOLDER,
-          sinceSeq: 4,
+          // The seq of the seeded `node.lock.acquired` — fifth row, behind
+          // run.created, run.spec.approved (KAR-10.3's gate), plan.proposed
+          // and run.started.
+          sinceSeq: 5,
         },
       });
 

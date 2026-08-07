@@ -57,6 +57,7 @@ import type {
   RunId,
   StructuredOutput,
   TaskSpec,
+  TaskSpecDraft,
   Tokenizer,
 } from '@DeFlow/core';
 import {
@@ -71,6 +72,7 @@ import {
 import { appendEvents, appendEventsConsumingWakes, headSeq, scheduleWake } from '@DeFlow/ledger';
 import type { Git } from '../git/git.ts';
 import { enforceHandoff, type HandoffSession, type HandoffValidator } from '../handoff/enforce.ts';
+import { openSpecApprovalGate } from '../spec/gate.ts';
 
 /**
  * A question the framing agent could not answer from the repository.
@@ -149,7 +151,18 @@ export interface FramingInterviewOptions {
 }
 
 export type FramingOutcome =
-  | { readonly outcome: 'completed'; readonly spec: TaskSpec; readonly repairs: number }
+  | {
+      readonly outcome: 'completed';
+      readonly spec: TaskSpec;
+      /**
+       * The framed document the spec was sealed from — the thing the operator
+       * reviews and edits at the F1.3 gate (KAR-10.3). Returned rather than
+       * re-derived, because `verifiedBy` and `unverifiable` are this document's
+       * vocabulary and a v1 `TaskSpec` cannot express them.
+       */
+      readonly document: TaskSpecDraft;
+      readonly repairs: number;
+    }
   | {
       readonly outcome: 'suspended';
       readonly question: FramingQuestion;
@@ -275,7 +288,10 @@ async function settle(
 
   // AC8 — the operator's answers travel into the spec as `priorDecisions`, and
   // they are already in the ledger as `human.responded` independently of it.
-  const document = withClarifyingAnswers(handoff.returned as never, options.clarifications ?? []);
+  const document: TaskSpecDraft = withClarifyingAnswers(
+    handoff.returned as never,
+    options.clarifications ?? [],
+  );
 
   let spec: TaskSpec;
   try {
@@ -291,22 +307,35 @@ async function settle(
   }
 
   const repo = await options.readRepo();
-  appendEvents(options.db, [
-    {
-      runId: options.runId,
-      ts: options.ts,
-      kind: 'run.created',
-      v: 1,
-      epoch: options.epoch,
-      payload: {
-        spec,
-        cwd: repo.cwd,
-        repo: { head: repo.head, branch: repo.branch },
+  // KAR-10.3 AC1 — `run.created` and the F1.3 gate in one transaction. A crash
+  // between them would leave a run with a spec, no gate and nothing waiting: the
+  // one failure mode where the run simply never comes back, and the one the
+  // whole `node_wake` design exists to make impossible.
+  options.db.transaction(() => {
+    appendEvents(options.db, [
+      {
+        runId: options.runId,
+        ts: options.ts,
+        kind: 'run.created',
+        v: 1,
+        epoch: options.epoch,
+        payload: {
+          spec,
+          cwd: repo.cwd,
+          repo: { head: repo.head, branch: repo.branch },
+        },
       },
-    },
-  ]);
+    ]);
+    openSpecApprovalGate({
+      db: options.db,
+      runId: options.runId,
+      epoch: options.epoch,
+      ts: options.ts,
+      document,
+    });
+  });
 
-  return { outcome: 'completed', spec, repairs: handoff.repairs };
+  return { outcome: 'completed', spec, document, repairs: handoff.repairs };
 }
 
 /**

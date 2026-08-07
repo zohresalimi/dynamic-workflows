@@ -77,7 +77,7 @@ const PLAN_HASH_OMIT_KEYS = ['planHash'] as const;
  * the ledger *by* `specHash`, and a document that cannot be verified against
  * its own recorded digest gives the gate nothing to select on.
  */
-const SPEC_HASH_OMIT_KEYS = ['approvedBy', 'specHash'] as const;
+export const SPEC_HASH_OMIT_KEYS = ['approvedBy', 'specHash'] as const;
 
 /**
  * sha256 of the canonical encoding of `doc`, excluding the `planHash` field

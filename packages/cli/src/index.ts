@@ -93,3 +93,70 @@ export async function runTask(text: string, options: RunTaskOptions): Promise<Ru
       : `POST /api/runs failed with ${response.status}`,
   );
 }
+
+/** Where a daemon is, and nothing else this client assumes about it. */
+export interface DaemonClientOptions {
+  /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
+  readonly baseUrl: string;
+}
+
+export interface ApproveSpecResult {
+  readonly runId: string;
+  /** The digest that was approved — what every later verdict cites. */
+  readonly specHash: string;
+  /** `'cli'` from here, always. */
+  readonly by: 'cli';
+}
+
+/** The daemon refused the approval — usually because no gate is open. */
+export class SpecApprovalRejected extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'SpecApprovalRejected';
+    this.code = code;
+  }
+}
+
+/**
+ * KAR-10.3 AC4 — `DeFlow approve <runId>`: the F1.3 gate, answered from a
+ * second terminal.
+ *
+ * A client of `POST /api/runs/:id/spec/approve` and nothing more, exactly as
+ * `runTask` is a client of `POST /api/runs`. The daemon owns the transaction —
+ * `human.responded`, `run.spec.approved` and `spec.pinned` in one commit — so
+ * the CLI and the UI cannot diverge on what approval *means*, only on the `by`
+ * field the daemon reads off `X-DeFlow-Submitted-By` (EPIC-10-S18).
+ *
+ * This matters more than it looks: M1's UI arrives in W10–W11, well after W7a,
+ * so until then this is the only way a run gets past the gate at all.
+ */
+export async function approveSpec(
+  runId: string,
+  options: DaemonClientOptions,
+): Promise<ApproveSpecResult> {
+  const response = await fetch(
+    `${options.baseUrl}/api/runs/${encodeURIComponent(runId)}/spec/approve`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-DeFlow-Submitted-By': 'cli' },
+      body: '{}',
+    },
+  );
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  if (response.ok) {
+    return {
+      runId: payload.runId as string,
+      specHash: payload.specHash as string,
+      by: 'cli',
+    };
+  }
+  throw new SpecApprovalRejected(
+    typeof payload.error === 'string' ? payload.error : 'request_failed',
+    typeof payload.message === 'string'
+      ? payload.message
+      : `POST /api/runs/${runId}/spec/approve failed with ${response.status}`,
+  );
+}

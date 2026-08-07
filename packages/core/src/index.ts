@@ -98,7 +98,7 @@ export type {
   StartNode,
   WakeReason,
 } from './command.ts';
-export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
+export { COMMAND_ORDER, NO_DEADLINE_WAKE_AT, WAKE_REASONS } from './command.ts';
 // KAR-09.6 — compaction with a fidelity discriminator: the union that makes
 // "a vendor.session event is never exact" a compile error, the F10.5
 // projection that labels an inferred figure, and the auto-compact arithmetic.
@@ -514,6 +514,9 @@ export type { ParsedIkey } from './ikey.ts';
 // write embeds in a temp filename, where the raw key's `/` cannot go.
 export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
+// KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
+export type { JsonPatchOperation } from './json-patch.ts';
+export { JsonPatchOperationSchema } from './json-patch.ts';
 export type { JsonSchemaDocument, SchemaRegistration } from './json-schema.ts';
 export {
   AJV_2020_OPTIONS,
@@ -677,6 +680,7 @@ export type {
   PinnedContentType,
   PinnedSegmentKind,
   SegmentedPacket,
+  SpecPinnedInput,
   TokenEstimator,
   UnpinnedSegmentKind,
 } from './pinned-set.ts';
@@ -684,6 +688,7 @@ export {
   assertPinnedSetFitsBudget,
   buildFramingPinnedSegments,
   buildPinnedSegments,
+  buildSpecPinnedSegments,
   contextSegment,
   demoteToBudget,
   demotionLadder,
@@ -907,6 +912,27 @@ export {
 // KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
 export type { ScopeCollision } from './scope-collision.ts';
 export { scopeCollisions } from './scope-collision.ts';
+// KAR-10.3 — the F1.3 approval gate's pure half: what the operator is shown,
+// what an edit produces, and what a mid-run edit is revalidated against.
+export type {
+  SpecAmendment,
+  SpecCoverageIssue,
+  SpecDecision,
+  SpecVersion,
+} from './spec-approval.ts';
+export {
+  currentSpec,
+  emptyEditRefusal,
+  hashableSpec,
+  renderSpecForReview,
+  revalidateSpecAgainstPlan,
+  SPEC_APPROVAL_OPTIONS,
+  SPEC_DECISIONS,
+  SPEC_GATE_NODE,
+  SpecEditRefused,
+  sealEditedSpec,
+  specHistory,
+} from './spec-approval.ts';
 // KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
 export type {
   IntakeKind,
