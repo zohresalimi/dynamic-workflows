@@ -32,6 +32,7 @@ import {
   BudgetConsumedSchema,
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
+  GateEvaluatedSchema,
   PlanPatchProposedSchema,
   RunNeedsHumanSchema,
 } from './event-payloads.ts';
@@ -470,6 +471,42 @@ registerUpcaster({
   fixture: {
     reason: 'churn',
     detail: 'three replans moved nothing; the plan rests on a premise only you can supply',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `gate.evaluated` v1 → v2 (KAR-10.4). See schemas/CHANGELOG.md.
+ *
+ * v2's verdict is `DeFlow.verdict.v2`, which adds one optional field —
+ * `specHash`, the contract the gate judged against — so the hop is the
+ * identity and it is left **absent**.
+ *
+ * There is no honest value to lift. A v1 payload was written before a verdict
+ * named its contract at all, so filling in the run's current hash would assert
+ * that a historical reviewer was shown a document that did not exist when it
+ * ran, and would make a criterion go green on the strength of it. Leaving it
+ * absent is the safe direction: `isVerdictVoid` treats an unnamed contract
+ * exactly as it treats a mismatched one, so the worst outcome of the hop is a
+ * gate that re-runs.
+ */
+registerUpcaster({
+  kind: 'gate.evaluated',
+  from: 1,
+  to: GateEvaluatedSchema,
+  fixture: {
+    gate: 'codemod-review',
+    node: 'step-04',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v1',
+      outcome: 'pass',
+      gate: 'codemod-review',
+      evaluatedNode: 'step-04',
+      by: { node: 'gate-04', provider: 'codex', model: 'the-model-the-gate-ran-on' },
+      criteria: [{ id: 'unit-tests-pass', status: 'satisfied' }],
+      findings: [],
+      summary: 'Every criterion this gate speaks to is satisfied.',
+    },
   },
   up: (payload) => payload,
 });

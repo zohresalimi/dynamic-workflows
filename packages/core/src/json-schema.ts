@@ -44,7 +44,14 @@ import { TASKSPEC_DRAFT_SCHEMA_ID, TaskSpecDraftSchema } from './framing.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from './plan-graph.ts';
 import { PLANPATCH_SCHEMA_ID, PlanPatchSchema } from './plan-patch.ts';
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
-import { FINDING_SCHEMA_ID, FindingSchema, VERDICT_SCHEMA_ID, VerdictSchema } from './verdict.ts';
+import {
+  FINDING_SCHEMA_ID,
+  FindingSchema,
+  VERDICT_SCHEMA_ID,
+  VERDICT_V2_SCHEMA_ID,
+  VerdictSchema,
+  VerdictV2Schema,
+} from './verdict.ts';
 
 /**
  * The dialect, spelled once. 2020-12 is not arbitrary: it is what MCP tool
@@ -131,6 +138,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schemaId: VERDICT_SCHEMA_ID,
     summary: 'A gate verdict: outcome, per-criterion status and structured findings (F7.4).',
     schema: VerdictSchema,
+  },
+  {
+    schemaId: VERDICT_V2_SCHEMA_ID,
+    summary:
+      'A gate verdict, naming the specHash it was judged against so a mid-run spec edit voids ' +
+      'it rather than silently keeping it green (F1.5, F7.4).',
+    schema: VerdictV2Schema,
   },
 ];
 

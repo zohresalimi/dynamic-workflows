@@ -28,44 +28,37 @@
  * makes verbatim re-injection (AC4) a property of the builder rather than a
  * discipline applied at the re-injection site.
  *
+ * **The bytes themselves are not composed here.** KAR-10.4 moved that to
+ * ./compile-pinned.ts, which is pure, synchronous and — because it carries the
+ * exact runs of the approved spec each segment quotes — able to prove
+ * byte-preservation rather than assert it. This module is what turns those
+ * texts into `Segment`s: the digest, the token estimate and the flag. Two
+ * composers of the same five texts is how the digests in `spec.pinned` and the
+ * bytes in a packet come to disagree, which is the one failure
+ * `assertPinIntegrity` cannot distinguish from a mangled prompt.
+ *
  * Verifies: EPIC-09-S8, EPIC-09-S14, EPIC-09-S15 · AC1, AC2
  */
-import { type Constraint, orderPinnedConstraints, restateAsRequirement } from './constraint.ts';
-import type { ContextPacket, Segment, SegmentKind, TokenCount } from './context-packet.ts';
+import {
+  compilePinnedSegments,
+  PINNED_CONTENT_TYPES,
+  type PinnedContentType,
+  safetyConstraintsText,
+  type UnpinnedSegmentKind,
+} from './compile-pinned.ts';
+import { type Constraint, orderPinnedConstraints } from './constraint.ts';
+import type { ContextPacket, Segment, TokenCount } from './context-packet.ts';
 import { contentHash } from './hash.ts';
 import { type EventSeq, type SegmentId, SegmentIdSchema } from './ids.ts';
 import type { PinnedNodeContext, TaskSpec } from './task-spec.ts';
 
-/** The three kinds a pinned segment may have. Derived from `SegmentKind` so
- * that a tenth kind added to the vocabulary cannot quietly become pinnable. */
-export type PinnedSegmentKind = Extract<SegmentKind, `pinned.${string}`>;
-
-/** Everything else — the only kinds `contextSegment` will build. */
-export type UnpinnedSegmentKind = Exclude<SegmentKind, PinnedSegmentKind>;
-
-export interface PinnedContentType {
-  /** Stable identifier, and the `SegmentId` the built segment carries. */
-  readonly id: string;
-  readonly kind: PinnedSegmentKind;
-  /** Where the bytes come from, quoting §4.1's third column. */
-  readonly source: string;
-}
-
-/**
- * §4.1's table, in its order — which is also the render order of the pinned
- * block. Exactly five rows, and the count is asserted rather than assumed.
- */
-export const PINNED_CONTENT_TYPES = [
-  { id: 'pinned-spec-goal', kind: 'pinned.spec', source: 'F1.2, approved at F1.3' },
-  { id: 'pinned-spec-criteria', kind: 'pinned.spec', source: 'F1.2 / F7.4' },
-  {
-    id: 'pinned-constraints-safety',
-    kind: 'pinned.constraints',
-    source: 'run config + F5.6 execution-boundary rules',
-  },
-  { id: 'pinned-pathscope', kind: 'pinned.pathscope', source: 'F5.3' },
-  { id: 'pinned-constraints-permission', kind: 'pinned.constraints', source: 'F5.4' },
-] as const satisfies readonly PinnedContentType[];
+export {
+  PINNED_CONTENT_TYPES,
+  type PinnedContentType,
+  type PinnedSegmentKind,
+  pinnedConstraintsOf,
+  type UnpinnedSegmentKind,
+} from './compile-pinned.ts';
 
 /**
  * How a segment's token cost is measured.
@@ -100,67 +93,24 @@ export interface PinnedBuildInput {
   readonly estimate?: TokenEstimator;
 }
 
-const bullets = (lines: readonly string[]): string => lines.map((line) => `- ${line}`).join('\n');
-
-/**
- * Every constraint that reaches the pinned block, in render order.
- *
- * The spec's own prose constraints are folded in as `require` statements, which
- * is the honest reading of a hand-written line: it is a commission-type
- * constraint until somebody restates it, and §4.2 measured that commission
- * compliance is the half that does not decay.
- *
- * Exported because `buildPacket` counts these (KAR-09.4 AC4) and must count the
- * same list this renders. Two implementations of "which constraints are pinned"
- * is how the doctor's forbid ratio and the prompt come to disagree.
- */
-export function pinnedConstraintsOf(
-  spec: TaskSpec,
-  constraints: readonly Constraint[] = [],
-): readonly Constraint[] {
-  return orderPinnedConstraints([
-    ...spec.constraints.map((statement): Constraint => ({ form: 'require', statement })),
-    ...constraints,
-  ]);
-}
-
 /**
  * The five pinned segments, in §4.1's order, as a pure function of the spec
  * and the node.
  *
- * Deliberately not a template anyone can extend: every line is composed here,
- * so "what exactly is pinned" is answerable by reading one function rather
- * than by tracing a formatter.
+ * The bytes come from `compilePinnedSegments` and nothing else — see the header.
+ * What this adds is the part that cannot be pure: the sha256 of each text and
+ * the token estimate, both of which the packet, `spec.pinned` and
+ * `assertPinIntegrity` address the same bytes by.
  */
 export async function buildPinnedSegments(input: PinnedBuildInput): Promise<readonly Segment[]> {
-  const { spec, node } = input;
   const estimate = input.estimate ?? heuristicTokens;
-
-  const constraints = pinnedConstraintsOf(spec, input.constraints ?? []);
-
-  const texts: readonly string[] = [
-    `Goal (pinned, verbatim from the approved spec):\n${spec.goal}\n\nNon-goals:\n${
-      spec.nonGoals.length === 0 ? '- (none declared)' : bullets(spec.nonGoals)
-    }`,
-    `Acceptance criteria (pinned, verbatim from the approved spec):\n${bullets(
-      spec.acceptanceCriteria.map((criterion) => `${criterion.id}: ${criterion.statement}`),
-    )}`,
-    `Safety constraints (pinned):\n${
-      constraints.length === 0
-        ? '- (none declared)'
-        : bullets(constraints.map(restateAsRequirement))
-    }`,
-    `Declared path scopes (pinned):\n${
-      node.pathScopes.length === 0
-        ? '- this node declares no write scope and must not write'
-        : bullets(node.pathScopes.map((glob) => `write: ${glob}`))
-    }`,
-    `Permission level (pinned): ${node.permission}`,
-  ];
+  const compiled = compilePinnedSegments(input.spec, input.node, input.constraints ?? []);
 
   const segments: Segment[] = [];
-  for (const [index, type] of PINNED_CONTENT_TYPES.entries()) {
-    segments.push(await pinnedSegment(type, texts[index] as string, input.sourceEvent, estimate));
+  for (const entry of compiled) {
+    segments.push(
+      await pinnedSegment(contentType(entry.id), entry.text, input.sourceEvent, estimate),
+    );
   }
   return segments;
 }
@@ -270,13 +220,8 @@ export async function buildFramingPinnedSegments(
   input: FramingPinnedInput,
 ): Promise<readonly Segment[]> {
   const estimate = input.estimate ?? heuristicTokens;
-  const constraints = orderPinnedConstraints(input.constraints);
   const texts: readonly [string, string] = [
-    `Safety constraints (pinned):\n${
-      constraints.length === 0
-        ? '- (none declared)'
-        : bullets(constraints.map(restateAsRequirement))
-    }`,
+    safetyConstraintsText(orderPinnedConstraints(input.constraints)),
     `Permission level (pinned): ${input.permission}\n` +
       'You may read this repository and you may ask the operator a clarifying question. ' +
       'You may not write a file and you may not run a command that changes one.',

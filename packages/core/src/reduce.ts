@@ -30,6 +30,7 @@
  * Verifies: EPIC-03-S15, EPIC-03-S16, EPIC-03-S17 · AC1, AC2, AC3, AC5, AC6,
  * AC7, AC8
  */
+import { isVerdictVoid } from './acceptance-board.ts';
 import { addConsumption } from './cost-rollup.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
@@ -203,15 +204,31 @@ function project(state: RunState, event: Event): Transition {
      * transition back to `spec-approved` there would un-start a run that never
      * stopped, throwing away `planHash` in `withStatus`'s wake for a decision
      * that changed no plan.
+     *
+     * KAR-10.4 AC5 — **an approval at a new hash empties `criteriaSatisfied`.**
+     * Every verdict in the ledger was formed against the contract that was in
+     * force when it ran; moving the contract voids all of them at once
+     * (EPIC-10-S29's third scenario), and the epic's notes are explicit that
+     * the rule must not be softened by keeping the criteria whose text happens
+     * not to have changed. The verdicts themselves are untouched and still
+     * addressable at their own hash — this clears a *fold*, not history — and a
+     * re-run at the new hash puts each row back as it earns it. Re-approving an
+     * unchanged spec clears nothing, which is the same rule: nothing moved.
      */
     case 'run.spec.approved': {
       const approved = { specHash: event.payload.specHash, by: event.payload.by };
+      const moves =
+        state.specApproved !== null && state.specApproved.specHash !== approved.specHash;
       const same =
         state.specApproved?.specHash === approved.specHash && state.specApproved.by === approved.by;
       const advances = state.status === 'created' || state.status === 'awaiting-spec-approval';
       if (same && !advances) return null;
       const moved = advances ? { ...state, status: 'spec-approved' as RunStatus } : state;
-      return { ...moved, specApproved: approved };
+      return {
+        ...moved,
+        specApproved: approved,
+        ...(moves ? { criteriaSatisfied: [] } : {}),
+      };
     }
 
     case 'run.started': {
@@ -587,15 +604,31 @@ function project(state: RunState, event: Event): Transition {
     case 'handoff.oversize':
       return null;
 
-    // F7.4: which criteria are actually satisfied is a run-level fact, and it
-    // is what `run.completed`'s `partial` outcome is measured against.
-    case 'gate.evaluated':
+    /**
+     * F7.4: which criteria are actually satisfied is a run-level fact, and it
+     * is what `run.completed`'s `partial` outcome is measured against.
+     *
+     * KAR-10.4 AC5 — **and only against the spec now in force.** A verdict
+     * carries the `specHash` it was judged under, and one that does not name
+     * the run's current hash is void: not counted here, not counted on F7.4's
+     * board, and its gate re-scheduled (./acceptance-board.ts). A verdict that
+     * names none at all is void too — it cannot be shown to have judged this
+     * contract, and "it did not say" is not a citation.
+     *
+     * A run whose spec was never approved counts nothing, which is the same
+     * rule from the other side: F1.3 schedules no work before approval, so a
+     * verdict that arrived before one is judging a draft.
+     */
+    case 'gate.evaluated': {
+      const current = state.specApproved?.specHash;
+      if (current === undefined || isVerdictVoid(event.payload.verdict, current)) return null;
       return withCriteria(
         state,
         event.payload.verdict.criteria
           .filter((criterion) => criterion.status === 'satisfied')
           .map((criterion) => criterion.id),
       );
+    }
 
     /**
      * KAR-10.3 AC1. Every `human.requested` suspends its node; the one on the

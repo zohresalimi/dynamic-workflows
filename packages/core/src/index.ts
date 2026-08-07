@@ -21,6 +21,20 @@ export type {
   SchemaIssue,
 } from './accept-fact.ts';
 export { acceptFact } from './accept-fact.ts';
+// KAR-10.4 AC5 — a verdict is scoped to the spec it judged: F7.4's board, the
+// void rule, and the gates a spec edit sends back.
+export type {
+  AcceptanceBoardInput,
+  BoardCriterion,
+  BoardRow,
+  BoardStatus,
+} from './acceptance-board.ts';
+export {
+  acceptanceBoard,
+  isVerdictVoid,
+  staleGateNodes,
+  verdictAgainst,
+} from './acceptance-board.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {
@@ -134,6 +148,9 @@ export {
   VENDOR_UNREPORTED_NOTE,
   vendorCompaction,
 } from './compaction.ts';
+// KAR-10.4 AC2 — the byte-preserving compiler behind the pinned set.
+export type { CompiledPinnedSegment, PinnedQuote } from './compile-pinned.ts';
+export { canonicalSpecText, compilePinnedSegments } from './compile-pinned.ts';
 // KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
 // the forbid ratio DeFlow doctor reports.
 export type {
@@ -1039,7 +1056,7 @@ export {
 // gate in the system, run on every plan.proposed and plan.patched.
 export type { UndeclaredReadError } from './validate-declared-reads.ts';
 export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
-export type { Finding, Verdict } from './verdict.ts';
+export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
 export {
   CRITERION_STATUSES,
   CriterionStatusSchema,
@@ -1049,6 +1066,8 @@ export {
   FindingSeveritySchema,
   VERDICT_OUTCOMES,
   VERDICT_SCHEMA_ID,
+  VERDICT_V2_SCHEMA_ID,
   VerdictOutcomeSchema,
   VerdictSchema,
+  VerdictV2Schema,
 } from './verdict.ts';

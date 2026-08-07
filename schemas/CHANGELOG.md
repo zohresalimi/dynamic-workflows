@@ -62,6 +62,39 @@ file is where you record it.
 
 ## Entries
 
+### DeFlow.verdict.v2
+
+**KAR-10.4.** A verdict now names the contract it judged:
+[10 §5.2](../docs/10-verification-gates.md)'s first anti-drift mechanism — _"the verdict carries
+`specHash`. If it does not equal the run's current pinned `specHash`, the verdict is **void** and the
+gate is re-run."_
+
+| Change                | Kind           | Why it is not lossy                                                                                                                                       |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ specHash` (optional) | optional field | A `.v1` verdict predates the field, and there is no honest value to lift into it — see below. `.v1` is untouched on disk, exactly as the rule requires. |
+
+**Why it is optional in the schema and mandatory in practice.** `verdictAgainst`
+(`packages/core/src/acceptance-board.ts`) is how a gate seals a verdict and it always stamps the
+hash, so every verdict DeFlow writes carries one. What optionality buys is a legal upcast from `.v1`.
+Filling a historical verdict in with the run's current hash would assert that a reviewer was shown a
+document that did not exist when it ran, and would turn a criterion green on the strength of it. So
+the hop leaves it absent and `isVerdictVoid` treats an unnamed contract exactly as it treats a
+mismatched one: **void**. The worst outcome of the upcast is therefore a gate that re-runs, which is
+the direction this mechanism is supposed to fail in.
+
+### gate.evaluated v2
+
+**KAR-10.4.** The event that carries a verdict follows it to `DeFlow.verdict.v2`.
+
+| Change                                       | Kind     | Why it is not lossy                                                                             |
+| -------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `verdict: DeFlow.verdict.v1` → `.v2` | widening | v2 adds one optional field, so every v1 payload is already a valid v2 one and the hop is the identity. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`. It is still a version
+rather than a silent widening for the usual reason: a v2 payload carrying a `specHash` must be
+*refused* by a daemon that predates the void rule, rather than folded into an acceptance board that
+would count it unconditionally.
+
 ### budget.exceeded v2
 
 **KAR-14.2.** F4.6's ceiling trip became self-describing: a reader of a paused run can now see which

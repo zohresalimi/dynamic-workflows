@@ -105,13 +105,18 @@ const verdictTemplate = (PAYLOADS['gate.evaluated'] as { verdict: { by: object }
 export function happyPathEvents(): FixtureEvent[] {
   const events: FixtureEvent[] = [];
 
-  const emit = (kind: string, payload: unknown): void => {
+  // `v` defaults to 1: the fixture is deliberately an *older* ledger, so a
+  // replay of it exercises the upcaster chain the way a real restart does. A
+  // kind passes its own version only where writing v1 would misdescribe the
+  // run — `gate.evaluated`, whose v1 verdicts name no `specHash` and are
+  // therefore void, which is not what "the happy path" means (KAR-10.4 AC5).
+  const emit = (kind: string, payload: unknown, v = 1): void => {
     events.push({
       seq: events.length + 1,
       runId: RUN_ID,
       ts: START_TS + events.length * TS_STEP,
       kind,
-      v: 1,
+      v,
       epoch: 1,
       payload,
     });
@@ -197,22 +202,31 @@ export function happyPathEvents(): FixtureEvent[] {
 
     if (index % GATE_EVERY === GATE_EVERY - 1) {
       const gate = `gate-${String(index + 1).padStart(2, '0')}`;
-      emit('gate.evaluated', {
-        gate,
-        node,
-        verdict: {
-          ...verdictTemplate,
+      emit(
+        'gate.evaluated',
+        {
           gate,
-          evaluatedNode: node,
-          by: { ...verdictTemplate.by, node: gate },
-          criteria: [
-            {
-              id: index % 8 === 3 ? 'unit-tests-pass' : 'no-v-model-regression',
-              status: 'satisfied',
-            },
-          ],
+          node,
+          verdict: {
+            ...verdictTemplate,
+            schemaId: 'DeFlow.verdict.v2',
+            gate,
+            evaluatedNode: node,
+            by: { ...verdictTemplate.by, node: gate },
+            criteria: [
+              {
+                id: index % 8 === 3 ? 'unit-tests-pass' : 'no-v-model-regression',
+                status: 'satisfied',
+              },
+            ],
+            // KAR-10.4 AC5 — the contract this gate judged. Without it the
+            // verdict is void and the run's own acceptance board counts none
+            // of these ten gates, which is not the run this fixture describes.
+            specHash: SPEC_HASH,
+          },
         },
-      });
+        2,
+      );
     }
   }
 

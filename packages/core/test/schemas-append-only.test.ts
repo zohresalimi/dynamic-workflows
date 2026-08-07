@@ -42,6 +42,8 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-10.2 — the framing interview's return contract.
   'DeFlow.taskspecdraft.v1': 'dc33cef5a3dd88eedaa7a285cbb9cb5810f4b16cb0fadc13ed12e90d2f61d4ea',
   'DeFlow.verdict.v1': 'c089c51606833975418c288e8be97bf3839e8fc4582adce448c7b69394e8843d',
+  // Shipped 2026-08-07, KAR-10.4 — the verdict names the specHash it judged.
+  'DeFlow.verdict.v2': '8c9e6baf6ddf07bf32c1be0b0562951f40364e442be13c7c9cf2d12c706bfe24',
 };
 
 suite('the committed schemas are append-only (AC6)', () => {

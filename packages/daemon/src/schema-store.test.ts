@@ -41,6 +41,7 @@ const CONFORMING: Record<string, string> = {
     'packages/core/test/fixtures/specs/vue3-migration.framed.json',
   ),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
+  'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
 };
 
 suite('the emitted directory loads (AC3, test plan #4)', () => {
