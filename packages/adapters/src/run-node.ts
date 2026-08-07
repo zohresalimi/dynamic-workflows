@@ -239,8 +239,16 @@ export type AcpNodeOutcome = OutcomeCommon &
 /**
  * A character-count estimate, explicitly labelled as one.
  *
- * EPIC-14 replaces the arithmetic with `gpt-tokenizer`'s `o200k_base`
- * encoding; what must not change is `source: 'estimated'`. Vendor-reported
+ * This is §7's `heuristic` tier: characters over four, and nothing more. The
+ * real Tier-2 count is `gpt-tokenizer`'s `o200k_base` behind core's `Tokenizer`
+ * port, implemented in `@DeFlow/daemon` (KAR-09.7) — it lives there and not
+ * here because a BPE table is two megabytes of data and this package depends on
+ * `@DeFlow/core` alone (docs/16-repo-layout.md R2). A caller that has a
+ * tokenizer should count with it and label the figure
+ * `gpt-tokenizer/o200k_base`; a caller that does not gets this, honestly
+ * labelled.
+ *
+ * What must not change either way is `source: 'estimated'`. Vendor-reported
  * figures are the billing truth and estimates carry a known 15–20% undercount
  * on prose, so a total that mixed them would be a number with no meaning
  * (docs/04-domain-model.md §8).

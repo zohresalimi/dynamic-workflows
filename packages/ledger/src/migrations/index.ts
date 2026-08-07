@@ -12,6 +12,7 @@ import { migration0006EffectJournalGuards } from './0006-effect-journal-guards.t
 import { migration0007EffectScaffold } from './0007-effect-scaffold.ts';
 import { migration0008Worktrees } from './0008-worktrees.ts';
 import { migration0009ConflictProbe } from './0009-conflict-probe.ts';
+import { migration0010TokenCalibration } from './0010-token-calibration.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
@@ -23,4 +24,5 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0007EffectScaffold,
   migration0008Worktrees,
   migration0009ConflictProbe,
+  migration0010TokenCalibration,
 ];

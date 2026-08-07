@@ -627,6 +627,33 @@ export {
   TaskSpecSchema,
 } from './task-spec.ts';
 export { SINGLE_LINE_MAX, singleLine, toSingleLine } from './text.ts';
+// KAR-09.7 — three measurement tiers, and the honest blank when none can answer.
+export type {
+  NodeCostInput,
+  ProjectedNodeCost,
+  TokenAccounting,
+  TokenTier,
+  TokenTierInput,
+} from './token-accounting.ts';
+export {
+  projectNodeCost,
+  selectTokenTier,
+  TOKEN_ACCOUNTING_MODES,
+  TOKEN_TIERS,
+  TokenAccountingSchema,
+} from './token-accounting.ts';
+// KAR-09.7 — the self-calibrating Tier-2 correction factor.
+export type { Calibration } from './token-calibration.ts';
+export {
+  appliedFactor,
+  CALIBRATION_ALPHA,
+  CALIBRATION_MIN_SAMPLES,
+  CALIBRATION_SEEDS,
+  calibratedEstimate,
+  seededCalibration,
+  seedFactor,
+  updateCalibration,
+} from './token-calibration.ts';
 export type { TokenUsage, TokenUsageSource, UsageTotals } from './token-usage.ts';
 export {
   sumUsage,
@@ -634,6 +661,10 @@ export {
   TokenUsageSourceSchema,
   UsageTotalsSchema,
 } from './token-usage.ts';
+// KAR-09.7 — the Tier-2 `Tokenizer` port. Implemented in @DeFlow/daemon, in the
+// same style as `Clock` and `Db`; core owns no BPE table.
+export type { Tokenizer } from './tokenizer.ts';
+export { contextFillPercent } from './tokenizer.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,

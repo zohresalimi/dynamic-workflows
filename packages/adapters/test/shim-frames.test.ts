@@ -6,11 +6,12 @@
  * exec-shim agent (KAR-04.6). Two of its fields carry weight beyond looking
  * right:
  *
- * - **`usage` is the billing truth**, so it becomes a `TokenUsage` with
+ * - **`modelUsage` is the billing truth**, so it becomes a `TokenUsage` with
  *   `source: 'vendor-reported'`. An estimate mixed into the same total is not
  *   a slightly-wrong number, it is a number with no meaning
  *   (docs/04-domain-model.md §8), and the estimator on the ACP path already
- *   labels itself.
+ *   labels itself. The sibling `usage` object is a trap and is never read —
+ *   KAR-09.7 owns that rule, and `test/tier1-model-usage.test.ts` defends it.
  * - **`resetsAt` is epoch _seconds_.** Reading it as milliseconds schedules
  *   the retry in 1970, which is indistinguishable from "retry immediately" —
  *   the exact behaviour AC6 exists to prevent.
@@ -41,7 +42,15 @@ const RESULT = {
     cache_read_input_tokens: 900,
   },
   modelUsage: {
-    'claude-sonnet-4-5-20260514': { inputTokens: 1024, outputTokens: 37, costUSD: 0.0123 },
+    'claude-sonnet-4-5-20260514': {
+      inputTokens: 1024,
+      outputTokens: 37,
+      cacheReadInputTokens: 900,
+      cacheCreationInputTokens: 12,
+      costUSD: 0.0123,
+      contextWindow: 200_000,
+      maxOutputTokens: 64_000,
+    },
   },
   permission_denials: [],
   terminal_reason: 'complete',
@@ -116,7 +125,7 @@ suite('the result envelope becomes a vendor-reported TokenUsage (AC5)', () => {
   it('omits the optional counters the envelope did not report', () => {
     const sparse = line({
       ...RESULT,
-      usage: { input_tokens: 10, output_tokens: 2 },
+      modelUsage: { 'claude-sonnet-4-5-20260514': { inputTokens: 10, outputTokens: 2 } },
     });
     expect(shimResultUsage(sparse)).toEqual({
       inputTokens: 10,

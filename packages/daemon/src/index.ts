@@ -456,6 +456,28 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+// KAR-09.7 — token accounting in three tiers. `preflightBudget` reserves,
+// `foldCalibrationSample` corrects, `o200kTokenizer` is the only implementation
+// of core's `Tokenizer` port, and `exact-count.ts` is the tier-3 call site that
+// nothing on the subscription path can reach.
+export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';
+export { foldCalibrationSample, preflightBudget } from './tokens/calibrate.ts';
+export {
+  renderTokenCalibrationReport,
+  tokenCalibrationLines,
+  tokenCalibrationReport,
+} from './tokens/doctor.ts';
+export type {
+  DirectApiCredential,
+  ExactCountRequest,
+  ExactCountTransport,
+} from './tokens/exact-count.ts';
+export {
+  COUNT_TOKENS_PATH,
+  countTokensExact,
+  ExactCountUnavailable,
+} from './tokens/exact-count.ts';
+export { o200kTokenizer } from './tokens/tokenizer.ts';
 // KAR-07.7 — the integration branch and the ordered merge loop: probe, sort,
 // merge the cheapest, re-probe, re-sort, gate (§7).
 export type { AutoResolveUse } from './workspace/auto-resolve-usage.ts';

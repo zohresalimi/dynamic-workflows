@@ -71,7 +71,9 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // `provider_capabilities` is migration 0004's probed manifest (KAR-05.2);
       // `process` is migration 0005's orphan-reaping handle (KAR-05.9);
       // `worktrees` is migration 0008's projection over git (KAR-07.2);
-      // `conflict_probe` is migration 0009's live merge-tree matrix (KAR-07.6).
+      // `conflict_probe` is migration 0009's live merge-tree matrix (KAR-07.6);
+      // `token_calibration` is migration 0010's learned tokenEstimateFactor
+      // per (provider, model) (KAR-09.7).
       expect(tables).toEqual([
         'conflict_probe',
         'daemon',
@@ -83,6 +85,7 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         'process',
         'provider_capabilities',
         'run',
+        'token_calibration',
         'worktrees',
       ]);
 

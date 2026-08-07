@@ -42,6 +42,11 @@ catalog:
   "@agentclientprotocol/sdk": 1.3.0 # exact: 0.4.5 -> 1.3.0 plus an npm-scope and org change in ~10 months
   "@modelcontextprotocol/sdk": 1.30.0
   execa: 10.0.1
+  # KAR-09.7 Tier 2. Consumed **only** through the encoding-specific entrypoint
+  # ("gpt-tokenizer/encoding/o200k_base"): the barrel pulls every BPE table into
+  # the daemon for no accuracy gain, and packages/daemon/test/token-entrypoint.test.ts
+  # is what stops the barrel creeping back in. Pure JS, no wasm, no native build (NF6).
+  gpt-tokenizer: ^3.4.0
   pino: 10.3.1
   "@biomejs/biome": 2.5.6 # exact: a patch bump that reflows the repo makes the next commit unreviewable
   oxlint: 1.76.0

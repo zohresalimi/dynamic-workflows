@@ -97,11 +97,38 @@ export interface HugeLineParts {
   readonly suffix: string;
 }
 
+const INPUT_TOKENS = 1_024;
+const CACHE_READ_TOKENS = 900;
+const CACHE_CREATION_TOKENS = 12;
+
+/**
+ * The window and output ceiling the envelope reports back.
+ *
+ * Present because the real CLI reports them, and because KAR-09.7 reads the
+ * window off the turn rather than off a per-model table — a fake that omitted
+ * them would let a parser that *did* keep a table pass its specs.
+ */
+const CONTEXT_WINDOW = 200_000;
+const MAX_OUTPUT_TOKENS = 64_000;
+
+const outputTokensOf = (script: ResultScript): number => Math.max(1, script.text.length);
+
+/**
+ * The envelope's `usage` block: the raw Anthropic object the CLI passes
+ * through, snake_cased, and typed `z.unknown()` in the CLI's own schema.
+ *
+ * DeFlow never reads it (KAR-09.7 AC2) — it is emitted because the vendor emits
+ * it, and a fake that dropped it would stop being a reproduction of the wire.
+ * Its figures agree with `modelUsage` for the same reason: the real CLI's do,
+ * and a fake that made them disagree would be a detector rather than a double.
+ * The detector lives in `packages/adapters/test/tier1-model-usage.test.ts`,
+ * where a synthetic envelope populates the trap with numbers nothing may read.
+ */
 const usageOf = (script: ResultScript): Line => ({
-  input_tokens: 1_024,
-  output_tokens: Math.max(1, script.text.length),
-  cache_creation_input_tokens: 0,
-  cache_read_input_tokens: 0,
+  input_tokens: INPUT_TOKENS,
+  output_tokens: outputTokensOf(script),
+  cache_creation_input_tokens: CACHE_CREATION_TOKENS,
+  cache_read_input_tokens: CACHE_READ_TOKENS,
 });
 
 export interface ClaudeStreamJson {
@@ -171,9 +198,14 @@ export function claudeStreamJson(context: FrameContext): ClaudeStreamJson {
         usage: usageOf(script),
         modelUsage: {
           [model]: {
-            inputTokens: 1_024,
-            outputTokens: Math.max(1, script.text.length),
+            inputTokens: INPUT_TOKENS,
+            outputTokens: outputTokensOf(script),
+            cacheReadInputTokens: CACHE_READ_TOKENS,
+            cacheCreationInputTokens: CACHE_CREATION_TOKENS,
+            webSearchRequests: 0,
             costUSD: script.totalCostUsd,
+            contextWindow: CONTEXT_WINDOW,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
           },
         },
         permission_denials: script.permissionDenials.map((denial) => ({

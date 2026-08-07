@@ -212,6 +212,16 @@ export {
   SNAPSHOT_REVISIT_THRESHOLD,
 } from './run-stats.ts';
 export { openRead, openWrite } from './sqlite-db.ts';
+// KAR-09.7 — the learned half of the capability manifest: `tokenEstimateFactor`
+// per (provider, model), overwritten after every node and read before every
+// pre-flight budget.
+export {
+  readTokenCalibration,
+  readTokenCalibrations,
+  recordTokenSample,
+  type TokenCalibrationRow,
+  type TokenSample,
+} from './token-calibration.ts';
 // KAR-07.2 — the `worktrees` projection: an index over `git worktree list
 // --porcelain -z`, replaced whole on every refresh, never the source of truth.
 export { readWorktrees, replaceWorktrees, type WorktreeRow } from './worktrees.ts';

@@ -117,28 +117,120 @@ export function shimText(line: ShimLine): string {
 }
 
 /**
- * The `result` envelope's `usage`, as a domain `TokenUsage`.
+ * KAR-09.7 Tier 1 — one turn's authoritative figures, normalised.
  *
- * `source: 'vendor-reported'` is not a decoration: it is what keeps this
- * figure addable to other vendor figures and un-addable to an estimate. The
- * three optional counters are omitted when the envelope did not report them —
- * "not reported" and "zero" are different claims, and only one of them is
- * true.
+ * The same shape whichever dialect produced it (`./turn-frames.ts` builds one
+ * from the jsonl dialect's `turn.completed`), so a consumer computing a fill
+ * percentage or folding a calibration sample never branches on vendor.
+ *
+ * `contextWindow` and `maxOutputTokens` are `null` rather than a default,
+ * because a default here is a window-size table with one entry: the whole
+ * reason this field is carried at all is that DeFlow reads the window off the
+ * turn instead of knowing it.
  */
-export function shimResultUsage(line: ShimLine): TokenUsage {
-  const usage = asRecord(line.raw.usage) ?? {};
-  const cacheRead = asCount(usage.cache_read_input_tokens);
-  const cacheCreation = asCount(usage.cache_creation_input_tokens);
-  const reasoning = asCount(usage.reasoning_output_tokens);
+export interface VendorUsageReport {
+  /** The model the turn mostly ran on, when the dialect names one. */
+  readonly model: string | null;
+  readonly usage: TokenUsage;
+  /** `null` when the dialect reports no cost — never 0, which is a claim. */
+  readonly costUsd: number | null;
+  readonly contextWindow: number | null;
+  readonly maxOutputTokens: number | null;
+}
 
+/** Builds a `TokenUsage` from already-extracted counts, omitting the optional
+ * counters nobody reported — "not reported" and "zero" are different claims,
+ * and only one of them is true. */
+function vendorUsage(counts: {
+  input: number;
+  output: number;
+  cacheRead?: number | undefined;
+  cacheCreation?: number | undefined;
+  reasoning?: number | undefined;
+}): TokenUsage {
   return {
-    inputTokens: asCount(usage.input_tokens) ?? 0,
-    outputTokens: asCount(usage.output_tokens) ?? 0,
-    ...(cacheRead === undefined ? {} : { cacheReadInputTokens: cacheRead }),
-    ...(cacheCreation === undefined ? {} : { cacheCreationInputTokens: cacheCreation }),
-    ...(reasoning === undefined ? {} : { reasoningOutputTokens: reasoning }),
+    inputTokens: counts.input,
+    outputTokens: counts.output,
+    ...(counts.cacheRead === undefined ? {} : { cacheReadInputTokens: counts.cacheRead }),
+    ...(counts.cacheCreation === undefined
+      ? {}
+      : { cacheCreationInputTokens: counts.cacheCreation }),
+    ...(counts.reasoning === undefined ? {} : { reasoningOutputTokens: counts.reasoning }),
     source: 'vendor-reported',
   };
+}
+
+/** Sums one optional counter across every model entry, staying `undefined`
+ * when not a single entry reported it. */
+function sumOptional(entries: readonly Record<string, unknown>[], key: string): number | undefined {
+  const reported = entries
+    .map((entry) => asCount(entry[key]))
+    .filter((value) => value !== undefined);
+  return reported.length === 0 ? undefined : reported.reduce((sum, value) => sum + value, 0);
+}
+
+/**
+ * The `result` envelope's Tier-1 report, read from **`modelUsage` only**, or
+ * `null` when the envelope carried no `modelUsage` at all.
+ *
+ * The envelope also carries a `usage` object and it is a trap: the CLI's own
+ * zod schema types it `z.unknown()` — a raw passthrough of Anthropic's API
+ * object whose shape the CLI does not guarantee — and it carries no window.
+ * `modelUsage` is typed, and `modelUsage[m].contextWindow` is what makes a
+ * per-model window table unnecessary. `test/no-result-envelope-usage.test.ts`
+ * is the mechanical half of that rule; the differential specs in
+ * `test/tier1-model-usage.test.ts` are the half a grep cannot be routed around.
+ *
+ * A turn may bill against more than one model — a sub-agent on a cheaper one,
+ * for instance. The counts are **summed**, because the turn cost what it cost;
+ * the window is taken from the entry with the most input tokens, because that
+ * is the model the packet actually had to fit inside, and `null` when that
+ * entry did not report one.
+ */
+export function shimResultReport(line: ShimLine): VendorUsageReport | null {
+  const modelUsage = asRecord(line.raw.modelUsage);
+  if (modelUsage === null) return null;
+
+  const entries = Object.entries(modelUsage)
+    .map(([model, value]) => ({ model, entry: asRecord(value) }))
+    .filter((row): row is { model: string; entry: Record<string, unknown> } => row.entry !== null);
+  if (entries.length === 0) return null;
+
+  const records = entries.map((row) => row.entry);
+  const dominant = entries.reduce((best, row) =>
+    (asCount(row.entry.inputTokens) ?? 0) > (asCount(best.entry.inputTokens) ?? 0) ? row : best,
+  );
+
+  const costs = records
+    .map((entry) => entry.costUSD)
+    .filter((cost): cost is number => typeof cost === 'number' && Number.isFinite(cost));
+
+  return {
+    model: dominant.model,
+    usage: vendorUsage({
+      input: sumOptional(records, 'inputTokens') ?? 0,
+      output: sumOptional(records, 'outputTokens') ?? 0,
+      cacheRead: sumOptional(records, 'cacheReadInputTokens'),
+      cacheCreation: sumOptional(records, 'cacheCreationInputTokens'),
+      reasoning: sumOptional(records, 'reasoningOutputTokens'),
+    }),
+    costUsd: costs.length === 0 ? null : costs.reduce((sum, cost) => sum + cost, 0),
+    contextWindow: asCount(dominant.entry.contextWindow) ?? null,
+    maxOutputTokens: asCount(dominant.entry.maxOutputTokens) ?? null,
+  };
+}
+
+/**
+ * The `result` envelope as a domain `TokenUsage`.
+ *
+ * `source: 'vendor-reported'` is not a decoration: it is what keeps this figure
+ * addable to other vendor figures and un-addable to an estimate. An envelope
+ * with no `modelUsage` degrades to labelled zeros rather than to the `usage`
+ * trap's figures — the node completed and DeFlow has nothing to report about
+ * it, which is a different statement from "the vendor reported these numbers".
+ */
+export function shimResultUsage(line: ShimLine): TokenUsage {
+  return shimResultReport(line)?.usage ?? vendorUsage({ input: 0, output: 0 });
 }
 
 /** What the envelope says the turn cost, in USD, or 0 when it said nothing. */
@@ -157,15 +249,31 @@ export function shimResultCostUsd(line: ShimLine): number {
  * it to a generic failure would also make it *retryable*, and re-running an
  * agent that already exhausted its repair budget spends the retry budget
  * proving the same thing again.
+ *
+ * `error_max_budget_usd` is `gate`, and the class is not a choice this table
+ * makes: `budget.cost-exceeded` is one of the three reasons `NodeFailureSchema`
+ * refuses to classify as anything else (KAR-06.5). A ceiling the operator set
+ * has been hit, and the only correct next action is a human's.
+ *
+ * `error_during_execution` is deliberately **absent**. It is the vendor's
+ * "something went wrong" subtype and says nothing specific, so it falls to the
+ * default arm below — where the permission denials get their vote and decide
+ * between `agent.refused` and `agent.nonzero-exit`. Naming it here would take
+ * that vote away, which is the one case where the generic arm is more precise
+ * than a table row.
  */
 export const RESULT_SUBTYPE_REASONS: Readonly<
-  Record<string, { readonly reason: NodeFailureReason; readonly class: 'transient' | 'permanent' }>
+  Record<
+    string,
+    { readonly reason: NodeFailureReason; readonly class: 'transient' | 'permanent' | 'gate' }
+  >
 > = {
   error_max_structured_output_retries: {
     reason: 'agent.schema-repair-exhausted',
     class: 'permanent',
   },
   error_max_turns: { reason: 'agent.max-turns', class: 'permanent' },
+  error_max_budget_usd: { reason: 'budget.cost-exceeded', class: 'gate' },
 };
 
 /**

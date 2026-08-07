@@ -225,6 +225,18 @@ interface ShimEntry {
 export interface ProviderSpec {
   readonly id: ProviderId;
   readonly kind: ProviderKind;
+  /**
+   * KAR-09.7 — which model family this vendor's CLI drives, and therefore
+   * which token-estimate seed applies before measurement replaces it.
+   *
+   * Here rather than in `capabilities.ts` because it is not a capability: it
+   * cannot be probed, it does not change when the binary is upgraded, and it
+   * is the same kind of fact as "OpenCode takes a subcommand". `'default'` is
+   * a real answer and the honest one for every vendor whose token accounting
+   * is Unverified (roadmap A4-3) — it selects a 1.05 correction that five
+   * completed nodes then replace with the measured ratio.
+   */
+  readonly family: string;
   /** The bin name of the package that actually speaks ACP. */
   readonly bin: string;
   /** That package, at the version the spawn was verified against. */
@@ -244,6 +256,8 @@ export interface ProviderSpec {
 interface SpecEntry {
   readonly id: string;
   readonly kind: ProviderKind;
+  /** Absent means `'default'` — see `ProviderSpec.family`. */
+  readonly family?: string;
   readonly bin: string;
   readonly package: string;
   readonly companionBin?: string;
@@ -258,6 +272,9 @@ interface SpecEntry {
 }
 
 const NO_ENV: NodeJS.ProcessEnv = {};
+
+/** The family a vendor nobody has measured belongs to (KAR-09.7 AC5). */
+export const DEFAULT_MODEL_FAMILY = 'default';
 
 /**
  * The two refusals every shim invocation is checked against, in one place.
@@ -310,6 +327,7 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     shim: defineShim(entry.id, entry.shim),
     id,
     kind: entry.kind,
+    family: entry.family ?? DEFAULT_MODEL_FAMILY,
     bin: entry.bin,
     package: entry.package,
     ...(entry.companionBin === undefined ? {} : { companionBin: entry.companionBin }),
@@ -431,6 +449,7 @@ export const PROVIDER_SPECS = {
   }),
   claude: defineSpec({
     id: 'claude',
+    family: 'anthropic',
     kind: 'adapter',
     bin: 'claude-agent-acp',
     package: '@agentclientprotocol/claude-agent-acp',
@@ -482,6 +501,7 @@ export const PROVIDER_SPECS = {
   }),
   codex: defineSpec({
     id: 'codex',
+    family: 'openai',
     kind: 'adapter',
     bin: 'codex-acp',
     package: '@agentclientprotocol/codex-acp',
@@ -540,6 +560,19 @@ export function providerSpec(id: string): ProviderSpec | undefined {
   return Object.hasOwn(PROVIDER_SPECS, id)
     ? (PROVIDER_SPECS as Record<string, ProviderSpec>)[id]
     : undefined;
+}
+
+/**
+ * KAR-09.7 AC5 — the model family whose token-estimate seed applies to this
+ * provider, or `'default'` for one that is not registered at all.
+ *
+ * A total function rather than an optional lookup: a caller budgeting a node's
+ * packet needs a number, and `undefined` here would push a fallback decision
+ * onto every call site — which is how two of them end up disagreeing about
+ * what an unmeasured vendor should be corrected by.
+ */
+export function providerFamily(id: string): string {
+  return providerSpec(id)?.family ?? DEFAULT_MODEL_FAMILY;
 }
 
 /** The complete invocation for one attempt: command, argv and env overlay. */

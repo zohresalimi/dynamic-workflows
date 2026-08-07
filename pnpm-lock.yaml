@@ -51,6 +51,9 @@ catalogs:
     execa:
       specifier: 10.0.1
       version: 10.0.1
+    gpt-tokenizer:
+      specifier: ^3.4.0
+      version: 3.4.0
     hono:
       specifier: 4.12.33
       version: 4.12.33
@@ -261,6 +264,9 @@ importers:
       execa:
         specifier: 'catalog:'
         version: 10.0.1
+      gpt-tokenizer:
+        specifier: 'catalog:'
+        version: 3.4.0
       hono:
         specifier: 'catalog:'
         version: 4.12.33
@@ -1442,6 +1448,9 @@ packages:
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
+
+  gpt-tokenizer@3.4.0:
+    resolution: {integrity: sha512-wxFLnhIXTDjYebd9A9pGl3e31ZpSypbpIJSOswbgop5jLte/AsZVDvjlbEuVFlsqZixVKqbcoNmRlFDf6pz/UQ==}
 
   has-symbols@1.1.0:
     resolution: {integrity: sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==}
@@ -3198,6 +3207,8 @@ snapshots:
       path-scurry: 1.11.1
 
   gopd@1.2.0: {}
+
+  gpt-tokenizer@3.4.0: {}
 
   has-symbols@1.1.0: {}
 

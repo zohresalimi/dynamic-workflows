@@ -173,7 +173,9 @@ export type {
   SpawnPlan,
 } from './provider-registry.ts';
 export {
+  DEFAULT_MODEL_FAMILY,
   PROVIDER_SPECS,
+  providerFamily,
   providerSpec,
   SHIM_FORMATS,
   shimPlan,
@@ -296,17 +298,20 @@ export {
 } from './session-load.ts';
 // KAR-05.8 — the per-line parser: uuid as the dedup key, the vendor-reported
 // usage envelope, and the rate limit's epoch-seconds `resetsAt`.
-export type { ShimLine, ShimRateLimit } from './shim-frames.ts';
+export type { ShimLine, ShimRateLimit, VendorUsageReport } from './shim-frames.ts';
 export {
   parseShimLine,
   RESULT_SUBTYPE_REASONS,
   shimRateLimit,
   shimResultCostUsd,
   shimResultFailure,
+  shimResultReport,
   shimResultUsage,
   shimText,
 } from './shim-frames.ts';
 export type { AgentTransport, ReadGate, TransportOptions } from './transport.ts';
 export { agentTransport } from './transport.ts';
+// KAR-09.7 — Tier 1 on the jsonl dialect, normalised into the same report.
+export { TURN_COMPLETED_TYPE, turnCompletedReport } from './turn-frames.ts';
 export type { UpdateDescription } from './updates.ts';
 export { describeUpdate, toolCallContentText } from './updates.ts';
