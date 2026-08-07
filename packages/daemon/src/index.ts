@@ -261,6 +261,18 @@ export {
   salvageCommitArgs,
   salvagedRemoveArgs,
 } from './git/worktree-salvage.ts';
+// KAR-14.1 AC8 — the read-only ledger the run summary and the SSE tail are
+// served through, and the summary body itself.
+export type { LedgerView, OpenedLedgerView } from './http/ledger-view.ts';
+export {
+  asRunId,
+  clearLedgerView,
+  ledgerView,
+  openLedgerView,
+  setLedgerView,
+} from './http/ledger-view.ts';
+export type { RunSummary } from './http/run-summary.ts';
+export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
 export type { CreateLoggerOptions } from './logging.ts';

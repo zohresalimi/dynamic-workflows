@@ -206,6 +206,17 @@ suite('EPIC-14-S1 — a completed node’s spend lands with provenance (AC1)', (
     test.ledger.close();
   });
 
+  /**
+   * The reducer's half of EPIC-14-S1's rollup clauses, and only that half.
+   *
+   * The scenario states them against a response body — *"the run rollup at
+   * `GET /api/runs/r1` reports costUsd.subscription 0.42"* — and this package
+   * cannot serve one: @DeFlow/adapters owns no database and no HTTP surface,
+   * and depending on @DeFlow/daemon would invert the dependency direction
+   * (docs/16-repo-layout.md R2). The same figures are asserted over a real
+   * socket, out of a real ledger written by this same shim path, in
+   * `packages/daemon/test/integration/run-rollup-api.test.ts`.
+   */
   it('projects a subscription cost and an empty unaccounted list', async ({ tmp }) => {
     const agent = await linkFakeAgent(tmp, 'claude');
     const test = await harness(tmp, agent.binary, S1_TURN);
