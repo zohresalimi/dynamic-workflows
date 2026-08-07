@@ -118,15 +118,40 @@ suite('the unit slice stays fast enough to run on every save (AC2)', () => {
   // point of the spec is that both are slow when the box is loaded — the
   // integration slice's default 30 s would be the old flat budget by the back
   // door.
+  // Both nested legs are capped at four workers rather than taking the whole
+  // box. This spec starts a full unit slice from inside a slice that is already
+  // running seven forked workers of its own, on eight cores, and then does it a
+  // second time for the control — it is the single largest load spike in the
+  // suite, and most of that spike is self-inflicted.
+  //
+  // The cap costs the assertion nothing, because the assertion is a ratio and
+  // the cap applies to both halves of it: measured 2026-08-07, 1.12 idle and
+  // 1.13 under twelve CPU hogs at four workers, against 1.05 and 1.15 at eight
+  // — all far inside the 2.5x ceiling. A unit spec that started sleeping or
+  // spawning still moves only the run leg, which is the regression this exists
+  // to catch.
+  //
+  // What the cap is *not* is a proven fix for the flake that motivated it: this
+  // spec has twice had a nested runner exit 1 outright during a full-suite run
+  // — once on the run leg, once on the control — and that failure has never
+  // reproduced in isolation, including under a 4.5 GB memory hog and twelve CPU
+  // hogs. Both legs now carry the nested runner's own output into the assertion
+  // message, so the next occurrence says what happened instead of "expected 1
+  // to be +0".
+  const NESTED_WORKERS = ['--maxWorkers', '4'];
+
   it('runs the whole slice in a small multiple of the cost of collecting it', async () => {
-    const run = await runVitest(['--project', 'unit']);
+    const run = await runVitest(['--project', 'unit', ...NESTED_WORKERS]);
     // A bare `expect(code).toBe(0)` reports "expected 1 to be +0" and nothing
     // else: the nested runner's own failure output is inside `run.output`,
     // where no reporter will ever look. Carry it into the message.
     expect(run.code, `nested run output:\n${run.output}`).toBe(0);
 
-    const control = await runVitestArgv(['list', '--project', 'unit']);
-    expect(control.code, 'the control must actually collect the slice').toBe(0);
+    const control = await runVitestArgv(['list', '--project', 'unit', ...NESTED_WORKERS]);
+    expect(
+      control.code,
+      `the control must actually collect the slice; output:\n${control.output}`,
+    ).toBe(0);
 
     expect(run.ms, `control (collect-only) for the same slice was ${control.ms} ms`).toBeLessThan(
       Math.max(10_000, control.ms * 2.5),
