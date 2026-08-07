@@ -145,6 +145,29 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     : null;
 
 /**
+ * The vendor's own reset instant, in ms, off whatever carried it — or `null`
+ * (AC1).
+ *
+ * **The unit conversion is the whole function**, and it lives here rather than
+ * in either adapter because both paths need it and two copies are two
+ * conversions waiting to disagree. `resetsAt` arrives as epoch **seconds** —
+ * the one spelling any vendor has been verified to emit
+ * (docs/07-provider-adapter-layer.md §8.1, verified 2026-08-02) — and DeFlow's
+ * durable timers are ms epoch. A scheduler handed 1_800_000_000 as
+ * milliseconds wakes in 1970, which is a wake that fires immediately: the
+ * blind retry AC6 forbids, wearing a scheduler's clothes.
+ *
+ * `null` for anything else, including a field that is present and not a
+ * number. A reset nobody stated is not a reset this function invents.
+ */
+export function rateLimitResetsAt(carrier: unknown): number | null {
+  const seconds = asRecord(carrier)?.resetsAt;
+  return typeof seconds === 'number' && Number.isFinite(seconds)
+    ? Math.floor(seconds) * 1000
+    : null;
+}
+
+/**
  * The limit a failure describes, or `null` when it is not about one (AC9).
  *
  * Asked rather than a `reason` comparison, so no scheduling module names

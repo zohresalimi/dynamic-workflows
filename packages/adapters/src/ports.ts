@@ -156,6 +156,35 @@ export interface AgentProcessRecord {
   readonly spawnedAt: number;
 }
 
+/**
+ * A durable timer row (`node_wake`), as an adapter needs to write one
+ * (KAR-14.4 AC2).
+ *
+ * A port rather than a direct dependency, for the reason every port in this
+ * file is one: the SQL lives in @DeFlow/ledger and this package depends on
+ * @DeFlow/core alone (docs/16-repo-layout.md R2). It is a *row* and not a
+ * `setTimeout` because Node's maximum timer delay is 2^31−1 ms and passing
+ * more fires the callback after 1 ms — verified — which would turn a
+ * fifteen-minute quota wait into an immediate retry, i.e. exactly the blind
+ * retry this exists to replace.
+ *
+ * It lives here rather than beside either runner because **both** paths write
+ * one: the shim reads Claude Code's `rate_limit_event` frame and the ACP path
+ * reads a declared JSON-RPC error, and a second declaration for the second
+ * caller is a second shape waiting to drift from the table.
+ */
+export interface NodeWakeRow {
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  /** ms epoch. An instant, so it survives a restart that outlives the wait. */
+  readonly wakeAt: number;
+  readonly reason: string;
+}
+
+export interface WakeRegistry {
+  schedule(row: NodeWakeRow): Promise<void>;
+}
+
 /** Which spawned process a caller means. A retry is a different one. */
 export interface AgentProcessKey {
   readonly runId: RunId;
@@ -306,6 +335,23 @@ export interface AcpNodeRequest {
    * `scopeAuditRefusal`.
    */
   readonly pathScope?: readonly string[];
+  /**
+   * KAR-14.4 AC1 — the JSON-RPC error codes this adapter is known to answer
+   * with when the vendor's quota is exhausted.
+   *
+   * **Empty by default, and DeFlow ships none**, exactly as
+   * `ShimNodeRequest.rateLimitExitCodes` ships none: ACP assigns no
+   * rate-limit code (`ACP_ASSIGNED_ERROR_CODES` is the whole of what it does
+   * assign), and whether any adapter surfaces quota state at all is still
+   * Unverified — roadmap §1's M0 ACP spike is what would populate this, and
+   * until it does, an undeclared error degrades to full-jitter backoff rather
+   * than to a rate limit DeFlow inferred.
+   *
+   * A code ACP has already taken is refused before the spawn, because
+   * declaring `authRequired` would classify a permanent refusal as a transient
+   * quota (`undeclarableRateLimitCode`).
+   */
+  readonly rateLimitErrorCodes?: readonly number[];
 }
 
 export interface AcpPorts {
@@ -385,4 +431,15 @@ export interface AcpPorts {
    * not race ahead of the durable writes — which is the whole claim of §2.3.
    */
   readonly onPull?: (pull: number, bytesRead: number) => void;
+  /**
+   * KAR-14.4 AC2 — where a quota suspension's `node_wake` row goes.
+   *
+   * Absent means no row is written, which is honest for a probe and for a
+   * caller with no scheduler behind it: the failure is still `transient` and
+   * still carries the limit, so `recordFailure` writes the row from the
+   * failure itself in the same transaction as `node.failed`. This port is what
+   * lets the adapter record the vendor's own instant at the moment it read it,
+   * which is the same thing the shim path does with a `rate_limit_event`.
+   */
+  readonly wakes?: WakeRegistry;
 }

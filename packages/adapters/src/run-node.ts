@@ -48,6 +48,7 @@ import {
   type NodeFailure,
   NodeFailureError,
   PinIntegrityViolation,
+  QUOTA_WAKE_REASON,
   type ReinjectCounter,
   SchemaIdSchema,
   startReinjection,
@@ -63,6 +64,7 @@ import { CAPABILITY_PATHS, supportsSteering } from './capabilities.ts';
 import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
 import {
   ACP_PROTOCOL_VERSION,
+  acpRateLimit,
   advertisedButUnimplemented,
   agentExited,
   agentTimedOut,
@@ -72,6 +74,7 @@ import {
   offendingFrameHead,
   spawnRefused,
   toAdapterFailure,
+  undeclarableRateLimitCode,
 } from './failures.ts';
 import { DEFAULT_MAX_FRAME_BYTES, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime, sweepTree } from './kill-tree.ts';
@@ -478,6 +481,13 @@ export async function runAcpNode(
     pinRefusal ??
     capRefusal ??
     recordingRefusal ??
+    // KAR-14.4 AC9 — a rate-limit code that is not the caller's to declare,
+    // refused beside the other misconfigurations and for the same reason. It
+    // is checked *before* the spawn rather than in the catch below because the
+    // damage it does is on the failure path only: a declared `authRequired`
+    // reads a permanent refusal as a transient quota and spends the node's
+    // whole attempt budget retrying it, which is invisible until it happens.
+    undeclarableRateLimitCode(request.provider, request.rateLimitErrorCodes ?? []) ??
     // KAR-08.7 AC3 — a declared path scope with no auditor behind it is
     // refused here, beside the other two misconfigurations, and for the same
     // reason: the completion-time backstop could never fire, and a node that
@@ -938,7 +948,56 @@ export async function runAcpNode(
           signal: exit.signal,
         })
       : caught;
-    const mapped = toAdapterFailure(thrown, {
+
+    // KAR-14.4 AC1 — the ACP half of "both paths normalise to
+    // `provider.rate_limited`".
+    //
+    // The shim path reads Claude Code's own `rate_limit_event` frame, which is
+    // verified. There is no equivalent on this path to read: ACP assigns no
+    // rate-limit code, has no quota-shaped `session/update`, and whether any
+    // adapter surfaces the state at all is **Unverified** — roadmap §1's M0
+    // ACP spike is told to answer it, and this is the same honest flag the
+    // token-usage gap carries a few lines below (`reported: null`, A0-3).
+    //
+    // So DeFlow reads the codes the *caller* declared and infers nothing else,
+    // exactly as `rateLimitExitCodes` works on the shim. An adapter with no
+    // declared code lands on the degradation AC6 specifies — `transient` and
+    // full-jitter backoff — rather than on a quota nobody stated.
+    //
+    // An escalated cancel is excluded on purpose: DeFlow signalled that group
+    // itself, so whatever the agent managed to answer on its way out is not a
+    // statement about the vendor's quota.
+    const limited = turn.escalated
+      ? null
+      : acpRateLimit(thrown, {
+          provider: request.provider,
+          codes: request.rateLimitErrorCodes ?? [],
+        });
+    if (limited !== null) {
+      // Appended before `node.failed`, so a reader walking the timeline meets
+      // the limit before the failure it caused — the order the shim path
+      // writes them in, and the row `DeFlow doctor` reads per provider (AC10).
+      lastSeq = await ledger.append(
+        event('provider.rate_limited', {
+          provider: request.provider,
+          ...(limited.limit.resetsAt === null ? {} : { resetsAt: limited.limit.resetsAt }),
+          raw: limited.limit.raw,
+        }),
+      );
+      // Scheduled around, not retried into — and only where the vendor named
+      // an instant. Where it did not, no row is invented: the retry ladder's
+      // full jitter is what schedules the next attempt (AC6).
+      if (limited.limit.resetsAt !== null) {
+        await ports.wakes?.schedule({
+          runId: request.runId,
+          nodeId: request.nodeId,
+          wakeAt: limited.limit.resetsAt,
+          reason: QUOTA_WAKE_REASON,
+        });
+      }
+    }
+
+    const mapped = toAdapterFailure(limited?.thrown ?? thrown, {
       occurredAtEvent: lastSeq,
       attempt: request.attempt,
       captureEvidence: ports.captureEvidence,

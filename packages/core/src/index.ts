@@ -760,6 +760,7 @@ export {
   rateLimitFailureTag,
   rateLimitMessage,
   rateLimitOf,
+  rateLimitResetsAt,
 } from './rate-limit.ts';
 // KAR-02.3 — the F6.2 read-reachability gate under its EPIC-02 name and
 // `{ node, read }` return shape. One implementation, in

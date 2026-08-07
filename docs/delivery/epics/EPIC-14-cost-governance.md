@@ -436,7 +436,7 @@ run manifest so an estimate can be re-derived later. If the table has no entry, 
 | **Size**        | M                                                                                                                                                                                                        |
 | **Depends on**  | EPIC-06 KAR-06.5 (classified retry), EPIC-06 KAR-06.6 (durable wake times), EPIC-05 KAR-05.2 (capability manifests for `capabilitySuperset`), EPIC-11 KAR-11.6 (provider re-routing recorded as a patch) |
 | **PRD**         | F3.9, F4.5, F4.8, F9.4 (reactive half), NF7                                                                                                                                                              |
-| **Verified by** | EPIC-14-S21, EPIC-14-S22, EPIC-14-S23, EPIC-14-S24, EPIC-14-S25, EPIC-14-S26, EPIC-14-S27                                                                                                                |
+| **Verified by** | EPIC-14-S21, EPIC-14-S22, EPIC-14-S23, EPIC-14-S24, EPIC-14-S25, EPIC-14-S26, EPIC-14-S27, EPIC-14-S28                                                                                                   |
 
 **As** a run that will be alive for two days, **I want** to read the provider's own statement of when
 its limit resets and sleep until then, **so that** a rate limit costs one SQLite row instead of the
@@ -474,7 +474,12 @@ it does not kill the run._ If no healthy provider satisfies the node, **suspend 
 
 1. A `rate_limit_event` frame on the shim path, and the equivalent rate-limit signal on the ACP path,
    both normalise to `provider.rate_limited { provider, resetsAt?, raw }` with `raw` carrying the
-   vendor payload verbatim for later re-parsing.
+   vendor payload verbatim for later re-parsing. **The ACP half is a declared signal, not a probed
+   one:** ACP assigns no rate-limit code, so the signal is a JSON-RPC error code the adapter's caller
+   declared — the same shape as the shim's `rateLimitExitCodes`, and DeFlow ships none of either. An
+   undeclared error degrades to criterion 6's blind backoff rather than to a quota DeFlow inferred,
+   and a code ACP has already assigned (`authRequired` above all) cannot be declared at all, because
+   reading one as a quota is exactly the conflation criterion 9 forbids.
 2. When `resetsAt` is present, the node is suspended with a `node_wake` row whose `wake_at` equals
    `resetsAt` and whose `reason` is `'quota'`, and `node.suspended { until }` is appended. The
    suspended node consumes **one row and zero CPU** — a test asserts no timer handle and no running
@@ -515,13 +520,19 @@ it does not kill the run._ If no healthy provider satisfies the node, **suspend 
 | 9   | integration | Reroute path: a capable alternate provider on `PATH` → `plan.patched` with `cause: 'quota'`, `decision: 'auto'`, and the node runs on the new provider                                                               | Rerouting bypasses the policy engine and never appears in the scrubber |
 | 10  | integration | No capable alternate: the node suspends, a sibling branch still reaches `node.completed`                                                                                                                             | One provider outage kills the run                                      |
 | 11  | e2e         | A run whose only provider is rate-limited for 6 hours: `DeFlow doctor` reports the `resetsAt`, the daemon idles, and after `clock.advance(hours(6))` the run completes                                               | Long suspension is not exercised end to end                            |
+| 12  | integration | **The ACP half of criterion 1** (added): a real ACP child answers `session/prompt` with a declared rate-limit code → the same `provider.rate_limited` payload, the same `transient` class, the same `quota` wake row; an undeclared code stays what it was; an ACP-assigned code is refused before the spawn | Only the shim path normalises, and the ACP path fails as a bare error |
 
 **Notes / risks** — only Claude Code's rate-limit frame is verified. Whether the ACP path surfaces
 rate-limit state at all is **Unverified** and is one of the two questions the M0 S1 spike is told to
 answer explicitly (roadmap §1). If ACP does not surface it, the reactive path degrades to "classify
 a non-zero exit as `transient` and back off with full jitter", which is correct but blind — and that
 degradation is exactly what criterion 6 specifies, so it is a data path rather than a missing
-feature. Predictive quota headroom (F9.4) is P1 and stays out: no vendor exposes remaining
+feature. **What is shipped for the ACP path is the data path itself, not a stub:** the normaliser,
+the `provider.rate_limited` append, the `quota` wake row and the pre-spawn refusal of an
+ACP-assigned code all exist and are tested (test 12, EPIC-14-S28); what the spike would add is the
+one thing DeFlow must not invent — which code, if any, a given adapter actually answers with. Until
+it does, `rateLimitErrorCodes` is empty everywhere, which is the honest state and is visible in the
+code rather than implied by its absence. Predictive quota headroom (F9.4) is P1 and stays out: no vendor exposes remaining
 subscription quota on the paths AR-1 permits, so any headroom figure DeFlow invented would be a
 guess presented as a fact.
 

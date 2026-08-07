@@ -14,8 +14,14 @@
  * error structurally, so `spawnRefused` hands it the original rather than
  * re-deciding the class here.
  */
-import type { NodeFailure, ToNodeFailureContext } from '@DeFlow/core';
-import { NodeFailureError, toNodeFailure } from '@DeFlow/core';
+import type { NodeFailure, ProviderId, RateLimit, ToNodeFailureContext } from '@DeFlow/core';
+import {
+  NodeFailureError,
+  rateLimitFailureTag,
+  rateLimitMessage,
+  rateLimitResetsAt,
+  toNodeFailure,
+} from '@DeFlow/core';
 import * as acp from '@agentclientprotocol/sdk';
 import type { FrameTooLargeReport } from './frame-guard.ts';
 
@@ -398,6 +404,131 @@ export class InvalidRecordingKey extends NodeFailureError {
 
 /** JSON-RPC's "Method not found", which is how an agent refuses a method. */
 export const METHOD_NOT_FOUND_CODE = -32601;
+
+/**
+ * Every JSON-RPC error code ACP has already given a meaning to, read off the
+ * SDK's own constructors (`@agentclientprotocol/sdk` 1.3.0) rather than
+ * written down as literals.
+ *
+ * It exists for one guard — `undeclarableRateLimitCode` — and the guard exists
+ * because of `authRequired`. A caller that declared `-32000` to mean "rate
+ * limited" would turn every permanent auth refusal into a `transient` quota
+ * and retry it until the attempt budget ran out, which is exactly the
+ * conflation KAR-14.4 AC9 forbids. Reading the codes from the SDK means a
+ * version that assigns a new one narrows this set without anybody noticing it
+ * had to.
+ */
+export const ACP_ASSIGNED_ERROR_CODES: readonly number[] = Object.freeze([
+  acp.RequestError.parseError().code,
+  acp.RequestError.invalidRequest().code,
+  acp.RequestError.methodNotFound('').code,
+  acp.RequestError.invalidParams().code,
+  acp.RequestError.internalError().code,
+  acp.RequestError.requestCancelled().code,
+  acp.RequestError.authRequired().code,
+  acp.RequestError.resourceNotFound('').code,
+]);
+
+/**
+ * KAR-14.4 AC9 — the refusal for a rate-limit code that is not the caller's to
+ * declare, or `null` when the declaration is fine.
+ *
+ * Raised **before the spawn**, beside the frame cap and the recording key and
+ * for the same reason: this is a misconfiguration of DeFlow, and the honest
+ * moment to say so is before a process exists and before a quota has been
+ * spent. Discovering it in a `catch` means the mistake only shows up on the
+ * one path where it does damage.
+ */
+export function undeclarableRateLimitCode(
+  provider: ProviderId,
+  codes: readonly number[],
+): NodeFailureError | null {
+  const taken = codes.filter((code) => ACP_ASSIGNED_ERROR_CODES.includes(code));
+  if (taken.length === 0) return null;
+  return new NodeFailureError(
+    `${provider} declares JSON-RPC ${taken.join(', ')} as a rate-limit code, but ACP has already ` +
+      'given those codes a meaning — reading one as a quota would classify a permanent refusal as ' +
+      "a transient retry and spend the node's whole attempt budget on it. Declare a code from " +
+      "JSON-RPC's implementation-defined range that ACP has not taken",
+    {
+      reason: 'adapter.spawn-failed',
+      class: 'permanent',
+      detail: { provider, declared: [...codes], assigned: [...ACP_ASSIGNED_ERROR_CODES] },
+    },
+  );
+}
+
+/** What the caller declared about this adapter's rate-limit signal. */
+export interface AcpRateLimitContext {
+  readonly provider: ProviderId;
+  /**
+   * The JSON-RPC error codes this adapter is known to answer with when the
+   * vendor's quota is exhausted. **Empty by default, and DeFlow ships none.**
+   */
+  readonly codes: readonly number[];
+}
+
+/**
+ * KAR-14.4 AC1 — the rate-limit signal on the ACP path, normalised to the same
+ * `RateLimit` the shim path produces.
+ *
+ * **ACP has no rate-limit concept.** Verified against
+ * `@agentclientprotocol/sdk` 1.3.0: every code the protocol assigns is a
+ * transport or auth condition (`ACP_ASSIGNED_ERROR_CODES`), there is no
+ * quota-shaped `session/update`, and no agent method reports remaining
+ * headroom. Whether any ACP adapter surfaces rate-limit state *at all* is
+ * still **Unverified** — it is one of the two questions roadmap §1's M0 ACP
+ * spike is told to answer, and until it does, the honest degradation the epic
+ * specifies is "classify and back off with full jitter", which is what an
+ * undeclared error already gets.
+ *
+ * So this function guesses nothing. It reads exactly what the caller declared,
+ * exactly as `rateLimitExitCodes` does on the shim path next door, and for the
+ * same reason stated there: DeFlow does not invent a rate limit any more than
+ * it invents a reset time. An adapter with no declared code produces no
+ * `provider.rate_limited` on this path, and that absence is the honest signal
+ * — not a `resetsAt` nobody stated.
+ *
+ * What it *does* normalise, when a declared code arrives:
+ *
+ *   - `raw` is `{ code, message, data }` verbatim, so a later build re-parses
+ *     the vendor's own payload off the ledger without a re-run;
+ *   - `resetsAt` is read through core's one converter, from `data.resetsAt` or
+ *     from `data.rate_limit_info.resetsAt` — the two places the one verified
+ *     vendor spelling could land — and is `null` otherwise;
+ *   - the thrown failure carries `rateLimitFailureTag`, so `rateLimitOf` reads
+ *     it back and `recordFailure` writes the `node_wake` row in the same
+ *     transaction as `node.failed`, identically on both paths.
+ */
+export function acpRateLimit(
+  error: unknown,
+  ctx: AcpRateLimitContext,
+): { readonly limit: RateLimit; readonly thrown: NodeFailureError } | null {
+  if (ctx.codes.length === 0) return null;
+  const record = asRecord(error);
+  const code = record?.code;
+  if (typeof code !== 'number' || !ctx.codes.includes(code)) return null;
+
+  const message = typeof record?.message === 'string' ? record.message : '';
+  const data = record?.data;
+  const raw = { code, message, data };
+  const limit: RateLimit = {
+    provider: ctx.provider,
+    resetsAt: rateLimitResetsAt(data) ?? rateLimitResetsAt(asRecord(data)?.rate_limit_info),
+    raw,
+  };
+  return {
+    limit,
+    thrown: new NodeFailureError(rateLimitMessage(limit), rateLimitFailureTag(limit)),
+  };
+}
+
+/** A JSON-RPC error is an object, and `RequestError` is one too — reading it
+ * structurally is what makes the wire shape and the SDK's class the same input. */
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 
 /** `true` when `error` is a JSON-RPC `-32601`, however it was constructed. */
 export function isMethodNotFound(error: unknown): boolean {

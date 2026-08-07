@@ -55,6 +55,7 @@ import {
   type PreflightEstimate,
   type ProviderAuthMode,
   type ProviderId,
+  QUOTA_WAKE_REASON,
   type RateLimit,
   type RunId,
   rateLimitFailureTag,
@@ -92,6 +93,7 @@ import {
   eventVersion,
   type LedgerSink,
   type ProcessRegistry,
+  type WakeRegistry,
 } from './ports.ts';
 import {
   type ProviderSpec,
@@ -131,29 +133,6 @@ const vendorCeiling = (request: ShimNodeRequest): ShimFailureContext =>
     : { ceiling: { node: request.nodeId, limitUsd: request.costCeilingUsd } };
 
 /**
- * A durable timer row (`node_wake`), as the adapter needs to write one.
- *
- * A port rather than a direct dependency, for the reason every port in
- * ./ports.ts is one: the SQL lives in @DeFlow/ledger and this package depends
- * on @DeFlow/core alone (docs/16-repo-layout.md R2). It is a *row* and not a
- * `setTimeout` because Node's maximum timer delay is 2^31−1 ms and passing
- * more fires the callback after 1 ms — verified — which would turn a
- * fifteen-minute quota wait into an immediate retry, i.e. exactly the blind
- * retry this exists to replace.
- */
-export interface NodeWakeRow {
-  readonly runId: RunId;
-  readonly nodeId: NodeId;
-  /** ms epoch. An instant, so it survives a restart that outlives the wait. */
-  readonly wakeAt: number;
-  readonly reason: string;
-}
-
-export interface WakeRegistry {
-  schedule(row: NodeWakeRow): Promise<void>;
-}
-
-/**
  * The lever a node runs with when its own resolution was refused.
  *
  * Only reachable on the refusal path, where the spawn never happens — it exists
@@ -186,8 +165,15 @@ function blindRateLimit(
   return { raw, thrown: new NodeFailureError(rateLimitMessage(limit), rateLimitFailureTag(limit)) };
 }
 
-/** The `node_wake.reason` a provider-side quota limit writes. */
-export const WAKE_REASON_QUOTA = 'quota';
+/**
+ * The `node_wake.reason` a provider-side quota limit writes.
+ *
+ * Core's literal under this package's name, rather than a second `'quota'`:
+ * the ACP path writes the same row from ./run-node.ts, and `decide()` restates
+ * the reason on every tick, so a copy that drifted would leave a node asleep
+ * under a reason no scheduler recognises.
+ */
+export const WAKE_REASON_QUOTA = QUOTA_WAKE_REASON;
 
 /**
  * The capability row for an exec-shim adapter.

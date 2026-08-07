@@ -37,6 +37,7 @@ import {
   NodeFailureError,
   type NodeFailureReason,
   type NodeId,
+  rateLimitResetsAt,
   type StructuredOutput,
   type TokenUsage,
 } from '@DeFlow/core';
@@ -446,19 +447,18 @@ export interface ShimRateLimit {
 /**
  * The rate-limit frame, or `null` for every other line type.
  *
- * The unit conversion is the whole function. `resetsAt` arrives as epoch
- * seconds; DeFlow's durable timers are ms epoch, and a scheduler handed
- * 1_800_000_000 as milliseconds wakes in 1970 — which is a wake that fires
- * immediately, i.e. the blind retry AC6 forbids, wearing a scheduler's
- * clothes.
+ * The epoch-seconds → ms conversion is `rateLimitResetsAt`'s, in
+ * `@DeFlow/core`, and is deliberately not restated here: the ACP path reads
+ * the same field off a JSON-RPC error's `data` (./failures.ts), and two
+ * conversions of the same vendor unit are two conversions waiting to disagree
+ * — where disagreeing means a wake in 1970, i.e. an immediate retry against
+ * the vendor that just rate-limited the node.
  */
 export function shimRateLimit(line: ShimLine): ShimRateLimit | null {
   if (line.type !== 'rate_limit_event') return null;
   const info = asRecord(line.raw.rate_limit_info) ?? {};
-  const seconds = info.resetsAt;
   return {
     status: asString(info.status) ?? 'unknown',
-    resetsAt:
-      typeof seconds === 'number' && Number.isFinite(seconds) ? Math.floor(seconds) * 1000 : null,
+    resetsAt: rateLimitResetsAt(info),
   };
 }
