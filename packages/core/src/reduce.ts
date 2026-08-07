@@ -364,6 +364,11 @@ function project(state: RunState, event: Event): Transition {
     // `cancel` and the node's status, and nothing else about cancellation.
     case 'node.cancel.stage':
     case 'node.cancel.failed':
+    // KAR-08.6 AC6 is the run-scoped version of the same thing: the operator
+    // has to be told which pids outlived the kill switch, and `decide()` has
+    // nothing to do about it — a process DeFlow cannot signal is not a
+    // scheduling problem it can solve by scheduling differently.
+    case 'run.kill_failed':
       return null;
 
     case 'node.retry.scheduled':
@@ -409,6 +414,62 @@ function project(state: RunState, event: Event): Transition {
           ? current
           : { ...current, status: 'blocked' },
       );
+
+    /**
+     * KAR-08.1 AC4. Deliberately no status transition: the refusal is a fact
+     * about the *decision*, and the `node.failed` written in the same breath
+     * is what moves the node. Transitioning here too would give the same
+     * transition two authors, and the second one would win by ordering.
+     */
+    case 'node.unschedulable':
+      return null;
+
+    /**
+     * KAR-08.2 AC7/AC8. Also no transition, and for a stronger reason than
+     * above: a denial is explicitly **not** a failure. The agent receives the
+     * rejection and carries on, so a node that had one is still running, and
+     * anything that moved it here would turn "the safety model worked" into
+     * "the node broke".
+     */
+    case 'permission.denied':
+      return null;
+
+    /**
+     * KAR-08.7 AC3. Also evidence, not run state, and for the same reason as
+     * `permission.denied` above: D14 makes a declared-scope violation a
+     * warning, never a gate, so nothing about scheduling may change because
+     * one landed. A node that triggers this is still `completed`.
+     */
+    case 'node.scope_warning':
+      return null;
+
+    /**
+     * KAR-08.4 AC6 — evidence for the node inspector and the run report, not
+     * run state: nothing about scheduling changes because a variable reached
+     * the child, and the ledger scan for its *value* is a property of the
+     * schema (no `value` field exists to find), not of anything reduced here.
+     */
+    case 'env.declared':
+      return null;
+
+    /**
+     * KAR-08.8 — evidence for the run report and the cost report, not run
+     * state: the effective auth mode a provider ran under does not change
+     * what is schedulable, and recording it here would give the same fact a
+     * second, disagreeable home (docs/15-security-model.md §2.3).
+     */
+    case 'provider.auth_mode':
+    case 'provider.auth_shadow_stripped':
+      return null;
+
+    /**
+     * KAR-08.5 AC6 — also evidence rather than run state. A degraded key does
+     * not change what is schedulable: the disposition that produced it already
+     * did that, by either omitting the key or refusing the node outright, and
+     * a second decision here would be able to disagree with the first.
+     */
+    case 'sandbox.degraded':
+      return null;
 
     /**
      * The effect journal is its own table (§8.3) and its own read model — a

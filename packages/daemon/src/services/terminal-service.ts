@@ -2,11 +2,18 @@
  * The transport-neutral terminal service (docs/07-provider-adapter-layer.md
  * §3, §9.2).
  *
- * The command allowlist, environment scrubbing and the permission ladder are
- * EPIC-08 (KAR-08.4) and plug in behind `CommandPolicy`. The 1 MiB ring buffer
- * and blob spilling are KAR-05.4; what is here is a bounded buffer that keeps
- * the **tail**, because a truncated head is what you want when a build fails
- * after ten thousand lines of progress output.
+ * The command allowlist and the permission ladder plug in behind
+ * `CommandPolicy` (KAR-08.3, ./command-mediation.ts); environment scrubbing is
+ * KAR-08.4's `childEnv` option, below. `terminal/create` is an ACP method the
+ * *agent* invokes, which makes this exactly the boundary the Kiro incident
+ * crossed: `childEnv` is required, never defaulted to `process.env`, because
+ * a service that fell back to the daemon's own environment when a caller
+ * forgot to build one would be the ambient-authority bug wearing an optional
+ * parameter (docs/15-security-model.md §4). Build it once with
+ * `buildChildEnv()` (../proc/env.ts) and pass the result in. The 1 MiB ring
+ * buffer and blob spilling are KAR-05.4; what is here is a bounded buffer
+ * that keeps the **tail**, because a truncated head is what you want when a
+ * build fails after ten thousand lines of progress output.
  *
  * A plain `spawn`, not a pty, at M1. §9.2 reserves the pty for the cases that
  * genuinely need one (a vendor CLI that refuses to run without a TTY), and
@@ -16,15 +23,29 @@
  * `detached: true` for the same reason the agent gets it: a command that
  * spawns its own children is only reachable as a process group.
  */
+import { killTree } from '@DeFlow/adapters';
 import type { Handle } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import process from 'node:process';
 
-/** What EPIC-08 plugs in. Throws to refuse; returns to allow. */
+/**
+ * What EPIC-08 plugs in. Throws to refuse; returns the cwd to run in.
+ *
+ * It answers with a path rather than with a boolean because the resolution and
+ * the decision have to be the same act: a service that resolved the cwd itself
+ * and then asked whether the policy liked the result would have two
+ * resolutions of one string, and the one `spawn` received would be the one
+ * nobody checked. Same rule as `PathPolicy` in ./fs-service.ts, and the same
+ * reason.
+ *
+ * It is `async` because a gated command **waits for a human** — the request is
+ * suspended, not pre-authorised, and nothing is spawned until the operator has
+ * answered. A rejection is a thrown `PermissionDeniedError`, and by the time
+ * it is thrown no process exists to have to clean up.
+ */
 export interface CommandPolicy {
-  authorize(command: string, args: readonly string[]): void;
+  authorize(request: CreateTerminalRequest): Promise<string>;
 }
 
 /**
@@ -47,6 +68,13 @@ export interface TerminalCapture {
 export interface TerminalServiceOptions {
   /** The node's worktree: the default cwd for every command. */
   readonly root: string;
+  /**
+   * The environment every terminal this service creates receives (KAR-08.4).
+   * Build it once with `buildChildEnv()` — required, never defaulted to
+   * `process.env`, so a caller cannot silently reintroduce the Kiro bug by
+   * omitting it.
+   */
+  readonly childEnv: Readonly<Record<string, string>>;
   readonly policy?: CommandPolicy;
   /** Bytes of output kept per terminal, and answered to `terminal/output`.
    * The bound is §10's; the ring buffer keeps the tail. */
@@ -81,7 +109,9 @@ export interface TerminalOutput {
 }
 
 export interface TerminalService {
-  create(request: CreateTerminalRequest): string;
+  /** Resolves once the policy has answered — which, for a gated command, is
+   * once the operator has. No process exists before then. */
+  create(request: CreateTerminalRequest): Promise<string>;
   output(terminalId: string): TerminalOutput;
   waitForExit(terminalId: string): Promise<TerminalExit>;
   kill(terminalId: string): void;
@@ -159,18 +189,33 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
   };
 
   return {
-    create(request) {
-      options.policy?.authorize(request.command, request.args ?? []);
+    async create(request) {
+      // The policy answers with the cwd, and there is no other source for one:
+      // resolving it again here is how the path that was checked and the path
+      // that is used come apart. Its rejection propagates — the ACP front
+      // turns it into a JSON-RPC error — and nothing below has run by then.
+      const cwd =
+        options.policy === undefined
+          ? request.cwd === undefined || request.cwd === null
+            ? root
+            : resolve(root, request.cwd)
+          : await options.policy.authorize(request);
       next += 1;
       const terminalId = `term-${next}`;
       const child = spawn(request.command, [...(request.args ?? [])], {
-        cwd: request.cwd === undefined || request.cwd === null ? root : resolve(root, request.cwd),
+        cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
-        env:
-          request.env === undefined || request.env === null
-            ? process.env
-            : { ...process.env, ...Object.fromEntries(request.env.map((e) => [e.name, e.value])) },
+        // KAR-08.4: the scrubbed base first, then the agent's own explicit
+        // `terminal/create` env — an agent may still *set* a value for its
+        // own command (e.g. `NODE_ENV=test`), which grants it nothing it did
+        // not already have. What it can no longer do is inherit DeFlowd's.
+        env: {
+          ...options.childEnv,
+          ...(request.env === undefined || request.env === null
+            ? {}
+            : Object.fromEntries(request.env.map((e) => [e.name, e.value]))),
+        },
       });
 
       const terminal: Terminal = {
@@ -222,14 +267,21 @@ export function createTerminalService(options: TerminalServiceOptions): Terminal
 
     waitForExit: (terminalId) => get(terminalId).exited,
 
+    /**
+     * ACP `terminal/kill`, which is a **group** kill: the command was spawned
+     * `detached`, and anything it spawned in turn shares its pgid.
+     *
+     * Through `killTree` like every other signal in the daemon (KAR-08.6 AC1).
+     * A local `process.kill(-pid, …)` here was a second copy of the one
+     * function whose positive-pid variant leaves grandchildren compiling — and
+     * it had no answer for `pid === 0`, where the negation signals DeFlowd's own
+     * process group. `killTree` refuses that pid instead of taking the daemon
+     * down; a group that has already been reaped comes back as `'gone'`.
+     */
     kill(terminalId) {
       const pid = get(terminalId).child.pid;
       if (pid === undefined) return;
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {
-        // Already gone.
-      }
+      killTree(pid, 'SIGKILL');
     },
 
     release(terminalId) {

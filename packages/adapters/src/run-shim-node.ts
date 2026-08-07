@@ -57,6 +57,8 @@ import {
 } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
@@ -73,13 +75,15 @@ import { frameGuard, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime } from './kill-tree.ts';
 import { STDERR_TAIL_BYTES } from './launch.ts';
 import type { AgentBinary, EventRecord, LedgerSink, ProcessRegistry } from './ports.ts';
-import { providerSpec, type ShimFormat, shimPlan } from './provider-registry.ts';
+import { providerSpec, type ShimFormat } from './provider-registry.ts';
 import {
   AGENT_TURN_SCHEMA_ID,
   CONTENT_SPILL_BYTES,
   OUTPUT_INLINE_LIMIT_BYTES,
   type ProcessExit,
 } from './run-node.ts';
+import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } from './sandbox.ts';
+import { auditCompletionScope, type ScopeAudit, scopeAuditRefusal } from './scope-audit.ts';
 import {
   parseShimLine,
   shimRateLimit,
@@ -171,6 +175,27 @@ export interface ShimNodeRequest {
   readonly outputSchemaId?: SchemaId;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * KAR-08.5 — everything the node's sandbox policy depends on that is not the
+   * vendor's invocation: the detected CLI version, the platform, the roots the
+   * sandbox prerequisites are looked for on, and where a wrapper config goes.
+   *
+   * **Required, not optional.** The whole story is that a level DeFlow cannot
+   * enforce must fail before a process exists; an optional field would make
+   * "the caller forgot" indistinguishable from "there is nothing to enforce",
+   * and the compiler is the only reviewer that never forgets.
+   */
+  readonly sandbox: SandboxInvocation;
+  /**
+   * KAR-08.7 — the write globs the plan declared for this node.
+   *
+   * It matters *more* here than on the ACP path, not less: this is the
+   * unmediated path, so DeFlow is not in front of the vendor's file access at
+   * all and the completion-time diff is the only detection there is. Absent is
+   * a node that declared none; present with no `ShimPorts.scopeAudit` behind
+   * it is refused before the spawn.
+   */
+  readonly pathScope?: readonly string[];
 }
 
 export interface ShimPorts {
@@ -184,6 +209,10 @@ export interface ShimPorts {
   /** Where a rate limit's `resetsAt` becomes a durable wake (AC6). */
   readonly wakes?: WakeRegistry;
   readonly maxFrameBytes?: number;
+  /** KAR-08.7 AC3 — the completion-time scope backstop, the same port
+   * `AcpPorts` takes and for the same reason: the answer comes from `git`, and
+   * the daemon owns the one place a `git` child is spawned. */
+  readonly scopeAudit?: ScopeAudit;
   /**
    * The line uuids this node attempt has already made durable.
    *
@@ -324,9 +353,16 @@ export async function runShimNode(
   // flag table, then admission. Each of the three is a plan-time fact, and
   // finding one out an hour into a turn helps nobody.
   let maxFrameBytes: number;
-  let plan: ReturnType<typeof shimPlan>;
+  let plan: SandboxedShimPlan;
   try {
     maxFrameBytes = parseFrameLimit(ports.maxFrameBytes);
+
+    // KAR-08.7 AC3 — a declared scope with no auditor wired behind it, refused
+    // with the rest of what can be decided without a process. Completing a node
+    // whose backstop was never there is indistinguishable from an agent that
+    // stayed inside its scope, and on this path there is no second mechanism.
+    const unwired = scopeAuditRefusal(request.pathScope, ports.scopeAudit);
+    if (unwired !== null) throw unwired;
 
     const spec = providerSpec(request.provider);
     if (spec === undefined) {
@@ -337,15 +373,20 @@ export async function runShimNode(
       );
     }
 
-    // AC3 and the permission refusal both raise from in here, before a spawn.
-    plan = shimPlan(spec, {
-      resolved: { provider: request.provider, path: request.binary.path },
-      worktree: request.worktree,
-      prompt: request.prompt,
-      sessionId: request.sessionId,
-      permission: request.permission,
-      ...(request.format === undefined ? {} : { format: request.format }),
-    });
+    // AC3, the permission refusal and KAR-08.5's missing-sandbox refusal all
+    // raise from in here, before a spawn.
+    plan = sandboxedShimPlan(
+      spec,
+      {
+        resolved: { provider: request.provider, path: request.binary.path },
+        worktree: request.worktree,
+        prompt: request.prompt,
+        sessionId: request.sessionId,
+        permission: request.permission,
+        ...(request.format === undefined ? {} : { format: request.format }),
+      },
+      request.sandbox,
+    );
   } catch (error) {
     return refuse(error);
   }
@@ -358,6 +399,20 @@ export async function runShimNode(
     ports.capabilityRow ?? null,
   );
   if (refusal !== null) return refuse(refusal);
+
+  // KAR-08.5 — the sandbox wrapper reads its policy from a file, so the file
+  // has to exist before the wrapper does. Written into a directory DeFlow
+  // made, never into the operator's `~/.srt-settings.json`, and written here
+  // rather than inside the plan builder so that `sandboxedShimPlan` stays a
+  // pure, construction-time refusal.
+  if (plan.runtimeConfig !== null) {
+    try {
+      await mkdir(dirname(plan.runtimeConfig.path), { recursive: true });
+      await writeFile(plan.runtimeConfig.path, JSON.stringify(plan.runtimeConfig.document), 'utf8');
+    } catch (error) {
+      return refuse(spawnRefused(plan.command, error));
+    }
+  }
 
   const child: ChildProcessWithoutNullStreams = spawn(plan.command, [...plan.argv], {
     cwd: request.worktree,
@@ -597,6 +652,18 @@ export async function runShimNode(
     producedFacts: [],
     artifacts: handle === null ? artifacts : [...artifacts, handle],
   };
+  // KAR-08.7 AC3 — the same backstop the ACP path runs, at the same moment and
+  // through the same chokepoint: the vendor has exited, so the worktree is
+  // final, and the node is not finished until the line below.
+  await auditCompletionScope(
+    {
+      node: request.nodeId,
+      attempt: request.attempt,
+      worktree: request.worktree,
+      declared: request.pathScope,
+    },
+    ports,
+  );
   await ledger.append(
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
   );

@@ -45,6 +45,7 @@ import {
   acpFsHandlers,
   acpPermissionHandlers,
   acpTerminalHandlers,
+  buildChildEnv,
   createFsService,
   createPermissionService,
   createTerminalService,
@@ -55,6 +56,13 @@ import {
 const MOCK_AGENT_BIN = fileURLToPath(
   new URL('../../../mock-agent/bin/mock-agent.ts', import.meta.url),
 );
+
+/** KAR-08.4: `createTerminalService` requires a built `childEnv`. This suite
+ * is not exercising the scrubbing itself (see
+ * test/integration/env-scrubbing.test.ts for that) — `process.env.PATH` is
+ * enough for these fixtures' bare `echo`. */
+const testChildEnv = (tmp: string): Record<string, string> =>
+  buildChildEnv({ base: process.env, loginPath: process.env.PATH ?? '', tmpdir: tmp }).env;
 
 const RUN_ID: RunId = RunIdSchema.parse('run_20260805T101500Z_ac0505');
 const NODE_ID: NodeId = NodeIdSchema.parse('n1');
@@ -283,7 +291,7 @@ suite('the fs and terminal fronts reach real services', () => {
     );
 
     const fs = createFsService({ root: worktree });
-    const terminal = createTerminalService({ root: worktree });
+    const terminal = createTerminalService({ root: worktree, childEnv: testChildEnv(dir) });
     const outcome = await runWith(
       { ...acpFsHandlers(fs), ...acpTerminalHandlers(terminal) },
       scenarioPath,

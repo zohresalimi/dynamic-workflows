@@ -297,6 +297,38 @@ export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './m
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+// KAR-08.8 — auth-shadowing detection: what buildChildEnv()'s allowlist does
+// quietly, said loudly (docs/15-security-model.md §2.3).
+export type {
+  AuthShadowDoctorRow,
+  AuthShadowVar,
+  ProviderAuthModePayload,
+  ProviderAuthShadowStrippedPayload,
+  ResolvedProviderAuth,
+  ResolveProviderAuthInput,
+} from './proc/auth-shadow.ts';
+export {
+  AUTH_SHADOW_VARS,
+  checkAuthShadowing,
+  resolveProviderAuth,
+  shadowVarsFor,
+} from './proc/auth-shadow.ts';
+// KAR-08.4 — the child environment, built from an allowlist. The control
+// that would actually have prevented the Kiro incident (docs/15-security-
+// model.md §4).
+export type { BuildChildEnvOptions, BuiltChildEnv } from './proc/env.ts';
+export {
+  AGENT_BASE_KEYS,
+  AGENT_ENV_KEYS,
+  buildChildEnv,
+  createRunTmpdir,
+  envDeclaredPayload,
+  isNeverImplicit,
+  resetLoginShellPathCache,
+  resolveLoginShellPath,
+  resolveLoginShellPathOnce,
+  VENDOR_CONFIG_DIR_VARS,
+} from './proc/env.ts';
 export type { DaemonSeed, SeedEnv } from './random.ts';
 export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
 // KAR-06.9 — crash recovery: the fixed startup sequence, and the three things
@@ -326,6 +358,29 @@ export {
   SchemaCompilationFailed,
   UnknownSchemaFile,
 } from './schema-store.ts';
+// KAR-08.3 — the command half: default-deny on the binary, the syntactic
+// second layer, and the human gate the rest is shaped to keep rare.
+export type {
+  CommandApproval,
+  CommandDecision,
+  CommandDenial,
+  CommandGate,
+  CommandGatePayload,
+  CommandMediation,
+  CommandMediator,
+  CommandMediatorPorts,
+  CommandRequest,
+  HumanCommandGatePorts,
+  ResolvedCommand,
+  WorktreeCommandPolicyOptions,
+} from './services/command-mediation.ts';
+export {
+  COMMAND_GATE_OPTIONS,
+  commandGatePayload,
+  createCommandMediator,
+  humanCommandGate,
+  worktreeCommandPolicy,
+} from './services/command-mediation.ts';
 export { acpFsHandlers } from './services/fronts/acp-fs.ts';
 export { acpPermissionHandlers } from './services/fronts/acp-permission.ts';
 export { acpTerminalHandlers } from './services/fronts/acp-terminal.ts';
@@ -333,6 +388,7 @@ export { acpTerminalHandlers } from './services/fronts/acp-terminal.ts';
 // thin ACP fronts wired into the client. ACP v2 deletes the fronts; the
 // services outlive them.
 export type {
+  FsIo,
   FsService,
   FsServiceOptions,
   PathPolicy,
@@ -340,6 +396,37 @@ export type {
   WriteTextRequest,
 } from './services/fs-service.ts';
 export { createFsService } from './services/fs-service.ts';
+// KAR-08.2 — the fs half of the ladder: the agent's path resolved against the
+// node's worktree, `realpath`ed, and decided before anything is opened.
+export type {
+  MediationDenial,
+  PathContainment,
+  PathDenial,
+  PathEscapeRoute,
+  PathFs,
+  PathMediation,
+  PathMediator,
+  PathMediatorPorts,
+  PathMethod,
+  WorktreePathPolicyOptions,
+} from './services/path-mediation.ts';
+export {
+  createPathMediator,
+  nodePathFs,
+  PATH_ESCAPE_ROUTES,
+  PermissionDeniedError,
+  permissionDeniedPayload,
+  worktreePathPolicy,
+} from './services/path-mediation.ts';
+// KAR-08.1 — the decider that answers `session/request_permission` from
+// @DeFlow/core's ladder, auto-answering routine requests and escalating only
+// the gated categories.
+export type {
+  GatedPermissionRequest,
+  LadderDecision,
+  LadderPorts,
+} from './services/permission-ladder.ts';
+export { ladderDecider, ladderDeniedPayload } from './services/permission-ladder.ts';
 export type {
   PermissionDecider,
   PermissionDecision,
@@ -349,6 +436,16 @@ export type {
   ToolKind,
 } from './services/permission-service.ts';
 export { createPermissionService } from './services/permission-service.ts';
+// KAR-08.7 AC3, AC5 — the completion-time backstop: diff the worktree with a
+// real `git status`, and warn (never gate) on anything that landed outside
+// the node's declared write scope.
+export type { ScopeWarningPayload } from './services/scope-diff.ts';
+export {
+  changedPaths,
+  createScopeAudit,
+  outOfScopePaths,
+  scopeWarningOf,
+} from './services/scope-diff.ts';
 export type {
   CommandPolicy,
   CreateTerminalRequest,

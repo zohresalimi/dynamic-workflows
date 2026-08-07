@@ -2623,3 +2623,107 @@ export function checkSchedulerBranchesOnClassOnly(
 
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-08.6 — one kill site, and nothing that looks like a shortcut to it.
+ *
+ * The kill switch is the most safety-critical code in the daemon and the
+ * easiest to "simplify" in review, because every wrong version is one character
+ * or one option away from the right one:
+ *
+ *  - `process.kill(pid, …)` instead of `process.kill(-pid, …)` kills the agent
+ *    and leaves every grandchild running, reparented to init, still holding the
+ *    worktree open. Measured, 2026-08-02.
+ *  - `child.kill()` / `subprocess.kill()` is execa's own documented non-answer:
+ *    it *"only sends a signal to that subprocess, not to any process it might
+ *    have spawned itself"*.
+ *  - `forceKillAfterDelay` does not fire when an explicit signal is passed —
+ *    which DeFlow always passes — and `cleanup` kills on parent exit, which is
+ *    precisely what `detached: true` exists to prevent.
+ *
+ * None of the three fails loudly. All three produce a kill switch that reports
+ * success while agents keep editing a worktree nobody is supervising, so the
+ * rule is structural: exactly one call site, in `killTree`, and no execa option
+ * whose documented behaviour contradicts its name anywhere near an agent.
+ * -------------------------------------------------------------------------- */
+
+/** The one file allowed to deliver a signal. */
+export const KILL_SEAM = 'packages/adapters/src/kill-tree.ts';
+
+/** `process.kill(…)`, whatever the `node:process` binding is called. */
+const PROCESS_KILL = /\b\w*[Pp]rocess\s*\.\s*kill\s*\(/;
+
+/** `child.kill()`, `subprocess.kill()`, `agentProcess.kill()`. */
+const HANDLE_KILL = /\b(?:child|subprocess|proc|agent|shim|spawned)\w*\s*\.\s*kill\s*\(/i;
+
+export const ONE_KILL_SITE_MESSAGE =
+  `every signal in DeFlow goes through killTree() in ${KILL_SEAM}, which negates the pid so the ` +
+  'signal reaches the whole process group. A second kill site is how the positive-pid form gets ' +
+  'reintroduced: it kills the agent, leaves its grandchildren running with ppid 1, and reports ' +
+  'success (KAR-08.6 AC1, docs/09-workspace-and-safety.md §11).';
+
+/**
+ * Every line in `files` that delivers a signal, outside the seam.
+ *
+ * Whole-line comments are stripped first, because the rule has to be *named* in
+ * prose — in this file, in `kill-tree.ts`, and in half the specs that exercise
+ * it — and a guard that could not survive being documented would force the
+ * documentation out.
+ */
+export function checkOneKillSite(
+  files: readonly SourceFile[],
+  seam: string = KILL_SEAM,
+): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    if (file.path === seam) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!PROCESS_KILL.test(line) && !HANDLE_KILL.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} signals a process directly. ${ONE_KILL_SITE_MESSAGE}`,
+      });
+    }
+  }
+
+  return violations;
+}
+
+/** The execa options documented to behave contrary to their names. */
+const EXECA_TREE_OPTIONS = /\b(?:forceKillAfterDelay|killDescendants)\b/;
+const EXECA_CLEANUP_OPTION = /\bcleanup\s*:/;
+const EXECA_IMPORT = /from\s*['"]execa['"]/;
+
+export const EXECA_KILL_MESSAGE =
+  "execa's kill(), forceKillAfterDelay and cleanup are all documented to do something other " +
+  'than what their names suggest for a detached group: kill() signals only the direct ' +
+  'subprocess, forceKillAfterDelay does not fire when an explicit signal is passed, and cleanup ' +
+  'kills the child when the parent exits — the one thing detached: true exists to prevent. The ' +
+  'most safety-critical code in the daemon does not depend on any of them (KAR-08.6 AC8).';
+
+/**
+ * No runtime source reaches for execa's process-tree options.
+ *
+ * `cleanup:` is only a violation in a file that actually imports execa — it is
+ * an ordinary word, and banning it everywhere would ban naming a cleanup step.
+ */
+export function checkNoExecaKillOptions(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const code = codeOnly(file.text);
+    const usesExeca = EXECA_IMPORT.test(code);
+    for (const [index, line] of code.split('\n').entries()) {
+      const offends =
+        EXECA_TREE_OPTIONS.test(line) || (usesExeca && EXECA_CLEANUP_OPTION.test(line));
+      if (!offends) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} uses an execa process-tree option. ${EXECA_KILL_MESSAGE}`,
+      });
+    }
+  }
+
+  return violations;
+}

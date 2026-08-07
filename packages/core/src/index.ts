@@ -73,6 +73,10 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-06.1 — the whole scheduling policy, as a pure function of state and one
 // instant.
 export { decide } from './decide.ts';
+// KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
+// ladder: an allowlisted binary at an identity or infrastructure boundary.
+export type { CommandContext, DestructiveReason } from './destructive-command.ts';
+export { DESTRUCTIVE_COMMANDS, destructiveCommand } from './destructive-command.ts';
 // KAR-06.3 — what the effect journal remembers about what was asked for, so a
 // plan edit landing under a journalled effect cannot return the memoised
 // result of the operation it replaced.
@@ -87,6 +91,7 @@ export type {
   EventKind,
   EventPayloadOf,
   LockReleaseReason,
+  ProviderAuthMode,
   RunOutcome,
   WorktreeOccupantKind,
 } from './event-payloads.ts';
@@ -107,6 +112,7 @@ export {
   EffectCompletedSchema,
   EffectFailedSchema,
   EffectStartedSchema,
+  EnvDeclaredSchema,
   EVENT_CURRENT_VERSIONS,
   EVENT_KINDS,
   EVENT_SCHEMAS,
@@ -134,15 +140,25 @@ export {
   NodeProgressSchema,
   NodeRetryScheduledSchema,
   NodeScheduledSchema,
+  // KAR-08.7 — the completion-time backstop for an adapter that never
+  // populates ToolCallLocation.
+  NodeScopeWarningSchema,
   NodeStartedSchema,
   NodeSuspendedSchema,
+  NodeUnschedulableSchema,
+  PermissionDeniedSchema,
   PinIntegrityViolatedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
   PlanProposedSchema,
+  PROVIDER_AUTH_MODES,
+  ProviderAuthModeSchema,
+  ProviderAuthShadowStrippedSchema,
   ProviderProbedSchema,
   ProviderRateLimitedSchema,
+  // KAR-08.2 — the ceiling on the agent-supplied path a denial keeps verbatim.
+  REQUESTED_PATH_MAX,
   RUN_NEEDS_HUMAN_REASONS,
   RUN_OUTCOMES,
   RunCancelRequestedSchema,
@@ -191,6 +207,16 @@ export type {
   FoldReport,
 } from './fold-events.ts';
 export { describeSkipped, foldEvents } from './fold-events.ts';
+// KAR-08.1 AC5 — `full` is an explicit per-run opt-in a PlanPatch cannot
+// acquire on its own authority.
+export type { FullEscalationRuling, FullPermissionOptIn } from './full-permission.ts';
+export {
+  FULL_IS_NOT_A_SANDBOX,
+  FULL_OPT_IN_RULE,
+  FullPermissionOptInSchema,
+  fullEscalationRuling,
+  fullPermissionIssues,
+} from './full-permission.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
@@ -249,6 +275,10 @@ export type { LockClaim } from './locks.ts';
 export { claimId, lockClaims, lockHolder, repoLockKey } from './locks.ts';
 export type { ItemIdFrom } from './map-child-id.ts';
 export { mapChildId } from './map-child-id.ts';
+// §4.1's never-implicit environment families, shared by KAR-08.4's scrubbing
+// and KAR-08.5's delegated credential policy so the two cannot drift.
+export type { NeverImplicitFamily } from './never-implicit.ts';
+export { isNeverImplicit, NEVER_IMPLICIT_FAMILIES } from './never-implicit.ts';
 // KAR-06.8 — F4.7's stall detector, churn circuit breaker and hard caps, all
 // pure reads of `(RunState, now)`.
 export type {
@@ -311,6 +341,39 @@ export {
   NodeSuspensionSchema,
   SUSPENSION_KINDS,
 } from './node-result.ts';
+// KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
+// it agreeing with KAR-08.2's containment check, and the plan-time check that
+// a write node's pathScope is not empty.
+export type { EmptyWriteScope } from './path-scope.ts';
+export { emptyWriteScopes, pathScopeMatches, relativeToWorktree } from './path-scope.ts';
+// KAR-08.1 — F5.4's four-level ladder as one pure function of
+// `(level, request, scope)`. No I/O, no vendor CLI, no clock.
+export type {
+  CommandsConfig,
+  OfferedPermissionOption,
+  PermissionAnswer,
+  PermissionDenyCode,
+  PermissionGateCode,
+  PermissionMethod,
+  PermissionOptionKind,
+  PermissionOutcomeKind,
+  PermissionReason,
+  PermissionRequest,
+  PermissionScope,
+} from './permission.ts';
+export {
+  decidePermission,
+  EnvDeclarationAtReadLevelError,
+  OFFERED_PERMISSION_OPTIONS,
+  optionIdFor,
+  PERMISSION_DENY_CODES,
+  PERMISSION_GATE_CODES,
+  PERMISSION_OPTION_KINDS,
+  PERMISSION_OUTCOMES,
+  permissionScopeFrom,
+  reasonCode,
+  validateEnvDeclaration,
+} from './permission.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -433,6 +496,51 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-08.5 — the per-node sandbox policy, in each enforcement engine's own
+// dialect. Pure: this package generates the documents, `@DeFlow/adapters` puts
+// them on an argv (D12 — DeFlow owns policy, the vendor owns enforcement).
+export type {
+  ClaudeGatedKey,
+  ClaudeSandboxInput,
+  ClaudeSandboxPolicy,
+  ClaudeSandboxSettings,
+  CodexSandboxPolicy,
+  CodexWorkspaceWrite,
+  GateDisposition,
+  SandboxDegradation,
+  SandboxPolicyInput,
+  SandboxRuntimeConfig,
+  SandboxStrategy,
+} from './sandbox-policy.ts';
+export {
+  CLAUDE_SANDBOX_GATES,
+  CODEX_WORKSPACE_WRITE_KEYS,
+  CREDENTIAL_GATED_KEYS,
+  claudeSandboxPolicy,
+  codexSandboxPolicy,
+  compareVersions,
+  LINUX_SANDBOX_DEPENDENCIES,
+  SANDBOX_CREDENTIAL_FILES,
+  SANDBOX_DEPENDENCY_NAMES,
+  SANDBOX_RUNTIME_BIN,
+  SANDBOX_RUNTIME_PACKAGE,
+  SANDBOX_RUNTIME_VERSION,
+  SANDBOX_STRATEGIES,
+  sandboxDependencies,
+  sandboxRuntimeConfig,
+  sandboxStrategy,
+  VENDOR_SANDBOX_PROVIDERS,
+} from './sandbox-policy.ts';
+// The primitives both of the above are expressed in.
+export {
+  binaryName,
+  domainAllowed,
+  hostOf,
+  isLoopback,
+  pathDepth,
+  pathIsInside,
+  resolvePosix,
+} from './scope.ts';
 // KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
 export type { ScopeCollision } from './scope-collision.ts';
 export { scopeCollisions } from './scope-collision.ts';

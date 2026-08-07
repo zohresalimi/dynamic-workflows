@@ -343,6 +343,186 @@ export const NodeBlockedSchema = z.strictObject({
 });
 
 /**
+ * KAR-08.1 AC4 / EPIC-08-S3 — F5.4's refusal, narrowed to one capability bit.
+ *
+ * An adapter that does not route `fs/*` and `terminal/*` through DeFlow leaves
+ * DeFlow enforcing nothing, so a node above `read` is refused rather than run
+ * at a level nobody is checking. There is deliberately no third answer: a
+ * silent downgrade would be ODW's binary permission model, which F5.4 exists
+ * to avoid, and a silent escalation is the Kiro incident.
+ *
+ * Its own kind rather than only the `node.failed` that follows it. A failure
+ * is where a node *ended*; this is why it never began, and the two answer
+ * different questions on a run report. `reason` is a code — the operator's
+ * question is "which provider, and which bit" — so a UI can group by it and a
+ * future capability can join the same shape.
+ */
+export const NodeUnschedulableSchema = z.strictObject({
+  node: NodeIdSchema,
+  provider: ProviderIdSchema,
+  /** The probed binary's version, so "upgrade and retry" is answerable. */
+  version: z.string().min(1),
+  /** The level that could not be enforced, not the one it might be run at. */
+  permission: PermissionLevelSchema,
+  /** `<capability>:<value>`, e.g. `mediatedExecution:false`. */
+  reason: singleLine(),
+});
+
+/**
+ * The longest requested path this record keeps verbatim.
+ *
+ * 4096 rather than `SINGLE_LINE_MAX`, and not `singleLine()` at all, because
+ * the value is the **agent's own string**: `PATH_MAX` is 4096 on Linux, and a
+ * POSIX filename may legally contain a newline. A schema that refused one
+ * would mean an attacker could make a denial unrecordable by choosing a funny
+ * filename, which is a worse failure than a long value in a payload nobody
+ * renders as a log line.
+ */
+export const REQUESTED_PATH_MAX = 4096;
+
+/**
+ * KAR-08.2 AC7 — a mediated request that was refused, as the node inspector
+ * needs to render it.
+ *
+ * Structured, not a sentence. The inspector renders `path-escape:symlink`
+ * differently from `level-read`, KAR-08.3's gate budget counts by code, and
+ * `requested` has to stay the agent's own string so that "what did it ask
+ * for" and "what did that resolve to" remain two different questions. A prose
+ * `message` field would make all three impossible, and it is the shape every
+ * implementation reaches for first.
+ *
+ * `permission` is the level the request was decided at, so a denial can be
+ * read without joining back to `node.scheduled`.
+ *
+ * `declared` (KAR-08.7 AC2) is populated only for a `scope-violation`: the
+ * node's declared write globs, as a separate structured field rather than
+ * folded into `reason.detail` — the node inspector renders `requested` next
+ * to `declared`, and neither is a sentence.
+ */
+export const PermissionDeniedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  /** The level the request was decided at. */
+  permission: PermissionLevelSchema,
+  /** The ACP method DeFlow mediated, in `PermissionRequest`'s own vocabulary. */
+  method: z.enum(['fs/read_text_file', 'fs/write_text_file', 'terminal/create', 'network']),
+  /** Verbatim, before any resolution — see `REQUESTED_PATH_MAX`. */
+  requested: z.string().max(REQUESTED_PATH_MAX),
+  /** `PermissionReason`: a code plus an optional route, binary or host. */
+  reason: z.strictObject({
+    code: z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a reason code, not prose'),
+    detail: singleLine().optional(),
+  }),
+  declared: z.array(z.string()).optional(),
+});
+
+/**
+ * KAR-08.7 AC3, AC5 — the completion-time backstop for an adapter that never
+ * populated `ToolCallLocation`, so no `permission.denied` could fire at
+ * request time (EPIC-08-S11's third scenario, EPIC-08-S30).
+ *
+ * A **warning**, not a gate — D14 and §6.3 are explicit that a declared scope
+ * is a prediction, not ground truth, so `paths` lands on the node without
+ * touching its status. `declared` and `paths` travel separately, the same
+ * reasoning as `PermissionDeniedSchema.declared`: two facts, not one
+ * formatted sentence.
+ */
+export const NodeScopeWarningSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  /** The node's declared write globs, verbatim. */
+  declared: z.array(z.string()),
+  /** The changed paths, worktree-relative, that matched none of them.
+   * Non-empty by construction: a clean diff never warns. */
+  paths: z.array(z.string().min(1)).min(1),
+});
+
+/**
+ * KAR-08.4 AC6 — a node declared a variable `buildChildEnv()` would otherwise
+ * have scrubbed, and it reached the child. `name` only: this schema has no
+ * `value` field to put one in, which is what makes "the value never enters
+ * the ledger" a property of the shape rather than of a habit (15-security-
+ * model.md §4.1).
+ */
+export const EnvDeclaredSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be an environment variable name'),
+});
+
+/**
+ * KAR-08.8 — the two ways a node's provider auth can resolve
+ * (docs/15-security-model.md §2.3). `subscription` is the default `buildChildEnv()`'s
+ * allowlist already produces by dropping an `*_API_KEY`-shaped variable; `api_key`
+ * is what a node gets only by explicitly opting in.
+ */
+export const PROVIDER_AUTH_MODES = ['subscription', 'api_key'] as const;
+
+export type ProviderAuthMode = (typeof PROVIDER_AUTH_MODES)[number];
+
+/**
+ * KAR-08.8 AC1, AC2 — the effective auth mode of one provider on one node,
+ * recorded so it is a fact the run report and cost report can read rather
+ * than something the user has to infer from a bill (docs/15-security-
+ * model.md §2.3). Written once per node attempt that routes to a provider
+ * carrying an auth-shadowing variable (`packages/daemon/src/proc/auth-
+ * shadow.ts`'s `AUTH_SHADOW_VARS`) — `subscription` when the shadowing
+ * variable was stripped, `api_key` when the node explicitly selected it.
+ */
+export const ProviderAuthModeSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  mode: z.enum(PROVIDER_AUTH_MODES),
+});
+
+/**
+ * KAR-08.8 AC1 — `ANTHROPIC_API_KEY` (or another provider's equivalent) was
+ * present in DeFlowd's own environment while the node was configured for
+ * subscription auth, so `buildChildEnv()`'s allowlist dropped it and this is
+ * the loud record of that: "the user thinks they are on their subscription;
+ * they are being billed per token" (docs/15-security-model.md §2.3) is the
+ * failure this event exists to make impossible.
+ *
+ * `variable` only, the same discipline as `EnvDeclaredSchema.name` above:
+ * there is no `value` field to put one in, so "the value never enters the
+ * ledger" is a property of the shape, not of a habit.
+ */
+export const ProviderAuthShadowStrippedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  variable: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be an environment variable name'),
+});
+
+/**
+ * KAR-08.5 AC6 — a sandbox setting the installed vendor CLI is too old to
+ * understand, omitted rather than emitted.
+ *
+ * An **event** rather than a log line, and the distinction is the whole point
+ * (A5-1, rated High). Claude Code's sandbox settings are version-gated at fine
+ * granularity and an unknown key is *ignored* rather than rejected, so a
+ * policy the operator believes is in force can silently not be. Recording the
+ * key, the version that was detected and the version it needs makes the gap
+ * something the node inspector renders beside the permission level and the run
+ * report can be read for — instead of something nobody finds out about.
+ *
+ * `key` is a settings path (`sandbox.network.strictAllowlist`), never prose:
+ * it is what a reader searches the vendor's release notes for.
+ */
+export const SandboxDegradedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  /** The settings path that was left out, dotted. */
+  key: z.string().regex(/^[a-z][A-Za-z0-9]*(\.[a-zA-Z][A-Za-z0-9]*)+$/, 'must be a settings path'),
+  /** The vendor CLI version DeFlow detected — never assumed. */
+  detected: singleLine(),
+  /** The version the key was introduced in. */
+  required: singleLine(),
+});
+
+/**
  * KAR-06.7 — the terminal record of an attempt the kill switch stopped.
  *
  * Its own kind rather than a `node.completed` carrying a cancelled result:
@@ -383,6 +563,18 @@ export const NodeCancelStageSchema = z.strictObject({
   pid: z.number().int().positive(),
   /** The group that was signalled — `kill(-pgid, …)`, never `kill(pid, …)`. */
   pgid: z.number().int().positive(),
+  /**
+   * KAR-08.6 AC2 — milliseconds from the first rung to this one, on the
+   * injected `Clock`.
+   *
+   * The ladder is a sequence of *deadlines* (5 s to SIGKILL, a further 2 s to
+   * report), and the question an operator asks afterwards is never "which rungs
+   * were climbed" but "where did the seven seconds go". A timeline that
+   * recorded only the rung leaves them subtracting wall-clock timestamps that
+   * belong to whichever clock happened to be injected; this is the elapsed time
+   * the ladder itself measured.
+   */
+  elapsedMs: nonNegativeInt,
 });
 
 /**
@@ -402,6 +594,40 @@ export const NodeCancelFailedSchema = z.strictObject({
    * are excluded: they are already dead and counting them reports a working
    * kill as a failure (§11.2). */
   survivors: z.array(z.number().int().positive()).min(1),
+});
+
+/**
+ * KAR-08.6 AC6 — the operator's kill switch, when it did not take.
+ *
+ * The run-scoped counterpart of `node.cancel.failed`: the kill switch stops
+ * *every* attempt in a run, so the thing an operator needs is one record naming
+ * everything that outlived it, across nodes, rather than a record per node they
+ * have to assemble themselves. It is the event the UI surfaces, and its
+ * presence is what stops a run reading as cleanly stopped while children of it
+ * are still running (EPIC-08-S29).
+ *
+ * `stat` travels with each pid because "pid 4244 survived" invites a bug report
+ * and "pid 4244 survived in state `D`" says why SIGKILL did not land —
+ * uninterruptible in a syscall is not a DeFlow bug and is not fixable by
+ * signalling harder. `Z` never appears here: a zombie is already dead, and
+ * counting one reports a working kill as a failure (§11.2).
+ */
+export const RunKillFailedSchema = z.strictObject({
+  survivors: z
+    .array(
+      z.strictObject({
+        /** The node whose attempt was being stopped. */
+        node: NodeIdSchema,
+        attempt,
+        /** The process still running — the thing an operator goes and looks at. */
+        pid: z.number().int().positive(),
+        /** The group that was signalled, and did not empty. */
+        pgid: z.number().int().positive(),
+        /** Its `ps` `STAT` column, never `Z`. */
+        stat: singleLine(),
+      }),
+    )
+    .min(1),
 });
 
 // ── workspace isolation ──────────────────────────────────────────────────────
@@ -808,6 +1034,16 @@ export const HumanRequestedSchema = z.strictObject({
   /** The same option vocabulary a `human` node declares (§3). */
   options: HumanNodeSchema.shape.options,
   deadline: HumanNodeSchema.shape.deadline,
+  /**
+   * KAR-08.3 AC8 — why the safety layer escalated, as a `PermissionReason`.
+   *
+   * Absent for the escalations that are not a permission decision at all: a
+   * `human` node's own prompt, a verification gate that ran out of attempts, a
+   * clarifying question. Present, it is what the approval queue groups by and
+   * what the §10.5 gate budget counts — the prompt above is for the operator
+   * to read, and reading is not something a budget assertion can do.
+   */
+  reason: PermissionDeniedSchema.shape.reason.optional(),
 });
 
 export const HumanRespondedSchema = z.strictObject({
@@ -881,6 +1117,7 @@ export const EVENT_SCHEMAS = {
   'run.completed': { v: 1, payload: RunEndedSchema },
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
+  'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 1, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 1, payload: PlanProposedSchema },
   'plan.patch.proposed': { v: 1, payload: PlanPatchProposedSchema },
@@ -896,6 +1133,13 @@ export const EVENT_SCHEMAS = {
   'node.retry.scheduled': { v: 1, payload: NodeRetryScheduledSchema },
   'node.suspended': { v: 1, payload: NodeSuspendedSchema },
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
+  'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
+  'permission.denied': { v: 1, payload: PermissionDeniedSchema },
+  'node.scope_warning': { v: 1, payload: NodeScopeWarningSchema },
+  'env.declared': { v: 1, payload: EnvDeclaredSchema },
+  'provider.auth_mode': { v: 1, payload: ProviderAuthModeSchema },
+  'provider.auth_shadow_stripped': { v: 1, payload: ProviderAuthShadowStrippedSchema },
+  'sandbox.degraded': { v: 1, payload: SandboxDegradedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },

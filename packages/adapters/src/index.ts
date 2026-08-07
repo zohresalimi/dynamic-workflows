@@ -85,6 +85,8 @@ export {
   RECORDING_DIR_SHAPE,
   registryRefused,
   resolutionFailed,
+  SANDBOX_UNAVAILABLE_CAUSE,
+  sandboxUnavailable,
   spawnRefused,
   toAdapterFailure,
   UnsignalablePid,
@@ -101,10 +103,20 @@ export {
 } from './frame-guard.ts';
 // KAR-05.9 — the one abstraction allowed to send a signal, plus the PID-reuse
 // guard's input. POSIX at M1; win32 throws rather than silently no-opping.
-export type { KillOutcome, KillTreePorts, SweepPorts } from './kill-tree.ts';
+export type {
+  DrainPorts,
+  GroupMember,
+  KillOutcome,
+  KillTreePorts,
+  SweepPorts,
+} from './kill-tree.ts';
 export {
+  awaitGroupDrained,
+  GROUP_POLL_MS,
+  KILL_VERIFY_WINDOW_MS,
   killTree,
   liveGroupMembers,
+  liveGroupRows,
   processStartTime,
   SWEEP_KILL_GRACE_MS,
   startTimeSource,
@@ -246,6 +258,25 @@ export type {
   WakeRegistry,
 } from './run-shim-node.ts';
 export { runShimNode, shimCapabilityRow, WAKE_REASON_QUOTA } from './run-shim-node.ts';
+// KAR-08.5 — the node's sandbox policy, on the argv. D12: DeFlow owns policy,
+// the vendor owns enforcement, and nothing here opens a user config directory.
+export type { SandboxedShimPlan, SandboxInvocation } from './sandbox.ts';
+export {
+  checkSandboxDependencies,
+  SANDBOX_RUNTIME_SETTINGS_FILE,
+  sandboxedShimPlan,
+} from './sandbox.ts';
+// KAR-08.7 AC3, AC5 — the completion-time scope backstop: the one place a node
+// runner asks "did this land outside what the plan declared", and the one place
+// `node.scope_warning` is written.
+export type {
+  NodeScopeWarning,
+  ScopeAudit,
+  ScopeAuditPorts,
+  ScopeAuditRequest,
+  ScopeAuditSubject,
+} from './scope-audit.ts';
+export { auditCompletionScope, scopeAuditRefusal } from './scope-audit.ts';
 // KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
 // DeFlow's own event ids, and never selected automatically.
 export type {

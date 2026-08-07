@@ -5,4 +5,11 @@ coverage/
 *.log
 .DS_Store
 .env
+.env.*
+*.local
 *.tsbuildinfo
+
+# A run's own data directory, and local tool scratch. Neither is ever the
+# repository's: they hold ledgers, blobs and machine-local paths.
+.DeFlow/
+.claude/

@@ -30,6 +30,7 @@ import type {
 import type * as acp from '@agentclientprotocol/sdk';
 import type { CapabilityRequirement } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
+import type { ScopeAudit } from './scope-audit.ts';
 
 /** The agent as the provider registry resolved it (KAR-05.2, KAR-05.3). */
 export interface AgentBinary {
@@ -200,6 +201,17 @@ export interface AcpNodeRequest {
   readonly prompt: string;
   /** What the node's structured output is validated against (EPIC-09/EPIC-12). */
   readonly outputSchemaId?: SchemaId;
+  /**
+   * KAR-08.7 — the write globs the plan declared for this node
+   * (`AgentNode.pathScopes.write`), carried down so the completion-time
+   * backstop has something to compare the worktree against (AC3).
+   *
+   * Absent is a node that declared none — a `read` node, a probe, a
+   * conformance turn — and the audit is skipped for it. Present with no
+   * `AcpPorts.scopeAudit` behind it is refused before the spawn: see
+   * `scopeAuditRefusal`.
+   */
+  readonly pathScope?: readonly string[];
 }
 
 export interface AcpPorts {
@@ -260,6 +272,17 @@ export interface AcpPorts {
    * `DeFlow_RECORD=1` gives, which is what the daemon passes in production.
    */
   readonly record?: NodeJS.ProcessEnv;
+  /**
+   * KAR-08.7 AC3 — what answers "did this node write outside its declared
+   * scope", asked once, on completion.
+   *
+   * A port because the answer comes from `git status`, and the daemon owns the
+   * one place a `git` child is spawned. Required whenever
+   * `AcpNodeRequest.pathScope` is non-empty: a declared scope with no auditor
+   * behind it is refused before the spawn rather than completed with a
+   * backstop that never runs.
+   */
+  readonly scopeAudit?: ScopeAudit;
   /**
    * Called immediately before each `session.nextUpdate()`, with the bytes read
    * off the child's stdout so far.

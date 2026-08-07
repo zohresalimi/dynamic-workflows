@@ -24,7 +24,14 @@
 import { TestClock } from '@DeFlow/testkit';
 import { expect, it, describe as suite } from 'vitest';
 import { NotImplementedOnWin32 } from './failures.ts';
-import { killTree, liveGroupMembers, startTimeSource, sweepTree } from './kill-tree.ts';
+import {
+  awaitGroupDrained,
+  killTree,
+  liveGroupMembers,
+  liveGroupRows,
+  startTimeSource,
+  sweepTree,
+} from './kill-tree.ts';
 
 /** A recording stand-in for `process.kill`. Never a mocked module: the port is
  * a function parameter precisely so nothing has to be intercepted. */
@@ -201,5 +208,119 @@ suite('liveGroupMembers excludes zombies and other groups (AC7)', () => {
         },
       }),
     ).toEqual([]);
+  });
+});
+
+// ── KAR-08.6 — verification is a window, not a snapshot ──────────────────────
+
+/**
+ * `liveGroupRows` is `liveGroupMembers` with the evidence kept.
+ *
+ * A kill that did not take is reported to an operator who then has to go and
+ * look, and "pid 4244 survived" is a different sentence from "pid 4244 survived
+ * in state `D`, uninterruptible in a syscall" — the second says why SIGKILL did
+ * not land and the first invites a bug report. The state is carried into
+ * `run.kill_failed` for that reason (EPIC-08-S29 scenario 1).
+ */
+suite('liveGroupRows keeps the state it filtered on (KAR-08.6 AC6)', () => {
+  const ps = () => PS_TABLE;
+
+  it('names the survivor and the state that makes it one', () => {
+    expect(liveGroupRows(4242, { ps })).toEqual([{ pid: 4244, stat: 'Ss' }]);
+  });
+
+  it('agrees with liveGroupMembers, which is defined in terms of it', () => {
+    expect(liveGroupRows(4242, { ps }).map((row) => row.pid)).toEqual(
+      liveGroupMembers(4242, { ps }),
+    );
+  });
+});
+
+/**
+ * EPIC-08-S27, last scenario: **container timing**.
+ *
+ * Zombie reaping is prompt under launchd and systemd and can lag badly inside
+ * containers, which is where this code runs in CI. A verification that read one
+ * instantaneous `ps` snapshot would report survivors for a group that was
+ * already dead — the same false negative the `Z` filter exists to prevent,
+ * arriving through the other door. So the post-SIGKILL check is a *window*: it
+ * asks again, on the injected clock, until the group is empty or the two
+ * seconds are up.
+ */
+suite('awaitGroupDrained polls within the window (EPIC-08-S27 container timing)', () => {
+  it('answers immediately, without sleeping, when the group is already empty', async () => {
+    const clock = new TestClock();
+    let asked = 0;
+    const survivors = await awaitGroupDrained(4242, {
+      clock,
+      members: () => {
+        asked += 1;
+        return [];
+      },
+    });
+
+    expect(survivors).toEqual([]);
+    expect(asked).toBe(1);
+    // Nothing was scheduled: a cancelled node's outcome does not wait out a
+    // window that had already been satisfied.
+    expect(clock.pending).toBe(0);
+  });
+
+  it('keeps asking, so a group that drains late is still a success', async () => {
+    const clock = new TestClock();
+    const answers = [
+      [{ pid: 4243, stat: 'S' }],
+      [{ pid: 4243, stat: 'S' }],
+      [] as { pid: number; stat: string }[],
+    ];
+    let asked = 0;
+    const pending = awaitGroupDrained(4242, {
+      clock,
+      windowMs: 2_000,
+      pollMs: 250,
+      members: () =>
+        answers[Math.min(asked++, answers.length - 1)] as { pid: number; stat: string }[],
+    });
+
+    await clock.advance(2_000);
+    expect(await pending).toEqual([]);
+    // More than the one snapshot a naive check would have taken, and it stopped
+    // as soon as it had an answer rather than waiting the window out.
+    expect(asked).toBe(3);
+  });
+
+  it('reports the survivors once the window is spent, and stops asking', async () => {
+    const clock = new TestClock();
+    let asked = 0;
+    const alive = [{ pid: 4243, stat: 'D' }];
+    const pending = awaitGroupDrained(4242, {
+      clock,
+      windowMs: 2_000,
+      pollMs: 500,
+      members: () => {
+        asked += 1;
+        return alive;
+      },
+    });
+
+    await clock.advance(2_000);
+    expect(await pending).toEqual(alive);
+    // One snapshot up front plus one per poll across the window — bounded, so a
+    // wedged group cannot turn the verification into a busy loop.
+    expect(asked).toBe(5);
+  });
+
+  it('never claims success from the absence of an error (EPIC-08-S29 scenario 2)', async () => {
+    const clock = new TestClock();
+    const pending = awaitGroupDrained(4242, {
+      clock,
+      windowMs: 1_000,
+      pollMs: 1_000,
+      // The whole group is in state Z: `ps` still lists three rows, and the
+      // honest answer is still "nothing is running".
+      members: () => liveGroupRows(4242, { ps: () => PS_TABLE.replaceAll('Ss', 'Z') }),
+    });
+    await clock.advance(1_000);
+    expect(await pending).toEqual([]);
   });
 });

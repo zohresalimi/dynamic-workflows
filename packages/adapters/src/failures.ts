@@ -213,6 +213,55 @@ export function permissionInexpressible(
 }
 
 /**
+ * KAR-08.5 AC5 — a sandbox prerequisite is not installed, so the level cannot
+ * be enforced.
+ *
+ * **The node does not start.** Claude Code's own behaviour without
+ * `failIfUnavailable: true` is to fall back to running *unsandboxed*, silently
+ * — and a run in which nothing looks wrong and nothing is enforced is worse
+ * than a run that refused. So this fires before a process exists, and names
+ * the dependency in the form somebody can install (`bubblewrap (bwrap)`, not
+ * `bwrap`).
+ *
+ * Permanent: a second spawn finds the same `PATH` with the same gap in it.
+ *
+ * **The reason is `safety.permission-unschedulable`, and the cause is in the
+ * detail.** EPIC-08-S21 words the scenario as a `node.failed` carrying
+ * `sandbox-unavailable`, and that is what `detail.cause` says — but the reason
+ * taxonomy is a closed union embedded in the shipped, content-hash-pinned
+ * `DeFlow.plangraph.v1` schema (KAR-02.8, `schemas/CHANGELOG.md`), so adding a
+ * member to it is a `.v2` publication and a plan change, not a line in this
+ * story. The existing member is the right one on the merits anyway: "the
+ * provider cannot express the requested level" and "this machine cannot
+ * enforce the requested level" are the same refusal, and the scheduler reads
+ * `class` regardless. `cause` is what the node inspector renders and what
+ * `docs/03-local-development.md`'s troubleshooting row is keyed on.
+ */
+export const SANDBOX_UNAVAILABLE_CAUSE = 'sandbox-unavailable';
+
+export function sandboxUnavailable(
+  dependency: string,
+  displayName: string,
+  ctx: { readonly platform: string; readonly permission: string; readonly searched: number },
+): NodeFailureError {
+  return new NodeFailureError(
+    `${displayName} is required to enforce permission level ${ctx.permission} on ${ctx.platform} ` +
+      `and was not found in any of the ${ctx.searched} directories on the resolved PATH; the node ` +
+      'is refused rather than run unsandboxed',
+    {
+      reason: 'safety.permission-unschedulable',
+      class: 'permanent',
+      detail: {
+        cause: SANDBOX_UNAVAILABLE_CAUSE,
+        dependency,
+        platform: ctx.platform,
+        permission: ctx.permission,
+      },
+    },
+  );
+}
+
+/**
  * A POSIX-only process operation, reached on Windows (KAR-05.9 AC5).
  *
  * Not a `NodeFailureError`, and deliberately not routed through

@@ -34,7 +34,13 @@
  *
  * Verifies: EPIC-06-S24, EPIC-06-S25 · AC5, AC6, AC7, AC8, AC9
  */
-import { liveGroupMembers, killTree as posixKillTree, processStartTime } from '@DeFlow/adapters';
+import {
+  awaitGroupDrained,
+  type GroupMember,
+  liveGroupRows,
+  killTree as posixKillTree,
+  processStartTime,
+} from '@DeFlow/adapters';
 import type {
   CancellationSource,
   CancelNode,
@@ -80,8 +86,11 @@ export type CancelOutcome =
 
 export interface CancelReport {
   readonly outcome: CancelOutcome;
-  /** Non-`Z` members of the group after the last rung. Empty unless `survived`. */
-  readonly survivors: readonly number[];
+  /**
+   * Non-`Z` members of the group after the last rung, with the state that made
+   * each one a survivor. Empty unless `survived`.
+   */
+  readonly survivors: readonly GroupMember[];
   readonly pid: number | null;
   readonly pgid: number | null;
 }
@@ -113,7 +122,7 @@ export interface CancelPorts {
    * kill-did-not-take path, never to avoid a real signal in a real test. */
   readonly killTree?: (pid: number, signal: NodeJS.Signals) => unknown;
   /** Defaults to the `Z`-filtered `ps` read. */
-  readonly liveMembers?: (pgid: number) => number[];
+  readonly liveMembers?: (pgid: number) => GroupMember[];
   /** Defaults to reading the OS. @see processStartTime */
   readonly startTime?: (pid: number) => string | null;
 }
@@ -138,8 +147,12 @@ export async function cancelNode(command: CancelNode, ports: CancelPorts): Promi
     attempt: command.attempt,
   };
   const row = readProcess(db, key);
+  // Rung 1 starts the ladder's stopwatch, so every `elapsedMs` on the stage
+  // events is measured from the same instant on the same injected clock
+  // (KAR-08.6 AC2, AC7).
+  const startedAt = ports.clock.now();
 
-  const report = await stop(command, ports, key, row);
+  const report = await stop(command, ports, key, row, startedAt);
 
   // The node's terminal record, then the rows its attempt left open.
   appendEvents(db, [
@@ -171,12 +184,13 @@ async function stop(
   ports: CancelPorts,
   key: ProcessKey,
   row: ProcessRow | undefined,
+  startedAt: number,
 ): Promise<CancelReport> {
   const { db } = ports;
 
   if (command.mode === 'cooperative' && ports.protocolCancel !== undefined) {
     if (row !== undefined && row.state === 'live') {
-      appendStage(command, ports, 'protocol', row);
+      appendStage(command, ports, 'protocol', row, startedAt);
     }
     // Rung 1 is given its whole chance before anything is signalled: it is the
     // only rung that ends with a transcript somebody can read.
@@ -221,34 +235,112 @@ async function stop(
     return { outcome: 'pid-reused', survivors: [], pid: row.pid, pgid: row.pgid };
   }
 
-  return signalLadder(command, ports, key, row);
+  return signalLadder(command, ports, key, row, startedAt);
 }
 
-/** Rungs 2, 3 and 4: SIGTERM, grace, SIGKILL, grace, verify. */
+export interface GroupSweepPorts {
+  /** Time enters here and nowhere else (NF9). */
+  readonly clock: Clock;
+  readonly termGraceMs?: number;
+  readonly killGraceMs?: number;
+  /** Defaults to the POSIX group signal. Injected only to exercise the
+   * kill-did-not-take path, never to avoid a real signal in a real test. */
+  readonly killTree?: (pid: number, signal: NodeJS.Signals) => unknown;
+  /** Defaults to the `Z`-filtered `ps` read. */
+  readonly liveMembers?: (pgid: number) => GroupMember[];
+  /** Called as each rung is climbed, with the ms the clock says it took. */
+  readonly onRung?: (stage: CancelStage, elapsedMs: number) => void;
+}
+
+/**
+ * Rungs 2, 3 and 4 over one process group: SIGTERM, grace, SIGKILL, verify.
+ *
+ * Shared with the operator's kill switch (./kill-switch.ts) rather than copied,
+ * because two implementations of an escalation ladder is two chances to lose
+ * the negative pid, the `Z` filter or the verification — and KAR-08.6 AC1's
+ * whole claim is that there is one of each.
+ *
+ * Returns the non-`Z` members still present at the end. **Empty is the only
+ * thing that means success**, and it is established by a positive check rather
+ * than by the signal call not having thrown (EPIC-08-S29 scenario 2).
+ */
+export async function sweepGroup(
+  pgid: number,
+  startedAt: number,
+  ports: GroupSweepPorts,
+): Promise<readonly GroupMember[]> {
+  const { clock } = ports;
+  const send =
+    ports.killTree ?? ((pid: number, signal: NodeJS.Signals) => posixKillTree(pid, signal));
+  const live = ports.liveMembers ?? ((group: number) => liveGroupRows(group));
+  const rung = (stage: CancelStage): void => ports.onRung?.(stage, clock.now() - startedAt);
+
+  /**
+   * Signal the group, and **let the verification be the arbiter**.
+   *
+   * `kill(2)` failing is not the same as the kill having failed. A group whose
+   * every member is a zombie answers `EPERM` on darwin — the processes are
+   * already dead, which is the outcome the caller wanted — and a group that has
+   * been fully reaped answers `ESRCH`, which `killTree` already turns into
+   * `'gone'`. Aborting the ladder on either would report a failure about a group
+   * that is not there, and would skip the rung that establishes that.
+   *
+   * Only errno failures are absorbed. A `NotImplementedOnWin32` or a refused
+   * pid is a claim about *this code*, not about the group, and swallowing it
+   * would produce the exact thing AC1 exists to prevent: a kill switch that
+   * reports success having signalled nothing.
+   */
+  const kill = (signal: NodeJS.Signals): void => {
+    try {
+      send(pgid, signal);
+    } catch (error) {
+      if (typeof (error as NodeJS.ErrnoException | null)?.code !== 'string') throw error;
+      cancelLog.warn(
+        { pgid, signal, code: (error as NodeJS.ErrnoException).code },
+        `${signal} to process group ${pgid} failed; the verification decides whether it mattered`,
+      );
+    }
+  };
+
+  rung('sigterm');
+  kill('SIGTERM');
+  await clock.sleep(ports.termGraceMs ?? TERM_GRACE_MS);
+
+  let survivors = live(pgid);
+  if (survivors.length > 0) {
+    rung('sigkill');
+    kill('SIGKILL');
+    // A window rather than a snapshot: zombie reaping lags inside containers,
+    // and a single instantaneous `ps` is how a working kill reads as a failure
+    // (EPIC-08-S27, last scenario).
+    survivors = await awaitGroupDrained(pgid, {
+      clock,
+      windowMs: ports.killGraceMs ?? KILL_VERIFY_MS,
+      members: live,
+    });
+  }
+
+  if (survivors.length === 0) rung('verified');
+  return survivors;
+}
+
+/** Rungs 2, 3 and 4 for one attempt, with the ledger record of each. */
 async function signalLadder(
   command: CancelNode,
   ports: CancelPorts,
   key: ProcessKey,
   row: ProcessRow,
+  startedAt: number,
 ): Promise<CancelReport> {
-  const { db, clock } = ports;
-  const kill =
-    ports.killTree ?? ((pid: number, signal: NodeJS.Signals) => posixKillTree(pid, signal));
-  const live = ports.liveMembers ?? ((pgid: number) => liveGroupMembers(pgid));
+  const { db } = ports;
 
-  appendStage(command, ports, 'sigterm', row);
-  kill(row.pgid, 'SIGTERM');
-  await clock.sleep(ports.termGraceMs ?? TERM_GRACE_MS);
-
-  let survivors = live(row.pgid);
-  if (survivors.length > 0) {
-    appendStage(command, ports, 'sigkill', row);
-    kill(row.pgid, 'SIGKILL');
-    await clock.sleep(ports.killGraceMs ?? KILL_VERIFY_MS);
-    survivors = live(row.pgid);
-  }
+  const survivors = await sweepGroup(row.pgid, startedAt, {
+    ...ports,
+    onRung: (stage, elapsedMs) => appendStage(command, ports, stage, row, startedAt, elapsedMs),
+  });
 
   if (survivors.length > 0) {
+    const pids = survivors.map((member) => member.pid);
     // AC8. Not a log line: the run's own history has to say that it stopped
     // admitting work because something out there is still running.
     appendEvents(db, [
@@ -257,18 +349,17 @@ async function signalLadder(
         attempt: command.attempt,
         pid: row.pid,
         pgid: row.pgid,
-        survivors,
+        survivors: pids,
       }),
     ]);
     cancelLog.error(
       { runId: row.runId, nodeId: row.nodeId, pid: row.pid, pgid: row.pgid, survivors },
-      `the process group of ${row.nodeId} survived SIGKILL: pids ${survivors.join(', ')} are still running`,
+      `the process group of ${row.nodeId} survived SIGKILL: pids ${pids.join(', ')} are still running`,
     );
     markProcess(db, key, 'discarded');
     return { outcome: 'survived', survivors, pid: row.pid, pgid: row.pgid };
   }
 
-  appendStage(command, ports, 'verified', row);
   markProcess(db, key, 'reaped');
   return { outcome: 'signalled', survivors: [], pid: row.pid, pgid: row.pgid };
 }
@@ -318,6 +409,8 @@ function appendStage(
   ports: CancelPorts,
   stage: CancelStage,
   row: ProcessRow,
+  startedAt: number,
+  elapsedMs: number = ports.clock.now() - startedAt,
 ): void {
   appendEvents(ports.db, [
     event(command, ports, 'node.cancel.stage', {
@@ -329,6 +422,8 @@ function appendStage(
       // what the signal reached.
       pid: row.pid,
       pgid: row.pgid,
+      // AC2: how long this rung took to reach, on the injected clock.
+      elapsedMs,
     }),
   ]);
 }
