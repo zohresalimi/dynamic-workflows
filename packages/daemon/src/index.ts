@@ -297,6 +297,22 @@ export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './m
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+// KAR-08.8 — auth-shadowing detection: what buildChildEnv()'s allowlist does
+// quietly, said loudly (docs/15-security-model.md §2.3).
+export type {
+  AuthShadowDoctorRow,
+  AuthShadowVar,
+  ProviderAuthModePayload,
+  ProviderAuthShadowStrippedPayload,
+  ResolvedProviderAuth,
+  ResolveProviderAuthInput,
+} from './proc/auth-shadow.ts';
+export {
+  AUTH_SHADOW_VARS,
+  checkAuthShadowing,
+  resolveProviderAuth,
+  shadowVarsFor,
+} from './proc/auth-shadow.ts';
 // KAR-08.4 — the child environment, built from an allowlist. The control
 // that would actually have prevented the Kiro incident (docs/15-security-
 // model.md §4).

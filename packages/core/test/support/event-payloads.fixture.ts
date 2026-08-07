@@ -196,6 +196,13 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     paths: ['docs/readme.md'],
   },
   'env.declared': { node: NODE, attempt: 0, name: 'NPM_TOKEN' },
+  'provider.auth_mode': { node: NODE, attempt: 0, provider: 'claude-code', mode: 'subscription' },
+  'provider.auth_shadow_stripped': {
+    node: NODE,
+    attempt: 0,
+    provider: 'claude-code',
+    variable: 'ANTHROPIC_API_KEY',
+  },
   'sandbox.degraded': {
     node: NODE,
     attempt: 0,

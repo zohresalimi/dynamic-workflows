@@ -91,6 +91,7 @@ export type {
   EventKind,
   EventPayloadOf,
   LockReleaseReason,
+  ProviderAuthMode,
   RunOutcome,
   WorktreeOccupantKind,
 } from './event-payloads.ts';
@@ -151,6 +152,9 @@ export {
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
   PlanProposedSchema,
+  PROVIDER_AUTH_MODES,
+  ProviderAuthModeSchema,
+  ProviderAuthShadowStrippedSchema,
   ProviderProbedSchema,
   ProviderRateLimitedSchema,
   // KAR-08.2 — the ceiling on the agent-supplied path a denial keeps verbatim.

@@ -453,6 +453,16 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     /**
+     * KAR-08.8 — evidence for the run report and the cost report, not run
+     * state: the effective auth mode a provider ran under does not change
+     * what is schedulable, and recording it here would give the same fact a
+     * second, disagreeable home (docs/15-security-model.md §2.3).
+     */
+    case 'provider.auth_mode':
+    case 'provider.auth_shadow_stripped':
+      return null;
+
+    /**
      * KAR-08.5 AC6 — also evidence rather than run state. A degraded key does
      * not change what is schedulable: the disposition that produced it already
      * did that, by either omitting the key or refusing the node outright, and

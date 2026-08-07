@@ -451,6 +451,51 @@ export const EnvDeclaredSchema = z.strictObject({
 });
 
 /**
+ * KAR-08.8 — the two ways a node's provider auth can resolve
+ * (docs/15-security-model.md §2.3). `subscription` is the default `buildChildEnv()`'s
+ * allowlist already produces by dropping an `*_API_KEY`-shaped variable; `api_key`
+ * is what a node gets only by explicitly opting in.
+ */
+export const PROVIDER_AUTH_MODES = ['subscription', 'api_key'] as const;
+
+export type ProviderAuthMode = (typeof PROVIDER_AUTH_MODES)[number];
+
+/**
+ * KAR-08.8 AC1, AC2 — the effective auth mode of one provider on one node,
+ * recorded so it is a fact the run report and cost report can read rather
+ * than something the user has to infer from a bill (docs/15-security-
+ * model.md §2.3). Written once per node attempt that routes to a provider
+ * carrying an auth-shadowing variable (`packages/daemon/src/proc/auth-
+ * shadow.ts`'s `AUTH_SHADOW_VARS`) — `subscription` when the shadowing
+ * variable was stripped, `api_key` when the node explicitly selected it.
+ */
+export const ProviderAuthModeSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  mode: z.enum(PROVIDER_AUTH_MODES),
+});
+
+/**
+ * KAR-08.8 AC1 — `ANTHROPIC_API_KEY` (or another provider's equivalent) was
+ * present in DeFlowd's own environment while the node was configured for
+ * subscription auth, so `buildChildEnv()`'s allowlist dropped it and this is
+ * the loud record of that: "the user thinks they are on their subscription;
+ * they are being billed per token" (docs/15-security-model.md §2.3) is the
+ * failure this event exists to make impossible.
+ *
+ * `variable` only, the same discipline as `EnvDeclaredSchema.name` above:
+ * there is no `value` field to put one in, so "the value never enters the
+ * ledger" is a property of the shape, not of a habit.
+ */
+export const ProviderAuthShadowStrippedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  variable: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be an environment variable name'),
+});
+
+/**
  * KAR-08.5 AC6 — a sandbox setting the installed vendor CLI is too old to
  * understand, omitted rather than emitted.
  *
@@ -1092,6 +1137,8 @@ export const EVENT_SCHEMAS = {
   'permission.denied': { v: 1, payload: PermissionDeniedSchema },
   'node.scope_warning': { v: 1, payload: NodeScopeWarningSchema },
   'env.declared': { v: 1, payload: EnvDeclaredSchema },
+  'provider.auth_mode': { v: 1, payload: ProviderAuthModeSchema },
+  'provider.auth_shadow_stripped': { v: 1, payload: ProviderAuthShadowStrippedSchema },
   'sandbox.degraded': { v: 1, payload: SandboxDegradedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
