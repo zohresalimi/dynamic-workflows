@@ -463,6 +463,9 @@ export {
 } from './plan-patch.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
+// KAR-02.3 — the F6.2 read-reachability gate under its EPIC-02 name and
+// `{ node, read }` return shape. One implementation, in
+// ./validate-declared-reads.ts; this is a view over it, not a second walk.
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.

@@ -279,4 +279,22 @@ suite('validateDeclaredReads — kinds beyond fact and spec', () => {
       { code: 'undeclared-read', node: 'self-serving', key: 'finding/x' },
     ]);
   });
+
+  it('does not let a node reach its own writes around a cycle either', () => {
+    // A cycle makes every node on it its own ancestor, so a walk that only
+    // trusts the reachable set turns "it cannot read what it has not run far
+    // enough to produce" off exactly when the graph is at its least
+    // trustworthy. Rejecting the cycle itself is KAR-11.2's; not laundering a
+    // self-read through it is this walk's.
+    const graph = graphOf([
+      agent('a', ['b'], {
+        reads: [{ kind: 'fact', key: 'finding/x' }],
+        writes: [write('finding/x')],
+      }),
+      agent('b', ['a']),
+    ]);
+    expect(validateDeclaredReads(graph)).toEqual([
+      { code: 'undeclared-read', node: 'a', key: 'finding/x' },
+    ]);
+  });
 });

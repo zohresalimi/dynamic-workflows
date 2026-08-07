@@ -13,6 +13,27 @@
  * "it is in the graph somewhere" is not the same claim as "it will have
  * happened by the time you run". Only ancestors count.
  *
+ * ## Why this file is thirty lines and not ninety
+ *
+ * docs/08-context-and-memory.md §2.1 describes the *same* gate — F6.2, the
+ * same walk, the same ancestor rule, the same pinned spec — under the name
+ * `validateDeclaredReads`, and KAR-09.1 shipped it. For a while this module
+ * carried its own copy of the walk, and the two had already drifted: the copy
+ * here treated only the *read* side as a possible `finding/*` prefix, so an
+ * ancestor declaring the write `finding/*` (which a recon node that cannot
+ * know its findings' names up front is entitled to declare) was reported as
+ * an undeclared read by `readsAreSatisfiable` and accepted by
+ * `validateDeclaredReads`. Whichever one KAR-11.2 happened to wire into the
+ * `plan.proposed` / `plan.patched` path would have decided that plan's fate.
+ *
+ * So there is exactly one implementation — `./validate-declared-reads.ts` —
+ * and this is its KAR-02.3-shaped view: the same verdict, in the
+ * `{ node, read }` pairs EPIC-02-S11 and 04-domain-model §3.1 name. Both
+ * names stay exported because both epics' acceptance criteria use their own,
+ * and both are already public API. Nothing here may grow a second opinion
+ * about matching, ancestry or pinning; `reads-satisfiable.test.ts` has a
+ * corpus that fails the moment it does.
+ *
  * This is deliberately *not* the full plan validator: cycles, gate coverage
  * and criterion traceability are KAR-11.2. It therefore has to terminate on a
  * graph that has a cycle rather than assume one cannot reach it.
@@ -20,96 +41,29 @@
  * Verifies: EPIC-02-S11 · AC6
  */
 import type { NodeId } from './ids.ts';
-import type { PlanGraph, PlanNode } from './plan-graph.ts';
+import type { PlanGraph } from './plan-graph.ts';
+import { validateDeclaredReads } from './validate-declared-reads.ts';
 
 /** One declared read that no ancestor produces. `read` is the fact key as the
- * node declared it, prefix form included, so the message can quote it back. */
+ * node declared it, prefix form included, so the message can quote it back —
+ * or, for a `spec` read, the canonical `spec:<section>` key. */
 export interface UnsatisfiedRead {
   readonly node: NodeId;
   readonly read: string;
 }
 
-/** `finding/*` matches `finding/auth-uses-jwt`; an exact key matches itself.
- * The wildcard is a trailing prefix marker, not a glob — there is no
- * `finding/*\/auth` form, because a fact key namespace is flat by design. */
-function matches(readKey: string, writeKey: string): boolean {
-  return readKey.endsWith('*') ? writeKey.startsWith(readKey.slice(0, -1)) : writeKey === readKey;
-}
-
-/**
- * Every node that must have finished before `nodeId` can start: the
- * transitive closure of `deps`, widened by the graph's own edges so that a
- * plan whose edges say more than its `deps` do is not silently under-checked.
- * (A plan where the two disagree is the full validator's to reject.)
- */
-function ancestorsOf(
-  start: NodeId,
-  predecessors: ReadonlyMap<string, readonly NodeId[]>,
-): Set<string> {
-  const seen = new Set<string>();
-  const queue = [...(predecessors.get(start) ?? [])];
-  // A visited set rather than recursion: this runs on unvalidated planner
-  // output, and a cycle here must return a result, not blow the stack.
-  while (queue.length > 0) {
-    const current = queue.pop();
-    if (current === undefined || seen.has(current)) continue;
-    seen.add(current);
-    queue.push(...(predecessors.get(current) ?? []));
-  }
-  return seen;
-}
-
-function predecessorMap(graph: PlanGraph): Map<string, NodeId[]> {
-  const predecessors = new Map<string, NodeId[]>();
-  const add = (to: string, from: NodeId): void => {
-    const existing = predecessors.get(to);
-    if (existing === undefined) predecessors.set(to, [from]);
-    else if (!existing.includes(from)) existing.push(from);
-  };
-  for (const node of graph.nodes) for (const dep of node.deps) add(node.id, dep);
-  for (const edge of graph.edges) add(edge.to, edge.from);
-  return predecessors;
-}
-
-/** The fact keys a set of nodes declares writing. */
-function writtenKeys(nodes: readonly PlanNode[]): string[] {
-  return nodes.flatMap((node) => node.writes.map((write) => write.key));
-}
-
 /**
  * Returns one entry per declared read that no ancestor satisfies — `[]` for a
- * sound graph.
+ * sound graph — ordered by `(node, read)`, so the result is stable regardless
+ * of the order `graph.nodes` happens to list them in.
  *
- * Only `kind: 'fact'` reads are checked. A `spec` read is always satisfiable
- * because F1.5 pins the spec into every packet regardless of position in the
- * graph, and an `artifact` read names a content-addressed handle that exists
- * independently of the plan (no `WriteDecl` can produce one), so neither can
- * be dangling in the sense this walk is looking for.
+ * Only reads that name something a `WriteDecl` could have produced are
+ * reported. A `spec` read is always satisfiable because F1.5 pins the spec
+ * into every packet regardless of position in the graph, and an `artifact`
+ * read names a content-addressed handle that exists independently of the plan
+ * (no `WriteDecl` can produce one), so neither can be dangling in the sense
+ * this walk is looking for.
  */
 export function readsAreSatisfiable(graph: PlanGraph): UnsatisfiedRead[] {
-  const byId = new Map(graph.nodes.map((node) => [node.id as string, node]));
-  const predecessors = predecessorMap(graph);
-  const violations: UnsatisfiedRead[] = [];
-
-  for (const node of graph.nodes) {
-    const factReads = node.reads.filter((read) => read.kind === 'fact');
-    if (factReads.length === 0) continue;
-
-    // A node's own writes do not count: it cannot read what it has not run
-    // far enough to produce.
-    const ancestors = [...ancestorsOf(node.id, predecessors)]
-      .map((id) => byId.get(id))
-      .filter(
-        (ancestor): ancestor is PlanNode => ancestor !== undefined && ancestor.id !== node.id,
-      );
-    const available = writtenKeys(ancestors);
-
-    for (const read of factReads) {
-      if (!available.some((key) => matches(read.key, key))) {
-        violations.push({ node: node.id, read: read.key });
-      }
-    }
-  }
-
-  return violations;
+  return validateDeclaredReads(graph).map((error) => ({ node: error.node, read: error.key }));
 }

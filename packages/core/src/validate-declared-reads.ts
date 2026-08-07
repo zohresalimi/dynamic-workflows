@@ -11,6 +11,14 @@
  * production source under `packages/core/src` for exactly the banned reads
  * this module must never contain).
  *
+ * This is the **only** implementation of the F6.2 read-reachability gate in
+ * the workspace. 04-domain-model.md §3.1 describes the same rule under
+ * EPIC-02's name for it, `readsAreSatisfiable`; that function
+ * (./reads-satisfiable.ts) is a mapping of this one's result into KAR-02.3's
+ * `{ node, read }` shape, and must stay that way. The two shipped as separate
+ * walks for one commit and had already disagreed about a `finding/*` on the
+ * *write* side — see that module's note.
+ *
  * `validateDeclaredReads` is deliberately the only thing this module does.
  * EPIC-11's own prerequisite note says it plainly: *"`@DeFlow/core`, so
  * `KAR-11.2` wires it in rather than reimplementing reachability."* Wiring
@@ -99,6 +107,10 @@ export function satisfies(reachable: Iterable<string>, requested: string): boole
  * recursive: this runs on unvalidated planner output, so a cyclic graph must
  * still return a result rather than overflow the stack (cycle rejection
  * itself is KAR-11.2's).
+ *
+ * `start` is never in the result, even when a cycle walks back round to it. A
+ * node cannot read what it has not run far enough to produce, and a cyclic
+ * graph is precisely where that rule must not quietly switch itself off.
  */
 function ancestorsOf(
   start: NodeId,
@@ -114,6 +126,7 @@ function ancestorsOf(
     seen.add(current);
     for (const next of predecessors.get(current) ?? []) queue.push(next);
   }
+  seen.delete(start);
   return seen;
 }
 
