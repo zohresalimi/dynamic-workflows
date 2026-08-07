@@ -18,14 +18,14 @@
  *
  * Verifies: EPIC-09-S14 (second scenario) · AC3
  */
-import { type ContextPacket, renderOrderOf } from './context-packet.ts';
+import { renderOrderOf, type Segment } from './context-packet.ts';
 
 /** One blank line between segments: enough to separate them for a reader,
  * and — because it is a *join* rather than a per-segment wrapper — it never
  * lands inside a pinned segment's bytes. */
 const SEPARATOR = '\n\n';
 
-export function renderPacket(packet: ContextPacket): string {
+export function renderPacket(packet: { readonly segments: readonly Segment[] }): string {
   return renderOrderOf(packet)
     .map((segment) => segment.text)
     .join(SEPARATOR);

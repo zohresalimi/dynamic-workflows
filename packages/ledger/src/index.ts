@@ -125,6 +125,23 @@ export {
   readConflictProbes,
   upsertConflictProbe,
 } from './conflict-probe.ts';
+// KAR-09.2 — persisting a ContextPacket: the manifest into `context.built`,
+// the segment text into the blob store, and prompt.txt onto disk as a derived,
+// non-authoritative artifact (NF8).
+export {
+  DERIVED_MANIFEST,
+  type DerivedPromptCheck,
+  handleForContentHash,
+  nodeDirOf,
+  type PersistedPacket,
+  type PersistPacketOptions,
+  persistContextPacket,
+  promptPathOf,
+  RenderedPromptHandleMismatch,
+  rehydratePacket,
+  SEGMENT_MIME,
+  verifyDerivedPrompt,
+} from './context-store.ts';
 // KAR-03.4 — bounded drains. The only supported way to read more than one window.
 export { DEFAULT_DRAIN_BATCH, type DrainOptions, drainEvents, drainIoChunks } from './drain.ts';
 // KAR-06.3 — the write-ahead effect journal: the intent row written before the

@@ -287,8 +287,15 @@ function bySourceEvent(a: Segment, b: Segment): number {
  * (`sourceEvent`) order — so a `history.summary` segment lands where the
  * turns it replaced used to be, rather than in a preamble bucket ahead of
  * older, still-present segments.
+ *
+ * Takes anything with `segments` rather than a parsed `ContextPacket`: render
+ * order is a property of the segment array alone, and KAR-09.2's builder needs
+ * it *before* it has a packet — the rendered prompt's own digest is one of the
+ * packet's fields.
  */
-export function renderOrderOf(packet: ContextPacket): readonly Segment[] {
+export function renderOrderOf(packet: {
+  readonly segments: readonly Segment[];
+}): readonly Segment[] {
   const pinned = packet.segments.filter((segment) => segment.pinned).toSorted(bySourceEvent);
   const rest = packet.segments.filter((segment) => !segment.pinned).toSorted(bySourceEvent);
   return [...pinned, ...rest];

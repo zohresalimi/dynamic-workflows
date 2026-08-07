@@ -21,6 +21,29 @@ export type {
   SchemaIssue,
 } from './accept-fact.ts';
 export { acceptFact } from './accept-fact.ts';
+// KAR-09.2 — packet assembly under a token budget: fill order, the budget
+// ceiling, and the demotion ladder that offloads rather than summarises.
+export type {
+  BudgetInput,
+  BudgetResolution,
+  DemotedBody,
+  PacketBuild,
+  PacketBuildInput,
+  PacketDemotion,
+  PacketPinnedInput,
+  PacketTarget,
+} from './build-packet.ts';
+export {
+  BUDGET_FRACTION_CEILING,
+  BUDGET_FRACTION_DEFAULT,
+  buildPacket,
+  FILL_ORDER,
+  handleForSegment,
+  handleStubText,
+  PinnedSegmentSuppliedLate,
+  resolveContextBudget,
+  SegmentContentHashMismatch,
+} from './build-packet.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
@@ -422,6 +445,7 @@ export {
   buildPinnedSegments,
   contextSegment,
   demoteToBudget,
+  demotionLadder,
   heuristicTokens,
   PINNED_CONTENT_TYPES,
   PinnedSetExceedsBudget,

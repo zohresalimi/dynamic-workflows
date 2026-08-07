@@ -215,6 +215,32 @@ const DEMOTION_LADDER: readonly UnpinnedSegmentKind[] = [
   'artifact.handle',
 ];
 
+/**
+ * Every demotable segment, in the order the ladder offers them: rung-major,
+ * and size-descending within a rung — which is what *"largest `tool.output`
+ * first"* means when there are two of them.
+ *
+ * The one implementation of the order. `demoteToBudget` here and
+ * `buildPacket`'s demotion pass (KAR-09.2) both call it rather than each
+ * sorting for itself, because two implementations of "which body goes first"
+ * is how the audit trail and the packet come to disagree about what happened.
+ *
+ * A kind the ladder does not name is **not offered at all**, rather than
+ * offered last. §5.2 names four rungs and they are all bodies the agent can
+ * pull back through `DeFlow_read_artifact`; the kinds it leaves out are the
+ * node's own scoped instruction (`task.brief`) and a summary that is already
+ * the compacted form of something else (`history.summary`). Replacing either
+ * with a handle removes the thing the node needs in order to start, which is
+ * a worse failure than being over budget and saying so.
+ */
+export function demotionLadder(packet: SegmentedPacket): Segment[] {
+  const rungOf = (segment: Segment): number =>
+    (DEMOTION_LADDER as readonly string[]).indexOf(segment.kind);
+  return selectCompactionCandidates(packet)
+    .filter((segment) => rungOf(segment) >= 0)
+    .toSorted((a, b) => rungOf(a) - rungOf(b) || b.tokens.estimated - a.tokens.estimated);
+}
+
 export interface DemotionResult {
   /** Every surviving segment, in the packet's original order. Pinned segments
    * are the identical objects that went in. */
@@ -237,26 +263,12 @@ export function demoteToBudget(packet: ContextPacket): DemotionResult {
   const limit = packet.budget.limitTokens;
   const pinnedTokens = sumTokens(packet.segments.filter((segment) => segment.pinned));
 
-  const ladder = selectCompactionCandidates(packet)
-    .map((segment) => ({
-      segment,
-      rung: DEMOTION_LADDER.indexOf(segment.kind as UnpinnedSegmentKind),
-    }))
-    // A kind the ladder does not name is demoted last, not first: an unranked
-    // segment is one nobody has decided about, and guessing costs context.
-    .toSorted(
-      (a, b) =>
-        (a.rung < 0 ? DEMOTION_LADDER.length : a.rung) -
-          (b.rung < 0 ? DEMOTION_LADDER.length : b.rung) ||
-        b.segment.tokens.estimated - a.segment.tokens.estimated,
-    );
-
   const demoted = new Set<SegmentId>();
   let tokens = sumTokens(packet.segments);
-  for (const entry of ladder) {
+  for (const candidate of demotionLadder(packet)) {
     if (tokens <= limit) break;
-    demoted.add(entry.segment.id);
-    tokens -= entry.segment.tokens.estimated;
+    demoted.add(candidate.id);
+    tokens -= candidate.tokens.estimated;
   }
 
   return {

@@ -2841,3 +2841,56 @@ export function checkNoFactCache(
   }
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-09.2 AC5 / EPIC-09-S28 — the demotion path cannot reach a provider.
+ * -------------------------------------------------------------------------- */
+
+export const DEMOTION_IMPORT_MESSAGE =
+  'imports something outside @DeFlow/core. The packet builder and its demotion ladder must be ' +
+  'unable to summarise: "offload, don\'t summarise" (docs/08-context-and-memory.md §5.2) is ' +
+  'only a rule while it is enforced by a review, and a structural property once the module ' +
+  'cannot reach a provider, an adapter or a process at all. Selection and ordering happen ' +
+  'here; tokenising is the Tokenizer port, fetching is the blackboard and the CAS, and ' +
+  'summarising is the explicit continuation path in a different module. If a change makes ' +
+  'buildPacket need a network call, the change is wrong.';
+
+/** The only bare specifiers a pure `@DeFlow/core` module may name. */
+const DEMOTION_ALLOWED_BARE_IMPORTS: readonly string[] = ['zod'];
+
+/**
+ * EPIC-09-S28's third scenario, as a property rather than a promise: *"the
+ * demotion module has no dependency on any provider or adapter type"*.
+ *
+ * Enforced by allowlist rather than by a denylist of vendor names, because a
+ * denylist is one `import { spawn }` away from being wrong and nobody notices
+ * until a packet build starts costing quota.
+ */
+export function checkDemotionIsProviderFree(
+  files: readonly SourceFile[],
+  modules: readonly string[],
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!modules.includes(file.path)) continue;
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      DEEP_IMPORT_SPECIFIER.lastIndex = 0;
+      let match: RegExpExecArray | null = DEEP_IMPORT_SPECIFIER.exec(line);
+      while (match !== null) {
+        const specifier = match[1] ?? match[2] ?? '';
+        const pure =
+          specifier.startsWith('./') ||
+          specifier.startsWith('../') ||
+          DEMOTION_ALLOWED_BARE_IMPORTS.includes(specifier);
+        if (!pure) {
+          violations.push({
+            where: `${file.path}:${index + 1}`,
+            message: `${file.path} line ${index + 1} ${DEMOTION_IMPORT_MESSAGE} Found: "${specifier}".`,
+          });
+        }
+        match = DEEP_IMPORT_SPECIFIER.exec(line);
+      }
+    }
+  }
+  return violations;
+}
