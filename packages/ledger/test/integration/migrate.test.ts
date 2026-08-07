@@ -140,6 +140,12 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         // `indexArtifact`'s first-writer-wins check (KAR-09.10).
         'artifact_fts_provenance_by_handle',
         'effect_run_state',
+        // Migration 0013's partial index over the one event kind `DeFlow
+        // doctor` queries without a run_id (KAR-14.4 AC10). Partial for the
+        // same reason `process_live` is: an ordinary index on `kind` would
+        // carry a row for every append the system has ever made, paid for on
+        // the write path where it buys nothing.
+        'event_rate_limited',
         'event_run_seq',
         // The blackboard's three (KAR-09.8): one to resolve a declared read
         // against a run's facts, and two for the directions F10.4's memory

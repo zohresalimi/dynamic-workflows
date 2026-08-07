@@ -478,13 +478,25 @@ suite('EPIC-06-S31 — a budget ceiling pauses the run instead of failing it (AC
       });
 
       expect(recorded.plan).toEqual({ action: 'gate' });
-      expect(kinds(db).slice(-4)).toEqual([
+      // KAR-14.2 AC2 — the trip appends all three, in this order: the pause is
+      // what a resume reverses, and the ask is what puts the run in front of a
+      // human. A pause with no ask never reaches the approval queue.
+      expect(kinds(db).slice(-5)).toEqual([
         'node.failed',
         'node.suspended',
         'budget.exceeded',
         'run.paused',
+        'run.needs_human',
       ]);
-      expect(payloadOf(db, 'budget.exceeded')).toEqual({ ...breach });
+      expect(payloadOf(db, 'budget.exceeded')).toEqual({
+        ...breach,
+        // A breach that arrives through a *failure* came from an adapter
+        // reporting a vendor's own refusal; DeFlow's own ceiling is checked in
+        // `decide()` and never becomes a node failure (KAR-14.2 AC9).
+        firedBy: 'vendor',
+        failureClass: 'gate',
+      });
+      expect(payloadOf(db, 'run.needs_human')).toMatchObject({ reason: 'budget' });
       expect(payloadOf(db, 'run.paused')).toMatchObject({ by: 'policy' });
 
       const failed = payloadOf(db, 'node.failed')?.failure as { class: string };
@@ -493,7 +505,7 @@ suite('EPIC-06-S31 — a budget ceiling pauses the run instead of failing it (AC
 
       const state = stateOf(db);
       expect(state.status).toBe('paused');
-      expect(state.budget.breaches).toEqual([{ ...breach }]);
+      expect(state.budget.breaches).toEqual([{ ...breach, firedBy: 'vendor' }]);
       expect(startsOf(state, T0)).toEqual([]);
 
       // Six completed nodes, their results untouched by the pause.

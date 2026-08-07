@@ -49,11 +49,17 @@ import {
   type Handle,
   ikey,
   type NodeFailure,
-  type NodeFailureError,
+  NodeFailureError,
   type NodeId,
   type PermissionLevel,
+  type PreflightEstimate,
+  type ProviderAuthMode,
   type ProviderId,
+  QUOTA_WAKE_REASON,
+  type RateLimit,
   type RunId,
+  rateLimitFailureTag,
+  rateLimitMessage,
   type SchemaId,
   type StructuredOutput,
   type TokenUsage,
@@ -66,6 +72,7 @@ import { dirname } from 'node:path';
 import process from 'node:process';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
+import { budgetConsumed } from './budget-consumed.ts';
 import type { CapabilityRow } from './capabilities.ts';
 import { compactionEnv } from './compaction.ts';
 import {
@@ -80,11 +87,24 @@ import {
 import { frameGuard, parseFrameLimit } from './frame-guard.ts';
 import { killTree, processStartTime } from './kill-tree.ts';
 import { STDERR_TAIL_BYTES } from './launch.ts';
-import type { AgentBinary, EventRecord, LedgerSink, ProcessRegistry } from './ports.ts';
-import { type ProviderSpec, providerSpec, type ShimFormat } from './provider-registry.ts';
+import {
+  type AgentBinary,
+  type EventRecord,
+  eventVersion,
+  type LedgerSink,
+  type ProcessRegistry,
+  type WakeRegistry,
+} from './ports.ts';
+import {
+  type ProviderSpec,
+  providerSpec,
+  providerTokenAccounting,
+  type ShimFormat,
+} from './provider-registry.ts';
 import {
   AGENT_TURN_SCHEMA_ID,
   CONTENT_SPILL_BYTES,
+  estimateUsage,
   OUTPUT_INLINE_LIMIT_BYTES,
   type ProcessExit,
 } from './run-node.ts';
@@ -92,6 +112,7 @@ import { type SandboxedShimPlan, type SandboxInvocation, sandboxedShimPlan } fro
 import { auditCompletionScope, type ScopeAudit, scopeAuditRefusal } from './scope-audit.ts';
 import {
   parseShimLine,
+  type ShimFailureContext,
   shimCompactBoundary,
   shimRateLimit,
   shimResultCostUsd,
@@ -102,27 +123,14 @@ import {
 } from './shim-frames.ts';
 
 /**
- * A durable timer row (`node_wake`), as the adapter needs to write one.
- *
- * A port rather than a direct dependency, for the reason every port in
- * ./ports.ts is one: the SQL lives in @DeFlow/ledger and this package depends
- * on @DeFlow/core alone (docs/16-repo-layout.md R2). It is a *row* and not a
- * `setTimeout` because Node's maximum timer delay is 2^31−1 ms and passing
- * more fires the callback after 1 ms — verified — which would turn a
- * fifteen-minute quota wait into an immediate retry, i.e. exactly the blind
- * retry this exists to replace.
+ * KAR-14.2 AC9 — what the vendor's own refusal is measured against, when
+ * DeFlow armed one. Absent leaves the failure a `gate` carrying no numbers,
+ * which is the honest answer for a ceiling nobody here set.
  */
-export interface NodeWakeRow {
-  readonly runId: RunId;
-  readonly nodeId: NodeId;
-  /** ms epoch. An instant, so it survives a restart that outlives the wait. */
-  readonly wakeAt: number;
-  readonly reason: string;
-}
-
-export interface WakeRegistry {
-  schedule(row: NodeWakeRow): Promise<void>;
-}
+const vendorCeiling = (request: ShimNodeRequest): ShimFailureContext =>
+  request.costCeilingUsd === undefined
+    ? {}
+    : { ceiling: { node: request.nodeId, limitUsd: request.costCeilingUsd } };
 
 /**
  * The lever a node runs with when its own resolution was refused.
@@ -133,8 +141,39 @@ export interface WakeRegistry {
  */
 const NO_LEVER: CompactionLever = { autocompactPct: null, autoCompactDisabled: false };
 
-/** The `node_wake.reason` a provider-side quota limit writes. */
-export const WAKE_REASON_QUOTA = 'quota';
+/**
+ * KAR-14.4 AC1, AC9, EPIC-14-S27 — a rate limit signalled only by an exit code.
+ *
+ * `null` unless the caller declared this code, which is the whole guard: an
+ * undeclared non-zero exit stays `agent.nonzero-exit`, because DeFlow does not
+ * invent a rate limit any more than it invents a reset time. The two halves of
+ * the honesty are the same rule read in both directions.
+ *
+ * `raw` is the exit itself, verbatim, so a later parser has the same bytes this
+ * build had — and `resetsAt` is simply not there, which is what
+ * `describeRateLimit` renders as *"rate limited, reset time unknown"*.
+ */
+function blindRateLimit(
+  request: ShimNodeRequest,
+  exit: ProcessExit,
+): { readonly thrown: NodeFailureError; readonly raw: unknown } | null {
+  const declared = request.rateLimitExitCodes ?? [];
+  if (exit.code === null || !declared.includes(exit.code)) return null;
+
+  const raw = { exitCode: exit.code, signal: exit.signal };
+  const limit: RateLimit = { provider: request.provider, resetsAt: null, raw };
+  return { raw, thrown: new NodeFailureError(rateLimitMessage(limit), rateLimitFailureTag(limit)) };
+}
+
+/**
+ * The `node_wake.reason` a provider-side quota limit writes.
+ *
+ * Core's literal under this package's name, rather than a second `'quota'`:
+ * the ACP path writes the same row from ./run-node.ts, and `decide()` restates
+ * the reason on every tick, so a copy that drifted would leave a node asleep
+ * under a reason no scheduler recognises.
+ */
+export const WAKE_REASON_QUOTA = QUOTA_WAKE_REASON;
 
 /**
  * The capability row for an exec-shim adapter.
@@ -181,6 +220,17 @@ export interface ShimNodeRequest {
   /** 0-based, matching the event envelope. */
   readonly attempt: number;
   readonly provider: ProviderId;
+  /**
+   * KAR-08.8's effective auth mode for this attempt, from
+   * `resolveProviderAuth`. Absent means `'subscription'` — the default that
+   * function itself uses, and the only honest one, because `'api_key'` is
+   * reached solely by an explicit opt-in and DeFlow never invents it.
+   *
+   * It is on the request rather than derived here because KAR-14.1 AC3 turns
+   * on it: subscription quota and real currency are two figures and must never
+   * be summed, so the accounting record has to carry which one it is.
+   */
+  readonly authMode?: ProviderAuthMode;
   readonly permission: PermissionLevel;
   readonly worktree: string;
   readonly binary: AgentBinary;
@@ -201,8 +251,48 @@ export interface ShimNodeRequest {
    * the manifest rather than assumed.
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-14.2 AC9 — this node's own cost ceiling in USD, armed on the vendor's
+   * own budget flag as defence in depth *below* DeFlow's admission check.
+   *
+   * Two things follow from passing it. The vendor stops the turn itself rather
+   * than running to the end of a plan DeFlow would have paused anyway, and the
+   * refusal that comes back can carry a `limit` — the envelope reports what was
+   * spent and never what the ceiling was, so a run that armed nothing gets a
+   * `gate` with no numbers rather than invented ones.
+   */
+  readonly costCeilingUsd?: number;
+  /**
+   * KAR-14.3 AC8 — what this attempt was estimated to cost **before** it was
+   * admitted, echoed onto the accounting record so the estimate and the actual
+   * can be reconciled without a join.
+   *
+   * Supplied by the caller because the estimator needs a real tokenizer and the
+   * learned calibration, and this package has neither: @DeFlow/adapters depends
+   * on @DeFlow/core alone, and the BPE table and the ledger both live elsewhere.
+   * Absent means nobody estimated the attempt, which is a fact, and is recorded
+   * as an absence rather than as a zero.
+   */
+  readonly preflight?: PreflightEstimate;
   /** The child's whole environment. Absent inherits the daemon's. */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * KAR-14.4 AC1, EPIC-14-S27 — the exit codes this provider is known to use
+   * to mean *"rate limited"*, when it says so no other way.
+   *
+   * Data supplied by the caller, and **empty by default** — which is a claim
+   * rather than an omission. As of the 2026-08-02 probe no vendor has published
+   * an exit code that means a rate limit, so DeFlow declares none and guesses
+   * none: an invented table would classify an ordinary crash as a limit and
+   * back a run off for five minutes against a provider that is simply broken.
+   * The mechanism exists because the degradation path has to be real code
+   * rather than a plan, and it becomes live the day a vendor documents a code.
+   *
+   * No vendor is named here, and none may be: which codes a provider uses is a
+   * fact about invocation and belongs to the registry
+   * (`test/no-capability-table.test.ts` greps this directory).
+   */
+  readonly rateLimitExitCodes?: readonly number[];
   /**
    * KAR-08.5 — everything the node's sandbox policy depends on that is not the
    * vendor's invocation: the detected CLI version, the platform, the roots the
@@ -371,7 +461,7 @@ export async function runShimNode(
 
   const event = (kind: string, payload: unknown, withIkey = false): EventRecord => ({
     kind,
-    v: 1,
+    v: eventVersion(kind),
     ts: clock.now(),
     nodeId: request.nodeId,
     attempt: request.attempt,
@@ -416,6 +506,15 @@ export async function runShimNode(
   const refuse = async (
     thrown: unknown,
     common: Partial<ShimOutcomeCommon> = {},
+    /**
+     * KAR-14.1 AC5 — what this attempt spent before it failed, when a `result`
+     * envelope had already reported something.
+     *
+     * Absent for every refusal that happens before a process exists: there is
+     * nothing to account for, and appending a zero would put a free turn on a
+     * chart for a turn that never ran.
+     */
+    spent = false,
   ): Promise<ShimNodeOutcome> => {
     const mapped = toAdapterFailure(thrown, {
       occurredAtEvent: lastSeq,
@@ -427,9 +526,16 @@ export async function runShimNode(
       head === null
         ? mapped
         : { ...mapped, evidence: [...mapped.evidence, ports.captureEvidence(head)] };
-    await ledger.append(
-      event('node.failed', { node: request.nodeId, attempt: request.attempt, failure }),
-    );
+    const failed = event('node.failed', {
+      node: request.nodeId,
+      attempt: request.attempt,
+      failure,
+    });
+    // The same one-transaction rule the completion path keeps: a failed
+    // attempt's spend is still spend, and a crash between the two events would
+    // lose it exactly as it would lose a successful one.
+    if (spent) await ledger.appendAll([event('budget.consumed', spendPayload()), failed]);
+    else await ledger.append(failed);
     return {
       status: 'failed',
       failure,
@@ -494,6 +600,7 @@ export async function runShimNode(
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
         ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
+        ...(request.costCeilingUsd === undefined ? {} : { costCeilingUsd: request.costCeilingUsd }),
       },
       request.sandbox,
     );
@@ -578,6 +685,31 @@ export async function runShimNode(
   let costUsd = 0;
   let resultFailure: NodeFailureError | null = null;
   let sawResult = false;
+
+  /**
+   * KAR-14.1 — this attempt's accounting record, judged against the manifest.
+   *
+   * `providerTokenAccounting` is what decides whether the envelope's figures
+   * may be priced at all: a provider whose fidelity nobody has verified
+   * (roadmap A4-3) contributes a blank cost and its name to the rollup's
+   * `unaccounted` list, rather than a number that would be charted as truth.
+   *
+   * The fallback is DeFlow's own count of the prompt it sent and the text it
+   * read back, never zero: a turn that produced megabytes of output did not
+   * read and write nothing, and the estimate is the only figure left once the
+   * vendor's is refused.
+   */
+  const spendPayload = (): unknown =>
+    budgetConsumed({
+      node: request.nodeId,
+      attempt: request.attempt,
+      provider: request.provider,
+      accounting: providerTokenAccounting(request.provider),
+      authMode: request.authMode ?? 'subscription',
+      reported: usage === null ? null : { usage, costUsd },
+      estimate: estimateUsage(request.prompt, agentText),
+      preflight: request.preflight,
+    });
 
   /**
    * Files one already-parsed line: the raw bytes into the data plane, one
@@ -763,7 +895,7 @@ export async function runShimNode(
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
           structuredOutput = shimStructuredOutput(line);
-          resultFailure = shimResultFailure(line);
+          resultFailure = shimResultFailure(line, vendorCeiling(request));
         }
 
         await fileLine(text, line.uuid, line.type);
@@ -779,7 +911,7 @@ export async function runShimNode(
           usage = shimResultUsage(line);
           costUsd = shimResultCostUsd(line);
           structuredOutput = shimStructuredOutput(line);
-          resultFailure = shimResultFailure(line);
+          resultFailure = shimResultFailure(line, vendorCeiling(request));
         }
         await fileLine(pending, line.uuid, line.type);
       }
@@ -796,9 +928,25 @@ export async function runShimNode(
   // The vendor's own verdict wins over the exit code: a `result` envelope
   // naming its subtype says *why*, and the exit code that follows it says only
   // that something went wrong.
-  if (resultFailure !== null) return refuse(resultFailure, common(exit));
+  if (resultFailure !== null) return refuse(resultFailure, common(exit), true);
 
   if (!sawResult) {
+    // KAR-14.4 AC1, EPIC-14-S27 — the honest degradation. The vendor said
+    // nothing machine-readable, but the caller declared this exit code to mean
+    // a rate limit, so the failure is recorded as one: `transient`, retryable,
+    // and with `resetsAt` **absent** rather than invented. A fabricated reset
+    // is worse than an honest gap for the reason a fabricated compaction figure
+    // is — the operator schedules their afternoon around it — so this path
+    // writes no `node_wake` row at all and the retry ladder's full jitter is
+    // what schedules the next attempt.
+    const blind = blindRateLimit(request, exit);
+    if (blind !== null) {
+      await ledger.append(
+        event('provider.rate_limited', { provider: request.provider, raw: blind.raw }),
+      );
+      return refuse(blind.thrown, common(exit));
+    }
+
     // Exit without a result envelope, whatever the code. The worst outcome in
     // the conformance battery is the *quiet* one — a node that looks successful
     // and carries nothing — so an absent envelope fails rather than completing
@@ -833,9 +981,14 @@ export async function runShimNode(
     },
     ports,
   );
-  await ledger.append(
+  // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`, so a
+  // crash cannot leave a node that finished and a run that does not know what
+  // it cost. Ordered spend-first, so any reader that has seen the completion
+  // has already seen what it was paid for.
+  await ledger.appendAll([
+    event('budget.consumed', spendPayload()),
     event('node.completed', { node: request.nodeId, attempt: request.attempt, result }),
-  );
+  ]);
 
   return { ...common(exit), status: 'completed', result };
 }

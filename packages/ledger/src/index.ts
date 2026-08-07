@@ -272,6 +272,13 @@ export {
   readProviderCapabilities,
   recordProviderCapabilities,
 } from './provider-capabilities.ts';
+// KAR-14.4 AC10 — the most recent rate limit per provider, across every run:
+// a vendor's quota is a fact about a binary on this machine, not about a run.
+export {
+  MAX_REPORTED_PROVIDERS,
+  readLatestRateLimits,
+  type StoredRateLimit,
+} from './rate-limits.ts';
 // KAR-09.5 — the run's artifact index: which digests this run offloaded, and
 // what each one is. The bytes stay in the global blob store; this is what makes
 // a handle resolvable from the run that recorded it and no other.

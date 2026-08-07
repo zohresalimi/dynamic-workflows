@@ -100,6 +100,15 @@ function instrumented(
         finished.push(performance.now());
         return seq;
       },
+      // One delay and one timestamp for the whole batch, because that is what
+      // it costs the producer: the batch is a single transaction, not n of
+      // them (KAR-14.1 AC1).
+      async appendAll(events: readonly EventRecord[]) {
+        await wait();
+        const seqs = await sink.appendAll(events);
+        finished.push(performance.now());
+        return seqs;
+      },
       async appendIo(chunk: IoRecord) {
         await wait();
         bytes += chunk.data.byteLength;

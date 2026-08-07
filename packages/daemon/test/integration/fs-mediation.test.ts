@@ -16,10 +16,9 @@
  * Verifies: EPIC-08-S7, EPIC-08-S8, EPIC-08-S9, EPIC-08-S10 · AC1–AC5, AC7, AC8
  */
 
-import type { EventRecord, IoRecord, LedgerSink } from '@DeFlow/adapters';
+import type { LedgerSink } from '@DeFlow/adapters';
 import { runAcpNode } from '@DeFlow/adapters';
 import {
-  type EventSeq,
   type Handle,
   HandleSchema,
   type NodeId,
@@ -31,15 +30,7 @@ import {
   type RunId,
   RunIdSchema,
 } from '@DeFlow/core';
-import {
-  appendEvents,
-  appendIoChunk,
-  blobHandle,
-  openLedger,
-  readEpoch,
-  readRange,
-  spillBytes,
-} from '@DeFlow/ledger';
+import { blobHandle, openLedger, readEpoch, readRange, spillBytes } from '@DeFlow/ledger';
 import { makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -53,6 +44,7 @@ import {
   permissionDeniedPayload,
   worktreePathPolicy,
 } from '../../src/index.ts';
+import { sqliteLedgerSink } from './support/ledger.ts';
 
 const MOCK_AGENT_BIN = fileURLToPath(
   new URL('../../../mock-agent/bin/mock-agent.ts', import.meta.url),
@@ -77,35 +69,7 @@ beforeEach(async () => {
   await mkdir(outside, { recursive: true });
   db = openLedger(dir);
   const epoch = readEpoch(db);
-  sink = {
-    append: (event: EventRecord) =>
-      Promise.resolve(
-        appendEvents(db, [
-          {
-            runId: RUN_ID,
-            ts: event.ts,
-            kind: event.kind,
-            v: event.v,
-            epoch,
-            nodeId: event.nodeId,
-            attempt: event.attempt,
-            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-            payload: event.payload,
-          },
-        ])[0] as EventSeq,
-      ),
-    appendIo: (chunk: IoRecord) =>
-      Promise.resolve(
-        appendIoChunk(db, {
-          runId: RUN_ID,
-          nodeId: chunk.nodeId,
-          attempt: chunk.attempt + 1,
-          stream: chunk.stream,
-          ts: chunk.ts,
-          data: chunk.data,
-        }),
-      ),
-  };
+  sink = sqliteLedgerSink({ db, runId: RUN_ID, epoch });
   captureEvidence = (text: string): Handle =>
     HandleSchema.parse(blobHandle(spillBytes(dir, Buffer.from(text, 'utf8'), 'text/plain').sha256));
 });

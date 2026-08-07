@@ -120,6 +120,7 @@ const populated: RunState = {
       suspension: null,
       requestHash: `sha256-${'f'.repeat(64)}`,
       wakeAt: null,
+      startedTs: 1_754_149_500_000,
       updatedSeq: 8,
     },
   },
@@ -129,12 +130,67 @@ const populated: RunState = {
   nodeIds: { active: [NODE], retired: [NodeIdSchema.parse('retired-step')] },
   policy: { globalAgentSlots: 5, noProgress: DEFAULT_NO_PROGRESS_POLICY },
   budget: {
-    costUsd: 0.42,
-    usage: {
-      vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
-      estimated: null,
+    run: {
+      costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+      usage: {
+        vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+        estimated: null,
+      },
+      unaccounted: [],
+      authModes: ['subscription' as const],
     },
-    breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2 }],
+    nodes: {
+      [NODE]: {
+        costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+        usage: {
+          vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+          estimated: null,
+        },
+        unaccounted: [],
+        authModes: ['subscription' as const],
+        attempts: [
+          {
+            attempt: 1,
+            costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+            usage: {
+              vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+              estimated: null,
+            },
+            unaccounted: [],
+            authModes: ['subscription' as const],
+          },
+        ],
+      },
+    },
+    providers: {
+      claude: {
+        costUsd: { subscription: 0.42, apiKey: null, vendorReported: 0.42, estimated: null },
+        usage: {
+          vendorReported: { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' },
+          estimated: null,
+        },
+        unaccounted: [],
+        authModes: ['subscription' as const],
+      },
+    },
+    breaches: [{ scope: 'run', dimension: 'cost', limit: 5, actual: 5.2, firedBy: 'deflow' }],
+    // KAR-14.3 — one attempt reconciled: the estimate and the actual side by
+    // side, and the ratio between them.
+    estimateAccuracy: {
+      samples: 1,
+      estimatedCostUsd: 0.35,
+      actualCostUsd: 0.42,
+      costRatio: 1.2,
+      estimatedInputTokens: 1000,
+      actualInputTokens: 1200,
+      tokenRatio: 1.2,
+    },
+  },
+  ceilings: {
+    run: { costUsd: 5, wallclockMs: 14_400_000 },
+    node: { costUsd: 2, wallclockMs: null },
+    nodes: { [NODE]: { costUsd: null, wallclockMs: 600_000 } },
+    hash: `sha256-${'e'.repeat(64)}`,
   },
   watermarkSeq: 9,
   watermarkTs: 1_754_150_000_000,

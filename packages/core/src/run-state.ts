@@ -24,9 +24,9 @@
  * thrown away, never to be wrong.
  */
 import { z } from 'zod';
+import { initialCeilings, type RunCeilings, RunCeilingsSchema } from './budget-ceiling.ts';
+import { type BudgetRollup, BudgetRollupSchema, initialBudgetRollup } from './cost-rollup.ts';
 import {
-  BUDGET_DIMENSIONS,
-  BUDGET_SCOPES,
   CANCEL_MODES,
   LOCK_KINDS,
   RUN_NEEDS_HUMAN_REASONS,
@@ -67,7 +67,6 @@ import {
   PlanGraphSchema,
 } from './plan-graph.ts';
 import { singleLine } from './text.ts';
-import { type UsageTotals, UsageTotalsSchema } from './token-usage.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -183,6 +182,16 @@ export interface NodeState {
    */
   readonly wakeAt: number | null;
   /**
+   * KAR-14.2. The envelope `ts` of the node's **first** `node.started`, which a
+   * per-node wall-clock ceiling is measured from. `0` before it has ever run.
+   *
+   * First rather than latest, and across attempts rather than per attempt: a
+   * repair loop that burned ten minutes over three tries has burned ten
+   * minutes, and a per-attempt measure would never notice. It is not reset by a
+   * retry for the same reason `startedTs` is not reset by a pause.
+   */
+  readonly startedTs: number;
+  /**
    * The `seq` of the last event that *changed* this node's projection — the
    * per-node counterpart of `watermarkSeq`, and for the same reason.
    *
@@ -235,17 +244,16 @@ export interface NodeIdRegistryState {
  */
 export type { BudgetBreach };
 
-export interface BudgetState {
-  readonly costUsd: number;
-  /**
-   * Vendor-reported and estimated totals, kept apart all the way to the chart
-   * (§8). A single mixed number is not a slightly-wrong number, it is a number
-   * with no meaning, and a ceiling computed from it fires at the wrong time in
-   * both directions.
-   */
-  readonly usage: UsageTotals;
-  readonly breaches: readonly BudgetBreach[];
-}
+/**
+ * KAR-14.1 — the accounting projection, per node, per provider and per run.
+ *
+ * It is `BudgetRollup` rather than a scalar and a token pair because a run's
+ * spend is not one number: subscription quota and real currency are different
+ * substances (docs/07-provider-adapter-layer.md §12) and vendor-reported and
+ * estimated figures are different claims (docs/08-context-and-memory.md §7).
+ * ./cost-rollup.ts is where the shape and the reasons live.
+ */
+export type BudgetState = BudgetRollup;
 
 /**
  * The bounds `decide()` admits work within (F5.2, EPIC-06-S4).
@@ -348,6 +356,16 @@ export interface RunState {
   readonly policy: SchedulingPolicy;
   readonly budget: BudgetState;
   /**
+   * KAR-14.2 — F4.6's ceilings, as the ledger has pinned them.
+   *
+   * Reduced from `budget.ceiling.set` rather than read from
+   * `.DeFlow/config.yaml` on each tick, which is the whole of AC1: a mid-run
+   * edit to the file cannot move a ceiling a running run is measured against,
+   * and a ceiling an operator raised to answer a pause survives the restart
+   * that so often follows one.
+   */
+  readonly ceilings: RunCeilings;
+  /**
    * F4.7. The `seq` of the last event that actually changed this projection —
    * which is why `node.progress` and agent output cannot advance it. An agent
    * producing megabytes while accomplishing nothing leaves it where it was,
@@ -420,16 +438,18 @@ export interface RunState {
  * one thing: ignore the cached state and replay the run's events from zero.
  * That is why forgetting to bump it is the only way the checkpoint can be
  * wrong, and why bumping it costs nothing but a few milliseconds of replay —
- * the cache is a pure optimisation and is allowed to be thrown away, never to
- * be believed when it is stale.
+ * the cache is a pure optimisation, free to be thrown away and never to be
+ * believed when stale.
  *
- * The same applies to how an existing field is *derived*: 4 is `node.suspended`
- * filling `NodeState.wakeAt` from its deadline (KAR-06.6). 5 is
- * `RunState.cancel` and the `cancelled` node status (KAR-06.7). 6 is F4.7's
- * no-progress fields (KAR-06.8) — an empty churn window believed rather than
- * replayed is a livelock the breaker cannot see.
+ * The same applies to how an existing field is *derived*. The bumps:
+ * 4 `NodeState.wakeAt` (KAR-06.6); 5 `RunState.cancel` (KAR-06.7); 6 F4.7's
+ * no-progress fields (KAR-06.8); 7 KAR-14.1's per-node cost rollup, replacing
+ * `budget`'s scalar; 8 KAR-14.2's `ceilings` and `NodeState.startedTs`,
+ * without which a paused run returns with no ceiling in force; 9 KAR-14.3's
+ * reconciled estimate; 10 KAR-14.1's `CostRollup.authModes`, without which an
+ * unpriceable API-key node returns with its credential path erased.
  */
-export const CHECKPOINT_VERSION = 6;
+export const CHECKPOINT_VERSION = 10;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -454,6 +474,7 @@ export function initialNodeState(): NodeState {
     suspension: null,
     requestHash: null,
     wakeAt: null,
+    startedTs: 0,
     updatedSeq: 0,
   };
 }
@@ -480,7 +501,8 @@ export function initialRunState(): RunState {
     locks: {},
     nodeIds: { active: [], retired: [] },
     policy: { ...DEFAULT_SCHEDULING_POLICY },
-    budget: { costUsd: 0, usage: { vendorReported: null, estimated: null }, breaches: [] },
+    budget: initialBudgetRollup(),
+    ceilings: initialCeilings(),
     watermarkSeq: 0,
     watermarkTs: 0,
     startedTs: 0,
@@ -516,6 +538,7 @@ const NodeStateSchema = z.strictObject({
   suspension: NodeSuspensionSchema.nullable(),
   requestHash: requestHash.nullable(),
   wakeAt: wholeCount.nullable(),
+  startedTs: wholeCount,
   updatedSeq: wholeCount,
 });
 
@@ -554,19 +577,6 @@ const LockStateSchema = z.strictObject({
 const NodeIdRegistryStateSchema = z.strictObject({
   active: z.array(NodeIdSchema),
   retired: z.array(NodeIdSchema),
-});
-
-const BudgetStateSchema = z.strictObject({
-  costUsd: z.number().nonnegative(),
-  usage: UsageTotalsSchema,
-  breaches: z.array(
-    z.strictObject({
-      scope: z.enum(BUDGET_SCOPES),
-      dimension: z.enum(BUDGET_DIMENSIONS),
-      limit: z.number().nonnegative(),
-      actual: z.number().nonnegative(),
-    }),
-  ),
 });
 
 /**
@@ -612,7 +622,8 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
     globalAgentSlots: z.number().int().nonnegative(),
     noProgress: NoProgressPolicySchema,
   }),
-  budget: BudgetStateSchema,
+  budget: BudgetRollupSchema,
+  ceilings: RunCeilingsSchema,
   watermarkSeq: wholeCount,
   watermarkTs: wholeCount,
   startedTs: wholeCount,

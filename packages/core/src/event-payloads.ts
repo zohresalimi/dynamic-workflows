@@ -23,7 +23,7 @@
  * Verifies: EPIC-02-S23 · AC6, AC8 (the rule's target set)
  */
 import { z } from 'zod';
-import { ContextPacketRecordSchema } from './context-packet.ts';
+import { ContextPacketRecordSchema, TokenCountMethodSchema } from './context-packet.ts';
 import { FactSchema } from './fact.ts';
 import type { IdempotencyKey } from './ids.ts';
 import {
@@ -38,14 +38,19 @@ import {
   SegmentIdSchema,
 } from './ids.ts';
 import { parseIkey } from './ikey.ts';
-import { NodeFailureSchema } from './node-failure.ts';
+import { FailureClassSchema, NodeFailureSchema } from './node-failure.ts';
 import {
   CancelledNodeResultSchema,
   CompletedNodeResultSchema,
   NodeSuspensionSchema,
 } from './node-result.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
-import { PatchDecisionSchema, PlanPatchSchema, ProposedBySchema } from './plan-patch.ts';
+import {
+  PATCH_CAUSES,
+  PatchDecisionSchema,
+  PlanPatchSchema,
+  ProposedBySchema,
+} from './plan-patch.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
@@ -122,6 +127,16 @@ export const COMPACTION_TRIGGERS = ['threshold', 'manual', 'vendor.auto'] as con
 export const BUDGET_SCOPES = ['node', 'run'] as const;
 
 export const BUDGET_DIMENSIONS = ['cost', 'wallclock'] as const;
+
+/**
+ * Whose ceiling fired (KAR-14.2 AC9).
+ *
+ * `vendor` is Claude Code's `--max-budget-usd` and its `error_max_budget_usd`
+ * result subtype — defence in depth *below* DeFlow's own ceiling. Both pause
+ * the run identically; which one fired is the difference between raising
+ * DeFlow's ceiling and raising the vendor's, and the numbers alone cannot say.
+ */
+export const BUDGET_CEILING_OWNERS = ['deflow', 'vendor'] as const;
 
 export const EXPORT_TARGETS = ['report', 'hub'] as const;
 
@@ -201,7 +216,25 @@ export const PlanProposedSchema = z.strictObject({
 
 /** F2.4 — the proposal is recorded even when it is rejected, which is the
  * whole point of a separate event from `plan.patched`. */
-export const PlanPatchProposedSchema = z.strictObject({ patch: PlanPatchSchema });
+/**
+ * KAR-14.4 AC7 — v2 adds `cause`: why the scheduler proposed this patch.
+ *
+ * On the proposal rather than on the `PlanPatch` itself, and that is a
+ * deliberate boundary rather than a convenience. `DeFlow.planpatch.v1` is a
+ * shipped, content-hashed document schema (schemas/CHANGELOG.md), so a field
+ * there means publishing `.v2` — EPIC-11's change, not a rate-limit story's.
+ * And the cause belongs to the proposal in any case: the same
+ * `replace-provider` op is a routine planner decision or a vendor refusing to
+ * serve, and which of the two it is decides whether
+ * `quota-reroute-equivalent` may auto-apply it.
+ *
+ * Optional, because a planner-proposed patch genuinely has no cause to state
+ * and `'unknown'` would be a value nobody could act on.
+ */
+export const PlanPatchProposedSchema = z.strictObject({
+  patch: PlanPatchSchema,
+  cause: z.enum(PATCH_CAUSES).optional(),
+});
 
 export const PlanPatchedSchema = z.strictObject({
   version: z.number().int().positive(),
@@ -1078,21 +1111,185 @@ export const HumanRespondedSchema = z.strictObject({
 
 // ── money and providers ──────────────────────────────────────────────────────
 
+/**
+ * KAR-14.3 AC8 — the pre-flight figure an attempt was admitted on, as it
+ * travels on the accounting record.
+ *
+ * Every field is one the reconciliation needs and none of them is derivable
+ * afterwards: `inputTokens` is what the actual is measured against, and the
+ * factor, the sample count and the method are what say whether a wrong estimate
+ * was a wrong *guess* (a family seed, `samples < 5`) or a wrong *measurement*.
+ * `costUsd` is nullable for the same reason the record's own is: a turn nobody
+ * could price was estimated at nothing knowable, not at zero.
+ */
+export const PreflightEstimateSchema = z.strictObject({
+  costUsd: z.number().nonnegative().nullable(),
+  inputTokens: nonNegativeInt,
+  method: TokenCountMethodSchema,
+  tokenEstimateFactor: z.number().positive(),
+  samples: nonNegativeInt,
+  seedBased: z.boolean(),
+});
+
+/**
+ * F9.1 — the single accounting record (KAR-14.1). **v3.**
+ *
+ * Self-contained on purpose: everything the per-node, per-provider and
+ * per-run rollup needs is in this one payload, so the projection is a fold
+ * over one kind rather than a join across three that can arrive out of order.
+ *
+ * Two fields carry the whole of the story's honesty.
+ *
+ * `costUsd` is **nullable**, and that is the difference between a report and a
+ * lie. A provider whose capability manifest says `tokenAccounting: 'none'`
+ * cannot be priced, and `0` would be a claim that nothing was spent
+ * (docs/08-context-and-memory.md §7: *a blank cost cell, not a zero*). A `null`
+ * here is what puts the provider into the rollup's `unaccounted` list.
+ *
+ * `authMode` is here rather than inferred from the separate
+ * `provider.auth_mode` event because §12 of docs/07-provider-adapter-layer.md
+ * makes subscription-quota spend and real-currency spend two different
+ * substances that *"must not be summed into one number"* — and a rollup that
+ * had to correlate two event kinds to know which was which would report the
+ * wrong one for any event pair the ledger happened to interleave.
+ */
 export const BudgetConsumedSchema = z.strictObject({
   /** Absent for run-level consumption that no single node owns. */
   node: NodeIdSchema.optional(),
+  /** Which attempt spent it, 0-based. Absent exactly when `node` is. */
+  attempt: attempt.optional(),
   provider: ProviderIdSchema,
   usage: TokenUsageSchema,
-  costUsd: z.number().nonnegative(),
+  /** `null` when the provider reports nothing machine-readable — never `0`. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** KAR-08.8's effective auth mode for this spend. */
+  authMode: z.enum(PROVIDER_AUTH_MODES),
+  /**
+   * KAR-14.3 AC8 — what this attempt was estimated to cost, before it ran.
+   *
+   * Optional, because an attempt admitted before the estimator existed — or by
+   * a caller that has no tokenizer — genuinely has no such figure, and a
+   * fabricated one would corrupt the accuracy it exists to measure. Present, it
+   * is what makes the estimate and the actual reconcilable without a join.
+   */
+  estimate: PreflightEstimateSchema.optional(),
 });
 
-/** F4.6 — pauses the run, does not fail it. */
-export const BudgetExceededSchema = z.strictObject({
-  scope: z.enum(BUDGET_SCOPES),
-  dimension: z.enum(BUDGET_DIMENSIONS),
-  limit: z.number().nonnegative(),
-  actual: z.number().nonnegative(),
+/**
+ * KAR-14.2 AC7 — KAR-14.1's rollup breakdown, travelling with a ceiling trip.
+ *
+ * It exists so an operator looking at a paused run can see *what stopped it*.
+ * A pause driven wholly by DeFlow's own Tier-2 estimate — which carries a known
+ * 15–20% undercount on prose and worse on code — is a different conversation
+ * from one driven by a figure the vendor billed, and the two are
+ * indistinguishable from the `actual` alone.
+ *
+ * `authMode` names which substance crossed, because there is no total: §12 of
+ * docs/07-provider-adapter-layer.md keeps subscription quota and real currency
+ * apart, so a ceiling is evaluated against each and the trip says which one it
+ * was.
+ */
+export const BudgetBasisSchema = z.strictObject({
+  authMode: z.enum(PROVIDER_AUTH_MODES),
+  vendorReported: z.number().nonnegative().nullable(),
+  estimated: z.number().nonnegative().nullable(),
+  /** No vendor-reported figure contributed to the trip at all. */
+  estimateDriven: z.boolean(),
+  /** Providers that spent something nobody could price (KAR-14.1). */
+  unaccounted: z.array(ProviderIdSchema),
 });
+
+export type BudgetBasis = z.infer<typeof BudgetBasisSchema>;
+
+/**
+ * F4.6 — the ceiling that pauses the run rather than failing it. **v2.**
+ *
+ * `failureClass` is a field rather than an assumption because AC2 is a claim
+ * about the ledger: *"the failure class recorded is `gate`"*. The schema
+ * refuses `permanent` and `transient` outright, which is the same discipline
+ * `NodeFailureSchema` applies to the three gate-only reasons — a ceiling that
+ * could be recorded as `transient` is a ceiling something downstream would
+ * retry into, spending the remaining allowance discovering the same wall.
+ *
+ * `firedBy` distinguishes DeFlow's own admission check from the vendor's ceiling
+ * below it (`--max-budget-usd`, AC9). Both pause the run identically; which one
+ * fired is the difference between raising DeFlow's ceiling and raising the
+ * vendor's, and an operator cannot guess it from the numbers.
+ *
+ * `basis` is KAR-14.1's rollup breakdown travelling with the trip (AC7), so a
+ * pause caused wholly by DeFlow's own Tier-2 estimate says so wherever it is
+ * displayed. Absent for a wall-clock trip: there is no money to attribute.
+ */
+export const BudgetExceededSchema = z
+  .strictObject({
+    scope: z.enum(BUDGET_SCOPES),
+    /** Present exactly when `scope` is `node`. */
+    node: NodeIdSchema.optional(),
+    dimension: z.enum(BUDGET_DIMENSIONS),
+    limit: z.number().nonnegative(),
+    actual: z.number().nonnegative(),
+    failureClass: FailureClassSchema,
+    firedBy: z.enum(BUDGET_CEILING_OWNERS),
+    basis: BudgetBasisSchema.optional(),
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.failureClass !== 'gate') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['failureClass'],
+        message:
+          'a budget breach pauses for a human decision: failureClass must be "gate", not ' +
+          `"${payload.failureClass}"`,
+      });
+    }
+    if ((payload.scope === 'node') !== (payload.node !== undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['node'],
+        message: 'a node-scoped breach names its node, and a run-scoped one names none',
+      });
+    }
+  });
+
+/**
+ * KAR-14.2 AC1 — the effective ceiling, pinned in the log.
+ *
+ * Appended beside `run.created` from `POST /api/runs`'s `budget` block over
+ * `.DeFlow/config.yaml`'s defaults, and again with `source: 'operator'` when a
+ * paused run's ceiling is raised. Both are the same event because both are the
+ * same fact: *this is the ceiling in force from this seq onwards*.
+ *
+ * It is an event rather than config read per tick for the reason F4.4 makes
+ * pause an event — a ceiling that lived in a file could be edited mid-run and
+ * would silently change what a running run is measured against, and a raised
+ * ceiling that lived in memory would not survive the restart that follows the
+ * pause it was raised to answer.
+ *
+ * `hash` is the sha256 of the effective ceiling document at the moment it was
+ * set, so a later reader can tell a run whose config file has since been edited
+ * from one whose has not.
+ */
+export const BudgetCeilingSetSchema = z
+  .strictObject({
+    scope: z.enum(BUDGET_SCOPES),
+    /** A node-scoped ceiling for one node; absent sets the default every node
+     * inherits, which is how `.DeFlow/config.yaml` expresses a per-node cap. */
+    node: NodeIdSchema.optional(),
+    /** `null` is "no ceiling in this dimension", never `0`. */
+    costUsd: z.number().nonnegative().nullable(),
+    wallclockMs: z.number().int().nonnegative().nullable(),
+    source: z.enum(['request', 'config', 'operator']),
+    hash: Sha256Schema,
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.scope === 'run' && payload.node !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['node'],
+        message: 'a run-scoped ceiling names no node',
+      });
+    }
+  });
 
 /** F3.4/F3.5 — capabilities are derived from a probe, never hardcoded. */
 export const ProviderProbedSchema = z.strictObject({
@@ -1142,7 +1339,7 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 1, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 1, payload: PlanProposedSchema },
-  'plan.patch.proposed': { v: 1, payload: PlanPatchProposedSchema },
+  'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
   'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
@@ -1190,8 +1387,9 @@ export const EVENT_SCHEMAS = {
   'gate.evaluated': { v: 1, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
-  'budget.consumed': { v: 1, payload: BudgetConsumedSchema },
-  'budget.exceeded': { v: 1, payload: BudgetExceededSchema },
+  'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
+  'budget.exceeded': { v: 2, payload: BudgetExceededSchema },
+  'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },
   'provider.probed': { v: 1, payload: ProviderProbedSchema },
   'provider.rate_limited': { v: 1, payload: ProviderRateLimitedSchema },
   'export.blocked': { v: 1, payload: ExportBlockedSchema },

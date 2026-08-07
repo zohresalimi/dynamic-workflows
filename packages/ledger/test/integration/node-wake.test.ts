@@ -213,8 +213,22 @@ suite('restating a wait that has not changed writes nothing (AC6)', () => {
     const db = openLedger(tmp);
     try {
       expect(() =>
-        scheduleWakeIfChanged(db, wake({ reason: 'quota' as NodeWakeRow['reason'] })),
+        scheduleWakeIfChanged(db, wake({ reason: 'whenever' as NodeWakeRow['reason'] })),
       ).toThrow(InvalidWakeReason);
+    } finally {
+      db.close();
+    }
+  });
+
+  // KAR-14.4 AC2. `quota` joined the closed set when the reactive rate-limit
+  // path landed, and this asserts it is on the *row* rather than translated
+  // into a `backoff` on the way in — the whole reason the column exists is that
+  // an operator can tell "waiting on the vendor's own reset" from "backing off".
+  it('accepts quota, the fourth reason, and stores it verbatim', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      scheduleWake(db, wake({ reason: 'quota' }));
+      expect(readWakes(db)).toEqual([wake({ reason: 'quota' })]);
     } finally {
       db.close();
     }

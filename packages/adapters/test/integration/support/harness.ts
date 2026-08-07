@@ -107,8 +107,16 @@ export interface TestLedger {
    * blob raises rather than answering.
    */
   readonly readSegmentText: (contentHash: string) => string | null;
-  /** Every control-plane event for the run, in `seq` order. */
-  events(): { seq: EventSeq; kind: string; payload: Record<string, unknown> }[];
+  /**
+   * Every control-plane event for the run, in `seq` order.
+   *
+   * `v` comes back with the row because a spec that wants to fold the ledger
+   * through the real reducer has to hand `parseEvent` the version the writer
+   * used — the upcaster chain is what a v1 payload is lifted by, and guessing
+   * the current version here would route around the one mechanism that makes
+   * an old ledger readable.
+   */
+  events(): { seq: EventSeq; v: number; kind: string; payload: Record<string, unknown> }[];
   /** Every data-plane chunk for the node attempt, in `seq` order. */
   chunks(attempt?: number): { seq: EventSeq; text: string }[];
   /** How many times `append` was called, and how long each one took to resolve. */
@@ -170,6 +178,34 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
       );
       appends.push({ at: performance.now(), kind: event.kind });
       return seq as EventSeq;
+    },
+    /**
+     * KAR-14.1 AC1 — the whole batch in one `BEGIN IMMEDIATE`, which is the
+     * only reason the port has this method: `budget.consumed` and
+     * `node.completed` must not have an instant between them for a crash to
+     * land in. The recorded `kind` joins the batch with `+` so a spec can
+     * assert it was *one* call rather than two that happened to be adjacent.
+     */
+    async appendAll(events: readonly EventRecord[]): Promise<readonly EventSeq[]> {
+      for (const event of events) options.onAppend?.(event.kind);
+      if (options.appendDelayMs !== undefined) await delay(options.appendDelayMs);
+      const seqs = appendEvents(
+        db,
+        events.map((event) => ({
+          runId: RUN_ID,
+          ts: event.ts,
+          kind: event.kind,
+          v: event.v,
+          epoch,
+          ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+          ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+          ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+          payload: event.payload,
+        })),
+        { spillTo: dataDir },
+      );
+      appends.push({ at: performance.now(), kind: events.map((event) => event.kind).join('+') });
+      return seqs as EventSeq[];
     },
     async appendIo(chunk: IoRecord): Promise<EventSeq> {
       if (options.appendDelayMs !== undefined) await delay(options.appendDelayMs);
@@ -263,13 +299,19 @@ export function openTestLedger(dataDir: string, options: TestLedgerOptions = {})
       }
     },
     events() {
-      const collected: { seq: EventSeq; kind: string; payload: Record<string, unknown> }[] = [];
+      const collected: {
+        seq: EventSeq;
+        v: number;
+        kind: string;
+        payload: Record<string, unknown>;
+      }[] = [];
       let cursor = 0;
       for (;;) {
         const page = readRange(db, RUN_ID, cursor, 500);
         for (const event of page.events) {
           collected.push({
             seq: event.seq,
+            v: event.v,
             kind: event.kind,
             payload: event.payload as Record<string, unknown>,
           });

@@ -84,9 +84,40 @@ export const ContextConfigSchema = z.looseObject({
 
 export type ContextConfig = z.infer<typeof ContextConfigSchema>;
 
+/**
+ * KAR-14.2 AC1 — the workspace's default ceilings, per scope.
+ *
+ * Defaults, not commands: `POST /api/runs`'s `budget` block wins over anything
+ * here, and what the run is actually measured against is pinned into the ledger
+ * at creation (`budget.ceiling.set`) rather than read from this file per tick.
+ * That is what stops an edit to this file changing what a run already in flight
+ * is being held to.
+ *
+ * Every value is optional and there is no spelling of `0`: a zero ceiling would
+ * pause every run on its first tick, and an operator who left the field out
+ * meant "unbounded", which is what an absent value says.
+ */
+export const BudgetCeilingConfigSchema = z.looseObject({
+  costUsd: z.number().positive('costUsd must be a positive number').optional(),
+  wallclockMs: z.number().int().positive('wallclockMs must be a positive integer').optional(),
+});
+
+export type BudgetCeilingConfig = z.infer<typeof BudgetCeilingConfigSchema>;
+
+export const BudgetConfigSchema = z.looseObject({
+  /** The ceiling for the whole run. */
+  run: BudgetCeilingConfigSchema.optional(),
+  /** The ceiling every node inherits unless its plan or an operator says otherwise. */
+  node: BudgetCeilingConfigSchema.optional(),
+});
+
+export type BudgetConfig = z.infer<typeof BudgetConfigSchema>;
+
 export const DeFlowConfigSchema = z.looseObject({
   providers: z.record(z.string(), ProviderConfigSchema).optional(),
   context: ContextConfigSchema.optional(),
+  /** F4.6's default ceilings for this workspace (KAR-14.2 AC1). */
+  budget: BudgetConfigSchema.optional(),
   /** Run-config safety constraints, structured. Prose is refused here for the
    * same reason it is refused in the renderer: there is no free-prose path into
    * a `pinned.constraints` segment (AC1). */

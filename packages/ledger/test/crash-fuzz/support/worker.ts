@@ -46,6 +46,7 @@
  */
 import {
   canonicalJson,
+  EVENT_CURRENT_VERSIONS,
   type EventSeq,
   ikey as makeIkey,
   type NodeId,
@@ -135,27 +136,69 @@ const phase = (value: string): void => {
   writeFileSync(phaseFile, value);
 };
 
+/** One event this run wants to write, before it is given a `seq` and a `ts`. */
+interface Emission {
+  readonly kind: string;
+  readonly payload: unknown;
+  readonly node?: NodeId;
+  readonly attempt?: number;
+}
+
 /**
- * Appends one event and records the projection it produced.
+ * The payload version this build writes for `kind`.
+ *
+ * From the registry rather than a literal `1`: `budget.consumed` is at v2, and
+ * a row that claimed v1 while carrying a v2 payload would be lifted by the v1→
+ * v2 upcaster on replay and come back with the wrong `authMode` — a wrong
+ * number, hours later, in a run nobody can repeat.
+ */
+const versionOf = (kind: string): number =>
+  (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
+
+/**
+ * Appends a batch **in one transaction** and records the projection it produced.
  *
  * The snapshot is written **after** the transaction commits and **on every
- * event**, which is what makes assertion (b) — "reduced state equals the
+ * batch**, which is what makes assertion (b) — "reduced state equals the
  * pre-crash projection at the last durably-written seq" — checkable at all. A
  * snapshot taken before the commit would describe a row a rollback could
  * remove; one taken every N events would leave the seq the crash landed on
  * unrepresented.
+ *
+ * Batches exist here for KAR-14.1 AC1: `budget.consumed` and the event that
+ * ends the attempt go in together, so there is no instant at which a node has
+ * finished and the run does not know what it cost.
  */
-function emit(kind: string, payload: unknown, node?: NodeId, attempt?: number): EventSeq {
-  ts += 1;
-  const base: EventDraft = { runId: RUN, ts, kind, v: 1, epoch, payload };
-  const draft: EventDraft = node === undefined ? base : { ...base, nodeId: node, attempt };
-  const [seq] = checkpointer.append([draft]);
-  if (seq === undefined) throw new Error(`appending ${kind} returned no seq`);
+function emitAll(emissions: readonly Emission[]): EventSeq[] {
+  const drafts = emissions.map((emission): EventDraft => {
+    ts += 1;
+    const base: EventDraft = {
+      runId: RUN,
+      ts,
+      kind: emission.kind,
+      v: versionOf(emission.kind),
+      epoch,
+      payload: emission.payload,
+    };
+    return emission.node === undefined
+      ? base
+      : { ...base, nodeId: emission.node, attempt: emission.attempt };
+  });
+
+  const seqs = checkpointer.append(drafts);
+  const last = seqs.at(-1);
+  if (last === undefined) throw new Error('appending an empty batch returned no seq');
 
   appendFileSync(
     projections,
-    `${JSON.stringify({ seq, state: canonicalJson(checkpointer.state) })}\n`,
+    `${JSON.stringify({ seq: last, state: canonicalJson(checkpointer.state) })}\n`,
   );
+  return seqs;
+}
+
+function emit(kind: string, payload: unknown, node?: NodeId, attempt?: number): EventSeq {
+  const [seq] = emitAll([{ kind, payload, node, attempt }]);
+  if (seq === undefined) throw new Error(`appending ${kind} returned no seq`);
   return seq;
 }
 
@@ -242,6 +285,29 @@ const completedResult = (node: NodeId) => ({
   artifacts: [],
 });
 
+/** The provider every node in this scripted run is routed to. */
+const PROVIDER = 'claude-code';
+
+/**
+ * KAR-14.1 — what one finished attempt spent, completed **or failed**.
+ *
+ * A failed attempt is accounted for on purpose (AC5): the money is gone
+ * whether or not the attempt produced value, and a repair loop capped at three
+ * attempts can spend three times what a rollup counting only the winner would
+ * report. The figures differ between the two so a spec can tell which record
+ * it is looking at.
+ */
+const spentOn = (node: NodeId, attempt: number, succeeded: boolean) => ({
+  node,
+  attempt,
+  provider: PROVIDER,
+  usage: succeeded
+    ? { inputTokens: 1200, outputTokens: 340, source: 'vendor-reported' }
+    : { inputTokens: 600, outputTokens: 20, source: 'vendor-reported' },
+  costUsd: succeeded ? 0.25 : 0.1,
+  authMode: 'subscription',
+});
+
 const failureOf = (attempt: number, seq: number) => ({
   reason: 'agent.nonzero-exit',
   class: 'transient',
@@ -300,7 +366,17 @@ async function runAttempt(node: NodeId, index: number, attempt: number): Promise
 
   if (state === 'done') {
     emit('effect.completed', { ikey: key, result: { ok: true }, reconciled }, node, attempt);
-    emit('node.completed', { node, attempt, result: completedResult(node) }, node, attempt);
+    // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`, so
+    // a crash between them is not a state the ledger can be in.
+    emitAll([
+      { kind: 'budget.consumed', payload: spentOn(node, attempt, true), node, attempt },
+      {
+        kind: 'node.completed',
+        payload: { node, attempt, result: completedResult(node) },
+        node,
+        attempt,
+      },
+    ]);
     return true;
   }
 
@@ -310,7 +386,17 @@ async function runAttempt(node: NodeId, index: number, attempt: number): Promise
     node,
     attempt,
   );
-  emit('node.failed', { node, attempt, failure: failureOf(attempt, seq) }, node, attempt);
+  // The same rule on the failure side: what the attempt burned before it died
+  // is spend, and a crash between the two events would lose it (AC5).
+  emitAll([
+    { kind: 'budget.consumed', payload: spentOn(node, attempt, false), node, attempt },
+    {
+      kind: 'node.failed',
+      payload: { node, attempt, failure: failureOf(attempt, seq) },
+      node,
+      attempt,
+    },
+  ]);
   emit(
     'node.retry.scheduled',
     { node, nextAttempt: attempt + 1, wakeAt: ts + backoffMs },

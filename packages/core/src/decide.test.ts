@@ -840,7 +840,10 @@ const backoffTo = (node: string, wakeAt: number): readonly Row[] => [
 
 suite('EPIC-06-S22 — a suspended node waits as a row, not a timer (KAR-06.6)', () => {
   it('AC4: the reason vocabulary is the closed set the node_wake column stores', () => {
-    expect(WAKE_REASONS).toEqual(['backoff', 'human_gate', 'poll']);
+    // `quota` was appended by KAR-14.4 — the vendor's own reset instant, told
+    // apart from DeFlow's own backoff on the row rather than in the reader's
+    // head. The set only ever grows; nothing was renamed or removed.
+    expect(WAKE_REASONS).toEqual(['backoff', 'human_gate', 'poll', 'quota']);
   });
 
   it('AC4: a six-hour human gate asks for exactly one row, with reason human_gate', () => {

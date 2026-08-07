@@ -62,4 +62,73 @@ file is where you record it.
 
 ## Entries
 
-_None yet. Every event kind is at `v1`: the ledger has no history to be compatible with._
+### budget.exceeded v2
+
+**KAR-14.2.** F4.6's ceiling trip became self-describing: a reader of a paused run can now see which
+class the breach was recorded under, whose ceiling fired, and whether the figure that stopped the run
+was billed by a vendor or estimated by DeFlow.
+
+| Change                        | Kind                               | Why it is not lossy                                                                                                                                                     |
+| ----------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `+ failureClass` (required)   | required field, computable default | Filled with `'gate'` — the only value the v2 schema accepts, and the only class `NodeFailureSchema` has ever accepted for a budget reason. A v1 breach *was* a gate.       |
+| `+ firedBy` (required)        | required field, computable default | Filled with `'deflow'`. A v1 payload predates the vendor-ceiling path (`--max-budget-usd`) entirely, so every breach written under it came from DeFlow's admission check. |
+| `+ node` (optional)           | optional field                     | Left absent. v1 recorded no node on a node-scoped breach, and naming one would be an invention.                                                                          |
+| `+ basis` (optional)          | optional field                     | Left absent. v1 carried no rollup breakdown, and a fabricated one would put a figure nobody measured beside a pause somebody has to act on.                              |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+### budget.consumed v3
+
+**KAR-14.3.** The accounting record gained the figure it was *admitted* on, so an estimate and the
+actual it was measured against travel together and the per-run estimate-accuracy figure is a fold
+over one event kind rather than a join across two.
+
+| Change                | Kind           | Why it is not lossy                                                                                                                                                                        |
+| --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ estimate` (optional) | optional field | Left **absent**. A v2 payload was written before a pre-flight estimator existed, so there is no figure to lift — and filling it in with the actual would make every historical attempt read as perfectly estimated and drag the accuracy figure toward a 1.0 nobody measured. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the estimate rides on the accounting record rather than in a table of its own.** The two
+numbers only mean anything as a pair: an estimate compared against a different turn's actual
+converges on nothing, and one that has lost its actual cannot be reconciled at all. Everything the
+comparison needs is therefore in one payload, which is the same property that makes KAR-14.1's
+rollup a fold over one kind.
+
+### budget.consumed v2
+
+**KAR-14.1.** The accounting record became self-contained, so the per-node / per-provider / per-run
+rollup is a fold over one event kind rather than a join across three that can arrive in any order.
+
+| Change                              | Kind                                | Why it is not lossy                                                                                                                                                       |
+| ----------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `costUsd: number` → `number \| null` | widening                            | Every v1 value still fits. `null` is new vocabulary — a provider whose manifest says `tokenAccounting: 'none'` cannot be priced, and `0` would be a claim that it was free. |
+| `+ authMode` (required)             | required field, computable default  | Defaulted to `'subscription'`. Not a guess: KAR-08.8 makes `'api_key'` reachable only by an explicit opt-in, so a payload written before the field existed cannot be one.  |
+| `+ attempt` (optional)              | optional field                      | Left absent. v1 recorded no attempt, and inventing `0` would file a retry's spend under the attempt it replaced.                                                            |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `costUsd` had to become nullable rather than stay a number.** The alternative was to append
+`costUsd: 0` for a provider that reports nothing, which is the exact failure
+`docs/08-context-and-memory.md` §7 names — _a blank cost cell, not a zero_ — and which makes an F4.6
+cost ceiling silently unenforceable, because a run whose spend is unmeasurable would read as a run
+that has spent nothing.
+
+### plan.patch.proposed v2
+
+**KAR-14.4.** A proposal says *why* it was made, so the plan scrubber can tell a planner's own
+provider choice from a vendor refusing to serve — which is the distinction F3.9's wording rests on
+and the one `quota-reroute-equivalent` auto-applies against.
+
+| Change             | Kind           | Why it is not lossy                                                                                                                                                                                              |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `+ cause` (optional) | optional field | Left **absent**. A v1 payload was written before the reactive rate-limit path existed, so a quota cannot have been its reason, and filling one in would make every historical planner patch read as a vendor swap. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the cause is on the proposal and not on the `PlanPatch`.** `DeFlow.planpatch.v1` is a shipped
+document schema whose bytes are content-pinned by `packages/core/test/schemas-append-only.test.ts`;
+a field there is a `.v2` document, which belongs to EPIC-11's patch application rather than to a
+rate-limit story. It is also the better home on the merits: the same `replace-provider` op is a
+routine planner decision or a vendor outage depending on who asked for it, and that is a fact about
+the proposal rather than about the ops.

@@ -26,6 +26,35 @@
   // lives in packages/core/scripts (the JSON Schema emitter), which this
   // override does not cover, and which is outside the published surface.
   "overrides": [
+    // KAR-14.4 AC4. A wait is a `node_wake` row anywhere in the engine, not
+    // only in the pure core. **Verified 2026-08-02:** Node's maximum timer
+    // delay is 2^31-1 ms and passing 2^31 neither throws nor clamps — it fires
+    // the callback after 1 ms with only a `TimeoutOverflowWarning` on stderr,
+    // so a 30-day human gate or a monthly quota reset written as a timer fires
+    // instantly and nothing in the logs says so. Timers also do not fire during
+    // laptop sleep and do not survive a restart, so even a four-hour wait is
+    // wrong as a timer.
+    //
+    // @DeFlow/daemon is deliberately not covered: `packages/daemon/src/clock.ts`
+    // is the one legitimate setTimeout in the system, and it is a *sleep hint*
+    // for the ~1 Hz ticker — capped at one second, so it can never express a
+    // deadline at all.
+    {
+      "files": ["packages/ledger/src/**/*.ts", "packages/adapters/src/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "A wait is a node_wake row, never a timer (docs/05-durable-execution.md \u00a710.1). Node fires a delay above 2^31-1 ms after 1 ms, timers do not fire during laptop sleep and none survives a restart. The ~1 Hz ticker in @DeFlow/daemon is the only setTimeout in the system, and it is a sleep hint rather than a wait."
+          },
+          {
+            "name": "setInterval",
+            "message": "The ~1 Hz tick loop belongs to @DeFlow/daemon. A poll here is a wait wearing a loop, and a wait is a node_wake row."
+          }
+        ]
+      }
+    },
     {
       "files": ["packages/core/src/**/*.ts"],
       "rules": {

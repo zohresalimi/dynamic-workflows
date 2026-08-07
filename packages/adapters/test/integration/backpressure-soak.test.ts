@@ -73,6 +73,10 @@ function slowConsumer(sink: LedgerSink): {
     appended: () => count,
     sink: {
       append: (event: EventRecord) => sink.append(event),
+      // Straight through, batch intact: the delay this decorator exists to add
+      // belongs on the data plane, and collapsing a batch into a loop here
+      // would quietly undo the one-transaction guarantee KAR-14.1 AC1 needs.
+      appendAll: (events: readonly EventRecord[]) => sink.appendAll(events),
       async appendIo(chunk: IoRecord) {
         await wait();
         bytes += chunk.data.byteLength;

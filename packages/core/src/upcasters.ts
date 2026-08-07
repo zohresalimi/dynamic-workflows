@@ -28,7 +28,12 @@
  * Verifies: EPIC-02-S20, EPIC-02-S21, EPIC-02-S22 · AC2, AC4, AC5, AC8
  */
 import type { z } from 'zod';
-import { EVENT_CURRENT_VERSIONS } from './event-payloads.ts';
+import {
+  BudgetConsumedSchema,
+  BudgetExceededSchema,
+  EVENT_CURRENT_VERSIONS,
+  PlanPatchProposedSchema,
+} from './event-payloads.ts';
 
 /** A single hop: version `n` in, version `n + 1` out. Pure. */
 export type Upcaster = (payload: unknown) => unknown;
@@ -312,11 +317,11 @@ function requiredKeysOf(schema: z.ZodType): string[] | null {
  * The registry the daemon reads events through: every event kind this build
  * knows, at the version this build writes.
  *
- * It is empty of hops today — every kind is at v1, so there is nothing to
- * lift — and that is the correct honest state for a ledger with no history.
- * The first `v: 2` in ./event-payloads.ts must arrive with its
- * `registerUpcaster` call in the same commit, or `assertUpcasterChainsComplete`
- * fails in the unit suite and at daemon boot.
+ * A `v: 2` in ./event-payloads.ts must arrive with its `registerUpcaster` call
+ * in the same commit, or `assertUpcasterChainsComplete` fails in the unit suite
+ * and at daemon boot. The registrations themselves are at the bottom of this
+ * file rather than in a module of their own, because a registration in a file
+ * nobody imports is a hop that silently does not exist.
  */
 export const eventUpcasters = new UpcasterRegistry(EVENT_CURRENT_VERSIONS);
 
@@ -331,3 +336,118 @@ export function upcast(kind: string, v: number, payload: unknown): unknown {
 export function assertUpcasterChainsComplete(registry: UpcasterRegistry = eventUpcasters): void {
   registry.assertChainsComplete();
 }
+
+// ── registered hops ──────────────────────────────────────────────────────────
+
+/**
+ * `budget.consumed` v1 → v2 (KAR-14.1). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `costUsd` from `number` to `number | null` — every v1 value still
+ * fits — and adds two fields:
+ *
+ * - `authMode`, defaulted to `'subscription'`. It is a **computable** default
+ *   rather than a guess: KAR-08.8 makes `'api_key'` something a plan can only
+ *   reach by explicitly opting in, so a payload written before the field
+ *   existed cannot have been an api-key spend.
+ * - `attempt`, left absent, because v1 recorded no attempt and inventing `0`
+ *   would file a retry's spend under the attempt it replaced. Absent reads as
+ *   "this contribution belongs to the node's cumulative figure and to no
+ *   single attempt", which is exactly what a v1 payload knows.
+ */
+registerUpcaster({
+  kind: 'budget.consumed',
+  from: 1,
+  to: BudgetConsumedSchema,
+  fixture: {
+    node: 'n-impl',
+    provider: 'claude',
+    usage: { inputTokens: 18_420, outputTokens: 2310, source: 'vendor-reported' },
+    costUsd: 0.42,
+  },
+  up: (payload) => ({ ...(payload as Record<string, unknown>), authMode: 'subscription' }),
+});
+
+/**
+ * `budget.consumed` v2 → v3 (KAR-14.3). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field, `estimate`, and it is left **absent**. A v2
+ * payload was written before there was a pre-flight estimator, so there is no
+ * figure to lift and none to invent: filling it in with the actual would make
+ * every historical attempt read as perfectly estimated and drag the per-run
+ * accuracy figure toward a 1.0 nobody measured.
+ */
+registerUpcaster({
+  kind: 'budget.consumed',
+  from: 2,
+  to: BudgetConsumedSchema,
+  fixture: {
+    node: 'n-impl',
+    attempt: 0,
+    provider: 'claude',
+    usage: { inputTokens: 18_420, outputTokens: 2310, source: 'vendor-reported' },
+    costUsd: 0.42,
+    authMode: 'subscription',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `budget.exceeded` v1 → v2 (KAR-14.2). See schemas/CHANGELOG.md.
+ *
+ * v2 adds three fields and widens nothing, so every v1 payload still fits:
+ *
+ * - `failureClass`, filled with `'gate'`. Not a guess — it is the only value the
+ *   v2 schema accepts, and the only one `NodeFailureSchema` has ever accepted
+ *   for `budget.cost-exceeded` and `budget.wallclock-exceeded`. A v1 breach was
+ *   a gate; the field merely says so on the log.
+ * - `firedBy`, filled with `'deflow'`. A v1 payload predates the vendor-ceiling
+ *   path entirely (`--max-budget-usd`, AC9), so every breach written under it
+ *   came from DeFlow's own admission check.
+ * - `basis` and `node`, left **absent**. v1 recorded neither the rollup
+ *   breakdown nor which node a node-scoped breach was about, and inventing
+ *   either would put a figure on the timeline nobody measured.
+ */
+registerUpcaster({
+  kind: 'budget.exceeded',
+  from: 1,
+  to: BudgetExceededSchema,
+  fixture: { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4 },
+  up: (payload) => ({
+    ...(payload as Record<string, unknown>),
+    failureClass: 'gate',
+    firedBy: 'deflow',
+  }),
+});
+
+/**
+ * `plan.patch.proposed` v1 → v2 (KAR-14.4). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field, `cause`, and it is left **absent**. A v1 payload
+ * was written before the reactive rate-limit path existed, so a quota cannot
+ * have been the reason for it — and filling one in would make every historical
+ * planner-proposed patch read as a vendor swap in the plan scrubber, which is
+ * the one surface F3.9 exists to make trustworthy.
+ */
+registerUpcaster({
+  kind: 'plan.patch.proposed',
+  from: 1,
+  to: PlanPatchProposedSchema,
+  fixture: {
+    patch: {
+      schemaId: 'DeFlow.planpatch.v1',
+      id: 'reroute-run_20260802T141133Z_9f2a1c-impl-1-1',
+      proposedBy: 'scheduler',
+      reason: 'impl-1 failed with provider.rate-limited; retrying attempt 1 on codex',
+      ops: [{ op: 'replace-provider', node: 'impl-1', provider: 'codex' }],
+      policy: {
+        estimatedCostDeltaUsd: 0,
+        estimatedWallClockDeltaMs: 0,
+        blastRadius: { paths: [], nodeCount: 1 },
+        replanDepth: 0,
+        escalatesPermission: null,
+        addsWriteCapability: false,
+      },
+    },
+  },
+  up: (payload) => payload,
+});

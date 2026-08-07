@@ -36,6 +36,12 @@ import {
 } from '@DeFlow/ledger';
 import { systemClock } from './clock.ts';
 import { resolveDataDir } from './data-dir.ts';
+import {
+  clearLedgerView,
+  type OpenedLedgerView,
+  openLedgerView,
+  setLedgerView,
+} from './http/ledger-view.ts';
 import { DEFAULT_HOSTNAME, DEFAULT_PORT, type StartedHttp, startHttp } from './http/server.ts';
 import { log } from './logging.ts';
 import { daemonRandom } from './random.ts';
@@ -218,7 +224,18 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   }
 
   let http: StartedHttp;
+  let view: OpenedLedgerView | null = null;
   try {
+    // Registered *before* the port is bound, so no request can arrive at a
+    // route whose ledger is not there yet — the same rule the SPA middleware
+    // follows in startHttp, for the same reason.
+    //
+    // Its own read-only connection rather than `db`: better-sqlite3 is
+    // synchronous, so serving a tail query off the writer would block every
+    // append behind it (docs/11-api-and-realtime.md §5.1).
+    view = openLedgerView(dataDir);
+    setLedgerView(view);
+
     http = await startHttp({
       port: options.port ?? DEFAULT_PORT,
       hostname: options.hostname ?? DEFAULT_HOSTNAME,
@@ -226,6 +243,8 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     });
     step('bind-port');
   } catch (error) {
+    clearLedgerView();
+    view?.close();
     db.close();
     lease.release();
     throw error;
@@ -248,8 +267,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     http,
     async shutdown(): Promise<void> {
       // Reverse order: stop accepting work, then close the ledger, then let
-      // the next daemon in.
+      // the next daemon in. The read view is unregistered before it is closed,
+      // so a route can never reach a connection that has already gone.
       await http.close();
+      clearLedgerView();
+      view.close();
       db.close();
       lease.release();
     },

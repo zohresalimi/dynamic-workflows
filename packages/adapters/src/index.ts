@@ -39,9 +39,14 @@ export {
   canList,
   canResume,
   capability,
+  // KAR-14.4 AC7 — the two questions a quota re-route has to answer, both
+  // computed from the probed row.
+  capabilitySuperset,
   loadSession,
   mcpAcp,
   mediatedExecution,
+  mediationUnchanged,
+  missingCapabilities,
   supportsSteering,
   supportsTerminal,
 } from './capabilities.ts';
@@ -77,8 +82,11 @@ export {
   runProviderConformance,
   UNADVERTISED_METHOD,
 } from './conformance.ts';
+export type { AcpRateLimitContext } from './failures.ts';
 export {
+  ACP_ASSIGNED_ERROR_CODES,
   ACP_PROTOCOL_VERSION,
+  acpRateLimit,
   advertisedButUnimplemented,
   agentExited,
   agentTimedOut,
@@ -99,6 +107,7 @@ export {
   spawnRefused,
   toAdapterFailure,
   UnsignalablePid,
+  undeclarableRateLimitCode,
 } from './failures.ts';
 // KAR-05.4 — the 8 MiB cap, counted upstream of the SDK's unbounded line
 // buffer as bytes since the last newline.
@@ -146,7 +155,9 @@ export type {
   EventRecord,
   IoRecord,
   LedgerSink,
+  NodeWakeRow,
   ProcessRegistry,
+  WakeRegistry,
 } from './ports.ts';
 // KAR-05.2 — spawn, one `initialize`, terminate. Never `session/new`, so a
 // probe costs no quota.
@@ -187,9 +198,11 @@ export {
   PROVIDER_SPECS,
   providerFamily,
   providerSpec,
+  providerTokenAccounting,
   SHIM_FORMATS,
   shimPlan,
   spawnPlan,
+  UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
 export { sliceMember } from './raw-frame.ts';
 // KAR-05.7 — the golden-recording tee, and the exact-version key that makes a
@@ -262,13 +275,7 @@ export {
 // KAR-05.8 — the CLI exec shim: the documented, permanently-retained fallback
 // for an agent with no ACP path. It gives up mediation, and refuses rather
 // than hides that.
-export type {
-  NodeWakeRow,
-  ShimNodeOutcome,
-  ShimNodeRequest,
-  ShimPorts,
-  WakeRegistry,
-} from './run-shim-node.ts';
+export type { ShimNodeOutcome, ShimNodeRequest, ShimPorts } from './run-shim-node.ts';
 export { runShimNode, shimCapabilityRow, WAKE_REASON_QUOTA } from './run-shim-node.ts';
 // KAR-08.5 — the node's sandbox policy, on the argv. D12: DeFlow owns policy,
 // the vendor owns enforcement, and nothing here opens a user config directory.

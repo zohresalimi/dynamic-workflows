@@ -57,6 +57,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-09.10 — `artifact_fts`, the FTS5 index over run
   // artifacts, and its `artifact_fts_provenance` companion table.
   '0012-artifact-fts.ts': 'b4938bab1dd766eafcd49711cdf6f123aa9efbff29cc9a6f1ff4c9f53641ffe5',
+  // Shipped 2026-08-07, KAR-14.4 — `event_rate_limited`, a partial index over
+  // the one event kind `DeFlow doctor` queries without a run_id.
+  '0013-rate-limit-index.ts': '0de13bafd3347d31d7ba4a296cb8aba619b4e8948b04d4177cee973d05c159d2',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

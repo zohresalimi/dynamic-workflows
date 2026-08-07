@@ -46,6 +46,7 @@ import type {
   PermissionLevel,
   ProviderId,
   SandboxDegradation,
+  TokenAccounting,
 } from '@DeFlow/core';
 import { claudeSandboxPolicy, ProviderIdSchema } from '@DeFlow/core';
 import {
@@ -133,6 +134,17 @@ export interface ShimContext {
    * that would be a lie if the mechanism were not also recorded.
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-14.2 AC9 — the node's own cost ceiling, in USD, armed on the vendor's
+   * *own* budget flag as defence in depth below DeFlow's.
+   *
+   * Omitted means no ceiling was set for this node, and the argv is unchanged.
+   * A vendor with no `costCeilingFlag` is also unchanged rather than
+   * approximated: DeFlow's ceiling still applies either way, and a spawn that
+   * dies on an unknown option is a worse outcome than an unarmed second line of
+   * defence.
+   */
+  readonly costCeilingUsd?: number;
 }
 
 /**
@@ -183,6 +195,15 @@ export interface ShimSpec {
    * it cannot be probed.
    */
   readonly structuredOutputFlag?: string;
+  /**
+   * KAR-14.2 AC9 — the flag this vendor takes its own spend ceiling on.
+   *
+   * Only Claude Code has one (`--max-budget-usd <amt>`, verified 2026-08-02
+   * from the 2.1.220 flag table). Copilot CLI's `--max-ai-credits` is the same
+   * shape in a different unit and belongs here once its exit behaviour has been
+   * verified — an unverified row would arm a ceiling nobody has watched fire.
+   */
+  readonly costCeilingFlag?: string;
   /**
    * KAR-08.5 / EPIC-08-S23 — the flag this vendor takes a list of variable
    * names to strip from the environments of processes *it* spawns (and to
@@ -240,6 +261,8 @@ interface ShimEntry {
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
   readonly sandbox?: SandboxSettingsInjection;
   readonly structuredOutputFlag?: string;
+  /** KAR-14.2 AC9 — the vendor's own spend ceiling flag; see `ShimSpec`. */
+  readonly costCeilingFlag?: string;
   readonly secretEnvFlag?: string;
   build(
     ctx: ShimContext,
@@ -263,6 +286,21 @@ export interface ProviderSpec {
    * completed nodes then replace with the measured ratio.
    */
   readonly family: string;
+  /**
+   * KAR-14.1 AC4 — what this vendor's CLI reports about what a turn cost, and
+   * therefore whether a cost figure attributed to it means anything.
+   *
+   * Here for the same reason `family` is: it cannot be probed. An `initialize`
+   * response describes what an agent can *do*; nothing in it says whether the
+   * binary underneath prints a token count when it finishes. It is also not a
+   * capability — nothing routes on it, and a provider that reports nothing is
+   * scheduled exactly as before; what changes is that its cost cell is blank
+   * instead of zero.
+   *
+   * `'none'` is the honest default and the one this table mostly holds:
+   * roadmap A4-3 records that only two of the five adapters were ever checked.
+   */
+  readonly tokenAccounting: TokenAccounting;
   /**
    * KAR-09.6 AC7, AC8 — how this vendor's own auto-compaction is steered, or
    * absent for a vendor that exposes no such lever.
@@ -326,6 +364,8 @@ interface SpecEntry {
   readonly compaction?: CompactionSpec;
   /** Absent means `'default'` — see `ProviderSpec.family`. */
   readonly family?: string;
+  /** Absent means `'none'` — see `ProviderSpec.tokenAccounting`. */
+  readonly tokenAccounting?: TokenAccounting;
   readonly bin: string;
   readonly package: string;
   readonly companionBin?: string;
@@ -343,6 +383,17 @@ const NO_ENV: NodeJS.ProcessEnv = {};
 
 /** The family a vendor nobody has measured belongs to (KAR-09.7 AC5). */
 export const DEFAULT_MODEL_FAMILY = 'default';
+
+/**
+ * What an unstated accounting fidelity means: DeFlow cannot price this
+ * provider's turns.
+ *
+ * Not `'estimated'`. An estimate is a number somebody would chart, and
+ * charting a number for a vendor nobody has measured is how an F4.6 ceiling
+ * ends up enforced against fiction. `'none'` produces a blank cost cell, which
+ * is recoverable — the operator sees that DeFlow does not know.
+ */
+export const UNMEASURED_TOKEN_ACCOUNTING: TokenAccounting = 'none';
 
 /**
  * The two refusals every shim invocation is checked against, in one place.
@@ -378,7 +429,14 @@ function shimInvocation(
       ? [entry.structuredOutputFlag, ctx.schemaPath]
       : [];
 
-  return { format, argv: entry.build(ctx, format, [...flags, ...schema]) };
+  // KAR-14.2 AC9, and it rides in beside the schema for the same reason: one
+  // insertion point, and no vendor builder to forget it.
+  const ceiling =
+    entry.costCeilingFlag !== undefined && ctx.costCeilingUsd !== undefined
+      ? [entry.costCeilingFlag, String(ctx.costCeilingUsd)]
+      : [];
+
+  return { format, argv: entry.build(ctx, format, [...flags, ...schema, ...ceiling]) };
 }
 
 function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
@@ -393,6 +451,7 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     ...(entry.structuredOutputFlag === undefined
       ? {}
       : { structuredOutputFlag: entry.structuredOutputFlag }),
+    ...(entry.costCeilingFlag === undefined ? {} : { costCeilingFlag: entry.costCeilingFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
@@ -409,6 +468,7 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     id,
     kind: entry.kind,
     family: entry.family ?? DEFAULT_MODEL_FAMILY,
+    tokenAccounting: entry.tokenAccounting ?? UNMEASURED_TOKEN_ACCOUNTING,
     ...(entry.compaction === undefined ? {} : { compaction: entry.compaction }),
     bin: entry.bin,
     package: entry.package,
@@ -531,6 +591,8 @@ export const PROVIDER_SPECS = {
   }),
   claude: defineSpec({
     id: 'claude',
+    // Verified 2026-08-02: the result envelope carries a typed `modelUsage`.
+    tokenAccounting: 'exact',
     family: 'anthropic',
     kind: 'adapter',
     // Decoded from the 2.1.220 bundle: the CLI reserves
@@ -584,6 +646,10 @@ export const PROVIDER_SPECS = {
       // table and zod schema: `--json-schema <file>` is accepted and the parsed
       // object arrives in the result envelope's `structured_output` field.
       structuredOutputFlag: '--json-schema',
+      // KAR-14.2 AC9. **Verified 2026-08-02** from the same 2.1.220 flag table:
+      // `--max-budget-usd <amt>`, whose refusal comes back as the
+      // `error_max_budget_usd` result subtype the classifier maps to `gate`.
+      costCeilingFlag: '--max-budget-usd',
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires
@@ -601,6 +667,8 @@ export const PROVIDER_SPECS = {
   }),
   codex: defineSpec({
     id: 'codex',
+    // Verified 2026-08-02: `turn.completed` carries a typed `usage`.
+    tokenAccounting: 'exact',
     family: 'openai',
     kind: 'adapter',
     bin: 'codex-acp',
@@ -678,6 +746,19 @@ export function providerSpec(id: string): ProviderSpec | undefined {
  */
 export function providerFamily(id: string): string {
   return providerSpec(id)?.family ?? DEFAULT_MODEL_FAMILY;
+}
+
+/**
+ * KAR-14.1 AC4 — this provider's accounting fidelity, or `'none'` for one that
+ * is not registered at all.
+ *
+ * Total for the same reason `providerFamily` is, and the fallback matters more
+ * here: a caller that had to invent one for an unknown provider would sooner or
+ * later invent `'exact'`, and every zero-cost turn on that provider would be
+ * charted as free rather than as unknown.
+ */
+export function providerTokenAccounting(id: string): TokenAccounting {
+  return providerSpec(id)?.tokenAccounting ?? UNMEASURED_TOKEN_ACCOUNTING;
 }
 
 /** The complete invocation for one attempt: command, argv and env overlay. */

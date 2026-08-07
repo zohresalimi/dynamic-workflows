@@ -76,6 +76,7 @@ Background:
 | EPIC-14-S25 | No capable provider: suspend, do not reroute, do not kill the run                      | KAR-14.4 | Failure     |
 | EPIC-14-S26 | Correlated limits: three nodes, three distinct jittered wakes, one transaction each    | KAR-14.4 | Concurrency |
 | EPIC-14-S27 | An adapter with no rate-limit signal degrades to blind backoff, honestly labelled      | KAR-14.4 | Edge case   |
+| EPIC-14-S28 | The **ACP** path normalises to the same `provider.rate_limited` (added)                | KAR-14.4 | Edge case   |
 
 ---
 
@@ -819,6 +820,68 @@ fabricated reset is worse than an honest gap for exactly the reason a fabricated
 number is: the operator schedules their afternoon around it. Whether the ACP path surfaces rate-limit
 state at all is **Unverified** and is one of the two questions the M0 ACP spike is told to answer
 explicitly; this scenario is the degradation path if the answer is no.
+
+---
+
+## EPIC-14-S28 — The ACP path normalises to the same `provider.rate_limited` (added)
+
+**Verifies:** KAR-14.4 · **Type:** Edge case · **Automated at:** integration (unit for the
+classifier table)
+
+Added because every scenario above exercises the **exec-shim** path, and AC1 is a claim about
+_both_: "a `rate_limit_event` frame on the shim path, **and the equivalent rate-limit signal on the
+ACP path**, both normalise to `provider.rate_limited`". Without this scenario the ACP half of that
+sentence had no test behind it, which is how it came to have no code behind it either.
+
+```gherkin
+Feature: One normalised rate limit, whichever transport carried it
+
+  Scenario: an ACP agent refuses the prompt with a declared rate-limit error code
+    Given node "n_impl_1" runs on an ACP adapter whose rate-limit JSON-RPC code was declared
+    And the agent answers "session/prompt" with that code and data { resetsAt: <now + 4h> }
+    When the turn fails
+    Then the ledger contains "provider.rate_limited" with that provider, resetsAt <now + 4h>,
+        and raw carrying { code, message, data } verbatim
+    And it is appended before "node.failed", so the cause precedes the effect
+    And the failure class recorded is "transient" and rateLimitOf reads the limit back
+    And a node_wake row is written for ("r1", "n_impl_1") with wake_at <now + 4h>
+        and reason "quota"
+    And the payload shape is identical to the one the shim path writes
+
+  Scenario: the same code with no reset instant
+    Given the agent's error data names no resetsAt
+    Then "provider.rate_limited" is appended with resetsAt absent and raw kept verbatim
+    And no node_wake row is written, so the retry ladder's full jitter schedules the attempt
+    And every surface renders "rate limited, reset time unknown"
+
+  Scenario Outline: what is not a rate limit stays what it was
+    Given the caller declared <declared>
+    When the agent answers "session/prompt" with JSON-RPC <code>
+    Then no "provider.rate_limited" event is appended
+    And the failure is classified from the error itself, not from a quota DeFlow inferred
+
+    Examples:
+      | declared | code   |
+      | -32042   | -32043 |
+      | (none)   | -32042 |
+
+  Scenario: a code ACP has already assigned cannot be declared
+    Given the caller declares -32000, which ACP assigns to authRequired
+    When the node is started
+    Then the node is refused before a process exists
+    And the failure class is "permanent"
+    And no agent was spawned
+```
+
+**Notes:** the signal is a **caller-declared** JSON-RPC error code, not a vendor table. ACP assigns
+no rate-limit code — verified against `@agentclientprotocol/sdk` 1.3.0, whose whole assigned set is
+parse / invalid-request / method-not-found / invalid-params / internal / request-cancelled /
+auth-required / resource-not-found — and whether any adapter surfaces quota state at all remains
+**Unverified** (roadmap §1's M0 ACP spike). So DeFlow ships no codes and infers none, exactly as it
+ships no `rateLimitExitCodes`: an undeclared error degrades to S27's honest blind backoff rather than
+to a quota nobody stated. The last scenario is the one that earns its keep — declaring `authRequired`
+as a quota would classify a permanent refusal as a transient retry and spend the node's whole attempt
+budget on it, which is precisely the conflation AC9 forbids.
 
 ---
 

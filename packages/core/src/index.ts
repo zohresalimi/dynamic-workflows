@@ -35,6 +35,28 @@ export {
   READ_ARTIFACT_TOOL,
   truncatedDigest,
 } from './artifact-offload.ts';
+// KAR-14.2 — F4.6's ceilings: what is in force, and what has been crossed.
+export type {
+  BudgetEnforceability,
+  BudgetTrip,
+  Ceiling,
+  EffectiveCeilings,
+  RequestedBudget,
+  RunCeilings,
+  UnmeasurableProvider,
+} from './budget-ceiling.ts';
+export {
+  BUDGET_FAILURE_CLASS,
+  budgetEnforceability,
+  budgetTripFailure,
+  budgetTrips,
+  ceilingHash,
+  initialCeilings,
+  nodeCeiling,
+  plannedNodes,
+  RunCeilingsSchema,
+  resolveCeilings,
+} from './budget-ceiling.ts';
 // KAR-09.2 — packet assembly under a token budget: fill order, the budget
 // ceiling, and the demotion ladder that offloads rather than summarises.
 export type {
@@ -162,6 +184,51 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-14.3 — the pre-flight estimator: what a plan, or a patch, is about to
+// cost, with the method, the calibration factor and the price-table version on
+// every figure — and `null`, never `0`, for anything it cannot price.
+export type {
+  AppliedCalibration,
+  EstimatorInputs,
+  ModelRate,
+  NodeEstimate,
+  PatchEstimate,
+  PatchEstimatorInputs,
+  PlanEstimate,
+  PriceTable,
+  UnpriceableNode,
+  UnpriceableReason,
+} from './cost-estimate.ts';
+export {
+  DEFAULT_PRICE_TABLE,
+  estimateNode,
+  estimatePatch,
+  estimatePlan,
+  PRICE_TABLE_VERSION,
+  priceKey,
+  UNPRICEABLE_REASONS,
+} from './cost-estimate.ts';
+// KAR-14.1 — the accounting projection: per node, per provider, per run, with
+// subscription quota and real currency as two figures and `null` as the only
+// honest blank.
+export type {
+  AttemptCostRollup,
+  BudgetRollup,
+  Consumption,
+  CostFigures,
+  CostRollup,
+  EstimateAccuracy,
+  NodeCostRollup,
+  PreflightEstimate,
+} from './cost-rollup.ts';
+export {
+  addConsumption,
+  BudgetRollupSchema,
+  CostRollupSchema,
+  consumptionKey,
+  emptyCostRollup,
+  initialBudgetRollup,
+} from './cost-rollup.ts';
 // KAR-03.1 — the Db port. The better-sqlite3 implementation lives in
 // @DeFlow/ledger and the fake in @DeFlow/testkit; core never opens a database.
 export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
@@ -172,7 +239,13 @@ export { decide } from './decide.ts';
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
 // KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
 // run-config constraints are read from. The file itself is read in the daemon.
-export type { ContextConfig, DeFlowConfig, ProviderConfig } from './deflow-config.ts';
+export type {
+  BudgetCeilingConfig,
+  BudgetConfig,
+  ContextConfig,
+  DeFlowConfig,
+  ProviderConfig,
+} from './deflow-config.ts';
 export {
   ContextConfigSchema,
   compactionLeverFor,
@@ -490,6 +563,27 @@ export {
   NodeSuspensionSchema,
   SUSPENSION_KINDS,
 } from './node-result.ts';
+// KAR-14.3 — F2.5's patch policy engine: the estimate turned into a decision,
+// first match wins, and a `null` cost matching no numeric rule.
+export type {
+  PatchPolicyDecision,
+  PatchPolicyInput,
+  PatchPolicyRuling,
+  PatchRule,
+  RerouteEquivalence,
+  RulablePatchEstimate,
+} from './patch-policy.ts';
+export {
+  BUDGET_EXHAUSTED_FRACTION,
+  DEFAULT_PATCH_RULES,
+  EXPENSIVE_COST_USD,
+  elapsedBudgetFraction,
+  evaluatePatchPolicy,
+  MAX_REPLAN_DEPTH,
+  PATCH_POLICY_DECISIONS,
+  patchDecisionOutcome,
+  WIDE_BLAST_RADIUS_FILES,
+} from './patch-policy.ts';
 // KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
 // it agreeing with KAR-08.2's containment check, and the plan-time check that
 // a write node's pathScope is not empty.
@@ -614,6 +708,7 @@ export {
 // KAR-02.4 — PlanPatch, PatchDecision and the structural well-formedness check.
 export type {
   BlastRadius,
+  PatchCause,
   PatchDecision,
   PatchDecisionOutcome,
   PatchError,
@@ -632,6 +727,8 @@ export {
   BlastRadiusSchema,
   ExtendLoopOpSchema,
   InsertNodesOpSchema,
+  isReroutePatch,
+  PATCH_CAUSES,
   PATCH_DECISIONS,
   PATCH_ERROR_KINDS,
   PATCH_OPS,
@@ -649,6 +746,22 @@ export {
 } from './plan-patch.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
+// KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept
+// verbatim, classified `transient`, and turned into a durable wake at the
+// vendor's own reset rather than a retry storm.
+export type { QuotaWake, QuotaWakeInput, RateLimit } from './rate-limit.ts';
+export {
+  describeRateLimit,
+  QUOTA_CAUSE,
+  QUOTA_WAKE_REASON,
+  quotaWake,
+  RATE_LIMIT_BACKOFF,
+  rateLimitedFailure,
+  rateLimitFailureTag,
+  rateLimitMessage,
+  rateLimitOf,
+  rateLimitResetsAt,
+} from './rate-limit.ts';
 // KAR-02.3 — the F6.2 read-reachability gate under its EPIC-02 name and
 // `{ node, read }` return shape. One implementation, in
 // ./validate-declared-reads.ts; this is a view over it, not a second walk.

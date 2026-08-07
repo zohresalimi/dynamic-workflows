@@ -246,3 +246,67 @@ export function mediatedExecution(row: CapabilityRow): boolean | undefined {
 export function supportsSteering(row: CapabilityRow): boolean | undefined {
   return capability(row, 'steering').supported;
 }
+
+// ── KAR-14.4 AC7 — the two questions a quota re-route has to answer ──────────
+
+/**
+ * Which of `requires` the target row does **not** advertise, in the order they
+ * were asked for.
+ *
+ * Named rather than folded into the boolean below because a refusal has to be
+ * answerable: *"cannot reroute onto copilot"* is not a trace, and *"copilot
+ * does not advertise resume"* is one an operator can act on in a minute. It is
+ * also what the `plan.patch.proposed` reason renders verbatim.
+ *
+ * `decides()` is the reading, so §5's three answers — absent, `{}` and an
+ * explicit `false` — collapse the only way a router may collapse them: absent
+ * and denied both mean *cannot*. Treating an unadvertised capability as a
+ * maybe is how a node ends up discovering it at the resume, four hours in.
+ */
+export function missingCapabilities(
+  requires: readonly CapabilityKey[],
+  target: CapabilityRow,
+): readonly CapabilityKey[] {
+  return requires.filter((key) => !decides(target, key));
+}
+
+/**
+ * AC7's first half: does the target adapter's probed capability set cover
+ * everything the node requires?
+ *
+ * Computed from the row every time, never from a table. Two of the five
+ * versions in the measured matrix were published the same day they were
+ * measured, and a constant that goes stale does not fail loudly — it routes a
+ * node onto an adapter that cannot honour it.
+ *
+ * An empty `requires` is vacuously `true`, and that is deliberate: a node that
+ * asked for nothing is covered by anything, and refusing to move it would
+ * suspend a run that could have kept going (NF7).
+ */
+export function capabilitySuperset(
+  requires: readonly CapabilityKey[],
+  target: CapabilityRow,
+): boolean {
+  return missingCapabilities(requires, target).length === 0;
+}
+
+/**
+ * AC7's second half: does the swap leave the enforceable permission level
+ * alone?
+ *
+ * `mediatedExecution` is the bit that decides whether the permission ladder can
+ * be enforced at all (docs/09-workspace-and-safety.md §8.3), so a reroute from
+ * a mediated adapter onto an unmediated one *silently widens* what the node may
+ * do — which is exactly the escalation `quota-reroute-equivalent` must not
+ * auto-apply. The other direction is not an escalation and stays equivalent: a
+ * node that ran unmediated and now runs mediated is more constrained, not less.
+ *
+ * `undefined` reads as "cannot mediate" here, and only here. Elsewhere
+ * `mediatedExecution` keeps absent and refused apart so an unadvertised field
+ * does not make the whole measured fleet unschedulable — but for *this*
+ * question the two lead to the same place, because a reroute must not be
+ * auto-applied on the strength of a claim nobody made.
+ */
+export function mediationUnchanged(from: CapabilityRow, to: CapabilityRow): boolean {
+  return (mediatedExecution(to) ?? false) || !(mediatedExecution(from) ?? false);
+}

@@ -42,6 +42,7 @@ import { mkdtempSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
+import type { EventRecord } from '../src/ports.ts';
 import { PROVIDER_SPECS, providerSpec, spawnPlan } from '../src/provider-registry.ts';
 import { RECORD_CASE_ENV, RECORD_DIR_ENV, RECORD_ENV } from '../src/recorder.ts';
 import { runAcpNode } from '../src/run-node.ts';
@@ -192,6 +193,19 @@ async function main(): Promise<number> {
   const nodeId = NodeIdSchema.parse('n1');
   const plan = spawnPlan(spec, { resolved, worktree });
 
+  /** One `EventRecord` as the ledger's own draft, absent fields absent. */
+  const draft = (event: EventRecord) => ({
+    runId,
+    ts: event.ts,
+    kind: event.kind,
+    v: event.v,
+    epoch,
+    ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
+    ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
+    ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
+    payload: event.payload,
+  });
+
   process.stdout.write(
     `recording ${provider}@${version} → ` +
       `${join(options.out, `${provider}@${version}`, `${options.case}.ndjson`)}\n`,
@@ -218,25 +232,14 @@ async function main(): Promise<number> {
           // The port is async because a real sink may be; better-sqlite3 is
           // synchronous, so this resolves rather than awaits.
           append: (event) => {
-            const [seq] = appendEvents(
-              db,
-              [
-                {
-                  runId,
-                  ts: event.ts,
-                  kind: event.kind,
-                  v: event.v,
-                  epoch,
-                  ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-                  ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-                  ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-                  payload: event.payload,
-                },
-              ],
-              { spillTo: dataDir },
-            );
+            const [seq] = appendEvents(db, [draft(event)], { spillTo: dataDir });
             return Promise.resolve(seq);
           },
+          // One `appendEvents` call is one `BEGIN IMMEDIATE`: KAR-14.1 AC1's
+          // `budget.consumed` + `node.completed` pair reaches the recording's
+          // ledger together or not at all.
+          appendAll: (events) =>
+            Promise.resolve(appendEvents(db, events.map(draft), { spillTo: dataDir })),
           appendIo: (chunk) =>
             Promise.resolve(
               appendIoChunk(db, {

@@ -16,6 +16,7 @@
  *   importing the daemon, and what makes deleting the ACP front a one-line
  *   change when v2 lands.
  */
+
 import type {
   Clock,
   EventSeq,
@@ -24,10 +25,12 @@ import type {
   NodeId,
   PermissionLevel,
   PinnedSegmentView,
+  ProviderAuthMode,
   ProviderId,
   RunId,
   SchemaId,
 } from '@DeFlow/core';
+import { EVENT_CURRENT_VERSIONS } from '@DeFlow/core';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { CapabilityRequirement } from './admission.ts';
 import type { CapabilityRow } from './capabilities.ts';
@@ -55,6 +58,20 @@ export interface EventRecord {
   readonly attempt?: number;
   readonly ikey?: IdempotencyKey;
   readonly payload: unknown;
+}
+
+/**
+ * The payload version this build writes for `kind`.
+ *
+ * Read from `@DeFlow/core`'s registry rather than written as a literal at each
+ * call site, because a literal is only right until the first version bump and
+ * then wrong silently: an event written at `v: 1` carrying a v2 payload is
+ * refused by `parseEvent` at replay time, hours later, in a run nobody can
+ * repeat. `1` for a kind this build has never heard of, which cannot happen
+ * for a kind it is writing.
+ */
+export function eventVersion(kind: string): number {
+  return (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
 }
 
 /** One data-plane chunk: the frame as it came off the wire, kept verbatim. */
@@ -94,6 +111,19 @@ export interface CapabilityStore {
 export interface LedgerSink {
   /** Appends one event and resolves with the `seq` the ledger assigned it. */
   append(event: EventRecord): Promise<EventSeq>;
+  /**
+   * Appends a whole batch **in one transaction**, resolving with the `seq`
+   * each event was assigned, in order.
+   *
+   * A separate method rather than a loop over `append`, for the reason
+   * `ProcessRegistry.appendWithProcess` is one: KAR-14.1 AC1 requires
+   * `budget.consumed` and `node.completed` to be written together, so that
+   * there is no instant at which a node has finished and its spend has not
+   * been recorded. Two `append` calls are indistinguishable from this one
+   * until the crash that lands between them, at which point the run has
+   * silently spent money the ledger cannot account for.
+   */
+  appendAll(events: readonly EventRecord[]): Promise<readonly EventSeq[]>;
   /** Appends one chunk of agent output and resolves with its `seq`. */
   appendIo(chunk: IoRecord): Promise<EventSeq>;
 }
@@ -124,6 +154,35 @@ export interface AgentProcessRecord {
   readonly worktree: string | null;
   /** ms epoch, from the injected `Clock`. */
   readonly spawnedAt: number;
+}
+
+/**
+ * A durable timer row (`node_wake`), as an adapter needs to write one
+ * (KAR-14.4 AC2).
+ *
+ * A port rather than a direct dependency, for the reason every port in this
+ * file is one: the SQL lives in @DeFlow/ledger and this package depends on
+ * @DeFlow/core alone (docs/16-repo-layout.md R2). It is a *row* and not a
+ * `setTimeout` because Node's maximum timer delay is 2^31−1 ms and passing
+ * more fires the callback after 1 ms — verified — which would turn a
+ * fifteen-minute quota wait into an immediate retry, i.e. exactly the blind
+ * retry this exists to replace.
+ *
+ * It lives here rather than beside either runner because **both** paths write
+ * one: the shim reads Claude Code's `rate_limit_event` frame and the ACP path
+ * reads a declared JSON-RPC error, and a second declaration for the second
+ * caller is a second shape waiting to drift from the table.
+ */
+export interface NodeWakeRow {
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  /** ms epoch. An instant, so it survives a restart that outlives the wait. */
+  readonly wakeAt: number;
+  readonly reason: string;
+}
+
+export interface WakeRegistry {
+  schedule(row: NodeWakeRow): Promise<void>;
 }
 
 /** Which spawned process a caller means. A retry is a different one. */
@@ -182,6 +241,16 @@ export interface AcpNodeRequest {
   /** 0-based, matching the event envelope. */
   readonly attempt: number;
   readonly provider: ProviderId;
+  /**
+   * KAR-08.8's effective auth mode for this attempt. Absent means
+   * `'subscription'` — the default `resolveProviderAuth` itself uses, because
+   * `'api_key'` is only ever reached by an explicit opt-in.
+   *
+   * KAR-14.1 AC3 is why the run path needs it: subscription quota and real
+   * currency are two figures that must never be summed, so the accounting
+   * record has to carry which one this spend was.
+   */
+  readonly authMode?: ProviderAuthMode;
   readonly permission: PermissionLevel;
   readonly model?: string;
   /** The node's worktree. Becomes `session/new`'s `cwd`. */
@@ -266,6 +335,23 @@ export interface AcpNodeRequest {
    * `scopeAuditRefusal`.
    */
   readonly pathScope?: readonly string[];
+  /**
+   * KAR-14.4 AC1 — the JSON-RPC error codes this adapter is known to answer
+   * with when the vendor's quota is exhausted.
+   *
+   * **Empty by default, and DeFlow ships none**, exactly as
+   * `ShimNodeRequest.rateLimitExitCodes` ships none: ACP assigns no
+   * rate-limit code (`ACP_ASSIGNED_ERROR_CODES` is the whole of what it does
+   * assign), and whether any adapter surfaces quota state at all is still
+   * Unverified — roadmap §1's M0 ACP spike is what would populate this, and
+   * until it does, an undeclared error degrades to full-jitter backoff rather
+   * than to a rate limit DeFlow inferred.
+   *
+   * A code ACP has already taken is refused before the spawn, because
+   * declaring `authRequired` would classify a permanent refusal as a transient
+   * quota (`undeclarableRateLimitCode`).
+   */
+  readonly rateLimitErrorCodes?: readonly number[];
 }
 
 export interface AcpPorts {
@@ -345,4 +431,15 @@ export interface AcpPorts {
    * not race ahead of the durable writes — which is the whole claim of §2.3.
    */
   readonly onPull?: (pull: number, bytesRead: number) => void;
+  /**
+   * KAR-14.4 AC2 — where a quota suspension's `node_wake` row goes.
+   *
+   * Absent means no row is written, which is honest for a probe and for a
+   * caller with no scheduler behind it: the failure is still `transient` and
+   * still carries the limit, so `recordFailure` writes the row from the
+   * failure itself in the same transaction as `node.failed`. This port is what
+   * lets the adapter record the vendor's own instant at the moment it read it,
+   * which is the same thing the shim path does with a `rate_limit_event`.
+   */
+  readonly wakes?: WakeRegistry;
 }

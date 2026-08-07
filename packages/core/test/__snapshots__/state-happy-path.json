@@ -45,6 +45,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754308333000,
       "updatedSeq": 52
     },
     "step-02": {
@@ -76,6 +77,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754308741000,
       "updatedSeq": 102
     },
     "step-03": {
@@ -107,6 +109,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754309141000,
       "updatedSeq": 152
     },
     "step-04": {
@@ -138,6 +141,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754309541000,
       "updatedSeq": 202
     },
     "step-05": {
@@ -169,6 +173,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754309949000,
       "updatedSeq": 253
     },
     "step-06": {
@@ -200,6 +205,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754310349000,
       "updatedSeq": 303
     },
     "step-07": {
@@ -231,6 +237,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754310749000,
       "updatedSeq": 353
     },
     "step-08": {
@@ -262,6 +269,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754311149000,
       "updatedSeq": 403
     },
     "step-09": {
@@ -293,6 +301,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754311557000,
       "updatedSeq": 454
     },
     "step-10": {
@@ -324,6 +333,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754311957000,
       "updatedSeq": 504
     },
     "step-11": {
@@ -357,6 +367,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754312357000,
       "updatedSeq": 555
     },
     "step-12": {
@@ -388,6 +399,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754312765000,
       "updatedSeq": 605
     },
     "step-13": {
@@ -419,6 +431,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754313173000,
       "updatedSeq": 656
     },
     "step-14": {
@@ -450,6 +463,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754313573000,
       "updatedSeq": 706
     },
     "step-15": {
@@ -481,6 +495,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754313973000,
       "updatedSeq": 756
     },
     "step-16": {
@@ -512,6 +527,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754314373000,
       "updatedSeq": 806
     },
     "step-17": {
@@ -543,6 +559,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754314781000,
       "updatedSeq": 857
     },
     "step-18": {
@@ -574,6 +591,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754315181000,
       "updatedSeq": 907
     },
     "step-19": {
@@ -605,6 +623,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754315581000,
       "updatedSeq": 957
     },
     "step-20": {
@@ -636,6 +655,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754315981000,
       "updatedSeq": 1007
     },
     "step-21": {
@@ -669,6 +689,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754316389000,
       "updatedSeq": 1060
     },
     "step-22": {
@@ -700,6 +721,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754316805000,
       "updatedSeq": 1109
     },
     "step-23": {
@@ -731,6 +753,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754317197000,
       "updatedSeq": 1158
     },
     "step-24": {
@@ -762,6 +785,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754317589000,
       "updatedSeq": 1207
     },
     "step-25": {
@@ -793,6 +817,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754317989000,
       "updatedSeq": 1257
     },
     "step-26": {
@@ -824,6 +849,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754318381000,
       "updatedSeq": 1306
     },
     "step-27": {
@@ -855,6 +881,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754318773000,
       "updatedSeq": 1355
     },
     "step-28": {
@@ -886,6 +913,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754319165000,
       "updatedSeq": 1404
     },
     "step-29": {
@@ -917,6 +945,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754319565000,
       "updatedSeq": 1454
     },
     "step-30": {
@@ -948,6 +977,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754319957000,
       "updatedSeq": 1503
     },
     "step-31": {
@@ -981,6 +1011,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754320349000,
       "updatedSeq": 1553
     },
     "step-32": {
@@ -1012,6 +1043,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754320749000,
       "updatedSeq": 1602
     },
     "step-33": {
@@ -1043,6 +1075,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754321149000,
       "updatedSeq": 1652
     },
     "step-34": {
@@ -1074,6 +1107,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754321541000,
       "updatedSeq": 1701
     },
     "step-35": {
@@ -1105,6 +1139,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754321933000,
       "updatedSeq": 1750
     },
     "step-36": {
@@ -1136,6 +1171,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754322325000,
       "updatedSeq": 1799
     },
     "step-37": {
@@ -1167,6 +1203,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754322725000,
       "updatedSeq": 1849
     },
     "step-38": {
@@ -1198,6 +1235,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754323117000,
       "updatedSeq": 1898
     },
     "step-39": {
@@ -1229,6 +1267,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754323509000,
       "updatedSeq": 1947
     },
     "step-40": {
@@ -1260,6 +1299,7 @@
       "suspension": null,
       "requestHash": null,
       "wakeAt": null,
+      "startedTs": 1754323901000,
       "updatedSeq": 1996
     }
   },
@@ -1322,16 +1362,924 @@
     }
   },
   "budget": {
-    "costUsd": 8.2,
-    "usage": {
-      "vendorReported": {
-        "inputTokens": 55800,
-        "outputTokens": 14380,
-        "source": "vendor-reported"
+    "run": {
+      "costUsd": {
+        "subscription": 8.2,
+        "apiKey": null,
+        "vendorReported": 8.2,
+        "estimated": null
       },
-      "estimated": null
+      "usage": {
+        "vendorReported": {
+          "inputTokens": 55800,
+          "outputTokens": 14380,
+          "source": "vendor-reported"
+        },
+        "estimated": null
+      },
+      "unaccounted": [],
+      "authModes": [
+        "subscription"
+      ]
     },
-    "breaches": []
+    "nodes": {
+      "step-01": {
+        "costUsd": {
+          "subscription": 0.01,
+          "apiKey": null,
+          "vendorReported": 0.01,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1200,
+            "outputTokens": 340,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-02": {
+        "costUsd": {
+          "subscription": 0.02,
+          "apiKey": null,
+          "vendorReported": 0.02,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1210,
+            "outputTokens": 341,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-03": {
+        "costUsd": {
+          "subscription": 0.03,
+          "apiKey": null,
+          "vendorReported": 0.03,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1220,
+            "outputTokens": 342,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-04": {
+        "costUsd": {
+          "subscription": 0.04,
+          "apiKey": null,
+          "vendorReported": 0.04,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1230,
+            "outputTokens": 343,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-05": {
+        "costUsd": {
+          "subscription": 0.05,
+          "apiKey": null,
+          "vendorReported": 0.05,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1240,
+            "outputTokens": 344,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-06": {
+        "costUsd": {
+          "subscription": 0.06,
+          "apiKey": null,
+          "vendorReported": 0.06,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1250,
+            "outputTokens": 345,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-07": {
+        "costUsd": {
+          "subscription": 0.07,
+          "apiKey": null,
+          "vendorReported": 0.07,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1260,
+            "outputTokens": 346,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-08": {
+        "costUsd": {
+          "subscription": 0.08,
+          "apiKey": null,
+          "vendorReported": 0.08,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1270,
+            "outputTokens": 347,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-09": {
+        "costUsd": {
+          "subscription": 0.09,
+          "apiKey": null,
+          "vendorReported": 0.09,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1280,
+            "outputTokens": 348,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-10": {
+        "costUsd": {
+          "subscription": 0.1,
+          "apiKey": null,
+          "vendorReported": 0.1,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1290,
+            "outputTokens": 349,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-11": {
+        "costUsd": {
+          "subscription": 0.11,
+          "apiKey": null,
+          "vendorReported": 0.11,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1300,
+            "outputTokens": 350,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-12": {
+        "costUsd": {
+          "subscription": 0.12,
+          "apiKey": null,
+          "vendorReported": 0.12,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1310,
+            "outputTokens": 351,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-13": {
+        "costUsd": {
+          "subscription": 0.13,
+          "apiKey": null,
+          "vendorReported": 0.13,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1320,
+            "outputTokens": 352,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-14": {
+        "costUsd": {
+          "subscription": 0.14,
+          "apiKey": null,
+          "vendorReported": 0.14,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1330,
+            "outputTokens": 353,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-15": {
+        "costUsd": {
+          "subscription": 0.15,
+          "apiKey": null,
+          "vendorReported": 0.15,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1340,
+            "outputTokens": 354,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-16": {
+        "costUsd": {
+          "subscription": 0.16,
+          "apiKey": null,
+          "vendorReported": 0.16,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1350,
+            "outputTokens": 355,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-17": {
+        "costUsd": {
+          "subscription": 0.17,
+          "apiKey": null,
+          "vendorReported": 0.17,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1360,
+            "outputTokens": 356,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-18": {
+        "costUsd": {
+          "subscription": 0.18,
+          "apiKey": null,
+          "vendorReported": 0.18,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1370,
+            "outputTokens": 357,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-19": {
+        "costUsd": {
+          "subscription": 0.19,
+          "apiKey": null,
+          "vendorReported": 0.19,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1380,
+            "outputTokens": 358,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-20": {
+        "costUsd": {
+          "subscription": 0.2,
+          "apiKey": null,
+          "vendorReported": 0.2,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1390,
+            "outputTokens": 359,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-21": {
+        "costUsd": {
+          "subscription": 0.21,
+          "apiKey": null,
+          "vendorReported": 0.21,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1400,
+            "outputTokens": 360,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-22": {
+        "costUsd": {
+          "subscription": 0.22,
+          "apiKey": null,
+          "vendorReported": 0.22,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1410,
+            "outputTokens": 361,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-23": {
+        "costUsd": {
+          "subscription": 0.23,
+          "apiKey": null,
+          "vendorReported": 0.23,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1420,
+            "outputTokens": 362,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-24": {
+        "costUsd": {
+          "subscription": 0.24,
+          "apiKey": null,
+          "vendorReported": 0.24,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1430,
+            "outputTokens": 363,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-25": {
+        "costUsd": {
+          "subscription": 0.25,
+          "apiKey": null,
+          "vendorReported": 0.25,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1440,
+            "outputTokens": 364,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-26": {
+        "costUsd": {
+          "subscription": 0.26,
+          "apiKey": null,
+          "vendorReported": 0.26,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1450,
+            "outputTokens": 365,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-27": {
+        "costUsd": {
+          "subscription": 0.27,
+          "apiKey": null,
+          "vendorReported": 0.27,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1460,
+            "outputTokens": 366,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-28": {
+        "costUsd": {
+          "subscription": 0.28,
+          "apiKey": null,
+          "vendorReported": 0.28,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1470,
+            "outputTokens": 367,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-29": {
+        "costUsd": {
+          "subscription": 0.29,
+          "apiKey": null,
+          "vendorReported": 0.29,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1480,
+            "outputTokens": 368,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-30": {
+        "costUsd": {
+          "subscription": 0.3,
+          "apiKey": null,
+          "vendorReported": 0.3,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1490,
+            "outputTokens": 369,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-31": {
+        "costUsd": {
+          "subscription": 0.31,
+          "apiKey": null,
+          "vendorReported": 0.31,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1500,
+            "outputTokens": 370,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-32": {
+        "costUsd": {
+          "subscription": 0.32,
+          "apiKey": null,
+          "vendorReported": 0.32,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1510,
+            "outputTokens": 371,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-33": {
+        "costUsd": {
+          "subscription": 0.33,
+          "apiKey": null,
+          "vendorReported": 0.33,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1520,
+            "outputTokens": 372,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-34": {
+        "costUsd": {
+          "subscription": 0.34,
+          "apiKey": null,
+          "vendorReported": 0.34,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1530,
+            "outputTokens": 373,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-35": {
+        "costUsd": {
+          "subscription": 0.35,
+          "apiKey": null,
+          "vendorReported": 0.35,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1540,
+            "outputTokens": 374,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-36": {
+        "costUsd": {
+          "subscription": 0.36,
+          "apiKey": null,
+          "vendorReported": 0.36,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1550,
+            "outputTokens": 375,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-37": {
+        "costUsd": {
+          "subscription": 0.37,
+          "apiKey": null,
+          "vendorReported": 0.37,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1560,
+            "outputTokens": 376,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-38": {
+        "costUsd": {
+          "subscription": 0.38,
+          "apiKey": null,
+          "vendorReported": 0.38,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1570,
+            "outputTokens": 377,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-39": {
+        "costUsd": {
+          "subscription": 0.39,
+          "apiKey": null,
+          "vendorReported": 0.39,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1580,
+            "outputTokens": 378,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      },
+      "step-40": {
+        "costUsd": {
+          "subscription": 0.4,
+          "apiKey": null,
+          "vendorReported": 0.4,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 1590,
+            "outputTokens": 379,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ],
+        "attempts": []
+      }
+    },
+    "providers": {
+      "codex": {
+        "costUsd": {
+          "subscription": 2.87,
+          "apiKey": null,
+          "vendorReported": 2.87,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 19530,
+            "outputTokens": 5033,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ]
+      },
+      "claude-code": {
+        "costUsd": {
+          "subscription": 5.33,
+          "apiKey": null,
+          "vendorReported": 5.33,
+          "estimated": null
+        },
+        "usage": {
+          "vendorReported": {
+            "inputTokens": 36270,
+            "outputTokens": 9347,
+            "source": "vendor-reported"
+          },
+          "estimated": null
+        },
+        "unaccounted": [],
+        "authModes": [
+          "subscription"
+        ]
+      }
+    },
+    "breaches": [],
+    "estimateAccuracy": null
+  },
+  "ceilings": {
+    "run": {
+      "costUsd": null,
+      "wallclockMs": null
+    },
+    "node": {
+      "costUsd": null,
+      "wallclockMs": null
+    },
+    "nodes": {},
+    "hash": null
   },
   "watermarkSeq": 2000,
   "watermarkTs": 1754324285000,

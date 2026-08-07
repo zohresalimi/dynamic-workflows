@@ -11,7 +11,7 @@
  * A table has to name models to be a table, so that is what this greps for. A
  * source file that names no model cannot hold one.
  *
- * **One package is exempt, and the exemption is paid for.** `@DeFlow/testkit`
+ * **Two exemptions, and both are paid for.** The first is `@DeFlow/testkit`
  * *is* the fake vendor: its exec-shim agent has to emit the wire shape a real
  * CLI emits, model key and window included, or the shim parser would only ever
  * be tested against a shape no vendor produces. It is a test double, never a
@@ -67,6 +67,23 @@ const MODEL_LITERAL =
 /** The fake vendor's own wire fixtures. */
 const FAKE_VENDOR_PREFIX = 'testkit/src/';
 
+/**
+ * KAR-14.3's price table — the second exemption, and a narrower one.
+ *
+ * A per-model *price* is not a per-model *window*, and the difference is that
+ * one of them arrives on the wire and the other cannot. `modelUsage[m]` carries
+ * `contextWindow` on every turn, so a window table is a table of numbers the
+ * vendor is already telling us; nothing on any envelope says what a model costs
+ * per token, and DeFlow holds no credential with which to ask. A rate table is
+ * therefore the only way to estimate a cost *before* the money is spent, which
+ * is the whole of F9.3.
+ *
+ * The exemption is paid for below: the table carries a version so a stale price
+ * is dateable, a missing model answers `null` rather than a guess, and the file
+ * names no window or output-limit field at all.
+ */
+const PRICE_TABLE_PATH = 'core/src/cost-estimate.ts';
+
 const files = sourceFiles();
 
 suite('no source file hardcodes a per-model context window (AC2)', () => {
@@ -78,7 +95,9 @@ suite('no source file hardcodes a per-model context window (AC2)', () => {
     expect(files.some((path) => path.startsWith(FAKE_VENDOR_PREFIX))).toBe(true);
   });
 
-  for (const path of files.filter((file) => !file.startsWith(FAKE_VENDOR_PREFIX))) {
+  for (const path of files.filter(
+    (file) => !file.startsWith(FAKE_VENDOR_PREFIX) && file !== PRICE_TABLE_PATH,
+  )) {
     it(`${path} names no model`, () => {
       const named = strippedOfComments(readFileSync(join(packagesDir, path), 'utf8'))
         .split('\n')
@@ -90,6 +109,34 @@ suite('no source file hardcodes a per-model context window (AC2)', () => {
       ).toHaveLength(0);
     });
   }
+});
+
+suite('the price table pays for its exemption (KAR-14.3)', () => {
+  const source = readFileSync(join(packagesDir, PRICE_TABLE_PATH), 'utf8');
+  const code = strippedOfComments(source);
+
+  it('is the file the exemption names, and it really does name models', () => {
+    expect(files).toContain(PRICE_TABLE_PATH);
+    expect(MODEL_LITERAL.test(code)).toBe(true);
+  });
+
+  it('names a model only to price it: every literal sits in a rate entry', () => {
+    const lines = code.split('\n').filter((line) => MODEL_LITERAL.test(line));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line, `"${line.trim()}" names a model without a rate beside it`).toMatch(
+        /priceKey\(.+\)\]:\s*\{\s*inputUsdPerMTok:.+outputUsdPerMTok:/,
+      );
+    }
+  });
+
+  it('carries a version, so a price that has gone stale is dateable', () => {
+    expect(code).toMatch(/PRICE_TABLE_VERSION\s*=\s*'\d{4}-\d{2}-\d{2}'/);
+  });
+
+  it('holds no window or output-limit column: those still come off the envelope', () => {
+    expect(code).not.toMatch(/contextWindow|maxOutputTokens|windowTokens/);
+  });
 });
 
 suite('the exempt package pays for its exemption', () => {

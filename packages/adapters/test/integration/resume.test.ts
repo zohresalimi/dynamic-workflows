@@ -225,6 +225,34 @@ suite('ResumeByReplay reconstructs the packet from the ledger alone (AC3)', () =
   });
 });
 
+suite('KAR-14.1 AC1 — one accounting record per attempt, on the resume path too', () => {
+  it('appends exactly one budget.consumed, whichever strategy resumed the node', async () => {
+    // Two lives, one attempt: the first died mid-turn without completing, the
+    // second resumed and completed it. Exactly one attempt reached a terminal
+    // completion, so exactly one `budget.consumed` may exist — a resume that
+    // kept its own accounting record beside `runAcpNode`'s would double every
+    // resumed node's spend in the rollup, silently and only after a restart.
+    await interruptedFirstLife('claude');
+    const outcome = await resumeInSecondLife('claude', join(dir, 'wire-one-record.ndjson'));
+    expect(outcome.status).toBe('completed');
+
+    const consumed = ledger.events().filter((event) => event.kind === 'budget.consumed');
+    expect(consumed).toHaveLength(1);
+    expect(consumed[0]?.payload).toMatchObject({ node: NODE_ID, attempt: 0 });
+  });
+
+  it('leaves the cost blank rather than zero, because no ACP vendor was priced', async () => {
+    await interruptedFirstLife('gemini');
+    await resumeInSecondLife('gemini', join(dir, 'wire-blank-cost.ndjson'));
+
+    const consumed = eventOf(ledger.events(), 'budget.consumed');
+    // A `0` here would say the turn was free and would make an F4.6 ceiling
+    // silently unenforceable on every ACP-path node.
+    expect(consumed?.costUsd).toBeNull();
+    expect((consumed?.usage as { source: string }).source).toBe('estimated');
+  });
+});
+
 suite('the same outcome, a different token cost (AC4)', () => {
   it('records fewer input tokens for a native resume than for a replay', async () => {
     await interruptedFirstLife('claude');
