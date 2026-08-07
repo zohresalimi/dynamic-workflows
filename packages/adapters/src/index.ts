@@ -119,6 +119,14 @@ export {
   InvalidFrameLimit,
   parseFrameLimit,
 } from './frame-guard.ts';
+// KAR-10.2 AC3 — the framing node's own admission: structured output at the
+// adapter boundary, or refuse to schedule. There is no prose fallback.
+export {
+  admitFraming,
+  type FramingAdmissionRequest,
+  type FramingSchemaRequest,
+  framingSchemaContract,
+} from './framing-admission.ts';
 // KAR-05.9 — the one abstraction allowed to send a signal, plus the PID-reuse
 // guard's input. POSIX at M1; win32 throws rather than silently no-opping.
 export type {

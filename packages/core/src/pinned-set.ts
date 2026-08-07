@@ -160,19 +160,100 @@ export async function buildPinnedSegments(input: PinnedBuildInput): Promise<read
 
   const segments: Segment[] = [];
   for (const [index, type] of PINNED_CONTENT_TYPES.entries()) {
-    const text = texts[index] as string;
-    segments.push({
-      id: SegmentIdSchema.parse(type.id),
-      kind: type.kind,
-      sourceEvent: input.sourceEvent,
-      contentHash: await contentHash(text),
-      tokens: estimate(text),
-      pinned: true,
-      compactable: false,
-      text,
-    });
+    segments.push(await pinnedSegment(type, texts[index] as string, input.sourceEvent, estimate));
   }
   return segments;
+}
+
+/**
+ * One row of §4.1's table, built. **The only place in the workspace that
+ * writes `pinned: true`** — see rule 1 in the header, and
+ * `packages/core/test/pinned-flag-single-producer.test.ts`.
+ *
+ * Private, because a caller that could choose the `id` could invent a sixth
+ * content type; the two exported builders below choose from
+ * `PINNED_CONTENT_TYPES` and nothing else can.
+ */
+async function pinnedSegment(
+  type: PinnedContentType,
+  text: string,
+  sourceEvent: EventSeq,
+  estimate: TokenEstimator,
+): Promise<Segment> {
+  return {
+    id: SegmentIdSchema.parse(type.id),
+    kind: type.kind,
+    sourceEvent,
+    contentHash: await contentHash(text),
+    tokens: estimate(text),
+    pinned: true,
+    compactable: false,
+    text,
+  };
+}
+
+/** The row `PINNED_CONTENT_TYPES` gives an id, looked up by it. */
+function contentType(id: string): PinnedContentType {
+  const type = PINNED_CONTENT_TYPES.find((entry) => entry.id === id);
+  if (type === undefined) throw new Error(`no pinned content type named ${id}`);
+  return type;
+}
+
+export interface FramingPinnedInput {
+  /** The run's safety constraints (F5.6). */
+  readonly constraints: readonly Constraint[];
+  /** The level the framing node is scheduled at — `read` (F5.4). */
+  readonly permission: string;
+  readonly sourceEvent: EventSeq;
+  readonly estimate?: TokenEstimator;
+}
+
+/**
+ * KAR-10.2 AC1, AC9 — the pinned block of a **framing** packet: two of the five
+ * rows, and the three the spec supplies deliberately absent.
+ *
+ * Here rather than in `framing-packet.ts` because this module is the one
+ * producer of `pinned: true`, and that single-producer rule is what makes a
+ * sixth pinned content type impossible to introduce quietly. It is also the
+ * right home on the merits: the two rows are `PINNED_CONTENT_TYPES` entries,
+ * built by the same function `buildPinnedSegments` uses, so a framing packet
+ * and an agent packet cannot render the same content two ways.
+ *
+ * The framing node runs before any `TaskSpec` exists — producing one is what it
+ * is for — so `pinned-spec-goal`, `pinned-spec-criteria` and `pinned-pathscope`
+ * have nothing honest to say and are omitted rather than filled with a
+ * placeholder under the heading *"verbatim from the approved spec"*.
+ */
+export async function buildFramingPinnedSegments(
+  input: FramingPinnedInput,
+): Promise<readonly Segment[]> {
+  const estimate = input.estimate ?? heuristicTokens;
+  const constraints = orderPinnedConstraints(input.constraints);
+  const texts: readonly [string, string] = [
+    `Safety constraints (pinned):\n${
+      constraints.length === 0
+        ? '- (none declared)'
+        : bullets(constraints.map(restateAsRequirement))
+    }`,
+    `Permission level (pinned): ${input.permission}\n` +
+      'You may read this repository and you may ask the operator a clarifying question. ' +
+      'You may not write a file and you may not run a command that changes one.',
+  ];
+
+  return [
+    await pinnedSegment(
+      contentType('pinned-constraints-safety'),
+      texts[0],
+      input.sourceEvent,
+      estimate,
+    ),
+    await pinnedSegment(
+      contentType('pinned-constraints-permission'),
+      texts[1],
+      input.sourceEvent,
+      estimate,
+    ),
+  ];
 }
 
 export interface ContextSegmentInput {

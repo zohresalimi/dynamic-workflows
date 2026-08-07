@@ -290,6 +290,9 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 4. Every `acceptanceCriteria[]` entry carries a `CriterionId` (`AC-1 … AC-n`), a single testable
    `statement`, and either a non-empty `verifiedBy` or `unverifiable: true` with a non-empty
    `reason`. A document violating this is a validation failure, not a warning.
+   _(Spelled `ac-1 … ac-n` as shipped, recorded 7 August 2026: the `CriterionId` KAR-02.2 shipped is
+   a lowercase slug (`^[a-z0-9][a-z0-9-]{0,62}$`), so the sequence is written in the case the domain
+   type actually accepts. The ordering is still numeric — `ac-10` sorts after `ac-9`.)_
 5. `knownFailureModes[]` entries each carry a `description` and a `detection` — "what going wrong
    looks like" and "how we would notice". An entry with a description and no detection is invalid.
 6. `nonGoals` is required and may not be empty. It is the field
@@ -334,6 +337,19 @@ onto the adapter that does support it and refusing the others, which is exactly 
 specifies. Note also that `--permission-prompt-tool` has already vanished from Claude Code's
 `--help`; do not build the read-permission enforcement on a vendor flag when DeFlow is the ACP
 client and owns the boundary itself.
+
+**Shipped shape, recorded 7 August 2026.** `runFramingInterview` drives the turn through a
+`FramingAgent` **port**, so the interview owns admission, the return contract, the clarifying-question
+suspension and `run.created`, and the *transport* stays the caller's choice. That is not a hedge —
+it is what the two halves of this story can each be proven with today. AC3's `structured_output`
+lives on a **vendor CLI flag** (`--json-schema` / `--output-schema`, `ShimSpec.structuredOutputFlag`),
+which is the exec-shim path and is exercised against a real spawned process in
+`packages/adapters/test/integration/structured-output.test.ts`; AC1's *"rejected at the boundary"*
+only means anything where DeFlow **is** the client, which is the ACP path and is exercised against a
+real agent in `packages/daemon/test/integration/framing-read-only.test.ts`. Whether an ACP session
+can carry a schema and return `structured_output` at all is precisely what roadmap A4-2 still lists
+as Unverified, and nothing here pretends otherwise: no ACP structured-output channel was invented to
+make one test file look tidier.
 
 ---
 

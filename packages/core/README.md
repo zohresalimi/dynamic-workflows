@@ -30,6 +30,7 @@ it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` 
 | `DeFlow.plangraph.v1`     | `src/plan-graph.ts`       | A whole plan: seven node types, edges, budgets, declared reads (F2.1)  |
 | `DeFlow.planpatch.v1`     | `src/plan-patch.ts`       | A proposed plan evolution: five ops, blast radius, rationale (F2.3)    |
 | `DeFlow.taskspec.v1`      | `src/task-spec.ts`        | The approved intent a run is measured against (F1.1)                   |
+| `DeFlow.taskspecdraft.v1` | `src/framing.ts`          | What the framing interview returns, before DeFlow seals it (F1.2)      |
 | `DeFlow.verdict.v1`       | `src/verdict.ts`          | A gate verdict: outcome, per-criterion status, findings (F7.4)         |
 
 The registry those rows come from is `SCHEMA_REGISTRY` in `src/json-schema.ts`. Adding a row is how

@@ -40,6 +40,7 @@
 import { z } from 'zod';
 import { CONTEXTPACKET_SCHEMA_ID, ContextPacketSchema } from './context-packet.ts';
 import { FACT_SCHEMA_ID, FactSchema } from './fact.ts';
+import { TASKSPEC_DRAFT_SCHEMA_ID, TaskSpecDraftSchema } from './framing.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from './plan-graph.ts';
 import { PLANPATCH_SCHEMA_ID, PlanPatchSchema } from './plan-patch.ts';
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
@@ -113,6 +114,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schemaId: PLANPATCH_SCHEMA_ID,
     summary: 'A proposed plan evolution: the five ops, its blast radius and its rationale (F2.3).',
     schema: PlanPatchSchema,
+  },
+  {
+    schemaId: TASKSPEC_DRAFT_SCHEMA_ID,
+    summary:
+      'The document the framing interview returns: the eight authored fields, the F7.4 ' +
+      'criteria contract, and no digest the agent could not honestly compute (F1.2).',
+    schema: TaskSpecDraftSchema,
   },
   {
     schemaId: TASKSPEC_SCHEMA_ID,

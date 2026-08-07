@@ -19,6 +19,7 @@ import { expect, it, describe as suite } from 'vitest';
 import type { z } from 'zod';
 import { ContextPacketSchema } from '../src/context-packet.ts';
 import { FactSchema } from '../src/fact.ts';
+import { TaskSpecDraftSchema } from '../src/framing.ts';
 import { REGISTERED_SCHEMA_IDS } from '../src/json-schema.ts';
 import { PlanGraphSchema } from '../src/plan-graph.ts';
 import { PlanPatchSchema } from '../src/plan-patch.ts';
@@ -37,6 +38,10 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
   'DeFlow.taskspec.v1': join(repoRoot, 'packages/core/test/fixtures/specs/vue3-migration.json'),
+  'DeFlow.taskspecdraft.v1': join(
+    repoRoot,
+    'packages/core/test/fixtures/specs/vue3-migration.framed.json',
+  ),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
 };
 
@@ -47,6 +52,7 @@ const ZOD: Record<string, z.ZodType> = {
   'DeFlow.plangraph.v1': PlanGraphSchema,
   'DeFlow.planpatch.v1': PlanPatchSchema,
   'DeFlow.taskspec.v1': TaskSpecSchema,
+  'DeFlow.taskspecdraft.v1': TaskSpecDraftSchema,
   'DeFlow.verdict.v1': VerdictSchema,
 };
 

@@ -1,0 +1,49 @@
+{
+  "schemaId": "DeFlow.taskspecdraft.v1",
+  "goal": "Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.",
+  "scope": {
+    "included": ["packages/web/src/checkout/**"],
+    "paths": ["packages/web/src/checkout"]
+  },
+  "nonGoals": ["Rewriting the payment gateway integration"],
+  "constraints": ["must not change the public API of the shared ui package"],
+  "priorDecisions": [
+    {
+      "decision": "Use the Vue 3 Composition API for all new composables",
+      "rationale": "Matches the rest of the codebase post-migration",
+      "source": "repository"
+    },
+    {
+      "decision": "Only packages/web/src/checkout is in scope. Leave packages/legacy alone.",
+      "rationale": "Answered by the operator when asked: “Which packages does the migration cover?”",
+      "source": "operator"
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "ac-1",
+      "statement": "All existing checkout unit tests pass unmodified.",
+      "verifiedBy": ["unit-tests"]
+    },
+    {
+      "id": "ac-2",
+      "statement": "No v-model modifier is silently dropped by the codemod.",
+      "verifiedBy": ["typecheck", "codemod-review"]
+    },
+    {
+      "id": "ac-3",
+      "statement": "The checkout flow renders identically in a manual pass.",
+      "unverifiable": true,
+      "reason": "Subjective. No visual-diff harness exists yet; route to a human node at the end of the milestone.",
+      "verifiedBy": ["human-review-ui"]
+    }
+  ],
+  "knownFailureModes": [
+    {
+      "id": "v-model-drop",
+      "description": "the migration codemod silently drops v-model modifiers",
+      "detection": "diff the compiled template output before and after the codemod",
+      "mitigation": "add a lint rule that flags any v-model without a matching modifier in the diff"
+    }
+  ]
+}

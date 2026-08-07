@@ -388,6 +388,43 @@ export type {
   FoldReport,
 } from './fold-events.ts';
 export { describeSkipped, foldEvents } from './fold-events.ts';
+// KAR-10.2 — the framing interview's return contract, its criteria contract,
+// and the projection onto the `TaskSpec` `run.created` carries.
+export type {
+  ClarifyingExchange,
+  DraftAcceptanceCriterion,
+  DraftFailureMode,
+  DraftIssue,
+  DraftPriorDecision,
+  PriorDecisionSource,
+  TaskSpecDraft,
+} from './framing.ts';
+export {
+  answersAsPriorDecisions,
+  criteriaContractIssues,
+  criterionOrdinal,
+  DraftAcceptanceCriterionSchema,
+  DraftFailureModeSchema,
+  DraftPriorDecisionSchema,
+  FRAMING_PERMISSION,
+  FRAMING_RETURN_MAX_TOKENS,
+  framingReturns,
+  PRIOR_DECISION_SOURCES,
+  sealTaskSpec,
+  TASKSPEC_DRAFT_SCHEMA_ID,
+  TaskSpecDraftInvalid,
+  TaskSpecDraftSchema,
+  validateTaskSpecDraft,
+  withClarifyingAnswers,
+} from './framing.ts';
+// KAR-10.2 AC9 — what the framing agent is given: the raw task, the repository
+// at `read`, and no other node's transcript (F6.1).
+export type { FramingPacketInput, FramingSegmentKind, RejectedFraming } from './framing-packet.ts';
+export {
+  buildFramingPacket,
+  ForeignSegmentInFramingPacket,
+  FRAMING_SEGMENT_KINDS,
+} from './framing-packet.ts';
 // KAR-08.1 AC5 — `full` is an explicit per-run opt-in a PlanPatch cannot
 // acquire on its own authority.
 export type { FullEscalationRuling, FullPermissionOptIn } from './full-permission.ts';
@@ -635,6 +672,7 @@ export {
 export type {
   ContextSegmentInput,
   DemotionResult,
+  FramingPinnedInput,
   PinnedBuildInput,
   PinnedContentType,
   PinnedSegmentKind,
@@ -644,6 +682,7 @@ export type {
 } from './pinned-set.ts';
 export {
   assertPinnedSetFitsBudget,
+  buildFramingPinnedSegments,
   buildPinnedSegments,
   contextSegment,
   demoteToBudget,
