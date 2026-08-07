@@ -139,6 +139,9 @@ export {
   NodeProgressSchema,
   NodeRetryScheduledSchema,
   NodeScheduledSchema,
+  // KAR-08.7 — the completion-time backstop for an adapter that never
+  // populates ToolCallLocation.
+  NodeScopeWarningSchema,
   NodeStartedSchema,
   NodeSuspendedSchema,
   NodeUnschedulableSchema,
@@ -334,6 +337,11 @@ export {
   NodeSuspensionSchema,
   SUSPENSION_KINDS,
 } from './node-result.ts';
+// KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
+// it agreeing with KAR-08.2's containment check, and the plan-time check that
+// a write node's pathScope is not empty.
+export type { EmptyWriteScope } from './path-scope.ts';
+export { emptyWriteScopes, pathScopeMatches, relativeToWorktree } from './path-scope.ts';
 // KAR-08.1 — F5.4's four-level ladder as one pure function of
 // `(level, request, scope)`. No I/O, no vendor CLI, no clock.
 export type {

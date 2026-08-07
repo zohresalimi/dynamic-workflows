@@ -75,8 +75,19 @@ export type PermissionOutcomeKind = (typeof PERMISSION_OUTCOMES)[number];
  * - `path-escape` — the path resolves outside the node's worktree. The detail
  *   names the route (`cwd`, `not-absolute`, and KAR-08.2's `traversal`,
  *   `symlink`, `absolute`).
+ * - `scope-violation` — KAR-08.7: a `fs/write_text_file` inside the worktree
+ *   but outside the node's *declared* `pathScope`. Decided one layer up, in
+ *   `@DeFlow/daemon`'s `permission-ladder.ts`, from `ToolCallLocation.path` on
+ *   a `session/request_permission` — this file has no `PathScope` to check it
+ *   against — but the code lives in the shared vocabulary so a denial is one
+ *   shape whichever layer produced it.
  */
-export const PERMISSION_DENY_CODES = ['level-read', 'level-no-network', 'path-escape'] as const;
+export const PERMISSION_DENY_CODES = [
+  'level-read',
+  'level-no-network',
+  'path-escape',
+  'scope-violation',
+] as const;
 
 export type PermissionDenyCode = (typeof PERMISSION_DENY_CODES)[number];
 

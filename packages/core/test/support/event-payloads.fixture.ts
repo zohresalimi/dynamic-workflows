@@ -189,6 +189,12 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     requested: '../../etc/passwd',
     reason: { code: 'path-escape', detail: 'traversal' },
   },
+  'node.scope_warning': {
+    node: NODE,
+    attempt: 0,
+    declared: ['src/**'],
+    paths: ['docs/readme.md'],
+  },
   'env.declared': { node: NODE, attempt: 0, name: 'NPM_TOKEN' },
   'sandbox.degraded': {
     node: NODE,

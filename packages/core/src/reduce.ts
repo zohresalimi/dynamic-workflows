@@ -435,6 +435,15 @@ function project(state: RunState, event: Event): Transition {
       return null;
 
     /**
+     * KAR-08.7 AC3. Also evidence, not run state, and for the same reason as
+     * `permission.denied` above: D14 makes a declared-scope violation a
+     * warning, never a gate, so nothing about scheduling may change because
+     * one landed. A node that triggers this is still `completed`.
+     */
+    case 'node.scope_warning':
+      return null;
+
+    /**
      * KAR-08.4 AC6 — evidence for the node inspector and the run report, not
      * run state: nothing about scheduling changes because a variable reached
      * the child, and the ledger scan for its *value* is a property of the

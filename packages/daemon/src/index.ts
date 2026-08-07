@@ -410,7 +410,7 @@ export type {
   LadderDecision,
   LadderPorts,
 } from './services/permission-ladder.ts';
-export { ladderDecider } from './services/permission-ladder.ts';
+export { ladderDecider, ladderDeniedPayload } from './services/permission-ladder.ts';
 export type {
   PermissionDecider,
   PermissionDecision,
@@ -420,6 +420,11 @@ export type {
   ToolKind,
 } from './services/permission-service.ts';
 export { createPermissionService } from './services/permission-service.ts';
+// KAR-08.7 AC3, AC5 — the completion-time backstop: diff the worktree with a
+// real `git status`, and warn (never gate) on anything that landed outside
+// the node's declared write scope.
+export type { ScopeWarningPayload } from './services/scope-diff.ts';
+export { changedPaths, outOfScopePaths, scopeWarningOf } from './services/scope-diff.ts';
 export type {
   CommandPolicy,
   CreateTerminalRequest,

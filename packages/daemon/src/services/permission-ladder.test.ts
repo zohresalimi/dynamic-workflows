@@ -14,11 +14,16 @@
  * That is asserted by counting constructions, because a comment saying "we do
  * not throw here" is not a test.
  *
- * Verifies: EPIC-08-S5, EPIC-08-S6 · AC6, AC7
+ * KAR-08.7 AC2's premise is the improvement over F5.3 that ACP makes
+ * possible: a declared-scope violation is rejected *before it happens*,
+ * from `ToolCallLocation.path`, rather than only discovered on completion.
+ *
+ * Verifies: EPIC-08-S5, EPIC-08-S6, EPIC-08-S11 · AC6, AC7 (KAR-08.1); AC2, AC6 (KAR-08.7)
  */
 import type { PermissionScope } from '@DeFlow/core';
+import { NodeIdSchema, PermissionDeniedSchema } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
-import { type LadderDecision, ladderDecider } from './permission-ladder.ts';
+import { type LadderDecision, ladderDecider, ladderDeniedPayload } from './permission-ladder.ts';
 import type { PermissionQuery } from './permission-service.ts';
 
 const WT = '/tmp/DeFlow-ladder/wt';
@@ -254,5 +259,173 @@ suite('cancelled is an outcome, not an error', () => {
     await decide(query({ toolKind: 'fetch', locations: [{ path: 'https://evil.example/x' }] }));
 
     expect(seen.map((decision) => decision.answered)).toEqual(['cancelled']);
+  });
+});
+
+suite('KAR-08.7 AC2 — a declared-scope violation is rejected before it happens', () => {
+  it('rejects an in-worktree, out-of-scope edit, with no escalation', async () => {
+    let escalated = 0;
+    const decide = ladderDecider({
+      level: 'worktree',
+      scope: SCOPE,
+      pathScope: ['src/**'],
+      escalate: () => {
+        escalated += 1;
+        return Promise.resolve({ outcome: 'selected', optionId: 'a1' } as const);
+      },
+    });
+
+    const answer = await decide(query({ locations: [{ path: `${WT}/infra/main.tf` }] }));
+
+    expect(answer).toEqual({ outcome: 'selected', optionId: 'r1' });
+    expect(escalated).toBe(0);
+  });
+
+  it('records the violation with the requested path and the declared globs, separately', async () => {
+    const seen: LadderDecision[] = [];
+    const decide = ladderDecider({
+      level: 'worktree',
+      scope: SCOPE,
+      pathScope: ['src/**'],
+      record: (decision) => seen.push(decision),
+    });
+
+    await decide(query({ locations: [{ path: `${WT}/infra/main.tf` }] }));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.outcome).toBe('deny');
+    expect(seen[0]?.reason).toEqual({ code: 'scope-violation', detail: 'infra/main.tf' });
+    expect(seen[0]?.declared).toEqual(['src/**']);
+    expect(seen[0]?.answered).toBe('reject');
+  });
+
+  it('allows an in-scope write, and never involves the check at all', async () => {
+    const seen: LadderDecision[] = [];
+    const decide = ladderDecider({
+      level: 'worktree',
+      scope: SCOPE,
+      pathScope: ['src/**'],
+      record: (decision) => seen.push(decision),
+    });
+
+    await expect(decide(query())).resolves.toEqual({ outcome: 'selected', optionId: 'a1' });
+    expect(seen[0]?.declared).toBeNull();
+  });
+
+  it('normalizes the requested path the way KAR-08.2s containment check does (AC6)', async () => {
+    const decide = ladderDecider({ level: 'worktree', scope: SCOPE, pathScope: ['src/**'] });
+
+    await expect(decide(query({ locations: [{ path: `${WT}/./src/a.ts` }] }))).resolves.toEqual({
+      outcome: 'selected',
+      optionId: 'a1',
+    });
+  });
+
+  it('never fires on a read — declared scope is a write concern', async () => {
+    const decide = ladderDecider({ level: 'worktree', scope: SCOPE, pathScope: ['src/**'] });
+
+    await expect(
+      decide(query({ toolKind: 'read', locations: [{ path: `${WT}/infra/main.tf` }] })),
+    ).resolves.toEqual({ outcome: 'selected', optionId: 'a1' });
+  });
+
+  it('does not override a denial the ladder already made for a different reason', async () => {
+    const seen: LadderDecision[] = [];
+    const decide = ladderDecider({
+      level: 'read',
+      scope: SCOPE,
+      pathScope: ['src/**'],
+      record: (decision) => seen.push(decision),
+    });
+
+    await decide(query());
+
+    expect(seen[0]?.reason).toEqual({ code: 'level-read' });
+    expect(seen[0]?.declared).toBeNull();
+  });
+
+  it('does nothing when the node declared no scope at all', async () => {
+    const decide = ladderDecider({ level: 'worktree', scope: SCOPE });
+
+    await expect(decide(query({ locations: [{ path: `${WT}/infra/main.tf` }] }))).resolves.toEqual({
+      outcome: 'selected',
+      optionId: 'a1',
+    });
+  });
+});
+
+suite('ladderDeniedPayload — the permission.denied event a denial produces', () => {
+  const node = { node: NodeIdSchema.parse('n1'), attempt: 0 };
+
+  it('builds a payload PermissionDeniedSchema accepts, declared alongside requested', () => {
+    const decision: LadderDecision = {
+      query: query(),
+      level: 'worktree',
+      method: 'fs/write_text_file',
+      path: `${WT}/infra/main.tf`,
+      outcome: 'deny',
+      reason: { code: 'scope-violation', detail: 'infra/main.tf' },
+      declared: ['src/**'],
+      answered: 'reject',
+    };
+
+    const payload = ladderDeniedPayload(decision, node);
+
+    expect(payload).toEqual({
+      node: 'n1',
+      attempt: 0,
+      permission: 'worktree',
+      method: 'fs/write_text_file',
+      requested: `${WT}/infra/main.tf`,
+      reason: { code: 'scope-violation', detail: 'infra/main.tf' },
+      declared: ['src/**'],
+    });
+    expect(PermissionDeniedSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('omits `declared` for a denial that never carried one', () => {
+    const decision: LadderDecision = {
+      query: query(),
+      level: 'read',
+      method: 'fs/write_text_file',
+      path: `${WT}/src/a.ts`,
+      outcome: 'deny',
+      reason: { code: 'level-read' },
+      declared: null,
+      answered: 'reject',
+    };
+
+    const payload = ladderDeniedPayload(decision, node);
+
+    expect(payload).not.toHaveProperty('declared');
+    expect(PermissionDeniedSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('returns null for anything that is not a plain denial', () => {
+    const gate: LadderDecision = {
+      query: query(),
+      level: 'worktree+net',
+      method: 'network',
+      path: 'https://evil.example/x',
+      outcome: 'gate',
+      reason: { code: 'domain-not-allowlisted', detail: 'evil.example' },
+      declared: null,
+      answered: 'reject',
+    };
+    const cancelled: LadderDecision = { ...gate, outcome: 'deny', answered: 'cancelled' };
+    const noSubject: LadderDecision = {
+      query: query(),
+      level: 'worktree',
+      method: 'unknown',
+      path: null,
+      outcome: 'gate',
+      reason: { code: 'not-allowlisted', detail: 'other' },
+      declared: null,
+      answered: 'reject',
+    };
+
+    expect(ladderDeniedPayload(gate, node)).toBeNull();
+    expect(ladderDeniedPayload(cancelled, node)).toBeNull();
+    expect(ladderDeniedPayload(noSubject, node)).toBeNull();
   });
 });

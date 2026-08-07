@@ -71,7 +71,14 @@ suite('the three outcomes are a closed set (AC2)', () => {
   });
 
   it('names every reason code, so a reason is never a prose blob', () => {
-    expect([...PERMISSION_DENY_CODES]).toEqual(['level-read', 'level-no-network', 'path-escape']);
+    expect([...PERMISSION_DENY_CODES]).toEqual([
+      'level-read',
+      'level-no-network',
+      'path-escape',
+      // KAR-08.7: decided one layer up, by the daemon's permission ladder,
+      // from the node's declared pathScope — not by this function.
+      'scope-violation',
+    ]);
     expect([...PERMISSION_GATE_CODES]).toEqual([
       'not-allowlisted',
       'domain-not-allowlisted',

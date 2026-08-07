@@ -393,6 +393,11 @@ export const REQUESTED_PATH_MAX = 4096;
  *
  * `permission` is the level the request was decided at, so a denial can be
  * read without joining back to `node.scheduled`.
+ *
+ * `declared` (KAR-08.7 AC2) is populated only for a `scope-violation`: the
+ * node's declared write globs, as a separate structured field rather than
+ * folded into `reason.detail` — the node inspector renders `requested` next
+ * to `declared`, and neither is a sentence.
  */
 export const PermissionDeniedSchema = z.strictObject({
   node: NodeIdSchema,
@@ -408,6 +413,28 @@ export const PermissionDeniedSchema = z.strictObject({
     code: z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a reason code, not prose'),
     detail: singleLine().optional(),
   }),
+  declared: z.array(z.string()).optional(),
+});
+
+/**
+ * KAR-08.7 AC3, AC5 — the completion-time backstop for an adapter that never
+ * populated `ToolCallLocation`, so no `permission.denied` could fire at
+ * request time (EPIC-08-S11's third scenario, EPIC-08-S30).
+ *
+ * A **warning**, not a gate — D14 and §6.3 are explicit that a declared scope
+ * is a prediction, not ground truth, so `paths` lands on the node without
+ * touching its status. `declared` and `paths` travel separately, the same
+ * reasoning as `PermissionDeniedSchema.declared`: two facts, not one
+ * formatted sentence.
+ */
+export const NodeScopeWarningSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  /** The node's declared write globs, verbatim. */
+  declared: z.array(z.string()),
+  /** The changed paths, worktree-relative, that matched none of them.
+   * Non-empty by construction: a clean diff never warns. */
+  paths: z.array(z.string().min(1)).min(1),
 });
 
 /**
@@ -1063,6 +1090,7 @@ export const EVENT_SCHEMAS = {
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
   'permission.denied': { v: 1, payload: PermissionDeniedSchema },
+  'node.scope_warning': { v: 1, payload: NodeScopeWarningSchema },
   'env.declared': { v: 1, payload: EnvDeclaredSchema },
   'sandbox.degraded': { v: 1, payload: SandboxDegradedSchema },
   'node.cancelled': { v: 1, payload: NodeCancelledSchema },
