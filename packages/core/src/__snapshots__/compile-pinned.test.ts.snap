@@ -1,0 +1,92 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`compilePinnedSegments preserves the author’s bytes (AC2) > compiles the fixture spec to a stable golden rendering 1`] = `
+[
+  {
+    "id": "pinned-spec-goal",
+    "kind": "pinned.spec",
+    "quoted": [
+      {
+        "field": "goal",
+        "text": "Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.",
+      },
+      {
+        "field": "nonGoals",
+        "text": "Rewriting the payment gateway integration",
+      },
+      {
+        "field": "nonGoals",
+        "text": "Touching the pricing service",
+      },
+    ],
+    "text": "Goal (pinned, verbatim from the approved spec):
+Migrate the checkout module from Vue 2 to Vue 3 without changing its public API.
+
+Non-goals:
+- Rewriting the payment gateway integration
+- Touching the pricing service",
+  },
+  {
+    "id": "pinned-spec-criteria",
+    "kind": "pinned.spec",
+    "quoted": [
+      {
+        "field": "acceptanceCriteria",
+        "text": "unit-tests-pass: All existing checkout unit tests pass unmodified.",
+      },
+      {
+        "field": "acceptanceCriteria",
+        "text": "no-v-model-regression: No v-model modifier is silently dropped by the codemod.",
+      },
+      {
+        "field": "acceptanceCriteria",
+        "text": "manual-visual-check: The checkout flow renders identically in a manual pass.",
+      },
+    ],
+    "text": "Acceptance criteria (pinned, verbatim from the approved spec):
+- unit-tests-pass: All existing checkout unit tests pass unmodified.
+- no-v-model-regression: No v-model modifier is silently dropped by the codemod.
+- manual-visual-check: The checkout flow renders identically in a manual pass.",
+  },
+  {
+    "id": "pinned-constraints-safety",
+    "kind": "pinned.constraints",
+    "quoted": [
+      {
+        "field": "constraints",
+        "text": "must not change the public API of @voyado/ui",
+      },
+      {
+        "field": "constraints",
+        "text": "must not run database migrations",
+      },
+    ],
+    "text": "Safety constraints (pinned):
+- must not change the public API of @voyado/ui
+- must not run database migrations",
+  },
+  {
+    "id": "pinned-pathscope",
+    "kind": "pinned.pathscope",
+    "quoted": [
+      {
+        "field": "pathScopes",
+        "text": "src/checkout/**",
+      },
+    ],
+    "text": "Declared path scopes (pinned):
+- write: src/checkout/**",
+  },
+  {
+    "id": "pinned-constraints-permission",
+    "kind": "pinned.constraints",
+    "quoted": [
+      {
+        "field": "permission",
+        "text": "worktree",
+      },
+    ],
+    "text": "Permission level (pinned): worktree",
+  },
+]
+`;

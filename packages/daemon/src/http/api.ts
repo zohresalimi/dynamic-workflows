@@ -17,14 +17,19 @@
  */
 import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
 import type { EstimatorInputs, RunId } from '@DeFlow/core';
+import { SpecEditRefused } from '@DeFlow/core';
 import type { StoredEvent } from '@DeFlow/ledger';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
+import { submitTask } from '../intake/intake.ts';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
+import { abandonRun, approveSpec, editSpec, rejectSpec, SpecGateNotOpen } from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
+import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { runSummary } from './run-summary.ts';
 
@@ -92,6 +97,200 @@ api.get('/health', (c) =>
     uptimeMs: uptimeMs(),
     pid: process.pid,
     bootId: BOOT_ID,
+  }),
+);
+
+/**
+ * KAR-10.1 AC1 — `POST /api/runs`: task intake from text, a file, an issue
+ * reference or a spec document.
+ *
+ * Creating a run does **not** start execution — the 201 body's
+ * `status: "awaiting-spec-approval"` is a fixed literal, not a read of
+ * `RunState.status`, because a run intake creates has no `RunState` folded
+ * for it yet (no event moves `RunState` until `run.created`, which is
+ * KAR-10.2's to append).
+ * All this route does is normalise the input into one `task.submitted` event;
+ * `submitTask` (../intake/intake.ts) owns everything else, so `DeFlow run` can
+ * call the exact same function rather than re-implementing this route (AC7).
+ *
+ * AC7 also asks for `provenance.by: 'cli'` from the CLI and `'ui'` from
+ * anything else — a distinction the *documented* request body carries no field
+ * for (docs/11-api-and-realtime.md §7.1's example is `input`/`cwd`/`budget`/
+ * `permission` only). `X-DeFlow-Submitted-By` is that one bit, sent only by
+ * `DeFlow run` (@DeFlow/cli): a header rather than a body field, so the wire
+ * shape AC1 documents stays exactly what it documents.
+ */
+api.post('/runs', async (c) => {
+  const ports = intakePorts();
+  if (ports === null) {
+    return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_request', field: '<root>', message: 'body is not JSON' }, 400);
+  }
+
+  const idempotencyKey = c.req.header('Idempotency-Key');
+  const by = c.req.header('X-DeFlow-Submitted-By') === 'cli' ? 'cli' : 'ui';
+  const result = await submitTask(
+    { body, by, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) },
+    ports,
+  );
+
+  if (result.outcome === 'rejected') {
+    return c.json({ error: 'invalid_request', field: result.field, message: result.message }, 400);
+  }
+  return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
+});
+
+/**
+ * KAR-10.3 AC4 — the F1.3 gate's four operator actions, as four routes.
+ *
+ * `POST /runs/:id/spec/approve` is the one docs/11-api-and-realtime.md §6 has
+ * always documented; `edit`, `reject` and `abandon` are the other three actions
+ * §1.3 names, and they are separate paths rather than a `decision` field because
+ * each takes different inputs and each answers differently — an edit carries a
+ * whole replacement document and can be *refused*, a rejection carries a reason,
+ * and an abandon carries nothing at all.
+ *
+ * All four go through `@DeFlow/daemon`'s `spec/gate.ts` — the same functions
+ * `DeFlow approve` reaches over this very route (EPIC-10-S18: two surfaces, one
+ * code path). `by` comes off `X-DeFlow-Submitted-By`, the same one-bit header
+ * `POST /runs` uses, so the wire shape §7.1 documents stays what it documents.
+ */
+function gateBy(header: string | undefined): 'ui' | 'cli' {
+  return header === 'cli' ? 'cli' : 'ui';
+}
+
+/**
+ * A gate action, with the four ways it can fail answered once.
+ *
+ * `SpecGateNotOpen` is a 409 rather than a 400: the request was well formed and
+ * the caller is not confused about the shape of anything — a second approval is
+ * a *conflict* with what the ledger already says, which is exactly what 409 is
+ * for and what lets a UI say "somebody already approved this".
+ */
+async function gateAction(
+  c: Context,
+  act: (ports: NonNullable<ReturnType<typeof intakePorts>>, runId: RunId) => Promise<unknown>,
+): Promise<Response> {
+  const ports = intakePorts();
+  if (ports === null) return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+
+  const runId = asRunId(c.req.param('id') ?? '');
+  if (runId === null) return c.json({ error: 'not_found', path: c.req.path }, 404);
+
+  try {
+    return c.json(await act(ports, runId));
+  } catch (error) {
+    if (error instanceof SpecGateNotOpen) {
+      return c.json({ error: 'gate_not_open', message: error.message }, 409);
+    }
+    if (error instanceof SpecEditRefused) {
+      return c.json({ error: 'invalid_spec', message: error.message, issues: error.issues }, 400);
+    }
+    throw error;
+  }
+}
+
+api.post('/runs/:id/spec/approve', (c) =>
+  gateAction(c, async (ports, runId) => {
+    const approval = await approveSpec({
+      db: ports.db,
+      runId,
+      epoch: ports.epoch,
+      ts: ports.clock.now(),
+      by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+    });
+    return {
+      runId,
+      specHash: approval.specHash,
+      by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+    };
+  }),
+);
+
+api.post('/runs/:id/spec/edit', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const document = (body as { document?: unknown } | null)?.document;
+  if (document === undefined) {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'document',
+        message:
+          'an edit carries the whole amended framed document (DeFlow.taskspecdraft.v1), not a ' +
+          'patch: the gate computes the RFC 6902 patch itself, so the ledger cannot record a ' +
+          'diff nobody derived from the two documents it claims to relate.',
+      },
+      400,
+    );
+  }
+
+  return gateAction(c, (ports, runId) =>
+    editSpec({
+      db: ports.db,
+      runId,
+      epoch: ports.epoch,
+      ts: ports.clock.now(),
+      by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+      edited: document,
+    }).then((edit) => ({
+      runId,
+      specHash: edit.to,
+      patch: edit.patch,
+      revalidation: edit.revalidation,
+    })),
+  );
+});
+
+api.post('/runs/:id/spec/reject', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const reason = (body as { reason?: unknown } | null)?.reason;
+  if (typeof reason !== 'string' || reason.trim() === '') {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'reason',
+        message:
+          'a rejection carries a reason: the next framing attempt is given it as an input, and a ' +
+          'rejection with nothing to say sends the agent back to the same blank page that ' +
+          'produced the spec you just refused.',
+      },
+      400,
+    );
+  }
+
+  return gateAction(c, (ports, runId) =>
+    rejectSpec({
+      db: ports.db,
+      runId,
+      epoch: ports.epoch,
+      ts: ports.clock.now(),
+      by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+      reason,
+      provider: (body as { provider?: string }).provider ?? 'claude-code',
+    }).then((rejection) => ({
+      runId,
+      attempt: rejection.attempt,
+      reframing: rejection.reframe !== null,
+    })),
+  );
+});
+
+api.post('/runs/:id/spec/abandon', (c) =>
+  gateAction(c, (ports, runId) => {
+    abandonRun({
+      db: ports.db,
+      runId,
+      epoch: ports.epoch,
+      ts: ports.clock.now(),
+      by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+    });
+    return Promise.resolve({ runId, status: 'aborted' });
   }),
 );
 

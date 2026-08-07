@@ -469,9 +469,14 @@ export async function buildPacket(input: PacketBuildInput): Promise<PacketBuild>
     warnings: [warning, planning].filter((text): text is string => text !== null),
     demotion: demotion.result,
     // The same list `buildPinnedSegments` rendered, counted rather than
-    // re-derived — see `pinnedConstraintsOf`.
+    // re-derived — see `pinnedConstraintsOf`. The node is passed for the same
+    // reason the compiler takes it (KAR-10.4 AC6): a `forbid` the restatement
+    // pass turned into an `allow-only` is no longer a prohibition in the
+    // prompt, and counting it as one would make the doctor's forbid ratio
+    // report a decay indicator against constraints nobody was told to obey
+    // negatively.
     constraints: countConstraintForms(
-      pinnedConstraintsOf(input.pinned.spec, input.pinned.constraints ?? []),
+      pinnedConstraintsOf(input.pinned.spec, input.pinned.constraints ?? [], input.pinned.node),
     ),
   };
 }

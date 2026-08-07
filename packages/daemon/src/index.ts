@@ -387,8 +387,6 @@ export type {
   RecoveryStep,
 } from './recovery.ts';
 export { RECOVERED_STEPS, RECOVERY_STEPS, recover } from './recovery.ts';
-// KAR-06.5 — the imperative half of the retry ladder: the classified failure,
-// the wake row and the events, in one transaction.
 export type { RecordedFailure, RecordFailureInput } from './retry.ts';
 export { recordNodeFailure } from './retry.ts';
 export { daemonEpoch, headSeq, setDaemonEpoch, setHeadSeq } from './runtime.ts';
@@ -498,6 +496,33 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+export { amendSpec } from './spec/amend.ts';
+// KAR-06.5 — the imperative half of the retry ladder: the classified failure,
+// the wake row and the events, in one transaction.
+// KAR-10.3 — the F1.3 approval gate: the blocking human node, its one
+// `node_wake` row, and the four operator actions.
+export type {
+  AbandonOptions,
+  Approval,
+  ApproveOptions,
+  EditOptions,
+  GateOptions,
+  OpenGateOptions,
+  Rejection,
+  RejectOptions,
+  SpecDecidedBy,
+  SpecEdit,
+} from './spec/gate.ts';
+export {
+  abandonRun,
+  approveSpec,
+  editSpec,
+  FRAMING_NODE,
+  openSpecApprovalGate,
+  rejectSpec,
+  SPEC_REJECTION_LIMIT,
+  SpecGateNotOpen,
+} from './spec/gate.ts';
 export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';
 export { foldCalibrationSample, preflightBudget } from './tokens/calibrate.ts';
 export {

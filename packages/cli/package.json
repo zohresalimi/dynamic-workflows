@@ -3,7 +3,19 @@
   "version": "0.0.0",
   "type": "module",
   "description": "The one published package: DeFlow's bins, the inlined daemon and the built UI.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
   "dependencies": {
+    "@DeFlow/core": "workspace:*",
     "@DeFlow/daemon": "workspace:*",
     "@DeFlow/mock-agent": "workspace:*"
   },
@@ -11,6 +23,8 @@
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/ledger": "workspace:*",
+    "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",

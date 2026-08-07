@@ -40,10 +40,24 @@
 import { z } from 'zod';
 import { CONTEXTPACKET_SCHEMA_ID, ContextPacketSchema } from './context-packet.ts';
 import { FACT_SCHEMA_ID, FactSchema } from './fact.ts';
+import { TASKSPEC_DRAFT_SCHEMA_ID, TaskSpecDraftSchema } from './framing.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from './plan-graph.ts';
 import { PLANPATCH_SCHEMA_ID, PlanPatchSchema } from './plan-patch.ts';
+import {
+  RECON_FACT_SCHEMA_ID,
+  RECON_SURVEY_SCHEMA_ID,
+  ReconFactValueSchema,
+  ReconSurveySchema,
+} from './recon.ts';
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
-import { FINDING_SCHEMA_ID, FindingSchema, VERDICT_SCHEMA_ID, VerdictSchema } from './verdict.ts';
+import {
+  FINDING_SCHEMA_ID,
+  FindingSchema,
+  VERDICT_SCHEMA_ID,
+  VERDICT_V2_SCHEMA_ID,
+  VerdictSchema,
+  VerdictV2Schema,
+} from './verdict.ts';
 
 /**
  * The dialect, spelled once. 2020-12 is not arbitrary: it is what MCP tool
@@ -115,6 +129,28 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schema: PlanPatchSchema,
   },
   {
+    schemaId: RECON_FACT_SCHEMA_ID,
+    summary:
+      'The value of a reconnaissance fact: a toolchain, a command and whether the manifest ' +
+      'really declares it, a counted path set, the gates already in the repo, or a stated ' +
+      'detection failure (F2.2).',
+    schema: ReconFactValueSchema,
+  },
+  {
+    schemaId: RECON_SURVEY_SCHEMA_ID,
+    summary:
+      'What a recon session claims about the repository: language, package manager and the ' +
+      'commands it believes exist — claims only, measured against what DeFlow read (F2.2).',
+    schema: ReconSurveySchema,
+  },
+  {
+    schemaId: TASKSPEC_DRAFT_SCHEMA_ID,
+    summary:
+      'The document the framing interview returns: the eight authored fields, the F7.4 ' +
+      'criteria contract, and no digest the agent could not honestly compute (F1.2).',
+    schema: TaskSpecDraftSchema,
+  },
+  {
     schemaId: TASKSPEC_SCHEMA_ID,
     summary: 'The approved intent a run is measured against (F1.1).',
     schema: TaskSpecSchema,
@@ -123,6 +159,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schemaId: VERDICT_SCHEMA_ID,
     summary: 'A gate verdict: outcome, per-criterion status and structured findings (F7.4).',
     schema: VerdictSchema,
+  },
+  {
+    schemaId: VERDICT_V2_SCHEMA_ID,
+    summary:
+      'A gate verdict, naming the specHash it was judged against so a mid-run spec edit voids ' +
+      'it rather than silently keeping it green (F1.5, F7.4).',
+    schema: VerdictV2Schema,
   },
 ];
 

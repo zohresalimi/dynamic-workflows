@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/DeFlow.reconfact.v1.json",
+  "title": "DeFlow.reconfact.v1",
+  "description": "The value of a reconnaissance fact: a toolchain, a command and whether the manifest really declares it, a counted path set, the gates already in the repo, or a stated detection failure (F2.2).",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "reconKind": {
+          "type": "string",
+          "const": "toolchain"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claimedLanguage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "reconKind",
+        "language",
+        "manifest"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "reconKind": {
+          "type": "string",
+          "const": "command"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "test",
+            "build",
+            "lint",
+            "typecheck"
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "script": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reconKind",
+        "role",
+        "command",
+        "script"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "reconKind": {
+          "type": "string",
+          "const": "scope"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fileCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "survey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reconKind",
+        "paths",
+        "fileCount",
+        "survey"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "reconKind": {
+          "type": "string",
+          "const": "gates"
+        },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "reconKind",
+        "gates"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "reconKind": {
+          "type": "string",
+          "const": "detection-failed"
+        },
+        "what": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "survey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reconKind",
+        "what",
+        "detail",
+        "survey"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

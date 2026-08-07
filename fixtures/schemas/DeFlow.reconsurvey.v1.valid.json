@@ -1,0 +1,14 @@
+{
+  "schemaId": "DeFlow.reconsurvey.v1",
+  "toolchain": {
+    "language": "typescript",
+    "packageManager": "pnpm",
+    "frameworks": ["vue", "vite"]
+  },
+  "commands": {
+    "test": "pnpm test",
+    "build": "pnpm build",
+    "typecheck": "pnpm typecheck"
+  },
+  "notes": "The workspace is a pnpm monorepo; packages/ui holds the design system."
+}

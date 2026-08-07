@@ -1,0 +1,6 @@
+{
+  "schemaId": "DeFlow.reconsurvey",
+  "toolchain": { "language": "" },
+  "commands": { "test": "pnpm test", "deploy": "pnpm deploy" },
+  "fileCount": 47
+}

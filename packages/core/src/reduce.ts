@@ -30,6 +30,7 @@
  * Verifies: EPIC-03-S15, EPIC-03-S16, EPIC-03-S17 · AC1, AC2, AC3, AC5, AC6,
  * AC7, AC8
  */
+import { isVerdictVoid } from './acceptance-board.ts';
 import { addConsumption } from './cost-rollup.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
@@ -45,6 +46,7 @@ import {
   type RunState,
   type RunStatus,
 } from './run-state.ts';
+import { SPEC_GATE_NODE } from './spec-approval.ts';
 
 /** A node nothing is yet known about — see `initialNodeState`. */
 const UNKNOWN_NODE: NodeState = initialNodeState();
@@ -146,21 +148,88 @@ function project(state: RunState, event: Event): Transition {
   const ts = typeof rawTs === 'number' ? rawTs : 0;
 
   switch (event.kind) {
+    // KAR-10.1: intake's one event. It carries the raw task and its
+    // provenance for the ledger to answer "what did I actually ask for?" —
+    // nothing in it is projection state. `run.created` (below) is what moves
+    // `RunState`, once framing has produced a spec to run against.
+    case 'task.submitted':
+      return null;
+
     // `cwd` is the repository the run executes against, and it is folded here
     // rather than read from the daemon's process because F5.2's write lock is
     // keyed on it: a scheduler that asked `process.cwd()` would key the lock
     // differently during a replay than it did live.
     case 'run.created': {
       const repoRoot = event.payload.cwd;
+      const specHash = event.payload.spec.specHash;
       return state.runId === event.runId &&
         state.status === 'created' &&
-        state.repoRoot === repoRoot
+        state.repoRoot === repoRoot &&
+        state.specHash === specHash
         ? null
-        : { ...state, runId: event.runId, status: 'created', repoRoot };
+        : { ...state, runId: event.runId, status: 'created', repoRoot, specHash };
     }
 
-    case 'run.spec.approved':
-      return withStatus(state, 'spec-approved');
+    /**
+     * KAR-10.3 AC5, AC8. An amendment moves the run's *current* identity and
+     * touches nothing else — in particular it does not clear `specApproved`,
+     * because a mid-run edit is the operator approving the edited spec in the
+     * same breath (the daemon appends the approval beside it) and a projection
+     * that un-approved the run here would stop the world between two rows of
+     * one transaction.
+     *
+     * The pre-edit spec is untouched, as it must be: it is still
+     * `run.created.spec`, still at `from`, and every verdict that cited it is
+     * still addressable (EPIC-10-S29's last scenario).
+     */
+    case 'spec.amended':
+      return state.specHash === event.payload.to ? null : { ...state, specHash: event.payload.to };
+
+    /**
+     * KAR-10.3 AC4 / KAR-10.4. The digests are evidence, not projection state:
+     * what a packet re-injects is rebuilt from the spec by
+     * `buildPinnedSegments`, and `assertPinIntegrity` compares the render
+     * against this row in the ledger. Folding it would create a second copy of
+     * the pinned set that could disagree with the first.
+     */
+    case 'spec.pinned':
+      return null;
+
+    /**
+     * KAR-10.3 AC4. The approval is folded as a *fact* — which digest, approved
+     * by which surface — and the status only advances from the gate.
+     *
+     * A run that is already `running` stays running: a mid-run edit re-approves
+     * at the new hash (AC8) in the same transaction as the amendment, and a
+     * transition back to `spec-approved` there would un-start a run that never
+     * stopped, throwing away `planHash` in `withStatus`'s wake for a decision
+     * that changed no plan.
+     *
+     * KAR-10.4 AC5 — **an approval at a new hash empties `criteriaSatisfied`.**
+     * Every verdict in the ledger was formed against the contract that was in
+     * force when it ran; moving the contract voids all of them at once
+     * (EPIC-10-S29's third scenario), and the epic's notes are explicit that
+     * the rule must not be softened by keeping the criteria whose text happens
+     * not to have changed. The verdicts themselves are untouched and still
+     * addressable at their own hash — this clears a *fold*, not history — and a
+     * re-run at the new hash puts each row back as it earns it. Re-approving an
+     * unchanged spec clears nothing, which is the same rule: nothing moved.
+     */
+    case 'run.spec.approved': {
+      const approved = { specHash: event.payload.specHash, by: event.payload.by };
+      const moves =
+        state.specApproved !== null && state.specApproved.specHash !== approved.specHash;
+      const same =
+        state.specApproved?.specHash === approved.specHash && state.specApproved.by === approved.by;
+      const advances = state.status === 'created' || state.status === 'awaiting-spec-approval';
+      if (same && !advances) return null;
+      const moved = advances ? { ...state, status: 'spec-approved' as RunStatus } : state;
+      return {
+        ...moved,
+        specApproved: approved,
+        ...(moves ? { criteriaSatisfied: [] } : {}),
+      };
+    }
 
     case 'run.started': {
       const planHash = event.payload.planHash;
@@ -535,22 +604,60 @@ function project(state: RunState, event: Event): Transition {
     case 'handoff.oversize':
       return null;
 
-    // F7.4: which criteria are actually satisfied is a run-level fact, and it
-    // is what `run.completed`'s `partial` outcome is measured against.
-    case 'gate.evaluated':
+    /**
+     * F7.4: which criteria are actually satisfied is a run-level fact, and it
+     * is what `run.completed`'s `partial` outcome is measured against.
+     *
+     * KAR-10.4 AC5 — **and only against the spec now in force.** A verdict
+     * carries the `specHash` it was judged under, and one that does not name
+     * the run's current hash is void: not counted here, not counted on F7.4's
+     * board, and its gate re-scheduled (./acceptance-board.ts). A verdict that
+     * names none at all is void too — it cannot be shown to have judged this
+     * contract, and "it did not say" is not a citation.
+     *
+     * A run whose spec was never approved counts nothing, which is the same
+     * rule from the other side: F1.3 schedules no work before approval, so a
+     * verdict that arrived before one is judging a draft.
+     */
+    case 'gate.evaluated': {
+      const current = state.specApproved?.specHash;
+      if (current === undefined || isVerdictVoid(event.payload.verdict, current)) return null;
       return withCriteria(
         state,
         event.payload.verdict.criteria
           .filter((criterion) => criterion.status === 'satisfied')
           .map((criterion) => criterion.id),
       );
+    }
 
-    case 'human.requested':
-      return withNode(state, seq, event.payload.node, (current) => ({
+    /**
+     * KAR-10.3 AC1. Every `human.requested` suspends its node; the one on the
+     * F1.3 gate node *also* moves the run, which is what makes
+     * `awaiting-spec-approval` a fold of the log rather than a status somebody
+     * set (EPIC-10-S13's third scenario).
+     *
+     * Keyed on the node id and not on the option set, because the options are
+     * the operator's affordances and a future story is free to add a fifth. The
+     * id is `SPEC_GATE_NODE` — one gate per run, so the projection can answer
+     * "is the spec still waiting?" without scanning the log.
+     *
+     * A gate opened after an approval — a re-opened gate following an edit
+     * (AC8) — moves the status back, which is correct: work stops until the
+     * operator answers again. `specApproved` is left where it is; it records
+     * what was approved, not whether anything is pending.
+     */
+    case 'human.requested': {
+      const suspended = withNode(state, seq, event.payload.node, (current) => ({
         ...current,
         status: 'suspended',
         suspension: { kind: 'human' },
       }));
+      if (event.payload.node !== SPEC_GATE_NODE) return suspended;
+      const base = suspended ?? state;
+      return base.status === 'awaiting-spec-approval'
+        ? suspended
+        : { ...base, status: 'awaiting-spec-approval' };
+    }
 
     case 'human.responded':
       return withNode(state, seq, event.payload.node, (current) =>

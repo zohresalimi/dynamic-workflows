@@ -205,7 +205,8 @@ run explicitly **does not start execution**: the 201 response carries
    `realpath` — same rule as the fs mediation boundary, applied here because intake runs before any
    permission level exists.
 5. A missing file, an unreadable file, or an unreachable issue URL fails with a typed error and
-   **no `run.created` row**, so a failed intake never leaves a half-born run in the list.
+   **no event and no run row at all** — not even the `task.submitted` this story appends on success
+   — so a failed intake never leaves a half-born run in the list.
 6. `POST /api/runs` honours an `Idempotency-Key` header: a repeat with the same key returns the
    original `runId` and creates no second run.
 7. `DeFlow run "…"` produces a ledger byte-identical (modulo ids and timestamps) to the same task
@@ -219,11 +220,23 @@ run explicitly **does not start execution**: the 201 response carries
 | 2   | integration | Real tmpdir + real `git init` with `GIT_CONFIG_GLOBAL=/dev/null`; `{kind:'file', path:'docs/spec.md'}` → the file's exact bytes land in the ledger | The reader trims or re-encodes                                   |
 | 3   | integration | `{kind:'file', path:'../../../etc/passwd'}` → typed rejection, and `SELECT count(*) FROM run` is 0                                                 | Path resolution happens after run creation                       |
 | 4   | integration | A 200 KiB spec file → the payload holds an `artifact://<sha256>` handle and the CAS holds the bytes                                                | The payload inlines an arbitrarily large blob into the event row |
-| 5   | integration | Two `POST /api/runs` with the same `Idempotency-Key` → same `runId`, one `run.created`                                                             | The key is accepted and ignored                                  |
+| 5   | integration | Two `POST /api/runs` with the same `Idempotency-Key` → same `runId`, and the whole ledger holds exactly one `task.submitted` and no `run.created`  | The key is accepted and ignored                                  |
 | 6   | e2e         | `DeFlow run "…"` against a booted daemon → `status: "awaiting-spec-approval"` and **zero** `node.scheduled` events                                 | The CLI starts execution itself                                  |
 | 7   | integration | An `issue` URL whose resolver returns 404 → typed failure, no run row, and the error names the URL                                                 | Failure is swallowed and an empty task is framed                 |
 
-**Notes / risks** — the `issue` kind is the only place in M1 where DeFlowd itself makes an outbound
+**Notes / risks** — **`run.created` moved to `KAR-10.2` (recorded 7 August 2026).** This story
+originally appended it alongside `task.submitted`. It cannot: `run.created`'s payload is
+`{ spec: TaskSpec; cwd; repo: { head, branch } }` ([04 §9](../../04-domain-model.md)), and intake
+has no `TaskSpec` — producing one here would be exactly the interpretation
+[06 §1.1](../../06-planning-and-replanning.md) forbids, and `reduce()`'s `run.created` case is the
+only writer of `RunState.repoRoot`, whose doc comment already treats `null` as correct until that
+event is folded. So intake appends **one** event, `task.submitted`, and the framing interview
+appends `run.created` once it has a spec to put in it (`KAR-10.2` AC11) — including the
+`repo.head` / `repo.branch` capture this story's flow scenario used to assert.
+[11 §7.1](../../11-api-and-realtime.md) and [04 §9](../../04-domain-model.md) were updated with the
+implementation; nothing is dropped, and the run is still un-startable until `run.spec.approved`.
+
+The `issue` kind is the only place in M1 where DeFlowd itself makes an outbound
 request, which sits awkwardly against NF1's _"full functionality with no network beyond what the
 provider CLIs themselves need."_ Shelling out to an already-authenticated `gh issue view --json` is
 the shape most consistent with AR-1's logic (the vendor's own tool, the user's own credentials) and
@@ -277,6 +290,9 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 4. Every `acceptanceCriteria[]` entry carries a `CriterionId` (`AC-1 … AC-n`), a single testable
    `statement`, and either a non-empty `verifiedBy` or `unverifiable: true` with a non-empty
    `reason`. A document violating this is a validation failure, not a warning.
+   _(Spelled `ac-1 … ac-n` as shipped, recorded 7 August 2026: the `CriterionId` KAR-02.2 shipped is
+   a lowercase slug (`^[a-z0-9][a-z0-9-]{0,62}$`), so the sequence is written in the case the domain
+   type actually accepts. The ordering is still numeric — `ac-10` sorts after `ac-9`.)_
 5. `knownFailureModes[]` entries each carry a `description` and a `detection` — "what going wrong
    looks like" and "how we would notice". An entry with a description and no detection is invalid.
 6. `nonGoals` is required and may not be empty. It is the field
@@ -293,6 +309,11 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
    segment sourced from a foreign node.
 10. `returns.maxTokens` for the framing node is set explicitly (**4000**, not the 1500 default) and
     an oversize return is handled by EPIC-09's bounded repair, never by truncation.
+11. **`run.created` is appended here _(added 7 August 2026, moved from `KAR-10.1`)_**, when the
+    interview has produced a valid `TaskSpec` and not before, carrying
+    `{ spec, cwd, repo: { head, branch } }` with `head` and `branch` read from the real repository
+    at that moment. A framing node that fails validation appends no `run.created` — the failure
+    modes in AC2 leave no half-born run, exactly as `KAR-10.1` AC5 does for intake.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
@@ -307,6 +328,7 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 | 7   | integration | Answer the question → `human.responded`, the answer appears in `priorDecisions` with `source: 'operator'`                                                                         | The answer is delivered to the agent but never recorded        |
 | 8   | unit        | Capability gate: a `provider_capabilities` row with `structuredOutput: false` → the framing node is refused with `adapter.capability-missing`                                     | The code reads a hardcoded matrix                              |
 | 9   | integration | Assembled framing packet golden-file snapshot with the normalising serializer → contains the raw task, pinned safety constraints and no foreign `history.summary`                 | Context is inherited implicitly                                |
+| 10  | integration | A valid spec → exactly one `run.created` follows `task.submitted`, carrying the spec and the real `repo.head` / `repo.branch`; the schema-invalid run of test 4 appends none      | `run.created` is appended when the node starts, not when it succeeds |
 
 **Notes / risks** — this story is entirely dependent on `structured_output` being populated on every
 success case, which [roadmap A4-2](../../17-roadmap.md) still lists as **Unverified**. If the M0-S1
@@ -315,6 +337,19 @@ onto the adapter that does support it and refusing the others, which is exactly 
 specifies. Note also that `--permission-prompt-tool` has already vanished from Claude Code's
 `--help`; do not build the read-permission enforcement on a vendor flag when DeFlow is the ACP
 client and owns the boundary itself.
+
+**Shipped shape, recorded 7 August 2026.** `runFramingInterview` drives the turn through a
+`FramingAgent` **port**, so the interview owns admission, the return contract, the clarifying-question
+suspension and `run.created`, and the *transport* stays the caller's choice. That is not a hedge —
+it is what the two halves of this story can each be proven with today. AC3's `structured_output`
+lives on a **vendor CLI flag** (`--json-schema` / `--output-schema`, `ShimSpec.structuredOutputFlag`),
+which is the exec-shim path and is exercised against a real spawned process in
+`packages/adapters/test/integration/structured-output.test.ts`; AC1's *"rejected at the boundary"*
+only means anything where DeFlow **is** the client, which is the ACP path and is exercised against a
+real agent in `packages/daemon/test/integration/framing-read-only.test.ts`. Whether an ACP session
+can carry a schema and return `structured_output` at all is precisely what roadmap A4-2 still lists
+as Unverified, and nothing here pretends otherwise: no ACP structured-output channel was invented to
+make one test file look tidier.
 
 ---
 
@@ -371,6 +406,39 @@ explicit that pause is an event and never an in-memory flag.
    to `needs_human` rather than continuing against a spec it no longer satisfies.
 9. A run may be abandoned from the gate; that appends `run.aborted` and leaves every artifact
    inspectable on disk (NF8).
+
+**Shipped shape, recorded 7 August 2026.** Four decisions this story had to make, each with a
+tempting alternative:
+
+- **The operator edits the framed document, not the sealed `TaskSpec`.** EPIC-10-S14's third
+  scenario is an edit that removes a criterion's `verifiedBy` — and `verifiedBy` is
+  `DeFlow.taskspecdraft.v1`'s vocabulary, not `DeFlow.taskspec.v1`'s. So `POST
+  /runs/:id/spec/edit` takes a whole replacement framed document, `validateTaskSpecDraft` refuses it
+  with the *same function's* message text as the framing node's, and `sealTaskSpec` re-mints the v1
+  spec. Editing the sealed spec cannot express the scenario at all, and would launder a criterion
+  naming two gates into one naming none, because v1's `check` has no way to hold two.
+- **`spec.amended` carries the amended document *and* an RFC 6902 patch of the two sealed specs.**
+  The patch is over the hashable form — `specHash` and `approvedBy` excluded, for the same reason
+  the hash excludes them — so a diff panel never opens on an operation that replaced the digest of
+  the document it is a patch for. `rfc6902@5.3.0` lives in `@DeFlow/daemon`, not `@DeFlow/core`: R1
+  keeps `zod` core's single dependency, so core owns *what a patch is* (`JsonPatchOperationSchema`)
+  and *what is diffed* (`hashableSpec`), and the daemon owns computing one.
+- **`abandon` rides on `effect: 'reject'`, told apart by its option id.** The four-value `effect`
+  vocabulary lives in `DeFlow.plangraph.v1`, which is content-hash-pinned and append-only; a fifth
+  member would mean publishing `plangraph.v2` to record a distinction `human.responded.optionId`
+  already carries losslessly. Both options are refusals of the draft — what differs is what DeFlow
+  does next, which is a decision and not a node-level effect.
+- **A gate with no deadline is still one row.** `node_wake.wake_at` is `INTEGER NOT NULL` in a
+  shipped migration and AC2 requires the row, so a deadline-less wait uses
+  `NO_DEADLINE_WAKE_AT` (8.64e15, the largest instant a `Date` holds): the row is real, no `now`
+  makes it due, and `sleepHint`'s one-second cap keeps it from becoming a timer. A nullable column
+  is migration 0002 and a different `WHERE` for every reader.
+
+A mid-run edit (AC8) appends `run.spec.approved` at the new hash **in the same transaction** as
+`spec.amended` and `spec.pinned`. Without it the run would execute against `B` while every gate
+resolved `A`, and `gateSpecFromLedger` would refuse every verdict rather than judge it. Revalidation
+failure appends `run.needs_human` at a fourth reason, `spec-revalidation`, which is why
+`run.needs_human` is at **v2** (`schemas/CHANGELOG.md`).
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 

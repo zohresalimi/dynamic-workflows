@@ -492,7 +492,7 @@ Feature: graceful degradation
   Scenario: what the daemon refuses, and what it still allows
     Given the daemon from the previous scenario is running
     When the operator submits a task through "DeFlow run"
-    Then the run is created and "run.created" is appended to the ledger
+    Then the run is created and "task.submitted" is appended to the ledger
     And planning refuses to schedule any agent node with a typed failure naming the missing
         provider, rather than failing the whole run at boot
     And "DeFlow replay fixtures/happy-path-12.jsonl" serves a full run over the same HTTP contract
@@ -740,7 +740,7 @@ Feature: headless execution
   Scenario Outline: F1.1 sources
     Given an initialised repository and a running daemon
     When the operator runs "DeFlow run <argument>"
-    Then "run.created" records source kind "<kind>" and the locator "<locator>"
+    Then "task.submitted" provenance records source kind "<kind>" and the locator "<locator>"
     And the framing interview receives the resolved content, not the locator
     And ".DeFlow/runs/<runId>/" records the source on disk in an open format
 

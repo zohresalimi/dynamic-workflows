@@ -1,0 +1,11 @@
+{
+  "schemaId": "DeFlow.verdict.v2",
+  "outcome": "pass",
+  "gate": "typecheck-gate",
+  "evaluatedNode": "migrate-router-guards",
+  "by": { "node": "typecheck-gate", "provider": "codex", "model": "gpt-5-codex" },
+  "specHash": "4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+  "criteria": [{ "id": "typecheck-clean", "status": "satisfied" }],
+  "findings": [],
+  "summary": "the digest above has no sha256- prefix, so it names no contract this run can resolve"
+}

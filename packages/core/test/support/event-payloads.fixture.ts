@@ -20,6 +20,7 @@ const fixture = (relative: string): Record<string, unknown> =>
   JSON.parse(readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8'));
 
 const taskSpec = fixture('../fixtures/specs/vue3-migration.json');
+const framedSpec = fixture('../fixtures/specs/vue3-migration.framed.json');
 const planGraph = fixture('../fixtures/plans/seven-types.json');
 const planPatch = fixture('../fixtures/patches/three-ops.json');
 
@@ -121,12 +122,38 @@ const packetRecord = {
 
 /** One representative payload per kind, in §9's order. */
 export const PAYLOADS: Record<EventKind, unknown> = {
+  'task.submitted': {
+    sha256: BARE_SHA,
+    raw: 'Migrate the design system across packages/ui',
+    provenance: { kind: 'text', by: 'ui', submittedAt: 1_754_308_293_000 },
+  },
   'run.created': {
     spec: taskSpec,
     cwd: '/Users/dev/projects/shop',
     repo: { head: 'e83c516', branch: 'main' },
   },
   'run.spec.approved': { specHash: SHA, by: 'ui' },
+  'spec.amended': {
+    from: SHA,
+    to: OTHER_SHA,
+    patch: [
+      { op: 'add', path: '/nonGoals/-', value: 'changing the public API of @voyado/ui' },
+      {
+        op: 'replace',
+        path: '/acceptanceCriteria/0/statement',
+        value: 'pnpm build exits zero and emits no new type errors.',
+      },
+    ],
+    document: framedSpec,
+    by: 'ui',
+  },
+  'spec.pinned': {
+    specHash: SHA,
+    segments: [
+      { id: 'pinned-spec-goal', kind: 'pinned.spec', sha256: SHA },
+      { id: 'pinned-spec-criteria', kind: 'pinned.spec', sha256: OTHER_SHA },
+    ],
+  },
   'run.started': { planHash: SHA },
   'run.paused': { by: 'user', reason: 'stepping away' },
   'run.resumed': { by: 'user' },

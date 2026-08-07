@@ -101,6 +101,10 @@ export const draft = (
 export function seedRunningRun(db: Db): void {
   appendEvents(db, [
     draft('run.created', { spec: taskSpec, cwd: REPO, repo: { head: 'e83c516', branch: 'main' } }),
+    // KAR-10.3 AC3 — F1.3's gate. `decide()` admits nothing until the ledger
+    // carries an approval, so a fixture for a run that is genuinely executing
+    // has to carry the row every executing run has.
+    draft('run.spec.approved', { specHash: SPEC_HASH, by: 'ui' }),
     draft('plan.proposed', { version: 1, planHash: PLAN_HASH, graph, by: 'planner' }),
     draft('run.started', { planHash: PLAN_HASH }),
     draft('node.lock.acquired', { node: AUTH, lock: 'repo', key: REPO_LOCK }, { nodeId: AUTH }),

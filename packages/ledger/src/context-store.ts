@@ -41,11 +41,13 @@ import type {
   Handle,
   IdempotencyKey,
   PacketDemotion,
+  PinViolation,
   Segment,
 } from '@DeFlow/core';
 import {
   ContextPacketRecordSchema,
   ContextPacketSchema,
+  PinIntegrityViolation,
   renderPacket,
   SEGMENT_KINDS,
 } from '@DeFlow/core';
@@ -206,6 +208,58 @@ function totalsOf(segments: readonly Segment[]): {
 }
 
 /**
+ * KAR-10.4 AC8 — every pinned segment's digest, **after verifying it**.
+ *
+ * The value `context.compacted.pinnedKept` carries. Returning the list from the
+ * check rather than reading `packet.pinnedDigests` is the whole point: *"that is
+ * the difference between recording that the check passed and recording that a
+ * packet had pins. Without it, 'the check passed' and 'the check never ran' are
+ * indistinguishable in the ledger"* (`pinnedKept` in
+ * `packages/core/src/pin-integrity.ts`), and NF10 requires board state to trace
+ * to specific events.
+ *
+ * It is the same predicate `assertPinIntegrity` evaluates, in the one form this
+ * call site can use. `assertPinIntegrity` is async because @DeFlow/core may not
+ * import `node:crypto` (R1) and Web Crypto's digest returns a promise; this
+ * module already computes sha256 synchronously for every blob it stores, and
+ * `RenderedPromptHandleMismatch` above is an existing check that relies on the
+ * two agreeing. So the digest half compares the handle `putBlob` *just returned
+ * for the segment's own bytes* against the handle the declared `contentHash`
+ * names — which is stronger than re-hashing, because it is the digest of what
+ * was actually written — and the absence half is the same substring test.
+ *
+ * Both halves are load-bearing and neither is redundant with the checks above.
+ * `ContextPacketSchema` proves `pinnedDigests` agrees with each segment's
+ * declared `contentHash`; it cannot see whether that digest is the digest *of
+ * the text*. `RenderedPromptHandleMismatch` proves the prompt is the render of
+ * this manifest; it cannot see whether the manifest describes the bytes it
+ * claims to. A packet corrupted consistently across both passes them and fails
+ * here, which is exactly the case that would otherwise be written to the ledger
+ * as evidence that the pins survived.
+ */
+function verifiedPinnedDigests(
+  packet: ContextPacket,
+  prompt: string,
+  storedHandles: ReadonlyMap<string, Handle>,
+): readonly string[] {
+  const violations: PinViolation[] = [];
+  for (const segment of packet.segments) {
+    if (!segment.pinned) continue;
+    if (storedHandles.get(segment.id) !== handleForContentHash(segment.contentHash)) {
+      violations.push({ id: segment.id, contentHash: segment.contentHash, kind: 'digest' });
+      continue;
+    }
+    if (!prompt.includes(segment.text)) {
+      violations.push({ id: segment.id, contentHash: segment.contentHash, kind: 'absent' });
+    }
+  }
+  // Collected, then thrown: a loop that returned on the first miss would report
+  // one vanished pin out of three and send a human to the wrong render path.
+  if (violations.length > 0) throw new PinIntegrityViolation(violations);
+  return packet.segments.filter((segment) => segment.pinned).map((segment) => segment.contentHash);
+}
+
+/**
  * Stores the packet's bytes, writes `prompt.txt`, and appends `context.built`.
  *
  * Blobs and files are written **before** the event, so an event that exists is
@@ -219,8 +273,12 @@ export function persistContextPacket(
 ): PersistedPacket {
   const { packet, dataDir, runDir } = options;
 
+  const storedHandles = new Map<string, Handle>();
   for (const segment of packet.segments) {
-    putBlob(dataDir, encode(segment.text), SEGMENT_MIME, options.ikey);
+    storedHandles.set(
+      segment.id,
+      putBlob(dataDir, encode(segment.text), SEGMENT_MIME, options.ikey),
+    );
   }
   // The demoted bodies too: the handle in a stub is a promise that the bytes
   // are retrievable, and this is where it is kept. Each one is also indexed
@@ -253,6 +311,10 @@ export function persistContextPacket(
       renderedPromptHandle,
     );
   }
+
+  // KAR-10.4 AC8 — the digest list below is *produced by the check*, never
+  // copied off the packet. See `verifiedPinnedDigests`.
+  const pinnedDigests = verifiedPinnedDigests(packet, prompt, storedHandles);
 
   const promptPath = promptPathOf(runDir, packet.nodeId);
   writeDerived(runDir, packet.nodeId, prompt, packet.renderedPromptHandle);
@@ -293,7 +355,7 @@ export function persistContextPacket(
         after: demotion.after,
         droppedSegments: [...demotion.droppedSegments],
         demotedToHandles: [...demotion.demotedToHandles],
-        pinnedKept: packet.pinnedDigests,
+        pinnedKept: pinnedDigests,
         // KAR-09.6 AC1 — the pre-compaction manifest, stored above. Every
         // dropped body is already in the store under its own handle; this is
         // the document that says how they went back together.

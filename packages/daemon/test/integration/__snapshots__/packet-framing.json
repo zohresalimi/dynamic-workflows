@@ -1,0 +1,89 @@
+{
+  "schemaId": "DeFlow.contextpacket.v1",
+  "runId": "run_20260807T101500Z_ac1012",
+  "nodeId": "framing",
+  "attempt": 1,
+  "builtAtEvent": 5,
+  "target": {
+    "provider": "claude",
+    "model": "claude-sonnet-4-6",
+    "maxContext": 200000
+  },
+  "budget": {
+    "fraction": 0.5,
+    "limitTokens": 100000
+  },
+  "totals": {
+    "tokens": 177,
+    "byKind": {
+      "pinned.constraints": 61,
+      "pinned.spec": 0,
+      "pinned.pathscope": 0,
+      "task.brief": 116,
+      "fact": 0,
+      "artifact.handle": 0,
+      "retrieved": 0,
+      "history.summary": 0,
+      "tool.output": 0
+    }
+  },
+  "renderedPromptHandle": "artifact://beb3dcb30e46192758f8e3de4be52c6f5342e6c0af878855dc1af47c052ec79b",
+  "pinnedDigests": [
+    "sha256-7feaf65eb17825978cf47ec5ddb616584939997dc46f9d94d02320754a76ef23",
+    "sha256-8295839c788161a64c6b1ba79fd646232d3b78dcd20f0a068c798d660560e4fe"
+  ],
+  "segments": [
+    {
+      "id": "pinned-constraints-safety",
+      "kind": "pinned.constraints",
+      "sourceEvent": 5,
+      "contentHash": "sha256-7feaf65eb17825978cf47ec5ddb616584939997dc46f9d94d02320754a76ef23",
+      "tokens": {
+        "estimated": 14,
+        "method": "heuristic"
+      },
+      "pinned": true,
+      "compactable": false,
+      "text": "Safety constraints (pinned):\n- never commit a credential"
+    },
+    {
+      "id": "pinned-constraints-permission",
+      "kind": "pinned.constraints",
+      "sourceEvent": 5,
+      "contentHash": "sha256-8295839c788161a64c6b1ba79fd646232d3b78dcd20f0a068c798d660560e4fe",
+      "tokens": {
+        "estimated": 47,
+        "method": "heuristic"
+      },
+      "pinned": true,
+      "compactable": false,
+      "text": "Permission level (pinned): read\nYou may read this repository and you may ask the operator a clarifying question. You may not write a file and you may not run a command that changes one."
+    },
+    {
+      "id": "task-raw",
+      "kind": "task.brief",
+      "sourceEvent": 1,
+      "contentHash": "sha256-4e113a9c3be808025a98449c19a8966741d50d631b56e0c2ae56318b55b8bc4f",
+      "tokens": {
+        "estimated": 26,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "The submitted task, verbatim:\nMigrate the design system to Vue 3. Keep the public component API stable."
+    },
+    {
+      "id": "task-rejected-spec",
+      "kind": "task.brief",
+      "sourceEvent": 4,
+      "contentHash": "sha256-6cf51bf76dd40c068087cb7c8727a2c311f6302dcf3fd3fb6bdd17bdc2fac998",
+      "tokens": {
+        "estimated": 90,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "A previous framing attempt produced the spec below and the operator rejected it.\nRejection reason: The criteria say nothing about the date picker, which is the risky component.\n\nRejected goal:\nMigrate every component under packages/ui to Vue 3.\n\nRejected non-goals:\n- Do not touch packages/legacy.\n\nRejected acceptance criteria:\n- ac-1: pnpm typecheck passes."
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaId": "DeFlow.taskspecdraft.v1",
+  "goal": "Migrate the checkout module from Vue 2 to Vue 3.",
+  "scope": { "included": ["packages/web/src/checkout/**"] },
+  "nonGoals": [],
+  "constraints": [],
+  "priorDecisions": [],
+  "acceptanceCriteria": [
+    {
+      "id": "ac-1",
+      "statement": "The migration does not regress bundle size.",
+      "verifiedBy": []
+    }
+  ],
+  "knownFailureModes": [
+    {
+      "id": "v-model-drop",
+      "description": "the migration codemod silently drops v-model modifiers"
+    }
+  ]
+}

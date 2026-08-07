@@ -26,8 +26,12 @@ const EXPECTED_IDS = [
   'DeFlow.finding.v1',
   'DeFlow.plangraph.v1',
   'DeFlow.planpatch.v1',
+  'DeFlow.reconfact.v1',
+  'DeFlow.reconsurvey.v1',
+  'DeFlow.taskspecdraft.v1',
   'DeFlow.taskspec.v1',
   'DeFlow.verdict.v1',
+  'DeFlow.verdict.v2',
 ];
 
 /** Every `$ref` in the document, wherever it appears. */
@@ -40,7 +44,7 @@ function refsOf(node: unknown): string[] {
 }
 
 suite('the schema registry', () => {
-  it('registers exactly the seven documents shipped at v1, sorted and unique', () => {
+  it('registers exactly the documents shipped, in registry order and unique', () => {
     expect([...REGISTERED_SCHEMA_IDS]).toEqual(EXPECTED_IDS);
     expect(new Set(REGISTERED_SCHEMA_IDS).size).toBe(REGISTERED_SCHEMA_IDS.length);
   });

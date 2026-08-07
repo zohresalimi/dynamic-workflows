@@ -160,6 +160,9 @@ function churningRun(repeats: number): EventDraft[] {
 
   return [
     draft('run.created', { cwd: '/home/u/proj', taskSpecHash: SPEC_HASH, by: 'cli' }),
+    // KAR-10.3 AC3 — F1.3's gate. `decide()` admits nothing until the ledger
+    // carries an approval, so a fixture for an executing run has to carry one.
+    draft('run.spec.approved', { specHash: SPEC_HASH, by: 'ui' }),
     draft('plan.proposed', { version: 1, planHash: PLAN_HASH, graph: PLAN, by: 'planner' }),
     draft('run.started', { planHash: PLAN_HASH }),
     ...filler,

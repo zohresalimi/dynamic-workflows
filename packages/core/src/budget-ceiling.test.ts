@@ -166,6 +166,10 @@ const completed = (node: string): Row => ({
 /** A run of `nodes`, started, with `rest` folded on top. */
 function started(nodes: readonly NodeSpec[], rest: readonly Row[] = []): RunState {
   return fold([
+    // KAR-10.3 AC3 — F1.3's gate. `decide()` admits nothing until the ledger
+    // carries an approval, so a fixture for a *started* run has to carry the
+    // one every real started run has.
+    { kind: 'run.spec.approved', payload: { specHash: SPEC_HASH, by: 'ui' } },
     {
       kind: 'plan.proposed',
       payload: { version: 1, planHash: PLAN_HASH, graph: planGraph(nodes), by: 'planner' },

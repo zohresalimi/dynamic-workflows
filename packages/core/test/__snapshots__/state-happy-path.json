@@ -2,6 +2,11 @@
   "runId": "run_20260802T141133Z_9f2a1c",
   "status": "completed",
   "repoRoot": "/Users/dev/projects/shop",
+  "specApproved": {
+    "specHash": "sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "by": "ui"
+  },
+  "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
   "outcome": "succeeded",
   "criteriaSatisfied": [
     "unit-tests-pass",

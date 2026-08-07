@@ -1097,7 +1097,8 @@ Feature: The spec gate is real, not a formality
           budget: { costUsd: 25, wallclockMs: 14400000 },
           permission: "worktree" }
     Then the response is 201 { runId, seq, status: "awaiting-spec-approval" }
-    And "run.created" is in the ledger
+    And "task.submitted" is in the ledger ("run.created" comes from the framing interview,
+        EPIC-10-S6, once there is a TaskSpec to carry)
     And no "node.scheduled" event exists
     And the framing interview runs
 

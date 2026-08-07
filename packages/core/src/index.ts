@@ -21,6 +21,22 @@ export type {
   SchemaIssue,
 } from './accept-fact.ts';
 export { acceptFact } from './accept-fact.ts';
+// KAR-10.4 AC5 — a verdict is scoped to the spec it judged: F7.4's board, the
+// void rule, and the gates a spec edit sends back.
+export type {
+  AcceptanceBoardInput,
+  BoardCriterion,
+  BoardRow,
+  BoardStatus,
+} from './acceptance-board.ts';
+export {
+  acceptanceBoard,
+  CONSTRAINT_CRITERION_PREFIX,
+  constraintCriteria,
+  isVerdictVoid,
+  staleGateNodes,
+  verdictAgainst,
+} from './acceptance-board.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {
@@ -98,7 +114,7 @@ export type {
   StartNode,
   WakeReason,
 } from './command.ts';
-export { COMMAND_ORDER, WAKE_REASONS } from './command.ts';
+export { COMMAND_ORDER, NO_DEADLINE_WAKE_AT, WAKE_REASONS } from './command.ts';
 // KAR-09.6 — compaction with a fidelity discriminator: the union that makes
 // "a vendor.session event is never exact" a compile error, the F10.5
 // projection that labels an inferred figure, and the auto-compact arithmetic.
@@ -134,6 +150,9 @@ export {
   VENDOR_UNREPORTED_NOTE,
   vendorCompaction,
 } from './compaction.ts';
+// KAR-10.4 AC2 — the byte-preserving compiler behind the pinned set.
+export type { CompiledPinnedSegment, PinnedQuote } from './compile-pinned.ts';
+export { canonicalSpecText, compilePinnedSegments } from './compile-pinned.ts';
 // KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
 // the forbid ratio DeFlow doctor reports.
 export type {
@@ -388,6 +407,43 @@ export type {
   FoldReport,
 } from './fold-events.ts';
 export { describeSkipped, foldEvents } from './fold-events.ts';
+// KAR-10.2 — the framing interview's return contract, its criteria contract,
+// and the projection onto the `TaskSpec` `run.created` carries.
+export type {
+  ClarifyingExchange,
+  DraftAcceptanceCriterion,
+  DraftFailureMode,
+  DraftIssue,
+  DraftPriorDecision,
+  PriorDecisionSource,
+  TaskSpecDraft,
+} from './framing.ts';
+export {
+  answersAsPriorDecisions,
+  criteriaContractIssues,
+  criterionOrdinal,
+  DraftAcceptanceCriterionSchema,
+  DraftFailureModeSchema,
+  DraftPriorDecisionSchema,
+  FRAMING_PERMISSION,
+  FRAMING_RETURN_MAX_TOKENS,
+  framingReturns,
+  PRIOR_DECISION_SOURCES,
+  sealTaskSpec,
+  TASKSPEC_DRAFT_SCHEMA_ID,
+  TaskSpecDraftInvalid,
+  TaskSpecDraftSchema,
+  validateTaskSpecDraft,
+  withClarifyingAnswers,
+} from './framing.ts';
+// KAR-10.2 AC9 — what the framing agent is given: the raw task, the repository
+// at `read`, and no other node's transcript (F6.1).
+export type { FramingPacketInput, FramingSegmentKind, RejectedFraming } from './framing-packet.ts';
+export {
+  buildFramingPacket,
+  ForeignSegmentInFramingPacket,
+  FRAMING_SEGMENT_KINDS,
+} from './framing-packet.ts';
 // KAR-08.1 AC5 — `full` is an explicit per-run opt-in a PlanPatch cannot
 // acquire on its own authority.
 export type { FullEscalationRuling, FullPermissionOptIn } from './full-permission.ts';
@@ -439,7 +495,7 @@ export {
   repairPromptFor,
   withReturnBudgetDefaults,
 } from './handoff.ts';
-export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
+export { contentHash, planHash, sha256Hex, sha256HexBytes, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
   Brand,
@@ -477,6 +533,9 @@ export type { ParsedIkey } from './ikey.ts';
 // write embeds in a temp filename, where the raw key's `/` cannot go.
 export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
+// KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
+export type { JsonPatchOperation } from './json-patch.ts';
+export { JsonPatchOperationSchema } from './json-patch.ts';
 export type { JsonSchemaDocument, SchemaRegistration } from './json-schema.ts';
 export {
   AJV_2020_OPTIONS,
@@ -635,16 +694,20 @@ export {
 export type {
   ContextSegmentInput,
   DemotionResult,
+  FramingPinnedInput,
   PinnedBuildInput,
   PinnedContentType,
   PinnedSegmentKind,
   SegmentedPacket,
+  SpecPinnedInput,
   TokenEstimator,
   UnpinnedSegmentKind,
 } from './pinned-set.ts';
 export {
   assertPinnedSetFitsBudget,
+  buildFramingPinnedSegments,
   buildPinnedSegments,
+  buildSpecPinnedSegments,
   contextSegment,
   demoteToBudget,
   demotionLadder,
@@ -744,6 +807,15 @@ export {
   retirementsOf,
   SplitNodeOpSchema,
 } from './plan-patch.ts';
+// KAR-10.5 AC7 — what the planner reads: the pinned spec and the recon facts,
+// and no recon transcript (F6.1).
+export type { PlannerFact, PlannerPacketInput, PlannerSegmentKind } from './planner-packet.ts';
+export {
+  buildPlannerPacket,
+  ForeignSegmentInPlannerPacket,
+  PLANNER_SEGMENT_KINDS,
+  renderFactSegmentText,
+} from './planner-packet.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
 // KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept
@@ -767,6 +839,35 @@ export {
 // ./validate-declared-reads.ts; this is a view over it, not a second walk.
 export type { UnsatisfiedRead } from './reads-satisfiable.ts';
 export { readsAreSatisfiable } from './reads-satisfiable.ts';
+// KAR-10.5 — repository reconnaissance: the agent claims, the daemon observes,
+// and `confidence` is what the join between them produces (F2.2).
+export type {
+  DeriveReconFactsInput,
+  GateObservation,
+  ManifestKind,
+  ManifestObservation,
+  ReconCommandRole,
+  ReconFactCandidate,
+  ReconFactValue,
+  ReconSurvey,
+  RepoObservation,
+  ScopeObservation,
+} from './recon.ts';
+export {
+  deriveReconFacts,
+  fileEvidenceHandle,
+  jsonScriptLineRange,
+  MANIFEST_KINDS,
+  RECON_COMMAND_ROLES,
+  RECON_FACT_SCHEMA_ID,
+  RECON_PERMISSION,
+  RECON_RETURN_MAX_TOKENS,
+  RECON_SURVEY_SCHEMA_ID,
+  ReconFactValueSchema,
+  ReconSurveySchema,
+  reconReturns,
+  scriptKeyOf,
+} from './recon.ts';
 // KAR-03.5 — the pure, total reducer and the projection it folds into.
 export { reduce } from './reduce.ts';
 // KAR-09.4 §4.2(a) — when the pinned set is due for re-injection, and the
@@ -868,6 +969,47 @@ export {
 // KAR-07.6 AC7 — the one plan-time refusal declared path scopes still carry.
 export type { ScopeCollision } from './scope-collision.ts';
 export { scopeCollisions } from './scope-collision.ts';
+// KAR-10.3 — the F1.3 approval gate's pure half: what the operator is shown,
+// what an edit produces, and what a mid-run edit is revalidated against.
+export type {
+  SpecAmendment,
+  SpecCoverageIssue,
+  SpecDecision,
+  SpecVersion,
+} from './spec-approval.ts';
+export {
+  currentSpec,
+  emptyEditRefusal,
+  hashableSpec,
+  renderSpecForReview,
+  revalidateSpecAgainstPlan,
+  SPEC_APPROVAL_OPTIONS,
+  SPEC_DECISIONS,
+  SPEC_GATE_NODE,
+  SpecEditRefused,
+  sealEditedSpec,
+  specHistory,
+} from './spec-approval.ts';
+// KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
+export type {
+  IntakeKind,
+  IntakeSubmitter,
+  NormaliseFileInput,
+  NormaliseInput,
+  NormaliseInputPorts,
+  NormaliseIssueInput,
+  NormaliseTextInput,
+  TaskProvenance,
+  TaskSubmitted,
+} from './task-intake.ts';
+export {
+  INTAKE_INLINE_THRESHOLD_BYTES,
+  INTAKE_KINDS,
+  INTAKE_SUBMITTERS,
+  normaliseInput,
+  TaskProvenanceSchema,
+  TaskSubmittedSchema,
+} from './task-intake.ts';
 // KAR-02.2 — TaskSpec schema, specHash identity and the pinning selector.
 export type {
   AcceptanceCriterion,
@@ -954,7 +1096,7 @@ export {
 // gate in the system, run on every plan.proposed and plan.patched.
 export type { UndeclaredReadError } from './validate-declared-reads.ts';
 export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
-export type { Finding, Verdict } from './verdict.ts';
+export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
 export {
   CRITERION_STATUSES,
   CriterionStatusSchema,
@@ -964,6 +1106,8 @@ export {
   FindingSeveritySchema,
   VERDICT_OUTCOMES,
   VERDICT_SCHEMA_ID,
+  VERDICT_V2_SCHEMA_ID,
   VerdictOutcomeSchema,
   VerdictSchema,
+  VerdictV2Schema,
 } from './verdict.ts';

@@ -29,8 +29,12 @@ it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` 
 | `DeFlow.finding.v1`       | `src/verdict.ts`          | A structured gate finding, attachable to a diff line (F7.7)            |
 | `DeFlow.plangraph.v1`     | `src/plan-graph.ts`       | A whole plan: seven node types, edges, budgets, declared reads (F2.1)  |
 | `DeFlow.planpatch.v1`     | `src/plan-patch.ts`       | A proposed plan evolution: five ops, blast radius, rationale (F2.3)    |
+| `DeFlow.reconfact.v1`     | `src/recon.ts`            | The value of a recon fact: toolchain, command, path set, gates or a stated detection failure (F2.2) |
+| `DeFlow.reconsurvey.v1`   | `src/recon.ts`            | What a recon session claims about the repository — claims only (F2.2)  |
 | `DeFlow.taskspec.v1`      | `src/task-spec.ts`        | The approved intent a run is measured against (F1.1)                   |
+| `DeFlow.taskspecdraft.v1` | `src/framing.ts`          | What the framing interview returns, before DeFlow seals it (F1.2)      |
 | `DeFlow.verdict.v1`       | `src/verdict.ts`          | A gate verdict: outcome, per-criterion status, findings (F7.4)         |
+| `DeFlow.verdict.v2`       | `src/verdict.ts`          | The same, naming the `specHash` it judged, so a spec edit voids it (F1.5) |
 
 The registry those rows come from is `SCHEMA_REGISTRY` in `src/json-schema.ts`. Adding a row is how
 a new document ships.

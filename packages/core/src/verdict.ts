@@ -67,6 +67,8 @@ export const CRITERION_STATUSES = ['satisfied', 'unsatisfied', 'unverifiable'] a
 
 export const CriterionStatusSchema = z.enum(CRITERION_STATUSES);
 
+export type CriterionStatus = z.infer<typeof CriterionStatusSchema>;
+
 export const VerdictSchema = z.strictObject({
   schemaId: SchemaIdSchema,
   outcome: VerdictOutcomeSchema,
@@ -93,3 +95,38 @@ export const VerdictSchema = z.strictObject({
 });
 
 export type Verdict = z.infer<typeof VerdictSchema>;
+
+/**
+ * KAR-10.4 AC5 — `DeFlow.verdict.v2`: the same document, plus the identity of
+ * the contract it was judged against.
+ *
+ * A `.v2` rather than a field on `.v1`, because `schemaId` versioning is
+ * append-only and `.v1` is shipped (`schemas/CHANGELOG.md`) — a run directory
+ * outlives the daemon that wrote it, and a `.v1` edited in place would silently
+ * reinterpret every verdict already on disk.
+ *
+ * **`specHash` is optional in the schema and mandatory in practice**, and the
+ * two are not in tension. `verdictAgainst` is how a gate seals one and it always
+ * stamps the hash; what optionality buys is a legal upcast from `.v1`, whose
+ * payloads predate the field entirely. There is no honest value to fill those
+ * with — a fabricated hash would make a historical verdict read as judged
+ * against a document nobody showed it — so the hop leaves it absent and
+ * `isVerdictVoid` treats absence exactly as it treats a mismatch: **void**. That
+ * is the safe direction. A verdict that cannot name its contract is not evidence
+ * about this one, and the cost of being wrong is a gate that re-runs rather than
+ * a criterion that is green on somebody else's say-so.
+ */
+export const VERDICT_V2_SCHEMA_ID = 'DeFlow.verdict.v2' as const;
+
+const SPEC_HASH_PATTERN = /^sha256-[0-9a-f]{64}$/;
+
+export const VerdictV2Schema = VerdictSchema.extend({
+  /** The sha256 of the pinned `TaskSpec` this verdict was judged against
+   * (docs/10-verification-gates.md §4). */
+  specHash: z
+    .string()
+    .regex(SPEC_HASH_PATTERN, `specHash must match ${SPEC_HASH_PATTERN}`)
+    .optional(),
+});
+
+export type VerdictV2 = z.infer<typeof VerdictV2Schema>;

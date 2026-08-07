@@ -90,6 +90,8 @@ const populated: RunState = {
   runId: RUN_ID,
   status: 'needs-human',
   repoRoot: '/home/u/proj',
+  specApproved: { specHash: SHA, by: 'cli' },
+  specHash: SHA,
   outcome: null,
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },

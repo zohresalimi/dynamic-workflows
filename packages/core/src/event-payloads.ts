@@ -23,8 +23,13 @@
  * Verifies: EPIC-02-S23 · AC6, AC8 (the rule's target set)
  */
 import { z } from 'zod';
-import { ContextPacketRecordSchema, TokenCountMethodSchema } from './context-packet.ts';
+import {
+  ContextPacketRecordSchema,
+  SegmentKindSchema,
+  TokenCountMethodSchema,
+} from './context-packet.ts';
 import { FactSchema } from './fact.ts';
+import { TaskSpecDraftSchema } from './framing.ts';
 import type { IdempotencyKey } from './ids.ts';
 import {
   CriterionIdSchema,
@@ -38,6 +43,7 @@ import {
   SegmentIdSchema,
 } from './ids.ts';
 import { parseIkey } from './ikey.ts';
+import { JsonPatchOperationSchema } from './json-patch.ts';
 import { FailureClassSchema, NodeFailureSchema } from './node-failure.ts';
 import {
   CancelledNodeResultSchema,
@@ -51,10 +57,11 @@ import {
   PlanPatchSchema,
   ProposedBySchema,
 } from './plan-patch.ts';
+import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
-import { VerdictSchema } from './verdict.ts';
+import { VerdictV2Schema } from './verdict.ts';
 
 // ── shared leaf schemas ──────────────────────────────────────────────────────
 
@@ -98,8 +105,23 @@ const IkeySchema: z.ZodType<IdempotencyKey, string> = z
  * either success or failure (F7.4). */
 export const RUN_OUTCOMES = ['succeeded', 'partial', 'failed'] as const;
 
-/** The circuit breaker's three trip reasons (§9). */
-export const RUN_NEEDS_HUMAN_REASONS = ['churn', 'budget', 'reconcile-unknown'] as const;
+/**
+ * The circuit breaker's trip reasons (§9).
+ *
+ * `spec-revalidation` is KAR-10.3 AC8's, and it is a fourth reason rather than
+ * a `detail` on one of the other three because the operator's next action is
+ * different in kind: churn and budget are answered by raising a ceiling or
+ * changing the approach, and this one is answered by covering a criterion the
+ * plan no longer satisfies. It arrives at `run.needs_human` **v2** — widening a
+ * closed vocabulary is a shape change, so an older daemon reading a newer
+ * ledger says so instead of guessing (./upcasters.ts).
+ */
+export const RUN_NEEDS_HUMAN_REASONS = [
+  'churn',
+  'budget',
+  'reconcile-unknown',
+  'spec-revalidation',
+] as const;
 
 /** The four effect types of docs/05-durable-execution.md §8.3 — each has its
  * own reconciliation story, which is why this is a closed set. */
@@ -147,6 +169,15 @@ export type EffectKind = (typeof EFFECT_KINDS)[number];
 export type CompactionFidelity = (typeof COMPACTION_FIDELITIES)[number];
 export type WorktreeOccupantKind = (typeof WORKTREE_OCCUPANT_KINDS)[number];
 
+// ── task intake ──────────────────────────────────────────────────────────────
+//
+// KAR-10.1: `task.submitted` is the one event intake ever writes. It is its
+// own kind, ahead of `run.created` in this file's table order, because it is
+// the run's actual first event on the wire — POST /api/runs mints the RunId
+// and appends this and only this. `TaskSubmittedSchema` and `normaliseInput`
+// live in ./task-intake.ts rather than here, alongside their own AC2/AC3
+// rationale; this file only registers the schema in the table below.
+
 // ── run lifecycle ────────────────────────────────────────────────────────────
 
 export const RunCreatedSchema = z.strictObject({
@@ -163,6 +194,62 @@ export const RunCreatedSchema = z.strictObject({
 export const RunSpecApprovedSchema = z.strictObject({
   specHash: Sha256Schema,
   by: z.enum(['ui', 'cli']),
+});
+
+/**
+ * KAR-10.3 AC5 — an operator edit of the `TaskSpec`, as a patch rather than a
+ * replacement (docs/01-architecture-overview.md §, docs/06 §1.3).
+ *
+ * Four fields, and each one answers a question the others cannot:
+ *
+ * - `from` / `to` are the `specHash` either side of the edit. They are what
+ *   makes a version *addressable*: a verdict cites the hash it was judged
+ *   against, and "which document was that?" has to be answerable from the log
+ *   alone.
+ * - `patch` is the RFC 6902 diff between the two **sealed** specs, excluding
+ *   `specHash` and `approvedBy` for the same reason the hash does — an edit that
+ *   changed nothing but the approval record is not an edit, and a patch whose
+ *   first operation replaced the digest of the document it is a patch for would
+ *   be unreadable in a UI.
+ * - `document` is the amended framed document — `DeFlow.taskspecdraft.v1`, the
+ *   thing the operator actually edits, because `verifiedBy` and `unverifiable`
+ *   are its vocabulary and not v1's. The sealed spec is `sealTaskSpec(document)`
+ *   and is therefore not carried twice: ./framing.ts is explicit that there is
+ *   one door a `TaskSpec` comes through, and two copies of a document in one
+ *   append-only row is two things that can disagree.
+ *
+ * Nothing is overwritten by this event, which is the whole of AC5: the pre-edit
+ * spec is still `run.created.spec`, still at its own hash, still readable.
+ */
+export const SpecAmendedSchema = z.strictObject({
+  from: Sha256Schema,
+  to: Sha256Schema,
+  patch: z.array(JsonPatchOperationSchema).min(1),
+  document: TaskSpecDraftSchema,
+  by: z.enum(['ui', 'cli']),
+});
+
+/**
+ * KAR-10.3 AC4 / KAR-10.4 AC1 — the pinned set, minted in the same transaction
+ * as the approval it derives from (docs/06 §1.3, docs/08 §4.1).
+ *
+ * The digests rather than the text: the bytes are rebuilt by
+ * `buildPinnedSegments` from a spec the ledger already carries, and this row is
+ * the evidence that what a packet renders is what was approved. A `spec.pinned`
+ * whose `specHash` is not the run's current one is a stale pin, which is exactly
+ * what `assertPinIntegrity` (KAR-09.3) is given something to check against.
+ */
+export const SpecPinnedSchema = z.strictObject({
+  specHash: Sha256Schema,
+  segments: z
+    .array(
+      z.strictObject({
+        id: SegmentIdSchema,
+        kind: SegmentKindSchema,
+        sha256: Sha256Schema,
+      }),
+    )
+    .min(1),
 });
 
 export const RunStartedSchema = z.strictObject({ planHash: PlanHashSchema });
@@ -1077,10 +1164,18 @@ export const HandoffOversizeSchema = z.strictObject({
 
 // ── gates and humans ─────────────────────────────────────────────────────────
 
+/**
+ * KAR-10.4 AC5 — v2: the verdict now names the contract it judged.
+ *
+ * The change is entirely inside `verdict`, which became `DeFlow.verdict.v2` —
+ * one optional field, `specHash`. See `schemas/CHANGELOG.md` for why the hop
+ * from v1 leaves it absent rather than inventing one, and `VerdictV2Schema` for
+ * why an absent hash is treated as void rather than as trusted.
+ */
 export const GateEvaluatedSchema = z.strictObject({
   gate: GateIdSchema,
   node: NodeIdSchema,
-  verdict: VerdictSchema,
+  verdict: VerdictV2Schema,
 });
 
 export const HumanRequestedSchema = z.strictObject({
@@ -1327,8 +1422,11 @@ export const ExportBlockedSchema = z.strictObject({
  * Events are never rewritten on disk.
  */
 export const EVENT_SCHEMAS = {
+  'task.submitted': { v: 1, payload: TaskSubmittedSchema },
   'run.created': { v: 1, payload: RunCreatedSchema },
   'run.spec.approved': { v: 1, payload: RunSpecApprovedSchema },
+  'spec.amended': { v: 1, payload: SpecAmendedSchema },
+  'spec.pinned': { v: 1, payload: SpecPinnedSchema },
   'run.started': { v: 1, payload: RunStartedSchema },
   'run.paused': { v: 1, payload: RunPauseToggledSchema },
   'run.resumed': { v: 1, payload: RunPauseToggledSchema },
@@ -1337,7 +1435,7 @@ export const EVENT_SCHEMAS = {
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
-  'run.needs_human': { v: 1, payload: RunNeedsHumanSchema },
+  'run.needs_human': { v: 2, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 1, payload: PlanProposedSchema },
   'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
@@ -1384,7 +1482,7 @@ export const EVENT_SCHEMAS = {
   'fact.read': { v: 1, payload: FactReadSchema },
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
-  'gate.evaluated': { v: 1, payload: GateEvaluatedSchema },
+  'gate.evaluated': { v: 2, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },

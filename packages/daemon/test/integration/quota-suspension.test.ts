@@ -120,6 +120,16 @@ const nf7Node = (id: string): Record<string, unknown> => ({
  */
 function seedIndependentRun(db: Db): void {
   appendEvents(db, [
+    // KAR-10.3 AC3 — F1.3's gate. `decide()` admits nothing until the ledger
+    // carries an approval, so a fixture for an executing run has to carry one.
+    {
+      runId: NF7_RUN,
+      ts: T0,
+      kind: 'run.spec.approved',
+      v: 1,
+      epoch: 1,
+      payload: { specHash: `sha256-${'c'.repeat(64)}`, by: 'ui' },
+    },
     {
       runId: NF7_RUN,
       ts: T0,

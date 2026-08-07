@@ -60,6 +60,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-14.4 — `event_rate_limited`, a partial index over
   // the one event kind `DeFlow doctor` queries without a run_id.
   '0013-rate-limit-index.ts': '0de13bafd3347d31d7ba4a296cb8aba619b4e8948b04d4177cee973d05c159d2',
+  // Shipped 2026-08-07, KAR-10.1 — `intake_key`, the map from an
+  // Idempotency-Key header to the run it already minted.
+  '0014-intake-keys.ts': '2cd149ea7045a109ef6834c9ba077a1b5b9ee97392a6857a03a3017d961c6738',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

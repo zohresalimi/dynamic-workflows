@@ -11,7 +11,13 @@
  * Verifies: EPIC-09-S13, EPIC-09-S11 (third scenario) · AC10 · test plan #10, #11
  */
 import type { Segment, TaskSpec } from '@DeFlow/core';
-import { buildPacket, contextSegment, renderPacket, TaskSpecSchema } from '@DeFlow/core';
+import {
+  buildPacket,
+  contextSegment,
+  PinIntegrityViolation,
+  renderPacket,
+  TaskSpecSchema,
+} from '@DeFlow/core';
 import { it } from '@DeFlow/testkit';
 import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
@@ -249,6 +255,82 @@ suite('the rendered prompt is a derived artifact (EPIC-09-S13, EPIC-09-S11)', ()
 
     const result = verifyDerivedPrompt(tmp, runDir, stored.record);
     expect(result.ok).toBe(false);
+    db.close();
+  });
+});
+
+/**
+ * KAR-10.4 AC8 — `pinnedKept` is evidence that the check ran, not a copy of the
+ * manifest.
+ *
+ * *"Without it, 'the check passed' and 'the check never ran' are
+ * indistinguishable in the ledger, and NF10 requires any state in the UI to be
+ * traceable to specific ledger events"* (`pinnedKept` in
+ * `packages/core/src/pin-integrity.ts`). Assembling the list off the packet
+ * records only that a packet *had* pins — which is true of a packet whose
+ * pinned bytes were replaced after they were digested.
+ *
+ * Verifies: EPIC-10-S20 (third scenario), EPIC-10-S23 (third scenario) · AC8 ·
+ * test plan #9
+ */
+suite('a compaction proves the pin check ran (KAR-10.4 AC8)', () => {
+  it('refuses to record pinnedKept for a packet whose pinned digest no longer matches its text', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    const runDir = join(tmp, 'runs', RUN);
+    const oversized = await contextSegment({
+      id: 'build-log',
+      kind: 'tool.output',
+      text: `pnpm -r build\n${'q'.repeat(200_000)}`,
+      sourceEvent: 23,
+    });
+    const built = await buildPacket({
+      runId: RUN,
+      nodeId: 'implement',
+      attempt: 0,
+      builtAtEvent: 60,
+      target: { provider: 'claude-code', model: 'sonnet-4-6', maxContext: 20_000 },
+      pinned: {
+        spec: approvedSpec(),
+        node: { pathScopes: ['src/checkout/**'], permission: 'worktree' },
+        sourceEvent: 9,
+      },
+      segments: [oversized],
+    });
+
+    // A packet mutated after the digest was taken: the acceptance criteria are
+    // in the prompt and the manifest says they hash to something else.
+    // Deliberately *self-consistent* — the digest is corrupted everywhere the
+    // packet schema cross-checks it, so `ContextPacketSchema` is satisfied and
+    // the rendered prompt is byte-for-byte the one that was built. The only
+    // equation left that can catch it is contentHash === sha256(text), and the
+    // only thing that evaluates it is the pin check itself.
+    const corrupted = `sha256-${'0'.repeat(64)}`;
+    const corrupt = (segments: readonly Segment[]): Segment[] =>
+      segments.map((segment) =>
+        segment.id === 'pinned-spec-criteria' ? { ...segment, contentHash: corrupted } : segment,
+      );
+    const digestsOf = (segments: readonly Segment[]): string[] =>
+      segments.filter((segment) => segment.pinned).map((segment) => segment.contentHash);
+
+    const segments = corrupt(built.packet.segments);
+    const preCompaction = corrupt(built.demotion.preCompaction);
+    const tampered = { ...built.packet, segments, pinnedDigests: digestsOf(segments) };
+
+    expect(() =>
+      persistContextPacket(db, {
+        dataDir: tmp,
+        runDir,
+        packet: tampered,
+        demotion: { ...built.demotion, preCompaction },
+        ...ENV,
+      }),
+    ).toThrow(PinIntegrityViolation);
+
+    // And nothing was appended: a compaction that could not prove the check ran
+    // must not leave a `pinnedKept` list behind claiming it did.
+    expect(readRange(db, RUN, 0, 100).events.map((event) => event.kind)).toEqual([]);
     db.close();
   });
 });

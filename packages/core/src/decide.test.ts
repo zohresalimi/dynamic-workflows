@@ -135,11 +135,18 @@ function parse(row: Row, seq: number): Event {
 }
 
 /**
- * The two rows every scenario starts from: a proposed plan, then a started run.
+ * The three rows every scenario starts from: an approved spec, a proposed plan,
+ * then a started run.
  *
- * `head` goes in front of both, which is where `run.created` belongs — it is
- * the row that tells the projection which repository the run is executing
+ * `head` goes in front of all three, which is where `run.created` belongs — it
+ * is the row that tells the projection which repository the run is executing
  * against, and therefore what the repo lock's key is.
+ *
+ * The approval is not decoration. KAR-10.3 AC3 makes F1.3's gate a property of
+ * `decide()` itself — *"before `run.spec.approved` exists in the ledger, no node
+ * other than framing and recon is ever scheduled"* — so a fixture for a run that
+ * is genuinely executing has to carry the row every executing run has.
+ * `spec-approval.test.ts` is where the negative case lives.
  */
 function started(
   nodes: readonly NodeSpec[],
@@ -148,6 +155,7 @@ function started(
 ): RunState {
   return fold([
     ...head,
+    { kind: 'run.spec.approved', payload: { specHash: SPEC_HASH, by: 'ui' } },
     {
       kind: 'plan.proposed',
       payload: { version: 1, planHash: PLAN_HASH, graph: planGraph(nodes), by: 'planner' },

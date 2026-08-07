@@ -3,8 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Cross-process specs. Depends on the published DeFlow package, not on @DeFlow/daemon, so they exercise the artefact users install.",
+  "description": "Cross-process specs. What they exercise is the DeFlow binary and a real DeFlowd process; @DeFlow/core, @DeFlow/ledger and @DeFlow/testkit are devDependencies used only to arrange a data directory before a daemon is started over it and to read one back afterwards. @DeFlow/daemon is deliberately absent: R2 keeps it a leaf.",
   "devDependencies": {
+    "@DeFlow/core": "workspace:*",
+    "@DeFlow/ledger": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "DeFlow": "workspace:*",

@@ -27,6 +27,7 @@
     "gpt-tokenizer": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
+    "rfc6902": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },

@@ -35,8 +35,15 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.finding.v1': join(corpus, 'DeFlow.finding.v1.valid.json'),
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
+  'DeFlow.reconfact.v1': join(corpus, 'DeFlow.reconfact.v1.valid.json'),
+  'DeFlow.reconsurvey.v1': join(corpus, 'DeFlow.reconsurvey.v1.valid.json'),
   'DeFlow.taskspec.v1': join(repoRoot, 'packages/core/test/fixtures/specs/vue3-migration.json'),
+  'DeFlow.taskspecdraft.v1': join(
+    repoRoot,
+    'packages/core/test/fixtures/specs/vue3-migration.framed.json',
+  ),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
+  'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
 };
 
 suite('the emitted directory loads (AC3, test plan #4)', () => {

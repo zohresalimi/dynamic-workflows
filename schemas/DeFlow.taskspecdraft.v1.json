@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deflow.dev/schemas/DeFlow.taskspecdraft.v1.json",
+  "title": "DeFlow.taskspecdraft.v1",
+  "description": "The document the framing interview returns: the eight authored fields, the F7.4 criteria contract, and no digest the agent could not honestly compute (F1.2).",
+  "type": "object",
+  "properties": {
+    "schemaId": {
+      "type": "string",
+      "const": "DeFlow.taskspecdraft.v1"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "included": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "included"
+      ],
+      "additionalProperties": false
+    },
+    "nonGoals": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "priorDecisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "repository",
+              "task"
+            ]
+          }
+        },
+        "required": [
+          "decision",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "acceptanceCriteria": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verifiedBy": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "statement",
+              "verifiedBy"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "unverifiable": {
+                "type": "boolean",
+                "const": true
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verifiedBy": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "statement",
+              "unverifiable",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "knownFailureModes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detection": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mitigation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "detection"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schemaId",
+    "goal",
+    "scope",
+    "nonGoals",
+    "constraints",
+    "priorDecisions",
+    "acceptanceCriteria",
+    "knownFailureModes"
+  ],
+  "additionalProperties": false
+}

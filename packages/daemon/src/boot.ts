@@ -34,8 +34,10 @@ import {
   type RunReplay,
   replayAll,
 } from '@DeFlow/ledger';
+import { randomBytes } from 'node:crypto';
 import { systemClock } from './clock.ts';
 import { resolveDataDir } from './data-dir.ts';
+import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
 import {
   clearLedgerView,
   type OpenedLedgerView,
@@ -48,6 +50,17 @@ import { daemonRandom } from './random.ts';
 import type { ReapDecision } from './reaper.ts';
 import { type Recovery, recover } from './recovery.ts';
 import { setDaemonEpoch, setHeadSeq } from './runtime.ts';
+
+/**
+ * The 6-lowercase-hex suffix `mintRunId` (@DeFlow/core) needs — real entropy,
+ * not the seeded backoff-jitter `Random` port: a `RunId` only has to be
+ * unique, never reproducible the way a retry delay does for KAR-06.5's golden
+ * sequences, and `node:crypto`'s CSPRNG is what `../mcp/host.ts` already uses
+ * for the same kind of id-shaped token.
+ */
+function randomRunIdSuffix(): string {
+  return randomBytes(3).toString('hex');
+}
 
 const daemon = log.child({ mod: 'boot' });
 
@@ -235,6 +248,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     // append behind it (docs/11-api-and-realtime.md §5.1).
     view = openLedgerView(dataDir);
     setLedgerView(view);
+    // KAR-10.1 — the write-side ports `POST /api/runs` and `DeFlow run` submit
+    // a task through. Registered on the same write connection `boot` already
+    // holds, not a second one: intake appends through the daemon's one writer,
+    // the same as every other command.
+    setIntakePorts({ db, epoch, clock: systemClock, dataDir, randomHex: randomRunIdSuffix });
 
     http = await startHttp({
       port: options.port ?? DEFAULT_PORT,
@@ -243,6 +261,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     });
     step('bind-port');
   } catch (error) {
+    clearIntakePorts();
     clearLedgerView();
     view?.close();
     db.close();
@@ -270,6 +289,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // the next daemon in. The read view is unregistered before it is closed,
       // so a route can never reach a connection that has already gone.
       await http.close();
+      clearIntakePorts();
       clearLedgerView();
       view.close();
       db.close();
