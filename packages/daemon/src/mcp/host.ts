@@ -27,8 +27,16 @@
  */
 
 import type { EventRecord, LedgerSink } from '@DeFlow/adapters';
-import type { Clock, EventSeq, Fact, NodeId, RunId } from '@DeFlow/core';
-import { PlanPatchSchema } from '@DeFlow/core';
+import type {
+  Clock,
+  EventSeq,
+  Fact,
+  HandleRefusal,
+  NodeHandleAccess,
+  NodeId,
+  RunId,
+} from '@DeFlow/core';
+import { PlanPatchSchema, REQUESTED_PATH_MAX } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, rmSync } from 'node:fs';
@@ -53,6 +61,7 @@ import {
   lineReader,
   parseShimFrame,
 } from './protocol.ts';
+import type { ArtifactStore } from './resolve-handle.ts';
 import { mcpServerEntry } from './server-entry.ts';
 
 /** Where the socket lives under the data directory. Created `0700`. */
@@ -74,18 +83,23 @@ export interface FactStore {
   read(key: string): Fact | null;
 }
 
-/** The content-addressed artifact store, as this host needs it (KAR-03.9). */
-export interface ArtifactStore {
-  /** The bytes behind `handle`, verified against their digest, or `null`. */
-  read(handle: string): Uint8Array | null;
-}
-
 export interface McpGrantRequest {
   readonly runId: RunId;
   readonly nodeId: NodeId;
   /** 0-based, matching the event envelope. */
   readonly attempt: number;
   readonly phase: WorkflowPhase;
+  /**
+   * KAR-09.5 AC4 — the node's permission level, worktree scope and declared
+   * read globs, so `DeFlow_read_artifact` can decide a `file://` handle by the
+   * same ladder the ACP `fs/*` boundary uses.
+   *
+   * Optional, and absent means every `file://` handle is refused. That is the
+   * fail-closed direction on purpose: this tool is *outside* the `fs/*`
+   * mediation path, so a grant that forgot to say what the node may read must
+   * not be read as "anything".
+   */
+  readonly access?: NodeHandleAccess;
 }
 
 export interface McpGrant {
@@ -110,6 +124,7 @@ export interface McpHostOptions {
   readonly clock: Clock;
   readonly ledger: LedgerSink;
   readonly facts: FactStore;
+  /** KAR-09.5 — handle resolution, permission check included. */
   readonly artifacts: ArtifactStore;
   /** Where the operator log goes. Injected by specs so refusals are readable. */
   readonly destination?: DestinationStream;
@@ -138,6 +153,7 @@ interface GrantState {
   readonly runId: RunId;
   readonly nodeId: NodeId;
   readonly attempt: number;
+  readonly access: NodeHandleAccess | undefined;
   phase: WorkflowPhase;
   /** Whether the token has been spent. One-time means exactly that (AC1). */
   spent: boolean;
@@ -208,19 +224,74 @@ export function startMcpHost(options: McpHostOptions): Promise<McpHost> {
     };
   }
 
+  /**
+   * KAR-09.5 AC5 / EPIC-09-S29 — a refusal is recorded before it is returned,
+   * and it is returned *typed*: `<code>: <message>`, never an empty body and
+   * never a success envelope.
+   *
+   * A permission refusal becomes a `permission.denied` row, because that is the
+   * event the operator already reads for "what did this node try to reach"; a
+   * missing digest becomes a `node.progress` note, because nothing was denied —
+   * the artifact simply is not there.
+   */
+  async function refuseHandle(
+    grant: GrantState,
+    handle: string,
+    refusal: HandleRefusal,
+  ): Promise<never> {
+    const denial = refusal.denial;
+    if (denial === undefined) {
+      await progress(grant, `refused ${READ_ARTIFACT} ${handle}: ${refusal.code}`);
+    } else {
+      await options.ledger.append(
+        event(
+          'permission.denied',
+          {
+            node: grant.nodeId,
+            attempt: grant.attempt,
+            permission: denial.permission,
+            method: denial.method,
+            requested: denial.requested.slice(0, REQUESTED_PATH_MAX),
+            reason:
+              denial.reason.detail === undefined
+                ? { code: denial.reason.code }
+                : { code: denial.reason.code, detail: denial.reason.detail },
+            ...(denial.declared === undefined ? {} : { declared: [...denial.declared] }),
+          },
+          grant,
+        ),
+      );
+    }
+    throw new ToolRefused(`${refusal.code}: ${refusal.message}`);
+  }
+
   async function readArtifact(grant: GrantState, args: Record<string, unknown>) {
     const handle = typeof args.handle === 'string' ? args.handle : '';
-    const bytes = options.artifacts.read(handle);
-    if (bytes === null) throw new ToolRefused(`no artifact is readable at "${handle}"`);
-    const truncated = bytes.byteLength > ARTIFACT_INLINE_LIMIT_BYTES;
-    const text = Buffer.from(
-      truncated ? bytes.subarray(0, ARTIFACT_INLINE_LIMIT_BYTES) : bytes,
-    ).toString('utf8');
+    const resolution = await options.artifacts.resolve({
+      runId: grant.runId,
+      handle,
+      access: grant.access,
+    });
+    if (!resolution.ok) return await refuseHandle(grant, handle, resolution.refusal);
+
+    // The only thing that ever shortens a resolved body: a tool result travels
+    // back through the agent's context window, and "the whole artifact" is not
+    // a safe default for a store that holds multi-megabyte logs. It is
+    // announced (`truncated: true`) rather than silent, and it is a prefix —
+    // never a summary.
+    const truncated = resolution.bytes > ARTIFACT_INLINE_LIMIT_BYTES;
+    const text = truncated
+      ? Buffer.from(resolution.text, 'utf8')
+          .subarray(0, ARTIFACT_INLINE_LIMIT_BYTES)
+          .toString('utf8')
+      : resolution.text;
     await progress(
       grant,
-      `${READ_ARTIFACT} ${handle} (${bytes.byteLength} bytes${truncated ? ', truncated' : ''})`,
+      `${READ_ARTIFACT} ${resolution.handle} (${resolution.bytes} bytes${
+        truncated ? ', truncated' : ''
+      })`,
     );
-    return { handle, bytes: bytes.byteLength, text, truncated };
+    return { handle: resolution.handle, bytes: resolution.bytes, text, truncated };
   }
 
   async function proposePlanPatch(grant: GrantState, args: Record<string, unknown>) {
@@ -387,6 +458,7 @@ export function startMcpHost(options: McpHostOptions): Promise<McpHost> {
             runId: request.runId,
             nodeId: request.nodeId,
             attempt: request.attempt,
+            access: request.access,
             phase: request.phase,
             spent: false,
             revoked: false,

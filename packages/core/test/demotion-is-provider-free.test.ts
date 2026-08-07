@@ -24,8 +24,12 @@ import {
 } from '../../../test/support/guards.ts';
 import { allWorkspaceSources } from '../../../test/support/workspace.ts';
 
-/** Assembly, the ladder, and the pinned set the ladder must never reach. */
+/** Assembly, the ladder, the offload rule, and the pinned set the ladder must
+ * never reach. `artifact-offload.ts` is KAR-09.5's half of the same promise:
+ * the module that decides a body is too big to inline is also the module best
+ * placed to "just summarise it instead", so it is held to the same rule. */
 const DEMOTION_MODULES = [
+  'packages/core/src/artifact-offload.ts',
   'packages/core/src/build-packet.ts',
   'packages/core/src/pinned-set.ts',
   'packages/core/src/render-packet.ts',

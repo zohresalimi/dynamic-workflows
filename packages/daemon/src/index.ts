@@ -283,7 +283,6 @@ export {
 // bridges the two. The MCP SDK is reached through two deep subpaths only
 // (`checkMcpSdkImports`); nothing here loads express or hono.
 export type {
-  ArtifactStore,
   FactStore,
   McpGrant,
   McpGrantRequest,
@@ -293,6 +292,16 @@ export type {
 export { MCP_SOCKET_DIR, MCP_SOCKET_FILE, startMcpHost } from './mcp/host.ts';
 export type { HostFrame, ShimFrame } from './mcp/protocol.ts';
 export { BRIDGE_VERSION, BridgeProtocolError } from './mcp/protocol.ts';
+// KAR-09.5 — handle resolution behind `DeFlow_read_artifact`: the run's
+// artifact index, the line range, and the permission check that keeps a
+// DeFlow-hosted tool from being a way around the ACP fs/* boundary.
+export type {
+  ArtifactResolveRequest,
+  ArtifactStore,
+  HandleResolution,
+  RunArtifactStorePorts,
+} from './mcp/resolve-handle.ts';
+export { digestOf, runArtifactStore } from './mcp/resolve-handle.ts';
 export type { McpServerEntryOptions } from './mcp/server-entry.ts';
 export {
   DEFLOW_MCP_ENTRY,

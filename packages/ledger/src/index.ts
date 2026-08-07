@@ -69,6 +69,7 @@ export {
 // becomes, and the excerpt that keeps a lost artifact renderable.
 export {
   ARTIFACT_FAILED_INTEGRITY,
+  ARTIFACT_SCHEME,
   ARTIFACT_UNAVAILABLE,
   type ArtifactStatus,
   type ArtifactView,
@@ -252,6 +253,19 @@ export {
   readProviderCapabilities,
   recordProviderCapabilities,
 } from './provider-capabilities.ts';
+// KAR-09.5 — the run's artifact index: which digests this run offloaded, and
+// what each one is. The bytes stay in the global blob store; this is what makes
+// a handle resolvable from the run that recorded it and no other.
+export {
+  listRunArtifacts,
+  RUN_ARTIFACT_DIR,
+  RUN_ARTIFACT_ENTRY,
+  type RunArtifactEntry,
+  readRunArtifact,
+  recordRunArtifact,
+  runArtifactDirOf,
+  runArtifactsDirOf,
+} from './run-artifacts.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
 export {
   CONTROL_EVENT_BUDGET,

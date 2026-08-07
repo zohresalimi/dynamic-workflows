@@ -35,7 +35,12 @@ suite('the M1 tool set (AC5)', () => {
   });
 
   it('names every tool under the DeFlow prefix, so a vendor tool cannot collide', () => {
-    for (const tool of M1_TOOLS) expect(tool.name.startsWith('DeFlow.')).toBe(true);
+    // Either separator: `DeFlow_read_artifact` is spelled with an underscore
+    // because that is the string the handle line in every offloaded packet
+    // tells the agent to call (KAR-09.5 AC3), and a name the prompt promises
+    // has to be the name the host serves. The property under test is the
+    // namespace, not the punctuation.
+    for (const tool of M1_TOOLS) expect(tool.name).toMatch(/^DeFlow[._]/);
   });
 });
 

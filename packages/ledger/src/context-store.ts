@@ -56,7 +56,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { appendEvents, type EventDraft } from './append.ts';
-import { blobHandle, getBlob, putBlob } from './blobs.ts';
+import { ARTIFACT_SCHEME, blobHandle, getBlob, putBlob } from './blobs.ts';
+import { recordRunArtifact } from './run-artifacts.ts';
 
 /** The mime a segment body carries. Prompts are text; the store is content
  * addressed and does not file by type, so this is a label on the reference. */
@@ -162,9 +163,25 @@ export function persistContextPacket(
     putBlob(dataDir, encode(segment.text), SEGMENT_MIME, options.ikey);
   }
   // The demoted bodies too: the handle in a stub is a promise that the bytes
-  // are retrievable, and this is where it is kept.
+  // are retrievable, and this is where it is kept. Each one is also indexed
+  // under the run (KAR-09.5), which is what makes the promise resolvable *by
+  // this run* and refusable for any other — the bytes are global, the
+  // permission to reach them through `DeFlow_read_artifact` is not.
   for (const body of options.demotion?.bodies ?? []) {
-    putBlob(dataDir, encode(body.text), SEGMENT_MIME, options.ikey);
+    const bytes = encode(body.text);
+    putBlob(dataDir, bytes, SEGMENT_MIME, options.ikey);
+    recordRunArtifact(runDir, {
+      v: 1,
+      sha256: body.handle.slice(ARTIFACT_SCHEME.length),
+      handle: body.handle,
+      bytes: bytes.byteLength,
+      lines: body.text.split('\n').length,
+      mime: SEGMENT_MIME,
+      description: body.description,
+      node: packet.nodeId,
+      segment: body.segment,
+      reason: body.reason,
+    });
   }
 
   const prompt = renderPacket(packet);

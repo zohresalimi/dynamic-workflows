@@ -87,6 +87,13 @@ function input(overrides: Partial<PacketBuildInput> = {}): PacketBuildInput {
       sourceEvent: seq(9),
     },
     segments: [],
+    // Every scenario in this file is about the *budget* ladder, and its
+    // fixtures are sized in tens of thousands of tokens — which is tens of
+    // kilobytes, and therefore over KAR-09.5's inline threshold. Turned off
+    // explicitly rather than left at its default so these tests keep measuring
+    // the rule they were written for; the threshold has its own suite in
+    // artifact-offload.test.ts.
+    inlineThresholdBytes: Number.MAX_SAFE_INTEGER,
     ...overrides,
   };
 }

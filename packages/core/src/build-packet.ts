@@ -46,6 +46,13 @@
  * Verifies: EPIC-09-S6, EPIC-09-S7, EPIC-09-S8, EPIC-09-S9, EPIC-09-S10,
  * EPIC-09-S11, EPIC-09-S12, EPIC-09-S28 · AC1-AC9
  */
+import {
+  defaultDescription,
+  exceedsInlineThreshold,
+  handleForSegment,
+  handleStubText,
+  INLINE_THRESHOLD_BYTES_DEFAULT,
+} from './artifact-offload.ts';
 import { type Constraint, type ConstraintCounts, countConstraintForms } from './constraint.ts';
 import {
   type ContextBudget,
@@ -164,27 +171,20 @@ const fillRank = (segment: Segment): number => {
  * Demotion
  * -------------------------------------------------------------------------- */
 
-/** `artifact://<sha256>` for a segment, derived from the digest it already
- * carries — which is why demotion needs no store, no port and no `await`. */
-export function handleForSegment(segment: Segment): Handle {
-  return `artifact://${segment.contentHash.slice('sha256-'.length)}` as Handle;
-}
-
-const byteLengthOf = (text: string): number => new TextEncoder().encode(text).length;
-
 /**
- * §5.2's handle, verbatim in shape: the address, what it is, how big it was,
- * and how to get it back. Every part is a function of the segment, so the stub
- * is byte-stable and its own `contentHash` is reproducible.
+ * Why a body left the packet.
+ *
+ * - `inline-threshold` — KAR-09.5 AC1: it was over the configured inline size,
+ *   and would have been offloaded inside a budget ten times its own.
+ * - `budget` — KAR-09.2 AC5: the packet did not fit, and the ladder reached it.
+ *
+ * Recorded per body rather than per build because a packet routinely has both,
+ * and *"was this offloaded because it is big, or because the packet is full?"*
+ * is the first question anyone asks of an F10.5 bar that looks wrong.
  */
-export function handleStubText(segment: Segment): string {
-  const lines = segment.text.split('\n').length;
-  return (
-    `${handleForSegment(segment)}  ${segment.kind} body "${segment.id}" · ${lines} lines · ` +
-    `${byteLengthOf(segment.text)} bytes\n` +
-    '  → pull the full body with the DeFlow_read_artifact MCP tool'
-  );
-}
+export const DEMOTION_REASONS = ['inline-threshold', 'budget'] as const;
+
+export type DemotionReason = (typeof DEMOTION_REASONS)[number];
 
 /**
  * A body that left the packet, and the bytes it left behind.
@@ -198,6 +198,10 @@ export interface DemotedBody {
   readonly segment: SegmentId;
   readonly handle: Handle;
   readonly text: string;
+  /** What the handle line said this body is — carried through so the run's
+   * artifact index can describe it without re-parsing the stub. */
+  readonly description: string;
+  readonly reason: DemotionReason;
 }
 
 export interface PacketDemotion {
@@ -253,6 +257,22 @@ export interface PacketBuildInput {
    * Order is irrelevant: the fill order is applied here.
    */
   readonly segments?: readonly Segment[];
+  /**
+   * KAR-09.5 AC1 — the configured inline threshold in bytes
+   * (`context.inlineThresholdBytes`). Absent means the 8 KB default.
+   */
+  readonly inlineThresholdBytes?: number;
+  /**
+   * KAR-09.5 AC3 — what a demoted body *is*, by segment id, for the handle
+   * line: `build-log for \`pnpm -r build\` (fail)`.
+   *
+   * A build input rather than a `Segment` field, and deliberately: the packet
+   * schema is `DeFlow.contextpacket.v1` and shipped, and a description is not
+   * a property of the bytes — it is a property of the sentence DeFlow writes
+   * about them, which is exactly what the stub's `text` already is. A segment
+   * with no entry here is described by its kind and id.
+   */
+  readonly descriptions?: Readonly<Record<string, string>>;
   /** The `Tokenizer` port. Defaults to the labelled heuristic. */
   readonly estimate?: TokenEstimator;
   /**
@@ -396,7 +416,12 @@ export async function buildPacket(input: PacketBuildInput): Promise<PacketBuild>
   }
 
   const assembled = [...pinned, ...supplied.toSorted((a, b) => fillRank(a) - fillRank(b))];
-  const demotion = await demote(assembled, budget.limitTokens, estimate);
+  const demotion = await demote(assembled, {
+    limitTokens: budget.limitTokens,
+    estimate,
+    thresholdBytes: input.inlineThresholdBytes ?? INLINE_THRESHOLD_BYTES_DEFAULT,
+    descriptions: input.descriptions ?? {},
+  });
 
   const segments = demotion.segments;
   const prompt = renderPacket({ segments });
@@ -452,8 +477,12 @@ export async function buildPacket(input: PacketBuildInput): Promise<PacketBuild>
  *
  * `compactable: false` because a handle has nothing left to offload.
  */
-async function asHandle(segment: Segment, estimate: TokenEstimator): Promise<Segment> {
-  const text = handleStubText(segment);
+async function asHandle(
+  segment: Segment,
+  estimate: TokenEstimator,
+  description: string | undefined,
+): Promise<Segment> {
+  const text = handleStubText(segment, description);
   return {
     id: segment.id,
     kind: 'artifact.handle',
@@ -471,11 +500,29 @@ interface DemotionPass {
   readonly result: PacketDemotion;
 }
 
-async function demote(
-  assembled: readonly Segment[],
-  limitTokens: number,
-  estimate: TokenEstimator,
-): Promise<DemotionPass> {
+interface DemotionInput {
+  readonly limitTokens: number;
+  readonly estimate: TokenEstimator;
+  readonly thresholdBytes: number;
+  readonly descriptions: Readonly<Record<string, string>>;
+}
+
+/**
+ * Two passes over one ladder, in the order the two rules apply.
+ *
+ * The threshold pass runs first and unconditionally (AC1): a body that big is
+ * carried by reference whatever the budget says, so it is gone before the
+ * budget is even consulted. The budget pass then walks the same ladder for
+ * whatever is left, in §5.2's order.
+ *
+ * Both produce the same thing — a stub whose `text` is the handle line, and
+ * the bytes carried out for the caller to store — and both are recorded in one
+ * `PacketDemotion`, tagged with which rule fired. A stub is never demoted
+ * twice: `asHandle` marks it `compactable: false`, and `selectCompactionCandidates`
+ * (KAR-09.3) never offers a non-compactable segment.
+ */
+async function demote(assembled: readonly Segment[], input: DemotionInput): Promise<DemotionPass> {
+  const { limitTokens, estimate, thresholdBytes, descriptions } = input;
   const before = sumTokens(assembled);
   const ladder = demotionLadder({ segments: assembled });
   const replacements = new Map<SegmentId, Segment>();
@@ -484,15 +531,32 @@ async function demote(
   const bodies: DemotedBody[] = [];
 
   let tokens = before;
-  for (const candidate of ladder) {
-    if (tokens <= limitTokens) break;
-    const stub = await asHandle(candidate, estimate);
+  const take = async (candidate: Segment, reason: DemotionReason): Promise<void> => {
+    const description = descriptions[candidate.id];
+    const stub = await asHandle(candidate, estimate, description);
     const handle = handleForSegment(candidate);
     replacements.set(candidate.id, stub);
     droppedSegments.push(candidate.id);
     demotedToHandles.push(handle);
-    bodies.push({ segment: candidate.id, handle, text: candidate.text });
+    bodies.push({
+      segment: candidate.id,
+      handle,
+      text: candidate.text,
+      description: description ?? defaultDescription(candidate),
+      reason,
+    });
     tokens -= candidate.tokens.estimated - stub.tokens.estimated;
+  };
+
+  for (const candidate of ladder) {
+    if (exceedsInlineThreshold(candidate, thresholdBytes))
+      await take(candidate, 'inline-threshold');
+  }
+
+  for (const candidate of ladder) {
+    if (tokens <= limitTokens) break;
+    if (replacements.has(candidate.id)) continue;
+    await take(candidate, 'budget');
   }
 
   const segments = assembled.map((segment) => replacements.get(segment.id) ?? segment);

@@ -19,17 +19,18 @@ import {
   type RunId,
   RunIdSchema,
 } from '@DeFlow/core';
-import { getBlob, putBlob } from '@DeFlow/ledger';
+import { putBlob, recordRunArtifact } from '@DeFlow/ledger';
 import { makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { Buffer } from 'node:buffer';
 import { statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   type McpHost,
   PROPOSE_PLAN_PATCH,
   READ_ARTIFACT,
   READ_FACT,
+  runArtifactStore,
   startMcpHost,
 } from '../../src/index.ts';
 import { openTestLedger, type TestLedger } from './support/ledger.ts';
@@ -56,6 +57,7 @@ const FACT: Fact = FactSchema.parse({
 });
 
 let dir = '';
+const runDirOf = (runId: string): string => join(dir, 'runs', runId);
 let ledger: TestLedger;
 let host: McpHost;
 let logLines: string[] = [];
@@ -70,17 +72,9 @@ beforeEach(async () => {
     clock: new TestClock(),
     ledger: ledger.sink,
     facts: { read: (key: string) => (key === FACT.key ? FACT : null) },
-    artifacts: {
-      read(handle: string): Uint8Array | null {
-        // The daemon's real content-addressed blob store, which verifies each
-        // blob against its own digest on read.
-        try {
-          return getBlob(dir, handle);
-        } catch {
-          return null;
-        }
-      },
-    },
+    // The daemon's real resolver over the real content-addressed blob store,
+    // which verifies each blob against its own digest on read.
+    artifacts: runArtifactStore({ dataDir: dir, runDirOf }),
     destination: {
       write(line: string): void {
         logLines.push(line);
@@ -135,7 +129,22 @@ suite('a tool round-trips (AC5)', () => {
   });
 
   it('pulls an artifact by handle through the same socket', async () => {
-    const handle = putBlob(dir, Buffer.from('the report body', 'utf8'), 'text/plain');
+    const body = 'the report body';
+    const handle = putBlob(dir, Buffer.from(body, 'utf8'), 'text/plain');
+    // KAR-09.5: the bytes are global, but the permission to reach them through
+    // this tool is per run, so the run has to have recorded the handle.
+    recordRunArtifact(runDirOf(RUN_ID), {
+      v: 1,
+      sha256: handle.slice('artifact://'.length),
+      handle,
+      bytes: Buffer.byteLength(body, 'utf8'),
+      lines: 1,
+      mime: 'text/plain',
+      description: 'the report',
+      node: NODE_ID,
+      segment: 'report',
+      reason: 'inline-threshold',
+    });
 
     const { agent } = await connect();
     const result = await agent.request('tools/call', {

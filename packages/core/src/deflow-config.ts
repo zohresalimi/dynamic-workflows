@@ -26,6 +26,7 @@
  * Verifies: EPIC-09-S22 (third scenario), EPIC-09-S23 (background) · AC4, AC5
  */
 import { z } from 'zod';
+import { INLINE_THRESHOLD_BYTES_DEFAULT } from './artifact-offload.ts';
 import { type Constraint, ConstraintSchema } from './constraint.ts';
 import { PIN_REINJECT_TURNS_DEFAULT } from './reinjection.ts';
 
@@ -45,8 +46,26 @@ export const ProviderConfigSchema = z.looseObject({
 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 
+/**
+ * KAR-09.5 AC1 — the packet-assembly knobs. One so far, and it is a size in
+ * bytes rather than in tokens on purpose: the threshold is about what a body
+ * *is*, and bytes are the same number for every tokenizer, every model and
+ * every counting tier (§7). A threshold in tokens would move under a packet
+ * whenever the estimator changed tier mid-run.
+ */
+export const ContextConfigSchema = z.looseObject({
+  inlineThresholdBytes: z
+    .number()
+    .int()
+    .positive('inlineThresholdBytes must be a positive integer')
+    .optional(),
+});
+
+export type ContextConfig = z.infer<typeof ContextConfigSchema>;
+
 export const DeFlowConfigSchema = z.looseObject({
   providers: z.record(z.string(), ProviderConfigSchema).optional(),
+  context: ContextConfigSchema.optional(),
   /** Run-config safety constraints, structured. Prose is refused here for the
    * same reason it is refused in the renderer: there is no free-prose path into
    * a `pinned.constraints` segment (AC1). */
@@ -65,6 +84,11 @@ export function parseDeFlowConfig(value: unknown): DeFlowConfig {
 /** AC5 — `pinReinjectTurns` for one provider, defaulting to 8. */
 export function pinReinjectTurnsFor(config: DeFlowConfig, provider: string): number {
   return config.providers?.[provider]?.pinReinjectTurns ?? PIN_REINJECT_TURNS_DEFAULT;
+}
+
+/** KAR-09.5 AC1 — the inline threshold in bytes, defaulting to 8 KB. */
+export function inlineThresholdBytesOf(config: DeFlowConfig): number {
+  return config.context?.inlineThresholdBytes ?? INLINE_THRESHOLD_BYTES_DEFAULT;
 }
 
 /** The structured run-config constraints, `[]` when none are declared. */

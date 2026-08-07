@@ -21,12 +21,27 @@ export type {
   SchemaIssue,
 } from './accept-fact.ts';
 export { acceptFact } from './accept-fact.ts';
+// KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
+// behind.
+export {
+  byteLengthOf,
+  defaultDescription,
+  exceedsInlineThreshold,
+  formatByteSize,
+  handleForSegment,
+  handleStubText,
+  INLINE_THRESHOLD_BYTES_DEFAULT,
+  lineCountOf,
+  READ_ARTIFACT_TOOL,
+  truncatedDigest,
+} from './artifact-offload.ts';
 // KAR-09.2 — packet assembly under a token budget: fill order, the budget
 // ceiling, and the demotion ladder that offloads rather than summarises.
 export type {
   BudgetInput,
   BudgetResolution,
   DemotedBody,
+  DemotionReason,
   PacketBuild,
   PacketBuildInput,
   PacketDemotion,
@@ -38,9 +53,8 @@ export {
   BUDGET_FRACTION_CEILING,
   BUDGET_FRACTION_DEFAULT,
   buildPacket,
+  DEMOTION_REASONS,
   FILL_ORDER,
-  handleForSegment,
-  handleStubText,
   PinnedSegmentSuppliedLate,
   resolveContextBudget,
   SegmentContentHashMismatch,
@@ -123,10 +137,12 @@ export { decide } from './decide.ts';
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
 // KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
 // run-config constraints are read from. The file itself is read in the daemon.
-export type { DeFlowConfig, ProviderConfig } from './deflow-config.ts';
+export type { ContextConfig, DeFlowConfig, ProviderConfig } from './deflow-config.ts';
 export {
+  ContextConfigSchema,
   configuredConstraints,
   DeFlowConfigSchema,
+  inlineThresholdBytesOf,
   ProviderConfigSchema,
   parseDeFlowConfig,
   pinReinjectTurnsFor,
@@ -277,6 +293,18 @@ export {
 // agent's context.
 export type { GateSpecUnavailableReason, LedgerSpec } from './gate-spec.ts';
 export { GateSpecUnavailable, gateSpecFromLedger } from './gate-spec.ts';
+// KAR-09.5 — the handle grammar, the line range, and the permission check
+// DeFlow_read_artifact needs because it sits outside the ACP fs/* path.
+export type {
+  HandleDenial,
+  HandleRefusal,
+  HandleRefusalCode,
+  NodeHandleAccess,
+  ParsedArtifactHandle,
+  ParsedFileHandle,
+  ParsedHandle,
+} from './handle-access.ts';
+export { decideFileHandleAccess, parseHandle, sliceLines } from './handle-access.ts';
 export { contentHash, planHash, sha256Hex, specHash } from './hash.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
