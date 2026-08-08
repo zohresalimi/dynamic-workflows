@@ -264,6 +264,9 @@ suite('the shim dies with its agent (AC7)', () => {
  *
  * Verifies: KAR-14.3 AC4 · test plan #7
  */
+/** KAR-11.3 AC6 — a proposal names the plan version it was derived against. */
+const BASE_PLAN_HASH = `sha256-${'4'.repeat(64)}`;
+
 suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 AC4)', () => {
   const ops = [
     {
@@ -315,7 +318,7 @@ suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 
 
     const result = await agent.request('tools/call', {
       name: PROPOSE_PLAN_PATCH,
-      arguments: { patch: patch(undefined) },
+      arguments: { patch: patch(undefined), basePlanHash: BASE_PLAN_HASH },
     });
 
     expect(result.isError).toBe(true);
@@ -330,6 +333,7 @@ suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 
       name: PROPOSE_PLAN_PATCH,
       arguments: {
         patch: patch({ estimatedCostDeltaUsd: 0.4, replanDepth: 1 }),
+        basePlanHash: BASE_PLAN_HASH,
       },
     });
 
@@ -342,7 +346,7 @@ suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 
 
     const result = await agent.request('tools/call', {
       name: PROPOSE_PLAN_PATCH,
-      arguments: { patch: patch(FULL_POLICY) },
+      arguments: { patch: patch(FULL_POLICY), basePlanHash: BASE_PLAN_HASH },
     });
 
     expect(result.isError).toBeFalsy();
@@ -350,6 +354,117 @@ suite('a patch with no estimate block is refused at the tool boundary (KAR-14.3 
     // what decides afterwards.
     expect(result.structuredContent).toMatchObject({ patchId: 'patch-1', accepted: false });
     await expect.poll(() => ledger.eventsOf('plan.patch.proposed').length).toBe(1);
+  });
+});
+
+/**
+ * KAR-11.3 AC1, AC3, AC6, AC9 — the proposal boundary (EPIC-11-S13).
+ *
+ * 06 §4.1: the tool *"takes the patch as structured input validated against the
+ * same schema, so a malformed proposal fails at the tool boundary rather than
+ * in the policy engine"*. The two halves of that sentence are separate
+ * guarantees and both are asserted here: the refusal is a **tool error the
+ * agent can act on** while it is still inside its own tool loop, and **nothing
+ * is appended** — a `plan.patch.proposed` carrying a body that does not parse
+ * is an event every later reader has to defend against for ever.
+ *
+ * Verifies: EPIC-11-S13 · AC1, AC3, AC6, AC9 · test plan #4, #10
+ */
+suite('EPIC-11-S13 — a malformed proposal dies at the tool boundary (KAR-11.3)', () => {
+  const node = {
+    id: 'n-extra',
+    title: 'analyse the three packages recon found',
+    type: 'agent',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'read',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1200 },
+    retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+    budget: {},
+    brief: 'read the three packages and report what they import',
+    provider: { prefer: ['claude'], requires: [] },
+    resume: 'always-replay',
+  };
+
+  const POLICY = {
+    estimatedCostDeltaUsd: 0.4,
+    estimatedWallClockDeltaMs: 60_000,
+    blastRadius: { paths: [], nodeCount: 1 },
+    replanDepth: 1,
+    escalatesPermission: null,
+    addsWriteCapability: false,
+  };
+
+  const REASON = 'recon found @acme/ui, @acme/forms and @acme/charts also import the v2 API';
+
+  const patch = (over: Record<string, unknown> = {}) => ({
+    schemaId: 'DeFlow.planpatch.v1',
+    id: 'patch-11-3',
+    proposedBy: NODE_ID,
+    reason: REASON,
+    ops: [{ op: 'insert-nodes', nodes: [node], edges: [] }],
+    policy: POLICY,
+    ...over,
+  });
+
+  const call = (
+    agent: { request: (m: string, p: unknown) => Promise<Record<string, unknown>> },
+    args: unknown,
+  ) => agent.request('tools/call', { name: PROPOSE_PLAN_PATCH, arguments: args });
+
+  it('refuses ops that are missing their edges, and appends nothing', async () => {
+    const { agent } = await connect();
+
+    const result = await call(agent, {
+      patch: patch({ ops: [{ op: 'insert-nodes', nodes: [node] }] }),
+      basePlanHash: BASE_PLAN_HASH,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('edges');
+    expect(ledger.eventsOf('plan.patch.proposed')).toEqual([]);
+  });
+
+  it('AC9 — refuses an empty reason rather than recording a change nobody explained', async () => {
+    const { agent } = await connect();
+
+    const result = await call(agent, {
+      patch: patch({ reason: '' }),
+      basePlanHash: BASE_PLAN_HASH,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('reason');
+    expect(ledger.eventsOf('plan.patch.proposed')).toEqual([]);
+  });
+
+  it('AC6 — refuses a proposal that does not say which plan it was derived against', async () => {
+    const { agent } = await connect();
+
+    const result = await call(agent, { patch: patch() });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('basePlanHash');
+    expect(ledger.eventsOf('plan.patch.proposed')).toEqual([]);
+  });
+
+  it('AC3, AC6, AC9 — records a well-formed proposal with its base and its reason verbatim', async () => {
+    const { agent } = await connect();
+
+    const result = await call(agent, { patch: patch(), basePlanHash: BASE_PLAN_HASH });
+
+    expect(result.isError).toBeFalsy();
+    await expect.poll(() => ledger.eventsOf('plan.patch.proposed').length).toBe(1);
+
+    const [proposed] = ledger.eventsOf('plan.patch.proposed');
+    expect(proposed).toMatchObject({ basePlanHash: BASE_PLAN_HASH });
+    // Verbatim, byte for byte: F10.2 answers "why is there a step here that I
+    // didn't ask for?" with the sentence the proposer wrote, and a summary of
+    // it is a different sentence.
+    expect((proposed?.patch as { reason: string }).reason).toBe(REASON);
   });
 });
 

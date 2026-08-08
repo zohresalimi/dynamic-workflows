@@ -28,6 +28,16 @@ const RUN = 'run_20260807T101500Z_ac1101';
 const T0 = 1_754_380_800_000;
 const EPOCH = 3;
 const PLANNER = { model: 'a-model', effort: 'max', tier: 'strongest' } as const;
+/** KAR-11.3 — the policy engine's ruling, which `plan.patched` carries and
+ * which validation never consults. `'auto'` deliberately: the strongest form of
+ * EPIC-11-S18's second scenario is the most permissive decision there is,
+ * handed to a patch that is still refused. */
+const DECISION = {
+  decision: 'auto',
+  by: 'policy',
+  rule: 'read-only-analysis',
+  at: '2026-08-07T10:15:00.000Z',
+} as const;
 
 const CAPS: readonly PlanTimeCapability[] = [
   {
@@ -244,6 +254,14 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
       ts: T0,
       epoch: EPOCH,
     });
+    // The projection row a running run would already have. `run.plan_hash` is
+    // the only thing a patch's `basePlanHash` is ever compared against, so a
+    // patch pipeline tested without it would be testing a run nothing executes.
+    db.prepare(
+      `INSERT INTO run (run_id, status, plan_hash, last_seq, state_json, checkpoint_version,
+          daemon_epoch)
+        VALUES (?, 'running', ?, 0, '{}', 1, ?)`,
+    ).run(RUN, v3.planHash, EPOCH);
     return v3;
   }
 
@@ -273,7 +291,9 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
         caps: CAPS,
         estimatePacketTokens: () => 0,
         refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
         patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
+        decision: DECISION,
         by: 'planner',
         planner: PLANNER,
         ts: T0,
@@ -332,7 +352,9 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
         caps: CAPS,
         estimatePacketTokens: () => 0,
         refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
         patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u4',
+        decision: DECISION,
         by: 'planner',
         planner: PLANNER,
         ts: T0,
@@ -344,6 +366,24 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
       expect(
         readRange(db, RUN, 0, 200).events.filter((row) => row.kind === 'plan.patch.rejected'),
       ).toEqual([]);
+
+      // KAR-11.3 AC4 — a patched successor is announced as `plan.patched`, not
+      // as another `plan.proposed`, and the run moves onto it. The old version
+      // is still there under its own hash: nothing was mutated.
+      const [patched] = readRange(db, RUN, 0, 200).events.filter(
+        (row) => row.kind === 'plan.patched',
+      );
+      expect(patched?.payload).toMatchObject({
+        version: 4,
+        fromHash: v3.planHash,
+        toHash: v4.planHash,
+        decision: DECISION,
+      });
+      expect(
+        db.prepare<{ plan_hash: string }>('SELECT plan_hash FROM run WHERE run_id = ?').get(RUN)
+          ?.plan_hash,
+      ).toBe(v4.planHash);
+      expect(readPlanDoc(db, v3.planHash)).not.toBeNull();
     } finally {
       db.close();
     }
@@ -363,10 +403,12 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
         ),
       );
 
-      // The policy engine's answer is not an argument this function takes, and
-      // that is the assertion: *should we?* and *can we?* are different
-      // questions, so there is no seam through which a `auto` decision could
-      // skip the check.
+      // The policy engine's answer *is* handed in — `plan.patched` has to
+      // carry it — and it is still refused. That is the assertion, and it is
+      // the stronger form of the one this test used to make: *should we?* and
+      // *can we?* are different questions, validation runs first and
+      // unconditionally, and the refusal branch returns before anything reads
+      // the ruling.
       const outcome = await commitPatchedPlan({
         db,
         runDir: join(tmp, 'runs', RUN),
@@ -375,7 +417,9 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
         caps: CAPS,
         estimatePacketTokens: () => 0,
         refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
         patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u5',
+        decision: DECISION,
         by: 'planner',
         planner: PLANNER,
         ts: T0,
@@ -384,6 +428,67 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
 
       expect(outcome.outcome).toBe('rejected');
       expect(readPlanDoc(db, v4.planHash)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('EPIC-11-S16 — a stale base is refused with PATCH_STALE, and told the current hash', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      const v3 = await committedV3(db, tmp);
+      const v4 = await addressed(
+        parsed(
+          [
+            ...(v3.nodes as unknown as Record<string, unknown>[]),
+            agent('migrate', {
+              deps: ['recon'],
+              reads: [{ kind: 'fact', key: 'finding/api-surface' }],
+            }),
+          ],
+          { version: 4, parent: v3.planHash },
+        ),
+      );
+
+      const outcome = await commitPatchedPlan({
+        db,
+        runDir: join(tmp, 'runs', RUN),
+        graph: v4,
+        spec: SPEC,
+        caps: CAPS,
+        estimatePacketTokens: () => 0,
+        refs: checkerFor(tmp),
+        // A base that was current when the proposer derived its ops and is not
+        // current now.
+        basePlanHash: `sha256-${'7'.repeat(64)}`,
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u6',
+        decision: DECISION,
+        by: 'planner',
+        planner: PLANNER,
+        ts: T0,
+        epoch: EPOCH,
+      });
+
+      expect(outcome.outcome).toBe('stale');
+      if (outcome.outcome !== 'stale') return;
+      expect(outcome.code).toBe('PATCH_STALE');
+      // AC6 — the rejection tells the proposer what to re-derive against. No
+      // rebase was attempted: the graph is exactly the one it always was.
+      expect(outcome.currentPlanHash).toBe(v3.planHash);
+      expect(readPlanDoc(db, v4.planHash)).toBeNull();
+      expect(
+        readRange(db, RUN, 0, 200).events.filter((row) => row.kind === 'plan.patched'),
+      ).toEqual([]);
+
+      const [rejected] = readRange(db, RUN, 0, 200).events.filter(
+        (row) => row.kind === 'plan.patch.rejected',
+      );
+      expect(rejected?.payload).toMatchObject({
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u6',
+        rule: 'patch-stale',
+      });
     } finally {
       db.close();
     }

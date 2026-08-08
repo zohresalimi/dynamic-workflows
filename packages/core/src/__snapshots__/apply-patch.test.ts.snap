@@ -1,0 +1,1306 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AC2 — all five op kinds apply, and the result is a golden document > abandon-branch marks the root and everything downstream of it 1`] = `
+{
+  "createdAt": "<ts>",
+  "createdBy": "planner",
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "ship-it",
+    },
+    {
+      "from": "ship-it",
+      "kind": "control",
+      "to": "announce",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "fix-lint",
+    },
+  ],
+  "nodes": [
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node recon-auth-surface",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "impl-checkout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "id": "ship-it",
+      "lifecycle": "abandoned",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node ship-it",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "ship-it",
+      ],
+      "id": "announce",
+      "lifecycle": "abandoned",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node announce",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "body": "impl-checkout",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "goal": {
+        "gate": "gate-lint-clean",
+        "kind": "gate",
+      },
+      "id": "fix-lint",
+      "lifecycle": "active",
+      "maxRounds": 3,
+      "noProgress": {
+        "diffSimilarityThreshold": 0.9,
+        "sameFailureSignatureLimit": 2,
+      },
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node fix-lint",
+      "type": "loop",
+      "writes": [],
+    },
+  ],
+  "parent": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planHash": "sha256-eac14bc2ce5bf90ec0308e0d8e942f87c1a55bfca99fad408b249bbaafc4b0e5",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "schemaId": "DeFlow.plangraph.v1",
+  "taskSpecHash": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "version": 4,
+}
+`;
+
+exports[`AC2 — all five op kinds apply, and the result is a golden document > extend-loop raises maxRounds 1`] = `
+{
+  "createdAt": "<ts>",
+  "createdBy": "planner",
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "ship-it",
+    },
+    {
+      "from": "ship-it",
+      "kind": "control",
+      "to": "announce",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "fix-lint",
+    },
+  ],
+  "nodes": [
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node recon-auth-surface",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "impl-checkout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "id": "ship-it",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node ship-it",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "ship-it",
+      ],
+      "id": "announce",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node announce",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "body": "impl-checkout",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "goal": {
+        "gate": "gate-lint-clean",
+        "kind": "gate",
+      },
+      "id": "fix-lint",
+      "lifecycle": "active",
+      "maxRounds": 8,
+      "noProgress": {
+        "diffSimilarityThreshold": 0.9,
+        "sameFailureSignatureLimit": 2,
+      },
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node fix-lint",
+      "type": "loop",
+      "writes": [],
+    },
+  ],
+  "parent": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planHash": "sha256-2e87ac9a59541f41e3919d3d4dde285da3694c5cb9441a70fa06da240f8cf61e",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "schemaId": "DeFlow.plangraph.v1",
+  "taskSpecHash": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "version": 4,
+}
+`;
+
+exports[`AC2 — all five op kinds apply, and the result is a golden document > insert-nodes appends the nodes and the edges 1`] = `
+{
+  "createdAt": "<ts>",
+  "createdBy": "planner",
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "ship-it",
+    },
+    {
+      "from": "ship-it",
+      "kind": "control",
+      "to": "announce",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "fix-lint",
+    },
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "analyse-ui",
+    },
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "analyse-forms",
+    },
+  ],
+  "nodes": [
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node recon-auth-surface",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "impl-checkout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "id": "ship-it",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node ship-it",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "ship-it",
+      ],
+      "id": "announce",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node announce",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "body": "impl-checkout",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "goal": {
+        "gate": "gate-lint-clean",
+        "kind": "gate",
+      },
+      "id": "fix-lint",
+      "lifecycle": "active",
+      "maxRounds": 3,
+      "noProgress": {
+        "diffSimilarityThreshold": 0.9,
+        "sameFailureSignatureLimit": 2,
+      },
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node fix-lint",
+      "type": "loop",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "analyse-ui",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node analyse-ui",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "analyse-forms",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node analyse-forms",
+      "type": "agent",
+      "writes": [],
+    },
+  ],
+  "parent": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planHash": "sha256-3aa9960acc37e67e9aa08aad5035ee335ad913d9b3f198fc658fdb724a2ed34d",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "schemaId": "DeFlow.plangraph.v1",
+  "taskSpecHash": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "version": 4,
+}
+`;
+
+exports[`AC2 — all five op kinds apply, and the result is a golden document > replace-provider swaps the vendor and leaves the id alone 1`] = `
+{
+  "createdAt": "<ts>",
+  "createdBy": "planner",
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "ship-it",
+    },
+    {
+      "from": "ship-it",
+      "kind": "control",
+      "to": "announce",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "fix-lint",
+    },
+  ],
+  "nodes": [
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "model": "gpt-5-codex",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "codex",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node recon-auth-surface",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "impl-checkout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "id": "ship-it",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node ship-it",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "ship-it",
+      ],
+      "id": "announce",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node announce",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "body": "impl-checkout",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "goal": {
+        "gate": "gate-lint-clean",
+        "kind": "gate",
+      },
+      "id": "fix-lint",
+      "lifecycle": "active",
+      "maxRounds": 3,
+      "noProgress": {
+        "diffSimilarityThreshold": 0.9,
+        "sameFailureSignatureLimit": 2,
+      },
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node fix-lint",
+      "type": "loop",
+      "writes": [],
+    },
+  ],
+  "parent": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planHash": "sha256-c94151d4e9be53c956d15c1c556360f8bc92c2c02d73e3a11602fd0663459b3b",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "schemaId": "DeFlow.plangraph.v1",
+  "taskSpecHash": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "version": 4,
+}
+`;
+
+exports[`AC2 — all five op kinds apply, and the result is a golden document > split-node retires the source and mints its successors 1`] = `
+{
+  "createdAt": "<ts>",
+  "createdBy": "planner",
+  "edges": [
+    {
+      "from": "recon-auth-surface",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "ship-it",
+    },
+    {
+      "from": "ship-it",
+      "kind": "control",
+      "to": "announce",
+    },
+    {
+      "from": "impl-checkout",
+      "kind": "control",
+      "to": "fix-lint",
+    },
+    {
+      "from": "impl-checkout-cart",
+      "kind": "control",
+      "to": "impl-checkout-payment",
+    },
+  ],
+  "nodes": [
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node recon-auth-surface",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "impl-checkout",
+      "lifecycle": "superseded",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "id": "ship-it",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node ship-it",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "ship-it",
+      ],
+      "id": "announce",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node announce",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "body": "impl-checkout",
+      "budget": {},
+      "deps": [
+        "impl-checkout",
+      ],
+      "goal": {
+        "gate": "gate-lint-clean",
+        "kind": "gate",
+      },
+      "id": "fix-lint",
+      "lifecycle": "active",
+      "maxRounds": 3,
+      "noProgress": {
+        "diffSimilarityThreshold": 0.9,
+        "sameFailureSignatureLimit": 2,
+      },
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node fix-lint",
+      "type": "loop",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "derivedFrom": [
+        "impl-checkout",
+      ],
+      "id": "impl-checkout-cart",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout-cart",
+      "type": "agent",
+      "writes": [],
+    },
+    {
+      "brief": "Do the thing.",
+      "budget": {},
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "derivedFrom": [
+        "impl-checkout",
+      ],
+      "id": "impl-checkout-payment",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Node impl-checkout-payment",
+      "type": "agent",
+      "writes": [],
+    },
+  ],
+  "parent": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "planHash": "sha256-958cf07c0c37ddc1038c037ab8d62172665b7b704722e5c59fdd6b4a279e953c",
+  "runId": "run_20260802T141133Z_9f2a1c",
+  "schemaId": "DeFlow.plangraph.v1",
+  "taskSpecHash": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "version": 4,
+}
+`;

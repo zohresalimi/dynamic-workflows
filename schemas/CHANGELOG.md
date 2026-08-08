@@ -206,6 +206,27 @@ rate-limit story. It is also the better home on the merits: the same `replace-pr
 routine planner decision or a vendor outage depending on who asked for it, and that is a fact about
 the proposal rather than about the ops.
 
+### plan.patch.proposed v3
+
+**KAR-11.3.** A proposal records the plan version it was derived against, so the run can tell a
+patch that is merely *behind* from a patch that is *wrong*.
+[06 §4.2](../docs/06-planning-and-replanning.md): `basePlanHash` must equal `run.plan_hash`, a
+mismatch is rejected with `PATCH_STALE`, and **no rebase is attempted** — *"the proposer had a
+reason based on a graph that no longer exists."*
+
+| Change                       | Kind           | Why it is not lossy                                                                                                                                                                          |
+| ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ basePlanHash` (optional)  | optional field | Left **absent**. The only value available to lift is the run's *current* plan hash, and stamping that on a historical proposal would make it read as having passed a concurrency check nobody ran. |
+
+The hop is registered beside the v1 → v2 one in `packages/core/src/upcasters.ts`.
+
+**Why the base hash is on the proposal and not on the `PlanPatch`.** The same reason `cause` is, plus
+one on the merits: `basePlanHash` is not a property of the ops. The same three ops derived against v3
+and against v7 are the same patch and a different proposal, and which of the two it is decides
+whether it may apply at all. `DeFlow.planpatch.v1`'s bytes stay content-pinned by
+`packages/core/test/schemas-append-only.test.ts`, and every run directory already on disk keeps
+reading its documents with the shape it was given.
+
 ### run.needs_human v2
 
 **KAR-10.3.** The circuit breaker gained a fourth trip reason, `spec-revalidation`: a mid-run spec

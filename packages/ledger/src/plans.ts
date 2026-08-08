@@ -39,6 +39,7 @@
 import type {
   Db,
   DbStatement,
+  PatchDecision,
   PlanDiagnostic,
   PlanGraph,
   PlanHash,
@@ -161,11 +162,22 @@ export function readPlanDoc(db: Db, hash: string): string | null {
   return statement.get(hash)?.doc ?? null;
 }
 
-/** Write, fsync, rename — docs/05-durable-execution.md §9.4, with the temp file
+/**
+ * Write, fsync, rename — docs/05-durable-execution.md §9.4, with the temp file
  * a sibling of its target so the rename is atomic rather than a
- * cross-filesystem copy. */
-function writeFileAtomic(path: string, text: string): void {
-  const temp = `${path}.DeFlow.tmp`;
+ * cross-filesystem copy.
+ *
+ * `key` distinguishes two writers aiming at the same target. Two rival
+ * proposers (KAR-11.3 AC10) both compose a `v2` and so both name
+ * `plan/v2.json`; with one shared `.DeFlow.tmp` sibling, whichever renamed
+ * first deleted the other's temp file out from under it and the loser died on
+ * `ENOENT` — a *verified* failure, reproduced by
+ * `test/integration/rival-patches.test.ts` before this argument existed. The
+ * content address is the natural key: two writers with the same one are writing
+ * the same bytes.
+ */
+function writeFileAtomic(path: string, text: string, key: string): void {
+  const temp = `${path}.${key}.DeFlow.tmp`;
   const fd = openSync(temp, 'w');
   try {
     writeSync(fd, Buffer.from(text, 'utf8'));
@@ -174,6 +186,32 @@ function writeFileAtomic(path: string, text: string): void {
     closeSync(fd);
   }
   renameSync(temp, path);
+}
+
+/**
+ * The canonical encoding to file under `graph.planHash`, having first proved
+ * that the hash addresses it (AC4).
+ *
+ * Checked before any write, by both entry points: the `plan` table's primary
+ * key *is* the content address, so a row filed under a hash that does not
+ * address its own `doc` would silently break `run.plan_hash`, a patch's
+ * `basePlanHash` and the scrubber's whole version rail at once.
+ */
+async function sealedDoc(graph: PlanGraph): Promise<string> {
+  const actual = await planHash(graph as unknown as Record<string, unknown>);
+  if (actual !== graph.planHash) throw new PlanHashMismatch(graph.planHash, actual);
+  return canonicalJson(graph);
+}
+
+/** NF8's `<runDir>/plan/v<n>.json` — the copy a human opens with `cat`, with no
+ * daemon in the way. */
+function writePlanFile(runDir: string, graph: PlanGraph): string {
+  const path = planPathOf(runDir, graph.version);
+  mkdirSync(planDirOf(runDir), { recursive: true });
+  // Keyed on the content address, so two writers aiming at the same `vN.json`
+  // cannot delete each other's temp file.
+  writeFileAtomic(path, `${JSON.stringify(graph, null, 2)}\n`, graph.planHash.slice(-16));
+  return path;
 }
 
 /**
@@ -195,14 +233,8 @@ export async function persistPlanVersion(
   // plan that does not validate leaves no residue at all.
   if (hasBlockingDiagnostic(options.diagnostics)) throw new PlanNotValidated(options.diagnostics);
 
-  const doc = canonicalJson(graph);
-
-  const actual = await planHash(graph as unknown as Record<string, unknown>);
-  if (actual !== graph.planHash) throw new PlanHashMismatch(graph.planHash, actual);
-
-  const path = planPathOf(runDir, graph.version);
-  mkdirSync(planDirOf(runDir), { recursive: true });
-  writeFileAtomic(path, `${JSON.stringify(graph, null, 2)}\n`);
+  const doc = await sealedDoc(graph);
+  const path = writePlanFile(runDir, graph);
 
   const draft: EventDraft = {
     runId: graph.runId,
@@ -229,4 +261,154 @@ export async function persistPlanVersion(
   });
 
   return { seq, planHash: graph.planHash, path };
+}
+
+// ── KAR-11.3: applying a patched version ─────────────────────────────────────
+
+/** `run.plan_hash` is the run's *current* plan, and the only thing a
+ * `basePlanHash` is ever compared against. */
+const READ_RUN_PLAN_HASH_SQL = 'SELECT plan_hash FROM run WHERE run_id = ?';
+
+const UPDATE_RUN_PLAN_HASH_SQL = 'UPDATE run SET plan_hash = ? WHERE run_id = ?';
+
+/**
+ * AC6's rejection code, exported because the proposer branches on it: a stale
+ * patch is not a bad patch, and the answer is *re-derive against the hash in
+ * this rejection*, not *give up*.
+ */
+export const PATCH_STALE = 'PATCH_STALE' as const;
+
+/** The plan the run is on right now, or `null` when it has no projection row
+ * yet — which is itself a stale base, because a patch against a run with no
+ * current plan is a patch derived from a graph nothing is executing. */
+function currentPlanHash(db: Db, runId: string): string | null {
+  const row = db.prepare<{ plan_hash: string }>(READ_RUN_PLAN_HASH_SQL).get(runId);
+  return row?.plan_hash ?? null;
+}
+
+export interface ApplyPatchedPlanOptions extends PersistPlanOptions {
+  /**
+   * AC6 — the hash the proposer derived its ops against. Compared against
+   * `run.plan_hash` **inside** the write transaction, so two proposers racing
+   * from the same base are serialised by SQLite's own write lock rather than
+   * by a check that read the world a moment before it changed.
+   */
+  readonly basePlanHash: string;
+  readonly patchId: string;
+  /**
+   * The policy engine's ruling, recorded on `plan.patched` and **never
+   * consulted here**. EPIC-11-S18's second scenario is that an `auto` decision
+   * does not buy a patch past validation; the ordering that guarantees it is
+   * the caller's (revalidate, then commit), and the ruling reaches this
+   * function only as a field of the event it has to carry.
+   */
+  readonly decision: PatchDecision;
+  /**
+   * AC4's kill point, called after `UPDATE run SET plan_hash` and before
+   * `INSERT INTO event`, which is the one instant at which a torn state would
+   * be observable if the three statements were not one transaction.
+   *
+   * Undefined in production and left in the signature deliberately: the
+   * crash-fuzz harness needs a place to stand inside the transaction, and a
+   * window it has to widen by luck is a window it never lands in. Throwing
+   * from it is how the "forces a failure between the second and the third
+   * statement" test rolls all three back.
+   */
+  readonly crashPoint?: (() => void) | undefined;
+}
+
+export type ApplyPatchedPlanOutcome =
+  | {
+      readonly outcome: 'applied';
+      readonly seq: number;
+      readonly planHash: PlanHash;
+      readonly path: string;
+    }
+  | {
+      readonly outcome: 'stale';
+      readonly code: typeof PATCH_STALE;
+      /** What the proposer must re-derive against (AC6). `null` when the run
+       * has no plan projection at all. */
+      readonly currentPlanHash: string | null;
+    };
+
+/**
+ * KAR-11.3 AC4 — the successor row, `run.plan_hash` and `plan.patched`, in one
+ * `BEGIN IMMEDIATE … COMMIT`.
+ *
+ * *"A crash mid-apply leaves either the old plan and no event, or the new plan
+ * and its event. Never a torn state"* (06 §4.2). There is no repair path for
+ * the torn version — the ledger is append-only, so a `plan` row whose event
+ * never landed can never be explained afterwards and an event whose row never
+ * landed addresses a document that does not exist.
+ *
+ * The staleness check is the **first statement of the same transaction**, which
+ * is what makes AC10 true across processes as well as inside one: SQLite
+ * permits a single writer, an immediate transaction takes that lock up front,
+ * and a rival that read the same base a millisecond earlier finds a different
+ * `run.plan_hash` by the time it is allowed to write. No rebase is attempted,
+ * ever — *"the proposer had a reason based on a graph that no longer exists"*.
+ *
+ * **The `vN.json` is written inside the transaction, and that is the one place
+ * this differs from `persistPlanVersion`.** There, the file goes first and the
+ * residue of a failure is an inert file *"the next attempt at the same version
+ * overwrites"*. Under two rival proposers that reasoning does not hold: both
+ * compose a `v2`, both would write `plan/v2.json`, and the loser's write can
+ * land last — leaving a file on disk that shows a graph which never ran while
+ * `run.plan_hash` points at the winner's. A missing file is a gap; a
+ * confidently wrong one is a lie, and NF8's whole promise is that `cat` answers
+ * honestly. So the write happens once the race is won. The cost is filesystem
+ * I/O under the write lock, which `appendEvents` avoids for spilled blobs and
+ * accepts here for the same reason it is acceptable there: a plan document is
+ * tens of kilobytes and this runs once per plan version, not once per event.
+ */
+export async function applyPatchedPlanVersion(
+  db: Db,
+  options: ApplyPatchedPlanOptions,
+): Promise<ApplyPatchedPlanOutcome> {
+  const { graph, runDir } = options;
+  if (hasBlockingDiagnostic(options.diagnostics)) throw new PlanNotValidated(options.diagnostics);
+
+  const doc = await sealedDoc(graph);
+
+  // A cheap read before the write lock is asked for, so the ordinary stale case
+  // — the proposer is simply behind — costs no contention. It is an
+  // optimisation and never the guarantee; the check inside the transaction is.
+  const before = currentPlanHash(db, graph.runId);
+  if (before !== options.basePlanHash) {
+    return { outcome: 'stale', code: PATCH_STALE, currentPlanHash: before };
+  }
+
+  const draft: EventDraft = {
+    runId: graph.runId,
+    ts: options.ts,
+    kind: 'plan.patched',
+    v: 1,
+    epoch: options.epoch,
+    ...(options.nodeId === undefined ? {} : { nodeId: options.nodeId }),
+    ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
+    payload: {
+      version: graph.version,
+      fromHash: options.basePlanHash,
+      toHash: graph.planHash,
+      patchId: options.patchId,
+      decision: options.decision,
+    },
+  } as EventDraft;
+
+  return db.transaction((): ApplyPatchedPlanOutcome => {
+    const current = currentPlanHash(db, graph.runId);
+    if (current !== options.basePlanHash) {
+      return { outcome: 'stale', code: PATCH_STALE, currentPlanHash: current };
+    }
+
+    const path = writePlanFile(runDir, graph);
+    db.prepare(INSERT_PLAN_SQL).run(graph.planHash, graph.runId, options.ts, doc);
+    db.prepare(UPDATE_RUN_PLAN_HASH_SQL).run(graph.planHash, graph.runId);
+    options.crashPoint?.();
+    const [seq] = appendEvents(db, [draft]);
+    if (seq === undefined) throw new Error('appending plan.patched returned no seq');
+
+    return { outcome: 'applied', seq, planHash: graph.planHash, path };
+  });
 }

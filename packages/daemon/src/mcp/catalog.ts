@@ -118,6 +118,22 @@ const proposePlanPatch: WorkflowTool = {
     "call's. Proposing is never applying.",
   inputSchema: {
     patch: z.unknown().describe('A DeFlow.planpatch.v1 document.'),
+    /**
+     * KAR-11.3 AC6 — required, and never defaulted to "whatever is current".
+     *
+     * Defaulting would be a silent rebase: the proposal would be evaluated
+     * against a graph the proposer never saw, applying its reason to a plan it
+     * was never about. 06 §4.2 refuses that explicitly, so a proposer that
+     * cannot say which version it read cannot propose.
+     */
+    basePlanHash: z
+      .string()
+      .min(1)
+      .describe(
+        'The planHash of the plan version you read, "sha256-<64 hex>". The proposal is ' +
+          'rejected with PATCH_STALE if another patch has landed since; re-read the plan ' +
+          'and propose again.',
+      ),
   },
   outputSchema: {
     patchId: z.string(),

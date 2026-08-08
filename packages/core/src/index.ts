@@ -37,6 +37,11 @@ export {
   staleGateNodes,
   verdictAgainst,
 } from './acceptance-board.ts';
+// KAR-11.3 — applying a PlanPatch: the function from a plan document to the
+// next one. Plans are never mutated, so this returns a successor rather than
+// changing what it was given.
+export type { ApplyPatchOptions, ApplyPatchResult } from './apply-patch.ts';
+export { applyPatch } from './apply-patch.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {

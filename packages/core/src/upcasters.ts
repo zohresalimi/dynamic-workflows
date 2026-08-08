@@ -458,6 +458,40 @@ registerUpcaster({
 });
 
 /**
+ * `plan.patch.proposed` v2 → v3 (KAR-11.3). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field, `basePlanHash`, and it is left **absent** for the
+ * same reason `cause` is: the honest-looking value is the run's *current* plan
+ * hash, and stamping that on a historical proposal would make it read as having
+ * been derived against a graph it could not have seen. `basePlanHash` exists to
+ * answer exactly that question, so a fabricated one is worse than none.
+ */
+registerUpcaster({
+  kind: 'plan.patch.proposed',
+  from: 2,
+  to: PlanPatchProposedSchema,
+  fixture: {
+    patch: {
+      schemaId: 'DeFlow.planpatch.v1',
+      id: 'reroute-run_20260802T141133Z_9f2a1c-impl-1-1',
+      proposedBy: 'scheduler',
+      reason: 'impl-1 failed with provider.rate-limited; retrying attempt 1 on codex',
+      ops: [{ op: 'replace-provider', node: 'impl-1', provider: 'codex' }],
+      policy: {
+        estimatedCostDeltaUsd: 0,
+        estimatedWallClockDeltaMs: 0,
+        blastRadius: { paths: [], nodeCount: 1 },
+        replanDepth: 0,
+        escalatesPermission: null,
+        addsWriteCapability: false,
+      },
+    },
+    cause: 'quota',
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `run.needs_human` v1 → v2 (KAR-10.3). See schemas/CHANGELOG.md.
  *
  * v2 widens `reason` by one member, `spec-revalidation`, and changes nothing

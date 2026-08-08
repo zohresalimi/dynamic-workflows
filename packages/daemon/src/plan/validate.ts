@@ -40,6 +40,7 @@
  */
 import type {
   Db,
+  PatchDecision,
   PlanDiagnostic,
   PlanGraph,
   PlanNode,
@@ -49,7 +50,7 @@ import type {
   TaskSpec,
 } from '@DeFlow/core';
 import { hasBlockingDiagnostic, validatePlan } from '@DeFlow/core';
-import { appendEvents, persistPlanVersion } from '@DeFlow/ledger';
+import { appendEvents, applyPatchedPlanVersion, PATCH_STALE } from '@DeFlow/ledger';
 
 /**
  * D13's flat node ref. The one place the string is composed, so the scheme is
@@ -104,12 +105,34 @@ export interface CommitPatchedPlanRequest extends PlanValidationRequest {
   readonly runDir: string;
   /** The composed successor graph, with `planHash` already addressing it. */
   readonly graph: PlanGraph;
+  /**
+   * KAR-11.3 AC6 — the plan the proposer derived its ops against. Compared
+   * against `run.plan_hash` inside the write transaction; a mismatch is
+   * `PATCH_STALE` and **no rebase is attempted**.
+   */
+  readonly basePlanHash: string;
   readonly patchId: string;
+  /**
+   * KAR-11.3 AC4 — the policy engine's ruling, which `plan.patched` has to
+   * carry.
+   *
+   * It is **recorded, never consulted**. EPIC-11-S18's second scenario is that
+   * an `auto` decision does not buy a patch past validation, and the shape that
+   * guarantees it is the order of this function's body: `validatePlanVersion`
+   * runs first and unconditionally, and the rejection branch returns before
+   * anything reads this field. The parameter used to be absent, which made the
+   * guarantee true but untestable — the scenario could not even be written.
+   * Now it is passed, and the test passes `'auto'` and still expects a refusal.
+   */
+  readonly decision: PatchDecision;
   readonly by: ProposedBy;
   readonly planner: PlannerAttribution;
   /** From the injected `Clock`, never `Date.now()`. */
   readonly ts: number;
   readonly epoch: number;
+  /** KAR-11.3 AC4's kill point, forwarded to the transaction. Undefined in
+   * production; the crash-fuzz harness is the only caller that sets it. */
+  readonly crashPoint?: (() => void) | undefined;
 }
 
 export type CommitPatchedPlanOutcome =
@@ -123,6 +146,14 @@ export type CommitPatchedPlanOutcome =
       readonly outcome: 'rejected';
       readonly diagnostics: readonly PlanDiagnostic[];
       readonly seq: number;
+    }
+  | {
+      readonly outcome: 'stale';
+      readonly code: typeof PATCH_STALE;
+      /** AC6 — what the proposer must re-derive against. */
+      readonly currentPlanHash: string | null;
+      readonly diagnostics: readonly PlanDiagnostic[];
+      readonly seq: number;
     };
 
 /** The `rule` a validation rejection files itself under, so the approval queue
@@ -130,14 +161,59 @@ export type CommitPatchedPlanOutcome =
 export const PATCH_REJECTED_BY_VALIDATION = 'plan-invalid';
 
 /**
- * Revalidates a patched plan and either commits it or rejects it whole.
+ * KAR-11.3 AC6 — the `rule` a stale proposal is filed under.
  *
- * `graph` is the *successor* document, not the ops — applying them is
- * KAR-11.3's — and taking it that way is what makes "never partially applied"
- * structural: there is no intermediate state to leave behind, because nothing
- * here mutates the base plan. On rejection the only write is
- * `plan.patch.rejected`, which is a record of the refusal rather than a change
- * to the run's plan.
+ * Recorded as `by: 'validation'` rather than `'policy'`, and the distinction is
+ * the one EPIC-11-S18's note draws: the policy engine asks *should we?* and
+ * everything else asks *can we?* A stale patch is not a patch anybody
+ * disapproved of — it is a patch about a graph that no longer exists — so an
+ * operator reading the approval queue must not see it grouped with the rules
+ * that refuse patches on their merits.
+ */
+export const PATCH_REJECTED_AS_STALE = 'patch-stale';
+
+/** One `plan.patch.rejected`, and the seq it landed at. */
+function appendRejection(
+  request: CommitPatchedPlanRequest,
+  rule: string,
+  diagnostics: readonly PlanDiagnostic[],
+): number {
+  const [seq] = appendEvents(request.db, [
+    {
+      runId: request.graph.runId,
+      ts: request.ts,
+      kind: 'plan.patch.rejected',
+      v: 2,
+      epoch: request.epoch,
+      payload: {
+        patchId: request.patchId,
+        rule,
+        by: 'validation',
+        ...(diagnostics.length === 0
+          ? {}
+          : { diagnostics: diagnostics.map((diagnostic) => ({ ...diagnostic })) }),
+      },
+    },
+  ]);
+  if (seq === undefined) throw new Error('appending plan.patch.rejected returned no seq');
+  return seq;
+}
+
+/**
+ * Revalidates a patched plan and either commits it, rejects it whole, or
+ * refuses it as stale.
+ *
+ * `graph` is the *successor* document, not the ops — composing it is
+ * `applyPatch`'s (@DeFlow/core) — and taking it that way is what makes "never
+ * partially applied" structural: there is no intermediate state to leave
+ * behind, because nothing here mutates the base plan. On either refusal the
+ * only write is `plan.patch.rejected`, which is a record of the refusal rather
+ * than a change to the run's plan.
+ *
+ * The three outcomes answer three different questions, in this order and no
+ * other: *is the resulting graph runnable?* (validation, always, first), *is
+ * this still the graph the proposer reasoned about?* (`basePlanHash`, inside
+ * the write transaction), and only then *record it*.
  */
 export async function commitPatchedPlan(
   request: CommitPatchedPlanRequest,
@@ -145,39 +221,41 @@ export async function commitPatchedPlan(
   const diagnostics = await validatePlanVersion({ ...request, plan: request.graph });
 
   if (hasBlockingDiagnostic(diagnostics)) {
-    const [seq] = appendEvents(request.db, [
-      {
-        runId: request.graph.runId,
-        ts: request.ts,
-        kind: 'plan.patch.rejected',
-        v: 2,
-        epoch: request.epoch,
-        payload: {
-          patchId: request.patchId,
-          rule: PATCH_REJECTED_BY_VALIDATION,
-          by: 'validation',
-          diagnostics: diagnostics.map((diagnostic) => ({ ...diagnostic })),
-        },
-      },
-    ]);
-    if (seq === undefined) throw new Error('appending plan.patch.rejected returned no seq');
-    return { outcome: 'rejected', diagnostics, seq };
+    return {
+      outcome: 'rejected',
+      diagnostics,
+      seq: appendRejection(request, PATCH_REJECTED_BY_VALIDATION, diagnostics),
+    };
   }
 
-  const persisted = await persistPlanVersion(request.db, {
+  const applied = await applyPatchedPlanVersion(request.db, {
     runDir: request.runDir,
     graph: request.graph,
+    basePlanHash: request.basePlanHash,
+    patchId: request.patchId,
+    decision: request.decision,
     by: request.by,
     planner: request.planner,
     diagnostics,
     ts: request.ts,
     epoch: request.epoch,
+    crashPoint: request.crashPoint,
   });
+
+  if (applied.outcome === 'stale') {
+    return {
+      outcome: 'stale',
+      code: PATCH_STALE,
+      currentPlanHash: applied.currentPlanHash,
+      diagnostics,
+      seq: appendRejection(request, PATCH_REJECTED_AS_STALE, []),
+    };
+  }
 
   return {
     outcome: 'committed',
     diagnostics,
-    seq: persisted.seq,
-    planHash: persisted.planHash,
+    seq: applied.seq,
+    planHash: applied.planHash,
   };
 }

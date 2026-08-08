@@ -343,6 +343,7 @@ export type {
 export {
   commitPatchedPlan,
   nodeRefOf,
+  PATCH_REJECTED_AS_STALE,
   PATCH_REJECTED_BY_VALIDATION,
   validatePlanVersion,
 } from './plan/validate.ts';

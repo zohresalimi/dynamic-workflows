@@ -411,9 +411,29 @@ export const PlanValidationFailedSchema = z.strictObject({
  * Optional, because a planner-proposed patch genuinely has no cause to state
  * and `'unknown'` would be a value nobody could act on.
  */
+/**
+ * KAR-11.3 AC6 — v3 adds `basePlanHash`: the plan version the proposer derived
+ * its ops against.
+ *
+ * On the proposal for the same reason `cause` is, and the boundary is worth
+ * restating because it is the one somebody will want to move: `basePlanHash` is
+ * not a property of the ops. The same three ops derived against v3 and against
+ * v7 are the *same patch* and a *different proposal*, and which of the two it
+ * is decides whether the patch may apply at all — 06 §4.2's optimistic
+ * concurrency compares this against `run.plan_hash` and rejects a mismatch with
+ * `PATCH_STALE` rather than rebasing, because *"the proposer had a reason based
+ * on a graph that no longer exists"*.
+ *
+ * Optional, because a v1 and a v2 payload have none and there is no honest hash
+ * to lift: the run's *current* plan is right there, and stamping it on a
+ * historical proposal would make it read as having passed a concurrency check
+ * nobody ran. Absent is a value the scrubber can exclude; a plausible wrong one
+ * is not.
+ */
 export const PlanPatchProposedSchema = z.strictObject({
   patch: PlanPatchSchema,
   cause: z.enum(PATCH_CAUSES).optional(),
+  basePlanHash: PlanHashSchema.optional(),
 });
 
 export const PlanPatchedSchema = z.strictObject({
@@ -1546,7 +1566,7 @@ export const EVENT_SCHEMAS = {
   'run.needs_human': { v: 3, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
   'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
-  'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
+  'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
   'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },

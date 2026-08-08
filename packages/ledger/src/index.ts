@@ -252,8 +252,15 @@ export {
 export { openLedger } from './open-ledger.ts';
 // KAR-11.1 — one immutable, content-addressed plan version: the row, the file
 // under `.DeFlow/runs/<runId>/plan/` and `plan.proposed`, or none of the three.
-export type { PersistedPlan, PersistPlanOptions } from './plans.ts';
+export type {
+  ApplyPatchedPlanOptions,
+  ApplyPatchedPlanOutcome,
+  PersistedPlan,
+  PersistPlanOptions,
+} from './plans.ts';
 export {
+  applyPatchedPlanVersion,
+  PATCH_STALE,
   PlanHashMismatch,
   PlanNotValidated,
   persistPlanVersion,

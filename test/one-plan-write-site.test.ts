@@ -82,8 +82,18 @@ suite('AC9 — exactly one code path inserts into the plan table', () => {
 });
 
 suite('AC9 — both persistence call sites validate first', () => {
+  /**
+   * The seam has two entry points — `persistPlanVersion` for a proposed
+   * version and KAR-11.3's `applyPatchedPlanVersion` for a patched successor —
+   * and both take the same non-optional `diagnostics`. A caller of either is a
+   * plan write, so both names are what this scan looks for.
+   */
+  const ENTRY_POINTS = ['persistPlanVersion(', 'applyPatchedPlanVersion('];
+
   const callers = sources.filter(
-    (file) => file.path !== PLAN_WRITE_SEAM && codeOnly(file.text).includes('persistPlanVersion('),
+    (file) =>
+      file.path !== PLAN_WRITE_SEAM &&
+      ENTRY_POINTS.some((entry) => codeOnly(file.text).includes(entry)),
   );
 
   it('finds the two the daemon has, and no third', () => {
@@ -104,6 +114,51 @@ suite('AC9 — both persistence call sites validate first', () => {
       }));
 
     expect(render(violations)).toBe('');
+  });
+});
+
+/**
+ * KAR-11.3 AC5 / EPIC-11-S14, second scenario — *"a CI assertion proves the
+ * only statements issued against the plan table are INSERT and SELECT"*.
+ *
+ * The companion to the suite above, and a different guarantee: that one names
+ * the single place a plan row is *written*, this one says the write is only
+ * ever an append. 06 §8: *"do not mutate a plan row in place. Ever. The
+ * scrubber, replay, and every 'why' question depend on old versions being
+ * byte-identical to what actually ran."* A patched version is a new row —
+ * `applyPatchedPlanVersion` updates `run.plan_hash`, which is a projection, and
+ * never the document the old hash addresses.
+ */
+suite('AC5 — the plan table is INSERT and SELECT, and nothing else', () => {
+  const UPDATE_PLAN = /\bUPDATE\s+plan\b/i;
+  const DELETE_PLAN = /\bDELETE\s+FROM\s+plan\b/i;
+
+  it('finds no statement that would mutate or remove a plan version', () => {
+    const offenders = sources
+      .filter((file) => {
+        const code = codeOnly(file.text);
+        return UPDATE_PLAN.test(code) || DELETE_PLAN.test(code);
+      })
+      .map((file) => file.path);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('and that is a real result: the patterns match what they ban', () => {
+    expect(UPDATE_PLAN.test('UPDATE plan SET doc = ? WHERE hash = ?')).toBe(true);
+    expect(DELETE_PLAN.test('DELETE FROM plan WHERE run_id = ?')).toBe(true);
+    // The two statements the applier really does issue against a *projection*
+    // stay legal — `run.plan_hash` is rebuildable from the event log, and the
+    // column name must not be mistaken for the table.
+    expect(UPDATE_PLAN.test('UPDATE run SET plan_hash = ? WHERE run_id = ?')).toBe(false);
+    expect(DELETE_PLAN.test('DELETE FROM plan_cache WHERE run_id = ?')).toBe(false);
+  });
+
+  it('and the seam really does issue the two that are allowed', () => {
+    const seam = codeOnly(readText(PLAN_WRITE_SEAM));
+
+    expect(INSERT_INTO_PLAN.test(seam)).toBe(true);
+    expect(seam).toContain('SELECT doc FROM plan WHERE hash = ?');
   });
 });
 
