@@ -63,6 +63,10 @@ export const VERDICT_OUTCOMES = ['pass', 'fail', 'needs-human'] as const;
 
 export const VerdictOutcomeSchema = z.enum(VERDICT_OUTCOMES);
 
+/** `pass | fail | needs-human`. Named because the gate ladder branches on it
+ * (./gate-ladder.ts) and a `string` there would let a typo open a tier. */
+export type VerdictOutcome = z.infer<typeof VerdictOutcomeSchema>;
+
 export const CRITERION_STATUSES = ['satisfied', 'unsatisfied', 'unverifiable'] as const;
 
 export const CriterionStatusSchema = z.enum(CRITERION_STATUSES);

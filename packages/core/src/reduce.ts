@@ -618,15 +618,39 @@ function project(state: RunState, event: Event): Transition {
      * A run whose spec was never approved counts nothing, which is the same
      * rule from the other side: F1.3 schedules no work before approval, so a
      * verdict that arrived before one is judging a draft.
+     *
+     * KAR-12.1 — the same event is also the ladder's only input. The outcome is
+     * recorded against the gate's *own* node (`verdict.by.node`), which is what
+     * `decide()` withholds the next tier on, and it is recorded under exactly
+     * the same void test: a verdict that is not evidence about this contract
+     * must not open a tier, and leaving no entry is what makes the gate
+     * admissible again rather than answered.
      */
     case 'gate.evaluated': {
       const current = state.specApproved?.specHash;
-      if (current === undefined || isVerdictVoid(event.payload.verdict, current)) return null;
-      return withCriteria(
-        state,
-        event.payload.verdict.criteria
-          .filter((criterion) => criterion.status === 'satisfied')
-          .map((criterion) => criterion.id),
+      const verdict = event.payload.verdict;
+      if (current === undefined || isVerdictVoid(verdict, current)) return null;
+      const withGate: RunState = {
+        ...state,
+        gateVerdicts: {
+          ...state.gateVerdicts,
+          [verdict.by.node]: {
+            gate: verdict.gate,
+            outcome: verdict.outcome,
+            seq: event.seq,
+          },
+        },
+      };
+      // `withCriteria` answers `null` when it added nothing, which is the right
+      // answer for the watermark and the wrong one here: a `fail` verdict
+      // satisfies no criterion and is still the event that closes the ladder.
+      return (
+        withCriteria(
+          withGate,
+          verdict.criteria
+            .filter((criterion) => criterion.status === 'satisfied')
+            .map((criterion) => criterion.id),
+        ) ?? withGate
       );
     }
 

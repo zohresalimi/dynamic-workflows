@@ -36,6 +36,8 @@ import {
 import {
   type CriterionId,
   CriterionIdSchema,
+  type GateId,
+  GateIdSchema,
   type NodeId,
   NodeIdSchema,
   type PlanHash,
@@ -67,6 +69,7 @@ import {
   PlanGraphSchema,
 } from './plan-graph.ts';
 import { singleLine } from './text.ts';
+import { type VerdictOutcome, VerdictOutcomeSchema } from './verdict.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -257,6 +260,22 @@ export interface NodeIdRegistryState {
 export type { BudgetBreach };
 
 /**
+ * KAR-12.1 — one gate node's answer, as the ladder reads it.
+ *
+ * `gate` is the definition id and the key is the *node* id, because the two id
+ * spaces are different: one definition can be scheduled more than once across a
+ * repair loop, and the ladder is about which node has answered. `seq` is the
+ * position the answer was recorded at — the milestone rule's second half is an
+ * ordering between that number and the last write, never between timestamps.
+ */
+export interface GateVerdictState {
+  readonly gate: GateId;
+  readonly outcome: VerdictOutcome;
+  /** The `seq` of the `gate.evaluated`; no event has seq 0. */
+  readonly seq: number;
+}
+
+/**
  * KAR-14.1 — the accounting projection, per node, per provider and per run.
  *
  * It is `BudgetRollup` rather than a scalar and a token pair because a run's
@@ -366,6 +385,22 @@ export interface RunState {
   readonly specHash: string | null;
   readonly outcome: RunOutcome | null;
   readonly criteriaSatisfied: readonly CriterionId[];
+  /**
+   * KAR-12.1 — what each gate node concluded, keyed by that gate node's id.
+   *
+   * The scheduler's only input to the ladder (./gate-ladder.ts): a tier opens
+   * when every gate below it has a `pass` here, and on nothing else. It is a
+   * fold of `gate.evaluated` rather than a lookup, so a restart derives the
+   * same ready set the live run had — a review gate admitted because a cached
+   * projection forgot the typecheck failed is F7.1 lost to a cache.
+   *
+   * **A void verdict leaves no entry.** A verdict whose `specHash` is not the
+   * run's current one is not evidence about this contract
+   * (docs/10-verification-gates.md §5.2), so it neither opens the next tier nor
+   * marks the gate as answered — which leaves the gate admissible again, which
+   * is exactly the re-run that voiding is supposed to cause.
+   */
+  readonly gateVerdicts: Readonly<Record<string, GateVerdictState>>;
   readonly needsHuman: NeedsHumanState | null;
   /** The cancel the operator asked for, or `null` while nobody has. */
   readonly cancel: CancelState | null;
@@ -487,11 +522,12 @@ export interface RunState {
  * The same applies to how an existing field is *derived*. The bumps:
  * 4 `NodeState.wakeAt`; 5 `RunState.cancel`; 6 F4.7's no-progress fields;
  * 7 the per-node cost rollup; 8 `ceilings` and `NodeState.startedTs`;
- * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 KAR-10.3's
- * `specApproved`, without which a daemon restored from a cached checkpoint
- * would derive a ready set for a run nobody approved — F1.3 lost to a cache.
+ * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 `specApproved`,
+ * without which a restored daemon derives a ready set for a run nobody
+ * approved; 12 `gateVerdicts`, without which it re-opens the gate ladder from
+ * the top and buys a review on a typecheck that failed.
  */
-export const CHECKPOINT_VERSION = 11;
+export const CHECKPOINT_VERSION = 12;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -535,6 +571,7 @@ export function initialRunState(): RunState {
     specHash: null,
     outcome: null,
     criteriaSatisfied: [],
+    gateVerdicts: {},
     needsHuman: null,
     cancel: null,
     planHash: null,
@@ -618,6 +655,13 @@ const LockStateSchema = z.strictObject({
   sinceSeq: z.number().int().positive(),
 });
 
+const GateVerdictStateSchema: z.ZodType<GateVerdictState, unknown> = z.strictObject({
+  gate: GateIdSchema,
+  outcome: VerdictOutcomeSchema,
+  /** The seq of the `gate.evaluated`, and no event has seq 0. */
+  seq: z.number().int().positive(),
+});
+
 const NodeIdRegistryStateSchema = z.strictObject({
   active: z.array(NodeIdSchema),
   retired: z.array(NodeIdSchema),
@@ -647,6 +691,7 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   specHash: sha256Digest.nullable(),
   outcome: z.enum(RUN_OUTCOMES).nullable(),
   criteriaSatisfied: z.array(CriterionIdSchema),
+  gateVerdicts: z.record(z.string(), GateVerdictStateSchema),
   needsHuman: z
     .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
     .nullable(),

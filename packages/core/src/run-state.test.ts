@@ -18,6 +18,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { canonicalJson } from './canonical-json.ts';
 import {
   CriterionIdSchema,
+  type GateId,
   HandleSchema,
   NodeIdSchema,
   PlanHashSchema,
@@ -93,6 +94,9 @@ const populated: RunState = {
   specApproved: { specHash: SHA, by: 'cli' },
   specHash: SHA,
   outcome: null,
+  gateVerdicts: {
+    'gate-typecheck': { gate: 'typecheck' as GateId, outcome: 'pass', seq: 7 },
+  },
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
   cancel: { mode: 'forceful', requestedSeq: 6 },

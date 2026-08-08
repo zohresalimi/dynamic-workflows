@@ -9,7 +9,7 @@
 
 ## 1. Shape
 
-One pnpm 11 workspace, eight packages plus an `e2e` package, exactly **one** of which is published to npm (D5). No Nx, no Turborepo, no moon at M1 — `pnpm -r run build` and `pnpm --filter @DeFlow/daemon test` are enough for nine packages and roughly 15k lines. Add `turbo@2.10.8` only when `pnpm -r typecheck` exceeds about 20 seconds locally; it is a drop-in `turbo.json` with `dependsOn`/`outputs` and no code changes.
+One pnpm 11 workspace, nine packages plus an `e2e` package, exactly **one** of which is published to npm (D5). No Nx, no Turborepo, no moon at M1 — `pnpm -r run build` and `pnpm --filter @DeFlow/daemon test` are enough for ten packages and roughly 15k lines. Add `turbo@2.10.8` only when `pnpm -r typecheck` exceeds about 20 seconds locally; it is a drop-in `turbo.json` with `dependsOn`/`outputs` and no code changes.
 
 ```
 DeFlow/
@@ -29,6 +29,7 @@ DeFlow/
     core/        @DeFlow/core        pure domain + engine logic, zero I/O
     ledger/      @DeFlow/ledger      SQLite event store, migrations, blob store
     adapters/    @DeFlow/adapters    ACP client, CLI shims, capability probes
+    gates/       @DeFlow/gates       gate definitions, findings parsers, the deterministic runner
     daemon/      @DeFlow/daemon      DeFlowd: HTTP+SSE, orchestrator, worktrees, MCP host
     cli/         DeFlow              THE published package: bins + inlined daemon + built UI
     web/         @DeFlow/web         Vue 3 + Vite SPA
@@ -44,7 +45,8 @@ DeFlow/
 | `@DeFlow/core`       | `TaskSpec`, `PlanGraph`, `PlanPatch`, `Fact`, `ContextPacket`, the `Event` union, `reduce`, `decide`, patch policy, permission ladder, `Clock`/`Db` port _interfaces_                                    | **nothing**                                          | `zod` only                                                                          |
 | `@DeFlow/ledger`     | Event store, `effect` journal, `plan`/`run`/`node_wake` tables, `PRAGMA user_version` migrations, content-addressed blob store, SSE tail queries                                                         | `@DeFlow/core`                                       | `better-sqlite3@13.0.2`                                                             |
 | `@DeFlow/adapters`   | ACP client, per-vendor CLI exec shims, capability probing and persistence, golden-recording tee                                                                                                          | `@DeFlow/core`                                       | `@agentclientprotocol/sdk@1.3.0`                                                    |
-| `@DeFlow/daemon`     | DeFlowd itself: hono HTTP+SSE, orchestrator tick loop, Effect Runner, Planner, Context Builder, Blackboard, Gate Runner, Workspace Manager, MCP host                                                     | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters` | `hono`, `@modelcontextprotocol/sdk`, `execa`, `pino`, `@lydell/node-pty` (optional) |
+| `@DeFlow/gates`      | Gate definitions (`.DeFlow/gates/*.yaml`), the seven findings parsers, the severity floor, the deterministic gate runner and the milestone rule. The ladder itself lives in `@DeFlow/core`, because `decide()` is what withholds a tier                                                            | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters` | `yaml`, `zod`                                                                       |
+| `@DeFlow/daemon`     | DeFlowd itself: hono HTTP+SSE, orchestrator tick loop, Effect Runner, Planner, Context Builder, Blackboard, Workspace Manager, MCP host                                                     | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters`, `@DeFlow/gates` | `hono`, `@modelcontextprotocol/sdk`, `execa`, `pino`, `@lydell/node-pty` (optional) |
 | `DeFlow`             | The npm package. `DeFlow init/up/run/doctor`, plus the `DeFlow-mcp` and `DeFlow-mock-agent` bins. Bundles the daemon and ships the built UI as files                                                     | `@DeFlow/daemon`, `@DeFlow/mock-agent`               | `@lydell/node-pty` (external), everything else inlined                              |
 | `@DeFlow/web`        | Vue 3 SPA, ledger-projection Pinia store, the nine P0 views                                                                                                                                              | `@DeFlow/core` (**types only**)                      | `vue`, `pinia`, `@vue-flow/core`, `d3`, `xterm.js`, `shiki`                         |
 | `@DeFlow/testkit`    | Fake agent binaries, hermetic git fixtures, tmpdir fixtures, `TestClock`, `FakeEffectRunner`, crash-fuzz harness                                                                                         | `@DeFlow/core`                                       | dev-only                                                                            |
@@ -198,7 +200,7 @@ R2 keeps the daemon a leaf. If `@DeFlow/adapters` ever needs something from `dae
 
 ## 5. The catalog
 
-Shared versions are pinned in **one** place so nine packages cannot drift.
+Shared versions are pinned in **one** place so ten packages cannot drift.
 
 ```yaml
 # pnpm-workspace.yaml

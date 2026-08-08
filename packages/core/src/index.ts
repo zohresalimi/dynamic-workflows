@@ -454,6 +454,11 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-12.1 — the gate ladder (docs/10-verification-gates.md §1). Lives in core
+// because `decide()` is what withholds a tier, and re-exported by
+// `@DeFlow/gates` so the runner and the scheduler share one ordering.
+export type { GateClass, LadderGate } from './gate-ladder.ts';
+export { admitGates, GATE_CLASSES, ladderRank, orderGates } from './gate-ladder.ts';
 // KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
 // agent's context.
 export type { GateSpecUnavailableReason, LedgerSpec } from './gate-spec.ts';
@@ -900,6 +905,7 @@ export type {
   BudgetBreach,
   BudgetState,
   CancelState,
+  GateVerdictState,
   LockState,
   NeedsHumanState,
   NodeIdRegistryState,
@@ -1096,7 +1102,13 @@ export {
 // gate in the system, run on every plan.proposed and plan.patched.
 export type { UndeclaredReadError } from './validate-declared-reads.ts';
 export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
-export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
+export type {
+  CriterionStatus,
+  Finding,
+  Verdict,
+  VerdictOutcome,
+  VerdictV2,
+} from './verdict.ts';
 export {
   CRITERION_STATUSES,
   CriterionStatusSchema,
