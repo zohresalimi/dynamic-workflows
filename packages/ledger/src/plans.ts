@@ -379,11 +379,42 @@ export async function applyPatchedPlanVersion(
     return { outcome: 'stale', code: PATCH_STALE, currentPlanHash: before };
   }
 
+  /**
+   * KAR-11.3 / KAR-11.6 — the successor is **proposed and then promoted**, and
+   * both events are this transaction's.
+   *
+   * `plan.patched` carries hashes and no document, and `reduce()` promotes a
+   * hash by looking it up among the proposals it has folded ("the plan the run
+   * executes comes from `run.started` and `plan.patched`"). Writing only the
+   * promotion leaves `RunState.plan` on the *previous* version: the row, the
+   * file and `run.plan_hash` all move, `readPlanDoc` returns the successor, and
+   * the scheduler goes on starting nodes from the graph the patch replaced —
+   * a divergence nothing would report, because every durable surface agrees and
+   * only the projection is behind. It is also how the successor's new node ids
+   * reach `RunState.nodeIds`, which is what makes a split's ids unrepeatable.
+   */
+  const proposal: EventDraft = {
+    runId: graph.runId,
+    ts: options.ts,
+    kind: 'plan.proposed',
+    v: 2,
+    epoch: options.epoch,
+    ...(options.nodeId === undefined ? {} : { nodeId: options.nodeId }),
+    ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
+    payload: {
+      version: graph.version,
+      planHash: graph.planHash,
+      graph,
+      by: options.by,
+      planner: options.planner,
+    },
+  } as EventDraft;
+
   const draft: EventDraft = {
     runId: graph.runId,
     ts: options.ts,
     kind: 'plan.patched',
-    v: 1,
+    v: 2,
     epoch: options.epoch,
     ...(options.nodeId === undefined ? {} : { nodeId: options.nodeId }),
     ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
@@ -393,6 +424,15 @@ export async function applyPatchedPlanVersion(
       toHash: graph.planHash,
       patchId: options.patchId,
       decision: options.decision,
+      // KAR-11.4's v2 field, written rather than left to the upcaster's honest
+      // absence: *who authored the patch* is not `decision.by`, and the
+      // difference is load-bearing twice over. §7's churn breaker resets only
+      // for a human-authored patch — copying the approver would clear a trip
+      // because an operator clicked approve on the planner's fourth replan —
+      // and KAR-11.6's whole point is that a scheduler's quota reroute is
+      // attributable in the scrubber rather than appearing as an unexplained
+      // provider swap.
+      proposedBy: options.by,
     },
   } as EventDraft;
 
@@ -406,7 +446,7 @@ export async function applyPatchedPlanVersion(
     db.prepare(INSERT_PLAN_SQL).run(graph.planHash, graph.runId, options.ts, doc);
     db.prepare(UPDATE_RUN_PLAN_HASH_SQL).run(graph.planHash, graph.runId);
     options.crashPoint?.();
-    const [seq] = appendEvents(db, [draft]);
+    const [, seq] = appendEvents(db, [proposal, draft]);
     if (seq === undefined) throw new Error('appending plan.patched returned no seq');
 
     return { outcome: 'applied', seq, planHash: graph.planHash, path };

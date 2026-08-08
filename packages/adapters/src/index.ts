@@ -221,6 +221,22 @@ export {
   spawnPlan,
   UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
+// KAR-11.6 — where a rate-limited node goes next, decided from the probed rows
+// and the recorded limits, or nowhere at all (F3.9, NF7).
+export type {
+  NodeRequirement,
+  ProviderLimit,
+  QuotaRoute,
+  QuotaRouteInput,
+  RerouteEquivalenceAnswer,
+  RerouteEquivalenceInput,
+} from './quota-route.ts';
+export {
+  capabilityQuestions,
+  chooseQuotaRoute,
+  providerIsHealthy,
+  rerouteEquivalence,
+} from './quota-route.ts';
 export { sliceMember } from './raw-frame.ts';
 // KAR-05.7 — the golden-recording tee, and the exact-version key that makes a
 // vendor bump a new directory rather than a silent invalidation.

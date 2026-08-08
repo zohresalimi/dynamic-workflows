@@ -32,6 +32,7 @@ import {
   type PatchPolicyDecision,
   PlanPatchSchema,
   patchDecisionStateOf,
+  type RerouteEquivalence,
   toSingleLine,
 } from '@DeFlow/core';
 import { appendEvents, type EventDraft } from '@DeFlow/ledger';
@@ -62,6 +63,18 @@ export interface PatchGateInput {
    * which is not the same as "they match".
    */
   readonly configPolicyHash?: string | undefined;
+  /**
+   * KAR-11.6 AC3 — the two capability facts `quota-reroute-equivalent`
+   * predicates on, for a swap the *scheduler* proposed (06 §4.4).
+   *
+   * Absent for every other patch, and that absence is what keeps the rule from
+   * firing on a planner's provider swap: the rule exists because a rate limit
+   * is not a change of intent, and a patch that could supply its own cause
+   * could auto-apply anything. Computed from the probed
+   * `provider_capabilities` rows by `../providers/quota-reroute.ts`, never
+   * claimed by the proposer.
+   */
+  readonly reroute?: RerouteEquivalence | undefined;
 }
 
 export interface PatchRuling {
@@ -110,6 +123,7 @@ export function rulePatch(db: Db, input: PatchGateInput): PatchRuling {
     estimate,
     now: input.now,
     touchesExecutionBoundary: input.touchesExecutionBoundary,
+    reroute: input.reroute,
   });
 
   const drifted = driftDraft(input);
