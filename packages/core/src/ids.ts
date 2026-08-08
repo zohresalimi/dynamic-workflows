@@ -67,6 +67,22 @@ export const NodeLifecycleSchema: z.ZodType<NodeLifecycle> = z.enum([
  */
 const NODE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+/**
+ * The `NodeId` charset as a predicate, for callers holding a plain string that
+ * did not come through `NodeIdSchema`.
+ *
+ * KAR-11.2's identifier check (docs/06-planning-and-replanning.md §3.3) is the
+ * one caller: a patched graph is assembled in code rather than parsed, so the
+ * charset has to be applicable to a value the brand never touched. It reads the
+ * pattern above rather than restating it — §3.3 sketches
+ * `/^[a-z0-9][a-z0-9._-]{0,62}$/`, and what DeFlow actually ships is stricter
+ * (no `.` or `_`), which is a tightening the sketch permits and a second copy
+ * of the regex would silently undo.
+ */
+export function isNodeIdSlug(value: string): boolean {
+  return NODE_ID_PATTERN.test(value);
+}
+
 export const NodeIdSchema: z.ZodType<NodeId, string> = z
   .string()
   .regex(NODE_ID_PATTERN, `NodeId must match ${NODE_ID_PATTERN}`)

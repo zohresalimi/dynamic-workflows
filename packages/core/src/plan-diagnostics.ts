@@ -1,5 +1,5 @@
 /**
- * KAR-11.1 — plan validation diagnostics as **values**
+ * KAR-11.1 / KAR-11.2 — plan validation diagnostics as **values**
  * (docs/06-planning-and-replanning.md §3, §3.5).
  *
  * §3.5 is the rule this module exists to make possible: *"a failing v1 goes
@@ -9,25 +9,16 @@
  * event and then in a packet — a thrown exception has nowhere to go but a stack
  * trace, and a stack trace is not something a planner can act on.
  *
- * **This is the seed of the pipeline, not the pipeline.** KAR-11.2 owns the
- * whole of §3 — cycles, identifier validation through real `git
- * check-ref-format`, criteria coverage, and the five capability codes. What is
- * here is the one check KAR-09.1 already implements (`validateDeclaredReads`,
- * the F6.2 reachability gate) mapped into the diagnostic shape, plus the
- * rendering the retry packet carries. The mapping is deliberately thin and
- * delegating: EPIC-09's module note is explicit that its walk is *"the only
- * implementation of the F6.2 read-reachability gate in the workspace"*, and a
- * second walk here would be exactly the drift that note is guarding against.
+ * **This is the vocabulary, not the validator.** The closed code set, the two
+ * severities, the shape of one finding, and the rendering the retry packet and
+ * `run.needs_human` carry all live here, because the ledger's payload schema
+ * (`plan.validation_failed`) reads the code list from this file and a code
+ * invented at a call site is one nothing downstream can recognise. The checks
+ * themselves are `validatePlan` in ./validate-plan.ts — one entry point, so
+ * there is no partial validation anybody can accidentally call instead.
  *
- * The `message` is §3.1's, character for character, because it is the string an
- * operator reads in `run.needs_human` and the string the planner is handed on
- * its one retry. A paraphrase would make the two disagree about the same fault.
- *
- * Verifies: EPIC-11-S5 · AC3
+ * Verifies: EPIC-11-S5 · KAR-11.1 AC3, KAR-11.2 AC1
  */
-import type { PlanGraph } from './plan-graph.ts';
-import { validateDeclaredReads } from './validate-declared-reads.ts';
-
 /**
  * Every diagnostic code this epic can produce, with the ones KAR-11.2 adds
  * listed alongside the one KAR-11.1 emits.
@@ -76,31 +67,6 @@ export interface PlanDiagnostic {
   /** The declared read, the written key, or the criterion id. */
   readonly key: string;
   readonly message: string;
-}
-
-/** §3.1's sentence, spelled once. */
-function readUnreachableMessage(node: string, key: string): string {
-  return (
-    `node '${node}' reads '${key}' but no ancestor writes it and it is not ` + 'in the pinned spec'
-  );
-}
-
-/**
- * Every diagnostic this story's half of §3 produces for `plan`.
- *
- * Never throws for a plan fault — that is the whole of §3.5. It will still
- * propagate a programming error (a malformed argument), because that is not a
- * finding about the plan and pretending otherwise would file a bug in DeFlow as
- * a complaint about the planner.
- */
-export function planDiagnostics(plan: PlanGraph): readonly PlanDiagnostic[] {
-  return validateDeclaredReads(plan).map((error) => ({
-    severity: 'error' as const,
-    code: 'READ_UNREACHABLE' as const,
-    node: error.node as string,
-    key: error.key,
-    message: readUnreachableMessage(error.node as string, error.key),
-  }));
 }
 
 /** Whether anything here blocks the plan. A `warning` does not (§3.1). */

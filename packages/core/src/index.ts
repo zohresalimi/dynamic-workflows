@@ -524,6 +524,7 @@ export {
   FactIdSchema,
   GateIdSchema,
   HandleSchema,
+  isNodeIdSlug,
   NodeIdSchema,
   NodeLifecycleSchema,
   PlanHashSchema,
@@ -733,7 +734,6 @@ export {
   hasBlockingDiagnostic,
   PLAN_DIAGNOSTIC_CODES,
   PLAN_DIAGNOSTIC_SEVERITIES,
-  planDiagnostics,
   renderPlanDiagnostics,
 } from './plan-diagnostics.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
@@ -1099,6 +1099,7 @@ export {
 // same style as `Clock` and `Db`; core owns no BPE table.
 export type { Tokenizer } from './tokenizer.ts';
 export { contextFillPercent } from './tokenizer.ts';
+export { PlanCycleError, topoSort } from './topo-sort.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,
@@ -1123,6 +1124,11 @@ export {
 // gate in the system, run on every plan.proposed and plan.patched.
 export type { UndeclaredReadError } from './validate-declared-reads.ts';
 export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
+// KAR-11.2 — the one entry point to plan validation (06 §3), plus the two
+// values it is built on: `topoSort` throwing is the cycle check, and
+// `PlanTimeCapability` is what a probed row projects to at plan time.
+export type { PlanTimeCapability, ValidatePlanOptions } from './validate-plan.ts';
+export { PLAN_SCOPE, resumeByReplayNodes, validatePlan } from './validate-plan.ts';
 export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
 export {
   CRITERION_STATUSES,

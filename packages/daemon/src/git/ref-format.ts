@@ -51,4 +51,29 @@ export class RefFormatChecker {
     this.#cache.set(name, ok);
     return ok;
   }
+
+  /**
+   * KAR-11.2 AC7 — the same question asked about a **full ref path** rather
+   * than a branch shorthand: `git check-ref-format refs/heads/DeFlow/r1__n1`.
+   *
+   * A second method rather than a flag on the first, because the two modes are
+   * genuinely different rules and 06 §3.3 names this one. `--branch` also
+   * resolves shorthands like `@{-1}`, which is meaningful for a name a human
+   * typed and meaningless for a name DeFlow composed; the full-ref form asks
+   * only whether the string is a legal ref, which is exactly what plan
+   * validation wants to know about a node id it has never seen.
+   *
+   * Cached on the composed ref for the same reason `isValid` is: the answer is
+   * a property of the string alone, never of a repository, so it is safe to
+   * reuse across every caller in a process.
+   */
+  async isValidRef(ref: string): Promise<boolean> {
+    const key = `ref:${ref}`;
+    const cached = this.#cache.get(key);
+    if (cached !== undefined) return cached;
+    const result = await this.#git.run(['check-ref-format', ref]);
+    const ok = result.exitCode === 0;
+    this.#cache.set(key, ok);
+    return ok;
+  }
 }

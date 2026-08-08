@@ -365,6 +365,25 @@ export const PlanProposedSchema = z.strictObject({
  * the diagnostics say what was wrong with it; the retry's packet carries them
  * verbatim.
  */
+export const PlanDiagnosticSchema = z.strictObject({
+  severity: z.enum(PLAN_DIAGNOSTIC_SEVERITIES),
+  code: z.enum(PLAN_DIAGNOSTIC_CODES),
+  /**
+   * KAR-11.2 widens this from `NodeIdSchema` to a plain non-empty string, and
+   * the widening is the whole reason `plan.validation_failed` is at v2.
+   *
+   * Two of §3's diagnostics cannot name a valid `NodeId` by construction:
+   * `INVALID_NODE_ID` exists precisely to report an id the charset refuses, and
+   * `CRITERION_UNCOVERED` is a fault of the document rather than of any node, so
+   * it carries `PLAN_SCOPE` (`(plan)`). A validator that crashes on the faults
+   * it was written to catch is worse than no validator, and the parentheses in
+   * `PLAN_SCOPE` keep the sentinel outside the charset a real id could occupy.
+   */
+  node: z.string().min(1),
+  key: z.string().min(1),
+  message: singleLine(),
+});
+
 export const PlanValidationFailedSchema = z.strictObject({
   version: z.number().int().positive(),
   /** The rejected document's hash. Nothing stores the document under it. */
@@ -372,17 +391,7 @@ export const PlanValidationFailedSchema = z.strictObject({
   by: ProposedBySchema,
   /** 0 for the first attempt, 1 for the one retry 06 §3.5 allows. */
   attempt: z.number().int().nonnegative(),
-  diagnostics: z
-    .array(
-      z.strictObject({
-        severity: z.enum(PLAN_DIAGNOSTIC_SEVERITIES),
-        code: z.enum(PLAN_DIAGNOSTIC_CODES),
-        node: NodeIdSchema,
-        key: z.string().min(1),
-        message: singleLine(),
-      }),
-    )
-    .min(1),
+  diagnostics: z.array(PlanDiagnosticSchema).min(1),
 });
 
 /** F2.4 — the proposal is recorded even when it is rejected, which is the
@@ -415,10 +424,25 @@ export const PlanPatchedSchema = z.strictObject({
   decision: PatchDecisionSchema,
 });
 
+/**
+ * KAR-11.2 AC11 — v2 adds `diagnostics` and a third rejecter, `'validation'`.
+ *
+ * 06 §3.5: *"a failing **patch** is rejected outright — never partially
+ * applied"*, and EPIC-11-S18's second scenario is the reason the rejecter is a
+ * third value rather than a reuse of `'policy'`: the policy engine asks *should
+ * we?* and the validator asks *can we?*, a `yes` to the first can never
+ * substitute for the second, and an operator reading the approval queue has to
+ * be able to tell which one refused their patch.
+ *
+ * `diagnostics` is optional because a policy rejection has none — `rule` is its
+ * whole reason — and a v1 payload has none either, which is what makes the
+ * upcaster an identity rather than a fabrication.
+ */
 export const PlanPatchRejectedSchema = z.strictObject({
   patchId: z.string().min(1),
   rule: z.string().min(1),
-  by: z.enum(['policy', 'human']),
+  by: z.enum(['policy', 'human', 'validation']),
+  diagnostics: z.array(PlanDiagnosticSchema).min(1).optional(),
 });
 
 // ── node lifecycle ───────────────────────────────────────────────────────────
@@ -1521,10 +1545,10 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 3, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
-  'plan.validation_failed': { v: 1, payload: PlanValidationFailedSchema },
+  'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 1, payload: PlanPatchedSchema },
-  'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
+  'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
   'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },

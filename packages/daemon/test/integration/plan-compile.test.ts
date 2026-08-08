@@ -26,11 +26,13 @@ import {
   readRange,
   recordProviderCapabilities,
 } from '@DeFlow/ledger';
-import { it } from '@DeFlow/testkit';
+import { GIT_ENV, it } from '@DeFlow/testkit';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, describe as suite } from 'vitest';
+import { Git } from '../../src/git/git.ts';
+import { RefFormatChecker } from '../../src/git/ref-format.ts';
 import { compilePlanV1, type PlannerAgent, type PlannerTurn } from '../../src/plan/compile.ts';
 import { loadSchemaDirectory } from '../../src/schema-store.ts';
 
@@ -129,6 +131,32 @@ const agentNode = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/**
+ * KAR-11.2 AC8 — the gate every plan the planner returns has to contain.
+ *
+ * F7.4's coverage check runs on v1 as much as on a patched successor, so a plan
+ * that names no gate for `ac-1` and `ac-2` is now refused before it is
+ * persisted. Adding it to the shared fixture rather than to each spec is the
+ * honest fix: the spec these tests pin really does have two criteria, and a
+ * plan that never checks them is exactly the plan §3.4 calls *"a lie on the
+ * acceptance board"*.
+ */
+const gateNode = {
+  id: 'gate-acceptance',
+  title: 'Check the acceptance criteria',
+  type: 'gate',
+  deps: ['implement'],
+  lifecycle: 'active',
+  reads: [{ kind: 'spec', section: 'criteria' }],
+  writes: [],
+  permission: 'read',
+  pathScopes: { write: [] },
+  returns: { schemaId: 'DeFlow.verdict.v2', maxTokens: 1500 },
+  gate: { kind: 'deterministic', gateId: 'typecheck' },
+  criteria: ['ac-1', 'ac-2'],
+  independence: { notSessionOf: ['implement'], preferDifferentProvider: true },
+} as const;
+
 /** The envelope fields a planner is asked to fill in; DeFlow overwrites the
  * ones it owns, which is what the second suite below asserts. */
 const returned = (nodes: unknown[], over: Record<string, unknown> = {}) => ({
@@ -140,7 +168,7 @@ const returned = (nodes: unknown[], over: Record<string, unknown> = {}) => ({
   taskSpecHash: SPEC_HASH,
   createdBy: 'planner',
   createdAt: '2026-08-07T10:15:00.000Z',
-  nodes,
+  nodes: [...nodes, gateNode],
   edges: [],
   ...over,
 });
@@ -190,6 +218,9 @@ async function compile(
     schemas: loadSchemaDirectory(SCHEMAS_DIR),
     schemasDir: SCHEMAS_DIR,
     agent,
+    // KAR-11.2 AC7 — real `git check-ref-format`, per node id. It runs from any
+    // cwd, repository or not: the answer is a property of the string.
+    refs: new RefFormatChecker(new Git(tmp, { env: GIT_ENV })),
     ...over,
   });
 }
@@ -204,7 +235,14 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
       const result = await compile(db, tmp, agent);
       if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
 
-      expect(result.plan.nodes.map((node) => node.id)).toEqual(['implement', 'verify']);
+      expect(result.plan.nodes.map((node) => node.id)).toEqual([
+        'implement',
+        'verify',
+        // KAR-11.2 AC8: the fixture carries the gate that covers the pinned
+        // spec's two criteria, because a plan that covers neither is now
+        // refused before it can be persisted.
+        'gate-acceptance',
+      ]);
       expect(readPlanDoc(db, result.plan.planHash)).not.toBeNull();
 
       const onDisk = JSON.parse(readFileSync(planPathOf(join(tmp, 'runs', RUN), 1), 'utf8'));
@@ -273,9 +311,30 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
         new URL('../../../core/test/fixtures/plans/seven-types.json', import.meta.url),
       );
       const seven: Record<string, unknown> = JSON.parse(readFileSync(fixture, 'utf8'));
-      const agent = scripted(present({ ...seven, runId: RUN, taskSpecHash: SPEC_HASH }));
+      // The committed fixture names `claude-code`, which this machine has not
+      // probed and this build does not register — so plan validation would
+      // (correctly) refuse it with PROVIDER_NOT_PROBED. The fixture itself is
+      // content-pinned by `packages/core/test/plan-hash-golden.test.ts` and must
+      // not move, so the adapter is re-pointed on the *returned* document only.
+      const nodes = (seven.nodes as Record<string, unknown>[]).map((node) =>
+        node.type === 'agent'
+          ? { ...node, provider: { prefer: ['claude'], requires: ['structuredOutput'] } }
+          : node,
+      );
+      const agent = scripted(present({ ...seven, nodes, runId: RUN, taskSpecHash: SPEC_HASH }));
 
-      const result = await compile(db, tmp, agent);
+      // The fixture's gate covers `lint-has-zero-errors`, so the spec pinned
+      // for this one case is the spec that gate is a gate *for*. Reusing the
+      // shared two-criterion spec would make this a coverage test wearing a
+      // round-trip test's name.
+      const result = await compile(db, tmp, agent, {
+        spec: TaskSpecSchema.parse({
+          ...SPEC,
+          acceptanceCriteria: [
+            { id: 'lint-has-zero-errors', statement: 'pnpm lint reports zero errors.' },
+          ],
+        }),
+      });
       if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
 
       expect(result.plan.nodes.map((node) => node.type)).toEqual([

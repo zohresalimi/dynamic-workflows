@@ -12,10 +12,49 @@
 import { expect, it, describe as suite } from 'vitest';
 import { canonicalJson } from './canonical-json.ts';
 import { planHash } from './hash.ts';
-import { planDiagnostics, renderPlanDiagnostics } from './plan-diagnostics.ts';
+import { renderPlanDiagnostics } from './plan-diagnostics.ts';
 import { type PlanGraph, PlanGraphSchema } from './plan-graph.ts';
+import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
+import { type PlanTimeCapability, validatePlan } from './validate-plan.ts';
 
 const RUN = 'run_20260807T101500Z_ac1101';
+
+/**
+ * The one entry point, with everything §3 checks *besides* reachability made
+ * uninteresting: one manual criterion nothing has to cover, one probed adapter
+ * that can honour anything, and no packet to overflow. KAR-11.1's claim is
+ * about the shape and the wording of a diagnostic, and calling `validatePlan`
+ * rather than a reachability-only helper is what keeps that claim true of the
+ * function the compiler actually calls.
+ */
+const CAPS: readonly PlanTimeCapability[] = [
+  {
+    provider: 'claude',
+    version: '0.64.1',
+    structuredOutput: true,
+    resume: true,
+    permissionLevels: ['read', 'worktree', 'worktree+net', 'full'],
+    maxContext: 200_000,
+  },
+];
+
+const SPEC: TaskSpec = TaskSpecSchema.parse({
+  schemaId: 'DeFlow.taskspec.v1',
+  goal: 'migrate the app',
+  scope: { included: ['the app'] },
+  nonGoals: ['rewriting the backend'],
+  constraints: [],
+  priorDecisions: [],
+  acceptanceCriteria: [
+    { id: 'ac-1', statement: 'it works', check: { kind: 'manual', rubric: 'a human looks' } },
+  ],
+  knownFailureModes: [],
+  approvedBy: null,
+  specHash: `sha256-${'2'.repeat(64)}`,
+});
+
+const planDiagnostics = (plan: PlanGraph) =>
+  validatePlan(plan, SPEC, CAPS, { estimatePacketTokens: () => 0 });
 
 function graph(nodes: unknown[]): PlanGraph {
   return PlanGraphSchema.parse({

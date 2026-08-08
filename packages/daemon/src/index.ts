@@ -332,6 +332,20 @@ export {
 export type { ShimOptions } from './mcp/shim.ts';
 export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './mcp/shim.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+// KAR-11.2 — plan validation's one entry point on this side of the boundary:
+// git's verdict on every node id, and the gate a patched plan commits through.
+export type {
+  CommitPatchedPlanOutcome,
+  CommitPatchedPlanRequest,
+  NodeRefChecker,
+  PlanValidationRequest,
+} from './plan/validate.ts';
+export {
+  commitPatchedPlan,
+  nodeRefOf,
+  PATCH_REJECTED_BY_VALIDATION,
+  validatePlanVersion,
+} from './plan/validate.ts';
 export type { SchemaRegistryCheck } from './preflight.ts';
 export { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
 // KAR-08.8 — auth-shadowing detection: what buildChildEnv()'s allowlist does

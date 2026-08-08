@@ -255,6 +255,7 @@ export { openLedger } from './open-ledger.ts';
 export type { PersistedPlan, PersistPlanOptions } from './plans.ts';
 export {
   PlanHashMismatch,
+  PlanNotValidated,
   persistPlanVersion,
   planDirOf,
   planPathOf,

@@ -34,7 +34,9 @@ import {
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
   PlanPatchProposedSchema,
+  PlanPatchRejectedSchema,
   PlanProposedSchema,
+  PlanValidationFailedSchema,
   RunNeedsHumanSchema,
 } from './event-payloads.ts';
 
@@ -584,6 +586,64 @@ registerUpcaster({
       edges: [],
     },
     by: 'planner',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.validation_failed` v1 → v2 (KAR-11.2). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `diagnostics[].node` from `NodeId` to a non-empty string, so every
+ * v1 payload still fits and the hop is the identity.
+ *
+ * The widening is not a relaxation of a rule: it is what lets the two
+ * diagnostics that *cannot* name a valid `NodeId` be recorded at all —
+ * `INVALID_NODE_ID`, whose whole subject is an id the charset refuses, and
+ * `CRITERION_UNCOVERED`, which is a fault of the document and carries
+ * `PLAN_SCOPE`. A payload schema that refused them would make the validator
+ * crash on exactly the faults it exists to catch.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 1,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'READ_UNREACHABLE',
+        node: 'implement',
+        key: 'finding/db-schema',
+        message:
+          "node 'implement' reads 'finding/db-schema' but no ancestor writes it and it is not " +
+          'in the pinned spec',
+      },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.patch.rejected` v1 → v2 (KAR-11.2). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `by` with a third value, `'validation'`, and adds an optional
+ * `diagnostics` array. Both are additive, so the hop is the identity — and
+ * `by` is deliberately *not* rewritten: a v1 rejection really was a policy or a
+ * human decision, because structural revalidation did not exist to reject
+ * anything when it was written.
+ */
+registerUpcaster({
+  kind: 'plan.patch.rejected',
+  from: 1,
+  to: PlanPatchRejectedSchema,
+  fixture: {
+    patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
+    rule: 'replan-depth-exceeded',
+    by: 'policy',
   },
   up: (payload) => payload,
 });

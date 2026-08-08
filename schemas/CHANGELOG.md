@@ -226,3 +226,40 @@ carrying the new reason must be *refused* by a daemon that predates it, rather t
 other three because the operator's next action differs in kind: churn and budget are answered by
 raising a ceiling or changing the approach, and this one by covering a criterion the plan no longer
 reaches.
+
+### plan.validation_failed v2
+
+**KAR-11.2.** `diagnostics[].node` widens from `NodeId` to a non-empty string, because two of
+[06 §3](../docs/06-planning-and-replanning.md)'s diagnostics cannot name a valid `NodeId` by
+construction.
+
+| Change                                     | Kind     | Why it is not lossy                                                                                     |
+| ------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------- |
+| `diagnostics[].node` widens to `string` | widening | Every v1 payload already carried a `NodeId`, which is a non-empty string — the hop is the identity. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the widening was forced.** `INVALID_NODE_ID` exists to report an id the `NodeId` charset
+refuses (§3.3 — a colon, a leading dash, an uppercase letter), and `CRITERION_UNCOVERED` is a fault
+of the *document* rather than of any node, so it carries the `PLAN_SCOPE` sentinel `(plan)`. A
+payload schema that accepted only valid `NodeId`s would make the append throw on exactly the two
+faults the validator exists to catch, which is a worse failure than the one it was preventing. The
+sentinel's parentheses keep it outside the charset a real id could ever occupy.
+
+### plan.patch.rejected v2
+
+**KAR-11.2 AC11.** A patch can now be refused by *revalidation* as well as by the policy engine,
+and the rejection carries the diagnostics that refused it.
+
+| Change                        | Kind           | Why it is not lossy                                                                                                    |
+| ----------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `by` gains `'validation'`     | widening       | Every v1 payload is already a valid v2 one, and no v1 payload can have carried it — structural revalidation did not exist. |
+| `+ diagnostics` (optional)    | optional field | Left **absent**. A policy rejection has none — `rule` is its whole reason — and a v1 payload recorded none to lift.        |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `'validation'` is a third rejecter and not a reuse of `'policy'`.** EPIC-11-S18's second
+scenario is the whole argument: the policy engine asks *should we?* and the validator asks *can we?*,
+a `yes` to the first can never substitute for the second, and an operator reading the approval queue
+has to be able to tell which of the two refused their patch — because one is answered by changing
+the patch and the other by changing the rules.

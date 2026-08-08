@@ -25,6 +25,7 @@ import { expect, describe as suite } from 'vitest';
 import {
   openLedger,
   PlanHashMismatch,
+  PlanNotValidated,
   persistPlanVersion,
   planPathOf,
   readPlanDoc,
@@ -86,6 +87,7 @@ suite('AC5 — one plan version lands in three places or in none', () => {
         graph: plan,
         by: 'planner',
         planner: PLANNER,
+        diagnostics: [],
         ...ENV,
       });
 
@@ -117,6 +119,7 @@ suite('AC5 — one plan version lands in three places or in none', () => {
         graph: plan,
         by: 'planner',
         planner: PLANNER,
+        diagnostics: [],
         ...ENV,
       });
 
@@ -144,6 +147,7 @@ suite('AC5 — one plan version lands in three places or in none', () => {
           graph: plan,
           by: 'planner',
           planner: PLANNER,
+          diagnostics: [],
           ts: ENV.ts,
           epoch: -1,
         }),
@@ -173,6 +177,7 @@ suite('AC4 — a document is stored under the hash that addresses it, or not at 
           graph: lying,
           by: 'planner',
           planner: PLANNER,
+          diagnostics: [],
           ...ENV,
         }),
       ).rejects.toThrow(PlanHashMismatch);
@@ -193,6 +198,7 @@ suite('AC4 — a document is stored under the hash that addresses it, or not at 
         graph: plan,
         by: 'planner',
         planner: PLANNER,
+        diagnostics: [],
         ...ENV,
       });
 
@@ -216,6 +222,7 @@ suite('NF8 — every version is on disk, and nothing prunes it', () => {
         graph: v1,
         by: 'planner',
         planner: PLANNER,
+        diagnostics: [],
         ...ENV,
       });
       const v2 = await graph({ version: 2, parent: v1.planHash, createdBy: 'human' });
@@ -224,6 +231,7 @@ suite('NF8 — every version is on disk, and nothing prunes it', () => {
         graph: v2,
         by: 'human',
         planner: PLANNER,
+        diagnostics: [],
         ...ENV,
       });
 
@@ -232,6 +240,87 @@ suite('NF8 — every version is on disk, and nothing prunes it', () => {
       expect(existsSync(planPathOf(runDir, 2))).toBe(true);
       expect(readPlanDoc(db, v1.planHash)).not.toBeNull();
       expect(readPlanDoc(db, v2.planHash)).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+});
+
+/**
+ * KAR-11.2 AC9 / EPIC-11-S12, second scenario — there is exactly one entry
+ * point to plan persistence, and it will not run without a `Diagnostic[]`.
+ *
+ * `diagnostics` is a **required** option rather than an optional one, and that
+ * is the load-bearing detail: a caller that has not validated cannot satisfy
+ * the type, so "somebody added a quick second write path six months from now"
+ * is a compile error rather than a silently unvalidated plan. The runtime
+ * refusal below is the other half — a caller *can* type `diagnostics: []`, but
+ * it cannot hand over a blocking one and still get a row.
+ */
+suite('AC9 — a plan row is never written without diagnostics that permit it', () => {
+  it('refuses a blocking diagnostic, and writes neither the row, the file nor the event', async ({
+    tmp,
+  }) => {
+    const db = openAt(tmp);
+    const runDir = join(tmp, 'runs', RUN);
+    try {
+      const plan = await graph();
+
+      await expect(
+        persistPlanVersion(db, {
+          runDir,
+          graph: plan,
+          by: 'planner',
+          planner: PLANNER,
+          diagnostics: [
+            {
+              severity: 'error',
+              code: 'READ_UNREACHABLE',
+              node: 'implement',
+              key: 'finding/db-schema',
+              message:
+                "node 'implement' reads 'finding/db-schema' but no ancestor writes it and it " +
+                'is not in the pinned spec',
+            },
+          ],
+          ...ENV,
+        }),
+      ).rejects.toBeInstanceOf(PlanNotValidated);
+
+      expect(readPlanDoc(db, plan.planHash)).toBeNull();
+      expect(existsSync(planPathOf(runDir, 1))).toBe(false);
+      expect(readRange(db, RUN, 0, 100).events).toHaveLength(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('persists a plan carrying only warnings — a warning never blocks (§3.1)', async ({ tmp }) => {
+    const db = openAt(tmp);
+    const runDir = join(tmp, 'runs', RUN);
+    try {
+      const plan = await graph();
+
+      await persistPlanVersion(db, {
+        runDir,
+        graph: plan,
+        by: 'planner',
+        planner: PLANNER,
+        diagnostics: [
+          {
+            severity: 'warning',
+            code: 'ORPHAN_WRITE',
+            node: 'implement',
+            key: 'finding/unused',
+            message:
+              "node 'implement' writes 'finding/unused' and no node reads it. Usually a " +
+              'leftover from a patch, occasionally deliberate — the run is not blocked.',
+          },
+        ],
+        ...ENV,
+      });
+
+      expect(readPlanDoc(db, plan.planHash)).not.toBeNull();
     } finally {
       db.close();
     }

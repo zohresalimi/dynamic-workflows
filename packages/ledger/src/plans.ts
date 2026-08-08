@@ -39,12 +39,18 @@
 import type {
   Db,
   DbStatement,
+  PlanDiagnostic,
   PlanGraph,
   PlanHash,
   PlannerAttribution,
   ProposedBy,
 } from '@DeFlow/core';
-import { canonicalJson, planHash } from '@DeFlow/core';
+import {
+  canonicalJson,
+  hasBlockingDiagnostic,
+  planHash,
+  renderPlanDiagnostics,
+} from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
@@ -87,6 +93,19 @@ export interface PersistPlanOptions {
   readonly runDir: string;
   /** The document, with `planHash` already set to its own content address. */
   readonly graph: PlanGraph;
+  /**
+   * KAR-11.2 AC9 — what `validatePlan` said about this document.
+   *
+   * **Required, never optional, and that is the whole mechanism.** 06 §3 says
+   * validation runs on *"every plan version — v1 and every patched successor"*,
+   * and §8's warning is that the patch which bites is the one at node 27 of 40.
+   * A caller that has not validated cannot construct this argument, so the
+   * second write path somebody adds in six months is a compile error rather
+   * than an unvalidated plan. `[]` is a legitimate value — it means the
+   * validator ran and found nothing — and the runtime check below is what stops
+   * it being used to smuggle a failing document past the type.
+   */
+  readonly diagnostics: readonly PlanDiagnostic[];
   readonly by: ProposedBy;
   /** AC6 — which model planned, at what effort, in which tier (06 §6). */
   readonly planner: PlannerAttribution;
@@ -95,6 +114,30 @@ export interface PersistPlanOptions {
   readonly epoch: number;
   readonly nodeId?: string;
   readonly attempt?: number;
+}
+
+/**
+ * KAR-11.2 AC9 — a plan version whose own diagnostics refuse it.
+ *
+ * Thrown *before* anything is written, including the file: 06 §3.5 is that
+ * diagnostics are values, so a caller reaching here has already been told what
+ * is wrong and has chosen to persist anyway. That is a programming error rather
+ * than a plan fault, and it gets an exception rather than a return value for
+ * exactly that reason.
+ */
+export class PlanNotValidated extends Error {
+  readonly diagnostics: readonly PlanDiagnostic[];
+
+  constructor(diagnostics: readonly PlanDiagnostic[]) {
+    super(
+      'this plan version carries blocking validation diagnostics and must not be persisted: ' +
+        `${renderPlanDiagnostics(diagnostics).replaceAll('\n', ' · ')}. Validation runs on every ` +
+        'plan version — v1 and every patched successor (06 §3) — and a failing patch is rejected ' +
+        'whole, never partially applied.',
+    );
+    this.name = 'PlanNotValidated';
+    this.diagnostics = diagnostics;
+  }
 }
 
 export interface PersistedPlan {
@@ -148,6 +191,10 @@ export async function persistPlanVersion(
   options: PersistPlanOptions,
 ): Promise<PersistedPlan> {
   const { graph, runDir } = options;
+  // AC9, first: before the hash, before the file, before the transaction. A
+  // plan that does not validate leaves no residue at all.
+  if (hasBlockingDiagnostic(options.diagnostics)) throw new PlanNotValidated(options.diagnostics);
+
   const doc = canonicalJson(graph);
 
   const actual = await planHash(graph as unknown as Record<string, unknown>);

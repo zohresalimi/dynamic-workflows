@@ -30,6 +30,11 @@
  *      is not leniency — it is the difference between a document DeFlow can
  *      address and one it has to trust an agent about.
  *   6. **Validate the plan and, on failure, retry exactly once** (§3.5). The
+ *      whole of §3 runs here through `validatePlanVersion` — KAR-11.2's single
+ *      entry point, git's verdict on every node id included — and never a
+ *      subset of it: reachability alone would admit a plan with a cycle, an
+ *      uncoverable criterion or an adapter that cannot honour a node, and each
+ *      of those costs hours rather than milliseconds to discover later. The
  *      diagnostics are appended as `plan.validation_failed` and handed back to
  *      the planner verbatim; a second failure is `run.needs_human`. **Two
  *      attempts, not three** — an unbounded planner retry loop is the same
@@ -37,7 +42,9 @@
  *      the bound is a constant with no configuration path, so raising it is a
  *      code change a reviewer sees.
  *   7. **Persist**, which is one call into `persistPlanVersion`: the row, the
- *      file and `plan.proposed` in one transaction, or none of them.
+ *      file and `plan.proposed` in one transaction, or none of them. The
+ *      diagnostics travel with it, because that call will not run without them
+ *      (KAR-11.2 AC9).
  *
  * **Nothing here decides whether the run continues.** Every arm returns a value
  * — `compiled`, `failed` or `needs-human` — because that is the scheduler's
@@ -47,13 +54,14 @@
  * AC4, AC5, AC6, AC7, AC8
  */
 
-import { plannerCapabilityList, strongestEffort } from '@DeFlow/adapters';
+import { plannerCapabilityList, planTimeCapabilities, strongestEffort } from '@DeFlow/adapters';
 import type {
   Constraint,
   Db,
   NodeId,
   PlanDiagnostic,
   PlanGraph,
+  PlanNode,
   PlannerFact,
   PlannerTier,
   RunId,
@@ -71,7 +79,6 @@ import {
   NodeFailureError,
   PLANGRAPH_SCHEMA_ID,
   parsePlanGraph,
-  planDiagnostics,
   planHash,
   renderPacket,
   renderPlanDiagnostics,
@@ -80,6 +87,7 @@ import {
 import { appendEvents, listProviderCapabilities, persistPlanVersion } from '@DeFlow/ledger';
 import { join } from 'node:path';
 import type { HandoffValidator } from '../handoff/enforce.ts';
+import { type NodeRefChecker, validatePlanVersion } from './validate.ts';
 
 /**
  * 06 §3.5's bound: *"Two attempts, not three."*
@@ -147,6 +155,23 @@ export interface CompilePlanOptions {
   /** Where the emitted documents live, so the adapter can be handed a path. */
   readonly schemasDir: string;
   readonly agent: PlannerAgent;
+  /**
+   * KAR-11.2 AC7 — real `git check-ref-format`, for §3.3's identifier check.
+   *
+   * Required, not optional. An optional checker is one a caller forgets to
+   * pass, and the silent consequence — a plan whose node ids were never shown
+   * to git — is exactly the failure §3.3 describes as *"the run died at node 31
+   * because the id had a colon in it"*.
+   */
+  readonly refs: NodeRefChecker;
+  /**
+   * KAR-11.2 AC5 — the calibrated packet estimate for a node, as KAR-14.3's
+   * estimator produces it. Defaults to zero: a compiler with no estimator wired
+   * in yet cannot overflow a window it has not measured, and inventing a
+   * plausible figure would make `PACKET_EXCEEDS_BUDGET` fire on arithmetic
+   * nothing else in the system performs.
+   */
+  readonly estimatePacketTokens?: ((node: PlanNode) => number) | undefined;
 }
 
 export type CompilePlanOutcome =
@@ -394,7 +419,15 @@ export async function compilePlanV1(options: CompilePlanOptions): Promise<Compil
       planHash: await planHash(parsed.data as unknown as Record<string, unknown>),
     };
 
-    const diagnostics = planDiagnostics(graph);
+    // AC9 — the *whole* of §3, on every version, through the one entry point
+    // that can also ask git about a node id.
+    const diagnostics = await validatePlanVersion({
+      plan: graph,
+      spec: options.spec,
+      caps: planTimeCapabilities(rows, () => options.maxContext),
+      estimatePacketTokens: options.estimatePacketTokens ?? (() => 0),
+      refs: options.refs,
+    });
     if (hasBlockingDiagnostic(diagnostics)) {
       appendValidationFailed(options, attempt, graph.planHash, diagnostics);
       carried = diagnostics;
@@ -406,6 +439,7 @@ export async function compilePlanV1(options: CompilePlanOptions): Promise<Compil
       graph,
       by: 'planner',
       planner: { model: options.model, effort, tier: PLAN_V1_TIER },
+      diagnostics,
       ts: options.ts,
       epoch: options.epoch,
       nodeId: options.node,

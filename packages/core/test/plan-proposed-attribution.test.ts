@@ -96,7 +96,10 @@ suite('AC6 — plan.proposed carries planner.model, planner.effort and planner.t
 
 suite('EPIC-11-S5 — a failing plan version is an event, not an exception', () => {
   it('registers plan.validation_failed as a kind of its own', () => {
-    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(1);
+    // v2 since KAR-11.2: `diagnostics[].node` widened from `NodeId` to a plain
+    // non-empty string, because `INVALID_NODE_ID` reports an id the charset
+    // refuses and `CRITERION_UNCOVERED` names the document rather than a node.
+    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(2);
   });
 
   it('accepts the diagnostics verbatim, with the version and the rejected hash', () => {

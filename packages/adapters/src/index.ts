@@ -152,6 +152,9 @@ export {
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
 export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
+// KAR-11.2 — the same rows, projected into what plan validation may know about
+// an adapter (06 §3.2). Read from the row; never a table.
+export { planTimeCapabilities } from './plan-time-capabilities.ts';
 // KAR-11.1 — the planner's third input, projected from probed rows, and the
 // reasoning-effort control the initial plan is compiled at (06 §2.2, §6).
 export type { ProbedRow } from './planner-capabilities.ts';
