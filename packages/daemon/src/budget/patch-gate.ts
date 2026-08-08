@@ -24,24 +24,17 @@
  * and was not allowed to" is exactly the state a user asks about later, and a
  * rejection that named no rule would be unanswerable.
  */
-import type {
-  Db,
-  EstimatorInputs,
-  PatchEstimate,
-  PermissionLevel,
-  RunId,
-  RunState,
-} from '@DeFlow/core';
+import type { Db, EstimatorInputs, PatchEstimate, RunId, RunState } from '@DeFlow/core';
 import {
+  decidePatch,
   EVENT_CURRENT_VERSIONS,
-  elapsedBudgetFraction,
   estimatePatch,
-  evaluatePatchPolicy,
   type PatchPolicyDecision,
-  PERMISSION_LEVELS,
   PlanPatchSchema,
+  patchDecisionStateOf,
+  toSingleLine,
 } from '@DeFlow/core';
-import { appendEvents } from '@DeFlow/ledger';
+import { appendEvents, type EventDraft } from '@DeFlow/ledger';
 
 export interface PatchGateInput {
   readonly runId: RunId;
@@ -58,6 +51,17 @@ export interface PatchGateInput {
    * and is why the corresponding rule needs an explicit `true` to fire.
    */
   readonly touchesExecutionBoundary?: boolean | undefined;
+  /**
+   * KAR-11.4 AC10 — the digest of the rule table in `.DeFlow/config.yaml`
+   * **right now**, when the caller has read it.
+   *
+   * Used for one thing and never for deciding: if it differs from what this run
+   * pinned at start, the divergence is recorded so the operator is told. *"An
+   * operator who edits the config expecting it to take effect and gets no
+   * signal will assume the engine is broken."* Absent means nobody looked,
+   * which is not the same as "they match".
+   */
+  readonly configPolicyHash?: string | undefined;
 }
 
 export interface PatchRuling {
@@ -66,35 +70,32 @@ export interface PatchRuling {
   readonly estimate: PatchEstimate;
   /** The figure the `budget-exhausted` rule was evaluated against (AC6). */
   readonly elapsedBudgetFraction: number;
+  /** KAR-11.4 AC10 — the on-disk table no longer matches the pinned one, and
+   * this call is what said so. */
+  readonly configDrifted: boolean;
 }
 
 /**
- * The permission level the run itself is executing at: the most capable level
- * any active node in the plan was given.
+ * Prices `patch`, rules on it, and records what it decided.
  *
- * An escalation is a comparison against *something*, and the run's own ceiling
- * is the honest baseline — a patch asking for `worktree` inside a run that
- * already writes to a worktree is not an escalation, and one asking for it
- * inside a read-only investigation is.
- */
-function ambientPermission(state: RunState): PermissionLevel {
-  let highest: PermissionLevel = 'read';
-  for (const node of state.plan?.nodes ?? []) {
-    if (node.lifecycle !== 'active') continue;
-    if (PERMISSION_LEVELS.indexOf(node.permission) > PERMISSION_LEVELS.indexOf(highest)) {
-      highest = node.permission;
-    }
-  }
-  return highest;
-}
-
-/**
- * Prices `patch`, rules on it, and records the rejection when there is one.
+ * Three outcomes and three different records, because they are three different
+ * facts:
  *
- * Synchronous and transactional in the same breath as every other ledger write
- * in this package: the append is one `appendEvents` call, so a crash leaves
- * either the decision on the log or no decision at all — never a patch that was
- * ruled on twice.
+ * - **`reject`** appends `plan.patch.rejected` and — unless the run is already
+ *   waiting on somebody — `run.needs_human { reason: 'patch-rejected' }`. AC6:
+ *   *"the run transitions to needs_human"*, and the patch stays in the approval
+ *   queue so a human can approve it explicitly.
+ * - **`approve`** appends `plan.patch.queued` with the rule and the estimate it
+ *   was ruled on. The run is untouched: *"the patch is pending, not the run"*,
+ *   so unrelated branches keep scheduling.
+ * - **`auto`** appends nothing here. The patch is applied by
+ *   `commitPatchedPlan`, which revalidates first and writes `plan.patched` in
+ *   the same transaction as the new plan row — an `auto` that recorded a
+ *   decision *before* revalidation would put a decision on the log for a patch
+ *   validation is about to refuse.
+ *
+ * Synchronous and one `appendEvents` call per outcome, so a crash leaves either
+ * the decision on the log or no decision at all — never a patch ruled on twice.
  */
 export function rulePatch(db: Db, input: PatchGateInput): PatchRuling {
   const patch = PlanPatchSchema.parse(input.patch);
@@ -105,30 +106,93 @@ export function rulePatch(db: Db, input: PatchGateInput): PatchRuling {
     planVersion: input.state.planVersion,
   });
 
-  // Wall-clock elapsed is measured from the run's own start, which is `0` until
-  // `run.started` — a run that has not begun has consumed none of its clock.
-  const elapsed = input.state.startedTs === 0 ? null : input.now - input.state.startedTs;
-  const fraction = elapsedBudgetFraction(input.state.budget.run, input.state.ceilings.run, elapsed);
-
-  const ruling = evaluatePatchPolicy({
+  const decisionState = patchDecisionStateOf(input.state, {
     estimate,
-    ambientPermission: ambientPermission(input.state),
-    elapsedBudgetFraction: fraction,
+    now: input.now,
     touchesExecutionBoundary: input.touchesExecutionBoundary,
   });
 
+  const drifted = driftDraft(input);
+  if (drifted !== null) appendEvents(db, [drifted]);
+
+  const ruling = decidePatch(patch, decisionState);
+  const drafts: EventDraft[] = [];
+
   if (ruling.decision === 'reject') {
-    appendEvents(db, [
-      {
-        runId: input.runId,
-        ts: input.now,
-        kind: 'plan.patch.rejected',
-        v: EVENT_CURRENT_VERSIONS['plan.patch.rejected'],
-        epoch: input.state.epoch,
-        payload: { patchId: patch.id, rule: ruling.ruleId, by: 'policy' },
-      },
-    ]);
+    drafts.push(
+      event(input, 'plan.patch.rejected', {
+        patchId: patch.id,
+        rule: ruling.ruleId,
+        by: 'policy',
+      }),
+    );
+    // Asked once. A run already waiting on a human — for churn, for a budget
+    // ceiling — does not need a second ask, and a queue of identical
+    // escalations is how an operator learns to ignore them. The rejection
+    // itself is always recorded, which is what NF10 requires.
+    if (input.state.needsHuman === null) {
+      drafts.push(
+        event(input, 'run.needs_human', {
+          reason: 'patch-rejected',
+          detail: toSingleLine(
+            `patch ${patch.id} was rejected by ${ruling.ruleId}: ${patch.reason} ` +
+              '— approve it explicitly from the queue if it should proceed',
+          ),
+        }),
+      );
+    }
+  } else if (ruling.decision === 'approve') {
+    drafts.push(
+      event(input, 'plan.patch.queued', {
+        patchId: patch.id,
+        rule: ruling.ruleId,
+        estimate: {
+          costUsdDelta: estimate.costUsdDelta,
+          blastRadiusFiles: estimate.blastRadiusFiles,
+          maxPermission: estimate.maxPermission,
+          replanDepth: estimate.replanDepth,
+        },
+      }),
+    );
   }
 
-  return { ...ruling, estimate, elapsedBudgetFraction: fraction };
+  if (drafts.length > 0) appendEvents(db, drafts);
+
+  return {
+    ...ruling,
+    estimate,
+    elapsedBudgetFraction: decisionState.elapsedBudgetFraction,
+    configDrifted: drifted !== null,
+  };
+}
+
+function event(input: PatchGateInput, kind: string, payload: unknown): EventDraft {
+  return {
+    runId: input.runId,
+    ts: input.now,
+    kind,
+    v: EVENT_CURRENT_VERSIONS[kind as keyof typeof EVENT_CURRENT_VERSIONS],
+    epoch: input.state.epoch,
+    payload,
+  } as EventDraft;
+}
+
+/**
+ * AC10 — `policy.patch.drifted`, or `null` when there is nothing to say.
+ *
+ * Reported once per distinct on-disk digest: the reducer remembers which one
+ * was last reported, so an operator who saves the file forty times over an
+ * afternoon is told once per *edit*, not once per patch. A run that pinned
+ * nothing has nothing to have drifted from.
+ */
+function driftDraft(input: PatchGateInput): EventDraft | null {
+  const pinned = input.state.patchPolicy;
+  const current = input.configPolicyHash;
+  if (pinned === null || current === undefined) return null;
+  if (current === pinned.hash || current === pinned.drift) return null;
+
+  return event(input, 'policy.patch.drifted', {
+    pinnedHash: pinned.hash,
+    configHash: current,
+  });
 }

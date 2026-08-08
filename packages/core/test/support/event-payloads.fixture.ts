@@ -196,8 +196,28 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     toHash: OTHER_SHA,
     patchId: 'patch-3a91f0',
     decision: { decision: 'auto', by: 'policy', rule: 'small-blast-radius', at: AT },
+    proposedBy: 'planner',
+  },
+  'plan.patch.queued': {
+    patchId: 'patch-3a91f0',
+    rule: 'escalates-permission',
+    estimate: {
+      costUsdDelta: 6.2,
+      blastRadiusFiles: 140,
+      maxPermission: 'worktree',
+      replanDepth: 2,
+    },
   },
   'plan.patch.rejected': { patchId: 'patch-3a91f0', rule: 'permission-escalation', by: 'policy' },
+  'policy.patch.loaded': {
+    source: 'config',
+    hash: SHA,
+    rules: [
+      { id: 'escalates-permission', when: { permissionEscalation: true }, decision: 'approve' },
+      { id: 'default', decision: 'approve' },
+    ],
+  },
+  'policy.patch.drifted': { pinnedHash: SHA, configHash: OTHER_SHA },
   'node.scheduled': {
     node: NODE,
     provider: 'claude-code',

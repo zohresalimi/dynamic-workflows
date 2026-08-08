@@ -62,6 +62,37 @@ file is where you record it.
 
 ## Entries
 
+### run.needs_human v4
+
+**KAR-11.4.** The escalation vocabulary gains a sixth reason, `patch-rejected`:
+[06 §4.3](../docs/06-planning-and-replanning.md)'s rule table refused a proposed patch, and the run
+stops to ask rather than proceeding as though nothing was proposed.
+
+| Change                            | Kind     | Why it is not lossy                                                                                        |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `reason` gains `'patch-rejected'` | widening | Every v3 payload is already a valid v4 one — the hop is the identity — and no v3 payload can have carried it. |
+
+A sixth reason rather than a reuse of `churn`, because the operator's next action differs in kind.
+`churn` says *the plan rests on a premise only you can supply*; this says *the run wanted to do one
+specific thing and policy would not let it*, and it is answered by opening the approval queue and
+approving the rejected patch explicitly — *"a rejection is a 'not without you', not a dead end"*.
+
+### plan.patched v2
+
+**KAR-11.4.** The event now records who **authored** the patch: `proposedBy`, optional.
+
+| Change                        | Kind           | Why it is not lossy                                                              |
+| ----------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| adds optional `proposedBy`    | optional field | Every v1 payload is already a valid v2 one, and the hop leaves the field **absent**. |
+
+**Why `decision.by` could not be reused, and why the hop must not lift it.** `decision.by` says who
+*decided* — `'policy'` when a rule fired, `'human'` when an operator answered the approval queue —
+and the case this field exists for is a patch a human *proposed* that the rule table then
+auto-applied on its merits. [06 §7](../docs/06-planning-and-replanning.md)'s circuit-breaker reset
+keys on authorship: a human-supplied premise invalidates the churn window. Copying `decision.by` into
+the new field would clear a churn trip whenever an operator approved the planner's own fourth replan
+— which is precisely the livelock the breaker exists to stop.
+
 ### plan.proposed v2
 
 **KAR-11.1.** The proposal now records **which model planned**:

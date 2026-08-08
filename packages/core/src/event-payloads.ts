@@ -50,6 +50,7 @@ import {
   CompletedNodeResultSchema,
   NodeSuspensionSchema,
 } from './node-result.ts';
+import { PatchPolicyTableSchema } from './patch-policy.ts';
 import { PLAN_DIAGNOSTIC_CODES, PLAN_DIAGNOSTIC_SEVERITIES } from './plan-diagnostics.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
 import {
@@ -129,6 +130,18 @@ export const RUN_NEEDS_HUMAN_REASONS = [
   'reconcile-unknown',
   'spec-revalidation',
   'plan-invalid',
+  /**
+   * KAR-11.4 AC6, at **v4** — F2.5's rule table refused a proposed patch
+   * (docs/06-planning-and-replanning.md §4.3).
+   *
+   * Its own reason rather than a reuse of `churn`, because the two ask for
+   * different things. `churn` says *the plan rests on a premise only you can
+   * supply*; this says *the run wanted to do a specific thing and policy would
+   * not let it* — and the remedy is the rejected patch sitting in the approval
+   * queue with an approve button on it. *"A rejection is a 'not without you',
+   * not a dead end."*
+   */
+  'patch-rejected',
 ] as const;
 
 /** The four effect types of docs/05-durable-execution.md §8.3 — each has its
@@ -436,12 +449,89 @@ export const PlanPatchProposedSchema = z.strictObject({
   basePlanHash: PlanHashSchema.optional(),
 });
 
+/**
+ * KAR-11.4 AC8 — v2 adds `proposedBy`: who authored the patch that produced
+ * this version.
+ *
+ * `decision.by` is not the same fact and cannot stand in for it. That field
+ * says who *decided* — `'policy'` for a rule that fired, `'human'` for an
+ * operator answering the approval queue — and the case this exists for is a
+ * patch a human **proposed** which the rule table then auto-applied on its
+ * merits. §7's reset hangs on exactly that distinction: a human-supplied
+ * premise invalidates the churn window, and a projection that could not tell a
+ * human's patch from the planner's would either never reset the breaker or
+ * reset it on the planner's own replans, which is the livelock.
+ *
+ * Optional, because a v1 payload genuinely does not say and there is no honest
+ * value to lift: the run's current proposer is not the historical one, and
+ * stamping `'planner'` on every old event would be a guess that reads as a
+ * fact.
+ */
 export const PlanPatchedSchema = z.strictObject({
   version: z.number().int().positive(),
   fromHash: PlanHashSchema,
   toHash: PlanHashSchema,
   patchId: z.string().min(1),
   decision: PatchDecisionSchema,
+  proposedBy: ProposedBySchema.optional(),
+});
+
+/**
+ * KAR-11.4 AC5 — the patch is waiting for a human, and this is the event the
+ * approval queue is projected from.
+ *
+ * A kind of its own rather than a `plan.patched` with `decision: 'queued'`:
+ * that payload carries the `fromHash`/`toHash` of a plan document that was
+ * actually written, and a queued patch writes none. NF10 is why it exists at
+ * all — *"the run wanted to do X and is waiting to be allowed to"* is a UI
+ * state, so it has to trace to an event, and a queue derived only from the
+ * absence of a decision could not say which rule queued it or what it was
+ * estimated to cost.
+ */
+export const PlanPatchQueuedSchema = z.strictObject({
+  patchId: z.string().min(1),
+  /** The rule that fired — `escalates-permission`, or `default`. */
+  rule: z.string().min(1),
+  /** F9.3's figures as they stood when the rule was applied, so the operator
+   * approves against the estimate that was actually ruled on. */
+  estimate: z.strictObject({
+    costUsdDelta: z.number().finite().nullable(),
+    blastRadiusFiles: nonNegativeInt,
+    maxPermission: PermissionLevelSchema,
+    replanDepth: nonNegativeInt,
+  }),
+});
+
+/**
+ * KAR-11.4 AC10 — the F2.5 rule table this run is pinned to, recorded once, at
+ * run start (docs/06-planning-and-replanning.md §4.3).
+ *
+ * The **rules travel with it**, not only their digest. A digest alone would
+ * detect a mid-run edit and still leave the engine with nothing to evaluate but
+ * the edited file — which is the failure the pin exists to prevent — and a
+ * replay of a finished run would be judged by whatever the config says today.
+ */
+export const PolicyPatchLoadedSchema = z.strictObject({
+  source: z.enum(['config', 'default']),
+  hash: Sha256Schema,
+  rules: PatchPolicyTableSchema,
+});
+
+/**
+ * KAR-11.4 AC10 — the file on disk no longer matches what this run is playing
+ * by.
+ *
+ * Recorded rather than acted on. *"Surfacing the mismatch rather than ignoring
+ * it matters: an operator who edits the config expecting it to take effect and
+ * gets no signal will assume the engine is broken."* The rules do not move —
+ * that is the point of the pin — so this event changes no decision; it changes
+ * what the operator is told.
+ */
+export const PolicyPatchDriftedSchema = z.strictObject({
+  /** What this run is judged by. */
+  pinnedHash: Sha256Schema,
+  /** What `.DeFlow/config.yaml` hashes to right now. */
+  configHash: Sha256Schema,
 });
 
 /**
@@ -1563,11 +1653,14 @@ export const EVENT_SCHEMAS = {
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
-  'run.needs_human': { v: 3, payload: RunNeedsHumanSchema },
+  'run.needs_human': { v: 4, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
   'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
-  'plan.patched': { v: 1, payload: PlanPatchedSchema },
+  'plan.patched': { v: 2, payload: PlanPatchedSchema },
+  'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },
+  'policy.patch.loaded': { v: 1, payload: PolicyPatchLoadedSchema },
+  'policy.patch.drifted': { v: 1, payload: PolicyPatchDriftedSchema },
   'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },

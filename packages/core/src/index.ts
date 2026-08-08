@@ -259,6 +259,21 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-06.1 — the whole scheduling policy, as a pure function of state and one
 // instant.
 export { decide } from './decide.ts';
+// KAR-11.4 — the patch policy engine's one entry point: the churn circuit
+// breaker first, the rule table second, and nothing between them.
+export type {
+  CircuitBreakerState,
+  PatchDecisionInputs,
+  PatchDecisionState,
+} from './decide-patch.ts';
+export {
+  ambientPermissionOf,
+  circuitBreakerOf,
+  decidePatch,
+  PATCH_CIRCUIT_BREAKER_RULE,
+  patchDecisionStateOf,
+  patchRulesOf,
+} from './decide-patch.ts';
 // KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
 // KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
@@ -268,6 +283,7 @@ export type {
   BudgetConfig,
   ContextConfig,
   DeFlowConfig,
+  PatchPolicyConfig,
   ProviderConfig,
 } from './deflow-config.ts';
 export {
@@ -276,8 +292,10 @@ export {
   configuredConstraints,
   DeFlowConfigSchema,
   inlineThresholdBytesOf,
+  PatchPolicyConfigSchema,
   ProviderConfigSchema,
   parseDeFlowConfig,
+  patchPolicyOf,
   pinReinjectTurnsFor,
 } from './deflow-config.ts';
 export type { CommandContext, DestructiveReason } from './destructive-command.ts';
@@ -636,22 +654,31 @@ export {
 // KAR-14.3 — F2.5's patch policy engine: the estimate turned into a decision,
 // first match wins, and a `null` cost matching no numeric rule.
 export type {
+  PatchComparison,
   PatchPolicyDecision,
   PatchPolicyInput,
   PatchPolicyRuling,
+  PatchPolicyTable,
   PatchRule,
+  PatchRuleSpec,
+  PatchRuleWhen,
   RerouteEquivalence,
   RulablePatchEstimate,
 } from './patch-policy.ts';
 export {
   BUDGET_EXHAUSTED_FRACTION,
+  compilePatchRules,
+  DEFAULT_PATCH_RULE_SPECS,
   DEFAULT_PATCH_RULES,
   EXPENSIVE_COST_USD,
   elapsedBudgetFraction,
   evaluatePatchPolicy,
   MAX_REPLAN_DEPTH,
   PATCH_POLICY_DECISIONS,
+  PatchPolicyTableSchema,
+  PatchRuleSpecSchema,
   patchDecisionOutcome,
+  patchPolicyHash,
   WIDE_BLAST_RADIUS_FILES,
 } from './patch-policy.ts';
 // KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
@@ -937,6 +964,7 @@ export type {
   NodeIdRegistryState,
   NodeState,
   NodeStatus,
+  PatchPolicyState,
   RunState,
   RunStatus,
   SchedulingPolicy,

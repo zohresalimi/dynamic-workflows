@@ -13,8 +13,10 @@ import {
   compactionLeverFor,
   configuredConstraints,
   parseDeFlowConfig,
+  patchPolicyOf,
   pinReinjectTurnsFor,
 } from './deflow-config.ts';
+import { DEFAULT_PATCH_RULE_SPECS } from './patch-policy.ts';
 import { PIN_REINJECT_TURNS_DEFAULT } from './reinjection.ts';
 
 suite('pinReinjectTurnsFor (AC5)', () => {
@@ -111,5 +113,51 @@ suite('the compaction lever, per provider (KAR-09.6 AC7, AC8)', () => {
     expect(() => parseDeFlowConfig({ providers: { claude: { autocompactPct: 101 } } })).toThrow(
       /autocompactPct/,
     );
+  });
+});
+
+/**
+ * KAR-11.4 AC3, AC10 — `policy.patch` in the operator's own file
+ * (docs/06-planning-and-replanning.md §4.3).
+ */
+suite('the patch policy table (KAR-11.4 AC3)', () => {
+  it('uses the eight documented defaults when the file declares no policy.patch', () => {
+    const resolved = patchPolicyOf(parseDeFlowConfig({ providers: {} }));
+
+    expect(resolved.source).toBe('default');
+    expect(resolved.rules).toEqual(DEFAULT_PATCH_RULE_SPECS);
+  });
+
+  it('uses the defaults for a file that has no policy key at all', () => {
+    expect(patchPolicyOf(parseDeFlowConfig(null)).rules).toEqual(DEFAULT_PATCH_RULE_SPECS);
+  });
+
+  it('takes the operator’s table verbatim, in the order they wrote it', () => {
+    const rules = [
+      { id: 'expensive', when: { costDeltaUsd: '> 50.00' }, decision: 'approve' },
+      { id: 'default', decision: 'approve' },
+    ];
+    const resolved = patchPolicyOf(parseDeFlowConfig({ policy: { patch: { rules } } }));
+
+    expect(resolved.source).toBe('config');
+    expect(resolved.rules).toEqual(rules);
+  });
+
+  it('refuses a rule whose comparison cannot be evaluated, naming the file’s own path', () => {
+    expect(() =>
+      parseDeFlowConfig({
+        policy: {
+          patch: {
+            rules: [{ id: 'expensive', when: { costDeltaUsd: 'lots' }, decision: 'approve' }],
+          },
+        },
+      }),
+    ).toThrow(/costDeltaUsd/);
+  });
+
+  it('refuses a decision outside auto | approve | reject', () => {
+    expect(() =>
+      parseDeFlowConfig({ policy: { patch: { rules: [{ id: 'x', decision: 'maybe' }] } } }),
+    ).toThrow();
   });
 });

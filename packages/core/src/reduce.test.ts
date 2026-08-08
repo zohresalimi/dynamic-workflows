@@ -14,6 +14,7 @@ import type { EventKind } from './event-payloads.ts';
 import { EVENT_SCHEMAS } from './event-payloads.ts';
 import type { Event } from './events.ts';
 import { parseEvent } from './events.ts';
+import { NodeIdSchema } from './ids.ts';
 import { reduce } from './reduce.ts';
 import { initialRunState, type RunState } from './run-state.ts';
 
@@ -355,5 +356,113 @@ suite('the node projection cannot reach an impossible state', () => {
     const state = fold([started(1), nodeStarted(2, 0), nodeStarted(3, 1)]);
 
     expect(state.nodes[NODE]).toMatchObject({ attempt: 1, attempts: 2 });
+  });
+});
+
+/**
+ * KAR-11.4 AC8, AC10 — the two facts about F2.5's rule table that only the
+ * projection can hold (docs/06-planning-and-replanning.md §4.3, §7).
+ */
+suite('KAR-11.4 — the patch policy table is pinned, and drift is remembered', () => {
+  const table = [
+    { id: 'expensive', when: { costDeltaUsd: '> 5.00' }, decision: 'approve' },
+    { id: 'default', decision: 'approve' },
+  ];
+  const HASH = `sha256-${'d'.repeat(64)}`;
+  const DRIFTED = `sha256-${'e'.repeat(64)}`;
+
+  const loaded = (seq: number): Event =>
+    event('policy.patch.loaded', { source: 'config', hash: HASH, rules: table }, { seq });
+
+  it('folds the rules themselves, not merely their digest', () => {
+    const state = reduce(initialRunState(), loaded(1));
+    expect(state.patchPolicy).toEqual({
+      hash: HASH,
+      source: 'config',
+      rules: table,
+      drift: null,
+    });
+  });
+
+  it('records the on-disk digest a drift report named, so it is surfaced once', () => {
+    const pinned = reduce(initialRunState(), loaded(1));
+    const drifted = reduce(
+      pinned,
+      event('policy.patch.drifted', { pinnedHash: HASH, configHash: DRIFTED }, { seq: 2 }),
+    );
+
+    expect(drifted.patchPolicy?.drift).toBe(DRIFTED);
+    // And the rules the run plays by did not move: that is the whole mechanism.
+    expect(drifted.patchPolicy?.rules).toEqual(table);
+    expect(drifted.patchPolicy?.hash).toBe(HASH);
+  });
+
+  it('ignores a drift report for a run that pinned nothing', () => {
+    const state = reduce(
+      initialRunState(),
+      event('policy.patch.drifted', { pinnedHash: HASH, configHash: DRIFTED }, { seq: 1 }),
+    );
+    expect(state.patchPolicy).toBeNull();
+  });
+});
+
+suite('KAR-11.4 AC8 — a human patch resets the churn circuit breaker', () => {
+  const TO = `sha256-${'f'.repeat(64)}`;
+
+  const churning = (): RunState => ({
+    ...initialRunState(),
+    status: 'needs-human',
+    needsHuman: { reason: 'churn', detail: 'three replans moved nothing' },
+    churnWindow: [{ node: NodeIdSchema.parse(NODE), requestHash: SHA, attempt: 1, seq: 4 }],
+    replans: { flat: 3, completed: 2, versions: [2, 3, 4] },
+  });
+
+  const patched = (proposedBy: string | undefined, seq: number): Event =>
+    event(
+      'plan.patched',
+      {
+        version: 5,
+        fromHash: SHA,
+        toHash: TO,
+        patchId: 'patch-9',
+        decision: {
+          decision: 'auto',
+          by: 'policy',
+          rule: 'read-only-analysis',
+          at: new Date(TS).toISOString(),
+        },
+        ...(proposedBy === undefined ? {} : { proposedBy }),
+      },
+      { seq },
+    );
+
+  it('clears the ask and the sliding window when the operator supplies the premise', () => {
+    const rescued = reduce(churning(), patched('human', 5));
+
+    expect(rescued.needsHuman).toBeNull();
+    expect(rescued.churnWindow).toEqual([]);
+    expect(rescued.replans).toEqual({ flat: 0, completed: 0, versions: [] });
+  });
+
+  it('leaves a planner-authored patch to face the breaker it did not clear', () => {
+    const still = reduce(churning(), patched('planner', 5));
+
+    expect(still.needsHuman).toEqual({
+      reason: 'churn',
+      detail: 'three replans moved nothing',
+    });
+    expect(still.churnWindow).toHaveLength(1);
+  });
+
+  it('leaves an escalation that is not churn alone — a human patch is not a resume', () => {
+    const paused: RunState = {
+      ...initialRunState(),
+      status: 'paused',
+      needsHuman: { reason: 'budget', detail: 'the run reached its ceiling' },
+    };
+    expect(reduce(paused, patched('human', 5)).needsHuman).toEqual({
+      reason: 'budget',
+      detail: 'the run reached its ceiling',
+    });
   });
 });

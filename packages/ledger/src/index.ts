@@ -250,6 +250,11 @@ export {
   replayAll,
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
+// KAR-11.4 — F8.3's approval queue for proposed patches, projected from the
+// log: queued patches waiting on a human, and rejected ones a human may still
+// approve explicitly.
+export type { PendingPatchApproval, QueuedPatchEstimate } from './patch-queue.ts';
+export { pendingPatchApprovals } from './patch-queue.ts';
 // KAR-11.1 — one immutable, content-addressed plan version: the row, the file
 // under `.DeFlow/runs/<runId>/plan/` and `plan.proposed`, or none of the three.
 export type {

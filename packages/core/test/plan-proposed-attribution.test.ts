@@ -158,8 +158,13 @@ suite('the second failure escalates, and the vocabulary says why', () => {
     expect([...RUN_NEEDS_HUMAN_REASONS]).toContain('plan-invalid');
   });
 
-  it('is at v3, because widening a closed vocabulary is a shape change', () => {
-    expect(EVENT_SCHEMAS['run.needs_human'].v).toBe(3);
+  it('was versioned past v2 when the vocabulary widened, because that is a shape change', () => {
+    // Not pinned to an exact number: KAR-11.4 widened the same vocabulary again
+    // (`patch-rejected`, v4), and a test that pinned v3 would fail on the next
+    // honest widening while proving nothing about this one. What matters here
+    // is that `plan-invalid` arrived *with* a version, and that a v3 payload
+    // carrying it still parses — which the scenario below asserts.
+    expect(EVENT_SCHEMAS['run.needs_human'].v).toBeGreaterThanOrEqual(3);
   });
 
   it('accepts a plan-invalid escalation', () => {

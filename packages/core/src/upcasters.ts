@@ -33,6 +33,7 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
+  PlanPatchedSchema,
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
   PlanProposedSchema,
@@ -678,6 +679,58 @@ registerUpcaster({
     patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
     rule: 'replan-depth-exceeded',
     by: 'policy',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `run.needs_human` v3 → v4 (KAR-11.4). See schemas/CHANGELOG.md.
+ *
+ * v4 widens `reason` by one member, `patch-rejected`, and changes nothing else,
+ * so the hop is the identity for the reason the two hops above it are: every v3
+ * payload is already a valid v4 one, and what the version buys is the other
+ * direction — a daemon that predates the reason refuses the event rather than
+ * rendering an escalation it cannot name.
+ */
+registerUpcaster({
+  kind: 'run.needs_human',
+  from: 3,
+  to: RunNeedsHumanSchema,
+  fixture: {
+    reason: 'plan-invalid',
+    detail: 'the second compilation still leaves gate coverage incomplete',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.patched` v1 → v2 (KAR-11.4). See schemas/CHANGELOG.md.
+ *
+ * v2 adds the optional `proposedBy` — who authored the patch — so the hop is
+ * the identity and the field is left **absent**.
+ *
+ * There is no honest value to lift, and the temptation is worth naming because
+ * the wrong answer is load-bearing rather than cosmetic: `decision.by` is right
+ * there, and copying it would say a patch was human-authored whenever a human
+ * approved it. §7's breaker reset keys on exactly this field, so that guess
+ * would clear a churn trip on the strength of an operator having clicked
+ * approve on the planner's own fourth replan.
+ */
+registerUpcaster({
+  kind: 'plan.patched',
+  from: 1,
+  to: PlanPatchedSchema,
+  fixture: {
+    version: 2,
+    fromHash: `sha256-${'a'.repeat(64)}`,
+    toHash: `sha256-${'b'.repeat(64)}`,
+    patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
+    decision: {
+      decision: 'auto',
+      by: 'policy',
+      rule: 'read-only-analysis',
+      at: '2026-08-07T09:30:00.000Z',
+    },
   },
   up: (payload) => payload,
 });

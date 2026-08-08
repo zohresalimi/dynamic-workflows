@@ -29,6 +29,11 @@ import { z } from 'zod';
 import { INLINE_THRESHOLD_BYTES_DEFAULT } from './artifact-offload.ts';
 import { type CompactionLever, compactionLever } from './compaction.ts';
 import { type Constraint, ConstraintSchema } from './constraint.ts';
+import {
+  DEFAULT_PATCH_RULE_SPECS,
+  type PatchPolicyTable,
+  PatchPolicyTableSchema,
+} from './patch-policy.ts';
 import type { PermissionLevel } from './plan-graph.ts';
 import { PIN_REINJECT_TURNS_DEFAULT } from './reinjection.ts';
 
@@ -113,11 +118,33 @@ export const BudgetConfigSchema = z.looseObject({
 
 export type BudgetConfig = z.infer<typeof BudgetConfigSchema>;
 
+/**
+ * KAR-11.4 AC3 — `policy.patch` (docs/06-planning-and-replanning.md §4.3).
+ *
+ * The table is validated **strictly** even though the file around it is loose,
+ * for the reason every other read key here is: a rule whose comparison this
+ * build cannot evaluate would become a rule that silently never matches, and a
+ * `reject` arm that never matches is a ceiling that is not there. The operator
+ * who wrote `costDeltaUsd: lots` gets an error naming the key rather than a run
+ * that quietly auto-applies everything.
+ */
+export const PatchPolicyConfigSchema = z.looseObject({
+  rules: PatchPolicyTableSchema.optional(),
+});
+
+export type PatchPolicyConfig = z.infer<typeof PatchPolicyConfigSchema>;
+
+export const PolicyConfigSchema = z.looseObject({
+  patch: PatchPolicyConfigSchema.optional(),
+});
+
 export const DeFlowConfigSchema = z.looseObject({
   providers: z.record(z.string(), ProviderConfigSchema).optional(),
   context: ContextConfigSchema.optional(),
   /** F4.6's default ceilings for this workspace (KAR-14.2 AC1). */
   budget: BudgetConfigSchema.optional(),
+  /** F2.5's patch policy table (KAR-11.4 AC3). */
+  policy: PolicyConfigSchema.optional(),
   /** Run-config safety constraints, structured. Prose is refused here for the
    * same reason it is refused in the renderer: there is no free-prose path into
    * a `pinned.constraints` segment (AC1). */
@@ -131,6 +158,25 @@ export type DeFlowConfig = z.infer<typeof DeFlowConfigSchema>;
 export function parseDeFlowConfig(value: unknown): DeFlowConfig {
   if (value === null || value === undefined) return {};
   return DeFlowConfigSchema.parse(value);
+}
+
+/**
+ * KAR-11.4 AC3, AC10 — the rule table this workspace declares, or the shipped
+ * defaults, with which of the two it is.
+ *
+ * `source` is not decoration: it is what a `policy.patch.loaded` event records,
+ * and *"my config says X and the run is doing Y"* is unanswerable without it —
+ * a file whose `policy.patch` key was misspelled parses fine and produces the
+ * defaults, and the only visible difference is this word.
+ */
+export function patchPolicyOf(config: DeFlowConfig): {
+  readonly source: 'config' | 'default';
+  readonly rules: PatchPolicyTable;
+} {
+  const declared = config.policy?.patch?.rules;
+  return declared === undefined
+    ? { source: 'default', rules: DEFAULT_PATCH_RULE_SPECS }
+    : { source: 'config', rules: declared };
 }
 
 /** AC5 — `pinReinjectTurns` for one provider, defaulting to 8. */
