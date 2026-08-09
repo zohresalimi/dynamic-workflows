@@ -26,6 +26,8 @@ import { streamSSE } from 'hono/streaming';
 import { submitTask } from '../intake/intake.ts';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
+import { diffPlanGraphs } from '../plan/diff.ts';
+import { unionLayoutKey } from '../plan/plan-history.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
 import { abandonRun, approveSpec, editSpec, rejectSpec, SpecGateNotOpen } from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
@@ -327,6 +329,70 @@ api.get('/runs/:id', (c) => {
   return c.json(
     runSummary(runId, state, view.headSeq(), providerTokenAccounting, preflightEstimator(view)),
   );
+});
+
+/** `?from=` / `?to=`, as the positive plan version integer they name, or
+ * `null` for anything else — absent, non-numeric, zero or negative. A version
+ * is 1-based (KAR-11.1 AC4), so `0` is never a version the diff endpoint could
+ * answer for. */
+function parseVersion(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * KAR-11.5 AC3 — `GET /api/runs/:id/plans/diff?from=N&to=M`, the plan-evolution
+ * scrubber's server-side contract (docs/06-planning-and-replanning.md §5).
+ *
+ * The whole endpoint is composition: `view.planVersion` resolves the two
+ * documents through the content-addressed `plan` table (KAR-11.1's retention),
+ * `diffPlanGraphs` is KAR-11.6's pure node/edge diff, `unionLayoutKey` is a
+ * cache key and never coordinates (AC4), and `view.planTransition` joins in
+ * the `reason` and `decision` behind whichever patch produced `to` — `null`
+ * for both when `to` is a version with no patch behind it, such as v1's
+ * initial compile.
+ *
+ * A version either side names that this run never proposed is a 404, exactly
+ * like `GET /api/runs/:id`: a malformed or absent query parameter is a 400,
+ * because that is a request this endpoint can never honour, not a run that
+ * does not exist yet.
+ */
+api.get('/runs/:id/plans/diff', (c) => {
+  const view = ledgerView();
+  if (view === null) {
+    return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+  }
+
+  const runId = asRunId(c.req.param('id'));
+  if (runId === null) {
+    return c.json({ error: 'not_found', path: c.req.path }, 404);
+  }
+
+  const from = parseVersion(c.req.query('from'));
+  const to = parseVersion(c.req.query('to'));
+  if (from === null || to === null) {
+    return c.json({ error: 'invalid_version', path: c.req.path }, 400);
+  }
+
+  const fromGraph = view.planVersion(runId, from);
+  const toGraph = view.planVersion(runId, to);
+  if (fromGraph === null || toGraph === null) {
+    return c.json({ error: 'not_found', path: c.req.path }, 404);
+  }
+
+  const diff = diffPlanGraphs(fromGraph, toGraph);
+  const transition = view.planTransition(runId, to);
+
+  return c.json({
+    from: diff.from,
+    to: diff.to,
+    nodes: diff.nodes,
+    edges: diff.edges,
+    unionLayoutKey: unionLayoutKey(runId, from, to),
+    reason: transition?.reason ?? null,
+    decision: transition?.decision ?? null,
+  });
 });
 
 /**

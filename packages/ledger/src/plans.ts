@@ -452,3 +452,105 @@ export async function applyPatchedPlanVersion(
     return { outcome: 'applied', seq, planHash: graph.planHash, path };
   });
 }
+
+// ── KAR-11.5: resolving one version, and the patch behind it ────────────────
+
+/**
+ * `plan.proposed` is written for *every* version — v1's initial compile and
+ * every patched successor alike, `applyPatchedPlanVersion` above appends one
+ * in the same transaction as `plan.patched` — so it is the one event kind that
+ * names every version this run ever had a document for, whether or not that
+ * version is the one currently executing. A version that deduplicated onto an
+ * earlier hash (AC2) still gets its own `plan.proposed`, which is what lets it
+ * resolve here even though the `plan` table holds only one row for the two of
+ * them.
+ *
+ * `json_extract` over the stored payload rather than a dedicated column: the
+ * `event` table is `../04-domain-model.md §9`'s one append-only shape, and a
+ * `version` column here would be a second, narrower copy of a fact the payload
+ * already carries.
+ *
+ * Shaped as `seq = (SELECT min(seq) …)` rather than `ORDER BY seq ASC LIMIT 1`:
+ * `../../test/append-only.test.ts` requires every non-aggregate read of
+ * `event` to be a `run_id = ? AND seq > ?` cursor window, because an unbounded
+ * scan on the write connection stalls every in-flight append behind it
+ * (KAR-03.4 AC5). This is not that shape — it names one version by its own
+ * identity, never a page a caller resumes from — and `min(seq)` is the
+ * honest aggregate for "the first event that matches", which the guard
+ * already exempts for the same reason `count(*)` and `max(seq)` are: the
+ * result is one row, and no cursor is left open over the rest of the log.
+ */
+const SELECT_PLAN_PROPOSED_SQL = `
+  SELECT payload FROM event
+  WHERE seq = (
+    SELECT min(seq) FROM event
+    WHERE run_id = ? AND kind = 'plan.proposed' AND json_extract(payload, '$.version') = ?
+  )
+`;
+
+interface PayloadRow {
+  readonly payload: string;
+}
+
+/**
+ * The plan document `runId` proposed at `version`, resolved through the
+ * content-addressed `plan` table — so a version whose document deduplicated
+ * with an earlier one's (AC2) still resolves to the same bytes. `null` when
+ * this run never proposed a version numbered that, or when the row its hash
+ * names has gone missing (never true in production; a defensive `null` rather
+ * than a throw, because this backs a 404 and not a crash).
+ */
+export function readPlanVersion(db: Db, runId: string, version: number): PlanGraph | null {
+  const row = db.prepare<PayloadRow>(SELECT_PLAN_PROPOSED_SQL).get(runId, version);
+  if (row === undefined) return null;
+  const payload = JSON.parse(row.payload) as { readonly planHash: string };
+  const doc = readPlanDoc(db, payload.planHash);
+  return doc === null ? null : (JSON.parse(doc) as PlanGraph);
+}
+
+const SELECT_PLAN_PATCHED_SQL = `
+  SELECT payload FROM event
+  WHERE seq = (
+    SELECT min(seq) FROM event
+    WHERE run_id = ? AND kind = 'plan.patched' AND json_extract(payload, '$.version') = ?
+  )
+`;
+
+/** The `plan.patched` event that produced `toVersion`, reduced to what
+ * KAR-11.5's diff endpoint joins on. `null` for a version with no patch behind
+ * it — v1's initial compile is `plan.proposed` alone. */
+export function readPlanPatchedEvent(
+  db: Db,
+  runId: string,
+  toVersion: number,
+): { readonly patchId: string; readonly decision: { readonly decision: string } } | null {
+  const row = db.prepare<PayloadRow>(SELECT_PLAN_PATCHED_SQL).get(runId, toVersion);
+  if (row === undefined) return null;
+  const payload = JSON.parse(row.payload) as {
+    readonly patchId: string;
+    readonly decision: { readonly decision: string };
+  };
+  return { patchId: payload.patchId, decision: payload.decision };
+}
+
+const SELECT_PLAN_PATCH_PROPOSED_SQL = `
+  SELECT payload FROM event
+  WHERE seq = (
+    SELECT min(seq) FROM event
+    WHERE run_id = ? AND kind = 'plan.patch.proposed' AND json_extract(payload, '$.patch.id') = ?
+  )
+`;
+
+/** The `plan.patch.proposed` event that named `patchId`, reduced to the one
+ * field AC5's join needs. `null` when this run has none — a proposal from a
+ * schema this build no longer parses, or a `patchId` nothing here proposed. */
+export function readPlanPatchProposedEvent(
+  db: Db,
+  runId: string,
+  patchId: string,
+): { readonly patch: { readonly reason: string } } | null {
+  const row = db.prepare<PayloadRow>(SELECT_PLAN_PATCH_PROPOSED_SQL).get(runId, patchId);
+  if (row === undefined) return null;
+  const payload = JSON.parse(row.payload) as { readonly patch: { readonly reason: string } };
+  return { patch: { reason: payload.patch.reason } };
+}

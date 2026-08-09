@@ -273,6 +273,11 @@ export {
   planPathOf,
   RUN_PLAN_DIR,
   readPlanDoc,
+  // KAR-11.5 — resolving one version and the patch behind it, for the diff
+  // endpoint's `reason`/`decision` join.
+  readPlanPatchedEvent,
+  readPlanPatchProposedEvent,
+  readPlanVersion,
 } from './plans.ts';
 export { applyPragmas, LEDGER_PRAGMAS, SYNCHRONOUS, withFullSync } from './pragmas.ts';
 // KAR-05.9 — the `process` table: written in the same transaction as

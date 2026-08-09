@@ -26,18 +26,22 @@
  * client holds stays current without a second endpoint to poll. EPIC-15 owns
  * the rest of §6's route table and will widen this port rather than add another.
  */
-import type { Calibration, Db, RunId, RunState } from '@DeFlow/core';
+import type { Calibration, Db, PlanGraph, RunId, RunState } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
 import {
   headSeq as ledgerHeadSeq,
   listRunIds,
   openRead,
+  readPlanPatchedEvent,
+  readPlanPatchProposedEvent,
+  readPlanVersion,
   readRange,
   readTokenCalibration,
   replayRun,
   type StoredEvent,
 } from '@DeFlow/ledger';
 import { join } from 'node:path';
+import { joinPlanTransition, type PlanTransition } from '../plan/plan-history.ts';
 
 export interface LedgerView {
   /**
@@ -62,6 +66,19 @@ export interface LedgerView {
    * would be a `GET` that wrote.
    */
   calibration(provider: string, model: string, family: string): Calibration;
+  /**
+   * KAR-11.5 AC3 — the plan document `runId` proposed at `version`, resolved
+   * through the content-addressed `plan` table. `null` when this run never
+   * proposed a version numbered that — the diff endpoint's 404.
+   */
+  planVersion(runId: RunId, version: number): PlanGraph | null;
+  /**
+   * KAR-11.5 AC3, AC5 — the `reason` and `decision` behind the patch that
+   * produced `toVersion`, joined from `plan.patched` and its
+   * `plan.patch.proposed`. `null` for a version with no patch behind it (v1's
+   * initial compile).
+   */
+  planTransition(runId: RunId, toVersion: number): PlanTransition | null;
 }
 
 export interface OpenedLedgerView extends LedgerView {
@@ -90,6 +107,13 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
     calibration: (provider, model, family) => {
       const row = readTokenCalibration(db, provider, model, family);
       return { n: row.samples, ratio: row.tokenEstimateFactor };
+    },
+    planVersion: (runId, version) => readPlanVersion(db, runId, version),
+    planTransition: (runId, toVersion) => {
+      const patched = readPlanPatchedEvent(db, runId, toVersion);
+      const proposed =
+        patched === null ? null : readPlanPatchProposedEvent(db, runId, patched.patchId);
+      return joinPlanTransition(patched, proposed);
     },
     close: () => db.close(),
   };
