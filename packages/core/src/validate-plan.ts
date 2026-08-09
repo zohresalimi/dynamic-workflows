@@ -43,7 +43,7 @@ import { BUDGET_FRACTION_CEILING } from './build-packet.ts';
 import { isNodeIdSlug, type NodeId } from './ids.ts';
 import type { PlanDiagnostic } from './plan-diagnostics.ts';
 import type { AgentNode, PermissionLevel, PlanGraph, PlanNode } from './plan-graph.ts';
-import { revalidateSpecAgainstPlan } from './spec-approval.ts';
+import { coveredByGatesOf, revalidateSpecAgainstPlan } from './spec-approval.ts';
 import type { TaskSpec } from './task-spec.ts';
 import { toSingleLine } from './text.ts';
 import { PlanCycleError, topoSort } from './topo-sort.ts';
@@ -375,14 +375,53 @@ function capabilityDiagnostics(
  * §3.4 — criteria coverage
  * -------------------------------------------------------------------------- */
 
+/**
+ * KAR-12.4 AC3 — a criterion whose spec-supplied `coveredByGates` does not
+ * match what the plan actually computes.
+ *
+ * `AcceptanceCriterion.coveredByGates` is `[]` on every spec `sealTaskSpec`
+ * produces (see task-spec.ts) — framing runs before a plan exists, so it has
+ * nothing to put there. A criterion that arrives with entries in it therefore
+ * did not come from the framing interview, and a `warning` — never an error,
+ * because the computed value is what validation trusts either way — is how a
+ * hand-edited spec becomes visible rather than silently overwritten.
+ */
+function coveredByGatesMismatchDiagnostics(plan: PlanGraph, spec: TaskSpec): PlanDiagnostic[] {
+  const computed = coveredByGatesOf(plan);
+  const diagnostics: PlanDiagnostic[] = [];
+
+  for (const criterion of spec.acceptanceCriteria) {
+    if (criterion.coveredByGates.length === 0) continue;
+    const supplied = [...criterion.coveredByGates].toSorted();
+    const actual = [...(computed.get(criterion.id) ?? [])].toSorted();
+    if (supplied.length === actual.length && supplied.every((id, i) => id === actual[i])) continue;
+
+    diagnostics.push({
+      severity: 'warning',
+      code: 'COVERED_BY_GATES_MISMATCH',
+      node: PLAN_SCOPE,
+      key: criterion.id,
+      message:
+        `acceptance criterion ${criterion.id} arrived with coveredByGates: ` +
+        `[${supplied.join(', ') || '(empty)'}], but plan version ${plan.version} actually covers ` +
+        `it with [${actual.join(', ') || '(none)'}]. coveredByGates is computed by validation, ` +
+        'never authored by hand, and this value is recomputed and overwritten — the mismatch ' +
+        'means the spec was hand-edited somewhere other than the framing interview.',
+    });
+  }
+
+  return diagnostics;
+}
+
 function coverageDiagnostics(plan: PlanGraph, spec: TaskSpec): PlanDiagnostic[] {
-  return revalidateSpecAgainstPlan(spec, plan).map((issue) => ({
+  const coverage = revalidateSpecAgainstPlan(spec, plan).map((issue) => ({
     severity: 'error' as const,
-    code: 'CRITERION_UNCOVERED' as const,
+    code: issue.code,
     node: PLAN_SCOPE,
     key: issue.criterion as string,
     message: toSingleLine(issue.message),
   }));
+  return [...coverage, ...coveredByGatesMismatchDiagnostics(plan, spec)];
 }
 
 /* -------------------------------------------------------------------------- *

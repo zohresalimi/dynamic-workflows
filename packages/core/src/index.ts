@@ -28,6 +28,7 @@ export type {
   BoardCriterion,
   BoardRow,
   BoardStatus,
+  VerdictCriterionRow,
 } from './acceptance-board.ts';
 export {
   acceptanceBoard,
@@ -36,6 +37,7 @@ export {
   isVerdictVoid,
   staleGateNodes,
   verdictAgainst,
+  verdictCriteriaProjection,
 } from './acceptance-board.ts';
 // KAR-11.3 — applying a PlanPatch: the function from a plan document to the
 // next one. Plans are never mutated, so this returns a successor rather than
@@ -482,6 +484,10 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-12.4 AC4 — the GATE_UNKNOWN_CRITERION rule a discovered gate file's
+// `satisfies:` list is checked against (KAR-12.6 wires the file walk).
+export type { GateFileCriterionIssue } from './gate-file-criteria.ts';
+export { unknownGateCriteria } from './gate-file-criteria.ts';
 export type { GateClass, LadderGate } from './gate-ladder.ts';
 export { admitGates, GATE_CLASSES, ladderRank, orderGates } from './gate-ladder.ts';
 // KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
@@ -1072,10 +1078,12 @@ export { scopeCollisions } from './scope-collision.ts';
 export type {
   SpecAmendment,
   SpecCoverageIssue,
+  SpecCoverageIssueCode,
   SpecDecision,
   SpecVersion,
 } from './spec-approval.ts';
 export {
+  coveredByGatesOf,
   currentSpec,
   emptyEditRefusal,
   hashableSpec,

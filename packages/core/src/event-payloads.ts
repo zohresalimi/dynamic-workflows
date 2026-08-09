@@ -397,6 +397,12 @@ export const PlanDiagnosticSchema = z.strictObject({
   message: singleLine(),
 });
 
+/**
+ * KAR-12.4 — v3 widens `code` by two members, `CRITERION_UNVERIFIABLE_NO_REASON`
+ * and `COVERED_BY_GATES_MISMATCH` (§5.1's totality rule). Every v2 payload is
+ * already a valid v3 one, so the hop is the identity — see
+ * schemas/CHANGELOG.md.
+ */
 export const PlanValidationFailedSchema = z.strictObject({
   version: z.number().int().positive(),
   /** The rejected document's hash. Nothing stores the document under it. */
@@ -1685,7 +1691,7 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 4, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
-  'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
+  'plan.validation_failed': { v: 3, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 2, payload: PlanPatchedSchema },
   'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },

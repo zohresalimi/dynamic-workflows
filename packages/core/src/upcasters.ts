@@ -759,6 +759,38 @@ registerUpcaster({
 });
 
 /**
+ * `plan.validation_failed` v2 → v3 (KAR-12.4). See schemas/CHANGELOG.md.
+ *
+ * v3 widens `diagnostics[].code` by two members,
+ * `CRITERION_UNVERIFIABLE_NO_REASON` and `COVERED_BY_GATES_MISMATCH` (§5.1's
+ * totality rule), and changes nothing else, so the hop is the identity for the
+ * reason every enum-widening hop in this registry is: every v2 payload is
+ * already a valid v3 one, and no v2 payload can have carried a code that did
+ * not exist yet.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 2,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'CRITERION_UNCOVERED',
+        node: '(plan)',
+        key: 'ac-9',
+        message: "acceptance criterion 'ac-9' is covered by no active gate node",
+      },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `gate.evaluated` v3 → v4 (KAR-12.2). See schemas/CHANGELOG.md.
  *
  * v4's verdict is `DeFlow.verdict.v4`, which adds one optional field —

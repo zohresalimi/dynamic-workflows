@@ -494,3 +494,133 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
     }
   });
 });
+
+// ── EPIC-12-S28 — a patch that abandons the last covering gate is rejected ──
+
+suite('EPIC-12-S28 — a patch that abandons the last covering gate is rejected', () => {
+  /** A spec with one criterion that only a gate node can satisfy — unlike the
+   * module-level `SPEC`, whose `ac-1` is a `manual` check and so is exempt
+   * from coverage altogether. */
+  const SPEC_WITH_GATE: TaskSpec = TaskSpecSchema.parse({
+    ...SPEC,
+    acceptanceCriteria: [
+      {
+        id: 'ac-2',
+        statement: 'the codebase typechecks',
+        check: { kind: 'gate', gate: 'typecheck' },
+      },
+    ],
+  });
+
+  const gateNode = (
+    id: string,
+    criteria: readonly string[],
+    over: Record<string, unknown> = {},
+  ) => ({
+    id,
+    title: `gate ${id}`,
+    type: 'gate',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'read',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.verdict.v3', maxTokens: 600 },
+    retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+    budget: {},
+    gate: { kind: 'deterministic', gateId: 'typecheck' },
+    criteria: [...criteria],
+    independence: { notSessionOf: [], preferDifferentProvider: false },
+    ...over,
+  });
+
+  it('rejects a patch that abandons ac-2’s only covering gate, and never partially applies it', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      const v3 = await addressed(
+        parsed([agent('impl'), gateNode('gate-typecheck', ['ac-2'], { deps: ['impl'] })], {
+          version: 3,
+        }),
+      );
+      await persistPlanVersion(db, {
+        runDir: join(tmp, 'runs', RUN),
+        graph: v3,
+        by: 'planner',
+        planner: PLANNER,
+        diagnostics: [],
+        ts: T0,
+        epoch: EPOCH,
+      });
+      db.prepare(
+        `INSERT INTO run (run_id, status, plan_hash, last_seq, state_json, checkpoint_version,
+            daemon_epoch)
+          VALUES (?, 'running', ?, 0, '{}', 1, ?)`,
+      ).run(RUN, v3.planHash, EPOCH);
+
+      // What an `abandon-branch { root: 'gate-typecheck' }` patch produces:
+      // the node stays in the graph — structural operations never delete a
+      // node — but its lifecycle retires, which is exactly what
+      // `coveredByGatesOf` must stop counting.
+      const v4 = await addressed(
+        parsed(
+          [
+            (v3.nodes as unknown as Record<string, unknown>[])[0],
+            { ...gateNode('gate-typecheck', ['ac-2'], { deps: ['impl'] }), lifecycle: 'abandoned' },
+          ],
+          { version: 4, parent: v3.planHash },
+        ),
+      );
+
+      const outcome = await commitPatchedPlan({
+        db,
+        runDir: join(tmp, 'runs', RUN),
+        graph: v4,
+        spec: SPEC_WITH_GATE,
+        caps: CAPS,
+        estimatePacketTokens: () => 0,
+        refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4s1',
+        decision: DECISION,
+        by: 'planner',
+        planner: PLANNER,
+        ts: T0,
+        epoch: EPOCH,
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      expect(outcome.diagnostics).toMatchObject([
+        { severity: 'error', code: 'CRITERION_UNCOVERED', key: 'ac-2' },
+      ]);
+
+      // Never partially applied: no v4 row, plan_hash on the run row untouched.
+      expect(readPlanDoc(db, v4.planHash)).toBeNull();
+      expect(readPlanDoc(db, v3.planHash)).not.toBeNull();
+      expect(
+        db.prepare<{ plan_hash: string }>('SELECT plan_hash FROM run WHERE run_id = ?').get(RUN)
+          ?.plan_hash,
+      ).toBe(v3.planHash);
+
+      // The rejection is visible, not silent — the epic's own words for it.
+      const [rejected] = readRange(db, RUN, 0, 200).events.filter(
+        (row) => row.kind === 'plan.patch.rejected',
+      );
+      const payload = rejected?.payload as Record<string, unknown>;
+      expect(payload.by).toBe('validation');
+      expect(payload.patchId).toBe('patch_01j9v1s5t1m1q9x8y7z6w5v4s1');
+      expect((payload.diagnostics as { code: string }[]).map((one) => one.code)).toContain(
+        'CRITERION_UNCOVERED',
+      );
+
+      const proposed = readRange(db, RUN, 0, 200).events.filter(
+        (row) => row.kind === 'plan.proposed',
+      );
+      expect(proposed).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+});

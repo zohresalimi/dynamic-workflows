@@ -480,3 +480,67 @@ suite('EPIC-11-S11 — every criterion reaches a gate, or the plan is refused', 
     ).toHaveLength(1);
   });
 });
+
+// ── KAR-12.4 — the totality rule's remaining two codes ───────────────────────
+
+suite('KAR-12.4 AC2, test plan #2 — the escape hatch costs one sentence', () => {
+  it('a manual check whose rubric is blank once trimmed is CRITERION_UNVERIFIABLE_NO_REASON', () => {
+    const blank = spec([
+      { id: 'ac-9', statement: 'the UI feels right', check: { kind: 'manual', rubric: '  ' } },
+    ]);
+
+    const diagnostics = check(graph([agent('impl')]), blank);
+
+    expect(diagnostics).toMatchObject([
+      {
+        severity: 'error',
+        code: 'CRITERION_UNVERIFIABLE_NO_REASON',
+        node: PLAN_SCOPE,
+        key: 'ac-9',
+      },
+    ]);
+    expect(diagnostics[0]?.message).toContain('ac-9');
+  });
+});
+
+suite('KAR-12.4 AC3 — coveredByGates is computed, and a hand-supplied value is checked', () => {
+  it('is silent when the spec supplies no coveredByGates at all', () => {
+    const plan = graph([agent('impl'), gate('gate-import-rules', ['ac-5'])]);
+    const uncovered = spec([
+      { id: 'ac-5', statement: 'No component may import from packages/legacy.' },
+    ]);
+
+    expect(check(plan, uncovered).filter((d) => d.code === 'COVERED_BY_GATES_MISMATCH')).toEqual(
+      [],
+    );
+  });
+
+  it('warns when a hand-supplied coveredByGates does not match the computed walk', () => {
+    const plan = graph([agent('impl'), gate('gate-import-rules', ['ac-5'])]);
+    const handEdited = spec([
+      {
+        id: 'ac-5',
+        statement: 'No component may import from packages/legacy.',
+        coveredByGates: ['some-other-node'],
+      },
+    ]);
+
+    const mismatch = check(plan, handEdited).filter((d) => d.code === 'COVERED_BY_GATES_MISMATCH');
+
+    expect(mismatch).toMatchObject([{ severity: 'warning', node: PLAN_SCOPE, key: 'ac-5' }]);
+    expect(mismatch[0]?.message).toContain('gate-import-rules');
+  });
+
+  it('is silent when a hand-supplied coveredByGates happens to match the computed walk', () => {
+    const plan = graph([agent('impl'), gate('gate-import-rules', ['ac-5'])]);
+    const matching = spec([
+      {
+        id: 'ac-5',
+        statement: 'No component may import from packages/legacy.',
+        coveredByGates: ['gate-import-rules'],
+      },
+    ]);
+
+    expect(check(plan, matching).filter((d) => d.code === 'COVERED_BY_GATES_MISMATCH')).toEqual([]);
+  });
+});

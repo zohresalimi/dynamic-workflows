@@ -370,7 +370,9 @@ byte-for-byte as it was, and `packages/core/test/schemas-append-only.test.ts` is
 The marker is projected as well as stored. `acceptanceBoard` carries it onto every row a weakened
 verdict decided, so the acceptance-criteria board and the diff view render it **without a join** —
 `docs/10-verification-gates.md` §3.1's *"do not silently accept a weakened review"* is only true if
-the weakening reaches the surface a human reads.### plan.validation_failed v2
+the weakening reaches the surface a human reads.
+
+### plan.validation_failed v2
 
 **KAR-11.2.** `diagnostics[].node` widens from `NodeId` to a non-empty string, because two of
 [06 §3](../docs/06-planning-and-replanning.md)'s diagnostics cannot name a valid `NodeId` by
@@ -388,6 +390,25 @@ of the *document* rather than of any node, so it carries the `PLAN_SCOPE` sentin
 payload schema that accepted only valid `NodeId`s would make the append throw on exactly the two
 faults the validator exists to catch, which is a worse failure than the one it was preventing. The
 sentinel's parentheses keep it outside the charset a real id could ever occupy.
+
+### plan.validation_failed v3
+
+**KAR-12.4.** `diagnostics[].code` widens by two members, `CRITERION_UNVERIFIABLE_NO_REASON` and
+`COVERED_BY_GATES_MISMATCH` — [10 §5.1](../docs/10-verification-gates.md)'s totality rule: every
+acceptance criterion in the pinned spec either reaches an active gate node or is marked
+`unverifiable` with a non-empty reason, and `coveredByGates` is computed by validation rather than
+authored by hand.
+
+| Change                       | Kind     | Why it is not lossy                                                                                        |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `diagnostics[].code` gains two members | widening | Every v2 payload is already a valid v3 one — the hop is the identity — and no v2 payload can have carried either code. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why a warning code ships alongside two error codes.** `COVERED_BY_GATES_MISMATCH` is a `warning`,
+never an `error`: the computed value is what validation trusts regardless, so a hand-supplied
+`coveredByGates` that disagrees with it is made visible rather than blocking the run — the same
+severity split §3.1's `ORPHAN_WRITE` already uses for "usually a leftover, occasionally deliberate."
 
 ### plan.patch.rejected v2
 

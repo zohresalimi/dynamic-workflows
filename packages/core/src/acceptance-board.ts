@@ -42,7 +42,13 @@
  * Verifies: EPIC-10-S21 (third scenario), EPIC-10-S22, EPIC-10-S29 (third
  * scenario) · AC4, AC5
  */
-import { type CriterionId, CriterionIdSchema, type NodeId, SchemaIdSchema } from './ids.ts';
+import {
+  type CriterionId,
+  CriterionIdSchema,
+  type Handle,
+  type NodeId,
+  SchemaIdSchema,
+} from './ids.ts';
 import {
   type CriterionStatus,
   VERDICT_V2_SCHEMA_ID,
@@ -301,4 +307,67 @@ export function staleGateNodes(
     }
   }
   return stale.filter((node) => !live.has(node));
+}
+
+/**
+ * KAR-12.4 AC7, AC8 — one row per criterion **a verdict has spoken to**, with
+ * the evidence behind it.
+ *
+ * Distinct from `acceptanceBoard`: that projection is driven by the spec's
+ * full criteria list, so an unjudged criterion still gets a row
+ * (`'pending'`) and a stale one gets `'revalidating'` — the operator-facing
+ * board F10.8 renders. This one is driven by `Verdict.criteria` alone and
+ * renders **exactly three states**, because nothing here is answering "what
+ * does the spec require" — only "what has a gate said". A criterion no
+ * verdict mentions is simply absent, not `pending`.
+ *
+ * **Void verdicts never appear, at any status.** A verdict whose `specHash`
+ * does not match `currentSpecHash` is not evidence about the contract in
+ * force (`isVerdictVoid`), so it is excluded before the grouping runs rather
+ * than counted and then overwritten — the failure mode a `Map.set` in verdict
+ * order would risk if a void verdict happened to be the last one seen.
+ *
+ * **Last non-void verdict wins**, in the order `verdicts` is given — the same
+ * "later verdicts win" rule `acceptanceBoard` documents, applied to a leaner
+ * shape.
+ */
+export interface VerdictCriterionRow {
+  readonly criterion: CriterionId;
+  readonly status: CriterionStatus;
+  /** The gate node whose verdict decided this row. */
+  readonly decidedBy: NodeId;
+  /**
+   * The evidence handles of every finding in the deciding verdict that named
+   * this criterion (`Finding.criterion`). A finding about something else, or
+   * with no criterion named at all, contributes nothing to this row.
+   */
+  readonly evidence: readonly Handle[];
+  /** AC8 — what the deciding verdict gave up, or `null` if nothing was. See
+   * `acceptanceBoard`'s `weakeningOf`, which this reads the same way. */
+  readonly weakened: VerdictWeakening | null;
+}
+
+export function verdictCriteriaProjection(
+  verdicts: readonly VerdictV2[],
+  currentSpecHash: string,
+): readonly VerdictCriterionRow[] {
+  const rows = new Map<CriterionId, VerdictCriterionRow>();
+
+  for (const verdict of verdicts) {
+    if (isVerdictVoid(verdict, currentSpecHash)) continue;
+    for (const entry of verdict.criteria) {
+      const evidence = verdict.findings
+        .filter((finding) => finding.criterion === entry.id)
+        .flatMap((finding) => finding.evidence);
+      rows.set(entry.id, {
+        criterion: entry.id,
+        status: entry.status,
+        decidedBy: verdict.by.node,
+        evidence,
+        weakened: weakeningOf(verdict),
+      });
+    }
+  }
+
+  return [...rows.values()];
 }
