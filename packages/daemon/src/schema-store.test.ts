@@ -46,6 +46,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
   'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),
+  'DeFlow.verdict.v4': join(corpus, 'DeFlow.verdict.v4.valid.json'),
 };
 
 suite('the emitted directory loads (AC3, test plan #4)', () => {

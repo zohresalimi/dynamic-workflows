@@ -58,9 +58,11 @@ import {
   VERDICT_SCHEMA_ID,
   VERDICT_V2_SCHEMA_ID,
   VERDICT_V3_SCHEMA_ID,
+  VERDICT_V4_SCHEMA_ID,
   VerdictSchema,
   VerdictV2Schema,
   VerdictV3Schema,
+  VerdictV4Schema,
 } from './verdict.ts';
 
 /**
@@ -186,6 +188,14 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
       'return (F7.3, F6.9, F7.7).',
     schema: VerdictV3Schema,
   },
+  {
+    schemaId: VERDICT_V4_SCHEMA_ID,
+    summary:
+      'The sealed gate verdict: everything v3 carries, plus what DeFlow gave up to produce it — ' +
+      "a review routed onto the producer's own provider under the single-provider fallback is " +
+      'marked weakened rather than passed off as an ordinary one (F7.2, NF7).',
+    schema: VerdictV4Schema,
+  },
 ];
 
 /**
@@ -205,6 +215,14 @@ export const VERDICT_SCHEMA_FILE = 'verdict.schema.json';
  * The few documents a run directory knows by a name other than
  * `<schemaId>.json`. One entry today; a map rather than an `if` so the next one
  * is a row instead of a branch.
+ *
+ * **`verdict.schema.json` stays the `.v3` document, and `.v4` is deliberately
+ * not it.** `.v4` adds `weakened`, which is DeFlow's own record of how the
+ * reviewer was routed (KAR-12.2 AC7) — not something the reviewer observed.
+ * Handing a model a contract with that field in it invites it to state that its
+ * own review was not weakened, which is the one claim in the document only the
+ * scheduler is in a position to make. So the vendor returns a `.v3`-shaped
+ * verdict, the sealer stamps the marker, and the sealed document is a `.v4`.
  */
 export const RUN_SCHEMA_FILENAMES: Readonly<Record<string, string>> = {
   [VERDICT_V3_SCHEMA_ID]: VERDICT_SCHEMA_FILE,

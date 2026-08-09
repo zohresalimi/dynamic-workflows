@@ -33,6 +33,7 @@ interface FixtureEvent {
   readonly payload: {
     readonly gate: string;
     readonly verdict: {
+      readonly schemaId: string;
       readonly criteria: readonly { readonly id: string; readonly status: string }[];
       readonly findings: readonly { readonly id: string }[];
       readonly cost?: { readonly durationMs: number };
@@ -59,6 +60,19 @@ suite('the gate-failure-repair fixture (test plan #10)', () => {
     // corpus that stops describing what the daemon now writes.
     for (const event of gateEvents) {
       expect(event.v).toBe(EVENT_CURRENT_VERSIONS['gate.evaluated']);
+    }
+  });
+
+  it('carries verdicts that are still v3 documents, because these are deterministic', () => {
+    // The envelope moved to v4 with KAR-12.2 and the documents did not, and the
+    // pair is the point rather than an oversight. `weakened` records how an
+    // *adversarial* reviewer was routed; a deterministic gate ran a process and
+    // gave up nothing, so it seals the same `.v3` it always did and the v4
+    // envelope carries it unchanged. A fixture that bumped both would claim
+    // this run had a marker nobody could have set.
+    for (const event of gateEvents) {
+      expect(event.payload.verdict.schemaId).toBe(VERDICT_V3_SCHEMA_ID);
+      expect(event.payload.verdict).not.toHaveProperty('weakened');
     }
   });
 

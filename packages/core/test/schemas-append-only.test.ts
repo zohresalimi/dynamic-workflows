@@ -53,6 +53,10 @@ const SHIPPED: Record<string, string> = {
   // was read from, and a verdict carries what it cost.
   'DeFlow.finding.v2': '2ed81aef6dd9c55ae0f7c37d597beee80236d7786801d0a739d7db6270eed31a',
   'DeFlow.verdict.v3': 'bad241b0e8610ae7e8a9913b76fee9221ce7018f11a077821b686a32820f200d',
+  // Shipped 2026-08-09, KAR-12.2 — the sealed verdict says what was given up to
+  // produce it, so a review routed onto the producer's own provider is
+  // distinguishable from one that was not.
+  'DeFlow.verdict.v4': '80d16ad0d1a3e2a90ccd6e6966086e57045ca5d81fd9a53d546b8b7dc64f324d',
 };
 
 suite('the committed schemas are append-only (AC6)', () => {

@@ -64,6 +64,9 @@ export type {
   RenderedBlobSha,
 } from './projection.ts';
 export { findingDelta, projectFindings } from './projection.ts';
+// KAR-12.2 — an adversarial verdict, sealed with how its reviewer was routed.
+export type { ReviewRouting } from './review-verdict.ts';
+export { sealReviewVerdict } from './review-verdict.ts';
 export type { GateEvidence, GateRun, GateToolReason, RunGateOptions } from './run-gate.ts';
 export {
   GATE_OUTPUT_MIME,

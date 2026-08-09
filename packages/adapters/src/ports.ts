@@ -25,8 +25,10 @@ import type {
   NodeId,
   PermissionLevel,
   PinnedSegmentView,
+  ProducerNodeView,
   ProviderAuthMode,
   ProviderId,
+  ResumeRequest,
   RunId,
   SchemaId,
 } from '@DeFlow/core';
@@ -280,6 +282,26 @@ export interface AcpNodeRequest {
    * gets is decided in ./resume.ts from the probed row, never here.
    */
   readonly resume?: { readonly sessionId: string };
+  /**
+   * KAR-12.2 — present on a review gate node, absent on everything else.
+   *
+   * Its presence is what scopes docs/10-verification-gates.md §3.2's
+   * precondition to reviews: forking and resuming stay legitimate for
+   * continuation work, so a node with no `review` block runs exactly as it did
+   * before this field existed.
+   *
+   * On this path the session id is only known once `session/new` returns, so
+   * the check runs **after that response and before the first
+   * `session/prompt`** — which is the last point at which the reviewer has
+   * still received nothing.
+   */
+  readonly review?: {
+    /** The nodes named in the gate's `independence.notSessionOf`, with the
+     * sessions they actually resolved to. */
+    readonly producers: readonly ProducerNodeView[];
+    /** What this node asked to resume, if anything. */
+    readonly resume?: ResumeRequest;
+  };
   /** The assembled context packet, as text. */
   readonly prompt: string;
   /**

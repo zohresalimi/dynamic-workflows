@@ -1165,11 +1165,18 @@ Feature: The CLI fallback, where vendors stop resembling each other
 
   Examples:
     | vendor   | argv                                                          |
-    | claude   | -p <prompt> --output-format stream-json --verbose             |
+    | claude   | -p <prompt> --output-format stream-json --session-id <uuid> --verbose |
     | codex    | exec --json --skip-git-repo-check -C <wt> <prompt>            |
     | gemini   | -p <prompt> --output-format stream-json --session-id <uuid>   |
     | copilot  | -p <prompt> --output-format json --allow-all-tools            |
     | opencode | run --format json <prompt>                                    |
+
+  # Amended by KAR-12.2 (EPIC-12): the claude row gained `--session-id <uuid>`.
+  # KAR-12.2 AC4 requires DeFlow to mint the reviewer's session id and pass it
+  # on this path, and AC5 rests on the 2026-08-02 verification that Claude Code
+  # honours a client-chosen `--session-id` verbatim in every emitted frame — so
+  # a shim invocation that did not carry one would leave every node's session id
+  # to be parsed back out of a frame, and independence uncheckable afterwards.
 
   Scenario: Claude Code's --verbose requirement is never violated
     Given the shim requests --output-format stream-json

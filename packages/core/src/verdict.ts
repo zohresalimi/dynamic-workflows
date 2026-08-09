@@ -224,6 +224,50 @@ export const VerdictV3Schema = VerdictV2Schema.extend({
 
 export type VerdictV3 = z.infer<typeof VerdictV3Schema>;
 
+/**
+ * KAR-12.2 AC7 — the two ways a review can be weaker than the mechanism
+ * promises, said out loud on the verdict itself.
+ *
+ * `same-provider` is NF7's degradation: exactly one probed provider was capable
+ * and it was the producer's, so the reviewer ran on it in a **fresh session**
+ * (docs/10-verification-gates.md §3.1). The session dimension is never weakened
+ * — only the provider one — and a reader has to be able to tell which.
+ *
+ * `single-attempt` is §4's other case: a verdict formed on one pass where the
+ * gate's contract expected more. It is declared here with `same-provider`
+ * because both answer the same operator question, *how much is this green worth*.
+ */
+export const VERDICT_WEAKENINGS = ['same-provider', 'single-attempt'] as const;
+
+export type VerdictWeakening = (typeof VERDICT_WEAKENINGS)[number];
+
+export const VerdictWeakeningSchema = z.enum(VERDICT_WEAKENINGS);
+
+/**
+ * KAR-12.2 — `DeFlow.verdict.v4`: the same document, plus what was given up to
+ * produce it.
+ *
+ * A `.v4` rather than a field on `.v3` for the reason `schemas/CHANGELOG.md`
+ * gives and `.v2` and `.v3` already followed: a run directory outlives the
+ * daemon that wrote it, so a shipped document is never edited in place.
+ *
+ * **Absent means "not weakened", and that is honest for every historical
+ * payload.** Unlike `specHash` and `cost`, whose absence had to be read as
+ * *unknown*, this field's absence is a real answer: a verdict written before
+ * the fallback existed was produced by a reviewer routed the ordinary way. The
+ * v3 → v4 hop is therefore the identity with nothing left blank in a
+ * misleading direction — the only direction of error would be marking a
+ * historical review weak when it was not, which would be an invention.
+ */
+export const VERDICT_V4_SCHEMA_ID = 'DeFlow.verdict.v4' as const;
+
+export const VerdictV4Schema = VerdictV3Schema.extend({
+  /** Absent unless something was given up. See `VERDICT_WEAKENINGS`. */
+  weakened: VerdictWeakeningSchema.optional(),
+});
+
+export type VerdictV4 = z.infer<typeof VerdictV4Schema>;
+
 export type VerdictCriterion = z.infer<typeof VerdictV3Schema>['criteria'][number];
 
 /**

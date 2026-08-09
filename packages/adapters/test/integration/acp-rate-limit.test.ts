@@ -147,8 +147,16 @@ suite('a declared rate-limit error carrying the vendor’s own reset (AC1)', () 
     // Cause before effect: a reader walking the timeline meets the limit
     // before the failure it caused. The session opened and the prompt went
     // out, so the turn really reached the vendor before it was refused.
+    //
+    // Two `node.started`, since KAR-12.2: the first is written after the
+    // handshake and before a session exists, the second the instant
+    // `session/new` answers, carrying the resolved session id. The ledger is
+    // append-only, so a late-arriving field is a second event rather than an
+    // edit to the first — which is also what makes independence checkable from
+    // two payloads after the fact.
     expect(kinds).toEqual([
       'node.scheduled',
+      'node.started',
       'node.started',
       'node.progress',
       'provider.rate_limited',

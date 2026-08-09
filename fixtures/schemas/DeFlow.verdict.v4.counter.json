@@ -1,0 +1,23 @@
+{
+  "schemaId": "DeFlow.verdict.v4",
+  "outcome": "pass",
+  "gate": "typecheck-gate",
+  "evaluatedNode": "migrate-router-guards",
+  "by": {
+    "node": "typecheck-gate",
+    "provider": "codex",
+    "model": "gpt-5-codex"
+  },
+  "criteria": [
+    {
+      "id": "typecheck-clean",
+      "status": "satisfied"
+    }
+  ],
+  "findings": [],
+  "summary": "the weakening below is a value nobody defined, so the marker cannot be believed",
+  "cost": {
+    "durationMs": 1200
+  },
+  "weakened": "sort-of"
+}

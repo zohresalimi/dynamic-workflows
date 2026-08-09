@@ -660,6 +660,15 @@ export const PROVIDER_SPECS = {
         ctx.prompt,
         '--output-format',
         format,
+        // KAR-12.2 AC5. **Verified 2026-08-02** from the same 2.1.220 flag
+        // table: a client-chosen `--session-id <uuid>` is honoured verbatim in
+        // every emitted frame. Passed unconditionally rather than only for
+        // review nodes, because the value of asserting on a minted uuid is that
+        // the assertion is available on every node — a node whose session id
+        // DeFlow had to parse back out of a frame is a node whose independence
+        // nobody can check afterwards.
+        '--session-id',
+        ctx.sessionId,
         ...(format === 'stream-json' ? ['--verbose'] : []),
         ...flags,
       ],

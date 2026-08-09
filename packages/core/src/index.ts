@@ -454,9 +454,6 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
-// KAR-12.1 — the gate ladder (docs/10-verification-gates.md §1). Lives in core
-// because `decide()` is what withholds a tier, and re-exported by
-// `@DeFlow/gates` so the runner and the scheduler share one ordering.
 export type { GateClass, LadderGate } from './gate-ladder.ts';
 export { admitGates, GATE_CLASSES, ladderRank, orderGates } from './gate-ladder.ts';
 // KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
@@ -537,6 +534,20 @@ export type { ParsedIkey } from './ikey.ts';
 // the only legal constructor. KAR-06.3 adds the short-hex form the atomic file
 // write embeds in a temp filename, where the raw key's `/` cannot go.
 export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
+// KAR-12.2 — the two scheduling preconditions that keep a review from being
+// the agent that wrote the work (docs/10-verification-gates.md §3.2).
+export type {
+  ProducerNodeView,
+  ResumeRequest,
+  ReviewNodeView,
+  ReviewRefusalCode,
+} from './independent-review.ts';
+export {
+  assertIndependentReview,
+  isReviewRefusal,
+  REVIEW_REFUSAL_CODES,
+  SchedulingRefused,
+} from './independent-review.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 // KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
 export type { JsonPatchOperation } from './json-patch.ts';
@@ -903,6 +914,24 @@ export {
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
+// KAR-12.1 — the gate ladder (docs/10-verification-gates.md §1). Lives in core
+// because `decide()` is what withholds a tier, and re-exported by
+// `@DeFlow/gates` so the runner and the scheduler share one ordering.
+// KAR-12.2 — the reviewer's packet: the pinned spec, the diff and the gate
+// output, and a refusal for anything sourced from the producer's transcript.
+export type {
+  ReviewerEvidence,
+  ReviewerGateEvidence,
+  ReviewerPacketInput,
+} from './reviewer-packet.ts';
+export {
+  buildReviewerPacket,
+  REVIEW_DIFF_SEGMENT_ID,
+  ReviewerContextInherited,
+  ReviewerPacketIncomplete,
+  reviewerGateSegmentId,
+  reviewerManifestIsClean,
+} from './reviewer-packet.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,
@@ -1116,6 +1145,8 @@ export type {
   VerdictOutcome,
   VerdictV2,
   VerdictV3,
+  VerdictV4,
+  VerdictWeakening,
 } from './verdict.ts';
 export {
   BLOB_SHA_PATTERN,
@@ -1133,10 +1164,14 @@ export {
   VERDICT_SCHEMA_ID,
   VERDICT_V2_SCHEMA_ID,
   VERDICT_V3_SCHEMA_ID,
+  VERDICT_V4_SCHEMA_ID,
+  VERDICT_WEAKENINGS,
   VerdictCostSchema,
   VerdictOutcomeSchema,
   VerdictSchema,
   VerdictV2Schema,
   VerdictV3Schema,
+  VerdictV4Schema,
+  VerdictWeakeningSchema,
   verdictCost,
 } from './verdict.ts';

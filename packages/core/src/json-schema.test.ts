@@ -37,6 +37,7 @@ const EXPECTED_IDS = [
   'DeFlow.verdict.v1',
   'DeFlow.verdict.v2',
   'DeFlow.verdict.v3',
+  'DeFlow.verdict.v4',
 ];
 
 /** Every `$ref` in the document, wherever it appears. */

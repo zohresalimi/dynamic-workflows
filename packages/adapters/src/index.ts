@@ -152,6 +152,18 @@ export {
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
 export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
+// KAR-12.2 — reviewer provider routing: §3.1's preference written as a total
+// rule, whose empty branch refuses rather than fabricating a verdict.
+export {
+  NO_CAPABLE_REVIEWER,
+  pickReviewer,
+  REVIEW_CONTEXT_HEADROOM,
+  type ReviewerCandidate,
+  type ReviewerDecision,
+  type ReviewerExclusion,
+  type ReviewerRequirementFailure,
+  type ReviewerRouting,
+} from './pick-reviewer.ts';
 export type {
   AcpNodeRequest,
   AcpPorts,

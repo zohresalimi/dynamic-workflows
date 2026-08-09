@@ -69,6 +69,19 @@ export interface ExecShimPorts {
   env(): Readonly<Record<string, string | undefined>>;
 }
 
+/**
+ * The client-chosen session id on the argv, or `null` when none was passed.
+ *
+ * `lastIndexOf` for the same reason `seedFrom` uses it: a repeated flag means
+ * the last one wins, which is what a shell user expects and what the vendors do.
+ */
+export function sessionIdIn(argv: readonly string[]): string | null {
+  const at = argv.lastIndexOf('--session-id');
+  if (at < 0) return null;
+  const value = argv[at + 1];
+  return value === undefined || value.startsWith('--') ? null : value;
+}
+
 /** The seed for a run: `--seed` in argv, else `$DeFlow_FAKE_SEED`, else none. */
 export const SEED_ENV = 'DeFlow_FAKE_SEED';
 /** A fixed clock reading, so `resetsAt` is an equality rather than a window. */
@@ -335,7 +348,17 @@ export async function runExecShim(
 
   const nextUuid = uuidsFromSeed(seedFrom(argv, env));
   const context: FrameContext = {
-    sessionId: scenario.sessionId ?? nextUuid(),
+    // KAR-12.2 AC5 — a client-chosen `--session-id <uuid>` is honoured
+    // verbatim in every emitted frame (**verified 2026-08-02** against Claude
+    // Code and Gemini CLI), so the fake honours it too: a fake that answered on
+    // an id of its own would make DeFlow's own check unrunnable against it, and
+    // a fake that diverges from the vendor on the one field a safety
+    // precondition reads is worse than no fake.
+    //
+    // An explicit `sessionId` in the scenario still wins, and that is what
+    // makes the *dishonest* case scriptable: an agent claiming a session
+    // nobody opened is a case DeFlow has to fail on, and it needs a stimulus.
+    sessionId: scenario.sessionId ?? sessionIdIn(argv) ?? nextUuid(),
     nextUuid,
     nowMs: (() => {
       const fixed = Number.parseInt(env[NOW_ENV] ?? '', 10);

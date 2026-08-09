@@ -61,7 +61,7 @@ import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
-import { VerdictV3Schema } from './verdict.ts';
+import { VerdictV4Schema } from './verdict.ts';
 
 // ── shared leaf schemas ──────────────────────────────────────────────────────
 
@@ -416,6 +416,33 @@ export const NodeStartedSchema = z.strictObject({
     version: z.string().min(1),
     sha256: BareSha256Schema,
   }),
+  /**
+   * KAR-12.2 AC1 — the session this attempt actually resolved to, journaled
+   * the instant it is known and never buffered
+   * ([05 §8.3](../../../docs/05-durable-execution.md)).
+   *
+   * This is what makes independence auditable after the fact: a test asserting
+   * `review.session.id !== producer.session.id` needs these two payloads and
+   * nothing else, which is the difference between a property the UI claims and
+   * one NF10 can trace.
+   *
+   * `origin` is required whenever `session` is present, because the two adapter
+   * paths learn the id at different moments and a reader auditing *when the
+   * independence check could have run* needs to know which path this was:
+   * `minted` is the CLI shim, where DeFlow chose the uuid and passed
+   * `--session-id <uuid>` before spawn; `session/new` is the ACP path, where
+   * the id arrived in a response and the check runs between it and the first
+   * `session/prompt`.
+   *
+   * Absent for every node that holds no session at all — a `tool` node, a gate
+   * that ran a process — and absence is the answer rather than a gap.
+   */
+  session: z
+    .strictObject({
+      id: z.string().min(1),
+      origin: z.enum(['minted', 'session/new']),
+    })
+    .optional(),
 });
 
 /** F10.1/F10.6. Cheap, frequent, and it does not advance the progress
@@ -1178,7 +1205,7 @@ export const HandoffOversizeSchema = z.strictObject({
 export const GateEvaluatedSchema = z.strictObject({
   gate: GateIdSchema,
   node: NodeIdSchema,
-  verdict: VerdictV3Schema,
+  verdict: VerdictV4Schema,
 });
 
 export const HumanRequestedSchema = z.strictObject({
@@ -1446,7 +1473,7 @@ export const EVENT_SCHEMAS = {
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
   'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },
-  'node.started': { v: 1, payload: NodeStartedSchema },
+  'node.started': { v: 2, payload: NodeStartedSchema },
   'node.progress': { v: 1, payload: NodeProgressSchema },
   'node.completed': { v: 1, payload: NodeCompletedSchema },
   'node.failed': { v: 1, payload: NodeFailedSchema },
@@ -1485,7 +1512,7 @@ export const EVENT_SCHEMAS = {
   'fact.read': { v: 1, payload: FactReadSchema },
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
-  'gate.evaluated': { v: 3, payload: GateEvaluatedSchema },
+  'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },

@@ -77,6 +77,8 @@ exports[`each vendor’s headless invocation (EPIC-05-S29, AC1) > is a snapshot 
       "summarise the failing test",
       "--output-format",
       "stream-json",
+      "--session-id",
+      "<uuid>",
       "--verbose",
     ],
     "worktree": [
@@ -84,6 +86,8 @@ exports[`each vendor’s headless invocation (EPIC-05-S29, AC1) > is a snapshot 
       "summarise the failing test",
       "--output-format",
       "stream-json",
+      "--session-id",
+      "<uuid>",
       "--verbose",
       "--permission-mode",
       "acceptEdits",

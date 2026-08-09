@@ -43,7 +43,12 @@
  * scenario) · AC4, AC5
  */
 import { type CriterionId, CriterionIdSchema, type NodeId, SchemaIdSchema } from './ids.ts';
-import { type CriterionStatus, VERDICT_V2_SCHEMA_ID, type VerdictV2 } from './verdict.ts';
+import {
+  type CriterionStatus,
+  VERDICT_V2_SCHEMA_ID,
+  type VerdictV2,
+  type VerdictWeakening,
+} from './verdict.ts';
 
 /** The criterion fields a board row needs. An `AcceptanceCriterion` has both. */
 export interface BoardCriterion {
@@ -74,6 +79,18 @@ export interface BoardRow {
    * verdict has spoken to, saying why the green rows beside it are not evidence
    * about it. Null everywhere else. */
   readonly note: string | null;
+  /**
+   * KAR-12.2 AC7 — what the deciding verdict gave up, carried onto the row so
+   * the board and the diff view render it **without a join**.
+   *
+   * A marker stored on a verdict and not projected is a marker nobody sees,
+   * and the whole value of F7.2 is that a green row can be trusted: a review
+   * that ran on the producer's own provider is still a review, and it is not
+   * the same review. `null` on every row no live verdict weakened, including
+   * `pending` and `revalidating` ones — a row nothing decided has given
+   * nothing up.
+   */
+  readonly weakened: VerdictWeakening | null;
 }
 
 /**
@@ -198,6 +215,7 @@ function row(criterion: BoardCriterion, input: AcceptanceBoardInput, constraint 
       status: entry?.status ?? 'unverifiable',
       decidedBy: live.by.node,
       note: null,
+      weakened: weakeningOf(live),
     };
   }
 
@@ -208,6 +226,7 @@ function row(criterion: BoardCriterion, input: AcceptanceBoardInput, constraint 
       statement: criterion.statement,
       status: 'pending',
       decidedBy: null,
+      weakened: null,
       // An unjudged criterion is work nobody has reached yet, and the blank row
       // says so on its own. An unjudged *constraint* beside a column of green
       // rows says something else to a reader — it looks covered — so this one
@@ -221,11 +240,26 @@ function row(criterion: BoardCriterion, input: AcceptanceBoardInput, constraint 
     statement: criterion.statement,
     status: 'revalidating',
     decidedBy: stale.by.node,
+    weakened: null,
     note:
       `re-running against the amended spec: this criterion was judged at specHash ` +
       `${stale.specHash ?? '(none recorded)'} and the run is now at ${input.specHash}, so that ` +
       'verdict is void. The reviewer formed its judgement against a different contract.',
   };
+}
+
+/**
+ * The weakening the deciding verdict declared, or `null`.
+ *
+ * Read off the verdict rather than passed in beside it: the board is handed
+ * `VerdictV2`-shaped values because that is the widest shape it can decide a
+ * row from, and a `.v4` field is simply not there on the older ones. Reading it
+ * structurally keeps one code path for both instead of two that can disagree
+ * about what an unmarked verdict means.
+ */
+function weakeningOf(verdict: VerdictV2): VerdictWeakening | null {
+  const marker = (verdict as { readonly weakened?: VerdictWeakening }).weakened;
+  return marker ?? null;
 }
 
 /**

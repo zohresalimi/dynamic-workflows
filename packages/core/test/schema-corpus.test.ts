@@ -31,6 +31,7 @@ import {
   VerdictSchema,
   VerdictV2Schema,
   VerdictV3Schema,
+  VerdictV4Schema,
 } from '../src/verdict.ts';
 
 const repoRoot = new URL('../../../', import.meta.url).pathname;
@@ -55,6 +56,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
   'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),
+  'DeFlow.verdict.v4': join(corpus, 'DeFlow.verdict.v4.valid.json'),
 };
 
 const ZOD: Record<string, z.ZodType> = {
@@ -71,6 +73,7 @@ const ZOD: Record<string, z.ZodType> = {
   'DeFlow.verdict.v1': VerdictSchema,
   'DeFlow.verdict.v2': VerdictV2Schema,
   'DeFlow.verdict.v3': VerdictV3Schema,
+  'DeFlow.verdict.v4': VerdictV4Schema,
 };
 
 suite('the conformance corpus agrees with the Zod source', () => {

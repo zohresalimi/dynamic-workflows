@@ -37,6 +37,7 @@ it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` 
 | `DeFlow.verdict.v1`       | `src/verdict.ts`          | A gate verdict: outcome, per-criterion status, findings (F7.4)         |
 | `DeFlow.verdict.v2`       | `src/verdict.ts`          | The same, naming the `specHash` it judged, so a spec edit voids it (F1.5) |
 | `DeFlow.verdict.v3`       | `src/verdict.ts`          | The gate contract: blob-anchored findings and what the verdict cost (F7.3, F6.9) |
+| `DeFlow.verdict.v4`       | `src/verdict.ts`          | The sealed verdict, naming what was given up to produce it — a same-provider review is marked, never silent (F7.2, NF7) |
 
 The registry those rows come from is `SCHEMA_REGISTRY` in `src/json-schema.ts`. Adding a row is how
 a new document ships.

@@ -33,6 +33,7 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
+  NodeStartedSchema,
   PlanPatchProposedSchema,
   RunNeedsHumanSchema,
 } from './event-payloads.ts';
@@ -574,4 +575,72 @@ registerUpcaster({
     });
     return { ...record, verdict: { ...verdict, findings } };
   },
+});
+
+/**
+ * `node.started` v1 → v2 (KAR-12.2). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field, `session`, and the hop leaves it **absent**.
+ *
+ * A v1 payload was written before the resolved session id was journaled here
+ * at all, and there is no honest place to lift one from: the ACP path recorded
+ * it on a `node.progress` line whose text a later reader would have to parse,
+ * and parsing a message string into a field that AC1 then asserts independence
+ * from is exactly the kind of derived certainty this registry exists to
+ * refuse. Absent means *this build did not record it*, which is true, and the
+ * independence assertion reads it as unanswerable rather than as a pass.
+ */
+registerUpcaster({
+  kind: 'node.started',
+  from: 1,
+  to: NodeStartedSchema,
+  fixture: {
+    node: 'implement-1',
+    attempt: 0,
+    ikey: 'run_20260802T141133Z_9f2a1c/implement-1/0/0',
+    binary: {
+      path: '/opt/agents/an-agent',
+      version: '2.1.220',
+      sha256: '0'.repeat(64),
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `gate.evaluated` v3 → v4 (KAR-12.2). See schemas/CHANGELOG.md.
+ *
+ * v4's verdict is `DeFlow.verdict.v4`, which adds one optional field —
+ * `weakened` — so the hop is the identity.
+ *
+ * Unlike `specHash` on the v1 → v2 hop and `cost` on the v2 → v3 one, absence
+ * here is not a gap. `weakened` is
+ * stamped only when the reviewer was routed onto the producer's own provider
+ * under the single-provider fallback, and that fallback did not exist when a v3
+ * payload was written: a historical verdict was produced by a reviewer routed
+ * the ordinary way. The only available error would be marking it weak when it
+ * was not, and that would be an invention on a marker whose entire purpose is
+ * to be believed.
+ */
+registerUpcaster({
+  kind: 'gate.evaluated',
+  from: 3,
+  to: GateEvaluatedSchema,
+  fixture: {
+    gate: 'codemod-review',
+    node: 'step-04',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v3',
+      outcome: 'pass',
+      gate: 'codemod-review',
+      evaluatedNode: 'step-04',
+      by: { node: 'gate-04', provider: 'codex', model: 'the-model-the-gate-ran-on' },
+      specHash: `sha256-${'0'.repeat(64)}`,
+      criteria: [{ id: 'unit-tests-pass', status: 'satisfied' }],
+      findings: [],
+      summary: 'Every criterion this gate speaks to is satisfied.',
+      cost: { durationMs: 1200 },
+    },
+  },
+  up: (payload) => payload,
 });

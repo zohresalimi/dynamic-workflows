@@ -233,3 +233,52 @@ carrying the new reason must be *refused* by a daemon that predates it, rather t
 other three because the operator's next action differs in kind: churn and budget are answered by
 raising a ceiling or changing the approach, and this one by covering a criterion the plan no longer
 reaches.
+
+### node.started v2
+
+**KAR-12.2.** The resolved session id is journaled on the event that opens the attempt, so
+independence is a ledger fact rather than an in-memory one. AC1 asks that a test comparing a review
+node's session to its producer's *need nothing but the two `node.started` payloads*, and that is
+NF10 applied to the one property F7.2 rests on.
+
+| Change                | Kind           | Why it is not lossy                                                                                                                                                                                       |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ session` (optional) | optional field | Left **absent**. A v1 payload predates the field, and the only place a value could be lifted from is the free text of a `node.progress` line — parsing prose into the field an independence check then reads is a certainty nobody measured. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `origin` is required inside `session` rather than optional beside it.** The two adapter paths
+learn the id at different moments — the CLI shim mints it before spawn, the ACP path receives it
+from `session/new` — and that difference is exactly what says *when the independence check could
+have run*. A session recorded without saying which path produced it makes AC4 unauditable, so the
+field is absent-or-complete rather than partially filled.
+
+### gate.evaluated v4
+
+**KAR-12.2.** v4's verdict is `DeFlow.verdict.v4`, which adds `weakened` — what was given up to
+produce this verdict, so a green review that ran on the producer's own provider is distinguishable
+from one that did not.
+
+| Change                          | Kind           | Why it is not lossy                                                                                                                                                                     |
+| ------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verdict.+ weakened` (optional) | optional field | Left **absent**, and absence is a real answer here rather than a gap: the single-provider fallback did not exist when a v3 payload was written, so a historical verdict was routed the ordinary way. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why absence is honest here and was not on the `specHash` and `cost` hops.** `specHash` and `cost` were
+fields whose historical value existed and was simply not recorded, so absence had to be read as
+*unknown* and `isVerdictVoid` treats it as void. `weakened` names a routing decision DeFlow itself
+makes, and the decision it names was not available to the code that wrote a v3 payload. The only
+error the hop could make would be marking a historical review weak when it was not — an invention on
+a marker whose entire purpose is to be believed.
+
+### DeFlow.verdict.v4
+
+**KAR-12.2.** `weakened?: 'same-provider' | 'single-attempt'`. A `.v4` document rather than a field
+on `.v3` because a shipped document is never edited in place: `DeFlow.verdict.v3.json` stays
+byte-for-byte as it was, and `packages/core/test/schemas-append-only.test.ts` is what says so.
+
+The marker is projected as well as stored. `acceptanceBoard` carries it onto every row a weakened
+verdict decided, so the acceptance-criteria board and the diff view render it **without a join** —
+`docs/10-verification-gates.md` §3.1's *"do not silently accept a weakened review"* is only true if
+the weakening reaches the surface a human reads.
