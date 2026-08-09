@@ -64,8 +64,12 @@ suite('AC7 — the cause is a closed vocabulary, carried on the proposal', () =>
     expect(parse({ patch, cause: 'because' }).success).toBe(false);
   });
 
-  it('is v2, and the bump is recorded', () => {
-    expect(EVENT_SCHEMAS['plan.patch.proposed'].v).toBe(2);
+  it('arrived at v2, and the bump is recorded', () => {
+    // `cause` shipped at v2. The kind has since moved on — KAR-11.3 adds
+    // `basePlanHash` at v3 — so what this pins is the entry for *this* bump
+    // rather than the head version, which a later story is entitled to raise
+    // and which this test has no opinion about.
+    expect(EVENT_SCHEMAS['plan.patch.proposed'].v).toBeGreaterThanOrEqual(2);
     expect(readText('schemas/CHANGELOG.md')).toContain('plan.patch.proposed v2');
   });
 });

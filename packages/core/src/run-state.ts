@@ -62,6 +62,7 @@ import {
   type NodeSuspension,
   NodeSuspensionSchema,
 } from './node-result.ts';
+import { type PatchPolicyTable, PatchPolicyTableSchema } from './patch-policy.ts';
 import {
   type PermissionLevel,
   PermissionLevelSchema,
@@ -338,6 +339,30 @@ export interface NeedsHumanState {
   readonly detail: string;
 }
 
+/**
+ * KAR-11.4 AC10 — the patch policy table this run is judged by, as the ledger
+ * pinned it (docs/06-planning-and-replanning.md §4.3).
+ *
+ * The **rules travel with the run**, not just their digest. A hash alone would
+ * detect a mid-run edit and still leave the engine with nothing to evaluate but
+ * the edited file, which is the failure it exists to prevent; and a replay of a
+ * finished run would be judged by whatever `.DeFlow/config.yaml` says today
+ * rather than by what it said then.
+ *
+ * `drift` is the digest of the on-disk table that was last reported as no
+ * longer matching. It is remembered so the divergence is surfaced **once** per
+ * edit rather than on every patch — an operator who edits the config and gets
+ * one clear message has been told; one who gets forty has been spammed.
+ */
+export interface PatchPolicyState {
+  /** `sha256-…` of the canonical encoding of `rules`. */
+  readonly hash: string;
+  /** Whether the table came from `.DeFlow/config.yaml` or is the shipped one. */
+  readonly source: 'config' | 'default';
+  readonly rules: PatchPolicyTable;
+  readonly drift: string | null;
+}
+
 /** KAR-10.3 — F1.3's answer, as the ledger recorded it. */
 export interface SpecApprovalState {
   /** The digest that was approved — never recomputed, always the one on the event. */
@@ -402,6 +427,12 @@ export interface RunState {
    */
   readonly gateVerdicts: Readonly<Record<string, GateVerdictState>>;
   readonly needsHuman: NeedsHumanState | null;
+  /**
+   * KAR-11.4 AC10 — F2.5's rule table as this run pinned it, or `null` for a
+   * run whose ledger has no `policy.patch.loaded` (one written before the pin
+   * existed, which falls back to the shipped defaults).
+   */
+  readonly patchPolicy: PatchPolicyState | null;
   /** The cancel the operator asked for, or `null` while nobody has. */
   readonly cancel: CancelState | null;
   /** The plan the run is executing, not the newest one proposed. */
@@ -523,11 +554,11 @@ export interface RunState {
  * 4 `NodeState.wakeAt`; 5 `RunState.cancel`; 6 F4.7's no-progress fields;
  * 7 the per-node cost rollup; 8 `ceilings` and `NodeState.startedTs`;
  * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 `specApproved`,
- * without which a restored daemon derives a ready set for a run nobody
- * approved; 12 `gateVerdicts`, without which it re-opens the gate ladder from
- * the top and buys a review on a typecheck that failed.
+ * without which a restored daemon derives a ready set nobody approved; 12 the
+ * pinned `patchPolicy`; 13 `gateVerdicts`, without which it re-opens the gate
+ * ladder and buys a review on a typecheck that already failed.
  */
-export const CHECKPOINT_VERSION = 12;
+export const CHECKPOINT_VERSION = 13;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -573,6 +604,7 @@ export function initialRunState(): RunState {
     criteriaSatisfied: [],
     gateVerdicts: {},
     needsHuman: null,
+    patchPolicy: null,
     cancel: null,
     planHash: null,
     planVersion: 0,
@@ -694,6 +726,14 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   gateVerdicts: z.record(z.string(), GateVerdictStateSchema),
   needsHuman: z
     .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
+    .nullable(),
+  patchPolicy: z
+    .strictObject({
+      hash: z.string().min(1),
+      source: z.enum(['config', 'default']),
+      rules: PatchPolicyTableSchema,
+      drift: z.string().min(1).nullable(),
+    })
     .nullable(),
   cancel: z
     .strictObject({

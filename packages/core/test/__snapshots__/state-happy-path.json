@@ -65,6 +65,7 @@
     }
   },
   "needsHuman": null,
+  "patchPolicy": null,
   "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "planVersion": 0,

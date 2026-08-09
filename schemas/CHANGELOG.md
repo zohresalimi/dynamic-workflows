@@ -107,8 +107,76 @@ hop keeps everything still true of the finding (its stable id, severity, message
 criterion) and drops only the claim it can no longer support. A finding that never had a `location`
 is untouched. Judged against the rule at the top of this file: no field's *meaning* changed, and no
 information that is still true is lost — what is dropped is an assertion the payload was never able
-to support.
+to support.### run.needs_human v4
 
+**KAR-11.4.** The escalation vocabulary gains a sixth reason, `patch-rejected`:
+[06 §4.3](../docs/06-planning-and-replanning.md)'s rule table refused a proposed patch, and the run
+stops to ask rather than proceeding as though nothing was proposed.
+
+| Change                            | Kind     | Why it is not lossy                                                                                        |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `reason` gains `'patch-rejected'` | widening | Every v3 payload is already a valid v4 one — the hop is the identity — and no v3 payload can have carried it. |
+
+A sixth reason rather than a reuse of `churn`, because the operator's next action differs in kind.
+`churn` says *the plan rests on a premise only you can supply*; this says *the run wanted to do one
+specific thing and policy would not let it*, and it is answered by opening the approval queue and
+approving the rejected patch explicitly — *"a rejection is a 'not without you', not a dead end"*.
+
+### plan.patched v2
+
+**KAR-11.4.** The event now records who **authored** the patch: `proposedBy`, optional.
+
+| Change                        | Kind           | Why it is not lossy                                                              |
+| ----------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| adds optional `proposedBy`    | optional field | Every v1 payload is already a valid v2 one, and the hop leaves the field **absent**. |
+
+**Why `decision.by` could not be reused, and why the hop must not lift it.** `decision.by` says who
+*decided* — `'policy'` when a rule fired, `'human'` when an operator answered the approval queue —
+and the case this field exists for is a patch a human *proposed* that the rule table then
+auto-applied on its merits. [06 §7](../docs/06-planning-and-replanning.md)'s circuit-breaker reset
+keys on authorship: a human-supplied premise invalidates the churn window. Copying `decision.by` into
+the new field would clear a churn trip whenever an operator approved the planner's own fourth replan
+— which is precisely the livelock the breaker exists to stop.
+
+### plan.proposed v2
+
+**KAR-11.1.** The proposal now records **which model planned**:
+`planner: { model, effort, tier }`, optional.
+[06 §6](../docs/06-planning-and-replanning.md) is explicit that the planner-tier proposal is
+_"Unverified — a proposal with a measurement plan attached, not a finding"_, and the measurement it
+names is a join of these three fields against the cross-run dashboard's gate first-pass rate and
+replans-per-run. EPIC-11-S1 states the trade in one line: _"recording them now costs a field; adding
+them later costs an upcaster."_
+
+| Change                                        | Kind     | Why it is not lossy                                                              |
+| --------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| adds optional `planner: { model; effort; tier }` | widening | Every v1 payload is already a valid v2 one, and the hop leaves the field **absent**. |
+
+`effort` is `string | null` rather than optional, because _"where the adapter exposes a
+reasoning-effort control"_ means some expose none, and `null` is that answer. An omitted field could
+not be told apart from "nobody recorded it", which is the state the field exists to end.
+
+**The hop is deliberately the identity, and the dishonest alternative is worth naming.** The run's
+current planner model sits in the config, and stamping it onto a historical proposal would make the
+one comparison this field enables report a model against itself. Absent is a value the analysis can
+exclude; a plausible wrong one is not.
+
+### run.needs_human v3
+
+**KAR-11.1.** The escalation vocabulary gains a fifth reason, `plan-invalid`:
+[06 §3.5](../docs/06-planning-and-replanning.md) allows a failing plan version exactly one retry with
+the diagnostics as input, and _"a second failure escalates to a `human` node with the diagnostics
+rendered"_.
+
+| Change                          | Kind     | Why it is not lossy                                                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `reason` gains `'plan-invalid'` | widening | Every v2 payload is already a valid v3 one — the hop is the identity — and no v2 payload can have carried it. |
+
+A fifth reason rather than a `detail` on `churn`, for the same reason `spec-revalidation` is a fourth:
+the operator's next action differs in kind. Churn is answered by changing the approach; this one is
+answered by reading the diagnostics and supplying a plan that satisfies them. It is also the reason a
+third automatic attempt is not made — an unbounded planner retry loop is the churn shape arriving
+earlier.
 ### DeFlow.verdict.v2
 
 **KAR-10.4.** A verdict now names the contract it judged:
@@ -213,6 +281,27 @@ rate-limit story. It is also the better home on the merits: the same `replace-pr
 routine planner decision or a vendor outage depending on who asked for it, and that is a fact about
 the proposal rather than about the ops.
 
+### plan.patch.proposed v3
+
+**KAR-11.3.** A proposal records the plan version it was derived against, so the run can tell a
+patch that is merely *behind* from a patch that is *wrong*.
+[06 §4.2](../docs/06-planning-and-replanning.md): `basePlanHash` must equal `run.plan_hash`, a
+mismatch is rejected with `PATCH_STALE`, and **no rebase is attempted** — *"the proposer had a
+reason based on a graph that no longer exists."*
+
+| Change                       | Kind           | Why it is not lossy                                                                                                                                                                          |
+| ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ basePlanHash` (optional)  | optional field | Left **absent**. The only value available to lift is the run's *current* plan hash, and stamping that on a historical proposal would make it read as having passed a concurrency check nobody ran. |
+
+The hop is registered beside the v1 → v2 one in `packages/core/src/upcasters.ts`.
+
+**Why the base hash is on the proposal and not on the `PlanPatch`.** The same reason `cause` is, plus
+one on the merits: `basePlanHash` is not a property of the ops. The same three ops derived against v3
+and against v7 are the same patch and a different proposal, and which of the two it is decides
+whether it may apply at all. `DeFlow.planpatch.v1`'s bytes stay content-pinned by
+`packages/core/test/schemas-append-only.test.ts`, and every run directory already on disk keeps
+reading its documents with the shape it was given.
+
 ### run.needs_human v2
 
 **KAR-10.3.** The circuit breaker gained a fourth trip reason, `spec-revalidation`: a mid-run spec
@@ -281,4 +370,39 @@ byte-for-byte as it was, and `packages/core/test/schemas-append-only.test.ts` is
 The marker is projected as well as stored. `acceptanceBoard` carries it onto every row a weakened
 verdict decided, so the acceptance-criteria board and the diff view render it **without a join** —
 `docs/10-verification-gates.md` §3.1's *"do not silently accept a weakened review"* is only true if
-the weakening reaches the surface a human reads.
+the weakening reaches the surface a human reads.### plan.validation_failed v2
+
+**KAR-11.2.** `diagnostics[].node` widens from `NodeId` to a non-empty string, because two of
+[06 §3](../docs/06-planning-and-replanning.md)'s diagnostics cannot name a valid `NodeId` by
+construction.
+
+| Change                                     | Kind     | Why it is not lossy                                                                                     |
+| ------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------- |
+| `diagnostics[].node` widens to `string` | widening | Every v1 payload already carried a `NodeId`, which is a non-empty string — the hop is the identity. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the widening was forced.** `INVALID_NODE_ID` exists to report an id the `NodeId` charset
+refuses (§3.3 — a colon, a leading dash, an uppercase letter), and `CRITERION_UNCOVERED` is a fault
+of the *document* rather than of any node, so it carries the `PLAN_SCOPE` sentinel `(plan)`. A
+payload schema that accepted only valid `NodeId`s would make the append throw on exactly the two
+faults the validator exists to catch, which is a worse failure than the one it was preventing. The
+sentinel's parentheses keep it outside the charset a real id could ever occupy.
+
+### plan.patch.rejected v2
+
+**KAR-11.2 AC11.** A patch can now be refused by *revalidation* as well as by the policy engine,
+and the rejection carries the diagnostics that refused it.
+
+| Change                        | Kind           | Why it is not lossy                                                                                                    |
+| ----------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `by` gains `'validation'`     | widening       | Every v1 payload is already a valid v2 one, and no v1 payload can have carried it — structural revalidation did not exist. |
+| `+ diagnostics` (optional)    | optional field | Left **absent**. A policy rejection has none — `rule` is its whole reason — and a v1 payload recorded none to lift.        |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `'validation'` is a third rejecter and not a reuse of `'policy'`.** EPIC-11-S18's second
+scenario is the whole argument: the policy engine asks *should we?* and the validator asks *can we?*,
+a `yes` to the first can never substitute for the second, and an operator reading the approval queue
+has to be able to tell which of the two refused their patch — because one is answered by changing
+the patch and the other by changing the rules.

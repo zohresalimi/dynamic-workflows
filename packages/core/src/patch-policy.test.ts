@@ -13,10 +13,15 @@ import { expect, it, describe as suite } from 'vitest';
 import type { Ceiling } from './budget-ceiling.ts';
 import { type CostRollup, emptyCostRollup } from './cost-rollup.ts';
 import {
+  compilePatchRules,
+  DEFAULT_PATCH_RULE_SPECS,
   DEFAULT_PATCH_RULES,
   elapsedBudgetFraction,
   evaluatePatchPolicy,
+  type PatchPolicyInput,
+  PatchPolicyTableSchema,
   patchDecisionOutcome,
+  patchPolicyHash,
 } from './patch-policy.ts';
 import type { PermissionLevel } from './plan-graph.ts';
 
@@ -285,5 +290,142 @@ suite('the rules that only fire on their own', () => {
         estimate: { ...base.estimate, costUsdDelta: null, replanDepth: 4 },
       }),
     ).toEqual({ decision: 'reject', ruleId: 'replan-depth-exceeded' });
+  });
+});
+
+/**
+ * KAR-11.4 AC3, AC10 — the table as *data*.
+ *
+ * 06 §4.3 states the rule table as YAML in `.DeFlow/config.yaml`, and that
+ * matters twice over: an operator has to be able to read the rules their run is
+ * playing by, and the table has to be **hashable** so a mid-run edit of the file
+ * cannot silently change them. Neither is possible while a rule is a closure, so
+ * the specs are the source of truth and the matchers are compiled from them.
+ */
+suite('the rule table is declarative data (AC3, AC10 · KAR-11.4)', () => {
+  it('states the default table in 06 §4.3’s own order, as data', () => {
+    expect(DEFAULT_PATCH_RULE_SPECS.map((rule) => `${rule.id}:${rule.decision}`)).toEqual([
+      'escalates-permission:approve',
+      'touches-execution-boundary:approve',
+      'replan-depth-exceeded:reject',
+      'budget-exhausted:reject',
+      'quota-reroute-equivalent:auto',
+      'expensive:approve',
+      'wide-blast-radius:approve',
+      'read-only-analysis:auto',
+      'default:approve',
+    ]);
+  });
+
+  it('compiles to the same table the shipped default already is', () => {
+    expect(compilePatchRules(DEFAULT_PATCH_RULE_SPECS).map((rule) => rule.id)).toEqual(
+      DEFAULT_PATCH_RULES.map((rule) => rule.id),
+    );
+  });
+
+  it('states its thresholds exactly as 06 §4.3 writes them', () => {
+    const when = Object.fromEntries(DEFAULT_PATCH_RULE_SPECS.map((rule) => [rule.id, rule.when]));
+    expect(when['replan-depth-exceeded']).toEqual({ replanDepth: '> 3' });
+    expect(when['budget-exhausted']).toEqual({ elapsedBudgetFraction: '>= 1.0' });
+    expect(when.expensive).toEqual({ costDeltaUsd: '> 5.00' });
+    expect(when['wide-blast-radius']).toEqual({ blastRadiusFiles: '> 25' });
+    expect(when['read-only-analysis']).toEqual({
+      maxPermission: 'read',
+      costDeltaUsd: '<= 5.00',
+    });
+    // The last arm has no `when` at all: it matches everything, which is what
+    // makes "anything the rules do not recognise goes to a human" total.
+    expect(when.default).toBeUndefined();
+  });
+
+  it('refuses a comparison it cannot evaluate rather than matching nothing quietly', () => {
+    expect(() =>
+      PatchPolicyTableSchema.parse([
+        { id: 'nope', when: { costDeltaUsd: 'cheap' }, decision: 'auto' },
+      ]),
+    ).toThrow();
+  });
+
+  it('refuses a rule whose predicate this build has never heard of', () => {
+    expect(() =>
+      PatchPolicyTableSchema.parse([{ id: 'nope', when: { vibes: '> 3' }, decision: 'auto' }]),
+    ).toThrow();
+  });
+
+  it('hashes the table by value, not by the order somebody wrote the keys in', async () => {
+    const reordered = DEFAULT_PATCH_RULE_SPECS.map((rule) =>
+      rule.when === undefined
+        ? { decision: rule.decision, id: rule.id }
+        : {
+            decision: rule.decision,
+            when: Object.fromEntries(Object.entries(rule.when).toReversed()),
+            id: rule.id,
+          },
+    );
+    expect(await patchPolicyHash(reordered as never)).toBe(
+      await patchPolicyHash(DEFAULT_PATCH_RULE_SPECS),
+    );
+  });
+
+  it('gives a raised cost threshold a different hash — that is the whole point', async () => {
+    const raised = DEFAULT_PATCH_RULE_SPECS.map((rule) =>
+      rule.id === 'expensive' ? { ...rule, when: { costDeltaUsd: '> 50.00' } } : rule,
+    );
+    expect(await patchPolicyHash(raised as never)).not.toBe(
+      await patchPolicyHash(DEFAULT_PATCH_RULE_SPECS),
+    );
+  });
+});
+
+suite('a compiled table honours the comparison it was given', () => {
+  const rule = (when: unknown) =>
+    compilePatchRules(PatchPolicyTableSchema.parse([{ id: 'r', when, decision: 'auto' }]));
+
+  const input = (over: Partial<PatchPolicyInput> = {}): PatchPolicyInput => ({
+    estimate: {
+      costUsdDelta: 5,
+      blastRadiusFiles: 25,
+      maxPermission: 'read',
+      replanDepth: 3,
+    },
+    ambientPermission: 'read',
+    elapsedBudgetFraction: 0.5,
+    ...over,
+  });
+
+  it('reads "> 3" as strictly greater', () => {
+    expect(rule({ replanDepth: '> 3' })[0]?.matches(input())).toBe(false);
+    expect(
+      rule({ replanDepth: '> 3' })[0]?.matches(
+        input({
+          estimate: {
+            costUsdDelta: 5,
+            blastRadiusFiles: 25,
+            maxPermission: 'read',
+            replanDepth: 4,
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('reads ">= 1.0" as inclusive', () => {
+    expect(rule({ elapsedBudgetFraction: '>= 1.0' })[0]?.matches(input())).toBe(false);
+    expect(
+      rule({ elapsedBudgetFraction: '>= 1.0' })[0]?.matches(input({ elapsedBudgetFraction: 1 })),
+    ).toBe(true);
+  });
+
+  it('answers false for an unpriceable patch on both sides of the cost comparison', () => {
+    const unpriced = input({
+      estimate: {
+        costUsdDelta: null,
+        blastRadiusFiles: 0,
+        maxPermission: 'read',
+        replanDepth: 1,
+      },
+    });
+    expect(rule({ costDeltaUsd: '> 5.00' })[0]?.matches(unpriced)).toBe(false);
+    expect(rule({ costDeltaUsd: '<= 5.00' })[0]?.matches(unpriced)).toBe(false);
   });
 });

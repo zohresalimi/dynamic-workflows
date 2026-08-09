@@ -74,6 +74,29 @@ const READ_SQL = `
    ORDER BY probed_at, version, binary_sha256
 `;
 
+/**
+ * KAR-11.1 AC2 — the newest row per provider, which is *"what is installed
+ * now"* for every provider at once.
+ *
+ * The plan compiler needs the whole fleet, not one vendor, and it needs one
+ * entry per vendor rather than the history: a capability list offering the same
+ * provider at three versions would have the planner choosing between binaries
+ * that are not all present. `MAX(probed_at)` picks the last probe, and the
+ * `provider` grouping is what makes it one row each.
+ *
+ * SQLite's bare-column rule makes this exact: in a `GROUP BY` query with a
+ * single `MAX()`, the non-aggregated columns come from the row that produced
+ * the maximum. That is a documented SQLite guarantee, not an accident of the
+ * query planner — and it is why this is one statement rather than a correlated
+ * subquery per provider.
+ */
+const READ_LATEST_SQL = `
+  SELECT provider, version, binary_sha256, binary_path, caps_json, MAX(probed_at) AS probed_at
+    FROM provider_capabilities
+   GROUP BY provider
+   ORDER BY provider
+`;
+
 function assertRecordable(row: ProviderCapabilityRow): void {
   if (!isAbsolute(row.binaryPath)) {
     throw new TypeError(
@@ -139,6 +162,24 @@ export function readProviderCapabilities(
 ): readonly ProviderCapabilityRow[] {
   const statement: DbStatement<CapabilityDbRow> = db.prepare(READ_SQL);
   return statement.all(provider).map((stored) => ({
+    provider: stored.provider,
+    version: stored.version,
+    binarySha256: stored.binary_sha256,
+    binaryPath: stored.binary_path,
+    capsJson: stored.caps_json,
+    probedAt: stored.probed_at,
+  }));
+}
+
+/**
+ * The latest probed row for every provider in the table, ordered by provider.
+ *
+ * Empty when nothing has been probed, and that is a real answer rather than a
+ * gap: it is what tells the planner that no adapter may be named in the plan.
+ */
+export function listProviderCapabilities(db: Db): readonly ProviderCapabilityRow[] {
+  const statement: DbStatement<CapabilityDbRow> = db.prepare(READ_LATEST_SQL);
+  return statement.all().map((stored) => ({
     provider: stored.provider,
     version: stored.version,
     binarySha256: stored.binary_sha256,

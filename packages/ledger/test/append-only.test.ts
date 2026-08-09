@@ -82,12 +82,29 @@ suite('nothing mutates a row in event (AC7)', () => {
     expect(matching(daemonSources, /\bDELETE\s+FROM\s+event\b/i)).toEqual([]);
   });
 
+  /**
+   * The verbs an event mutator would have to be spelled with. Applied to
+   * exported **functions** only: the guard is about the API offering a way to
+   * amend the log, and a constant cannot be called. `PATCH_STALE` — KAR-11.3's
+   * rejection code for a proposal derived against a plan that has moved on — is
+   * exactly that shape, and it names a *refusal to write* rather than a write.
+   */
+  const MUTATOR = /^(amend|update|delete|remove|prune|rewrite|patch)/i;
+
   it('exports no amend, update, delete, prune or rewrite for events', async () => {
     const ledger: Record<string, unknown> = await import('../src/index.ts');
-    const suspicious = Object.keys(ledger).filter((name) =>
-      /^(amend|update|delete|remove|prune|rewrite|patch)/i.test(name),
-    );
+    const suspicious = Object.entries(ledger)
+      .filter(([name, value]) => MUTATOR.test(name) && typeof value === 'function')
+      .map(([name]) => name);
     expect(suspicious).toEqual([]);
+  });
+
+  it('and that guard still has teeth: a mutator function would be caught', () => {
+    const planted = { patchEvent: () => undefined, PATCH_STALE: 'PATCH_STALE' };
+    const suspicious = Object.entries(planted)
+      .filter(([name, value]) => MUTATOR.test(name) && typeof value === 'function')
+      .map(([name]) => name);
+    expect(suspicious).toEqual(['patchEvent']);
   });
 
   it('and that is a real result, not an empty scan', () => {

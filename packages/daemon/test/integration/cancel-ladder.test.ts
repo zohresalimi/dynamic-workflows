@@ -49,7 +49,7 @@ import {
   seedRunningRun,
   T0,
 } from './support/cancel-run.ts';
-import { groupRows, killGroup, liveRows } from './support/ps.ts';
+import { groupRows, killGroup, liveRows, waitForSigtermProof } from './support/ps.ts';
 
 const groups: number[] = [];
 const children: ChildProcessWithoutNullStreams[] = [];
@@ -68,7 +68,7 @@ async function startTree(): Promise<number> {
 /** The KAR-04.6 fixture that installs a real `SIG_IGN` on SIGTERM, in the agent
  * *and* in the two children it backgrounds. Only SIGKILL ends this group. */
 async function startSigtermIgnoringTree(): Promise<number> {
-  return spawnDetached(
+  const pgid = await spawnDetached(
     process.execPath,
     [FAKE_AGENT_BIN, '-p', 'hang', '--output-format', 'stream-json', '--verbose'],
     {
@@ -78,6 +78,9 @@ async function startSigtermIgnoringTree(): Promise<number> {
     },
     3,
   );
+  // Three live rows is not three SIGTERM-proof rows; @see waitForSigtermProof.
+  await waitForSigtermProof(pgid);
+  return pgid;
 }
 
 async function spawnDetached(

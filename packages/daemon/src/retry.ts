@@ -37,11 +37,14 @@
  *
  * Verifies: EPIC-06-S18, EPIC-06-S20, EPIC-06-S31 · AC2, AC3, AC4, AC6, AC7, AC9
  */
+import type { QuotaRoute } from '@DeFlow/adapters';
 import type {
   Db,
   EventSeq,
   NodeFailure,
   NodeId,
+  PatchCause,
+  PlanPatch,
   ProviderId,
   Random,
   RetryPlan,
@@ -85,6 +88,18 @@ export interface RecordFailureInput {
     readonly current: ProviderId | null;
     readonly prefer: readonly ProviderId[];
   };
+  /**
+   * KAR-11.6 AC2, AC5 — the capability-aware answer to *"is there anywhere to
+   * move this node to?"*, from `../providers/quota-reroute.ts`.
+   *
+   * Supplied only for a rate limit, and consulted only when the plan's own
+   * `onFailure` policy did not already name a target: F4.5 makes "retry with a
+   * different provider" the operator's decision, and the scheduler's choice is
+   * what happens when they did not make one. A `suspend` proposes nothing —
+   * which is AC5's whole point, because a reroute onto an adapter the probed
+   * row says cannot run the node spends an attempt to re-learn that.
+   */
+  readonly quotaRoute?: QuotaRoute | undefined;
   readonly appendOptions?: AppendOptions;
 }
 
@@ -93,6 +108,16 @@ export interface RecordedFailure {
   readonly seqs: readonly EventSeq[];
   /** The instant on the `node_wake` row, or `null` when none was written. */
   readonly wakeAt: number | null;
+  /**
+   * KAR-11.6 — the reroute this failure proposed, or `null` when it proposed
+   * none.
+   *
+   * Returned rather than left for the caller to read back off the log, because
+   * the caller's next move is to rule on it: re-parsing the event it has just
+   * written would make the patch the gate rules on a *different object* from
+   * the one the proposal recorded, and the two can only differ by a bug.
+   */
+  readonly patch: PlanPatch | null;
 }
 
 /**
@@ -122,6 +147,7 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
     const drafts: EventDraft[] = [nodeFailed(input)];
     let wakeAt: number | null = null;
     let reason: WakeReason = 'backoff';
+    let patch: PlanPatch | null = null;
 
     if (plan.action === 'retry' || plan.action === 'reroute') {
       // KAR-14.4 AC2, AC6. A rate limit that named its own reset overrides the
@@ -149,8 +175,25 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
       // — a node that never wakes, four hours from now, for no visible reason.
       if (reason === QUOTA_WAKE_REASON) drafts.push(quotaSuspended(input, wakeAt));
       drafts.push(retryScheduled(input, plan.nextAttempt, wakeAt));
-      if (plan.action === 'reroute')
-        drafts.push(patchProposed(input, plan.provider, plan.nextAttempt));
+
+      // KAR-11.6 AC2. Two proposers, asked in this order and no other. The
+      // plan's own `onFailure: reroute` names the target when the operator set
+      // one (F4.5), and the scheduler's capability-aware route answers only
+      // when they did not — so a quota route can never overrule a policy a
+      // human wrote, and a node whose plan says nothing still moves rather than
+      // sleeping for four hours beside an installed adapter that could run it.
+      const target = rerouteTarget(plan, input);
+      if (target !== null) {
+        patch = reroutePatch({
+          runId: input.runId,
+          node: input.nodeId,
+          provider: target,
+          nextAttempt: plan.nextAttempt,
+          failure: input.failure,
+          cause: causeOf(input),
+        });
+        drafts.push(patchProposed(input, patch));
+      }
     } else if (plan.action === 'gate') {
       drafts.push(...gateDrafts(input));
     }
@@ -160,8 +203,38 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
       scheduleWake(db, { runId: input.runId, nodeId: input.nodeId, wakeAt, reason });
     }
 
-    return { plan, seqs, wakeAt };
+    return { plan, seqs, wakeAt, patch };
   });
+}
+
+/**
+ * KAR-11.6 AC2, AC5 — which provider the swap names, or `null` for no swap at
+ * all.
+ *
+ * `null` is a real answer in two different situations, and conflating them
+ * would be a bug in either direction: the plan asked for a reroute and offered
+ * no alternative (`planRetry` degrades that to an ordinary retry rather than
+ * proposing a patch that changes nothing), and the scheduler looked and found
+ * nowhere healthy to go — AC5's *"no reroute is proposed"*, whose whole point
+ * is that the node waits on the durable row instead.
+ */
+function rerouteTarget(plan: RetryPlan, input: RecordFailureInput): ProviderId | null {
+  if (plan.action === 'reroute') return plan.provider;
+  const route = input.quotaRoute;
+  return route?.action === 'reroute' ? route.provider : null;
+}
+
+/**
+ * KAR-14.4 AC7 — why the swap is being asked for, when the scheduler knows.
+ *
+ * Absent for every other reroute, which is honest rather than tidy: a node
+ * whose `onFailure` reroutes on a timeout is following the plan's policy, and
+ * labelling that `quota` would let `quota-reroute-equivalent` auto-apply a
+ * patch nobody's vendor asked for. `rateLimitOf` is how the question is asked
+ * without naming a reason, the same shape `budgetBreachOf` has below.
+ */
+function causeOf(input: RecordFailureInput): PatchCause | undefined {
+  return rateLimitOf(input.failure) === null ? undefined : QUOTA_CAUSE;
 }
 
 /**
@@ -225,27 +298,10 @@ const retryScheduled = (
  * That is what makes an automatic provider swap visible in the plan-evolution
  * scrubber rather than an unexplained line in a cost report.
  */
-const patchProposed = (
-  input: RecordFailureInput,
-  provider: ProviderId,
-  nextAttempt: number,
-): EventDraft => {
-  // KAR-14.4 AC7 — why the swap is being asked for, when the scheduler knows.
-  // Absent for every other reroute, which is honest rather than tidy: a node
-  // whose `onFailure` reroutes on a timeout is following the plan's policy, and
-  // labelling that `quota` would let `quota-reroute-equivalent` auto-apply a
-  // patch nobody's vendor asked for. `rateLimitOf` is how the question is asked
-  // without naming a reason, the same shape `budgetBreachOf` has above.
-  const cause = rateLimitOf(input.failure) === null ? undefined : QUOTA_CAUSE;
+const patchProposed = (input: RecordFailureInput, patch: PlanPatch): EventDraft => {
+  const cause = causeOf(input);
   return envelope(input, 'plan.patch.proposed', {
-    patch: reroutePatch({
-      runId: input.runId,
-      node: input.nodeId,
-      provider,
-      nextAttempt,
-      failure: input.failure,
-      cause,
-    }),
+    patch,
     ...(cause === undefined ? {} : { cause }),
   });
 };

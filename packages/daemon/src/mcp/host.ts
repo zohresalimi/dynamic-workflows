@@ -36,7 +36,7 @@ import type {
   NodeId,
   RunId,
 } from '@DeFlow/core';
-import { PlanPatchSchema, REQUESTED_PATH_MAX } from '@DeFlow/core';
+import { PlanHashSchema, PlanPatchSchema, REQUESTED_PATH_MAX } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, rmSync } from 'node:fs';
@@ -306,10 +306,28 @@ export function startMcpHost(options: McpHostOptions): Promise<McpHost> {
           .join('; ')}`,
       );
     }
+    // KAR-11.3 AC6. Validated here rather than defaulted, because the default
+    // is the harmful one: filling in the run's *current* hash would evaluate
+    // the proposal against a graph the proposer never read, which is the
+    // silent rebase 06 §4.2 forbids in as many words.
+    const base = PlanHashSchema.safeParse(args.basePlanHash);
+    if (!base.success) {
+      throw new ToolRefused(
+        'basePlanHash must be the planHash of the plan version you read, "sha256-<64 hex>": ' +
+          'a proposal that does not say which graph it was derived against cannot be checked ' +
+          'for staleness, and DeFlow never rebases one onto a graph it was not about.',
+      );
+    }
+
     const patch = parsed.data;
-    // Proposing is not applying. KAR-11.3 owns `plan.patched`; what an agent
-    // can do from inside its own tool loop is put the proposal on the record.
-    await options.ledger.append(event('plan.patch.proposed', { patch }, grant));
+    // Proposing is not applying: this records the proposal, and the policy
+    // engine plus `applyPatchedPlanVersion` decide what becomes of it. The
+    // record is made for *every* proposal, including ones that will be
+    // rejected (AC3) — "the run silently decided not to do the thing it decided
+    // to do" is the state NF10 exists to make impossible.
+    await options.ledger.append(
+      event('plan.patch.proposed', { patch, basePlanHash: base.data }, grant),
+    );
     return {
       patchId: patch.id,
       accepted: false,

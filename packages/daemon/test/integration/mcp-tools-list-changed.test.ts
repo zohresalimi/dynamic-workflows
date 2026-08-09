@@ -51,6 +51,10 @@ const PATCH: unknown = JSON.parse(
   ),
 );
 
+/** KAR-11.3 AC6 — the plan version the proposal was derived against, which the
+ * tool requires and never defaults. */
+const BASE_PLAN_HASH = `sha256-${'4'.repeat(64)}`;
+
 const TOOL_LIST_CHANGED = 'notifications/tools/list_changed';
 
 let dir = '';
@@ -124,7 +128,7 @@ suite('tools appear when the plan advances (AC6)', () => {
 
     const result = await agent.request('tools/call', {
       name: PROPOSE_PLAN_PATCH,
-      arguments: { patch: PATCH },
+      arguments: { patch: PATCH, basePlanHash: BASE_PLAN_HASH },
     });
 
     expect(result.isError).not.toBe(true);

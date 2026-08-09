@@ -196,6 +196,23 @@ export interface ShimSpec {
    */
   readonly structuredOutputFlag?: string;
   /**
+   * KAR-11.1 AC8 — the flag this vendor takes a reasoning-effort setting on,
+   * and the ladder of values it accepts, weakest to strongest.
+   *
+   * Absent for every vendor that exposes no such control, and the absence is
+   * the *answer* rather than a gap: `planner-effort.ts` reads it to resolve
+   * "strongest available" for the initial `PlanGraph` (06 §6), and a vendor
+   * without one plans at whatever its default is. Invocation knowledge like
+   * every other field here — no ACP `initialize` response mentions a reasoning
+   * effort, which is precisely why it cannot be probed.
+   *
+   * Both halves are stated because neither implies the other: a flag with no
+   * ladder gives nothing to pass, and a ladder with no flag gives nowhere to
+   * pass it.
+   */
+  readonly effortFlag?: string;
+  readonly efforts?: readonly string[];
+  /**
    * KAR-14.2 AC9 — the flag this vendor takes its own spend ceiling on.
    *
    * Only Claude Code has one (`--max-budget-usd <amt>`, verified 2026-08-02
@@ -261,6 +278,9 @@ interface ShimEntry {
   readonly permissions: Partial<Record<PermissionLevel, readonly string[]>>;
   readonly sandbox?: SandboxSettingsInjection;
   readonly structuredOutputFlag?: string;
+  /** KAR-11.1 AC8 — the reasoning-effort flag and ladder; see `ShimSpec`. */
+  readonly effortFlag?: string;
+  readonly efforts?: readonly string[];
   /** KAR-14.2 AC9 — the vendor's own spend ceiling flag; see `ShimSpec`. */
   readonly costCeilingFlag?: string;
   readonly secretEnvFlag?: string;
@@ -451,6 +471,8 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     ...(entry.structuredOutputFlag === undefined
       ? {}
       : { structuredOutputFlag: entry.structuredOutputFlag }),
+    ...(entry.effortFlag === undefined ? {} : { effortFlag: entry.effortFlag }),
+    ...(entry.efforts === undefined ? {} : { efforts: entry.efforts }),
     ...(entry.costCeilingFlag === undefined ? {} : { costCeilingFlag: entry.costCeilingFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
@@ -646,6 +668,13 @@ export const PROVIDER_SPECS = {
       // table and zod schema: `--json-schema <file>` is accepted and the parsed
       // object arrives in the result envelope's `structured_output` field.
       structuredOutputFlag: '--json-schema',
+      // KAR-11.1 AC8. **Verified 2026-08-02** from the same 2.1.220 flag table:
+      // `--effort low|medium|high|xhigh|max`. 06 §6 wants the initial PlanGraph
+      // planned at the strongest available setting — it is one call per run and
+      // the single highest-leverage inference in the system — so the ladder is
+      // recorded in order and `planner-effort.ts` takes its last member.
+      effortFlag: '--effort',
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
       // KAR-14.2 AC9. **Verified 2026-08-02** from the same 2.1.220 flag table:
       // `--max-budget-usd <amt>`, whose refusal comes back as the
       // `error_max_budget_usd` result subtype the classifier maps to `gate`.

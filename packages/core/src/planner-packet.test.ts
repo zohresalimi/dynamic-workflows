@@ -18,8 +18,10 @@ import { expect, it, describe as suite } from 'vitest';
 import { contextSegment } from './pinned-set.ts';
 import {
   buildPlannerPacket,
+  CAPABILITY_SEGMENT_ID,
   ForeignSegmentInPlannerPacket,
   PLANNER_SEGMENT_KINDS,
+  type PlannerCapability,
 } from './planner-packet.ts';
 import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
 
@@ -36,6 +38,30 @@ const SPEC: TaskSpec = TaskSpecSchema.parse({
   specHash: `sha256-${'1'.repeat(64)}`,
 });
 
+/** Two probed rows, in the shape the daemon reads them out of
+ * `provider_capabilities` — never a constant keyed by provider name. */
+const CAPABILITIES: readonly PlannerCapability[] = [
+  {
+    provider: 'claude',
+    version: '2.1.220',
+    structuredOutput: 'native',
+    strongestEffort: 'max',
+    answers: [
+      { key: 'resume', supported: true, reason: 'capability-granted' },
+      { key: 'mediatedExecution', supported: undefined, reason: 'capability-absent' },
+    ],
+    sourceEvent: 7,
+  },
+  {
+    provider: 'opencode',
+    version: '1.18.11',
+    structuredOutput: 'prompt-only',
+    strongestEffort: null,
+    answers: [{ key: 'resume', supported: true, reason: 'capability-granted' }],
+    sourceEvent: 8,
+  },
+];
+
 const input = () => ({
   runId: 'run_20260807T101500Z_ac1005',
   nodeId: 'planner',
@@ -43,6 +69,7 @@ const input = () => ({
   builtAtEvent: 12,
   target: { provider: 'mock', model: 'mock-1', maxContext: 200_000 },
   spec: SPEC,
+  capabilities: CAPABILITIES,
   facts: [
     {
       key: 'finding/test-command',
@@ -64,7 +91,9 @@ const input = () => ({
 suite('the planner packet carries facts', () => {
   it('renders one fact segment per recon fact, with its key, confidence and evidence', async () => {
     const packet = await buildPlannerPacket(input());
-    const facts = packet.segments.filter((segment) => segment.kind === 'fact');
+    const facts = packet.segments.filter(
+      (segment) => segment.kind === 'fact' && segment.id !== CAPABILITY_SEGMENT_ID,
+    );
 
     expect(facts).toHaveLength(2);
     expect(facts[0]?.text).toContain('finding/test-command');
@@ -81,6 +110,72 @@ suite('the planner packet carries facts', () => {
     const packet = await buildPlannerPacket(input());
     expect(packet.segments[0]?.pinned).toBe(true);
     expect(packet.pinnedDigests.length).toBeGreaterThan(0);
+  });
+});
+
+suite('EPIC-11-S2 — the third input: the capability list (KAR-11.1 AC1, AC2)', () => {
+  const capabilitySegment = async (capabilities: readonly PlannerCapability[]) => {
+    const packet = await buildPlannerPacket({ ...input(), capabilities });
+    const segments = packet.segments.filter((entry) => entry.id === CAPABILITY_SEGMENT_ID);
+    expect(segments).toHaveLength(1);
+    return segments[0];
+  };
+
+  it('carries exactly one segment naming every probed provider and version', async () => {
+    const segment = await capabilitySegment(CAPABILITIES);
+    expect(segment?.text).toContain('claude 2.1.220');
+    expect(segment?.text).toContain('opencode 1.18.11');
+  });
+
+  it('states the structured-output mechanism and the strongest effort per row', async () => {
+    const segment = await capabilitySegment(CAPABILITIES);
+    expect(segment?.text).toContain('native');
+    expect(segment?.text).toContain('prompt-only');
+    expect(segment?.text).toContain('max');
+  });
+
+  it('keeps absent apart from granted, because the probe does', async () => {
+    const segment = await capabilitySegment(CAPABILITIES);
+    expect(segment?.text).toContain('capability-absent');
+    expect(segment?.text).toContain('capability-granted');
+  });
+
+  it('drops a provider when its row is gone — the list is materialised, not constant', async () => {
+    const segment = await capabilitySegment([CAPABILITIES[0] as PlannerCapability]);
+    expect(segment?.text).toContain('claude');
+    expect(segment?.text).not.toContain('opencode');
+  });
+
+  it('says so rather than going missing when nothing has been probed', async () => {
+    const segment = await capabilitySegment([]);
+    expect(segment?.text).toContain('no provider has been probed');
+  });
+
+  it('points its provenance at the newest probe event it was built from', async () => {
+    const segment = await capabilitySegment(CAPABILITIES);
+    expect(segment?.sourceEvent).toBe(8);
+  });
+
+  it('is not pinned: a capability list is measured now, not approved once', async () => {
+    const segment = await capabilitySegment(CAPABILITIES);
+    expect(segment?.pinned).toBe(false);
+  });
+});
+
+suite('AC1 — three input groups and the pinned safety segments, and nothing else', () => {
+  it('has a pinned group, a recon-fact group and one capability segment', async () => {
+    const packet = await buildPlannerPacket(input());
+    const pinned = packet.segments.filter((entry) => entry.pinned);
+    const facts = packet.segments.filter(
+      (entry) => entry.kind === 'fact' && entry.id !== CAPABILITY_SEGMENT_ID,
+    );
+    const capabilities = packet.segments.filter((entry) => entry.id === CAPABILITY_SEGMENT_ID);
+
+    expect(pinned.length).toBeGreaterThan(0);
+    expect(facts).toHaveLength(2);
+    expect(capabilities).toHaveLength(1);
+    expect(pinned.length + facts.length + capabilities.length).toBe(packet.segments.length);
+    expect(packet.totals.byKind['history.summary']).toBe(0);
   });
 });
 
