@@ -35,8 +35,14 @@ import { addConsumption } from './cost-rollup.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
 import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
-import { CHURN_WINDOW, type CompletedAttempt, type ReplanStreak } from './no-progress.ts';
+import {
+  CHURN_WINDOW,
+  type CompletedAttempt,
+  INITIAL_REPLAN_STREAK,
+  type ReplanStreak,
+} from './no-progress.ts';
 import type { PlanGraph } from './plan-graph.ts';
+import type { ProposedBy } from './plan-patch.ts';
 import {
   initialNodeState,
   type LockState,
@@ -319,8 +325,16 @@ function project(state: RunState, event: Event): Transition {
       // changes state. The audit trail is the event, not the projection.
       return null;
 
-    case 'plan.patched':
-      return withActivePlan(
+    case 'plan.validation_failed':
+      // 06 §3.5. A version that did not validate never became a plan: no row,
+      // no ids allocated, nothing to promote. Recording it changes the ledger
+      // and not the projection, which is what "diagnostics are events, not
+      // exceptions" means at this end — the retry is scheduled by the compiler
+      // from the returned diagnostics, not by a flag the reducer sets.
+      return null;
+
+    case 'plan.patched': {
+      const patched = withActivePlan(
         {
           ...state,
           planHash: event.payload.toHash,
@@ -329,6 +343,48 @@ function project(state: RunState, event: Event): Transition {
         },
         event.payload.toHash,
       );
+      // `withActivePlan` always returns a state here — a plan.patched moves
+      // `planHash`, so there is no "nothing changed" arm to fall through.
+      return rescuedByHuman(patched, event.payload.proposedBy);
+    }
+
+    /**
+     * KAR-11.4 AC10. The rule table this run is judged by, pinned once. The
+     * *rules* are folded and not only their digest, which is what makes a
+     * replay reach the decisions the run actually made rather than the ones
+     * today's `.DeFlow/config.yaml` would produce.
+     */
+    case 'policy.patch.loaded':
+      return {
+        ...state,
+        patchPolicy: {
+          hash: event.payload.hash,
+          source: event.payload.source,
+          rules: event.payload.rules,
+          drift: null,
+        },
+      };
+
+    /**
+     * The file on disk stopped matching. Nothing about the run's rules moves —
+     * that is the whole point — so all this records is *which* on-disk digest
+     * has already been reported, so the operator is told once per edit rather
+     * than once per patch.
+     */
+    case 'policy.patch.drifted':
+      return state.patchPolicy === null
+        ? null
+        : {
+            ...state,
+            patchPolicy: { ...state.patchPolicy, drift: event.payload.configHash },
+          };
+
+    case 'plan.patch.queued':
+      // F8.3's queue is projected from the event log, not from the run
+      // projection: a pending patch changes nothing about what `decide()` may
+      // schedule, and *"the patch is pending, not the run"* is exactly that
+      // sentence (06 §4.3).
+      return null;
 
     case 'node.scheduled':
       return withNode(state, seq, event.payload.node, (current) => ({
@@ -767,6 +823,32 @@ function slideWindow(
   entry: CompletedAttempt,
 ): readonly CompletedAttempt[] {
   return [...window, entry].slice(-CHURN_WINDOW);
+}
+
+/**
+ * KAR-11.4 AC8 — applying a **human-authored** patch clears the churn breaker
+ * and empties the sliding window (docs/06-planning-and-replanning.md §7).
+ *
+ * *"A human-supplied insight invalidates the window."* The window is evidence
+ * that the run has been redoing itself; a premise that was not available to any
+ * of those attempts makes the evidence stale rather than merely old, and
+ * leaving it in place would trip the breaker again on the first patch after the
+ * rescue — which is a run that cannot be rescued.
+ *
+ * Only a `churn` escalation is cleared. A run paused at its budget ceiling is
+ * also `needs-human`, and a patch is not a raised ceiling; forgetting that
+ * would let any human patch resume a run that has spent its money.
+ */
+function rescuedByHuman(state: RunState, proposedBy: ProposedBy | undefined): RunState {
+  if (proposedBy !== 'human' || state.needsHuman?.reason !== 'churn') return state;
+
+  return {
+    ...state,
+    status: state.status === 'needs-human' ? 'running' : state.status,
+    needsHuman: null,
+    churnWindow: [],
+    replans: INITIAL_REPLAN_STREAK,
+  };
 }
 
 /**

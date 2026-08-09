@@ -152,6 +152,15 @@ export {
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
 export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
+// KAR-11.2 — the same rows, projected into what plan validation may know about
+// an adapter (06 §3.2). Read from the row; never a table.
+export { planTimeCapabilities } from './plan-time-capabilities.ts';
+// KAR-11.1 — the planner's third input, projected from probed rows, and the
+// reasoning-effort control the initial plan is compiled at (06 §2.2, §6).
+export type { ProbedRow } from './planner-capabilities.ts';
+export { PLANNER_CAPABILITY_KEYS, plannerCapabilityList } from './planner-capabilities.ts';
+export type { PlannerEffort, ResolvedEffort } from './planner-effort.ts';
+export { PLANNER_EFFORTS, strongestEffort } from './planner-effort.ts';
 export type {
   AcpNodeRequest,
   AcpPorts,
@@ -212,6 +221,22 @@ export {
   spawnPlan,
   UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
+// KAR-11.6 — where a rate-limited node goes next, decided from the probed rows
+// and the recorded limits, or nowhere at all (F3.9, NF7).
+export type {
+  NodeRequirement,
+  ProviderLimit,
+  QuotaRoute,
+  QuotaRouteInput,
+  RerouteEquivalenceAnswer,
+  RerouteEquivalenceInput,
+} from './quota-route.ts';
+export {
+  capabilityQuestions,
+  chooseQuotaRoute,
+  providerIsHealthy,
+  rerouteEquivalence,
+} from './quota-route.ts';
 export { sliceMember } from './raw-frame.ts';
 // KAR-05.7 — the golden-recording tee, and the exact-version key that makes a
 // vendor bump a new directory rather than a silent invalidation.

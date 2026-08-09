@@ -1,0 +1,116 @@
+{
+  "schemaId": "DeFlow.contextpacket.v1",
+  "runId": "run_20260807T101500Z_ac1101",
+  "nodeId": "planner",
+  "attempt": 0,
+  "builtAtEvent": 7,
+  "target": {
+    "provider": "claude",
+    "model": "the-model-the-plan-ran-on",
+    "maxContext": 200000
+  },
+  "budget": {
+    "fraction": 0.5,
+    "limitTokens": 100000
+  },
+  "totals": {
+    "tokens": 638,
+    "byKind": {
+      "pinned.constraints": 15,
+      "pinned.spec": 68,
+      "pinned.pathscope": 0,
+      "task.brief": 0,
+      "fact": 555,
+      "artifact.handle": 0,
+      "retrieved": 0,
+      "history.summary": 0,
+      "tool.output": 0
+    }
+  },
+  "renderedPromptHandle": "artifact://4d6fdb2de66a6c86f394b2ebd741ce23e060fb82c110f0bba1b234947de34b66",
+  "pinnedDigests": [
+    "sha256-12f5d079b69b579cd78e17fc80ac8cff062cba8905e58091b29172209bbfecaf",
+    "sha256-68638c99bae793ac820dec0c8d42e363982e0f827ca560a687c5c2eb92989fdb",
+    "sha256-c4f70d8d7af506d347c970ff8552c0c234741ca8a1847351e81295e0b65c2c68"
+  ],
+  "segments": [
+    {
+      "id": "pinned-spec-goal",
+      "kind": "pinned.spec",
+      "sourceEvent": 7,
+      "contentHash": "sha256-12f5d079b69b579cd78e17fc80ac8cff062cba8905e58091b29172209bbfecaf",
+      "tokens": {
+        "estimated": 36,
+        "method": "heuristic"
+      },
+      "pinned": true,
+      "compactable": false,
+      "text": "Goal (pinned, verbatim from the approved spec):\nMigrate every component under packages/ui to Vue 3.\n\nNon-goals:\n- Do not touch packages/legacy."
+    },
+    {
+      "id": "pinned-spec-criteria",
+      "kind": "pinned.spec",
+      "sourceEvent": 7,
+      "contentHash": "sha256-68638c99bae793ac820dec0c8d42e363982e0f827ca560a687c5c2eb92989fdb",
+      "tokens": {
+        "estimated": 32,
+        "method": "heuristic"
+      },
+      "pinned": true,
+      "compactable": false,
+      "text": "Acceptance criteria (pinned, verbatim from the approved spec):\n- ac-1: pnpm typecheck passes.\n- ac-2: Every component renders."
+    },
+    {
+      "id": "pinned-constraints-safety",
+      "kind": "pinned.constraints",
+      "sourceEvent": 7,
+      "contentHash": "sha256-c4f70d8d7af506d347c970ff8552c0c234741ca8a1847351e81295e0b65c2c68",
+      "tokens": {
+        "estimated": 15,
+        "method": "heuristic"
+      },
+      "pinned": true,
+      "compactable": false,
+      "text": "Safety constraints (pinned):\n- No new runtime dependency."
+    },
+    {
+      "id": "fact-finding-test-command",
+      "kind": "fact",
+      "sourceEvent": 9,
+      "contentHash": "sha256-200e7903a38f69c2bea2e27bf7a3b2b1f0d004fe9791831d3afb0c484d669178",
+      "tokens": {
+        "estimated": 45,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "finding/test-command (confidence: verified)\n{\n  \"reconKind\": \"command\",\n  \"role\": \"test\",\n  \"command\": \"pnpm test\",\n  \"script\": \"vitest run\"\n}\nevidence: file://package.json#L5-L5"
+    },
+    {
+      "id": "fact-scope-touched-paths",
+      "kind": "fact",
+      "sourceEvent": 10,
+      "contentHash": "sha256-04dab6d01677620db5f7896a02011e5eaada3f1db722232bf39e6c75bdca7eb0",
+      "tokens": {
+        "estimated": 53,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "scope/touched-paths (confidence: verified)\n{\n  \"reconKind\": \"scope\",\n  \"paths\": [\n    \"packages/ui\"\n  ],\n  \"fileCount\": 47\n}\nevidence: artifact://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "capabilities",
+      "kind": "fact",
+      "sourceEvent": 7,
+      "contentHash": "sha256-12bb1d539df1795bf49b77f1075f56e05c8c4139a6f71d30e5cfb2e8d8cd47da",
+      "tokens": {
+        "estimated": 457,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "Installed, probed adapters — read from provider_capabilities, not from a table in the code:\nclaude 2.1.220 — structured output: native, strongest effort: max\n  loadSession: capability-granted\n  resume: capability-granted\n  fork: capability-absent\n  list: capability-absent\n  close: capability-absent\n  delete: capability-absent\n  additionalDirectories: capability-absent\n  promptImage: capability-absent\n  promptAudio: capability-absent\n  promptEmbeddedContext: capability-absent\n  mcpHttp: capability-absent\n  mcpSse: capability-absent\n  mcpAcp: capability-absent\n  terminal: capability-absent\n  mediatedExecution: capability-absent\n  steering: capability-absent\ngemini 0.53.1 — structured output: prompt-only, no reasoning-effort control\n  loadSession: capability-denied\n  resume: capability-absent\n  fork: capability-absent\n  list: capability-absent\n  close: capability-absent\n  delete: capability-absent\n  additionalDirectories: capability-absent\n  promptImage: capability-absent\n  promptAudio: capability-absent\n  promptEmbeddedContext: capability-absent\n  mcpHttp: capability-absent\n  mcpSse: capability-absent\n  mcpAcp: capability-absent\n  terminal: capability-absent\n  mediatedExecution: capability-absent\n  steering: capability-absent\nopencode 1.18.11 — structured output: prompt-only, no reasoning-effort control\n  loadSession: capability-absent\n  resume: capability-granted\n  fork: capability-granted\n  list: capability-absent\n  close: capability-absent\n  delete: capability-absent\n  additionalDirectories: capability-absent\n  promptImage: capability-absent\n  promptAudio: capability-absent\n  promptEmbeddedContext: capability-absent\n  mcpHttp: capability-absent\n  mcpSse: capability-absent\n  mcpAcp: capability-absent\n  terminal: capability-absent\n  mediatedExecution: capability-absent\n  steering: capability-absent"
+    }
+  ]
+}

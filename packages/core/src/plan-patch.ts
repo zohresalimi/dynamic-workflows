@@ -468,7 +468,20 @@ export function patchIsWellFormed(patch: PlanPatch, graph: PlanGraph): PatchWell
         break;
       }
       case 'replace-provider': {
-        target(op.node, index, 'replace-provider');
+        const node = target(op.node, index, 'replace-provider');
+        // Only an `agent` node carries a `provider` block. Rerouting a gate or
+        // a loop is not a smaller version of rerouting an agent — there is
+        // nothing to reroute — and an applier that shrugged and did nothing
+        // would produce a *new plan version identical to the old one*, which
+        // renders in the scrubber as a change that changed nothing.
+        if (node !== undefined && node.type !== 'agent') {
+          fail(
+            'wrong-node-type',
+            index,
+            [op.node],
+            `replace-provider targets "${op.node}", which is a "${node.type}" node; only an agent node runs on a provider`,
+          );
+        }
         break;
       }
       case 'extend-loop': {

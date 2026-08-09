@@ -19,14 +19,24 @@
  * repo probably uses Pinia"* and *"`package.json` lists `pinia@3.0.4`"* must not
  * be indistinguishable to the model that plans from them.
  *
- * **What this builder does not yet carry.** F2.2 names three planner inputs and
- * this is two of them: the provider capability list belongs to KAR-11.1, which
- * is where plan compilation lives. It is omitted rather than stubbed, for the
- * same reason `buildFramingPacket` omits the three spec-derived pinned rows —
- * an invented segment under a heading that claims provenance is worse than a
- * missing one.
+ * **The third input** (KAR-11.1 AC1, AC2). F2.2 names three planner inputs, and
+ * the one people get wrong is the provider capability list: it is *materialised
+ * from `provider_capabilities` rows at plan time*, never a constant keyed by
+ * provider name — 06 §2.2 says a hardcoded matrix *"will be wrong within a
+ * month"*, and the 2026-08-02 probe already contradicts the vendor docs in two
+ * places. So `capabilities` is a **required** input here rather than an
+ * optional one: a planner packet assembled without it is a planner planning
+ * against an imagined fleet, and that must not be expressible.
  *
- * Verifies: EPIC-10-S24 (second scenario), EPIC-10-S28 (third scenario) · AC7
+ * It renders as a `fact` segment rather than a kind of its own, and that is a
+ * deliberate reading rather than a shortcut. `DeFlow.contextpacket.v1` is a
+ * published, append-only document schema, and what this segment carries *is* a
+ * set of measured facts about this machine, each traceable to the
+ * `provider.probed` event that recorded the row it came from. It is not pinned:
+ * the pinned set is what a human approved (F1.3), and nobody approved a probe.
+ *
+ * Verifies: EPIC-10-S24 (second scenario), EPIC-10-S28 (third scenario),
+ * EPIC-11-S2 · AC7 · KAR-11.1 AC1, AC2
  */
 import { resolveContextBudget } from './build-packet.ts';
 import type { Constraint } from './constraint.ts';
@@ -95,6 +105,88 @@ export interface PlannerFact {
   readonly sourceEvent: number;
 }
 
+/** The id of the one segment carrying the capability list, so the compiler,
+ * the golden snapshot and the API all address it by the same name. */
+export const CAPABILITY_SEGMENT_ID = 'capabilities';
+
+/**
+ * One capability question and what the probed row answered.
+ *
+ * `supported` is `boolean | undefined` and `reason` travels beside it because
+ * 06 §2.2's whole finding is that **absent, `{}` and an explicit `false` are
+ * three different answers**: Gemini returned no `sessionCapabilities` key at
+ * all, Copilot returned `{ list: {} }`, and Codex returned literal `false`.
+ * Flattening them into one falsy value is how a planner schedules a node onto
+ * an adapter that cannot run it.
+ */
+export interface PlannerCapabilityAnswer {
+  readonly key: string;
+  /** `undefined` if and only if the key was absent from the response. */
+  readonly supported: boolean | undefined;
+  /** `capability-granted` | `capability-empty` | `capability-denied` |
+   * `capability-absent`, as `@DeFlow/adapters`' `capability()` reports it. */
+  readonly reason: string;
+}
+
+/**
+ * What the planner is told about one installed, probed adapter.
+ *
+ * Assembled by the caller from `provider_capabilities` rows (the daemon reads
+ * the table; `@DeFlow/core` performs no I/O, R1), so this package cannot hold a
+ * capability table even by accident.
+ */
+export interface PlannerCapability {
+  readonly provider: string;
+  /** The binary's own `--version` output, as the probe recorded it. */
+  readonly version: string;
+  /** `native` when the CLI enforces a JSON Schema itself, `prompt-only` when
+   * the contract holds only because Ajv rejects what comes back. Invocation
+   * knowledge, not a probe answer — nothing in an ACP `initialize` response
+   * advertises structured output. */
+  readonly structuredOutput: string;
+  /** The strongest reasoning-effort setting this adapter exposes, or `null`
+   * where it exposes none (KAR-11.1 AC8). */
+  readonly strongestEffort: string | null;
+  readonly answers: readonly PlannerCapabilityAnswer[];
+  /** The `provider.probed` event that recorded the row, so F10.3's
+   * click-through from this segment lands somewhere real. */
+  readonly sourceEvent: number;
+}
+
+/** One provider's line, and its answers underneath it. */
+function renderCapabilityLines(capability: PlannerCapability): readonly string[] {
+  const effort =
+    capability.strongestEffort === null
+      ? 'no reasoning-effort control'
+      : `strongest effort: ${capability.strongestEffort}`;
+  return [
+    `${capability.provider} ${capability.version} — structured output: ` +
+      `${capability.structuredOutput}, ${effort}`,
+    ...capability.answers.map((answer) => `  ${answer.key}: ${answer.reason}`),
+  ];
+}
+
+/**
+ * The capability list as the planner reads it.
+ *
+ * An empty list renders as a sentence rather than as nothing, because "no
+ * provider has been probed" is a fact the planner must plan around — a missing
+ * segment would read as "the list was not assembled", which is a different
+ * situation with a different fix.
+ */
+export function renderCapabilitySegmentText(capabilities: readonly PlannerCapability[]): string {
+  if (capabilities.length === 0) {
+    return (
+      'no provider has been probed on this machine, so no adapter may be named in the plan: ' +
+      'DeFlow never believes a documentation claim over a handshake.'
+    );
+  }
+  return [
+    'Installed, probed adapters — read from provider_capabilities, not from a table in the code:',
+    ...capabilities.flatMap((capability) => renderCapabilityLines(capability)),
+  ].join('\n');
+}
+
 export interface PlannerPacketInput {
   readonly runId: string;
   readonly nodeId: string;
@@ -113,6 +205,9 @@ export interface PlannerPacketInput {
   readonly constraints?: readonly Constraint[];
   /** The recon output, as facts. */
   readonly facts: readonly PlannerFact[];
+  /** F2.2's third input, materialised from `provider_capabilities` rows.
+   * Required, and an empty array is a legitimate value that says so. */
+  readonly capabilities: readonly PlannerCapability[];
   readonly segments?: readonly Segment[];
   readonly estimate?: TokenEstimator;
 }
@@ -181,7 +276,21 @@ export async function buildPlannerPacket(input: PlannerPacketInput): Promise<Con
     );
   }
 
-  const segments = [...pinned, ...facts, ...(input.segments ?? [])];
+  // The newest probe this list was built from, so the segment's click-through
+  // lands on an event that exists; `builtAtEvent` when there is no probe to
+  // point at, which is the only honest answer for an empty list.
+  const probedAt = input.capabilities.map((capability) => capability.sourceEvent);
+  const capabilities = await contextSegment({
+    id: CAPABILITY_SEGMENT_ID,
+    kind: 'fact',
+    text: renderCapabilitySegmentText(input.capabilities),
+    sourceEvent: EventSeqSchema.parse(
+      probedAt.length === 0 ? input.builtAtEvent : Math.max(...probedAt),
+    ),
+    estimate,
+  });
+
+  const segments = [...pinned, ...facts, capabilities, ...(input.segments ?? [])];
   const prompt = renderPacket({ segments });
   const { budget } = resolveContextBudget({
     maxContext: input.target.maxContext,

@@ -42,7 +42,7 @@ import { afterEach, expect, describe as suite } from 'vitest';
 import { KILL_VERIFY_MS, TERM_GRACE_MS } from '../../src/cancel.ts';
 import { killRun } from '../../src/kill-switch.ts';
 import { AUTH, CANCEL_RUN, seedRunningRun, T0 } from './support/cancel-run.ts';
-import { groupRows, killGroup, liveRows, rowOf } from './support/ps.ts';
+import { groupRows, killGroup, liveRows, rowOf, waitForSigtermProof } from './support/ps.ts';
 
 const groups: number[] = [];
 const children: ChildProcessWithoutNullStreams[] = [];
@@ -90,8 +90,8 @@ const startTree = (): Promise<number> => spawnDetached('/bin/sh', BACKGROUNDS_TW
 
 /** The KAR-04.6 fixture that installs a real `SIG_IGN` on SIGTERM, in the agent
  * *and* in the two children it backgrounds. Only SIGKILL ends this group. */
-const startSigtermIgnoringTree = (): Promise<number> =>
-  spawnDetached(
+async function startSigtermIgnoringTree(): Promise<number> {
+  const pgid = await spawnDetached(
     process.execPath,
     [FAKE_AGENT_BIN, '-p', 'hang', '--output-format', 'stream-json', '--verbose'],
     {
@@ -101,6 +101,9 @@ const startSigtermIgnoringTree = (): Promise<number> =>
     },
     3,
   );
+  await waitForSigtermProof(pgid);
+  return pgid;
+}
 
 /** The `process` row the daemon writes beside `node.started` (KAR-05.9 AC6). */
 function journalProcess(db: Parameters<typeof recordProcess>[0], pgid: number): void {
@@ -292,6 +295,28 @@ suite('EPIC-08-S26 — the kill switch stops a whole process tree', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+suite('the SIGTERM-ignoring fixture is ready when its gate says it is', () => {
+  it('loses nothing to a group SIGTERM sent the instant the tree is reported up', async () => {
+    const pgid = await startSigtermIgnoringTree();
+
+    // Every escalation spec below is built on one promise: this tree ignores
+    // SIGTERM, so a group that is still whole after rung 2 proves rung 3 did
+    // the work. That promise is not "three processes exist". The two children
+    // are `sh -c 'trap "" TERM; exec sleep 300'`, and a shell that has not yet
+    // reached its `exec` still has the *default* disposition — measured at
+    // 6-27 ms from spawn on this machine, wider the busier the box. A gate that
+    // counted rows handed back a tree whose children died on rung 2, and the
+    // specs then read as "the escalation is decoration" under load only.
+    process.kill(-pgid, 'SIGTERM');
+    await sleep(300);
+
+    expect(
+      liveRows(pgid),
+      'a member died on SIGTERM, so the fixture was handed over before it was SIGTERM-proof',
+    ).toHaveLength(3);
   });
 });
 

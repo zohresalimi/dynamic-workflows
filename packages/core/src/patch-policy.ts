@@ -32,11 +32,14 @@
  *
  * Verifies: EPIC-14-S16, EPIC-14-S17, EPIC-14-S18 · KAR-14.3 AC5, AC6, AC7
  */
+import { z } from 'zod';
 import type { Ceiling } from './budget-ceiling.ts';
+import { canonicalJson } from './canonical-json.ts';
 import type { PatchEstimate } from './cost-estimate.ts';
 import type { CostRollup } from './cost-rollup.ts';
 import type { ProviderAuthMode } from './event-payloads.ts';
-import { PERMISSION_LEVELS, type PermissionLevel } from './plan-graph.ts';
+import { contentHash } from './hash.ts';
+import { PERMISSION_LEVELS, type PermissionLevel, PermissionLevelSchema } from './plan-graph.ts';
 import type { PatchCause, PatchDecisionOutcome } from './plan-patch.ts';
 
 /** The three decisions the rule table can reach, in F2.5's own vocabulary. */
@@ -114,18 +117,112 @@ export interface PatchPolicyRuling {
 const rank = (level: PermissionLevel): number => PERMISSION_LEVELS.indexOf(level);
 
 /**
- * `value > threshold`, answering `false` for an unknown value.
+ * KAR-11.4 AC3 — one comparison from the YAML, as the operator wrote it.
  *
- * The pair below is the one place `null` meets a number in this engine, and
- * both arms lean the same way: an unknown cost matches neither the rule that
- * would queue it nor the rule that would auto-apply it, so it reaches the
- * default arm and a human sees it.
+ * A string rather than an operator and a number, because that is the shape 06
+ * §4.3 puts in `.DeFlow/config.yaml` (`replanDepth: "> 3"`), and a schema that
+ * accepted `{ op: 'gt', value: 3 }` instead would mean the file a person edits
+ * and the table this engine evaluates are two different documents.
+ *
+ * The regex is deliberately narrow. `"> 5"` and `"> 5.00"` are the same
+ * threshold and both are legal; `"> five"`, `">5.0.0"` and `"~ 5"` are refused
+ * at parse time, because a comparison this build cannot evaluate would
+ * otherwise become a rule that silently never matches — and a rule that never
+ * matches on a *reject* arm is a ceiling that is not there.
  */
-const gt = (value: number | null, threshold: number): boolean =>
-  value !== null && value > threshold;
+const COMPARISON = /^(>=|<=|>|<|==)\s*(-?\d+(?:\.\d+)?)$/;
 
-const lte = (value: number | null, threshold: number): boolean =>
-  value !== null && value <= threshold;
+export const PatchComparisonSchema = z
+  .string()
+  .regex(COMPARISON, 'a comparison is an operator and a number, e.g. "> 5.00"');
+
+export type PatchComparison = z.infer<typeof PatchComparisonSchema>;
+
+/**
+ * The predicates a rule may name. Every one present must hold — a rule is an
+ * `AND` of its conditions — and a rule with no `when` at all matches
+ * everything, which is how the `default` arm is expressed.
+ *
+ * `strictObject`, so a misspelled predicate (`replanDeph: "> 3"`) is a parse
+ * error naming the key rather than a rule that quietly matches every patch,
+ * which for a `reject` arm would stop the run and for an `auto` arm would apply
+ * everything.
+ */
+export const PatchRuleWhenSchema = z.strictObject({
+  /** `estimate.maxPermission` above the run's own ambient level. A comparison
+   * against the run, never against a constant: `worktree` is an escalation from
+   * `read` and a de-escalation from `full`. */
+  permissionEscalation: z.literal(true).optional(),
+  /** F5.6's deny list, answered by the safety model rather than derived here. */
+  touchesExecutionBoundary: z.literal(true).optional(),
+  /** §4.4's four-part equivalence for a quota-driven provider swap. */
+  rerouteEquivalent: z.literal(true).optional(),
+  /** Exact level, as `read-only-analysis` names it. */
+  maxPermission: PermissionLevelSchema.optional(),
+  replanDepth: PatchComparisonSchema.optional(),
+  elapsedBudgetFraction: PatchComparisonSchema.optional(),
+  costDeltaUsd: PatchComparisonSchema.optional(),
+  blastRadiusFiles: PatchComparisonSchema.optional(),
+});
+
+export type PatchRuleWhen = z.infer<typeof PatchRuleWhenSchema>;
+
+export const PatchRuleSpecSchema = z.strictObject({
+  id: z.string().min(1),
+  when: PatchRuleWhenSchema.optional(),
+  decision: z.enum(PATCH_POLICY_DECISIONS),
+});
+
+export type PatchRuleSpec = z.infer<typeof PatchRuleSpecSchema>;
+
+/** The whole ordered table. At least one rule: an empty table is not a policy,
+ * it is the absence of one, and `evaluatePatchPolicy`'s fallback would be the
+ * only thing ruling. */
+export const PatchPolicyTableSchema = z.array(PatchRuleSpecSchema).min(1);
+
+/**
+ * `readonly` rather than `z.infer`'s mutable array. The table is a value the
+ * whole run shares — it is folded into `RunState`, hashed, and handed to every
+ * ruling — and a type that admitted `table.push(...)` would make "the rules
+ * this run is judged by" something a caller could edit after the fact.
+ */
+export type PatchPolicyTable = readonly PatchRuleSpec[];
+
+/**
+ * `value <op> threshold`, answering **false** for an unknown value whichever
+ * way the comparison points.
+ *
+ * This is the one place `null` meets a number in this engine, and both
+ * directions lean the same way: an unpriceable patch (KAR-14.3 AC7) matches
+ * neither the rule that would queue it nor the rule that would auto-apply it,
+ * so it reaches the default arm and a human sees it. Coercing `null` to `0`
+ * would satisfy `costDeltaUsd <= 5.00`, match `read-only-analysis`, and
+ * auto-apply the most expensive class of patch on exactly the providers DeFlow
+ * cannot meter.
+ */
+function compare(comparison: PatchComparison): (value: number | null) => boolean {
+  const match = COMPARISON.exec(comparison);
+  // Unreachable through the schema, which is the only door into this function.
+  if (match === null) throw new Error(`unparseable patch policy comparison: ${comparison}`);
+  const operator = match[1];
+  const threshold = Number(match[2]);
+
+  return (value) => {
+    if (value === null) return false;
+    switch (operator) {
+      case '>':
+        return value > threshold;
+      case '>=':
+        return value >= threshold;
+      case '<':
+        return value < threshold;
+      case '<=':
+        return value <= threshold;
+      default:
+        return value === threshold;
+    }
+  };
+}
 
 /**
  * KAR-14.4 AC7 — the causes `quota-reroute-equivalent` is willing to
@@ -148,26 +245,22 @@ const AUTO_REROUTE_CAUSES: readonly string[] = ['quota'];
  * a human's decision however cheap it is; depth and budget are asked before
  * cost because both are reasons to stop rather than to price.
  */
-export const DEFAULT_PATCH_RULES: readonly PatchRule[] = Object.freeze([
-  {
-    id: 'escalates-permission',
-    decision: 'approve',
-    matches: (input) => rank(input.estimate.maxPermission) > rank(input.ambientPermission),
-  },
+export const DEFAULT_PATCH_RULE_SPECS: PatchPolicyTable = Object.freeze<PatchRuleSpec[]>([
+  { id: 'escalates-permission', when: { permissionEscalation: true }, decision: 'approve' },
   {
     id: 'touches-execution-boundary',
+    when: { touchesExecutionBoundary: true },
     decision: 'approve',
-    matches: (input) => input.touchesExecutionBoundary === true,
   },
   {
     id: 'replan-depth-exceeded',
+    when: { replanDepth: `> ${MAX_REPLAN_DEPTH}` },
     decision: 'reject',
-    matches: (input) => input.estimate.replanDepth > MAX_REPLAN_DEPTH,
   },
   {
     id: 'budget-exhausted',
+    when: { elapsedBudgetFraction: `>= ${BUDGET_EXHAUSTED_FRACTION.toFixed(1)}` },
     decision: 'reject',
-    matches: (input) => input.elapsedBudgetFraction >= BUDGET_EXHAUSTED_FRACTION,
   },
   /**
    * KAR-14.4 AC7 — §4.4's one added rule, and it is *added* rather than
@@ -183,39 +276,116 @@ export const DEFAULT_PATCH_RULES: readonly PatchRule[] = Object.freeze([
    * silently widens what the node may do. _"A reroute onto a weaker adapter is
    * not equivalent and is not auto."_
    */
-  {
-    id: 'quota-reroute-equivalent',
-    decision: 'auto',
-    matches: (input) =>
-      input.reroute !== undefined &&
-      AUTO_REROUTE_CAUSES.includes(input.reroute.cause) &&
-      input.reroute.onlyReroutes &&
-      input.reroute.capabilitySuperset &&
-      input.reroute.permissionUnchanged,
-  },
+  { id: 'quota-reroute-equivalent', when: { rerouteEquivalent: true }, decision: 'auto' },
   {
     id: 'expensive',
+    when: { costDeltaUsd: `> ${EXPENSIVE_COST_USD.toFixed(2)}` },
     decision: 'approve',
-    matches: (input) => gt(input.estimate.costUsdDelta, EXPENSIVE_COST_USD),
   },
   {
     id: 'wide-blast-radius',
+    when: { blastRadiusFiles: `> ${WIDE_BLAST_RADIUS_FILES}` },
     decision: 'approve',
-    matches: (input) => input.estimate.blastRadiusFiles > WIDE_BLAST_RADIUS_FILES,
   },
   {
     id: 'read-only-analysis',
+    when: { maxPermission: 'read', costDeltaUsd: `<= ${EXPENSIVE_COST_USD.toFixed(2)}` },
     decision: 'auto',
-    matches: (input) =>
-      input.estimate.maxPermission === 'read' &&
-      lte(input.estimate.costUsdDelta, EXPENSIVE_COST_USD),
   },
-  {
-    id: 'default',
-    decision: 'approve',
-    matches: () => true,
-  },
+  /** No `when`: the arm that catches everything, and it is `approve`. */
+  { id: 'default', decision: 'approve' },
 ]);
+
+/**
+ * KAR-11.4 AC3 — the specs turned into predicates, in their declared order.
+ *
+ * Every condition a rule names must hold; a rule that names none matches
+ * everything. The compilation happens once per table rather than once per
+ * patch, so the regexes above are parsed when a run pins its policy and never
+ * again.
+ */
+export function compilePatchRules(specs: PatchPolicyTable): readonly PatchRule[] {
+  return specs.map((spec) => {
+    const when = spec.when ?? {};
+    const conditions: ((input: PatchPolicyInput) => boolean)[] = [];
+
+    if (when.permissionEscalation === true) {
+      conditions.push(
+        (input) => rank(input.estimate.maxPermission) > rank(input.ambientPermission),
+      );
+    }
+    if (when.touchesExecutionBoundary === true) {
+      conditions.push((input) => input.touchesExecutionBoundary === true);
+    }
+    if (when.rerouteEquivalent === true) conditions.push(isEquivalentReroute);
+    if (when.maxPermission !== undefined) {
+      const level = when.maxPermission;
+      conditions.push((input) => input.estimate.maxPermission === level);
+    }
+    if (when.replanDepth !== undefined) {
+      const test = compare(when.replanDepth);
+      conditions.push((input) => test(input.estimate.replanDepth));
+    }
+    if (when.elapsedBudgetFraction !== undefined) {
+      const test = compare(when.elapsedBudgetFraction);
+      conditions.push((input) => test(input.elapsedBudgetFraction));
+    }
+    if (when.costDeltaUsd !== undefined) {
+      const test = compare(when.costDeltaUsd);
+      conditions.push((input) => test(input.estimate.costUsdDelta));
+    }
+    if (when.blastRadiusFiles !== undefined) {
+      const test = compare(when.blastRadiusFiles);
+      conditions.push((input) => test(input.estimate.blastRadiusFiles));
+    }
+
+    return {
+      id: spec.id,
+      decision: spec.decision,
+      matches: (input: PatchPolicyInput) => conditions.every((condition) => condition(input)),
+    };
+  });
+}
+
+/**
+ * KAR-14.4 AC7's four-part test, as one predicate the `rerouteEquivalent`
+ * condition compiles to.
+ *
+ * Each part guards a distinct failure. Drop `onlyReroutes` and any patch may
+ * claim the cause; drop `cause` and every provider swap becomes automatic,
+ * including the ones a planner proposed for its own reasons; drop
+ * `capabilitySuperset` and a node that must resume is moved onto an adapter
+ * that cannot; drop `permissionUnchanged` and the swap silently widens what the
+ * node may do. _"A reroute onto a weaker adapter is not equivalent and is not
+ * auto."_
+ */
+function isEquivalentReroute(input: PatchPolicyInput): boolean {
+  const reroute = input.reroute;
+  return (
+    reroute !== undefined &&
+    AUTO_REROUTE_CAUSES.includes(reroute.cause) &&
+    reroute.onlyReroutes &&
+    reroute.capabilitySuperset &&
+    reroute.permissionUnchanged
+  );
+}
+
+/** The default table, compiled. */
+export const DEFAULT_PATCH_RULES: readonly PatchRule[] = Object.freeze(
+  compilePatchRules(DEFAULT_PATCH_RULE_SPECS),
+);
+
+/**
+ * KAR-11.4 AC10 — the digest pinned into the run manifest at run start.
+ *
+ * Over `canonicalJson`, so the hash is a function of the rules' *values* and
+ * not of the order somebody wrote the keys in: a config file that was
+ * reformatted has not changed the policy, and a hash that said otherwise would
+ * report drift on every save.
+ */
+export function patchPolicyHash(specs: PatchPolicyTable): Promise<string> {
+  return contentHash(canonicalJson(specs));
+}
 
 /**
  * AC5 — the decision, and the rule that made it.

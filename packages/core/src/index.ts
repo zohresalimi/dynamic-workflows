@@ -37,6 +37,11 @@ export {
   staleGateNodes,
   verdictAgainst,
 } from './acceptance-board.ts';
+// KAR-11.3 — applying a PlanPatch: the function from a plan document to the
+// next one. Plans are never mutated, so this returns a successor rather than
+// changing what it was given.
+export type { ApplyPatchOptions, ApplyPatchResult } from './apply-patch.ts';
+export { applyPatch } from './apply-patch.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {
@@ -254,6 +259,21 @@ export type { Db, DbRunResult, DbStatement, DbValue } from './db.ts';
 // KAR-06.1 — the whole scheduling policy, as a pure function of state and one
 // instant.
 export { decide } from './decide.ts';
+// KAR-11.4 — the patch policy engine's one entry point: the churn circuit
+// breaker first, the rule table second, and nothing between them.
+export type {
+  CircuitBreakerState,
+  PatchDecisionInputs,
+  PatchDecisionState,
+} from './decide-patch.ts';
+export {
+  ambientPermissionOf,
+  circuitBreakerOf,
+  decidePatch,
+  PATCH_CIRCUIT_BREAKER_RULE,
+  patchDecisionStateOf,
+  patchRulesOf,
+} from './decide-patch.ts';
 // KAR-08.3 — the cheap syntactic second layer (§10.4), orthogonal to the
 // ladder: an allowlisted binary at an identity or infrastructure boundary.
 // KAR-09.4 — the slice of .DeFlow/config.yaml the re-injection interval and the
@@ -263,6 +283,7 @@ export type {
   BudgetConfig,
   ContextConfig,
   DeFlowConfig,
+  PatchPolicyConfig,
   ProviderConfig,
 } from './deflow-config.ts';
 export {
@@ -271,8 +292,10 @@ export {
   configuredConstraints,
   DeFlowConfigSchema,
   inlineThresholdBytesOf,
+  PatchPolicyConfigSchema,
   ProviderConfigSchema,
   parseDeFlowConfig,
+  patchPolicyOf,
   pinReinjectTurnsFor,
 } from './deflow-config.ts';
 export type { CommandContext, DestructiveReason } from './destructive-command.ts';
@@ -291,6 +314,8 @@ export type {
   EventKind,
   EventPayloadOf,
   LockReleaseReason,
+  PlannerAttribution,
+  PlannerTier,
   ProviderAuthMode,
   RunOutcome,
   WorktreeOccupantKind,
@@ -348,10 +373,13 @@ export {
   NodeUnschedulableSchema,
   PermissionDeniedSchema,
   PinIntegrityViolatedSchema,
+  PLANNER_TIERS,
+  PlannerAttributionSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
   PlanProposedSchema,
+  PlanValidationFailedSchema,
   PROVIDER_AUTH_MODES,
   ProviderAuthModeSchema,
   ProviderAuthShadowStrippedSchema,
@@ -519,6 +547,7 @@ export {
   FactIdSchema,
   GateIdSchema,
   HandleSchema,
+  isNodeIdSlug,
   NodeIdSchema,
   NodeLifecycleSchema,
   PlanHashSchema,
@@ -625,22 +654,31 @@ export {
 // KAR-14.3 — F2.5's patch policy engine: the estimate turned into a decision,
 // first match wins, and a `null` cost matching no numeric rule.
 export type {
+  PatchComparison,
   PatchPolicyDecision,
   PatchPolicyInput,
   PatchPolicyRuling,
+  PatchPolicyTable,
   PatchRule,
+  PatchRuleSpec,
+  PatchRuleWhen,
   RerouteEquivalence,
   RulablePatchEstimate,
 } from './patch-policy.ts';
 export {
   BUDGET_EXHAUSTED_FRACTION,
+  compilePatchRules,
+  DEFAULT_PATCH_RULE_SPECS,
   DEFAULT_PATCH_RULES,
   EXPENSIVE_COST_USD,
   elapsedBudgetFraction,
   evaluatePatchPolicy,
   MAX_REPLAN_DEPTH,
   PATCH_POLICY_DECISIONS,
+  PatchPolicyTableSchema,
+  PatchRuleSpecSchema,
   patchDecisionOutcome,
+  patchPolicyHash,
   WIDE_BLAST_RADIUS_FILES,
 } from './patch-policy.ts';
 // KAR-08.7 — the declared-path-scope glob matcher, the normalizer that keeps
@@ -717,6 +755,19 @@ export {
   pinnedConstraintsOf,
   selectCompactionCandidates,
 } from './pinned-set.ts';
+// KAR-11.1 — plan validation diagnostics as values (06 §3, §3.5). KAR-11.2
+// grows the set; the shape and the rendering are fixed here.
+export type {
+  PlanDiagnostic,
+  PlanDiagnosticCode,
+  PlanDiagnosticSeverity,
+} from './plan-diagnostics.ts';
+export {
+  hasBlockingDiagnostic,
+  PLAN_DIAGNOSTIC_CODES,
+  PLAN_DIAGNOSTIC_SEVERITIES,
+  renderPlanDiagnostics,
+} from './plan-diagnostics.ts';
 // KAR-02.3 — PlanGraph, the seven node types and the reads reachability walk.
 export type {
   AdapterRequirement,
@@ -809,11 +860,19 @@ export {
 } from './plan-patch.ts';
 // KAR-10.5 AC7 — what the planner reads: the pinned spec and the recon facts,
 // and no recon transcript (F6.1).
-export type { PlannerFact, PlannerPacketInput, PlannerSegmentKind } from './planner-packet.ts';
+export type {
+  PlannerCapability,
+  PlannerCapabilityAnswer,
+  PlannerFact,
+  PlannerPacketInput,
+  PlannerSegmentKind,
+} from './planner-packet.ts';
 export {
   buildPlannerPacket,
+  CAPABILITY_SEGMENT_ID,
   ForeignSegmentInPlannerPacket,
   PLANNER_SEGMENT_KINDS,
+  renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
 export type { Random } from './random.ts';
@@ -905,6 +964,7 @@ export type {
   NodeIdRegistryState,
   NodeState,
   NodeStatus,
+  PatchPolicyState,
   RunState,
   RunStatus,
   SchedulingPolicy,
@@ -1072,6 +1132,7 @@ export {
 // same style as `Clock` and `Db`; core owns no BPE table.
 export type { Tokenizer } from './tokenizer.ts';
 export { contextFillPercent } from './tokenizer.ts';
+export { PlanCycleError, topoSort } from './topo-sort.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {
   MissingHop,
@@ -1096,6 +1157,11 @@ export {
 // gate in the system, run on every plan.proposed and plan.patched.
 export type { UndeclaredReadError } from './validate-declared-reads.ts';
 export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
+// KAR-11.2 — the one entry point to plan validation (06 §3), plus the two
+// values it is built on: `topoSort` throwing is the cycle check, and
+// `PlanTimeCapability` is what a probed row projects to at plan time.
+export type { PlanTimeCapability, ValidatePlanOptions } from './validate-plan.ts';
+export { PLAN_SCOPE, resumeByReplayNodes, validatePlan } from './validate-plan.ts';
 export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
 export {
   CRITERION_STATUSES,

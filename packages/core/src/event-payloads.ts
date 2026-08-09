@@ -50,6 +50,8 @@ import {
   CompletedNodeResultSchema,
   NodeSuspensionSchema,
 } from './node-result.ts';
+import { PatchPolicyTableSchema } from './patch-policy.ts';
+import { PLAN_DIAGNOSTIC_CODES, PLAN_DIAGNOSTIC_SEVERITIES } from './plan-diagnostics.ts';
 import { HumanNodeSchema, PermissionLevelSchema, PlanGraphSchema } from './plan-graph.ts';
 import {
   PATCH_CAUSES,
@@ -115,12 +117,31 @@ export const RUN_OUTCOMES = ['succeeded', 'partial', 'failed'] as const;
  * plan no longer satisfies. It arrives at `run.needs_human` **v2** — widening a
  * closed vocabulary is a shape change, so an older daemon reading a newer
  * ledger says so instead of guessing (./upcasters.ts).
+ *
+ * `plan-invalid` is KAR-11.1's, at **v3**, for the same reason and with the
+ * same distinction: 06 §3.5 allows the planner exactly one retry with the
+ * diagnostics as input, and the second failure is answered by a human reading
+ * the diagnostics and supplying a corrected plan — not by raising a ceiling and
+ * not by a third automatic attempt, which is the churn shape arriving early.
  */
 export const RUN_NEEDS_HUMAN_REASONS = [
   'churn',
   'budget',
   'reconcile-unknown',
   'spec-revalidation',
+  'plan-invalid',
+  /**
+   * KAR-11.4 AC6, at **v4** — F2.5's rule table refused a proposed patch
+   * (docs/06-planning-and-replanning.md §4.3).
+   *
+   * Its own reason rather than a reuse of `churn`, because the two ask for
+   * different things. `churn` says *the plan rests on a premise only you can
+   * supply*; this says *the run wanted to do a specific thing and policy would
+   * not let it* — and the remedy is the rejected patch sitting in the approval
+   * queue with an approve button on it. *"A rejection is a 'not without you',
+   * not a dead end."*
+   */
+  'patch-rejected',
 ] as const;
 
 /** The four effect types of docs/05-durable-execution.md §8.3 — each has its
@@ -294,11 +315,96 @@ export const RunNeedsHumanSchema = z.strictObject({
 
 // ── planning ─────────────────────────────────────────────────────────────────
 
+/**
+ * KAR-11.1 AC6 — the two tiers 06 §6 proposes, and no third.
+ *
+ * A closed vocabulary rather than a free string because the whole purpose of
+ * the field is a join: the measurement is *"alternate the routine-patch tier
+ * per run for ~20 runs and compare"*, and a dimension whose values are typed by
+ * hand at each call site cannot be grouped by.
+ *
+ * **This story builds no tier-switching logic.** 06 §6 is explicit that the
+ * tier proposal is *"a proposal with a measurement plan attached, not a
+ * finding"*; the vocabulary exists so the measurement is possible later without
+ * an upcaster, which is the entirety of AC6.
+ */
+export const PLANNER_TIERS = ['strongest', 'cheap'] as const;
+
+export type PlannerTier = (typeof PLANNER_TIERS)[number];
+
+/**
+ * Which model planned, at what reasoning effort, in which tier.
+ *
+ * `effort` is nullable rather than optional: *"where the adapter exposes a
+ * reasoning-effort control"* (AC8) means some adapters expose none, and `null`
+ * records that as an answer. An omitted field would be indistinguishable from
+ * "nobody recorded it", which is the state this whole field exists to end.
+ */
+export const PlannerAttributionSchema = z.strictObject({
+  model: singleLine(),
+  effort: singleLine().nullable(),
+  tier: z.enum(PLANNER_TIERS),
+});
+
+export type PlannerAttribution = z.infer<typeof PlannerAttributionSchema>;
+
+/**
+ * KAR-11.1 AC5, AC6 — v2 adds `planner`. See schemas/CHANGELOG.md.
+ *
+ * Optional, and the v1 → v2 upcaster is the identity, because a v1 payload
+ * genuinely does not know which model planned: 06 §6's measurement is a join
+ * over runs, and a fabricated `model` would poison exactly the comparison the
+ * field was added to make possible. Every proposal DeFlow writes carries it —
+ * `compilePlanV1` has no path that omits it — so the gap is confined to
+ * ledgers written before the field existed.
+ */
 export const PlanProposedSchema = z.strictObject({
   version: z.number().int().positive(),
   planHash: PlanHashSchema,
   graph: PlanGraphSchema,
   by: ProposedBySchema,
+  planner: PlannerAttributionSchema.optional(),
+});
+
+/**
+ * KAR-11.1 / 06 §3.5 — a plan version that did not validate.
+ *
+ * *"Diagnostics are events, not exceptions."* The document itself is
+ * deliberately **not** carried: a plan that failed validation is never
+ * persisted to the `plan` table (AC5's insert is on the accepted document
+ * only), and putting the rejected graph in the event would put a document into
+ * the ledger that no `plan` row backs — which is the torn state the
+ * content-addressed table exists to make impossible. The hash identifies it;
+ * the diagnostics say what was wrong with it; the retry's packet carries them
+ * verbatim.
+ */
+export const PlanDiagnosticSchema = z.strictObject({
+  severity: z.enum(PLAN_DIAGNOSTIC_SEVERITIES),
+  code: z.enum(PLAN_DIAGNOSTIC_CODES),
+  /**
+   * KAR-11.2 widens this from `NodeIdSchema` to a plain non-empty string, and
+   * the widening is the whole reason `plan.validation_failed` is at v2.
+   *
+   * Two of §3's diagnostics cannot name a valid `NodeId` by construction:
+   * `INVALID_NODE_ID` exists precisely to report an id the charset refuses, and
+   * `CRITERION_UNCOVERED` is a fault of the document rather than of any node, so
+   * it carries `PLAN_SCOPE` (`(plan)`). A validator that crashes on the faults
+   * it was written to catch is worse than no validator, and the parentheses in
+   * `PLAN_SCOPE` keep the sentinel outside the charset a real id could occupy.
+   */
+  node: z.string().min(1),
+  key: z.string().min(1),
+  message: singleLine(),
+});
+
+export const PlanValidationFailedSchema = z.strictObject({
+  version: z.number().int().positive(),
+  /** The rejected document's hash. Nothing stores the document under it. */
+  planHash: PlanHashSchema,
+  by: ProposedBySchema,
+  /** 0 for the first attempt, 1 for the one retry 06 §3.5 allows. */
+  attempt: z.number().int().nonnegative(),
+  diagnostics: z.array(PlanDiagnosticSchema).min(1),
 });
 
 /** F2.4 — the proposal is recorded even when it is rejected, which is the
@@ -318,23 +424,135 @@ export const PlanProposedSchema = z.strictObject({
  * Optional, because a planner-proposed patch genuinely has no cause to state
  * and `'unknown'` would be a value nobody could act on.
  */
+/**
+ * KAR-11.3 AC6 — v3 adds `basePlanHash`: the plan version the proposer derived
+ * its ops against.
+ *
+ * On the proposal for the same reason `cause` is, and the boundary is worth
+ * restating because it is the one somebody will want to move: `basePlanHash` is
+ * not a property of the ops. The same three ops derived against v3 and against
+ * v7 are the *same patch* and a *different proposal*, and which of the two it
+ * is decides whether the patch may apply at all — 06 §4.2's optimistic
+ * concurrency compares this against `run.plan_hash` and rejects a mismatch with
+ * `PATCH_STALE` rather than rebasing, because *"the proposer had a reason based
+ * on a graph that no longer exists"*.
+ *
+ * Optional, because a v1 and a v2 payload have none and there is no honest hash
+ * to lift: the run's *current* plan is right there, and stamping it on a
+ * historical proposal would make it read as having passed a concurrency check
+ * nobody ran. Absent is a value the scrubber can exclude; a plausible wrong one
+ * is not.
+ */
 export const PlanPatchProposedSchema = z.strictObject({
   patch: PlanPatchSchema,
   cause: z.enum(PATCH_CAUSES).optional(),
+  basePlanHash: PlanHashSchema.optional(),
 });
 
+/**
+ * KAR-11.4 AC8 — v2 adds `proposedBy`: who authored the patch that produced
+ * this version.
+ *
+ * `decision.by` is not the same fact and cannot stand in for it. That field
+ * says who *decided* — `'policy'` for a rule that fired, `'human'` for an
+ * operator answering the approval queue — and the case this exists for is a
+ * patch a human **proposed** which the rule table then auto-applied on its
+ * merits. §7's reset hangs on exactly that distinction: a human-supplied
+ * premise invalidates the churn window, and a projection that could not tell a
+ * human's patch from the planner's would either never reset the breaker or
+ * reset it on the planner's own replans, which is the livelock.
+ *
+ * Optional, because a v1 payload genuinely does not say and there is no honest
+ * value to lift: the run's current proposer is not the historical one, and
+ * stamping `'planner'` on every old event would be a guess that reads as a
+ * fact.
+ */
 export const PlanPatchedSchema = z.strictObject({
   version: z.number().int().positive(),
   fromHash: PlanHashSchema,
   toHash: PlanHashSchema,
   patchId: z.string().min(1),
   decision: PatchDecisionSchema,
+  proposedBy: ProposedBySchema.optional(),
 });
 
+/**
+ * KAR-11.4 AC5 — the patch is waiting for a human, and this is the event the
+ * approval queue is projected from.
+ *
+ * A kind of its own rather than a `plan.patched` with `decision: 'queued'`:
+ * that payload carries the `fromHash`/`toHash` of a plan document that was
+ * actually written, and a queued patch writes none. NF10 is why it exists at
+ * all — *"the run wanted to do X and is waiting to be allowed to"* is a UI
+ * state, so it has to trace to an event, and a queue derived only from the
+ * absence of a decision could not say which rule queued it or what it was
+ * estimated to cost.
+ */
+export const PlanPatchQueuedSchema = z.strictObject({
+  patchId: z.string().min(1),
+  /** The rule that fired — `escalates-permission`, or `default`. */
+  rule: z.string().min(1),
+  /** F9.3's figures as they stood when the rule was applied, so the operator
+   * approves against the estimate that was actually ruled on. */
+  estimate: z.strictObject({
+    costUsdDelta: z.number().finite().nullable(),
+    blastRadiusFiles: nonNegativeInt,
+    maxPermission: PermissionLevelSchema,
+    replanDepth: nonNegativeInt,
+  }),
+});
+
+/**
+ * KAR-11.4 AC10 — the F2.5 rule table this run is pinned to, recorded once, at
+ * run start (docs/06-planning-and-replanning.md §4.3).
+ *
+ * The **rules travel with it**, not only their digest. A digest alone would
+ * detect a mid-run edit and still leave the engine with nothing to evaluate but
+ * the edited file — which is the failure the pin exists to prevent — and a
+ * replay of a finished run would be judged by whatever the config says today.
+ */
+export const PolicyPatchLoadedSchema = z.strictObject({
+  source: z.enum(['config', 'default']),
+  hash: Sha256Schema,
+  rules: PatchPolicyTableSchema,
+});
+
+/**
+ * KAR-11.4 AC10 — the file on disk no longer matches what this run is playing
+ * by.
+ *
+ * Recorded rather than acted on. *"Surfacing the mismatch rather than ignoring
+ * it matters: an operator who edits the config expecting it to take effect and
+ * gets no signal will assume the engine is broken."* The rules do not move —
+ * that is the point of the pin — so this event changes no decision; it changes
+ * what the operator is told.
+ */
+export const PolicyPatchDriftedSchema = z.strictObject({
+  /** What this run is judged by. */
+  pinnedHash: Sha256Schema,
+  /** What `.DeFlow/config.yaml` hashes to right now. */
+  configHash: Sha256Schema,
+});
+
+/**
+ * KAR-11.2 AC11 — v2 adds `diagnostics` and a third rejecter, `'validation'`.
+ *
+ * 06 §3.5: *"a failing **patch** is rejected outright — never partially
+ * applied"*, and EPIC-11-S18's second scenario is the reason the rejecter is a
+ * third value rather than a reuse of `'policy'`: the policy engine asks *should
+ * we?* and the validator asks *can we?*, a `yes` to the first can never
+ * substitute for the second, and an operator reading the approval queue has to
+ * be able to tell which one refused their patch.
+ *
+ * `diagnostics` is optional because a policy rejection has none — `rule` is its
+ * whole reason — and a v1 payload has none either, which is what makes the
+ * upcaster an identity rather than a fabrication.
+ */
 export const PlanPatchRejectedSchema = z.strictObject({
   patchId: z.string().min(1),
   rule: z.string().min(1),
-  by: z.enum(['policy', 'human']),
+  by: z.enum(['policy', 'human', 'validation']),
+  diagnostics: z.array(PlanDiagnosticSchema).min(1).optional(),
 });
 
 // ── node lifecycle ───────────────────────────────────────────────────────────
@@ -1435,11 +1653,15 @@ export const EVENT_SCHEMAS = {
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
-  'run.needs_human': { v: 2, payload: RunNeedsHumanSchema },
-  'plan.proposed': { v: 1, payload: PlanProposedSchema },
-  'plan.patch.proposed': { v: 2, payload: PlanPatchProposedSchema },
-  'plan.patched': { v: 1, payload: PlanPatchedSchema },
-  'plan.patch.rejected': { v: 1, payload: PlanPatchRejectedSchema },
+  'run.needs_human': { v: 4, payload: RunNeedsHumanSchema },
+  'plan.proposed': { v: 2, payload: PlanProposedSchema },
+  'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
+  'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
+  'plan.patched': { v: 2, payload: PlanPatchedSchema },
+  'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },
+  'policy.patch.loaded': { v: 1, payload: PolicyPatchLoadedSchema },
+  'policy.patch.drifted': { v: 1, payload: PolicyPatchDriftedSchema },
+  'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
   'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },

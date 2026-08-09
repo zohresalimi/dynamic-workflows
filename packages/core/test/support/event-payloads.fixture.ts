@@ -165,7 +165,30 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     survivors: [{ node: NODE, attempt: 1, pid: 48_215, pgid: 48_213, stat: 'D' }],
   },
   'run.needs_human': { reason: 'churn', detail: 'four replans in twelve minutes' },
-  'plan.proposed': { version: 1, planHash: SHA, graph: planGraph, by: 'planner' },
+  'plan.proposed': {
+    version: 1,
+    planHash: SHA,
+    graph: planGraph,
+    by: 'planner',
+    planner: { model: 'the-model-the-plan-was-compiled-on', effort: 'max', tier: 'strongest' },
+  },
+  'plan.validation_failed': {
+    version: 1,
+    planHash: OTHER_SHA,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'READ_UNREACHABLE',
+        node: NODE,
+        key: 'finding/db-schema',
+        message:
+          "node 'recon-auth-surface' reads 'finding/db-schema' but no ancestor writes it and " +
+          'it is not in the pinned spec',
+      },
+    ],
+  },
   'plan.patch.proposed': { patch: planPatch },
   'plan.patched': {
     version: 2,
@@ -173,8 +196,28 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     toHash: OTHER_SHA,
     patchId: 'patch-3a91f0',
     decision: { decision: 'auto', by: 'policy', rule: 'small-blast-radius', at: AT },
+    proposedBy: 'planner',
+  },
+  'plan.patch.queued': {
+    patchId: 'patch-3a91f0',
+    rule: 'escalates-permission',
+    estimate: {
+      costUsdDelta: 6.2,
+      blastRadiusFiles: 140,
+      maxPermission: 'worktree',
+      replanDepth: 2,
+    },
   },
   'plan.patch.rejected': { patchId: 'patch-3a91f0', rule: 'permission-escalation', by: 'policy' },
+  'policy.patch.loaded': {
+    source: 'config',
+    hash: SHA,
+    rules: [
+      { id: 'escalates-permission', when: { permissionEscalation: true }, decision: 'approve' },
+      { id: 'default', decision: 'approve' },
+    ],
+  },
+  'policy.patch.drifted': { pinnedHash: SHA, configHash: OTHER_SHA },
   'node.scheduled': {
     node: NODE,
     provider: 'claude-code',

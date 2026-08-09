@@ -33,7 +33,11 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
+  PlanPatchedSchema,
   PlanPatchProposedSchema,
+  PlanPatchRejectedSchema,
+  PlanProposedSchema,
+  PlanValidationFailedSchema,
   RunNeedsHumanSchema,
 } from './event-payloads.ts';
 
@@ -455,6 +459,40 @@ registerUpcaster({
 });
 
 /**
+ * `plan.patch.proposed` v2 → v3 (KAR-11.3). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field, `basePlanHash`, and it is left **absent** for the
+ * same reason `cause` is: the honest-looking value is the run's *current* plan
+ * hash, and stamping that on a historical proposal would make it read as having
+ * been derived against a graph it could not have seen. `basePlanHash` exists to
+ * answer exactly that question, so a fabricated one is worse than none.
+ */
+registerUpcaster({
+  kind: 'plan.patch.proposed',
+  from: 2,
+  to: PlanPatchProposedSchema,
+  fixture: {
+    patch: {
+      schemaId: 'DeFlow.planpatch.v1',
+      id: 'reroute-run_20260802T141133Z_9f2a1c-impl-1-1',
+      proposedBy: 'scheduler',
+      reason: 'impl-1 failed with provider.rate-limited; retrying attempt 1 on codex',
+      ops: [{ op: 'replace-provider', node: 'impl-1', provider: 'codex' }],
+      policy: {
+        estimatedCostDeltaUsd: 0,
+        estimatedWallClockDeltaMs: 0,
+        blastRadius: { paths: [], nodeCount: 1 },
+        replanDepth: 0,
+        escalatesPermission: null,
+        addsWriteCapability: false,
+      },
+    },
+    cause: 'quota',
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `run.needs_human` v1 → v2 (KAR-10.3). See schemas/CHANGELOG.md.
  *
  * v2 widens `reason` by one member, `spec-revalidation`, and changes nothing
@@ -506,6 +544,192 @@ registerUpcaster({
       criteria: [{ id: 'unit-tests-pass', status: 'satisfied' }],
       findings: [],
       summary: 'Every criterion this gate speaks to is satisfied.',
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `run.needs_human` v2 → v3 (KAR-11.1). See schemas/CHANGELOG.md.
+ *
+ * v3 widens `reason` by one member, `plan-invalid`, and changes nothing else,
+ * so the hop is the identity for exactly the reason the v1 → v2 hop above is:
+ * every v2 payload is already a valid v3 one, and what the version buys is the
+ * *other* direction — a daemon that predates `plan-invalid` refuses the event
+ * instead of rendering an escalation whose reason it cannot name.
+ */
+registerUpcaster({
+  kind: 'run.needs_human',
+  from: 2,
+  to: RunNeedsHumanSchema,
+  fixture: {
+    reason: 'spec-revalidation',
+    detail: 'the amended spec adds a criterion the current plan does not cover',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.proposed` v1 → v2 (KAR-11.1). See schemas/CHANGELOG.md.
+ *
+ * v2 adds the optional `planner` attribution — which model planned, at what
+ * reasoning effort, in which tier (06 §6, AC6) — so the hop is the identity and
+ * the field is left **absent**.
+ *
+ * There is no honest value to lift, and the shape of the dishonesty is worth
+ * naming because it is tempting: the run's *current* planner model is right
+ * there in the config, and stamping it on a historical proposal would make the
+ * one measurement this field exists for — join the tier against gate first-pass
+ * rate and replans-per-run — report a comparison between a model and itself.
+ * Absent is a value the analysis can exclude; a plausible wrong one is not.
+ */
+registerUpcaster({
+  kind: 'plan.proposed',
+  from: 1,
+  to: PlanProposedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'a'.repeat(64)}`,
+    graph: {
+      schemaId: 'DeFlow.plangraph.v1',
+      runId: 'run_20260802T141133Z_9f2a1c',
+      version: 1,
+      planHash: `sha256-${'a'.repeat(64)}`,
+      parent: null,
+      taskSpecHash: `sha256-${'b'.repeat(64)}`,
+      createdBy: 'planner',
+      createdAt: '2026-08-02T14:11:33.000Z',
+      nodes: [
+        {
+          id: 'implement',
+          title: 'Implement the change',
+          type: 'agent',
+          deps: [],
+          lifecycle: 'active',
+          reads: [{ kind: 'spec', section: 'goal' }],
+          writes: [],
+          permission: 'worktree',
+          pathScopes: { write: ['packages/ui/**'] },
+          returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+          retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+          budget: {},
+          brief: 'Migrate the components named in the spec.',
+          provider: { prefer: ['claude'], requires: ['structuredOutput'] },
+          resume: 'always-replay',
+        },
+      ],
+      edges: [],
+    },
+    by: 'planner',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.validation_failed` v1 → v2 (KAR-11.2). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `diagnostics[].node` from `NodeId` to a non-empty string, so every
+ * v1 payload still fits and the hop is the identity.
+ *
+ * The widening is not a relaxation of a rule: it is what lets the two
+ * diagnostics that *cannot* name a valid `NodeId` be recorded at all —
+ * `INVALID_NODE_ID`, whose whole subject is an id the charset refuses, and
+ * `CRITERION_UNCOVERED`, which is a fault of the document and carries
+ * `PLAN_SCOPE`. A payload schema that refused them would make the validator
+ * crash on exactly the faults it exists to catch.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 1,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'READ_UNREACHABLE',
+        node: 'implement',
+        key: 'finding/db-schema',
+        message:
+          "node 'implement' reads 'finding/db-schema' but no ancestor writes it and it is not " +
+          'in the pinned spec',
+      },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.patch.rejected` v1 → v2 (KAR-11.2). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `by` with a third value, `'validation'`, and adds an optional
+ * `diagnostics` array. Both are additive, so the hop is the identity — and
+ * `by` is deliberately *not* rewritten: a v1 rejection really was a policy or a
+ * human decision, because structural revalidation did not exist to reject
+ * anything when it was written.
+ */
+registerUpcaster({
+  kind: 'plan.patch.rejected',
+  from: 1,
+  to: PlanPatchRejectedSchema,
+  fixture: {
+    patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
+    rule: 'replan-depth-exceeded',
+    by: 'policy',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `run.needs_human` v3 → v4 (KAR-11.4). See schemas/CHANGELOG.md.
+ *
+ * v4 widens `reason` by one member, `patch-rejected`, and changes nothing else,
+ * so the hop is the identity for the reason the two hops above it are: every v3
+ * payload is already a valid v4 one, and what the version buys is the other
+ * direction — a daemon that predates the reason refuses the event rather than
+ * rendering an escalation it cannot name.
+ */
+registerUpcaster({
+  kind: 'run.needs_human',
+  from: 3,
+  to: RunNeedsHumanSchema,
+  fixture: {
+    reason: 'plan-invalid',
+    detail: 'the second compilation still leaves gate coverage incomplete',
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `plan.patched` v1 → v2 (KAR-11.4). See schemas/CHANGELOG.md.
+ *
+ * v2 adds the optional `proposedBy` — who authored the patch — so the hop is
+ * the identity and the field is left **absent**.
+ *
+ * There is no honest value to lift, and the temptation is worth naming because
+ * the wrong answer is load-bearing rather than cosmetic: `decision.by` is right
+ * there, and copying it would say a patch was human-authored whenever a human
+ * approved it. §7's breaker reset keys on exactly this field, so that guess
+ * would clear a churn trip on the strength of an operator having clicked
+ * approve on the planner's own fourth replan.
+ */
+registerUpcaster({
+  kind: 'plan.patched',
+  from: 1,
+  to: PlanPatchedSchema,
+  fixture: {
+    version: 2,
+    fromHash: `sha256-${'a'.repeat(64)}`,
+    toHash: `sha256-${'b'.repeat(64)}`,
+    patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u3',
+    decision: {
+      decision: 'auto',
+      by: 'policy',
+      rule: 'read-only-analysis',
+      at: '2026-08-07T09:30:00.000Z',
     },
   },
   up: (payload) => payload,

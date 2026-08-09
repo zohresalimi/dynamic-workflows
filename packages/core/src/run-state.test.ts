@@ -95,6 +95,15 @@ const populated: RunState = {
   outcome: null,
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
   needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
+  patchPolicy: {
+    hash: SHA,
+    source: 'config',
+    rules: [
+      { id: 'expensive', when: { costDeltaUsd: '> 5.00' }, decision: 'approve' },
+      { id: 'default', decision: 'approve' },
+    ],
+    drift: null,
+  },
   cancel: { mode: 'forceful', requestedSeq: 6 },
   planHash: SHA,
   planVersion: 3,

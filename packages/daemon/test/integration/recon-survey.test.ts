@@ -434,6 +434,10 @@ suite('EPIC-10-S24, S28 — what the planner is handed (test plan #7)', () => {
           fromEvidence: [...stored.fact.provenance.fromEvidence],
           sourceEvent: stored.writtenSeq,
         })),
+        // KAR-11.1's third planner input. Empty here on purpose: this spec is
+        // about what recon leaves behind, and an empty list is the honest
+        // answer for a scene that never probed a binary.
+        capabilities: [],
       });
 
       const keys = packet.segments
@@ -445,11 +449,15 @@ suite('EPIC-10-S24, S28 — what the planner is handed (test plan #7)', () => {
       // AC7 — no transcript, in any form.
       expect(packet.segments.some((segment) => segment.kind === 'history.summary')).toBe(false);
       expect(packet.totals.byKind['history.summary']).toBe(0);
+      // The trailing `fact` is KAR-11.1's capability-list segment: one per
+      // packet, always present, and empty-but-stated for a scene with no
+      // probed rows (`renderCapabilitySegmentText`).
       expect(packet.segments.map((segment) => segment.kind)).toMatchInlineSnapshot(`
         [
           "pinned.spec",
           "pinned.spec",
           "pinned.constraints",
+          "fact",
           "fact",
           "fact",
           "fact",

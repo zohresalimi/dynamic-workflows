@@ -72,6 +72,7 @@ import {
 import { appendEvents, appendEventsConsumingWakes, headSeq, scheduleWake } from '@DeFlow/ledger';
 import type { Git } from '../git/git.ts';
 import { enforceHandoff, type HandoffSession, type HandoffValidator } from '../handoff/enforce.ts';
+import { patchPolicyDraft, workspacePatchPolicy } from '../plan/patch-policy.ts';
 import { openSpecApprovalGate } from '../spec/gate.ts';
 
 /**
@@ -307,6 +308,12 @@ async function settle(
   }
 
   const repo = await options.readRepo();
+  // KAR-11.4 AC10 — F2.5's rule table, read from this repository's
+  // `.DeFlow/config.yaml` **once**, here, and pinned into the run beside
+  // `run.created`. From this instant the table travels in the ledger and the
+  // file is never consulted for a decision again, which is the whole of "a
+  // mid-run edit does not silently change the rules a live run plays by".
+  const patchPolicy = await workspacePatchPolicy(repo.cwd);
   // KAR-10.3 AC1 — `run.created` and the F1.3 gate in one transaction. A crash
   // between them would leave a run with a spec, no gate and nothing waiting: the
   // one failure mode where the run simply never comes back, and the one the
@@ -325,6 +332,15 @@ async function settle(
           repo: { head: repo.head, branch: repo.branch },
         },
       },
+      // Same transaction as `run.created`, deliberately: a run whose first tick
+      // could be judged by a different table than its second is exactly the
+      // state the pin exists to prevent.
+      patchPolicyDraft({
+        runId: options.runId,
+        ts: options.ts,
+        epoch: options.epoch,
+        policy: patchPolicy,
+      }),
     ]);
     openSpecApprovalGate({
       db: options.db,
