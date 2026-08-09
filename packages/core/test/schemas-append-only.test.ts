@@ -49,6 +49,10 @@ const SHIPPED: Record<string, string> = {
   'DeFlow.verdict.v1': 'c089c51606833975418c288e8be97bf3839e8fc4582adce448c7b69394e8843d',
   // Shipped 2026-08-07, KAR-10.4 — the verdict names the specHash it judged.
   'DeFlow.verdict.v2': '8c9e6baf6ddf07bf32c1be0b0562951f40364e442be13c7c9cf2d12c706bfe24',
+  // Shipped 2026-08-09, KAR-12.3 — a finding's line is anchored to the blob it
+  // was read from, and a verdict carries what it cost.
+  'DeFlow.finding.v2': '2ed81aef6dd9c55ae0f7c37d597beee80236d7786801d0a739d7db6270eed31a',
+  'DeFlow.verdict.v3': 'bad241b0e8610ae7e8a9913b76fee9221ce7018f11a077821b686a32820f200d',
 };
 
 suite('the committed schemas are append-only (AC6)', () => {

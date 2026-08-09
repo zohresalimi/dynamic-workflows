@@ -46,7 +46,14 @@ export interface FindingRange {
   readonly endCol?: number;
 }
 
-export interface GateFinding {
+/**
+ * What a parser produces: everything readable from the tool's own output.
+ *
+ * There is no `blobSha` here and there cannot be one — the tool says `line 42`
+ * and says nothing about which file content line 42 belonged to. That is a fact
+ * about the worktree, read by `anchorFindings` (./anchor.ts) immediately after.
+ */
+export interface ParsedFinding {
   /** 12 hex characters — see `findingId`. */
   readonly id: string;
   readonly severity: GateSeverity;
@@ -58,10 +65,26 @@ export interface GateFinding {
   readonly message: string;
   /** The acceptance criterion this bears on, when the gate declared one. */
   readonly criterion?: CriterionId;
-  /** The exact blob the range refers to. KAR-12.3 makes this mandatory. */
-  readonly blobSha?: string;
   /** The full tool output this finding was read out of. */
   readonly artifact?: Handle;
+}
+
+/**
+ * A parsed finding with its anchor (KAR-12.3 AC6).
+ *
+ * **`blobSha` is optional in this type and mandatory on the wire**, and the
+ * split is deliberate rather than a loose end. A finding whose file could not
+ * be read — a path the tool invented, a file the attempt deleted — is still a
+ * true report and is kept; what it cannot have is a trustworthy line anchor. So
+ * the gate tier can hold an unanchored finding, and `toDomainFinding` writes no
+ * `location` for one. `DeFlow.finding.v2` then rejects a `location` with no
+ * `blobSha` outright, which is where AC6 is actually enforced: nothing can
+ * record a line number whose revision is unknown.
+ */
+export interface GateFinding extends ParsedFinding {
+  /** The exact blob the range refers to. Absent only when the file could not
+   * be read at all; see the note above. */
+  readonly blobSha?: string;
 }
 
 /**

@@ -1,0 +1,7 @@
+{
+  "id": "a13f0c2b91e4",
+  "severity": "major",
+  "location": { "file": "src/http/auth.ts", "line": 12 },
+  "message": "the line above names no blob, so a later revision would redraw it against line 12 of a file it never described",
+  "evidence": []
+}

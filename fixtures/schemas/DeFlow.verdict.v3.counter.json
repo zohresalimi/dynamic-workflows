@@ -1,0 +1,11 @@
+{
+  "schemaId": "DeFlow.verdict.v3",
+  "outcome": "pass",
+  "gate": "typecheck-gate",
+  "evaluatedNode": "migrate-router-guards",
+  "by": { "node": "typecheck-gate", "provider": "codex", "model": "gpt-5-codex" },
+  "criteria": [{ "id": "typecheck-clean", "status": "satisfied" }],
+  "findings": [],
+  "summary": "the cost below claims this verdict was free, which is a number rather than a blank",
+  "cost": { "durationMs": -1 }
+}

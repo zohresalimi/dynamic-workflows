@@ -27,14 +27,17 @@ import {
   type CriterionId,
   type CriterionStatus,
   type Finding,
+  type FindingV2,
   type GateId,
   type Handle,
+  materialiseCriteria,
   type NodeId,
   toSingleLine,
-  VERDICT_V2_SCHEMA_ID,
+  VERDICT_V3_SCHEMA_ID,
   type VerdictOutcome,
-  type VerdictV2,
-  VerdictV2Schema,
+  type VerdictV3,
+  VerdictV3Schema,
+  verdictCost,
 } from '@DeFlow/core';
 import type { GateFinding, GateSeverity } from './finding.ts';
 
@@ -63,17 +66,31 @@ export function criterionStatusFor(outcome: VerdictOutcome): CriterionStatus {
   return outcome === 'fail' ? 'unsatisfied' : 'unverifiable';
 }
 
-/** One gate finding as the domain model's `Finding`. */
-export function toDomainFinding(finding: GateFinding, evidence: readonly Handle[]): Finding {
+/**
+ * One gate finding as the domain model's `Finding` (KAR-12.3: `.v2`, so the
+ * line carries the blob it was read from).
+ *
+ * **An unanchored finding is written with no `location` at all.** Its file
+ * could not be read — deleted by the attempt, or a path the tool invented — so
+ * there is no revision to name, and `DeFlow.finding.v2` refuses a line number
+ * whose revision is unknown. The finding itself survives: what the tool said is
+ * still true, and only the claim about *where* is dropped (./anchor.ts).
+ */
+export function toDomainFinding(finding: GateFinding, evidence: readonly Handle[]): FindingV2 {
   return {
     id: finding.id,
     severity: SEVERITY_TO_DOMAIN[finding.severity],
     ...(finding.criterion === undefined ? {} : { criterion: finding.criterion }),
-    location: {
-      file: finding.file,
-      line: finding.range.startLine,
-      ...(finding.range.endLine === undefined ? {} : { endLine: finding.range.endLine }),
-    },
+    ...(finding.blobSha === undefined
+      ? {}
+      : {
+          location: {
+            file: finding.file,
+            line: finding.range.startLine,
+            ...(finding.range.endLine === undefined ? {} : { endLine: finding.range.endLine }),
+            blobSha: finding.blobSha,
+          },
+        }),
     message: toSingleLine(`${finding.rule}: ${finding.message}`),
     evidence: [...evidence],
   };
@@ -92,6 +109,8 @@ export interface SealVerdict {
   /** The full tool output, when there was any. */
   readonly evidence: readonly Handle[];
   readonly summary: string;
+  /** Measured by the runner from the injected clock (KAR-12.3 AC8). */
+  readonly durationMs: number;
 }
 
 /**
@@ -103,10 +122,10 @@ export interface SealVerdict {
  * that produced it — not three layers later, in an append that fails for a run
  * nobody can now reproduce.
  */
-export function sealVerdict(input: SealVerdict): VerdictV2 {
+export function sealVerdict(input: SealVerdict): VerdictV3 {
   const status = criterionStatusFor(input.outcome);
-  return VerdictV2Schema.parse({
-    schemaId: VERDICT_V2_SCHEMA_ID,
+  return VerdictV3Schema.parse({
+    schemaId: VERDICT_V3_SCHEMA_ID,
     outcome: input.outcome,
     gate: input.gate,
     evaluatedNode: input.evaluatedNode,
@@ -115,9 +134,15 @@ export function sealVerdict(input: SealVerdict): VerdictV2 {
       provider: DETERMINISTIC_PROVIDER,
       model: DETERMINISTIC_MODEL,
     },
-    criteria: input.criteria.map((id) => ({ id, status })),
+    criteria: materialiseCriteria(
+      input.criteria,
+      input.criteria.map((id) => ({ id, status })),
+    ),
     findings: input.findings.map((finding) => toDomainFinding(finding, input.evidence)),
     summary: toSingleLine(input.summary),
     specHash: input.specHash,
+    // A deterministic gate ran a process, not a model: it accounts for no
+    // tokens at all, so the cost is a duration and two absences (AC8).
+    cost: verdictCost({ accounting: 'none', durationMs: input.durationMs }),
   });
 }

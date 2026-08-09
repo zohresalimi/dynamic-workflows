@@ -33,6 +33,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.contextpacket.v1': join(corpus, 'DeFlow.contextpacket.v1.valid.json'),
   'DeFlow.fact.v1': join(corpus, 'DeFlow.fact.v1.valid.json'),
   'DeFlow.finding.v1': join(corpus, 'DeFlow.finding.v1.valid.json'),
+  'DeFlow.finding.v2': join(corpus, 'DeFlow.finding.v2.valid.json'),
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
   'DeFlow.reconfact.v1': join(corpus, 'DeFlow.reconfact.v1.valid.json'),
@@ -44,6 +45,7 @@ const CONFORMING: Record<string, string> = {
   ),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
+  'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),
 };
 
 suite('the emitted directory loads (AC3, test plan #4)', () => {

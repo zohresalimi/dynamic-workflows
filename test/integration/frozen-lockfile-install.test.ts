@@ -157,12 +157,18 @@ suite('every workspace dependency is linked, never downloaded', () => {
   // @DeFlow/web has no consumer yet: packages/cli gains it with KAR-01.3, when
   // the cli starts shipping the built UI. Updating this list is the visible diff
   // that says the dependency graph of docs/16-repo-layout.md §4 changed.
+  //
+  // @DeFlow/gates arrived here with KAR-12.3, as a devDependency of the daemon:
+  // the gate contract is enforced by the daemon's handoff loop and its Ajv
+  // store, so the specs that prove it run there. The production edge follows
+  // when the daemon starts executing gate nodes.
   it('links every workspace package that currently has a consumer', () => {
     const linked = new Set(edges.map((edge) => edge.dependency));
     expect([...linked].sort()).toEqual([
       '@DeFlow/adapters',
       '@DeFlow/core',
       '@DeFlow/daemon',
+      '@DeFlow/gates',
       '@DeFlow/ledger',
       '@DeFlow/mock-agent',
       '@DeFlow/testkit',

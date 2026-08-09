@@ -14,16 +14,20 @@ import { SchemaIdSchema } from './ids.ts';
 import {
   JSON_SCHEMA_DIALECT,
   REGISTERED_SCHEMA_IDS,
+  RUN_SCHEMA_FILENAMES,
   schemaRegistrationOf,
   serializeSchemaDocument,
   toJsonSchemaDocument,
   UnknownSchemaId,
+  VERDICT_SCHEMA_FILE,
 } from './json-schema.ts';
+import { VERDICT_V3_SCHEMA_ID } from './verdict.ts';
 
 const EXPECTED_IDS = [
   'DeFlow.contextpacket.v1',
   'DeFlow.fact.v1',
   'DeFlow.finding.v1',
+  'DeFlow.finding.v2',
   'DeFlow.plangraph.v1',
   'DeFlow.planpatch.v1',
   'DeFlow.reconfact.v1',
@@ -32,6 +36,7 @@ const EXPECTED_IDS = [
   'DeFlow.taskspec.v1',
   'DeFlow.verdict.v1',
   'DeFlow.verdict.v2',
+  'DeFlow.verdict.v3',
 ];
 
 /** Every `$ref` in the document, wherever it appears. */
@@ -135,5 +140,35 @@ suite('serializeSchemaDocument', () => {
     await expect(
       serializeSchemaDocument(toJsonSchemaDocument('DeFlow.taskspec.v1')),
     ).toMatchFileSnapshot('__snapshots__/DeFlow.taskspec.v1.json');
+  });
+});
+
+/**
+ * KAR-12.3 AC1 — the gate contract, under the name a run directory knows it by.
+ *
+ * `verdict.schema.json` is the file a vendor CLI is handed on `--json-schema` /
+ * `--output-schema`, and it is the *same document* the daemon validates
+ * against: one name, one file, no second in-memory twin.
+ */
+suite('the verdict contract (KAR-12.3 AC1 · test plan #1, #2)', () => {
+  it('is the current verdict document, under the run directory name', () => {
+    expect(VERDICT_SCHEMA_FILE).toBe('verdict.schema.json');
+    expect(RUN_SCHEMA_FILENAMES[VERDICT_V3_SCHEMA_ID]).toBe(VERDICT_SCHEMA_FILE);
+  });
+
+  it('declares the 2020-12 dialect, the one MCP tool inputSchema defaults to', () => {
+    expect(toJsonSchemaDocument(VERDICT_V3_SCHEMA_ID).$schema).toBe(
+      'https://json-schema.org/draft/2020-12/schema',
+    );
+  });
+
+  it('names its schemaId in title, so a renamed file is still addressable', () => {
+    expect(toJsonSchemaDocument(VERDICT_V3_SCHEMA_ID).title).toBe(VERDICT_V3_SCHEMA_ID);
+  });
+
+  it('matches the committed file snapshot (test plan #1)', async () => {
+    await expect(
+      serializeSchemaDocument(toJsonSchemaDocument(VERDICT_V3_SCHEMA_ID)),
+    ).toMatchFileSnapshot('__snapshots__/verdict.schema.json');
   });
 });

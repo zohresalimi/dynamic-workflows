@@ -46,12 +46,13 @@ import {
   type NodeId,
   reasonCode,
   type VerdictOutcome,
-  type VerdictV2,
+  type VerdictV3,
 } from '@DeFlow/core';
 import { EXCERPT_BYTES, MAX_INLINE_PAYLOAD_BYTES, spillBytes } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
+import { anchorFindings, type BlobShaOf, blobShaIn } from './anchor.ts';
 import type { GateDefinition } from './definition.ts';
 import type { GateFinding } from './finding.ts';
 import { gateOutcome } from './outcome.ts';
@@ -128,6 +129,15 @@ export interface RunGateOptions {
   /** Called with the child's pid the moment it exists. Observability for the
    * process-group assertions; nothing in the runner reads it back. */
   readonly onSpawn?: (pid: number) => void;
+  /**
+   * KAR-12.3 AC6 — how a finding's file becomes the blob its range refers to.
+   *
+   * A port with a real default (`blobShaIn`, reading the directory the command
+   * ran in) rather than a required argument, because every caller wants the
+   * same thing and a test that wants to pin the anchor should be able to say
+   * so in one line.
+   */
+  readonly blobShaOf?: BlobShaOf;
 }
 
 export interface GateRun {
@@ -143,7 +153,7 @@ export interface GateRun {
   /** Non-`Z` members of the process group still alive after a timeout kill.
    * Empty on every path but a failed kill. */
   readonly survivors: readonly GroupMember[];
-  readonly verdict: VerdictV2;
+  readonly verdict: VerdictV3;
 }
 
 // ── argv ─────────────────────────────────────────────────────────────────────
@@ -360,7 +370,10 @@ export async function runGate(options: RunGateOptions): Promise<GateRun> {
   const evidence = storeEvidence(options.dataDir, captured);
   const evidenceHandles: readonly Handle[] = evidence === null ? [] : [evidence.handle];
 
-  const findings = child.toolMissing
+  // Parsed, then anchored: the tool's output says `line 42` and says nothing
+  // about which revision line 42 belonged to. The blob is read off the tree the
+  // command just ran against, which is the content it judged (AC6).
+  const parsed = child.toolMissing
     ? []
     : parseFindings(definition.findings.parser, {
         gate: definition.id,
@@ -369,6 +382,7 @@ export async function runGate(options: RunGateOptions): Promise<GateRun> {
         stderr: child.stderr,
         ...(definition.findings.path === undefined ? {} : { path: definition.findings.path }),
       });
+  const findings = anchorFindings(parsed, options.blobShaOf ?? blobShaIn(cwd));
 
   // The three ways a gate cannot answer, in the order they can be told apart.
   // `gate-no-output` is last because it is the residual: the command ran, it
@@ -418,6 +432,7 @@ export async function runGate(options: RunGateOptions): Promise<GateRun> {
       findings: reported,
       evidence: evidenceHandles,
       summary: summarise(definition, outcome, reason, reported),
+      durationMs,
     }),
   };
 }

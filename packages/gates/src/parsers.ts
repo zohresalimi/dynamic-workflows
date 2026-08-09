@@ -28,8 +28,8 @@
 import type { GateId } from '@DeFlow/core';
 import {
   findingId,
-  type GateFinding,
   type GateSeverity,
+  type ParsedFinding,
   repoRelativePosix,
   toPosix,
 } from './finding.ts';
@@ -74,7 +74,7 @@ interface Raw {
   readonly endCol?: number;
 }
 
-function mint(context: Mint, raw: Raw): GateFinding {
+function mint(context: Mint, raw: Raw): ParsedFinding {
   const file = repoRelativePosix(context.repoRoot, raw.file);
   return {
     id: findingId(context.gate, file, raw.rule, raw.message),
@@ -105,8 +105,8 @@ const jsonOrNull = (text: string): unknown => {
 /** `packages/ui/src/App.ts(4,25): error TS2345: Argument of type …` */
 const TSC_LINE = /^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.*)$/;
 
-function parseTsc(input: ParseInput): GateFinding[] {
-  const findings: GateFinding[] = [];
+function parseTsc(input: ParseInput): ParsedFinding[] {
+  const findings: ParsedFinding[] = [];
   for (const line of `${input.stdout}\n${input.stderr}`.split('\n')) {
     const match = TSC_LINE.exec(line.trim());
     if (match === null) continue;
@@ -149,7 +149,7 @@ const OXC_SEVERITY: Readonly<Record<string, GateSeverity>> = {
   advice: 'info',
 };
 
-function parseEslintJson(input: ParseInput): GateFinding[] {
+function parseEslintJson(input: ParseInput): ParsedFinding[] {
   const document = jsonOrNull(input.stdout);
   const diagnostics = (document as { diagnostics?: readonly OxcDiagnostic[] } | null)?.diagnostics;
   if (diagnostics === undefined) return [];
@@ -215,7 +215,7 @@ function biomePath(path: unknown): string {
   return '';
 }
 
-function parseBiomeJson(input: ParseInput): GateFinding[] {
+function parseBiomeJson(input: ParseInput): ParsedFinding[] {
   const document = jsonOrNull(input.stdout);
   const diagnostics = (document as { diagnostics?: readonly BiomeDiagnostic[] } | null)
     ?.diagnostics;
@@ -267,12 +267,12 @@ function frameLine(message: string, file: string): number | null {
   return match === null ? null : Number(match[1]);
 }
 
-function parseVitestJson(input: ParseInput): GateFinding[] {
+function parseVitestJson(input: ParseInput): ParsedFinding[] {
   const document = jsonOrNull(input.stdout);
   const suites = (document as { testResults?: readonly VitestSuite[] } | null)?.testResults;
   if (suites === undefined) return [];
 
-  const findings: GateFinding[] = [];
+  const findings: ParsedFinding[] = [];
   for (const suite of suites) {
     const file = repoRelativePosix(input.repoRoot, suite.name ?? '');
     for (const assertion of suite.assertionResults ?? []) {
@@ -323,8 +323,8 @@ const unescapeXml = (text: string): string =>
  * flat document with two element names that matter, and pulling an XML library
  * into the daemon to read it would be a dependency for one regex.
  */
-function parseJunitXml(input: ParseInput): GateFinding[] {
-  const findings: GateFinding[] = [];
+function parseJunitXml(input: ParseInput): ParsedFinding[] {
+  const findings: ParsedFinding[] = [];
   for (const testcase of input.stdout.matchAll(TESTCASE)) {
     const body = testcase[2] ?? '';
     const failure = FAILURE.exec(body);
@@ -391,8 +391,8 @@ const JSONL_SEVERITY: Readonly<Record<string, GateSeverity>> = {
   info: 'info',
 };
 
-function parseJsonl(input: ParseInput): GateFinding[] {
-  const findings: GateFinding[] = [];
+function parseJsonl(input: ParseInput): ParsedFinding[] {
+  const findings: ParsedFinding[] = [];
   for (const line of input.stdout.split('\n')) {
     if (line.trim() === '') continue;
     const document = jsonOrNull(line);
@@ -418,7 +418,7 @@ function parseJsonl(input: ParseInput): GateFinding[] {
 
 // ── the dispatch ─────────────────────────────────────────────────────────────
 
-const PARSERS: Readonly<Record<GateParser, (input: ParseInput) => GateFinding[]>> = {
+const PARSERS: Readonly<Record<GateParser, (input: ParseInput) => ParsedFinding[]>> = {
   tsc: parseTsc,
   'eslint-json': parseEslintJson,
   'biome-json': parseBiomeJson,
@@ -430,6 +430,6 @@ const PARSERS: Readonly<Record<GateParser, (input: ParseInput) => GateFinding[]>
   none: () => [],
 };
 
-export function parseFindings(parser: GateParser, input: ParseInput): readonly GateFinding[] {
+export function parseFindings(parser: GateParser, input: ParseInput): readonly ParsedFinding[] {
   return PARSERS[parser](input);
 }

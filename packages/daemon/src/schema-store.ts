@@ -122,7 +122,19 @@ export function loadSchemaDirectory(dir: string = defaultSchemasDir()): SchemaDi
     const schemaId = entry.slice(0, -'.json'.length);
     const document: unknown = JSON.parse(readFileSync(join(location, entry), 'utf8'));
     try {
-      validators.set(schemaId, wrap(ajv.compile(document as object)));
+      const validate = wrap(ajv.compile(document as object));
+      validators.set(schemaId, validate);
+      // KAR-12.3 AC1 — a run directory may know a document by a name other
+      // than its `schemaId`: the verdict contract is written as
+      // `verdict.schema.json`, because that is the path a vendor CLI is handed.
+      // The emitted document still carries its `schemaId` in `title`, so the
+      // *same compiled validator* answers to both. Registering the title rather
+      // than writing a second file is what keeps AC1's "there is no second
+      // copy" literally true.
+      const title = (document as { title?: unknown }).title;
+      if (typeof title === 'string' && title !== schemaId && !validators.has(title)) {
+        validators.set(title, validate);
+      }
     } catch (thrown) {
       throw new SchemaCompilationFailed(schemaId, location, thrown);
     }

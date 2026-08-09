@@ -1,0 +1,178 @@
+[
+  {
+    "seq": 1,
+    "runId": "run_20260809T090000Z_1c3a5e",
+    "ts": 1754308293000,
+    "kind": "gate.evaluated",
+    "v": 3,
+    "epoch": 1,
+    "nodeId": "lint-gate",
+    "attempt": 0,
+    "payload": {
+      "gate": "lint-gate",
+      "node": "migrate-router-guards",
+      "verdict": {
+        "schemaId": "DeFlow.verdict.v3",
+        "outcome": "fail",
+        "gate": "lint-gate",
+        "evaluatedNode": "migrate-router-guards",
+        "by": { "node": "lint-gate", "provider": "deflow", "model": "deterministic-gate" },
+        "specHash": "sha256-4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+        "criteria": [{ "id": "lint-clean", "status": "unsatisfied" }],
+        "findings": [
+          {
+            "id": "a13f0c2b91e4",
+            "severity": "blocker",
+            "criterion": "lint-clean",
+            "location": {
+              "file": "src/api/client.ts",
+              "line": 42,
+              "blobSha": "3f5b1c9d7e204a8b6c1d0e2f3a4b5c6d7e8f9012"
+            },
+            "message": "no-floating-promises: the returned promise is never awaited",
+            "evidence": [
+              "artifact://1a2b3c4d5e6f70819200a1b2c3d4e5f60718293a4b5c6d7e8f90011223344556"
+            ]
+          },
+          {
+            "id": "55c1e0a94b72",
+            "severity": "blocker",
+            "criterion": "lint-clean",
+            "location": {
+              "file": "src/router/guards.ts",
+              "line": 88,
+              "blobSha": "7c1e0a9b4d5f628301a2b3c4d5e6f708192a3b4c"
+            },
+            "message": "no-unsafe-argument: NavigationGuardNext is not assignable to void",
+            "evidence": [
+              "artifact://1a2b3c4d5e6f70819200a1b2c3d4e5f60718293a4b5c6d7e8f90011223344556"
+            ]
+          }
+        ],
+        "summary": "lint failed with 2 finding(s)",
+        "cost": { "durationMs": 2410 }
+      }
+    }
+  },
+  {
+    "seq": 2,
+    "runId": "run_20260809T090000Z_1c3a5e",
+    "ts": 1754308353000,
+    "kind": "gate.evaluated",
+    "v": 3,
+    "epoch": 1,
+    "nodeId": "lint-gate",
+    "attempt": 1,
+    "payload": {
+      "gate": "lint-gate",
+      "node": "migrate-router-guards",
+      "verdict": {
+        "schemaId": "DeFlow.verdict.v3",
+        "outcome": "fail",
+        "gate": "lint-gate",
+        "evaluatedNode": "migrate-router-guards",
+        "by": { "node": "lint-gate", "provider": "deflow", "model": "deterministic-gate" },
+        "specHash": "sha256-4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+        "criteria": [{ "id": "lint-clean", "status": "unsatisfied" }],
+        "findings": [
+          {
+            "id": "55c1e0a94b72",
+            "severity": "blocker",
+            "criterion": "lint-clean",
+            "location": {
+              "file": "src/router/guards.ts",
+              "line": 88,
+              "blobSha": "d4e5f60718293a4b5c6d7e8f90112233445566aa"
+            },
+            "message": "no-unsafe-argument: NavigationGuardNext is not assignable to void",
+            "evidence": [
+              "artifact://2b3c4d5e6f70819200a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566a"
+            ]
+          },
+          {
+            "id": "9c02f1a4b7d3",
+            "severity": "major",
+            "criterion": "lint-clean",
+            "location": {
+              "file": "src/api/client.ts",
+              "line": 51,
+              "blobSha": "0e2f3a4b5c6d7e8f90123f5b1c9d7e204a8b6c1d"
+            },
+            "message": "no-unused-vars: awaited is assigned but never read",
+            "evidence": [
+              "artifact://2b3c4d5e6f70819200a1b2c3d4e5f60718293a4b5c6d7e8f900112233445566a"
+            ]
+          }
+        ],
+        "summary": "lint failed with 2 finding(s)",
+        "cost": { "durationMs": 2260 }
+      }
+    }
+  },
+  {
+    "seq": 3,
+    "runId": "run_20260809T090000Z_1c3a5e",
+    "ts": 1754308413000,
+    "kind": "gate.evaluated",
+    "v": 3,
+    "epoch": 1,
+    "nodeId": "review-guards",
+    "attempt": 2,
+    "payload": {
+      "gate": "review-guards",
+      "node": "migrate-router-guards",
+      "verdict": {
+        "schemaId": "DeFlow.verdict.v3",
+        "outcome": "needs-human",
+        "gate": "review-guards",
+        "evaluatedNode": "migrate-router-guards",
+        "by": { "node": "review-guards", "provider": "claude-code", "model": "claude-sonnet-4-5" },
+        "specHash": "sha256-4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+        "criteria": [
+          { "id": "lint-clean", "status": "satisfied" },
+          { "id": "feels-responsive", "status": "unverifiable" }
+        ],
+        "findings": [
+          {
+            "id": "7e8f90112233",
+            "severity": "minor",
+            "message": "the guard reads well, but whether it feels responsive is not something this reviewer can measure",
+            "evidence": []
+          }
+        ],
+        "summary": "one criterion is outside what a reviewer can measure",
+        "cost": {
+          "durationMs": 18400,
+          "tokens": { "inputTokens": 5120, "outputTokens": 410, "source": "vendor-reported" },
+          "usd": 0.037
+        }
+      }
+    }
+  },
+  {
+    "seq": 4,
+    "runId": "run_20260809T090000Z_1c3a5e",
+    "ts": 1754308473000,
+    "kind": "gate.evaluated",
+    "v": 3,
+    "epoch": 1,
+    "nodeId": "lint-gate",
+    "attempt": 3,
+    "payload": {
+      "gate": "lint-gate",
+      "node": "migrate-router-guards",
+      "verdict": {
+        "schemaId": "DeFlow.verdict.v3",
+        "outcome": "pass",
+        "gate": "lint-gate",
+        "evaluatedNode": "migrate-router-guards",
+        "by": { "node": "lint-gate", "provider": "deflow", "model": "deterministic-gate" },
+        "specHash": "sha256-4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+        "criteria": [{ "id": "lint-clean", "status": "satisfied" }],
+        "findings": [],
+        "summary": "lint passed",
+        "cost": { "durationMs": 2190 }
+      }
+    }
+  }
+]

@@ -546,6 +546,8 @@ export {
   AJV_2020_OPTIONS,
   JSON_SCHEMA_DIALECT,
   REGISTERED_SCHEMA_IDS,
+  RUN_SCHEMA_FILENAMES,
+  runSchemaFileName,
   SCHEMA_ID_BASE,
   SCHEMA_REGISTRY,
   schemaFileName,
@@ -554,6 +556,7 @@ export {
   toJsonSchemaDocument,
   toJsonSchemaDocuments,
   UnknownSchemaId,
+  VERDICT_SCHEMA_FILE,
 } from './json-schema.ts';
 // KAR-06.2 — F5.2's per-resource-class locks: what a node claims, and who
 // holds it. State-derived; the ledger is the only record.
@@ -1105,21 +1108,35 @@ export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declar
 export type {
   CriterionStatus,
   Finding,
+  FindingV2,
   Verdict,
+  VerdictCost,
+  VerdictCostInput,
+  VerdictCriterion,
   VerdictOutcome,
   VerdictV2,
+  VerdictV3,
 } from './verdict.ts';
 export {
+  BLOB_SHA_PATTERN,
+  BlobShaSchema,
   CRITERION_STATUSES,
   CriterionStatusSchema,
   FINDING_SCHEMA_ID,
   FINDING_SEVERITIES,
+  FINDING_V2_SCHEMA_ID,
   FindingSchema,
   FindingSeveritySchema,
+  FindingV2Schema,
+  materialiseCriteria,
   VERDICT_OUTCOMES,
   VERDICT_SCHEMA_ID,
   VERDICT_V2_SCHEMA_ID,
+  VERDICT_V3_SCHEMA_ID,
+  VerdictCostSchema,
   VerdictOutcomeSchema,
   VerdictSchema,
   VerdictV2Schema,
+  VerdictV3Schema,
+  verdictCost,
 } from './verdict.ts';

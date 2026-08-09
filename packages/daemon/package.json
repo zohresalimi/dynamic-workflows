@@ -35,6 +35,7 @@
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/gates": "workspace:*",
     "@DeFlow/mock-agent": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",

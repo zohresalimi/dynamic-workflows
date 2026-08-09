@@ -510,3 +510,68 @@ registerUpcaster({
   },
   up: (payload) => payload,
 });
+
+/**
+ * `gate.evaluated` v2 → v3 (KAR-12.3). See schemas/CHANGELOG.md.
+ *
+ * v3's verdict is `DeFlow.verdict.v3`, which changes two things: a finding's
+ * `location` now carries the `blobSha` of the revision its line was read from,
+ * and the verdict may carry a `cost`.
+ *
+ * **`cost` is left absent**, for the reason `specHash` was on the previous hop:
+ * nobody measured a historical verdict, and a zero on a cost chart is a claim
+ * that a node was free.
+ *
+ * **An unanchored `location` is dropped, and the finding is kept.** This is the
+ * one hop in the registry that removes something, so it is worth being exact
+ * about why it is not lossy in the sense `schemas/CHANGELOG.md` forbids. A v2
+ * `location` is a file and a line with no statement of *which revision* the
+ * line belonged to. Carrying it into v3 would let the diff surface draw it
+ * against whatever now occupies that line — the precise failure
+ * docs/10-verification-gates.md §8 describes, where the reviewer stops trusting
+ * the margin within about ten minutes. So the hop keeps everything that is
+ * still true of the finding — its stable id, its severity, its message, its
+ * evidence and its criterion — and drops only the claim it can no longer
+ * support. A finding that already had no location is untouched.
+ */
+registerUpcaster({
+  kind: 'gate.evaluated',
+  from: 2,
+  to: GateEvaluatedSchema,
+  fixture: {
+    gate: 'codemod-review',
+    node: 'step-04',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v2',
+      outcome: 'fail',
+      gate: 'codemod-review',
+      evaluatedNode: 'step-04',
+      by: { node: 'gate-04', provider: 'codex', model: 'the-model-the-gate-ran-on' },
+      specHash: `sha256-${'0'.repeat(64)}`,
+      criteria: [{ id: 'unit-tests-pass', status: 'unsatisfied' }],
+      findings: [
+        {
+          id: '9c02f1a4b7d3',
+          severity: 'blocker',
+          message: 'the migrated guard returns void where a NavigationGuardNext is expected',
+          evidence: [],
+          location: { file: 'src/router/guards.ts', line: 88 },
+        },
+      ],
+      summary: 'One blocker in the migrated router guards.',
+    },
+  },
+  up: (payload) => {
+    const record = payload as { verdict?: { findings?: readonly unknown[] } };
+    const verdict = record.verdict;
+    if (verdict === undefined) return payload;
+    const findings = (verdict.findings ?? []).map((finding) => {
+      const one = finding as Record<string, unknown>;
+      const location = one.location as Record<string, unknown> | undefined;
+      if (location === undefined || typeof location.blobSha === 'string') return one;
+      const { location: _unanchored, ...rest } = one;
+      return rest;
+    });
+    return { ...record, verdict: { ...verdict, findings } };
+  },
+});

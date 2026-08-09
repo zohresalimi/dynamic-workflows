@@ -16,6 +16,7 @@
  */
 import { z } from 'zod';
 import {
+  type CriterionId,
   CriterionIdSchema,
   GateIdSchema,
   HandleSchema,
@@ -24,6 +25,8 @@ import {
   SchemaIdSchema,
 } from './ids.ts';
 import { singleLine } from './text.ts';
+import type { TokenAccounting } from './token-accounting.ts';
+import { type TokenUsage, TokenUsageSchema } from './token-usage.ts';
 
 /**
  * The two document ids this module ships (KAR-02.8). A `finding` fact carries
@@ -134,3 +137,190 @@ export const VerdictV2Schema = VerdictSchema.extend({
 });
 
 export type VerdictV2 = z.infer<typeof VerdictV2Schema>;
+
+/**
+ * KAR-12.3 AC6 — `DeFlow.finding.v2`: the same finding, with its line anchored
+ * to the blob the line was read from.
+ *
+ * A `location` without a `blobSha` is the failure docs/10-verification-gates.md
+ * §8 describes: attempt 3 inserts ten lines at the top of the file, and every
+ * finding attempt 2 produced is silently redrawn against whatever now occupies
+ * line 42. Nothing about the finding says it moved, so the reviewer discovers
+ * it by not trusting the margin any more. The fix is to make the anchor part of
+ * the anchor — the blob and the line travel together or neither is written.
+ *
+ * A finding with **no** `location` stays legal and needs no blob. A verdict
+ * about the change as a whole ("no test covers the new branch") has no range to
+ * be stale against, and demanding a sha for it would only invite a fabricated
+ * one.
+ */
+export const BLOB_SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/** A git object name: sha1 today, sha256 in a repository initialised that way.
+ * Both spellings, because the second is not exotic and a hard-coded 40 would
+ * reject a real repository's real blobs. */
+export const BlobShaSchema = z
+  .string()
+  .regex(BLOB_SHA_PATTERN, `blobSha must be a git object name matching ${BLOB_SHA_PATTERN}`);
+
+export const FINDING_V2_SCHEMA_ID = 'DeFlow.finding.v2' as const;
+
+export const FindingV2Schema = FindingSchema.extend({
+  location: z
+    .strictObject({
+      file: z.string().min(1),
+      line: z.number().int().positive(),
+      endLine: z.number().int().positive().optional(),
+      /** The revision `line` was read from. Required: see the note above. */
+      blobSha: BlobShaSchema,
+    })
+    .optional(),
+});
+
+export type FindingV2 = z.infer<typeof FindingV2Schema>;
+
+/**
+ * KAR-12.3 AC8 — what one verdict cost, with the parts that cannot be known
+ * left out rather than filled with zero.
+ *
+ * `durationMs` is the only field always present, because it is the only one
+ * DeFlow measures itself: it is two readings of the injected clock around a
+ * process DeFlow started. `tokens` and `usd` come from the adapter, and an
+ * adapter whose `tokenAccounting` is `'none'` reports neither — so neither
+ * appears. docs/08-context-and-memory.md §7 states the rule in one line: *a
+ * blank cost cell, not a zero*. A zero is a claim, and on a node that really
+ * spent quota it is a false one that a budget ceiling (F4.6) then acts on.
+ */
+export const VerdictCostSchema = z.strictObject({
+  durationMs: z.number().int().nonnegative(),
+  /** Absent unless the adapter accounts for tokens. `source` says which tier
+   * produced it, and the two are never summed (./token-usage.ts). */
+  tokens: TokenUsageSchema.optional(),
+  usd: z.number().nonnegative().optional(),
+});
+
+export type VerdictCost = z.infer<typeof VerdictCostSchema>;
+
+/**
+ * KAR-12.3 — `DeFlow.verdict.v3`: blob-anchored findings and a cost.
+ *
+ * A `.v3` rather than fields on `.v2` for the reason `schemas/CHANGELOG.md`
+ * gives: a run directory outlives the daemon that wrote it, so a shipped
+ * document is never edited in place.
+ *
+ * **`cost` is optional in the schema and stamped in practice**, exactly as
+ * `specHash` is on `.v2`, and for the same reason: the `gate.evaluated` v2 → v3
+ * upcast has no honest cost to lift out of a payload written before the field
+ * existed, and inventing one would put a fabricated number on a cost chart. The
+ * sealer always writes it; absence means *nobody measured this*, which is a
+ * fact rather than a zero.
+ */
+export const VERDICT_V3_SCHEMA_ID = 'DeFlow.verdict.v3' as const;
+
+export const VerdictV3Schema = VerdictV2Schema.extend({
+  findings: z.array(FindingV2Schema),
+  cost: VerdictCostSchema.optional(),
+});
+
+export type VerdictV3 = z.infer<typeof VerdictV3Schema>;
+
+export type VerdictCriterion = z.infer<typeof VerdictV3Schema>['criteria'][number];
+
+/**
+ * KAR-12.3 AC7 — the gate's declared criteria, completed with what the
+ * reviewer actually said about each.
+ *
+ * The whole content is the default. A reviewer that answers about four of five
+ * criteria has not passed the fifth, and a board that renders the omission as
+ * green is the false confidence F10.8 exists to remove. So an omission
+ * materialises as `unverifiable`: visibly not answered, distinct from
+ * `unsatisfied`, and not something a repair loop is asked to fix.
+ *
+ * Two smaller rules follow the same instinct:
+ *
+ *   * **A contradiction is an omission.** A reviewer that said both
+ *     `satisfied` and `unsatisfied` about one criterion has not told us which,
+ *     and picking either would be picking for it.
+ *   * **A criterion the gate never declared is kept, not dropped.** It is
+ *     something the reviewer observed; discarding it to make the list tidy
+ *     throws away the only record that it was observed at all.
+ */
+export function materialiseCriteria(
+  declared: readonly (CriterionId | string)[],
+  reported: readonly VerdictCriterion[],
+): readonly VerdictCriterion[] {
+  const statusOf = (id: string): CriterionStatus | undefined => {
+    const said = reported.filter((criterion) => criterion.id === id).map((one) => one.status);
+    if (said.length === 0) return undefined;
+    return said.every((status) => status === said[0]) ? said[0] : 'unverifiable';
+  };
+
+  const criteria: VerdictCriterion[] = declared.map((id) => ({
+    id: id as CriterionId,
+    status: statusOf(String(id)) ?? 'unverifiable',
+  }));
+
+  const declaredSet = new Set(declared.map(String));
+  for (const criterion of reported) {
+    if (declaredSet.has(String(criterion.id))) continue;
+    if (criteria.some((already) => already.id === criterion.id)) continue;
+    criteria.push({ id: criterion.id, status: statusOf(String(criterion.id)) ?? criterion.status });
+  }
+
+  return criteria;
+}
+
+export interface VerdictCostInput {
+  /** The adapter's probed capability row, which is what decides whether there
+   * is a number at all (KAR-09.7). */
+  readonly accounting: TokenAccounting;
+  /** Measured by DeFlow, from the injected clock. Always known. */
+  readonly durationMs: number;
+  /** What the vendor's own result envelope carried, when it carried anything. */
+  readonly reported?: { readonly usage: TokenUsage; readonly usd?: number } | null;
+  /** DeFlow's own Tier-2 counts of the packet it sent and the return it got. */
+  readonly estimated?: { readonly inputTokens: number; readonly outputTokens: number } | null;
+}
+
+/**
+ * AC8 — the cost of one verdict, from what this adapter can honestly count.
+ *
+ * The manifest wins over whatever happened to arrive, the same way
+ * `projectNodeCost` decides it: a provider whose probed row says it reports
+ * nothing, but whose envelope carried a usage-shaped object, is a provider
+ * whose numbers nobody has verified.
+ *
+ * The two tiers are never mixed. On `'exact'` the vendor's figures are used or
+ * none are — falling back to the Tier-2 estimate would put a 15–20% undercount
+ * behind a label that says billing truth.
+ */
+export function verdictCost(input: VerdictCostInput): VerdictCost {
+  const durationMs = input.durationMs;
+  if (input.accounting === 'none') return { durationMs };
+
+  if (input.accounting === 'exact') {
+    const reported = input.reported ?? null;
+    if (reported === null) return { durationMs };
+    return {
+      durationMs,
+      tokens: { ...reported.usage, source: 'vendor-reported' },
+      ...(reported.usd === undefined ? {} : { usd: reported.usd }),
+    };
+  }
+
+  const estimated = input.estimated ?? null;
+  const usd = input.reported?.usd;
+  return {
+    durationMs,
+    ...(estimated === null
+      ? {}
+      : {
+          tokens: {
+            inputTokens: estimated.inputTokens,
+            outputTokens: estimated.outputTokens,
+            source: 'estimated' as const,
+          },
+        }),
+    ...(usd === undefined ? {} : { usd }),
+  };
+}

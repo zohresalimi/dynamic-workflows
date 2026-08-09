@@ -15,6 +15,10 @@
 
 export type { GateClass, LadderGate } from '@DeFlow/core';
 export { admitGates, GATE_CLASSES, ladderRank, orderGates } from '@DeFlow/core';
+export type { AdmitVerdict } from './agent-verdict.ts';
+export { admitVerdict, GATE_RETURN_BUDGET, gateVerdictContract } from './agent-verdict.ts';
+export type { BlobShaOf } from './anchor.ts';
+export { anchorFindings, blobShaIn, gitBlobSha } from './anchor.ts';
 export type {
   GateDefinition,
   GateLoadCode,
@@ -28,7 +32,7 @@ export {
   GateTimeoutSchema,
   loadGateDefinition,
 } from './definition.ts';
-export type { FindingRange, GateFinding, GateSeverity } from './finding.ts';
+export type { FindingRange, GateFinding, GateSeverity, ParsedFinding } from './finding.ts';
 export {
   findingId,
   GATE_SEVERITIES,
@@ -53,6 +57,13 @@ export type { OutcomeInput } from './outcome.ts';
 export { blockingFindings, gateOutcome, meetsFloor } from './outcome.ts';
 export type { GateParser, ParseInput } from './parsers.ts';
 export { GATE_PARSERS, parseFindings, TEST_FAILED_RULE } from './parsers.ts';
+export type {
+  AttemptVerdict,
+  FindingDelta,
+  ProjectedFinding,
+  RenderedBlobSha,
+} from './projection.ts';
+export { findingDelta, projectFindings } from './projection.ts';
 export type { GateEvidence, GateRun, GateToolReason, RunGateOptions } from './run-gate.ts';
 export {
   GATE_OUTPUT_MIME,

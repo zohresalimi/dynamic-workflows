@@ -62,6 +62,53 @@ file is where you record it.
 
 ## Entries
 
+### DeFlow.finding.v2
+
+**KAR-12.3.** A finding's line is anchored to the blob it was read from:
+[10 §8](../docs/10-verification-gates.md) — _"without it, the second repair attempt silently attaches
+every earlier finding to whatever line now happens to occupy that number, and the reviewer stops
+trusting the annotations within about ten minutes."_
+
+| Change                                   | Kind                | Why it is not lossy                                                                                                        |
+| ---------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `location.blobSha` (required, when `location` is present) | narrowing, new document | `.v1` is untouched on disk. Nothing upcasts a `finding` fact in place: `.v2` is a new document, and a `.v1` fact stays a `.v1` fact. |
+
+`location` itself stays optional. A verdict about the change as a whole — _"no test covers the new
+branch"_ — has no range to be stale against, and demanding a sha for it would only invite a
+fabricated one.
+
+### DeFlow.verdict.v3
+
+**KAR-12.3.** The gate contract: blob-anchored findings, and what the verdict cost.
+
+| Change                              | Kind           | Why it is not lossy                                                                                                     |
+| ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `findings: DeFlow.finding.v1[]` → `.v2[]` | narrowing      | See `gate.evaluated v3` below for the one thing the hop drops and why keeping it would be the actual loss.               |
+| `+ cost` (optional)                 | optional field | A `.v2` verdict predates the field and nobody measured it. A zero would claim the node was free, and a budget ceiling (F4.6) would act on the claim. |
+
+**Why `cost` is optional in the schema and mandatory in practice** — the same shape of argument as
+`specHash` on `.v2`. `sealVerdict` and the agent-verdict admission both stamp it, so every verdict
+DeFlow writes carries one; optionality exists so the `gate.evaluated` v2 → v3 hop is legal without
+inventing a measurement. Absence means *nobody measured this*, which is a fact.
+
+### gate.evaluated v3
+
+**KAR-12.3.** The event that carries a verdict follows it to `DeFlow.verdict.v3`.
+
+| Change                       | Kind                    | Why it is not lossy                                                                          |
+| ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `verdict: .v2` → `.v3`       | widening plus one drop  | `cost` is added and left absent. An unanchored `location` is **dropped from the finding, and the finding is kept**. |
+
+This is the only hop in the registry that removes anything, so the reasoning is worth stating in
+full. A `.v2` `location` is a file and a line with no statement of *which revision* the line belonged
+to. Carrying it forward would let the diff surface draw a historical finding against whatever now
+occupies that line — the exact failure [10 §8](../docs/10-verification-gates.md) describes. So the
+hop keeps everything still true of the finding (its stable id, severity, message, evidence and
+criterion) and drops only the claim it can no longer support. A finding that never had a `location`
+is untouched. Judged against the rule at the top of this file: no field's *meaning* changed, and no
+information that is still true is lost — what is dropped is an assertion the payload was never able
+to support.
+
 ### DeFlow.verdict.v2
 
 **KAR-10.4.** A verdict now names the contract it judged:

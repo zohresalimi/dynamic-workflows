@@ -61,7 +61,7 @@ import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
-import { VerdictV2Schema } from './verdict.ts';
+import { VerdictV3Schema } from './verdict.ts';
 
 // ── shared leaf schemas ──────────────────────────────────────────────────────
 
@@ -1166,16 +1166,19 @@ export const HandoffOversizeSchema = z.strictObject({
 
 /**
  * KAR-10.4 AC5 — v2: the verdict now names the contract it judged.
+ * KAR-12.3 — v3: every located finding names the blob its line was read from,
+ * and the verdict carries what it cost.
  *
- * The change is entirely inside `verdict`, which became `DeFlow.verdict.v2` —
- * one optional field, `specHash`. See `schemas/CHANGELOG.md` for why the hop
- * from v1 leaves it absent rather than inventing one, and `VerdictV2Schema` for
- * why an absent hash is treated as void rather than as trusted.
+ * Both changes are entirely inside `verdict`, which is now `DeFlow.verdict.v3`.
+ * See `schemas/CHANGELOG.md` for why each hop leaves the new field absent
+ * rather than inventing one — an unanchored line number and a fabricated cost
+ * are both worse than a gap, because a reader cannot tell either from a
+ * measurement.
  */
 export const GateEvaluatedSchema = z.strictObject({
   gate: GateIdSchema,
   node: NodeIdSchema,
-  verdict: VerdictV2Schema,
+  verdict: VerdictV3Schema,
 });
 
 export const HumanRequestedSchema = z.strictObject({
@@ -1482,7 +1485,7 @@ export const EVENT_SCHEMAS = {
   'fact.read': { v: 1, payload: FactReadSchema },
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
-  'gate.evaluated': { v: 2, payload: GateEvaluatedSchema },
+  'gate.evaluated': { v: 3, payload: GateEvaluatedSchema },
   'human.requested': { v: 1, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
