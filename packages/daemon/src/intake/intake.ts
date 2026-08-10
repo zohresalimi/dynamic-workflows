@@ -26,7 +26,7 @@
  * interview has actually produced the spec it carries.
  */
 import type { Clock, Db, RunId } from '@DeFlow/core';
-import { mintRunId, normaliseInput } from '@DeFlow/core';
+import { canonicalJson, mintRunId, normaliseInput, sha256Hex } from '@DeFlow/core';
 import { appendEvents, lookupIntakeKey, putBlob, readRange, recordIntakeKey } from '@DeFlow/ledger';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
@@ -80,14 +80,44 @@ const REPO_PATH_ESCAPE_MESSAGE: Record<string, string> = {
   invalid: 'is not a usable path',
 };
 
-/** The `seq` AC6's repeated-key response echoes: the first event this run
- * ever had, which for a run intake created is always its `task.submitted`. */
+/** The `seq` AC6's repeated-key response echoes when the journal holds no
+ * memoised body to read it out of: the first event this run ever had, which for
+ * a run intake created is always its `task.submitted`. */
 function firstEventSeq(db: Db, runId: RunId): number {
   const first = readRange(db, runId, 0, 1).events[0];
   if (first === undefined) {
-    throw new Error(`intake_key named ${runId}, but the ledger holds no event for it`);
+    throw new Error(`the intake journal named ${runId}, but the ledger holds no event for it`);
   }
   return first.seq;
+}
+
+/**
+ * The `201` body, as the bytes the effect journal memoises (KAR-15.5 AC5).
+ *
+ * `canonicalJson` rather than `JSON.stringify` for the reason every stored
+ * value in this system uses it: the bytes are compared — the whole claim of
+ * §11.3 is that a repeat is *byte-identical* — and a serialisation that is
+ * "best efforts" at key order is one that can answer differently on the retry
+ * it exists to make free. The key order it produces is the same one
+ * `POST /api/runs` writes the live response in, and
+ * `../../test/integration/intake-idempotency.test.ts` asserts the two agree
+ * over the wire rather than trusting that they do.
+ */
+function intakeResponseBody(runId: RunId, seq: number): string {
+  return canonicalJson({ runId, seq, status: 'awaiting-spec-approval' });
+}
+
+/** The `seq` a memoised `201` body carries, or `null` when there is none to
+ * read — a ledger repaired by hand, or a row migration 0015 could not rebuild. */
+function memoisedSeq(response: string | null): number | null {
+  if (response === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(response);
+    const seq = (parsed as { seq?: unknown }).seq;
+    return typeof seq === 'number' && Number.isSafeInteger(seq) ? seq : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -112,11 +142,19 @@ export async function submitTask(
   }
   const body = parsed.data;
 
-  // AC6 — a repeated key returns the original run, touching nothing else.
+  // AC6, and KAR-15.5 AC5 — a repeated key is answered **out of the effect
+  // journal**, touching nothing else: no filesystem, no network, no append.
+  // The `seq` comes from the memoised body rather than from a fresh read, so
+  // the retry returns what the original call returned rather than what the
+  // ledger happens to look like now.
   if (request.idempotencyKey !== undefined) {
     const existing = lookupIntakeKey(ports.db, request.idempotencyKey);
     if (existing !== null) {
-      return { outcome: 'created', runId: existing, seq: firstEventSeq(ports.db, existing) };
+      return {
+        outcome: 'created',
+        runId: existing.runId,
+        seq: memoisedSeq(existing.response) ?? firstEventSeq(ports.db, existing.runId),
+      };
     }
   }
 
@@ -132,21 +170,41 @@ export async function submitTask(
   }
 
   const runId = mintRunId(ports.clock.now(), ports.randomHex);
-  const [seq] = appendEvents(ports.db, [
-    {
-      runId,
-      ts: ports.clock.now(),
-      kind: 'task.submitted',
-      v: 1,
-      epoch: ports.epoch,
-      payload,
-    },
-  ]);
-  if (seq === undefined) throw new Error('appendEvents returned no seq for task.submitted');
+  // Hashed before the transaction, because `sha256Hex` is asynchronous and a
+  // better-sqlite3 transaction is not: an `await` inside one would commit
+  // whatever else the process did in the meantime along with it.
+  const requestHash =
+    request.idempotencyKey === undefined
+      ? null
+      : `sha256-${await sha256Hex(canonicalJson(request.body))}`;
 
-  if (request.idempotencyKey !== undefined) {
-    recordIntakeKey(ports.db, request.idempotencyKey, runId, ports.clock.now());
-  }
+  // The append and the journal row are **one** transaction (AC6): a crash
+  // between them would leave either a run no key can find — so a retry starts a
+  // second one — or a key naming a run the ledger does not hold.
+  const seq = ports.db.transaction(() => {
+    const [appended] = appendEvents(ports.db, [
+      {
+        runId,
+        ts: ports.clock.now(),
+        kind: 'task.submitted',
+        v: 1,
+        epoch: ports.epoch,
+        payload,
+      },
+    ]);
+    if (appended === undefined) throw new Error('appendEvents returned no seq for task.submitted');
+
+    if (request.idempotencyKey !== undefined && requestHash !== null) {
+      recordIntakeKey(ports.db, {
+        key: request.idempotencyKey,
+        runId,
+        requestHash,
+        response: intakeResponseBody(runId, appended),
+        at: ports.clock.now(),
+      });
+    }
+    return appended;
+  });
 
   return { outcome: 'created', runId, seq };
 }

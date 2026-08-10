@@ -364,3 +364,28 @@ export function readEventTs(db: Db, seq: number): number | null {
   const row = db.prepare<{ ts: number }>('SELECT ts FROM event WHERE seq = ?').get(seq);
   return row?.ts ?? null;
 }
+
+/**
+ * KAR-15.5 — the highest `seq` at which `runId` recorded any of `kinds`, or
+ * `null` when it never did.
+ *
+ * The number a repeated control write echoes: pausing a paused run answers with
+ * the `seq` of the `run.paused` already in the log, which is what makes a
+ * double-click return the same body twice instead of two different numbers
+ * (docs/11-api-and-realtime.md §11.1).
+ *
+ * One aggregate under the `event_run_seq` index rather than a paged scan the
+ * caller reduces, because the alternative reads a run's whole history to find
+ * one row — and these are the routes an operator presses on the run with the
+ * most history.
+ */
+export function lastSeqOfKinds(db: Db, runId: RunId, kinds: readonly string[]): number | null {
+  if (kinds.length === 0) return null;
+  const placeholders = kinds.map(() => '?').join(', ');
+  const row = db
+    .prepare<{ last: number | null }>(
+      `SELECT max(seq) AS last FROM event WHERE run_id = ? AND kind IN (${placeholders})`,
+    )
+    .get(runId, ...kinds);
+  return row?.last ?? null;
+}

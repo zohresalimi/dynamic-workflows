@@ -33,8 +33,8 @@
  * content-addressed artifact behind a handle.
  */
 import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
-import type { Db, EstimatorInputs, InterjectionMode, RunId } from '@DeFlow/core';
-import { INTERJECTION_MODES, NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
+import type { CancelMode, Db, EstimatorInputs, InterjectionMode, RunId } from '@DeFlow/core';
+import { CANCEL_MODES, INTERJECTION_MODES, NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
 import { putBlob } from '@DeFlow/ledger';
 import type { Context, ErrorHandler, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -44,10 +44,12 @@ import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
 import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
 import { submitTask } from '../intake/intake.ts';
+import { killRun } from '../kill-switch.ts';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { diffPlanGraphs } from '../plan/diff.ts';
 import { unionLayoutKey } from '../plan/plan-history.ts';
+import { controlRun, type RunControlVerb } from '../run-control.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
 import {
   abandonRun,
@@ -281,6 +283,111 @@ function staleCursor(db: Db, runId: RunId, ifLastSeq: unknown, c: Context): Resp
   );
 }
 
+interface ControlRequestBody {
+  readonly ifLastSeq?: number | undefined;
+  readonly reason?: unknown;
+  readonly mode?: unknown;
+}
+
+/**
+ * KAR-15.5 AC1, AC2, AC3, AC6, AC9 — `pause`, `resume` and `cancel`, which are
+ * the same route three times over (docs/11-api-and-realtime.md §7.3).
+ *
+ * `controlRun` (../run-control.ts) owns the state machine and the append; what
+ * is here is the wire — the body, the mode, the status code and the closed
+ * envelope. The three verbs share it rather than repeating it, because the
+ * property that makes the surface safe to double-click is *shared*: a repeat
+ * answers `200` with the seq already in the log, and three copies of that rule
+ * is three chances for one of them to answer `409` instead.
+ *
+ * `forceful` is the one verb with a side effect beyond the append: it is the
+ * F5.7 kill switch (KAR-08.6), and the response is deliberately sent **after**
+ * the ladder has finished and verified, because "stopped" is a claim this
+ * endpoint has to be able to make. `kill.outcome` carries what actually
+ * happened, `survivors` names anything that outlived SIGKILL, and neither is
+ * inferred from the absence of an error.
+ */
+async function controlRoute(c: Context, verb: RunControlVerb) {
+  const ports = intakePorts();
+  if (ports === null) return notReady(c);
+
+  const runId = asRunId(c.req.param('id') ?? '');
+  if (runId === null) {
+    return c.json(...apiError('run_not_found', `no run '${c.req.param('id') ?? ''}'`));
+  }
+
+  // An empty body is legitimate on all three — `pause` needs nothing, and
+  // `cancel` defaults to the ladder that lets the agent flush a transcript.
+  const body = (await c.req.json().catch(() => null)) as ControlRequestBody | null;
+
+  let mode: CancelMode | undefined;
+  if (verb === 'cancel') {
+    const asked = body?.mode ?? 'cooperative';
+    if (!(CANCEL_MODES as readonly unknown[]).includes(asked)) {
+      return c.json(
+        ...apiError(
+          'invalid_request',
+          `mode must be one of ${CANCEL_MODES.map((one) => `"${one}"`).join(', ')}: ` +
+            'one lets the agent flush its transcript and one does not, and guessing on the ' +
+            "operator's behalf would be guessing about whether that transcript survives",
+          { detail: { field: 'mode' } },
+        ),
+      );
+    }
+    mode = asked as CancelMode;
+  }
+
+  const result = controlRun({
+    db: ports.db,
+    runId,
+    verb,
+    by: 'user',
+    reason: typeof body?.reason === 'string' ? body.reason : undefined,
+    ifLastSeq: body?.ifLastSeq,
+    ...(mode === undefined ? {} : { mode }),
+    epoch: ports.epoch,
+    ts: ports.clock.now(),
+  });
+
+  if (result.status === 'refused') {
+    return c.json(
+      ...apiError(result.code, result.message, {
+        detail: {
+          ...(result.movedAt === undefined ? {} : { movedAt: result.movedAt, head: result.head }),
+          ...(result.runStatus === undefined ? {} : { status: result.runStatus }),
+        },
+        // The same shape `staleCursor` above answers with, so a client branching
+        // on `stale_cursor` reads one contract wherever the code can occur.
+        ...(result.movedAt === undefined ? {} : { seq: result.movedAt }),
+      }),
+    );
+  }
+
+  const kill =
+    mode === 'forceful'
+      ? await killRun(runId, {
+          db: ports.db,
+          clock: ports.clock,
+          epoch: ports.epoch,
+          mode: 'forceful',
+          by: 'user',
+        })
+      : null;
+
+  return c.json(
+    {
+      runId,
+      seq: result.seq,
+      status: result.runStatus,
+      appended: result.appended,
+      ...(kill === null
+        ? {}
+        : { kill: { outcome: kill.outcome, survivors: kill.survivors.map((one) => one.pid) } }),
+    },
+    200,
+  );
+}
+
 /**
  * The API, as one chained expression. See the header comment: the chain is the
  * contract, and `ApiType` at the bottom is the whole of what the UI and the CLI
@@ -492,6 +599,25 @@ export const api = new Hono()
       return Promise.resolve({ runId, status: 'aborted' });
     }),
   )
+
+  /**
+   * KAR-15.5 AC1 — F4.4's pause and resume, and F5.7's cancel.
+   *
+   * Three routes rather than one `POST /runs/:id/control { verb }`, because
+   * that is what §6's route table documents and because the three answer
+   * differently: only `cancel` takes a mode, and only its forceful ladder does
+   * anything beyond appending an event.
+   *
+   * Each is a one-line call onto the shared handler above, and it stays *on
+   * this chain* for the reason the file header gives — `hc<ApiType>` infers the
+   * client from the type of the chained expression, and a route registered on
+   * its own statement is invisible to it.
+   */
+  .post('/runs/:id/pause', (c) => controlRoute(c, 'pause'))
+
+  .post('/runs/:id/resume', (c) => controlRoute(c, 'resume'))
+
+  .post('/runs/:id/cancel', (c) => controlRoute(c, 'cancel'))
 
   /**
    * KAR-14.1 AC8 — the run summary, cost rollup included.

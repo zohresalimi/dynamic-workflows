@@ -109,8 +109,27 @@ const COLUMNS =
 
 const SELECT_ONE_SQL = `SELECT ${COLUMNS} FROM effect WHERE ikey = ?`;
 
+/**
+ * The prefix reserved for journal rows that belong to **no plan node**.
+ *
+ * `NODE_ID_PATTERN` (@DeFlow/core) requires an alphanumeric first character, so
+ * a leading colon is a `node_id` no plan can ever produce and no `nextOrdinal`
+ * can ever collide with. KAR-15.5's `:intake` rows — the API-level
+ * `Idempotency-Key`, journalled here rather than in a table of its own — are
+ * the only users so far.
+ */
+export const NON_NODE_EFFECT_PREFIX = ':';
+
+/**
+ * One run's *node* effects. Rows under `NON_NODE_EFFECT_PREFIX` are excluded
+ * deliberately: every caller of this asks a question about an attempt — what
+ * this node journalled, what is still pending after a cancel — and an intake
+ * key is not an attempt's effect and has no node to attribute it to.
+ */
 const SELECT_RUN_SQL = `
-  SELECT ${COLUMNS} FROM effect WHERE run_id = ? ORDER BY node_id, attempt, ordinal
+  SELECT ${COLUMNS} FROM effect
+   WHERE run_id = ? AND node_id NOT LIKE '${NON_NODE_EFFECT_PREFIX}%'
+   ORDER BY node_id, attempt, ordinal
 `;
 
 /**

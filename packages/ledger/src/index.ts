@@ -30,6 +30,7 @@ export {
   EventDraftSchema,
   type EventPage,
   InvalidEventEnvelope,
+  lastSeqOfKinds,
   PayloadTooLarge,
   readEventTs,
   readGlobalRange,
@@ -181,6 +182,9 @@ export {
   markEffectCancelled,
   markEffectDone,
   markEffectFailed,
+  // KAR-15.5 — the `node_id` prefix reserved for journal rows that belong to no
+  // plan node, which `NodeIdSchema` can never produce.
+  NON_NODE_EFFECT_PREFIX,
   nextOrdinal,
   readEffect,
   readEffects,
@@ -206,9 +210,17 @@ export {
   type SampledGateEvaluation,
   sampleGateHygiene,
 } from './gate-hygiene.ts';
-// KAR-10.1 AC6 — `intake_key`: whether an `Idempotency-Key` has already
-// minted a run, checked before a `RunId` even exists to key an effect on.
-export { lookupIntakeKey, recordIntakeKey } from './intake-keys.ts';
+// KAR-10.1 AC6 / KAR-15.5 AC5 — the API-level `Idempotency-Key`, journalled in
+// the `effect` table under an `intake:` namespace no engine key can produce.
+export {
+  INTAKE_EFFECT_KIND,
+  INTAKE_IKEY_PREFIX,
+  INTAKE_NODE_ID,
+  type IntakeKeyRecord,
+  intakeIkey,
+  lookupIntakeKey,
+  recordIntakeKey,
+} from './intake-keys.ts';
 // KAR-03.4 — the data plane: agent bytes land here and never in `event`.
 export {
   appendIoChunk,
