@@ -46,8 +46,16 @@ import {
   openLedgerView,
   setLedgerView,
 } from './http/ledger-view.ts';
-import { DEFAULT_HOSTNAME, DEFAULT_PORT, type StartedHttp, startHttp } from './http/server.ts';
+import { installPtyUpgrade } from './http/pty-socket.ts';
+import {
+  clearUpgradeHandler,
+  DEFAULT_HOSTNAME,
+  DEFAULT_PORT,
+  type StartedHttp,
+  startHttp,
+} from './http/server.ts';
 import { log } from './logging.ts';
+import { clearPtySessions } from './pty/pty-sessions.ts';
 import { daemonRandom } from './random.ts';
 import type { ReapDecision } from './reaper.ts';
 import { type Recovery, recover } from './recovery.ts';
@@ -278,6 +286,12 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     // the same as every other command.
     setIntakePorts({ db, epoch, clock: systemClock, dataDir, randomHex: randomRunIdSuffix });
 
+    // KAR-15.8 — the one WebSocket route, registered before the port binds so
+    // an upgrade can never arrive at a handler that is not there yet. It
+    // answers 404 for a node with no live terminal, which is the honest answer
+    // for a node that has finished: the panel falls back to the io endpoint.
+    installPtyUpgrade();
+
     http = await startHttp({
       port: options.port ?? DEFAULT_PORT,
       hostname: options.hostname ?? DEFAULT_HOSTNAME,
@@ -298,6 +312,8 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     });
     step('bind-port');
   } catch (error) {
+    clearUpgradeHandler();
+    clearPtySessions();
     clearIntakePorts();
     clearLedgerView();
     view?.close();
@@ -333,6 +349,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // port and a token, and both stop being true the moment the port closes.
       removeDaemonFile(dataDir);
       await http.close();
+      // The sockets went with the server; the registry has to be emptied by
+      // hand, or a second daemon in the same process would find this one's
+      // dead terminals.
+      clearUpgradeHandler();
+      clearPtySessions();
       clearIntakePorts();
       clearLedgerView();
       view.close();

@@ -36,7 +36,7 @@ import {
   varyOrigin,
 } from './auth.ts';
 import { fromConnect } from './connect.ts';
-import { API_ERROR_STATUS, apiError } from './errors.ts';
+import { refuseUpgrade } from './socket-refusal.ts';
 
 const http = log.child({ mod: 'http' });
 
@@ -215,11 +215,16 @@ export async function startHttp(options: StartHttpOptions): Promise<StartedHttp>
     );
 
     if (!decision.ok) {
-      refuse(socket, decision.code, decision.message, decision.reason);
+      refuseUpgrade(socket, decision.code, decision.message, decision.reason);
       return;
     }
     if (upgradeHandler === null) {
-      refuse(socket, 'not_found', `nothing accepts a WebSocket at ${path}`, 'no_upgrade_handler');
+      refuseUpgrade(
+        socket,
+        'not_found',
+        `nothing accepts a WebSocket at ${path}`,
+        'no_upgrade_handler',
+      );
       return;
     }
     upgradeHandler(request, socket, head);
@@ -250,41 +255,6 @@ function header(request: IncomingMessage, name: string): string | undefined {
   const value = request.headers[name];
   return Array.isArray(value) ? value[0] : value;
 }
-
-/**
- * The same closed envelope an HTTP refusal carries, written by hand onto a
- * socket that asked to be upgraded.
- *
- * By hand because there is no `Context` here: the request never became one. A
- * client that spoke WebSocket gets a readable HTTP refusal rather than a reset
- * connection, which is the difference between "the daemon refused me, and
- * said why" and an afternoon spent looking at the wrong layer.
- */
-function refuse(
-  socket: Duplex,
-  code: Parameters<typeof apiError>[0],
-  message: string,
-  reason: string,
-): void {
-  const [envelope, status] = apiError(code, message, { detail: { reason } });
-  const body = JSON.stringify(envelope);
-  socket.end(
-    `HTTP/1.1 ${status} ${STATUS_TEXT[status] ?? 'Error'}\r\n` +
-      'Content-Type: application/json\r\n' +
-      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-      'Vary: Origin\r\n' +
-      'Connection: close\r\n' +
-      `\r\n${body}`,
-  );
-}
-
-const STATUS_TEXT: Partial<
-  Record<(typeof API_ERROR_STATUS)[keyof typeof API_ERROR_STATUS], string>
-> = {
-  401: 'Unauthorized',
-  403: 'Forbidden',
-  404: 'Not Found',
-};
 
 function listening(server: HttpServer): Promise<void> {
   if (server.listening) return Promise.resolve();
