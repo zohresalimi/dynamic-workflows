@@ -33,6 +33,7 @@
  */
 import {
   DEFAULT_PATCH_RULE_SPECS,
+  EVENT_CURRENT_VERSIONS,
   HandleSchema,
   type NodeId,
   type PlanGraph,
@@ -549,11 +550,21 @@ export async function buildGateRepairFixture(options: {
         runId: GATE_REPAIR_FIXTURE_RUN,
         ts: T0 + 1_000,
         kind: 'node.started',
-        v: 1,
+        v: EVENT_CURRENT_VERSIONS['node.started'],
         epoch,
         nodeId: PRODUCER,
         attempt: 0,
-        payload: { node: PRODUCER, attempt: 0 },
+        // The whole payload `NodeStartedSchema` requires, not the two fields
+        // this prologue happens to read back. A seeded event that does not
+        // satisfy its own schema is a fixture that `parseEvent` refuses — and
+        // the consumer that discovers it is a projection three epics away,
+        // reading `binary` off an object that never had one.
+        payload: {
+          node: PRODUCER,
+          attempt: 0,
+          ikey: `${GATE_REPAIR_FIXTURE_RUN}/${PRODUCER}/0/0`,
+          binary: agentBinary,
+        },
       },
       {
         runId: GATE_REPAIR_FIXTURE_RUN,

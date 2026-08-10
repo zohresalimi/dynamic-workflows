@@ -1,0 +1,111 @@
+{
+  "appliedSeq": 30,
+  "attemptsByNode": Map {
+    "impl-1" => [
+      {
+        "attempt": 0,
+        "gate": "typecheck",
+        "outcome": "fail",
+        "seq": 11,
+      },
+    ],
+    "fix-65207341fbd9" => [
+      {
+        "attempt": 0,
+        "gate": "typecheck",
+        "outcome": "pass",
+        "seq": 28,
+      },
+    ],
+  },
+  "criteria": Map {
+    "ac-1" => {
+      "decidedAtSeq": 28,
+      "gates": [
+        "typecheck",
+      ],
+      "id": "ac-1",
+      "statement": "the project typechecks",
+      "status": "satisfied",
+      "unmapped": false,
+    },
+  },
+  "definitions": Map {},
+  "escalations": [],
+  "failureCount": 1,
+  "findingsByFile": Map {
+    "src/date-picker.ts" => [
+      {
+        "criterion": null,
+        "evidence": [
+          "artifact://3815110bc875f5ad4ce902d475a0728e2fef502afa2dd7cc5aff0c5a712550f9",
+        ],
+        "gate": "typecheck",
+        "id": "65207341fbd9",
+        "location": {
+          "blobSha": "6d1cddc4a872ba842437d50d4f9c08b6e11cc9b3",
+          "endLine": null,
+          "file": "src/date-picker.ts",
+          "line": 2,
+        },
+        "message": "ts2322: Type 'Date' is not assignable to type 'number'.",
+        "seq": 11,
+        "severity": "blocker",
+      },
+    ],
+  },
+  "needsHumanCount": 0,
+  "passCount": 1,
+  "verdicts": [
+    {
+      "attempt": 0,
+      "criteria": [
+        {
+          "id": "ac-1",
+          "status": "unsatisfied",
+        },
+      ],
+      "evaluatedNode": "impl-1",
+      "findings": [
+        {
+          "criterion": null,
+          "evidence": [
+            "artifact://3815110bc875f5ad4ce902d475a0728e2fef502afa2dd7cc5aff0c5a712550f9",
+          ],
+          "gate": "typecheck",
+          "id": "65207341fbd9",
+          "location": {
+            "blobSha": "6d1cddc4a872ba842437d50d4f9c08b6e11cc9b3",
+            "endLine": null,
+            "file": "src/date-picker.ts",
+            "line": 2,
+          },
+          "message": "ts2322: Type 'Date' is not assignable to type 'number'.",
+          "seq": 11,
+          "severity": "blocker",
+        },
+      ],
+      "gate": "typecheck",
+      "outcome": "fail",
+      "seq": 11,
+      "specHash": "sha256-886a20b389ec2f64a9dc3ebc064f5cf43e9774269b0e6b73a6169f4071d588dd",
+      "summary": "typecheck failed with 1 finding(s)",
+    },
+    {
+      "attempt": 0,
+      "criteria": [
+        {
+          "id": "ac-1",
+          "status": "satisfied",
+        },
+      ],
+      "evaluatedNode": "fix-65207341fbd9",
+      "findings": [],
+      "gate": "typecheck",
+      "outcome": "pass",
+      "seq": 28,
+      "specHash": "sha256-886a20b389ec2f64a9dc3ebc064f5cf43e9774269b0e6b73a6169f4071d588dd",
+      "summary": "typecheck passed",
+    },
+  ],
+}

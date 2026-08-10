@@ -1,0 +1,221 @@
+{
+  "appliedSeq": 80,
+  "byNode": Map {
+    "recon-auth-surface" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.062,
+        "vendorReported": 0.062,
+      },
+      "events": 1,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 4200,
+          "outputTokens": 810,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "impl-signup" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.147,
+        "vendorReported": 0.147,
+      },
+      "events": 2,
+      "sources": [
+        "vendor-reported",
+        "estimated",
+      ],
+      "unaccounted": [
+        "gemini-cli",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 1200,
+          "outputTokens": 300,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 9800,
+          "outputTokens": 1450,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "review-security" => {
+      "costUsd": {
+        "apiKey": 0.081,
+        "estimated": 0.081,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 6400,
+          "outputTokens": 900,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
+  "byProvider": Map {
+    "claude-code" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.209,
+        "vendorReported": 0.209,
+      },
+      "events": 2,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 14000,
+          "outputTokens": 2260,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "gemini-cli" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [
+        "gemini-cli",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 1200,
+          "outputTokens": 300,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+    "codex" => {
+      "costUsd": {
+        "apiKey": 0.081,
+        "estimated": 0.081,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 6400,
+          "outputTokens": 900,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
+  "ceilings": [
+    {
+      "actual": 25.4,
+      "dimension": "cost",
+      "estimateDriven": false,
+      "firedBy": "deflow",
+      "limit": 25,
+      "node": null,
+      "scope": "run",
+      "seq": 76,
+      "unaccounted": [
+        "gemini-cli",
+      ],
+    },
+  ],
+  "ceilingsSet": [],
+  "paused": true,
+  "rateLimits": [
+    {
+      "provider": "claude-code",
+      "resetsAt": 1786446000000,
+      "seq": 44,
+    },
+  ],
+  "run": {
+    "costUsd": {
+      "apiKey": 0.081,
+      "estimated": 0.081,
+      "subscription": 0.209,
+      "vendorReported": 0.209,
+    },
+    "events": 4,
+    "sources": [
+      "vendor-reported",
+      "estimated",
+    ],
+    "unaccounted": [
+      "gemini-cli",
+    ],
+    "usage": {
+      "estimated": {
+        "cacheCreationInputTokens": null,
+        "cacheReadInputTokens": null,
+        "inputTokens": 7600,
+        "outputTokens": 1200,
+        "reasoningOutputTokens": null,
+        "source": "estimated",
+      },
+      "vendorReported": {
+        "cacheCreationInputTokens": null,
+        "cacheReadInputTokens": null,
+        "inputTokens": 14000,
+        "outputTokens": 2260,
+        "reasoningOutputTokens": null,
+        "source": "vendor-reported",
+      },
+    },
+  },
+}

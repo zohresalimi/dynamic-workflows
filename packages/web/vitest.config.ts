@@ -40,6 +40,11 @@ export default defineConfig({
   test: {
     name: 'web',
     include: ['src/**/*.test.ts'],
+    // The projection specs are the root config's `unit` project's (KAR-16.3
+    // AC2): pure reducers in Node's environment, with no DOM and no mount.
+    // Running them here as well would double the wall clock of the slowest
+    // slice to re-prove something a browser cannot say anything extra about.
+    exclude: ['src/ledger/projections/**/*.test.ts'],
     // KAR-15.3 AC1/AC2. A real HTTP/1.1 SSE origin on a port of its own, so a
     // spec can hold six streams open and watch an ordinary `fetch` queue behind
     // them. It has to be started from Node — a page cannot start a server for

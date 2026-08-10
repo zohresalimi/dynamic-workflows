@@ -1,0 +1,599 @@
+{
+  "appliedSeq": 80,
+  "nodes": Map {
+    "recon-auth-surface" => {
+      "brief": "Survey the auth surface, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [],
+      "id": "recon-auth-surface",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "read",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Survey the auth surface",
+      "type": "agent",
+      "writes": [
+        {
+          "key": "finding/auth-uses-jwt",
+          "kind": "fact",
+          "schemaId": "DeFlow.finding.v1",
+        },
+      ],
+    },
+    "plan-migration" => {
+      "brief": "Plan the migration, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "recon-auth-surface",
+      ],
+      "id": "plan-migration",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Plan the migration",
+      "type": "agent",
+      "writes": [],
+    },
+    "impl-login" => {
+      "brief": "Migrate the login view, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "plan-migration",
+      ],
+      "id": "impl-login",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Migrate the login view",
+      "type": "agent",
+      "writes": [],
+    },
+    "impl-signup" => {
+      "brief": "Migrate the signup view, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "plan-migration",
+      ],
+      "id": "impl-signup",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Migrate the signup view",
+      "type": "agent",
+      "writes": [],
+    },
+    "impl-logout" => {
+      "brief": "Migrate the logout view, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "plan-migration",
+      ],
+      "id": "impl-logout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Migrate the logout view",
+      "type": "agent",
+      "writes": [],
+    },
+    "impl-profile" => {
+      "brief": "Migrate the profile view, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "plan-migration",
+      ],
+      "id": "impl-profile",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Migrate the profile view",
+      "type": "agent",
+      "writes": [],
+    },
+    "gate-typecheck" => {
+      "budget": {},
+      "criteria": [
+        "typecheck-clean",
+      ],
+      "deps": [
+        "impl-signup",
+      ],
+      "gate": {
+        "gateId": "typecheck",
+        "kind": "deterministic",
+      },
+      "id": "gate-typecheck",
+      "independence": {
+        "notSessionOf": [
+          "impl-signup",
+        ],
+        "preferDifferentProvider": true,
+      },
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [],
+      },
+      "permission": "read",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full",
+        },
+        "maxAttempts": 1,
+      },
+      "returns": {
+        "maxTokens": 300,
+        "schemaId": "DeFlow.verdict.v4",
+      },
+      "title": "The project typechecks",
+      "type": "gate",
+      "writes": [],
+    },
+    "gate-contract" => {
+      "budget": {},
+      "criteria": [
+        "contract-clean",
+      ],
+      "deps": [
+        "impl-signup",
+      ],
+      "gate": {
+        "gateId": "contract",
+        "kind": "deterministic",
+      },
+      "id": "gate-contract",
+      "independence": {
+        "notSessionOf": [
+          "impl-signup",
+        ],
+        "preferDifferentProvider": true,
+      },
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [],
+      },
+      "permission": "read",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full",
+        },
+        "maxAttempts": 1,
+      },
+      "returns": {
+        "maxTokens": 300,
+        "schemaId": "DeFlow.verdict.v4",
+      },
+      "title": "The API contract holds",
+      "type": "gate",
+      "writes": [],
+    },
+    "review-security" => {
+      "brief": "Review the auth changes, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "gate-typecheck",
+      ],
+      "id": "review-security",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "read",
+      "provider": {
+        "prefer": [
+          "codex",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Review the auth changes",
+      "type": "agent",
+      "writes": [],
+    },
+    "approve-release" => {
+      "budget": {},
+      "deps": [
+        "review-security",
+      ],
+      "id": "approve-release",
+      "lifecycle": "active",
+      "options": [
+        {
+          "effect": "approve",
+          "id": "ship",
+          "label": "Ship it",
+        },
+        {
+          "effect": "reject",
+          "id": "hold",
+          "label": "Hold",
+        },
+      ],
+      "pathScopes": {
+        "write": [],
+      },
+      "permission": "read",
+      "prompt": "Ship the migration?",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 0,
+          "cap": 0,
+          "jitter": "full",
+        },
+        "maxAttempts": 1,
+      },
+      "returns": {
+        "maxTokens": 200,
+        "schemaId": "DeFlow.humandecision.v1",
+      },
+      "title": "Operator approves the release",
+      "type": "human",
+      "writes": [],
+    },
+    "smoke-tests" => {
+      "budget": {
+        "maxWallClockMs": 60000,
+      },
+      "deps": [
+        "approve-release",
+      ],
+      "effectClass": "pure",
+      "id": "smoke-tests",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "**",
+        ],
+      },
+      "permission": "worktree",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 500,
+          "cap": 5000,
+          "jitter": "full",
+        },
+        "maxAttempts": 2,
+      },
+      "returns": {
+        "maxTokens": 500,
+        "schemaId": "DeFlow.lintresult.v1",
+      },
+      "title": "Run the smoke tests",
+      "tool": {
+        "cwd": ".",
+        "kind": "script",
+        "run": "pnpm test:smoke",
+      },
+      "type": "tool",
+      "writes": [],
+    },
+  },
+  "planVersionSeq": Map {
+    1 => 4,
+    2 => 47,
+  },
+  "proposals": Map {
+    "p-abandon-shim" => {
+      "ops": [
+        {
+          "op": "abandon-branch",
+          "reason": "unreachable after the upgrade",
+          "root": "impl-legacy-shim",
+        },
+      ],
+      "patchId": "p-abandon-shim",
+      "proposedBy": "scheduler",
+      "reason": "the legacy shim is unreachable once the router upgrade lands",
+    },
+  },
+  "rail": [
+    {
+      "by": null,
+      "decision": null,
+      "kind": "version",
+      "nodes": Map {
+        "recon-auth-surface" => "h-885b7d7d",
+        "plan-migration" => "h-f2bbd15b",
+        "impl-login" => "h-41ee603b",
+        "impl-signup" => "h-555cda54",
+        "impl-logout" => "h-aa4ebbc6",
+        "impl-profile" => "h-07dd7b03",
+        "impl-legacy-shim" => "h-41a6140c",
+        "gate-typecheck" => "h-4cf82fde",
+        "gate-contract" => "h-4cf82fde",
+        "review-security" => "h-b468f49f",
+        "approve-release" => "h-98f06494",
+        "smoke-tests" => "h-be7d4905",
+      },
+      "patchId": null,
+      "planHash": "sha256-5ebe55f2edf00f3d056f30bd895c295dbb09a2c315ad939e33e005b69b8306b9",
+      "proposedBy": "planner",
+      "reason": "the initial plan",
+      "rule": null,
+      "seq": 4,
+      "version": 1,
+    },
+    {
+      "by": "policy",
+      "decision": "auto",
+      "kind": "version",
+      "nodes": Map {
+        "recon-auth-surface" => "h-885b7d7d",
+        "plan-migration" => "h-f2bbd15b",
+        "impl-login" => "h-41ee603b",
+        "impl-signup" => "h-555cda54",
+        "impl-logout" => "h-aa4ebbc6",
+        "impl-profile" => "h-07dd7b03",
+        "gate-typecheck" => "h-4cf82fde",
+        "gate-contract" => "h-4cf82fde",
+        "review-security" => "h-b468f49f",
+        "approve-release" => "h-98f06494",
+        "smoke-tests" => "h-be7d4905",
+      },
+      "patchId": "p-abandon-shim",
+      "planHash": "sha256-88003cec8000b4ec88003cec8000b4ec88003cec8000b4ec88003cec8000b4ec",
+      "proposedBy": "scheduler",
+      "reason": "the legacy shim is unreachable once the router upgrade lands",
+      "rule": "no-write-escalation",
+      "seq": 47,
+      "version": 2,
+    },
+  ],
+  "version": 2,
+}

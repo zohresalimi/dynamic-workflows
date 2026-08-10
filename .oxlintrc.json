@@ -199,6 +199,115 @@
       }
     },
     {
+      // KAR-16.3 AC1 / EPIC-16-S15. The projections are pure TypeScript with
+      // **zero Vue imports** (docs/12-frontend-architecture.md §3.3, rule 2),
+      // and purity is a property of the build rather than of a test somebody
+      // remembered to run. They are the one part of packages/web this linter
+      // sees at all — the `!packages/web/…` negation in `ignorePatterns` below
+      // — and they are plain `.ts` with no SFC in sight, which is what made the
+      // blanket exclusion necessary everywhere else.
+      //
+      // The reason the rule is worth having is not tidiness. A `ref` in here
+      // moves the risky logic out of a 40-millisecond node test and into a
+      // browser mount, and it happens one convenient import at a time. The DOM
+      // half of the same rule — `document`, `window`, `localStorage` — is
+      // `no-restricted-globals` beside it, because an import list cannot see a
+      // global.
+      "files": ["packages/web/src/ledger/projections/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "document",
+            "message": "A projection is a reducer over the Event union and runs in Vitest's node environment, where there is no DOM. Rendering belongs in a component; deriving belongs here."
+          },
+          {
+            "name": "window",
+            "message": "A projection is a reducer over the Event union and runs in Vitest's node environment. Anything that needs `window` is a component or a store, not a projection."
+          },
+          {
+            "name": "localStorage",
+            "message": "Persistence is ../cursor.ts's business (sessionStorage, one key). A projection holds no state that outlives the tab."
+          },
+          {
+            "name": "sessionStorage",
+            "message": "Persistence is ../cursor.ts's business. A projection holds no state that outlives the tab."
+          },
+          {
+            "name": "fetch",
+            "message": "There is no other input (docs/12 §1): a projection derives from events that arrived, and never asks for more. Fetching is ../../api/'s job."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "Date",
+            "property": "now",
+            "message": "The instant is on the event (`ts`) and the order is `seq`. A clock read here makes a replayed run disagree with the live one — and makes a span's end depend on when the tab was opened."
+          },
+          {
+            "object": "Math",
+            "property": "random",
+            "message": "A projection must fold identically on every replay. Ids come from the ledger."
+          }
+        ],
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "vue",
+                  "vue/*",
+                  "vue-router",
+                  "pinia",
+                  "@vue/*",
+                  "@vue-flow/*",
+                  "@vueuse/*"
+                ],
+                "message": "KAR-16.3 AC1: projections import nothing from Vue. No ref, no reactive, no computed, no component — that is what lets the largest block of frontend tests run in node in milliseconds (docs/12-frontend-architecture.md §3.3). The reactive shell is packages/web/src/stores/."
+              },
+              {
+                "group": ["node:*"],
+                "message": "A projection runs in a browser as well as in a node test. Reading a fixture off disk is the spec's job (packages/web/test/run-fixtures.ts)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // Specs are not the published surface, and the same reasoning the
+      // packages/core override below uses applies here: a spec that folds a
+      // recorded ledger needs `node:fs`. What must not relax is the Vue half —
+      // a projection spec that mounted something would be a browser test
+      // collected by the node slice, and it would fail confusingly rather than
+      // loudly. So the group is re-declared without `node:*` rather than the
+      // rule being switched off.
+      "files": ["packages/web/src/ledger/projections/**/*.test.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "vue",
+                  "vue/*",
+                  "vue-router",
+                  "pinia",
+                  "@vue/*",
+                  "@vue-flow/*",
+                  "@vueuse/*"
+                ],
+                "message": "KAR-16.3 AC1: the projection suite runs in Vitest's node environment, with no DOM and no mount. A spec that needs Vue belongs in the `web` project (packages/web/vitest.config.ts)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // KAR-08.4 AC7's lint half. `terminal/create` is an ACP method the
       // *agent* invokes, and this is the one file that used to answer it by
       // spreading `process.env` straight into the child (the Kiro bug,
@@ -225,6 +334,7 @@
   "ignorePatterns": [
     "vitest.config.ts",
     "packages/web/**",
+    "!packages/web/src/ledger/projections/**",
     "packages/mock-agent/**",
     "packages/testkit/**",
     "e2e/**",

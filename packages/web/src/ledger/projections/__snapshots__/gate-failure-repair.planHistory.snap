@@ -1,0 +1,274 @@
+{
+  "appliedSeq": 30,
+  "nodes": Map {
+    "impl-1" => {
+      "brief": "Implement daysUntil.",
+      "budget": {},
+      "deps": [],
+      "id": "impl-1",
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [
+          "src/**",
+          "test/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude",
+        ],
+        "requires": [],
+      },
+      "reads": [],
+      "resume": "always-replay",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 1500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Implement daysUntil",
+      "type": "agent",
+      "writes": [],
+    },
+    "gate-typecheck" => {
+      "budget": {},
+      "criteria": [
+        "ac-1",
+      ],
+      "deps": [
+        "impl-1",
+      ],
+      "gate": {
+        "gateId": "typecheck",
+        "kind": "deterministic",
+      },
+      "id": "gate-typecheck",
+      "independence": {
+        "notSessionOf": [],
+        "preferDifferentProvider": false,
+      },
+      "lifecycle": "abandoned",
+      "pathScopes": {
+        "write": [],
+      },
+      "permission": "read",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 1,
+      },
+      "returns": {
+        "maxTokens": 600,
+        "schemaId": "DeFlow.verdict.v3",
+      },
+      "title": "Typecheck",
+      "type": "gate",
+      "writes": [],
+    },
+    "fix-65207341fbd9" => {
+      "brief": "The typecheck gate failed with exactly one finding (65207341fbd9) at src/date-picker.ts:2: ts2322: Type 'Date' is not assignable to type 'number'.
+
+Do these three things, in this order, and commit between them:
+1. Write a test that reproduces this finding and fails because of it. Commit it alone.
+2. Make that test pass. Commit the fix separately.
+3. Stop. The gate set is re-run from the deterministic tier by DeFlow, not by you.
+
+Repair only this finding. Do not touch the gate definition, the CI configuration, a lockfile or any test the plan marks as a contract — those are the check, and repairing the check is not repairing the code.",
+      "budget": {},
+      "deps": [
+        "impl-1",
+      ],
+      "id": "fix-65207341fbd9",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/date-picker.ts",
+          "test/**",
+        ],
+        "write": [
+          "src/date-picker.ts",
+          "test/**",
+        ],
+      },
+      "permission": "worktree",
+      "provider": {
+        "prefer": [
+          "claude",
+        ],
+        "requires": [],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "criteria",
+        },
+        {
+          "handle": "artifact://3815110bc875f5ad4ce902d475a0728e2fef502afa2dd7cc5aff0c5a712550f9",
+          "kind": "artifact",
+        },
+      ],
+      "resume": "always-replay",
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 1500,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Repair typecheck finding 65207341fbd9",
+      "type": "agent",
+      "writes": [],
+    },
+    "gate-typecheck-r2" => {
+      "budget": {},
+      "criteria": [
+        "ac-1",
+      ],
+      "deps": [
+        "fix-65207341fbd9",
+      ],
+      "gate": {
+        "gateId": "typecheck",
+        "kind": "deterministic",
+      },
+      "id": "gate-typecheck-r2",
+      "independence": {
+        "notSessionOf": [],
+        "preferDifferentProvider": false,
+      },
+      "lifecycle": "active",
+      "pathScopes": {
+        "write": [],
+      },
+      "permission": "read",
+      "reads": [],
+      "retry": {
+        "backoff": {
+          "base": 2000,
+          "cap": 300000,
+          "jitter": "full",
+        },
+        "maxAttempts": 1,
+      },
+      "returns": {
+        "maxTokens": 600,
+        "schemaId": "DeFlow.verdict.v3",
+      },
+      "title": "Typecheck",
+      "type": "gate",
+      "writes": [],
+    },
+  },
+  "planVersionSeq": Map {
+    1 => 4,
+    2 => 14,
+    3 => 24,
+  },
+  "proposals": Map {},
+  "rail": [
+    {
+      "by": null,
+      "decision": null,
+      "kind": "version",
+      "nodes": Map {
+        "impl-1" => "h-4f350e6a",
+        "gate-typecheck" => "h-68a61911",
+      },
+      "patchId": null,
+      "planHash": "sha256-62718e92676002f1fe1e8733c41f6f6b5d7bc1bd8d98d988d0a7064c7fb42b19",
+      "proposedBy": "planner",
+      "reason": "the initial plan",
+      "rule": null,
+      "seq": 4,
+      "version": 1,
+    },
+    {
+      "by": null,
+      "decision": null,
+      "kind": "version",
+      "nodes": Map {
+        "impl-1" => "h-4f350e6a",
+        "gate-typecheck" => "h-68a61911",
+        "fix-65207341fbd9" => "h-36f3a4bf",
+      },
+      "patchId": null,
+      "planHash": "sha256-adb80b5c0adfc0a6f5cae73b146f29ed7da2007a81362f1d056de1f731fbdeb7",
+      "proposedBy": "scheduler",
+      "reason": "the initial plan",
+      "rule": null,
+      "seq": 13,
+      "version": 2,
+    },
+    {
+      "by": "policy",
+      "decision": "auto",
+      "kind": "version",
+      "nodes": Map {
+        "impl-1" => "h-4f350e6a",
+        "gate-typecheck" => "h-68a61911",
+        "fix-65207341fbd9" => "h-36f3a4bf",
+      },
+      "patchId": "repair-typecheck-65207341fbd9",
+      "planHash": "sha256-adb80b5c0adfc0a6f5cae73b146f29ed7da2007a81362f1d056de1f731fbdeb7",
+      "proposedBy": "scheduler",
+      "reason": "the proposal for this patch is not in this window",
+      "rule": "surgical-repair",
+      "seq": 14,
+      "version": 2,
+    },
+    {
+      "by": null,
+      "decision": null,
+      "kind": "version",
+      "nodes": Map {
+        "impl-1" => "h-4f350e6a",
+        "gate-typecheck" => "h-68a61911",
+        "fix-65207341fbd9" => "h-36f3a4bf",
+        "gate-typecheck-r2" => "h-68a61911",
+      },
+      "patchId": null,
+      "planHash": "sha256-c8485615e401b21ac4d0158ccc164190fba7693980b663f76f6348f10a2519c5",
+      "proposedBy": "scheduler",
+      "reason": "the initial plan",
+      "rule": null,
+      "seq": 23,
+      "version": 3,
+    },
+    {
+      "by": "policy",
+      "decision": "auto",
+      "kind": "version",
+      "nodes": Map {
+        "impl-1" => "h-4f350e6a",
+        "gate-typecheck" => "h-68a61911",
+        "fix-65207341fbd9" => "h-36f3a4bf",
+        "gate-typecheck-r2" => "h-68a61911",
+      },
+      "patchId": "rerun-fix-65207341fbd9-r2",
+      "planHash": "sha256-c8485615e401b21ac4d0158ccc164190fba7693980b663f76f6348f10a2519c5",
+      "proposedBy": "scheduler",
+      "reason": "the proposal for this patch is not in this window",
+      "rule": "read-only-analysis",
+      "seq": 24,
+      "version": 3,
+    },
+  ],
+  "version": 3,
+}

@@ -28,12 +28,29 @@ export default defineConfig({
           pool: 'threads',
           include: ['packages/*/src/**/*.test.ts', 'packages/*/test/*.test.ts', 'test/*.test.ts'],
           // `@DeFlow/web`'s specs live under `src/` like everybody else's and
-          // are the one set this slice must not take: they mount Vue
-          // components and need a real Chromium, which the `web` project below
-          // gives them. Without this they are collected here too, where
-          // `document` does not exist — and the failure reads as a broken
+          // are almost entirely the one set this slice must not take: they
+          // mount Vue components and need a real Chromium, which the `web`
+          // project below gives them. Without this they are collected here too,
+          // where `document` does not exist — and the failure reads as a broken
           // component rather than as the wrong runner.
-          exclude: [...configDefaults.exclude, 'packages/web/**'],
+          //
+          // `src/ledger/projections/**` is the deliberate exception (KAR-16.3
+          // AC2). Those are plain reducers over the `Event` union with no Vue,
+          // no DOM and no mount, and running them *here* rather than in a
+          // browser is the whole point of the purity rule: the largest block of
+          // frontend tests costs milliseconds instead of a page load. The
+          // patterns are depth-explicit rather than one `packages/web/**` with
+          // a carve-out, because `**` would happily swallow the `projections`
+          // segment and silently take the specs back. `test/web-suite-split.test.ts`
+          // is what stops a new web spec falling between the two projects.
+          exclude: [
+            ...configDefaults.exclude,
+            'packages/web/test/**/*.test.ts',
+            'packages/web/src/*.test.ts',
+            'packages/web/src/*/*.test.ts',
+            'packages/web/src/!(ledger)/**/*.test.ts',
+            'packages/web/src/ledger/!(projections)/**/*.test.ts',
+          ],
         },
       },
       {

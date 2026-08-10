@@ -629,8 +629,19 @@ omission. Both halves are needed; neither substitutes for the other.
 kind this build has never heard of and asserts no projection moved by so much as a field, while the
 cursor advanced past it — a client that skipped both would re-request that event on every reconnect
 for the life of the run. The build-skew scenario is `packages/web/src/ledger/stream.test.ts`, which
-distinguishes it from a restarted daemon: two different facts with two different remedies. The
-compile-time half is KAR-16.3's, because it needs the seven exhaustive switches to exist.
+distinguishes it from a restarted daemon: two different facts with two different remedies.
+
+**Automated (KAR-16.3) — the compile-time half.** The two directions pull against each other: a
+`default: return` is what makes an unknown kind harmless at runtime, and it is also exactly what
+would swallow a kind added to the union. `packages/web/src/ledger/projections/kinds.ts` is how they
+coexist — one `satisfies Record<EventKind, ProjectionName[]>` table, so a kind added in
+`@DeFlow/core` fails to compile *there* until somebody decides which views care, and each
+projection's `default` branch then passes its narrowed event to `ignored<'name'>()`, whose parameter
+is every event **except** the ones that projection claims. A claimed kind left unhandled is still in
+the union at that point and does not typecheck. `projections/exhaustive.type-test.ts` is the proof
+it has teeth: it is compiled by `pnpm typecheck`, never executed, and every `@ts-expect-error` in it
+fails in both directions — an unused directive is itself an error, so a mechanism that quietly
+stopped working reports as one.
 
 ---
 
@@ -790,6 +801,18 @@ observation — if the browser-mode suite grows past the projection suite, logic
 projections and into components, and the cost of every subsequent test goes up by two orders of
 magnitude.
 
+**Automated (KAR-16.3):** the lint half is an `.oxlintrc.json` override over
+`packages/web/src/ledger/projections/**` restricting `vue`, `vue-router`, `pinia`, `@vue*`, `node:*`
+and the DOM globals — this directory is the one part of `packages/web` oxlint sees at all, exempted
+by a single `!` from the package-wide `ignorePatterns` entry. `purity.test.ts` beside it asserts that
+the exemption is still there (delete it and the rule passes loudly for ever) and re-runs the same
+matchers against a planted violation, so a scan that has never matched anything is not mistaken for a
+scan that works. The suite runs in the **`unit`** project — Node's environment, no DOM, no mount —
+which cost one change per side: `packages/web/vitest.config.ts` excludes the directory and the root
+config's `unit` project re-admits it past the blanket web exclusion, depth-explicitly, because a `**`
+carve-out would swallow the `projections` segment. `test/web-suite-split.test.ts` asserts the two
+sets partition every web spec, so a new one cannot fall between the projects and never run.
+
 ---
 
 ## EPIC-16-S16 — `plan.ts` over the happy path: seven states, labelled edges
@@ -831,6 +854,16 @@ defines — that alignment is deliberate and is what makes S3's enumeration test
 `node.progress` is _cheap, frequent, and does not advance the progress watermark_
 ([04 §9](../../04-domain-model.md)); treating it as a state change makes the graph flicker.
 
+**Automated (KAR-16.3):** `packages/web/src/ledger/projections/plan.test.ts` folds
+`test/fixtures/runs/happy-path-12/events.jsonl` and asserts all seven states are *reached* as well as
+that no eighth or `undefined` one is — an enumeration over a fixture that only reaches four proves
+much less than it looks. The seven cannot be produced by hand at all: `PlanNodeVM.state` is derived
+through `NODE_STATUS_DISPLAY`, the total `Record<NodeStatus, DisplayState>` KAR-16.1 shipped, so an
+eighth would be a compile error in the palette rather than a wrong chip here. The abandoned node
+comes from a real `plan.patched`, and it works because the projection holds the `plan.patch.proposed`
+that carries the ops — `plan.patched` names only a `patchId`, so a projection without that pairing
+could not answer *which* node a patch abandoned.
+
 ---
 
 ## EPIC-16-S17 — `planHistory.ts`: the rail carries rejected patches too
@@ -869,6 +902,16 @@ Feature: The version rail behind the scrubber (F10.2, F2.6)
 change-detection hash and not fine for anything needing stability across versions**
 ([12 §6.2](../../12-frontend-architecture.md)). `planHash` itself is computed by the daemon with its
 own canonical encoder ([04 §3](../../04-domain-model.md)); the UI never recomputes it.
+
+**Automated (KAR-16.3):** `planHistory.test.ts` over `test/fixtures/runs/three-patches/events.jsonl`
+— an insert, a split and a provider replace, plus a fourth proposal that was refused. The rail is a
+chronology of *decisions* rather than a list of versions, so the rejection is on it and the version
+count stays at four; `versionsOf()` is the four that moved the plan. v1 carries `decision: null`,
+which is what the daemon's own `…/plans` response says — inventing an `auto` for the initial compile
+would report a rule that never fired. The per-node `contentHash` is FNV-1a over `@DeFlow/core`'s own
+`canonicalJson` rather than `ohash`: the repository already has one answer to "stable key ordering"
+and two would be two answers, and a synchronous reducer cannot await `crypto.subtle`. It is prefixed
+`h-` so a hash that leaked into a key or a URL is obvious on sight.
 
 ---
 
@@ -915,6 +958,17 @@ Feature: Compaction fidelity (F6.6, F10.5)
 _"Encoding that uncertainty in the type is the difference between an auditable system and one that
 quietly lies"_ ([04 §9.1](../../04-domain-model.md)).
 
+**Automated (KAR-16.3):** `context.test.ts` folds `test/fixtures/runs/compaction/events.jsonl`,
+which is a **recording** — `packages/ledger/scripts/build-compaction-fixture.ts` demoted a real
+oversized body through the real packet builder, and the `vendor.session` half carries the `pre_tokens`
+the committed `compact_boundary` stream really has. A hand-written object that happened to say `null`
+would prove nothing about what DeFlow writes. The projection exposes `saved` as `before - after` and
+as **`null`** for the partial mark, which is where a `?? 0` would otherwise hide. The segment-sum
+assertions run over `happy-path-12`, whose packets are built by `buildPacket` and carry all nine
+`SegmentKind`s — a per-kind assertion over a packet with four of them is not the assertion AC6 makes.
+The pin-integrity half is the same fixture's `impl-login`, which fails with
+`safety.pin-integrity-violated` after a pinned segment's digest stops matching.
+
 ---
 
 ## EPIC-16-S19 — `gates.ts`: `unverifiable` and `needs-human` are not failures
@@ -953,6 +1007,16 @@ repair will fix"_ ([04 §7](../../04-domain-model.md)). The `unverifiable` state
 spec becomes visible — the SDD literature's primary failure mode, surfaced as data rather than as a
 feeling.
 
+**Automated (KAR-16.3):** `gates.test.ts` over two ledgers, and which answers which matters. The
+repair loop is `test/fixtures/runs/gate-failure-repair/`, a **recording** of a real `tsc` failing
+behind a real gate definition, a real fix node, and the re-run that passed — so the attempt sequence
+and the criterion moving from `unsatisfied` to `satisfied` are the engine's own output. The three
+states and `needs-human` are `happy-path-12`, which has a gate whose tooling is missing. The board is
+seeded from the run's **spec** rather than from the criteria some gate mentioned, which is the only
+way `manual-visual-check` — mapped to no gate at all — can surface as `unverifiable` and `unmapped`
+rather than as a missing row; F7.4's defect is rendered as data. `failureCount` counts `fail` and
+nothing else.
+
 ---
 
 ## EPIC-16-S20 — `cost.ts`: vendor-reported and estimated are never mixed
@@ -989,6 +1053,14 @@ Feature: Live cost accounting (F9.1)
 ([04 §8](../../04-domain-model.md)). A3 open risk A4-3 records that token accounting is unverified for
 Copilot, Gemini/Antigravity, Cursor and OpenCode — only Claude Code and Codex were checked — so the
 `'none'` branch is not hypothetical.
+
+**Automated (KAR-16.3):** `cost.test.ts` over `happy-path-12`, which carries both sources and a
+provider that prices nothing. `CostBucket` ships **no `total` field** — the two sources are separate
+cells plus a `sources` list saying which a displayed number could have come from, and there is
+deliberately nothing for somebody to reach for in week three. A `costUsd: null` puts the provider in
+`unaccounted` and its *tokens* still count, because those are not missing. Money is added at six
+decimal places so a replay produces the same bytes; the ceiling trip records that the run **paused**,
+with `estimateDriven` off the event's own basis rather than guessed.
 
 ---
 
@@ -1029,6 +1101,15 @@ Feature: Execution spans for the Gantt (F10.9)
 The Gantt's x-axis is wall clock and therefore uses `ts`, but any _ordering_ decision in the
 projection uses `seq`.
 
+**Automated (KAR-16.3):** `timeline.test.ts` over `happy-path-12`. `impl-signup` starts and never
+terminates, so its span is open — `endTs` is `null`, and the spec asserts specifically that it is not
+the last event's `ts`, which is the plausible mistake rather than a hypothetical one. `review-security`
+is suspended on a human gate and answered six hours later, and the suspension is a segment of the span
+with `suspendedMs` beside it, so six idle hours are never drawn as six busy ones. `approve-release`
+waited without ever starting and therefore gets **no span at all** — one would have to invent a start
+— and its suspension stays open with `untilTs: null` rather than being closed at `now`. `impl-logout`
+yields two spans keyed by `(nodeId, attempt)` in one lane.
+
 ---
 
 ## EPIC-16-S22 — `blackboard.ts`: provenance, consumers and taint
@@ -1063,6 +1144,13 @@ Feature: Memory sharing as data (F6.3, F10.4)
 _"nothing is lost by deferring it — `fact.written` and `fact.read` are ledger events regardless. The
 data accrues from day one; only the rendering slips"_ ([roadmap §3](../../17-roadmap.md)). The
 provenance table inside the node inspector (KAR-17.3) consumes this projection directly.
+
+**Automated (KAR-16.3):** `blackboard.test.ts` over `happy-path-12`. The taint list is the one the
+`fact.invalidated` event **carries**, never one recomputed from the consumers this tab happens to
+hold: the daemon computes it as the reads at a `seq` earlier than the invalidation, and a taint list
+that depended on when you opened the page would not be a taint list. A `fact.read` whose `fact.written`
+is below the tab's cursor is held and adopted if the write arrives — dropping it would under-report
+the consumer set for the life of the tab, which is the ordinary case for a panel opened mid-run.
 
 ---
 
@@ -1104,6 +1192,12 @@ Feature: Projection idempotency
 memory, which is exactly what KAR-16.4 exists to prevent. Guard on the highest applied `seq` per
 projection and drop anything at or below it.
 
+**Automated (KAR-16.3):** `idempotency.test.ts` runs the outline over all seven through
+`projections/index.ts`, three ways — the last envelope re-applied, *every* envelope applied twice,
+and a six-event backfill window replayed over a folded state — plus the unknown-kind case for each.
+The guard is the per-projection high-water mark the note asks for, and it was verified to have teeth
+by deleting it from `cost.ts` and watching three of these fail before it was put back.
+
 ---
 
 ## EPIC-16-S24 — Subscribe-backfill overlaps the cursor
@@ -1134,6 +1228,11 @@ Feature: Adding a run panel while events are arriving
 **Notes:** the fan-out is by `e.runId` in one dispatcher, not by one connection per run
 ([11 §2](../../11-api-and-realtime.md)). This scenario is where S23's idempotency requirement stops
 being theoretical: the overlap is a designed-in property of the subscribe path, not an error case.
+
+**Automated (KAR-16.3 for the projection half):** the overlap window's *"the projections are
+byte-identical after the duplicates"* is `idempotency.test.ts`'s backfill case, over each of the seven
+and over the recorded ledgers rather than over a synthetic pair. The routing and `caught_up` halves
+are KAR-16.2's, below.
 
 **Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts` opens a second panel against an
 origin that backfills a newly subscribed run from the cursor the *connection* opened at — the

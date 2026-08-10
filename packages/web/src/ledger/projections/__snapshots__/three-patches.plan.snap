@@ -1,0 +1,362 @@
+{
+  "appliedSeq": 116,
+  "edges": Map {
+    "recon→impl-checkout:control" => {
+      "carries": [],
+      "from": "recon",
+      "id": "recon→impl-checkout:control",
+      "kind": "control",
+      "to": "impl-checkout",
+    },
+    "impl-checkout→review-checkout:control" => {
+      "carries": [],
+      "from": "impl-checkout",
+      "id": "impl-checkout→review-checkout:control",
+      "kind": "control",
+      "to": "review-checkout",
+    },
+    "impl-checkout-cart→review-checkout:control" => {
+      "carries": [],
+      "from": "impl-checkout-cart",
+      "id": "impl-checkout-cart→review-checkout:control",
+      "kind": "control",
+      "to": "review-checkout",
+    },
+    "impl-checkout-payment→review-checkout:control" => {
+      "carries": [],
+      "from": "impl-checkout-payment",
+      "id": "impl-checkout-payment→review-checkout:control",
+      "kind": "control",
+      "to": "review-checkout",
+    },
+  },
+  "nodes": Map {
+    "recon" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "id": "recon",
+      "lifecycle": "active",
+      "model": null,
+      "permission": "read",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "claude-code",
+      "retry": null,
+      "state": "pending",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "Survey the checkout flow",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "impl-checkout" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "id": "impl-checkout",
+      "lifecycle": "abandoned",
+      "model": null,
+      "permission": "worktree",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "claude-code",
+      "retry": null,
+      "state": "abandoned",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "Rewrite the checkout flow",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "review-checkout" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "id": "review-checkout",
+      "lifecycle": "active",
+      "model": null,
+      "permission": "read",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "claude-code",
+      "retry": null,
+      "state": "pending",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "Review the checkout rewrite",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "impl-checkout-cart" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "id": "impl-checkout-cart",
+      "lifecycle": "active",
+      "model": null,
+      "permission": "worktree",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "claude-code",
+      "retry": null,
+      "state": "pending",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "Rewrite the cart",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "impl-checkout-payment" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "id": "impl-checkout-payment",
+      "lifecycle": "active",
+      "model": "gpt-5-codex",
+      "permission": "worktree",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "codex",
+      "retry": null,
+      "state": "pending",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "Rewrite the payment step",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+  },
+  "planHash": "sha256-c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8",
+  "proposals": Map {
+    "p-insert-review" => {
+      "ops": [
+        {
+          "edges": [
+            {
+              "from": "impl-checkout",
+              "kind": "control",
+              "to": "review-checkout",
+            },
+          ],
+          "nodes": [
+            {
+              "brief": "Review the checkout rewrite, and report what changed.",
+              "budget": {
+                "maxCostUsd": 2,
+                "maxWallClockMs": 600000,
+              },
+              "deps": [
+                "impl-checkout",
+              ],
+              "id": "review-checkout",
+              "lifecycle": "active",
+              "pathScopes": {
+                "read": [
+                  "src/**",
+                ],
+                "write": [
+                  "src/**",
+                ],
+              },
+              "permission": "read",
+              "provider": {
+                "prefer": [
+                  "claude-code",
+                ],
+                "requires": [
+                  "structuredOutput",
+                ],
+              },
+              "reads": [
+                {
+                  "kind": "spec",
+                  "section": "goal",
+                },
+              ],
+              "resume": "native-if-available",
+              "retry": {
+                "backoff": {
+                  "base": 1000,
+                  "cap": 30000,
+                  "jitter": "full",
+                },
+                "maxAttempts": 3,
+              },
+              "returns": {
+                "maxTokens": 4000,
+                "schemaId": "DeFlow.finding.v1",
+              },
+              "title": "Review the checkout rewrite",
+              "type": "agent",
+              "writes": [],
+            },
+          ],
+          "op": "insert-nodes",
+        },
+      ],
+      "patchId": "p-insert-review",
+      "reason": "a security review is required before checkout ships",
+    },
+    "p-split-impl" => {
+      "ops": [
+        {
+          "edges": [
+            {
+              "from": "impl-checkout-cart",
+              "kind": "control",
+              "to": "review-checkout",
+            },
+            {
+              "from": "impl-checkout-payment",
+              "kind": "control",
+              "to": "review-checkout",
+            },
+          ],
+          "into": [
+            {
+              "brief": "Rewrite the cart, and report what changed.",
+              "budget": {
+                "maxCostUsd": 2,
+                "maxWallClockMs": 600000,
+              },
+              "deps": [
+                "recon",
+              ],
+              "id": "impl-checkout-cart",
+              "lifecycle": "active",
+              "pathScopes": {
+                "read": [
+                  "src/**",
+                ],
+                "write": [
+                  "src/**",
+                ],
+              },
+              "permission": "worktree",
+              "provider": {
+                "prefer": [
+                  "claude-code",
+                ],
+                "requires": [
+                  "structuredOutput",
+                ],
+              },
+              "reads": [
+                {
+                  "kind": "spec",
+                  "section": "goal",
+                },
+              ],
+              "resume": "native-if-available",
+              "retry": {
+                "backoff": {
+                  "base": 1000,
+                  "cap": 30000,
+                  "jitter": "full",
+                },
+                "maxAttempts": 3,
+              },
+              "returns": {
+                "maxTokens": 4000,
+                "schemaId": "DeFlow.finding.v1",
+              },
+              "title": "Rewrite the cart",
+              "type": "agent",
+              "writes": [],
+            },
+            {
+              "brief": "Rewrite the payment step, and report what changed.",
+              "budget": {
+                "maxCostUsd": 2,
+                "maxWallClockMs": 600000,
+              },
+              "deps": [
+                "recon",
+              ],
+              "id": "impl-checkout-payment",
+              "lifecycle": "active",
+              "pathScopes": {
+                "read": [
+                  "src/**",
+                ],
+                "write": [
+                  "src/**",
+                ],
+              },
+              "permission": "worktree",
+              "provider": {
+                "prefer": [
+                  "claude-code",
+                ],
+                "requires": [
+                  "structuredOutput",
+                ],
+              },
+              "reads": [
+                {
+                  "kind": "spec",
+                  "section": "goal",
+                },
+              ],
+              "resume": "native-if-available",
+              "retry": {
+                "backoff": {
+                  "base": 1000,
+                  "cap": 30000,
+                  "jitter": "full",
+                },
+                "maxAttempts": 3,
+              },
+              "returns": {
+                "maxTokens": 4000,
+                "schemaId": "DeFlow.finding.v1",
+              },
+              "title": "Rewrite the payment step",
+              "type": "agent",
+              "writes": [],
+            },
+          ],
+          "node": "impl-checkout",
+          "op": "split-node",
+        },
+      ],
+      "patchId": "p-split-impl",
+      "reason": "the checkout rewrite is two independent changes",
+    },
+    "p-reroute-payment" => {
+      "ops": [
+        {
+          "model": "gpt-5-codex",
+          "node": "impl-checkout-payment",
+          "op": "replace-provider",
+          "provider": "codex",
+        },
+      ],
+      "patchId": "p-reroute-payment",
+      "reason": "claude-code is out of quota for the next four hours",
+    },
+    "p-widen-scope" => {
+      "ops": [
+        {
+          "node": "impl-checkout-cart",
+          "op": "replace-provider",
+          "provider": "copilot",
+        },
+      ],
+      "patchId": "p-widen-scope",
+      "reason": "the payment step needs to edit the shared money helper",
+    },
+  },
+  "version": 4,
+}
