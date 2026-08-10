@@ -293,9 +293,19 @@ that whoever added them never notices.
 The cold-start number is asserted by `e2e/dev-loop.test.ts`, which prints the measurement it took,
 so a regression shows up in the test log rather than in a vague sense that the loop got slower. The
 pre-commit number works the same way, in `test/integration/git-hooks.test.ts`: it measures five runs
-of the real hook over twenty real files, asserts the median against the budget, and prints what it
-saw. The budget will be attacked repeatedly and always for a good reason; making it an assertion
-with a number converts the argument from taste into evidence.
+of the real hook over twenty real files, asserts them against the budget, and prints what it saw.
+The budget will be attacked repeatedly and always for a good reason; making it an assertion with a
+number converts the argument from taste into evidence.
+
+**The 2 s is the floor, not the ceiling, because this spec runs inside the integration slice.** A
+flat wall-clock ceiling measured the box: the same five runs take about 660 ms idle and 3.4–4.9 s
+beside a live slice, and it went red at 2957, 4812 and 5021 ms with nothing added to the hook. So
+each hook run is **alternated with a control** — the hook's own two jobs, run bare and in parallel
+over the same twenty files, which is every cost the hook has except lefthook itself — and the test
+asserts the median of the per-pair ratios against 2. Alternating is the load-bearing part: timing
+five hooks and *then* five controls puts the halves in different windows, and on 2026-08-10 the
+slice thinned out between them and produced a 2.01 ratio on an unmodified hook. Paired, the same
+load reads 1.04–1.35 against 1.05 idle, while a third pre-commit job (`pnpm typecheck`) reads 19.3.
 
 **The CI figure comes from a real run**, because it cannot come from anywhere else: AC12 asks for
 GitHub-hosted runner wall clock. Run

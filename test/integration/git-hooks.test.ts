@@ -285,27 +285,52 @@ suite('the two-second budget (AC3, test plan #3, EPIC-01-S21 scenario 1)', () =>
     const args = ['run', 'pre-commit', '--force', '--no-stage-fixed', '--no-tty'];
     for (const file of tracked) args.push('--file', file);
 
-    const timings: number[] = [];
-    for (let attempt = 0; attempt < RUNS; attempt += 1) {
+    /** One run of the real hook, over the twenty files, timed. */
+    const timeHook = async (): Promise<number> => {
       const started = process.hrtime.bigint();
       const result = await run(LEFTHOOK, args, repoRoot);
-      timings.push(Number(process.hrtime.bigint() - started) / 1e6);
+      const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
       expect(result.code, result.output).toBe(0);
-    }
+      return elapsed;
+    };
 
-    // The control, on the same machine seconds later: the hook's own two jobs,
-    // run bare and in parallel over the same twenty files. Every cost the hook
-    // has except lefthook itself — the same `pnpm` startups, the same binaries,
-    // the same inputs — which is the budget's sanctioned work measured directly.
-    const controls: number[] = [];
-    for (let attempt = 0; attempt < RUNS; attempt += 1) {
+    /**
+     * One run of the control: the hook's own two jobs, run bare and in parallel
+     * over the same twenty files. Every cost the hook has except lefthook
+     * itself — the same `pnpm` startups, the same binaries, the same inputs —
+     * which is the budget's sanctioned work measured directly.
+     */
+    const timeControl = async (): Promise<number> => {
       const started = process.hrtime.bigint();
       const results = await Promise.all(
         SANCTIONED_JOBS.map((job) => run('pnpm', [...job, ...tracked], repoRoot)),
       );
-      controls.push(Number(process.hrtime.bigint() - started) / 1e6);
+      const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
       // A control that failed instantly would make the ceiling meaningless.
       for (const result of results) expect(result.code, result.output).toBe(0);
+      return elapsed;
+    };
+
+    // Alternated, not blocked, and this is the whole correctness of the
+    // instrument rather than a detail of it. Timing five hooks and *then* five
+    // controls puts the two halves in different windows, so any load that
+    // changes between them lands entirely on the ratio — and this spec runs
+    // inside the integration slice, where load does nothing but change as
+    // neighbouring files finish. That is what went red on 2026-08-10: a hook
+    // median of 3225 ms against a control median of 1602 ms, a ratio of 2.01
+    // with nothing whatsoever added to the hook, because the slice thinned out
+    // between the two blocks and the control was bought at half the price.
+    //
+    // Reproduced deterministically with twenty-four CPU hogs timed to die
+    // between the blocks: the blocked form read 3.51 on the shipped, unmodified
+    // hook. Beside a live integration slice it read 2.59. Alternating read 1.04
+    // and 1.35 through the identical load. Same correction, and for the same
+    // reason, as KAR-09.1's fan-out budget.
+    const timings: number[] = [];
+    const controls: number[] = [];
+    for (let attempt = 0; attempt < RUNS; attempt += 1) {
+      timings.push(await timeHook());
+      controls.push(await timeControl());
     }
 
     // The measurement must not have been bought by mutating the repository, and
@@ -316,12 +341,21 @@ suite('the two-second budget (AC3, test plan #3, EPIC-01-S21 scenario 1)', () =>
       [...samples].sort((a, b) => a - b)[Math.floor(RUNS / 2)] ?? Number.NaN;
     const hook = median(timings);
     const control = median(controls);
+    // The median of the *per-pair* ratios, not the ratio of the two medians.
+    // Alternating puts a hook and its control seconds apart; dividing them
+    // where they were sampled cancels the load they shared, and the median then
+    // discards the one pair a stall landed inside. Both statistics were taken
+    // on every sample below and the paired one is tighter every time — 1.20 and
+    // 1.35 beside a live slice where the ratio of medians read 1.38 and 1.66 —
+    // while a regressed hook moves them together (19.26 against 19.36).
+    const ratio = median(timings.map((value, index) => value / (controls[index] as number)));
     // Printed, not merely asserted: docs/CONTRIBUTING.md records a number, and a
     // number nobody can reproduce from a test log is folklore.
     console.log(
       `pre-commit over ${FILES} files: median ${hook.toFixed(0)} ms ` +
         `(${timings.map((value) => value.toFixed(0)).join('/')} ms), against its own two jobs ` +
-        `bare at ${control.toFixed(0)} ms (${controls.map((value) => value.toFixed(0)).join('/')} ms)`,
+        `bare at ${control.toFixed(0)} ms (${controls.map((value) => value.toFixed(0)).join('/')} ms), ` +
+        `a paired ratio of ${ratio.toFixed(2)}`,
     );
 
     // The 2 s is the budget EPIC-01 wrote down and it is kept, as the floor. It
@@ -333,34 +367,41 @@ suite('the two-second budget (AC3, test plan #3, EPIC-01-S21 scenario 1)', () =>
     // three consecutive full-slice runs at 2957, 4812 and 5021 ms with nothing
     // whatsoever added to the hook.
     //
-    // What is stable is the hook measured against its own sanctioned work.
-    // Measured 2026-08-06, 8 cores, nine samples of hook median ÷ control
-    // median: 1.11, 1.11, 1.14 idle; 0.99, 1.02, 1.11 under twelve CPU hogs;
-    // 0.98, 1.19, 1.34 beside a live integration slice — a 1.38x spread while
-    // the hook's own median moved by 5.7x. The ratio is a shade over 1 because
-    // what it measures is lefthook: about 85 ms of Go binary, config parse and
-    // glob matching on top of the two `pnpm` spawns it exists to run.
+    // What is stable is the hook measured against its own sanctioned work,
+    // sampled alternately. Measured 2026-08-10, 8 cores, paired ratios: 1.06,
+    // 1.06, 1.05, 1.04 idle; 1.04 through twenty-four CPU hogs that die
+    // mid-measurement; 1.17, 1.20, 1.35 beside a live integration slice — a
+    // 1.30x spread while the hook's own median moved by 7.4x, from 657 to 4908
+    // ms. The ratio is a shade over 1 because what it measures is lefthook:
+    // about 85 ms of Go binary, config parse and glob matching on top of the
+    // two `pnpm` spawns it exists to run.
     //
     // 2 is calibrated against the regression rather than guessed. The regression
     // is the one the message below names — a job that belongs on pre-push
     // wandering into pre-commit. `pnpm typecheck` as a third job measured 10.88
-    // and 11.43; `pnpm vitest run --project unit` measured 9.16 and 10.81. So 2
-    // sits 1.5x above the worst honest sample and 4.6x below the cheapest
-    // regressed one. (`--type-aware` on the lint job is *not* in that set: over
-    // twenty files it costs about 100 ms and measures 1.27, inside the honest
-    // band. It is forbidden by AC1 and asserted by name in the floating-promise
-    // suite above, which is where a rule change belongs — not here, where it
-    // would be a budget claim that the budget cannot see.)
+    // and 11.43 blocked, and 19.26 paired when re-measured 2026-08-10 through a
+    // real third lefthook job; `pnpm vitest run --project unit` measured 9.16
+    // and 10.81. So 2 sits 1.5x above the worst honest sample and 4.6x below the
+    // cheapest regressed one. (`--type-aware` on the lint job is *not* in that
+    // set: over twenty files it costs about 100 ms and measures 1.27, inside the
+    // honest band. It is forbidden by AC1 and asserted by name in the
+    // floating-promise suite above, which is where a rule change belongs — not
+    // here, where it would be a budget claim that the budget cannot see.)
     //
-    // Idle, twice the control is about 1.4 s, so the 2 s floor is what binds and
-    // a quiet machine is held to exactly the number EPIC-01 wrote down.
+    // `control * ratio` rather than `hook` is what the drift correction buys:
+    // it is the hook's cost quoted at the price the control was sampled at,
+    // which is the same number whenever the two windows agreed and the honest
+    // one whenever they did not. Idle, twice the control is about 1.3 s, so the
+    // 2 s floor is what binds and a quiet machine is held to exactly the number
+    // EPIC-01 wrote down.
+    const corrected = control * ratio;
     expect(
-      hook,
-      `The pre-commit hook's median is ${hook.toFixed(0)} ms over ${FILES} files, against the ` +
-        `${control.toFixed(0)} ms its own two jobs cost bare on this machine, and past the ` +
-        `${BUDGET_MS} ms budget. Do not raise the budget — the moment you type "--no-verify" the ` +
-        'hooks stop existing and you have paid the setup cost for nothing. Typecheck, type-aware ' +
-        'lint and the full suite belong on pre-push and in CI.',
+      corrected,
+      `The pre-commit hook costs ${corrected.toFixed(0)} ms over ${FILES} files — a paired ` +
+        `${ratio.toFixed(2)}x the ${control.toFixed(0)} ms its own two jobs cost bare on this ` +
+        `machine — and is past the ${BUDGET_MS} ms budget. Do not raise the budget — the moment ` +
+        'you type "--no-verify" the hooks stop existing and you have paid the setup cost for ' +
+        'nothing. Typecheck, type-aware lint and the full suite belong on pre-push and in CI.',
     ).toBeLessThan(Math.max(BUDGET_MS, control * 2));
   }, 120_000);
 });

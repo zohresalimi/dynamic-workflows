@@ -867,13 +867,15 @@ Feature: The hook stays under two seconds or it stops existing
   Scenario: the measurement
     Given a realistic staged change of 20 files across .ts and .vue
     When the developer times the pre-commit hook five times
-    Then the median wall-clock time is under 2 seconds
+    And alternates each of those runs with a control timing the hook's own two jobs bare
+    Then on a quiet machine the median wall-clock time is under 2 seconds
+    And on a busy one the median of the paired hook-over-control ratios is under 2
     And the number is recorded in docs/CONTRIBUTING.md
 
   Scenario: a proposed addition breaks the budget
     Given someone adds "pnpm typecheck" to the pre-commit jobs
     When the timing test runs
-    Then the median exceeds 2 seconds
+    Then the hook costs more than 2 seconds and more than twice its own two jobs
     And the test fails
     And the failure message states that the moment you type "--no-verify" the hooks stop existing
 
