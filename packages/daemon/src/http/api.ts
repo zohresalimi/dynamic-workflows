@@ -50,6 +50,7 @@ import {
   acceptanceBoard,
   CANCEL_MODES,
   INTERJECTION_MODES,
+  mintRunId,
   NodeIdSchema,
   parseDeFlowConfig,
   SpecEditRefused,
@@ -75,6 +76,7 @@ import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { diffPlanGraphs } from '../plan/diff.ts';
 import { unionLayoutKey } from '../plan/plan-history.ts';
+import { runProviderDoctor } from '../providers/doctor.ts';
 import { controlRun, type RunControlVerb } from '../run-control.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
 import {
@@ -382,10 +384,17 @@ const asNodeId = (nodeId: string): NodeId => nodeId as NodeId;
  */
 const asFactId = (factId: string): FactId => factId as FactId;
 
-/** The version the last probe of `provider` reported, or `null`. */
+/**
+ * The version the last probe of `provider` reported, or `null`.
+ *
+ * `.at(-1)`, because `providerCapabilities` is a *history* and it is ordered
+ * oldest first: taking `[0]` would answer with the first version this machine
+ * ever saw, which is wrong exactly when it matters — after an upgrade, or
+ * after `POST /providers/doctor` re-probed and recorded a new row.
+ */
 function probedVersion(view: LedgerView, provider: string | null): string | null {
   if (provider === null) return null;
-  return view.providerCapabilities(provider)[0]?.version ?? null;
+  return view.providerCapabilities(provider).at(-1)?.version ?? null;
 }
 
 /**
@@ -1590,7 +1599,9 @@ export const api = new Hono()
 
     return c.json(
       Object.keys(PROVIDER_SPECS).map((provider) => {
-        const [row] = view.providerCapabilities(provider);
+        // The newest row, not the oldest: the history is ordered oldest first,
+        // and "what is installed now" is its last entry (see `probedVersion`).
+        const row = view.providerCapabilities(provider).at(-1);
         if (row === undefined) {
           return {
             provider,
@@ -1611,6 +1622,43 @@ export const api = new Hono()
           // vendor's own answer and DeFlow never paraphrases it.
           capabilities: JSON.parse(row.capsJson) as unknown,
         };
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC8 — `POST /api/providers/doctor`: re-probe, then run the
+   * conformance battery.
+   *
+   * A `POST` because it is the one provider route with effects: it spawns
+   * every recorded vendor binary, records whatever the probe found, and drives
+   * real turns against each one. `GET /providers` reads the manifest and this
+   * is what *writes* it, which is why the two are different verbs on different
+   * paths rather than a `?refresh=1`.
+   *
+   * `../providers/doctor.ts` owns the work and is single-flight, so a
+   * double-clicked button joins the run already in progress rather than
+   * starting a second set of children. The response is one row per provider
+   * with both halves of the answer — the row the re-probe recorded, and the
+   * battery's per-assertion result including the skips and their reasons.
+   */
+  .post('/providers/doctor', async (c) => {
+    // The write-side ports, because this route writes: the manifest row and
+    // the `provider.probed` event both go through the daemon's one writer.
+    const ports = intakePorts();
+    if (ports === null) return notReady(c);
+
+    return c.json(
+      await runProviderDoctor({
+        db: ports.db,
+        clock: ports.clock,
+        dataDir: ports.dataDir,
+        epoch: ports.epoch,
+        // The session the probe's own events hang off. A probe belongs to no
+        // run and still has to be attributable (NF10); nothing appends
+        // `run.created` for it, so it never becomes a run.
+        runId: mintRunId(ports.clock.now(), ports.randomHex),
       }),
       200,
     );
