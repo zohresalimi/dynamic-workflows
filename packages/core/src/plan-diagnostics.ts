@@ -43,8 +43,16 @@ export const PLAN_DIAGNOSTIC_CODES = [
   'PACKET_EXCEEDS_BUDGET',
   /** §3.3 — a node id git or DeFlow will not accept. KAR-11.2. */
   'INVALID_NODE_ID',
-  /** F7.4 — an acceptance criterion no gate node covers. KAR-11.2. */
+  /** F7.4 — an acceptance criterion no active gate node covers. KAR-11.2,
+   * widened by KAR-12.4 to only count `lifecycle: 'active'` gate nodes. */
   'CRITERION_UNCOVERED',
+  /** §5.1 — `unverifiable: true` with a blank reason once trimmed: the
+   * escape hatch used without paying for it. KAR-12.4. */
+  'CRITERION_UNVERIFIABLE_NO_REASON',
+  /** §5.1 — a spec's hand-supplied `coveredByGates` disagrees with what
+   * validation actually computes. A warning: the computed value always
+   * wins, this only makes the disagreement visible. KAR-12.4. */
+  'COVERED_BY_GATES_MISMATCH',
 ] as const;
 
 export type PlanDiagnosticCode = (typeof PLAN_DIAGNOSTIC_CODES)[number];

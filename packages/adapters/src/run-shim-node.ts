@@ -41,6 +41,7 @@
  * Verifies: EPIC-05-S29 · KAR-05.8 AC2–AC8
  */
 import {
+  assertIndependentReview,
   type Clock,
   type CompactionLever,
   type CompletedNodeResult,
@@ -53,10 +54,12 @@ import {
   type NodeId,
   type PermissionLevel,
   type PreflightEstimate,
+  type ProducerNodeView,
   type ProviderAuthMode,
   type ProviderId,
   QUOTA_WAKE_REASON,
   type RateLimit,
+  type ResumeRequest,
   type RunId,
   rateLimitFailureTag,
   rateLimitMessage,
@@ -80,6 +83,7 @@ import {
   frameTooLarge,
   NotImplementedOnWin32,
   offendingFrameHead,
+  protocolError,
   registryRefused,
   spawnRefused,
   toAdapterFailure,
@@ -237,6 +241,24 @@ export interface ShimNodeRequest {
   readonly prompt: string;
   /** Client-chosen, and the id every emitted frame is expected to carry back. */
   readonly sessionId: string;
+  /**
+   * KAR-12.2 — present on a review gate node, absent on everything else.
+   *
+   * Its presence is what scopes docs/10-verification-gates.md §3.2's
+   * precondition to reviews. Forking and resuming stay legitimate for
+   * continuation work, so a node with no `review` block is admitted exactly as
+   * it was before this field existed — and a node *with* one is checked
+   * **before spawn**, which on this path is the last point before the reviewer
+   * receives any input, because DeFlow mints the uuid itself.
+   */
+  readonly review?: {
+    /** The nodes named in the gate's `independence.notSessionOf`, with the
+     * sessions they actually resolved to. */
+    readonly producers: readonly ProducerNodeView[];
+    /** What this node asked to resume, if anything. A `fork` or a resume of a
+     * producer is refused however capable the adapter is. */
+    readonly resume?: ResumeRequest;
+  };
   /** Omitted means the vendor's richest streaming format. */
   readonly format?: ShimFormat;
   readonly outputSchemaId?: SchemaId;
@@ -617,6 +639,27 @@ export async function runShimNode(
   );
   if (refusal !== null) return refuse(refusal);
 
+  // KAR-12.2 AC4 — the last point before the reviewer receives any input on
+  // this path. The uuid was minted above and travels on the argv, so there is
+  // nothing left to learn about the session: everything after this line spawns
+  // a process and writes a prompt into it. A refusal here therefore leaves no
+  // `node.started`, no argv and no pgid, which is what EPIC-12-S12's *"zero
+  // `session/prompt` frames"* looks like on a path that has no such method.
+  if (request.review !== undefined) {
+    try {
+      assertIndependentReview(
+        {
+          id: request.nodeId,
+          resolvedSessionId: request.sessionId,
+          ...(request.review.resume === undefined ? {} : { resume: request.review.resume }),
+        },
+        request.review.producers,
+      );
+    } catch (error) {
+      return refuse(error);
+    }
+  }
+
   // KAR-08.5 — the sandbox wrapper reads its policy from a file, so the file
   // has to exist before the wrapper does. Written into a directory DeFlow
   // made, never into the operator's `~/.srt-settings.json`, and written here
@@ -677,6 +720,24 @@ export async function runShimNode(
     stderr: stderrTail(),
     structuredOutput,
   });
+
+  /**
+   * Refuses a frame that names a session DeFlow did not open.
+   *
+   * `null` passes: not every line carries `session_id`, and an absent field is
+   * the vendor saying nothing rather than saying something else. Both ids are
+   * named in the message because *"the session id was wrong"* is not a
+   * diagnosis anybody can act on.
+   */
+  const assertSessionId = (frameSession: string | null): void => {
+    if (frameSession === null || frameSession === request.sessionId) return;
+    throw protocolError(
+      `${request.provider} answered on session ${frameSession}, but DeFlow opened ` +
+        `${request.sessionId} and passed it on the argv. A frame naming another session was not ` +
+        'produced by the session this node was admitted on',
+      { node: request.nodeId, opened: request.sessionId, frame: frameSession },
+    );
+  };
 
   const seen = new Set(ports.seenUuids ?? []);
   const artifacts: Handle[] = [];
@@ -808,6 +869,10 @@ export async function runShimNode(
           version: request.binary.version,
           sha256: request.binary.sha256,
         },
+        // KAR-12.2 AC1 — on this path DeFlow chose the uuid, so it is known
+        // before the process is, and `minted` says which of the two adapter
+        // paths produced it.
+        session: { id: request.sessionId, origin: 'minted' },
       },
       true,
     );
@@ -853,6 +918,16 @@ export async function runShimNode(
       for (const text of taken.lines) {
         const line = parseShimLine(text);
         if (line === null) continue;
+
+        // KAR-12.2 AC5 — the vendor honours the client-chosen `--session-id`
+        // verbatim in every emitted frame (**verified 2026-08-02**), which is
+        // what lets DeFlow assert on the uuid it minted rather than parse one
+        // back out. Asserted rather than assumed: a frame answering on some
+        // other session was not produced by the session the independence check
+        // cleared, and on a review node that is the whole guarantee. Thrown, so
+        // it exits through the one catch that signals the group and files the
+        // failure, and thrown *before* the line contributes to the answer.
+        assertSessionId(line.sessionId);
 
         // Interpreted first, filed second. A line the ledger already holds
         // still counts towards this turn's answer — that separation is what
@@ -905,6 +980,7 @@ export async function runShimNode(
     if (pending.trim() !== '') {
       const line = parseShimLine(pending);
       if (line !== null) {
+        assertSessionId(line.sessionId);
         agentText += shimText(line);
         if (line.type === 'result') {
           sawResult = true;

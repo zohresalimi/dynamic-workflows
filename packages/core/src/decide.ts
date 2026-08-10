@@ -37,7 +37,8 @@ import type {
   StartNode,
   WakeReason,
 } from './command.ts';
-import type { EventSeq, NodeId, RunId } from './ids.ts';
+import { admitGates, type GateClass, type LadderGate } from './gate-ladder.ts';
+import type { EventSeq, GateId, NodeId, RunId } from './ids.ts';
 import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
 import { needsHumanOf, noProgress } from './no-progress.ts';
 import { type BudgetBreach, dependencyFailedFailure } from './node-failure.ts';
@@ -326,7 +327,7 @@ function readySet(
 ): PlanNode[] {
   return sortByEnablement(
     plan.nodes
-      .filter((node) => isReady(state, node, now, poisoned))
+      .filter((node) => isReady(state, node, now, poisoned, plan))
       .map((node) => ({ seq: enablingSeq(state, node), id: node.id, value: node })),
   );
 }
@@ -336,6 +337,7 @@ function isReady(
   node: PlanNode,
   now: number,
   poisoned: ReadonlyMap<NodeId, number>,
+  plan: PlanGraph,
 ): boolean {
   if (node.lifecycle !== 'active') return false;
   if (poisoned.has(node.id)) return false;
@@ -344,8 +346,56 @@ function isReady(
   if (!(ADMISSIBLE_STATUSES as readonly string[]).includes(current.status)) return false;
   if (current.attempts >= node.retry.maxAttempts) return false;
   if ((current.wakeAt ?? 0) > now) return false;
+  if (node.type === 'gate' && !gateTierIsOpen(state, plan, node.id)) return false;
 
   return node.deps.every((dep) => nodeState(state, dep).status === 'completed');
+}
+
+/**
+ * KAR-12.1 AC1, AC2 — the gate ladder, as a property of the scheduler.
+ *
+ * `deterministic → structural → adversarial → human`, and the first non-`pass`
+ * stops the rest (docs/10-verification-gates.md §1). The assertion that matters
+ * is not the absence of a log line: with the ladder here, no `node.scheduled`
+ * exists for the review gate at all, so the run's `budget.consumed` is
+ * *byte-identical* before and after a red typecheck.
+ *
+ * Two things are stated rather than assumed.
+ *
+ * **The ordering is derived from the gate's class, never from its position in
+ * `plan.nodes`.** A plan authored adversarial-first must still run the
+ * deterministic gate first, and `../src/gate-ladder.test.ts` inserts one that
+ * way for exactly that reason.
+ *
+ * **The scope is the run, not the milestone.** `DeFlow.plangraph.v1` is
+ * shipped and `schemaId` versioning is append-only, so a plan node cannot yet
+ * name a milestone. Running the ladder across the whole plan is strictly more
+ * conservative than the milestone-scoped rule — it withholds an adversarial
+ * gate on a *different* milestone's red typecheck, never the reverse — and the
+ * milestone-scoped form is already the projection in `@DeFlow/gates`'
+ * `milestoneStatus`. When a plangraph version adds `milestone`, this narrows to
+ * it and nothing else changes.
+ */
+function gateTierIsOpen(state: RunState, plan: PlanGraph, node: NodeId): boolean {
+  const gates: LadderGate[] = [];
+  for (const candidate of plan.nodes) {
+    if (candidate.type !== 'gate' || candidate.lifecycle !== 'active') continue;
+    gates.push({
+      node: candidate.id,
+      // An adversarial gate has no definition file to be identified by, so it
+      // is its own node — which is also the id its verdict carries.
+      gate:
+        candidate.gate.kind === 'deterministic'
+          ? candidate.gate.gateId
+          : (candidate.id as unknown as GateId),
+      kind: candidate.gate.kind satisfies GateClass,
+    });
+  }
+
+  const outcomes = new Map(
+    Object.entries(state.gateVerdicts).map(([id, verdict]) => [id as NodeId, verdict.outcome]),
+  );
+  return admitGates(gates, outcomes).some((gate) => gate.node === node);
 }
 
 /** What the run may start this tick, and the lock traffic that goes with it. */

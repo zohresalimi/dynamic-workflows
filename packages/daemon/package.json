@@ -17,6 +17,7 @@
   "dependencies": {
     "@DeFlow/adapters": "workspace:*",
     "@DeFlow/core": "workspace:*",
+    "@DeFlow/gates": "workspace:*",
     "@DeFlow/ledger": "workspace:*",
     "@agentclientprotocol/sdk": "catalog:",
     "@hono/node-server": "catalog:",

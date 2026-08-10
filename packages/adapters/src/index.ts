@@ -152,6 +152,18 @@ export {
 // mid-deprecation earns and no vendor knowledge of its own.
 export type { LaunchOutcome, LaunchPorts, LaunchRequest } from './launch.ts';
 export { LAUNCH_EXIT_GRACE_MS, launchProvider, STDERR_TAIL_BYTES } from './launch.ts';
+// KAR-12.2 — reviewer provider routing: §3.1's preference written as a total
+// rule, whose empty branch refuses rather than fabricating a verdict.
+export {
+  NO_CAPABLE_REVIEWER,
+  pickReviewer,
+  REVIEW_CONTEXT_HEADROOM,
+  type ReviewerCandidate,
+  type ReviewerDecision,
+  type ReviewerExclusion,
+  type ReviewerRequirementFailure,
+  type ReviewerRouting,
+} from './pick-reviewer.ts';
 // KAR-11.2 — the same rows, projected into what plan validation may know about
 // an adapter (06 §3.2). Read from the row; never a table.
 export { planTimeCapabilities } from './plan-time-capabilities.ts';

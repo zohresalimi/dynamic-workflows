@@ -1,0 +1,40 @@
+{
+  "summary": {
+    "changed": 0,
+    "unchanged": 1,
+    "matches": 0,
+    "duration": 1372500,
+    "errors": 2,
+    "warnings": 0,
+    "infos": 0,
+    "skipped": 0,
+    "suggestedFixesSkipped": 0,
+    "diagnosticsNotPrinted": 0,
+    "scannerDuration": 405917
+  },
+  "diagnostics": [
+    {
+      "severity": "error",
+      "message": "This is an unexpected use of the debugger statement.",
+      "category": "lint/suspicious/noDebugger",
+      "location": {
+        "path": "packages/ui/src/bad.ts",
+        "start": { "line": 4, "column": 3 },
+        "end": { "line": 4, "column": 12 }
+      },
+      "advices": []
+    },
+    {
+      "severity": "error",
+      "message": "Formatter would have printed the following content:",
+      "category": "format",
+      "location": {
+        "path": "packages/ui/src/bad.ts",
+        "start": { "line": 0, "column": 0 },
+        "end": { "line": 0, "column": 0 }
+      },
+      "advices": []
+    }
+  ],
+  "command": "check"
+}

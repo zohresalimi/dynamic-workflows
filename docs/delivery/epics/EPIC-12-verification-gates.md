@@ -734,7 +734,8 @@ mechanism rather than two.
 | 5   | integration | Edit a gate file mid-run, evaluate: `needs-human` with `gate-definition-diverged` and both hashes                         | Divergence is a warning, or the gate silently uses the new file |
 | 6   | integration | Malformed YAML in one of three files → run refuses to start naming that file                                              | Bad files are skipped                                           |
 | 7   | unit        | The protected-path assertion: `isProtected('.DeFlow/gates/typecheck.yaml') === true`                                      | EPIC-08's set drifted                                           |
-| 8   | integration | First-pass-rate projection over a fixture with 3 passes and 4 fails per gate returns 0.43 for that gate                   | The metric is computed over all gates jointly                   |
+| 8   | unit        | First-pass-rate arithmetic: 3 passes and 4 fails for one gate is 0.43, 1/10 is below the floor, 10/10 is the upper tail    | The metric is computed over all gates jointly                   |
+| 9   | integration | The same three rates sampled off a real ledger of 11 runs; widening the window to 11 flips a never-evaluated gate to rated | "The last N runs" is a window over events, or over the wrong order |
 
 **Notes / risks** — the hash must be over **file bytes**, not over the parsed object. A parsed-object
 hash normalises away comments, key order and whitespace, which means a reviewer's "temporarily

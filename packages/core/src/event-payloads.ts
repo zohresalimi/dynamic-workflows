@@ -63,7 +63,7 @@ import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
 import { TokenUsageSchema } from './token-usage.ts';
-import { VerdictV2Schema } from './verdict.ts';
+import { VerdictV4Schema } from './verdict.ts';
 
 // ── shared leaf schemas ──────────────────────────────────────────────────────
 
@@ -397,6 +397,12 @@ export const PlanDiagnosticSchema = z.strictObject({
   message: singleLine(),
 });
 
+/**
+ * KAR-12.4 — v3 widens `code` by two members, `CRITERION_UNVERIFIABLE_NO_REASON`
+ * and `COVERED_BY_GATES_MISMATCH` (§5.1's totality rule). Every v2 payload is
+ * already a valid v3 one, so the hop is the identity — see
+ * schemas/CHANGELOG.md.
+ */
 export const PlanValidationFailedSchema = z.strictObject({
   version: z.number().int().positive(),
   /** The rejected document's hash. Nothing stores the document under it. */
@@ -634,6 +640,33 @@ export const NodeStartedSchema = z.strictObject({
     version: z.string().min(1),
     sha256: BareSha256Schema,
   }),
+  /**
+   * KAR-12.2 AC1 — the session this attempt actually resolved to, journaled
+   * the instant it is known and never buffered
+   * ([05 §8.3](../../../docs/05-durable-execution.md)).
+   *
+   * This is what makes independence auditable after the fact: a test asserting
+   * `review.session.id !== producer.session.id` needs these two payloads and
+   * nothing else, which is the difference between a property the UI claims and
+   * one NF10 can trace.
+   *
+   * `origin` is required whenever `session` is present, because the two adapter
+   * paths learn the id at different moments and a reader auditing *when the
+   * independence check could have run* needs to know which path this was:
+   * `minted` is the CLI shim, where DeFlow chose the uuid and passed
+   * `--session-id <uuid>` before spawn; `session/new` is the ACP path, where
+   * the id arrived in a response and the check runs between it and the first
+   * `session/prompt`.
+   *
+   * Absent for every node that holds no session at all — a `tool` node, a gate
+   * that ran a process — and absence is the answer rather than a gap.
+   */
+  session: z
+    .strictObject({
+      id: z.string().min(1),
+      origin: z.enum(['minted', 'session/new']),
+    })
+    .optional(),
 });
 
 /** F10.1/F10.6. Cheap, frequent, and it does not advance the progress
@@ -1383,17 +1416,79 @@ export const HandoffOversizeSchema = z.strictObject({
 // ── gates and humans ─────────────────────────────────────────────────────────
 
 /**
- * KAR-10.4 AC5 — v2: the verdict now names the contract it judged.
+ * KAR-12.6 AC1 — every gate definition discovered at run creation, hashed
+ * (docs/10-verification-gates.md §2).
  *
- * The change is entirely inside `verdict`, which became `DeFlow.verdict.v2` —
- * one optional field, `specHash`. See `schemas/CHANGELOG.md` for why the hop
- * from v1 leaves it absent rather than inventing one, and `VerdictV2Schema` for
- * why an absent hash is treated as void rather than as trusted.
+ * `sha256` is over the file's **bytes**, never the parsed object — a
+ * comment-only edit still changes it, which is the whole anti-drift point a
+ * mid-run divergence check rests on. `path` names the discovered file for a
+ * repo-specific gate, or the recon source (`package.json#scripts.<name>`) for
+ * a built-in one derived from repo reconnaissance: there is no file to point
+ * at for those, and naming the source they were derived from is the honest
+ * answer.
+ */
+export const GatesLoadedSchema = z.strictObject({
+  gates: z
+    .array(
+      z.strictObject({
+        id: GateIdSchema,
+        path: z.string().min(1),
+        sha256: z
+          .string()
+          .regex(/^[0-9a-f]{64}$/, 'must be a 64-character hex sha256 of the file bytes'),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * KAR-10.4 AC5 — v2: the verdict now names the contract it judged.
+ * KAR-12.3 — v3: every located finding names the blob its line was read from,
+ * and the verdict carries what it cost.
+ *
+ * Both changes are entirely inside `verdict`, which is now `DeFlow.verdict.v3`.
+ * See `schemas/CHANGELOG.md` for why each hop leaves the new field absent
+ * rather than inventing one — an unanchored line number and a fabricated cost
+ * are both worse than a gap, because a reader cannot tell either from a
+ * measurement.
  */
 export const GateEvaluatedSchema = z.strictObject({
   gate: GateIdSchema,
   node: NodeIdSchema,
-  verdict: VerdictV2Schema,
+  verdict: VerdictV4Schema,
+});
+
+/**
+ * KAR-12.5 AC7 — what an exhausted repair loop hands the operator
+ * (docs/10-verification-gates.md §7).
+ *
+ * *"The third failure emits `human.requested` carrying all three diffs and all
+ * three verdicts."* Handles rather than bodies, for the reason every other
+ * evidence field in this file carries handles: three diffs and three verdicts
+ * inline is an unbounded payload on the one event a person is guaranteed to
+ * read, and the bytes are already content-addressed.
+ *
+ * **Paired rather than two parallel arrays.** Two arrays of three would let
+ * attempt 2's diff sit beside attempt 3's verdict with nothing able to notice,
+ * and the whole value of the escalation is reading *"attempt 2 changed this and
+ * the gate still said that"*. The pairing is the payload's job because it is
+ * the only place both facts exist at once.
+ */
+export const RepairEscalationSchema = z.strictObject({
+  gate: GateIdSchema,
+  /** The stable `Finding.id` the loop was repairing — one per fix node (§7). */
+  finding: z.string().min(1),
+  attempts: z
+    .array(
+      z.strictObject({
+        attempt: z.int().positive(),
+        /** The diff the attempt produced, as stored. */
+        diff: HandleSchema,
+        /** The verdict the re-run gate returned for it. */
+        verdict: HandleSchema,
+      }),
+    )
+    .min(1),
 });
 
 export const HumanRequestedSchema = z.strictObject({
@@ -1402,6 +1497,14 @@ export const HumanRequestedSchema = z.strictObject({
   /** The same option vocabulary a `human` node declares (§3). */
   options: HumanNodeSchema.shape.options,
   deadline: HumanNodeSchema.shape.deadline,
+  /**
+   * KAR-12.5 AC7 — present only when a repair loop ran out of attempts.
+   *
+   * Optional, because most escalations are not repairs: a `human` node's own
+   * prompt, a permission decision and a clarifying question have no attempts to
+   * carry, and a required field would make them all invent one.
+   */
+  repair: RepairEscalationSchema.optional(),
   /**
    * KAR-08.3 AC8 — why the safety layer escalated, as a `PermissionReason`.
    *
@@ -1655,17 +1758,18 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 4, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
-  'plan.validation_failed': { v: 2, payload: PlanValidationFailedSchema },
+  'plan.validation_failed': { v: 3, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 2, payload: PlanPatchedSchema },
   'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },
   'policy.patch.loaded': { v: 1, payload: PolicyPatchLoadedSchema },
   'policy.patch.drifted': { v: 1, payload: PolicyPatchDriftedSchema },
+  'gates.loaded': { v: 1, payload: GatesLoadedSchema },
   'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },
   'node.lock.released': { v: 1, payload: NodeLockReleasedSchema },
-  'node.started': { v: 1, payload: NodeStartedSchema },
+  'node.started': { v: 2, payload: NodeStartedSchema },
   'node.progress': { v: 1, payload: NodeProgressSchema },
   'node.completed': { v: 1, payload: NodeCompletedSchema },
   'node.failed': { v: 1, payload: NodeFailedSchema },
@@ -1704,8 +1808,8 @@ export const EVENT_SCHEMAS = {
   'fact.read': { v: 1, payload: FactReadSchema },
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
-  'gate.evaluated': { v: 2, payload: GateEvaluatedSchema },
-  'human.requested': { v: 1, payload: HumanRequestedSchema },
+  'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
+  'human.requested': { v: 2, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },

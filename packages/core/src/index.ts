@@ -28,6 +28,7 @@ export type {
   BoardCriterion,
   BoardRow,
   BoardStatus,
+  VerdictCriterionRow,
 } from './acceptance-board.ts';
 export {
   acceptanceBoard,
@@ -36,6 +37,7 @@ export {
   isVerdictVoid,
   staleGateNodes,
   verdictAgainst,
+  verdictCriteriaProjection,
 } from './acceptance-board.ts';
 // KAR-11.3 — applying a PlanPatch: the function from a plan document to the
 // next one. Plans are never mutated, so this returns a successor rather than
@@ -348,6 +350,7 @@ export {
   FactReadSchema,
   FactWrittenSchema,
   GateEvaluatedSchema,
+  GatesLoadedSchema,
   HandoffOversizeSchema,
   HumanRequestedSchema,
   HumanRespondedSchema,
@@ -482,6 +485,12 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-12.4 AC4 — the GATE_UNKNOWN_CRITERION rule a discovered gate file's
+// `satisfies:` list is checked against (KAR-12.6 wires the file walk).
+export type { GateFileCriterionIssue } from './gate-file-criteria.ts';
+export { unknownGateCriteria } from './gate-file-criteria.ts';
+export type { GateClass, LadderGate } from './gate-ladder.ts';
+export { admitGates, GATE_CLASSES, ladderRank, orderGates } from './gate-ladder.ts';
 // KAR-09.4 AC8 / §4.3 — a gate's criteria come from the ledger, never from the
 // agent's context.
 export type { GateSpecUnavailableReason, LedgerSpec } from './gate-spec.ts';
@@ -561,6 +570,20 @@ export type { ParsedIkey } from './ikey.ts';
 // the only legal constructor. KAR-06.3 adds the short-hex form the atomic file
 // write embeds in a temp filename, where the raw key's `/` cannot go.
 export { IKEY_SHORT_HASH_LENGTH, ikey, parseIkey, shortIkeyHash } from './ikey.ts';
+// KAR-12.2 — the two scheduling preconditions that keep a review from being
+// the agent that wrote the work (docs/10-verification-gates.md §3.2).
+export type {
+  ProducerNodeView,
+  ResumeRequest,
+  ReviewNodeView,
+  ReviewRefusalCode,
+} from './independent-review.ts';
+export {
+  assertIndependentReview,
+  isReviewRefusal,
+  REVIEW_REFUSAL_CODES,
+  SchedulingRefused,
+} from './independent-review.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 // KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
 export type { JsonPatchOperation } from './json-patch.ts';
@@ -570,6 +593,8 @@ export {
   AJV_2020_OPTIONS,
   JSON_SCHEMA_DIALECT,
   REGISTERED_SCHEMA_IDS,
+  RUN_SCHEMA_FILENAMES,
+  runSchemaFileName,
   SCHEMA_ID_BASE,
   SCHEMA_REGISTRY,
   schemaFileName,
@@ -578,6 +603,7 @@ export {
   toJsonSchemaDocument,
   toJsonSchemaDocuments,
   UnknownSchemaId,
+  VERDICT_SCHEMA_FILE,
 } from './json-schema.ts';
 // KAR-06.2 — F5.2's per-resource-class locks: what a node claims, and who
 // holds it. State-derived; the ledger is the only record.
@@ -954,11 +980,30 @@ export {
 // KAR-06.5 — the retry ladder: classified failure in, jittered schedule out.
 export type { Backoff, ReroutePatchInput, RetryPlan, RetryPlanInput } from './retry.ts';
 export { backoffDelay, backoffWindow, planRetry, reroutePatch } from './retry.ts';
+// KAR-12.1 — the gate ladder (docs/10-verification-gates.md §1). Lives in core
+// because `decide()` is what withholds a tier, and re-exported by
+// `@DeFlow/gates` so the runner and the scheduler share one ordering.
+// KAR-12.2 — the reviewer's packet: the pinned spec, the diff and the gate
+// output, and a refusal for anything sourced from the producer's transcript.
+export type {
+  ReviewerEvidence,
+  ReviewerGateEvidence,
+  ReviewerPacketInput,
+} from './reviewer-packet.ts';
+export {
+  buildReviewerPacket,
+  REVIEW_DIFF_SEGMENT_ID,
+  ReviewerContextInherited,
+  ReviewerPacketIncomplete,
+  reviewerGateSegmentId,
+  reviewerManifestIsClean,
+} from './reviewer-packet.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,
   BudgetState,
   CancelState,
+  GateVerdictState,
   LockState,
   NeedsHumanState,
   NodeIdRegistryState,
@@ -1034,10 +1079,12 @@ export { scopeCollisions } from './scope-collision.ts';
 export type {
   SpecAmendment,
   SpecCoverageIssue,
+  SpecCoverageIssueCode,
   SpecDecision,
   SpecVersion,
 } from './spec-approval.ts';
 export {
+  coveredByGatesOf,
   currentSpec,
   emptyEditRefusal,
   hashableSpec,
@@ -1049,6 +1096,7 @@ export {
   SpecEditRefused,
   sealEditedSpec,
   specHistory,
+  withCoveredByGates,
 } from './spec-approval.ts';
 // KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
 export type {
@@ -1162,18 +1210,44 @@ export { PINNED_KEYS, satisfies, validateDeclaredReads } from './validate-declar
 // `PlanTimeCapability` is what a probed row projects to at plan time.
 export type { PlanTimeCapability, ValidatePlanOptions } from './validate-plan.ts';
 export { PLAN_SCOPE, resumeByReplayNodes, validatePlan } from './validate-plan.ts';
-export type { CriterionStatus, Finding, Verdict, VerdictV2 } from './verdict.ts';
+export type {
+  CriterionStatus,
+  Finding,
+  FindingV2,
+  Verdict,
+  VerdictCost,
+  VerdictCostInput,
+  VerdictCriterion,
+  VerdictOutcome,
+  VerdictV2,
+  VerdictV3,
+  VerdictV4,
+  VerdictWeakening,
+} from './verdict.ts';
 export {
+  BLOB_SHA_PATTERN,
+  BlobShaSchema,
   CRITERION_STATUSES,
   CriterionStatusSchema,
   FINDING_SCHEMA_ID,
   FINDING_SEVERITIES,
+  FINDING_V2_SCHEMA_ID,
   FindingSchema,
   FindingSeveritySchema,
+  FindingV2Schema,
+  materialiseCriteria,
   VERDICT_OUTCOMES,
   VERDICT_SCHEMA_ID,
   VERDICT_V2_SCHEMA_ID,
+  VERDICT_V3_SCHEMA_ID,
+  VERDICT_V4_SCHEMA_ID,
+  VERDICT_WEAKENINGS,
+  VerdictCostSchema,
   VerdictOutcomeSchema,
   VerdictSchema,
   VerdictV2Schema,
+  VerdictV3Schema,
+  VerdictV4Schema,
+  VerdictWeakeningSchema,
+  verdictCost,
 } from './verdict.ts';

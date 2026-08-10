@@ -1,0 +1,36 @@
+{
+  "diagnostics": [
+    {
+      "message": "`debugger` statement is not allowed",
+      "code": "eslint(no-debugger)",
+      "severity": "warning",
+      "causes": [],
+      "url": "https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-debugger.html",
+      "help": "Remove the debugger statement",
+      "filename": "packages/ui/src/bad.ts",
+      "labels": [{ "span": { "offset": 83, "length": 9, "line": 4, "column": 3 } }],
+      "related": []
+    },
+    {
+      "message": "Promises must be awaited, add void operator to ignore.",
+      "code": "typescript(no-floating-promises)",
+      "severity": "warning",
+      "causes": [],
+      "url": "https://oxc.rs/docs/guide/usage/linter/rules/typescript/no-floating-promises.html",
+      "help": "The promise must end with a call to .catch, or end with a call to .then with a rejection handler, or be explicitly marked as ignored with the `void` operator.",
+      "filename": "packages/ui/src/bad.ts",
+      "labels": [
+        {
+          "label": "This unhandled promise-like value has type `Promise<void>`.",
+          "span": { "offset": 95, "length": 6, "line": 5, "column": 3 }
+        },
+        { "span": { "offset": 95, "length": 6, "line": 5, "column": 3 } }
+      ],
+      "related": []
+    }
+  ],
+  "number_of_files": 1,
+  "number_of_rules": 111,
+  "threads_count": 8,
+  "start_time": 0.205938667
+}

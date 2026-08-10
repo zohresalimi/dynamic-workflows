@@ -52,11 +52,17 @@ import {
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
 import {
   FINDING_SCHEMA_ID,
+  FINDING_V2_SCHEMA_ID,
   FindingSchema,
+  FindingV2Schema,
   VERDICT_SCHEMA_ID,
   VERDICT_V2_SCHEMA_ID,
+  VERDICT_V3_SCHEMA_ID,
+  VERDICT_V4_SCHEMA_ID,
   VerdictSchema,
   VerdictV2Schema,
+  VerdictV3Schema,
+  VerdictV4Schema,
 } from './verdict.ts';
 
 /**
@@ -119,6 +125,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schema: FindingSchema,
   },
   {
+    schemaId: FINDING_V2_SCHEMA_ID,
+    summary:
+      'A structured gate finding whose line is anchored to the blob it was read from, so a ' +
+      'later revision cannot silently redraw it against the wrong line (F7.7).',
+    schema: FindingV2Schema,
+  },
+  {
     schemaId: PLANGRAPH_SCHEMA_ID,
     summary: 'A whole plan: the seven node types, their edges, budgets and declared reads (F2.1).',
     schema: PlanGraphSchema,
@@ -167,7 +180,58 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
       'it rather than silently keeping it green (F1.5, F7.4).',
     schema: VerdictV2Schema,
   },
+  {
+    schemaId: VERDICT_V3_SCHEMA_ID,
+    summary:
+      'The gate contract: outcome, per-criterion status, blob-anchored findings and what the ' +
+      'verdict cost — the one shape a deterministic gate and an adversarial reviewer both ' +
+      'return (F7.3, F6.9, F7.7).',
+    schema: VerdictV3Schema,
+  },
+  {
+    schemaId: VERDICT_V4_SCHEMA_ID,
+    summary:
+      'The sealed gate verdict: everything v3 carries, plus what DeFlow gave up to produce it — ' +
+      "a review routed onto the producer's own provider under the single-provider fallback is " +
+      'marked weakened rather than passed off as an ordinary one (F7.2, NF7).',
+    schema: VerdictV4Schema,
+  },
 ];
+
+/**
+ * KAR-12.3 AC1 — the run-directory name of the gate contract.
+ *
+ * `.DeFlow/schemas/verdict.schema.json` is what docs/10-verification-gates.md
+ * §4 names and what a vendor CLI is handed on `--json-schema` /
+ * `--output-schema`. The file is the emitted `DeFlow.verdict.v3` document and
+ * nothing else: renaming it in the run directory is how the contract acquires
+ * a stable path across versions without a second copy of the document existing
+ * anywhere. `title` still carries the `schemaId`, so the daemon's store
+ * addresses one compiled validator under both names.
+ */
+export const VERDICT_SCHEMA_FILE = 'verdict.schema.json';
+
+/**
+ * The few documents a run directory knows by a name other than
+ * `<schemaId>.json`. One entry today; a map rather than an `if` so the next one
+ * is a row instead of a branch.
+ *
+ * **`verdict.schema.json` stays the `.v3` document, and `.v4` is deliberately
+ * not it.** `.v4` adds `weakened`, which is DeFlow's own record of how the
+ * reviewer was routed (KAR-12.2 AC7) — not something the reviewer observed.
+ * Handing a model a contract with that field in it invites it to state that its
+ * own review was not weakened, which is the one claim in the document only the
+ * scheduler is in a position to make. So the vendor returns a `.v3`-shaped
+ * verdict, the sealer stamps the marker, and the sealed document is a `.v4`.
+ */
+export const RUN_SCHEMA_FILENAMES: Readonly<Record<string, string>> = {
+  [VERDICT_V3_SCHEMA_ID]: VERDICT_SCHEMA_FILE,
+};
+
+/** The name this document takes inside a run's `.DeFlow/schemas/`. */
+export function runSchemaFileName(schemaId: string): string {
+  return RUN_SCHEMA_FILENAMES[schemaId] ?? schemaFileName(schemaId);
+}
 
 export const REGISTERED_SCHEMA_IDS: readonly string[] = SCHEMA_REGISTRY.map(
   (registration) => registration.schemaId,

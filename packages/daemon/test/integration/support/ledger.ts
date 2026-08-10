@@ -17,14 +17,13 @@ import type {
 } from '@DeFlow/adapters';
 import type { Db, EventSeq, RunId } from '@DeFlow/core';
 import {
-  appendEvents,
   appendEventsWithProcess,
-  appendIoChunk,
   clearProcess,
   openLedger,
   readEpoch,
   readRange,
 } from '@DeFlow/ledger';
+import { sqliteLedgerSink } from '../../../src/exec/ledger-sink.ts';
 
 export interface TestLedger {
   readonly db: Db;
@@ -42,73 +41,16 @@ export interface TestLedger {
   close(): void;
 }
 
-export interface SinkOptions {
-  readonly db: Db;
-  readonly runId: RunId;
-  readonly epoch: number;
-  /** Where an oversized payload spills. Omitted means the ledger refuses one. */
-  readonly dataDir?: string;
-}
-
-/** One `EventRecord` as the ledger's own draft, with the absent fields absent. */
-const draftOf = (event: EventRecord, runId: RunId, epoch: number) => ({
-  runId,
-  ts: event.ts,
-  kind: event.kind,
-  v: event.v,
-  epoch,
-  ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-  ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-  ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-  payload: event.payload,
-});
-
 /**
  * The `LedgerSink` every integration spec that drives a real agent turn writes
  * through, over a real file-backed database.
  *
- * One factory rather than a copy per spec, because `appendAll` is not
- * decoration: KAR-14.1 AC1 requires `budget.consumed` and the event that ends
- * the attempt to reach the file in **one** transaction, and a sink that
- * satisfied the port by looping over `append` would pass every assertion in
- * this repository while losing exactly the guarantee the port exists for.
+ * Re-exported from `src/exec/ledger-sink.ts` rather than reimplemented: this is
+ * the sink DeFlowd itself hands an adapter, and a spec that wrote through a
+ * near-copy would be asserting against a port nothing in production uses —
+ * `appendAll`'s single transaction above all (KAR-14.1 AC1).
  */
-export function sqliteLedgerSink(options: SinkOptions): LedgerSink {
-  const { db, runId, epoch } = options;
-  const appendOptions = options.dataDir === undefined ? {} : { spillTo: options.dataDir };
-
-  return {
-    append(event: EventRecord): Promise<EventSeq> {
-      const [seq] = appendEvents(db, [draftOf(event, runId, epoch)], appendOptions);
-      return Promise.resolve(seq as EventSeq);
-    },
-    appendAll(events: readonly EventRecord[]): Promise<readonly EventSeq[]> {
-      // One `appendEvents` call is one `BEGIN IMMEDIATE`: the batch lands whole
-      // or leaves the ledger exactly as it was.
-      const seqs = appendEvents(
-        db,
-        events.map((event) => draftOf(event, runId, epoch)),
-        appendOptions,
-      );
-      return Promise.resolve(seqs as EventSeq[]);
-    },
-    appendIo(chunk: IoRecord): Promise<EventSeq> {
-      // The MCP host writes none of these; a real ACP turn writes many, and
-      // this sink serves both. The data plane counts attempts from 1 and the
-      // event envelope from 0, and the sink is where the two conventions meet.
-      return Promise.resolve(
-        appendIoChunk(db, {
-          runId,
-          nodeId: chunk.nodeId,
-          attempt: chunk.attempt + 1,
-          stream: chunk.stream,
-          ts: chunk.ts,
-          data: chunk.data,
-        }),
-      );
-    },
-  };
-}
+export { sqliteLedgerSink };
 
 export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
   const db = openLedger(dataDir);

@@ -5,7 +5,7 @@
  */
 import { expect, it, describe as suite } from 'vitest';
 import { z } from 'zod';
-import { EVENT_CURRENT_VERSIONS } from './event-payloads.ts';
+import { EVENT_CURRENT_VERSIONS, GateEvaluatedSchema } from './event-payloads.ts';
 import {
   assertUpcasterChainsComplete,
   checkUpcasterFixtures,
@@ -16,6 +16,7 @@ import {
   UpcasterChainIncomplete,
   UpcasterFutureVersion,
   UpcasterRegistry,
+  upcast,
 } from './upcasters.ts';
 
 // A toy three-version history, standing in for the real one the ledger does
@@ -315,5 +316,63 @@ suite('a lossy change is a new kind, not a new v (AC8, EPIC-02-S22)', () => {
     });
 
     expect(checkUpcastersPreserveRequiredFields(registry)).toEqual([]);
+  });
+});
+
+/**
+ * KAR-12.3 — `gate.evaluated` v2 → v3.
+ *
+ * v3's verdict anchors every located finding to a blob and carries what the
+ * verdict cost. Neither is recoverable from a v2 payload, and the hop's whole
+ * content is what it refuses to invent.
+ *
+ * Verifies: EPIC-12-S23 (third scenario, on the history side) · AC6, AC8
+ */
+suite('gate.evaluated v2 → v3 invents no anchor and no cost', () => {
+  const v2 = (findings: readonly unknown[]): Record<string, unknown> => ({
+    gate: 'typecheck-gate',
+    node: 'migrate-router-guards',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v2',
+      outcome: 'fail',
+      gate: 'typecheck-gate',
+      evaluatedNode: 'migrate-router-guards',
+      by: { node: 'typecheck-gate', provider: 'codex', model: 'gpt-5-codex' },
+      criteria: [{ id: 'typecheck-clean', status: 'unsatisfied' }],
+      findings,
+      summary: 'typecheck fails in src/router/guards.ts',
+    },
+  });
+
+  const finding = (location?: Record<string, unknown>): Record<string, unknown> => ({
+    id: 'ts2345-router-guard',
+    severity: 'blocker',
+    message: 'argument of type NavigationGuardNext is not assignable to parameter of type void',
+    evidence: [],
+    ...(location === undefined ? {} : { location }),
+  });
+
+  const upcasted = (payload: Record<string, unknown>): Record<string, unknown> =>
+    upcast('gate.evaluated', 2, payload) as Record<string, unknown>;
+
+  const findingsOf = (payload: Record<string, unknown>): Record<string, unknown>[] =>
+    (payload.verdict as { findings: Record<string, unknown>[] }).findings;
+
+  it('drops a line number no blob backs, rather than anchoring it to the wrong revision', () => {
+    const result = upcasted(v2([finding({ file: 'src/router/guards.ts', line: 88 })]));
+
+    expect(findingsOf(result).length).toBe(1);
+    expect(findingsOf(result)[0]?.location).toBeUndefined();
+    expect(findingsOf(result)[0]?.id).toBe('ts2345-router-guard');
+  });
+
+  it('leaves cost absent, because a historical verdict measured none', () => {
+    expect((upcasted(v2([])).verdict as Record<string, unknown>).cost).toBeUndefined();
+  });
+
+  it('produces a payload the v3 schema accepts', () => {
+    const result = upcasted(v2([finding({ file: 'src/router/guards.ts', line: 88 }), finding()]));
+
+    expect(GateEvaluatedSchema.safeParse(result).success).toBe(true);
   });
 });

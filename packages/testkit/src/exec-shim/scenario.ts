@@ -166,7 +166,19 @@ export interface FileScript {
 export interface ExecShimScenario {
   readonly name: string;
   readonly description: string;
-  /** Null means "derive one from the seed", which keeps a run reproducible. */
+  /**
+   * The session id every emitted frame carries.
+   *
+   * Null — the usual case — means *honour the client's own `--session-id`*, as
+   * Claude Code and Gemini CLI do (**verified 2026-08-02**), falling back to one
+   * derived from the seed when the invocation carried none, which keeps a run
+   * reproducible.
+   *
+   * Setting it is therefore a **dishonesty knob** rather than a convenience: an
+   * agent that answers on an id nobody asked for is the stimulus KAR-12.2 AC5
+   * needs, because DeFlow's independence check is only worth anything if the
+   * frames are checked against the uuid it minted.
+   */
   readonly sessionId: string | null;
   readonly steps: readonly ExecStep[];
   readonly result: ResultScript | null;

@@ -16,17 +16,22 @@ import type { Event } from './events.ts';
 import { parseEvent } from './events.ts';
 import { sealTaskSpec, type TaskSpecDraft } from './framing.ts';
 import { specHash } from './hash.ts';
+import { type PlanGraph, PlanGraphSchema } from './plan-graph.ts';
 import { reduce } from './reduce.ts';
 import { initialRunState, type RunState } from './run-state.ts';
 import {
+  coveredByGatesOf,
   currentSpec,
+  hashableSpec,
   renderSpecForReview,
   revalidateSpecAgainstPlan,
   SPEC_APPROVAL_OPTIONS,
   SPEC_GATE_NODE,
   sealEditedSpec,
   specHistory,
+  withCoveredByGates,
 } from './spec-approval.ts';
+import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
 
 const RUN_ID = 'run_20260802T141133Z_9f2a1c';
 const TS = 1_754_313_093_000;
@@ -311,5 +316,318 @@ suite('a spec edit is revalidated against the current plan (EPIC-10-S29)', () =>
     expect(issues).toHaveLength(1);
     expect(issues[0]?.criterion).toBe('ac-8');
     expect(issues[0]?.message).toMatch(/ac-8/);
+    expect(issues[0]?.code).toBe('CRITERION_UNCOVERED');
+  });
+
+  it('does not count a gate node whose lifecycle has retired as covering anything (EPIC-12-S28)', async () => {
+    const document = framed();
+    const spec = await sealTaskSpec(document);
+    const state = fold([
+      event(
+        'plan.proposed',
+        {
+          version: 3,
+          planHash: `sha256-${'a'.repeat(64)}`,
+          graph: {
+            ...plan(['ac-1', 'ac-2']),
+            nodes: [{ ...gateNode('gate-1', ['ac-1', 'ac-2']), lifecycle: 'abandoned' }],
+          },
+          by: 'planner',
+        },
+        1,
+      ),
+    ]);
+    const graph = state.proposedPlans[`sha256-${'a'.repeat(64)}`];
+    if (graph === undefined) throw new Error('the fixture plan was not folded');
+
+    const issues = revalidateSpecAgainstPlan(spec, graph);
+    expect(issues.map((issue) => issue.criterion).toSorted()).toEqual(['ac-1', 'ac-2']);
+    expect(issues.every((issue) => issue.code === 'CRITERION_UNCOVERED')).toBe(true);
+  });
+});
+
+// ── KAR-12.4 — acceptance-criteria traceability ──────────────────────────────
+
+suite('the escape hatch costs one sentence (KAR-12.4 AC2, test plan #2)', () => {
+  const spec = (rubric: string): TaskSpec =>
+    TaskSpecSchema.parse({
+      schemaId: 'DeFlow.taskspec.v1',
+      goal: 'Migrate the checkout module to Vue 3.',
+      scope: { included: ['packages/checkout'] },
+      nonGoals: ['Do not touch packages/legacy.'],
+      constraints: [],
+      priorDecisions: [],
+      acceptanceCriteria: [
+        {
+          id: 'ac-9',
+          statement: 'The migrated date picker feels as responsive as the old one.',
+          check: { kind: 'manual', rubric },
+          coveredByGates: [],
+        },
+      ],
+      knownFailureModes: [],
+      approvedBy: null,
+      specHash: `sha256-${'0'.repeat(64)}`,
+    });
+
+  const emptyPlan: Record<string, unknown> = {
+    schemaId: 'DeFlow.plangraph.v1',
+    runId: RUN_ID,
+    version: 1,
+    planHash: `sha256-${'a'.repeat(64)}`,
+    parent: null,
+    taskSpecHash: `sha256-${'c'.repeat(64)}`,
+    createdBy: 'planner',
+    createdAt: '2026-08-02T14:11:33.000Z',
+    nodes: [],
+    edges: [],
+  };
+
+  it('a manual check with a real reason emits no diagnostic', () => {
+    const issues = revalidateSpecAgainstPlan(
+      spec('Subjective. Route to a human node.'),
+      emptyPlan as never,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('a manual check with a blank reason is CRITERION_UNVERIFIABLE_NO_REASON', () => {
+    // The framing draft schema requires a non-blank rubric before a spec is
+    // ever sealed (AC4 in framing.ts), so this constructs the sealed TaskSpec
+    // directly — a whitespace-only reason a hand-edited or bypassed document
+    // could still carry, which is exactly the escape hatch AC2 closes.
+    const issues = revalidateSpecAgainstPlan(spec('   '), emptyPlan as never);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      criterion: 'ac-9',
+      code: 'CRITERION_UNVERIFIABLE_NO_REASON',
+    });
+    expect(issues[0]?.message).toMatch(/ac-9/);
+  });
+});
+
+suite(
+  'coveredByGatesOf populates plan node ids, not gate definition ids (KAR-12.4 AC3, test plan #3)',
+  () => {
+    it('maps a criterion to the ids of the plan nodes that cover it', () => {
+      const graph = {
+        schemaId: 'DeFlow.plangraph.v1',
+        runId: RUN_ID,
+        version: 1,
+        planHash: `sha256-${'a'.repeat(64)}`,
+        parent: null,
+        taskSpecHash: `sha256-${'c'.repeat(64)}`,
+        createdBy: 'planner',
+        createdAt: '2026-08-02T14:11:33.000Z',
+        nodes: [
+          {
+            id: 'gate-typecheck',
+            title: 'gate gate-typecheck',
+            type: 'gate',
+            deps: [],
+            lifecycle: 'active',
+            reads: [],
+            writes: [],
+            permission: 'read',
+            pathScopes: { write: [] },
+            returns: { schemaId: 'DeFlow.verdict.v1', maxTokens: 1500 },
+            retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+            budget: {},
+            gate: { kind: 'deterministic', gateId: 'typecheck' },
+            criteria: ['ac-1'],
+            independence: { notSessionOf: [], preferDifferentProvider: false },
+          },
+          {
+            id: 'gate-review',
+            title: 'gate gate-review',
+            type: 'gate',
+            deps: [],
+            lifecycle: 'active',
+            reads: [],
+            writes: [],
+            permission: 'read',
+            pathScopes: { write: [] },
+            returns: { schemaId: 'DeFlow.verdict.v1', maxTokens: 1500 },
+            retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+            budget: {},
+            // The gate *definition* id, 'code-review', is deliberately different
+            // from the plan node id, 'gate-review' — the mismatch is the point of
+            // the test.
+            gate: { kind: 'deterministic', gateId: 'code-review' },
+            criteria: ['ac-1'],
+            independence: { notSessionOf: [], preferDifferentProvider: false },
+          },
+        ],
+        edges: [],
+      };
+
+      const covered = coveredByGatesOf(graph as never);
+      expect([...(covered.get('ac-1' as never) ?? [])].toSorted()).toEqual([
+        'gate-review',
+        'gate-typecheck',
+      ]);
+      expect(covered.get('ac-2' as never)).toBeUndefined();
+    });
+  },
+);
+
+// ── KAR-12.4 AC3 — validation writes coveredByGates, the planner does not ────
+
+suite('coveredByGates is written by validation (KAR-12.4 AC3, EPIC-12-S24)', () => {
+  const gateNode = (id: string, criteria: readonly string[]): Record<string, unknown> => ({
+    id,
+    title: `gate ${id}`,
+    type: 'gate',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'read',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.verdict.v1', maxTokens: 1500 },
+    retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+    budget: {},
+    gate: { kind: 'deterministic', gateId: 'typecheck' },
+    criteria: [...criteria],
+    independence: { notSessionOf: [], preferDifferentProvider: false },
+  });
+
+  /** Two gate nodes over the fixture's three criteria: `ac-3` is unverifiable
+   * and reaches no gate at all, which is the case the walk must still answer
+   * (with `[]`, not by leaving the criterion alone). */
+  const planWith = (nodes: readonly Record<string, unknown>[]): PlanGraph =>
+    PlanGraphSchema.parse({
+      schemaId: 'DeFlow.plangraph.v1',
+      runId: RUN_ID,
+      version: 3,
+      planHash: `sha256-${'a'.repeat(64)}`,
+      parent: null,
+      taskSpecHash: `sha256-${'c'.repeat(64)}`,
+      createdBy: 'planner',
+      createdAt: '2026-08-02T14:11:33.000Z',
+      nodes,
+      edges: [],
+    });
+
+  const twoGates = (): PlanGraph =>
+    planWith([gateNode('gate-unit-tests', ['ac-1']), gateNode('gate-codemod', ['ac-1', 'ac-2'])]);
+
+  it('populates every criterion with the plan node ids that cover it', async () => {
+    const spec = await sealTaskSpec(framed());
+
+    const written = withCoveredByGates(spec, twoGates());
+
+    expect(
+      written.acceptanceCriteria.map((criterion) => [
+        criterion.id,
+        [...criterion.coveredByGates].toSorted(),
+      ]),
+    ).toEqual([
+      ['ac-1', ['gate-codemod', 'gate-unit-tests']],
+      ['ac-2', ['gate-codemod']],
+      // Unverifiable, answered by a human, covered by no plan node: the field
+      // is written as empty rather than left at whatever arrived.
+      ['ac-3', []],
+    ]);
+  });
+
+  it('recomputes and overwrites a value that arrived pre-populated', async () => {
+    const sealed = await sealTaskSpec(framed());
+    // What a hand-edited spec — or a planner that filled the field in — looks
+    // like on the way into validation: node ids that are not the ones the plan
+    // actually carries, plus one for a criterion nothing covers.
+    const handEdited = TaskSpecSchema.parse({
+      ...sealed,
+      acceptanceCriteria: sealed.acceptanceCriteria.map((criterion) => ({
+        ...criterion,
+        coveredByGates: ['gate-somebody-typed'],
+      })),
+    });
+
+    const written = withCoveredByGates(handEdited, twoGates());
+
+    expect(
+      written.acceptanceCriteria.flatMap((criterion) => criterion.coveredByGates),
+    ).not.toContain('gate-somebody-typed');
+    expect(written.acceptanceCriteria[2]?.coveredByGates).toEqual([]);
+  });
+
+  it('does not count a retired gate node, so an abandoned branch writes []', async () => {
+    const spec = await sealTaskSpec(framed());
+    const retired = planWith([
+      { ...gateNode('gate-unit-tests', ['ac-1']), lifecycle: 'abandoned' },
+      gateNode('gate-codemod', ['ac-2']),
+    ]);
+
+    const written = withCoveredByGates(spec, retired);
+
+    expect(written.acceptanceCriteria[0]?.coveredByGates).toEqual([]);
+    expect(written.acceptanceCriteria[1]?.coveredByGates).toEqual(['gate-codemod']);
+  });
+
+  /**
+   * The invariant that makes the overwrite safe to hand onward.
+   *
+   * AC6 voids any verdict whose `specHash` differs from the run's current one.
+   * `coveredByGates` is derived from the plan, and the plan changes on every
+   * patch — so if the digest covered it, annotating the spec after validation
+   * would silently void every verdict in the ledger and re-run every gate. The
+   * digest is the identity of the *authored* document; this field is not part
+   * of it (./hash.ts).
+   */
+  it('leaves the spec’s identity alone: the annotated document hashes the same', async () => {
+    const spec = await sealTaskSpec(framed());
+
+    const written = withCoveredByGates(spec, twoGates());
+
+    expect(written.acceptanceCriteria[0]?.coveredByGates).not.toEqual([]);
+    expect(await specHash(written as unknown as Record<string, unknown>)).toBe(spec.specHash);
+    expect(written.specHash).toBe(spec.specHash);
+  });
+});
+
+// ── the digest and the diff are over the same document ───────────────────────
+
+suite('hashableSpec is exactly what specHash is over (KAR-10.3 AC5, KAR-12.4 AC3)', () => {
+  const gateNode = (id: string, criteria: readonly string[]): Record<string, unknown> => ({
+    id,
+    title: `gate ${id}`,
+    type: 'gate',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'read',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.verdict.v1', maxTokens: 1500 },
+    retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+    budget: {},
+    gate: { kind: 'deterministic', gateId: 'typecheck' },
+    criteria: [...criteria],
+    independence: { notSessionOf: [], preferDifferentProvider: false },
+  });
+
+  /**
+   * A `spec.amended` patch is a diff of `hashableSpec`, so anything the digest
+   * ignores has to be ignored here too — otherwise validating a plan would
+   * produce a spec that *diffs* against the pinned one while hashing the same,
+   * and the amendment panel would show an operator a change nobody made.
+   */
+  it('drops the derived coveredByGates, so an annotated spec diffs as unchanged', async () => {
+    const spec = await sealTaskSpec(framed());
+    const plan = PlanGraphSchema.parse({
+      schemaId: 'DeFlow.plangraph.v1',
+      runId: RUN_ID,
+      version: 1,
+      planHash: `sha256-${'a'.repeat(64)}`,
+      parent: null,
+      taskSpecHash: `sha256-${'c'.repeat(64)}`,
+      createdBy: 'planner',
+      createdAt: '2026-08-02T14:11:33.000Z',
+      nodes: [gateNode('gate-1', ['ac-1', 'ac-2'])],
+      edges: [],
+    });
+
+    expect(hashableSpec(withCoveredByGates(spec, plan))).toEqual(hashableSpec(spec));
   });
 });

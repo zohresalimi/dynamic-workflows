@@ -240,6 +240,19 @@ Feature: Overriding is possible, and never invisible
 path set. Overriding _must_ be possible or the tool is unusable; the design decision is that it can
 only happen through an event with an identity attached.
 
+**The third scenario is automated as far as EPIC-12 owns it, and the remainder is EPIC-13's.** The
+first two lines are covered here: the escalation after three failed repair attempts schedules a
+`human` node whose prompt carries every attempt's verdict (`packages/gates/src/repair.ts`,
+asserted by `repair.test.ts` and EPIC-12-S32), and the negative half — that no field, flag or
+config key advances a milestone past a non-`pass` verdict — is
+`packages/gates/test/no-escape-hatch.test.ts` plus the `S5` suite in
+`test/integration/milestone-rule.test.ts`. The last two lines are not, and cannot be until
+**EPIC-13** lands: `HumanRespondedSchema` carries `node`, `optionId`, `text` and `at` but **no
+`responder`**, and there is no `POST /api/runs/:id/nodes/:node/respond` to produce the event. Both
+belong to EPIC-13-S1 ("The Operator answers"), which owns the identical assertion. Automate the
+remaining two lines there, against the same wording, rather than restating a milestone rule that by
+design reads only verdicts and writes.
+
 ---
 
 ## EPIC-12-S6 — A gate whose own tooling failed returns `needs-human`, not `fail`
@@ -1313,7 +1326,7 @@ mid-run.
 
 ## EPIC-12-S38 — `doctor` reports gates nobody schedules, and both tails of the first-pass rate
 
-**Verifies:** KAR-12.6 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-12.6 · **Type:** Edge case · **Automated at:** unit + integration
 
 ```gherkin
 Feature: A gate nothing schedules is decoration
@@ -1343,6 +1356,15 @@ Feature: A gate nothing schedules is decoration
 [§9.1](../../10-verification-gates.md) is explicit that **both** tails are informative — at 100% the
 right response is to investigate rather than celebrate. The `doctor` command itself is
 [EPIC-18](../epics/EPIC-18-cli-packaging.md) KAR-18.4; this epic owns the projection it prints.
+
+The scenario has two halves and they are automated at two levels, which is why the line above says
+both. The rate arithmetic and the 40%/100% advice are a pure reducer and are pinned at unit. **"The
+last 10 runs"** is not — choosing the sample is a read of the log across runs, and every way of
+getting it wrong (ranking runs by `ts`, taking the newest N _events_ rather than the newest N
+_runs_, reading `gates.loaded` only from the latest run) yields a report that is confidently wrong
+while the reducer's own tests stay green. So the window is exercised at integration against a real
+file-backed ledger holding eleven runs, where widening the window by one run has to flip `a11y`
+from decoration to healthy.
 
 ---
 

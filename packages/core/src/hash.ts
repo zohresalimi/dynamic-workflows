@@ -80,6 +80,47 @@ const PLAN_HASH_OMIT_KEYS = ['planHash'] as const;
 export const SPEC_HASH_OMIT_KEYS = ['approvedBy', 'specHash'] as const;
 
 /**
+ * KAR-12.4 AC3: the fields of an `AcceptanceCriterion` that plan validation
+ * derives rather than an author writing.
+ *
+ * `coveredByGates` is *"derived by plan validation, never authored by hand"*
+ * (EPIC-12's four-name reconciliation, docs/04-domain-model.md §2), and
+ * `withCoveredByGates` recomputes and overwrites it on every plan version. If
+ * the digest covered it, that annotation would change the spec's identity —
+ * and KAR-12.4 AC6 makes a verdict void the moment its `specHash` differs from
+ * the run's current one, so a single plan patch would void every verdict in the
+ * ledger and re-run every gate, for a field no human touched. The digest is the
+ * identity of the **authored** document; the walk's output is not part of it.
+ */
+const CRITERION_DERIVED_KEYS = ['coveredByGates'] as const;
+
+/**
+ * `spec` as the digest sees it: the authored document, with `approvedBy`,
+ * `specHash` and every criterion's derived field dropped.
+ *
+ * Exported because *what the digest is over* has a second reader: a
+ * `spec.amended` patch is a diff of exactly this form (`hashableSpec` in
+ * ./spec-approval.ts), and two definitions of "the authored document" is how a
+ * spec ends up diffing as changed while hashing the same. Non-object entries
+ * are passed through untouched — this hashes what it was given rather than
+ * validating it, and a malformed criterion must still hash differently from a
+ * well-formed one.
+ */
+export function authoredSpecFields(spec: Record<string, unknown>): Record<string, unknown> {
+  const criteria = spec.acceptanceCriteria;
+  const stripped = omit(spec, SPEC_HASH_OMIT_KEYS);
+  if (!Array.isArray(criteria)) return stripped;
+  return {
+    ...stripped,
+    acceptanceCriteria: criteria.map((criterion) =>
+      typeof criterion === 'object' && criterion !== null && !Array.isArray(criterion)
+        ? omit(criterion as Record<string, unknown>, CRITERION_DERIVED_KEYS)
+        : criterion,
+    ),
+  };
+}
+
+/**
  * sha256 of the canonical encoding of `doc`, excluding the `planHash` field
  * itself, formatted as the `sha256-<64 hex>` string `PlanHashSchema`
  * requires. This is `PlanGraph.planHash` (docs/04-domain-model.md §3).
@@ -90,13 +131,14 @@ export async function planHash(doc: Record<string, unknown>): Promise<PlanHash> 
 }
 
 /**
- * sha256 of the canonical encoding of `spec`, excluding `approvedBy`, so
- * that approving an unchanged spec does not change its identity while
- * editing it does (docs/04-domain-model.md §2, EPIC-02-S6). This is
- * `TaskSpec.specHash`.
+ * sha256 of the canonical encoding of `spec`, excluding `approvedBy` and every
+ * criterion's derived `coveredByGates`, so that approving an unchanged spec —
+ * or validating it against a new plan version — does not change its identity
+ * while editing it does (docs/04-domain-model.md §2, EPIC-02-S6, KAR-12.4 AC3).
+ * This is `TaskSpec.specHash`.
  */
 export async function specHash(spec: Record<string, unknown>): Promise<string> {
-  const hex = await sha256Hex(canonicalJson(omit(spec, SPEC_HASH_OMIT_KEYS)));
+  const hex = await sha256Hex(canonicalJson(authoredSpecFields(spec)));
   return `sha256-${hex}`;
 }
 

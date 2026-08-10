@@ -32,6 +32,7 @@ const EXPECTED_PACKAGES: Readonly<Record<string, string>> = {
   'packages/core': '@DeFlow/core',
   'packages/ledger': '@DeFlow/ledger',
   'packages/adapters': '@DeFlow/adapters',
+  'packages/gates': '@DeFlow/gates',
   'packages/daemon': '@DeFlow/daemon',
   'packages/cli': 'DeFlow',
   'packages/web': '@DeFlow/web',
@@ -107,7 +108,7 @@ suite('runtime version files', () => {
 });
 
 suite('package layout', () => {
-  it('has exactly the nine packages of the layout', () => {
+  it('has exactly the ten packages of the layout', () => {
     expect(packageDirs()).toEqual(Object.keys(EXPECTED_PACKAGES).sort());
   });
 

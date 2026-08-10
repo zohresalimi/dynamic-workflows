@@ -49,7 +49,7 @@ import type {
   ProposedBy,
   TaskSpec,
 } from '@DeFlow/core';
-import { hasBlockingDiagnostic, validatePlan } from '@DeFlow/core';
+import { hasBlockingDiagnostic, validatePlan, withCoveredByGates } from '@DeFlow/core';
 import { appendEvents, applyPatchedPlanVersion, PATCH_STALE } from '@DeFlow/ledger';
 
 /**
@@ -74,7 +74,32 @@ export interface PlanValidationRequest {
 }
 
 /**
- * Every diagnostic §3 produces for `plan`, git's verdict included.
+ * What one validation pass produces: the diagnostics, and the spec as the walk
+ * leaves it.
+ *
+ * KAR-12.4 AC3 — *"`coveredByGates` is written by validation, not by the
+ * planner"*. The two travel together because they are the same walk over the
+ * same graph: `spec` is `request.spec` with every criterion's `coveredByGates`
+ * recomputed from this plan version's **active** gate nodes and overwritten,
+ * and the diagnostics are what that walk found wrong. Returning only the
+ * diagnostics would leave the criterion → node mapping computed and thrown
+ * away, which is how the acceptance board ends up asking the planner where a
+ * criterion's evidence lives.
+ *
+ * `spec.specHash` is deliberately unchanged: `specHash` excludes the derived
+ * field (@DeFlow/core's ./hash.ts), so the annotated document is the same
+ * identity as the pinned one — otherwise validating a patched plan would void
+ * every verdict in the ledger (AC6).
+ */
+export interface PlanValidation {
+  readonly diagnostics: readonly PlanDiagnostic[];
+  /** The pinned spec with `coveredByGates` written from this plan version. */
+  readonly spec: TaskSpec;
+}
+
+/**
+ * Every diagnostic §3 produces for `plan`, git's verdict included, plus the
+ * annotated spec.
  *
  * The refs are checked concurrently and then handed to the pure validator in
  * one set, rather than interleaved with the other checks, because the answer
@@ -82,9 +107,7 @@ export interface PlanValidationRequest {
  * process spawns. `RefFormatChecker` caches per composed ref, so a repeated id
  * — which is itself a diagnostic — costs one process, not two.
  */
-export async function validatePlanVersion(
-  request: PlanValidationRequest,
-): Promise<readonly PlanDiagnostic[]> {
+export async function validatePlanVersion(request: PlanValidationRequest): Promise<PlanValidation> {
   const ids = request.plan.nodes.map((node): string => node.id);
   const verdicts = await Promise.all(
     ids.map(async (id) => ({
@@ -93,10 +116,13 @@ export async function validatePlanVersion(
     })),
   );
 
-  return validatePlan(request.plan, request.spec, request.caps, {
-    estimatePacketTokens: request.estimatePacketTokens,
-    refusedRefs: verdicts.filter((verdict) => !verdict.ok).map((verdict) => verdict.id),
-  });
+  return {
+    diagnostics: validatePlan(request.plan, request.spec, request.caps, {
+      estimatePacketTokens: request.estimatePacketTokens,
+      refusedRefs: verdicts.filter((verdict) => !verdict.ok).map((verdict) => verdict.id),
+    }),
+    spec: withCoveredByGates(request.spec, request.plan),
+  };
 }
 
 export interface CommitPatchedPlanRequest extends PlanValidationRequest {
@@ -139,6 +165,10 @@ export type CommitPatchedPlanOutcome =
   | {
       readonly outcome: 'committed';
       readonly diagnostics: readonly PlanDiagnostic[];
+      /** KAR-12.4 AC3 — the pinned spec with `coveredByGates` rewritten from
+       * the *successor* version, because a patch that retires or adds a gate
+       * node changes which nodes cover which criterion. */
+      readonly spec: TaskSpec;
       readonly seq: number;
       readonly planHash: string;
     }
@@ -218,7 +248,7 @@ function appendRejection(
 export async function commitPatchedPlan(
   request: CommitPatchedPlanRequest,
 ): Promise<CommitPatchedPlanOutcome> {
-  const diagnostics = await validatePlanVersion({ ...request, plan: request.graph });
+  const { diagnostics, spec } = await validatePlanVersion({ ...request, plan: request.graph });
 
   if (hasBlockingDiagnostic(diagnostics)) {
     return {
@@ -255,6 +285,7 @@ export async function commitPatchedPlan(
   return {
     outcome: 'committed',
     diagnostics,
+    spec,
     seq: applied.seq,
     planHash: applied.planHash,
   };

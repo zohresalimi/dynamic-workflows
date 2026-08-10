@@ -25,7 +25,14 @@ import { PlanGraphSchema } from '../src/plan-graph.ts';
 import { PlanPatchSchema } from '../src/plan-patch.ts';
 import { ReconFactValueSchema, ReconSurveySchema } from '../src/recon.ts';
 import { TaskSpecSchema } from '../src/task-spec.ts';
-import { FindingSchema, VerdictSchema, VerdictV2Schema } from '../src/verdict.ts';
+import {
+  FindingSchema,
+  FindingV2Schema,
+  VerdictSchema,
+  VerdictV2Schema,
+  VerdictV3Schema,
+  VerdictV4Schema,
+} from '../src/verdict.ts';
 
 const repoRoot = new URL('../../../', import.meta.url).pathname;
 const corpus = join(repoRoot, 'fixtures/schemas');
@@ -36,6 +43,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.contextpacket.v1': join(corpus, 'DeFlow.contextpacket.v1.valid.json'),
   'DeFlow.fact.v1': join(corpus, 'DeFlow.fact.v1.valid.json'),
   'DeFlow.finding.v1': join(corpus, 'DeFlow.finding.v1.valid.json'),
+  'DeFlow.finding.v2': join(corpus, 'DeFlow.finding.v2.valid.json'),
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
   'DeFlow.reconfact.v1': join(corpus, 'DeFlow.reconfact.v1.valid.json'),
@@ -47,12 +55,15 @@ const CONFORMING: Record<string, string> = {
   ),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
+  'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),
+  'DeFlow.verdict.v4': join(corpus, 'DeFlow.verdict.v4.valid.json'),
 };
 
 const ZOD: Record<string, z.ZodType> = {
   'DeFlow.contextpacket.v1': ContextPacketSchema,
   'DeFlow.fact.v1': FactSchema,
   'DeFlow.finding.v1': FindingSchema,
+  'DeFlow.finding.v2': FindingV2Schema,
   'DeFlow.plangraph.v1': PlanGraphSchema,
   'DeFlow.planpatch.v1': PlanPatchSchema,
   'DeFlow.reconfact.v1': ReconFactValueSchema,
@@ -61,6 +72,8 @@ const ZOD: Record<string, z.ZodType> = {
   'DeFlow.taskspecdraft.v1': TaskSpecDraftSchema,
   'DeFlow.verdict.v1': VerdictSchema,
   'DeFlow.verdict.v2': VerdictV2Schema,
+  'DeFlow.verdict.v3': VerdictV3Schema,
+  'DeFlow.verdict.v4': VerdictV4Schema,
 };
 
 suite('the conformance corpus agrees with the Zod source', () => {

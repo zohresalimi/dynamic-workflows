@@ -19,7 +19,7 @@
  * own and that row is only ever decided by a verdict entry that names it.
  *
  * Verifies: EPIC-10-S21 (third scenario), EPIC-10-S22, EPIC-10-S29 (third
- * scenario) · AC5
+ * scenario), EPIC-12-S27 · AC5, KAR-12.4 AC6, AC7
  */
 import { expect, it, describe as suite } from 'vitest';
 import {
@@ -28,8 +28,15 @@ import {
   isVerdictVoid,
   staleGateNodes,
   verdictAgainst,
+  verdictCriteriaProjection,
 } from './acceptance-board.ts';
-import { CriterionIdSchema, GateIdSchema, NodeIdSchema, ProviderIdSchema } from './ids.ts';
+import {
+  CriterionIdSchema,
+  GateIdSchema,
+  HandleSchema,
+  NodeIdSchema,
+  ProviderIdSchema,
+} from './ids.ts';
 import type { VerdictV2 } from './verdict.ts';
 
 const HASH_A = `sha256-${'a'.repeat(64)}`;
@@ -299,5 +306,144 @@ suite('a prohibition is checked explicitly, never inferred from green gates (EPI
         specHash: HASH_A,
       }),
     ).toThrow(/constraint-1/);
+  });
+});
+
+// ── KAR-12.4 AC7, AC8, test plan #5 — the criteria projection ───────────────
+
+suite('verdictCriteriaProjection groups verdicts by criterion (KAR-12.4 AC7)', () => {
+  const EVIDENCE = HandleSchema.parse(`artifact://${'e'.repeat(64)}`);
+
+  it('renders exactly three states and excludes a verdict void by specHash', () => {
+    const satisfiedVerdict = verdict({
+      gate: GateIdSchema.parse('unit-tests'),
+      by: {
+        node: NodeIdSchema.parse('gate-unit-tests'),
+        provider: ProviderIdSchema.parse('claude-code'),
+        model: 'sonnet',
+      },
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'satisfied' }],
+      findings: [
+        {
+          id: 'f1',
+          severity: 'info',
+          criterion: CriterionIdSchema.parse('ac-1'),
+          message: 'all 12 unit tests pass',
+          evidence: [EVIDENCE],
+        },
+      ],
+      specHash: HASH_A,
+    });
+    const unsatisfiedVerdict = verdict({
+      gate: GateIdSchema.parse('review'),
+      by: {
+        node: NodeIdSchema.parse('gate-review'),
+        provider: ProviderIdSchema.parse('codex'),
+        model: 'gpt',
+      },
+      criteria: [{ id: CriterionIdSchema.parse('ac-2'), status: 'unsatisfied' }],
+      findings: [],
+      specHash: HASH_A,
+    });
+    const unverifiableVerdict = verdict({
+      gate: GateIdSchema.parse('review'),
+      by: {
+        node: NodeIdSchema.parse('gate-review'),
+        provider: ProviderIdSchema.parse('codex'),
+        model: 'gpt',
+      },
+      criteria: [{ id: CriterionIdSchema.parse('ac-3'), status: 'unverifiable' }],
+      findings: [],
+      specHash: HASH_A,
+    });
+    // Judged against a spec that has since moved. Must not appear at all.
+    const voidVerdict = verdict({
+      gate: GateIdSchema.parse('typecheck'),
+      by: {
+        node: NodeIdSchema.parse('gate-typecheck'),
+        provider: ProviderIdSchema.parse('claude-code'),
+        model: 'sonnet',
+      },
+      criteria: [{ id: CriterionIdSchema.parse('ac-4'), status: 'satisfied' }],
+      findings: [],
+      specHash: HASH_B,
+    });
+
+    const rows = verdictCriteriaProjection(
+      [satisfiedVerdict, unsatisfiedVerdict, unverifiableVerdict, voidVerdict],
+      HASH_A,
+    );
+
+    expect(rows.map((row) => row.criterion).toSorted()).toEqual(['ac-1', 'ac-2', 'ac-3']);
+    expect(rows.find((row) => row.criterion === 'ac-1')?.status).toBe('satisfied');
+    expect(rows.find((row) => row.criterion === 'ac-2')?.status).toBe('unsatisfied');
+    expect(rows.find((row) => row.criterion === 'ac-3')?.status).toBe('unverifiable');
+    expect(rows.some((row) => row.criterion === 'ac-4')).toBe(false);
+  });
+
+  it('carries the evidence handles of the findings that named the criterion', () => {
+    const satisfiedVerdict = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'satisfied' }],
+      findings: [
+        {
+          id: 'f1',
+          severity: 'info',
+          criterion: CriterionIdSchema.parse('ac-1'),
+          message: 'all 12 unit tests pass',
+          evidence: [EVIDENCE],
+        },
+        {
+          // A finding about a different criterion must not leak onto ac-1's row.
+          id: 'f2',
+          severity: 'info',
+          criterion: CriterionIdSchema.parse('ac-9'),
+          message: 'unrelated',
+          evidence: [HandleSchema.parse(`artifact://${'f'.repeat(64)}`)],
+        },
+      ],
+      specHash: HASH_A,
+    });
+
+    const [row] = verdictCriteriaProjection([satisfiedVerdict], HASH_A);
+    expect(row?.evidence).toEqual([EVIDENCE]);
+    expect(row?.decidedBy).toBe('gate-review');
+  });
+
+  it('the latest non-void verdict for a criterion wins over an earlier one', () => {
+    const first = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'unsatisfied' }],
+      findings: [],
+      specHash: HASH_A,
+    });
+    const second = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'satisfied' }],
+      findings: [],
+      specHash: HASH_A,
+    });
+
+    expect(verdictCriteriaProjection([first, second], HASH_A)[0]?.status).toBe('satisfied');
+  });
+
+  it('carries the weakened marker through, so the board can distinguish it (AC8)', () => {
+    const weak = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'satisfied' }],
+      findings: [],
+      specHash: HASH_A,
+      weakened: 'same-provider',
+    } as Partial<VerdictV2>);
+
+    const [row] = verdictCriteriaProjection([weak], HASH_A);
+    expect(row?.status).toBe('satisfied');
+    expect(row?.weakened).toBe('same-provider');
+  });
+
+  it('is null when the deciding verdict was not weakened', () => {
+    const ordinary = verdict({
+      criteria: [{ id: CriterionIdSchema.parse('ac-1'), status: 'satisfied' }],
+      findings: [],
+      specHash: HASH_A,
+    });
+
+    expect(verdictCriteriaProjection([ordinary], HASH_A)[0]?.weakened).toBeNull();
   });
 });

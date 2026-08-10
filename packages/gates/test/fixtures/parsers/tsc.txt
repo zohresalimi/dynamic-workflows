@@ -1,0 +1,2 @@
+packages/ui/src/App.ts(4,7): error TS2322: Type 'string' is not assignable to type 'number'.
+packages/ui/src/App.ts(4,25): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.

@@ -141,7 +141,9 @@ export type AcceptanceCriterion = {
       }
     | { kind: "gate"; gate: GateId }
     | { kind: "manual"; rubric: string };
-  /** Set by the planner during validation: F7.4 requires every criterion to reach a gate. */
+  /** Written by plan validation, never by the planner and never by hand: F7.4 requires every
+   * criterion to reach a gate. Recomputed and overwritten on every plan version, and excluded
+   * from `specHash` for that reason. */
   coveredByGates: NodeId[];
 };
 
@@ -166,7 +168,7 @@ export type TaskSpec = {
   acceptanceCriteria: AcceptanceCriterion[];
   knownFailureModes: FailureMode[];
   approvedBy: { at: string; via: "ui" | "cli" } | null;
-  specHash: string; // sha256 of the canonicalised spec, excluding `approvedBy`
+  specHash: string; // sha256 of the canonicalised spec, excluding `approvedBy` and `coveredByGates`
 };
 ```
 
@@ -179,7 +181,11 @@ fails the node rather than proceeding. Mechanism and evidence in
 [context and memory](./08-context-and-memory.md).
 
 `specHash` excludes `approvedBy` deliberately: re-approving an unchanged spec must not change its
-identity, but editing one word must.
+identity, but editing one word must. It excludes each criterion's `coveredByGates` for the same
+reason one step further out: that field is *derived* — plan validation recomputes it from the
+plan's active gate nodes and overwrites it on every version — and a verdict is void the moment its
+`specHash` differs from the run's current one, so a digest that covered it would void every verdict
+in the ledger each time a patch added or retired a gate.
 
 ---
 
@@ -778,6 +784,7 @@ export type EventEnvelope<K extends string, P> = {
 | `plan.patch.queued`                         | `{ patchId; rule: string; estimate: { costUsdDelta; blastRadiusFiles; maxPermission; replanDepth } }` | F2.5/F8.3 — the policy engine queued the patch for a human. Its own kind because a queued patch writes no plan document, so there is no `toHash` for a `plan.patched` to carry |
 | `policy.patch.loaded`                       | `{ source: 'config' \| 'default'; hash; rules: PatchRuleSpec[] }`                        | F2.5 — the rule table pinned into the run manifest at run start (06 §4.3). The **rules** travel, not only the digest, so a replay is judged by what the config said then |
 | `policy.patch.drifted`                      | `{ pinnedHash; configHash }`                                                             | `.DeFlow/config.yaml` no longer matches what this run is playing by. Surfaced rather than acted on — the pinned table still rules |
+| `gates.loaded`                              | `{ gates: { id: GateId; path: string; sha256: string }[] }`                              | F7.6 — every `.DeFlow/gates/*.{yaml,yml}` file, discovered and hashed at run creation, plus the built-ins derived from `package.json` scripts (KAR-12.6, §2 of 10-verification-gates.md). `sha256` is over the file's **bytes**, never the parsed object — a comment-only edit still changes it, which is the anti-drift point a mid-run divergence check rests on |
 | `plan.patch.rejected`                       | `{ patchId; rule: string; by: 'policy' \| 'human' }`                                     |                                                                                                      |
 | `node.scheduled`                            | `{ node: NodeId; provider: ProviderId; model?; permission: PermissionLevel; worktree? }` | `worktree` is the assignment F5.2's per-worktree lock is keyed on                                     |
 | `node.lock.acquired` / `node.lock.released` | `{ node: NodeId; lock: 'repo' \| 'worktree'; key: string }`, released also `{ reason? }` | F5.2 — locks live in the ledger so they survive restart. `reason: 'reclaimed'` is the scheduler taking one back from a node that stopped running |

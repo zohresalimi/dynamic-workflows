@@ -12,6 +12,58 @@
     "unit-tests-pass",
     "no-v-model-regression"
   ],
+  "gateVerdicts": {
+    "gate-04": {
+      "gate": "gate-04",
+      "outcome": "pass",
+      "seq": 205
+    },
+    "gate-08": {
+      "gate": "gate-08",
+      "outcome": "pass",
+      "seq": 406
+    },
+    "gate-12": {
+      "gate": "gate-12",
+      "outcome": "pass",
+      "seq": 608
+    },
+    "gate-16": {
+      "gate": "gate-16",
+      "outcome": "pass",
+      "seq": 809
+    },
+    "gate-20": {
+      "gate": "gate-20",
+      "outcome": "pass",
+      "seq": 1010
+    },
+    "gate-24": {
+      "gate": "gate-24",
+      "outcome": "pass",
+      "seq": 1210
+    },
+    "gate-28": {
+      "gate": "gate-28",
+      "outcome": "pass",
+      "seq": 1407
+    },
+    "gate-32": {
+      "gate": "gate-32",
+      "outcome": "pass",
+      "seq": 1605
+    },
+    "gate-36": {
+      "gate": "gate-36",
+      "outcome": "pass",
+      "seq": 1802
+    },
+    "gate-40": {
+      "gate": "gate-40",
+      "outcome": "pass",
+      "seq": 1999
+    }
+  },
   "needsHuman": null,
   "patchPolicy": null,
   "cancel": null,

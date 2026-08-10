@@ -1,0 +1,51 @@
+{
+  "schemaId": "DeFlow.verdict.v4",
+  "outcome": "fail",
+  "gate": "typecheck-gate",
+  "evaluatedNode": "migrate-router-guards",
+  "by": {
+    "node": "typecheck-gate",
+    "provider": "codex",
+    "model": "gpt-5-codex"
+  },
+  "specHash": "sha256-4f1c0d3b8a2e6957c41d8b0e2f7a9c35d6b8e0a1f2c3d4e5f60718293a4b5c6d",
+  "criteria": [
+    {
+      "id": "no-plaintext-secrets",
+      "status": "satisfied"
+    },
+    {
+      "id": "typecheck-clean",
+      "status": "unsatisfied"
+    },
+    {
+      "id": "feels-responsive",
+      "status": "unverifiable"
+    }
+  ],
+  "findings": [
+    {
+      "id": "9c02f1a4b7d3",
+      "severity": "blocker",
+      "criterion": "typecheck-clean",
+      "location": {
+        "file": "src/router/guards.ts",
+        "line": 88,
+        "blobSha": "7c1e0a9b4d5f628301a2b3c4d5e6f708192a3b4c"
+      },
+      "message": "argument of type NavigationGuardNext is not assignable to parameter of type void",
+      "evidence": ["artifact://1a2b3c4d5e6f70819200a1b2c3d4e5f60718293a4b5c6d7e8f90011223344556"]
+    }
+  ],
+  "summary": "typecheck fails in src/router/guards.ts, judged by the producer\u2019s own provider",
+  "cost": {
+    "durationMs": 4120,
+    "tokens": {
+      "inputTokens": 1200,
+      "outputTokens": 340,
+      "source": "vendor-reported"
+    },
+    "usd": 0.021
+  },
+  "weakened": "same-provider"
+}

@@ -39,6 +39,7 @@
 
 import {
   afterTurn,
+  assertIndependentReview,
   type CompletedNodeResult,
   contentHash,
   type EventSeq,
@@ -699,6 +700,25 @@ export async function runAcpNode(
 
         const driveTurn = async (session: TurnSession): Promise<void> => {
           turn.sessionId = session.sessionId;
+          // KAR-12.2 AC1 — the resolved session id, journaled the instant it
+          // arrives and never buffered (05 §8.3). Its own `node.started`
+          // rather than a field patched onto the one above: that one was
+          // written before a session existed, the ledger is append-only, and
+          // the two together are what a reader compares against the producer's
+          // to see that the review was independent.
+          lastSeq = await ledger.append(
+            event('node.started', {
+              node: request.nodeId,
+              attempt: request.attempt,
+              ikey: key,
+              binary: {
+                path: request.binary.path,
+                version: request.binary.version,
+                sha256: request.binary.sha256,
+              },
+              session: { id: session.sessionId, origin: 'session/new' },
+            }),
+          );
           // AC3: the sessionId is durable against the node before a single
           // update can refer to it.
           lastSeq = await ledger.append(
@@ -709,6 +729,23 @@ export async function runAcpNode(
               message: `sessionId=${session.sessionId}`,
             }),
           );
+
+          // KAR-12.2 AC4 — the last point before the reviewer receives any
+          // input on this path. The id was unknowable until the response above,
+          // and everything after this line is a `session/prompt`. Thrown rather
+          // than returned, so the refusal leaves through the same boundary
+          // every other adapter failure does and the session is torn down with
+          // zero prompts sent.
+          if (request.review !== undefined) {
+            assertIndependentReview(
+              {
+                id: request.nodeId,
+                resolvedSessionId: session.sessionId,
+                ...(request.review.resume === undefined ? {} : { resume: request.review.resume }),
+              },
+              request.review.producers,
+            );
+          }
 
           if (ports.signal !== undefined) {
             const onAbort = (): void => {

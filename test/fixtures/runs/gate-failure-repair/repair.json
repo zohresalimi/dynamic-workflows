@@ -1,0 +1,37 @@
+{
+  "runId": "run_20260810T090000Z_9f31ab",
+  "status": "completed",
+  "finding": "65207341fbd9",
+  "fixNode": "fix-65207341fbd9",
+  "rerunNode": "gate-typecheck-r2",
+  "verdicts": [
+    {
+      "gate": "typecheck",
+      "outcome": "fail",
+      "seq": 11
+    },
+    {
+      "gate": "typecheck",
+      "outcome": "pass",
+      "seq": 28
+    }
+  ],
+  "commits": [
+    {
+      "sha": "010b99c4793cf3d20c9e8efe0dff76b077cc23a9",
+      "paths": [
+        "test/days-until.test.ts"
+      ],
+      "outcome": "fail"
+    },
+    {
+      "sha": "fc28380848146da6d7117bc703a9d07597032e8d",
+      "paths": [
+        "src/date-picker.ts"
+      ],
+      "outcome": "pass"
+    }
+  ],
+  "lastWriteSeq": 21,
+  "milestoneAdvanced": true
+}

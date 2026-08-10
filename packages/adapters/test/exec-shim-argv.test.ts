@@ -63,7 +63,7 @@ const byId = (id: string): ProviderSpec => {
  * by the code under test would agree with itself no matter what it produced.
  */
 const READ_ONLY_ARGV: Readonly<Record<string, string>> = {
-  claude: `-p ${PROMPT} --output-format stream-json --verbose`,
+  claude: `-p ${PROMPT} --output-format stream-json --session-id ${SESSION} --verbose`,
   codex: `exec --json --skip-git-repo-check -C ${WORKTREE} ${PROMPT}`,
   gemini: `-p ${PROMPT} --output-format stream-json --session-id ${SESSION}`,
   copilot: `-p ${PROMPT} --output-format json --allow-all-tools`,

@@ -178,6 +178,31 @@ export type CompilePlanOutcome =
   | {
       readonly outcome: 'compiled';
       readonly plan: PlanGraph;
+      /**
+       * KAR-12.4 AC3 — the pinned spec as validation leaves it: every
+       * criterion's `coveredByGates` recomputed from this plan's active gate
+       * nodes and overwritten, whatever arrived in the field.
+       *
+       * This is the document the run executes against from here on. Its
+       * `specHash` is unchanged — `specHash` excludes the derived field — so it
+       * is the *same* document the ledger pinned and every verdict cites, with
+       * the criterion → node mapping filled in rather than a second version of
+       * the spec that would have to be re-approved.
+       */
+      readonly spec: TaskSpec;
+      /**
+       * What validation found on the accepted version — necessarily all
+       * non-blocking, or this arm would not have been reached.
+       *
+       * A warning is not persisted anywhere (`plan.proposed` carries the
+       * document, not the verdict on it), so returning it is the only way it is
+       * seen at all: KAR-12.4 AC3's `COVERED_BY_GATES_MISMATCH` exists to make
+       * a hand-edited spec *visible*, and a diagnostic computed and dropped
+       * makes it exactly as invisible as not computing it. `commitPatchedPlan`
+       * has always returned its diagnostics on the committed arm; this is the
+       * v1 path catching up.
+       */
+      readonly diagnostics: readonly PlanDiagnostic[];
       /** The packet the accepted attempt was prompted with. */
       readonly packet: ContextPacket;
       readonly seq: number;
@@ -421,7 +446,7 @@ export async function compilePlanV1(options: CompilePlanOptions): Promise<Compil
 
     // AC9 — the *whole* of §3, on every version, through the one entry point
     // that can also ask git about a node id.
-    const diagnostics = await validatePlanVersion({
+    const { diagnostics, spec } = await validatePlanVersion({
       plan: graph,
       spec: options.spec,
       caps: planTimeCapabilities(rows, () => options.maxContext),
@@ -449,6 +474,10 @@ export async function compilePlanV1(options: CompilePlanOptions): Promise<Compil
     return {
       outcome: 'compiled',
       plan: graph,
+      // AC3 — validation's output, not the planner's input: the spec that
+      // arrived is never the one that travels on.
+      spec,
+      diagnostics,
       packet,
       seq: persisted.seq,
       path: persisted.path,

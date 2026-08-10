@@ -33,6 +33,8 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
+  HumanRequestedSchema,
+  NodeStartedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
   PlanPatchRejectedSchema,
@@ -550,6 +552,101 @@ registerUpcaster({
 });
 
 /**
+ * `gate.evaluated` v2 → v3 (KAR-12.3). See schemas/CHANGELOG.md.
+ *
+ * v3's verdict is `DeFlow.verdict.v3`, which changes two things: a finding's
+ * `location` now carries the `blobSha` of the revision its line was read from,
+ * and the verdict may carry a `cost`.
+ *
+ * **`cost` is left absent**, for the reason `specHash` was on the previous hop:
+ * nobody measured a historical verdict, and a zero on a cost chart is a claim
+ * that a node was free.
+ *
+ * **An unanchored `location` is dropped, and the finding is kept.** This is the
+ * one hop in the registry that removes something, so it is worth being exact
+ * about why it is not lossy in the sense `schemas/CHANGELOG.md` forbids. A v2
+ * `location` is a file and a line with no statement of *which revision* the
+ * line belonged to. Carrying it into v3 would let the diff surface draw it
+ * against whatever now occupies that line — the precise failure
+ * docs/10-verification-gates.md §8 describes, where the reviewer stops trusting
+ * the margin within about ten minutes. So the hop keeps everything that is
+ * still true of the finding — its stable id, its severity, its message, its
+ * evidence and its criterion — and drops only the claim it can no longer
+ * support. A finding that already had no location is untouched.
+ */
+registerUpcaster({
+  kind: 'gate.evaluated',
+  from: 2,
+  to: GateEvaluatedSchema,
+  fixture: {
+    gate: 'codemod-review',
+    node: 'step-04',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v2',
+      outcome: 'fail',
+      gate: 'codemod-review',
+      evaluatedNode: 'step-04',
+      by: { node: 'gate-04', provider: 'codex', model: 'the-model-the-gate-ran-on' },
+      specHash: `sha256-${'0'.repeat(64)}`,
+      criteria: [{ id: 'unit-tests-pass', status: 'unsatisfied' }],
+      findings: [
+        {
+          id: '9c02f1a4b7d3',
+          severity: 'blocker',
+          message: 'the migrated guard returns void where a NavigationGuardNext is expected',
+          evidence: [],
+          location: { file: 'src/router/guards.ts', line: 88 },
+        },
+      ],
+      summary: 'One blocker in the migrated router guards.',
+    },
+  },
+  up: (payload) => {
+    const record = payload as { verdict?: { findings?: readonly unknown[] } };
+    const verdict = record.verdict;
+    if (verdict === undefined) return payload;
+    const findings = (verdict.findings ?? []).map((finding) => {
+      const one = finding as Record<string, unknown>;
+      const location = one.location as Record<string, unknown> | undefined;
+      if (location === undefined || typeof location.blobSha === 'string') return one;
+      const { location: _unanchored, ...rest } = one;
+      return rest;
+    });
+    return { ...record, verdict: { ...verdict, findings } };
+  },
+});
+
+/**
+ * `node.started` v1 → v2 (KAR-12.2). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field, `session`, and the hop leaves it **absent**.
+ *
+ * A v1 payload was written before the resolved session id was journaled here
+ * at all, and there is no honest place to lift one from: the ACP path recorded
+ * it on a `node.progress` line whose text a later reader would have to parse,
+ * and parsing a message string into a field that AC1 then asserts independence
+ * from is exactly the kind of derived certainty this registry exists to
+ * refuse. Absent means *this build did not record it*, which is true, and the
+ * independence assertion reads it as unanswerable rather than as a pass.
+ */
+registerUpcaster({
+  kind: 'node.started',
+  from: 1,
+  to: NodeStartedSchema,
+  fixture: {
+    node: 'implement-1',
+    attempt: 0,
+    ikey: 'run_20260802T141133Z_9f2a1c/implement-1/0/0',
+    binary: {
+      path: '/opt/agents/an-agent',
+      version: '2.1.220',
+      sha256: '0'.repeat(64),
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `run.needs_human` v2 → v3 (KAR-11.1). See schemas/CHANGELOG.md.
  *
  * v3 widens `reason` by one member, `plan-invalid`, and changes nothing else,
@@ -663,6 +760,76 @@ registerUpcaster({
 });
 
 /**
+ * `plan.validation_failed` v2 → v3 (KAR-12.4). See schemas/CHANGELOG.md.
+ *
+ * v3 widens `diagnostics[].code` by two members,
+ * `CRITERION_UNVERIFIABLE_NO_REASON` and `COVERED_BY_GATES_MISMATCH` (§5.1's
+ * totality rule), and changes nothing else, so the hop is the identity for the
+ * reason every enum-widening hop in this registry is: every v2 payload is
+ * already a valid v3 one, and no v2 payload can have carried a code that did
+ * not exist yet.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 2,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'CRITERION_UNCOVERED',
+        node: '(plan)',
+        key: 'ac-9',
+        message: "acceptance criterion 'ac-9' is covered by no active gate node",
+      },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `gate.evaluated` v3 → v4 (KAR-12.2). See schemas/CHANGELOG.md.
+ *
+ * v4's verdict is `DeFlow.verdict.v4`, which adds one optional field —
+ * `weakened` — so the hop is the identity.
+ *
+ * Unlike `specHash` on the v1 → v2 hop and `cost` on the v2 → v3 one, absence
+ * here is not a gap. `weakened` is
+ * stamped only when the reviewer was routed onto the producer's own provider
+ * under the single-provider fallback, and that fallback did not exist when a v3
+ * payload was written: a historical verdict was produced by a reviewer routed
+ * the ordinary way. The only available error would be marking it weak when it
+ * was not, and that would be an invention on a marker whose entire purpose is
+ * to be believed.
+ */
+registerUpcaster({
+  kind: 'gate.evaluated',
+  from: 3,
+  to: GateEvaluatedSchema,
+  fixture: {
+    gate: 'codemod-review',
+    node: 'step-04',
+    verdict: {
+      schemaId: 'DeFlow.verdict.v3',
+      outcome: 'pass',
+      gate: 'codemod-review',
+      evaluatedNode: 'step-04',
+      by: { node: 'gate-04', provider: 'codex', model: 'the-model-the-gate-ran-on' },
+      specHash: `sha256-${'0'.repeat(64)}`,
+      criteria: [{ id: 'unit-tests-pass', status: 'satisfied' }],
+      findings: [],
+      summary: 'Every criterion this gate speaks to is satisfied.',
+      cost: { durationMs: 1200 },
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `plan.patch.rejected` v1 → v2 (KAR-11.2). See schemas/CHANGELOG.md.
  *
  * v2 widens `by` with a third value, `'validation'`, and adds an optional
@@ -731,6 +898,37 @@ registerUpcaster({
       rule: 'read-only-analysis',
       at: '2026-08-07T09:30:00.000Z',
     },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v1 → v2 (KAR-12.5). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field — `repair`, the three diffs and three verdicts an
+ * exhausted repair loop hands the operator (docs/10-verification-gates.md §7) —
+ * so the hop is the identity.
+ *
+ * Left **absent** rather than reconstructed, and the absence is honest in both
+ * directions. A v1 escalation may or may not have come from a repair loop; the
+ * payload does not say, and the surrounding events would have to be walked to
+ * find out. More to the point, a fabricated `attempts: []` is refused by the
+ * schema and a fabricated one-entry list would put handles on an escalation
+ * that never had any — which is exactly the invention the `weakened` hop above
+ * declines to make, for the same reason: a field whose purpose is to be
+ * believed must never be guessed.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 1,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'gate-typecheck',
+    prompt: 'The typecheck gate has failed three times. What should happen next?',
+    options: [
+      { id: 'retry', label: 'Try once more', effect: 'approve' },
+      { id: 'abandon', label: 'Abandon this branch', effect: 'reject' },
+    ],
   },
   up: (payload) => payload,
 });

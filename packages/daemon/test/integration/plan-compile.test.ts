@@ -590,3 +590,222 @@ suite('EPIC-11-S5 — one retry with the diagnostics, then a human', () => {
     }
   });
 });
+
+// ── EPIC-12-S24 / S25 — the criterion → gate mapping is total ────────────────
+
+/**
+ * KAR-12.4 AC1, AC2, AC3, at the boundary the acceptance criteria name:
+ * *"the run does not start. No agent process is spawned."*
+ *
+ * Integration rather than unit because "does not start" is a claim about what
+ * the ledger and the run directory hold afterwards, not about what a pure
+ * function returned: nothing to schedule means no `plan.proposed`, no plan row,
+ * no `plan/v1.json`, and a `run.needs_human` in its place. The pure walk has its
+ * own unit tests in `@DeFlow/core`; what those cannot show is that the refusal
+ * really does happen before anything is persisted for a scheduler to pick up.
+ */
+suite('EPIC-12-S24 — an uncovered acceptance criterion refuses to start the run', () => {
+  /** The shared fixture's plan, with the gate narrowed to `ac-1` — so `ac-2` is
+   * a criterion nothing in the plan checks. */
+  const coversOnlyAc1 = () =>
+    returned([], {
+      nodes: [agentNode('implement'), { ...gateNode, criteria: ['ac-1'] }],
+    });
+
+  it('refuses both attempts with CRITERION_UNCOVERED and persists no plan', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const agent = scripted(present(coversOnlyAc1()), present(coversOnlyAc1()));
+
+      const result = await compile(db, tmp, agent);
+
+      expect(result.outcome).toBe('needs-human');
+      if (result.outcome !== 'needs-human') throw new Error('unreachable');
+      expect(result.diagnostics).toMatchObject([
+        { severity: 'error', code: 'CRITERION_UNCOVERED', key: 'ac-2' },
+      ]);
+
+      const events = readRange(db, RUN, 0, 200).events;
+      const kinds = events.map((row) => row.kind);
+      expect(kinds.filter((kind) => kind === 'plan.validation_failed')).toHaveLength(2);
+      expect(kinds).toContain('run.needs_human');
+
+      // Nothing exists for a scheduler to admit: no plan was proposed, no row
+      // was written, no file was left in the run directory — so no node, and
+      // therefore no agent process, can be spawned from this compilation.
+      expect(kinds).not.toContain('plan.proposed');
+      expect(kinds).not.toContain('node.scheduled');
+      expect(existsSync(planPathOf(join(tmp, 'runs', RUN), 1))).toBe(false);
+
+      const [failed] = events.filter((row) => row.kind === 'plan.validation_failed');
+      const diagnostics = (failed?.payload as Record<string, unknown>).diagnostics as {
+        code: string;
+        key: string;
+      }[];
+      expect(diagnostics.map((one) => one.code)).toContain('CRITERION_UNCOVERED');
+      expect(readPlanDoc(db, (failed?.payload as Record<string, string>).planHash)).toBeNull();
+
+      // Two attempts, not three: the planner was prompted twice and the second
+      // prompt carried the diagnostic verbatim.
+      expect(agent.prompts).toHaveLength(2);
+      expect(agent.prompts[1]).toContain('CRITERION_UNCOVERED');
+      expect(agent.prompts[1]).toContain('ac-2');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AC3 — the compiled spec carries coveredByGates as plan node ids', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const agent = scripted(present(returned([agentNode('implement')])));
+
+      const result = await compile(db, tmp, agent);
+      if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
+
+      // The plan node id, not the gate definition id ('typecheck').
+      expect(
+        result.spec.acceptanceCriteria.map((criterion) => [criterion.id, criterion.coveredByGates]),
+      ).toEqual([
+        ['ac-1', ['gate-acceptance']],
+        ['ac-2', ['gate-acceptance']],
+      ]);
+      // The identity is untouched: a derived field must not move the digest a
+      // verdict is judged against (KAR-12.4 AC6).
+      expect(result.spec.specHash).toBe(SPEC_HASH);
+      // And the document handed in is not mutated on the way through.
+      expect(SPEC.acceptanceCriteria.every((one) => one.coveredByGates.length === 0)).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AC3 — a spec arriving with coveredByGates has it recomputed and overwritten', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const agent = scripted(present(returned([agentNode('implement')])));
+
+      const handEdited = TaskSpecSchema.parse({
+        ...SPEC,
+        acceptanceCriteria: SPEC.acceptanceCriteria.map((criterion) => ({
+          ...criterion,
+          coveredByGates: ['gate-somebody-typed'],
+        })),
+      });
+      const result = await compile(db, tmp, agent, { spec: handEdited });
+      if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
+
+      expect(
+        result.spec.acceptanceCriteria.flatMap((criterion) => criterion.coveredByGates),
+      ).toEqual(['gate-acceptance', 'gate-acceptance']);
+
+      // AC3's second half — the overwrite is not silent. The warning survives a
+      // *successful* compile, because that is the only compile a hand-edited
+      // spec produces: a mismatch never blocks the run, so if the diagnostic
+      // did not come back with the outcome nothing would ever see it.
+      expect(
+        result.diagnostics.filter((one) => one.code === 'COVERED_BY_GATES_MISMATCH'),
+      ).toMatchObject([
+        { severity: 'warning', key: 'ac-1' },
+        { severity: 'warning', key: 'ac-2' },
+      ]);
+      expect(result.diagnostics[0]?.message).toContain('gate-somebody-typed');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+/**
+ * KAR-12.4 AC2 — the escape hatch costs one sentence, at the same boundary.
+ *
+ * The blank-rubric document cannot come out of `sealTaskSpec` (the framing draft
+ * schema refuses it), which is exactly why this level matters: what is under
+ * test is that a spec assembled by anything *other* than the framing interview
+ * still cannot start a run.
+ */
+suite('EPIC-12-S25 — unverifiable with a blank reason stops the run too', () => {
+  const blankReason = TaskSpecSchema.parse({
+    ...SPEC,
+    acceptanceCriteria: [
+      { id: 'ac-1', statement: 'pnpm typecheck passes.' },
+      {
+        id: 'ac-2',
+        statement: 'The migrated date picker feels as responsive as the old one.',
+        check: { kind: 'manual', rubric: '   ' },
+      },
+    ],
+  });
+
+  it('refuses the plan with CRITERION_UNVERIFIABLE_NO_REASON and starts nothing', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const plan = () => returned([], { nodes: [agentNode('implement'), gateNode] });
+      const agent = scripted(present(plan()), present(plan()));
+
+      const result = await compile(db, tmp, agent, { spec: blankReason });
+
+      expect(result.outcome).toBe('needs-human');
+      if (result.outcome !== 'needs-human') throw new Error('unreachable');
+      expect(result.diagnostics).toMatchObject([
+        { severity: 'error', code: 'CRITERION_UNVERIFIABLE_NO_REASON', key: 'ac-2' },
+      ]);
+
+      const events = readRange(db, RUN, 0, 200).events;
+      expect(events.map((row) => row.kind)).not.toContain('plan.proposed');
+      const [escalation] = events.filter((row) => row.kind === 'run.needs_human');
+      expect((escalation?.payload as Record<string, string>).detail).toContain(
+        'CRITERION_UNVERIFIABLE_NO_REASON',
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('accepts the same criterion once the reason is a sentence', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const withReason = TaskSpecSchema.parse({
+        ...blankReason,
+        acceptanceCriteria: [
+          { id: 'ac-1', statement: 'pnpm typecheck passes.' },
+          {
+            id: 'ac-2',
+            statement: 'The migrated date picker feels as responsive as the old one.',
+            check: {
+              kind: 'manual',
+              rubric: 'Subjective. No harness exists; route to a human at the milestone.',
+            },
+          },
+        ],
+      });
+      const agent = scripted(
+        present(
+          returned([], { nodes: [agentNode('implement'), { ...gateNode, criteria: ['ac-1'] }] }),
+        ),
+      );
+
+      const result = await compile(db, tmp, agent, { spec: withReason });
+      if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
+
+      // ac-1 is covered by the gate that names it; ac-2 is answered by a human
+      // and covered by no plan node at all — which is written as `[]` rather
+      // than left to look like nobody has looked.
+      expect(result.spec.acceptanceCriteria.map((one) => one.coveredByGates)).toEqual([
+        ['gate-acceptance'],
+        [],
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -50,11 +50,11 @@ import {
   TaskSpecDraftInvalid,
   validateTaskSpecDraft,
 } from './framing.ts';
-import { SPEC_HASH_OMIT_KEYS } from './hash.ts';
+import { authoredSpecFields } from './hash.ts';
 import { type CriterionId, type NodeId, NodeIdSchema } from './ids.ts';
 import type { JsonPatchOperation } from './json-patch.ts';
 import type { PlanGraph } from './plan-graph.ts';
-import type { TaskSpec } from './task-spec.ts';
+import type { AcceptanceCriterion, TaskSpec } from './task-spec.ts';
 
 /**
  * The `NodeId` of the run's approval gate.
@@ -193,11 +193,16 @@ export class SpecEditRefused extends Error {
  * ./json-patch.ts) and *what is diffed* is a domain decision this module owns.
  * A patch whose first operation replaced the digest of the document it is a
  * patch for would be unreadable in a diff panel and meaningless in an audit.
+ *
+ * It delegates to `authoredSpecFields` rather than re-deleting the omitted keys
+ * here, so the sentence above stays true by construction: KAR-12.4 added a
+ * *nested* omission (each criterion's derived `coveredByGates`), and a second
+ * copy of the rule would have kept it in the diff — an annotated spec would
+ * then diff as changed while hashing identically, and the amendment panel would
+ * show an operator a change nobody made.
  */
 export function hashableSpec(spec: TaskSpec): Record<string, unknown> {
-  const copy: Record<string, unknown> = { ...spec };
-  for (const key of SPEC_HASH_OMIT_KEYS) delete copy[key];
-  return copy;
+  return authoredSpecFields(spec as unknown as Record<string, unknown>);
 }
 
 /**
@@ -288,46 +293,154 @@ export async function currentSpec(events: readonly Event[]): Promise<TaskSpec | 
 
 // ── revalidation ─────────────────────────────────────────────────────────────
 
+/**
+ * KAR-12.4 — the two ways one criterion can fail the totality rule
+ * (docs/10-verification-gates.md §5.1).
+ *
+ * `CRITERION_UNCOVERED` is the ordinary case: nothing checks it and it is not
+ * marked unverifiable. `CRITERION_UNVERIFIABLE_NO_REASON` is the escape hatch
+ * used without paying for it — a criterion whose only check is `manual` but
+ * whose rubric is blank once trimmed. The framing draft schema (`framing.ts`
+ * AC4) already refuses to seal a spec like that, so this case is defence in
+ * depth against a `TaskSpec` assembled by anything other than `sealTaskSpec`.
+ */
+export type SpecCoverageIssueCode = 'CRITERION_UNCOVERED' | 'CRITERION_UNVERIFIABLE_NO_REASON';
+
 export interface SpecCoverageIssue {
+  readonly code: SpecCoverageIssueCode;
   readonly criterion: CriterionId;
   readonly message: string;
 }
 
 /**
+ * KAR-12.4 AC1, AC3 — which plan nodes cover which criterion, as the walk
+ * itself rather than a derived boolean.
+ *
+ * **Node ids, never gate definition ids.** A `GateNode`'s `criteria` names
+ * criteria the *node* speaks to; its `gate.gateId` (for a deterministic gate)
+ * is a different id space entirely — the reusable definition under
+ * `.DeFlow/gates/`, which can be instantiated by more than one plan node. A
+ * caller that needs "what does the board's evidence link point at" wants the
+ * node id, because that is what a verdict is filed under
+ * (`Verdict.by.node`).
+ *
+ * **Only `lifecycle: 'active'` gate nodes count.** A `split-node` or
+ * `abandon-branch` patch retires a gate node without deleting it from the
+ * graph (KAR-02.4's structural rule), so a superseded or abandoned node is
+ * still present in `plan.nodes` and would otherwise go on "covering" a
+ * criterion nothing is scheduled to check any more — exactly the shape
+ * EPIC-12-S28 exists to refuse.
+ */
+export function coveredByGatesOf(plan: PlanGraph): ReadonlyMap<CriterionId, readonly NodeId[]> {
+  const covered = new Map<CriterionId, NodeId[]>();
+  for (const node of plan.nodes) {
+    if (node.type !== 'gate' || node.lifecycle !== 'active') continue;
+    for (const criterion of node.criteria) {
+      const existing = covered.get(criterion);
+      if (existing === undefined) covered.set(criterion, [node.id]);
+      else existing.push(node.id);
+    }
+  }
+  return covered;
+}
+
+/**
+ * KAR-12.4 AC3 — the other half of the same walk: the spec as validation hands
+ * it onward, with every criterion's `coveredByGates` **recomputed and
+ * overwritten**.
+ *
+ * `coveredByGates` is derived, never authored (docs/04-domain-model.md §2, and
+ * the four-name reconciliation in EPIC-12's KAR-12.4). A spec that arrives with
+ * entries in it did not get them from the framing interview — `sealTaskSpec`
+ * writes `[]` on every criterion, because framing runs before a plan exists —
+ * so this does not merge, fill in blanks, or trust what is there: it replaces
+ * the field wholesale from `coveredByGatesOf(plan)`. A criterion no active gate
+ * node names is written as `[]` rather than left alone, which is what makes the
+ * field readable as *"nothing in this plan version covers it"* rather than as
+ * *"nobody has looked"*. `validatePlan`'s `COVERED_BY_GATES_MISMATCH` warning is
+ * the visible record that an overwrite changed something.
+ *
+ * **The digest is deliberately untouched.** `specHash` excludes this field
+ * (./hash.ts), so annotating produces the same identity as the pinned document
+ * — and it has to, because AC6 voids every verdict whose `specHash` differs
+ * from the run's current one. A derived field that moved the digest would void
+ * the whole ledger's verdicts on every plan patch, which is the opposite of
+ * what the anti-drift rule is for.
+ */
+export function withCoveredByGates(spec: TaskSpec, plan: PlanGraph): TaskSpec {
+  const covered = coveredByGatesOf(plan);
+  return {
+    ...spec,
+    acceptanceCriteria: spec.acceptanceCriteria.map((criterion) => ({
+      ...criterion,
+      coveredByGates: [...(covered.get(criterion.id) ?? [])],
+    })),
+  };
+}
+
+/** Whether a sealed criterion's only check is a human rubric — v1's
+ * representation of "unverifiable" (see `checkFor` in `framing.ts`). */
+function isUnverifiable(criterion: AcceptanceCriterion): boolean {
+  return criterion.check?.kind === 'manual';
+}
+
+/** The rubric's reason, blank-checked the way AC2 means it: whitespace does
+ * not count as a sentence. */
+function blankReason(criterion: AcceptanceCriterion): boolean {
+  return criterion.check?.kind === 'manual' && criterion.check.rubric.trim().length === 0;
+}
+
+/**
  * AC8 — the mandatory revalidation a spec edit forces
- * (docs/06-planning-and-replanning.md §1.3, EPIC-10-S29).
+ * (docs/06-planning-and-replanning.md §1.3, EPIC-10-S29), extended by KAR-12.4
+ * to the full totality rule §5.1 states: *"for every criterion `c` in the
+ * pinned spec, either `c.unverifiable` is `true` with a non-empty `reason`, or
+ * there exists an active gate node `g` in the plan with `c.id ∈ g.criteria`."*
  *
- * One question, asked of the plan the run is actually executing: **does every
- * acceptance criterion still reach a gate?** A criterion the framing document
- * marked unverifiable is answered by a human and needs no gate node — that is
- * what `check.kind === 'manual'` means once the spec is sealed, and it is the
- * one exemption. Everything else must be named by some `gate` node's `criteria`,
- * or the plan no longer satisfies the spec and F7.4's acceptance board would be
- * showing a criterion nothing can ever tick.
+ * Two questions, asked of the plan the run is actually executing:
  *
- * Pure, and deliberately not "plan validation" in full — KAR-11.2 owns that.
- * What this owns is the half §1.3 makes mandatory at an edit, and it is stated
- * as a list of criteria rather than a boolean because the diagnostic has to
- * *name AC-8*.
+ *   1. **Does every acceptance criterion still reach a gate?** A criterion the
+ *      framing document marked unverifiable is answered by a human and needs
+ *      no gate node — that is what `check.kind === 'manual'` means once the
+ *      spec is sealed, and it is the one exemption. Everything else must be
+ *      named by some *active* `gate` node's `criteria` (`coveredByGatesOf`),
+ *      or the plan no longer satisfies the spec and F7.4's acceptance board
+ *      would be showing a criterion nothing can ever tick.
+ *   2. **Does the escape hatch cost a sentence?** A criterion marked
+ *      unverifiable with a blank reason has not paid for the hatch — see
+ *      `blankReason`.
+ *
+ * Pure, and deliberately not "plan validation" in full — KAR-11.2's
+ * `validatePlan` owns that, and calls this so the same question asked at two
+ * moments (a spec edit, and every plan version) is answered by the same walk.
  */
 export function revalidateSpecAgainstPlan(
   spec: TaskSpec,
   plan: PlanGraph,
 ): readonly SpecCoverageIssue[] {
-  const covered = new Set<string>();
-  for (const node of plan.nodes) {
-    if (node.type !== 'gate') continue;
-    for (const criterion of node.criteria) covered.add(criterion);
-  }
+  const covered = coveredByGatesOf(plan);
 
   const issues: SpecCoverageIssue[] = [];
   for (const criterion of spec.acceptanceCriteria) {
-    if (criterion.check?.kind === 'manual') continue;
-    if (covered.has(criterion.id)) continue;
+    if (isUnverifiable(criterion)) {
+      if (blankReason(criterion)) {
+        issues.push({
+          code: 'CRITERION_UNVERIFIABLE_NO_REASON',
+          criterion: criterion.id,
+          message:
+            `acceptance criterion ${criterion.id} is marked unverifiable with no reason: ` +
+            '"unverifiable" is a first-class answer, not an escape hatch, and a blank one is ' +
+            'not the hatch (docs/10-verification-gates.md §5.1).',
+        });
+      }
+      continue;
+    }
+    if ((covered.get(criterion.id) ?? []).length > 0) continue;
     issues.push({
+      code: 'CRITERION_UNCOVERED',
       criterion: criterion.id,
       message:
-        `acceptance criterion ${criterion.id} is covered by no gate node in plan version ` +
+        `acceptance criterion ${criterion.id} is covered by no active gate node in plan version ` +
         `${plan.version} and is not marked unverifiable: "${criterion.statement}". The run ` +
         'stops scheduling new work rather than continuing against a spec it no longer ' +
         'satisfies (docs/06-planning-and-replanning.md §1.3).',

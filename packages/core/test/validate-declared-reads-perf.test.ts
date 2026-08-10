@@ -112,10 +112,33 @@ function median(values: number[]): number {
     : (sorted[middle] as number);
 }
 
-function timeBoth(
+/**
+ * How many independent paired batches the ratio is taken as the best of.
+ *
+ * A median survives a stall *inside* a batch and not a stall that lands on one
+ * side of a batch and not the other — which is what an oversubscribed box does
+ * when a neighbouring slice forks a compiler: measured 2026-08-08 beside the
+ * full suite, one batch read 1.50 ms against 2.19 ms, a ratio of 1.46, on the
+ * shipped per-node implementation. Three batches, best ratio wins, because the
+ * asymmetry is a coin flip per batch and a regression is not: the same
+ * deliberately regressed per-read implementation scores ~1.8 in **every** batch,
+ * so its best is still red. Only load can produce a high reading; nothing but a
+ * regression can produce a high *lowest* reading.
+ *
+ * Three costs about 100 ms in total, which is the whole reason it is affordable
+ * to buy the certainty rather than widen the ceiling.
+ */
+const BATCHES = 3;
+
+interface Timing {
+  readonly controlMs: number;
+  readonly subjectMs: number;
+}
+
+function timeOneBatch(
   control: ReturnType<typeof PlanGraphSchema.parse>,
   subject: ReturnType<typeof PlanGraphSchema.parse>,
-): { controlMs: number; subjectMs: number } {
+): Timing {
   const controls: number[] = [];
   const subjects: number[] = [];
   for (let i = 0; i < ITERATIONS; i += 1) {
@@ -128,6 +151,20 @@ function timeBoth(
     subjects.push(c - b);
   }
   return { controlMs: median(controls), subjectMs: median(subjects) };
+}
+
+function timeBoth(
+  control: ReturnType<typeof PlanGraphSchema.parse>,
+  subject: ReturnType<typeof PlanGraphSchema.parse>,
+): Timing {
+  let best: Timing | null = null;
+  for (let batch = 0; batch < BATCHES; batch += 1) {
+    const timing = timeOneBatch(control, subject);
+    if (best === null || timing.subjectMs / timing.controlMs < best.subjectMs / best.controlMs) {
+      best = timing;
+    }
+  }
+  return best as Timing;
 }
 
 suite('KAR-09.1 AC7 — a 400-node fan-out stays affordable on every patch', () => {
@@ -175,7 +212,8 @@ suite('KAR-09.1 AC7 — a 400-node fan-out stays affordable on every patch', () 
 
     expect(
       subjectMs,
-      `one read per child took ${controlMs.toFixed(2)} ms, two took ${subjectMs.toFixed(2)} ms`,
+      `best of ${BATCHES} batches: one read per child took ${controlMs.toFixed(2)} ms, ` +
+        `two took ${subjectMs.toFixed(2)} ms`,
     ).toBeLessThan(controlMs * 1.4);
 
     // A backstop for a blowup no ratio would notice, because it would slow both

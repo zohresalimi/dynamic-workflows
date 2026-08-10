@@ -131,6 +131,28 @@ export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
 // worktree it found and the worktree it left.
 export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
 export { shellEffect } from './effects/shell-effect.ts';
+// The orchestrator loop: reduce → decide → perform → append, with what a node
+// *does* injected as a `NodePerformer`.
+export type {
+  ExecContext,
+  NodePerformer,
+  RunExecutionResult,
+  RunExecutorOptions,
+} from './exec/run-executor.ts';
+export { executeRun } from './exec/run-executor.ts';
+// KAR-12.1 — running a `gate` node: the join between the executor and
+// @DeFlow/gates' deterministic runner.
+export type { GateNodeResolution, GatePerformerOptions } from './gates/gate-performer.ts';
+export { byNodeType, gateNodePerformer } from './gates/gate-performer.ts';
+export type {
+  GateRepairContext,
+  GateRepairOutcome,
+  GateRepairRequest,
+  GateRepairRuling,
+} from './gates/repair-loop.ts';
+export { applyGateRepair, REPAIR_NOT_APPLICABLE } from './gates/repair-loop.ts';
+export type { GateNodeOutcome, GateNodePorts, GateNodeRequest } from './gates/run-gate-node.ts';
+export { GATE_NODE_SCHEMA_ID, runGateNode } from './gates/run-gate-node.ts';
 // KAR-07.1 — the two forbidden-argument assertions the Git wrapper runs
 // before every spawn (§3.3, §10.6).
 export {
@@ -536,6 +558,7 @@ export {
   openSpecApprovalGate,
   rejectSpec,
   SPEC_REJECTION_LIMIT,
+  SpecApprovalRefused,
   SpecGateNotOpen,
 } from './spec/gate.ts';
 export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';

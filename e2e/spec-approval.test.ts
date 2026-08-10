@@ -26,7 +26,11 @@ import {
   spawnDaemon,
   waitForHealth,
 } from './support/daemon.ts';
-import { SPEC_RUN, seedRunAtSpecGate } from './support/spec-gate-fixture.ts';
+import {
+  SPEC_RUN,
+  seedRunAtSpecGate,
+  seedRunAtSpecGateOnUncoveredPlan,
+} from './support/spec-gate-fixture.ts';
 
 const dirs: string[] = [];
 const running: DaemonProcess[] = [];
@@ -42,10 +46,12 @@ afterEach(async () => {
 
 /** A data directory holding one run parked at the approval gate, with a real
  * DeFlowd listening over it. */
-async function daemonAtGate(): Promise<DaemonProcess> {
+async function daemonAtGate(
+  seed: (dataDir: string) => Promise<string> = seedRunAtSpecGate,
+): Promise<DaemonProcess> {
   const dataDir = await makeDataDir();
   dirs.push(dataDir);
-  await seedRunAtSpecGate(dataDir);
+  await seed(dataDir);
 
   const daemon = spawnDaemon({ dataDir, port: await freePort() });
   running.push(daemon);
@@ -144,5 +150,56 @@ suite('EPIC-10-S18 — two surfaces, one code path', () => {
       (event) => (event as { kind: string }).kind === 'run.spec.approved',
     );
     expect(approvals).toHaveLength(1);
+  });
+});
+
+/**
+ * KAR-12.4 AC1 / EPIC-12-S24 — *"the run does not start. No agent process is
+ * spawned. `POST /api/runs/:id/spec/approve` returns the diagnostic rather than
+ * a 201."*
+ *
+ * e2e because the claim is about the operator-facing surface of a real daemon:
+ * the diagnostic has to survive being computed in the gate, thrown, mapped to a
+ * status code and serialised over HTTP. A spec that called `approveSpec` in
+ * process would prove the walk works and nothing about what an operator — or
+ * the UI — is actually told.
+ */
+suite('EPIC-12-S24 — approval is refused while a criterion reaches no gate', () => {
+  it('answers with the diagnostic, approves nothing, and starts nothing', async () => {
+    const daemon = (await daemonAtGate(seedRunAtSpecGateOnUncoveredPlan)) as DaemonProcess & {
+      dataDir: string;
+    };
+
+    const response = await fetch(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: string;
+      message: string;
+      issues: { code: string; criterion: string }[];
+    };
+    expect(body.error).toBe('invalid_spec');
+    expect(body.issues).toMatchObject([{ code: 'CRITERION_UNCOVERED', criterion: 'ac-2' }]);
+    expect(body.message).toContain('ac-2');
+
+    await daemon.stop();
+    running.length = 0;
+
+    const ledger = comparableLedger(daemon.dataDir);
+    // Nothing was appended: the seeded approval is still the only one, no
+    // answer was recorded against the gate, and no node was ever scheduled —
+    // so no agent process could have been spawned.
+    expect(
+      ledger.filter((event) => (event as { kind: string }).kind === 'run.spec.approved'),
+    ).toHaveLength(1);
+    expect(ledger.map((event) => (event as { kind: string }).kind)).not.toContain(
+      'human.responded',
+    );
+    expect(ledger.map((event) => (event as { kind: string }).kind)).not.toContain('node.scheduled');
+    expect(ledger.map((event) => (event as { kind: string }).kind)).not.toContain('node.started');
   });
 });

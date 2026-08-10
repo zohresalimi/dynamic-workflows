@@ -1,0 +1,2 @@
+{"entry":"packages/ui/src/main.ts","violations":[{"file":"packages/ui/src/main.ts","line":1,"rule":"budget/bundle-size","severity":"error","message":"bundle is 214 KB, budget is 180 KB"}]}
+{"entry":"packages/ui/src/admin.ts","violations":[{"file":"packages/ui/src/admin.ts","line":1,"rule":"budget/bundle-size","severity":"warning","message":"bundle is 91 KB, budget is 90 KB"}]}

@@ -220,6 +220,21 @@ function project(state: RunState, event: Event): Transition {
      * addressable at their own hash — this clears a *fold*, not history — and a
      * re-run at the new hash puts each row back as it earns it. Re-approving an
      * unchanged spec clears nothing, which is the same rule: nothing moved.
+     *
+     * KAR-12.4 AC6 — **and it empties `gateVerdicts` for the same reason.** The
+     * criterion half and the ladder half of "void" have to move together: AC6
+     * is one sentence — a verdict at a superseded hash "does not satisfy a
+     * criterion, does not advance a milestone, and the gate is re-scheduled" —
+     * and `gateVerdicts` is the only thing `decide()` reads to know a gate has
+     * been answered. The `gate.evaluated` arm below already refuses a verdict
+     * that *arrives* naming a hash nobody approved; that catches the impostor
+     * and misses the ordinary case, because a mid-run edit arrives **after** the
+     * greens it voids. Left standing, those greens keep their gates answered,
+     * `decide()` schedules nothing, and the run walks the rest of the ladder on
+     * verdicts about a contract it is no longer held to — while
+     * `criteriaSatisfied` next door reports the same run as having satisfied
+     * nothing. Clearing here is what makes each gate admissible again, which is
+     * precisely EPIC-12-S27's "decide() re-schedules the review gate".
      */
     case 'run.spec.approved': {
       const approved = { specHash: event.payload.specHash, by: event.payload.by };
@@ -233,7 +248,7 @@ function project(state: RunState, event: Event): Transition {
       return {
         ...moved,
         specApproved: approved,
-        ...(moves ? { criteriaSatisfied: [] } : {}),
+        ...(moves ? { criteriaSatisfied: [], gateVerdicts: {} } : {}),
       };
     }
 
@@ -674,15 +689,39 @@ function project(state: RunState, event: Event): Transition {
      * A run whose spec was never approved counts nothing, which is the same
      * rule from the other side: F1.3 schedules no work before approval, so a
      * verdict that arrived before one is judging a draft.
+     *
+     * KAR-12.1 — the same event is also the ladder's only input. The outcome is
+     * recorded against the gate's *own* node (`verdict.by.node`), which is what
+     * `decide()` withholds the next tier on, and it is recorded under exactly
+     * the same void test: a verdict that is not evidence about this contract
+     * must not open a tier, and leaving no entry is what makes the gate
+     * admissible again rather than answered.
      */
     case 'gate.evaluated': {
       const current = state.specApproved?.specHash;
-      if (current === undefined || isVerdictVoid(event.payload.verdict, current)) return null;
-      return withCriteria(
-        state,
-        event.payload.verdict.criteria
-          .filter((criterion) => criterion.status === 'satisfied')
-          .map((criterion) => criterion.id),
+      const verdict = event.payload.verdict;
+      if (current === undefined || isVerdictVoid(verdict, current)) return null;
+      const withGate: RunState = {
+        ...state,
+        gateVerdicts: {
+          ...state.gateVerdicts,
+          [verdict.by.node]: {
+            gate: verdict.gate,
+            outcome: verdict.outcome,
+            seq: event.seq,
+          },
+        },
+      };
+      // `withCriteria` answers `null` when it added nothing, which is the right
+      // answer for the watermark and the wrong one here: a `fail` verdict
+      // satisfies no criterion and is still the event that closes the ladder.
+      return (
+        withCriteria(
+          withGate,
+          verdict.criteria
+            .filter((criterion) => criterion.status === 'satisfied')
+            .map((criterion) => criterion.id),
+        ) ?? withGate
       );
     }
 

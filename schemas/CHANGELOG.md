@@ -62,7 +62,52 @@ file is where you record it.
 
 ## Entries
 
-### run.needs_human v4
+### DeFlow.finding.v2
+
+**KAR-12.3.** A finding's line is anchored to the blob it was read from:
+[10 §8](../docs/10-verification-gates.md) — _"without it, the second repair attempt silently attaches
+every earlier finding to whatever line now happens to occupy that number, and the reviewer stops
+trusting the annotations within about ten minutes."_
+
+| Change                                   | Kind                | Why it is not lossy                                                                                                        |
+| ---------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `location.blobSha` (required, when `location` is present) | narrowing, new document | `.v1` is untouched on disk. Nothing upcasts a `finding` fact in place: `.v2` is a new document, and a `.v1` fact stays a `.v1` fact. |
+
+`location` itself stays optional. A verdict about the change as a whole — _"no test covers the new
+branch"_ — has no range to be stale against, and demanding a sha for it would only invite a
+fabricated one.
+
+### DeFlow.verdict.v3
+
+**KAR-12.3.** The gate contract: blob-anchored findings, and what the verdict cost.
+
+| Change                              | Kind           | Why it is not lossy                                                                                                     |
+| ----------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `findings: DeFlow.finding.v1[]` → `.v2[]` | narrowing      | See `gate.evaluated v3` below for the one thing the hop drops and why keeping it would be the actual loss.               |
+| `+ cost` (optional)                 | optional field | A `.v2` verdict predates the field and nobody measured it. A zero would claim the node was free, and a budget ceiling (F4.6) would act on the claim. |
+
+**Why `cost` is optional in the schema and mandatory in practice** — the same shape of argument as
+`specHash` on `.v2`. `sealVerdict` and the agent-verdict admission both stamp it, so every verdict
+DeFlow writes carries one; optionality exists so the `gate.evaluated` v2 → v3 hop is legal without
+inventing a measurement. Absence means *nobody measured this*, which is a fact.
+
+### gate.evaluated v3
+
+**KAR-12.3.** The event that carries a verdict follows it to `DeFlow.verdict.v3`.
+
+| Change                       | Kind                    | Why it is not lossy                                                                          |
+| ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `verdict: .v2` → `.v3`       | widening plus one drop  | `cost` is added and left absent. An unanchored `location` is **dropped from the finding, and the finding is kept**. |
+
+This is the only hop in the registry that removes anything, so the reasoning is worth stating in
+full. A `.v2` `location` is a file and a line with no statement of *which revision* the line belonged
+to. Carrying it forward would let the diff surface draw a historical finding against whatever now
+occupies that line — the exact failure [10 §8](../docs/10-verification-gates.md) describes. So the
+hop keeps everything still true of the finding (its stable id, severity, message, evidence and
+criterion) and drops only the claim it can no longer support. A finding that never had a `location`
+is untouched. Judged against the rule at the top of this file: no field's *meaning* changed, and no
+information that is still true is lost — what is dropped is an assertion the payload was never able
+to support.### run.needs_human v4
 
 **KAR-11.4.** The escalation vocabulary gains a sixth reason, `patch-rejected`:
 [06 §4.3](../docs/06-planning-and-replanning.md)'s rule table refused a proposed patch, and the run
@@ -132,7 +177,6 @@ the operator's next action differs in kind. Churn is answered by changing the ap
 answered by reading the diagnostics and supplying a plan that satisfies them. It is also the reason a
 third automatic attempt is not made — an unbounded planner retry loop is the churn shape arriving
 earlier.
-
 ### DeFlow.verdict.v2
 
 **KAR-10.4.** A verdict now names the contract it judged:
@@ -279,6 +323,55 @@ other three because the operator's next action differs in kind: churn and budget
 raising a ceiling or changing the approach, and this one by covering a criterion the plan no longer
 reaches.
 
+### node.started v2
+
+**KAR-12.2.** The resolved session id is journaled on the event that opens the attempt, so
+independence is a ledger fact rather than an in-memory one. AC1 asks that a test comparing a review
+node's session to its producer's *need nothing but the two `node.started` payloads*, and that is
+NF10 applied to the one property F7.2 rests on.
+
+| Change                | Kind           | Why it is not lossy                                                                                                                                                                                       |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ session` (optional) | optional field | Left **absent**. A v1 payload predates the field, and the only place a value could be lifted from is the free text of a `node.progress` line — parsing prose into the field an independence check then reads is a certainty nobody measured. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why `origin` is required inside `session` rather than optional beside it.** The two adapter paths
+learn the id at different moments — the CLI shim mints it before spawn, the ACP path receives it
+from `session/new` — and that difference is exactly what says *when the independence check could
+have run*. A session recorded without saying which path produced it makes AC4 unauditable, so the
+field is absent-or-complete rather than partially filled.
+
+### gate.evaluated v4
+
+**KAR-12.2.** v4's verdict is `DeFlow.verdict.v4`, which adds `weakened` — what was given up to
+produce this verdict, so a green review that ran on the producer's own provider is distinguishable
+from one that did not.
+
+| Change                          | Kind           | Why it is not lossy                                                                                                                                                                     |
+| ------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verdict.+ weakened` (optional) | optional field | Left **absent**, and absence is a real answer here rather than a gap: the single-provider fallback did not exist when a v3 payload was written, so a historical verdict was routed the ordinary way. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why absence is honest here and was not on the `specHash` and `cost` hops.** `specHash` and `cost` were
+fields whose historical value existed and was simply not recorded, so absence had to be read as
+*unknown* and `isVerdictVoid` treats it as void. `weakened` names a routing decision DeFlow itself
+makes, and the decision it names was not available to the code that wrote a v3 payload. The only
+error the hop could make would be marking a historical review weak when it was not — an invention on
+a marker whose entire purpose is to be believed.
+
+### DeFlow.verdict.v4
+
+**KAR-12.2.** `weakened?: 'same-provider' | 'single-attempt'`. A `.v4` document rather than a field
+on `.v3` because a shipped document is never edited in place: `DeFlow.verdict.v3.json` stays
+byte-for-byte as it was, and `packages/core/test/schemas-append-only.test.ts` is what says so.
+
+The marker is projected as well as stored. `acceptanceBoard` carries it onto every row a weakened
+verdict decided, so the acceptance-criteria board and the diff view render it **without a join** —
+`docs/10-verification-gates.md` §3.1's *"do not silently accept a weakened review"* is only true if
+the weakening reaches the surface a human reads.
+
 ### plan.validation_failed v2
 
 **KAR-11.2.** `diagnostics[].node` widens from `NodeId` to a non-empty string, because two of
@@ -298,6 +391,45 @@ payload schema that accepted only valid `NodeId`s would make the append throw on
 faults the validator exists to catch, which is a worse failure than the one it was preventing. The
 sentinel's parentheses keep it outside the charset a real id could ever occupy.
 
+### plan.validation_failed v3
+
+**KAR-12.4.** `diagnostics[].code` widens by two members, `CRITERION_UNVERIFIABLE_NO_REASON` and
+`COVERED_BY_GATES_MISMATCH` — [10 §5.1](../docs/10-verification-gates.md)'s totality rule: every
+acceptance criterion in the pinned spec either reaches an active gate node or is marked
+`unverifiable` with a non-empty reason, and `coveredByGates` is computed by validation rather than
+authored by hand.
+
+| Change                       | Kind     | Why it is not lossy                                                                                        |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `diagnostics[].code` gains two members | widening | Every v2 payload is already a valid v3 one — the hop is the identity — and no v2 payload can have carried either code. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why a warning code ships alongside two error codes.** `COVERED_BY_GATES_MISMATCH` is a `warning`,
+never an `error`: the computed value is what validation trusts regardless, so a hand-supplied
+`coveredByGates` that disagrees with it is made visible rather than blocking the run — the same
+severity split §3.1's `ORPHAN_WRITE` already uses for "usually a leftover, occasionally deliberate."
+
+### `specHash` now excludes `acceptanceCriteria[].coveredByGates`
+
+**KAR-12.4 AC3.** No document shape changed — `DeFlow.taskspec.v1` still carries the field, still
+defaults it to `[]`, and no event payload moved a version. What changed is what the *digest* is
+over: `specHash` omits every criterion's `coveredByGates` the same way it already omits `approvedBy`
+and `specHash` itself.
+
+`coveredByGates` is derived, not authored: `withCoveredByGates` recomputes it from the plan's active
+gate nodes and overwrites it on **every** plan version (AC3, AC5). If the digest covered it, that
+rewrite would change the spec's identity — and AC6 makes a verdict void the moment its `specHash`
+differs from the run's current one, so a single `plan.patched` that added or retired a gate would
+void every verdict in the ledger and re-run every gate, for a field no human touched. The digest is
+the identity of the **authored** document.
+
+**Migration:** none in either direction for a stored payload; the field's recorded value is still
+whatever was appended. Digests recomputed by a build carrying this change differ from ones computed
+by a build before it, which is only observable for a run whose ledger spans the upgrade — and
+`gateSpecFromLedger` already refuses a spec whose recomputed digest does not reconcile with the
+approval rather than judging against it, which is the loud failure rather than a silent one.
+
 ### plan.patch.rejected v2
 
 **KAR-11.2 AC11.** A patch can now be refused by *revalidation* as well as by the policy engine,
@@ -315,3 +447,26 @@ scenario is the whole argument: the policy engine asks *should we?* and the vali
 a `yes` to the first can never substitute for the second, and an operator reading the approval queue
 has to be able to tell which of the two refused their patch — because one is answered by changing
 the patch and the other by changing the rules.
+### human.requested v2
+
+**KAR-12.5 AC7.** An escalation may now carry what an exhausted repair loop produced:
+`repair.attempts[]`, one entry per attempt, each pairing the diff it produced with the verdict the
+re-run gate returned for it — [10 §7](../docs/10-verification-gates.md)'s _"the third failure emits
+`human.requested` carrying all three diffs and all three verdicts"_.
+
+| Change               | Kind           | Why it is not lossy                                                                                                          |
+| -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `+ repair` (optional) | optional field | Left **absent**. A v1 payload recorded no attempts, and no honest value can be reconstructed from the payload alone.            |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the attempts are paired rather than two arrays.** Three diff handles and three verdict handles
+in parallel arrays would let attempt 2's diff sit beside attempt 3's verdict with nothing able to
+notice, and the entire value of the escalation is reading _"attempt 2 changed this and the gate still
+said that"_. The pairing is the payload's job because the escalation is the only place both facts
+exist at once.
+
+**Why it is optional rather than required.** Most escalations are not repairs — a `human` node's own
+prompt, a permission decision, a clarifying question — and none of them has attempts to carry. A
+required field would make every one of them invent an empty list, which the schema refuses anyway
+(`attempts` is `.min(1)`: a repair escalation with no attempts is not an escalation).
