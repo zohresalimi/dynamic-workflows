@@ -377,6 +377,14 @@ export {
   runArtifactDirOf,
   runArtifactsDirOf,
 } from './run-artifacts.ts';
+// KAR-15.7 — the reduced state at an arbitrary seq, server-side: one reducer,
+// never io_chunk, and the greatest committed seq at or below the request.
+export {
+  type RunSnapshot,
+  type SnapshotOptions,
+  type SnapshotSeq,
+  snapshotRunAt,
+} from './run-snapshot.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
 export {
   CONTROL_EVENT_BUDGET,

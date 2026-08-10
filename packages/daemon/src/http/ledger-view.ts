@@ -48,6 +48,8 @@ import type {
   PlanVersionRow,
   ProviderCapabilityRow,
   RunOrigin,
+  RunSnapshot,
+  SnapshotSeq,
   StoredFact,
 } from '@DeFlow/ledger';
 import {
@@ -78,6 +80,7 @@ import {
   readTokenCalibration,
   replayRun,
   type StoredEvent,
+  snapshotRunAt,
 } from '@DeFlow/ledger';
 import { join } from 'node:path';
 import { joinPlanTransition, type PlanTransition } from '../plan/plan-history.ts';
@@ -101,6 +104,16 @@ export interface LedgerView {
    * anywhere else is a figure a restart can disagree with.
    */
   runState(runId: RunId): RunState | null;
+  /**
+   * KAR-15.7 — the reduced state at `seq`: the greatest committed `seq` for
+   * `runId` at or below the request, or the run's head for `'head'` and for a
+   * request past it. `seq` is echoed on the result because `seq` has gaps and
+   * a caller cannot otherwise tell which one it got.
+   *
+   * Reduced from `event` alone, through the same `reduce()` every other read
+   * path uses — never a second projection, and never `io_chunk`.
+   */
+  runSnapshotAt(runId: RunId, seq: SnapshotSeq): RunSnapshot;
   /** Events for `runId` with `seq > afterSeq`, oldest first, at most `limit`. */
   tail(runId: RunId, afterSeq: number, limit: number): readonly StoredEvent[];
   /**
@@ -217,6 +230,7 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
   return {
     dataDir,
     runState: (runId) => (holdsRun(db, runId) ? replayRun(db, runId).state : null),
+    runSnapshotAt: (runId, seq) => snapshotRunAt(db, runId, seq),
     tail: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit).events,
     tailPage: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit),
     runHeadSeq: (runId) => ledgerRunHeadSeq(db, runId),

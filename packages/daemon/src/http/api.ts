@@ -57,7 +57,7 @@ import {
   sealTaskSpec,
   VerdictV2Schema,
 } from '@DeFlow/core';
-import { putBlob } from '@DeFlow/ledger';
+import { putBlob, type SnapshotSeq } from '@DeFlow/ledger';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -250,6 +250,19 @@ function parseVersion(value: string | undefined): number | null {
   if (value === undefined) return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * KAR-15.7 — `?seq=` for the snapshot endpoint: the `'head'` alias, a
+ * non-negative integer, or `null` for anything else — absent, non-numeric or
+ * negative. `0` is accepted (the state before this run's first event), unlike
+ * `parseVersion`'s 1-based versions.
+ */
+function parseSnapshotSeq(value: string | undefined): SnapshotSeq | null {
+  if (value === 'head') return 'head';
+  if (value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 /**
@@ -1159,6 +1172,56 @@ export const api = new Hono()
       );
     },
   )
+
+  /**
+   * KAR-15.7 AC1, AC2, AC3, AC7, AC8 — `GET /api/runs/:id/snapshot?seq=N`
+   * (docs/11-api-and-realtime.md §7.3).
+   *
+   * *"The reason this endpoint exists is browser memory, not server
+   * convenience."* Scrubbing the plan-evolution timeline or replaying a run
+   * must not mean replaying from `seq` 0 in JavaScript — SQLite does it in
+   * milliseconds. `view.runSnapshotAt` is the whole handler: it resolves
+   * `seq=head` and a `seq` that lands in a gap the same way it resolves a
+   * `seq` past this run's own head — to the greatest committed `seq` it
+   * actually has, echoed back rather than assumed, because a caller cannot
+   * otherwise tell which one it got.
+   *
+   * The 404/existence check is the same cheap head lookup `/events` uses
+   * above, and for the same reason: this route must not reduce the run twice
+   * — once to answer "does it exist" and again for the requested `seq` — on a
+   * ledger the whole point of this endpoint is to spare the caller from
+   * folding client-side.
+   */
+  .get('/runs/:id/snapshot', (c) => {
+    const view = ledgerView();
+    if (view === null) return notReady(c);
+
+    const runId = asRunId(c.req.param('id'));
+    const runHead = runId === null ? 0 : view.runHeadSeq(runId);
+    if (runId === null || (runHead === 0 && !view.runIds().includes(runId))) {
+      return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
+    }
+
+    const seq = parseSnapshotSeq(c.req.query('seq'));
+    if (seq === null) {
+      return c.json(
+        ...apiError('invalid_request', "seq must be a non-negative integer or 'head'", {
+          detail: { field: 'seq' },
+        }),
+      );
+    }
+
+    const snapshot = view.runSnapshotAt(runId, seq);
+    return c.json(
+      {
+        seq: snapshot.seq,
+        state: snapshot.state,
+        planVersion: snapshot.state.planVersion,
+        planHash: snapshot.state.planHash,
+      },
+      200,
+    );
+  })
 
   /**
    * KAR-11.5 AC3 — `GET /api/runs/:id/plans/diff?from=N&to=M`, the plan-evolution

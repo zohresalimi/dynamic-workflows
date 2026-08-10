@@ -1,0 +1,324 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GET /api/runs/:id/snapshot — three scrub positions (test plan #5) > matches the recorded golden body at each position 1`] = `
+"[
+  {
+    "seq": 1,
+    "state": {
+      "runId": "run_20260810T090000Z_af1507",
+      "status": "created",
+      "repoRoot": null,
+      "specApproved": null,
+      "specHash": null,
+      "outcome": null,
+      "criteriaSatisfied": [],
+      "gateVerdicts": {},
+      "needsHuman": null,
+      "humanGates": {},
+      "interjections": {},
+      "patchPolicy": null,
+      "cancel": null,
+      "planHash": null,
+      "planVersion": 0,
+      "plan": null,
+      "proposedPlans": {},
+      "nodes": {
+        "n-impl": {
+          "status": "scheduled",
+          "attempt": 0,
+          "attempts": 0,
+          "provider": "claude",
+          "model": null,
+          "permission": "read",
+          "worktree": null,
+          "result": null,
+          "failure": null,
+          "suspension": null,
+          "requestHash": null,
+          "wakeAt": null,
+          "startedTs": 0,
+          "updatedSeq": 1
+        }
+      },
+      "locks": {},
+      "nodeIds": {
+        "active": [
+          "n-impl"
+        ],
+        "retired": []
+      },
+      "policy": {
+        "globalAgentSlots": 3,
+        "noProgress": {
+          "detectors": true,
+          "stallThresholdMs": 600000,
+          "churnRepeats": 5,
+          "flatReplans": 3,
+          "maxAttemptsPerNode": 3,
+          "maxRunWallClockMs": null,
+          "maxTotalNodeExecutions": null
+        }
+      },
+      "budget": {
+        "run": {
+          "costUsd": {
+            "subscription": null,
+            "apiKey": null,
+            "vendorReported": null,
+            "estimated": null
+          },
+          "usage": {
+            "vendorReported": null,
+            "estimated": null
+          },
+          "unaccounted": [],
+          "authModes": []
+        },
+        "nodes": {},
+        "providers": {},
+        "breaches": [],
+        "estimateAccuracy": null
+      },
+      "ceilings": {
+        "run": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "node": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "nodes": {},
+        "hash": null,
+        "setSeq": null
+      },
+      "watermarkSeq": 1,
+      "watermarkTs": 1754308400000,
+      "startedTs": 0,
+      "stalledAtSeq": 0,
+      "churnWindow": [],
+      "replans": {
+        "flat": 0,
+        "completed": 0,
+        "versions": []
+      },
+      "epoch": 5,
+      "staleEpochSkipped": 0
+    },
+    "planVersion": 0,
+    "planHash": null
+  },
+  {
+    "seq": 2,
+    "state": {
+      "runId": "run_20260810T090000Z_af1507",
+      "status": "created",
+      "repoRoot": null,
+      "specApproved": null,
+      "specHash": null,
+      "outcome": null,
+      "criteriaSatisfied": [],
+      "gateVerdicts": {},
+      "needsHuman": null,
+      "humanGates": {},
+      "interjections": {},
+      "patchPolicy": null,
+      "cancel": null,
+      "planHash": null,
+      "planVersion": 0,
+      "plan": null,
+      "proposedPlans": {},
+      "nodes": {
+        "n-impl": {
+          "status": "running",
+          "attempt": 1,
+          "attempts": 2,
+          "provider": "claude",
+          "model": null,
+          "permission": "read",
+          "worktree": null,
+          "result": null,
+          "failure": null,
+          "suspension": null,
+          "requestHash": null,
+          "wakeAt": null,
+          "startedTs": 1754308400000,
+          "updatedSeq": 2
+        }
+      },
+      "locks": {},
+      "nodeIds": {
+        "active": [
+          "n-impl"
+        ],
+        "retired": []
+      },
+      "policy": {
+        "globalAgentSlots": 3,
+        "noProgress": {
+          "detectors": true,
+          "stallThresholdMs": 600000,
+          "churnRepeats": 5,
+          "flatReplans": 3,
+          "maxAttemptsPerNode": 3,
+          "maxRunWallClockMs": null,
+          "maxTotalNodeExecutions": null
+        }
+      },
+      "budget": {
+        "run": {
+          "costUsd": {
+            "subscription": null,
+            "apiKey": null,
+            "vendorReported": null,
+            "estimated": null
+          },
+          "usage": {
+            "vendorReported": null,
+            "estimated": null
+          },
+          "unaccounted": [],
+          "authModes": []
+        },
+        "nodes": {},
+        "providers": {},
+        "breaches": [],
+        "estimateAccuracy": null
+      },
+      "ceilings": {
+        "run": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "node": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "nodes": {},
+        "hash": null,
+        "setSeq": null
+      },
+      "watermarkSeq": 2,
+      "watermarkTs": 1754308400000,
+      "startedTs": 0,
+      "stalledAtSeq": 0,
+      "churnWindow": [],
+      "replans": {
+        "flat": 0,
+        "completed": 0,
+        "versions": []
+      },
+      "epoch": 5,
+      "staleEpochSkipped": 0
+    },
+    "planVersion": 0,
+    "planHash": null
+  },
+  {
+    "seq": 3,
+    "state": {
+      "runId": "run_20260810T090000Z_af1507",
+      "status": "paused",
+      "repoRoot": null,
+      "specApproved": null,
+      "specHash": null,
+      "outcome": null,
+      "criteriaSatisfied": [],
+      "gateVerdicts": {},
+      "needsHuman": null,
+      "humanGates": {},
+      "interjections": {},
+      "patchPolicy": null,
+      "cancel": null,
+      "planHash": null,
+      "planVersion": 0,
+      "plan": null,
+      "proposedPlans": {},
+      "nodes": {
+        "n-impl": {
+          "status": "running",
+          "attempt": 1,
+          "attempts": 2,
+          "provider": "claude",
+          "model": null,
+          "permission": "read",
+          "worktree": null,
+          "result": null,
+          "failure": null,
+          "suspension": null,
+          "requestHash": null,
+          "wakeAt": null,
+          "startedTs": 1754308400000,
+          "updatedSeq": 2
+        }
+      },
+      "locks": {},
+      "nodeIds": {
+        "active": [
+          "n-impl"
+        ],
+        "retired": []
+      },
+      "policy": {
+        "globalAgentSlots": 3,
+        "noProgress": {
+          "detectors": true,
+          "stallThresholdMs": 600000,
+          "churnRepeats": 5,
+          "flatReplans": 3,
+          "maxAttemptsPerNode": 3,
+          "maxRunWallClockMs": null,
+          "maxTotalNodeExecutions": null
+        }
+      },
+      "budget": {
+        "run": {
+          "costUsd": {
+            "subscription": null,
+            "apiKey": null,
+            "vendorReported": null,
+            "estimated": null
+          },
+          "usage": {
+            "vendorReported": null,
+            "estimated": null
+          },
+          "unaccounted": [],
+          "authModes": []
+        },
+        "nodes": {},
+        "providers": {},
+        "breaches": [],
+        "estimateAccuracy": null
+      },
+      "ceilings": {
+        "run": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "node": {
+          "costUsd": null,
+          "wallclockMs": null
+        },
+        "nodes": {},
+        "hash": null,
+        "setSeq": null
+      },
+      "watermarkSeq": 3,
+      "watermarkTs": 1754308400000,
+      "startedTs": 0,
+      "stalledAtSeq": 0,
+      "churnWindow": [],
+      "replans": {
+        "flat": 0,
+        "completed": 0,
+        "versions": []
+      },
+      "epoch": 5,
+      "staleEpochSkipped": 0
+    },
+    "planVersion": 0,
+    "planHash": null
+  }
+]"
+`;
