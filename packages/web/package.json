@@ -16,9 +16,12 @@
   },
   "dependencies": {
     "@DeFlow/core": "workspace:*",
+    "eventsource-client": "catalog:",
+    "hono": "catalog:",
     "vue": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/daemon": "workspace:*",
     "@vitejs/plugin-vue": "catalog:",
     "@vitest/browser": "catalog:",
     "@vitest/browser-playwright": "catalog:",

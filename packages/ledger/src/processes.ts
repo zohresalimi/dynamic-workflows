@@ -16,6 +16,7 @@
  */
 import type { Db, EventSeq } from '@DeFlow/core';
 import { type AppendOptions, appendEvents, type EventDraft } from './append.ts';
+import { committing } from './notify.ts';
 
 /** `live` is the only non-terminal state; the other three are AC7's answers. */
 export const PROCESS_STATES = ['live', 'exited', 'reaped', 'discarded'] as const;
@@ -201,7 +202,7 @@ export function appendEventsWithProcess(
   row: ProcessRowDraft,
   options: AppendOptions = {},
 ): EventSeq[] {
-  return db.transaction(() => {
+  return committing(db, () => {
     const seqs = appendEvents(db, drafts, options);
     recordProcess(db, row);
     return seqs;

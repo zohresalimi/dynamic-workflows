@@ -12,7 +12,7 @@
  */
 import type { Db } from '@DeFlow/core';
 import { openLedger } from '@DeFlow/ledger';
-import { it } from '@DeFlow/testkit';
+import { authorizedFetch, it, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { afterEach, expect, describe as suite } from 'vitest';
 import { clearIntakePorts, setIntakePorts } from '../../src/http/intake-ports.ts';
@@ -28,6 +28,15 @@ import {
   T0,
 } from './support/approval-queue-run.ts';
 import { type Frames, readFrames } from './support/sse.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 interface Served {
   readonly origin: string;
@@ -46,7 +55,12 @@ async function serve(dataDir: string): Promise<Served> {
     dataDir,
     randomHex: () => 'aa0001',
   });
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${address.port}`,

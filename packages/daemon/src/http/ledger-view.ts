@@ -28,34 +28,74 @@
  */
 import type {
   Calibration,
+  ContextPacketRecord,
   Db,
+  FactId,
   PlanGraph,
   QueuedPatch,
   RunId,
   RunState,
   TaintedRead,
+  TaskSpec,
 } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
+import type {
+  EventPage,
+  FactConsumerRow,
+  IoChunkPage,
+  IoChunkSelector,
+  NodeTiming,
+  PlanVersionRow,
+  ProviderCapabilityRow,
+  RunOrigin,
+  RunSnapshot,
+  SnapshotSeq,
+  StoredFact,
+} from '@DeFlow/ledger';
 import {
   headSeq as ledgerHeadSeq,
+  runHeadSeq as ledgerRunHeadSeq,
+  listPlanVersions,
   listRunIds,
   openRead,
   pendingPatchApprovals,
+  readContextPacket,
   readEventTs,
+  readFactConsumers,
+  readFacts,
+  readGateVerdicts,
   readGlobalRange,
+  readIoChunks,
+  readIoChunkTail,
+  readLatestSpecAmendment,
+  readNodeTiming,
   readPlanPatchedEvent,
   readPlanPatchProposedEvent,
   readPlanVersion,
+  readProviderCapabilities,
   readRange,
+  readRunCreatedSpec,
+  readRunOrigin,
   readTaintedNodes,
   readTokenCalibration,
   replayRun,
   type StoredEvent,
+  snapshotRunAt,
 } from '@DeFlow/ledger';
 import { join } from 'node:path';
 import { joinPlanTransition, type PlanTransition } from '../plan/plan-history.ts';
 
 export interface LedgerView {
+  /**
+   * The data directory this view reads — `ledger.db` and, beside it, the
+   * content-addressed blob store `GET /api/artifacts/:sha` serves from.
+   *
+   * On the read port rather than fetched from the write ports, because the
+   * blobs are part of what "the read side of the ledger" means: an artifact
+   * endpoint that needed the write connection registered would be down for
+   * exactly as long as the write path is.
+   */
+  readonly dataDir: string;
   /**
    * `runId`'s reduced state, or `null` when this directory holds no such run.
    *
@@ -64,8 +104,31 @@ export interface LedgerView {
    * anywhere else is a figure a restart can disagree with.
    */
   runState(runId: RunId): RunState | null;
+  /**
+   * KAR-15.7 — the reduced state at `seq`: the greatest committed `seq` for
+   * `runId` at or below the request, or the run's head for `'head'` and for a
+   * request past it. `seq` is echoed on the result because `seq` has gaps and
+   * a caller cannot otherwise tell which one it got.
+   *
+   * Reduced from `event` alone, through the same `reduce()` every other read
+   * path uses — never a second projection, and never `io_chunk`.
+   */
+  runSnapshotAt(runId: RunId, seq: SnapshotSeq): RunSnapshot;
   /** Events for `runId` with `seq > afterSeq`, oldest first, at most `limit`. */
   tail(runId: RunId, afterSeq: number, limit: number): readonly StoredEvent[];
+  /**
+   * KAR-15.4 AC4 — the same window, plus whether another one follows it.
+   *
+   * `tail` for the stream and this for the hydrate endpoint, because the two
+   * want different things from the same query: the drain loops until a batch
+   * comes back empty and does not care, while a paging client needs `more`
+   * *now* so it can stop looping and open the stream at the cursor. It costs no
+   * second query — `readRange` asks for one row beyond the window and discards
+   * it — so this is the same read with its answer kept rather than dropped.
+   */
+  tailPage(runId: RunId, afterSeq: number, limit: number): EventPage;
+  /** The highest `seq` this ledger holds for `runId`; 0 when it holds none. */
+  runHeadSeq(runId: RunId): number;
   /**
    * KAR-13.2 AC5 — the `runs=*` topic: events of `kinds` from **every** run
    * with `seq > afterSeq`. Filtered in SQL, so an idle tab pays for the four
@@ -105,6 +168,44 @@ export interface LedgerView {
    * initial compile).
    */
   planTransition(runId: RunId, toVersion: number): PlanTransition | null;
+  /**
+   * KAR-15.6 AC1 — the scrubber's version rail: every version this run
+   * proposed, in order, at most `limit` of them.
+   */
+  planVersions(runId: RunId, limit: number): readonly PlanVersionRow[];
+  /** KAR-15.6 AC3 — when a node first started and last stopped. */
+  nodeTiming(runId: RunId, nodeId: string): NodeTiming;
+  /** KAR-15.6 AC3 — the packet manifest one node attempt was built with. */
+  contextPacket(runId: RunId, nodeId: string, attempt: number): ContextPacketRecord | null;
+  /** KAR-15.6 AC4 — one forward page of a node attempt's output. */
+  ioPage(selector: IoChunkSelector, afterSeq: number, limit: number): IoChunkPage;
+  /** KAR-15.6 AC4 — the **last** `limit` chunks, read off the end of the index. */
+  ioTail(selector: IoChunkSelector, limit: number): IoChunkPage;
+  /** KAR-15.6 AC5 — every fact of one run, invalidated ones included. */
+  facts(runId: RunId): readonly StoredFact[];
+  /** KAR-15.6 AC5 — every node with a `fact.read` for `factId`, and no writer. */
+  factConsumers(factId: FactId, limit: number): readonly FactConsumerRow[];
+  /**
+   * KAR-15.6 AC6 — the run's original `TaskSpec` and the latest amended
+   * document, which the caller seals to get the contract now in force.
+   */
+  runSpec(runId: RunId): { readonly created: TaskSpec | null; readonly amended: unknown };
+  /**
+   * KAR-15.6 AC3, AC8 — the capability rows this data directory holds for a
+   * provider, newest probe first.
+   */
+  providerCapabilities(provider: string): readonly ProviderCapabilityRow[];
+  /**
+   * KAR-15.6 AC6 — the verdict *documents* this run's gates produced, which
+   * the acceptance board reduces. `RunState.gateVerdicts` carries the ladder's
+   * view of the same verdicts and not the documents.
+   */
+  gateVerdictDocuments(runId: RunId, limit: number): readonly unknown[];
+  /**
+   * KAR-15.6 AC6 — the repository and commit `run.created` recorded, which the
+   * cumulative diff is measured from.
+   */
+  runOrigin(runId: RunId): RunOrigin | null;
 }
 
 export interface OpenedLedgerView extends LedgerView {
@@ -127,8 +228,12 @@ function holdsRun(db: Db, runId: RunId): boolean {
 export function openLedgerView(dataDir: string): OpenedLedgerView {
   const db = openRead(join(dataDir, 'ledger.db'));
   return {
+    dataDir,
     runState: (runId) => (holdsRun(db, runId) ? replayRun(db, runId).state : null),
+    runSnapshotAt: (runId, seq) => snapshotRunAt(db, runId, seq),
     tail: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit).events,
+    tailPage: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit),
+    runHeadSeq: (runId) => ledgerRunHeadSeq(db, runId),
     globalTail: (afterSeq, kinds, limit) => readGlobalRange(db, afterSeq, kinds, limit).events,
     runIds: () => listRunIds(db),
     eventTs: (seq) => readEventTs(db, seq),
@@ -140,6 +245,20 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
       return { n: row.samples, ratio: row.tokenEstimateFactor };
     },
     planVersion: (runId, version) => readPlanVersion(db, runId, version),
+    planVersions: (runId, limit) => listPlanVersions(db, runId, limit),
+    nodeTiming: (runId, nodeId) => readNodeTiming(db, runId, nodeId),
+    contextPacket: (runId, nodeId, attempt) => readContextPacket(db, runId, nodeId, attempt),
+    ioPage: (selector, afterSeq, limit) => readIoChunks(db, selector, afterSeq, limit),
+    ioTail: (selector, limit) => readIoChunkTail(db, selector, limit),
+    facts: (runId) => readFacts(db, runId),
+    factConsumers: (factId, limit) => readFactConsumers(db, factId, limit),
+    runSpec: (runId) => ({
+      created: readRunCreatedSpec(db, runId),
+      amended: readLatestSpecAmendment(db, runId),
+    }),
+    providerCapabilities: (provider) => readProviderCapabilities(db, provider),
+    gateVerdictDocuments: (runId, limit) => readGateVerdicts(db, runId, limit),
+    runOrigin: (runId) => readRunOrigin(db, runId),
     planTransition: (runId, toVersion) => {
       const patched = readPlanPatchedEvent(db, runId, toVersion);
       const proposed =

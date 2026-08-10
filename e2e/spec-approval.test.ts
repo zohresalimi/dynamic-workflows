@@ -19,6 +19,7 @@ import { openLedger, readRange } from '@DeFlow/ledger';
 import { approveSpec } from 'DeFlow';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
+  asClient,
   type DaemonProcess,
   freePort,
   makeDataDir,
@@ -93,21 +94,29 @@ suite('EPIC-10-S18 — two surfaces, one code path', () => {
     const viaApi = (await daemonAtGate()) as DaemonProcess & { dataDir: string };
     const viaCli = (await daemonAtGate()) as DaemonProcess & { dataDir: string };
 
-    const apiResponse = await fetch(`${viaApi.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    });
+    const apiResponse = await asClient(viaApi)(
+      `${viaApi.origin}/api/runs/${SPEC_RUN}/spec/approve`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+    );
     expect(apiResponse.status).toBe(200);
     expect((await apiResponse.json()) as { by: string }).toMatchObject({ by: 'ui' });
 
     // The second terminal: `DeFlow approve`, which is an HTTP client of the
-    // daemon and not a second implementation of the gate.
-    const cliResult = await approveSpec(SPEC_RUN, { baseUrl: viaCli.origin });
+    // daemon and not a second implementation of the gate. It authenticates the
+    // way a real terminal does (KAR-15.2) — `daemon.token()` is a genuine read
+    // of that daemon's own `.DeFlow/daemon.json`, not a value handed to it.
+    const cliResult = await approveSpec(SPEC_RUN, {
+      baseUrl: viaCli.origin,
+      token: viaCli.token(),
+    });
     expect(cliResult.by).toBe('cli');
     expect(cliResult.specHash).toBe(
       (
-        (await (await fetch(`${viaApi.origin}/api/runs/${SPEC_RUN}`)).json()) as {
+        (await (await asClient(viaApi)(`${viaApi.origin}/api/runs/${SPEC_RUN}`)).json()) as {
           specHash?: string;
         }
       ).specHash ?? cliResult.specHash,
@@ -129,20 +138,24 @@ suite('EPIC-10-S18 — two surfaces, one code path', () => {
   it('answers a second approval with 409 rather than approving twice', async () => {
     const daemon = (await daemonAtGate()) as DaemonProcess & { dataDir: string };
 
-    const first = await fetch(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
+    const first = await asClient(daemon)(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
     });
     expect(first.status).toBe(200);
 
-    const second = await fetch(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
+    const second = await asClient(daemon)(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
     });
     expect(second.status).toBe(409);
-    expect((await second.json()) as { error: string }).toMatchObject({ error: 'gate_not_open' });
+    // The closed union's word for "somebody already answered this gate"; the
+    // gate's own `gate_not_open` survives in `detail.reason` (KAR-15.1).
+    expect((await second.json()) as { error: { code: string; detail: unknown } }).toMatchObject({
+      error: { code: 'already_answered', detail: { reason: 'gate_not_open' } },
+    });
 
     await daemon.stop();
     running.length = 0;
@@ -170,7 +183,7 @@ suite('EPIC-12-S24 — approval is refused while a criterion reaches no gate', (
       dataDir: string;
     };
 
-    const response = await fetch(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
+    const response = await asClient(daemon)(`${daemon.origin}/api/runs/${SPEC_RUN}/spec/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
@@ -178,13 +191,17 @@ suite('EPIC-12-S24 — approval is refused while a criterion reaches no gate', (
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as {
-      error: string;
-      message: string;
-      issues: { code: string; criterion: string }[];
+      error: {
+        code: string;
+        message: string;
+        detail: { issues: { code: string; criterion: string }[] };
+      };
     };
-    expect(body.error).toBe('invalid_spec');
-    expect(body.issues).toMatchObject([{ code: 'CRITERION_UNCOVERED', criterion: 'ac-2' }]);
-    expect(body.message).toContain('ac-2');
+    expect(body.error.code).toBe('schema_violation');
+    expect(body.error.detail.issues).toMatchObject([
+      { code: 'CRITERION_UNCOVERED', criterion: 'ac-2' },
+    ]);
+    expect(body.error.message).toContain('ac-2');
 
     await daemon.stop();
     running.length = 0;

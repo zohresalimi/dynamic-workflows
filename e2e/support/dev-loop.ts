@@ -59,13 +59,22 @@ export interface DevLoop {
   readonly origin: string;
   /** Milliseconds from spawn to the first 200 on /api/health (NF3). */
   readonly coldStartMs: number;
+  /**
+   * The dev loop's bearer token, out of its own `<dataDir>/daemon.json`
+   * (KAR-15.2 AC7).
+   *
+   * Read from the file the daemon actually wrote rather than injected, because
+   * that file *is* the handoff — the same reason `DaemonProcess.token()` reads
+   * it.
+   */
+  readonly token: () => string;
   readonly output: () => string;
   readonly stop: () => Promise<void>;
 }
 
 export interface StartOptions {
-  /** Heartbeat cadence for /api/stream; tightened so specs do not wait 15 s. */
-  readonly heartbeatMs?: number;
+  /** Keepalive cadence for /api/stream; tightened so specs do not wait 15 s. */
+  readonly keepaliveMs?: number;
   readonly timeoutMs?: number;
 }
 
@@ -88,7 +97,7 @@ export async function startDevLoop(options: StartOptions = {}): Promise<DevLoop>
       ...process.env,
       DeFlow_DATA_DIR: dataDir,
       DeFlow_PORT: String(port),
-      DeFlow_SSE_HEARTBEAT_MS: String(options.heartbeatMs ?? 250),
+      DeFlow_SSE_KEEPALIVE_MS: String(options.keepaliveMs ?? 250),
       DeFlow_LOG_LEVEL: 'info',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -125,7 +134,10 @@ export async function startDevLoop(options: StartOptions = {}): Promise<DevLoop>
     throw new Error(`${(error as Error).message}\n--- dev loop output ---\n${output()}`);
   }
 
-  return { child, port, origin, coldStartMs: performance.now() - startedAt, output, stop };
+  const token = (): string =>
+    (JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8')) as { token: string }).token;
+
+  return { child, port, origin, coldStartMs: performance.now() - startedAt, token, output, stop };
 }
 
 export async function health(origin: string): Promise<Health> {

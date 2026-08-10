@@ -63,6 +63,10 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-07, KAR-10.1 — `intake_key`, the map from an
   // Idempotency-Key header to the run it already minted.
   '0014-intake-keys.ts': '2cd149ea7045a109ef6834c9ba077a1b5b9ee97392a6857a03a3017d961c6738',
+  // Shipped 2026-08-10, KAR-15.5 — the Idempotency-Key moves into the `effect`
+  // journal (docs/11 §11.3) and `intake_key` is dropped.
+  '0015-intake-keys-into-effects.ts':
+    '95efcf117b0ffad3e941aa0455c908fa1dbd317c6b04c69f9da8354ae39ec48d',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

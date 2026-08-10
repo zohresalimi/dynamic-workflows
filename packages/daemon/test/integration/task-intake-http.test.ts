@@ -10,16 +10,24 @@
  *
  * Verifies: EPIC-10-S1 (HTTP scenario), KAR-10.1 AC1, AC5, AC6
  */
-import { it, makeRepo } from '@DeFlow/testkit';
+import { authorizedFetch, it, makeRepo, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { expect, describe as suite } from 'vitest';
 import { type Booted, boot } from '../../src/boot.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything.
+ */
+const fetch = authorizedFetch();
 
 async function bootAt(
   dataDir: string,
   repoDir: string,
 ): Promise<{ booted: Booted; origin: string }> {
-  const booted = await boot({ dataDir, port: 0, dev: false });
+  const booted = await boot({ dataDir, port: 0, dev: false, token: TEST_DAEMON_TOKEN });
   const address = booted.http.server.address() as AddressInfo;
   return { booted, origin: `http://127.0.0.1:${address.port}` };
 }
@@ -81,8 +89,13 @@ suite('POST /api/runs — the wire contract (AC1)', () => {
 
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.status).toBeLessThan(500);
-      const body = (await response.json()) as { field: string };
-      expect(body.field).toBe('input.text');
+      // KAR-15.1's closed envelope: the offending field is `detail.field`, and
+      // the code is the one a client branches on.
+      const body = (await response.json()) as {
+        error: { code: string; detail: { field: string } };
+      };
+      expect(body.error.code).toBe('invalid_request');
+      expect(body.error.detail.field).toBe('input.text');
     } finally {
       await booted.shutdown();
     }

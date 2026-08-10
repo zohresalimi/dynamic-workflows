@@ -17,6 +17,7 @@ import { migration0011Blackboard } from './0011-blackboard.ts';
 import { migration0012ArtifactFts } from './0012-artifact-fts.ts';
 import { migration0013RateLimitIndex } from './0013-rate-limit-index.ts';
 import { migration0014IntakeKeys } from './0014-intake-keys.ts';
+import { migration0015IntakeKeysIntoEffects } from './0015-intake-keys-into-effects.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
@@ -33,4 +34,5 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0012ArtifactFts,
   migration0013RateLimitIndex,
   migration0014IntakeKeys,
+  migration0015IntakeKeysIntoEffects,
 ];

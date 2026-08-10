@@ -30,6 +30,7 @@ export {
   EventDraftSchema,
   type EventPage,
   InvalidEventEnvelope,
+  lastSeqOfKinds,
   PayloadTooLarge,
   readEventTs,
   readGlobalRange,
@@ -63,6 +64,8 @@ export {
   type BlackboardRebuild,
   createBlackboardTables,
   FACT_EVENT_KINDS,
+  // KAR-15.6 AC5 — F10.4's second query: the consumer set of one fact, in SQL.
+  type FactConsumerRow,
   type FactEdgeDirection,
   type FactEdgeRow,
   type FactEventEnvelope,
@@ -76,6 +79,7 @@ export {
   type ResolveReadsOptions,
   readersBefore,
   readFactByKey,
+  readFactConsumers,
   readFactEdges,
   readFacts,
   readTaintedNodes,
@@ -181,6 +185,9 @@ export {
   markEffectCancelled,
   markEffectDone,
   markEffectFailed,
+  // KAR-15.5 — the `node_id` prefix reserved for journal rows that belong to no
+  // plan node, which `NodeIdSchema` can never produce.
+  NON_NODE_EFFECT_PREFIX,
   nextOrdinal,
   readEffect,
   readEffects,
@@ -206,14 +213,34 @@ export {
   type SampledGateEvaluation,
   sampleGateHygiene,
 } from './gate-hygiene.ts';
-// KAR-10.1 AC6 — `intake_key`: whether an `Idempotency-Key` has already
-// minted a run, checked before a `RunId` even exists to key an effect on.
-export { lookupIntakeKey, recordIntakeKey } from './intake-keys.ts';
+// KAR-15.6 — the two point reads the inspection surfaces need: one node
+// attempt's packet manifest, and the spec a run is judged against.
+export {
+  type RunOrigin,
+  readContextPacket,
+  readGateVerdicts,
+  readLatestSpecAmendment,
+  readRunCreatedSpec,
+  readRunOrigin,
+} from './inspection.ts';
+// KAR-10.1 AC6 / KAR-15.5 AC5 — the API-level `Idempotency-Key`, journalled in
+// the `effect` table under an `intake:` namespace no engine key can produce.
+export {
+  INTAKE_EFFECT_KIND,
+  INTAKE_IKEY_PREFIX,
+  INTAKE_NODE_ID,
+  type IntakeKeyRecord,
+  intakeIkey,
+  lookupIntakeKey,
+  recordIntakeKey,
+} from './intake-keys.ts';
 // KAR-03.4 — the data plane: agent bytes land here and never in `event`.
 export {
   appendIoChunk,
   appendIoChunks,
   InvalidIoChunk,
+  // KAR-15.6 AC4 — the tail: the last N chunks, read off the end of the index.
+  IO_CHUNK_HEAD_SQL,
   IO_CHUNK_TAIL_SQL,
   IO_STREAMS,
   type IoChunkDraft,
@@ -221,6 +248,7 @@ export {
   type IoChunkSelector,
   type IoStream,
   readIoChunks,
+  readIoChunkTail,
   type StoredIoChunk,
 } from './io-chunk.ts';
 // KAR-03.7 — the single-instance lease. Taken first in boot, before anything
@@ -235,6 +263,8 @@ export {
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
+// KAR-15.6 AC3 — when a node started and stopped, for the inspector bundle.
+export { type NodeTiming, readNodeTiming } from './node-timing.ts';
 // KAR-06.6 — the `node_wake` table: every wait in the system, from a 2-second
 // retry backoff to a 30-day human gate, as one row and zero CPU. Never a timer.
 export {
@@ -251,6 +281,10 @@ export {
   scheduleWake,
   scheduleWakeIfChanged,
 } from './node-wake.ts';
+// KAR-15.3 — the post-commit emitter the SSE stream parks on. It fires after
+// the outermost transaction returns and carries nothing: the reaction to it is
+// "drain from your cursor" (docs/11-api-and-realtime.md §5.2).
+export { committing, onCommitted } from './notify.ts';
 // KAR-03.8 — the daemon's start-of-life rebuild: every run in a data
 // directory, folded from the ledger a dead process left behind.
 export {
@@ -261,6 +295,7 @@ export {
   openAndReplay,
   type RunReplay,
   replayAll,
+  runHeadSeq,
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
 // KAR-11.4 — F8.3's approval queue for proposed patches, projected from the
@@ -276,11 +311,15 @@ export type {
   PersistedPlan,
   PersistPlanOptions,
 } from './plans.ts';
+// KAR-15.6 — the scrubber's version rail: every plan version a run proposed,
+// as one grouped, bounded statement.
 export {
   applyPatchedPlanVersion,
+  listPlanVersions,
   PATCH_STALE,
   PlanHashMismatch,
   PlanNotValidated,
+  type PlanVersionRow,
   persistPlanVersion,
   planDirOf,
   planPathOf,
@@ -338,6 +377,14 @@ export {
   runArtifactDirOf,
   runArtifactsDirOf,
 } from './run-artifacts.ts';
+// KAR-15.7 — the reduced state at an arbitrary seq, server-side: one reducer,
+// never io_chunk, and the greatest committed seq at or below the request.
+export {
+  type RunSnapshot,
+  type SnapshotOptions,
+  type SnapshotSeq,
+  snapshotRunAt,
+} from './run-snapshot.ts';
 // KAR-03.4 — the counters that keep "~2,000 control events per run" a measurement.
 export {
   CONTROL_EVENT_BUDGET,

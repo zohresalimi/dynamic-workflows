@@ -52,6 +52,14 @@ catalog:
   # two histories render through one component. `rfc6902`, never
   # `fast-json-patch`: that package last shipped in 2022 (docs/02 §4).
   rfc6902: ^5.3.0
+  # KAR-15.2 AC8. The SSE client, and the reason the bearer token can be a
+  # header at all: native `EventSource` has no mechanism for one, so a design
+  # built on it forces the token into the query string — into shell history,
+  # browser history, `Referer` headers and every access log anyone ever adds
+  # (docs/02 §4, docs/11 §8.1). `fetch` + WebStreams, arbitrary headers,
+  # `initialLastEventId`, and it runs in Node as well as the browser, which is
+  # what lets one connector serve the UI and a CLI.
+  eventsource-client: ^1.2.0
   pino: 10.3.1
   "@biomejs/biome": 2.5.6 # exact: a patch bump that reflows the repo makes the next commit unreviewable
   oxlint: 1.76.0

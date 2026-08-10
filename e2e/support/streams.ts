@@ -16,6 +16,18 @@ export interface SseEvent {
 
 export interface SseClient {
   readonly events: () => SseEvent[];
+  /**
+   * `: keepalive` comments seen so far (KAR-15.3 AC8).
+   *
+   * Counted rather than parsed into events, because that is the property: a
+   * comment carries no field, which is exactly why every SSE client ignores
+   * one, and a reader that turned it into an event would be proving the
+   * opposite. The idle cadence is a comment and not a named `heartbeat` frame
+   * because AC5 reserves named events for stream control — `hello`,
+   * `subscribed`, `caught_up`, `fatal` — and a fifth name would be one more
+   * thing a reducer has to know to ignore.
+   */
+  readonly keepalives: () => number;
   /** Resolve with the first event, after `from`, matching `predicate`. */
   readonly next: (predicate: (event: SseEvent) => boolean, timeoutMs: number) => Promise<SseEvent>;
   /** True once the response body has ended — i.e. the stream dropped. */
@@ -24,10 +36,20 @@ export interface SseClient {
   readonly close: () => void;
 }
 
-export async function openSse(url: string): Promise<SseClient> {
+/**
+ * Opens the stream the way the UI does (KAR-15.2 AC8/AC9): the bearer token
+ * travels in the `Authorization` **header**, never in the query string. That is
+ * the whole reason the browser client is `eventsource-client` rather than
+ * native `EventSource`, which cannot set a header — so a helper that reached
+ * for `?token=` here would be testing a design the daemon does not have.
+ */
+export async function openSse(url: string, token?: string): Promise<SseClient> {
   const controller = new AbortController();
   const response = await fetch(url, {
-    headers: { accept: 'text/event-stream' },
+    headers: {
+      accept: 'text/event-stream',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+    },
     signal: controller.signal,
   });
   if (!response.ok || response.body === null) {
@@ -35,6 +57,7 @@ export async function openSse(url: string): Promise<SseClient> {
   }
 
   const received: SseEvent[] = [];
+  let keepalives = 0;
   let ended = false;
   let failure: unknown;
 
@@ -50,6 +73,7 @@ export async function openSse(url: string): Promise<SseClient> {
       while (boundary !== -1) {
         const block = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
+        if (block.startsWith(':')) keepalives += 1;
         const parsed = parseBlock(block);
         if (parsed !== undefined) received.push(parsed);
         boundary = buffer.indexOf('\n\n');
@@ -67,6 +91,7 @@ export async function openSse(url: string): Promise<SseClient> {
 
   return {
     events: () => [...received],
+    keepalives: () => keepalives,
     ended: () => ended,
     error: () => failure,
     close: () => controller.abort(),

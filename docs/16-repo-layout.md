@@ -48,7 +48,7 @@ DeFlow/
 | `@DeFlow/gates`      | Gate definitions (`.DeFlow/gates/*.yaml`), the seven findings parsers, the severity floor, the deterministic gate runner and the milestone rule. The ladder itself lives in `@DeFlow/core`, because `decide()` is what withholds a tier                                                            | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters` | `yaml`, `zod`                                                                       |
 | `@DeFlow/daemon`     | DeFlowd itself: hono HTTP+SSE, orchestrator tick loop, Effect Runner, Planner, Context Builder, Blackboard, Workspace Manager, MCP host                                                     | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters`, `@DeFlow/gates` | `hono`, `@modelcontextprotocol/sdk`, `execa`, `pino`, `@lydell/node-pty` (optional) |
 | `DeFlow`             | The npm package. `DeFlow init/up/run/doctor`, plus the `DeFlow-mcp` and `DeFlow-mock-agent` bins. Bundles the daemon and ships the built UI as files                                                     | `@DeFlow/daemon`, `@DeFlow/mock-agent`               | `@lydell/node-pty` (external), everything else inlined                              |
-| `@DeFlow/web`        | Vue 3 SPA, ledger-projection Pinia store, the nine P0 views                                                                                                                                              | `@DeFlow/core` (**types only**)                      | `vue`, `pinia`, `@vue-flow/core`, `d3`, `xterm.js`, `shiki`                         |
+| `@DeFlow/web`        | Vue 3 SPA, ledger-projection Pinia store, the nine P0 views, and the one `hc<ApiType>` client module `packages/cli` imports too                                                                          | `@DeFlow/core` (**types only**), `@DeFlow/daemon` (**types only**, dev) | `vue`, `pinia`, `@vue-flow/core`, `d3`, `xterm.js`, `shiki`                         |
 | `@DeFlow/testkit`    | Fake agent binaries, hermetic git fixtures, tmpdir fixtures, `TestClock`, `FakeEffectRunner`, crash-fuzz harness                                                                                         | `@DeFlow/core`                                       | dev-only                                                                            |
 | `@DeFlow/mock-agent` | A real ACP **agent** binary, seeded and deterministic: scripted chunks, permission requests, fs/terminal callbacks, hang, mid-turn crash, malformed frames, 10 MB line, configurable `agentCapabilities` | **nothing** (deliberately)                           | `@agentclientprotocol/sdk@1.3.0`                                                    |
 | `e2e`                | ~5 full-stack specs that boot a real DeFlowd on an ephemeral port with fake agents on `PATH` and drive a real browser                                                                                    | `DeFlow`, `@DeFlow/testkit`                          | `@playwright/test`                                                                  |
@@ -156,7 +156,8 @@ pnpm's symlinked store plus `workspace:*` is what makes the source-linking trick
 Two rules, both mechanically checkable:
 
 > **R1. `@DeFlow/core` depends on nothing in the workspace, and on nothing that can perform I/O.**
-> **R2. Nothing depends on `@DeFlow/daemon` except `packages/cli`.**
+> **R2. Nothing depends on `@DeFlow/daemon` except `packages/cli` — and `@DeFlow/web`, for its
+> types only.**
 
 ```
 ──► reads "depends on"
@@ -167,6 +168,8 @@ Two rules, both mechanically checkable:
                    └──► @DeFlow/mock-agent   ──► (nothing in the workspace)
 
   @DeFlow/web      ──► @DeFlow/core      (type-only imports)
+                   └──► @DeFlow/daemon    (type-only, devDependency: ApiType and nothing else)
+  DeFlow           ──► @DeFlow/web        (the one typed API client, imported by the CLI)
   @DeFlow/testkit  ──► @DeFlow/core      (devDependency of every other package)
 
   @DeFlow/core     ──► (nothing in the workspace; zod is its only runtime dep)
@@ -195,6 +198,8 @@ it("core imports no node: builtins", async () => {
 ```
 
 R2 keeps the daemon a leaf. If `@DeFlow/adapters` ever needs something from `daemon`, that something belongs in `core` (if pure) or is a port that `daemon` implements and injects (if not). The one place this is tested is `e2e`, which depends on the built `DeFlow` package rather than on `daemon` directly — so the specs exercise the same artefact users install.
+
+**The UI's exception, added by KAR-15.1, is narrower than it sounds.** `packages/web/src/api/client.ts` does `import type { ApiType } from "@DeFlow/daemon"` — that import *is* the client contract ([API and realtime §9](./11-api-and-realtime.md#9-the-typed-client)), and it is what makes renaming a daemon field break the UI build in the same commit rather than a view at runtime three weeks later. It sits in `devDependencies` and is erased at compile time, so no daemon code can reach the browser bundle, which is the coupling R2 exists to prevent. Two guards hold that line: `checkDaemonIsLeaf` still rejects a *runtime* dependency from the UI, and `checkWebImportsDaemonTypesOnly` fails the build the day one of those imports loses its `type` keyword. `packages/cli` then depends on `@DeFlow/web` for that same client module, so `DeFlow run` and the browser are two callers of one typed surface rather than two implementations of one protocol.
 
 ---
 

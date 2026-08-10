@@ -18,7 +18,7 @@
  */
 import { type RunId, RunIdSchema } from '@DeFlow/core';
 import { appendEvents, type EventDraft, openLedger } from '@DeFlow/ledger';
-import { it } from '@DeFlow/testkit';
+import { authorizedFetch, it, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
@@ -27,6 +27,15 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, expect, describe as suite } from 'vitest';
 import { clearLedgerView, openLedgerView, setLedgerView } from '../../src/http/ledger-view.ts';
 import { startHttp } from '../../src/http/server.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 const RUN: RunId = RunIdSchema.parse('run_20260806T120000Z_bd4417');
 const T0 = 1_754_474_400_000;
@@ -127,7 +136,12 @@ async function serve(tmp: string, providers: readonly string[]): Promise<Served>
 
   const view = openLedgerView(dataDir);
   setLedgerView(view);
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
 
   return {

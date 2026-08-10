@@ -34,6 +34,7 @@ import {
 import { Buffer } from 'node:buffer';
 import { MAX_INLINE_PAYLOAD_BYTES, PAYLOAD_MIME, spillBytes } from './blobs.ts';
 import { readEpoch, StaleEpoch } from './epoch.ts';
+import { committing } from './notify.ts';
 
 /**
  * An event on its way in: the envelope of docs/04-domain-model.md §9 minus
@@ -216,7 +217,11 @@ export function appendEvents(
   if (validated.length === 0) return [];
 
   const insert = db.prepare<{ seq: number }>(INSERT_EVENT);
-  return db.transaction(() => {
+  // `committing` rather than `db.transaction` directly: the SSE stream parks on
+  // a signal that must fire **after** this commit and never inside it, or a
+  // client's cursor can advance past a row a rollback removes (KAR-15.3,
+  // docs/11-api-and-realtime.md §5.2). @see ./notify.ts
+  return committing(db, () => {
     // Inside the transaction, so the write lock is already held: no other
     // connection can advance the epoch between this read and the inserts
     // below. One read per batch, not per event.
@@ -358,4 +363,29 @@ export function readGlobalRange(
 export function readEventTs(db: Db, seq: number): number | null {
   const row = db.prepare<{ ts: number }>('SELECT ts FROM event WHERE seq = ?').get(seq);
   return row?.ts ?? null;
+}
+
+/**
+ * KAR-15.5 — the highest `seq` at which `runId` recorded any of `kinds`, or
+ * `null` when it never did.
+ *
+ * The number a repeated control write echoes: pausing a paused run answers with
+ * the `seq` of the `run.paused` already in the log, which is what makes a
+ * double-click return the same body twice instead of two different numbers
+ * (docs/11-api-and-realtime.md §11.1).
+ *
+ * One aggregate under the `event_run_seq` index rather than a paged scan the
+ * caller reduces, because the alternative reads a run's whole history to find
+ * one row — and these are the routes an operator presses on the run with the
+ * most history.
+ */
+export function lastSeqOfKinds(db: Db, runId: RunId, kinds: readonly string[]): number | null {
+  if (kinds.length === 0) return null;
+  const placeholders = kinds.map(() => '?').join(', ');
+  const row = db
+    .prepare<{ last: number | null }>(
+      `SELECT max(seq) AS last FROM event WHERE run_id = ? AND kind IN (${placeholders})`,
+    )
+    .get(runId, ...kinds);
+  return row?.last ?? null;
 }

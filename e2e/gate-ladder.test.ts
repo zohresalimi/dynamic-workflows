@@ -28,6 +28,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import {
+  asClient,
   type DaemonProcess,
   freePort,
   makeDataDir,
@@ -67,9 +68,9 @@ function runGatesProcess(dataDir: string, worktree: string): Promise<string> {
   });
 }
 
-/** The run as the daemon serves it. */
-async function summary(origin: string): Promise<Record<string, unknown>> {
-  const response = await fetch(`${origin}/api/runs/${GATE_RUN}`);
+/** The run as the daemon serves it, as an authenticated client (KAR-15.2). */
+async function summary(daemon: DaemonProcess): Promise<Record<string, unknown>> {
+  const response = await asClient(daemon)(`${daemon.origin}/api/runs/${GATE_RUN}`);
   expect(response.status).toBe(200);
   return (await response.json()) as Record<string, unknown>;
 }
@@ -100,7 +101,7 @@ suite('EPIC-12-S2 — the ladder short-circuits, in a real run', () => {
     const before = spawnDaemon({ dataDir, port: await freePort() });
     running.push(before);
     await waitForHealth(before);
-    const costBefore = JSON.stringify((await summary(before.origin)).budget ?? null);
+    const costBefore = JSON.stringify((await summary(before)).budget ?? null);
     await before.stop();
     running.length = 0;
 
@@ -125,6 +126,6 @@ suite('EPIC-12-S2 — the ladder short-circuits, in a real run', () => {
     const after = spawnDaemon({ dataDir, port: await freePort() });
     running.push(after);
     await waitForHealth(after);
-    expect(JSON.stringify((await summary(after.origin)).budget ?? null)).toBe(costBefore);
+    expect(JSON.stringify((await summary(after)).budget ?? null)).toBe(costBefore);
   }, 180_000);
 });

@@ -76,6 +76,26 @@ export function headSeq(db: Db): number {
   return db.prepare<{ head: number }>(HEAD_SEQ_SQL).get()?.head ?? 0;
 }
 
+const RUN_HEAD_SEQ_SQL = 'SELECT coalesce(max(seq), 0) AS head FROM event WHERE run_id = ?';
+
+/**
+ * KAR-15.4 AC4 — the highest `seq` this ledger holds **for one run**; 0 when it
+ * holds none of that run's events.
+ *
+ * The denominator `GET /api/runs/:id/events` reports as `headSeq`, which is
+ * what lets a hydrating UI draw an honest progress bar rather than a spinner of
+ * unknown duration (docs/11-api-and-realtime.md §7.2). Per-run rather than the
+ * global head because a run's cursor is compared against it: the global head
+ * moves with every other run in the directory, so a client hydrating one run
+ * would never reach it and would page forever.
+ *
+ * A covering-index seek on `event_run_seq (run_id, seq)`, not a scan — SQLite
+ * reads one row off the end of the index for a `max` under an equality.
+ */
+export function runHeadSeq(db: Db, runId: RunId): number {
+  return db.prepare<{ head: number }>(RUN_HEAD_SEQ_SQL).get(runId)?.head ?? 0;
+}
+
 /** One run's replay, and which run it was. */
 export interface RunReplay extends ReplayResult {
   readonly runId: RunId;

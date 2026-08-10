@@ -291,9 +291,23 @@ export {
   salvageCommitArgs,
   salvagedRemoveArgs,
 } from './git/worktree-salvage.ts';
+// KAR-15.1 — the whole client contract (docs/11-api-and-realtime.md §9).
+// `packages/web/src/api/client.ts` builds `hc<ApiType>` from this one type, and
+// both the UI and the CLI import that module rather than writing a client each.
+export type { ApiType } from './http/api.ts';
+export { API_HEADER, api, apiErrorHandler, isPublicRoute, PUBLIC_ROUTES } from './http/api.ts';
 // KAR-13.2 — `GET /api/approvals`, assembled from the ledger.
 export type { ApprovalRow, ApprovalsResponse } from './http/approvals.ts';
 export { approvalQueue } from './http/approvals.ts';
+// KAR-15.1 — the closed error envelope and its status→code table.
+export type {
+  ApiErrorCode,
+  ApiErrorEnvelope,
+  ApiErrorOptions,
+  ApiErrorStatus,
+  ServiceRefusalCode,
+} from './http/errors.ts';
+export { API_ERROR_STATUS, apiError, isApiErrorCode, serviceError } from './http/errors.ts';
 // KAR-14.1 AC8 — the read-only ledger the run summary and the SSE tail are
 // served through, and the summary body itself.
 export type { LedgerView, OpenedLedgerView } from './http/ledger-view.ts';
@@ -304,10 +318,51 @@ export {
   openLedgerView,
   setLedgerView,
 } from './http/ledger-view.ts';
+// KAR-15.8 — the interactive terminal channel: the frame table's two text
+// frames, the route parser, and the upgrade handler that carries them.
+export type { ClientCommand, PtyTarget, ResizeCommand } from './http/pty-protocol.ts';
+export {
+  exitFrameText,
+  MAX_DIMENSION,
+  PTY_PATH_PREFIX,
+  parseClientText,
+  parsePtyPath,
+} from './http/pty-protocol.ts';
+export { installPtyUpgrade, ptyUpgradeHandler } from './http/pty-socket.ts';
 export type { RunSummary } from './http/run-summary.ts';
 export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
-export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
+export {
+  clearUpgradeHandler,
+  DEFAULT_HOSTNAME,
+  DEFAULT_PORT,
+  setUpgradeHandler,
+  startHttp,
+  type UpgradeHandler,
+} from './http/server.ts';
+// KAR-15.8 — RFC 6455 framing, owned rather than imported: the socket must
+// stay independent of any helper's opinion about when to accept one (AC1).
+export type {
+  DecoderOptions,
+  EncodeOptions,
+  FrameDecoder,
+  Opcode,
+  WsMessage,
+} from './http/ws-frame.ts';
+export {
+  acceptKey,
+  CLOSE_GOING_AWAY,
+  CLOSE_NORMAL,
+  CLOSE_PROTOCOL_ERROR,
+  CLOSE_TOO_BIG,
+  closePayload,
+  createFrameDecoder,
+  DEFAULT_MAX_PAYLOAD_BYTES,
+  encodeFrame,
+  newWebSocketKey,
+  OPCODE,
+  WsProtocolError,
+} from './http/ws-frame.ts';
 // KAR-13.4 — a permission escalation: the queue row, the durable wait, the
 // run-scoped `_always`, and the `permission.decided` every mediated request
 // leaves behind whether or not anybody saw it.
@@ -440,6 +495,19 @@ export {
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.
 export type { RateLimitReportInput } from './providers/rate-limit-doctor.ts';
 export { rateLimitLines, renderRateLimitReport } from './providers/rate-limit-doctor.ts';
+// KAR-15.8 — one live pty per node, its durable `io_chunk` sink, and the
+// registry the upgrade handler looks a node's terminal up in.
+export type { LedgerPtySinkOptions } from './pty/ledger-pty-sink.ts';
+export { ledgerPtySink } from './pty/ledger-pty-sink.ts';
+export type {
+  PtyAttachment,
+  PtyExit,
+  PtyOutputSink,
+  PtySession,
+  PtySessionOptions,
+} from './pty/pty-session.ts';
+export { DEFAULT_COLS, DEFAULT_ROWS, loadNodePty, openPtySession } from './pty/pty-session.ts';
+export { clearPtySessions, ptySessionFor, registerPtySession } from './pty/pty-sessions.ts';
 export type { DaemonSeed, SeedEnv } from './random.ts';
 export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
 // KAR-06.9 — crash recovery: the fixed startup sequence, and the three things

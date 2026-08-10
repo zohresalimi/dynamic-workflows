@@ -53,7 +53,7 @@ import {
   readEpoch,
   spillBytes,
 } from '@DeFlow/ledger';
-import { it, linkFakeAgent } from '@DeFlow/testkit';
+import { authorizedFetch, it, linkFakeAgent, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -62,6 +62,15 @@ import { join } from 'node:path';
 import { afterEach, expect, describe as suite } from 'vitest';
 import { clearLedgerView, openLedgerView, setLedgerView } from '../../src/http/ledger-view.ts';
 import { startHttp } from '../../src/http/server.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 const RUN: RunId = RunIdSchema.parse('run_20260805T101500Z_ac0501');
 // The flow file writes "n_impl_1"; a NodeId is a slug by schema, so the same
@@ -184,7 +193,12 @@ async function serveCompletedRun(tmp: string): Promise<Served> {
 
   const view = openLedgerView(dataDir);
   setLedgerView(view);
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
 
   return {
@@ -236,7 +250,9 @@ suite('EPIC-14-S1 — the run rollup at GET /api/runs/:id (AC8)', () => {
 
     const missing = await fetch(`${served.origin}/api/runs/run_20260805T101500Z_ffffff`);
     expect(missing.status).toBe(404);
-    expect((await missing.json()) as { error: string }).toMatchObject({ error: 'not_found' });
+    expect((await missing.json()) as { error: { code: string } }).toMatchObject({
+      error: { code: 'run_not_found' },
+    });
 
     // A malformed id is the same answer, not a 500 out of the id schema.
     const malformed = await fetch(`${served.origin}/api/runs/r1`);

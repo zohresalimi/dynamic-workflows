@@ -17,6 +17,7 @@
 import { openLedger, readRange } from '@DeFlow/ledger';
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import {
+  asClient,
   type DaemonProcess,
   freePort,
   makeDataDir,
@@ -64,11 +65,14 @@ suite('EPIC-13-S17 — the correction lands and the run is not discarded', () =>
   it('accepts one interjection over the socket and cancels nothing', async () => {
     const daemon = await daemonWithRunningNode();
 
-    const response = await fetch(`${daemon.origin}/api/runs/${INTERJECT_RUN}/interject`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nodeId: IMPL, text: GUIDANCE, mode: 'next-turn' }),
-    });
+    const response = await asClient(daemon)(
+      `${daemon.origin}/api/runs/${INTERJECT_RUN}/interject`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nodeId: IMPL, text: GUIDANCE, mode: 'next-turn' }),
+      },
+    );
 
     expect(response.status).toBe(202);
     // The adapter this node runs on advertises mid-turn steering, and the
@@ -97,16 +101,20 @@ suite('EPIC-13-S17 — the correction lands and the run is not discarded', () =>
   it('sends an interjection aimed at a human gate to the respond route instead', async () => {
     const daemon = await daemonWithRunningNode();
 
-    const response = await fetch(`${daemon.origin}/api/runs/${INTERJECT_RUN}/interject`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nodeId: GATE, text: GUIDANCE, mode: 'next-turn' }),
-    });
+    const response = await asClient(daemon)(
+      `${daemon.origin}/api/runs/${INTERJECT_RUN}/interject`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nodeId: GATE, text: GUIDANCE, mode: 'next-turn' }),
+      },
+    );
 
     expect(response.status).toBe(409);
-    const body = (await response.json()) as { error: string; message: string };
-    expect(body.error).toBe('use_respond');
-    expect(body.message).toContain('/respond');
+    // KAR-15.1's closed envelope, over a real socket and a real daemon.
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('use_respond');
+    expect(body.error.message).toContain('/respond');
 
     await daemon.stop();
     running.length = 0;

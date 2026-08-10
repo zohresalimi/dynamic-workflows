@@ -15,6 +15,7 @@
 import { DaemonAlreadyRunning } from '@DeFlow/ledger';
 import { type Booted, boot, EX_ALREADY_RUNNING } from './boot.ts';
 import { systemClock } from './clock.ts';
+import { NonLoopbackBindRefused } from './http/auth.ts';
 import { DEFAULT_PORT } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
@@ -46,8 +47,17 @@ try {
   started = await boot({
     port: port(),
     ...(process.env.DeFlow_HOST === undefined ? {} : { hostname: process.env.DeFlow_HOST }),
+    // KAR-15.2 AC12 — the explicit flag, and the only way past loopback.
+    // `DeFlow_HOST` on its own is not enough on purpose: naming an address is
+    // not the same as accepting what serving the control plane on it means
+    // (docs/15-security-model.md §3.3).
+    allowNonLoopback: process.env.DeFlow_ALLOW_NON_LOOPBACK === '1',
   });
 } catch (error) {
+  if (error instanceof NonLoopbackBindRefused) {
+    process.stderr.write(`${error.message}\n`);
+    process.exit(EX_CONFIG);
+  }
   if (error instanceof DaemonAlreadyRunning) {
     // One sentence on stderr, and nothing else: this is the "I ran `DeFlow up`
     // in two terminals" case (KAR-03.7 AC2), and a stack trace here is the
@@ -63,6 +73,14 @@ daemon.info(
   { bootId: BOOT_ID, build: BUILD, pid: process.pid, epoch: started.epoch },
   'DeFlowd up',
 );
+
+// KAR-15.2 AC7 — the first-run handoff, on stdout rather than through the
+// logger, for the same reason `DaemonAlreadyRunning` is: this is the one line
+// a human reads and clicks, and a JSON log line is not that. The token is in
+// the **fragment**, so navigating it sends nothing to the server — and it must
+// never be logged, because a log line is exactly the place §8.1 exists to keep
+// it out of.
+process.stdout.write(`${started.url}\n`);
 
 let stopping = false;
 

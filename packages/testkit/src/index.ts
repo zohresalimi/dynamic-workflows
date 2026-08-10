@@ -50,6 +50,9 @@ export {
   type WaitForOptions,
   waitFor,
 } from './crash.ts';
+// KAR-15.2 — the bearer token every spec that drives DeFlowd's HTTP surface
+// now has to send.
+export { authorizedFetch, TEST_DAEMON_TOKEN } from './daemon-http.ts';
 export { dbContract } from './db-contract.ts';
 export {
   CLAUDE_VERBOSE_REQUIRED,

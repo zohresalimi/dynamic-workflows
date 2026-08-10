@@ -25,7 +25,7 @@ import {
   pendingPatchApprovals,
   persistPlanVersion,
 } from '@DeFlow/ledger';
-import { it } from '@DeFlow/testkit';
+import { authorizedFetch, it, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, expect, describe as suite } from 'vitest';
@@ -33,6 +33,15 @@ import { rulePatch } from '../../src/budget/patch-gate.ts';
 import { clearLedgerView, openLedgerView, setLedgerView } from '../../src/http/ledger-view.ts';
 import { startHttp } from '../../src/http/server.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 const RUN: RunId = RunIdSchema.parse('run_20260809T090000Z_ac1105');
 const T0 = 1_754_726_400_000;
@@ -226,7 +235,12 @@ async function serveThreeVersionRun(tmp: string): Promise<Served> {
 
   const view = openLedgerView(tmp);
   setLedgerView(view);
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
 
   return {

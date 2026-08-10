@@ -9,7 +9,9 @@
  * supervisor and the bundler are noise: a restart-on-save in the middle of a
  * lease assertion is a race the spec did not ask for.
  */
+import { authorizedFetch } from '@DeFlow/testkit';
 import { type ChildProcess, spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -47,6 +49,15 @@ export interface DaemonProcess {
   readonly child: ChildProcess;
   readonly port: number;
   readonly origin: string;
+  /**
+   * The daemon's bearer token, read out of `<dataDir>/daemon.json` once it is
+   * up (KAR-15.2 AC7).
+   *
+   * Read from the file the daemon actually wrote rather than injected, because
+   * that file *is* the handoff: a spec that could not find the token here is a
+   * spec telling you `DeFlow status` and `DeFlow run` could not either.
+   */
+  readonly token: () => string;
   readonly stdout: () => string;
   readonly stderr: () => string;
   /** Resolves with the exit code (or null if it was signalled). */
@@ -94,6 +105,12 @@ export function spawnDaemon({ dataDir, port }: SpawnOptions): DaemonProcess {
     child,
     port,
     origin: `http://127.0.0.1:${port}`,
+    token: () => {
+      const file = JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8')) as {
+        token: string;
+      };
+      return file.token;
+    },
     stdout: () => out.join(''),
     stderr: () => err.join(''),
     exited,
@@ -141,4 +158,16 @@ export function bindable(port: number): Promise<boolean> {
     probe.once('error', () => resolve(false));
     probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
   });
+}
+
+/**
+ * A `fetch` that speaks to `daemon` as an authenticated client (KAR-15.2).
+ *
+ * Every route but `GET /api/health` needs the bearer token, and the token is
+ * this daemon life's — so it is read from its own `daemon.json` per call
+ * rather than captured once, which also means a spec that restarts a daemon
+ * keeps working without knowing that it did.
+ */
+export function asClient(daemon: DaemonProcess): typeof globalThis.fetch {
+  return (input, init) => authorizedFetch(daemon.token())(input, init);
 }
