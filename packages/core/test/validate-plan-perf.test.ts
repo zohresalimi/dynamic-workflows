@@ -23,8 +23,7 @@
  * `topoSort`, one ancestor pass, one capability pass per agent node — so
  * doubling the fan-out should roughly double the time. An accidental O(n²) —
  * recomputing the read set per node, say, or asking the criteria walk once per
- * node — quadruples it. A ceiling of 3.0 sits above the honest ratio with room
- * for jitter and below the regressed one.
+ * node — quadruples it.
  *
  * Measured 2026-08-08, on the shipped implementation: 0.40 ms for 200 children
  * and 0.79 ms for 400 — a ratio of 1.97, and two orders of magnitude under
@@ -33,6 +32,17 @@
  * 400-wide fan-out makes O(n² log n) and which read as 0.64 / 1.63 ms, a ratio
  * of 2.55. Binary insertion took it back to linear; a flat wall-clock assertion
  * would have passed throughout.
+ *
+ * **The ceiling is 2.5, not the 3.0 it was written with.** 3.0 sat above the
+ * 2.55 that regression read, so the assertion did not in fact separate the two
+ * cases its own paragraph credits it with separating — anything up to a 3x
+ * blowup passed. It could not safely be tightened while the statistic was a
+ * median, because the median's spread under load reached 2.31 on honest code
+ * (see `timeBoth`). On the fastest-sample statistic the honest reading is
+ * 1.95-2.05 from idle through 6x oversubscription, so 2.5 clears it by 22% and
+ * still lands under the 2.67 an injected super-linearity of that same magnitude
+ * reads. Regressions milder than 2.5x slip through; that is the honest limit of
+ * a two-point ratio, and the batch backstop below is what covers the rest.
  *
  * Verifies: EPIC-11-S6 (fan-out scale), AC12
  */
@@ -144,25 +154,46 @@ function fanOut(width: number): ReturnType<typeof PlanGraphSchema.parse> {
 const run = (plan: ReturnType<typeof PlanGraphSchema.parse>) =>
   validatePlan(plan, SPEC, CAPS, { estimatePacketTokens: () => 0 });
 
-const ITERATIONS = 30;
+const ITERATIONS = 50;
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? ((sorted[middle - 1] as number) + (sorted[middle] as number)) / 2
-    : (sorted[middle] as number);
+function fastest(values: number[]): number {
+  return Math.min(...values);
 }
 
 /**
- * Both graphs timed alternately, and reported as medians.
+ * Both graphs timed alternately, and reported as the **fastest** sample of each.
  *
  * **Alternating**, because timing one batch and then the other lets V8 go on
  * optimising between them and the drift lands entirely on whichever went
- * second. **Medians, not totals**, because one validation costs a couple of
- * milliseconds and a scheduler quantum is ten: on an oversubscribed box a
- * single deschedule dumps more time into one bucket than the effect being
- * measured, and a median is immune to the stall a sum is dominated by.
+ * second.
+ *
+ * **Fastest, not median.** This started as a median, on the reasoning that a
+ * median is immune to the one stall a sum is dominated by. That is true of an
+ * *occasional* stall and false of the case this suite actually runs in: nested
+ * inside `test/integration/project-slices.test.ts`, the unit slice is re-run as
+ * a subprocess while the full suite saturates the box, so descheduling is not
+ * an outlier but the common case, and the median sits in the contaminated bulk
+ * rather than on the clean floor. Worse, the contamination is *biased*: the
+ * subject's window is twice the control's, so it is twice as likely to contain
+ * a preemption, and the ratio drifts upward. Measured on this machine, 30
+ * alternating samples, against 24 and 48 spinning CPU burners on 8 cores:
+ *
+ * | statistic | idle      | 3x load   | 6x load   | with a real super-linearity |
+ * | --------- | --------- | --------- | --------- | --------------------------- |
+ * | median    | 1.96-2.01 | 1.80-2.31 | 1.72-2.16 | 2.58-2.62                   |
+ * | fastest   | 1.97-1.99 | 1.95-2.05 | 1.96-2.00 | 2.67-2.68                   |
+ *
+ * The median's spread under load overlaps the band a genuine regression reads
+ * in; the minimum's does not. That overlap is not theoretical — it is what went
+ * red here, at a control of 0.54 ms against a subject of 2.16 ms, a ratio of
+ * 4.0 on an implementation that had not changed.
+ *
+ * A minimum is the right estimator because the quantity wanted is CPU cost, and
+ * scheduling noise is strictly additive: it can only ever make a sample slower,
+ * never faster. The fastest of 50 is therefore the sample that came closest to
+ * running uninterrupted, and it recovers the same number under 6x
+ * oversubscription that it reads on an idle box. Note this *tightens* the
+ * instrument rather than relaxing it — the budget below came down with it.
  */
 function timeBoth(
   control: ReturnType<typeof PlanGraphSchema.parse>,
@@ -179,7 +210,7 @@ function timeBoth(
     controls.push(b - a);
     subjects.push(c - b);
   }
-  return { controlMs: median(controls), subjectMs: median(subjects) };
+  return { controlMs: fastest(controls), subjectMs: fastest(subjects) };
 }
 
 suite('AC12 — a 400-node fan-out validates inside the budget', () => {
@@ -202,13 +233,15 @@ suite('AC12 — a 400-node fan-out validates inside the budget', () => {
     expect(
       subjectMs,
       `200 children took ${controlMs.toFixed(2)} ms, 400 took ${subjectMs.toFixed(2)} ms`,
-    ).toBeLessThan(controlMs * 3);
+    ).toBeLessThan(controlMs * 2.5);
 
     // The backstop for a blowup no ratio would notice, because it would slow
-    // both halves equally. AC12's budget is 100 ms for one validation; this
-    // times 30 of them, so 30 x 100 ms is the same budget expressed over the
-    // batch, and the assertion is on the median of one — 100 ms with two
-    // doublings of headroom above an honest reading of a couple of ms.
+    // both halves equally. AC12's budget is 100 ms for one validation, and
+    // `subjectMs` is one validation — the fastest of the 50 timed — so 100 ms
+    // is AC12's own number applied unchanged, with two orders of magnitude of
+    // headroom above an honest reading of well under a millisecond. Being a
+    // floor rather than an average, it cannot go red on a slow box; only work
+    // that is genuinely there in every sample can reach it, which is the point.
     expect(subjectMs).toBeLessThan(100);
   });
 });

@@ -505,7 +505,12 @@ suite('EPIC-06-S31 — a budget ceiling pauses the run instead of failing it (AC
 
       const state = stateOf(db);
       expect(state.status).toBe('paused');
-      expect(state.budget.breaches).toEqual([{ ...breach, firedBy: 'vendor' }]);
+      // `seq` is KAR-13.2's addition: the `budget.exceeded` this breach came
+      // from, so the approval-queue row it produces deep-links to it.
+      expect(state.budget.breaches).toMatchObject([{ ...breach, firedBy: 'vendor' }]);
+      expect(state.budget.breaches[0]?.seq).toBe(
+        events(db).find((event) => event.kind === 'budget.exceeded')?.seq,
+      );
       expect(startsOf(state, T0)).toEqual([]);
 
       // Six completed nodes, their results untouched by the pause.

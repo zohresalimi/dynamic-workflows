@@ -14,7 +14,7 @@
  * Verifies: EPIC-10-S13, EPIC-10-S14, EPIC-10-S15, EPIC-10-S16 (scenarios 1
  * and 3), EPIC-10-S29 · AC1-AC5, AC7, AC8, AC9 · test plan #2, #4, #6, #7, #8
  */
-import type { Db, PlanGraph } from '@DeFlow/core';
+import type { Command, Db, PlanGraph } from '@DeFlow/core';
 import {
   decide,
   initialRunState,
@@ -159,7 +159,7 @@ suite('EPIC-10-S13 — the approval gate genuinely blocks execution', () => {
       // asked a question no real tick asks.
       const clock = new TestClock(T0);
       db.forget();
-      const readySets: number[] = [];
+      const ticks: (readonly Command[])[] = [];
       const ticker = startTicker({
         clock,
         // The real hint, off the real table — which is also how the sentinel
@@ -168,15 +168,33 @@ suite('EPIC-10-S13 — the approval gate genuinely blocks execution', () => {
         nextWakeAt: () => nextWakeAt(db),
         onTick: (now) => {
           dueWakes(db, now);
-          readySets.push(decide(state, now).length);
+          ticks.push(decide(state, now));
         },
       });
       await clock.advance(minutes(30));
       ticker.stop();
 
       // 1 Hz for thirty minutes, and not one of those ticks found work.
-      expect(readySets.length).toBeGreaterThan(1_700);
-      expect(readySets.every((size) => size === 0)).toBe(true);
+      //
+      // "No work" is not "no commands": KAR-13.1 has the scheduler restate an
+      // open gate's own `node_wake` row on every tick, which is the idempotent
+      // restatement that makes the row survive a crash between the event that
+      // scheduled it and the row that records it. It writes nothing —
+      // `scheduleWakeIfChanged` skips a row that already says exactly this —
+      // which is what the `db.writes` assertion below proves. What must never
+      // appear is a command that *starts* something.
+      expect(ticks.length).toBeGreaterThan(1_700);
+      for (const commands of ticks) {
+        expect(commands).toEqual([
+          {
+            kind: 'ScheduleWake',
+            runId: SPEC_RUN,
+            node: SPEC_GATE_NODE,
+            wakeAt: NO_DEADLINE_WAKE_AT,
+            reason: 'human_gate',
+          },
+        ]);
+      }
 
       // "Zero CPU" as a countable fact: no statement the loop ran could have
       // changed a row, and every one of them was an indexed read of node_wake.

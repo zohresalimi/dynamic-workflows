@@ -44,6 +44,32 @@ export {
 // changing what it was given.
 export type { ApplyPatchOptions, ApplyPatchResult } from './apply-patch.ts';
 export { applyPatch } from './apply-patch.ts';
+// KAR-13.2 — the cross-run approval queue: eight kinds, one projection, no
+// auxiliary table.
+export type {
+  ApprovalItem,
+  ApprovalItemBase,
+  ApprovalKind,
+  ApprovalQueue,
+  BudgetApproval,
+  ChurnApproval,
+  GateNeedsHumanApproval,
+  HumanNodeApproval,
+  PatchApproval,
+  PermissionApproval,
+  QueuedPatch,
+  QueuedPatchEstimate,
+  ReconcileUnknownApproval,
+  RunApprovals,
+  TaintedApproval,
+  TaintedRead,
+} from './approval-queue.ts';
+export {
+  APPROVAL_KINDS,
+  approvalsProjection,
+  RECONCILE_OPTIONS,
+  RECONCILE_WARNING,
+} from './approval-queue.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {
@@ -119,6 +145,7 @@ export type {
   ReleaseLock,
   ScheduleWake,
   StartNode,
+  SuspendNode,
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, NO_DEADLINE_WAKE_AT, WAKE_REASONS } from './command.ts';
@@ -315,7 +342,10 @@ export type {
   EffectKind,
   EventKind,
   EventPayloadOf,
+  HumanResponder,
   LockReleaseReason,
+  PermissionContext,
+  PermissionDeciderKind,
   PlannerAttribution,
   PlannerTier,
   ProviderAuthMode,
@@ -352,6 +382,7 @@ export {
   GateEvaluatedSchema,
   GatesLoadedSchema,
   HandoffOversizeSchema,
+  HUMAN_RESPONDERS,
   HumanRequestedSchema,
   HumanRespondedSchema,
   isEventKind,
@@ -374,7 +405,11 @@ export {
   NodeStartedSchema,
   NodeSuspendedSchema,
   NodeUnschedulableSchema,
+  PERMISSION_DECIDERS,
+  PermissionContextSchema,
+  PermissionDecidedSchema,
   PermissionDeniedSchema,
+  PermissionReasonSchema,
   PinIntegrityViolatedSchema,
   PLANNER_TIERS,
   PlannerAttributionSchema,
@@ -533,6 +568,32 @@ export {
   withReturnBudgetDefaults,
 } from './handoff.ts';
 export { contentHash, planHash, sha256Hex, sha256HexBytes, specHash } from './hash.ts';
+// KAR-13.1 — blocking `human` nodes: the gate as reduced state, what answering
+// one appends, and what a deadline nobody met produces.
+export type {
+  HumanDecision,
+  HumanGateState,
+  HumanResponseAccepted,
+  HumanResponseOutcome,
+  HumanResponseRefusal,
+  HumanResponseRequest,
+  HumanResponseState,
+  InjectedGuidance,
+} from './human-gate.ts';
+export {
+  HUMAN_DECISION_SCHEMA_ID,
+  HumanDecisionSchema,
+  HumanGateStateSchema,
+  HumanResponseStateSchema,
+  humanDeadlineEvents,
+  humanGateWakeAt,
+  humanRequestPayload,
+  injectedGuidance,
+  isHumanNode,
+  openHumanGate,
+  openHumanGates,
+  planHumanResponse,
+} from './human-gate.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
   Brand,
@@ -584,6 +645,31 @@ export {
   REVIEW_REFUSAL_CODES,
   SchedulingRefused,
 } from './independent-review.ts';
+// KAR-13.3 — interjection into a running node: what may be posted, what the
+// adapter's capability row makes of it, and how the guidance reaches the packet.
+export type {
+  InterjectionAccepted,
+  InterjectionDelivery,
+  InterjectionMode,
+  InterjectionOutcome,
+  InterjectionRefusal,
+  InterjectionRequest,
+  InterjectionSegmentsInput,
+  InterjectionState,
+  PendingInterjection,
+  SegmentProvenance,
+} from './interject.ts';
+export {
+  HUMAN_SEGMENT_PREFIX,
+  INTERJECTION_DELIVERIES,
+  INTERJECTION_MODES,
+  interjectionSegments,
+  interjectionsOf,
+  planInterjection,
+  RESPOND_ROUTE,
+  segmentProvenance,
+  undeliveredInterjections,
+} from './interject.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 // KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
 export type { JsonPatchOperation } from './json-patch.ts';
@@ -740,6 +826,27 @@ export {
   reasonCode,
   validateEnvDeclaration,
 } from './permission.ts';
+// KAR-13.4 — which mediated requests reach the operator, what they carry, and
+// how long an `_always` lasts.
+export type {
+  EscalationAnswer,
+  EscalationDecision,
+  PermissionEscalationRequest,
+} from './permission-escalation.ts';
+export {
+  alwaysPolarity,
+  ESCALATED_DENY_CODES,
+  ESCALATION_DEFAULT_OPTION_ID,
+  escalationDecision,
+  escalationPrompt,
+  optionPolarity,
+  PERMISSION_ESCALATION_OPTIONS,
+  permissionAutoAnswer,
+  permissionContextOf,
+  permissionEscalationPayload,
+  permissionSignature,
+  runPermissionPolicy,
+} from './permission-escalation.ts';
 // KAR-09.3 — the F6.6 integrity check: the pinned bytes are in the prompt that
 // was actually sent, or the node fails and a human is asked.
 export type {
@@ -799,7 +906,11 @@ export type {
   AdapterRequirement,
   AgentNode,
   GateNode,
+  HumanDeadline,
   HumanNode,
+  HumanOption,
+  HumanOptionEffect,
+  HumanTimeoutAction,
   LoopNode,
   MapNode,
   NodeBudget,
@@ -825,7 +936,11 @@ export {
   DEFAULT_RETRY_POLICY,
   DEFAULT_RETURNS_MAX_TOKENS,
   GateNodeSchema,
+  HUMAN_OPTION_EFFECTS,
+  HUMAN_TIMEOUT_ACTIONS,
+  HumanDeadlineSchema,
   HumanNodeSchema,
+  HumanOptionSchema,
   LoopNodeSchema,
   MapNodeSchema,
   NODE_TYPES,

@@ -490,7 +490,13 @@ suite('EPIC-14-S12 — the pause survives kill -9 and resumes after restart', ()
 
       const before = await state();
       expect(before.state.status).toBe('paused');
-      expect(before.state.needsHuman).toEqual({ reason: 'budget', detail: expect.any(String) });
+      // `seq` is KAR-13.2's addition: the `run.needs_human` that asked, so the
+      // approval-queue row it produces can be ordered and deep-linked.
+      expect(before.state.needsHuman).toEqual({
+        reason: 'budget',
+        detail: expect.any(String),
+        seq: expect.any(Number),
+      });
       // No ceiling trip was ever recorded without the pause that answers it.
       expect(rows(db, 'budget.exceeded').length).toBe(rows(db, 'run.paused').length);
       // And the restarted loop admitted nothing on its first tick.

@@ -90,6 +90,25 @@ export class TestClock implements Clock {
     await Promise.resolve();
   }
 
+  /**
+   * Sets the clock to `ms`, **firing nothing**, including backwards.
+   *
+   * The wall clock is not monotonic and DeFlow has to survive that: a laptop
+   * resuming from sleep jumps forward, an NTP correction and a DST transition
+   * step backwards. `advance` refuses a negative delta on purpose — a *duration*
+   * that goes backwards is a bug in the caller — but *"the clock now reads
+   * this"* is a real thing that happens to a real machine, and a suite that
+   * cannot express it cannot test the case that matters (KAR-13.1 AC5).
+   *
+   * No timer fires, in either direction. A jump is not the passage of time; it
+   * is the clock being corrected about what time it already was. What makes a
+   * durable wait fire is the next `wake_at <= now` query against the corrected
+   * clock, which is exactly the property under test.
+   */
+  jumpTo(ms: number): void {
+    this.#now = ms;
+  }
+
   #nextDueBefore(target: number): ScheduledTimer | undefined {
     let best: ScheduledTimer | undefined;
     for (const timer of this.#timers) {

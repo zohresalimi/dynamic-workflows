@@ -265,6 +265,19 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     requested: '../../etc/passwd',
     reason: { code: 'path-escape', detail: 'traversal' },
   },
+  'permission.decided': {
+    node: NODE,
+    attempt: 0,
+    permission: 'worktree',
+    method: 'terminal/create',
+    requested:
+      '{"command":"curl","args":["-sS","https://registry.example.com/token"],"cwd":"/tmp/wt"}',
+    outcome: 'gate',
+    answered: 'reject',
+    by: 'deadline',
+    reason: { code: 'level-no-network' },
+    optionId: 'reject_once',
+  },
   'node.scope_warning': {
     node: NODE,
     attempt: 0,
@@ -405,6 +418,13 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     deadline: { wakeAt: AT, onTimeout: 'escalate' },
   },
   'human.responded': { node: 'approve-migration', optionId: 'yes', at: AT },
+  'human.interjected': {
+    node: NODE,
+    text: "Use the existing useToast composable, don't add a new one.",
+    mode: 'next-turn',
+    delivery: 'queued',
+  },
+  'human.interjection.delivered': { node: NODE, interjectedSeq: 10_892 },
   'budget.consumed': {
     node: NODE,
     attempt: 0,

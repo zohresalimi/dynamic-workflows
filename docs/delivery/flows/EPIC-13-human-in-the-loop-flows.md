@@ -197,7 +197,7 @@ a client detects that the daemon restarted under it ([11 §3.2](../../11-api-and
 
 ## EPIC-13-S4 — The `setTimeout` footgun, asserted rather than commented
 
-**Verifies:** KAR-13.1 · **Type:** Failure · **Automated at:** unit
+**Verifies:** KAR-13.1 · **Type:** Failure · **Automated at:** integration
 
 ```gherkin
 Feature: Never use setTimeout for a wait
@@ -226,6 +226,20 @@ Feature: Never use setTimeout for a wait
 passing `2**31` does not throw and does not clamp to the maximum
 ([05 §10.1](../../05-durable-execution.md)). Keeping the assertion in the suite rather than in a
 comment is the point — a comment does not fail when someone "simplifies" the wait.
+
+**Where the four scenarios live.** Scenarios 1, 2 and 4 are claims about Node and about the lint
+config rather than about a human gate, they hold for every wait in the system, and they were
+already automated by KAR-14.4 in `packages/core/test/integration/timer-overflow.test.ts` — the
+overflow in a real child process, the thirty-day wait that resolves instantly, and `oxlint`
+refusing a `setTimeout` under any engine package's `src`. Scenario 3 is the half that is specific
+to this epic and that no lint rule can give you, and it is
+`packages/daemon/test/integration/human-gate-timer.test.ts`: a thirty-day gate admitted through
+the real executor writes its `node_wake` at the thirty-day mark, and the real ticker driving that
+row never asks the `Clock` port for a delay over `TICK_INTERVAL_MS`. It is stated at the port
+rather than by grep because a lint rule only says nobody _wrote_ `setTimeout`; running the loop is
+what says the number that reaches it is a second. Removing the `Math.min` cap in `sleepHint` fails
+it with `expected 2592000000 to be less than or equal to 1000`. The level is therefore integration
+rather than the unit the index originally guessed: the claim needs a real ledger and the real loop.
 
 ---
 

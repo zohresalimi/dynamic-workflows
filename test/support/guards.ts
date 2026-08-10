@@ -280,6 +280,21 @@ export function checkNoDataPlaneReachFromCore(files: readonly SourceFile[]): Vio
  */
 export const SQL_AGGREGATE_PROJECTION = /\b(count|max|min|sum|avg|total)\s*\(/i;
 
+/**
+ * A read of **one** row by its primary key — `WHERE seq = ?` on `event`, whose
+ * `seq` is `INTEGER PRIMARY KEY AUTOINCREMENT`.
+ *
+ * Exempt from both rules here for the same reason the aggregates are, and it is
+ * worth stating rather than pattern-matching on faith: the result set is one
+ * row by the schema's own uniqueness, so its size cannot grow with the ledger,
+ * it holds no cursor and it hands nobody a `seq` to resume from. A `LIMIT 1`
+ * bolted on would be decoration, and requiring `seq > ?` of it would be
+ * requiring a *window* of a lookup that is asking about one specific event —
+ * KAR-13.2's approval queue asks exactly that, once per queue row, to put an
+ * age on it.
+ */
+export const SQL_PRIMARY_KEY_LOOKUP = /\bWHERE\s+seq\s*=\s*\?/i;
+
 export function checkLedgerReadsAreBounded(files: readonly SourceFile[]): Violation[] {
   // SQL in this package lives in string or template literals, one statement each.
   const literals = /`[^`]*`|'(?:[^'\\\n]|\\.)*'/g;
@@ -289,7 +304,13 @@ export function checkLedgerReadsAreBounded(files: readonly SourceFile[]): Violat
     for (const literal of file.text.match(literals) ?? []) {
       const reads = /\bSELECT\b/i.test(literal) && /\bFROM\s+(event|io_chunk)\b/i.test(literal);
       if (!reads) continue;
-      if (/\bLIMIT\b/i.test(literal) || SQL_AGGREGATE_PROJECTION.test(literal)) continue;
+      if (
+        /\bLIMIT\b/i.test(literal) ||
+        SQL_AGGREGATE_PROJECTION.test(literal) ||
+        SQL_PRIMARY_KEY_LOOKUP.test(literal)
+      ) {
+        continue;
+      }
       violations.push({
         where: file.path,
         message:

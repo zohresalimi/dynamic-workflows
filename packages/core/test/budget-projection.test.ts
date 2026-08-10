@@ -252,7 +252,7 @@ suite('the ceiling breach still lands beside the figures', () => {
     ]);
 
     expect(state.budget.breaches).toEqual([
-      { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4, firedBy: 'deflow' },
+      { scope: 'run', dimension: 'cost', limit: 20, actual: 21.4, firedBy: 'deflow', seq: 1 },
     ]);
     expect(state.budget.run.costUsd.subscription).toBeNull();
   });

@@ -246,12 +246,19 @@ first two lines are covered here: the escalation after three failed repair attem
 asserted by `repair.test.ts` and EPIC-12-S32), and the negative half — that no field, flag or
 config key advances a milestone past a non-`pass` verdict — is
 `packages/gates/test/no-escape-hatch.test.ts` plus the `S5` suite in
-`test/integration/milestone-rule.test.ts`. The last two lines are not, and cannot be until
-**EPIC-13** lands: `HumanRespondedSchema` carries `node`, `optionId`, `text` and `at` but **no
-`responder`**, and there is no `POST /api/runs/:id/nodes/:node/respond` to produce the event. Both
-belong to EPIC-13-S1 ("The Operator answers"), which owns the identical assertion. Automate the
-remaining two lines there, against the same wording, rather than restating a milestone rule that by
-design reads only verdicts and writes.
+`test/integration/milestone-rule.test.ts`. The last two lines were not, and could not be until
+**EPIC-13** landed: `HumanRespondedSchema` carried `node`, `optionId`, `text` and `at` but **no
+`responder`**, and there was no `POST /api/runs/:id/nodes/:node/respond` to produce the event.
+
+**Closed by EPIC-13.** `HumanRespondedSchema` v2 adds `by`, and `respondToHumanNode` produces the
+event, so the remaining two lines are now automated against the same wording in
+`packages/daemon/test/integration/red-gate-override.test.ts` — a red `unit` verdict, the `human`
+node it forces, and the response carrying `optionId`, an ISO `at` and `by: 'operator'`. The
+ordering line is asserted from both ends: the milestone is unadvanced before the response, **still
+unadvanced after it** — which is what stops `human.responded` from quietly becoming the override
+flag [§9.1](../../10-verification-gates.md) says does not exist — and the `pass` that finally
+advances it sits at a `seq` strictly greater than the decision's. Dropping `by` from the payload,
+or letting a non-`pass` verdict advance a milestone, each fails it.
 
 ---
 

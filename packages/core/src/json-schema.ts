@@ -41,6 +41,7 @@ import { z } from 'zod';
 import { CONTEXTPACKET_SCHEMA_ID, ContextPacketSchema } from './context-packet.ts';
 import { FACT_SCHEMA_ID, FactSchema } from './fact.ts';
 import { TASKSPEC_DRAFT_SCHEMA_ID, TaskSpecDraftSchema } from './framing.ts';
+import { HUMAN_DECISION_SCHEMA_ID, HumanDecisionSchema } from './human-gate.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from './plan-graph.ts';
 import { PLANPATCH_SCHEMA_ID, PlanPatchSchema } from './plan-patch.ts';
 import {
@@ -130,6 +131,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
       'A structured gate finding whose line is anchored to the blob it was read from, so a ' +
       'later revision cannot silently redraw it against the wrong line (F7.7).',
     schema: FindingV2Schema,
+  },
+  {
+    schemaId: HUMAN_DECISION_SCHEMA_ID,
+    summary:
+      'What a `human` node returns when the operator chose rather than supplied: the option ' +
+      'they picked, what it does, and the words they attached to it (F8.1).',
+    schema: HumanDecisionSchema,
   },
   {
     schemaId: PLANGRAPH_SCHEMA_ID,

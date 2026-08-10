@@ -28,6 +28,7 @@ const EXPECTED_IDS = [
   'DeFlow.fact.v1',
   'DeFlow.finding.v1',
   'DeFlow.finding.v2',
+  'DeFlow.humandecision.v1',
   'DeFlow.plangraph.v1',
   'DeFlow.planpatch.v1',
   'DeFlow.reconfact.v1',

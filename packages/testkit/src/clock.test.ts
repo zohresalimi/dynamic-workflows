@@ -131,4 +131,25 @@ suite('TestClock', () => {
     const clock = new TestClock();
     await expect(clock.advance(-1)).rejects.toThrow(/backwards/i);
   });
+
+  // KAR-13.1 AC5 — the wall clock is not monotonic, and a suite that cannot
+  // express an NTP step backwards cannot test the case that matters.
+  it('jumps to an instant in either direction without firing anything', () => {
+    const clock = new TestClock(1_000_000);
+    let fired = 0;
+    clock.setTimer(SIX_HOURS, () => {
+      fired += 1;
+    });
+
+    clock.jumpTo(1_000_000 - SIX_HOURS);
+    expect(clock.now()).toBe(1_000_000 - SIX_HOURS);
+    expect(fired).toBe(0);
+
+    // Forward past the timer's due time: still nothing, because a correction is
+    // not the passage of time. What fires a durable wait is the next query.
+    clock.jumpTo(1_000_000 + SIX_HOURS * 2);
+    expect(clock.now()).toBe(1_000_000 + SIX_HOURS * 2);
+    expect(fired).toBe(0);
+    expect(clock.pending).toBe(1);
+  });
 });

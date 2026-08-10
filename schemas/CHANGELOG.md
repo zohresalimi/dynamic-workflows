@@ -470,3 +470,74 @@ exist at once.
 prompt, a permission decision, a clarifying question — and none of them has attempts to carry. A
 required field would make every one of them invent an empty list, which the schema refuses anyway
 (`attempts` is `.min(1)`: a repair escalation with no attempts is not an escalation).
+
+### human.requested v3
+
+**KAR-13.1 AC7.** A `human` node's `deadline.onTimeout: 'escalate'` appends a *second*
+`human.requested` when the first goes unanswered. `escalated` is what makes that second one
+distinguishable from the first without walking the log.
+
+| Change                   | Kind           | Why it is not lossy                                                                                                                                            |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ escalated` (optional) | optional field | Left **absent**. Every v2 payload predates the deadline path, so none of them was an escalation — but absent says _"this ledger predates the distinction"_ and `false` would say _"this was checked"_. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why a field rather than a convention.** *"Higher-visibility"* has to be something the approval
+queue (KAR-13.2) and the notification badge can sort on, and _"it is the second `human.requested`
+for this node"_ is a scan of the whole run's ledger per row. It also carries the reason an escalated
+request declares no deadline of its own: an escalation that expired again would either fail the
+branch on a rule nobody wrote or re-escalate for ever.
+
+### human.requested v4
+
+**KAR-13.2 AC2.** The cross-run approval queue must carry *enough to decide without a second
+request*, and a permission escalation is decided on six facts: the command, its args, the cwd, the
+**resolved** path, the policy rule that matched and the node's declared scope. Before v4 those lived
+only inside the prose `prompt`, where a UI cannot render the resolved path beside the requested one
+and a test cannot assert on them without asserting on wording.
+
+| Change                   | Kind           | Why it is not lossy                                                                                                                                                                     |
+| ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ permission` (optional) | optional field | Left **absent**. A v3 payload does not carry the context, and it cannot be recovered — parsing six fields back out of an English sentence would put fabricated evidence in front of the decision. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why it travels beside `reason` rather than inside it.** The two answer different questions:
+`reason` is the category the queue groups by and the [§10.5](../docs/09-workspace-and-safety.md)
+gate budget counts, and this is the evidence the operator reads. A reason with the evidence folded
+into its `detail` string would be a category nothing could group by.
+
+### human.requested v5
+
+**KAR-13.4 AC2, AC8.** Two more fields inside `permission`, and both are about what the operator is
+actually deciding under. `enforcement` is the sandbox mode **in effect for this node** — A5-1's
+version sniff — because Claude Code's sandbox settings are version-gated at fine granularity and,
+without `sandbox.failIfUnavailable: true`, the sandbox silently runs unsandboxed when bubblewrap or
+socat are missing; granting network egress while the ladder is decorative is a different decision
+from granting it while the sandbox is real. `sessionId` is the ACP session the request arrived on,
+which is what lets the failure that closes an unanswerable escalation name what was lost.
+
+| Change                                     | Kind           | Why it is not lossy                                                                                                                                                                            |
+| ------------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ permission.enforcement` (optional)       | optional field | Left **absent**. It is a sniff performed at spawn time; reconstructing it now would report *this* machine's sandbox against a decision made months ago on another one.                             |
+| `+ permission.sessionId` (optional)         | optional field | Left **absent**. The session it would name is gone, and a payload naming a live-looking session nothing can answer is the state KAR-13.4 AC8 exists to prevent.                                    |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+### human.responded v2
+
+**KAR-13.1 AC7.** `by` says who chose the option: `operator` for a person,
+`policy` for the answer `deadline.onTimeout: 'default'` gave on their behalf. KAR-13.4 reuses it for
+a permission escalation that expires to `reject_once`.
+
+| Change            | Kind           | Why it is not lossy                                                                                                                        |
+| ----------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ by` (optional) | optional field | Left **absent**, and read as `operator`. Before v2 there was no path that could append a response other than a person's, so nothing is lost. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the hop does not write `by: 'operator'` in.** It would be true of every ledger written before
+this change and false the moment one written by a build that *has* the deadline path but an older
+payload version is replayed. _"The operator approved this at 14:12"_ is exactly the claim NF10 exists
+to keep provable, and a fabricated attribution is worse than an absent one — a reader can see a gap.

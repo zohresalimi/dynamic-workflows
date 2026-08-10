@@ -291,6 +291,9 @@ export {
   salvageCommitArgs,
   salvagedRemoveArgs,
 } from './git/worktree-salvage.ts';
+// KAR-13.2 — `GET /api/approvals`, assembled from the ledger.
+export type { ApprovalRow, ApprovalsResponse } from './http/approvals.ts';
+export { approvalQueue } from './http/approvals.ts';
 // KAR-14.1 AC8 — the read-only ledger the run summary and the SSE tail are
 // served through, and the summary body itself.
 export type { LedgerView, OpenedLedgerView } from './http/ledger-view.ts';
@@ -305,6 +308,35 @@ export type { RunSummary } from './http/run-summary.ts';
 export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
+// KAR-13.4 — a permission escalation: the queue row, the durable wait, the
+// run-scoped `_always`, and the `permission.decided` every mediated request
+// leaves behind whether or not anybody saw it.
+export type { EscalationPorts, PermissionEscalations } from './human/escalation.ts';
+export { createPermissionEscalations, escalatesPermission } from './human/escalation.ts';
+// KAR-13.1 — the two writes that close a blocking `human` node: the operator's
+// answer, and the deadline nobody met. Both move their `node_wake` row in the
+// same transaction as the event that explains it.
+export type {
+  ExpiredHumanGate,
+  ExpireOptions,
+  RespondOptions,
+  RespondRefusalCode,
+  RespondResult,
+} from './human/gate.ts';
+export { expireDueHumanGates, respondToHumanNode } from './human/gate.ts';
+// KAR-13.3 — steering a running node: the accept-time write, the receipt that
+// says the guidance arrived, and the capability row both are decided from.
+export type {
+  InterjectOptions,
+  InterjectRefusalCode,
+  InterjectResult,
+} from './human/interject.ts';
+export {
+  interjectIntoNode,
+  nodeMovedAfter,
+  recordInterjectionsDelivered,
+  steeringFor,
+} from './human/interject.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export type { WorkflowPhase, WorkflowTool } from './mcp/catalog.ts';

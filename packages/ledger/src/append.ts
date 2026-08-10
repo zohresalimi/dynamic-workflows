@@ -305,3 +305,57 @@ export function readRange(db: Db, runId: RunId, afterSeq: number, limit: number)
     hasMore: rows.length > limit,
   };
 }
+
+/**
+ * KAR-13.2 AC5 — the `runs=*` topic: a few lifecycle kinds, across every run.
+ *
+ * `runs=*` is not "every event of every run". It is the low-volume global topic
+ * an idle tab needs — the run list and the cross-run approval queue — and the
+ * whole point of it is that it *does not* drag a single `node.progress` frame
+ * into a tab that is showing neither (docs/11-api-and-realtime.md §2). The
+ * filter is therefore applied in SQL and not in the handler: a server-side
+ * topic that materialised every row and then dropped most of them would still
+ * pay for the firehose, which is the cost the design exists to avoid.
+ *
+ * Ordered by `seq` and bounded like every other read here — one statement,
+ * finished before it returns, never a held cursor.
+ */
+export function readGlobalRange(
+  db: Db,
+  afterSeq: number,
+  kinds: readonly string[],
+  limit: number,
+): EventPage {
+  requireIndex('afterSeq', afterSeq, 0);
+  requireIndex('limit', limit, 1);
+  if (kinds.length === 0) return { events: [], hasMore: false };
+
+  const placeholders = kinds.map(() => '?').join(', ');
+  const rows = db
+    .prepare<EventRow>(
+      `SELECT seq, run_id, ts, kind, v, epoch, node_id, attempt, ikey, payload
+         FROM event
+        WHERE seq > ? AND kind IN (${placeholders})
+        ORDER BY seq
+        LIMIT ?`,
+    )
+    .all(afterSeq, ...kinds, limit + 1);
+
+  return {
+    events: rows.slice(0, limit).map(toEnvelope),
+    hasMore: rows.length > limit,
+  };
+}
+
+/**
+ * The envelope `ts` of one event, or `null` when no such row exists.
+ *
+ * A primary-key lookup, and the one join the approval queue needs: an item's
+ * *age* is wall-clock arithmetic and `RunState` records no timestamps, so the
+ * instant comes from the event that created the item rather than from a field
+ * the projection would have to carry (and a replay would have to reproduce).
+ */
+export function readEventTs(db: Db, seq: number): number | null {
+  const row = db.prepare<{ ts: number }>('SELECT ts FROM event WHERE seq = ?').get(seq);
+  return row?.ts ?? null;
+}

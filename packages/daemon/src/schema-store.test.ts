@@ -34,6 +34,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.fact.v1': join(corpus, 'DeFlow.fact.v1.valid.json'),
   'DeFlow.finding.v1': join(corpus, 'DeFlow.finding.v1.valid.json'),
   'DeFlow.finding.v2': join(corpus, 'DeFlow.finding.v2.valid.json'),
+  'DeFlow.humandecision.v1': join(corpus, 'DeFlow.humandecision.v1.valid.json'),
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
   'DeFlow.reconfact.v1': join(corpus, 'DeFlow.reconfact.v1.valid.json'),

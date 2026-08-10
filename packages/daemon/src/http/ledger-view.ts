@@ -26,16 +26,28 @@
  * client holds stays current without a second endpoint to poll. EPIC-15 owns
  * the rest of §6's route table and will widen this port rather than add another.
  */
-import type { Calibration, Db, PlanGraph, RunId, RunState } from '@DeFlow/core';
+import type {
+  Calibration,
+  Db,
+  PlanGraph,
+  QueuedPatch,
+  RunId,
+  RunState,
+  TaintedRead,
+} from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
 import {
   headSeq as ledgerHeadSeq,
   listRunIds,
   openRead,
+  pendingPatchApprovals,
+  readEventTs,
+  readGlobalRange,
   readPlanPatchedEvent,
   readPlanPatchProposedEvent,
   readPlanVersion,
   readRange,
+  readTaintedNodes,
   readTokenCalibration,
   replayRun,
   type StoredEvent,
@@ -54,6 +66,20 @@ export interface LedgerView {
   runState(runId: RunId): RunState | null;
   /** Events for `runId` with `seq > afterSeq`, oldest first, at most `limit`. */
   tail(runId: RunId, afterSeq: number, limit: number): readonly StoredEvent[];
+  /**
+   * KAR-13.2 AC5 — the `runs=*` topic: events of `kinds` from **every** run
+   * with `seq > afterSeq`. Filtered in SQL, so an idle tab pays for the four
+   * lifecycle kinds it asked for rather than for the firehose it did not.
+   */
+  globalTail(afterSeq: number, kinds: readonly string[], limit: number): readonly StoredEvent[];
+  /** Every run this directory holds — the approval queue's own iteration. */
+  runIds(): readonly RunId[];
+  /** The `ts` of one event, for the *age* an approval-queue row carries. */
+  eventTs(seq: number): number | null;
+  /** KAR-11.4 — the patches this run is waiting on a human about. */
+  patches(runId: RunId): readonly QueuedPatch[];
+  /** KAR-09.8 — the nodes that read a fact which has since been invalidated. */
+  taints(runId: RunId): readonly TaintedRead[];
   /** The head `seq` across every run — the number §4.2's cursor is compared to. */
   headSeq(): number;
   /**
@@ -103,6 +129,11 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
   return {
     runState: (runId) => (holdsRun(db, runId) ? replayRun(db, runId).state : null),
     tail: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit).events,
+    globalTail: (afterSeq, kinds, limit) => readGlobalRange(db, afterSeq, kinds, limit).events,
+    runIds: () => listRunIds(db),
+    eventTs: (seq) => readEventTs(db, seq),
+    patches: (runId) => pendingPatchApprovals(db, runId),
+    taints: (runId) => readTaintedNodes(db, runId),
     headSeq: () => ledgerHeadSeq(db),
     calibration: (provider, model, family) => {
       const row = readTokenCalibration(db, provider, model, family);

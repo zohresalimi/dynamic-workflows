@@ -32,8 +32,10 @@
  */
 import { isVerdictVoid } from './acceptance-board.ts';
 import { addConsumption } from './cost-rollup.ts';
+import type { EventPayloadOf } from './event-payloads.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
+import { type HumanGateState, humanGateWakeAt } from './human-gate.ts';
 import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
 import {
   CHURN_WINDOW,
@@ -321,7 +323,11 @@ function project(state: RunState, event: Event): Transition {
         state.status === 'paused' ? state : (withStatus(state, 'needs-human') ?? state);
       return {
         ...flagged,
-        needsHuman: { reason: event.payload.reason, detail: event.payload.detail },
+        // KAR-13.2 AC1 — the `seq` travels with the reason, because the queue
+        // orders on the seq of the event that *created* the item and deep-links
+        // to it (NF10). Deriving it from the watermark afterwards would name
+        // whichever event happened to land next.
+        needsHuman: { reason: event.payload.reason, detail: event.payload.detail, seq },
       };
     }
 
@@ -709,6 +715,14 @@ function project(state: RunState, event: Event): Transition {
             gate: verdict.gate,
             outcome: verdict.outcome,
             seq: event.seq,
+            // KAR-13.2 AC2 — a `needs-human` verdict is an approval-queue item,
+            // and *"judge, or accept a red gate explicitly"* is not a decision
+            // anybody can make from an outcome word. The findings and the
+            // one-line summary travel into the projection so the queue carries
+            // them without a second request; they are bounded by the gate's own
+            // output and already in the ledger.
+            summary: verdict.summary,
+            findings: verdict.findings.map((finding) => ({ ...finding })),
           },
         },
       };
@@ -742,24 +756,124 @@ function project(state: RunState, event: Event): Transition {
      * what was approved, not whether anything is pending.
      */
     case 'human.requested': {
-      const suspended = withNode(state, seq, event.payload.node, (current) => ({
-        ...current,
-        status: 'suspended',
-        suspension: { kind: 'human' },
-      }));
+      const withGate = withHumanGate(state, seq, event.payload);
+      const suspended =
+        withNode(withGate, seq, event.payload.node, (current) => ({
+          ...current,
+          status: 'suspended',
+          suspension: { kind: 'human' },
+          // KAR-13.1 AC1, AC7. An open gate always has a `node_wake` row, and
+          // its due time comes from the request rather than from whatever the
+          // node was waiting for before. A gate that declares no deadline is
+          // due at an instant no clock reaches — the row is what makes the
+          // suspension durable and what answers *"why is this node asleep"*,
+          // so it exists even for a wait nothing will ever fire. And an
+          // `escalate` re-asks *without* a deadline, which has to clear the
+          // original one: leaving it would make the row due on every tick for
+          // ever, which is a spin loop wearing a suspension's name.
+          wakeAt: humanGateWakeAt(event.payload.deadline ?? null),
+        })) ?? withGate;
       if (event.payload.node !== SPEC_GATE_NODE) return suspended;
-      const base = suspended ?? state;
-      return base.status === 'awaiting-spec-approval'
+      return suspended.status === 'awaiting-spec-approval'
         ? suspended
-        : { ...base, status: 'awaiting-spec-approval' };
+        : { ...suspended, status: 'awaiting-spec-approval' };
     }
 
-    case 'human.responded':
-      return withNode(state, seq, event.payload.node, (current) =>
-        current.status === 'suspended'
-          ? { ...current, status: 'running', suspension: null, wakeAt: null }
-          : current,
+    /**
+     * KAR-13.1 AC3, AC9. The answer closes the gate and resumes the node **on
+     * the same attempt** — a human gate is not a retry, so nothing here touches
+     * `attempt` and no idempotency key is minted.
+     *
+     * The gate entry is kept, now carrying its response: it is what a second
+     * `respond` echoes in its `409` (AC9) and what *"the operator approved this
+     * at 14:12"* is read from three days later. What *completes* the node is
+     * the `node.completed` or `node.failed` appended in the same transaction —
+     * this event records the decision, and the decision's consequence is a
+     * transition the taxonomy already owns.
+     */
+    case 'human.responded': {
+      const withGate = answerHumanGate(state, seq, event.payload);
+      return (
+        withNode(withGate, seq, event.payload.node, (current) =>
+          current.status === 'suspended'
+            ? { ...current, status: 'running', suspension: null, wakeAt: null }
+            : current,
+        ) ?? withGate
       );
+    }
+
+    /**
+     * KAR-13.3 AC1, AC4, AC8, AC9. The correction is recorded and **nothing
+     * else moves**: no attempt, no status, no cancellation. What `pause-and-inject`
+     * changes is carried by the `node.suspended` appended beside it, in the same
+     * transaction, and folded by the case that already owns that transition.
+     *
+     * Appended to the node's list rather than replacing it, because three
+     * corrections typed before the next turn are three corrections. Coalescing
+     * them would be indistinguishable, afterwards, from losing two.
+     */
+    case 'human.interjected':
+      return {
+        ...state,
+        interjections: {
+          ...state.interjections,
+          [event.payload.node]: [
+            ...(state.interjections[event.payload.node] ?? []),
+            {
+              seq,
+              node: event.payload.node,
+              text: event.payload.text,
+              mode: event.payload.mode,
+              delivery: event.payload.delivery,
+            },
+          ],
+        },
+      };
+
+    /**
+     * KAR-13.3 AC2, AC3, AC4, AC9. The receipt, folded onto the interjection it
+     * delivers — and, for `pause-and-inject`, the end of the pause.
+     *
+     * The guidance reaches the node one of two ways: as a mid-turn
+     * `session/prompt` on an adapter that advertises steering, or as a segment
+     * in the re-assembled packet. In the second case the receipt is also the
+     * moment the node has everything it was paused for, so it returns to
+     * `running` **on the attempt it was suspended on** — nothing here touches
+     * `attempt`, no idempotency key is minted, and no retry is scheduled,
+     * because an interjection is not a retry. A pause that outlived its reason
+     * would be a node asleep with nothing left to wait for.
+     *
+     * A receipt naming an interjection this projection has never seen changes
+     * nothing — an older binary reading a ledger whose `human.interjected` is at
+     * a payload version it skipped, or a truncated replay window. Inventing an
+     * entry from the receipt alone would put text in the projection that the
+     * receipt does not carry, and a delivered guidance bubble with no guidance
+     * in it is worse than an absent one.
+     */
+    case 'human.interjection.delivered': {
+      const existing = state.interjections[event.payload.node];
+      if (existing === undefined) return state;
+
+      const delivered = existing.find((one) => one.seq === event.payload.interjectedSeq);
+      const recorded: RunState = {
+        ...state,
+        interjections: {
+          ...state.interjections,
+          [event.payload.node]: existing.map((one) =>
+            one === delivered ? { ...one, delivery: 'delivered' } : one,
+          ),
+        },
+      };
+      if (delivered?.mode !== 'pause-and-inject') return recorded;
+
+      return (
+        withNode(recorded, seq, event.payload.node, (current) =>
+          current.status === 'suspended' && current.suspension?.kind === 'human'
+            ? { ...current, status: 'running', suspension: null, wakeAt: null }
+            : current,
+        ) ?? recorded
+      );
+    }
 
     /**
      * KAR-14.1 — the one accounting record, folded into the one accounting
@@ -800,6 +914,9 @@ function project(state: RunState, event: Event): Transition {
               limit: event.payload.limit,
               actual: event.payload.actual,
               firedBy: event.payload.firedBy,
+              // KAR-13.2 AC1 — the event that created the queue item, for the
+              // same reason `needsHuman` carries one.
+              seq,
             },
           ],
         },
@@ -819,7 +936,9 @@ function project(state: RunState, event: Event): Transition {
         costUsd: event.payload.costUsd,
         wallclockMs: event.payload.wallclockMs,
       };
-      const ceilings = state.ceilings;
+      // KAR-13.2 AC8 — `setSeq` is what takes a ceiling breach out of the
+      // approval queue: an answer that arrived after the question.
+      const ceilings = { ...state.ceilings, setSeq: seq };
       if (event.payload.scope === 'run') {
         return { ...state, ceilings: { ...ceilings, run: ceiling, hash: event.payload.hash } };
       }
@@ -960,6 +1079,79 @@ function suspensionWakeAt(iso: string | undefined): number | null {
   if (iso === undefined) return null;
   const at = Date.parse(iso);
   return Number.isFinite(at) ? at : null;
+}
+
+/**
+ * KAR-13.1 — the gate record `human.requested` opens or re-opens.
+ *
+ * A second request for the same node is a **re-ask**, not a duplicate: the F1.3
+ * spec gate re-opens after an edit (KAR-10.3 AC8) and a deadline's `escalate`
+ * re-asks more visibly (AC7). Both must clear the previous answer, or the run
+ * would show a question with an answer already attached to it.
+ *
+ * `requestedSeq` therefore names the *current* ask rather than the first one
+ * ever made about this node. That is what the approval queue orders by and what
+ * F10.3's deep link points at, and for an escalation the newer ask is the one
+ * the operator is being shown.
+ */
+function withHumanGate(
+  state: RunState,
+  seq: number,
+  payload: EventPayloadOf<'human.requested'>,
+): RunState {
+  const gate: HumanGateState = {
+    node: payload.node,
+    prompt: payload.prompt,
+    options: payload.options.map((option) => ({ ...option })),
+    deadline: payload.deadline ?? null,
+    escalated: payload.escalated ?? false,
+    // KAR-13.2 AC2. Both are copied rather than looked up later: the approval
+    // queue must carry enough to decide without a second request, and the
+    // request event is the only place this context ever exists.
+    reason: payload.reason === undefined ? null : { ...payload.reason },
+    permission: payload.permission === undefined ? null : { ...payload.permission },
+    requestedSeq: seq,
+    response: null,
+  };
+  return { ...state, humanGates: { ...state.humanGates, [payload.node]: gate } };
+}
+
+/**
+ * KAR-13.1 AC9 — the answer, recorded on the gate it answers.
+ *
+ * A response for a node with no open gate is folded anyway, against a gate
+ * reconstructed from the response alone. An older daemon's ledger, a
+ * `human.requested` this build skipped because its payload version is newer:
+ * either way the *answer* is a fact, and dropping it would leave a projection
+ * claiming a decision was never made.
+ *
+ * `by` defaults to `operator` because that is what every v1 response was —
+ * nothing but a person could append one before the deadline path existed.
+ */
+function answerHumanGate(
+  state: RunState,
+  seq: number,
+  payload: EventPayloadOf<'human.responded'>,
+): RunState {
+  const existing = state.humanGates[payload.node];
+  const gate: HumanGateState = {
+    node: payload.node,
+    prompt: existing?.prompt ?? `(the request for ${payload.node} is not in this projection)`,
+    options: existing?.options ?? [],
+    deadline: existing?.deadline ?? null,
+    escalated: existing?.escalated ?? false,
+    reason: existing?.reason ?? null,
+    permission: existing?.permission ?? null,
+    requestedSeq: existing?.requestedSeq ?? seq,
+    response: {
+      optionId: payload.optionId,
+      text: payload.text ?? null,
+      by: payload.by ?? 'operator',
+      at: payload.at,
+      seq,
+    },
+  };
+  return { ...state, humanGates: { ...state.humanGates, [payload.node]: gate } };
 }
 
 /** `attempt` is the observed index; `attempts` is derived from it, never counted. */

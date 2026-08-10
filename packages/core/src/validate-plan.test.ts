@@ -544,3 +544,90 @@ suite('KAR-12.4 AC3 — coveredByGates is computed, and a hand-supplied value is
     expect(check(plan, matching).filter((d) => d.code === 'COVERED_BY_GATES_MISMATCH')).toEqual([]);
   });
 });
+
+// ── KAR-13.1 AC7 — a human deadline's default names an option that exists ─────
+
+suite('KAR-13.1 AC7 — an unanswerable deadline is caught at plan time', () => {
+  const human = (deadline: Record<string, unknown>) => ({
+    id: 'approve-scope',
+    title: 'approve the scope',
+    type: 'human',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'read',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.finding.v1' },
+    prompt: 'Extend the migration scope?',
+    options: [
+      { id: 'yes', label: 'Extend scope', effect: 'approve' },
+      { id: 'no', label: 'Keep scope as-is', effect: 'reject' },
+    ],
+    deadline,
+  });
+
+  const twoHours = '2026-08-08T12:15:00.000Z';
+
+  it('a default naming an option that does not exist is an error naming both', () => {
+    const plan = graph([
+      human({ wakeAt: twoHours, onTimeout: 'default', default: 'maybe' }),
+      gate('gate-typecheck', ['ac-1']),
+    ]);
+
+    const found = check(plan).filter(
+      (diagnostic) => diagnostic.code === 'HUMAN_DEFAULT_UNKNOWN_OPTION',
+    );
+
+    expect(found).toMatchObject([{ severity: 'error', node: 'approve-scope', key: 'maybe' }]);
+    expect(found[0]?.message).toContain('approve-scope');
+    expect(found[0]?.message).toContain('maybe');
+    expect(hasBlockingDiagnostic(found)).toBe(true);
+  });
+
+  it('onTimeout: default with no default at all is the same error', () => {
+    const plan = graph([
+      human({ wakeAt: twoHours, onTimeout: 'default' }),
+      gate('gate-typecheck', ['ac-1']),
+    ]);
+
+    expect(
+      check(plan).filter((diagnostic) => diagnostic.code === 'HUMAN_DEFAULT_UNKNOWN_OPTION'),
+    ).toHaveLength(1);
+  });
+
+  it('a default naming a declared option is clean', () => {
+    const plan = graph([
+      human({ wakeAt: twoHours, onTimeout: 'default', default: 'no' }),
+      gate('gate-typecheck', ['ac-1']),
+    ]);
+
+    expect(check(plan)).toEqual([]);
+  });
+
+  it('fail and escalate need no default, and one they carry anyway is ignored', () => {
+    for (const onTimeout of ['fail', 'escalate']) {
+      const plan = graph([
+        human({ wakeAt: twoHours, onTimeout, default: 'maybe' }),
+        gate('gate-typecheck', ['ac-1']),
+      ]);
+
+      expect(
+        check(plan).filter((diagnostic) => diagnostic.code === 'HUMAN_DEFAULT_UNKNOWN_OPTION'),
+        onTimeout,
+      ).toEqual([]);
+    }
+  });
+
+  it('a human node with no deadline at all is clean', () => {
+    const plan = graph([
+      {
+        ...human({ wakeAt: twoHours, onTimeout: 'fail' }),
+        deadline: undefined,
+      },
+      gate('gate-typecheck', ['ac-1']),
+    ]);
+
+    expect(check(plan)).toEqual([]);
+  });
+});

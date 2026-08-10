@@ -16,55 +16,101 @@
     "gate-04": {
       "gate": "gate-04",
       "outcome": "pass",
-      "seq": 205
+      "seq": 205,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-08": {
       "gate": "gate-08",
       "outcome": "pass",
-      "seq": 406
+      "seq": 406,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-12": {
       "gate": "gate-12",
       "outcome": "pass",
-      "seq": 608
+      "seq": 608,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-16": {
       "gate": "gate-16",
       "outcome": "pass",
-      "seq": 809
+      "seq": 809,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-20": {
       "gate": "gate-20",
       "outcome": "pass",
-      "seq": 1010
+      "seq": 1010,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-24": {
       "gate": "gate-24",
       "outcome": "pass",
-      "seq": 1210
+      "seq": 1210,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-28": {
       "gate": "gate-28",
       "outcome": "pass",
-      "seq": 1407
+      "seq": 1407,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-32": {
       "gate": "gate-32",
       "outcome": "pass",
-      "seq": 1605
+      "seq": 1605,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-36": {
       "gate": "gate-36",
       "outcome": "pass",
-      "seq": 1802
+      "seq": 1802,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     },
     "gate-40": {
       "gate": "gate-40",
       "outcome": "pass",
-      "seq": 1999
+      "seq": 1999,
+      "summary": "Every criterion this gate speaks to is satisfied.",
+      "findings": []
     }
   },
   "needsHuman": null,
+  "humanGates": {
+    "step-21": {
+      "node": "step-21",
+      "prompt": "The codemod changed 41 files. Proceed?",
+      "options": [
+        {
+          "id": "yes",
+          "label": "Proceed",
+          "effect": "approve"
+        }
+      ],
+      "deadline": null,
+      "escalated": false,
+      "reason": null,
+      "permission": null,
+      "requestedSeq": 1057,
+      "response": {
+        "optionId": "yes",
+        "text": null,
+        "by": "operator",
+        "at": "2026-08-02T15:02:11.000Z",
+        "seq": 1058
+      }
+    }
+  },
+  "interjections": {},
   "patchPolicy": null,
   "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -2337,7 +2383,8 @@
       "wallclockMs": null
     },
     "nodes": {},
-    "hash": null
+    "hash": null,
+    "setSeq": null
   },
   "watermarkSeq": 2000,
   "watermarkTs": 1754324285000,

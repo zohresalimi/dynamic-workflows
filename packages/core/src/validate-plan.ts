@@ -2,7 +2,7 @@
  * KAR-11.2 — `validatePlan`: docs/06-planning-and-replanning.md §3, implemented
  * literally, and *"the cheapest correctness gate in the system"*.
  *
- * Six checks, one entry point, and every one of them delegates to the module
+ * Seven checks, one entry point, and every one of them delegates to the module
  * that already owns the rule rather than restating it:
  *
  *   - **Reachability** (§3.1, F6.2) is `validateDeclaredReads` — EPIC-09's
@@ -25,6 +25,10 @@
  *   - **Criteria coverage** (§3.4, F7.4) is `revalidateSpecAgainstPlan`, which
  *     KAR-10.3 already wrote for the spec-edit path. The same question asked at
  *     two moments must not have two answers.
+ *   - **Human deadlines** (F8.1, KAR-13.1) are the seventh: a `human` node whose
+ *     `deadline.onTimeout: 'default'` names an option it does not offer. Caught
+ *     here rather than six hours later at expiry, on a run nobody is watching,
+ *     at the one moment there is no correct automatic action left.
  *
  * **Diagnostics are values, never exceptions** (§3.5). `PlanCycleError` is
  * caught here and turned into one; nothing else escapes. That is what makes the
@@ -40,6 +44,7 @@
  * (charset half), EPIC-11-S11 · AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC12
  */
 import { BUDGET_FRACTION_CEILING } from './build-packet.ts';
+import { isHumanNode } from './human-gate.ts';
 import { isNodeIdSlug, type NodeId } from './ids.ts';
 import type { PlanDiagnostic } from './plan-diagnostics.ts';
 import type { AgentNode, PermissionLevel, PlanGraph, PlanNode } from './plan-graph.ts';
@@ -425,6 +430,48 @@ function coverageDiagnostics(plan: PlanGraph, spec: TaskSpec): PlanDiagnostic[] 
 }
 
 /* -------------------------------------------------------------------------- *
+ * F8.1 — human gates
+ * -------------------------------------------------------------------------- */
+
+/**
+ * KAR-13.1 AC7. A `human` node whose `deadline.onTimeout` is `default` must
+ * name an option it actually offers.
+ *
+ * Checked here rather than at expiry, and the economics are the same as every
+ * other check in this file: the alternative is discovering it six hours into a
+ * gate, on a run nobody is watching, at the one moment there is no correct
+ * automatic action left. *"The cheapest correctness gate"* runs before a token
+ * is spent (§3), and this one runs before a wait is entered.
+ *
+ * A missing `default` is the same fault as an unknown one. `onTimeout:
+ * 'default'` is a promise that something will answer, and a promise with no
+ * answer attached is the failure the check exists to prevent — reported against
+ * the empty string, which is the id it would have looked for.
+ */
+function humanDeadlineDiagnostics(plan: PlanGraph): PlanDiagnostic[] {
+  return plan.nodes.filter(isHumanNode).flatMap((node) => {
+    const deadline = node.deadline;
+    if (deadline === undefined || deadline.onTimeout !== 'default') return [];
+
+    const chosen = deadline.default ?? '';
+    if (node.options.some((option) => option.id === chosen)) return [];
+
+    return [
+      {
+        severity: 'error' as const,
+        code: 'HUMAN_DEFAULT_UNKNOWN_OPTION' as const,
+        node: node.id as string,
+        key: chosen,
+        message: toSingleLine(
+          `human node '${node.id}' times out to option '${chosen}', which it does not offer; ` +
+            `its options are ${node.options.map((option) => `'${option.id}'`).join(', ')}`,
+        ),
+      },
+    ];
+  });
+}
+
+/* -------------------------------------------------------------------------- *
  * the entry point
  * -------------------------------------------------------------------------- */
 
@@ -456,6 +503,7 @@ export function validatePlan(
     ...identifierDiagnostics(plan, refused),
     ...capabilityDiagnostics(plan, caps, options.estimatePacketTokens),
     ...coverageDiagnostics(plan, spec),
+    ...humanDeadlineDiagnostics(plan),
   ]);
 }
 

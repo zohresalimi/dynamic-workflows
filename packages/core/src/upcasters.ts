@@ -34,6 +34,7 @@ import {
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
   HumanRequestedSchema,
+  HumanRespondedSchema,
   NodeStartedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -929,6 +930,129 @@ registerUpcaster({
       { id: 'retry', label: 'Try once more', effect: 'approve' },
       { id: 'abandon', label: 'Abandon this branch', effect: 'reject' },
     ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v2 → v3 (KAR-13.1). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field — `escalated`, marking the second request a
+ * `deadline.onTimeout: 'escalate'` appends — so the hop is the identity.
+ *
+ * Left **absent** rather than defaulted to `false`, even though `false` is what
+ * every historical request meant. Absent says *"this ledger predates the
+ * distinction"*; `false` says *"this request was checked and was not an
+ * escalation"*, and the approval queue sorts on the difference. The reader
+ * treats absent as not-escalated, which is the same behaviour without the
+ * fabricated fact.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 2,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'approve-scope',
+    prompt: 'Recon found 3 extra packages. Extend the migration scope?',
+    options: [
+      { id: 'yes', label: 'Extend scope', effect: 'approve' },
+      { id: 'no', label: 'Keep scope as-is', effect: 'reject' },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v3 → v4 (KAR-13.2). See schemas/CHANGELOG.md.
+ *
+ * v4 adds one optional field — `permission`, the structured context a
+ * permission escalation is decided on — so the hop is the identity.
+ *
+ * Left **absent**, and here the absence is the only honest answer available.
+ * The context is `realpath` output, argv and the rule that matched, none of
+ * which the older payload carries and none of which can be recovered from the
+ * prose prompt it does: parsing a sentence back into six fields would put
+ * fabricated evidence in front of the person deciding whether to grant
+ * authority, which is precisely the decision that must not be guessed at.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 3,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'implement-auth',
+    prompt: 'The agent asked to run a command DeFlow does not allow on its own.',
+    options: [
+      { id: 'approve', label: 'Run it', effect: 'approve' },
+      { id: 'reject', label: 'Do not run it', effect: 'reject' },
+    ],
+    reason: { code: 'network-egress' },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v4 → v5 (KAR-13.4). See schemas/CHANGELOG.md.
+ *
+ * v5 adds two optional fields inside `permission` — `enforcement`, the sandbox
+ * mode actually in effect for the node, and `sessionId`, the ACP session the
+ * request arrived on — so the hop is the identity.
+ *
+ * Both are left **absent**, and for once the reason is not merely "the older
+ * payload does not carry it". `enforcement` is a version sniff performed at
+ * spawn time (A5-1): reconstructing it now would report *this* machine's
+ * sandbox against a request decided on another one, months ago, which is a
+ * fabricated claim about what was enforced at the moment authority was
+ * granted. `sessionId` is worse still — the session it would name is gone, and
+ * an escalation payload that names a live-looking session nothing can answer
+ * is exactly the state AC8 exists to prevent.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 4,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'implement-auth',
+    prompt: 'The agent asked to run a command DeFlow does not allow on its own.',
+    options: [
+      { id: 'allow_once', label: 'Allow once', effect: 'approve' },
+      { id: 'reject_once', label: 'Reject once', effect: 'reject' },
+    ],
+    reason: { code: 'level-no-network' },
+    permission: {
+      method: 'terminal/create',
+      command: 'curl',
+      args: ['-sS', 'https://registry.example.com/token'],
+      cwd: '/tmp/wt/r1__implement-auth',
+      rule: 'level-no-network',
+      level: 'worktree',
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.responded` v1 → v2 (KAR-13.1). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field — `by`, which distinguishes an operator's choice
+ * from the one a `deadline.onTimeout: 'default'` made on their behalf — so the
+ * hop is the identity.
+ *
+ * The field is left **absent**, and here that is not merely honest but the only
+ * safe answer available: before v2 there was no deadline path, so every v1
+ * response really was a person's. Writing `by: 'operator'` in would be true
+ * today and false the moment a ledger written by a build with the deadline path
+ * but an older payload version is replayed — and *"the operator approved this at
+ * 14:12"* is exactly the claim NF10 exists to keep provable.
+ */
+registerUpcaster({
+  kind: 'human.responded',
+  from: 1,
+  to: HumanRespondedSchema,
+  fixture: {
+    node: 'approve-scope',
+    optionId: 'yes',
+    at: '2026-08-07T14:12:00.000Z',
   },
   up: (payload) => payload,
 });

@@ -28,11 +28,14 @@ import { initialCeilings, type RunCeilings, RunCeilingsSchema } from './budget-c
 import { type BudgetRollup, BudgetRollupSchema, initialBudgetRollup } from './cost-rollup.ts';
 import {
   CANCEL_MODES,
+  INTERJECTION_DELIVERIES,
+  INTERJECTION_MODES,
   LOCK_KINDS,
   RUN_NEEDS_HUMAN_REASONS,
   RUN_OUTCOMES,
   type RunOutcome,
 } from './event-payloads.ts';
+import { type HumanGateState, HumanGateStateSchema } from './human-gate.ts';
 import {
   type CriterionId,
   CriterionIdSchema,
@@ -47,6 +50,7 @@ import {
   type RunId,
   RunIdSchema,
 } from './ids.ts';
+import type { InterjectionState } from './interject.ts';
 import {
   CHURN_WINDOW,
   type CompletedAttempt,
@@ -70,7 +74,12 @@ import {
   PlanGraphSchema,
 } from './plan-graph.ts';
 import { singleLine } from './text.ts';
-import { type VerdictOutcome, VerdictOutcomeSchema } from './verdict.ts';
+import {
+  type FindingV2,
+  FindingV2Schema,
+  type VerdictOutcome,
+  VerdictOutcomeSchema,
+} from './verdict.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -274,6 +283,12 @@ export interface GateVerdictState {
   readonly outcome: VerdictOutcome;
   /** The `seq` of the `gate.evaluated`; no event has seq 0. */
   readonly seq: number;
+  /** KAR-13.2 AC2 — the verdict's one-line summary: a `needs-human` item's
+   * reason, and the board cell for every other outcome. */
+  readonly summary: string;
+  /** KAR-13.2 AC2 — the findings the operator judges a `needs-human` verdict
+   * on. Bounded by the gate's own output, and already in the ledger. */
+  readonly findings: readonly FindingV2[];
 }
 
 /**
@@ -333,10 +348,32 @@ export interface CancelState {
   readonly requestedSeq: number;
 }
 
-/** Why the circuit breaker asked for a human (§9). */
-export interface NeedsHumanState {
+/**
+ * Why the circuit breaker wants a human (§9), **before** the asking event
+ * exists.
+ *
+ * `decide()` computes this from `(state, now)` and returns it as the payload of
+ * a `run.needs_human` it is proposing, at which point no `seq` has been
+ * assigned — the ledger assigns one on append. Separating the two is what keeps
+ * `NeedsHumanState.seq` honest: a projection field that could also be produced
+ * by a scheduler would have to be optional, and an optional creating seq is a
+ * queue row that cannot be deep-linked (NF10).
+ */
+export interface NeedsHumanReason {
   readonly reason: (typeof RUN_NEEDS_HUMAN_REASONS)[number];
   readonly detail: string;
+}
+
+/** The same fact once it is on the log — see `NeedsHumanReason`. */
+export interface NeedsHumanState extends NeedsHumanReason {
+  /**
+   * KAR-13.2 AC1 — the `seq` of the `run.needs_human` that asked.
+   *
+   * The approval queue orders oldest-first on the seq of the event that
+   * *created* each item and deep-links a row to it, so the number has to be the
+   * asking event's own and not the projection's watermark.
+   */
+  readonly seq: number;
 }
 
 /**
@@ -435,6 +472,36 @@ export interface RunState {
    */
   readonly gateVerdicts: Readonly<Record<string, GateVerdictState>>;
   readonly needsHuman: NeedsHumanState | null;
+  /**
+   * KAR-13.1 — every `human` node gate this run has opened, keyed by node id,
+   * open or answered (./human-gate.ts).
+   *
+   * The projection the approval queue, the `409` on a second answer and the
+   * deadline path all read, and there is deliberately no second home for it:
+   * NF10 requires every state the UI shows to trace to a named event, and a
+   * pending-approvals `Map` in the daemon evaporates on exactly the restart the
+   * gate exists to survive — moments before several runs resume at once, which
+   * is when the queue matters most.
+   *
+   * Answered gates are kept rather than deleted. *"The operator approved this at
+   * 14:12"* is the state somebody asks about three days later, and it is what
+   * lets a second `respond` echo the original decision instead of applying a
+   * second one.
+   */
+  readonly humanGates: Readonly<Record<string, HumanGateState>>;
+  /**
+   * KAR-13.3 AC9 — every interjection posted at a node, keyed by node id and
+   * held in `seq` order (./interject.ts).
+   *
+   * The projection the UI reads, and the reason `delivery` lives on it rather
+   * than only in the `202` body: an `unsupported` interjection must render as
+   * *undelivered* rather than as a delivered guidance bubble that never
+   * arrived, and a status a client saw once and then forgot cannot do that
+   * after a reload. Nothing is coalesced — three corrections typed before the
+   * next turn are three entries, because dropping one silently is the failure
+   * this whole path exists to avoid.
+   */
+  readonly interjections: Readonly<Record<string, readonly InterjectionState[]>>;
   /**
    * KAR-11.4 AC10 — F2.5's rule table as this run pinned it, or `null` for a
    * run whose ledger has no `policy.patch.loaded` (one written before the pin
@@ -558,15 +625,15 @@ export interface RunState {
  * the cache is a pure optimisation, free to be thrown away and never to be
  * believed when stale.
  *
- * The same applies to how an existing field is *derived*. The bumps:
- * 4 `NodeState.wakeAt`; 5 `RunState.cancel`; 6 F4.7's no-progress fields;
- * 7 the per-node cost rollup; 8 `ceilings` and `NodeState.startedTs`;
- * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 `specApproved`,
- * without which a restored daemon derives a ready set nobody approved; 12 the
- * pinned `patchPolicy`; 13 `gateVerdicts`, without which it re-opens the gate
- * ladder and buys a review on a typecheck that already failed.
+ * The same applies to how an existing field is *derived*. The bumps: 4
+ * `NodeState.wakeAt`; 5 `cancel`; 6 F4.7's no-progress fields; 7 the per-node
+ * cost rollup; 8 `ceilings` and `NodeState.startedTs`; 9 the reconciled
+ * estimate; 10 `CostRollup.authModes`; 11 `specApproved`; 12 `patchPolicy`;
+ * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
+ * tell an answered gate from an open one; 15 the approval queue's fields; 16
+ * `interjections`, so a restart cannot re-deliver guidance.
  */
-export const CHECKPOINT_VERSION = 13;
+export const CHECKPOINT_VERSION = 16;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -612,6 +679,8 @@ export function initialRunState(): RunState {
     criteriaSatisfied: [],
     gateVerdicts: {},
     needsHuman: null,
+    humanGates: {},
+    interjections: {},
     patchPolicy: null,
     cancel: null,
     planHash: null,
@@ -700,6 +769,8 @@ const GateVerdictStateSchema: z.ZodType<GateVerdictState, unknown> = z.strictObj
   outcome: VerdictOutcomeSchema,
   /** The seq of the `gate.evaluated`, and no event has seq 0. */
   seq: z.number().int().positive(),
+  summary: z.string(),
+  findings: z.array(FindingV2Schema),
 });
 
 const NodeIdRegistryStateSchema = z.strictObject({
@@ -733,8 +804,27 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   criteriaSatisfied: z.array(CriterionIdSchema),
   gateVerdicts: z.record(z.string(), GateVerdictStateSchema),
   needsHuman: z
-    .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
+    .strictObject({
+      reason: z.enum(RUN_NEEDS_HUMAN_REASONS),
+      detail: singleLine(),
+      /** The seq of the `run.needs_human`, and no event has seq 0. */
+      seq: z.number().int().positive(),
+    })
     .nullable(),
+  humanGates: z.record(z.string(), HumanGateStateSchema),
+  interjections: z.record(
+    z.string(),
+    z.array(
+      z.strictObject({
+        /** The `seq` of the `human.interjected`, and no event has seq 0. */
+        seq: z.number().int().positive(),
+        node: NodeIdSchema,
+        text: z.string().min(1),
+        mode: z.enum(INTERJECTION_MODES),
+        delivery: z.enum(INTERJECTION_DELIVERIES),
+      }),
+    ),
+  ),
   patchPolicy: z
     .strictObject({
       hash: z.string().min(1),
