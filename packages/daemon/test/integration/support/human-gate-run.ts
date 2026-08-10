@@ -32,7 +32,10 @@ export const hours = (count: number): number => count * 3_600_000;
 export const days = (count: number): number => count * 86_400_000;
 
 const PLAN_HASH = `sha256-${'a'.repeat(64)}`;
-const SPEC_HASH = `sha256-${'c'.repeat(64)}`;
+/** Exported because a gate verdict is only admitted against the hash the run is
+ * currently judged against, so a spec asserting about verdicts has to pin the
+ * same one this fixture approved. */
+export const SPEC_HASH = `sha256-${'c'.repeat(64)}`;
 const REPO = '/home/u/proj';
 
 export const PROMPT = 'Recon found 3 extra packages. Extend the migration scope?';
