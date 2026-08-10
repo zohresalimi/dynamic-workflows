@@ -1337,7 +1337,8 @@ Feature: A requested seq may name a value that was never committed
 
 ## EPIC-15-S47 — Scrubbing a multi-hour run does not replay from zero in the browser
 
-**Verifies:** KAR-15.7 · **Type:** Edge case · **Automated at:** e2e
+**Verifies:** KAR-15.7 · **Type:** Edge case · **Automated at:** browser (three lines) + deferred to
+EPIC-16 (two lines)
 
 ```gherkin
 Feature: The reason this endpoint exists is browser memory
@@ -1351,6 +1352,42 @@ Feature: The reason this endpoint exists is browser memory
     And the tab remains responsive throughout
     And the rendered diff for each step matches the plans/diff response for the same pair
 ```
+
+**Notes:** the server half of this story is EPIC-15-S45 and EPIC-15-S46 above, and neither of them
+stops the *client* from ignoring the endpoint and folding the run itself — which is the failure the
+endpoint was built to prevent. That is why this scenario is about the client and not about the
+route.
+
+**This scenario is automated as far as EPIC-15 owns it, and the remainder is EPIC-16's.** The epic's
+own scope line (["Out of scope"](../epics/EPIC-15-daemon-api.md)) puts the shared
+`packages/web/src/api/` modules here and the Vue application there, so the three lines that are
+about the *client's request pattern* are automated here, against a real Chromium and an injected
+`fetch`, in `packages/web/src/api/scrub.test.ts` over `packages/web/src/api/scrub.ts`
+(`createScrubber`, the only way either client materialises the state at a `seq`):
+
+- **"each position is hydrated from `…/snapshot?seq=<N>`"** — a drag back to v1 and forward through
+  each of the three patches is four requests to `…/snapshot`, carrying `seq` 2, 6, 9 and 13, and
+  **zero** requests to `…/events`. A position that lands on a number this run never committed (11)
+  is asked for as 11 and answered at 9, and is held under the `seq` it reflects.
+- **"the client replays forward only from the nearest snapshot"** — with a target inside the
+  replay window, the one `…/events` read carries `since=9`, the greatest snapshot at or below it,
+  never `since=2`; a position the client folded itself is not a base, so replays never chain; and
+  the state reached by replay is asserted equal to the state the endpoint returns for the same
+  `seq`.
+- **"no client-side reduction from seq 0 occurs"** — scrubbing a 10,000-event run folds 20 events
+  in the browser and issues no request with `since=0`, and a scrubber that is *holding* the `seq` 0
+  position (the initial state under another name) still refuses to fold forward from it.
+
+**Deferred to EPIC-16 — the two remaining lines.** *"And the tab remains responsive throughout"* and
+*"And the rendered diff for each step matches the plans/diff response for the same pair"* cannot be
+automated in this epic and are **not** covered by the file above. Both are assertions about a view
+that does not exist yet: there is no scrubber control to drag and no diff surface to render, so the
+`When` they hang off — *"the operator drags the scrubber"* — has no subject. They belong with the
+plan-evolution view in [EPIC-16](../epics/EPIC-16-ui-foundation.md) (KAR-16.2, KAR-16.4), which
+owns what the browser does with these modules, and are to be automated there as a Playwright drag
+over the same `three-patches` fixture, asserting a responsive main thread and the rendered diff
+against `GET /api/runs/:id/plans/diff?from=N&to=M` for the same pair. Until that lands, this
+scenario is **partially** automated and is recorded as such rather than as closed.
 
 ---
 

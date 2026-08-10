@@ -29,6 +29,11 @@ export type { HydrateOptions, HydratePage, HydrateResult } from './api/hydrate.t
 export { hydrateRun } from './api/hydrate.ts';
 export type { HelloSkew, StreamHub, StreamHubOptions } from './api/multiplex.ts';
 export { openStreamHub } from './api/multiplex.ts';
+// KAR-15.7 — the client half of the snapshot endpoint: the only way either
+// client materialises the state at a `seq`, so scrubbing a multi-hour run is a
+// request rather than a fold in the tab (docs/11 §7.3).
+export type { Scrubber, ScrubberOptions, ScrubPosition } from './api/scrub.ts';
+export { createScrubber } from './api/scrub.ts';
 // KAR-15.2 — the two halves of "the token is a header, never a URL": the SSE
 // connector that can actually send one, and the first-run fragment handoff
 // that gets the token into the tab without it ever reaching the server.

@@ -49,6 +49,27 @@ export const wrongParam: InferRequestType<(typeof rpc.runs)[':id']['$get']> = {
   param: { runId: 'run_20260802T141133Z_9f2a1c' },
 };
 
+// --- GET /runs/:id/snapshot -------------------------------------------------
+
+type SnapshotWire = InferResponseType<(typeof rpc.runs)[':id']['snapshot']['$get'], 200>;
+
+declare const snapshot: SnapshotWire;
+
+export const snapshotSeq: number = snapshot.seq;
+export const snapshotPlanVersion: number = snapshot.planVersion;
+
+/**
+ * KAR-15.7 — `?seq=` belongs to the *type* of the route rather than being a
+ * string the handler happens to read off `c.req.query()`. `createScrubber` in
+ * ./scrub.ts is its only caller, and a scrubber naming a parameter this route
+ * stopped accepting must be a compile error here rather than a silent 400 in
+ * a tab — the same reason `/runs/:id/events` declares `since` and `limit`.
+ */
+export const snapshotRequest: InferRequestType<(typeof rpc.runs)[':id']['snapshot']['$get']> = {
+  param: { id: 'run_20260802T141133Z_9f2a1c' },
+  query: { seq: 'head' },
+};
+
 // --- GET /health ------------------------------------------------------------
 
 type HealthWire = InferResponseType<typeof rpc.health.$get, 200>;

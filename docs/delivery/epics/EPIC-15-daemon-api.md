@@ -757,6 +757,15 @@ echoed in the body rather than assumed by the caller.
 | 5   | integration | Snapshot at three scrub positions on the `three-patches` fixture matches golden files                                          | Snapshots are not deterministic                        |
 | 6   | e2e         | The Playwright scrubber smoke: drag to v1 and forward through each patch; the diff renders without a client-side replay from 0 | The client replays the whole run                       |
 
+Test #6 is split, and the split is recorded against
+[EPIC-15-S47](../flows/EPIC-15-daemon-api-flows.md). The half this epic owns — that each position is
+a `…/snapshot?seq=<N>` request, that forward replay re-bases on the nearest snapshot, and that no
+client-side reduction from `seq` 0 ever happens — is `packages/web/src/api/scrub.test.ts` against
+`createScrubber`, in the real-Chromium `web` project. The half that needs a scrubber to drag and a
+diff to render — *"the tab remains responsive throughout"* and *"the rendered diff … matches the
+plans/diff response"* — is deferred to [EPIC-16](./EPIC-16-ui-foundation.md) with the
+plan-evolution view, exactly as EPIC-12-S5's last two lines were deferred to EPIC-13.
+
 ---
 
 ### KAR-15.8 — Interactive PTY WebSocket _(added)_

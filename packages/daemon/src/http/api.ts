@@ -1192,36 +1192,49 @@ export const api = new Hono()
    * ledger the whole point of this endpoint is to spare the caller from
    * folding client-side.
    */
-  .get('/runs/:id/snapshot', (c) => {
-    const view = ledgerView();
-    if (view === null) return notReady(c);
+  .get(
+    '/runs/:id/snapshot',
+    // Declared rather than read straight off `c.req.query()`, for the reason
+    // `/runs/:id/events` above declares its two: it puts `seq` into the *type*
+    // of this chain and therefore into `hc<ApiType>`. `createScrubber` in
+    // @DeFlow/web is its only caller, and a scrubber naming a parameter this
+    // route stopped accepting should be a compile error rather than a silent
+    // 400 in a tab. It stays a string here — `parseSnapshotSeq` below owns
+    // what it means, including the `'head'` alias.
+    validator('query', (value) => ({
+      seq: typeof value.seq === 'string' ? value.seq : undefined,
+    })),
+    (c) => {
+      const view = ledgerView();
+      if (view === null) return notReady(c);
 
-    const runId = asRunId(c.req.param('id'));
-    const runHead = runId === null ? 0 : view.runHeadSeq(runId);
-    if (runId === null || (runHead === 0 && !view.runIds().includes(runId))) {
-      return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
-    }
+      const runId = asRunId(c.req.param('id'));
+      const runHead = runId === null ? 0 : view.runHeadSeq(runId);
+      if (runId === null || (runHead === 0 && !view.runIds().includes(runId))) {
+        return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
+      }
 
-    const seq = parseSnapshotSeq(c.req.query('seq'));
-    if (seq === null) {
+      const seq = parseSnapshotSeq(c.req.valid('query').seq);
+      if (seq === null) {
+        return c.json(
+          ...apiError('invalid_request', "seq must be a non-negative integer or 'head'", {
+            detail: { field: 'seq' },
+          }),
+        );
+      }
+
+      const snapshot = view.runSnapshotAt(runId, seq);
       return c.json(
-        ...apiError('invalid_request', "seq must be a non-negative integer or 'head'", {
-          detail: { field: 'seq' },
-        }),
+        {
+          seq: snapshot.seq,
+          state: snapshot.state,
+          planVersion: snapshot.state.planVersion,
+          planHash: snapshot.state.planHash,
+        },
+        200,
       );
-    }
-
-    const snapshot = view.runSnapshotAt(runId, seq);
-    return c.json(
-      {
-        seq: snapshot.seq,
-        state: snapshot.state,
-        planVersion: snapshot.state.planVersion,
-        planHash: snapshot.state.planHash,
-      },
-      200,
-    );
-  })
+    },
+  )
 
   /**
    * KAR-11.5 AC3 — `GET /api/runs/:id/plans/diff?from=N&to=M`, the plan-evolution
