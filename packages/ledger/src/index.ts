@@ -251,6 +251,10 @@ export {
   scheduleWake,
   scheduleWakeIfChanged,
 } from './node-wake.ts';
+// KAR-15.3 — the post-commit emitter the SSE stream parks on. It fires after
+// the outermost transaction returns and carries nothing: the reaction to it is
+// "drain from your cursor" (docs/11-api-and-realtime.md §5.2).
+export { committing, onCommitted } from './notify.ts';
 // KAR-03.8 — the daemon's start-of-life rebuild: every run in a data
 // directory, folded from the ledger a dead process left behind.
 export {

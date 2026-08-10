@@ -28,6 +28,15 @@ import { randomUUID } from 'node:crypto';
 interface StreamRegistration {
   /** Runs asked for since the handler last looked. Drained, never read twice. */
   pending: RunId[];
+  /**
+   * Wakes the handler that owns the socket.
+   *
+   * Without it a filter mutation waits for the stream's own fallback tick,
+   * which is a floor under *delivery latency* and not a cadence a client
+   * action should be paying: opening a run panel would feel like a lag on a
+   * connection that is otherwise instant.
+   */
+  readonly wake: () => void;
 }
 
 const streams = new Map<string, StreamRegistration>();
@@ -42,10 +51,15 @@ export interface StreamHandle {
   close(): void;
 }
 
-/** Registers a connection and returns the id its `hello` frame announces. */
-export function registerStream(): StreamHandle {
+/**
+ * Registers a connection and returns the id its `hello` frame announces.
+ *
+ * `wake` is called when a filter mutation lands, so the handler notices it on
+ * the next turn of the loop rather than on its next tick.
+ */
+export function registerStream(wake: () => void = () => {}): StreamHandle {
   const id = randomUUID();
-  const registration: StreamRegistration = { pending: [] };
+  const registration: StreamRegistration = { pending: [], wake };
   streams.set(id, registration);
 
   return {
@@ -66,6 +80,7 @@ export function subscribeStream(streamId: string, runs: readonly RunId[]): boole
   const registration = streams.get(streamId);
   if (registration === undefined) return false;
   registration.pending.push(...runs);
+  registration.wake();
   return true;
 }
 

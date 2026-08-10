@@ -136,17 +136,21 @@ suite('the API on a real socket', () => {
  * makes them longer, never shorter, so this cannot go flaky in the direction
  * that would matter.
  *
- * Heartbeats rather than ledger events for the same reason: they are written
- * through the identical `stream.writeSSE` path, and a compressed stream would
- * hold them exactly as it holds anything else.
+ * Keepalives rather than ledger events for the same reason: they go down the
+ * identical write path, and a compressed stream would hold them exactly as it
+ * holds anything else. They are `: keepalive` **comments** rather than the
+ * named `heartbeat` frame this spec was first written against — KAR-15.3 AC5
+ * reserves named events for stream control (`hello`, `subscribed`,
+ * `caught_up`, `fatal`), and AC8 makes the idle cadence a comment, which every
+ * SSE client ignores without a reducer having to learn a fifth name.
  */
 suite('the stream arrives frame by frame, not in one burst (AC6)', () => {
   let started: Started | undefined;
   let origin = '';
-  const heartbeat = process.env.DeFlow_SSE_HEARTBEAT_MS;
+  const keepalive = process.env.DeFlow_SSE_KEEPALIVE_MS;
 
   beforeAll(async () => {
-    process.env.DeFlow_SSE_HEARTBEAT_MS = '150';
+    process.env.DeFlow_SSE_KEEPALIVE_MS = '150';
     started = await startHttp({
       port: 0,
       hostname: '127.0.0.1',
@@ -158,11 +162,11 @@ suite('the stream arrives frame by frame, not in one burst (AC6)', () => {
 
   afterAll(async () => {
     await started?.close();
-    if (heartbeat === undefined) delete process.env.DeFlow_SSE_HEARTBEAT_MS;
-    else process.env.DeFlow_SSE_HEARTBEAT_MS = heartbeat;
+    if (keepalive === undefined) delete process.env.DeFlow_SSE_KEEPALIVE_MS;
+    else process.env.DeFlow_SSE_KEEPALIVE_MS = keepalive;
   });
 
-  it('delivers four heartbeats at four distinct client-side timestamps', async () => {
+  it('delivers four keepalives at four distinct client-side timestamps', async () => {
     const controller = new AbortController();
     try {
       const response = await fetch(`${origin}/api/stream`, {
@@ -180,13 +184,13 @@ suite('the stream arrives frame by frame, not in one burst (AC6)', () => {
 
       while (arrivals.length < 4) {
         const { value, done } = await reader.read();
-        if (done) throw new Error('the stream closed before four heartbeats arrived');
+        if (done) throw new Error('the stream closed before four keepalives arrived');
         const at = performance.now();
         buffered += decoder.decode(value, { stream: true });
         // One timestamp per *read*, not per frame: a burst would deliver
-        // several heartbeats in one chunk and would therefore record one
+        // several keepalives in one chunk and would therefore record one
         // arrival, which is exactly the failure this is looking for.
-        if (buffered.includes('event: heartbeat')) {
+        if (buffered.includes(': keepalive')) {
           arrivals.push(at);
           buffered = '';
         }

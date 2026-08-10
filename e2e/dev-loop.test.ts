@@ -136,7 +136,7 @@ suite('the dev loop', () => {
     const sse = await openSse(`${loop.origin}/api/stream`, loop.token());
     try {
       await sse.next((event) => event.event === 'hello', 5_000);
-      const beatsBefore = sse.events().filter((event) => event.event === 'heartbeat').length;
+      const beatsBefore = sse.keepalives();
 
       await withEdit(
         SFC_FILE,
@@ -155,7 +155,11 @@ suite('the dev loop', () => {
           await sleep(600);
           expect(sse.ended(), 'the SSE stream must survive an SFC edit').toBe(false);
           expect(sse.error()).toBeUndefined();
-          const beatsAfter = sse.events().filter((event) => event.event === 'heartbeat').length;
+          // The idle cadence is a `: keepalive` comment since KAR-15.3 (AC5,
+          // AC8): named events are stream control and nothing else, so what
+          // proves the socket is still being written to is the comment, not a
+          // `heartbeat` frame the reducer would have to learn to ignore.
+          const beatsAfter = sse.keepalives();
           expect(beatsAfter).toBeGreaterThan(beatsBefore);
         },
       );

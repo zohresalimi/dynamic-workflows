@@ -59,7 +59,7 @@ export interface StreamConnection {
  *
  * The `runs` parameter is always present even when nothing is subscribed, so
  * the request line has one shape: a connection with no runs is the dev loop's
- * hello-and-heartbeat stream, not a different endpoint.
+ * hello-and-keepalive stream, not a different endpoint.
  */
 export function streamUrl(baseUrl: string, runs: readonly string[], since: number): string {
   const url = new URL(`${baseUrl.replace(/\/$/, '')}/stream`);

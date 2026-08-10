@@ -19,6 +19,13 @@ export default defineConfig({
   test: {
     name: 'web',
     include: ['src/**/*.test.ts'],
+    // KAR-15.3 AC1/AC2. A real HTTP/1.1 SSE origin on a port of its own, so a
+    // spec can hold six streams open and watch an ordinary `fetch` queue behind
+    // them. It has to be started from Node — a page cannot start a server for
+    // itself — and it has to be a *different* origin from the one serving the
+    // test runner's own modules, or exhausting the pool wedges the run instead
+    // of demonstrating anything. See ./test/sse-origin.ts.
+    globalSetup: ['./test/global-setup.ts'],
     browser: {
       enabled: true,
       provider: playwright(),

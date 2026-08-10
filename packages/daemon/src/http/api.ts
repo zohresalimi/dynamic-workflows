@@ -35,12 +35,10 @@
 import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
 import type { Db, EstimatorInputs, InterjectionMode, RunId } from '@DeFlow/core';
 import { INTERJECTION_MODES, NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
-import { putBlob, type StoredEvent } from '@DeFlow/ledger';
+import { putBlob } from '@DeFlow/ledger';
 import type { Context, ErrorHandler, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { compress } from 'hono/compress';
-import type { SSEStreamingApi } from 'hono/streaming';
-import { streamSSE } from 'hono/streaming';
 import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
 import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
@@ -65,30 +63,10 @@ import { apiError, serviceError } from './errors.ts';
 import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { runSummary } from './run-summary.ts';
-import { registerStream, subscribeStream } from './streams.ts';
+import { serveStream } from './stream.ts';
+import { subscribeStream } from './streams.ts';
 
 const http = log.child({ mod: 'http' });
-
-const DEFAULT_HEARTBEAT_MS = 15_000;
-
-/**
- * How often a subscribed stream re-drains the ledger.
- *
- * §5's design parks the handler on a post-commit emitter instead, and this is
- * not that — deliberately, for now. Today's writers are not all in this
- * process: an adapter runs a node through its own `LedgerSink`, so an
- * in-process `bus.emit` would be silent for exactly the appends a client is
- * waiting on, and a stream that only woke on its own daemon's writes would be
- * correct in tests and wrong in production. A bounded re-drain has no such
- * blind spot. It costs one covering-index seek per subscribed run per tick —
- * §5.1 measured those at roughly 0.2 ms — and the emitter becomes a latency
- * optimisation on top of it once every writer is behind one connection
- * (EPIC-15).
- */
-const DRAIN_TICK_MS = 100;
-
-/** §5.1's bound. A batch, never an open cursor. */
-const DRAIN_BATCH = 500;
 
 /**
  * The build-skew header (docs/11-api-and-realtime.md §12), on **every**
@@ -160,27 +138,6 @@ export const apiErrorHandler: ErrorHandler = (error, c) => {
     }),
   );
 };
-
-/**
- * `stream.aborted` and `.closed` flip from an internal event listener the
- * while-loop below can never see, but they are read through the *same*
- * `stream.aborted` expression at the top of that loop and again after the
- * `await`. TypeScript's control-flow narrowing treats a repeated property
- * read as unchanged unless it sees a local assignment to it — it has no way
- * to know the flip happens inside the client's own implementation — so it
- * narrows both reads to the literal `false` the while-condition just proved
- * and reports the second check as dead code. It is not: a real client can
- * disconnect mid-`sleep`. Crossing a function boundary resets that narrowing,
- * which is the only way to keep the guard TypeScript will still believe.
- */
-function stoppedMidSleep(stream: SSEStreamingApi): boolean {
-  return stream.aborted || stream.closed;
-}
-
-function heartbeatMs(): number {
-  const configured = Number(process.env.DeFlow_SSE_HEARTBEAT_MS);
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_HEARTBEAT_MS;
-}
 
 /**
  * The 503 a route answers with before boot has registered its ports.
@@ -319,121 +276,6 @@ function staleCursor(db: Db, runId: RunId, ifLastSeq: unknown, c: Context): Resp
       { detail: { head: ledgerView()?.headSeq() ?? headSeq(), movedAt }, seq: movedAt },
     ),
   );
-}
-
-/** `?runs=a,b` as the `RunId`s it names; anything unparseable is dropped. */
-function subscribedRuns(query: string | undefined): readonly RunId[] {
-  if (query === undefined || query === '') return [];
-  const ids = query
-    .split(',')
-    .map((value) => asRunId(value.trim()))
-    .filter((value): value is RunId => value !== null);
-  return [...new Set(ids)];
-}
-
-/**
- * The cursor this connection resumes from, in §4.1's documented precedence:
- * `since` query param > `Last-Event-ID` header > 0.
- *
- * The query parameter wins because the client's own persisted cursor is more
- * trustworthy than the browser's — a tab that reloads sends no `Last-Event-ID`
- * at all — and because the CLI has no such header. `0` rather than the head of
- * the log, for the reason §4.1 gives at length: treating "no cursor" as "start
- * from now" silently loses every event that happened while the client was
- * down, which is NF10 violated without a single error being logged.
- */
-function resumeFrom(since: string | undefined, lastEventId: string | undefined): number {
-  for (const candidate of [since, lastEventId]) {
-    if (candidate === undefined) continue;
-    const parsed = Number(candidate);
-    if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
-  }
-  return 0;
-}
-
-/**
- * One bounded pass over every subscribed run, merge-sorted by `seq`.
- *
- * Merge-sorted rather than run-by-run because `seq` is the total order of the
- * system: a client multiplexing two runs must see their events interleaved the
- * way they were committed, or a cursor it saves mid-batch skips the other run's
- * tail. Returns whether anything was written, so the caller can tell a drained
- * backfill from a live one.
- */
-async function drain(
-  stream: SSEStreamingApi,
-  view: LedgerView,
-  cursors: Map<RunId, number>,
-): Promise<boolean> {
-  let wrote = false;
-  for (;;) {
-    // Paired with the run that was asked for, rather than read back off the
-    // envelope: the cursor this loop advances is its own termination
-    // condition, and deriving it from the row would make a mislabelled row an
-    // infinite loop against a live SQLite file instead of a wrong answer.
-    const batch: { readonly runId: RunId; readonly event: StoredEvent }[] = [];
-    for (const [runId, cursor] of cursors) {
-      for (const event of view.tail(runId, cursor, DRAIN_BATCH)) batch.push({ runId, event });
-    }
-    if (batch.length === 0) return wrote;
-    batch.sort((left, right) => left.event.seq - right.event.seq);
-
-    for (const { runId, event } of batch) {
-      if (stoppedMidSleep(stream)) return wrote;
-      // Unnamed, so the client needs one `onmessage` feeding `applyEvent`, and
-      // `id: <seq>` on every one of them — that pair is what makes resume a
-      // single `WHERE seq > ?` (§3 rules 1 and 4).
-      await stream.writeSSE({ id: String(event.seq), data: JSON.stringify(event) });
-      cursors.set(runId, event.seq);
-      wrote = true;
-    }
-  }
-}
-
-/**
- * KAR-13.2 AC5 — `runs=*`, and what it is *not*.
- *
- * It is not "every event of every run". It is the low-volume global lifecycle
- * topic, membership exactly four kinds, which is what the run list and the
- * cross-run approval queue need and is deliberately nothing else. An idle tab
- * subscribed to it receives a `human.requested` from any run within one tick
- * and not one `node.progress` frame from the noisy run next to it — which is
- * the whole reason one connection per tab is affordable (docs/11 §2).
- */
-export const GLOBAL_TOPIC = '*';
-
-export const GLOBAL_TOPIC_KINDS: readonly string[] = [
-  'run.created',
-  'run.completed',
-  'run.aborted',
-  'human.requested',
-];
-
-/**
- * One bounded pass over the global topic, returning the cursor it reached.
- *
- * The cursor advances to the ledger's head rather than to the last *matching*
- * row when a page comes back short, so the next pass does not re-scan the
- * thousands of `node.progress` rows the filter just stepped over. Reading the
- * head first is what makes that safe: an event committed after the read is
- * beyond it and is picked up next tick, never skipped.
- */
-async function drainGlobal(
-  stream: SSEStreamingApi,
-  view: LedgerView,
-  from: number,
-): Promise<number> {
-  let cursor = from;
-  for (;;) {
-    const head = view.headSeq();
-    const events = view.globalTail(cursor, GLOBAL_TOPIC_KINDS, DRAIN_BATCH);
-    for (const event of events) {
-      if (stoppedMidSleep(stream)) return cursor;
-      await stream.writeSSE({ id: String(event.seq), data: JSON.stringify(event) });
-      cursor = event.seq;
-    }
-    if (events.length < DRAIN_BATCH) return Math.max(cursor, head);
-  }
 }
 
 /**
@@ -981,131 +823,15 @@ export const api = new Hono()
   })
 
   /**
-   * The control-plane stream.
+   * The control-plane stream (KAR-15.3).
    *
-   * The *transport* was never a placeholder: no compression, `no-transform` so no
-   * intermediary may re-chunk it, and `X-Accel-Buffering: no` for anyone who
-   * later puts a reverse proxy in front of DeFlowd. Those three are the settings
-   * that make an SSE stream survive hours instead of arriving in one burst at the
-   * end (docs/11-api-and-realtime.md §13).
-   *
-   * The body now carries the ledger tail for whatever `?runs=` names — the half
-   * of KAR-14.1 AC8 that makes a cost rollup *live*: `budget.consumed` is an
-   * ordinary ledger event, so it arrives here with everything else and a client
-   * folds it into the summary it already has. Subscribe to nothing and the
-   * connection is what it always was, a hello frame and a heartbeat, which is
-   * what the dev loop uses it for.
-   *
-   * `hello` and `heartbeat` are stream-control frames and deliberately carry no
-   * `id:`. Only ledger frames do (§3 rule 1): a control frame that set one would
-   * poison `Last-Event-ID` with a number from a different sequence, and the
-   * client would resume from a `seq` that belongs to somebody else's event.
+   * The body lives in `./stream.ts` — the serving loop is a two-phase drain
+   * with a park, a keepalive and a fatal path, and it is the largest single
+   * thing in this file's neighbourhood — but the route stays *on this chain*,
+   * because `hc<ApiType>` infers the client from the type of the chained
+   * expression and a route registered on its own statement is invisible to it.
    */
-  .get('/stream', (c) => {
-    const interval = heartbeatMs();
-    const query = c.req.query('runs');
-    const runs = subscribedRuns(query);
-    const global = query === GLOBAL_TOPIC;
-    const since = resumeFrom(c.req.query('since'), c.req.header('Last-Event-ID'));
-
-    const response = streamSSE(c, async (stream) => {
-      const view = ledgerView();
-      const cursors = new Map<RunId, number>(
-        view === null ? [] : runs.map((runId) => [runId, since] as const),
-      );
-      const handle = registerStream();
-      // A global cursor of its own, because the topic is not a run: it advances
-      // over the whole `event` table and must not be confused with any run's.
-      let globalCursor = since;
-
-      await stream.writeSSE({
-        event: 'hello',
-        retry: 2000,
-        data: JSON.stringify({
-          // §3 rule 4 — the id the client posts back to mutate this connection's
-          // filter, which is what keeps a third run panel from opening a third
-          // socket against a six-connection budget.
-          streamId: handle.id,
-          apiVersion: API_VERSION,
-          build: BUILD,
-          bootId: BOOT_ID,
-          daemonEpoch: daemonEpoch(),
-          headSeq: view?.headSeq() ?? headSeq(),
-          runs: global ? [GLOBAL_TOPIC] : [...cursors.keys()],
-        }),
-      });
-
-      // Phase 1 — backfill from the cursor, then say so. A client that knows
-      // where the backfill ended can stop showing a spinner without guessing.
-      if (view !== null && cursors.size > 0) {
-        await drain(stream, view, cursors);
-        for (const [runId, seq] of cursors) {
-          await stream.writeSSE({ event: 'caught_up', data: JSON.stringify({ runId, seq }) });
-        }
-      }
-      if (view !== null && global) {
-        globalCursor = await drainGlobal(stream, view, globalCursor);
-        await stream.writeSSE({
-          event: 'caught_up',
-          data: JSON.stringify({ runId: GLOBAL_TOPIC, seq: globalCursor }),
-        });
-      }
-
-      // Phase 2 — re-drain on a tick, heartbeat on the configured cadence. A
-      // connection that can be *given* something to watch ticks at the drain
-      // cadence even while it is watching nothing yet: `POST …/subscribe` is what
-      // adds a run, and a stream sleeping for fifteen seconds would acknowledge
-      // it fifteen seconds late.
-      const tick = Math.min(interval, DRAIN_TICK_MS);
-      let sinceBeat = 0;
-      while (!stream.aborted && !stream.closed) {
-        await stream.sleep(tick);
-        if (stoppedMidSleep(stream)) break;
-
-        // AC10's two-phase order, and it is the same one §5 gives for the serving
-        // loop: *subscribe, then drain again*. Backfilling the new run before
-        // resuming live delivery is what stops the events committed between the
-        // last drain and the subscription from being skipped.
-        const added = view === null ? [] : handle.takePending();
-        if (added.length > 0) {
-          for (const runId of added) if (!cursors.has(runId)) cursors.set(runId, since);
-          await stream.writeSSE({
-            event: 'subscribed',
-            data: JSON.stringify({ runs: [...cursors.keys()] }),
-          });
-          if (view !== null) {
-            await drain(stream, view, cursors);
-            for (const runId of added) {
-              await stream.writeSSE({
-                event: 'caught_up',
-                data: JSON.stringify({ runId, seq: cursors.get(runId) ?? since }),
-              });
-            }
-          }
-        }
-        if (stoppedMidSleep(stream)) break;
-
-        if (view !== null && cursors.size > 0) await drain(stream, view, cursors);
-        if (view !== null && global) globalCursor = await drainGlobal(stream, view, globalCursor);
-        if (stoppedMidSleep(stream)) break;
-
-        sinceBeat += tick;
-        if (sinceBeat < interval) continue;
-        sinceBeat = 0;
-        await stream.writeSSE({
-          event: 'heartbeat',
-          data: JSON.stringify({ uptimeMs: uptimeMs() }),
-        });
-      }
-      handle.close();
-      http.debug('sse stream closed');
-    });
-
-    // streamSSE sets "no-cache"; SSE also needs "no-transform", so widen it.
-    response.headers.set('Cache-Control', 'no-cache, no-transform');
-    response.headers.set('X-Accel-Buffering', 'no');
-    return response;
-  })
+  .get('/stream', (c) => serveStream(c))
 
   /**
    * KAR-13.2 AC10 — `POST /api/stream/:streamId/subscribe { runs: [...] }`.

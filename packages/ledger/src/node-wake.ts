@@ -31,6 +31,7 @@
 import type { Db, EventSeq, WakeReason } from '@DeFlow/core';
 import { WAKE_REASONS } from '@DeFlow/core';
 import { type AppendOptions, appendEvents, type EventDraft } from './append.ts';
+import { committing } from './notify.ts';
 
 /** Which sleeping node a caller means. One wait per node, by primary key. */
 export interface NodeWakeKey {
@@ -242,7 +243,7 @@ export function appendEventsConsumingWakes(
   keys: readonly NodeWakeKey[],
   options: AppendOptions = {},
 ): EventSeq[] {
-  return db.transaction(() => {
+  return committing(db, () => {
     const seqs = appendEvents(db, drafts, options);
     const remove = db.prepare(DELETE_SQL);
     for (const key of keys) remove.run(key.runId, key.nodeId);
@@ -272,7 +273,7 @@ export function appendEventsSchedulingWakes(
   rows: readonly NodeWakeRow[],
   options: AppendOptions = {},
 ): EventSeq[] {
-  return db.transaction(() => {
+  return committing(db, () => {
     const seqs = appendEvents(db, drafts, options);
     for (const row of rows) scheduleWake(db, row);
     return seqs;

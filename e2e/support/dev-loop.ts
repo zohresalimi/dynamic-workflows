@@ -73,8 +73,8 @@ export interface DevLoop {
 }
 
 export interface StartOptions {
-  /** Heartbeat cadence for /api/stream; tightened so specs do not wait 15 s. */
-  readonly heartbeatMs?: number;
+  /** Keepalive cadence for /api/stream; tightened so specs do not wait 15 s. */
+  readonly keepaliveMs?: number;
   readonly timeoutMs?: number;
 }
 
@@ -97,7 +97,7 @@ export async function startDevLoop(options: StartOptions = {}): Promise<DevLoop>
       ...process.env,
       DeFlow_DATA_DIR: dataDir,
       DeFlow_PORT: String(port),
-      DeFlow_SSE_HEARTBEAT_MS: String(options.heartbeatMs ?? 250),
+      DeFlow_SSE_KEEPALIVE_MS: String(options.keepaliveMs ?? 250),
       DeFlow_LOG_LEVEL: 'info',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

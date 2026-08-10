@@ -34,6 +34,7 @@ import {
 import { Buffer } from 'node:buffer';
 import { MAX_INLINE_PAYLOAD_BYTES, PAYLOAD_MIME, spillBytes } from './blobs.ts';
 import { readEpoch, StaleEpoch } from './epoch.ts';
+import { committing } from './notify.ts';
 
 /**
  * An event on its way in: the envelope of docs/04-domain-model.md §9 minus
@@ -216,7 +217,11 @@ export function appendEvents(
   if (validated.length === 0) return [];
 
   const insert = db.prepare<{ seq: number }>(INSERT_EVENT);
-  return db.transaction(() => {
+  // `committing` rather than `db.transaction` directly: the SSE stream parks on
+  // a signal that must fire **after** this commit and never inside it, or a
+  // client's cursor can advance past a row a rollback removes (KAR-15.3,
+  // docs/11-api-and-realtime.md §5.2). @see ./notify.ts
+  return committing(db, () => {
     // Inside the transaction, so the write lock is already held: no other
     // connection can advance the epoch between this read and the inserts
     // below. One read per batch, not per event.

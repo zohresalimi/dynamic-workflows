@@ -18,10 +18,28 @@ export interface Frame {
 export interface Frames {
   /** Resolves with the first frame matching `match`, reading more if needed. */
   until(match: (frame: Frame) => boolean): Promise<Frame>;
+  /** Resolves once at least `count` `: keepalive` comments have arrived. */
+  untilKeepalives(count: number): Promise<void>;
+  /** Resolves when the server closes the connection; rejects if it does not. */
+  untilEnd(): Promise<void>;
   /** Ledger frames seen so far, tallied by their payload's `kind`. */
   countByKind(): Readonly<Record<string, number>>;
   /** Every frame seen so far, control frames included. */
   frameCount(): number;
+  /** Every frame seen so far, in arrival order. */
+  all(): readonly Frame[];
+  /**
+   * `: keepalive` comments seen so far.
+   *
+   * Counted rather than parsed into frames: a comment carries no field, which
+   * is exactly why every SSE client ignores it, and a reader that turned one
+   * into a frame would be proving the opposite of the property under test.
+   */
+  keepalives(): number;
+  /** Every byte received so far, for assertions about the wire itself. */
+  raw(): string;
+  /** True once the response body has ended — the stream closed. */
+  ended(): boolean;
 }
 
 export function readFrames(response: Response, signal: AbortSignal): Frames {
@@ -30,21 +48,46 @@ export function readFrames(response: Response, signal: AbortSignal): Frames {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffered = '';
+  let raw = '';
+  let keepalives = 0;
+  let ended = false;
   const seen: Frame[] = [];
 
-  const pump = async (): Promise<void> => {
-    const { value, done } = await reader.read();
-    if (done) throw new Error('the stream closed before the expected frame arrived');
-    buffered += decoder.decode(value, { stream: true });
+  const take = (text: string): void => {
+    raw += text;
+    buffered += text;
     let boundary = buffered.indexOf('\n\n');
     while (boundary !== -1) {
       const block = buffered.slice(0, boundary);
       buffered = buffered.slice(boundary + 2);
+      if (block.startsWith(':')) keepalives += 1;
       const frame = parseFrame(block);
       if (frame !== null) seen.push(frame);
       boundary = buffered.indexOf('\n\n');
     }
   };
+
+  /**
+   * The body is drained in the background rather than on demand.
+   *
+   * A reader that only pumped when something awaited it would make *"how many
+   * frames arrived"* a question about the test's polling rather than about the
+   * daemon's delivery — and a spec asserting "none of these 500 arrived" would
+   * pass without ever having read the socket.
+   */
+  void (async () => {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      take(decoder.decode(value, { stream: true }));
+    }
+  })()
+    .catch(() => undefined)
+    .finally(() => {
+      ended = true;
+    });
+
+  const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
 
   return {
     async until(match): Promise<Frame> {
@@ -52,9 +95,27 @@ export function readFrames(response: Response, signal: AbortSignal): Frames {
         const found = seen.find(match);
         if (found !== undefined) return found;
         if (signal.aborted) throw new Error('aborted before the expected frame arrived');
-        await pump();
+        if (ended) throw new Error('the stream closed before the expected frame arrived');
+        await settle();
       }
     },
+    async untilKeepalives(count): Promise<void> {
+      while (keepalives < count) {
+        if (signal.aborted) throw new Error('aborted before the keepalives arrived');
+        if (ended) throw new Error('the stream closed before the keepalives arrived');
+        await settle();
+      }
+    },
+    async untilEnd(): Promise<void> {
+      while (!ended) {
+        if (signal.aborted) throw new Error('aborted before the stream closed');
+        await settle();
+      }
+    },
+    all: () => [...seen],
+    keepalives: () => keepalives,
+    raw: () => raw,
+    ended: () => ended,
     countByKind(): Readonly<Record<string, number>> {
       const counts: Record<string, number> = {};
       for (const frame of seen) {
