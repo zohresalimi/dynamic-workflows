@@ -33,6 +33,7 @@ import {
   BudgetExceededSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
+  HumanRequestedSchema,
   NodeStartedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -897,6 +898,37 @@ registerUpcaster({
       rule: 'read-only-analysis',
       at: '2026-08-07T09:30:00.000Z',
     },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v1 → v2 (KAR-12.5). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field — `repair`, the three diffs and three verdicts an
+ * exhausted repair loop hands the operator (docs/10-verification-gates.md §7) —
+ * so the hop is the identity.
+ *
+ * Left **absent** rather than reconstructed, and the absence is honest in both
+ * directions. A v1 escalation may or may not have come from a repair loop; the
+ * payload does not say, and the surrounding events would have to be walked to
+ * find out. More to the point, a fabricated `attempts: []` is refused by the
+ * schema and a fabricated one-entry list would put handles on an escalation
+ * that never had any — which is exactly the invention the `weakened` hop above
+ * declines to make, for the same reason: a field whose purpose is to be
+ * believed must never be guessed.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 1,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'gate-typecheck',
+    prompt: 'The typecheck gate has failed three times. What should happen next?',
+    options: [
+      { id: 'retry', label: 'Try once more', effect: 'approve' },
+      { id: 'abandon', label: 'Abandon this branch', effect: 'reject' },
+    ],
   },
   up: (payload) => payload,
 });

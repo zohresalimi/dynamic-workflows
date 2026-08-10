@@ -447,3 +447,26 @@ scenario is the whole argument: the policy engine asks *should we?* and the vali
 a `yes` to the first can never substitute for the second, and an operator reading the approval queue
 has to be able to tell which of the two refused their patch — because one is answered by changing
 the patch and the other by changing the rules.
+### human.requested v2
+
+**KAR-12.5 AC7.** An escalation may now carry what an exhausted repair loop produced:
+`repair.attempts[]`, one entry per attempt, each pairing the diff it produced with the verdict the
+re-run gate returned for it — [10 §7](../docs/10-verification-gates.md)'s _"the third failure emits
+`human.requested` carrying all three diffs and all three verdicts"_.
+
+| Change               | Kind           | Why it is not lossy                                                                                                          |
+| -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `+ repair` (optional) | optional field | Left **absent**. A v1 payload recorded no attempts, and no honest value can be reconstructed from the payload alone.            |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the attempts are paired rather than two arrays.** Three diff handles and three verdict handles
+in parallel arrays would let attempt 2's diff sit beside attempt 3's verdict with nothing able to
+notice, and the entire value of the escalation is reading _"attempt 2 changed this and the gate still
+said that"_. The pairing is the payload's job because the escalation is the only place both facts
+exist at once.
+
+**Why it is optional rather than required.** Most escalations are not repairs — a `human` node's own
+prompt, a permission decision, a clarifying question — and none of them has attempts to carry. A
+required field would make every one of them invent an empty list, which the schema refuses anyway
+(`attempts` is `.min(1)`: a repair escalation with no attempts is not an escalation).

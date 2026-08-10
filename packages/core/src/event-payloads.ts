@@ -1432,12 +1432,53 @@ export const GateEvaluatedSchema = z.strictObject({
   verdict: VerdictV4Schema,
 });
 
+/**
+ * KAR-12.5 AC7 — what an exhausted repair loop hands the operator
+ * (docs/10-verification-gates.md §7).
+ *
+ * *"The third failure emits `human.requested` carrying all three diffs and all
+ * three verdicts."* Handles rather than bodies, for the reason every other
+ * evidence field in this file carries handles: three diffs and three verdicts
+ * inline is an unbounded payload on the one event a person is guaranteed to
+ * read, and the bytes are already content-addressed.
+ *
+ * **Paired rather than two parallel arrays.** Two arrays of three would let
+ * attempt 2's diff sit beside attempt 3's verdict with nothing able to notice,
+ * and the whole value of the escalation is reading *"attempt 2 changed this and
+ * the gate still said that"*. The pairing is the payload's job because it is
+ * the only place both facts exist at once.
+ */
+export const RepairEscalationSchema = z.strictObject({
+  gate: GateIdSchema,
+  /** The stable `Finding.id` the loop was repairing — one per fix node (§7). */
+  finding: z.string().min(1),
+  attempts: z
+    .array(
+      z.strictObject({
+        attempt: z.int().positive(),
+        /** The diff the attempt produced, as stored. */
+        diff: HandleSchema,
+        /** The verdict the re-run gate returned for it. */
+        verdict: HandleSchema,
+      }),
+    )
+    .min(1),
+});
+
 export const HumanRequestedSchema = z.strictObject({
   node: NodeIdSchema,
   prompt: z.string().min(1),
   /** The same option vocabulary a `human` node declares (§3). */
   options: HumanNodeSchema.shape.options,
   deadline: HumanNodeSchema.shape.deadline,
+  /**
+   * KAR-12.5 AC7 — present only when a repair loop ran out of attempts.
+   *
+   * Optional, because most escalations are not repairs: a `human` node's own
+   * prompt, a permission decision and a clarifying question have no attempts to
+   * carry, and a required field would make them all invent one.
+   */
+  repair: RepairEscalationSchema.optional(),
   /**
    * KAR-08.3 AC8 — why the safety layer escalated, as a `PermissionReason`.
    *
@@ -1741,7 +1782,7 @@ export const EVENT_SCHEMAS = {
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
   'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
-  'human.requested': { v: 1, payload: HumanRequestedSchema },
+  'human.requested': { v: 2, payload: HumanRequestedSchema },
   'human.responded': { v: 1, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },

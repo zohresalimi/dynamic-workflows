@@ -64,6 +64,47 @@ export type {
   RenderedBlobSha,
 } from './projection.ts';
 export { findingDelta, projectFindings } from './projection.ts';
+// KAR-12.5 — the surgical repair loop: what a failing gate proposes, what the
+// fix node is given, what its branch has to show, and where it stops.
+export type {
+  RepairAttempt,
+  RepairAttemptRecord,
+  RepairContext,
+  RepairDecision,
+  RepairHumanReason,
+  RepairNext,
+  RepairNextInput,
+  RepairTarget,
+} from './repair.ts';
+export {
+  assertFreshRepairContext,
+  fixNodeId,
+  gatesAfterRepair,
+  REPAIR_ATTEMPT_CAP,
+  REPAIR_SEVERITY_FLOOR,
+  RepairContextNotFresh,
+  repairAttemptProjection,
+  repairable,
+  repairNext,
+  repairPatchesFor,
+  repairPatchId,
+  repairReason,
+} from './repair.ts';
+export type {
+  RepairCommit,
+  RepairOrdering,
+  RepairOrderingCode,
+  RepairOrderingOptions,
+} from './repair-ordering.ts';
+export {
+  DEFAULT_TEST_PATHS,
+  isTestPath,
+  REPAIR_NO_FAILING_TEST,
+  REPAIR_STILL_FAILING,
+  repairOrdering,
+} from './repair-ordering.ts';
+export type { RepairFile, RepairPacketInput } from './repair-packet.ts';
+export { buildRepairPacket, REPAIR_SEGMENT_IDS } from './repair-packet.ts';
 // KAR-12.2 — an adversarial verdict, sealed with how its reviewer was routed.
 export type { ReviewRouting } from './review-verdict.ts';
 export { sealReviewVerdict } from './review-verdict.ts';
@@ -76,6 +117,14 @@ export {
   runGate,
   splitCommandLine,
 } from './run-gate.ts';
+export type { ScopeGateInput } from './scope-gate.ts';
+export {
+  assertRepairScope,
+  DEFAULT_PROTECTED_PATHS,
+  RepairScopeViolation,
+  SCOPE_UNDECLARED_WRITE,
+  scopeGateFindings,
+} from './scope-gate.ts';
 export type { SealVerdict } from './verdict-of.ts';
 export {
   criterionStatusFor,
