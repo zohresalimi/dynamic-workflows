@@ -719,3 +719,43 @@ export function invalidateFact(db: Db, options: InvalidateFactOptions): FactInva
     return { seq, taints };
   });
 }
+
+/**
+ * KAR-15.6 AC5 — every node that has a `fact.read` for `factId`, and no writer.
+ *
+ * §8.2's consumer query without the taint clause: `readersBefore` asks *who
+ * read this before it went stale*, and F10.4's memory graph asks *who reads
+ * this at all*. One `GROUP BY` off `fact_edges_by_fact`, bounded, with the
+ * aggregate done in SQLite — a `filter` over `readFactEdges()` returns the same
+ * rows and reads every edge of the run to get them, which is a scan of the
+ * whole memory graph to answer a question about one fact.
+ *
+ * `direction = 'read'` is what excludes the writer, and it is in the `WHERE`
+ * rather than applied afterwards for the same reason.
+ */
+const FACT_CONSUMERS_SQL = `SELECT node_id, min(event_seq) AS first_seq, count(*) AS reads
+   FROM fact_edges
+   WHERE fact_id = ? AND direction = 'read'
+   GROUP BY node_id ORDER BY min(event_seq), node_id
+   LIMIT ?`;
+
+/** One consumer of a fact: the node, when it first read it, and how often. */
+export interface FactConsumerRow {
+  readonly node: NodeId;
+  readonly firstReadSeq: EventSeq;
+  readonly reads: number;
+}
+
+export function readFactConsumers(db: Db, factId: FactId, limit: number): FactConsumerRow[] {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError(`readFactConsumers: limit must be an integer >= 1, got ${limit}`);
+  }
+  return db
+    .prepare<{ node_id: string; first_seq: number; reads: number }>(FACT_CONSUMERS_SQL)
+    .all(factId, limit)
+    .map((row) => ({
+      node: row.node_id as NodeId,
+      firstReadSeq: row.first_seq as EventSeq,
+      reads: row.reads,
+    }));
+}

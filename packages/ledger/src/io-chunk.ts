@@ -111,6 +111,16 @@ export const IO_CHUNK_TAIL_SQL = `SELECT seq, run_id, node_id, attempt, stream, 
   ORDER BY seq
   LIMIT ?`;
 
+/**
+ * KAR-15.6 AC4's tail: the same covering index, walked backwards. `LIMIT` is
+ * what makes it a window rather than a scan — see `readIoChunkTail`.
+ */
+export const IO_CHUNK_HEAD_SQL = `SELECT seq, run_id, node_id, attempt, stream, ts, data
+  FROM io_chunk
+  WHERE run_id = ? AND node_id = ? AND attempt = ?
+  ORDER BY seq DESC
+  LIMIT ?`;
+
 interface IoChunkRow {
   seq: number;
   run_id: string;
@@ -228,6 +238,39 @@ export function readIoChunks(
     .all(selector.runId, selector.nodeId, selector.attempt, afterSeq, limit + 1);
   return {
     chunks: rows.slice(0, limit).map(toStoredChunk),
+    hasMore: rows.length > limit,
+  };
+}
+
+/**
+ * KAR-15.6 AC4 — the last `limit` chunks of a node attempt, oldest first.
+ *
+ * The read half of a terminal reattach. `readIoChunks` pages *forward*, which
+ * is what a client with a cursor wants and exactly the wrong thing for a tab
+ * that has just opened on a node with 200 MB of output: paging forward to the
+ * end reads the whole log to answer *"what are the last few hundred lines"*.
+ *
+ * So this walks the same `io_run_seq` covering index **backwards** and stops
+ * after `limit + 1` rows. SQLite serves `ORDER BY seq DESC LIMIT n` off the
+ * index in reverse without materialising a sort, so the cost is the size of
+ * the window rather than the size of the table — which is the difference
+ * between a tail that streams and a daemon whose resident memory grows by the
+ * size of the log.
+ *
+ * The reversal back into ascending order happens here, once, because every
+ * caller wants to write these bytes to a terminal in the order they were
+ * produced. `hasMore` means *earlier output exists* — the opposite direction
+ * to `readIoChunks`' `hasMore`, and the one a scrollback control asks about.
+ */
+export function readIoChunkTail(db: Db, selector: IoChunkSelector, limit: number): IoChunkPage {
+  requireIndex('limit', limit, 1);
+  requireIndex('attempt', selector.attempt, 1);
+
+  const rows = db
+    .prepare<IoChunkRow>(IO_CHUNK_HEAD_SQL)
+    .all(selector.runId, selector.nodeId, selector.attempt, limit + 1);
+  return {
+    chunks: rows.slice(0, limit).map(toStoredChunk).toReversed(),
     hasMore: rows.length > limit,
   };
 }

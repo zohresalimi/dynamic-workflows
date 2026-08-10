@@ -32,14 +32,40 @@
  * ever reaches a client — it becomes `500 internal`, and its stack goes to a
  * content-addressed artifact behind a handle.
  */
-import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
-import type { CancelMode, Db, EstimatorInputs, InterjectionMode, RunId } from '@DeFlow/core';
-import { CANCEL_MODES, INTERJECTION_MODES, NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
+import { PROVIDER_SPECS, providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
+import type {
+  CancelMode,
+  Db,
+  EstimatorInputs,
+  FactId,
+  InterjectionMode,
+  NodeId,
+  NodeState,
+  RunId,
+  RunState,
+  TaskSpec,
+  VerdictV2,
+} from '@DeFlow/core';
+import {
+  acceptanceBoard,
+  CANCEL_MODES,
+  INTERJECTION_MODES,
+  NodeIdSchema,
+  parseDeFlowConfig,
+  SpecEditRefused,
+  sealTaskSpec,
+  VerdictV2Schema,
+} from '@DeFlow/core';
 import { putBlob } from '@DeFlow/ledger';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Context, ErrorHandler, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { compress } from 'hono/compress';
 import { validator } from 'hono/validator';
+import { loadWorkspaceConfig, writeWorkspaceConfig } from '../config/workspace-config.ts';
+import { Git } from '../git/git.ts';
 import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
 import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
@@ -61,11 +87,16 @@ import {
 } from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import { approvalQueue } from './approvals.ts';
+import { artifactStat, readArtifactBytes } from './artifact-store.ts';
 import { requireAuth, varyOrigin } from './auth.ts';
+import { parseByteRange } from './byte-range.ts';
 import { requireCurrentEpoch } from './epoch-guard.ts';
 import { apiError, serviceError } from './errors.ts';
+import { factsPage, findingsByFile, gatesView, nodeBundle, packetView } from './inspect.ts';
 import { intakePorts } from './intake-ports.ts';
+import { IO_NDJSON_MEDIA_TYPE, IO_NDJSON_UNVERSIONED, ioChunkLine } from './io-ndjson.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
+import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
@@ -236,6 +267,400 @@ function preflightEstimator(view: LedgerView): EstimatorInputs {
     family: providerFamily,
     calibration: (provider, model) => view.calibration(provider, model, providerFamily(provider)),
   };
+}
+
+/**
+ * KAR-15.6 AC11 — the header naming a surface that is **not** versioned.
+ *
+ * Two of this story's responses carry a shape the `apiVersion` does not cover:
+ * the `io_chunk` NDJSON framing, and `unionLayoutKey`. Saying so only in the
+ * docs means nobody reads it; saying so on the response means a client that
+ * logs its headers has already been told.
+ */
+export const UNVERSIONED_HEADER = 'X-DeFlow-Unversioned';
+
+/** AC11's second marker: what `unionLayoutKey` is and is not. */
+export const UNION_LAYOUT_KEY_UNVERSIONED =
+  'unionLayoutKey is an opaque cache key and is not part of the versioned ' +
+  'contract: it identifies a union layout the client may have cached and ' +
+  'carries no coordinates, no ordering and no meaning a client may parse.';
+
+/** A resolved run, or the refusal the route should return instead. */
+type RunLookup =
+  | { readonly view: LedgerView; readonly runId: RunId; readonly state: RunState }
+  | { readonly response: Response };
+
+/**
+ * The run a read endpoint addressed, reduced once.
+ *
+ * Every read route starts here, and the two failures are answered in one place
+ * rather than eleven: no ledger yet is a retryable `503`, and a run this
+ * directory does not hold — including an id that is not a `RunId` at all — is
+ * `404 run_not_found`, because `/api/runs/r1` is a request for a run that does
+ * not exist and telling the caller anything else wastes their afternoon.
+ */
+function resolveRun(c: Context): RunLookup {
+  const view = ledgerView();
+  if (view === null) return { response: notReady(c) };
+
+  const raw = c.req.param('id') ?? '';
+  const runId = asRunId(raw);
+  const state = runId === null ? null : view.runState(runId);
+  if (runId === null || state === null) {
+    return { response: c.json(...apiError('run_not_found', `no run '${raw}'`)) };
+  }
+  return { view, runId, state };
+}
+
+type NodeLookup =
+  | {
+      readonly view: LedgerView;
+      readonly runId: RunId;
+      readonly state: RunState;
+      readonly nodeId: string;
+      readonly node: NodeState;
+    }
+  | { readonly response: Response };
+
+/**
+ * The node a read endpoint addressed — `404 node_not_found` when the run holds
+ * no such node, which is its **own** code and never the run's.
+ *
+ * EPIC-15-S44 is entirely about this distinction: a 404 has to answer *which*
+ * thing was missing, or the caller cannot tell a typo in a node id from a run
+ * that was pruned.
+ */
+function resolveNode(c: Context): NodeLookup {
+  const found = resolveRun(c);
+  if ('response' in found) return found;
+
+  const nodeId = c.req.param('nodeId') ?? '';
+  const node = found.state.nodes[nodeId];
+  if (node === undefined) {
+    return {
+      response: c.json(
+        ...apiError('node_not_found', `run '${found.runId}' has no node '${nodeId}'`, {
+          detail: { runId: found.runId, node: nodeId },
+        }),
+      ),
+    };
+  }
+  return { ...found, nodeId, node };
+}
+
+/**
+ * `?attempt=`, or the node's current one.
+ *
+ * Defaulting to the *current* attempt rather than to 0 is what makes the
+ * inspector's first request useful on a node that has been retried: attempt 0
+ * of a node that failed twice is the least interesting of the three.
+ */
+function attemptOf(c: Context, node: NodeState): number {
+  const raw = c.req.query('attempt');
+  if (raw === undefined) return node.attempt;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : node.attempt;
+}
+
+/**
+ * The node id as the `io_chunk` selector wants it.
+ *
+ * A cast rather than a parse, and only reachable once `resolveNode` has found
+ * the node in the run's own projection — an id the plan holds is a `NodeId` by
+ * construction, and re-parsing it would let a schema change turn a found node
+ * into a 500.
+ */
+const asNodeId = (nodeId: string): NodeId => nodeId as NodeId;
+
+/**
+ * The path segment as a `FactId`.
+ *
+ * Unparsed on purpose: an id nothing wrote returns no consumers, which is the
+ * honest answer and the same one a well-formed id for a fact nobody read gets.
+ * A 400 here would make "this fact has no readers" and "you typed it wrong"
+ * two different answers to a question the memory graph answers the same way.
+ */
+const asFactId = (factId: string): FactId => factId as FactId;
+
+/** The version the last probe of `provider` reported, or `null`. */
+function probedVersion(view: LedgerView, provider: string | null): string | null {
+  if (provider === null) return null;
+  return view.providerCapabilities(provider)[0]?.version ?? null;
+}
+
+/**
+ * The verdict documents the acceptance board reduces, parsed out of
+ * `gate.evaluated` and skipping anything this build cannot read.
+ *
+ * `GateVerdictState` is the *ladder's* view of a verdict and carries only what
+ * admission needs; the board decides a row on the verdict's `criteria` entries
+ * and on the `specHash` it was judged against, which are fields of the
+ * document. A verdict a newer daemon wrote in a shape this one does not parse
+ * is skipped rather than thrown on — the board is a read, and a run with one
+ * unreadable verdict still has an honest answer for every other row.
+ */
+function boardVerdicts(view: LedgerView, runId: RunId, limit: number): readonly VerdictV2[] {
+  return view.gateVerdictDocuments(runId, limit).flatMap((document) => {
+    const parsed = VerdictV2Schema.safeParse(document);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/**
+ * The spec a run is currently judged against: the latest amendment sealed, or
+ * `run.created.spec` for a run nobody has amended.
+ *
+ * Sealed here rather than read from a stored copy, because `spec.amended`
+ * carries the framed *draft* and the sealed spec is `sealTaskSpec(document)` —
+ * ./spec/gate.ts is explicit that there is one door a `TaskSpec` comes through,
+ * and a second copy in the payload is a second thing that can disagree.
+ */
+async function currentSpec(view: LedgerView, runId: RunId): Promise<TaskSpec | null> {
+  const { created, amended } = view.runSpec(runId);
+  if (amended !== null) {
+    try {
+      return await sealTaskSpec(amended);
+    } catch {
+      // An amendment this build can no longer seal is not a reason to refuse
+      // the board: the pre-edit spec is still in the ledger, still at its own
+      // hash, and still the honest answer to "what was approved".
+      return created;
+    }
+  }
+  return created;
+}
+
+/**
+ * `dir`'s whole change since `base`, as a patch — **including files the agent
+ * created and never added**.
+ *
+ * A plain `git diff <base>` omits untracked files, and for this endpoint that
+ * is not a detail: a node whose entire contribution is three new modules would
+ * render as an empty diff, which reads as "the node did nothing". The two ways
+ * to include them are `git add -N` — which writes the repository's index, and
+ * a `GET` may not — and a **temporary index**, which is this.
+ *
+ * `GIT_INDEX_FILE` points git at a scratch file: `read-tree` fills it from the
+ * base commit, `add -A` stages the worktree into it (honouring `.gitignore`
+ * exactly as a real `add` would), and `diff --cached` prints the result. The
+ * repository's own index, worktree and refs are untouched, which is what makes
+ * a read that stages files still a read.
+ */
+async function worktreePatch(dir: string, base: string): Promise<string | null> {
+  const scratch = mkdtempSync(join(tmpdir(), 'DeFlow-diff-'));
+  const index = join(scratch, 'index');
+  // Only `GIT_INDEX_FILE` is added: `runGit` composes this over
+  // `gitChildEnv()`, and spreading `process.env` in would undo the scrubbing
+  // that keeps a child git out of the developer's own configuration.
+  const git = new Git(dir, { env: { GIT_INDEX_FILE: index } });
+
+  try {
+    const seeded = await git.run(['read-tree', base]);
+    if (seeded.exitCode !== 0) return null;
+    const staged = await git.run(['add', '-A']);
+    if (staged.exitCode !== 0) return null;
+    const diff = await git.run([
+      'diff',
+      '--cached',
+      '--no-color',
+      '--no-ext-diff',
+      '--binary',
+      base,
+    ]);
+    if (diff.exitCode !== 0) return null;
+    // `runGit` strips the final newline, which is right for `rev-parse` and
+    // wrong for a patch: `git apply` rejects a hunk whose last line has no
+    // terminator with "corrupt patch at line N". Restoring the byte git wrote
+    // is not assembling a patch — it is undoing a convenience applied to the
+    // wrong kind of output.
+    return diff.stdout === '' ? '' : `${diff.stdout}\n`;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** The directory a diff is taken in, and the revision it is taken from. */
+type DiffTarget = { readonly dir: string; readonly base: string } | { readonly response: Response };
+
+/**
+ * `?node=` / `?worktree=` / `?cumulative=1`, resolved to a directory this run
+ * actually worked in.
+ *
+ * `base` is `HEAD` for a node's worktree — the uncommitted change that node has
+ * made — and the commit the run was **created** against for the cumulative
+ * view, which is what makes "what has this run done in total" include the
+ * commits it made along the way as well as the working tree.
+ */
+function diffTarget(c: Context, view: LedgerView, runId: RunId, state: RunState): DiffTarget {
+  const node = c.req.query('node');
+  const worktree = c.req.query('worktree');
+  const cumulative = c.req.query('cumulative');
+  const named = [node, worktree, cumulative].filter((value) => value !== undefined);
+
+  if (named.length !== 1) {
+    return {
+      response: c.json(
+        ...apiError(
+          'invalid_request',
+          'name exactly one of node, worktree or cumulative=1: the three mean different things ' +
+            'and a caller given the wrong one has no way to notice',
+          { detail: { field: 'node|worktree|cumulative' } },
+        ),
+      ),
+    };
+  }
+
+  const repoRoot = state.repoRoot;
+  if (repoRoot === null) {
+    return {
+      response: c.json(
+        ...apiError('not_applicable', 'this run has no repository yet', { detail: {} }),
+      ),
+    };
+  }
+
+  if (node !== undefined) {
+    const found = state.nodes[node];
+    if (found === undefined) {
+      return {
+        response: c.json(
+          ...apiError('node_not_found', `this run has no node '${node}'`, { detail: { node } }),
+        ),
+      };
+    }
+    return { dir: found.worktree ?? repoRoot, base: 'HEAD' };
+  }
+
+  if (worktree !== undefined) {
+    const held =
+      worktree === repoRoot ||
+      Object.values(state.nodes).some((entry) => entry.worktree === worktree);
+    if (!held) {
+      return {
+        response: c.json(
+          ...apiError('invalid_request', 'this run never held that worktree', {
+            detail: { field: 'worktree' },
+          }),
+        ),
+      };
+    }
+    return { dir: worktree, base: 'HEAD' };
+  }
+
+  // `cumulative=1`, and anything else under that name is a request nobody can
+  // honour rather than a different view.
+  if (cumulative !== '1') {
+    return {
+      response: c.json(
+        ...apiError('invalid_request', 'cumulative takes the value 1', {
+          detail: { field: 'cumulative' },
+        }),
+      ),
+    };
+  }
+  // The commit the run began at, so "what has this run done in total" includes
+  // the commits it made along the way. `HEAD` when `run.created` has been
+  // pruned — the narrower question, answered honestly, rather than a wrong
+  // version of the broader one.
+  return { dir: repoRoot, base: view.runOrigin(runId)?.head ?? 'HEAD' };
+}
+
+/** The workspace `?cwd=` names, or the refusal. */
+type WorkspaceLookup = { readonly cwd: string } | { readonly response: Response };
+
+/**
+ * `?cwd=`, checked against the repositories this ledger holds runs for.
+ *
+ * Not taken as given. The daemon is bearer-token protected, but *the agents
+ * DeFlow itself spawned* are inside that boundary (docs/15-security-model.md
+ * §3), and a config endpoint that would read or write `.DeFlow/config.yaml`
+ * under any path on the machine is a file reader and a file writer with a
+ * different name.
+ */
+function workspaceRoot(c: Context): WorkspaceLookup {
+  const view = ledgerView();
+  if (view === null) return { response: notReady(c) };
+
+  const cwd = c.req.query('cwd');
+  if (cwd === undefined || cwd === '') {
+    return {
+      response: c.json(
+        ...apiError('invalid_request', 'cwd names the workspace whose config is read', {
+          detail: { field: 'cwd' },
+        }),
+      ),
+    };
+  }
+
+  const known = view.runIds().some((runId) => view.runState(runId)?.repoRoot === cwd);
+  if (!known) {
+    return {
+      response: c.json(
+        ...apiError('invalid_request', 'cwd is not a repository this daemon holds a run for', {
+          detail: { field: 'cwd' },
+        }),
+      ),
+    };
+  }
+  return { cwd };
+}
+
+/**
+ * AC7 — one content-addressed blob, with `Range` and immutable caching.
+ *
+ * `GET` and `HEAD` share a body because they must not disagree about the size
+ * or the media type: a `HEAD` that answered from a different code path is a
+ * `HEAD` that will eventually be wrong, and a client sizes its download off it.
+ *
+ * The media type comes from the run artifact index — `runs/<runId>/artifacts/
+ * <sha>/entry.json`, written by KAR-09.5 — because the blob store is
+ * content-addressed and a sha256 says nothing about what the bytes are.
+ * `application/octet-stream` when nothing recorded one, which is the honest
+ * answer rather than a guess from the first few bytes.
+ */
+function serveArtifact(c: Context, method: 'GET' | 'HEAD') {
+  // The view's own data directory, because the blob store is part of the read
+  // side: a read endpoint that could only answer once the *write* ports were
+  // registered would be unavailable for exactly as long as the write path is,
+  // which is the opposite of what a reader wants from a restart.
+  const dataDir = ledgerView()?.dataDir ?? intakePorts()?.dataDir;
+  if (dataDir === undefined) return notReady(c);
+
+  const sha = c.req.param('sha') ?? '';
+  const found = artifactStat(dataDir, sha);
+  if (found === null) {
+    return c.json(...apiError('artifact_not_found', `no artifact '${sha}'`, { detail: { sha } }));
+  }
+
+  c.header('Accept-Ranges', 'bytes');
+  c.header('Content-Type', found.mime);
+  c.header('ETag', `"${found.sha256}"`);
+  // Safe precisely because the address is the digest: these bytes cannot become
+  // different bytes, so there is nothing for a cache to go stale against.
+  c.header('Cache-Control', 'private, max-age=31536000, immutable');
+
+  const range = parseByteRange(c.req.header('Range'), found.bytes);
+  if (range.kind === 'unsatisfiable') {
+    c.header('Content-Range', `bytes */${found.bytes}`);
+    return c.body(null, 416);
+  }
+
+  if (method === 'HEAD') {
+    c.header('Content-Length', String(found.bytes));
+    return c.body(null, 200);
+  }
+
+  if (range.kind === 'whole') {
+    c.header('Content-Length', String(found.bytes));
+    return c.body(readArtifactBytes(found.path, 0, found.bytes) as unknown as ArrayBuffer, 200);
+  }
+
+  c.header('Content-Range', `bytes ${range.start}-${range.end}/${found.bytes}`);
+  c.header('Content-Length', String(range.length));
+  return c.body(
+    readArtifactBytes(found.path, range.start, range.length) as unknown as ArrayBuffer,
+    206,
+  );
 }
 
 interface RespondBody {
@@ -775,6 +1200,10 @@ export const api = new Hono()
     const diff = diffPlanGraphs(fromGraph, toGraph);
     const transition = view.planTransition(runId, to);
 
+    // KAR-15.6 AC11 — `unionLayoutKey` is an opaque cache key and not part of
+    // the versioned contract. Said on the response rather than only in the
+    // docs, because a client that logs its headers has then been told.
+    c.header(UNVERSIONED_HEADER, UNION_LAYOUT_KEY_UNVERSIONED);
     return c.json(
       {
         from: diff.from,
@@ -787,6 +1216,458 @@ export const api = new Hono()
       },
       200,
     );
+  })
+
+  /**
+   * KAR-15.6 AC1 — `GET /api/runs/:id/plans`: the plan-evolution scrubber's
+   * version rail (docs/11-api-and-realtime.md §6).
+   *
+   * One row per version, in version order, each carrying the `seq` that
+   * proposed it and — joined from `plan.patched`/`plan.patch.proposed` — the
+   * `decision` and the verbatim `reason` behind it. `null` for both on a
+   * version with no patch behind it, which is what v1's initial compile is.
+   *
+   * A grouped, bounded statement rather than a fold: a nine-hour run with forty
+   * replans costs forty rows here and forty thousand folded events the other
+   * way, and the scrubber is the first thing the operator opens.
+   */
+  .get('/runs/:id/plans', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.plans);
+    c.header(LIMIT_HEADER, String(limit));
+
+    return c.json(
+      found.view.planVersions(found.runId, limit).map((row) => {
+        const transition = found.view.planTransition(found.runId, row.version);
+        return {
+          version: row.version,
+          seq: row.seq,
+          planHash: row.planHash,
+          decision: transition?.decision ?? null,
+          reason: transition?.reason ?? null,
+        };
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC1 — `GET /api/runs/:id/plans/:version`: the immutable plan
+   * document that version names.
+   *
+   * Registered **after** `/plans/diff` so the literal path wins over the
+   * parameter, and cacheable forever because the document is addressed by a
+   * content hash: version 3 of a run's plan is the same bytes for as long as
+   * the ledger exists, so `immutable` is a statement of fact rather than an
+   * optimisation.
+   */
+  .get('/runs/:id/plans/:version', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const version = parseVersion(c.req.param('version'));
+    const document = version === null ? null : found.view.planVersion(found.runId, version);
+    if (document === null) {
+      return c.json(
+        ...apiError('plan_version_not_found', 'this run never proposed a version numbered that', {
+          detail: { version: c.req.param('version') },
+        }),
+      );
+    }
+
+    c.header('Cache-Control', 'private, max-age=31536000, immutable');
+    return c.json(document, 200);
+  })
+
+  /**
+   * KAR-15.6 AC3 — `GET /api/runs/:id/nodes/:nodeId?attempt=`: F10.3's
+   * inspector bundle.
+   *
+   * One object rather than four endpoints, because the panel renders once: the
+   * scheduling decision (provider, model, permission, worktree), the binary
+   * that produced the output, the wall clock, the accounting and the retry
+   * count are all answers to *"what happened at this node"*, and a view that
+   * had to join them would show four loading states.
+   */
+  .get('/runs/:id/nodes/:nodeId', (c) => {
+    const found = resolveNode(c);
+    if ('response' in found) return found.response;
+
+    return c.json(
+      nodeBundle({
+        runId: found.runId,
+        nodeId: found.nodeId,
+        attempt: attemptOf(c, found.node),
+        node: found.node,
+        budget: found.state.budget,
+        timing: found.view.nodeTiming(found.runId, found.nodeId),
+        binaryVersion: probedVersion(found.view, found.node.provider),
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC3 — `GET /api/runs/:id/nodes/:nodeId/packet?attempt=`: the
+   * assembled `ContextPacket`, with per-segment token counts.
+   *
+   * Served **from the stored `context.built` manifest** and re-derived in no
+   * respect. The sum assertion in EPIC-15-S42 is a Playwright smoke for a
+   * reason: a breakdown that does not add up to its header is the visible
+   * symptom of the packet being recomputed from the rendered prompt, which
+   * makes the inspector explain a prompt the agent was never given.
+   *
+   * Segment `text` is not on the wire — the text of every segment *is* the
+   * prompt. `renderedPromptHandle` and each `contentHash` are how a client
+   * fetches the bytes, through `GET /api/artifacts/:sha`.
+   */
+  .get('/runs/:id/nodes/:nodeId/packet', (c) => {
+    const found = resolveNode(c);
+    if ('response' in found) return found.response;
+
+    const attempt = attemptOf(c, found.node);
+    const record = found.view.contextPacket(found.runId, found.nodeId, attempt);
+    if (record === null) {
+      return c.json(
+        ...apiError('not_found', 'no context packet was built for that node attempt', {
+          detail: { node: found.nodeId, attempt },
+        }),
+      );
+    }
+
+    return c.json(packetView(record), 200);
+  })
+
+  /**
+   * KAR-15.6 AC4, AC11 — `GET /api/runs/:id/nodes/:nodeId/io`: the terminal
+   * reattach, as `application/x-ndjson`.
+   *
+   * **`fromSeq` omitted plus `limit` set means the tail.** That is the case a
+   * tab opening on a node with 200 MB of output is in, and it is why there are
+   * two queries rather than one: paging forward from zero to reach the end
+   * reads the whole log to answer *"what are the last few hundred lines"*.
+   * `fromSeq` set pages forward from that cursor, deterministically, with
+   * `seq > fromSeq` — never `>=`, because `io_chunk.seq` is `AUTOINCREMENT`
+   * and pruning leaves permanent gaps.
+   *
+   * The framing is deliberately outside the versioned contract (AC11); the
+   * `X-DeFlow-Unversioned` header says so on every response, and the stable
+   * archive is `runs/<runId>/nodes/<nodeId>/stdout.log`.
+   */
+  .get('/runs/:id/nodes/:nodeId/io', (c) => {
+    const found = resolveNode(c);
+    if ('response' in found) return found.response;
+
+    const attempt = attemptOf(c, found.node);
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.io);
+    // The translation `../exec/ledger-sink.ts` owns on the write side, applied
+    // once here on the read side: the data plane counts attempts from 1 and
+    // the event envelope counts from 0. Getting it wrong does not fail — it
+    // silently serves the output of the attempt this one replaced, which is
+    // invisible until somebody reads a transcript.
+    const selector = { runId: found.runId, nodeId: asNodeId(found.nodeId), attempt: attempt + 1 };
+    const fromSeq = c.req.query('fromSeq');
+    const page =
+      fromSeq === undefined
+        ? found.view.ioTail(selector, limit)
+        : found.view.ioPage(selector, Math.max(0, Number(fromSeq) || 0), limit);
+
+    // Joined here rather than streamed, and bounded by `limit` rather than by
+    // the size of the table: the memory this response costs is the window the
+    // caller asked for, whatever the log behind it weighs.
+    const body = page.chunks.map((chunk) => ioChunkLine(chunk)).join('');
+
+    c.header('Content-Type', IO_NDJSON_MEDIA_TYPE);
+    c.header(LIMIT_HEADER, String(limit));
+    c.header(UNVERSIONED_HEADER, IO_NDJSON_UNVERSIONED);
+    c.header('X-DeFlow-Io-More', String(page.hasMore));
+    return c.body(body, 200);
+  })
+
+  /**
+   * KAR-15.6 AC5 — `GET /api/runs/:id/facts?key=&by=`: F10.4's memory graph.
+   *
+   * Provenance travels **on** every fact rather than being joinable from it:
+   * *"which node wrote it, from what evidence, at what time, at what
+   * confidence"* is the question the view exists to answer, so a second request
+   * to answer it would be the view failing at its own job.
+   *
+   * An invalidated fact is still a row, marked. History is never rewritten, and
+   * hiding stale facts would leave a node that read one showing an input from
+   * nowhere.
+   */
+  .get('/runs/:id/facts', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.facts);
+    c.header(LIMIT_HEADER, String(limit));
+
+    return c.json(
+      factsPage(found.view.facts(found.runId), {
+        limit,
+        key: c.req.query('key'),
+        by: c.req.query('by'),
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC5 — `GET /api/runs/:id/facts/:factId/consumers`.
+   *
+   * One indexed `GROUP BY` over `fact_edges_by_fact`, computed in SQLite. The
+   * `direction = 'read'` clause is what excludes the writer and it is in the
+   * `WHERE` rather than applied afterwards: filtering in JavaScript would read
+   * every edge of the run to answer a question about one fact.
+   */
+  .get('/runs/:id/facts/:factId/consumers', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.consumers);
+    c.header(LIMIT_HEADER, String(limit));
+
+    return c.json(found.view.factConsumers(asFactId(c.req.param('factId')), limit), 200);
+  })
+
+  /**
+   * KAR-15.6 AC6 — `GET /api/runs/:id/gates`: what each gate node concluded.
+   *
+   * The projection the ladder itself reads, exposed unchanged. A void verdict
+   * leaves no entry (KAR-12.4 AC6) and therefore no row, which is correct:
+   * a verdict judged against a spec nobody approved is not evidence about this
+   * contract, and a row for it would read as an answered gate.
+   */
+  .get('/runs/:id/gates', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.gates);
+    c.header(LIMIT_HEADER, String(limit));
+
+    return c.json(gatesView(found.state.gateVerdicts).slice(0, limit), 200);
+  })
+
+  /**
+   * KAR-15.6 AC6 — `GET /api/runs/:id/findings?file=`: findings grouped by
+   * file, ordered by line.
+   *
+   * Grouped on the server because the annotation layer draws per file, and
+   * ordered by line because it draws top to bottom; a client re-sorting a flat
+   * list is a client that will eventually sort it differently from the next
+   * client. A finding with no location keeps its own group, last — dropping it
+   * would hide the judgements that are about the change as a whole, which are
+   * the ones that matter most.
+   */
+  .get('/runs/:id/findings', (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.findings);
+    c.header(LIMIT_HEADER, String(limit));
+
+    const groups = findingsByFile(found.state.gateVerdicts, c.req.query('file'));
+    // Bounded across groups rather than within one, so a single file with ten
+    // thousand lint errors cannot make this response unbounded.
+    let budget = limit;
+    const bounded = [];
+    for (const group of groups) {
+      if (budget <= 0) break;
+      bounded.push({ file: group.file, findings: group.findings.slice(0, budget) });
+      budget -= group.findings.length;
+    }
+    return c.json(bounded, 200);
+  })
+
+  /**
+   * KAR-15.6 AC6 — `GET /api/runs/:id/criteria`: F7.4's acceptance board.
+   *
+   * Driven by the spec's criteria rather than by the verdicts, so a criterion
+   * nothing has judged appears as `pending` rather than not appearing at all —
+   * and every constraint gets a row of its own, because a board built from
+   * `acceptanceCriteria` alone is silent about the prohibitions while every
+   * gate reads green.
+   *
+   * `sealTaskSpec` is what turns the latest amended *draft* into the contract
+   * now in force; a run nobody has amended is judged against `run.created.spec`.
+   */
+  .get('/runs/:id/criteria', async (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const spec = await currentSpec(found.view, found.runId);
+    if (spec === null) {
+      return c.json(
+        ...apiError('not_found', 'this run has no TaskSpec yet, so it has no criteria', {
+          detail: { runId: found.runId },
+        }),
+      );
+    }
+
+    return c.json(
+      acceptanceBoard({
+        criteria: spec.acceptanceCriteria,
+        constraints: spec.constraints,
+        verdicts: boardVerdicts(found.view, found.runId, READ_LIMITS.gates.cap),
+        specHash: spec.specHash,
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC6 — `GET /api/runs/:id/diff?node=|worktree=|cumulative=1`, as
+   * `text/x-patch`.
+   *
+   * Produced by **git**, never assembled here. A patch composed by string
+   * concatenation renders convincingly in a diff viewer and applies to nothing,
+   * and the only thing that can tell the two apart is `git apply`
+   * (`../../test/integration/run-diff-api.test.ts` makes git the judge).
+   *
+   * The three selectors are mutually exclusive rather than defaulted, because
+   * *"the diff"* means three different things and a caller that got the wrong
+   * one would have no way to notice: `node` is one node's worktree, `worktree`
+   * names one directly, and `cumulative=1` is the repository the run was
+   * created against, diffed from the commit it started at — which is the only
+   * one of the three that answers *"what has this run done in total"*.
+   *
+   * A `worktree` this run never held is refused. The daemon is bearer-token
+   * protected, but the agents it spawned are inside that boundary
+   * (docs/15-security-model.md §3), and an endpoint that would run
+   * `git -C <anything>` is a repository reader with a different name.
+   */
+  .get('/runs/:id/diff', async (c) => {
+    const found = resolveRun(c);
+    if ('response' in found) return found.response;
+
+    const target = diffTarget(c, found.view, found.runId, found.state);
+    if ('response' in target) return target.response;
+
+    const patch = await worktreePatch(target.dir, target.base);
+    if (patch === null) {
+      return c.json(
+        ...apiError('internal', 'git could not produce a diff for that worktree', {
+          detail: { dir: '<worktree>' },
+        }),
+      );
+    }
+
+    c.header('Content-Type', 'text/x-patch; charset=utf-8');
+    return c.body(patch, 200);
+  })
+
+  /**
+   * KAR-15.6 AC7 — `GET /api/artifacts/:sha`, and `HEAD` beside it.
+   *
+   * Content addressing is what makes both of these safe. The bytes behind a
+   * sha256 cannot change, so `immutable` is a fact rather than a gamble, and a
+   * `Range` fetched in pieces cannot be stitched together out of two different
+   * versions of a file.
+   *
+   * `Accept-Ranges: bytes` is on every response including the `HEAD`, because
+   * that is how a client discovers it may ask for a slice at all.
+   */
+  .get('/artifacts/:sha', (c) => serveArtifact(c, 'GET'))
+  .on('HEAD', '/artifacts/:sha', (c) => serveArtifact(c, 'HEAD'))
+
+  /**
+   * KAR-15.6 AC8 — `GET /api/providers`: the adapters this machine has, with
+   * the versions and capability manifests the probe recorded.
+   *
+   * Read out of the `provider_capabilities` history rather than re-probed: a
+   * `GET` that spawned five vendor binaries would be a `GET` with side effects,
+   * and the probe is keyed on (provider, version, binary sha256) precisely so
+   * that the answer is a fact about this machine that survives a restart.
+   * A provider nothing has probed is reported as `installed: false` rather than
+   * omitted — *"gemini is not installed"* is the answer the operator needs.
+   */
+  .get('/providers', (c) => {
+    const view = ledgerView();
+    if (view === null) return notReady(c);
+
+    return c.json(
+      Object.keys(PROVIDER_SPECS).map((provider) => {
+        const [row] = view.providerCapabilities(provider);
+        if (row === undefined) {
+          return {
+            provider,
+            installed: false,
+            version: null,
+            binarySha256: null,
+            probedAt: null,
+            capabilities: null,
+          };
+        }
+        return {
+          provider,
+          installed: true,
+          version: row.version,
+          binarySha256: row.binarySha256,
+          probedAt: row.probedAt,
+          // The entire `initialize` response, unmodified — the manifest is the
+          // vendor's own answer and DeFlow never paraphrases it.
+          capabilities: JSON.parse(row.capsJson) as unknown,
+        };
+      }),
+      200,
+    );
+  })
+
+  /**
+   * KAR-15.6 AC8 — `GET /api/config?cwd=`: `.DeFlow/config.yaml` as JSON.
+   *
+   * `cwd` names the workspace, and it is checked against the repositories this
+   * ledger actually holds runs for rather than taken as given: the daemon is
+   * bearer-token protected, but the agents it spawns are inside that boundary,
+   * and a config endpoint that read any path on the machine would be a file
+   * reader with a different name.
+   */
+  .get('/config', (c) => {
+    const root = workspaceRoot(c);
+    if ('response' in root) return root.response;
+
+    return c.json({ cwd: root.cwd, config: loadWorkspaceConfig(root.cwd) }, 200);
+  })
+
+  /**
+   * KAR-15.6 AC8 — `PATCH /api/config?cwd=`: a shallow merge, validated before
+   * it is written.
+   *
+   * Validated rather than trusted, because §13's highest-severity configuration
+   * risk is a value the operator believes is in force and is not: writing a
+   * `pinReinjectTurns` of `nope` would leave the file unreadable and the
+   * default silently in effect. A rejected patch changes nothing on disk.
+   */
+  .patch('/config', async (c) => {
+    const root = workspaceRoot(c);
+    if ('response' in root) return root.response;
+
+    const body: unknown = await c.req.json().catch(() => null);
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json(
+        ...apiError('invalid_request', 'the body is a JSON object of config keys to set', {
+          detail: { field: '<root>' },
+        }),
+      );
+    }
+
+    const merged = { ...loadWorkspaceConfig(root.cwd), ...(body as Record<string, unknown>) };
+    let validated: unknown;
+    try {
+      validated = parseDeFlowConfig(merged);
+    } catch (error) {
+      return c.json(
+        ...apiError('schema_violation', 'that is not a valid .DeFlow/config.yaml', {
+          detail: { reason: error instanceof Error ? error.message : String(error) },
+        }),
+      );
+    }
+
+    writeWorkspaceConfig(root.cwd, validated);
+    return c.json({ cwd: root.cwd, config: validated }, 200);
   })
 
   /**

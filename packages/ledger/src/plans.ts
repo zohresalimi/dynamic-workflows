@@ -554,3 +554,53 @@ export function readPlanPatchProposedEvent(
   const payload = JSON.parse(row.payload) as { readonly patch: { readonly reason: string } };
   return { patch: { reason: payload.patch.reason } };
 }
+
+/**
+ * KAR-15.6 AC1 — the version rail: one row per plan version this run proposed,
+ * in version order, at most `limit` of them.
+ *
+ * `min(seq)` per version rather than every `plan.proposed`, because two rival
+ * proposers both compose a `v2` (KAR-11.3 AC10) and the rail is a list of
+ * *versions*: showing v2 twice would put two ticks on the scrubber for one
+ * position, and the one a reader means is the first — the proposal the run
+ * went on to apply or reject.
+ *
+ * Grouped and bounded, so a nine-hour run with forty replans costs forty rows
+ * rather than a fold over forty thousand events.
+ */
+const LIST_PLAN_VERSIONS_SQL = `
+  SELECT min(seq) AS seq, json_extract(payload, '$.version') AS version
+  FROM event
+  WHERE run_id = ? AND kind = 'plan.proposed'
+  GROUP BY version
+  ORDER BY version
+  LIMIT ?
+`;
+
+/** One tick of the scrubber's version rail. */
+export interface PlanVersionRow {
+  readonly version: number;
+  /** The `seq` of the `plan.proposed` that first proposed it (NF10). */
+  readonly seq: number;
+  readonly planHash: string;
+}
+
+export function listPlanVersions(db: Db, runId: string, limit: number): PlanVersionRow[] {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError(`listPlanVersions: limit must be an integer >= 1, got ${limit}`);
+  }
+  const rows = db
+    .prepare<{ seq: number; version: number }>(LIST_PLAN_VERSIONS_SQL)
+    .all(runId, limit);
+
+  // The hash comes back through `readPlanVersion`'s own statement rather than
+  // out of the grouped row: `min(seq)` and a bare `payload` in one aggregate
+  // query is a SQLite-specific bare-column form, and the two would silently
+  // drift apart the day this grows a second grouping key.
+  return rows.flatMap((row) => {
+    const payload = db.prepare<PayloadRow>(SELECT_PLAN_PROPOSED_SQL).get(runId, row.version);
+    if (payload === undefined) return [];
+    const parsed = JSON.parse(payload.payload) as { readonly planHash: string };
+    return [{ version: row.version, seq: row.seq, planHash: parsed.planHash }];
+  });
+}

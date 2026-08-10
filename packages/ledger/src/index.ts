@@ -64,6 +64,8 @@ export {
   type BlackboardRebuild,
   createBlackboardTables,
   FACT_EVENT_KINDS,
+  // KAR-15.6 AC5 — F10.4's second query: the consumer set of one fact, in SQL.
+  type FactConsumerRow,
   type FactEdgeDirection,
   type FactEdgeRow,
   type FactEventEnvelope,
@@ -77,6 +79,7 @@ export {
   type ResolveReadsOptions,
   readersBefore,
   readFactByKey,
+  readFactConsumers,
   readFactEdges,
   readFacts,
   readTaintedNodes,
@@ -210,6 +213,16 @@ export {
   type SampledGateEvaluation,
   sampleGateHygiene,
 } from './gate-hygiene.ts';
+// KAR-15.6 — the two point reads the inspection surfaces need: one node
+// attempt's packet manifest, and the spec a run is judged against.
+export {
+  type RunOrigin,
+  readContextPacket,
+  readGateVerdicts,
+  readLatestSpecAmendment,
+  readRunCreatedSpec,
+  readRunOrigin,
+} from './inspection.ts';
 // KAR-10.1 AC6 / KAR-15.5 AC5 — the API-level `Idempotency-Key`, journalled in
 // the `effect` table under an `intake:` namespace no engine key can produce.
 export {
@@ -226,6 +239,8 @@ export {
   appendIoChunk,
   appendIoChunks,
   InvalidIoChunk,
+  // KAR-15.6 AC4 — the tail: the last N chunks, read off the end of the index.
+  IO_CHUNK_HEAD_SQL,
   IO_CHUNK_TAIL_SQL,
   IO_STREAMS,
   type IoChunkDraft,
@@ -233,6 +248,7 @@ export {
   type IoChunkSelector,
   type IoStream,
   readIoChunks,
+  readIoChunkTail,
   type StoredIoChunk,
 } from './io-chunk.ts';
 // KAR-03.7 — the single-instance lease. Taken first in boot, before anything
@@ -247,6 +263,8 @@ export {
 // KAR-03.2 — ~40 lines over PRAGMA user_version, plus the pre-migration backup.
 export { type Migration, migrate } from './migrate.ts';
 export { MIGRATIONS } from './migrations/index.ts';
+// KAR-15.6 AC3 — when a node started and stopped, for the inspector bundle.
+export { type NodeTiming, readNodeTiming } from './node-timing.ts';
 // KAR-06.6 — the `node_wake` table: every wait in the system, from a 2-second
 // retry backoff to a 30-day human gate, as one row and zero CPU. Never a timer.
 export {
@@ -293,11 +311,15 @@ export type {
   PersistedPlan,
   PersistPlanOptions,
 } from './plans.ts';
+// KAR-15.6 — the scrubber's version rail: every plan version a run proposed,
+// as one grouped, bounded statement.
 export {
   applyPatchedPlanVersion,
+  listPlanVersions,
   PATCH_STALE,
   PlanHashMismatch,
   PlanNotValidated,
+  type PlanVersionRow,
   persistPlanVersion,
   planDirOf,
   planPathOf,
