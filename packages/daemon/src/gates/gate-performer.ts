@@ -40,8 +40,16 @@ export interface GatePerformerOptions {
   readonly scrubbedEnv?: readonly string[];
   readonly env?: NodeJS.ProcessEnv;
   readonly onSpawn?: (pid: number) => void;
-  /** Called with each gate node's outcome, in order, for observability. */
-  readonly onVerdict?: (node: NodeId, outcome: GateNodeOutcome) => void;
+  /**
+   * Called with each gate node's outcome, in order, and **awaited**.
+   *
+   * Awaited because this is where KAR-12.5's repair loop hangs: a failing
+   * verdict earns a fix node, and the plan version that carries it has to be
+   * committed before the executor's next tick asks `decide()` what to run. A
+   * hook left un-awaited is a run that concludes while its own repair is still
+   * being written — and then closes the database underneath it.
+   */
+  readonly onVerdict?: (node: NodeId, outcome: GateNodeOutcome) => void | Promise<void>;
   /**
    * Which definition, worktree and producer this gate node names.
    *
@@ -95,7 +103,7 @@ export function gateNodePerformer(options: GatePerformerOptions): NodePerformer 
       },
     );
 
-    options.onVerdict?.(command.node, outcome);
+    await options.onVerdict?.(command.node, outcome);
   };
 }
 

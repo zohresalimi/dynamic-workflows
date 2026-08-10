@@ -49,7 +49,12 @@ import type {
   VerdictV3,
 } from '@DeFlow/core';
 import { applyPatch, EVENT_CURRENT_VERSIONS } from '@DeFlow/core';
-import { gatesAfterRepair, type RepairContext, repairPatchesFor } from '@DeFlow/gates';
+import {
+  gatesAfterRepair,
+  type RepairContext,
+  repairPatchesFor,
+  rerunGatePatch,
+} from '@DeFlow/gates';
 import { appendEvents, replayRun } from '@DeFlow/ledger';
 import { rulePatch } from '../budget/patch-gate.ts';
 import {
@@ -192,96 +197,23 @@ export async function applyGateRepair(
   let base = request.base;
 
   for (const target of decision.findings) {
-    const ruling = rulePatch(db, {
-      runId: request.runId,
-      state: replayRun(db, request.runId).state,
+    const outcome = await ruleAndCommit(db, {
+      ...request,
+      base,
       patch: target.patch,
-      estimator: request.estimator,
-      now: request.ts,
-      ...(request.touchesExecutionBoundary === undefined
-        ? {}
-        : { touchesExecutionBoundary: request.touchesExecutionBoundary }),
-      ...(request.configPolicyHash === undefined
-        ? {}
-        : { configPolicyHash: request.configPolicyHash }),
     });
 
-    if (ruling.decision !== 'auto') {
-      decisions.push({
-        node: target.node,
-        patch: target.patch,
-        decision: ruling.decision,
-        ruleId: ruling.ruleId,
-        applied: false,
-      });
-      continue;
-    }
-
-    const composed = await applyPatch(base, target.patch, {
-      createdAt: new Date(request.ts).toISOString(),
-    });
-    if (!composed.ok) {
-      appendEvents(db, [
-        {
-          runId: request.runId,
-          ts: request.ts,
-          kind: 'plan.patch.rejected',
-          v:
-            (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)['plan.patch.rejected'] ??
-            1,
-          epoch: request.epoch,
-          payload: {
-            patchId: target.patch.id,
-            rule: REPAIR_NOT_APPLICABLE,
-            by: 'validation',
-          },
-        },
-      ]);
-      decisions.push({
-        node: target.node,
-        patch: target.patch,
-        decision: ruling.decision,
-        ruleId: ruling.ruleId,
-        applied: false,
-      });
-      continue;
-    }
-
-    const commit = await commitPatchedPlan({
-      db,
-      runDir: request.runDir,
-      graph: composed.graph,
-      spec: request.spec,
-      caps: request.caps,
-      estimatePacketTokens: request.estimatePacketTokens,
-      refs: request.refs,
-      plan: composed.graph,
-      basePlanHash: base.planHash,
-      patchId: target.patch.id,
-      decision: {
-        decision: 'auto',
-        by: 'policy',
-        rule: ruling.ruleId,
-        at: new Date(request.ts).toISOString(),
-      },
-      by: target.patch.proposedBy,
-      planner: request.planner,
-      ts: request.ts,
-      epoch: request.epoch,
-    });
-
-    const committed = commit.outcome === 'committed';
-    if (committed) {
-      base = composed.graph;
+    if (outcome.graph !== null) {
+      base = outcome.graph;
       applied.push(target.node);
     }
     decisions.push({
       node: target.node,
       patch: target.patch,
-      decision: ruling.decision,
-      ruleId: ruling.ruleId,
-      applied: committed,
-      commit,
+      decision: outcome.decision,
+      ruleId: outcome.ruleId,
+      applied: outcome.graph !== null,
+      ...(outcome.commit === null ? {} : { commit: outcome.commit }),
     });
   }
 
@@ -292,5 +224,153 @@ export async function applyGateRepair(
     applied,
     decisions,
     rerun: applied.length === 0 ? [] : gatesAfterRepair(laddersOf(base)),
+  };
+}
+
+/** Everything `ruleAndCommit` needs that is not the patch itself. */
+type PatchCommitRequest = Omit<GateRepairRequest, 'verdict' | 'context'> & {
+  readonly patch: PlanPatch;
+};
+
+interface PatchCommitOutcome {
+  readonly decision: PatchPolicyDecision;
+  readonly ruleId: string;
+  /** The successor, or `null` when the patch was queued, rejected or refused. */
+  readonly graph: PlanGraph | null;
+  readonly commit: CommitPatchedPlanOutcome | null;
+}
+
+/**
+ * One patch through the one door: policy ruling, composition, validation,
+ * commit.
+ *
+ * Shared by the repair patch and the re-run patch deliberately. They are the
+ * same kind of change — a proposal the run may only execute once the engine has
+ * ruled on it and `commitPatchedPlan` has revalidated the result — and a second
+ * copy of this sequence is how one of them comes to skip the ruling.
+ */
+async function ruleAndCommit(db: Db, request: PatchCommitRequest): Promise<PatchCommitOutcome> {
+  const ruling = rulePatch(db, {
+    runId: request.runId,
+    state: replayRun(db, request.runId).state,
+    patch: request.patch,
+    estimator: request.estimator,
+    now: request.ts,
+    ...(request.touchesExecutionBoundary === undefined
+      ? {}
+      : { touchesExecutionBoundary: request.touchesExecutionBoundary }),
+    ...(request.configPolicyHash === undefined
+      ? {}
+      : { configPolicyHash: request.configPolicyHash }),
+  });
+
+  if (ruling.decision !== 'auto') {
+    return { decision: ruling.decision, ruleId: ruling.ruleId, graph: null, commit: null };
+  }
+
+  const composed = await applyPatch(request.base, request.patch, {
+    createdAt: new Date(request.ts).toISOString(),
+  });
+  if (!composed.ok) {
+    appendEvents(db, [
+      {
+        runId: request.runId,
+        ts: request.ts,
+        kind: 'plan.patch.rejected',
+        v: (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)['plan.patch.rejected'] ?? 1,
+        epoch: request.epoch,
+        payload: { patchId: request.patch.id, rule: REPAIR_NOT_APPLICABLE, by: 'validation' },
+      },
+    ]);
+    return { decision: ruling.decision, ruleId: ruling.ruleId, graph: null, commit: null };
+  }
+
+  const commit = await commitPatchedPlan({
+    db,
+    runDir: request.runDir,
+    graph: composed.graph,
+    spec: request.spec,
+    caps: request.caps,
+    estimatePacketTokens: request.estimatePacketTokens,
+    refs: request.refs,
+    plan: composed.graph,
+    basePlanHash: request.base.planHash,
+    patchId: request.patch.id,
+    decision: {
+      decision: 'auto',
+      by: 'policy',
+      rule: ruling.ruleId,
+      at: new Date(request.ts).toISOString(),
+    },
+    by: request.patch.proposedBy,
+    planner: request.planner,
+    ts: request.ts,
+    epoch: request.epoch,
+  });
+
+  return {
+    decision: ruling.decision,
+    ruleId: ruling.ruleId,
+    graph: commit.outcome === 'committed' ? composed.graph : null,
+    commit,
+  };
+}
+
+export interface GateRerunRequest extends Omit<GateRepairRequest, 'verdict' | 'context'> {
+  /** The fix nodes whose completion the re-run must follow. */
+  readonly after: readonly NodeId[];
+  /** 2 for a gate node's first re-run, 3 for the next. */
+  readonly round: number;
+  readonly proposedBy: ProposedBy;
+  readonly replanDepth: number;
+  /** What the fix node's branch showed, rendered into the patch's `reason`. */
+  readonly detail?: string;
+}
+
+export interface GateRerunOutcome {
+  /** `null` when the plan had no deterministic gate to re-run. */
+  readonly patch: PlanPatch | null;
+  readonly decision: PatchPolicyDecision | null;
+  readonly ruleId: string | null;
+  readonly applied: boolean;
+  /** The gate nodes the run is now going to execute. */
+  readonly scheduled: readonly NodeId[];
+  readonly commit?: CommitPatchedPlanOutcome;
+}
+
+/**
+ * AC5 — reopens the deterministic tier once a fix node has landed, as a
+ * committed plan version.
+ *
+ * Nothing here decides *which* gates re-open: `rerunGatePatch` does, from
+ * `gatesAfterRepair`, and it is the same answer `applyGateRepair` reported when
+ * it proposed the fix. What this adds is the database — the ruling, the
+ * successor and the single write seam — so that a re-run appears in the plan
+ * scrubber with a reason beside it, like every other change.
+ */
+export async function applyGateRerun(db: Db, request: GateRerunRequest): Promise<GateRerunOutcome> {
+  const patch = rerunGatePatch({
+    base: request.base,
+    after: request.after,
+    proposedBy: request.proposedBy,
+    replanDepth: request.replanDepth,
+    round: request.round,
+    ...(request.detail === undefined ? {} : { detail: request.detail }),
+  });
+
+  if (patch === null) {
+    return { patch: null, decision: null, ruleId: null, applied: false, scheduled: [] };
+  }
+
+  const outcome = await ruleAndCommit(db, { ...request, patch });
+  const inserted = patch.ops.flatMap((op) => (op.op === 'insert-nodes' ? op.nodes : []));
+
+  return {
+    patch,
+    decision: outcome.decision,
+    ruleId: outcome.ruleId,
+    applied: outcome.graph !== null,
+    scheduled: outcome.graph === null ? [] : inserted.map((node) => node.id),
+    ...(outcome.commit === null ? {} : { commit: outcome.commit }),
   };
 }

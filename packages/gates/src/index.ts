@@ -132,6 +132,8 @@ export {
 } from './repair-ordering.ts';
 export type { RepairFile, RepairPacketInput } from './repair-packet.ts';
 export { buildRepairPacket, REPAIR_SEGMENT_IDS } from './repair-packet.ts';
+export type { RerunGatesInput } from './repair-rerun.ts';
+export { rerunGateNodeId, rerunGatePatch } from './repair-rerun.ts';
 // KAR-12.2 — an adversarial verdict, sealed with how its reviewer was routed.
 export type { ReviewRouting } from './review-verdict.ts';
 export { sealReviewVerdict } from './review-verdict.ts';

@@ -366,6 +366,17 @@ gate fail (findings F1..Fn)
 **One finding per fix node.** A fix node given five findings will fix two, half-fix two, and
 introduce a sixth. The stable `Finding.id` is what makes the split mechanical.
 
+**Step 3 is a second `PlanPatch`, not a re-admission.** The ladder records an outcome per *gate
+node* (`admitGates`), so a node that answered `fail` is answered for ever and re-admitting it is not
+available. The re-run is therefore a **fresh gate node** — `<gate-node>-r<round>`, carrying the same
+definition and the same `criteria` — whose `deps` are the fix nodes, proposed alongside an
+`abandon-branch` that retires the answered one. Two consequences are the point: the re-run cannot
+run against the tree the producer left (which is §5.2's
+stale green), and the change reaches the plan through the policy engine and the single plan-write
+seam like every other patch, so it is visible in the plan scrubber with a reason beside it. This is
+also why the milestone rule is stated over gate **ids** rather than node ids: the same definition is
+scheduled more than once across a repair loop.
+
 **Regression test first, always.** The gate re-run after the fix includes the new test, so "fixed" is
 demonstrated rather than asserted. This also means a repair that cannot be expressed as a failing
 test is visible as such, and usually indicates the finding belongs in front of a human.

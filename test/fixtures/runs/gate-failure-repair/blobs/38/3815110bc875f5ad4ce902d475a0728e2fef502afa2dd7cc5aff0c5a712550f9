@@ -1,0 +1,1 @@
+src/date-picker.ts(2,3): error TS2322: Type 'Date' is not assignable to type 'number'.
