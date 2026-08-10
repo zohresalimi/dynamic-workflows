@@ -508,6 +508,23 @@ The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
 gate budget counts, and this is the evidence the operator reads. A reason with the evidence folded
 into its `detail` string would be a category nothing could group by.
 
+### human.requested v5
+
+**KAR-13.4 AC2, AC8.** Two more fields inside `permission`, and both are about what the operator is
+actually deciding under. `enforcement` is the sandbox mode **in effect for this node** — A5-1's
+version sniff — because Claude Code's sandbox settings are version-gated at fine granularity and,
+without `sandbox.failIfUnavailable: true`, the sandbox silently runs unsandboxed when bubblewrap or
+socat are missing; granting network egress while the ladder is decorative is a different decision
+from granting it while the sandbox is real. `sessionId` is the ACP session the request arrived on,
+which is what lets the failure that closes an unanswerable escalation name what was lost.
+
+| Change                                     | Kind           | Why it is not lossy                                                                                                                                                                            |
+| ------------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ permission.enforcement` (optional)       | optional field | Left **absent**. It is a sniff performed at spawn time; reconstructing it now would report *this* machine's sandbox against a decision made months ago on another one.                             |
+| `+ permission.sessionId` (optional)         | optional field | Left **absent**. The session it would name is gone, and a payload naming a live-looking session nothing can answer is the state KAR-13.4 AC8 exists to prevent.                                    |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
 ### human.responded v2
 
 **KAR-13.1 AC7.** `by` says who chose the option: `operator` for a person,

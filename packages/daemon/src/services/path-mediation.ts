@@ -92,6 +92,17 @@ export interface MediationDenial {
   readonly method: PathMethod | 'terminal/create';
   /** The agent's own string, before any resolution. */
   readonly requested: string;
+  /**
+   * KAR-13.4 AC3 — the post-`realpath` target, where one could be computed.
+   *
+   * *"The resolved path is shown, not only the requested one… because that is
+   * the fact the decision turns on"*: a request for `./tmp/x` where `tmp` is a
+   * symlink to `/etc` is a refusal about `/etc/x`, and a record that named only
+   * `./tmp/x` would send a later reader looking inside the worktree for the
+   * reason. Absent when there was nothing to resolve — an unusable path, or a
+   * refusal the level made before any path was examined.
+   */
+  readonly resolved?: string;
   readonly reason: PermissionReason;
 }
 
@@ -118,7 +129,13 @@ export type PathMediation =
  */
 export type PathContainment =
   | { readonly outcome: 'inside'; readonly path: string }
-  | { readonly outcome: 'outside'; readonly route: PathEscapeRoute };
+  | {
+      readonly outcome: 'outside';
+      readonly route: PathEscapeRoute;
+      /** KAR-13.4 AC3 — where it would actually have landed, post-`realpath`.
+       * Absent for a path there was nothing to resolve (`invalid`). */
+      readonly resolved?: string;
+    };
 
 /**
  * The filesystem, as containment needs to see it.
@@ -271,8 +288,17 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
     // Routes 1 and 2, lexically. Both sides of the comparison are folded when
     // the filesystem folds, which is the only place the case rule can be
     // applied without duplicating the predicate.
+    //
+    // The target is resolved even though the lexical check has already decided
+    // it: KAR-13.4 AC3 wants the *fact the decision turns on* in the record,
+    // and `../../etc/passwd` resolved is what a reader three days later needs.
+    // One `realpath` on a path that is being refused anyway.
     if (!pathIsInside(fold(root), fold(resolution.path))) {
-      return { outcome: 'outside', route: resolution.route };
+      return {
+        outcome: 'outside',
+        route: resolution.route,
+        resolved: await realpathDeepest(fs, resolution.path),
+      };
     }
 
     // Route 3 and route 4: lexically inside, really somewhere else. The root
@@ -284,7 +310,7 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
       realpathDeepest(fs, resolution.path),
     ]);
     if (!pathIsInside(fold(rootReal), fold(target))) {
-      return { outcome: 'outside', route: 'symlink' };
+      return { outcome: 'outside', route: 'symlink', resolved: target };
     }
     return { outcome: 'inside', path: resolution.path };
   };
@@ -296,9 +322,18 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
       const insensitive = await foldsCase();
       const fold = (path: string): string => (insensitive ? path.toLowerCase() : path);
       const resolution = resolveLexically(requested, root, home);
-      const deny = (reason: PermissionReason<PermissionDenyCode>): PathMediation => ({
+      const deny = (
+        reason: PermissionReason<PermissionDenyCode>,
+        resolved?: string,
+      ): PathMediation => ({
         outcome: 'deny',
-        denial: { level: ports.level, method, requested, reason },
+        denial: {
+          level: ports.level,
+          method,
+          requested,
+          ...(resolved === undefined ? {} : { resolved }),
+          reason,
+        },
       });
 
       // KAR-08.1's ordering, re-used rather than restated: the level row runs
@@ -316,7 +351,7 @@ export function createPathMediator(ports: PathMediatorPorts): PathMediator {
       const contained = await contain(requested);
       return contained.outcome === 'inside'
         ? { outcome: 'allow', path: contained.path }
-        : deny({ code: 'path-escape', detail: contained.route });
+        : deny({ code: 'path-escape', detail: contained.route }, contained.resolved);
     },
   };
 }

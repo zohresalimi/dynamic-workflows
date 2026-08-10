@@ -265,6 +265,19 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     requested: '../../etc/passwd',
     reason: { code: 'path-escape', detail: 'traversal' },
   },
+  'permission.decided': {
+    node: NODE,
+    attempt: 0,
+    permission: 'worktree',
+    method: 'terminal/create',
+    requested:
+      '{"command":"curl","args":["-sS","https://registry.example.com/token"],"cwd":"/tmp/wt"}',
+    outcome: 'gate',
+    answered: 'reject',
+    by: 'deadline',
+    reason: { code: 'level-no-network' },
+    optionId: 'reject_once',
+  },
   'node.scope_warning': {
     node: NODE,
     attempt: 0,

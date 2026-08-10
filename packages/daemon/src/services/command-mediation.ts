@@ -124,6 +124,19 @@ export interface CommandMediatorPorts {
    * way for `session/request_permission`.
    */
   readonly escalate?: (gate: CommandGate) => Promise<CommandApproval | null>;
+  /**
+   * KAR-13.4 — which ladder answers are questions rather than verdicts.
+   *
+   * Defaults to `gate` and nothing else, which is what KAR-08.3 shipped and
+   * what EPIC-08-S14 asserts. EPIC-13 supplies `@DeFlow/core`'s
+   * `escalationDecision`-shaped predicate, which additionally widens
+   * `level-no-network` — [09 §10.5](../../../../docs/09-workspace-and-safety.md)
+   * puts human gates at the network-egress boundary, and EPIC-13-S22's outline
+   * has `worktree` + `curl` as an escalation. A predicate rather than a
+   * hard-coded set, because *which* boundary needs a human is the epic's
+   * decision to make and this file's job is only to route it.
+   */
+  readonly escalates?: (answer: PermissionAnswer) => boolean;
   /** Every decision, gated or not: this is what a gate-budget assertion
    * counts, and what a node inspector renders. */
   readonly record?: (decision: CommandDecision) => void;
@@ -228,7 +241,13 @@ export function createCommandMediator(ports: CommandMediatorPorts): CommandMedia
       );
 
       if (answer.outcome === 'allow') return allowed(resolved, null);
-      if (answer.outcome === 'deny') return refused(resolved, 'deny', answer.reason, 'reject');
+
+      // KAR-13.4: a `deny` the escalation policy has widened into a question is
+      // recorded as the `gate` it became, because that is what happened — the
+      // §10.5 budget counts questions asked, and an approved egress that read
+      // back as a denial would be unauditable.
+      const escalated = ports.escalates?.(answer) ?? answer.outcome === 'gate';
+      if (!escalated) return refused(resolved, answer.outcome, answer.reason, 'reject');
 
       // A gate with nowhere to go is a rejection: no queue is wired up, and
       // the one thing this must never do is fail open.

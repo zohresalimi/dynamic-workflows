@@ -57,10 +57,11 @@ import type {
   RunId,
   RunState,
 } from '@DeFlow/core';
-import { claimId } from '@DeFlow/core';
+import { claimId, ESCALATION_DEFAULT_OPTION_ID, openHumanGates } from '@DeFlow/core';
 import type { AppendOptions, EffectRow, LedgerReplay, NodeWakeRow } from '@DeFlow/ledger';
 import {
   appendEvents,
+  appendEventsConsumingWakes,
   dueWakes,
   headSeq,
   markEffectDone,
@@ -202,6 +203,107 @@ export interface Recovery {
 }
 
 /**
+ * KAR-13.4 AC8 — a permission escalation cannot outlive the session it belongs
+ * to, so a restart closes every one it inherits (EPIC-13-S28).
+ *
+ * This is the line between the two kinds of waiting in EPIC-13, and it is worth
+ * being precise about it. A `human` node is durable because it needs **nothing
+ * but a row**: the question is in the ledger, the answer goes in the ledger, and
+ * no process has to be alive in between. A permission escalation is the
+ * opposite — the answer has to travel back down an ACP pipe to a live session,
+ * and the daemon that held that pipe is gone. Left in the queue it is an item
+ * nobody can act on: approving it would produce a grant the system cannot
+ * deliver, and it would sit in front of the Operator for ever.
+ *
+ * So the gate is closed with the same refusal a deadline would have given, and
+ * the wake row goes with it in the same transaction. Failing the node is
+ * `reclaimInterrupted`'s job below — it already concludes every `running`
+ * attempt — and `lostSessionFailure` is what makes that failure *name* what was
+ * lost rather than say "the daemon restarted".
+ */
+function closeOrphanedEscalations(
+  db: Db,
+  runs: ReadonlyMap<RunId, RunState>,
+  ports: RecoveryPorts,
+  clock: Clock,
+  appendOptions: AppendOptions,
+): Map<NodeId, string> {
+  const lost = new Map<NodeId, string>();
+
+  for (const [runId, state] of runs) {
+    for (const gate of openHumanGates(state)) {
+      if (gate.permission === null) continue;
+      const sessionId = gate.permission.sessionId ?? 'an unrecorded session';
+      lost.set(gate.node, sessionId);
+
+      appendEventsConsumingWakes(
+        db,
+        [
+          {
+            runId,
+            ts: clock.now(),
+            kind: 'human.responded',
+            v: 2,
+            epoch: ports.epoch,
+            nodeId: gate.node,
+            attempt: state.nodes[gate.node]?.attempt ?? 0,
+            payload: {
+              node: gate.node,
+              optionId: ESCALATION_DEFAULT_OPTION_ID,
+              text: `lost-session:${sessionId}`,
+              at: new Date(clock.now()).toISOString(),
+              by: 'policy',
+            },
+          },
+        ],
+        [{ runId, nodeId: gate.node }],
+        appendOptions,
+      );
+
+      recovery.warn(
+        { runId, node: gate.node, sessionId },
+        `the ACP session behind ${gate.node}'s permission escalation is gone; the escalation is ` +
+          'closed rather than left in the queue for an answer nothing could deliver',
+      );
+    }
+  }
+
+  return lost;
+}
+
+/**
+ * KAR-13.4 AC8 — the failure a node whose escalation died is concluded with.
+ *
+ * `transient`, so the retry ladder mints a **new attempt** rather than failing
+ * the branch: nothing about the work was wrong, and the request the agent was
+ * blocked on will simply be asked again on a session that exists. `internal`
+ * for the same reason `interruptedFailure` uses it — no taxonomy entry
+ * describes "the supervising process died", and inventing one would put a
+ * reason in the closed set that no classifier produces. What makes it *typed*
+ * rather than prose is `detail.cause`, which the inspector renders and a test
+ * can assert on without asserting on wording.
+ */
+function lostSessionFailure(
+  db: Db,
+  nodeId: NodeId,
+  attempt: number,
+  sessionId: string,
+): NodeFailure {
+  return {
+    reason: 'internal',
+    class: 'transient',
+    message:
+      `attempt ${attempt} of ${nodeId} was waiting on a permission escalation when the daemon ` +
+      `died; ACP session ${sessionId} and the agent process behind it are gone, so the answer ` +
+      'has nowhere to go and the escalation was closed rather than left unanswerable',
+    detail: { node: nodeId, attempt, cause: 'lost-session', sessionId },
+    evidence: [],
+    occurredAtEvent: Math.max(1, headSeq(db)) as EventSeq,
+    attempt,
+  };
+}
+
+/**
  * The failure an interrupted attempt is concluded with.
  *
  * `internal`, because no vocabulary entry describes "the supervising process
@@ -285,12 +387,22 @@ export async function recover(ports: RecoveryPorts): Promise<Recovery> {
   if (reconciled.length > 0) replayed = replayAll(db);
 
   // ── 5. conclude the attempts that died, and give back what they held ───────
+  //
+  // KAR-13.4 AC8 first, inside the same step: a permission escalation is bound
+  // to an ACP session this daemon does not hold, so it is closed *before* the
+  // node it belongs to is failed. Both orders end with the same events; this
+  // one never leaves a `node_wake` row behind for `recordNodeFailure` to find
+  // and mistake for a backoff it should preserve.
+  const lostSessions = closeOrphanedEscalations(db, replayed.runs, ports, clock, appendOptions);
+  if (lostSessions.size > 0) replayed = replayAll(db);
+
   const { concluded, released } = reclaimInterrupted(
     replayed.runs,
     ports,
     clock,
     appendOptions,
     db,
+    lostSessions,
   );
   step('reclaim-locks');
   if (concluded.length > 0 || released.length > 0) replayed = replayAll(db);
@@ -479,6 +591,9 @@ function reclaimInterrupted(
   clock: Clock,
   appendOptions: AppendOptions,
   db: Db,
+  /** KAR-13.4 AC8 — nodes whose escalation died with the daemon, and the
+   * session id the failure has to name. */
+  lostSessions: ReadonlyMap<NodeId, string> = new Map(),
 ): { concluded: ConcludedAttempt[]; released: ReclaimedLock[] } {
   const concluded: ConcludedAttempt[] = [];
   const released: ReclaimedLock[] = [];
@@ -500,7 +615,11 @@ function reclaimInterrupted(
         .filter((lock) => lock.node === nodeId)
         .map((lock) => claimId(lock));
 
-      const failure = interruptedFailure(db, nodeId, node.attempt);
+      const lost = lostSessions.get(nodeId);
+      const failure =
+        lost === undefined
+          ? interruptedFailure(db, nodeId, node.attempt)
+          : lostSessionFailure(db, nodeId, node.attempt, lost);
       const recorded = recordNodeFailure(db, {
         runId,
         nodeId,

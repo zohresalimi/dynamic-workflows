@@ -113,6 +113,12 @@ export interface LadderPorts {
    * fails closed.
    */
   readonly escalate?: (request: GatedPermissionRequest) => Promise<PermissionDecision | null>;
+  /**
+   * KAR-13.4 — which ladder answers reach the operator. Defaults to `gate` and
+   * nothing else; EPIC-13 widens it to the F5.6 egress boundary. See the same
+   * port on `CommandMediatorPorts` for why it is a predicate.
+   */
+  readonly escalates?: (answer: PermissionAnswer) => boolean;
   readonly record?: (decision: LadderDecision) => void;
 }
 
@@ -203,13 +209,23 @@ export function ladderDecider(ports: LadderPorts): PermissionDecider {
 
     const reason = answer.outcome === 'allow' ? null : answer.reason;
 
+    const escalates =
+      ports.escalates ?? ((candidate: PermissionAnswer) => candidate.outcome === 'gate');
+    // KAR-13.4: a `deny` the escalation policy widened into a question is
+    // *recorded* as the gate it became. The alternative — recording the
+    // ladder's own verdict — would make an egress the operator approved read
+    // back as a denial, and would double-count it against §10.5's gate budget
+    // once here and once in whatever asked the human.
+    const escalated = answer.outcome !== 'allow' && escalates(answer);
+    const recorded: PermissionAnswer['outcome'] = escalated ? 'gate' : answer.outcome;
+
     const finish = (decision: PermissionDecision, answered: LadderDecision['answered']) => {
       ports.record?.({
         query,
         level: ports.level,
         method: request?.method ?? 'unknown',
         path: query.locations[0]?.path ?? null,
-        outcome: answer.outcome,
+        outcome: recorded,
         reason,
         declared,
         answered,
@@ -222,7 +238,7 @@ export function ladderDecider(ports: LadderPorts): PermissionDecider {
       return optionId === null ? { outcome: 'cancelled' } : { outcome: 'selected', optionId };
     };
 
-    if (answer.outcome !== 'gate') {
+    if (answer.outcome === 'allow' || !escalated) {
       const polarity = answer.outcome === 'allow' ? 'allow' : 'reject';
       const decision = respond(polarity);
       return finish(decision, decision.outcome === 'cancelled' ? 'cancelled' : polarity);

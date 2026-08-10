@@ -992,6 +992,46 @@ registerUpcaster({
 });
 
 /**
+ * `human.requested` v4 → v5 (KAR-13.4). See schemas/CHANGELOG.md.
+ *
+ * v5 adds two optional fields inside `permission` — `enforcement`, the sandbox
+ * mode actually in effect for the node, and `sessionId`, the ACP session the
+ * request arrived on — so the hop is the identity.
+ *
+ * Both are left **absent**, and for once the reason is not merely "the older
+ * payload does not carry it". `enforcement` is a version sniff performed at
+ * spawn time (A5-1): reconstructing it now would report *this* machine's
+ * sandbox against a request decided on another one, months ago, which is a
+ * fabricated claim about what was enforced at the moment authority was
+ * granted. `sessionId` is worse still — the session it would name is gone, and
+ * an escalation payload that names a live-looking session nothing can answer
+ * is exactly the state AC8 exists to prevent.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 4,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'implement-auth',
+    prompt: 'The agent asked to run a command DeFlow does not allow on its own.',
+    options: [
+      { id: 'allow_once', label: 'Allow once', effect: 'approve' },
+      { id: 'reject_once', label: 'Reject once', effect: 'reject' },
+    ],
+    reason: { code: 'level-no-network' },
+    permission: {
+      method: 'terminal/create',
+      command: 'curl',
+      args: ['-sS', 'https://registry.example.com/token'],
+      cwd: '/tmp/wt/r1__implement-auth',
+      rule: 'level-no-network',
+      level: 'worktree',
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `human.responded` v1 → v2 (KAR-13.1). See schemas/CHANGELOG.md.
  *
  * v2 adds one optional field — `by`, which distinguishes an operator's choice

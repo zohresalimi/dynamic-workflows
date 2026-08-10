@@ -1549,6 +1549,29 @@ export const PermissionContextSchema = z.strictObject({
   level: PermissionLevelSchema,
   /** The node's declared write globs — its scope, beside what it asked for. */
   pathScopes: z.array(z.string()).optional(),
+  /**
+   * KAR-13.4 — v5: the sandbox enforcement **actually in effect** for this
+   * node, as a code (`vendor`, `sandbox-runtime`, `none`, or a
+   * `degraded:<key>` naming the setting that was dropped).
+   *
+   * It exists because of A5-1 and A5-2: Claude Code's sandbox settings are
+   * version-gated at fine granularity and, without `failIfUnavailable`, the
+   * sandbox silently runs unsandboxed when bubblewrap or socat are missing. An
+   * operator deciding whether to grant network egress while the ladder is
+   * decorative on this platform is deciding under different assumptions from
+   * one whose sandbox is real, and only this field tells them which they are.
+   */
+  enforcement: singleLine().optional(),
+  /**
+   * KAR-13.4 AC8 — the ACP session the request came in on.
+   *
+   * A permission escalation is bound to a live agent session in a way a
+   * `human` node is not: the answer has to go back down the same pipe. When
+   * the daemon is `SIGKILL`ed the session is gone, and this is what lets the
+   * failure that closes the escalation *name* what was lost rather than say
+   * "the daemon restarted".
+   */
+  sessionId: singleLine().optional(),
 });
 
 export const HumanRequestedSchema = z.strictObject({
@@ -1601,6 +1624,65 @@ export const HumanRequestedSchema = z.strictObject({
 });
 
 export type PermissionContext = z.infer<typeof PermissionContextSchema>;
+
+/**
+ * KAR-13.4 AC9 — who answered a mediated permission request.
+ *
+ * `ladder` is the policy table answering by itself, which is the overwhelming
+ * majority and the entire point of the story. `run-policy` is an `_always`
+ * chosen earlier in *this run* being applied without a second prompt.
+ * `operator` and `deadline` are the two ways an escalation is *answered*, and
+ * `withdrawn` is the third way it ends — the agent cancelled its own turn while
+ * the request was outstanding, so the question was retired rather than decided.
+ * It is in the set rather than folded into `deadline` because "nobody answered
+ * in time" and "the asker went away" are different facts about the same row,
+ * and only one of them says anything about the Operator.
+ */
+export const PERMISSION_DECIDERS = [
+  'ladder',
+  'run-policy',
+  'operator',
+  'deadline',
+  'withdrawn',
+] as const;
+
+export type PermissionDeciderKind = (typeof PERMISSION_DECIDERS)[number];
+
+/**
+ * KAR-13.4 AC9 — one mediated permission request and what DeFlow answered.
+ *
+ * `permission.denied` records the refusals the agent was told about; this
+ * records **every** decision, including the ones nobody ever saw. That is the
+ * NF10 requirement stated plainly: *"a run's complete permission history is
+ * reconstructable after the fact — including the ones no human ever saw"*, and
+ * a history with only the denials in it cannot answer "was this run's agent
+ * reading files it had no business reading".
+ *
+ * `outcome` is what the ladder said and `answered` is what went back on the
+ * wire; they differ exactly when a human or a run-scoped `_always` overturned
+ * a gate, which is the pair an audit turns on. Both are kept for the same
+ * reason `CommandDecision` keeps both: §10.5's gate budget counts questions
+ * asked, not questions refused.
+ */
+export const PermissionDecidedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  /** The level the request was decided at. */
+  permission: PermissionLevelSchema,
+  method: PermissionDeniedSchema.shape.method,
+  /** Verbatim, before any resolution — an argv is JSON, a path is the path. */
+  requested: z.string().max(REQUESTED_PATH_MAX),
+  /** Post-`realpath`, when the mediating layer resolved one (AC3). */
+  resolved: z.string().min(1).optional(),
+  /** What the ladder answered: three outcomes, and no fourth. */
+  outcome: z.enum(['allow', 'deny', 'gate']),
+  /** What the agent was told. `cancelled` is ACP's own third arm. */
+  answered: z.enum(['allow', 'reject', 'cancelled']),
+  by: z.enum(PERMISSION_DECIDERS),
+  reason: PermissionReasonSchema.optional(),
+  /** The option a human or a run-scoped `_always` was applied from. */
+  optionId: z.string().min(1).optional(),
+});
 
 /**
  * KAR-13.1 AC7 — who chose the option.
@@ -1949,6 +2031,7 @@ export const EVENT_SCHEMAS = {
   'node.blocked': { v: 1, payload: NodeBlockedSchema },
   'node.unschedulable': { v: 1, payload: NodeUnschedulableSchema },
   'permission.denied': { v: 1, payload: PermissionDeniedSchema },
+  'permission.decided': { v: 1, payload: PermissionDecidedSchema },
   'node.scope_warning': { v: 1, payload: NodeScopeWarningSchema },
   'env.declared': { v: 1, payload: EnvDeclaredSchema },
   'provider.auth_mode': { v: 1, payload: ProviderAuthModeSchema },
@@ -1980,7 +2063,7 @@ export const EVENT_SCHEMAS = {
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
   'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
-  'human.requested': { v: 4, payload: HumanRequestedSchema },
+  'human.requested': { v: 5, payload: HumanRequestedSchema },
   'human.responded': { v: 2, payload: HumanRespondedSchema },
   'human.interjected': { v: 1, payload: HumanInterjectedSchema },
   'human.interjection.delivered': { v: 1, payload: HumanInterjectionDeliveredSchema },

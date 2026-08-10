@@ -285,6 +285,16 @@ export function planHumanResponse(
     },
   };
 
+  // KAR-13.4 — a permission escalation is a `human.requested` about a node
+  // that is *still running*, not a `human` node the plan declared. Answering it
+  // decides the agent's request; the node's own result still comes from the
+  // agent, and appending `node.completed`/`node.failed` here would end a turn
+  // that has not ended and orphan the live ACP session. The gate closing is
+  // what removes the queue item, and that is all the answer owes.
+  if (gate.permission !== null) {
+    return { status: 'ok', effect: option.effect, events: [responded] };
+  }
+
   return {
     status: 'ok',
     effect: option.effect,

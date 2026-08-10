@@ -344,6 +344,8 @@ export type {
   EventPayloadOf,
   HumanResponder,
   LockReleaseReason,
+  PermissionContext,
+  PermissionDeciderKind,
   PlannerAttribution,
   PlannerTier,
   ProviderAuthMode,
@@ -403,7 +405,11 @@ export {
   NodeStartedSchema,
   NodeSuspendedSchema,
   NodeUnschedulableSchema,
+  PERMISSION_DECIDERS,
+  PermissionContextSchema,
+  PermissionDecidedSchema,
   PermissionDeniedSchema,
+  PermissionReasonSchema,
   PinIntegrityViolatedSchema,
   PLANNER_TIERS,
   PlannerAttributionSchema,
@@ -820,6 +826,27 @@ export {
   reasonCode,
   validateEnvDeclaration,
 } from './permission.ts';
+// KAR-13.4 — which mediated requests reach the operator, what they carry, and
+// how long an `_always` lasts.
+export type {
+  EscalationAnswer,
+  EscalationDecision,
+  PermissionEscalationRequest,
+} from './permission-escalation.ts';
+export {
+  alwaysPolarity,
+  ESCALATED_DENY_CODES,
+  ESCALATION_DEFAULT_OPTION_ID,
+  escalationDecision,
+  escalationPrompt,
+  optionPolarity,
+  PERMISSION_ESCALATION_OPTIONS,
+  permissionAutoAnswer,
+  permissionContextOf,
+  permissionEscalationPayload,
+  permissionSignature,
+  runPermissionPolicy,
+} from './permission-escalation.ts';
 // KAR-09.3 — the F6.6 integrity check: the pinned bytes are in the prompt that
 // was actually sent, or the node fails and a human is asked.
 export type {
