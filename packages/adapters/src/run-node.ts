@@ -877,6 +877,39 @@ export async function runAcpNode(
             await pumpTurn(text);
           };
 
+          /**
+           * KAR-13.3 AC2, AC8 — the Operator's corrections, handed over at a
+           * turn boundary.
+           *
+           * Each goes out as its own `session/prompt`, in `seq` order, and none
+           * is coalesced with another or with the continuation: two corrections
+           * merged into one paragraph is two corrections the transcript can no
+           * longer tell apart, and merging one into the continuation would make
+           * *"the Operator said this"* unfindable in exactly the frame the node
+           * inspector is supposed to show.
+           *
+           * The receipt is appended **after** the turn resolves, unlike every
+           * other record in this file. The rule those follow — write before the
+           * side effect — protects against losing work DeFlow asked for; this
+           * one protects against *claiming* work that never went out. A crash
+           * in between leaves the projection saying `queued`, so the guidance
+           * is re-offered on the next turn rather than silently marked
+           * delivered, and an Operator is never shown a bubble that never
+           * arrived (AC9).
+           */
+          const deliverInterjections = async (): Promise<void> => {
+            if (!steerable) return;
+            for (const pending of ports.pendingInterjections?.() ?? []) {
+              await pumpTurn(pending.text);
+              lastSeq = await ledger.append(
+                event('human.interjection.delivered', {
+                  node: request.nodeId,
+                  interjectedSeq: pending.seq,
+                }),
+              );
+            }
+          };
+
           // ── KAR-09.4: the turn loop, and the interval re-injection in it ──
           //
           // Turn 1 is the packet. Everything after it exists only because the
@@ -918,6 +951,9 @@ export async function runAcpNode(
             !turn.cancelRequested
           ) {
             if (due) await reinjectPins(turnsRun);
+            // After the pins and immediately before the work turn, so the last
+            // thing the agent read before doing more work is the correction.
+            await deliverInterjections();
             due = await runWorkTurn(continuation);
           }
         };

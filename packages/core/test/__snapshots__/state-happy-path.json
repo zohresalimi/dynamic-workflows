@@ -110,6 +110,7 @@
       }
     }
   },
+  "interjections": {},
   "patchPolicy": null,
   "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

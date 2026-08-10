@@ -405,6 +405,13 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     deadline: { wakeAt: AT, onTimeout: 'escalate' },
   },
   'human.responded': { node: 'approve-migration', optionId: 'yes', at: AT },
+  'human.interjected': {
+    node: NODE,
+    text: "Use the existing useToast composable, don't add a new one.",
+    mode: 'next-turn',
+    delivery: 'queued',
+  },
+  'human.interjection.delivered': { node: NODE, interjectedSeq: 10_892 },
   'budget.consumed': {
     node: NODE,
     attempt: 0,

@@ -316,6 +316,19 @@ export type {
   RespondResult,
 } from './human/gate.ts';
 export { expireDueHumanGates, respondToHumanNode } from './human/gate.ts';
+// KAR-13.3 — steering a running node: the accept-time write, the receipt that
+// says the guidance arrived, and the capability row both are decided from.
+export type {
+  InterjectOptions,
+  InterjectRefusalCode,
+  InterjectResult,
+} from './human/interject.ts';
+export {
+  interjectIntoNode,
+  nodeMovedAfter,
+  recordInterjectionsDelivered,
+  steeringFor,
+} from './human/interject.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export type { WorkflowPhase, WorkflowTool } from './mcp/catalog.ts';

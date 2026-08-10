@@ -16,14 +16,15 @@
  * number is how an F4.6 ceiling ends up evaluated against the wrong figure.
  */
 import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
-import type { Db, EstimatorInputs, RunId } from '@DeFlow/core';
-import { NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
+import type { Db, EstimatorInputs, InterjectionMode, RunId } from '@DeFlow/core';
+import { INTERJECTION_MODES, NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
 import type { StoredEvent } from '@DeFlow/ledger';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
 import { respondToHumanNode } from '../human/gate.ts';
+import { interjectIntoNode } from '../human/interject.ts';
 import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
 import { submitTask } from '../intake/intake.ts';
 import { log } from '../logging.ts';
@@ -522,6 +523,95 @@ api.post('/runs/:id/nodes/:nodeId/respond', async (c) => {
 });
 
 /**
+ * KAR-13.3 — `POST /api/runs/:id/interject` (docs/11-api-and-realtime.md §7.5).
+ *
+ * `interjectIntoNode` plus a status code, and the status code is on the result.
+ * The one thing worth reading twice is what is *not* here: there is no branch
+ * that turns `delivery: 'unsupported'` into an error. It is a `202` with the
+ * honest answer and the alternative mode in the body, because F8.5 is P1 and
+ * adapter-dependent — an error status would imply the Operator did something
+ * wrong and would invite a retry that also cannot work.
+ *
+ * `ifLastSeq` is checked *first*, before the node's own state: an Operator whose
+ * panel is behind should be told their view is stale, not told about a node
+ * state they have not seen yet.
+ */
+api.post('/runs/:id/interject', async (c) => {
+  const ports = intakePorts();
+  if (ports === null) return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+
+  const runId = asRunId(c.req.param('id'));
+  if (runId === null) return c.json({ error: 'not_found', path: c.req.path }, 404);
+
+  const body = (await c.req.json().catch(() => null)) as InterjectBody | null;
+  const nodeId = NodeIdSchema.safeParse(body?.nodeId);
+  if (body === null || !nodeId.success) {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'nodeId',
+        message:
+          'an interjection names the node it is steering: guidance addressed to a run rather ' +
+          'than to a node is guidance no packet could carry',
+      },
+      400,
+    );
+  }
+
+  // Required rather than defaulted. The two modes behave differently enough —
+  // one suspends the node, the other does not — that guessing on the Operator's
+  // behalf would be guessing about whether their run pauses.
+  if (!(INTERJECTION_MODES as readonly unknown[]).includes(body.mode)) {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'mode',
+        message: `mode must be one of ${INTERJECTION_MODES.map((one) => `"${one}"`).join(', ')}`,
+      },
+      400,
+    );
+  }
+
+  // `ifLastSeq` is the service's rather than `staleCursor`'s: what an
+  // interjection is decided against is one node's liveness, not the run's
+  // approval-queue surface, and the two are different questions.
+  const result = interjectIntoNode({
+    db: ports.db,
+    runId,
+    nodeId: nodeId.data,
+    text: typeof body.text === 'string' ? body.text : '',
+    mode: body.mode as InterjectionMode,
+    ifLastSeq: body.ifLastSeq,
+    epoch: ports.epoch,
+    ts: ports.clock.now(),
+  });
+
+  if (result.status === 'ok') {
+    return c.json(
+      {
+        runId,
+        node: nodeId.data,
+        seq: result.seq,
+        delivery: result.delivery,
+        ...(result.message === undefined ? {} : { message: result.message }),
+        ...(result.alternative === undefined ? {} : { alternative: result.alternative }),
+      },
+      result.http,
+    );
+  }
+
+  return c.json(
+    {
+      error: result.code,
+      message: result.message,
+      ...(result.nodeStatus === undefined ? {} : { nodeStatus: result.nodeStatus }),
+      ...(result.movedAt === undefined ? {} : { movedAt: result.movedAt, head: result.head }),
+    },
+    result.http,
+  );
+});
+
+/**
  * KAR-13.2 AC6, AC7 — `POST /api/runs/:id/patches/:patchId/decide`.
  *
  * `decideQueuedPatch` owns both conflicts. Approving needs KAR-11.3's commit
@@ -585,6 +675,13 @@ interface RespondBody {
   readonly optionId?: unknown;
   readonly text?: string | undefined;
   readonly output?: unknown;
+  readonly ifLastSeq?: number | undefined;
+}
+
+interface InterjectBody {
+  readonly nodeId?: unknown;
+  readonly text?: unknown;
+  readonly mode?: unknown;
   readonly ifLastSeq?: number | undefined;
 }
 

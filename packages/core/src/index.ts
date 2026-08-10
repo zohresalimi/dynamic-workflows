@@ -639,6 +639,31 @@ export {
   REVIEW_REFUSAL_CODES,
   SchedulingRefused,
 } from './independent-review.ts';
+// KAR-13.3 — interjection into a running node: what may be posted, what the
+// adapter's capability row makes of it, and how the guidance reaches the packet.
+export type {
+  InterjectionAccepted,
+  InterjectionDelivery,
+  InterjectionMode,
+  InterjectionOutcome,
+  InterjectionRefusal,
+  InterjectionRequest,
+  InterjectionSegmentsInput,
+  InterjectionState,
+  PendingInterjection,
+  SegmentProvenance,
+} from './interject.ts';
+export {
+  HUMAN_SEGMENT_PREFIX,
+  INTERJECTION_DELIVERIES,
+  INTERJECTION_MODES,
+  interjectionSegments,
+  interjectionsOf,
+  planInterjection,
+  RESPOND_ROUTE,
+  segmentProvenance,
+  undeliveredInterjections,
+} from './interject.ts';
 // KAR-02.8 — the schema registry and the pure JSON Schema 2020-12 emission.
 // KAR-10.3 — RFC 6902 as a schema. The differ itself is @DeFlow/daemon's (R1).
 export type { JsonPatchOperation } from './json-patch.ts';

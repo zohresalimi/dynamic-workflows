@@ -23,6 +23,7 @@ import type {
   Handle,
   IdempotencyKey,
   NodeId,
+  PendingInterjection,
   PermissionLevel,
   PinnedSegmentView,
   ProducerNodeView,
@@ -408,6 +409,25 @@ export interface AcpPorts {
    * than read here because @DeFlow/adapters owns no database.
    */
   readonly capabilityRow?: CapabilityRow | null;
+  /**
+   * KAR-13.3 AC2, AC8 — the corrections an Operator has posted at this node and
+   * that no live session has been handed yet, oldest `seq` first.
+   *
+   * Asked **again at every turn boundary**, never once, because the whole point
+   * is that an Operator types while the node runs. The daemon answers it from
+   * `undeliveredInterjections` over the reduced ledger, so the receipt this
+   * package appends is what retires an item — there is no "mark as sent"
+   * callback and there must not be one: a flag held in the adapter would
+   * re-deliver everything after a restart, and the projection is the only thing
+   * that survives one.
+   *
+   * Absent means the caller wired nothing, which is the honest state for a
+   * probe and a conformance turn. Whether anything may be *delivered* is not
+   * here either: it is read from `capabilityRow` through `supportsSteering`,
+   * exactly as interval re-injection is, so the behaviour is driven by what the
+   * adapter advertised rather than by a provider name.
+   */
+  readonly pendingInterjections?: () => readonly PendingInterjection[];
   /**
    * Cooperative cancellation. Aborting sends `session/cancel` at the protocol
    * level and **keeps the loop running** until the stop frame arrives, so the

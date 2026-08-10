@@ -1,0 +1,50 @@
+[
+  {
+    "id": "pinned-spec-goal",
+    "kind": "pinned.spec",
+    "provenance": "deflow",
+    "sourceEvent": 9,
+    "pinned": true,
+    "compactable": false
+  },
+  {
+    "id": "pinned-spec-criteria",
+    "kind": "pinned.spec",
+    "provenance": "deflow",
+    "sourceEvent": 9,
+    "pinned": true,
+    "compactable": false
+  },
+  {
+    "id": "pinned-constraints-safety",
+    "kind": "pinned.constraints",
+    "provenance": "deflow",
+    "sourceEvent": 9,
+    "pinned": true,
+    "compactable": false
+  },
+  {
+    "id": "pinned-pathscope",
+    "kind": "pinned.pathscope",
+    "provenance": "deflow",
+    "sourceEvent": 9,
+    "pinned": true,
+    "compactable": false
+  },
+  {
+    "id": "pinned-constraints-permission",
+    "kind": "pinned.constraints",
+    "provenance": "deflow",
+    "sourceEvent": 9,
+    "pinned": true,
+    "compactable": false
+  },
+  {
+    "id": "human-9",
+    "kind": "task.brief",
+    "provenance": "human",
+    "sourceEvent": 9,
+    "pinned": false,
+    "compactable": true
+  }
+]

@@ -95,6 +95,17 @@ const populated: RunState = {
   specHash: SHA,
   outcome: null,
   humanGates: {},
+  interjections: {
+    [NODE]: [
+      {
+        seq: 12,
+        node: NODE,
+        text: "Use the existing useToast composable, don't add a new one.",
+        mode: 'next-turn',
+        delivery: 'unsupported',
+      },
+    ],
+  },
   gateVerdicts: {
     'gate-typecheck': {
       gate: 'typecheck' as GateId,

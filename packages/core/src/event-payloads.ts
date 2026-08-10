@@ -1628,6 +1628,74 @@ export const HumanRespondedSchema = z.strictObject({
   by: z.enum(HUMAN_RESPONDERS).optional(),
 });
 
+/**
+ * KAR-13.3 — the two ways an Operator can hand a running node a correction
+ * (docs/11-api-and-realtime.md §7.5).
+ *
+ * `next-turn` queues the text so it enters the node's next turn, and only an
+ * adapter that advertises mid-turn steering can take it. `pause-and-inject` is
+ * the mode that always works: the node is suspended at the next safe boundary
+ * and the guidance becomes part of the re-assembled packet — no capability
+ * required, because nothing is asked of the live session at all.
+ */
+export const INTERJECTION_MODES = ['next-turn', 'pause-and-inject'] as const;
+
+export type InterjectionMode = (typeof INTERJECTION_MODES)[number];
+
+/**
+ * KAR-13.3 AC2 — what became of the guidance, in the vocabulary the API and
+ * the UI both read.
+ *
+ * `unsupported` is a **`202`, never a `4xx`**. F8.5 is P1 and adapter-dependent,
+ * the capability matrix is genuinely uneven, and an error status would be wrong
+ * in both directions: it implies the Operator did something wrong, and it
+ * invites a retry that will also not work. What the Operator needs instead is
+ * an honest projection — *"not delivered; this adapter cannot be steered
+ * mid-turn"* — beside the mode that always can.
+ */
+export const INTERJECTION_DELIVERIES = ['queued', 'delivered', 'unsupported'] as const;
+
+export type InterjectionDelivery = (typeof INTERJECTION_DELIVERIES)[number];
+
+/**
+ * KAR-13.3 AC1 — the interjection itself, as the ledger records it.
+ *
+ * `delivery` is the answer **at accept time**, so it is never `delivered` here:
+ * the API knows only what the adapter's capability row claims, and whether the
+ * bytes actually reached a live session is a later, separate observation
+ * (`human.interjection.delivered`). Recording an optimistic `delivered` would
+ * be exactly the delivered-bubble-that-never-arrived this story exists to
+ * prevent.
+ *
+ * `text` is stored verbatim and is never trimmed, wrapped or summarised — AC5
+ * asks for byte-identity between what was posted and what appears in the next
+ * packet manifest, and a payload that normalised it could not offer that.
+ */
+export const HumanInterjectedSchema = z.strictObject({
+  node: NodeIdSchema,
+  text: z.string().min(1),
+  mode: z.enum(INTERJECTION_MODES),
+  /** Accept-time only: `queued` or `unsupported`, never `delivered`. */
+  delivery: z.enum(['queued', 'unsupported']),
+});
+
+/**
+ * KAR-13.3 AC2, AC9 — the receipt: this text was handed to the live session.
+ *
+ * A separate kind rather than a field on the interjection, because events are
+ * never rewritten on disk and the two facts are learned minutes apart by two
+ * different parts of the system — the API accepts, the adapter delivers. It is
+ * appended **after** the `session/prompt` turn resolves, so a crash in between
+ * leaves the projection saying `queued`, which is the safe direction: an
+ * Operator seeing "not delivered" for something that did arrive re-reads the
+ * transcript, while the opposite mistake is silent.
+ */
+export const HumanInterjectionDeliveredSchema = z.strictObject({
+  node: NodeIdSchema,
+  /** The `seq` of the `human.interjected` this delivers. */
+  interjectedSeq: EventSeqSchema,
+});
+
 // ── money and providers ──────────────────────────────────────────────────────
 
 /**
@@ -1914,6 +1982,8 @@ export const EVENT_SCHEMAS = {
   'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
   'human.requested': { v: 4, payload: HumanRequestedSchema },
   'human.responded': { v: 2, payload: HumanRespondedSchema },
+  'human.interjected': { v: 1, payload: HumanInterjectedSchema },
+  'human.interjection.delivered': { v: 1, payload: HumanInterjectionDeliveredSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },
   'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },

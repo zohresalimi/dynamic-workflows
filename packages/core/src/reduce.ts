@@ -803,6 +803,79 @@ function project(state: RunState, event: Event): Transition {
     }
 
     /**
+     * KAR-13.3 AC1, AC4, AC8, AC9. The correction is recorded and **nothing
+     * else moves**: no attempt, no status, no cancellation. What `pause-and-inject`
+     * changes is carried by the `node.suspended` appended beside it, in the same
+     * transaction, and folded by the case that already owns that transition.
+     *
+     * Appended to the node's list rather than replacing it, because three
+     * corrections typed before the next turn are three corrections. Coalescing
+     * them would be indistinguishable, afterwards, from losing two.
+     */
+    case 'human.interjected':
+      return {
+        ...state,
+        interjections: {
+          ...state.interjections,
+          [event.payload.node]: [
+            ...(state.interjections[event.payload.node] ?? []),
+            {
+              seq,
+              node: event.payload.node,
+              text: event.payload.text,
+              mode: event.payload.mode,
+              delivery: event.payload.delivery,
+            },
+          ],
+        },
+      };
+
+    /**
+     * KAR-13.3 AC2, AC3, AC4, AC9. The receipt, folded onto the interjection it
+     * delivers — and, for `pause-and-inject`, the end of the pause.
+     *
+     * The guidance reaches the node one of two ways: as a mid-turn
+     * `session/prompt` on an adapter that advertises steering, or as a segment
+     * in the re-assembled packet. In the second case the receipt is also the
+     * moment the node has everything it was paused for, so it returns to
+     * `running` **on the attempt it was suspended on** — nothing here touches
+     * `attempt`, no idempotency key is minted, and no retry is scheduled,
+     * because an interjection is not a retry. A pause that outlived its reason
+     * would be a node asleep with nothing left to wait for.
+     *
+     * A receipt naming an interjection this projection has never seen changes
+     * nothing — an older binary reading a ledger whose `human.interjected` is at
+     * a payload version it skipped, or a truncated replay window. Inventing an
+     * entry from the receipt alone would put text in the projection that the
+     * receipt does not carry, and a delivered guidance bubble with no guidance
+     * in it is worse than an absent one.
+     */
+    case 'human.interjection.delivered': {
+      const existing = state.interjections[event.payload.node];
+      if (existing === undefined) return state;
+
+      const delivered = existing.find((one) => one.seq === event.payload.interjectedSeq);
+      const recorded: RunState = {
+        ...state,
+        interjections: {
+          ...state.interjections,
+          [event.payload.node]: existing.map((one) =>
+            one === delivered ? { ...one, delivery: 'delivered' } : one,
+          ),
+        },
+      };
+      if (delivered?.mode !== 'pause-and-inject') return recorded;
+
+      return (
+        withNode(recorded, seq, event.payload.node, (current) =>
+          current.status === 'suspended' && current.suspension?.kind === 'human'
+            ? { ...current, status: 'running', suspension: null, wakeAt: null }
+            : current,
+        ) ?? recorded
+      );
+    }
+
+    /**
      * KAR-14.1 — the one accounting record, folded into the one accounting
      * projection. There is no second mutable table and no running total in the
      * daemon, which is what makes the rollup survive a `kill -9` for free

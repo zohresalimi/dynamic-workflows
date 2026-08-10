@@ -28,6 +28,8 @@ import { initialCeilings, type RunCeilings, RunCeilingsSchema } from './budget-c
 import { type BudgetRollup, BudgetRollupSchema, initialBudgetRollup } from './cost-rollup.ts';
 import {
   CANCEL_MODES,
+  INTERJECTION_DELIVERIES,
+  INTERJECTION_MODES,
   LOCK_KINDS,
   RUN_NEEDS_HUMAN_REASONS,
   RUN_OUTCOMES,
@@ -48,6 +50,7 @@ import {
   type RunId,
   RunIdSchema,
 } from './ids.ts';
+import type { InterjectionState } from './interject.ts';
 import {
   CHURN_WINDOW,
   type CompletedAttempt,
@@ -487,6 +490,19 @@ export interface RunState {
    */
   readonly humanGates: Readonly<Record<string, HumanGateState>>;
   /**
+   * KAR-13.3 AC9 — every interjection posted at a node, keyed by node id and
+   * held in `seq` order (./interject.ts).
+   *
+   * The projection the UI reads, and the reason `delivery` lives on it rather
+   * than only in the `202` body: an `unsupported` interjection must render as
+   * *undelivered* rather than as a delivered guidance bubble that never
+   * arrived, and a status a client saw once and then forgot cannot do that
+   * after a reload. Nothing is coalesced — three corrections typed before the
+   * next turn are three entries, because dropping one silently is the failure
+   * this whole path exists to avoid.
+   */
+  readonly interjections: Readonly<Record<string, readonly InterjectionState[]>>;
+  /**
    * KAR-11.4 AC10 — F2.5's rule table as this run pinned it, or `null` for a
    * run whose ledger has no `policy.patch.loaded` (one written before the pin
    * existed, which falls back to the shipped defaults).
@@ -614,10 +630,10 @@ export interface RunState {
  * cost rollup; 8 `ceilings` and `NodeState.startedTs`; 9 the reconciled
  * estimate; 10 `CostRollup.authModes`; 11 `specApproved`; 12 `patchPolicy`;
  * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
- * tell an answered gate from an open one; 15 the approval queue's fields — a
- * creating `seq` per item, and the payload each one is decided from.
+ * tell an answered gate from an open one; 15 the approval queue's fields; 16
+ * `interjections`, so a restart cannot re-deliver guidance.
  */
-export const CHECKPOINT_VERSION = 15;
+export const CHECKPOINT_VERSION = 16;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -664,6 +680,7 @@ export function initialRunState(): RunState {
     gateVerdicts: {},
     needsHuman: null,
     humanGates: {},
+    interjections: {},
     patchPolicy: null,
     cancel: null,
     planHash: null,
@@ -795,6 +812,19 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
     })
     .nullable(),
   humanGates: z.record(z.string(), HumanGateStateSchema),
+  interjections: z.record(
+    z.string(),
+    z.array(
+      z.strictObject({
+        /** The `seq` of the `human.interjected`, and no event has seq 0. */
+        seq: z.number().int().positive(),
+        node: NodeIdSchema,
+        text: z.string().min(1),
+        mode: z.enum(INTERJECTION_MODES),
+        delivery: z.enum(INTERJECTION_DELIVERIES),
+      }),
+    ),
+  ),
   patchPolicy: z
     .strictObject({
       hash: z.string().min(1),
