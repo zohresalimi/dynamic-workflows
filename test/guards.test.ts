@@ -27,6 +27,7 @@ import {
   checkNoDeepWorkspaceImports,
   checkNoDeprecatedAcpPackages,
   checkNoFakeTimers,
+  checkNoFocusOutlineNone,
   checkNoInMemoryDatabases,
   checkNoNodeBuiltinImports,
   checkNoOhashImport,
@@ -40,6 +41,8 @@ import {
   checkPinoPrettyIsNotARuntimeTransport,
   checkRecordedCiRuntime,
   checkRelativeImportsHaveTsExtension,
+  checkRolldownBuildOptions,
+  checkStateColoursComeFromThePalette,
   checkTempDirPrefixes,
   checkViteImportIsDynamic,
   checkWebImportsDaemonTypesOnly,
@@ -627,6 +630,27 @@ suite('checkRelativeImportsHaveTsExtension (AC8)', () => {
         },
       ]),
     ).toEqual([]);
+  });
+
+  it('accepts the other extensions Vite resolves directly (KAR-16.1)', () => {
+    // A side-effect stylesheet import is how Tailwind 4 and the state palette
+    // reach the page. It carries an explicit extension, which is the rule.
+    expect(
+      checkRelativeImportsHaveTsExtension([
+        {
+          path: 'packages/web/src/main.ts',
+          text: "import './styles/theme.css';\nimport App from './App.vue';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still catches an extensionless import in the same file', () => {
+    expect(
+      checkRelativeImportsHaveTsExtension([
+        { path: 'packages/web/src/main.ts', text: "import './styles/theme';\n" },
+      ]),
+    ).toHaveLength(1);
   });
 });
 
@@ -1441,5 +1465,122 @@ suite('checkMcpSdkImports (KAR-05.6, EPIC-05-S22)', () => {
         },
       ]),
     ).toEqual([]);
+  });
+});
+
+suite('checkNoFocusOutlineNone (KAR-16.1 AC7)', () => {
+  it('rejects the Tailwind utility that removes a focus ring', () => {
+    const violations = checkNoFocusOutlineNone([
+      {
+        path: 'packages/web/src/components/Button.vue',
+        text: '<button class="focus:outline-none">',
+      },
+    ]);
+
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('focus:outline-none');
+  });
+
+  it('rejects the CSS spelling of the same thing under a focus selector', () => {
+    const violations = checkNoFocusOutlineNone([
+      { path: 'packages/web/src/styles/theme.css', text: ':focus-visible {\n  outline: none;\n}' },
+    ]);
+
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts a real focus ring', () => {
+    const violations = checkNoFocusOutlineNone([
+      {
+        path: 'packages/web/src/styles/theme.css',
+        text: ':focus-visible {\n  outline: 2px solid var(--focus-ring);\n}',
+      },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('leaves an outline reset that is not on a focus state alone', () => {
+    // `outline: none` on a non-focus rule is ordinary CSS. The rule is about
+    // removing the *focus* indicator, not about the property existing.
+    const violations = checkNoFocusOutlineNone([
+      { path: 'packages/web/src/App.vue', text: '.plain {\n  outline: none;\n}' },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+});
+
+suite('checkRolldownBuildOptions (KAR-16.1 AC10)', () => {
+  it('rejects build.rollupOptions, which only works through the compat layer', () => {
+    const violations = checkRolldownBuildOptions({
+      path: 'packages/web/vite.config.ts',
+      text: 'export default defineConfig({ build: { rollupOptions: { output: {} } } });',
+    });
+
+    // Two distinct problems, reported separately: the old name is there and
+    // the new one is not.
+    expect(violations).toHaveLength(2);
+    expect(render(violations)).toContain('rolldownOptions');
+    expect(render(violations)).toContain('compat shim');
+  });
+
+  it('requires the new name to actually be there', () => {
+    const violations = checkRolldownBuildOptions({
+      path: 'packages/web/vite.config.ts',
+      text: 'export default defineConfig({ build: { outDir: "x" } });',
+    });
+
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts build.rolldownOptions', () => {
+    const violations = checkRolldownBuildOptions({
+      path: 'packages/web/vite.config.ts',
+      text: 'export default defineConfig({ build: { rolldownOptions: { output: {} } } });',
+    });
+
+    expect(violations).toEqual([]);
+  });
+});
+
+suite('checkStateColoursComeFromThePalette (KAR-16.1 AC4, EPIC-16-S3)', () => {
+  it('rejects a hex colour in a component', () => {
+    const violations = checkStateColoursComeFromThePalette([
+      { path: 'packages/web/src/components/Node.vue', text: '.failed { color: #ff0044; }' },
+    ]);
+
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('--state-');
+  });
+
+  it('rejects a Tailwind colour utility standing in for a state', () => {
+    const violations = checkStateColoursComeFromThePalette([
+      { path: 'packages/web/src/components/Node.vue', text: '<span class="text-red-500">' },
+    ]);
+
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts a reference to the custom property', () => {
+    const violations = checkStateColoursComeFromThePalette([
+      {
+        path: 'packages/web/src/components/Node.vue',
+        text: '.failed { color: var(--state-failed); }',
+      },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('accepts the palette file itself, which is where the colours live', () => {
+    const violations = checkStateColoursComeFromThePalette([
+      {
+        path: 'packages/web/src/styles/theme.css',
+        text: ':root { --state-failed: oklch(0.55 0.2 25); }',
+      },
+    ]);
+
+    expect(violations).toEqual([]);
   });
 });

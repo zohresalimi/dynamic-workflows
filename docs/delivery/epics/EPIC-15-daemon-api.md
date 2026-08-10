@@ -763,8 +763,12 @@ a `…/snapshot?seq=<N>` request, that forward replay re-bases on the nearest sn
 client-side reduction from `seq` 0 ever happens — is `packages/web/src/api/scrub.test.ts` against
 `createScrubber`, in the real-Chromium `web` project. The half that needs a scrubber to drag and a
 diff to render — *"the tab remains responsive throughout"* and *"the rendered diff … matches the
-plans/diff response"* — is deferred to [EPIC-16](./EPIC-16-ui-foundation.md) with the
-plan-evolution view, exactly as EPIC-12-S5's last two lines were deferred to EPIC-13.
+plans/diff response"* — was deferred to [EPIC-16](./EPIC-16-ui-foundation.md) with the
+plan-evolution view, exactly as EPIC-12-S5's last two lines were deferred to EPIC-13. **KAR-16.1
+closed it**: `packages/web/src/views/plan-evolution.test.ts` drags the real scrubber over the same
+`three-patches` fixture, through the same `createScrubber`, asserting the rendered diff against the
+`plans/diff` response for each pair and the worst frame gap against an idle control on the same
+machine.
 
 ---
 

@@ -620,11 +620,13 @@ const RELATIVE_IMPORT_SPECIFIER =
  * directly; an extensionless relative specifier is rejected outright by
  * "nodenext" resolution.
  *
- * ".vue" and ".json" are explicit extensions that Vite and vue-tsc resolve
- * directly, so they satisfy the rule the guard actually enforces: never leave
- * the extension off.
+ * ".vue", ".json" and ".css" are explicit extensions that Vite and vue-tsc
+ * resolve directly, so they satisfy the rule the guard actually enforces: never
+ * leave the extension off. ".css" arrives with KAR-16.1 — `main.ts` imports the
+ * one stylesheet for its side effect, which is how Tailwind 4 and the state
+ * palette reach the page at all.
  */
-const EXPLICIT_RELATIVE_EXTENSIONS = ['.ts', '.json', '.vue'] as const;
+const EXPLICIT_RELATIVE_EXTENSIONS = ['.ts', '.json', '.vue', '.css'] as const;
 
 export function checkRelativeImportsHaveTsExtension(files: readonly SourceFile[]): Violation[] {
   const violations: Violation[] = [];
@@ -3000,6 +3002,149 @@ export function checkNoTokenInUrl(files: readonly SourceFile[]): Violation[] {
       violations.push({
         where: `${file.path}:${index + 1}`,
         message: `${file.path} line ${index + 1} ${TOKEN_IN_URL_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+/*
+ * KAR-16.1 — the three claims about the UI that are properties of the
+ * repository rather than of a running page, and therefore cannot be asserted
+ * in a browser spec: a focus ring that is never removed, a build config
+ * written for Rolldown, and a state palette with exactly one definition.
+ */
+
+/** `focus:outline-none`, the Tailwind utility AC7 bans by name. */
+const FOCUS_OUTLINE_UTILITY = /focus(-visible)?:outline-none/;
+
+/**
+ * `outline: none` inside a rule whose selector mentions focus — the CSS
+ * spelling of the same thing.
+ *
+ * Matched over the selector *and* its block rather than line by line, because
+ * the two halves are never on the same line in formatted CSS.
+ */
+const FOCUS_OUTLINE_RULE = /(:focus(-visible|-within)?[^{}]*)\{[^}]*outline\s*:\s*(none|0)\b/;
+
+export const FOCUS_RING_MESSAGE =
+  'a visible :focus-visible ring is the floor under the whole keyboard map (KAR-16.1 AC7, ' +
+  'docs/12-frontend-architecture.md §9.4). Removing it is a one-token edit that looks tidy in ' +
+  'a diff and leaves a keyboard user with no idea where they are.';
+
+/**
+ * AC7 — `focus:outline-none` appears nowhere, in any spelling.
+ *
+ * Both forms are checked because banning only the Tailwind utility would leave
+ * the plain-CSS version, and this repository writes plain CSS for exactly the
+ * surfaces where the ring matters most.
+ */
+export function checkNoFocusOutlineNone(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    // Comments are stripped: this rule is named in the prose of the very files
+    // that implement it correctly, and a guard that cannot tell an explanation
+    // from a declaration bans its own documentation.
+    const code = codeOnly(file.text);
+    if (FOCUS_OUTLINE_UTILITY.test(code)) {
+      violations.push({
+        where: file.path,
+        message: `${file.path} contains "focus:outline-none": ${FOCUS_RING_MESSAGE}`,
+      });
+      continue;
+    }
+    if (FOCUS_OUTLINE_RULE.test(code)) {
+      violations.push({
+        where: file.path,
+        message: `${file.path} sets "outline: none" on a focus state: ${FOCUS_RING_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * AC10 — the build config is written for Rolldown.
+ *
+ * Vite 8 auto-converts `build.rollupOptions`, so the wrong name *works*, which
+ * is exactly why it needs a guard: the cost is paid later, debugging a shim
+ * rather than the bundler (docs/12-frontend-architecture.md §2.2). The new
+ * name is also required to be present, because a config with neither is a
+ * config where the bundle budget has no output configuration at all.
+ */
+export function checkRolldownBuildOptions(config: SourceFile): Violation[] {
+  const violations: Violation[] = [];
+  const code = codeOnly(config.text);
+
+  if (/\brollupOptions\b/.test(code)) {
+    violations.push({
+      where: config.path,
+      message:
+        `${config.path} uses "build.rollupOptions". Vite 8 auto-converts it, so this works and ` +
+        'then costs you an afternoon debugging a compat shim instead of the bundler. Write ' +
+        '"build.rolldownOptions".',
+    });
+  }
+  if (!/\brolldownOptions\b/.test(code)) {
+    violations.push({
+      where: config.path,
+      message:
+        `${config.path} declares no "build.rolldownOptions". AC9's initial-chunk budget is ` +
+        'enforced against a build whose output configuration is stated, not inferred.',
+    });
+  }
+  return violations;
+}
+
+/** `#rgb`, `#rrggbb`, `#rrggbbaa` — a colour written into a component. */
+const HEX_COLOUR = /#[0-9a-f]{3}(?:[0-9a-f]{1}|[0-9a-f]{3}|[0-9a-f]{5})?\b/i;
+
+/**
+ * A Tailwind colour utility on one of the hues the state palette owns.
+ *
+ * Scoped to those hues rather than to every colour utility, because a neutral
+ * surface class is not a state and banning it would be a rule about styling
+ * rather than about the palette.
+ */
+const TAILWIND_STATE_COLOUR =
+  /\b(?:text|bg|border|fill|stroke|ring|outline)-(?:red|orange|amber|yellow|lime|green|emerald|teal|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
+
+/** The two files that are allowed to know what colour a state is. */
+const PALETTE_FILES = [
+  'packages/web/src/styles/theme.css',
+  'packages/web/src/lib/state-palette.ts',
+];
+
+export const STATE_PALETTE_MESSAGE =
+  'the entire node-state palette is CSS custom properties, not Tailwind classes and not hex ' +
+  '(docs/12-frontend-architecture.md §9.1). Seven views read the same "--state-*" variables, so ' +
+  'both themes work because you redefine seven values — a second definition anywhere makes dark ' +
+  'mode an audit of nine views instead.';
+
+/**
+ * EPIC-16-S3, scenario 2 — no component hardcodes a state colour.
+ *
+ * The palette files themselves are exempt: they are where the seven values are
+ * defined, and a guard that also banned them would ban the correct
+ * implementation along with the wrong one.
+ */
+export function checkStateColoursComeFromThePalette(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (PALETTE_FILES.includes(file.path)) continue;
+
+    const code = codeOnly(file.text);
+    if (HEX_COLOUR.test(code)) {
+      violations.push({
+        where: file.path,
+        message: `${file.path} writes a hex colour: ${STATE_PALETTE_MESSAGE}`,
+      });
+      continue;
+    }
+    if (TAILWIND_STATE_COLOUR.test(code)) {
+      violations.push({
+        where: file.path,
+        message: `${file.path} uses a Tailwind colour utility: ${STATE_PALETTE_MESSAGE}`,
       });
     }
   }

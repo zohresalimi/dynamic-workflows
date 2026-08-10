@@ -1,0 +1,178 @@
+/*
+ * KAR-16.1 — the whole of theming, in one file
+ * (docs/12-frontend-architecture.md §8, §9).
+ *
+ * Tailwind 4 is CSS-first: there is no tailwind.config.js and no PostCSS step,
+ * so this stylesheet *is* the configuration. `@theme` declares the design
+ * tokens Tailwind generates utilities from; the `:root` / `.dark` blocks below
+ * declare the seven run-state colours, which are deliberately **not** Tailwind
+ * tokens — see ../lib/state-palette.ts for why.
+ *
+ * Dark mode is a `.dark` class on <html>, flipped by `useDark()` from
+ * @vueuse/core (../app/theme.ts). `@custom-variant` is what tells Tailwind 4 to
+ * read that class rather than the `prefers-color-scheme` media query it
+ * defaults to, so an explicit override actually overrides.
+ */
+
+/*
+ * Vue Flow's own sheet is imported **here, first**, rather than from the view
+ * that uses it. Two rules below override it — the reduced-motion block and the
+ * node border colour — and an override only wins at equal specificity if it
+ * comes later, which a component-level import order does not guarantee.
+ */
+@import "@vue-flow/core/dist/style.css";
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The seven state colours, light theme.
+ *
+ * oklch because the hues need a *perceptual* gap rather than an RGB one, and
+ * because holding lightness roughly constant across the seven is what keeps
+ * contrast honest when they sit next to each other on a Gantt row. Every one is
+ * ≥ 4.5:1 against the light surface below it.
+ *
+ * These are the only seven names any view may paint a state with. Adding an
+ * eighth without adding it under `.dark` too fails
+ * ../lib/state-palette.test.ts.
+ */
+:root {
+  --surface: oklch(0.99 0 0);
+  --surface-raised: oklch(0.97 0.002 260);
+  --ink: oklch(0.22 0.01 260);
+  --ink-muted: oklch(0.48 0.01 260);
+  --edge: oklch(0.9 0.005 260);
+  --focus-ring: oklch(0.55 0.18 250);
+
+  --state-pending: oklch(0.55 0.02 260);
+  --state-running: oklch(0.55 0.16 250);
+  --state-blocked: oklch(0.58 0.14 65);
+  --state-passed: oklch(0.52 0.13 155);
+  --state-failed: oklch(0.55 0.2 25);
+  --state-abandoned: oklch(0.63 0.01 285);
+  --state-awaiting-human: oklch(0.55 0.2 300);
+}
+
+/*
+ * The same seven names, redefined. This block is the entire cost of dark mode:
+ * every surface reads `var(--state-…)`, so nothing else in the app has to know
+ * which theme is on.
+ *
+ * They are lighter and slightly less saturated than their light-theme twins
+ * because the background moved, not because they are different colours — a dark
+ * theme that reuses light-theme hues at the same lightness fails contrast
+ * everywhere at once.
+ */
+.dark {
+  --surface: oklch(0.19 0.008 265);
+  --surface-raised: oklch(0.24 0.01 265);
+  --ink: oklch(0.94 0.004 260);
+  --ink-muted: oklch(0.72 0.008 260);
+  --edge: oklch(0.34 0.012 265);
+  --focus-ring: oklch(0.78 0.14 245);
+
+  --state-pending: oklch(0.72 0.03 260);
+  --state-running: oklch(0.75 0.14 245);
+  --state-blocked: oklch(0.8 0.14 75);
+  --state-passed: oklch(0.78 0.15 155);
+  --state-failed: oklch(0.72 0.17 25);
+  --state-abandoned: oklch(0.6 0.02 285);
+  --state-awaiting-human: oklch(0.75 0.16 305);
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-edge: var(--edge);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/*
+ * AC7 — a visible focus ring everywhere, and `focus:outline-none` nowhere.
+ * A repository-wide guard (test/guards.test.ts, checkNoFocusOutlineNone) is
+ * what keeps it that way, because removing an outline is a one-token edit that
+ * looks tidy in a diff.
+ */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * The skip-link: first in the DOM, first in the tab order, and off-screen until
+ * it has focus. Clipped rather than `display: none`, which would take it out of
+ * the tab order and leave a link nobody can ever reach.
+ */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--surface-raised);
+  color: var(--ink);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/*
+ * The two surfaces that animate, declared here rather than in their components
+ * so that the `reduce` block below is switching off rules it can see. A
+ * media query that wraps the wrong rule is the failure AC8's spec is written
+ * against, and the only way to detect it is for the default to be real.
+ */
+.vue-flow__node,
+.plan-node {
+  transition:
+    box-shadow 120ms ease,
+    transform 160ms ease;
+}
+
+.version-rail__marker {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+/*
+ * AC8 — `prefers-reduced-motion: reduce` (docs/12 §9.4).
+ *
+ * The two surfaces that animate are the graph and the version scrubber, and
+ * both are named here rather than blanket-disabling every transition in the
+ * app: a global `* { transition: none }` also kills the focus-ring fade and the
+ * overlay backdrop, which nobody asked for and which makes the app feel broken
+ * rather than calm.
+ *
+ * Nothing anywhere waits on an animation to finish — every one of these is
+ * decoration over a state change that has already happened — so the reduced
+ * experience is the same application, not a degraded one.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .vue-flow__node,
+  .vue-flow__edge-path,
+  .vue-flow__transformationpane,
+  .plan-node,
+  .version-rail__marker,
+  .skip-link {
+    transition: none;
+    animation: none;
+  }
+}

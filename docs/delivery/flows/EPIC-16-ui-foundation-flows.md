@@ -171,6 +171,15 @@ long-lived token that authorises **spawning processes on the user's machine**
 ([11 §8.1](../../11-api-and-realtime.md)). Do not use `@microsoft/fetch-event-source` (abandoned
 2021-04-25) or plain `eventsource@^4.1.0` (inherits the no-headers limitation by design).
 
+**Automated (KAR-16.1):** the fragment read and strip is `packages/web/src/api/token.test.ts`; the
+header on the first request is `packages/web/src/app/shell-boot.test.ts`; the third scenario — the
+second tab, with no fragment — is `packages/web/src/views/TokenRequired.test.ts`, which asserts the
+three negatives AC3 names (no `progressbar`, not blank, **and no request at all**, which is the only
+form of "no 401 loop" that cannot be satisfied by retrying slowly). Scenarios 1, 2 and 4 are closed
+end to end in `e2e/ui-bootstrap.test.ts`: a real DeFlowd serving the built SPA, a real Chromium, and
+an assertion over **every** request the page made — that none carries the token in its URL, that
+none carries it in a `Referer`, and that none leaves 127.0.0.1.
+
 ---
 
 ## EPIC-16-S3 — Seven states, two themes, and never colour alone
@@ -215,6 +224,18 @@ label, every time, is WCAG 1.4.1 and it is also simply better for a status board
 not Tailwind classes is that seven views then stay consistent by construction and dark mode works
 because you redefine seven values, not because you audited nine views.
 
+**Automated (KAR-16.1):** the stylesheet half — seven names declared under `:root` and under `.dark`,
+and a mapping from `@DeFlow/core`'s `NODE_STATUSES` that is total, so a ninth domain status fails
+here rather than rendering as an unstyled chip six views later — is
+`packages/web/src/lib/state-palette.test.ts`. The rendering half is
+`packages/web/src/components/StateChip.test.ts`, which locates each chip **by role and accessible
+name** and never by fill, and asserts seven distinct glyphs so that "renders a glyph" cannot be
+satisfied by one shape seven times. That the two themes resolve to *different* values, rather than
+to a class with no redefinition behind it, is `packages/web/src/app/theme.test.ts`. The second
+scenario is a repository-wide guard, `test/ui-foundation.test.ts`: no hex literal and no Tailwind
+colour utility anywhere under `packages/web`, with the palette files themselves the only
+exemption.
+
 ---
 
 ## EPIC-16-S4 — Driving the whole surface from the keyboard, with motion off
@@ -255,6 +276,18 @@ Feature: Keyboard map and reduced motion (12 §9.4, 9.5)
 ([12 §9.5](../../12-frontend-architecture.md)). `resizable` and `command` from shadcn-vue _"carry an
 operator UI further than any amount of visual polish"_ — they are taken, not built.
 
+**Automated (KAR-16.1):** `packages/web/src/app/keyboard.test.ts`, which presses every key in the map
+three ways — against the store directly, against a focused text field (where `j` and `/` must reach
+the field and only `Esc` and `Cmd-K` may not), and against the **whole application after a route
+change**, because "handlers bound to a component that is not always mounted" is the failure this map
+is shaped to avoid. The skip-link is reached with a real `Tab` rather than a `.focus()` call, and
+the ring is asserted on `outline-style` before `outline-width`: with `outline: none` Chromium still
+reports the specified width, so a width check alone passes against a ring that has been switched
+off. The reduced-motion scenario is `packages/web/src/app/reduced-motion.test.ts`, emulating the
+preference in the browser process so the CSS `@media` block is actually evaluated, and pairing every
+assertion with its motion-on control so that a query wrapping a rule which never did anything cannot
+pass.
+
 ---
 
 ## EPIC-16-S5 — The initial chunk stays under budget
@@ -288,6 +321,15 @@ Feature: Bundle budget for NF3 (12 §10)
 execute time** ([12 §10](../../12-frontend-architecture.md)). Measure with the 400-node stress fixture
 through `DeFlow replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
 defaults to Oxc; diff the built CSS once on the first upgrade.
+
+**Automated (KAR-16.1):** `packages/web/test/integration/bundle-budget.test.ts` runs a real `vite
+build` into a tmpdir and measures the **initial payload** — the entry chunk plus every chunk the
+built `index.html` preloads, plus its stylesheet — rather than the entry file alone, which would
+fall every time the bundler moved a megabyte one chunk to the left. Membership is read out of each
+chunk's sourcemap, because a substring search of minified code answers questions about variable
+names. The second scenario is `test/ui-foundation.test.ts` (`build.rolldownOptions`, never
+`rollupOptions`) plus an assertion in the budget file that the build emitted no circular-import
+warning. Measuring through the 400-node stress fixture is KAR-16.6's; this is the static budget.
 
 ---
 

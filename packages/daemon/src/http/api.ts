@@ -1253,55 +1253,70 @@ export const api = new Hono()
    * because that is a request this endpoint can never honour, not a run that
    * does not exist yet.
    */
-  .get('/runs/:id/plans/diff', (c) => {
-    const view = ledgerView();
-    if (view === null) return notReady(c);
+  .get(
+    '/runs/:id/plans/diff',
+    // Declared rather than read straight off `c.req.query()`, for the reason
+    // `/runs/:id/snapshot` above declares its `seq`: it puts `from` and `to`
+    // into the *type* of this chain and therefore into `hc<ApiType>`. The
+    // plan-evolution view in @DeFlow/web is its only caller, and a view naming a
+    // parameter this route stopped accepting should be a compile error rather
+    // than a silent 400 in a tab. They stay strings here — `parseVersion` below
+    // owns what they mean.
+    validator('query', (value) => ({
+      from: typeof value.from === 'string' ? value.from : undefined,
+      to: typeof value.to === 'string' ? value.to : undefined,
+    })),
+    (c) => {
+      const view = ledgerView();
+      if (view === null) return notReady(c);
 
-    const runId = asRunId(c.req.param('id'));
-    if (runId === null) {
-      return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
-    }
+      const runId = asRunId(c.req.param('id'));
+      if (runId === null) {
+        return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
+      }
 
-    const from = parseVersion(c.req.query('from'));
-    const to = parseVersion(c.req.query('to'));
-    if (from === null || to === null) {
+      const query = c.req.valid('query');
+      const from = parseVersion(query.from);
+      const to = parseVersion(query.to);
+      if (from === null || to === null) {
+        return c.json(
+          ...apiError('invalid_request', 'from and to are 1-based plan version numbers', {
+            detail: { field: from === null ? 'from' : 'to' },
+          }),
+        );
+      }
+
+      const fromGraph = view.planVersion(runId, from);
+      const toGraph = view.planVersion(runId, to);
+      if (fromGraph === null || toGraph === null) {
+        return c.json(
+          ...apiError('plan_version_not_found', 'this run never proposed a version numbered that', {
+            detail: { from, to, missing: fromGraph === null ? from : to },
+          }),
+        );
+      }
+
+      const diff = diffPlanGraphs(fromGraph, toGraph);
+      const transition = view.planTransition(runId, to);
+
+      // KAR-15.6 AC11 — `unionLayoutKey` is an opaque cache key and not part of
+      // the versioned contract. Said on the response rather than only in the
+      // docs, because a client that logs its headers has then been told.
+      c.header(UNVERSIONED_HEADER, UNION_LAYOUT_KEY_UNVERSIONED);
       return c.json(
-        ...apiError('invalid_request', 'from and to are 1-based plan version numbers', {
-          detail: { field: from === null ? 'from' : 'to' },
-        }),
+        {
+          from: diff.from,
+          to: diff.to,
+          nodes: diff.nodes,
+          edges: diff.edges,
+          unionLayoutKey: unionLayoutKey(runId, from, to),
+          reason: transition?.reason ?? null,
+          decision: transition?.decision ?? null,
+        },
+        200,
       );
-    }
-
-    const fromGraph = view.planVersion(runId, from);
-    const toGraph = view.planVersion(runId, to);
-    if (fromGraph === null || toGraph === null) {
-      return c.json(
-        ...apiError('plan_version_not_found', 'this run never proposed a version numbered that', {
-          detail: { from, to, missing: fromGraph === null ? from : to },
-        }),
-      );
-    }
-
-    const diff = diffPlanGraphs(fromGraph, toGraph);
-    const transition = view.planTransition(runId, to);
-
-    // KAR-15.6 AC11 — `unionLayoutKey` is an opaque cache key and not part of
-    // the versioned contract. Said on the response rather than only in the
-    // docs, because a client that logs its headers has then been told.
-    c.header(UNVERSIONED_HEADER, UNION_LAYOUT_KEY_UNVERSIONED);
-    return c.json(
-      {
-        from: diff.from,
-        to: diff.to,
-        nodes: diff.nodes,
-        edges: diff.edges,
-        unionLayoutKey: unionLayoutKey(runId, from, to),
-        reason: transition?.reason ?? null,
-        decision: transition?.decision ?? null,
-      },
-      200,
-    );
-  })
+    },
+  )
 
   /**
    * KAR-15.6 AC1 — `GET /api/runs/:id/plans`: the plan-evolution scrubber's
@@ -1316,27 +1331,35 @@ export const api = new Hono()
    * replans costs forty rows here and forty thousand folded events the other
    * way, and the scrubber is the first thing the operator opens.
    */
-  .get('/runs/:id/plans', (c) => {
-    const found = resolveRun(c);
-    if ('response' in found) return found.response;
+  .get(
+    '/runs/:id/plans',
+    // Same reason as `/plans/diff` above: the version rail's only caller is the
+    // UI, and `limit` belongs in the type it compiles against.
+    validator('query', (value) => ({
+      limit: typeof value.limit === 'string' ? value.limit : undefined,
+    })),
+    (c) => {
+      const found = resolveRun(c);
+      if ('response' in found) return found.response;
 
-    const limit = boundedLimit(c.req.query('limit'), READ_LIMITS.plans);
-    c.header(LIMIT_HEADER, String(limit));
+      const limit = boundedLimit(c.req.valid('query').limit, READ_LIMITS.plans);
+      c.header(LIMIT_HEADER, String(limit));
 
-    return c.json(
-      found.view.planVersions(found.runId, limit).map((row) => {
-        const transition = found.view.planTransition(found.runId, row.version);
-        return {
-          version: row.version,
-          seq: row.seq,
-          planHash: row.planHash,
-          decision: transition?.decision ?? null,
-          reason: transition?.reason ?? null,
-        };
-      }),
-      200,
-    );
-  })
+      return c.json(
+        found.view.planVersions(found.runId, limit).map((row) => {
+          const transition = found.view.planTransition(found.runId, row.version);
+          return {
+            version: row.version,
+            seq: row.seq,
+            planHash: row.planHash,
+            decision: transition?.decision ?? null,
+            reason: transition?.reason ?? null,
+          };
+        }),
+        200,
+      );
+    },
+  )
 
   /**
    * KAR-15.6 AC1 — `GET /api/runs/:id/plans/:version`: the immutable plan

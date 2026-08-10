@@ -92,7 +92,7 @@ function widthPercent(chart: CompactionChart, value: number | null): number {
 .slot {
   inline-size: 4rem;
   flex: none;
-  color: #555;
+  color: var(--ink-muted);
 }
 
 .bar {
@@ -105,30 +105,38 @@ function widthPercent(chart: CompactionChart, value: number | null): number {
   white-space: nowrap;
 }
 
+/*
+ * KAR-16.1 — every colour below is a palette token rather than a literal
+ * (docs/12-frontend-architecture.md §9.1). This component predates the palette;
+ * converting it is what makes dark mode work here at all, and it is why the
+ * repository-wide guard in test/ui-foundation.test.ts can be absolute rather
+ * than carrying an exemption list.
+ */
+
 /* A measured figure: filled, opaque, no qualification. */
 .bar.solid {
-  background: #3b6ea5;
-  color: #fff;
+  background: var(--state-running);
+  color: var(--surface);
 }
 
 /* An inferred figure: the same length, visibly not the same kind of thing. */
 .bar.hatched {
-  color: #1c3350;
+  color: var(--ink);
   background: repeating-linear-gradient(
     45deg,
-    #b8cde3,
-    #b8cde3 4px,
+    color-mix(in oklch, var(--state-running) 35%, var(--surface)),
+    color-mix(in oklch, var(--state-running) 35%, var(--surface)) 4px,
     transparent 4px,
     transparent 8px
   );
-  outline: 1px dashed #3b6ea5;
+  outline: 1px dashed var(--state-running);
 }
 
 /* No figure at all: an outline with a sentence in it, and no number. */
 .bar.gap {
-  color: #6b6b6b;
+  color: var(--ink-muted);
   background: none;
-  outline: 1px dashed #b0b0b0;
+  outline: 1px dashed var(--state-pending);
   font-style: italic;
 }
 
@@ -139,7 +147,7 @@ function widthPercent(chart: CompactionChart, value: number | null): number {
 }
 
 figcaption {
-  color: #555;
+  color: var(--ink-muted);
 }
 
 .dropped {
@@ -154,9 +162,9 @@ figcaption {
 .dropped button {
   font: inherit;
   padding: 0.1rem 0.4rem;
-  border: 1px solid #b8cde3;
+  border: 1px solid var(--edge);
   border-radius: 2px;
-  background: #f2f6fa;
+  background: var(--surface-raised);
   cursor: pointer;
 }
 </style>

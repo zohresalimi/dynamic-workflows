@@ -20,6 +20,13 @@ allowBuilds:
   # script does the same job explicitly, one line further down the same install,
   # so the implicit one is off.
   lefthook: false
+  # Transitive, via reka-ui's @floating-ui/vue and @vue-flow/core's @vueuse/core.
+  # Its postinstall compiles nothing — it copies one of lib/v2, lib/v2.7 or
+  # lib/v3 over lib/index.mjs to bridge Vue 2 and 3. The published lib/index.mjs
+  # is already the Vue 3 shim (`isVue3 = true`, re-exporting `vue`), and this
+  # workspace only ever has Vue 3, so the script has nothing to do and the only
+  # thing skipping it removes is an install-time write into node_modules.
+  vue-demi: false
 
 # One place, so nine packages cannot drift (docs/16-repo-layout.md §5).
 # Consume every entry as "catalog:" — never a literal version in a package.json.
@@ -86,3 +93,39 @@ catalog:
   "@vitest/browser-playwright": 4.1.10
   playwright: 1.62.1
   vitest-browser-vue: 2.1.0
+  # KAR-16.1 — the application shell (docs/12-frontend-architecture.md §2, §8, §9).
+  #
+  # `vue-router@5` is a non-breaking transition release: it merged
+  # unplugin-vue-router into core, and coming from v4 without that plugin it is
+  # a version bump only. Plain object routes, never file-based — roughly ten
+  # routes do not pay for a filesystem convention.
+  vue-router: ^5.2.0
+  # Pinia 4 stopped bundling @vue/devtools-api. Installing pinia without it does
+  # not fail; devtools simply go quiet, which is a bad way to find out.
+  pinia: ^4.0.2
+  "@vue/devtools-api": ^8.2.1
+  # `useDark()` — the whole of dark mode: it flips `.dark` on <html>, seeds from
+  # the OS `prefers-color-scheme` on first load and persists an explicit
+  # override. The seven `--state-*` tokens are redefined under that one class.
+  "@vueuse/core": ^14.4.0
+  # 1.48.2 is the release whose a11y surface docs/12 §9.3 verified in the
+  # bundle (aria-live, per-node ariaLabel, keyboard traversal). It is 345 KB raw
+  # and deliberately IN the initial chunk: the plan graph is the landing view.
+  "@vue-flow/core": ^1.48.2
+  # Tailwind 4 is CSS-first: no tailwind.config.js and no PostCSS step, so the
+  # Vite plugin is the whole integration and `@theme` lives in a stylesheet.
+  tailwindcss: ^4.3.3
+  "@tailwindcss/vite": ^4.3.3
+  # `reka-ui`, never `radix-vue@1.9.17` — that is the dead name (docs/12 §8).
+  # It is what the vendored shadcn-vue components sit on, and it is where the
+  # genuinely hard half of overlay a11y comes from: focus trap, roving
+  # tabindex, aria-expanded/controls, escape and outside-click.
+  reka-ui: ^2.10.1
+  # Glyphs. Every state chip is colour + glyph + text label (WCAG 1.4.1), and
+  # the glyph half of that comes from here — per-icon imports, so the initial
+  # chunk carries the handful actually rendered and not the set.
+  lucide-vue-next: ^1.0.0
+  # The two-line `cn()` the vendored components use to merge a caller's classes
+  # over their own without a specificity war.
+  clsx: ^2.1.1
+  tailwind-merge: ^3.6.0
