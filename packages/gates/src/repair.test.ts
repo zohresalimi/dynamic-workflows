@@ -13,6 +13,7 @@ import {
   type LadderGate,
   type NodeId,
   PlanPatchSchema,
+  type ProviderId,
   type VerdictV3,
 } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
@@ -64,6 +65,44 @@ const context = (overrides: Partial<RepairContext> = {}): RepairContext => ({
   evidence: [EVIDENCE],
   proposedBy: 'gate-typecheck' as NodeId,
   ...overrides,
+});
+
+/**
+ * KAR-11.2's `PROVIDER_NOT_PROBED` is a *blocking* plan diagnostic, so a fix
+ * node that names no provider preference is a patch `commitPatchedPlan` refuses
+ * — which would make every repair unappliable. Routing is the scheduler's
+ * knowledge, not this module's, so it arrives on the context.
+ */
+suite('the fix node is routable (KAR-11.2 PROVIDER_NOT_PROBED)', () => {
+  it('carries the provider preference the scheduler supplied', () => {
+    const decision = repairPatchesFor(
+      verdict('fail', [finding('a13f5c2b1e04')]),
+      context({ fixProvider: ['claude' as ProviderId] }),
+    );
+
+    expect(decision.kind).toBe('fix');
+    if (decision.kind !== 'fix') return;
+    const op = decision.patches[0]?.ops[0];
+    if (op?.op !== 'insert-nodes') return expect.unreachable('a repair inserts a node');
+    const node = op.nodes[0];
+    expect(node?.type).toBe('agent');
+    if (node?.type !== 'agent') return;
+    expect(node.provider.prefer).toEqual(['claude']);
+    // Still inherits nothing: a preference is routing, not context (AC6).
+    expect(node.resume).toBe('always-replay');
+  });
+
+  it('prefers nothing when the scheduler named nothing', () => {
+    const decision = repairPatchesFor(verdict('fail', [finding('a13f5c2b1e04')]), context());
+
+    expect(decision.kind).toBe('fix');
+    if (decision.kind !== 'fix') return;
+    const op = decision.patches[0]?.ops[0];
+    if (op?.op !== 'insert-nodes') return expect.unreachable('a repair inserts a node');
+    const node = op.nodes[0];
+    if (node?.type !== 'agent') return;
+    expect(node.provider.prefer).toEqual([]);
+  });
 });
 
 // ── AC1, AC2: one fix node per finding, and what produces none ───────────────

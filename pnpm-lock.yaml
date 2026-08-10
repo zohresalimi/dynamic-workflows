@@ -261,6 +261,9 @@ importers:
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../core
+      '@DeFlow/gates':
+        specifier: workspace:*
+        version: link:../gates
       '@DeFlow/ledger':
         specifier: workspace:*
         version: link:../ledger
@@ -301,9 +304,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@DeFlow/gates':
-        specifier: workspace:*
-        version: link:../gates
       '@DeFlow/mock-agent':
         specifier: workspace:*
         version: link:../mock-agent

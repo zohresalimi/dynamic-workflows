@@ -17,6 +17,7 @@
   "dependencies": {
     "@DeFlow/adapters": "workspace:*",
     "@DeFlow/core": "workspace:*",
+    "@DeFlow/gates": "workspace:*",
     "@DeFlow/ledger": "workspace:*",
     "@agentclientprotocol/sdk": "catalog:",
     "@hono/node-server": "catalog:",
@@ -35,7 +36,6 @@
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
-    "@DeFlow/gates": "workspace:*",
     "@DeFlow/mock-agent": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",

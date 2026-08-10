@@ -61,6 +61,7 @@ import {
   type PlanPatch,
   PlanPatchSchema,
   type ProposedBy,
+  type ProviderId,
   type ResumeRequest,
   toSingleLine,
   type VerdictV3,
@@ -195,6 +196,21 @@ export interface RepairContext {
    * job, in the engine, not this function's.
    */
   readonly fixPermission?: PermissionLevel;
+  /**
+   * The providers the fix node may be routed onto, in preference order.
+   *
+   * Supplied rather than inherited, and required in practice: KAR-11.2's
+   * `PROVIDER_NOT_PROBED` is a *blocking* plan diagnostic, so a fix node that
+   * prefers nothing is a patch `commitPatchedPlan` refuses — a repair that can
+   * be proposed and never applied. Which adapters are installed and healthy is
+   * the scheduler's knowledge and nothing this module can derive, so it arrives
+   * here.
+   *
+   * A preference is routing, not context: it says *where* the fix node runs,
+   * never what it has read. AC6's "inherits nothing" is `resume:
+   * 'always-replay'` below, and it is unaffected.
+   */
+  readonly fixProvider?: readonly ProviderId[];
   readonly estimatedCostDeltaUsd?: number;
   readonly estimatedWallClockDeltaMs?: number;
 }
@@ -309,7 +325,7 @@ function repairPatch(verdict: VerdictV3, finding: FindingV2, context: RepairCont
             pathScopes: { write, read: write },
             returns: { schemaId: 'DeFlow.finding.v1' },
             brief: repairBrief(verdict.gate, finding),
-            provider: { prefer: [], requires: [] },
+            provider: { prefer: [...(context.fixProvider ?? [])], requires: [] },
             // AC6, and it is not a preference: `always-replay` is the only
             // resume shape that inherits nothing. A fresh node is at turn 0,
             // which is the whole point of spawning one.
