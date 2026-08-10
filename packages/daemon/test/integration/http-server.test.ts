@@ -7,11 +7,48 @@
  *
  * Verifies: KAR-01.3 test plan #6, EPIC-01-S12 (scenarios 2 and 3)
  */
+import { authorizedFetch, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import { startHttp } from '../../src/http/server.ts';
 
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
+
 type Started = Awaited<ReturnType<typeof startHttp>>;
+
+const isCatchAll = (path: string): boolean => path === '*' || path === '/*';
+
+/**
+ * The mount order, as the property rather than as two indices.
+ *
+ * *"The API mounts before the SPA fallback"* — the natural mistake is a
+ * catch-all registered first, which turns every API typo into a silently-served
+ * HTML page and a JSON parse error in the client.
+ *
+ * Stated as **"the fallback is registered last"** rather than as "the first
+ * `/api` route precedes the first catch-all", because KAR-15.2 put two
+ * cross-cutting `app.use('*', …)` middlewares — `varyOrigin` and `requireAuth`
+ * — at the head of the table. Those are `/*` routes that legitimately come
+ * first: they call `next()` and terminate nothing. The fallback is the one that
+ * answers, and nothing may be registered after it. That form still fails on the
+ * mistake being guarded — a fallback registered first leaves an `/api` route
+ * last — and it holds for both modes, where the fallback is `app.get('*')` in
+ * production and Vite's own connect middleware in dev.
+ */
+function expectApiMountsBeforeTheFallback(paths: readonly string[]): void {
+  expect(isCatchAll(paths.at(-1) ?? '')).toBe(true);
+
+  const lastApi = paths.findLastIndex((path) => path.startsWith('/api'));
+  expect(lastApi).toBeGreaterThanOrEqual(0);
+  expect(lastApi).toBeLessThan(paths.length - 1);
+}
 
 // `started` is only ever undefined if beforeAll itself threw, in which case
 // afterAll's `started?.close()` must not throw a second, less informative
@@ -27,7 +64,12 @@ suite('the dev-mode server', () => {
   let origin: string;
 
   beforeAll(async () => {
-    started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: true });
+    started = await startHttp({
+      port: 0,
+      hostname: '127.0.0.1',
+      dev: true,
+      token: TEST_DAEMON_TOKEN,
+    });
     const address = started.server.address() as AddressInfo;
     origin = `http://127.0.0.1:${address.port}`;
   }, 60_000);
@@ -38,11 +80,7 @@ suite('the dev-mode server', () => {
 
   it('registers every /api route before the catch-all (test plan #6)', () => {
     const paths = requireStarted(started).app.routes.map((route) => route.path);
-    const firstApi = paths.findIndex((path) => path.startsWith('/api'));
-    const catchAll = paths.findIndex((path) => path === '*' || path === '/*');
-    expect(firstApi).toBeGreaterThanOrEqual(0);
-    expect(catchAll).toBeGreaterThanOrEqual(0);
-    expect(firstApi).toBeLessThan(catchAll);
+    expectApiMountsBeforeTheFallback(paths);
   });
 
   it('serves /api/health from Hono, unauthenticated, as JSON', async () => {
@@ -99,7 +137,12 @@ suite('the production-mode server', () => {
   let origin: string;
 
   beforeAll(async () => {
-    started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+    started = await startHttp({
+      port: 0,
+      hostname: '127.0.0.1',
+      dev: false,
+      token: TEST_DAEMON_TOKEN,
+    });
     const address = started.server.address() as AddressInfo;
     origin = `http://127.0.0.1:${address.port}`;
   }, 30_000);
@@ -109,10 +152,7 @@ suite('the production-mode server', () => {
   });
 
   it('mounts /api first there too, so dev and production routing are identical', async () => {
-    const paths = requireStarted(started).app.routes.map((route) => route.path);
-    const firstApi = paths.findIndex((path) => path.startsWith('/api'));
-    const catchAll = paths.findIndex((path) => path === '*' || path === '/*');
-    expect(firstApi).toBeLessThan(catchAll);
+    expectApiMountsBeforeTheFallback(requireStarted(started).app.routes.map((route) => route.path));
 
     const response = await fetch(`${origin}/api/health`);
     expect(response.status).toBe(200);

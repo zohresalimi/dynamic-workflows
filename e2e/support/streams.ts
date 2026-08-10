@@ -24,10 +24,20 @@ export interface SseClient {
   readonly close: () => void;
 }
 
-export async function openSse(url: string): Promise<SseClient> {
+/**
+ * Opens the stream the way the UI does (KAR-15.2 AC8/AC9): the bearer token
+ * travels in the `Authorization` **header**, never in the query string. That is
+ * the whole reason the browser client is `eventsource-client` rather than
+ * native `EventSource`, which cannot set a header — so a helper that reached
+ * for `?token=` here would be testing a design the daemon does not have.
+ */
+export async function openSse(url: string, token?: string): Promise<SseClient> {
   const controller = new AbortController();
   const response = await fetch(url, {
-    headers: { accept: 'text/event-stream' },
+    headers: {
+      accept: 'text/event-stream',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+    },
     signal: controller.signal,
   });
   if (!response.ok || response.body === null) {

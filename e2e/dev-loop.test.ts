@@ -133,7 +133,7 @@ suite('the dev loop', () => {
     expect((await fetch(`${loop.origin}/src/components/HelloDeFlow.vue`)).status).toBe(200);
 
     const hmr = await openHmrSocket(loop.origin);
-    const sse = await openSse(`${loop.origin}/api/stream`);
+    const sse = await openSse(`${loop.origin}/api/stream`, loop.token());
     try {
       await sse.next((event) => event.event === 'hello', 5_000);
       const beatsBefore = sse.events().filter((event) => event.event === 'heartbeat').length;

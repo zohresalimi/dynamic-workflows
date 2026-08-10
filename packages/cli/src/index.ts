@@ -28,6 +28,15 @@ import { type ApiClient, createClient } from '@DeFlow/web';
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
   readonly baseUrl: string;
+  /**
+   * The daemon's bearer token, out of `.DeFlow/daemon.json` (KAR-15.2).
+   *
+   * Every route but `GET /api/health` requires it, so a command without one
+   * gets `401 missing_token` — deliberately, because "the CLI runs on the same
+   * machine" is exactly the reasoning the token exists to refuse. Reading the
+   * file is `DeFlow`'s own argv layer, which is EPIC-18's.
+   */
+  readonly token?: string;
   /** The repository the run executes against. */
   readonly cwd: string;
   readonly permission?: PermissionLevel;
@@ -57,9 +66,19 @@ export class RunTaskRejected extends Error {
   }
 }
 
-/** The daemon at `baseUrl`, through the one typed client. */
-function clientFor(baseUrl: string): ApiClient {
-  return createClient({ baseUrl: `${baseUrl.replace(/\/$/, '')}/api` });
+/**
+ * The daemon at `baseUrl`, through the one typed client.
+ *
+ * The token goes in as a *function* because that is the shape `createClient`
+ * takes — read per request, so the browser's fragment handoff and the CLI's
+ * file read are the same client with two sources — and it is attached as an
+ * `Authorization` header, never as a query parameter (KAR-15.2 AC9).
+ */
+function clientFor(baseUrl: string, token: string | undefined): ApiClient {
+  return createClient({
+    baseUrl: `${baseUrl.replace(/\/$/, '')}/api`,
+    token: () => token ?? null,
+  });
 }
 
 /**
@@ -96,7 +115,7 @@ function isEnvelope(body: unknown): body is Envelope {
  * the `task.submitted` event the daemon appends (../../daemon/src/http/api.ts).
  */
 export async function runTask(text: string, options: RunTaskOptions): Promise<RunTaskResult> {
-  const response = await clientFor(options.baseUrl).runs.$post(
+  const response = await clientFor(options.baseUrl, options.token).runs.$post(
     {
       json: {
         input: { kind: 'text', text },
@@ -133,6 +152,8 @@ export async function runTask(text: string, options: RunTaskOptions): Promise<Ru
 export interface DaemonClientOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
   readonly baseUrl: string;
+  /** Its bearer token, out of `.DeFlow/daemon.json` (KAR-15.2). */
+  readonly token?: string;
 }
 
 export interface ApproveSpecResult {
@@ -173,7 +194,7 @@ export async function approveSpec(
   runId: string,
   options: DaemonClientOptions,
 ): Promise<ApproveSpecResult> {
-  const response = await clientFor(options.baseUrl).runs[':id'].spec.approve.$post(
+  const response = await clientFor(options.baseUrl, options.token).runs[':id'].spec.approve.$post(
     { param: { id: runId } },
     { headers: { 'X-DeFlow-Submitted-By': 'cli' } },
   );

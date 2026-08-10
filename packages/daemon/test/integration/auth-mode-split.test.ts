@@ -61,7 +61,7 @@ import {
   readEpoch,
   spillBytes,
 } from '@DeFlow/ledger';
-import { it, linkFakeAgent } from '@DeFlow/testkit';
+import { authorizedFetch, it, linkFakeAgent, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -70,6 +70,15 @@ import { join } from 'node:path';
 import { afterEach, expect, describe as suite } from 'vitest';
 import { clearLedgerView, openLedgerView, setLedgerView } from '../../src/http/ledger-view.ts';
 import { startHttp } from '../../src/http/server.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 const RUN: RunId = RunIdSchema.parse('run_20260806T090000Z_a4c001');
 const SUB_NODE: NodeId = NodeIdSchema.parse('n-sub');
@@ -208,7 +217,12 @@ async function serveMixedRun(tmp: string): Promise<Served> {
 
   const view = openLedgerView(dataDir);
   setLedgerView(view);
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
 
   return {

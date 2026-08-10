@@ -11,11 +11,20 @@
  * precisely the mistake this is here to catch.
  */
 import { getBlob } from '@DeFlow/ledger';
-import { it, makeRepo } from '@DeFlow/testkit';
+import { authorizedFetch, it, makeRepo, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, describe as suite } from 'vitest';
 import { type Booted, boot } from '../../src/boot.ts';
 import { startHttp } from '../../src/http/server.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 type Started = Awaited<ReturnType<typeof startHttp>>;
 
@@ -34,7 +43,12 @@ suite('the API on a real socket', () => {
   let origin = '';
 
   beforeAll(async () => {
-    started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+    started = await startHttp({
+      port: 0,
+      hostname: '127.0.0.1',
+      dev: false,
+      token: TEST_DAEMON_TOKEN,
+    });
     origin = `http://127.0.0.1:${(started.server.address() as AddressInfo).port}`;
   }, 30_000);
 
@@ -133,7 +147,12 @@ suite('the stream arrives frame by frame, not in one burst (AC6)', () => {
 
   beforeAll(async () => {
     process.env.DeFlow_SSE_HEARTBEAT_MS = '150';
-    started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+    started = await startHttp({
+      port: 0,
+      hostname: '127.0.0.1',
+      dev: false,
+      token: TEST_DAEMON_TOKEN,
+    });
     origin = `http://127.0.0.1:${(started.server.address() as AddressInfo).port}`;
   }, 30_000);
 
@@ -187,7 +206,12 @@ suite('an unexpected throw against a booted daemon', () => {
     const repo = await makeRepo({ dir: `${tmp}/repo` });
     let booted: Booted | undefined;
     try {
-      booted = await boot({ dataDir: `${tmp}/data`, port: 0, dev: false });
+      booted = await boot({
+        dataDir: `${tmp}/data`,
+        port: 0,
+        dev: false,
+        token: TEST_DAEMON_TOKEN,
+      });
       const port = (booted.http.server.address() as AddressInfo).port;
       const origin = `http://127.0.0.1:${port}`;
 

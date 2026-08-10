@@ -18,3 +18,9 @@ export {
   DEFAULT_DAEMON_ORIGIN,
   defaultBaseUrl,
 } from './api/client.ts';
+// KAR-15.2 — the two halves of "the token is a header, never a URL": the SSE
+// connector that can actually send one, and the first-run fragment handoff
+// that gets the token into the tab without it ever reaching the server.
+export type { StreamConnection, StreamOptions } from './api/stream.ts';
+export { connectStream, streamUrl } from './api/stream.ts';
+export { acquireToken, clearToken, readToken, TOKEN_STORAGE_KEY } from './api/token.ts';

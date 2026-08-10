@@ -7,13 +7,20 @@
 import { RunIdSchema } from '@DeFlow/core';
 import { type Booted, boot } from '@DeFlow/daemon';
 import { readRange, type StoredEvent } from '@DeFlow/ledger';
-import { it, makeRepo } from '@DeFlow/testkit';
+import { authorizedFetch, it, makeRepo, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
 import { expect, describe as suite } from 'vitest';
 import { runTask } from '../../src/index.ts';
 
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2) —
+ * the `fetch` below, and the `token` option `DeFlow run` forwards to the same
+ * `Authorization` header through the shared client.
+ */
+const fetch = authorizedFetch();
+
 async function bootAt(dataDir: string): Promise<{ booted: Booted; origin: string }> {
-  const booted = await boot({ dataDir, port: 0, dev: false });
+  const booted = await boot({ dataDir, port: 0, dev: false, token: TEST_DAEMON_TOKEN });
   const address = booted.http.server.address() as AddressInfo;
   return { booted, origin: `http://127.0.0.1:${address.port}` };
 }
@@ -44,6 +51,7 @@ suite('DeFlow run — a client of the HTTP API, not a second engine (AC7)', () =
     try {
       const result = await runTask('Migrate the design system across packages/ui', {
         baseUrl: origin,
+        token: TEST_DAEMON_TOKEN,
         cwd: repo.dir,
       });
 
@@ -63,6 +71,7 @@ suite('DeFlow run — a client of the HTTP API, not a second engine (AC7)', () =
     try {
       const result = await runTask('Fix the flaky checkout test', {
         baseUrl: origin,
+        token: TEST_DAEMON_TOKEN,
         cwd: repo.dir,
       });
 
@@ -81,7 +90,7 @@ suite('DeFlow run — a client of the HTTP API, not a second engine (AC7)', () =
     try {
       const text = 'Migrate the design system across packages/ui';
 
-      const cli = await runTask(text, { baseUrl: origin, cwd: repo.dir });
+      const cli = await runTask(text, { baseUrl: origin, token: TEST_DAEMON_TOKEN, cwd: repo.dir });
       const http = await fetch(`${origin}/api/runs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

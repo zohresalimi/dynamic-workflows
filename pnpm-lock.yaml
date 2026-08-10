@@ -48,6 +48,9 @@ catalogs:
     better-sqlite3:
       specifier: 13.0.2
       version: 13.0.2
+    eventsource-client:
+      specifier: ^1.2.0
+      version: 1.2.0
     execa:
       specifier: 10.0.1
       version: 10.0.1
@@ -450,6 +453,9 @@ importers:
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../core
+      eventsource-client:
+        specifier: 'catalog:'
+        version: 1.2.0
       hono:
         specifier: 'catalog:'
         version: 4.12.33
@@ -1413,6 +1419,10 @@ packages:
   etag@1.8.1:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
+
+  eventsource-client@1.2.0:
+    resolution: {integrity: sha512-kDI75RSzO3TwyG/K9w1ap8XwqSPcwi6jaMkNulfVeZmSeUM49U8kUzk1s+vKNt0tGrXgK47i+620Yasn1ccFiw==}
+    engines: {node: '>=18.0.0'}
 
   eventsource-parser@3.1.0:
     resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
@@ -3134,6 +3144,10 @@ snapshots:
       '@types/estree': 1.0.9
 
   etag@1.8.1: {}
+
+  eventsource-client@1.2.0:
+    dependencies:
+      eventsource-parser: 3.1.0
 
   eventsource-parser@3.1.0: {}
 

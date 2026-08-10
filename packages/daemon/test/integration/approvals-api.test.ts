@@ -18,7 +18,14 @@ import {
   replayRun,
   writeCheckpoint,
 } from '@DeFlow/ledger';
-import { type Crashable, it, startCrashable, waitFor } from '@DeFlow/testkit';
+import {
+  authorizedFetch,
+  type Crashable,
+  it,
+  startCrashable,
+  TEST_DAEMON_TOKEN,
+  waitFor,
+} from '@DeFlow/testkit';
 import { existsSync, readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -38,6 +45,15 @@ import {
   seedApprovalRuns,
   T0,
 } from './support/approval-queue-run.ts';
+
+/**
+ * Every request this spec makes carries the daemon's bearer token (KAR-15.2).
+ *
+ * Assigned to a local `fetch` so the call sites below read the way they did
+ * before the daemon authenticated anything — the token is a property of this
+ * whole file, not a decision at each request.
+ */
+const fetch = authorizedFetch();
 
 const HANG_SCRIPT = fileURLToPath(new URL('./support/hang-with-approvals.ts', import.meta.url));
 
@@ -64,7 +80,12 @@ async function serve(dataDir: string): Promise<Served> {
     randomHex: () => 'aa0001',
   });
 
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
 
   return {
@@ -284,7 +305,12 @@ async function serveOver(dataDir: string): Promise<Served> {
     dataDir,
     randomHex: () => 'aa0001',
   });
-  const started = await startHttp({ port: 0, hostname: '127.0.0.1', dev: false });
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
   const address = started.server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${address.port}`,

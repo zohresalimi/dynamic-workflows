@@ -503,15 +503,26 @@ npx DeFlow up
 4. **Probe providers.** The `doctor` path (§8): which binaries exist, their versions, their
    capabilities. DeFlow plans only against what is actually available (PRD §5.3, F5.4).
 5. **Pick a port.** 7777, or the next free one via `get-port`.
-6. **Generate a token.** 32 random bytes. Write `.DeFlow/daemon.json` as `{ pid, port, token,
-startedAt }`.
+6. **Generate a token.** 32 random bytes from `crypto.randomBytes`, base64url-encoded. Write
+   `.DeFlow/daemon.json` as `{ pid, port, token, startedAt }` at mode `0600`, in the gitignored
+   data directory — the first person to commit a `daemon.json` commits a bearer token.
 7. **Bind `127.0.0.1` only — and still authenticate.** A localhost bind is _not_ a security
    boundary: any local process, and any web page via DNS rebinding, can reach 7777. Require
    `Authorization: Bearer`, reject requests whose `Origin` is not ours, and send `Vary: Origin`.
    Retrofitting auth after the UI exists is much worse than doing it now. Detail in
    [the security model](./15-security-model.md).
-8. **Print the URL with a one-time `?t=` token** that the UI immediately exchanges into
-   `sessionStorage`, and open the browser.
+8. **Print the URL with the token in the fragment** — `http://127.0.0.1:7777/#token=<token>` — which
+   the UI immediately exchanges into `sessionStorage`, strips from the address bar with
+   `history.replaceState`, and sends as an `Authorization` header thereafter; then open the browser.
+
+   > **Corrected by KAR-15.2.** This step used to describe a one-time token passed as a **query
+   > parameter**, which contradicted [11 §8](./11-api-and-realtime.md) and
+   > [15 §3.2](./15-security-model.md) — both of which specify the fragment and both of which list
+   > "put the daemon token in a query string" under _what not to do_. The fragment wins because it
+   > is the form supported by an argument: fragments are never sent to the server, so the token
+   > cannot land in an access log, a `Referer` header, browser history or shell scrollback. A
+   > repository-wide grep (`test/no-token-in-url.test.ts`) now fails the build if any source file
+   > puts a credential in a query string, so the two documents cannot drift apart again.
 
 Cold start budget is under 3 seconds (NF3). Steps 2 and 4 are the ones that can blow it; the
 provider probe is cached and refreshed on a version change, not on every start.

@@ -60,6 +60,7 @@ import {
 } from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import { approvalQueue } from './approvals.ts';
+import { requireAuth, varyOrigin } from './auth.ts';
 import { apiError, serviceError } from './errors.ts';
 import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
@@ -99,27 +100,14 @@ const DRAIN_BATCH = 500;
 export const API_HEADER = 'X-DeFlow-Api';
 
 /**
- * The one route that answers without a bearer token, as `"<METHOD> <path>"`.
+ * The one route that answers without a bearer token, and the predicate over it
+ * (./api-routes.ts).
  *
- * Unauthenticated *deliberately*: `DeFlow up` polls it for readiness before it
- * has read the token file, and it exposes nothing a local process could not
- * already learn from `.DeFlow/daemon.json`. KAR-15.2's middleware is the thing
- * that enforces the other side of this; the list lives here, next to the routes,
- * so that adding a `/api/version` "for convenience" has to walk past it.
+ * Re-exported here, next to the routes, so that adding a `/api/version` "for
+ * convenience" has to walk past it — it lives in its own module only because
+ * `./auth.ts` enforces it and must not import the app it guards.
  */
-export const PUBLIC_ROUTES: readonly string[] = ['GET /health'];
-
-/**
- * Whether `method path` is exempt from authentication.
- *
- * Accepts both the registered path (`/health`, as the route table holds it) and
- * the request path (`/api/health`, as a middleware sees it), because those are
- * the two callers and neither should have to know about the mount prefix.
- */
-export function isPublicRoute(method: string, path: string): boolean {
-  const registered = path === '/api' ? '/' : path.startsWith('/api/') ? path.slice(4) : path;
-  return PUBLIC_ROUTES.includes(`${method.toUpperCase()} ${registered}`);
-}
+export { isPublicRoute, PUBLIC_ROUTES } from './api-routes.ts';
 
 /**
  * `hono/compress`, mounted on JSON routes **only** — never globally.
@@ -458,6 +446,12 @@ async function drainGlobal(
  */
 export const api = new Hono()
   .use('*', apiVersionHeader)
+  // KAR-15.2, and in this order: `Vary` is registered before the guard so it
+  // lands on the guard's own refusals too (AC4), and the guard is registered
+  // before every route so an unknown path answers 401 rather than confirming
+  // which routes exist.
+  .use('*', varyOrigin)
+  .use('*', requireAuth)
   .use('/health', JSON_COMPRESSION)
   .use('/runs', JSON_COMPRESSION)
   .use('/runs/*', JSON_COMPRESSION)

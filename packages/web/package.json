@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@DeFlow/core": "workspace:*",
+    "eventsource-client": "catalog:",
     "hono": "catalog:",
     "vue": "catalog:"
   },

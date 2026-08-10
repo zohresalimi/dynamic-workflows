@@ -36,7 +36,9 @@ import {
 } from '@DeFlow/ledger';
 import { randomBytes } from 'node:crypto';
 import { systemClock } from './clock.ts';
+import { handoffUrl, removeDaemonFile, writeDaemonFile } from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
+import { mintDaemonToken } from './http/auth.ts';
 import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
 import {
   clearLedgerView,
@@ -101,6 +103,14 @@ export interface BootOptions {
   readonly hostname?: string | undefined;
   /** Defaults to `process.env.DeFlow_DEV === '1'`, as `startHttp` does. */
   readonly dev?: boolean | undefined;
+  /**
+   * This life's bearer token. Defaults to a fresh one (KAR-15.2 AC7) — a
+   * daemon never runs without one, and the only reason to pass one in is a
+   * spec that wants to know the value before the daemon exists.
+   */
+  readonly token?: string | undefined;
+  /** AC12 — the explicit flag, passed through to the bind. */
+  readonly allowNonLoopback?: boolean | undefined;
   /** Called as each step completes. The ordering assertion's only hook. */
   readonly onStep?: ((step: BootStep) => void) | undefined;
 }
@@ -121,6 +131,15 @@ export interface Booted {
    * behind — reaped, discarded as a PID reuse, or already gone (KAR-05.9). */
   readonly reaped: readonly ReapDecision[];
   readonly http: StartedHttp;
+  /** The port actually bound, and the one `.DeFlow/daemon.json` records. */
+  readonly port: number;
+  /** This life's bearer token (KAR-15.2 AC7). */
+  readonly token: string;
+  /**
+   * The first-run handoff URL `DeFlow up` prints, token in the **fragment**.
+   * Fragments are never sent to the server, so it cannot land in an access log.
+   */
+  readonly url: string;
   /** Closes the port, the ledger and the lease, in that order. */
   shutdown(): Promise<void>;
 }
@@ -172,6 +191,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
 
   const dataDir = options.dataDir ?? resolveDataDir();
   step('resolve-data-dir');
+
+  // A fresh token per daemon life, not per data directory: a token that
+  // outlived the process that issued it would let a client drive the *next*
+  // daemon with a credential it read from a file that daemon never wrote.
+  const token = options.token ?? mintDaemonToken();
 
   // Before anything else that touches the world.
   const lease = acquireLease(dataDir);
@@ -258,6 +282,19 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       port: options.port ?? DEFAULT_PORT,
       hostname: options.hostname ?? DEFAULT_HOSTNAME,
       dev: options.dev,
+      token,
+      allowNonLoopback: options.allowNonLoopback,
+    });
+
+    // After the bind, because the port it records has to be the one that was
+    // actually bound: `DeFlow status`, `DeFlow run` and the printed URL all
+    // read this file, and a file naming the port the daemon *asked* for would
+    // send all three somewhere nothing is listening.
+    writeDaemonFile(dataDir, {
+      pid: process.pid,
+      port: http.port,
+      token,
+      startedAt: systemClock.now(),
     });
     step('bind-port');
   } catch (error) {
@@ -284,10 +321,17 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     headSeq: replayed.headSeq,
     reaped: recovered.reaped,
     http,
+    port: http.port,
+    token,
+    url: handoffUrl(http.port, token),
     async shutdown(): Promise<void> {
       // Reverse order: stop accepting work, then close the ledger, then let
       // the next daemon in. The read view is unregistered before it is closed,
       // so a route can never reach a connection that has already gone.
+      //
+      // The daemon file goes first: for as long as it exists it advertises a
+      // port and a token, and both stop being true the moment the port closes.
+      removeDaemonFile(dataDir);
       await http.close();
       clearIntakePorts();
       clearLedgerView();

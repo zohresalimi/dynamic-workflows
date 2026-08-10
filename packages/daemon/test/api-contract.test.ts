@@ -24,7 +24,11 @@ import {
   JSON_COMPRESSION,
   PUBLIC_ROUTES,
 } from '../src/http/api.ts';
+import { setDaemonAuth } from '../src/http/auth.ts';
 import { API_VERSION } from '../src/meta.ts';
+
+/** A token for the two cases below that have to get past KAR-15.2's guard. */
+const TOKEN = 'a-test-token-that-is-not-a-real-one';
 
 /**
  * A registered entry that answers, as opposed to one that decorates.
@@ -106,14 +110,28 @@ suite('GET /health', () => {
 });
 
 suite('every response', () => {
+  /**
+   * KAR-15.2 arrived after this file and moved where an unknown path is
+   * answered: the auth middleware runs *before* routing, so an anonymous
+   * request to `/api/nope` is a 401 rather than a confirmation that the route
+   * does not exist. The mount-order property AC7 is about — an unknown API
+   * path is a typed 404, never `index.html` — is unchanged, and is what these
+   * two assert with a token attached. The anonymous case is
+   * `../auth-middleware.test.ts`.
+   */
+  const authorized = (): { headers: Record<string, string> } => {
+    setDaemonAuth({ token: TOKEN, port: 7777, hostname: '127.0.0.1' });
+    return { headers: { Authorization: `Bearer ${TOKEN}` } };
+  };
+
   it('carries X-DeFlow-Api, including the ones nobody wrote a handler for (AC3)', async () => {
-    const missing = await api.request('/nope');
+    const missing = await api.request('/nope', authorized());
     expect(missing.status).toBe(404);
     expect(missing.headers.get(API_HEADER)).toBe(String(API_VERSION));
   });
 
   it('answers an unknown /api path with the envelope rather than the SPA (AC7)', async () => {
-    const response = await api.request('/nope');
+    const response = await api.request('/nope', authorized());
     const body = (await response.json()) as { error: { code: string; retryable: boolean } };
     expect(body.error.code).toBe('not_found');
     expect(body.error.retryable).toBe(false);

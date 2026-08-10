@@ -2964,3 +2964,44 @@ export function checkDemotionIsProviderFree(
   }
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-15.2 AC9 / EPIC-15-S13 — the token never travels in a query string.
+ * -------------------------------------------------------------------------- */
+
+export const TOKEN_IN_URL_MESSAGE =
+  'puts a credential in a URL. A token in a query string ends up in shell history, terminal ' +
+  'scrollback, browser history, the "Referer" header of any outbound link, and any access log ' +
+  'anyone ever adds — unacceptable for a long-lived token that authorises spawning processes ' +
+  "on the user's machine (docs/11-api-and-realtime.md §8.1, docs/15-security-model.md §3.2). " +
+  'Send it as "Authorization: Bearer <token>" instead; that is why the SSE client is ' +
+  'eventsource-client rather than native EventSource, which cannot set a header. The one ' +
+  'credential-carrying URL this project has is the first-run handoff, and it uses the ' +
+  'fragment — "#token=" — which is never sent to the server at all.';
+
+/**
+ * A query parameter whose name says it carries a credential.
+ *
+ * Anchored on `?` or `&` so the **fragment** form is untouched: `#token=` is
+ * the handoff AC7 specifies, and a guard that banned the substring `token=`
+ * outright would ban the correct implementation along with the wrong one.
+ */
+const CREDENTIAL_QUERY_PARAM = /[?&](?:t|token|access_token|auth|api_key|apikey)=/i;
+
+/** `url.searchParams.set('token', …)`, the same mistake spelled as an API call. */
+const CREDENTIAL_SEARCH_PARAM =
+  /searchParams\.(?:set|append)\(\s*['"`](?:t|token|access_token|auth|api_key|apikey)['"`]/i;
+
+export function checkNoTokenInUrl(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      if (!CREDENTIAL_QUERY_PARAM.test(line) && !CREDENTIAL_SEARCH_PARAM.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${TOKEN_IN_URL_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
+}
