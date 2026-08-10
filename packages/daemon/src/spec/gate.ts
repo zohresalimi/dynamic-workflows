@@ -264,12 +264,46 @@ export interface Approval {
 }
 
 /**
+ * KAR-12.4 AC1 — an approval refused because the run's plan does not cover the
+ * spec (docs/10-verification-gates.md §5.1, EPIC-12-S24).
+ *
+ * Carries the coverage issues verbatim, so the surface that asked answers the
+ * operator with the diagnostic rather than with a status code and a shrug —
+ * *"CRITERION_UNCOVERED naming the criterion id"* is the whole point of the
+ * rule, and a 400 that did not say which criterion would send the operator back
+ * to the ledger to find out.
+ */
+export class SpecApprovalRefused extends Error {
+  readonly issues: readonly SpecCoverageIssue[];
+
+  constructor(runId: string, issues: readonly SpecCoverageIssue[]) {
+    super(
+      `cannot approve the spec of ${runId}: it is not covered by the plan this run is ` +
+        `executing. ${issues.map((issue) => issue.message).join(' ')}`,
+    );
+    this.name = 'SpecApprovalRefused';
+    this.issues = issues;
+  }
+}
+
+/**
  * AC4 — approve: `human.responded`, `run.spec.approved` and `spec.pinned` in one
  * transaction, with the wake consumed by the same commit.
  *
  * The order is the order they are read in: the answer, then what the answer
  * decided, then what that minted. The last two are adjacent by construction,
  * which is EPIC-10-S19's *"no crash point exists between them"*.
+ *
+ * **KAR-12.4 AC1 — approval is the switch, so the totality rule is checked
+ * here.** `decide()` admits nothing while `state.specApproved` is `null`, which
+ * makes this call the moment a run becomes schedulable: approving a spec the
+ * run's plan cannot satisfy is what *"the run does not start"* has to prevent,
+ * and preventing it anywhere later would mean an agent process had already been
+ * spawned against a criterion nothing checks. A run with no plan yet — the
+ * ordinary F1.3 gate, before EPIC-11 has compiled anything — has nothing to
+ * check against and is approved as before; the check is the same
+ * `revalidateSpecAgainstPlan` a mid-run edit runs, so the two surfaces cannot
+ * come to different conclusions about the same pair of documents.
  */
 export async function approveSpec(options: ApproveOptions): Promise<Approval> {
   const events = ledger(options.db, options.runId);
@@ -277,6 +311,10 @@ export async function approveSpec(options: ApproveOptions): Promise<Approval> {
 
   const spec = await currentSpec(events);
   if (spec === null) throw new SpecGateNotOpen(options.runId, 'approve');
+
+  const state = replayAll(options.db).runs.get(options.runId) ?? initialRunState();
+  const coverage = state.plan === null ? [] : revalidateSpecAgainstPlan(spec, state.plan);
+  if (coverage.length > 0) throw new SpecApprovalRefused(options.runId, coverage);
 
   const drafts = await approvalDrafts(options, spec, options.constraints ?? []);
   appendEventsConsumingWakes(

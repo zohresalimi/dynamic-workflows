@@ -1095,6 +1095,7 @@ export {
   SpecEditRefused,
   sealEditedSpec,
   specHistory,
+  withCoveredByGates,
 } from './spec-approval.ts';
 // KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
 export type {

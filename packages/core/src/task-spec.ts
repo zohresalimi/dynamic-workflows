@@ -64,9 +64,13 @@ export const AcceptanceCriterionCheckSchema = z.discriminatedUnion('kind', [
 export type AcceptanceCriterionCheck = z.infer<typeof AcceptanceCriterionCheckSchema>;
 
 /**
- * `coveredByGates` is set by the planner during plan validation (KAR-11.2),
- * never authored by hand — so the schema defaults it to `[]` and accepts a
- * hand-written criterion that omits it entirely (AC5).
+ * `coveredByGates` is written by **plan validation**, never by the planner and
+ * never by hand (KAR-12.4 AC3): `withCoveredByGates` in ./spec-approval.ts
+ * recomputes it from the plan's active gate nodes on every plan version and
+ * overwrites whatever arrived. So the schema defaults it to `[]` and accepts a
+ * hand-written criterion that omits it entirely (AC5), and ./hash.ts excludes
+ * it from `specHash` — a field validation rewrites on every patch must not move
+ * the identity a verdict is judged against.
  */
 export const AcceptanceCriterionSchema = z.strictObject({
   id: CriterionIdSchema,

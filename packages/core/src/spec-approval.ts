@@ -50,7 +50,7 @@ import {
   TaskSpecDraftInvalid,
   validateTaskSpecDraft,
 } from './framing.ts';
-import { SPEC_HASH_OMIT_KEYS } from './hash.ts';
+import { authoredSpecFields } from './hash.ts';
 import { type CriterionId, type NodeId, NodeIdSchema } from './ids.ts';
 import type { JsonPatchOperation } from './json-patch.ts';
 import type { PlanGraph } from './plan-graph.ts';
@@ -193,11 +193,16 @@ export class SpecEditRefused extends Error {
  * ./json-patch.ts) and *what is diffed* is a domain decision this module owns.
  * A patch whose first operation replaced the digest of the document it is a
  * patch for would be unreadable in a diff panel and meaningless in an audit.
+ *
+ * It delegates to `authoredSpecFields` rather than re-deleting the omitted keys
+ * here, so the sentence above stays true by construction: KAR-12.4 added a
+ * *nested* omission (each criterion's derived `coveredByGates`), and a second
+ * copy of the rule would have kept it in the diff — an annotated spec would
+ * then diff as changed while hashing identically, and the amendment panel would
+ * show an operator a change nobody made.
  */
 export function hashableSpec(spec: TaskSpec): Record<string, unknown> {
-  const copy: Record<string, unknown> = { ...spec };
-  for (const key of SPEC_HASH_OMIT_KEYS) delete copy[key];
-  return copy;
+  return authoredSpecFields(spec as unknown as Record<string, unknown>);
 }
 
 /**
@@ -337,6 +342,40 @@ export function coveredByGatesOf(plan: PlanGraph): ReadonlyMap<CriterionId, read
     }
   }
   return covered;
+}
+
+/**
+ * KAR-12.4 AC3 — the other half of the same walk: the spec as validation hands
+ * it onward, with every criterion's `coveredByGates` **recomputed and
+ * overwritten**.
+ *
+ * `coveredByGates` is derived, never authored (docs/04-domain-model.md §2, and
+ * the four-name reconciliation in EPIC-12's KAR-12.4). A spec that arrives with
+ * entries in it did not get them from the framing interview — `sealTaskSpec`
+ * writes `[]` on every criterion, because framing runs before a plan exists —
+ * so this does not merge, fill in blanks, or trust what is there: it replaces
+ * the field wholesale from `coveredByGatesOf(plan)`. A criterion no active gate
+ * node names is written as `[]` rather than left alone, which is what makes the
+ * field readable as *"nothing in this plan version covers it"* rather than as
+ * *"nobody has looked"*. `validatePlan`'s `COVERED_BY_GATES_MISMATCH` warning is
+ * the visible record that an overwrite changed something.
+ *
+ * **The digest is deliberately untouched.** `specHash` excludes this field
+ * (./hash.ts), so annotating produces the same identity as the pinned document
+ * — and it has to, because AC6 voids every verdict whose `specHash` differs
+ * from the run's current one. A derived field that moved the digest would void
+ * the whole ledger's verdicts on every plan patch, which is the opposite of
+ * what the anti-drift rule is for.
+ */
+export function withCoveredByGates(spec: TaskSpec, plan: PlanGraph): TaskSpec {
+  const covered = coveredByGatesOf(plan);
+  return {
+    ...spec,
+    acceptanceCriteria: spec.acceptanceCriteria.map((criterion) => ({
+      ...criterion,
+      coveredByGates: [...(covered.get(criterion.id) ?? [])],
+    })),
+  };
 }
 
 /** Whether a sealed criterion's only check is a human rubric — v1's

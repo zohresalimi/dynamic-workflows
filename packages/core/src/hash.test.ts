@@ -85,6 +85,44 @@ suite('specHash — excludes approvedBy (AC7)', () => {
     expect(before).not.toBe(after);
   });
 
+  /**
+   * KAR-12.4 AC3. `coveredByGates` is derived from the plan by validation, and
+   * the plan changes on every patch — so a digest that covered it would make
+   * "annotate the spec with what covers each criterion" change the spec's
+   * identity, and AC6 voids every verdict whose `specHash` differs from the
+   * run's current one. Excluding it is what lets validation write the field at
+   * all without voiding the ledger's verdicts on every plan version.
+   */
+  it('is unchanged when a criterion’s derived coveredByGates changes (KAR-12.4 AC3)', async () => {
+    const criterion = { id: 'ac-1', statement: 'the tests pass' };
+    const base = { schemaId: 'DeFlow.taskspec.v1', goal: 'ship the thing', approvedBy: null };
+
+    const authored = await specHash({
+      ...base,
+      acceptanceCriteria: [{ ...criterion, coveredByGates: [] }],
+    });
+    const validated = await specHash({
+      ...base,
+      acceptanceCriteria: [{ ...criterion, coveredByGates: ['gate-unit-tests'] }],
+    });
+
+    expect(validated).toBe(authored);
+  });
+
+  it('still changes when a criterion’s authored statement changes', async () => {
+    const base = { schemaId: 'DeFlow.taskspec.v1', goal: 'ship the thing', approvedBy: null };
+    const before = await specHash({
+      ...base,
+      acceptanceCriteria: [{ id: 'ac-1', statement: 'the tests pass', coveredByGates: [] }],
+    });
+    const after = await specHash({
+      ...base,
+      acceptanceCriteria: [{ id: 'ac-1', statement: 'the tests pass twice', coveredByGates: [] }],
+    });
+
+    expect(before).not.toBe(after);
+  });
+
   it('is unchanged by a JSON.parse(JSON.stringify(...)) round trip with shuffled keys', async () => {
     const spec = {
       schemaId: 'DeFlow.taskspec.v1',

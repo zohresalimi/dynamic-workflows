@@ -536,6 +536,7 @@ export {
   openSpecApprovalGate,
   rejectSpec,
   SPEC_REJECTION_LIMIT,
+  SpecApprovalRefused,
   SpecGateNotOpen,
 } from './spec/gate.ts';
 export type { CalibrationSample, CalibrationTarget, PreflightBudget } from './tokens/calibrate.ts';

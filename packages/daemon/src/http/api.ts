@@ -29,7 +29,14 @@ import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { diffPlanGraphs } from '../plan/diff.ts';
 import { unionLayoutKey } from '../plan/plan-history.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
-import { abandonRun, approveSpec, editSpec, rejectSpec, SpecGateNotOpen } from '../spec/gate.ts';
+import {
+  abandonRun,
+  approveSpec,
+  editSpec,
+  rejectSpec,
+  SpecApprovalRefused,
+  SpecGateNotOpen,
+} from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
@@ -191,7 +198,13 @@ async function gateAction(
     if (error instanceof SpecGateNotOpen) {
       return c.json({ error: 'gate_not_open', message: error.message }, 409);
     }
-    if (error instanceof SpecEditRefused) {
+    // One envelope for both refusals, deliberately: a refused edit and a
+    // refused approval (KAR-12.4 AC1) are the same answer — "this document
+    // cannot be admitted, and here is exactly what is wrong with it" — and
+    // `issues` is what carries the `CRITERION_UNCOVERED` diagnostics naming the
+    // criteria, so the operator is told which criterion nothing checks rather
+    // than that something failed.
+    if (error instanceof SpecEditRefused || error instanceof SpecApprovalRefused) {
       return c.json({ error: 'invalid_spec', message: error.message, issues: error.issues }, 400);
     }
     throw error;

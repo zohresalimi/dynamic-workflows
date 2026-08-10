@@ -410,6 +410,26 @@ never an `error`: the computed value is what validation trusts regardless, so a 
 `coveredByGates` that disagrees with it is made visible rather than blocking the run — the same
 severity split §3.1's `ORPHAN_WRITE` already uses for "usually a leftover, occasionally deliberate."
 
+### `specHash` now excludes `acceptanceCriteria[].coveredByGates`
+
+**KAR-12.4 AC3.** No document shape changed — `DeFlow.taskspec.v1` still carries the field, still
+defaults it to `[]`, and no event payload moved a version. What changed is what the *digest* is
+over: `specHash` omits every criterion's `coveredByGates` the same way it already omits `approvedBy`
+and `specHash` itself.
+
+`coveredByGates` is derived, not authored: `withCoveredByGates` recomputes it from the plan's active
+gate nodes and overwrites it on **every** plan version (AC3, AC5). If the digest covered it, that
+rewrite would change the spec's identity — and AC6 makes a verdict void the moment its `specHash`
+differs from the run's current one, so a single `plan.patched` that added or retired a gate would
+void every verdict in the ledger and re-run every gate, for a field no human touched. The digest is
+the identity of the **authored** document.
+
+**Migration:** none in either direction for a stored payload; the field's recorded value is still
+whatever was appended. Digests recomputed by a build carrying this change differ from ones computed
+by a build before it, which is only observable for a run whose ledger spans the upgrade — and
+`gateSpecFromLedger` already refuses a spec whose recomputed digest does not reconcile with the
+approval rather than judging against it, which is the loud failure rather than a silent one.
+
 ### plan.patch.rejected v2
 
 **KAR-11.2 AC11.** A patch can now be refused by *revalidation* as well as by the policy engine,

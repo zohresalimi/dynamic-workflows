@@ -118,14 +118,19 @@ function unparsed(ids: readonly string[]): PlanGraph {
 
 const checkerFor = (tmp: string) => new RefFormatChecker(new Git(tmp, { env: GIT_ENV }));
 
-const validate = (plan: PlanGraph, tmp: string) =>
-  validatePlanVersion({
-    plan,
-    spec: SPEC,
-    caps: CAPS,
-    estimatePacketTokens: () => 0,
-    refs: checkerFor(tmp),
-  });
+/** The diagnostics half of one pass. `validatePlanVersion` also returns the
+ * spec with `coveredByGates` written from the plan (KAR-12.4 AC3), which the
+ * identifier suites below have nothing to say about. */
+const validate = async (plan: PlanGraph, tmp: string) =>
+  (
+    await validatePlanVersion({
+      plan,
+      spec: SPEC,
+      caps: CAPS,
+      estimatePacketTokens: () => 0,
+      refs: checkerFor(tmp),
+    })
+  ).diagnostics;
 
 // ── EPIC-11-S10 — git is the authority on ref names ──────────────────────────
 
@@ -619,6 +624,75 @@ suite('EPIC-12-S28 — a patch that abandons the last covering gate is rejected'
         (row) => row.kind === 'plan.proposed',
       );
       expect(proposed).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  /**
+   * KAR-12.4 AC3 with AC5 — validation runs on *every* plan version, so the
+   * criterion → node mapping is rewritten on every version too. A patch that
+   * adds a second covering gate must move `coveredByGates`, or the acceptance
+   * board would keep pointing at v3's evidence after v4 committed.
+   */
+  it('rewrites coveredByGates from the successor version when a patch commits', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      const v3 = await addressed(
+        parsed([agent('impl'), gateNode('gate-typecheck', ['ac-2'], { deps: ['impl'] })], {
+          version: 3,
+        }),
+      );
+      await persistPlanVersion(db, {
+        runDir: join(tmp, 'runs', RUN),
+        graph: v3,
+        by: 'planner',
+        planner: PLANNER,
+        diagnostics: [],
+        ts: T0,
+        epoch: EPOCH,
+      });
+      db.prepare(
+        `INSERT INTO run (run_id, status, plan_hash, last_seq, state_json, checkpoint_version,
+            daemon_epoch)
+          VALUES (?, 'running', ?, 0, '{}', 1, ?)`,
+      ).run(RUN, v3.planHash, EPOCH);
+
+      const v4 = await addressed(
+        parsed(
+          [
+            ...(v3.nodes as unknown as Record<string, unknown>[]),
+            gateNode('gate-second-opinion', ['ac-2'], { deps: ['impl'] }),
+          ],
+          { version: 4, parent: v3.planHash },
+        ),
+      );
+
+      const outcome = await commitPatchedPlan({
+        db,
+        runDir: join(tmp, 'runs', RUN),
+        graph: v4,
+        spec: SPEC_WITH_GATE,
+        caps: CAPS,
+        estimatePacketTokens: () => 0,
+        refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4s2',
+        decision: DECISION,
+        by: 'planner',
+        planner: PLANNER,
+        ts: T0,
+        epoch: EPOCH,
+      });
+
+      expect(outcome.outcome).toBe('committed');
+      if (outcome.outcome !== 'committed') return;
+      expect(outcome.spec.acceptanceCriteria.map((one) => one.coveredByGates)).toEqual([
+        ['gate-typecheck', 'gate-second-opinion'],
+      ]);
+      // The spec's identity is untouched by the rewrite, so no verdict already
+      // in the ledger is voided by a patch that only added a gate (AC6).
+      expect(outcome.spec.specHash).toBe(SPEC_WITH_GATE.specHash);
     } finally {
       db.close();
     }

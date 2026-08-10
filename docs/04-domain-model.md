@@ -141,7 +141,9 @@ export type AcceptanceCriterion = {
       }
     | { kind: "gate"; gate: GateId }
     | { kind: "manual"; rubric: string };
-  /** Set by the planner during validation: F7.4 requires every criterion to reach a gate. */
+  /** Written by plan validation, never by the planner and never by hand: F7.4 requires every
+   * criterion to reach a gate. Recomputed and overwritten on every plan version, and excluded
+   * from `specHash` for that reason. */
   coveredByGates: NodeId[];
 };
 
@@ -166,7 +168,7 @@ export type TaskSpec = {
   acceptanceCriteria: AcceptanceCriterion[];
   knownFailureModes: FailureMode[];
   approvedBy: { at: string; via: "ui" | "cli" } | null;
-  specHash: string; // sha256 of the canonicalised spec, excluding `approvedBy`
+  specHash: string; // sha256 of the canonicalised spec, excluding `approvedBy` and `coveredByGates`
 };
 ```
 
@@ -179,7 +181,11 @@ fails the node rather than proceeding. Mechanism and evidence in
 [context and memory](./08-context-and-memory.md).
 
 `specHash` excludes `approvedBy` deliberately: re-approving an unchanged spec must not change its
-identity, but editing one word must.
+identity, but editing one word must. It excludes each criterion's `coveredByGates` for the same
+reason one step further out: that field is *derived* — plan validation recomputes it from the
+plan's active gate nodes and overwrites it on every version — and a verdict is void the moment its
+`specHash` differs from the run's current one, so a digest that covered it would void every verdict
+in the ledger each time a patch added or retired a gate.
 
 ---
 
