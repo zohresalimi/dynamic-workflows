@@ -63,7 +63,26 @@ interface StoredEvent {
 interface OpenStream {
   readonly response: ServerResponse;
   readonly runs: Set<string>;
-  cursor: number;
+  /** `?runs=*` — the low-volume lifecycle topic, not "every run". */
+  readonly global: boolean;
+  /**
+   * One cursor per subscribed run, exactly as the daemon's serving loop keeps
+   * them, plus the cursor the *connection* opened at. A run subscribed after
+   * the fact is backfilled from `openedAt`, which is what makes the overlap
+   * window EPIC-16-S24 is about a designed-in property rather than a bug.
+   */
+  readonly cursors: Map<string, number>;
+  readonly openedAt: number;
+  globalCursor: number;
+}
+
+/** What a stream was asked for when it opened. Read by the specs. */
+interface Opened {
+  /** The `?since=` the client sent, or `null` when it sent none at all. */
+  readonly since: number | null;
+  readonly runs: readonly string[];
+  /** The `Last-Event-ID` header the browser supplied, if any. */
+  readonly lastEventId: string | null;
 }
 
 export interface SseOrigin {
@@ -75,10 +94,39 @@ export interface SseOrigin {
 const T0 = 1_754_308_400_000;
 const EPOCH = 5;
 
+/**
+ * KAR-15.3 AC10 — what `runs=*` delivers, and what it does not.
+ *
+ * The same four kinds `packages/daemon/src/http/sse.ts` admits. Kept in step by
+ * `packages/daemon/test/integration/stream-contract.test.ts`, which asserts the
+ * membership against a real DeFlowd; this copy exists so a browser spec can
+ * watch an idle global tab receive zero `node.progress` frames.
+ */
+const GLOBAL_TOPIC_KINDS: readonly string[] = [
+  'run.created',
+  'run.completed',
+  'run.aborted',
+  'human.requested',
+];
+
+/** A payload each kind's schema in @DeFlow/core actually accepts. */
+function payloadFor(kind: string): Record<string, unknown> {
+  if (kind === 'run.completed' || kind === 'run.aborted') {
+    return { outcome: 'succeeded', criteriaSatisfied: [] };
+  }
+  return { node: 'n-impl-1', attempt: 1, phase: 'running' };
+}
+
 /** Every response carries these; a preflight carries them and nothing else. */
 function cors(response: ServerResponse): void {
   response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
+  // `last-event-id` is here because the browser adds it *itself* on its own
+  // automatic reconnect of a connection that had received an `id:` — which is
+  // precisely the one case docs/11 §4.1 says the header exists for. Leaving it
+  // out makes every reconnect fail the CORS preflight with "Failed to fetch",
+  // which reads as a broken client and is not one. DeFlowd serves the UI from
+  // its own origin and has no CORS at all (ADR 0011, D10).
+  response.setHeader('Access-Control-Allow-Headers', 'authorization, content-type, last-event-id');
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
@@ -103,14 +151,32 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
 export async function startSseOrigin(): Promise<SseOrigin> {
   const streams = new Map<string, OpenStream>();
   const events: StoredEvent[] = [];
+  const opens: Opened[] = [];
+  /** The `hello` this origin will announce next. Mutated by `/__daemon`. */
+  let daemon = { epoch: EPOCH, build: 'test' };
+  let accepted = 0;
+  let nextSeq = 0;
 
-  /** Backfills one stream from its cursor, exactly as the daemon's drain does. */
+  /**
+   * Backfills one stream from its cursors, exactly as the daemon's drain does:
+   * per run, merge-sorted by `seq`, and the global topic on a cursor of its own
+   * because it is not a run.
+   */
   const drain = (stream: OpenStream): void => {
     for (const event of events) {
-      if (event.seq <= stream.cursor) continue;
-      if (!stream.runs.has(event.runId)) continue;
-      stream.response.write(ledgerFrame(event));
-      stream.cursor = event.seq;
+      if (stream.runs.has(event.runId)) {
+        if (event.seq > (stream.cursors.get(event.runId) ?? stream.openedAt)) {
+          stream.response.write(ledgerFrame(event));
+          stream.cursors.set(event.runId, event.seq);
+        }
+        continue;
+      }
+      if (stream.global && GLOBAL_TOPIC_KINDS.includes(event.kind)) {
+        if (event.seq > stream.globalCursor) {
+          stream.response.write(ledgerFrame(event));
+          stream.globalCursor = event.seq;
+        }
+      }
     }
   };
 
@@ -124,11 +190,113 @@ export async function startSseOrigin(): Promise<SseOrigin> {
     }
 
     // The count of open streams, read off the server. This is the assertion
-    // AC1 and AC2's second scenario are both about.
+    // AC1 and AC2's second scenario are both about. `accepted` is the same
+    // number over the connection's whole life, which is how a spec tells "it
+    // reconnected once" from "it never dropped".
     if (url.pathname === '/__streams') {
       response
         .writeHead(200, { 'content-type': 'application/json' })
-        .end(JSON.stringify({ open: streams.size }));
+        .end(JSON.stringify({ open: streams.size, accepted, opens }));
+      return;
+    }
+
+    // `GET /api/runs/:id/events?since&limit` — the hydrate endpoint, paged on
+    // the cursor it returns rather than on an offset, as §7.2 specifies.
+    const hydrating = /^\/api\/runs\/([^/]+)\/events$/.exec(url.pathname);
+    if (hydrating !== null) {
+      const runId = decodeURIComponent(hydrating[1] ?? '');
+      const since = Number(url.searchParams.get('since') ?? '0');
+      const limit = Number(url.searchParams.get('limit') ?? '1000');
+      const mine = events.filter((event) => event.runId === runId);
+      const after = mine.filter((event) => event.seq > since);
+      const page = after.slice(0, Number.isSafeInteger(limit) && limit > 0 ? limit : 1000);
+      response.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          events: page,
+          cursor: page.at(-1)?.seq ?? since,
+          headSeq: mine.at(-1)?.seq ?? 0,
+          more: after.length > page.length,
+        }),
+      );
+      return;
+    }
+
+    // Back to an empty ledger, an epoch of 5 and a connection count of zero.
+    // One origin serves the whole `web` slice, so a spec that asserted absolute
+    // `seq` values would otherwise be asserting against whatever ran before it.
+    if (url.pathname === '/__reset' && request.method === 'POST') {
+      for (const stream of streams.values()) stream.response.destroy();
+      streams.clear();
+      events.length = 0;
+      opens.length = 0;
+      nextSeq = 0;
+      accepted = 0;
+      daemon = { epoch: EPOCH, build: 'test' };
+      response.writeHead(200, { 'content-type': 'application/json' }).end('{}');
+      return;
+    }
+
+    // What the next `hello` says. A restart is only observable to a client as
+    // two hellos that disagree, so a spec has to be able to move the epoch.
+    if (url.pathname === '/__daemon' && request.method === 'POST') {
+      void readBody(request).then((body) => {
+        const next = body as { epoch?: unknown; build?: unknown } | null;
+        daemon = {
+          epoch: typeof next?.epoch === 'number' ? next.epoch : daemon.epoch,
+          build: typeof next?.build === 'string' ? next.build : daemon.build,
+        };
+        response.writeHead(202, { 'content-type': 'application/json' }).end('{}');
+      });
+      return;
+    }
+
+    // Severs every open stream at the socket, with no final frame and no clean
+    // end — the network blip, not a shutdown. The client's own reconnection
+    // policy is what has to come back from this.
+    if (url.pathname === '/__sever' && request.method === 'POST') {
+      const severed = streams.size;
+      for (const stream of streams.values()) stream.response.destroy();
+      streams.clear();
+      response
+        .writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ severed }));
+      return;
+    }
+
+    // A final `event: fatal` and then the socket, which is the only way a
+    // stream may report an error mid-flight (docs/11 §10).
+    if (url.pathname === '/__fatal' && request.method === 'POST') {
+      void readBody(request).then((body) => {
+        const code = (body as { code?: unknown } | null)?.code;
+        for (const stream of streams.values()) {
+          stream.response.write(
+            controlFrame('fatal', {
+              error: {
+                code: typeof code === 'string' ? code : 'internal',
+                message: 'the stand-in origin was told to end this stream',
+                retryable: code !== 'bad_token' && code !== 'epoch_mismatch',
+              },
+            }),
+          );
+          stream.response.end();
+        }
+        streams.clear();
+        response.writeHead(202, { 'content-type': 'application/json' }).end('{}');
+      });
+      return;
+    }
+
+    // `: keepalive` comments, the 13 bytes whose only job is that no
+    // inactivity timer anywhere in the path sees a silent connection.
+    if (url.pathname === '/__keepalive' && request.method === 'POST') {
+      void readBody(request).then((body) => {
+        const times = (body as { times?: unknown } | null)?.times;
+        const count = typeof times === 'number' && times > 0 ? times : 1;
+        for (const stream of streams.values()) {
+          for (let index = 0; index < count; index += 1) stream.response.write(': keepalive\n\n');
+        }
+        response.writeHead(202, { 'content-type': 'application/json' }).end('{}');
+      });
       return;
     }
 
@@ -143,20 +311,31 @@ export async function startSseOrigin(): Promise<SseOrigin> {
 
     // Appends to the ledger and fans out to whoever is subscribed. A spec's
     // way of saying "and then the run emitted these".
+    //
+    // `seqs` is how a spec writes a ledger with holes in it: `4, 5, 7` is a
+    // healthy log — 6 belongs to a transaction that rolled back and burned the
+    // AUTOINCREMENT value — and a client has to apply it without a word.
     if (url.pathname === '/__emit' && request.method === 'POST') {
       void readBody(request).then((body) => {
-        const runs = (body as { runs?: unknown })?.runs;
-        for (const runId of Array.isArray(runs) ? (runs as string[]) : []) {
+        const asked = body as { runs?: unknown; kind?: unknown; seqs?: unknown } | null;
+        const runs = Array.isArray(asked?.runs) ? (asked.runs as string[]) : [];
+        const kind = typeof asked?.kind === 'string' ? asked.kind : 'node.progress';
+        const seqs = Array.isArray(asked?.seqs) ? (asked.seqs as number[]) : null;
+
+        for (const [index, runId] of runs.entries()) {
+          const seq = seqs?.[index] ?? nextSeq + 1;
+          nextSeq = Math.max(nextSeq, seq);
           events.push({
-            seq: events.length + 1,
+            seq,
             runId,
-            kind: 'node.progress',
-            ts: T0 + events.length,
-            v: 1,
-            epoch: EPOCH,
-            payload: { node: 'n-impl-1', attempt: 1, phase: 'running' },
+            kind,
+            ts: T0 + seq,
+            v: kind === 'node.progress' ? 1 : 1,
+            epoch: daemon.epoch,
+            payload: payloadFor(kind),
           });
         }
+        events.sort((left, right) => left.seq - right.seq);
         for (const stream of streams.values()) drain(stream);
         response.writeHead(202).end('{}');
       });
@@ -165,19 +344,43 @@ export async function startSseOrigin(): Promise<SseOrigin> {
 
     if (url.pathname === '/api/stream') {
       const streamId = randomUUID();
-      const runs = new Set(
-        (url.searchParams.get('runs') ?? '')
-          .split(',')
-          .map((value) => value.trim())
-          .filter((value) => value !== ''),
-      );
-      const cursor = Number(url.searchParams.get('since') ?? '0');
+      const asked = (url.searchParams.get('runs') ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value !== '');
+      const global = asked.includes('*');
+      const runs = new Set(asked.filter((value) => value !== '*'));
+      const head = events.at(-1)?.seq ?? 0;
+      const sinceParam = url.searchParams.get('since');
+      const requested = Number(sinceParam);
+      // §4.1's precedence, and the whole point of EPIC-16-S7's fourth
+      // scenario: `since` first, `Last-Event-ID` second, **head last**. A
+      // client that sends neither is served from the head, and everything
+      // appended while it was away is gone.
+      const lastEventId = request.headers['last-event-id'];
+      const fromHeader = Number(Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
+      const cursor =
+        sinceParam !== null && Number.isSafeInteger(requested) && requested >= 0
+          ? requested
+          : Number.isSafeInteger(fromHeader) && fromHeader > 0
+            ? fromHeader
+            : head;
+
       const stream: OpenStream = {
         response,
         runs,
-        cursor: Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0,
+        global,
+        openedAt: cursor,
+        cursors: new Map([...runs].map((runId) => [runId, cursor] as const)),
+        globalCursor: cursor,
       };
       streams.set(streamId, stream);
+      accepted += 1;
+      opens.push({
+        since: sinceParam === null ? null : requested,
+        runs: asked,
+        lastEventId: typeof lastEventId === 'string' ? lastEventId : null,
+      });
 
       response.writeHead(200, {
         'content-type': 'text/event-stream',
@@ -189,15 +392,23 @@ export async function startSseOrigin(): Promise<SseOrigin> {
         controlFrame('hello', {
           streamId,
           apiVersion: 1,
-          build: 'test',
-          daemonEpoch: EPOCH,
-          headSeq: events.length,
-          runs: [...runs],
+          build: daemon.build,
+          daemonEpoch: daemon.epoch,
+          headSeq: head,
+          runs: global ? ['*', ...runs] : [...runs],
         }),
       );
       response.write('retry: 2000\n\n');
       drain(stream);
-      for (const runId of runs) controlFrame('caught_up', { runId, seq: stream.cursor });
+      // Phase 1 ends by saying where the backfill got to, so a client can stop
+      // showing "hydrating" without guessing.
+      for (const runId of runs) {
+        response.write(
+          controlFrame('caught_up', { runId, seq: stream.cursors.get(runId) ?? cursor }),
+        );
+      }
+      if (global)
+        response.write(controlFrame('caught_up', { runId: '*', seq: stream.globalCursor }));
 
       // Never ended on purpose: a stream that closed would hand its socket back
       // to the pool, and the cap this file exists to demonstrate would never be
@@ -220,14 +431,22 @@ export async function startSseOrigin(): Promise<SseOrigin> {
         const added = (Array.isArray(asked) ? (asked as string[]) : []).filter(
           (runId) => !stream.runs.has(runId),
         );
-        for (const runId of added) stream.runs.add(runId);
+        for (const runId of added) {
+          stream.runs.add(runId);
+          // From the cursor the *connection* opened at, exactly as the daemon
+          // does. That is what makes a subscribe's backfill overlap what the
+          // tab already hydrated — a designed-in property, not an error.
+          stream.cursors.set(runId, stream.openedAt);
+        }
 
         // Subscribe, then drain again — the order the daemon uses, so the
         // client is exercised against the frame sequence it will really see.
         stream.response.write(controlFrame('subscribed', { runs: [...stream.runs] }));
         drain(stream);
         for (const runId of added) {
-          stream.response.write(controlFrame('caught_up', { runId, seq: stream.cursor }));
+          stream.response.write(
+            controlFrame('caught_up', { runId, seq: stream.cursors.get(runId) ?? stream.openedAt }),
+          );
         }
         response.writeHead(202, { 'content-type': 'application/json' }).end('{}');
       });

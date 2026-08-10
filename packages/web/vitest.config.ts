@@ -47,6 +47,17 @@ export default defineConfig({
     // test runner's own modules, or exhausting the pool wedges the run instead
     // of demonstrating anything. See ./test/sse-origin.ts.
     globalSetup: ['./test/global-setup.ts'],
+    // One file at a time, and for a reason that is not tidiness.
+    //
+    // Two resources in this slice are global to the *browser* and cannot be
+    // partitioned by giving each file its own fixture. The SSE origin above is
+    // one ledger and one stream registry, so a `__reset` in one file empties
+    // the ledger another file is mid-assertion over. And Chrome's ~6
+    // connection-per-origin cap is shared: `src/api/multiplex.test.ts`
+    // deliberately exhausts it for ten seconds to demonstrate what happens
+    // next, and any file running beside it in that window cannot open a stream
+    // at all — which presents as a timeout in an unrelated spec.
+    fileParallelism: false,
     browser: {
       enabled: true,
       provider: playwright(),

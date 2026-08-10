@@ -126,6 +126,21 @@ Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
     And no view calls a REST endpoint to obtain run state
 ```
 
+**Automated (KAR-16.2, the store half):** the hydrate-then-stream order, the honest progress
+denominator taken from `headSeq`, the `hello` frame, and live frames landing on the hydrated state
+in `seq` order are all closed against a real socket in `packages/web/src/ledger/stream.test.ts` and
+`cursor.test.ts`, with the "everything came from an event" claim held structurally rather than by
+assertion: `openLedgerStream` is the only path into `createLedgerApply`, and the only path into that
+is `applyEvent`.
+
+**Still open — the rendering clauses.** *"the plan graph renders every node from the hydrated state"*
+and *"the node renders in the running state within one frame"* are assertions about a view that does
+not exist yet: `plan.ts` is KAR-16.3's and `GraphCanvas.vue` is KAR-16.6's, so the `Then` has no
+subject to hang off. They close with those stories, at the e2e level this scenario names, against
+`DeFlow replay` (KAR-16.5) — which is also where the e2e halves of EPIC-16-S7 and EPIC-16-S8 land,
+since Playwright smoke #4 is specified as *"replay at speed, kill the connection"* and there is no
+replay harness to run at speed until then.
+
 **Notes:** the hydrate-then-stream order is not an optimisation, it is the correctness requirement of
 [11 §4.1](../../11-api-and-realtime.md). Note also the `headSeq` detail: it exists so the UI can show
 _"applying 3,400 of 4,127 events"_ rather than an unbounded spinner during a long hydrate, which is
@@ -372,6 +387,18 @@ cap is real ([11 §2](../../11-api-and-realtime.md)). The `SharedWorker` + `Broa
 hardening that would reduce N tabs to one connection total is deliberately deferred until three-plus
 tabs is a habit rather than a hypothetical.
 
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts`, over a real `node:http` SSE
+origin in a real Chromium. Three panels are opened one at a time and the count of open streams is
+read **from the server** — a page cannot observe its own socket count, and inferring it from
+`performance` entries would be counting resource loads. The `streamId` is asserted unchanged, which
+is what says "filter mutation" rather than "reconnect". The fourth scenario — the design being
+rejected — is `packages/web/src/api/multiplex.test.ts`, which opens one stream per panel and watches
+an ordinary `fetch` sit unresolved for ten seconds with no error at all, then completes the instant
+the six are closed. The global-topic scenario is asserted here as the *client* half (the connection
+carries `runs=*` and lifecycle frames are routed away from every run panel); the membership itself —
+four kinds, and zero `node.progress` from any run — is asserted against a real DeFlowd in
+`packages/daemon/test/integration/stream-contract.test.ts`, because it is the server that filters.
+
 ---
 
 ## EPIC-16-S7 — The page reloads and `Last-Event-ID` is not sent
@@ -415,6 +442,16 @@ is the common one in development, and it is the one that makes "it worked when I
 misleading signal. Note the client's cursor lives in `sessionStorage` (`cursor.ts`), so it is per-tab
 and cannot be poisoned by another tab's position.
 
+**Automated (KAR-16.2):** `packages/web/src/ledger/cursor.test.ts` for the cursor itself — monotonic,
+`sessionStorage`-backed, readable by a second `Cursor` over the same storage, and unbothered by a
+storage that refuses to write. The reload is `packages/web/src/ledger/stream.test.ts`: a tab applies
+five events and goes away, three more are appended while it is gone, and the tab that comes back is
+asserted to hold **all eight** — which it reaches by folding the run again through
+`GET /api/runs/:id/events` while opening the stream at the cursor it persisted. The fourth scenario
+is automated as the failure it describes rather than as prose: the same case is driven through a
+connection whose `?since=` is stripped, and every event of the outage is asserted **absent**, with
+no `Last-Event-ID` to fall back on because the connection had never opened before.
+
 ---
 
 ## EPIC-16-S8 — The connection drops mid-run and comes back with no seam
@@ -448,6 +485,21 @@ Feature: Resume by cursor, not by hope
 speed, kill the connection, assert the UI reconnects and backfills without a gap or a duplicate."_
 It is one of only five E2E specs the project allows itself, and it earns its place because no
 browser-mode component test can exercise a severed socket.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts` severs the socket at the server —
+no final frame, no clean end — while a run is mid-flight, and asserts the applied `seq` sequence
+across the seam is strictly increasing with no duplicate and nothing missing, and that the reconnect
+carried `?since=` at the tab's own cursor rather than at the one it first opened with. The second
+scenario is asserted against the interval the library actually scheduled, through
+`onScheduleReconnect`, so `retry: 2000` and the client's policy are compared rather than assumed
+equal. The third — projections unharmed by an overlapping replay — is
+`packages/web/src/ledger/apply.test.ts`.
+
+Finding it here rather than in a browser cost this story a real bug: the daemon resolves a
+connection's filter from its **query string**, and a reconnect is a new connection, so a client that
+opened with `runs=` and subscribed afterwards came back subscribed to nothing at all. The stream was
+open, `hello` arrived, and no event ever did. `?runs=` is now re-stamped on every attempt, exactly
+as `?since=` already was.
 
 ---
 
@@ -484,6 +536,14 @@ correct stream and, worse, may try to "repair" by refetching from zero
 reason: a bare `INTEGER PRIMARY KEY` reuses rowids after a delete, so the moment run retention ships,
 every persisted cursor would point at a different event than the one it was written for — silently.
 **Verified 2026-08-02.**
+
+**Automated (KAR-16.2):** the applying half is `packages/web/src/ledger/apply.test.ts` and
+`cursor.test.ts` (a `4, 5, 7, 8, 12` fixture through the hydrate loop, asserting five applied against
+a head of twelve and every window asked for exactly once), and end to end over a socket in
+`stream.test.ts`, where the same ledger is served to a cold tab and the connection state is asserted
+`live` with no `fatal`. The second scenario is `test/no-gap-detection.test.ts`, a repository-wide
+scan for every spelling of a successor and of density, with its own planted-positive case so the
+patterns are known to have teeth.
 
 ---
 
@@ -524,6 +584,12 @@ the _"there is no other input"_ claim in [12 §1](../../12-frontend-architecture
 reading one function. `hello.daemonEpoch` and `hello.build` are consumed by the connection layer and
 never by a projection.
 
+**Automated (KAR-16.2):** `packages/web/src/api/dispatch.test.ts` holds the routing (named frames to
+`handleControl`, unnamed to `applyEvent`, and an *unknown* name still treated as control), and
+`packages/web/src/ledger/apply.test.ts` holds the assertion the acceptance criterion actually names —
+that every projection is byte-identical after `hello`, `subscribed`, `caught_up` and `fatal` — since
+that one needs projections attached and the dispatcher has none.
+
 ---
 
 ## EPIC-16-S11 — An old tab meets a newer daemon
@@ -559,6 +625,13 @@ without corruption"_ ([11 §3.2](../../11-api-and-realtime.md)). The type-only i
 the _other_ direction — a kind the UI should have handled — into a compile error rather than a silent
 omission. Both halves are needed; neither substitutes for the other.
 
+**Automated (KAR-16.2 for the first two scenarios):** `packages/web/src/ledger/apply.test.ts` feeds a
+kind this build has never heard of and asserts no projection moved by so much as a field, while the
+cursor advanced past it — a client that skipped both would re-request that event on every reconnect
+for the life of the run. The build-skew scenario is `packages/web/src/ledger/stream.test.ts`, which
+distinguishes it from a restarted daemon: two different facts with two different remedies. The
+compile-time half is KAR-16.3's, because it needs the seven exhaustive switches to exist.
+
 ---
 
 ## EPIC-16-S12 — The daemon restarted underneath the tab
@@ -591,6 +664,12 @@ Feature: daemon_epoch fencing, observed from the client
 ([11 §3.2](../../11-api-and-realtime.md)). The distinction that matters for the operator is that a
 restart is not a new run: the ledger is the truth, the tab's cursor is still valid, and the only
 thing that changed is which process is appending.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts`. The origin's `daemonEpoch` is
+moved, the socket is severed, and the tab is asserted to surface the restart, to resume from **its
+own** cursor rather than from head, and — the part that matters to the operator — to keep every
+projection it had, with the events appended during recovery applied in order onto them. A restart is
+not a new run. The 409 on a write is EPIC-15's `epoch-guard`, asserted in the daemon's specs.
 
 ---
 
@@ -627,6 +706,13 @@ freely ([11 §10](../../11-api-and-realtime.md)). Carrying `seq` on the error is
 error path, which is exactly where auditability usually stops_ — the UI can link "this failed" to
 "here is the event that says so".
 
+**Automated (KAR-16.2):** the code table is `packages/web/src/api/dispatch.test.ts`
+(`stopsRetrying`), and the *behaviour* is `packages/web/src/ledger/stream.test.ts`: after a
+`bad_token` the server's accepted-connection count is asserted unchanged well past two retry
+intervals, which is the only honest way to assert "stopped"; after an `internal` the client is
+asserted to come back on its own and pick the run up. `epoch_mismatch` is asserted to be terminal
+**and** to ask for a reload, which is the one remedy that fixes it.
+
 ---
 
 ## EPIC-16-S14 — Fifteen idle minutes, and the events that arrive in a clump
@@ -660,6 +746,16 @@ inactivity timer in the path quiet, and _"long-running DeFlow nodes are routinel
 ([11 §3.2](../../11-api-and-realtime.md)). The burst symptom _"looks like a backend scheduling bug and
 is not one"_ — encoding that as a named scenario is how the afternoon it would otherwise cost gets
 saved.
+
+**Automated (KAR-16.2, first scenario):** `packages/web/src/ledger/stream.test.ts` feeds sixty
+`: keepalive` comments — fifteen minutes at the daemon's 15-second cadence — and asserts the tab
+consumed all sixty, opened no second connection, reached no reducer with any of them, and was still
+serving live frames on the same socket afterwards. The wall clock is compressed and the reason it
+can be is the property itself: **this client contributes no timer to advance.** It has no inactivity
+timeout of its own, so what fifteen real minutes would add is sixty more comments and nothing else.
+The second and third scenarios belong to KAR-16.5's replay harness and to the daemon's own
+`stream-contract` specs — measuring inter-arrival times needs a producer emitting on a schedule, and
+this story has no such producer to point at.
 
 ---
 
@@ -1038,6 +1134,15 @@ Feature: Adding a run panel while events are arriving
 **Notes:** the fan-out is by `e.runId` in one dispatcher, not by one connection per run
 ([11 §2](../../11-api-and-realtime.md)). This scenario is where S23's idempotency requirement stops
 being theoretical: the overlap is a designed-in property of the subscribe path, not an error case.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts` opens a second panel against an
+origin that backfills a newly subscribed run from the cursor the *connection* opened at — the
+daemon's own behaviour, and the reason the overlap exists at all — and asserts the second run's
+projections hold each event exactly once while the first run's are untouched. The idempotency
+underneath it is `packages/web/src/ledger/apply.test.ts`: re-applying a window changes nothing,
+because the guard is "strictly greater than what this run has folded" and never a successor check.
+The `caught_up` boundary is what `watch()` resolves on, so a panel cannot render before the run it
+is showing has been backfilled.
 
 ---
 

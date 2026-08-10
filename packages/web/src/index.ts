@@ -40,3 +40,18 @@ export { createScrubber } from './api/scrub.ts';
 export type { StreamConnection, StreamOptions } from './api/stream.ts';
 export { connectStream, streamUrl } from './api/stream.ts';
 export { acquireToken, clearToken, readToken, TOKEN_STORAGE_KEY } from './api/token.ts';
+// KAR-16.2 — the tab's one connection to the ledger, and the two pieces under
+// it: the persisted cursor that makes a reload and a reconnect resume the same
+// way, and the dispatcher the seven projections of KAR-16.3 plug into.
+export type { LedgerApply, LedgerApplyOptions, Projection, RunLedger } from './ledger/apply.ts';
+export { createLedgerApply } from './ledger/apply.ts';
+export type { Cursor, HydrateToCursorOptions } from './ledger/cursor.ts';
+export { CURSOR_STORAGE_KEY, hydrateToCursor, openCursor } from './ledger/cursor.ts';
+export type {
+  ConnectionStatus,
+  FatalState,
+  LedgerStream,
+  LedgerStreamOptions,
+  LedgerStreamState,
+} from './ledger/stream.ts';
+export { openLedgerStream, RECONNECT_INTERVAL_MS } from './ledger/stream.ts';

@@ -274,6 +274,12 @@ per origin at about six, and an SSE connection never closes. One stream per run 
 three tabs exhausts the budget, and the failure mode is not an error — every subsequent `fetch`
 silently queues behind the streams forever, which reads as "the daemon hung".
 
+> **Clarified while building it (2026-08-11):** "at app start" is one connection *ever*, not one
+> connection *immediately*. EPIC-16-S1 requires the hydrate to finish before the socket opens —
+> `?since=` carries the cursor that loop returned — so the connection is opened by the first panel
+> rather than by the bootstrap, and a tab with no panel open holds none. The property AC1 asserts is
+> unchanged: one connection while three panels are open, and no reconnect when a fourth is added.
+
 The client is `eventsource-client@^1.2.0`, chosen because native `EventSource` cannot send custom
 headers at all, which would force the bearer token into the query string. Avoid
 `@microsoft/fetch-event-source` (abandoned, last published 2021-04-25) and plain `eventsource@^4.1.0`
