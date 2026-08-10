@@ -240,6 +240,19 @@ Feature: Overriding is possible, and never invisible
 path set. Overriding _must_ be possible or the tool is unusable; the design decision is that it can
 only happen through an event with an identity attached.
 
+**The third scenario is automated as far as EPIC-12 owns it, and the remainder is EPIC-13's.** The
+first two lines are covered here: the escalation after three failed repair attempts schedules a
+`human` node whose prompt carries every attempt's verdict (`packages/gates/src/repair.ts`,
+asserted by `repair.test.ts` and EPIC-12-S32), and the negative half — that no field, flag or
+config key advances a milestone past a non-`pass` verdict — is
+`packages/gates/test/no-escape-hatch.test.ts` plus the `S5` suite in
+`test/integration/milestone-rule.test.ts`. The last two lines are not, and cannot be until
+**EPIC-13** lands: `HumanRespondedSchema` carries `node`, `optionId`, `text` and `at` but **no
+`responder`**, and there is no `POST /api/runs/:id/nodes/:node/respond` to produce the event. Both
+belong to EPIC-13-S1 ("The Operator answers"), which owns the identical assertion. Automate the
+remaining two lines there, against the same wording, rather than restating a milestone rule that by
+design reads only verdicts and writes.
+
 ---
 
 ## EPIC-12-S6 — A gate whose own tooling failed returns `needs-human`, not `fail`
