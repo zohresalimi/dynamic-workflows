@@ -181,8 +181,16 @@ suite('a gate whose own tooling failed (test plan #8, S6)', () => {
     expect(result.findings).toEqual([]);
   });
 
-  it('names only the three documented reasons', () => {
-    expect([...GATE_TOOL_REASONS]).toEqual(['gate-tool-missing', 'gate-timeout', 'gate-no-output']);
+  it('names only the documented reasons', () => {
+    // KAR-12.6 S39 adds `gate-output-unparseable` — a custom producer's jsonl
+    // output that is not Finding-shaped at all — alongside the three this
+    // story's own runner distinguishes.
+    expect([...GATE_TOOL_REASONS]).toEqual([
+      'gate-tool-missing',
+      'gate-timeout',
+      'gate-no-output',
+      'gate-output-unparseable',
+    ]);
   });
 });
 

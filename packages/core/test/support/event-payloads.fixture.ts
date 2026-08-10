@@ -218,6 +218,12 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     ],
   },
   'policy.patch.drifted': { pinnedHash: SHA, configHash: OTHER_SHA },
+  'gates.loaded': {
+    gates: [
+      { id: 'typecheck', path: '.DeFlow/gates/typecheck.yaml', sha256: 'a'.repeat(64) },
+      { id: 'lint', path: 'package.json#scripts.lint', sha256: 'b'.repeat(64) },
+    ],
+  },
   'node.scheduled': {
     node: NODE,
     provider: 'claude-code',

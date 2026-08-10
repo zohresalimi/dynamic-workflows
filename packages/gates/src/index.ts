@@ -32,6 +32,29 @@ export {
   GateTimeoutSchema,
   loadGateDefinition,
 } from './definition.ts';
+// KAR-12.6 — discovering gate definitions from `.DeFlow/gates/*.{yaml,yml}`
+// and from repo reconnaissance, hashed into the run manifest, and the
+// mid-run divergence check.
+export type {
+  DiscoveredGate,
+  DiscoverGatesInput,
+  DivergenceCheck,
+  GateManifestEntry,
+  GateSource,
+  SealDivergedVerdict,
+} from './discovery.ts';
+export {
+  BUILTIN_GATE_SCRIPTS,
+  builtinGateSources,
+  checkGateDivergence,
+  checkGateDivergenceOnDisk,
+  discoverGateDefinitions,
+  GATE_DEFINITION_DIVERGED,
+  loadGateSource,
+  readGatesDirectory,
+  sealDivergedVerdict,
+  sha256Hex,
+} from './discovery.ts';
 export type { FindingRange, GateFinding, GateSeverity, ParsedFinding } from './finding.ts';
 export {
   findingId,
@@ -40,6 +63,10 @@ export {
   repoRelativePosix,
   toPosix,
 } from './finding.ts';
+// KAR-12.6 AC6, AC7 — the gate-hygiene projection `DeFlow doctor` prints
+// (EPIC-18 mounts the command; this story owns the projection).
+export type { GateEvaluationSample, GateHygieneInput, GateHygieneReport } from './hygiene.ts';
+export { GATE_HYGIENE_LOW_THRESHOLD, gateHygiene } from './hygiene.ts';
 export type {
   GateVerdictRecord,
   LedgerEventLike,
@@ -56,7 +83,7 @@ export {
 export type { OutcomeInput } from './outcome.ts';
 export { blockingFindings, gateOutcome, meetsFloor } from './outcome.ts';
 export type { GateParser, ParseInput } from './parsers.ts';
-export { GATE_PARSERS, parseFindings, TEST_FAILED_RULE } from './parsers.ts';
+export { GATE_PARSERS, GateOutputUnparseable, parseFindings, TEST_FAILED_RULE } from './parsers.ts';
 export type {
   AttemptVerdict,
   FindingDelta,

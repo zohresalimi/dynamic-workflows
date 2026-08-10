@@ -22,7 +22,7 @@
  * both of them go through, so there is one of each rather than two.
  */
 import { CriterionIdSchema, GATE_CLASSES, GateIdSchema, PermissionLevelSchema } from '@DeFlow/core';
-import { parse as parseYaml } from 'yaml';
+import { type Document, LineCounter, parseDocument } from 'yaml';
 import { z } from 'zod';
 import { GATE_SEVERITIES } from './finding.ts';
 import { GATE_PARSERS } from './parsers.ts';
@@ -132,6 +132,36 @@ export interface LoadGateOptions {
 const issuePath = (path: readonly PropertyKey[]): string => path.map(String).join('.');
 
 /**
+ * KAR-12.6 AC2 — the line a schema issue's path points at, when one is
+ * derivable.
+ *
+ * Walks from the full path up to the root: a missing field (`effect` on a
+ * document that never declared one) resolves to nothing at its own path, so
+ * the search backs off to the nearest ancestor that exists — the map the
+ * field would have lived in — rather than giving up. The document root
+ * always resolves, so this only returns `undefined` for a source with no
+ * content at all.
+ */
+function lineForPath(
+  document: Document,
+  path: readonly PropertyKey[],
+  counter: LineCounter,
+): number | undefined {
+  for (let end = path.length; end >= 0; end -= 1) {
+    const node =
+      end === 0
+        ? document.contents
+        : document.getIn(path.slice(0, end) as (string | number)[], true);
+    const range = (node as { range?: readonly [number, number, number] } | null | undefined)?.range;
+    if (range !== undefined) return counter.linePos(range[0]).line;
+  }
+  return undefined;
+}
+
+const withLine = (detail: string, line: number | undefined): string =>
+  line === undefined ? detail : `${detail} (line ${line})`;
+
+/**
  * Parses one gate definition file's bytes.
  *
  * Takes the source rather than reading it, so the hash KAR-12.6 puts in the run
@@ -144,51 +174,62 @@ export function loadGateDefinition(
   source: string,
   options: LoadGateOptions = {},
 ): GateDefinition {
-  let document: unknown;
-  try {
-    document = parseYaml(source);
-  } catch (error) {
+  const lineCounter = new LineCounter();
+  const document = parseDocument(source, { lineCounter });
+
+  if (document.errors.length > 0) {
+    const [error] = document.errors;
+    const line = error?.linePos?.[0]?.line;
     throw new GateLoadError(
       'GATE_DEFINITION_INVALID',
       file,
-      `not parseable as YAML — ${(error as Error).message}`,
+      withLine(`not parseable as YAML — ${error?.message ?? 'unknown syntax error'}`, line),
     );
   }
 
-  const parsed = GateDefinitionSchema.safeParse(document);
+  const parsed = GateDefinitionSchema.safeParse(document.toJS());
   if (!parsed.success) {
     const first = parsed.error.issues[0];
+    const line = first === undefined ? undefined : lineForPath(document, first.path, lineCounter);
     throw new GateLoadError(
       'GATE_DEFINITION_INVALID',
       file,
       first === undefined
         ? 'did not match the gate definition schema'
-        : `${issuePath(first.path)}: ${first.message}`,
+        : withLine(`${issuePath(first.path)}: ${first.message}`, line),
     );
   }
 
   const definition = parsed.data;
 
   if (definition.effect !== 'pure') {
+    const line = lineForPath(document, ['effect'], lineCounter);
     throw new GateLoadError(
       'GATE_MUST_BE_PURE',
       file,
-      definition.effect === undefined
-        ? 'no `effect` declared. A gate must state `effect: pure`: a gate that mutates the ' +
-            'repository cannot be re-run to confirm a fix, and defaulting the one property the ' +
-            'ladder rests on would mean nobody ever states it.'
-        : 'declares `effect: mutating`. A gate must be pure — re-running it to confirm a fix is ' +
-            'its entire job, and a gate that changes the tree cannot do that.',
+      withLine(
+        definition.effect === undefined
+          ? 'no `effect` declared. A gate must state `effect: pure`: a gate that mutates the ' +
+              'repository cannot be re-run to confirm a fix, and defaulting the one property ' +
+              'the ladder rests on would mean nobody ever states it.'
+          : 'declares `effect: mutating`. A gate must be pure — re-running it to confirm a fix ' +
+              'is its entire job, and a gate that changes the tree cannot do that.',
+        line,
+      ),
     );
   }
 
   if (definition.cwd === 'repo' && options.repoCwdPermitted !== true) {
+    const line = lineForPath(document, ['cwd'], lineCounter);
     throw new GateLoadError(
       'GATE_REPO_CWD_NOT_PERMITTED',
       file,
-      'declares `cwd: repo`, which needs an explicit opt-in in .DeFlow/config.yaml. A gate ' +
-        "running in the repository root sees other nodes' work in flight, so its verdict is " +
-        'about a tree that will never exist again.',
+      withLine(
+        'declares `cwd: repo`, which needs an explicit opt-in in .DeFlow/config.yaml. A gate ' +
+          "running in the repository root sees other nodes' work in flight, so its verdict is " +
+          'about a tree that will never exist again.',
+        line,
+      ),
     );
   }
 

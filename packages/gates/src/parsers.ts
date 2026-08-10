@@ -349,6 +349,28 @@ function parseJunitXml(input: ParseInput): ParsedFinding[] {
 
 // ── jsonl ────────────────────────────────────────────────────────────────────
 
+/**
+ * KAR-12.6 S39, second scenario — a `jsonl` line under `$.violations` that is
+ * not Finding-shaped: a custom producer's output that cannot be trusted at
+ * all, rather than a finding with a blank field.
+ *
+ * Thrown rather than defaulted. `./run-gate.ts` turns this into `needs-human`
+ * with reason `gate-output-unparseable` and records **no** findings — a
+ * partially-parsed set is worse than none, because the diff view would render
+ * three of five problems and a reviewer would reasonably conclude there were
+ * three (10-verification-gates.md §2, notes).
+ */
+export class GateOutputUnparseable extends Error {
+  /** The raw line that failed the shape check, for the caller's own log. */
+  readonly line: string;
+
+  constructor(line: string) {
+    super(`jsonl entry is not Finding-shaped — missing "file": ${line}`);
+    this.name = 'GateOutputUnparseable';
+    this.line = line;
+  }
+}
+
 interface JsonlFinding {
   readonly file?: string;
   readonly path?: string;
@@ -400,10 +422,16 @@ function parseJsonl(input: ParseInput): ParsedFinding[] {
     for (const entry of selectPath(document, input.path)) {
       if (typeof entry !== 'object' || entry === null) continue;
       const raw = entry as JsonlFinding;
+      const file = raw.file ?? raw.path;
+      // A Finding cannot exist without knowing what it is about (S39): a line
+      // missing this is not "zero findings", it is output nobody can trust.
+      if (typeof file !== 'string' || file.length === 0) {
+        throw new GateOutputUnparseable(line);
+      }
       findings.push(
         mint(input, {
           severity: JSONL_SEVERITY[raw.severity ?? ''] ?? 'error',
-          file: raw.file ?? raw.path ?? '',
+          file,
           rule: raw.rule ?? '',
           message: raw.message ?? '',
           startLine: raw.line ?? 1,

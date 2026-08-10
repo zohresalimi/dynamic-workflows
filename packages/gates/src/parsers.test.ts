@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
 import type { GateFinding } from './finding.ts';
-import { GATE_PARSERS, type GateParser, parseFindings } from './parsers.ts';
+import { GATE_PARSERS, GateOutputUnparseable, type GateParser, parseFindings } from './parsers.ts';
 
 const fixture = (name: string): string =>
   readFileSync(fileURLToPath(new URL(`../test/fixtures/parsers/${name}`, import.meta.url)), 'utf8');
@@ -188,5 +188,23 @@ suite('what each parser reads out of its own fixture', () => {
     const stdout =
       '{"file":"src/a.ts","line":3,"rule":"budget/bundle-size","severity":"error","message":"over"}\n';
     expect(parse('jsonl', stdout)).toHaveLength(1);
+  });
+});
+
+suite('jsonl: a line that is not Finding-shaped (KAR-12.6 S39, second scenario)', () => {
+  it('throws GateOutputUnparseable rather than minting a partial finding', () => {
+    const stdout = '{"violations":[{"line":3,"rule":"budget/bundle-size","message":"no file"}]}\n';
+    expect(() => parse('jsonl', stdout, { path: '$.violations' })).toThrow(GateOutputUnparseable);
+  });
+
+  it('does not lose the well-formed lines that came before the bad one', () => {
+    // Not asserted as "partial output" — run-gate.ts is what turns this throw
+    // into "no partial Finding set is recorded" by discarding the whole
+    // parse. This only pins that the parser itself fails loudly rather than
+    // swallowing the bad line.
+    const stdout =
+      '{"violations":[{"file":"src/a.ts","line":1,"message":"fine"}]}\n' +
+      '{"violations":[{"line":2,"message":"missing file"}]}\n';
+    expect(() => parse('jsonl', stdout, { path: '$.violations' })).toThrow(GateOutputUnparseable);
   });
 });

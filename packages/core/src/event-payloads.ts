@@ -1416,6 +1416,32 @@ export const HandoffOversizeSchema = z.strictObject({
 // ── gates and humans ─────────────────────────────────────────────────────────
 
 /**
+ * KAR-12.6 AC1 — every gate definition discovered at run creation, hashed
+ * (docs/10-verification-gates.md §2).
+ *
+ * `sha256` is over the file's **bytes**, never the parsed object — a
+ * comment-only edit still changes it, which is the whole anti-drift point a
+ * mid-run divergence check rests on. `path` names the discovered file for a
+ * repo-specific gate, or the recon source (`package.json#scripts.<name>`) for
+ * a built-in one derived from repo reconnaissance: there is no file to point
+ * at for those, and naming the source they were derived from is the honest
+ * answer.
+ */
+export const GatesLoadedSchema = z.strictObject({
+  gates: z
+    .array(
+      z.strictObject({
+        id: GateIdSchema,
+        path: z.string().min(1),
+        sha256: z
+          .string()
+          .regex(/^[0-9a-f]{64}$/, 'must be a 64-character hex sha256 of the file bytes'),
+      }),
+    )
+    .min(1),
+});
+
+/**
  * KAR-10.4 AC5 — v2: the verdict now names the contract it judged.
  * KAR-12.3 — v3: every located finding names the blob its line was read from,
  * and the verdict carries what it cost.
@@ -1738,6 +1764,7 @@ export const EVENT_SCHEMAS = {
   'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },
   'policy.patch.loaded': { v: 1, payload: PolicyPatchLoadedSchema },
   'policy.patch.drifted': { v: 1, payload: PolicyPatchDriftedSchema },
+  'gates.loaded': { v: 1, payload: GatesLoadedSchema },
   'plan.patch.rejected': { v: 2, payload: PlanPatchRejectedSchema },
   'node.scheduled': { v: 1, payload: NodeScheduledSchema },
   'node.lock.acquired': { v: 1, payload: NodeLockSchema },

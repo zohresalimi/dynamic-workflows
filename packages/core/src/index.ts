@@ -350,6 +350,7 @@ export {
   FactReadSchema,
   FactWrittenSchema,
   GateEvaluatedSchema,
+  GatesLoadedSchema,
   HandoffOversizeSchema,
   HumanRequestedSchema,
   HumanRespondedSchema,

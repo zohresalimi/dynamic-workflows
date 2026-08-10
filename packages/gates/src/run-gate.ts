@@ -56,7 +56,7 @@ import { anchorFindings, type BlobShaOf, blobShaIn } from './anchor.ts';
 import type { GateDefinition } from './definition.ts';
 import type { GateFinding } from './finding.ts';
 import { gateOutcome } from './outcome.ts';
-import { parseFindings } from './parsers.ts';
+import { GateOutputUnparseable, parseFindings } from './parsers.ts';
 import { sealVerdict } from './verdict-of.ts';
 
 /**
@@ -66,7 +66,15 @@ import { sealVerdict } from './verdict-of.ts';
  * look at what the command printed — which is why they are three values rather
  * than one `gate-error`.
  */
-export const GATE_TOOL_REASONS = ['gate-tool-missing', 'gate-timeout', 'gate-no-output'] as const;
+export const GATE_TOOL_REASONS = [
+  'gate-tool-missing',
+  'gate-timeout',
+  'gate-no-output',
+  /** KAR-12.6 S39 — a custom producer's `jsonl` output was not Finding-shaped.
+   * Its own reason, not `gate-no-output`: the command ran, exited and printed
+   * something, but what it printed cannot be trusted at all. */
+  'gate-output-unparseable',
+] as const;
 
 export type GateToolReason = (typeof GATE_TOOL_REASONS)[number];
 
@@ -373,29 +381,42 @@ export async function runGate(options: RunGateOptions): Promise<GateRun> {
   // Parsed, then anchored: the tool's output says `line 42` and says nothing
   // about which revision line 42 belonged to. The blob is read off the tree the
   // command just ran against, which is the content it judged (AC6).
-  const parsed = child.toolMissing
-    ? []
-    : parseFindings(definition.findings.parser, {
+  //
+  // A parser that cannot trust its own input throws (KAR-12.6 S39) rather than
+  // returning a partial list — `outputUnparseable` carries that forward so the
+  // finding set stays empty rather than three of five problems.
+  let outputUnparseable = false;
+  let parsed: ReturnType<typeof parseFindings> = [];
+  if (!child.toolMissing) {
+    try {
+      parsed = parseFindings(definition.findings.parser, {
         gate: definition.id,
         repoRoot: cwd,
         stdout: child.stdout,
         stderr: child.stderr,
         ...(definition.findings.path === undefined ? {} : { path: definition.findings.path }),
       });
+    } catch (thrown) {
+      if (!(thrown instanceof GateOutputUnparseable)) throw thrown;
+      outputUnparseable = true;
+    }
+  }
   const findings = anchorFindings(parsed, options.blobShaOf ?? blobShaIn(cwd));
 
-  // The three ways a gate cannot answer, in the order they can be told apart.
+  // The four ways a gate cannot answer, in the order they can be told apart.
   // `gate-no-output` is last because it is the residual: the command ran, it
   // did not exit as expected, and it printed nothing anybody can act on.
   const reason: GateToolReason | null = child.toolMissing
     ? 'gate-tool-missing'
     : child.timedOut
       ? 'gate-timeout'
-      : findings.length === 0 &&
-          child.exitCode !== definition.expect.exitCode &&
-          captured.trim() === ''
-        ? 'gate-no-output'
-        : null;
+      : outputUnparseable
+        ? 'gate-output-unparseable'
+        : findings.length === 0 &&
+            child.exitCode !== definition.expect.exitCode &&
+            captured.trim() === ''
+          ? 'gate-no-output'
+          : null;
 
   const outcome: VerdictOutcome =
     reason !== null
