@@ -22,8 +22,15 @@
  * implementation to keep in sync, which is the usual place a CLI and a UI
  * diverge.
  */
-import type { PermissionLevel } from '@DeFlow/core';
-import { type ApiClient, createClient } from '@DeFlow/web';
+import type { Event, PermissionLevel } from '@DeFlow/core';
+import {
+  type ApiClient,
+  connectStream,
+  createClient,
+  createDispatcher,
+  hydrateRun,
+  type StreamConnection,
+} from '@DeFlow/web';
 
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
@@ -211,4 +218,110 @@ export async function approveSpec(
       ? payload.error.message
       : `POST /api/runs/${runId}/spec/approve failed with ${response.status}`,
   );
+}
+
+/**
+ * KAR-15.4 AC9 — what `DeFlow` needs to rejoin a run's log.
+ *
+ * `since` is the operator's own persisted cursor and it is the **only** resume
+ * mechanism a terminal has: nothing in a shell maintains a `Last-Event-ID`, so
+ * the header path the browser sometimes uses does not exist here at all. That
+ * is why the daemon's precedence puts `?since=` first
+ * (docs/11-api-and-realtime.md §4.1) — half its clients cannot produce anything
+ * else.
+ */
+export interface ResumeRunOptions extends DaemonClientOptions {
+  /** The cursor to resume from. `0` — the default — is the whole history. */
+  readonly since?: number;
+  /** Page size; the daemon's own default of 1000 when omitted. */
+  readonly limit?: number;
+  /** Every event, in `seq` order, exactly once. */
+  readonly onEvent: (event: Event) => void;
+  /** Called once per hydrate page, for a progress line over a long run. */
+  readonly onProgress?: (progress: { cursor: number; headSeq: number }) => void;
+}
+
+export interface ResumeRunResult {
+  /** The cursor to persist, and to open the stream at. */
+  readonly cursor: number;
+  /** This run's head as the last page reported it. */
+  readonly headSeq: number;
+  readonly applied: number;
+  readonly pages: number;
+}
+
+/**
+ * `DeFlow` catching up on a run: hydrate from `since` to the head of its log.
+ *
+ * `hydrateRun` is `@DeFlow/web`'s — the exact function the UI's cold start
+ * calls, over the exact endpoint — so the CLI and the browser cannot disagree
+ * about what resume means, only about what they do with the events. There is no
+ * gap detection here or in it: `seq` 4, 5, 7 is a healthy log, and a terminal
+ * that announced "3 events lost" over a pruned number would be lying loudly.
+ */
+export async function resumeRun(
+  runId: string,
+  options: ResumeRunOptions,
+): Promise<ResumeRunResult> {
+  const client = clientFor(options.baseUrl, options.token);
+  return hydrateRun(client, runId, {
+    ...(options.since === undefined ? {} : { since: options.since }),
+    ...(options.limit === undefined ? {} : { limit: options.limit }),
+    apply: options.onEvent,
+    ...(options.onProgress === undefined
+      ? {}
+      : {
+          onPage: (page: { cursor: number; headSeq: number }) =>
+            options.onProgress?.({ cursor: page.cursor, headSeq: page.headSeq }),
+        }),
+  });
+}
+
+export interface FollowRunResult extends ResumeRunResult {
+  /** Closes the stream. The command that opened it owns it. */
+  close(): void;
+}
+
+/**
+ * `DeFlow` watching a run: hydrate first, then stream from the cursor that
+ * returned.
+ *
+ * The order is the whole contract (§4.1): hydrating *after* opening the stream
+ * would duplicate everything in between, and opening the stream from head
+ * without hydrating would silently drop it. And the stream is opened with
+ * `?since=<cursor>` on every attempt — `connectStream` re-reads the cursor per
+ * connection, so a reconnect resumes from what this process has applied rather
+ * than from where it started watching.
+ */
+export async function followRun(
+  runId: string,
+  options: ResumeRunOptions,
+): Promise<FollowRunResult> {
+  const hydrated = await resumeRun(runId, options);
+
+  const dispatcher = createDispatcher({
+    applyEvent: (event) => {
+      if (event.runId === runId) options.onEvent(event);
+    },
+    // A terminal has no use for `hello`, `caught_up` or `subscribed`; a `fatal`
+    // frame ends the connection on the server's side, and the library stops
+    // retrying only when this process closes it.
+    control: () => undefined,
+  });
+
+  const connection: StreamConnection = connectStream({
+    baseUrl: `${options.baseUrl.replace(/\/$/, '')}/api`,
+    ...(options.token === undefined ? {} : { token: () => options.token ?? null }),
+    runs: [runId],
+    since: () => Math.max(hydrated.cursor, dispatcher.cursor()),
+    onMessage: (message) => {
+      dispatcher.onFrame({
+        event: message.event,
+        id: message.id ?? undefined,
+        data: message.data,
+      });
+    },
+  });
+
+  return { ...hydrated, close: () => connection.close() };
 }

@@ -53,6 +53,7 @@ import { daemonEpoch, headSeq } from '../runtime.ts';
 import { bearerToken, constantTimeEqual, daemonAuth } from './auth.ts';
 import { type ApiErrorEnvelope, apiError } from './errors.ts';
 import { type LedgerView, ledgerView } from './ledger-view.ts';
+import { resumeFrom } from './resume.ts';
 import { Signal } from './signal.ts';
 import {
   controlFrame,
@@ -123,26 +124,6 @@ function stopped(stream: SSEStreamingApi): boolean {
 }
 
 /**
- * The cursor this connection resumes from, in §4.1's documented precedence:
- * `since` query param > `Last-Event-ID` header > 0.
- *
- * The query parameter wins because the client's own persisted cursor is more
- * trustworthy than the browser's — a tab that reloads sends no `Last-Event-ID`
- * at all — and because the CLI has no such header. `0` rather than the head of
- * the log, for the reason §4.1 gives at length: treating "no cursor" as "start
- * from now" silently loses every event that happened while the client was down,
- * which is NF10 violated without a single error being logged.
- */
-export function resumeFrom(since: string | undefined, lastEventId: string | undefined): number {
-  for (const candidate of [since, lastEventId]) {
-    if (candidate === undefined) continue;
-    const parsed = Number(candidate);
-    if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
-  }
-  return 0;
-}
-
-/**
  * The conditions that end a stream mid-flight, as the envelope the `fatal`
  * frame carries (AC15).
  *
@@ -192,7 +173,9 @@ export function serveStream(c: Context): Response {
   // detail the wire contract must not depend on.
   const tickMs = Math.min(envMs('DeFlow_SSE_DRAIN_TICK_MS', DEFAULT_DRAIN_TICK_MS), keepaliveMs);
   const filter = parseRuns(c.req.query('runs'));
-  const since = resumeFrom(c.req.query('since'), c.req.header('Last-Event-ID'));
+  // KAR-15.4 — `since` > `Last-Event-ID` > head, resolved before the socket is
+  // handed over so the head read below is the head at open (./resume.ts).
+  const resume = resumeFrom(c.req.query('since'), c.req.header('Last-Event-ID'));
   // Kept for the life of the connection so a rotation can be noticed. It is the
   // token this client already presented and that `requireAuth` already
   // accepted; nothing here widens what a stream may do.
@@ -209,6 +192,15 @@ export function serveStream(c: Context): Response {
     const handle = registerStream(() => wake.notify());
     const offCommitted = onCommitted(() => wake.notify());
     stream.onAbort(() => wake.notify());
+
+    // Read once, and used for both the cursor and `hello.headSeq`, so a client
+    // that started at head is told the *same* number it started from rather
+    // than one an event committed in between could make disagree.
+    const headAtOpen = view?.headSeq() ?? headSeq();
+    // §4.1's floor. A connection that named no cursor at all starts here and
+    // `hello.headSeq` says so — the client can hydrate to it through
+    // `GET /api/runs/:id/events` rather than accept the gap.
+    const since = resume.kind === 'seq' ? resume.seq : headAtOpen;
 
     const cursors = new Map<RunId, number>(
       view === null ? [] : filter.runs.map((runId) => [runId, since] as const),
@@ -298,7 +290,7 @@ export function serveStream(c: Context): Response {
           build: BUILD,
           bootId: BOOT_ID,
           daemonEpoch: epochAtOpen,
-          headSeq: view?.headSeq() ?? headSeq(),
+          headSeq: headAtOpen,
           runs: filter.global ? [GLOBAL_TOPIC, ...cursors.keys()] : [...cursors.keys()],
         }),
       );

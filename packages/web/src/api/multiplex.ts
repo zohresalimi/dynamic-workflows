@@ -41,22 +41,58 @@ import {
   fanOutByRun,
   stopsRetrying,
 } from './dispatch.ts';
-import { connectStream, type StreamConnection } from './stream.ts';
+import { connectStream, type StreamConnection, type StreamOptions } from './stream.ts';
+
+/**
+ * KAR-15.4 AC7 — what a `hello` frame says has changed since the last one.
+ *
+ * Two different facts with two different remedies, which is why they are two
+ * fields rather than one "reconnected" flag. A changed `daemonEpoch` means the
+ * daemon was replaced under an open tab: the projections are still valid and
+ * the client resumes from its own cursor. A changed `build` means this tab is
+ * running JavaScript from a different release than the daemon it is talking to,
+ * and the only complete answer is a reload — daemon and UI ship in the same npm
+ * tarball, so skew only ever means "stale tab", never "stale deployment".
+ */
+export interface HelloSkew {
+  /** The daemon epoch moved between two hellos on this hub. */
+  readonly restarted: boolean;
+  /** `hello.build` differs from the build this tab was loaded with. */
+  readonly buildChanged: boolean;
+  readonly daemonEpoch: number | null;
+  readonly previousEpoch: number | null;
+  readonly build: string | null;
+}
 
 export interface StreamHubOptions {
   /** Defaults to the page's own origin plus `/api`, as `createClient` does. */
   readonly baseUrl?: string;
-  /** The cursor to resume from. `0` means "everything", never "from now". */
+  /**
+   * The cursor to open at. `0` means "everything", never "from now".
+   *
+   * Only the *opening* cursor: every reconnect after it resumes from the
+   * highest `seq` this hub has applied, which is what stops a reconnect from
+   * re-delivering everything between the two (KAR-15.4 AC1).
+   */
   readonly since?: number;
   /** Read per request, so a token acquired later is still attached. */
   readonly token?: () => string | null | undefined;
+  /**
+   * The build this tab was served with, when the caller knows it. Compared
+   * against `hello.build` to detect a stale tab (AC7).
+   */
+  readonly build?: string;
   /**
    * A `fatal` frame, after the hub has decided whether it may reconnect.
    * `terminal` is true for exactly `bad_token` and `epoch_mismatch` (AC15).
    */
   readonly onFatal?: (code: string, terminal: boolean) => void;
+  /** A `hello` that disagrees with the last one, or with this tab's build. */
+  readonly onSkew?: (skew: HelloSkew) => void;
   /** Every named frame, for a caller that wants the raw control channel. */
   readonly onControl?: (frame: ControlFrame) => void;
+  /** Injected in tests, and by nothing else. */
+  readonly fetch?: StreamOptions['fetch'];
 }
 
 export interface StreamHub {
@@ -95,16 +131,41 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
   let filter: string[] = [];
   let id: string | null = null;
   let connections = 0;
+  /** The epoch the previous `hello` carried; `undefined` before the first. */
+  let epoch: number | null | undefined;
 
   const opened = deferred();
   /** One waiter per run asked for, settled by the `subscribed` frame. */
   const awaiting = new Map<string, Deferred>();
+
+  /**
+   * AC7 — the two ways a `hello` can say the world changed under this tab.
+   *
+   * Compared against the *previous* hello rather than against a value fetched
+   * from anywhere else: a restart is only observable as a difference between
+   * two frames on the same hub, and the first hello of a session has nothing to
+   * disagree with. The build does — the tab knows which build it loaded — so a
+   * skew there is reportable on the very first frame.
+   */
+  const reportSkew = (payload: unknown): void => {
+    const daemonEpoch = numberField(payload, 'daemonEpoch');
+    const build = stringField(payload, 'build');
+    const restarted = epoch !== undefined && epoch !== daemonEpoch;
+    const buildChanged = options.build !== undefined && build !== null && build !== options.build;
+    const previousEpoch = epoch ?? null;
+    epoch = daemonEpoch;
+
+    if (restarted || buildChanged) {
+      options.onSkew?.({ restarted, buildChanged, daemonEpoch, previousEpoch, build });
+    }
+  };
 
   const onControl = (frame: ControlFrame): void => {
     options.onControl?.(frame);
     if (frame.name === 'hello') {
       id = stringField(frame.payload, 'streamId');
       filter = runsField(frame.payload);
+      reportSkew(frame.payload);
       opened.resolve();
       return;
     }
@@ -130,11 +191,17 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
   });
 
   connections += 1;
+  const openedAt = options.since ?? 0;
   const connection: StreamConnection = connectStream({
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.token === undefined ? {} : { token: options.token }),
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     runs: [],
-    since: options.since ?? 0,
+    // Read per attempt: a reconnect resumes from what this tab has applied, and
+    // falls back to where it opened only while it has applied nothing. `max`
+    // rather than the dispatcher's cursor alone, because a hub that opened at
+    // 10,432 and has seen nothing since must not resume from 0 (KAR-15.4 AC1).
+    since: () => Math.max(openedAt, dispatcher.cursor()),
     onMessage: (message) => {
       dispatcher.onFrame({ event: message.event, id: message.id ?? undefined, data: message.data });
     },
@@ -207,6 +274,11 @@ function deferred(): Deferred {
 function stringField(payload: unknown, field: string): string | null {
   const value = (payload as Record<string, unknown> | null)?.[field];
   return typeof value === 'string' ? value : null;
+}
+
+function numberField(payload: unknown, field: string): number | null {
+  const value = (payload as Record<string, unknown> | null)?.[field];
+  return typeof value === 'number' ? value : null;
 }
 
 function runsField(payload: unknown): string[] {

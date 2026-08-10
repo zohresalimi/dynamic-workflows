@@ -265,6 +265,7 @@ export {
   openAndReplay,
   type RunReplay,
   replayAll,
+  runHeadSeq,
 } from './open-and-replay.ts';
 export { openLedger } from './open-ledger.ts';
 // KAR-11.4 — F8.3's approval queue for proposed patches, projected from the

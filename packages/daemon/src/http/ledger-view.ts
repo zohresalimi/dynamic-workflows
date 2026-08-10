@@ -36,8 +36,10 @@ import type {
   TaintedRead,
 } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
+import type { EventPage } from '@DeFlow/ledger';
 import {
   headSeq as ledgerHeadSeq,
+  runHeadSeq as ledgerRunHeadSeq,
   listRunIds,
   openRead,
   pendingPatchApprovals,
@@ -66,6 +68,19 @@ export interface LedgerView {
   runState(runId: RunId): RunState | null;
   /** Events for `runId` with `seq > afterSeq`, oldest first, at most `limit`. */
   tail(runId: RunId, afterSeq: number, limit: number): readonly StoredEvent[];
+  /**
+   * KAR-15.4 AC4 — the same window, plus whether another one follows it.
+   *
+   * `tail` for the stream and this for the hydrate endpoint, because the two
+   * want different things from the same query: the drain loops until a batch
+   * comes back empty and does not care, while a paging client needs `more`
+   * *now* so it can stop looping and open the stream at the cursor. It costs no
+   * second query — `readRange` asks for one row beyond the window and discards
+   * it — so this is the same read with its answer kept rather than dropped.
+   */
+  tailPage(runId: RunId, afterSeq: number, limit: number): EventPage;
+  /** The highest `seq` this ledger holds for `runId`; 0 when it holds none. */
+  runHeadSeq(runId: RunId): number;
   /**
    * KAR-13.2 AC5 — the `runs=*` topic: events of `kinds` from **every** run
    * with `seq > afterSeq`. Filtered in SQL, so an idle tab pays for the four
@@ -129,6 +144,8 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
   return {
     runState: (runId) => (holdsRun(db, runId) ? replayRun(db, runId).state : null),
     tail: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit).events,
+    tailPage: (runId, afterSeq, limit) => readRange(db, runId, afterSeq, limit),
+    runHeadSeq: (runId) => ledgerRunHeadSeq(db, runId),
     globalTail: (afterSeq, kinds, limit) => readGlobalRange(db, afterSeq, kinds, limit).events,
     runIds: () => listRunIds(db),
     eventTs: (seq) => readEventTs(db, seq),

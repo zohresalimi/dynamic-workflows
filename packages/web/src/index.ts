@@ -18,6 +18,17 @@ export {
   DEFAULT_DAEMON_ORIGIN,
   defaultBaseUrl,
 } from './api/client.ts';
+// KAR-15.3 — the client half of the frame contract: one dispatcher, named
+// frames to control, everything else to the reducer.
+export type { ControlFrame, Dispatcher, DispatcherOptions, StreamFrame } from './api/dispatch.ts';
+export { createDispatcher, fanOutByRun, stopsRetrying } from './api/dispatch.ts';
+// KAR-15.4 — the explicit hydrate path, which is mandatory rather than an
+// optimisation: it is how a reloaded tab, a cold start and `DeFlow` itself all
+// reach a cursor they can open the stream at (docs/11 §4.1).
+export type { HydrateOptions, HydratePage, HydrateResult } from './api/hydrate.ts';
+export { hydrateRun } from './api/hydrate.ts';
+export type { HelloSkew, StreamHub, StreamHubOptions } from './api/multiplex.ts';
+export { openStreamHub } from './api/multiplex.ts';
 // KAR-15.2 — the two halves of "the token is a header, never a URL": the SSE
 // connector that can actually send one, and the first-run fragment handoff
 // that gets the token into the tab without it ever reaching the server.

@@ -1,0 +1,72 @@
+[
+  {
+    "seq": 4,
+    "runId": "run_20260810T101500Z_c4a5b1",
+    "ts": 1754308400004,
+    "kind": "node.progress",
+    "v": 1,
+    "epoch": 1,
+    "payload": {
+      "attempt": 1,
+      "message": "step 4",
+      "node": "impl",
+      "phase": "starting"
+    }
+  },
+  {
+    "seq": 5,
+    "runId": "run_20260810T101500Z_c4a5b1",
+    "ts": 1754308400005,
+    "kind": "node.progress",
+    "v": 1,
+    "epoch": 1,
+    "payload": {
+      "attempt": 1,
+      "message": "step 5",
+      "node": "impl",
+      "phase": "starting"
+    }
+  },
+  {
+    "seq": 7,
+    "runId": "run_20260810T101500Z_c4a5b1",
+    "ts": 1754308400007,
+    "kind": "node.progress",
+    "v": 1,
+    "epoch": 1,
+    "payload": {
+      "attempt": 1,
+      "message": "step 7",
+      "node": "impl",
+      "phase": "running"
+    }
+  },
+  {
+    "seq": 8,
+    "runId": "run_20260810T101500Z_c4a5b1",
+    "ts": 1754308400008,
+    "kind": "node.progress",
+    "v": 1,
+    "epoch": 1,
+    "payload": {
+      "attempt": 1,
+      "message": "step 8",
+      "node": "impl",
+      "phase": "running"
+    }
+  },
+  {
+    "seq": 11,
+    "runId": "run_20260810T101500Z_c4a5b1",
+    "ts": 1754308400011,
+    "kind": "node.progress",
+    "v": 1,
+    "epoch": 1,
+    "payload": {
+      "attempt": 1,
+      "message": "step 11",
+      "node": "impl",
+      "phase": "running"
+    }
+  }
+]

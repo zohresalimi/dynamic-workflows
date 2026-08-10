@@ -39,6 +39,7 @@ import { putBlob } from '@DeFlow/ledger';
 import type { Context, ErrorHandler, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { compress } from 'hono/compress';
+import { validator } from 'hono/validator';
 import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
 import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
@@ -59,9 +60,11 @@ import {
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import { approvalQueue } from './approvals.ts';
 import { requireAuth, varyOrigin } from './auth.ts';
+import { requireCurrentEpoch } from './epoch-guard.ts';
 import { apiError, serviceError } from './errors.ts';
 import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
+import { hydrateLimit, resumeFrom } from './resume.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
 import { subscribeStream } from './streams.ts';
@@ -294,6 +297,10 @@ export const api = new Hono()
   // which routes exist.
   .use('*', varyOrigin)
   .use('*', requireAuth)
+  // KAR-15.4 AC7, and after the token guard on purpose: an unauthenticated
+  // request is refused before this daemon says anything about which epoch it is
+  // at (./epoch-guard.ts).
+  .use('*', requireCurrentEpoch)
   .use('/health', JSON_COMPRESSION)
   .use('/runs', JSON_COMPRESSION)
   .use('/runs/*', JSON_COMPRESSION)
@@ -519,6 +526,79 @@ export const api = new Hono()
       200,
     );
   })
+
+  /**
+   * KAR-15.4 AC4 — `GET /api/runs/:id/events?since=<seq>&limit=<n>`: the
+   * explicit hydrate path (docs/11-api-and-realtime.md §4.1, §7.2).
+   *
+   * *"The explicit hydrate path is mandatory, not an optimisation."* A tab that
+   * reloads sends no `Last-Event-ID`, and a tab whose first connection never
+   * opened — DeFlowd was restarting — has no cursor at all. Both hydrate here
+   * first and open the stream at the `cursor` this returns, which is the only
+   * sequence that produces neither a gap nor a duplicate at the seam.
+   *
+   * `more` rather than a total: the client loops until it is false. `headSeq`
+   * is this **run's** head, not the directory's, so it is a denominator a
+   * hydrating client actually converges on — and it is what turns a long
+   * hydrate into an honest progress bar rather than a spinner.
+   *
+   * `cursor` is the last `seq` in the page, and the *requested* cursor when the
+   * page is empty. Never `events.length` and never `cursor + 1`: the sequence
+   * is global across runs and `AUTOINCREMENT` never reissues a pruned number,
+   * so `4, 5, 7` is a healthy page and the contract is "strictly greater than"
+   * (§4.2).
+   */
+  .get(
+    '/runs/:id/events',
+    // Declared rather than read straight off `c.req.query()`, so the two
+    // parameters are part of the *type* of this chain and therefore part of
+    // `hc<ApiType>`: `hydrateRun` in @DeFlow/web is the only caller, and its
+    // loop passing a cursor this route stopped accepting should be a compile
+    // error rather than a page of zero events. Both stay strings here —
+    // `./resume.ts` owns what they mean, including what an unusable one falls
+    // back to.
+    validator('query', (value) => ({
+      since: typeof value.since === 'string' ? value.since : undefined,
+      limit: typeof value.limit === 'string' ? value.limit : undefined,
+    })),
+    (c) => {
+      const view = ledgerView();
+      if (view === null) return notReady(c);
+
+      const runId = asRunId(c.req.param('id'));
+      // Head first, then the page. A row committed between the two reads is
+      // beyond this `headSeq` and arrives on the next call or on the stream —
+      // whereas reading the head *after* the page could report a head lower
+      // than the cursor just returned, which is a progress bar that goes
+      // backwards.
+      //
+      // It doubles as the 404, and that is why this route does **not** reduce
+      // the run the way `GET /api/runs/:id` does: a hydrate loop calls this
+      // once per page, and replaying twelve thousand events three times to
+      // answer "does this run exist" would make the cheap path the expensive
+      // one. A head is one covering-index seek; the run list is only consulted
+      // for the rare run that holds no events at all.
+      const runHead = runId === null ? 0 : view.runHeadSeq(runId);
+      if (runId === null || (runHead === 0 && !view.runIds().includes(runId))) {
+        return c.json(...apiError('run_not_found', `no run '${c.req.param('id')}'`));
+      }
+
+      const query = c.req.valid('query');
+      const resume = resumeFrom(query.since, c.req.header('Last-Event-ID'));
+      const since = resume.kind === 'seq' ? resume.seq : runHead;
+      const page = view.tailPage(runId, since, hydrateLimit(query.limit));
+
+      return c.json(
+        {
+          events: page.events,
+          cursor: page.events.at(-1)?.seq ?? since,
+          headSeq: runHead,
+          more: page.hasMore,
+        },
+        200,
+      );
+    },
+  )
 
   /**
    * KAR-11.5 AC3 — `GET /api/runs/:id/plans/diff?from=N&to=M`, the plan-evolution
