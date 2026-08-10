@@ -1,7 +1,14 @@
 /**
- * KAR-12.6 test plan #8, AC6, AC7 — the gate-hygiene projection: a gate
- * nothing schedules is decoration, and the first-pass rate is informative at
- * both tails.
+ * KAR-12.6 test plan #8, AC6, AC7 — the **arithmetic** half of the
+ * gate-hygiene projection: a gate nothing schedules is decoration, and the
+ * first-pass rate is informative at both tails.
+ *
+ * Unit, and only unit, because `gateHygiene()` is a pure reducer over a sample
+ * somebody hands it. The other half of S38 — which runs "the last 10 runs"
+ * means, and what `gates.loaded` and `gate.evaluated` said across them — is a
+ * read of the log, and is covered at integration against a real file-backed
+ * ledger in `test/integration/gate-hygiene.test.ts` (test plan #9). A sample
+ * typed into an array proves no window.
  *
  * This story specifies the projection and its threshold; EPIC-18 mounts the
  * `DeFlow doctor` command that prints it.

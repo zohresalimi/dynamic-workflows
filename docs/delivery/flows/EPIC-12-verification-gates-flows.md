@@ -1313,7 +1313,7 @@ mid-run.
 
 ## EPIC-12-S38 — `doctor` reports gates nobody schedules, and both tails of the first-pass rate
 
-**Verifies:** KAR-12.6 · **Type:** Edge case · **Automated at:** integration
+**Verifies:** KAR-12.6 · **Type:** Edge case · **Automated at:** unit + integration
 
 ```gherkin
 Feature: A gate nothing schedules is decoration
@@ -1343,6 +1343,15 @@ Feature: A gate nothing schedules is decoration
 [§9.1](../../10-verification-gates.md) is explicit that **both** tails are informative — at 100% the
 right response is to investigate rather than celebrate. The `doctor` command itself is
 [EPIC-18](../epics/EPIC-18-cli-packaging.md) KAR-18.4; this epic owns the projection it prints.
+
+The scenario has two halves and they are automated at two levels, which is why the line above says
+both. The rate arithmetic and the 40%/100% advice are a pure reducer and are pinned at unit. **"The
+last 10 runs"** is not — choosing the sample is a read of the log across runs, and every way of
+getting it wrong (ranking runs by `ts`, taking the newest N _events_ rather than the newest N
+_runs_, reading `gates.loaded` only from the latest run) yields a report that is confidently wrong
+while the reducer's own tests stay green. So the window is exercised at integration against a real
+file-backed ledger holding eleven runs, where widening the window by one run has to flip `a11y`
+from decoration to healthy.
 
 ---
 

@@ -194,6 +194,16 @@ export {
 export { bumpEpoch, readEpoch, StaleEpoch } from './epoch.ts';
 // KAR-03.1 — the driver adapter behind the Db port declared in @DeFlow/core.
 export { LedgerAlreadyOpen, LedgerTooNew } from './errors.ts';
+// KAR-12.6 AC6, AC7 — which runs "the last N runs" means, and what
+// `gates.loaded` and `gate.evaluated` said across them: the sample the
+// gate-hygiene projection in @DeFlow/gates reduces.
+export {
+  DEFAULT_HYGIENE_RUN_SAMPLE,
+  type GateHygieneSample,
+  type GateHygieneSampleOptions,
+  type SampledGateEvaluation,
+  sampleGateHygiene,
+} from './gate-hygiene.ts';
 // KAR-10.1 AC6 — `intake_key`: whether an `Idempotency-Key` has already
 // minted a run, checked before a `RunId` even exists to key an effect on.
 export { lookupIntakeKey, recordIntakeKey } from './intake-keys.ts';

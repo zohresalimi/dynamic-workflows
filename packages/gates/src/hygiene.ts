@@ -10,6 +10,14 @@
  *
  * This story specifies the projection and its threshold; EPIC-18's
  * `DeFlow doctor` (KAR-18.4) is what prints it.
+ *
+ * **Where the sample comes from is not this file's business, and is not
+ * nobody's.** "The last N runs" is a window over the ledger, and it is
+ * `sampleGateHygiene()` in `@DeFlow/ledger` — which runs are in the window,
+ * ranked by where they started in `seq` order, and every `gates.loaded` and
+ * `gate.evaluated` inside them. That half is exercised against a real
+ * file-backed ledger in `test/integration/gate-hygiene.test.ts`; a
+ * hand-written `GateEvaluationSample[]` only ever proves the arithmetic.
  */
 import type { GateId, VerdictOutcome } from '@DeFlow/core';
 
