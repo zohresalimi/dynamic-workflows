@@ -96,12 +96,15 @@ const stateOf = (db: Db) => replayAll(db).runs.get(INTERJECT_RUN) ?? initialRunS
 interface Body {
   readonly seq?: number;
   readonly delivery?: string;
-  readonly error?: string;
   readonly message?: string;
-  readonly nodeStatus?: string;
   readonly alternative?: string;
-  readonly head?: number;
-  readonly movedAt?: number;
+  /** KAR-15.1's closed envelope, on every refusal. */
+  readonly error?: {
+    readonly code: string;
+    readonly message: string;
+    readonly detail: Record<string, unknown>;
+    readonly retryable: boolean;
+  };
 }
 
 async function post(origin: string, body: unknown): Promise<{ status: number; body: Body }> {
@@ -241,8 +244,10 @@ suite('EPIC-13-S20 — a node that finished while the Operator typed (AC6, test 
     });
 
     expect(status).toBe(409);
-    expect(body.error).toBe('stale_cursor');
-    expect(body.head).toBeGreaterThan(cursor);
+    // KAR-15.1 — the closed envelope: `code` is what a client branches on, and
+    // everything the refusal knows sits in `detail`.
+    expect(body.error.code).toBe('stale_cursor');
+    expect(body.error.detail.head).toBeGreaterThan(cursor);
     expect(events(served.db)).toHaveLength(before);
     expect(countOf(served.db, 'human.interjected')).toBe(0);
   });
@@ -259,9 +264,9 @@ suite('EPIC-13-S20 — a node that finished while the Operator typed (AC6, test 
     });
 
     expect(status).toBe(409);
-    expect(body.error).toBe('node_not_running');
-    expect(body.nodeStatus).toBe('completed');
-    expect(body.message).toContain('completed');
+    expect(body.error.code).toBe('node_not_running');
+    expect(body.error.detail.nodeStatus).toBe('completed');
+    expect(body.error.message).toContain('completed');
     expect(events(served.db)).toHaveLength(before);
   });
 
@@ -278,8 +283,8 @@ suite('EPIC-13-S20 — a node that finished while the Operator typed (AC6, test 
     });
 
     expect(status).toBe(409);
-    expect(body.error).toBe('use_respond');
-    expect(body.message).toContain(RESPOND_ROUTE);
+    expect(body.error.code).toBe('use_respond');
+    expect(body.error.message).toContain(RESPOND_ROUTE);
     expect(events(served.db)).toHaveLength(before);
   });
 
@@ -293,15 +298,15 @@ suite('EPIC-13-S20 — a node that finished while the Operator typed (AC6, test 
       mode: 'next-turn',
     });
     expect(missing.status).toBe(404);
-    expect(missing.body.error).toBe('node_not_found');
+    expect(missing.body.error.code).toBe('node_not_found');
 
     const empty = await post(served.origin, { nodeId: IMPL, text: '  ', mode: 'next-turn' });
     expect(empty.status).toBe(422);
-    expect(empty.body.error).toBe('empty_text');
+    expect(empty.body.error.code).toBe('empty_text');
 
     const bogus = await post(served.origin, { nodeId: IMPL, text: GUIDANCE, mode: 'shout' });
     expect(bogus.status).toBe(400);
-    expect(bogus.body.message).toContain('pause-and-inject');
+    expect(bogus.body.error.message).toContain('pause-and-inject');
 
     expect(events(served.db)).toHaveLength(before);
   });

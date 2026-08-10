@@ -13,12 +13,17 @@
  * `POST /api/runs` accepts, over the daemon's own HTTP API. *"Both entry
  * points — POST /api/runs and DeFlow run '…' — go through the same daemon
  * code path; the CLI is a client of the HTTP API, not a second
- * implementation."* This function is that client: it performs a real HTTP
- * request against a running DeFlowd and nothing else, so a golden ledger
- * produced through it is byte-identical (modulo ids and timestamps) to one
- * produced through the HTTP route directly (AC7).
+ * implementation."*
+ *
+ * KAR-15.1 makes that literal. Both commands below go through
+ * `createClient()` — the *same* module `packages/web` imports — so the CLI and
+ * the UI share one typed surface and one error envelope, and a route change
+ * breaks both builds in the commit that made it. There is no second protocol
+ * implementation to keep in sync, which is the usual place a CLI and a UI
+ * diverge.
  */
 import type { PermissionLevel } from '@DeFlow/core';
+import { type ApiClient, createClient } from '@DeFlow/web';
 
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
@@ -40,8 +45,8 @@ export interface RunTaskResult {
   readonly status: string;
 }
 
-/** A submission the daemon refused — the same `field`/`message` pair
- * `POST /api/runs` answers a 4xx with. */
+/** A submission the daemon refused — the `field` out of the envelope's
+ * `detail`, and the envelope's own human-readable `message`. */
 export class RunTaskRejected extends Error {
   readonly field: string;
 
@@ -50,6 +55,36 @@ export class RunTaskRejected extends Error {
     this.name = 'RunTaskRejected';
     this.field = field;
   }
+}
+
+/** The daemon at `baseUrl`, through the one typed client. */
+function clientFor(baseUrl: string): ApiClient {
+  return createClient({ baseUrl: `${baseUrl.replace(/\/$/, '')}/api` });
+}
+
+/**
+ * The closed error envelope, as far as a CLI cares about it
+ * (docs/11-api-and-realtime.md §10).
+ *
+ * Read structurally rather than imported as a type, because what arrives here
+ * has been through `JSON.parse` and the only honest thing to say about it is
+ * what was actually checked.
+ */
+interface Envelope {
+  readonly error: {
+    readonly code: string;
+    readonly message: string;
+    readonly detail?: Record<string, unknown>;
+  };
+}
+
+function isEnvelope(body: unknown): body is Envelope {
+  const error: unknown = (body as { error?: unknown } | null)?.error;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === 'string'
+  );
 }
 
 /**
@@ -61,36 +96,36 @@ export class RunTaskRejected extends Error {
  * the `task.submitted` event the daemon appends (../../daemon/src/http/api.ts).
  */
 export async function runTask(text: string, options: RunTaskOptions): Promise<RunTaskResult> {
-  const response = await fetch(`${options.baseUrl}/api/runs`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'X-DeFlow-Submitted-By': 'cli',
-      ...(options.idempotencyKey === undefined
-        ? {}
-        : { 'Idempotency-Key': options.idempotencyKey }),
+  const response = await clientFor(options.baseUrl).runs.$post(
+    {
+      json: {
+        input: { kind: 'text', text },
+        cwd: options.cwd,
+        permission: options.permission ?? 'worktree',
+        ...(options.budget === undefined ? {} : { budget: options.budget }),
+      },
     },
-    body: JSON.stringify({
-      input: { kind: 'text', text },
-      cwd: options.cwd,
-      permission: options.permission ?? 'worktree',
-      ...(options.budget === undefined ? {} : { budget: options.budget }),
-    }),
-  });
+    {
+      headers: {
+        'X-DeFlow-Submitted-By': 'cli',
+        ...(options.idempotencyKey === undefined
+          ? {}
+          : { 'Idempotency-Key': options.idempotencyKey }),
+      },
+    },
+  );
 
-  const payload = (await response.json()) as Record<string, unknown>;
-  if (response.status === 201) {
-    return {
-      runId: payload.runId as string,
-      seq: payload.seq as number,
-      status: payload.status as string,
-    };
+  const payload: unknown = await response.json();
+  if (response.status === 201 && !isEnvelope(payload)) {
+    const created = payload as RunTaskResult;
+    return { runId: created.runId, seq: created.seq, status: created.status };
   }
+
   throw new RunTaskRejected(
-    typeof payload.field === 'string' ? payload.field : '<root>',
-    typeof payload.message === 'string'
-      ? payload.message
-      : `POST /api/runs failed with ${response.status}`,
+    isEnvelope(payload) && typeof payload.error.detail?.field === 'string'
+      ? payload.error.detail.field
+      : '<root>',
+    isEnvelope(payload) ? payload.error.message : `POST /api/runs failed with ${response.status}`,
   );
 }
 
@@ -108,7 +143,9 @@ export interface ApproveSpecResult {
   readonly by: 'cli';
 }
 
-/** The daemon refused the approval — usually because no gate is open. */
+/** The daemon refused the approval — usually because the gate is not open.
+ * `code` is the envelope's, so it is a member of the closed union and may be
+ * branched on. */
 export class SpecApprovalRejected extends Error {
   readonly code: string;
 
@@ -136,27 +173,21 @@ export async function approveSpec(
   runId: string,
   options: DaemonClientOptions,
 ): Promise<ApproveSpecResult> {
-  const response = await fetch(
-    `${options.baseUrl}/api/runs/${encodeURIComponent(runId)}/spec/approve`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'X-DeFlow-Submitted-By': 'cli' },
-      body: '{}',
-    },
+  const response = await clientFor(options.baseUrl).runs[':id'].spec.approve.$post(
+    { param: { id: runId } },
+    { headers: { 'X-DeFlow-Submitted-By': 'cli' } },
   );
 
-  const payload = (await response.json()) as Record<string, unknown>;
-  if (response.ok) {
-    return {
-      runId: payload.runId as string,
-      specHash: payload.specHash as string,
-      by: 'cli',
-    };
+  const payload: unknown = await response.json();
+  if (response.ok && !isEnvelope(payload)) {
+    const approved = payload as { runId: string; specHash: string };
+    return { runId: approved.runId, specHash: approved.specHash, by: 'cli' };
   }
+
   throw new SpecApprovalRejected(
-    typeof payload.error === 'string' ? payload.error : 'request_failed',
-    typeof payload.message === 'string'
-      ? payload.message
+    isEnvelope(payload) ? payload.error.code : 'request_failed',
+    isEnvelope(payload)
+      ? payload.error.message
       : `POST /api/runs/${runId}/spec/approve failed with ${response.status}`,
   );
 }

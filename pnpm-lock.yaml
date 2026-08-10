@@ -207,6 +207,12 @@ importers:
       '@DeFlow/mock-agent':
         specifier: workspace:*
         version: link:../mock-agent
+      '@DeFlow/web':
+        specifier: workspace:*
+        version: link:../web
+      hono:
+        specifier: 'catalog:'
+        version: 4.12.33
     devDependencies:
       '@DeFlow/ledger':
         specifier: workspace:*
@@ -444,10 +450,16 @@ importers:
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../core
+      hono:
+        specifier: 'catalog:'
+        version: 4.12.33
       vue:
         specifier: 'catalog:'
         version: 3.5.40(typescript@6.0.3)
     devDependencies:
+      '@DeFlow/daemon':
+        specifier: workspace:*
+        version: link:../daemon
       '@vitejs/plugin-vue':
         specifier: 'catalog:'
         version: 6.0.8(vite@8.2.0(@types/node@24.13.3)(yaml@2.9.0))(vue@3.5.40(typescript@6.0.3))

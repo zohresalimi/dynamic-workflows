@@ -685,6 +685,23 @@ freely. `detail` is typed per code. Every error that also produced a ledger even
 so the UI can link "this failed" to "here is the event that says so" — that is NF10 applied to the
 error path, which is exactly where auditability usually stops.
 
+**The union is closed, and the table above is a subset of it.** The codes the in-process services
+answer with are members too, listed here rather than folded into a documented neighbour: squeezing
+"this node is no longer running" into `run_not_pausable` would make the wire *less* informative, and
+a client branching on `code` would have to unpick `detail` to find out what actually happened.
+
+| HTTP | additional `code` values                                                       | why it is not one of the above                                               |
+| ---- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| 404  | `not_found`                                                                    | a path this API does not serve, or a sub-resource with no more specific code |
+| 404  | `patch_not_found`                                                              | the run exists and never proposed this patch                                 |
+| 409  | `already_answered`                                                             | a human gate, or a spec gate, that somebody already decided                  |
+| 409  | `node_not_running`, `use_respond`                                              | KAR-13.3's two interjection refusals — different remedies, different words   |
+| 422  | `unknown_option`, `missing_payload`, `empty_text`, `not_applicable`, `apply_unavailable` | understood, and not actionable as asked                             |
+
+`packages/daemon/src/http/errors.ts` is where the union lives — one enumerated list, one status per
+code — and `errors.test.ts` transcribes the first table by hand and checks every pair, so the two
+cannot drift.
+
 Errors on the **SSE stream** are different: a stream never returns an error body mid-flight. A fatal
 condition closes the connection with a final `event: fatal` frame carrying the same envelope, and
 the client stops retrying only for `bad_token` and `epoch_mismatch`.

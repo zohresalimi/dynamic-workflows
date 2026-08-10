@@ -17,7 +17,9 @@
   "dependencies": {
     "@DeFlow/core": "workspace:*",
     "@DeFlow/daemon": "workspace:*",
-    "@DeFlow/mock-agent": "workspace:*"
+    "@DeFlow/mock-agent": "workspace:*",
+    "@DeFlow/web": "workspace:*",
+    "hono": "catalog:"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "catalog:"

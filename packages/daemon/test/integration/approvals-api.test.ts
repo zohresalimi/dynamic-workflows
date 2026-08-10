@@ -336,8 +336,12 @@ suite('EPIC-13-S16 — resolving an item takes it out of the queue (AC8)', () =>
     const second = await post('no');
     expect(second.status).toBe(409);
     expect(
-      (await second.json()) as { error: string; response: { optionId: string } },
-    ).toMatchObject({ error: 'already_answered', response: { optionId: 'yes' } });
+      (await second.json()) as { error: { code: string; detail: { response: unknown } } },
+      // KAR-15.1's closed envelope: the code is the stable identifier, and the
+      // decision that actually stands travels in `detail`.
+    ).toMatchObject({
+      error: { code: 'already_answered', detail: { response: { optionId: 'yes' } } },
+    });
 
     // One decision on the log, whatever the second caller asked for.
     expect(respondedCount(served.db, RUN_A)).toBe(1);

@@ -142,7 +142,11 @@ suite('EPIC-10-S18 — two surfaces, one code path', () => {
       body: '{}',
     });
     expect(second.status).toBe(409);
-    expect((await second.json()) as { error: string }).toMatchObject({ error: 'gate_not_open' });
+    // The closed union's word for "somebody already answered this gate"; the
+    // gate's own `gate_not_open` survives in `detail.reason` (KAR-15.1).
+    expect((await second.json()) as { error: { code: string; detail: unknown } }).toMatchObject({
+      error: { code: 'already_answered', detail: { reason: 'gate_not_open' } },
+    });
 
     await daemon.stop();
     running.length = 0;
@@ -178,13 +182,17 @@ suite('EPIC-12-S24 — approval is refused while a criterion reaches no gate', (
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as {
-      error: string;
-      message: string;
-      issues: { code: string; criterion: string }[];
+      error: {
+        code: string;
+        message: string;
+        detail: { issues: { code: string; criterion: string }[] };
+      };
     };
-    expect(body.error).toBe('invalid_spec');
-    expect(body.issues).toMatchObject([{ code: 'CRITERION_UNCOVERED', criterion: 'ac-2' }]);
-    expect(body.message).toContain('ac-2');
+    expect(body.error.code).toBe('schema_violation');
+    expect(body.error.detail.issues).toMatchObject([
+      { code: 'CRITERION_UNCOVERED', criterion: 'ac-2' },
+    ]);
+    expect(body.error.message).toContain('ac-2');
 
     await daemon.stop();
     running.length = 0;

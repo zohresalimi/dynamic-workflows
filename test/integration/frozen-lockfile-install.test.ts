@@ -154,9 +154,12 @@ suite('every workspace dependency is linked, never downloaded', () => {
     },
   );
 
-  // @DeFlow/web has no consumer yet: packages/cli gains it with KAR-01.3, when
-  // the cli starts shipping the built UI. Updating this list is the visible diff
-  // that says the dependency graph of docs/16-repo-layout.md §4 changed.
+  // @DeFlow/web gained its consumer with KAR-15.1: packages/cli imports the one
+  // `hc<ApiType>` client module out of packages/web/src/api, so `DeFlow run` and
+  // the browser are two callers of one typed surface rather than two
+  // implementations of one protocol (docs/11-api-and-realtime.md §9). Updating
+  // this list is the visible diff that says the dependency graph of
+  // docs/16-repo-layout.md §4 changed.
   //
   // @DeFlow/gates arrived here with KAR-12.3, as a devDependency of the daemon:
   // the gate contract is enforced by the daemon's handoff loop and its Ajv
@@ -172,6 +175,7 @@ suite('every workspace dependency is linked, never downloaded', () => {
       '@DeFlow/ledger',
       '@DeFlow/mock-agent',
       '@DeFlow/testkit',
+      '@DeFlow/web',
       'DeFlow',
     ]);
   });

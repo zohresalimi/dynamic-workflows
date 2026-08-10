@@ -355,21 +355,70 @@ export function checkNoOhashImport(files: readonly SourceFile[]): Violation[] {
   return violations;
 }
 
-/** R2. AC8 / EPIC-01-S5: only packages/cli may depend on @DeFlow/daemon. */
+/**
+ * R2. AC8 / EPIC-01-S5: only packages/cli may depend on @DeFlow/daemon.
+ *
+ * One exception, added by KAR-15.1 and narrower than it looks: `packages/web`
+ * may carry the daemon as a **devDependency**, because
+ * docs/11-api-and-realtime.md §9 makes `import type { ApiType } from
+ * '@DeFlow/daemon'` the entire client contract — that import is what makes a
+ * renamed daemon field break the UI build in the same commit. It is erased at
+ * compile time, so no daemon code can reach the browser bundle, which is the
+ * coupling R2 exists to prevent. A *runtime* dependency is still a violation,
+ * and `checkWebImportsDaemonTypesOnly` is what stops the type-only import
+ * quietly becoming a value one.
+ */
 export function checkDaemonIsLeaf(manifests: readonly Manifest[]): Violation[] {
   const violations: Violation[] = [];
   for (const manifest of manifests) {
     if (manifest.path === 'packages/cli/package.json') continue;
-    const dependsOnDaemon = allDependencies(manifest.json).some(
-      ([name]) => name === '@DeFlow/daemon',
-    );
+
+    const isWeb = manifest.path === 'packages/web/package.json';
+    const blocks = isWeb
+      ? (['dependencies', 'optionalDependencies', 'peerDependencies'] as const)
+      : DEPENDENCY_BLOCKS;
+    const dependsOnDaemon = blocks
+      .flatMap((block) => entriesOf(manifest.json, block))
+      .some(([name]) => name === '@DeFlow/daemon');
+
     if (dependsOnDaemon) {
       violations.push({
         where: manifest.path,
+        message: isWeb
+          ? `${manifest.path} depends on @DeFlow/daemon at runtime. The UI may only carry it as a ` +
+            'type-only devDependency (docs/11-api-and-realtime.md §9): the contract is ' +
+            '`import type { ApiType }`, and anything more puts daemon code in the browser bundle.'
+          : `${manifest.path} depends on @DeFlow/daemon, but only packages/cli may. R2 keeps the ` +
+            'daemon a leaf: if another package needs something from it, that something belongs in ' +
+            '@DeFlow/core if it is pure, or is a port that daemon implements and injects if it is not.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * KAR-15.1 — the UI's import of the daemon is type-only, and stays type-only.
+ *
+ * The whole typed-client design rests on `packages/web` seeing the daemon's
+ * route types (docs/11-api-and-realtime.md §9). It rests just as hard on that
+ * being the *only* thing it sees: a value import would pull the Hono app, the
+ * ledger and `better-sqlite3` into a Vite build, which fails loudly if you are
+ * lucky and ships a second copy of the daemon's constants if you are not.
+ */
+export function checkWebImportsDaemonTypesOnly(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!file.path.startsWith('packages/web/')) continue;
+    for (const [index, line] of file.text.split('\n').entries()) {
+      if (!/from\s+['"]@DeFlow\/daemon(\/[^'"]*)?['"]/.test(line)) continue;
+      if (/^\s*import\s+type\s/.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
         message:
-          `${manifest.path} depends on @DeFlow/daemon, but only packages/cli may. R2 keeps the ` +
-          'daemon a leaf: if another package needs something from it, that something belongs in ' +
-          '@DeFlow/core if it is pure, or is a port that daemon implements and injects if it is not.',
+          `${file.path}:${index + 1} imports @DeFlow/daemon as a value. The UI's dependency on ` +
+          'the daemon is the route types and nothing else — write `import type`, so the import ' +
+          'is erased and no daemon code can reach the browser bundle (R2, docs/11 §9).',
       });
     }
   }

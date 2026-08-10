@@ -81,8 +81,13 @@ suite('POST /api/runs — the wire contract (AC1)', () => {
 
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.status).toBeLessThan(500);
-      const body = (await response.json()) as { field: string };
-      expect(body.field).toBe('input.text');
+      // KAR-15.1's closed envelope: the offending field is `detail.field`, and
+      // the code is the one a client branches on.
+      const body = (await response.json()) as {
+        error: { code: string; detail: { field: string } };
+      };
+      expect(body.error.code).toBe('invalid_request');
+      expect(body.error.detail.field).toBe('input.text');
     } finally {
       await booted.shutdown();
     }

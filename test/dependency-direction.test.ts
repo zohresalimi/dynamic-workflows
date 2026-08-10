@@ -10,9 +10,15 @@ import {
   checkDependencyValues,
   checkMockAgentIsIndependent,
   checkNoBareNodePty,
+  checkWebImportsDaemonTypesOnly,
   describe as render,
 } from './support/guards.ts';
-import { allManifests, manifestFor, workspaceNames } from './support/workspace.ts';
+import {
+  allManifests,
+  allWorkspaceSources,
+  manifestFor,
+  workspaceNames,
+} from './support/workspace.ts';
 
 suite('dependency values', () => {
   it('uses workspace:* for workspace packages and catalog: for everything else', () => {
@@ -23,6 +29,12 @@ suite('dependency values', () => {
 suite('R2 — the daemon stays a leaf', () => {
   it('only packages/cli depends on @DeFlow/daemon', () => {
     expect(render(checkDaemonIsLeaf(allManifests()))).toBe('');
+  });
+});
+
+suite('R2 — the UI sees the daemon as types and nothing else (KAR-15.1)', () => {
+  it('every @DeFlow/daemon import in packages/web is an import type', () => {
+    expect(render(checkWebImportsDaemonTypesOnly(allWorkspaceSources()))).toBe('');
   });
 });
 

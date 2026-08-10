@@ -104,9 +104,10 @@ suite('EPIC-13-S17 — the correction lands and the run is not discarded', () =>
     });
 
     expect(response.status).toBe(409);
-    const body = (await response.json()) as { error: string; message: string };
-    expect(body.error).toBe('use_respond');
-    expect(body.message).toContain('/respond');
+    // KAR-15.1's closed envelope, over a real socket and a real daemon.
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('use_respond');
+    expect(body.error.message).toContain('/respond');
 
     await daemon.stop();
     running.length = 0;

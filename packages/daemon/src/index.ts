@@ -291,9 +291,23 @@ export {
   salvageCommitArgs,
   salvagedRemoveArgs,
 } from './git/worktree-salvage.ts';
+// KAR-15.1 — the whole client contract (docs/11-api-and-realtime.md §9).
+// `packages/web/src/api/client.ts` builds `hc<ApiType>` from this one type, and
+// both the UI and the CLI import that module rather than writing a client each.
+export type { ApiType } from './http/api.ts';
+export { API_HEADER, api, apiErrorHandler, isPublicRoute, PUBLIC_ROUTES } from './http/api.ts';
 // KAR-13.2 — `GET /api/approvals`, assembled from the ledger.
 export type { ApprovalRow, ApprovalsResponse } from './http/approvals.ts';
 export { approvalQueue } from './http/approvals.ts';
+// KAR-15.1 — the closed error envelope and its status→code table.
+export type {
+  ApiErrorCode,
+  ApiErrorEnvelope,
+  ApiErrorOptions,
+  ApiErrorStatus,
+  ServiceRefusalCode,
+} from './http/errors.ts';
+export { API_ERROR_STATUS, apiError, isApiErrorCode, serviceError } from './http/errors.ts';
 // KAR-14.1 AC8 — the read-only ledger the run summary and the SSE tail are
 // served through, and the summary body itself.
 export type { LedgerView, OpenedLedgerView } from './http/ledger-view.ts';

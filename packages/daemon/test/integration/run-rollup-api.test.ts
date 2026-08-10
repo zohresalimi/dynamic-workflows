@@ -236,7 +236,9 @@ suite('EPIC-14-S1 — the run rollup at GET /api/runs/:id (AC8)', () => {
 
     const missing = await fetch(`${served.origin}/api/runs/run_20260805T101500Z_ffffff`);
     expect(missing.status).toBe(404);
-    expect((await missing.json()) as { error: string }).toMatchObject({ error: 'not_found' });
+    expect((await missing.json()) as { error: { code: string } }).toMatchObject({
+      error: { code: 'run_not_found' },
+    });
 
     // A malformed id is the same answer, not a 500 out of the id schema.
     const malformed = await fetch(`${served.origin}/api/runs/r1`);

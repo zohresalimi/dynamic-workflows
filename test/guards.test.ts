@@ -42,6 +42,7 @@ import {
   checkRelativeImportsHaveTsExtension,
   checkTempDirPrefixes,
   checkViteImportIsDynamic,
+  checkWebImportsDaemonTypesOnly,
   checkWorkflowExecutablesAreDeclared,
   REQUIRED_OXLINT_PLUGINS,
   REQUIRED_TYPE_AWARE_RULES,
@@ -370,6 +371,65 @@ suite('checkDaemonIsLeaf (R2)', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]?.where).toBe('packages/adapters/package.json');
     expect(render(violations)).toContain('keeps the daemon a leaf');
+  });
+
+  /**
+   * KAR-15.1 — the one exception, and why it is not a hole in R2.
+   *
+   * docs/11-api-and-realtime.md §9 requires `packages/web` to import
+   * `ApiType` from the daemon: that import *is* the client contract, and it is
+   * what makes a renamed daemon field break the UI build in the same commit.
+   * It is type-only and lives in `devDependencies`, so nothing of the daemon
+   * can reach the browser bundle — which is the coupling R2 exists to prevent.
+   * `checkWebImportsDaemonTypesOnly` is the other half: the day somebody turns
+   * that into a value import, this stops being a type dependency and R2's
+   * reasoning applies again.
+   */
+  it('allows the UI a type-only devDependency on the daemon', () => {
+    expect(
+      checkDaemonIsLeaf([
+        {
+          path: 'packages/web/package.json',
+          json: { devDependencies: { '@DeFlow/daemon': 'workspace:*' } },
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still rejects a runtime dependency from the UI', () => {
+    const violations = checkDaemonIsLeaf([
+      {
+        path: 'packages/web/package.json',
+        json: { dependencies: { '@DeFlow/daemon': 'workspace:*' } },
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('type-only');
+  });
+});
+
+suite('checkWebImportsDaemonTypesOnly (KAR-15.1)', () => {
+  it('catches a value import of the daemon from the UI, and names the line', () => {
+    const violations = checkWebImportsDaemonTypesOnly([
+      {
+        path: 'packages/web/src/api/client.ts',
+        text: "import { hc } from 'hono/client';\nimport { api } from '@DeFlow/daemon';\n",
+      },
+    ]);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('packages/web/src/api/client.ts:2');
+    expect(render(violations)).toContain('import type');
+  });
+
+  it('leaves the type-only import the contract is built on alone', () => {
+    expect(
+      checkWebImportsDaemonTypesOnly([
+        {
+          path: 'packages/web/src/api/client.ts',
+          text: "import type { ApiType } from '@DeFlow/daemon';\n",
+        },
+      ]),
+    ).toEqual([]);
   });
 });
 
