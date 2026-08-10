@@ -416,6 +416,16 @@ export interface BudgetBreach {
    * every breach constructed before the vendor path existed was.
    */
   readonly firedBy?: 'deflow' | 'vendor' | undefined;
+  /**
+   * KAR-13.2 AC1 — the `seq` of the `budget.exceeded` that recorded it, on the
+   * copy the projection keeps.
+   *
+   * Optional, and absent everywhere else on purpose: the same shape is parsed
+   * out of a `NodeFailure.detail`, where there is no seq to read and inventing
+   * one would name an event that does not exist. Present, it is what the
+   * approval queue orders a `budget` item on and deep-links it to.
+   */
+  readonly seq?: number | undefined;
 }
 
 export const BudgetBreachSchema = z.strictObject({
@@ -425,6 +435,9 @@ export const BudgetBreachSchema = z.strictObject({
   limit: z.number().nonnegative(),
   actual: z.number().nonnegative(),
   firedBy: z.enum(['deflow', 'vendor']).optional(),
+  /** See `BudgetBreach.seq`: present on the projection's copy, absent on the
+   * one that lives in a failure's `detail`. */
+  seq: z.number().int().positive().optional(),
 });
 
 /** Which reason a breach of each dimension is reported under. */

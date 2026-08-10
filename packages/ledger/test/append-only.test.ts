@@ -14,7 +14,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, describe as suite } from 'vitest';
-import { SQL_AGGREGATE_PROJECTION } from '../../../test/support/guards.ts';
+import { SQL_AGGREGATE_PROJECTION, SQL_PRIMARY_KEY_LOOKUP } from '../../../test/support/guards.ts';
 
 interface Source {
   readonly path: string;
@@ -151,10 +151,17 @@ suite('no consumer computes cursor + 1 (EPIC-03-S9 scenario 2, AC3)', () => {
     const statements = code(nonMigrationLedgerSources).flatMap(eventReads);
     expect(statements.length).toBeGreaterThan(0);
     for (const { path, sql } of statements) {
-      if (SQL_AGGREGATE_PROJECTION.test(sql)) continue;
-      expect(sql, `${path} reads event rows without "seq > ?"`).toMatch(
-        /run_id\s*=\s*\?\s+AND\s+seq\s*>\s*\?/i,
-      );
+      if (SQL_AGGREGATE_PROJECTION.test(sql) || SQL_PRIMARY_KEY_LOOKUP.test(sql)) continue;
+      // The contract is the **window**, and `seq > ?` is the whole of it. Most
+      // reads scope to a run as well and must say so; KAR-13.2's global topic
+      // (`runs=*`) is deliberately cross-run — the low-volume lifecycle kinds
+      // an idle tab needs — and it resumes on exactly the same strict cursor.
+      expect(sql, `${path} reads event rows without "seq > ?"`).toMatch(/\bseq\s*>\s*\?/i);
+      if (/\brun_id\b/i.test(sql) && /\bWHERE\b/i.test(sql) && /run_id\s*=\s*\?/i.test(sql)) {
+        expect(sql, `${path} scopes to a run without the (run_id, seq) window`).toMatch(
+          /run_id\s*=\s*\?\s+AND\s+seq\s*>\s*\?/i,
+        );
+      }
     }
     // `>=` is wrong everywhere, aggregate or not: it re-delivers the event the
     // caller's cursor already named.

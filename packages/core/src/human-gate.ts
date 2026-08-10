@@ -37,7 +37,11 @@
 import { z } from 'zod';
 import { type EmittedEvent, NO_DEADLINE_WAKE_AT } from './command.ts';
 import type { EventPayloadOf, HumanResponder } from './event-payloads.ts';
-import { HUMAN_RESPONDERS } from './event-payloads.ts';
+import {
+  HUMAN_RESPONDERS,
+  PermissionContextSchema,
+  PermissionReasonSchema,
+} from './event-payloads.ts';
 import { type EventSeq, type NodeId, NodeIdSchema, type SchemaId } from './ids.ts';
 import type { NodeFailure } from './node-failure.ts';
 import {
@@ -102,6 +106,19 @@ export const HumanGateStateSchema = z.strictObject({
   deadline: HumanDeadlineSchema.nullable(),
   /** True once a `deadline.onTimeout: 'escalate'` has re-asked (AC7). */
   escalated: z.boolean(),
+  /**
+   * KAR-13.2 — why the safety layer escalated, or `null` for a gate that is not
+   * a permission decision.
+   *
+   * It is what makes `permission` a *kind* in the approval queue rather than a
+   * flavour of `human-node`: the two are answered with the same vocabulary and
+   * read completely differently, and a queue that could not tell them apart
+   * would sort a `curl` to an unknown host beside "the codemod changed 41
+   * files, proceed?".
+   */
+  reason: PermissionReasonSchema.nullable(),
+  /** The structured context that escalation is decided on; `null` otherwise. */
+  permission: PermissionContextSchema.nullable(),
   /** The `seq` of the `human.requested` that opened it — F10.3's deep link. */
   requestedSeq: z.int().positive(),
   response: HumanResponseStateSchema.nullable(),

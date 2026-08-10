@@ -47,7 +47,7 @@ import { type BudgetBreach, dependencyFailedFailure } from './node-failure.ts';
 import type { PlanGraph, PlanNode } from './plan-graph.ts';
 import {
   initialNodeState,
-  type NeedsHumanState,
+  type NeedsHumanReason,
   type NodeState,
   type RunState,
 } from './run-state.ts';
@@ -175,7 +175,7 @@ function reportNoProgress(
   state: RunState,
   runId: RunId,
   stall: ReturnType<typeof noProgress>['stall'],
-  ask: NeedsHumanState | null,
+  ask: NeedsHumanReason | null,
 ): EmitEvent[] {
   const commands: EmitEvent[] = [];
 

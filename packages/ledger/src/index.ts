@@ -31,6 +31,8 @@ export {
   type EventPage,
   InvalidEventEnvelope,
   PayloadTooLarge,
+  readEventTs,
+  readGlobalRange,
   readRange,
   type StoredEvent,
 } from './append.ts';

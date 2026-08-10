@@ -71,7 +71,12 @@ import {
   PlanGraphSchema,
 } from './plan-graph.ts';
 import { singleLine } from './text.ts';
-import { type VerdictOutcome, VerdictOutcomeSchema } from './verdict.ts';
+import {
+  type FindingV2,
+  FindingV2Schema,
+  type VerdictOutcome,
+  VerdictOutcomeSchema,
+} from './verdict.ts';
 
 /**
  * The run's lifecycle, as the ledger can prove it.
@@ -275,6 +280,12 @@ export interface GateVerdictState {
   readonly outcome: VerdictOutcome;
   /** The `seq` of the `gate.evaluated`; no event has seq 0. */
   readonly seq: number;
+  /** KAR-13.2 AC2 — the verdict's one-line summary: a `needs-human` item's
+   * reason, and the board cell for every other outcome. */
+  readonly summary: string;
+  /** KAR-13.2 AC2 — the findings the operator judges a `needs-human` verdict
+   * on. Bounded by the gate's own output, and already in the ledger. */
+  readonly findings: readonly FindingV2[];
 }
 
 /**
@@ -334,10 +345,32 @@ export interface CancelState {
   readonly requestedSeq: number;
 }
 
-/** Why the circuit breaker asked for a human (§9). */
-export interface NeedsHumanState {
+/**
+ * Why the circuit breaker wants a human (§9), **before** the asking event
+ * exists.
+ *
+ * `decide()` computes this from `(state, now)` and returns it as the payload of
+ * a `run.needs_human` it is proposing, at which point no `seq` has been
+ * assigned — the ledger assigns one on append. Separating the two is what keeps
+ * `NeedsHumanState.seq` honest: a projection field that could also be produced
+ * by a scheduler would have to be optional, and an optional creating seq is a
+ * queue row that cannot be deep-linked (NF10).
+ */
+export interface NeedsHumanReason {
   readonly reason: (typeof RUN_NEEDS_HUMAN_REASONS)[number];
   readonly detail: string;
+}
+
+/** The same fact once it is on the log — see `NeedsHumanReason`. */
+export interface NeedsHumanState extends NeedsHumanReason {
+  /**
+   * KAR-13.2 AC1 — the `seq` of the `run.needs_human` that asked.
+   *
+   * The approval queue orders oldest-first on the seq of the event that
+   * *created* each item and deep-links a row to it, so the number has to be the
+   * asking event's own and not the projection's watermark.
+   */
+  readonly seq: number;
 }
 
 /**
@@ -581,10 +614,10 @@ export interface RunState {
  * cost rollup; 8 `ceilings` and `NodeState.startedTs`; 9 the reconciled
  * estimate; 10 `CostRollup.authModes`; 11 `specApproved`; 12 `patchPolicy`;
  * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
- * tell an answered gate from an open one and re-asks a question already
- * answered.
+ * tell an answered gate from an open one; 15 the approval queue's fields — a
+ * creating `seq` per item, and the payload each one is decided from.
  */
-export const CHECKPOINT_VERSION = 14;
+export const CHECKPOINT_VERSION = 15;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -719,6 +752,8 @@ const GateVerdictStateSchema: z.ZodType<GateVerdictState, unknown> = z.strictObj
   outcome: VerdictOutcomeSchema,
   /** The seq of the `gate.evaluated`, and no event has seq 0. */
   seq: z.number().int().positive(),
+  summary: z.string(),
+  findings: z.array(FindingV2Schema),
 });
 
 const NodeIdRegistryStateSchema = z.strictObject({
@@ -752,7 +787,12 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   criteriaSatisfied: z.array(CriterionIdSchema),
   gateVerdicts: z.record(z.string(), GateVerdictStateSchema),
   needsHuman: z
-    .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
+    .strictObject({
+      reason: z.enum(RUN_NEEDS_HUMAN_REASONS),
+      detail: singleLine(),
+      /** The seq of the `run.needs_human`, and no event has seq 0. */
+      seq: z.number().int().positive(),
+    })
     .nullable(),
   humanGates: z.record(z.string(), HumanGateStateSchema),
   patchPolicy: z

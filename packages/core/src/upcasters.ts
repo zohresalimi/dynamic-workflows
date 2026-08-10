@@ -963,6 +963,35 @@ registerUpcaster({
 });
 
 /**
+ * `human.requested` v3 → v4 (KAR-13.2). See schemas/CHANGELOG.md.
+ *
+ * v4 adds one optional field — `permission`, the structured context a
+ * permission escalation is decided on — so the hop is the identity.
+ *
+ * Left **absent**, and here the absence is the only honest answer available.
+ * The context is `realpath` output, argv and the rule that matched, none of
+ * which the older payload carries and none of which can be recovered from the
+ * prose prompt it does: parsing a sentence back into six fields would put
+ * fabricated evidence in front of the person deciding whether to grant
+ * authority, which is precisely the decision that must not be guessed at.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 3,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'implement-auth',
+    prompt: 'The agent asked to run a command DeFlow does not allow on its own.',
+    options: [
+      { id: 'approve', label: 'Run it', effect: 'approve' },
+      { id: 'reject', label: 'Do not run it', effect: 'reject' },
+    ],
+    reason: { code: 'network-egress' },
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `human.responded` v1 → v2 (KAR-13.1). See schemas/CHANGELOG.md.
  *
  * v2 adds one optional field — `by`, which distinguishes an operator's choice

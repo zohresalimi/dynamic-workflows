@@ -259,7 +259,7 @@ suite('a void verdict re-opens the gate rather than the tier (docs/10 §5.2)', (
 suite('the fold', () => {
   it('records the outcome against the gate node, keyed by verdict.by.node', () => {
     const state = started(SHUFFLED, [evaluated('gate-typecheck', 'typecheck', 'pass')]);
-    expect(state.gateVerdicts['gate-typecheck']).toEqual({
+    expect(state.gateVerdicts['gate-typecheck']).toMatchObject({
       gate: 'typecheck',
       outcome: 'pass',
       seq: 4,

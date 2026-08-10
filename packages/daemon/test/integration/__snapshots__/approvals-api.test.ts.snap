@@ -1,0 +1,148 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`EPIC-13-S15 — derived, not accumulated (AC3) > produces an identical queue from a deleted cache and a replay from seq 0 1`] = `
+"{
+  "items": [
+    {
+      "runId": "run_20260810T093000Z_bb0002",
+      "kind": "budget",
+      "node": null,
+      "seq": 1,
+      "summary": "run cost ceiling exceeded: 21.4 against a limit of 20",
+      "scope": "run",
+      "dimension": "cost",
+      "limit": 20,
+      "actual": 21.4,
+      "firedBy": "deflow"
+    },
+    {
+      "runId": "run_20260810T093000Z_aa0001",
+      "node": "approve-migration",
+      "seq": 3,
+      "summary": "The codemod changed 41 files. Proceed?",
+      "prompt": "The codemod changed 41 files. Proceed?",
+      "options": [
+        {
+          "id": "yes",
+          "label": "Proceed",
+          "effect": "approve"
+        },
+        {
+          "id": "no",
+          "label": "Stop",
+          "effect": "reject"
+        }
+      ],
+      "deadline": null,
+      "kind": "human-node",
+      "escalated": false
+    },
+    {
+      "runId": "run_20260810T093000Z_aa0001",
+      "kind": "patch",
+      "node": null,
+      "seq": 5,
+      "summary": "Auth turns out to be JWT-based, so the recon step should re-run on Codex, the token-expiry edge cases need their own node, and the release subgraph is out of scope for this task.",
+      "patchId": "patch-3a91f0",
+      "status": "queued",
+      "rule": "escalates-permission",
+      "reason": "Auth turns out to be JWT-based, so the recon step should re-run on Codex, the token-expiry edge cases need their own node, and the release subgraph is out of scope for this task.",
+      "estimate": {
+        "blastRadiusFiles": 140,
+        "costUsdDelta": 6.2,
+        "maxPermission": "worktree",
+        "replanDepth": 2
+      },
+      "ops": [
+        {
+          "op": "replace-provider",
+          "node": "recon-auth-surface",
+          "provider": "codex",
+          "model": "gpt-5-codex"
+        },
+        {
+          "op": "insert-nodes",
+          "nodes": [
+            {
+              "id": "harden-auth-tests",
+              "title": "Cover the token-expiry edge cases",
+              "deps": [
+                "recon-auth-surface"
+              ],
+              "lifecycle": "active",
+              "reads": [
+                {
+                  "kind": "fact",
+                  "key": "finding/auth-uses-jwt"
+                }
+              ],
+              "writes": [
+                {
+                  "kind": "fact",
+                  "key": "artifact/auth-tests",
+                  "schemaId": "DeFlow.artifact.v1"
+                }
+              ],
+              "permission": "worktree",
+              "pathScopes": {
+                "write": [
+                  "test/auth/**"
+                ],
+                "read": [
+                  "src/auth/**"
+                ]
+              },
+              "returns": {
+                "schemaId": "DeFlow.artifact.v1",
+                "maxTokens": 1500
+              },
+              "retry": {
+                "maxAttempts": 3,
+                "backoff": {
+                  "base": 2000,
+                  "cap": 300000,
+                  "jitter": "full"
+                }
+              },
+              "budget": {
+                "maxCostUsd": 3
+              },
+              "type": "agent",
+              "brief": "Add tests for token expiry and clock skew against the JWT verifier.",
+              "provider": {
+                "prefer": [
+                  "claude-code"
+                ],
+                "requires": [
+                  "structuredOutput"
+                ]
+              },
+              "resume": "native-if-available"
+            }
+          ],
+          "edges": [
+            {
+              "from": "recon-auth-surface",
+              "to": "harden-auth-tests",
+              "kind": "data",
+              "carries": [
+                "finding/auth-uses-jwt"
+              ]
+            }
+          ]
+        },
+        {
+          "op": "abandon-branch",
+          "root": "ship-it",
+          "reason": "Shipping is out of scope for this task; the release subgraph never runs."
+        }
+      ],
+      "decidedSeq": 6
+    }
+  ],
+  "counts": {
+    "run_20260810T093000Z_bb0002": 1,
+    "run_20260810T093000Z_aa0001": 2
+  }
+}"
+`;

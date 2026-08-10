@@ -323,7 +323,9 @@ suite('the breaker is read off the projection, never off a flag', () => {
   it('is tripped exactly when the run is asking for a human about churn', () => {
     expect(
       circuitBreakerOf(
-        churning({ needsHuman: { reason: 'churn', detail: 'three replans moved nothing' } }),
+        churning({
+          needsHuman: { reason: 'churn', detail: 'three replans moved nothing', seq: 9 },
+        }),
       ),
     ).toBe('tripped');
   });
@@ -334,7 +336,9 @@ suite('the breaker is read off the projection, never off a flag', () => {
 
   it('is clear for an escalation that is not churn — a budget pause is not a livelock', () => {
     expect(
-      circuitBreakerOf(churning({ needsHuman: { reason: 'budget', detail: 'ceiling reached' } })),
+      circuitBreakerOf(
+        churning({ needsHuman: { reason: 'budget', detail: 'ceiling reached', seq: 9 } }),
+      ),
     ).toBe('clear');
   });
 });

@@ -96,10 +96,20 @@ const populated: RunState = {
   outcome: null,
   humanGates: {},
   gateVerdicts: {
-    'gate-typecheck': { gate: 'typecheck' as GateId, outcome: 'pass', seq: 7 },
+    'gate-typecheck': {
+      gate: 'typecheck' as GateId,
+      outcome: 'pass',
+      seq: 7,
+      summary: 'tsc exited zero',
+      findings: [],
+    },
   },
   criteriaSatisfied: [CriterionIdSchema.parse('unit-tests-pass')],
-  needsHuman: { reason: 'churn', detail: 'the planner has patched the same node four times' },
+  needsHuman: {
+    reason: 'churn',
+    detail: 'the planner has patched the same node four times',
+    seq: 11,
+  },
   patchPolicy: {
     hash: SHA,
     source: 'config',
@@ -207,6 +217,7 @@ const populated: RunState = {
     node: { costUsd: 2, wallclockMs: null },
     nodes: { [NODE]: { costUsd: null, wallclockMs: 600_000 } },
     hash: `sha256-${'e'.repeat(64)}`,
+    setSeq: 12,
   },
   watermarkSeq: 9,
   watermarkTs: 1_754_150_000_000,

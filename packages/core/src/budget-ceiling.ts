@@ -83,13 +83,25 @@ export interface RunCeilings {
    * ceiling has been set.
    */
   readonly hash: string | null;
+  /**
+   * KAR-13.2 AC8 — the `seq` of the last `budget.ceiling.set`, or `null` when
+   * nobody has set one.
+   *
+   * It is how a ceiling breach *leaves* the approval queue. F4.6's decision is
+   * *"raise the ceiling or stop"*, and raising one is a `budget.ceiling.set`
+   * after the breach — so the queue asks whether the answer came after the
+   * question rather than keeping a second "resolved" flag that a restart would
+   * have to reconstruct. A run that was stopped instead leaves the queue with
+   * the run, because a finished run waits on nobody.
+   */
+  readonly setSeq: number | null;
 }
 
 const NO_CEILING: Ceiling = Object.freeze({ costUsd: null, wallclockMs: null });
 
 /** A run nobody has set a ceiling on. A factory, never a shared constant. */
 export function initialCeilings(): RunCeilings {
-  return { run: { ...NO_CEILING }, node: { ...NO_CEILING }, nodes: {}, hash: null };
+  return { run: { ...NO_CEILING }, node: { ...NO_CEILING }, nodes: {}, hash: null, setSeq: null };
 }
 
 const ceilingValue = z.number().nonnegative().nullable();
@@ -104,6 +116,8 @@ export const RunCeilingsSchema: z.ZodType<RunCeilings, unknown> = z.strictObject
   node: CeilingSchema,
   nodes: z.record(z.string(), CeilingSchema),
   hash: z.string().min(1).nullable(),
+  /** The seq of the last `budget.ceiling.set`; no event has seq 0. */
+  setSeq: z.number().int().positive().nullable(),
 });
 
 /**

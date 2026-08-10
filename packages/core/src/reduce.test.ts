@@ -412,7 +412,7 @@ suite('KAR-11.4 AC8 — a human patch resets the churn circuit breaker', () => {
   const churning = (): RunState => ({
     ...initialRunState(),
     status: 'needs-human',
-    needsHuman: { reason: 'churn', detail: 'three replans moved nothing' },
+    needsHuman: { reason: 'churn', detail: 'three replans moved nothing', seq: 3 },
     churnWindow: [{ node: NodeIdSchema.parse(NODE), requestHash: SHA, attempt: 1, seq: 4 }],
     replans: { flat: 3, completed: 2, versions: [2, 3, 4] },
   });
@@ -450,6 +450,7 @@ suite('KAR-11.4 AC8 — a human patch resets the churn circuit breaker', () => {
     expect(still.needsHuman).toEqual({
       reason: 'churn',
       detail: 'three replans moved nothing',
+      seq: 3,
     });
     expect(still.churnWindow).toHaveLength(1);
   });
@@ -458,11 +459,12 @@ suite('KAR-11.4 AC8 — a human patch resets the churn circuit breaker', () => {
     const paused: RunState = {
       ...initialRunState(),
       status: 'paused',
-      needsHuman: { reason: 'budget', detail: 'the run reached its ceiling' },
+      needsHuman: { reason: 'budget', detail: 'the run reached its ceiling', seq: 4 },
     };
     expect(reduce(paused, patched('human', 5)).needsHuman).toEqual({
       reason: 'budget',
       detail: 'the run reached its ceiling',
+      seq: 4,
     });
   });
 });

@@ -16,13 +16,15 @@
  * number is how an F4.6 ceiling ends up evaluated against the wrong figure.
  */
 import { providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
-import type { EstimatorInputs, RunId } from '@DeFlow/core';
-import { SpecEditRefused } from '@DeFlow/core';
+import type { Db, EstimatorInputs, RunId } from '@DeFlow/core';
+import { NodeIdSchema, SpecEditRefused } from '@DeFlow/core';
 import type { StoredEvent } from '@DeFlow/ledger';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { streamSSE } from 'hono/streaming';
+import { respondToHumanNode } from '../human/gate.ts';
+import { decideQueuedPatch, decisionSurfaceMoved } from '../human/patch-decision.ts';
 import { submitTask } from '../intake/intake.ts';
 import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
@@ -38,9 +40,11 @@ import {
   SpecGateNotOpen,
 } from '../spec/gate.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
+import { approvalQueue } from './approvals.ts';
 import { intakePorts } from './intake-ports.ts';
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { runSummary } from './run-summary.ts';
+import { registerStream, subscribeStream } from './streams.ts';
 
 const http = log.child({ mod: 'http' });
 
@@ -427,6 +431,197 @@ function preflightEstimator(view: LedgerView): EstimatorInputs {
   };
 }
 
+/**
+ * KAR-13.2 AC1, AC9 — `GET /api/approvals`: everything waiting on the Operator,
+ * across every run, in one call.
+ *
+ * One request rather than one per run, and that is the requirement rather than
+ * an optimisation: *"I never discover a nine-hour run that has been blocked
+ * since hour two because I was looking at a different tab"*. The body is a
+ * projection over the ledger computed on demand — there is no pending table to
+ * poll and none to go stale, so a daemon that restarted a second ago serves the
+ * same queue as one that has been up all night.
+ */
+api.get('/approvals', (c) => {
+  const view = ledgerView();
+  if (view === null) {
+    return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+  }
+  // Time enters through the injected clock where one is registered, so a spec
+  // can assert on an age rather than on "some number". A view-only server —
+  // which only a test that skips boot has — falls back to the wall clock.
+  const now = intakePorts()?.clock.now() ?? Date.now();
+  return c.json(approvalQueue(view, now));
+});
+
+/**
+ * KAR-13.1 AC3 — `POST /api/runs/:id/nodes/:nodeId/respond`, and KAR-13.2 AC6's
+ * `ifLastSeq` on top of it.
+ *
+ * The handler is `respondToHumanNode` plus a status code, and the status code
+ * is *on the result* so the two cannot drift: a second answer is the service's
+ * `409` with the original decision echoed, an unknown option is its `422`, a
+ * node with no open gate is its `404`.
+ */
+api.post('/runs/:id/nodes/:nodeId/respond', async (c) => {
+  const ports = intakePorts();
+  if (ports === null) return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+
+  const runId = asRunId(c.req.param('id'));
+  const nodeId = NodeIdSchema.safeParse(c.req.param('nodeId'));
+  if (runId === null || !nodeId.success) {
+    return c.json({ error: 'not_found', path: c.req.path }, 404);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as RespondBody | null;
+  if (body === null || typeof body.optionId !== 'string' || body.optionId === '') {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'optionId',
+        message:
+          'an answer names the option it chose: the gate offers a closed set, and a response ' +
+          'that named none of them would be a decision nothing could act on',
+      },
+      400,
+    );
+  }
+
+  const stale = staleCursor(ports.db, runId, body.ifLastSeq, c);
+  if (stale !== null) return stale;
+
+  const result = respondToHumanNode({
+    db: ports.db,
+    runId,
+    nodeId: nodeId.data,
+    optionId: body.optionId,
+    text: body.text,
+    ...(body.output === undefined ? {} : { output: body.output }),
+    by: 'operator',
+    epoch: ports.epoch,
+    ts: ports.clock.now(),
+  });
+
+  if (result.status === 'ok') {
+    return c.json({ runId, node: nodeId.data, seq: result.seq, effect: result.effect }, 200);
+  }
+  if (result.status === 'conflict') {
+    return c.json(
+      { error: result.code, message: result.message, response: result.response },
+      result.http,
+    );
+  }
+  return c.json(
+    {
+      error: result.code,
+      message: result.message,
+      ...(result.issues === undefined ? {} : { issues: result.issues }),
+    },
+    result.http,
+  );
+});
+
+/**
+ * KAR-13.2 AC6, AC7 — `POST /api/runs/:id/patches/:patchId/decide`.
+ *
+ * `decideQueuedPatch` owns both conflicts. Approving needs KAR-11.3's commit
+ * pipeline, which the HTTP layer cannot assemble yet (it wants the run's pinned
+ * spec, its capability rows and a git ref checker); until it can, an approval
+ * is answered honestly with `apply_unavailable` and the patch stays in the
+ * queue, rather than being recorded as approved without being applied.
+ */
+api.post('/runs/:id/patches/:patchId/decide', async (c) => {
+  const ports = intakePorts();
+  if (ports === null) return c.json({ error: 'ledger_unavailable', path: c.req.path }, 503);
+
+  const runId = asRunId(c.req.param('id'));
+  const patchId = c.req.param('patchId');
+  if (runId === null || patchId === '') {
+    return c.json({ error: 'not_found', path: c.req.path }, 404);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as DecideBody | null;
+  if (body === null || (body.decision !== 'approve' && body.decision !== 'reject')) {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'decision',
+        message: "a patch decision is 'approve' or 'reject'; there is no third answer",
+      },
+      400,
+    );
+  }
+
+  const result = await decideQueuedPatch({
+    db: ports.db,
+    runId,
+    patchId,
+    decision: body.decision,
+    reason: body.reason,
+    ifLastSeq: body.ifLastSeq,
+    by: gateBy(c.req.header('X-DeFlow-Submitted-By')),
+    ts: ports.clock.now(),
+    epoch: ports.epoch,
+  });
+
+  if (result.status === 'ok') {
+    return c.json(
+      { runId, patchId, decision: result.decision, seq: result.seq, planHash: result.planHash },
+      200,
+    );
+  }
+  if (result.status === 'refused') {
+    return c.json({ error: result.code, message: result.message }, result.http);
+  }
+  return c.json(
+    result.code === 'stale_cursor'
+      ? { error: result.code, message: result.message, head: result.head, movedAt: result.movedAt }
+      : { error: result.code, message: result.message, decision: result.original },
+    409,
+  );
+});
+
+interface RespondBody {
+  readonly optionId?: unknown;
+  readonly text?: string | undefined;
+  readonly output?: unknown;
+  readonly ifLastSeq?: number | undefined;
+}
+
+interface DecideBody {
+  readonly decision?: unknown;
+  readonly reason?: string | undefined;
+  readonly ifLastSeq?: number | undefined;
+}
+
+/**
+ * AC6 — the `409 stale_cursor` a write carrying an `ifLastSeq` earns, or `null`
+ * when the head moved in no way that changes the decision.
+ *
+ * The distinction is what keeps the mechanism usable: a `409` on every progress
+ * frame would train the Operator to retry blindly, which is the same failure as
+ * an approval dialog that is always on.
+ */
+function staleCursor(db: Db, runId: RunId, ifLastSeq: unknown, c: Context): Response | null {
+  if (typeof ifLastSeq !== 'number' || !Number.isSafeInteger(ifLastSeq) || ifLastSeq < 0) {
+    return null;
+  }
+  const movedAt = decisionSurfaceMoved(db, runId, ifLastSeq);
+  if (movedAt === null) return null;
+
+  return c.json(
+    {
+      error: 'stale_cursor',
+      message:
+        `the run moved at seq ${movedAt}, after the cursor ${ifLastSeq} this decision was made ` +
+        'against; nothing was applied',
+      head: ledgerView()?.headSeq() ?? headSeq(),
+      movedAt,
+    },
+    409,
+  );
+}
+
 /** `?runs=a,b` as the `RunId`s it names; anything unparseable is dropped. */
 function subscribedRuns(query: string | undefined): readonly RunId[] {
   if (query === undefined || query === '') return [];
@@ -497,6 +692,52 @@ async function drain(
 }
 
 /**
+ * KAR-13.2 AC5 — `runs=*`, and what it is *not*.
+ *
+ * It is not "every event of every run". It is the low-volume global lifecycle
+ * topic, membership exactly four kinds, which is what the run list and the
+ * cross-run approval queue need and is deliberately nothing else. An idle tab
+ * subscribed to it receives a `human.requested` from any run within one tick
+ * and not one `node.progress` frame from the noisy run next to it — which is
+ * the whole reason one connection per tab is affordable (docs/11 §2).
+ */
+export const GLOBAL_TOPIC = '*';
+
+export const GLOBAL_TOPIC_KINDS: readonly string[] = [
+  'run.created',
+  'run.completed',
+  'run.aborted',
+  'human.requested',
+];
+
+/**
+ * One bounded pass over the global topic, returning the cursor it reached.
+ *
+ * The cursor advances to the ledger's head rather than to the last *matching*
+ * row when a page comes back short, so the next pass does not re-scan the
+ * thousands of `node.progress` rows the filter just stepped over. Reading the
+ * head first is what makes that safe: an event committed after the read is
+ * beyond it and is picked up next tick, never skipped.
+ */
+async function drainGlobal(
+  stream: SSEStreamingApi,
+  view: LedgerView,
+  from: number,
+): Promise<number> {
+  let cursor = from;
+  for (;;) {
+    const head = view.headSeq();
+    const events = view.globalTail(cursor, GLOBAL_TOPIC_KINDS, DRAIN_BATCH);
+    for (const event of events) {
+      if (stoppedMidSleep(stream)) return cursor;
+      await stream.writeSSE({ id: String(event.seq), data: JSON.stringify(event) });
+      cursor = event.seq;
+    }
+    if (events.length < DRAIN_BATCH) return Math.max(cursor, head);
+  }
+}
+
+/**
  * The control-plane stream.
  *
  * The *transport* was never a placeholder: no compression, `no-transform` so no
@@ -519,7 +760,9 @@ async function drain(
  */
 api.get('/stream', (c) => {
   const interval = heartbeatMs();
-  const runs = subscribedRuns(c.req.query('runs'));
+  const query = c.req.query('runs');
+  const runs = subscribedRuns(query);
+  const global = query === GLOBAL_TOPIC;
   const since = resumeFrom(c.req.query('since'), c.req.header('Last-Event-ID'));
 
   const response = streamSSE(c, async (stream) => {
@@ -527,17 +770,25 @@ api.get('/stream', (c) => {
     const cursors = new Map<RunId, number>(
       view === null ? [] : runs.map((runId) => [runId, since] as const),
     );
+    const handle = registerStream();
+    // A global cursor of its own, because the topic is not a run: it advances
+    // over the whole `event` table and must not be confused with any run's.
+    let globalCursor = since;
 
     await stream.writeSSE({
       event: 'hello',
       retry: 2000,
       data: JSON.stringify({
+        // §3 rule 4 — the id the client posts back to mutate this connection's
+        // filter, which is what keeps a third run panel from opening a third
+        // socket against a six-connection budget.
+        streamId: handle.id,
         apiVersion: API_VERSION,
         build: BUILD,
         bootId: BOOT_ID,
         daemonEpoch: daemonEpoch(),
         headSeq: view?.headSeq() ?? headSeq(),
-        runs: [...cursors.keys()],
+        runs: global ? [GLOBAL_TOPIC] : [...cursors.keys()],
       }),
     });
 
@@ -549,17 +800,50 @@ api.get('/stream', (c) => {
         await stream.writeSSE({ event: 'caught_up', data: JSON.stringify({ runId, seq }) });
       }
     }
+    if (view !== null && global) {
+      globalCursor = await drainGlobal(stream, view, globalCursor);
+      await stream.writeSSE({
+        event: 'caught_up',
+        data: JSON.stringify({ runId: GLOBAL_TOPIC, seq: globalCursor }),
+      });
+    }
 
-    // Phase 2 — re-drain on a tick, heartbeat on the configured cadence. The
-    // tick is only shortened for a connection that actually subscribed to
-    // something; an unsubscribed stream sleeps exactly as long as it used to.
-    const tick = cursors.size === 0 ? interval : Math.min(interval, DRAIN_TICK_MS);
+    // Phase 2 — re-drain on a tick, heartbeat on the configured cadence. A
+    // connection that can be *given* something to watch ticks at the drain
+    // cadence even while it is watching nothing yet: `POST …/subscribe` is what
+    // adds a run, and a stream sleeping for fifteen seconds would acknowledge
+    // it fifteen seconds late.
+    const tick = Math.min(interval, DRAIN_TICK_MS);
     let sinceBeat = 0;
     while (!stream.aborted && !stream.closed) {
       await stream.sleep(tick);
       if (stoppedMidSleep(stream)) break;
 
+      // AC10's two-phase order, and it is the same one §5 gives for the serving
+      // loop: *subscribe, then drain again*. Backfilling the new run before
+      // resuming live delivery is what stops the events committed between the
+      // last drain and the subscription from being skipped.
+      const added = view === null ? [] : handle.takePending();
+      if (added.length > 0) {
+        for (const runId of added) if (!cursors.has(runId)) cursors.set(runId, since);
+        await stream.writeSSE({
+          event: 'subscribed',
+          data: JSON.stringify({ runs: [...cursors.keys()] }),
+        });
+        if (view !== null) {
+          await drain(stream, view, cursors);
+          for (const runId of added) {
+            await stream.writeSSE({
+              event: 'caught_up',
+              data: JSON.stringify({ runId, seq: cursors.get(runId) ?? since }),
+            });
+          }
+        }
+      }
+      if (stoppedMidSleep(stream)) break;
+
       if (view !== null && cursors.size > 0) await drain(stream, view, cursors);
+      if (view !== null && global) globalCursor = await drainGlobal(stream, view, globalCursor);
       if (stoppedMidSleep(stream)) break;
 
       sinceBeat += tick;
@@ -570,6 +854,7 @@ api.get('/stream', (c) => {
         data: JSON.stringify({ uptimeMs: uptimeMs() }),
       });
     }
+    handle.close();
     http.debug('sse stream closed');
   });
 
@@ -577,6 +862,53 @@ api.get('/stream', (c) => {
   response.headers.set('Cache-Control', 'no-cache, no-transform');
   response.headers.set('X-Accel-Buffering', 'no');
   return response;
+});
+
+/**
+ * KAR-13.2 AC10 — `POST /api/stream/:streamId/subscribe { runs: [...] }`.
+ *
+ * Opening a run panel mutates the filter on the connection the tab already has.
+ * It does not open a second one, and it does not reconnect: six connections per
+ * origin is the browser's cap, an SSE connection never closes, and the failure
+ * mode of exhausting the budget is not an error but every subsequent `fetch`
+ * queueing behind the streams forever.
+ *
+ * The response is a plain `202`: the acknowledgement the client renders on is
+ * the `subscribed` control frame, which arrives on the stream itself, in order
+ * with the backfill that follows it. Acknowledging here instead would tell the
+ * client it was subscribed before a single backfilled event had been written.
+ */
+api.post('/stream/:streamId/subscribe', async (c) => {
+  const streamId = c.req.param('streamId');
+  const body = (await c.req.json().catch(() => null)) as { runs?: unknown } | null;
+  const asked = body !== null && Array.isArray(body.runs) ? (body.runs as unknown[]) : null;
+  if (asked === null) {
+    return c.json(
+      {
+        error: 'invalid_request',
+        field: 'runs',
+        message: 'a filter mutation names the runs to add, as an array of run ids',
+      },
+      400,
+    );
+  }
+
+  const runs = asked
+    .map((value) => (typeof value === 'string' ? asRunId(value) : null))
+    .filter((value): value is RunId => value !== null);
+
+  if (!subscribeStream(streamId, runs)) {
+    return c.json(
+      {
+        error: 'not_found',
+        message:
+          `no stream '${streamId}' is open on this daemon: a filter mutation for a connection ` +
+          'that has gone would be a subscription nothing could ever deliver',
+      },
+      404,
+    );
+  }
+  return c.json({ streamId, runs }, 202);
 });
 
 /**

@@ -323,7 +323,11 @@ function project(state: RunState, event: Event): Transition {
         state.status === 'paused' ? state : (withStatus(state, 'needs-human') ?? state);
       return {
         ...flagged,
-        needsHuman: { reason: event.payload.reason, detail: event.payload.detail },
+        // KAR-13.2 AC1 — the `seq` travels with the reason, because the queue
+        // orders on the seq of the event that *created* the item and deep-links
+        // to it (NF10). Deriving it from the watermark afterwards would name
+        // whichever event happened to land next.
+        needsHuman: { reason: event.payload.reason, detail: event.payload.detail, seq },
       };
     }
 
@@ -711,6 +715,14 @@ function project(state: RunState, event: Event): Transition {
             gate: verdict.gate,
             outcome: verdict.outcome,
             seq: event.seq,
+            // KAR-13.2 AC2 — a `needs-human` verdict is an approval-queue item,
+            // and *"judge, or accept a red gate explicitly"* is not a decision
+            // anybody can make from an outcome word. The findings and the
+            // one-line summary travel into the projection so the queue carries
+            // them without a second request; they are bounded by the gate's own
+            // output and already in the ledger.
+            summary: verdict.summary,
+            findings: verdict.findings.map((finding) => ({ ...finding })),
           },
         },
       };
@@ -829,6 +841,9 @@ function project(state: RunState, event: Event): Transition {
               limit: event.payload.limit,
               actual: event.payload.actual,
               firedBy: event.payload.firedBy,
+              // KAR-13.2 AC1 — the event that created the queue item, for the
+              // same reason `needsHuman` carries one.
+              seq,
             },
           ],
         },
@@ -848,7 +863,9 @@ function project(state: RunState, event: Event): Transition {
         costUsd: event.payload.costUsd,
         wallclockMs: event.payload.wallclockMs,
       };
-      const ceilings = state.ceilings;
+      // KAR-13.2 AC8 — `setSeq` is what takes a ceiling breach out of the
+      // approval queue: an answer that arrived after the question.
+      const ceilings = { ...state.ceilings, setSeq: seq };
       if (event.payload.scope === 'run') {
         return { ...state, ceilings: { ...ceilings, run: ceiling, hash: event.payload.hash } };
       }
@@ -1015,6 +1032,11 @@ function withHumanGate(
     options: payload.options.map((option) => ({ ...option })),
     deadline: payload.deadline ?? null,
     escalated: payload.escalated ?? false,
+    // KAR-13.2 AC2. Both are copied rather than looked up later: the approval
+    // queue must carry enough to decide without a second request, and the
+    // request event is the only place this context ever exists.
+    reason: payload.reason === undefined ? null : { ...payload.reason },
+    permission: payload.permission === undefined ? null : { ...payload.permission },
     requestedSeq: seq,
     response: null,
   };
@@ -1045,6 +1067,8 @@ function answerHumanGate(
     options: existing?.options ?? [],
     deadline: existing?.deadline ?? null,
     escalated: existing?.escalated ?? false,
+    reason: existing?.reason ?? null,
+    permission: existing?.permission ?? null,
     requestedSeq: existing?.requestedSeq ?? seq,
     response: {
       optionId: payload.optionId,

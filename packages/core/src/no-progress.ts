@@ -29,7 +29,7 @@
  * Verifies: EPIC-06-S26, EPIC-06-S27, EPIC-06-S28 · AC2–AC9
  */
 import type { NodeId } from './ids.ts';
-import type { NeedsHumanState, RunState } from './run-state.ts';
+import type { NeedsHumanReason, RunState } from './run-state.ts';
 import { toSingleLine } from './text.ts';
 
 /**
@@ -217,7 +217,7 @@ export function noProgress(state: RunState, now: number): NoProgress {
  * A stall is deliberately absent: `run.stalled` is a report, and a report is
  * not a reason to stop.
  */
-export function needsHumanOf(found: NoProgress): NeedsHumanState | null {
+export function needsHumanOf(found: NoProgress): NeedsHumanReason | null {
   if (found.churn !== null) return { reason: found.churn.reason, detail: found.churn.detail };
   if (found.cap !== null) {
     return { reason: CAP_CATEGORY[found.cap.cap], detail: capDetail(found.cap) };
@@ -348,7 +348,7 @@ function flatReplans(state: RunState, policy: NoProgressPolicy): ChurnTrip | nul
  * F4.6 already uses the word; the other two mean "this run is redoing itself",
  * which is what `churn` means.
  */
-const CAP_CATEGORY: Readonly<Record<RunCap, NeedsHumanState['reason']>> = Object.freeze({
+const CAP_CATEGORY: Readonly<Record<RunCap, NeedsHumanReason['reason']>> = Object.freeze({
   maxAttemptsPerNode: 'churn',
   maxRunWallClock: 'budget',
   maxTotalNodeExecutions: 'churn',

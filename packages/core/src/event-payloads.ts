@@ -789,6 +789,31 @@ export const REQUESTED_PATH_MAX = 4096;
  * folded into `reason.detail` — the node inspector renders `requested` next
  * to `declared`, and neither is a sentence.
  */
+/**
+ * `PermissionReason`: a code plus an optional route, binary or host.
+ *
+ * Named and exported rather than left inline because two more readers need the
+ * exact same shape — the escalation context below, and `HumanGateState`, which
+ * is what tells the approval queue a `permission` item from a `human-node` one
+ * (KAR-13.2). A second, structurally identical declaration is a second thing to
+ * forget to widen.
+ */
+export const PermissionReasonSchema = z.strictObject({
+  code: z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a reason code, not prose'),
+  detail: singleLine().optional(),
+});
+
+/**
+ * A `PermissionReason` **as a ledger payload records it**.
+ *
+ * Structurally the same pair as `./permission.ts`'s `PermissionReason`, and
+ * deliberately not that type: the ladder's version constrains `code` to the
+ * closed union this build knows, and a payload read back off a ledger written
+ * by another build may legally carry a code this one has never heard of. A
+ * reader that refused it would take the approval queue down on a downgrade.
+ */
+export type RecordedPermissionReason = z.infer<typeof PermissionReasonSchema>;
+
 export const PermissionDeniedSchema = z.strictObject({
   node: NodeIdSchema,
   attempt,
@@ -798,11 +823,7 @@ export const PermissionDeniedSchema = z.strictObject({
   method: z.enum(['fs/read_text_file', 'fs/write_text_file', 'terminal/create', 'network']),
   /** Verbatim, before any resolution — see `REQUESTED_PATH_MAX`. */
   requested: z.string().max(REQUESTED_PATH_MAX),
-  /** `PermissionReason`: a code plus an optional route, binary or host. */
-  reason: z.strictObject({
-    code: z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a reason code, not prose'),
-    detail: singleLine().optional(),
-  }),
+  reason: PermissionReasonSchema,
   declared: z.array(z.string()).optional(),
 });
 
@@ -1491,6 +1512,45 @@ export const RepairEscalationSchema = z.strictObject({
     .min(1),
 });
 
+/**
+ * KAR-13.2 AC2 — the six facts a permission escalation is decided on, as
+ * structured fields rather than as prose in the prompt
+ * (docs/09-workspace-and-safety.md §8, §10.5).
+ *
+ * The queue item has to *carry enough to decide without a second request*, and
+ * "the prompt says so" does not satisfy that: a UI cannot render the resolved
+ * path next to the requested one, and a test cannot assert on a sentence
+ * without asserting on its wording. So each fact travels as itself.
+ *
+ * `resolved` is the post-`realpath` target and is the whole reason the pair
+ * exists — a request for `./tmp/x` where `tmp` is a symlink to `/etc` is a
+ * different decision from the one the requested path describes, and only the
+ * resolved value says which one is being made.
+ *
+ * Everything but the method, the cwd, the matched rule and the level is
+ * optional, because the escalating surfaces genuinely differ: a
+ * `terminal/create` has a command and args, an `fs/write_text_file` has a path,
+ * and neither should invent the other's fields. KAR-13.4 populates the rest as
+ * it widens the escalation path; this queue renders whatever is there.
+ */
+export const PermissionContextSchema = z.strictObject({
+  /** The ACP method DeFlow mediated, in `PermissionRequest`'s vocabulary. */
+  method: PermissionDeniedSchema.shape.method,
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).optional(),
+  cwd: z.string().min(1),
+  /** Verbatim, before any resolution. */
+  requested: z.string().max(REQUESTED_PATH_MAX).optional(),
+  /** Post-`realpath`: the fact the decision actually turns on. */
+  resolved: z.string().min(1).optional(),
+  /** The policy rule that matched, so *"why am I being asked"* is answerable. */
+  rule: z.string().min(1),
+  /** The node's own permission level, as the ladder read it. */
+  level: PermissionLevelSchema,
+  /** The node's declared write globs — its scope, beside what it asked for. */
+  pathScopes: z.array(z.string()).optional(),
+});
+
 export const HumanRequestedSchema = z.strictObject({
   node: NodeIdSchema,
   prompt: z.string().min(1),
@@ -1527,7 +1587,20 @@ export const HumanRequestedSchema = z.strictObject({
    * nobody wrote or re-escalate for ever.
    */
   escalated: z.boolean().optional(),
+  /**
+   * KAR-13.2 AC2 — v4: the structured context a permission escalation is
+   * decided on. Absent on every escalation that is not one.
+   *
+   * It travels beside `reason` rather than inside it because the two answer
+   * different questions: `reason` is the category the queue groups by and the
+   * §10.5 budget counts, and this is the evidence the operator reads. A reason
+   * with the evidence folded into its `detail` string would be a category
+   * nothing could group by.
+   */
+  permission: PermissionContextSchema.optional(),
 });
+
+export type PermissionContext = z.infer<typeof PermissionContextSchema>;
 
 /**
  * KAR-13.1 AC7 — who chose the option.
@@ -1839,7 +1912,7 @@ export const EVENT_SCHEMAS = {
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
   'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
-  'human.requested': { v: 3, payload: HumanRequestedSchema },
+  'human.requested': { v: 4, payload: HumanRequestedSchema },
   'human.responded': { v: 2, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },

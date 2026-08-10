@@ -44,6 +44,32 @@ export {
 // changing what it was given.
 export type { ApplyPatchOptions, ApplyPatchResult } from './apply-patch.ts';
 export { applyPatch } from './apply-patch.ts';
+// KAR-13.2 — the cross-run approval queue: eight kinds, one projection, no
+// auxiliary table.
+export type {
+  ApprovalItem,
+  ApprovalItemBase,
+  ApprovalKind,
+  ApprovalQueue,
+  BudgetApproval,
+  ChurnApproval,
+  GateNeedsHumanApproval,
+  HumanNodeApproval,
+  PatchApproval,
+  PermissionApproval,
+  QueuedPatch,
+  QueuedPatchEstimate,
+  ReconcileUnknownApproval,
+  RunApprovals,
+  TaintedApproval,
+  TaintedRead,
+} from './approval-queue.ts';
+export {
+  APPROVAL_KINDS,
+  approvalsProjection,
+  RECONCILE_OPTIONS,
+  RECONCILE_WARNING,
+} from './approval-queue.ts';
 // KAR-09.5 — the inline threshold and the handle line an offloaded body leaves
 // behind.
 export {

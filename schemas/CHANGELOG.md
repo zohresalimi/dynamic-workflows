@@ -489,6 +489,25 @@ for this node"_ is a scan of the whole run's ledger per row. It also carries the
 request declares no deadline of its own: an escalation that expired again would either fail the
 branch on a rule nobody wrote or re-escalate for ever.
 
+### human.requested v4
+
+**KAR-13.2 AC2.** The cross-run approval queue must carry *enough to decide without a second
+request*, and a permission escalation is decided on six facts: the command, its args, the cwd, the
+**resolved** path, the policy rule that matched and the node's declared scope. Before v4 those lived
+only inside the prose `prompt`, where a UI cannot render the resolved path beside the requested one
+and a test cannot assert on them without asserting on wording.
+
+| Change                   | Kind           | Why it is not lossy                                                                                                                                                                     |
+| ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ permission` (optional) | optional field | Left **absent**. A v3 payload does not carry the context, and it cannot be recovered — parsing six fields back out of an English sentence would put fabricated evidence in front of the decision. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why it travels beside `reason` rather than inside it.** The two answer different questions:
+`reason` is the category the queue groups by and the [§10.5](../docs/09-workspace-and-safety.md)
+gate budget counts, and this is the evidence the operator reads. A reason with the evidence folded
+into its `detail` string would be a category nothing could group by.
+
 ### human.responded v2
 
 **KAR-13.1 AC7.** `by` says who chose the option: `operator` for a person,
