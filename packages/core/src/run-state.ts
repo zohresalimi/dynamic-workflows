@@ -424,6 +424,14 @@ export interface RunState {
    * (docs/10-verification-gates.md §5.2), so it neither opens the next tier nor
    * marks the gate as answered — which leaves the gate admissible again, which
    * is exactly the re-run that voiding is supposed to cause.
+   *
+   * **And the whole record empties when the spec moves.** KAR-12.4 AC6 covers
+   * both orders, and a mid-run edit is the one that arrives *after* the greens
+   * it voids: refusing the verdict at fold time only catches a verdict naming a
+   * hash nobody approved. A `run.spec.approved` at a new hash therefore clears
+   * this alongside `criteriaSatisfied` (./reduce.ts) — the two are one sentence
+   * in the acceptance criterion and must not drift into two answers about the
+   * same run.
    */
   readonly gateVerdicts: Readonly<Record<string, GateVerdictState>>;
   readonly needsHuman: NeedsHumanState | null;

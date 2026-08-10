@@ -89,6 +89,27 @@ export interface LedgerEventLike {
 }
 
 /**
+ * The `specHash` the run is currently judged against — the last
+ * `run.spec.approved` in the window, or `null` when the spec was never
+ * approved.
+ *
+ * Read in a pass of its own, before any verdict is admitted, because "current"
+ * is a fact about the *end* of the window and not about the moment each verdict
+ * was recorded. A mid-run edit arrives after the verdicts it voids, so a
+ * single-pass filter that compared each verdict against whichever hash was
+ * pinned at its own seq would admit exactly the greens this rule discards.
+ */
+function pinnedSpecHash(events: readonly LedgerEventLike[]): string | null {
+  let pinned: string | null = null;
+  for (const event of events) {
+    if (event.kind !== 'run.spec.approved') continue;
+    const specHash = (event.payload as { specHash?: unknown } | null)?.specHash;
+    if (typeof specHash === 'string') pinned = specHash;
+  }
+  return pinned;
+}
+
+/**
  * The verdict half of the rule, read straight off the ledger.
  *
  * `seq` comes from the row rather than from the payload, which is the point:
@@ -98,18 +119,37 @@ export interface LedgerEventLike {
  * A payload that does not carry a readable `gate` and `outcome` is skipped
  * rather than guessed at — the forward-compatibility rule of
  * docs/04-domain-model.md §9.2, applied to a projection.
+ *
+ * **KAR-12.4 AC6 — a verdict void by `specHash` never becomes a record.** It
+ * "does not satisfy a criterion, does not advance a milestone, and the gate is
+ * re-scheduled", and dropping it here is what buys the middle clause without
+ * giving the rule a third input: `MILESTONE_ADVANCE_INPUTS` still reads
+ * `['verdicts', 'writes']`, and ../test/no-escape-hatch.test.ts still holds it
+ * to two. The test applied is the one ../../core/src/reduce.ts applies to
+ * `gateVerdicts` — a verdict naming a hash other than the run's current one is
+ * void, a verdict naming none at all is void because "it did not say" is not a
+ * citation, and a run with no approval counts nothing at all, since a verdict
+ * that arrived before one was judging a draft. Two projections that disagreed
+ * about which greens count would put the milestone board and the scheduler into
+ * different stories about the same run.
  */
 export function gateVerdictsFromEvents(
   events: readonly LedgerEventLike[],
 ): readonly GateVerdictRecord[] {
+  const pinned = pinnedSpecHash(events);
+  if (pinned === null) return [];
   const records: GateVerdictRecord[] = [];
   for (const event of events) {
     if (event.kind !== 'gate.evaluated') continue;
-    const payload = event.payload as { gate?: unknown; verdict?: { outcome?: unknown } } | null;
+    const payload = event.payload as {
+      gate?: unknown;
+      verdict?: { outcome?: unknown; specHash?: unknown };
+    } | null;
     const gate = payload?.gate;
     const outcome = payload?.verdict?.outcome;
     if (typeof gate !== 'string') continue;
     if (!(VERDICT_OUTCOMES as readonly string[]).includes(outcome as string)) continue;
+    if (payload?.verdict?.specHash !== pinned) continue;
     records.push({ gate: gate as GateId, outcome: outcome as VerdictOutcome, seq: event.seq });
   }
   return records;

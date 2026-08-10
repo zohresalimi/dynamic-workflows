@@ -16,7 +16,8 @@
  * envelope — is `packages/adapters/test/integration/gate-verdict-argv.test.ts`,
  * where a real process really is spawned.
  *
- * Verifies: EPIC-12-S19, EPIC-12-S20, EPIC-12-S21 · AC2, AC3, AC4 ·
+ * Verifies: EPIC-12-S19, EPIC-12-S20, EPIC-12-S21, EPIC-12-S26 (second
+ * scenario) · AC2, AC3, AC4 ·
  * test plan #6, #7
  */
 import type { Db, NodeId, StructuredOutput } from '@DeFlow/core';

@@ -11,7 +11,8 @@
  * byte-identical, and it does — because no `StartNode` for the review gate is
  * ever returned, so no attempt is ever launched to spend anything.
  *
- * Verifies: EPIC-12-S2, EPIC-12-S3 · AC1, AC2
+ * Verifies: EPIC-12-S2, EPIC-12-S3, EPIC-12-S27 (the ladder clause) · AC1,
+ * AC2, KAR-12.4 AC6
  */
 import { expect, it, describe as suite } from 'vitest';
 import type { Command, StartNode } from './command.ts';
@@ -226,6 +227,32 @@ suite('a void verdict re-opens the gate rather than the tier (docs/10 §5.2)', (
     ]);
     expect(voided.gateVerdicts).toEqual({});
     expect(startsOf(decide(voided, NOW))).toEqual(['gate-typecheck']);
+  });
+
+  /**
+   * KAR-12.4 AC6, EPIC-12-S27 — the same rule with the two rows the other way
+   * round, which is the order a mid-run spec edit actually arrives in: the
+   * verdict was honest when it was recorded, and the contract moved underneath
+   * it afterwards. Dropping only the verdicts that arrive *after* a move
+   * catches the impostor and misses the far commoner case, so the gate stays
+   * answered by a green about a contract nobody holds the run to.
+   */
+  it('re-opens a gate whose pass predates a spec edit', () => {
+    const editedHash = `sha256-${'e'.repeat(64)}`;
+    const edited = started(SHUFFLED, [
+      evaluated('gate-typecheck', 'typecheck', 'pass'),
+      { kind: 'run.spec.approved', payload: { specHash: editedHash, by: 'ui' } },
+    ]);
+    expect(edited.gateVerdicts).toEqual({});
+    expect(startsOf(decide(edited, NOW))).toEqual(['gate-typecheck']);
+  });
+
+  it('keeps the pass when the spec is re-approved at the same hash', () => {
+    const reapproved = started(SHUFFLED, [
+      evaluated('gate-typecheck', 'typecheck', 'pass'),
+      { kind: 'run.spec.approved', payload: { specHash: SPEC_HASH, by: 'cli' } },
+    ]);
+    expect(reapproved.gateVerdicts['gate-typecheck']?.outcome).toBe('pass');
   });
 });
 

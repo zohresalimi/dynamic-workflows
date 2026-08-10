@@ -19,7 +19,7 @@
  * own and that row is only ever decided by a verdict entry that names it.
  *
  * Verifies: EPIC-10-S21 (third scenario), EPIC-10-S22, EPIC-10-S29 (third
- * scenario) · AC5
+ * scenario), EPIC-12-S27 · AC5, KAR-12.4 AC6, AC7
  */
 import { expect, it, describe as suite } from 'vitest';
 import {

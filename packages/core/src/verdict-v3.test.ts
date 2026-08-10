@@ -3,7 +3,8 @@
  * a criteria list nobody can leave a hole in, and a cost that is absent rather
  * than zero.
  *
- * Verifies: EPIC-12-S22, EPIC-12-S23 (the schema half) · AC5, AC6, AC7, AC8
+ * Verifies: EPIC-12-S22, EPIC-12-S23 (the schema half), EPIC-12-S26 (first
+ * scenario) · AC5, AC6, AC7, AC8
  * · test plan #4, #5
  */
 import { expect, it, describe as suite } from 'vitest';

@@ -9,7 +9,8 @@
  * makes the void *visible*; this makes it *count for nothing*, and the two have
  * to agree or F7.4's board and the run's own outcome tell different stories.
  *
- * Verifies: EPIC-10-S22, EPIC-10-S29 (third scenario) · AC5
+ * Verifies: EPIC-10-S22, EPIC-10-S29 (third scenario), EPIC-12-S27 · AC5,
+ * KAR-12.4 AC6, AC9
  */
 import { expect, it, describe as suite } from 'vitest';
 import { verdictCriteriaProjection } from './acceptance-board.ts';

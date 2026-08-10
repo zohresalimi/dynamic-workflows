@@ -8,7 +8,7 @@
  * `git show --name-only`, because "the paths in its scope" is a claim about the
  * tree rather than about a payload somebody wrote by hand.
  *
- * Verifies: EPIC-12-S4 · AC4
+ * Verifies: EPIC-12-S4, EPIC-12-S27 · AC4, KAR-12.4 AC6 · KAR-12.4 test plan #7
  */
 import type { NodeId, RunId } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
@@ -51,6 +51,22 @@ const verdictDraft = (outcome: 'pass' | 'fail') => ({
   },
 });
 
+/**
+ * The Background this file inherits: *"a TaskSpec has been approved, producing
+ * `run.spec.approved` and a pinned specHash"*. It is seeded rather than assumed
+ * because it is load-bearing for the rule — `gateVerdictsFromEvents` admits a
+ * verdict only against the hash the run is currently judged against (AC6), so a
+ * ledger with no approval in it is a run whose greens are all about a draft.
+ */
+const approvalDraft = (specHash: string) => ({
+  runId: RUN,
+  ts: 1_754_308_292_000,
+  kind: 'run.spec.approved',
+  v: 1,
+  epoch: 1,
+  payload: { specHash, by: 'ui' },
+});
+
 const commitDraft = (node: string) => ({
   runId: RUN,
   ts: 1_754_308_294_000,
@@ -77,7 +93,7 @@ suite('a repair loop touches files after the gate ran (S4, first scenario)', () 
     const db = openLedger(tmp);
     try {
       // 1. The gate passes over the tree as it then was.
-      const [passSeq] = appendEvents(db, [verdictDraft('pass')]);
+      const [, passSeq] = appendEvents(db, [approvalDraft(SPEC_HASH), verdictDraft('pass')]);
 
       // 2. A fix node commits inside the milestone's scope, afterwards.
       await writeFile(
@@ -122,7 +138,7 @@ suite('writes outside the scope do not invalidate it (S4, third scenario)', () =
     });
     const db = openLedger(tmp);
     try {
-      const [passSeq] = appendEvents(db, [verdictDraft('pass')]);
+      const [, passSeq] = appendEvents(db, [approvalDraft(SPEC_HASH), verdictDraft('pass')]);
       await writeFile(join(repo.dir, 'docs/adr/0004.md'), '# 0004 — amended\n');
       await repo.git('add', '-A');
       await repo.git('commit', '-m', 'docs: amend 0004');
@@ -142,11 +158,95 @@ suite('writes outside the scope do not invalidate it (S4, third scenario)', () =
   });
 });
 
+/**
+ * KAR-12.4 test plan #7, at the level EPIC-12-S27 declares it — *"file-backed
+ * ledger: edit the spec mid-run → new specHash → the prior `pass` verdict is
+ * void and the gate re-runs"*, red when "verdicts are trusted regardless of
+ * specHash".
+ *
+ * A real ledger rather than a hand-built array because the ordering is the
+ * claim: the approval that voids the pass is appended *after* it, at a seq
+ * SQLite assigned, and the projection has to reach the right answer reading the
+ * rows back in that order. An in-memory list of two objects would let the test
+ * agree with a filter that only looks forwards.
+ */
+suite('the spec is edited after the gate passed (EPIC-12-S27, first scenario)', () => {
+  const EDITED_HASH = `sha256-${'34'.repeat(32)}`;
+
+  it('voids the pass, unadvances the milestone and re-schedules the gate', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      const [, passSeq] = appendEvents(db, [approvalDraft(SPEC_HASH), verdictDraft('pass')]);
+
+      // Nothing was written, so this is the void rule on its own: under the
+      // seq comparison alone the milestone advances, and it must not.
+      const before = gateVerdictsFromEvents(readRange(db, RUN, 0, 100).events);
+      expect(before).toEqual([{ gate: 'unit', outcome: 'pass', seq: passSeq }]);
+      expect(milestoneStatus(M1, before, []).advanced).toBe(true);
+
+      // The operator edits one word and re-approves at the new hash.
+      const [editSeq] = appendEvents(db, [approvalDraft(EDITED_HASH)]);
+      expect(editSeq).toBeGreaterThan(passSeq as number);
+
+      const after = gateVerdictsFromEvents(readRange(db, RUN, 0, 100).events);
+      expect(after).toEqual([]);
+      const status = milestoneStatus(M1, after, []);
+      expect(status.advanced).toBe(false);
+      expect(status.reason).toBe('gate-not-evaluated');
+      expect(status.rescheduled).toEqual(['unit']);
+
+      // The void verdict stays in the ledger, visible rather than deleted —
+      // "this clears a projection, not history".
+      const kinds = readRange(db, RUN, 0, 100).events.map((event) => event.kind);
+      expect(kinds.filter((kind) => kind === 'gate.evaluated')).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('re-approving the same spec voids nothing (second scenario)', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      appendEvents(db, [approvalDraft(SPEC_HASH), verdictDraft('pass'), approvalDraft(SPEC_HASH)]);
+      const verdicts = gateVerdictsFromEvents(readRange(db, RUN, 0, 100).events);
+      expect(verdicts).toHaveLength(1);
+      expect(milestoneStatus(M1, verdicts, []).advanced).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('a re-run at the edited hash advances it again', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      appendEvents(db, [
+        approvalDraft(SPEC_HASH),
+        verdictDraft('pass'),
+        approvalDraft(EDITED_HASH),
+      ]);
+      appendEvents(db, [
+        {
+          ...verdictDraft('pass'),
+          payload: {
+            ...verdictDraft('pass').payload,
+            verdict: { ...verdictDraft('pass').payload.verdict, specHash: EDITED_HASH },
+          },
+        },
+      ]);
+      const verdicts = gateVerdictsFromEvents(readRange(db, RUN, 0, 100).events);
+      expect(verdicts).toEqual([{ gate: 'unit', outcome: 'pass', seq: 4 }]);
+      expect(milestoneStatus(M1, verdicts, []).advanced).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 suite('a red gate never advances a milestone, whatever else is in the ledger (S5)', () => {
   it('stays unadvanced with reason gate-not-passed', async ({ tmp }) => {
     const db = openLedger(tmp);
     try {
-      appendEvents(db, [verdictDraft('pass'), verdictDraft('fail')]);
+      appendEvents(db, [approvalDraft(SPEC_HASH), verdictDraft('pass'), verdictDraft('fail')]);
       const verdicts = gateVerdictsFromEvents(readRange(db, RUN, 0, 100).events);
       const status = milestoneStatus(M1, verdicts, []);
       expect(status.advanced).toBe(false);

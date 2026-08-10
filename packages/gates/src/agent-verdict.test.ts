@@ -9,7 +9,8 @@
  * owns, complete the criteria, and refuse to let the reviewer's own account of
  * the invocation stand in for DeFlow's.
  *
- * Verifies: EPIC-12-S18, EPIC-12-S21, EPIC-12-S22 · AC4, AC7, AC8, AC9
+ * Verifies: EPIC-12-S18, EPIC-12-S21, EPIC-12-S22, EPIC-12-S26 (first
+ * scenario) · AC4, AC7, AC8, AC9
  */
 import type { GateId, NodeId } from '@DeFlow/core';
 import { CriterionIdSchema, VERDICT_V3_SCHEMA_ID, VerdictV3Schema } from '@DeFlow/core';
