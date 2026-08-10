@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
+import { NO_DEADLINE_WAKE_AT } from './command.ts';
 import { decide } from './decide.ts';
 import { EVENT_SCHEMAS } from './event-payloads.ts';
 import type { Event } from './events.ts';
@@ -101,7 +102,22 @@ suite('the approval gate is derived from the log (test plan #1, EPIC-10-S13)', (
 
     expect(state.status).toBe('awaiting-spec-approval');
     expect(state.specApproved).toBeNull();
-    expect(decide(state, TS)).toEqual([]);
+
+    // KAR-13.1 AC1 — nothing is *started*, and the one command is the gate's
+    // own wait restated: `openSpecApprovalGate` writes the event and the row in
+    // one transaction, and `decide` asking for the same row on every later tick
+    // is the idempotent restatement that makes it survive a crash between the
+    // two. `scheduleWakeIfChanged` makes the restatement free.
+    expect(decide(state, TS)).toEqual([
+      {
+        kind: 'ScheduleWake',
+        runId: RUN_ID,
+        node: SPEC_GATE_NODE,
+        wakeAt: NO_DEADLINE_WAKE_AT,
+        reason: 'human_gate',
+      },
+    ]);
+    expect(decide(state, TS).filter((command) => command.kind === 'StartNode')).toEqual([]);
   });
 
   it('offers the four operator actions F1.3 names, in order', () => {

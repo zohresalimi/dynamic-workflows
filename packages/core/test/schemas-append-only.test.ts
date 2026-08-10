@@ -57,6 +57,11 @@ const SHIPPED: Record<string, string> = {
   // produce it, so a review routed onto the producer's own provider is
   // distinguishable from one that was not.
   'DeFlow.verdict.v4': '80d16ad0d1a3e2a90ccd6e6966086e57045ca5d81fd9a53d546b8b7dc64f324d',
+  // Shipped 2026-08-10, KAR-13.1 — what a `human` node returns when the
+  // operator chose rather than supplied: the option, its effect, and the words
+  // attached to it. `edit` is the one effect that returns the node's own
+  // declared contract instead of this one.
+  'DeFlow.humandecision.v1': '83c3b5a064160f3daca5b8abf2ad25fa7d7e5d8c7f359a6a66d044927d3f2565',
 };
 
 suite('the committed schemas are append-only (AC6)', () => {

@@ -119,6 +119,7 @@ export type {
   ReleaseLock,
   ScheduleWake,
   StartNode,
+  SuspendNode,
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, NO_DEADLINE_WAKE_AT, WAKE_REASONS } from './command.ts';
@@ -315,6 +316,7 @@ export type {
   EffectKind,
   EventKind,
   EventPayloadOf,
+  HumanResponder,
   LockReleaseReason,
   PlannerAttribution,
   PlannerTier,
@@ -352,6 +354,7 @@ export {
   GateEvaluatedSchema,
   GatesLoadedSchema,
   HandoffOversizeSchema,
+  HUMAN_RESPONDERS,
   HumanRequestedSchema,
   HumanRespondedSchema,
   isEventKind,
@@ -533,6 +536,32 @@ export {
   withReturnBudgetDefaults,
 } from './handoff.ts';
 export { contentHash, planHash, sha256Hex, sha256HexBytes, specHash } from './hash.ts';
+// KAR-13.1 — blocking `human` nodes: the gate as reduced state, what answering
+// one appends, and what a deadline nobody met produces.
+export type {
+  HumanDecision,
+  HumanGateState,
+  HumanResponseAccepted,
+  HumanResponseOutcome,
+  HumanResponseRefusal,
+  HumanResponseRequest,
+  HumanResponseState,
+  InjectedGuidance,
+} from './human-gate.ts';
+export {
+  HUMAN_DECISION_SCHEMA_ID,
+  HumanDecisionSchema,
+  HumanGateStateSchema,
+  HumanResponseStateSchema,
+  humanDeadlineEvents,
+  humanGateWakeAt,
+  humanRequestPayload,
+  injectedGuidance,
+  isHumanNode,
+  openHumanGate,
+  openHumanGates,
+  planHumanResponse,
+} from './human-gate.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {
   Brand,
@@ -799,7 +828,11 @@ export type {
   AdapterRequirement,
   AgentNode,
   GateNode,
+  HumanDeadline,
   HumanNode,
+  HumanOption,
+  HumanOptionEffect,
+  HumanTimeoutAction,
   LoopNode,
   MapNode,
   NodeBudget,
@@ -825,7 +858,11 @@ export {
   DEFAULT_RETRY_POLICY,
   DEFAULT_RETURNS_MAX_TOKENS,
   GateNodeSchema,
+  HUMAN_OPTION_EFFECTS,
+  HUMAN_TIMEOUT_ACTIONS,
+  HumanDeadlineSchema,
   HumanNodeSchema,
+  HumanOptionSchema,
   LoopNodeSchema,
   MapNodeSchema,
   NODE_TYPES,

@@ -237,6 +237,7 @@ export { MIGRATIONS } from './migrations/index.ts';
 // retry backoff to a 30-day human gate, as one row and zero CPU. Never a timer.
 export {
   appendEventsConsumingWakes,
+  appendEventsSchedulingWakes,
   clearWake,
   dueWakes,
   InvalidWakeReason,

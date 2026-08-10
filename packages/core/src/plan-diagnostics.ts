@@ -53,6 +53,10 @@ export const PLAN_DIAGNOSTIC_CODES = [
    * validation actually computes. A warning: the computed value always
    * wins, this only makes the disagreement visible. KAR-12.4. */
   'COVERED_BY_GATES_MISMATCH',
+  /** F8.1 — a `human` node whose `deadline.onTimeout: 'default'` names an
+   * option id its own `options` do not offer. Caught here rather than at
+   * expiry, six hours later, on a run nobody is watching. KAR-13.1. */
+  'HUMAN_DEFAULT_UNKNOWN_OPTION',
 ] as const;
 
 export type PlanDiagnosticCode = (typeof PLAN_DIAGNOSTIC_CODES)[number];

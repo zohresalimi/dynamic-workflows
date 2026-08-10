@@ -1,0 +1,6 @@
+{
+  "node": "approve-scope",
+  "optionId": "guide",
+  "effect": "inject",
+  "text": "Use the existing useToast composable, don't add a new one."
+}

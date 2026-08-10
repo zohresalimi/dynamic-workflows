@@ -94,6 +94,7 @@ const populated: RunState = {
   specApproved: { specHash: SHA, by: 'cli' },
   specHash: SHA,
   outcome: null,
+  humanGates: {},
   gateVerdicts: {
     'gate-typecheck': { gate: 'typecheck' as GateId, outcome: 'pass', seq: 7 },
   },

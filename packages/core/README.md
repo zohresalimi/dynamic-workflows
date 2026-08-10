@@ -28,6 +28,7 @@ it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` 
 | `DeFlow.fact.v1`          | `src/fact.ts`             | A blackboard fact envelope: key, kind, provenance, value schema id     |
 | `DeFlow.finding.v1`       | `src/verdict.ts`          | A structured gate finding, attachable to a diff line (F7.7)            |
 | `DeFlow.finding.v2`       | `src/verdict.ts`          | The same, with its line anchored to the blob it was read from (F7.7)   |
+| `DeFlow.humandecision.v1` | `src/human-gate.ts`       | What a `human` node returns when the operator chose rather than supplied: the option, its effect, its words (F8.1) |
 | `DeFlow.plangraph.v1`     | `src/plan-graph.ts`       | A whole plan: seven node types, edges, budgets, declared reads (F2.1)  |
 | `DeFlow.planpatch.v1`     | `src/plan-patch.ts`       | A proposed plan evolution: five ops, blast radius, rationale (F2.3)    |
 | `DeFlow.reconfact.v1`     | `src/recon.ts`            | The value of a recon fact: toolchain, command, path set, gates or a stated detection failure (F2.2) |

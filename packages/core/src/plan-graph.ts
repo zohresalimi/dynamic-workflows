@@ -262,28 +262,50 @@ export const GateNodeSchema = z.strictObject({
   }),
 });
 
+/**
+ * KAR-13.1 AC8 — what selecting an option *does*, as a closed set.
+ *
+ * `approve` completes the node, `reject` fails its branch, `edit` replaces the
+ * node's output with one the operator supplies, `inject` completes it and
+ * carries the operator's words into the dependents' packets. Named here rather
+ * than spelled inline so the responder, the queue and the renderer read the
+ * same four values.
+ */
+export const HUMAN_OPTION_EFFECTS = ['approve', 'reject', 'edit', 'inject'] as const;
+
+export type HumanOptionEffect = (typeof HUMAN_OPTION_EFFECTS)[number];
+
+/** What a deadline does when it passes with nobody having answered (§10.4). */
+export const HUMAN_TIMEOUT_ACTIONS = ['fail', 'escalate', 'default'] as const;
+
+export type HumanTimeoutAction = (typeof HUMAN_TIMEOUT_ACTIONS)[number];
+
+export const HumanOptionSchema = z.strictObject({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  effect: z.enum(HUMAN_OPTION_EFFECTS),
+});
+
+export type HumanOption = z.infer<typeof HumanOptionSchema>;
+
+/** Suspension is durable (`node_wake`), so a deadline of hours costs one
+ * SQLite row rather than a held timer. */
+export const HumanDeadlineSchema = z.strictObject({
+  wakeAt: z.iso.datetime(),
+  onTimeout: z.enum(HUMAN_TIMEOUT_ACTIONS),
+  /** The option id `onTimeout: 'default'` answers with. Checked against
+   * `options` by plan validation, never at expiry (KAR-13.1 AC7). */
+  default: z.string().optional(),
+});
+
+export type HumanDeadline = z.infer<typeof HumanDeadlineSchema>;
+
 export const HumanNodeSchema = z.strictObject({
   ...nodeBaseShape,
   type: z.literal('human'),
   prompt: z.string().min(1),
-  options: z
-    .array(
-      z.strictObject({
-        id: z.string().min(1),
-        label: z.string().min(1),
-        effect: z.enum(['approve', 'reject', 'edit', 'inject']),
-      }),
-    )
-    .min(1),
-  /** Suspension is durable (`node_wake`), so a deadline of hours costs one
-   * SQLite row rather than a held timer. */
-  deadline: z
-    .strictObject({
-      wakeAt: z.iso.datetime(),
-      onTimeout: z.enum(['fail', 'escalate', 'default']),
-      default: z.string().optional(),
-    })
-    .optional(),
+  options: z.array(HumanOptionSchema).min(1),
+  deadline: HumanDeadlineSchema.optional(),
 });
 
 /** AC7 — the safe default. Index-derived ids move when a collection is

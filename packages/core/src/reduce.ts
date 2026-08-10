@@ -32,8 +32,10 @@
  */
 import { isVerdictVoid } from './acceptance-board.ts';
 import { addConsumption } from './cost-rollup.ts';
+import type { EventPayloadOf } from './event-payloads.ts';
 import { isEventKind } from './event-payloads.ts';
 import type { Event } from './events.ts';
+import { type HumanGateState, humanGateWakeAt } from './human-gate.ts';
 import type { CriterionId, NodeId, PlanHash, RunId } from './ids.ts';
 import {
   CHURN_WINDOW,
@@ -742,24 +744,51 @@ function project(state: RunState, event: Event): Transition {
      * what was approved, not whether anything is pending.
      */
     case 'human.requested': {
-      const suspended = withNode(state, seq, event.payload.node, (current) => ({
-        ...current,
-        status: 'suspended',
-        suspension: { kind: 'human' },
-      }));
+      const withGate = withHumanGate(state, seq, event.payload);
+      const suspended =
+        withNode(withGate, seq, event.payload.node, (current) => ({
+          ...current,
+          status: 'suspended',
+          suspension: { kind: 'human' },
+          // KAR-13.1 AC1, AC7. An open gate always has a `node_wake` row, and
+          // its due time comes from the request rather than from whatever the
+          // node was waiting for before. A gate that declares no deadline is
+          // due at an instant no clock reaches — the row is what makes the
+          // suspension durable and what answers *"why is this node asleep"*,
+          // so it exists even for a wait nothing will ever fire. And an
+          // `escalate` re-asks *without* a deadline, which has to clear the
+          // original one: leaving it would make the row due on every tick for
+          // ever, which is a spin loop wearing a suspension's name.
+          wakeAt: humanGateWakeAt(event.payload.deadline ?? null),
+        })) ?? withGate;
       if (event.payload.node !== SPEC_GATE_NODE) return suspended;
-      const base = suspended ?? state;
-      return base.status === 'awaiting-spec-approval'
+      return suspended.status === 'awaiting-spec-approval'
         ? suspended
-        : { ...base, status: 'awaiting-spec-approval' };
+        : { ...suspended, status: 'awaiting-spec-approval' };
     }
 
-    case 'human.responded':
-      return withNode(state, seq, event.payload.node, (current) =>
-        current.status === 'suspended'
-          ? { ...current, status: 'running', suspension: null, wakeAt: null }
-          : current,
+    /**
+     * KAR-13.1 AC3, AC9. The answer closes the gate and resumes the node **on
+     * the same attempt** — a human gate is not a retry, so nothing here touches
+     * `attempt` and no idempotency key is minted.
+     *
+     * The gate entry is kept, now carrying its response: it is what a second
+     * `respond` echoes in its `409` (AC9) and what *"the operator approved this
+     * at 14:12"* is read from three days later. What *completes* the node is
+     * the `node.completed` or `node.failed` appended in the same transaction —
+     * this event records the decision, and the decision's consequence is a
+     * transition the taxonomy already owns.
+     */
+    case 'human.responded': {
+      const withGate = answerHumanGate(state, seq, event.payload);
+      return (
+        withNode(withGate, seq, event.payload.node, (current) =>
+          current.status === 'suspended'
+            ? { ...current, status: 'running', suspension: null, wakeAt: null }
+            : current,
+        ) ?? withGate
       );
+    }
 
     /**
      * KAR-14.1 — the one accounting record, folded into the one accounting
@@ -960,6 +989,72 @@ function suspensionWakeAt(iso: string | undefined): number | null {
   if (iso === undefined) return null;
   const at = Date.parse(iso);
   return Number.isFinite(at) ? at : null;
+}
+
+/**
+ * KAR-13.1 — the gate record `human.requested` opens or re-opens.
+ *
+ * A second request for the same node is a **re-ask**, not a duplicate: the F1.3
+ * spec gate re-opens after an edit (KAR-10.3 AC8) and a deadline's `escalate`
+ * re-asks more visibly (AC7). Both must clear the previous answer, or the run
+ * would show a question with an answer already attached to it.
+ *
+ * `requestedSeq` therefore names the *current* ask rather than the first one
+ * ever made about this node. That is what the approval queue orders by and what
+ * F10.3's deep link points at, and for an escalation the newer ask is the one
+ * the operator is being shown.
+ */
+function withHumanGate(
+  state: RunState,
+  seq: number,
+  payload: EventPayloadOf<'human.requested'>,
+): RunState {
+  const gate: HumanGateState = {
+    node: payload.node,
+    prompt: payload.prompt,
+    options: payload.options.map((option) => ({ ...option })),
+    deadline: payload.deadline ?? null,
+    escalated: payload.escalated ?? false,
+    requestedSeq: seq,
+    response: null,
+  };
+  return { ...state, humanGates: { ...state.humanGates, [payload.node]: gate } };
+}
+
+/**
+ * KAR-13.1 AC9 — the answer, recorded on the gate it answers.
+ *
+ * A response for a node with no open gate is folded anyway, against a gate
+ * reconstructed from the response alone. An older daemon's ledger, a
+ * `human.requested` this build skipped because its payload version is newer:
+ * either way the *answer* is a fact, and dropping it would leave a projection
+ * claiming a decision was never made.
+ *
+ * `by` defaults to `operator` because that is what every v1 response was —
+ * nothing but a person could append one before the deadline path existed.
+ */
+function answerHumanGate(
+  state: RunState,
+  seq: number,
+  payload: EventPayloadOf<'human.responded'>,
+): RunState {
+  const existing = state.humanGates[payload.node];
+  const gate: HumanGateState = {
+    node: payload.node,
+    prompt: existing?.prompt ?? `(the request for ${payload.node} is not in this projection)`,
+    options: existing?.options ?? [],
+    deadline: existing?.deadline ?? null,
+    escalated: existing?.escalated ?? false,
+    requestedSeq: existing?.requestedSeq ?? seq,
+    response: {
+      optionId: payload.optionId,
+      text: payload.text ?? null,
+      by: payload.by ?? 'operator',
+      at: payload.at,
+      seq,
+    },
+  };
+  return { ...state, humanGates: { ...state.humanGates, [payload.node]: gate } };
 }
 
 /** `attempt` is the observed index; `attempts` is derived from it, never counted. */

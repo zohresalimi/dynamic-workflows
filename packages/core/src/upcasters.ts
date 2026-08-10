@@ -34,6 +34,7 @@ import {
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
   HumanRequestedSchema,
+  HumanRespondedSchema,
   NodeStartedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -929,6 +930,60 @@ registerUpcaster({
       { id: 'retry', label: 'Try once more', effect: 'approve' },
       { id: 'abandon', label: 'Abandon this branch', effect: 'reject' },
     ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.requested` v2 → v3 (KAR-13.1). See schemas/CHANGELOG.md.
+ *
+ * v3 adds one optional field — `escalated`, marking the second request a
+ * `deadline.onTimeout: 'escalate'` appends — so the hop is the identity.
+ *
+ * Left **absent** rather than defaulted to `false`, even though `false` is what
+ * every historical request meant. Absent says *"this ledger predates the
+ * distinction"*; `false` says *"this request was checked and was not an
+ * escalation"*, and the approval queue sorts on the difference. The reader
+ * treats absent as not-escalated, which is the same behaviour without the
+ * fabricated fact.
+ */
+registerUpcaster({
+  kind: 'human.requested',
+  from: 2,
+  to: HumanRequestedSchema,
+  fixture: {
+    node: 'approve-scope',
+    prompt: 'Recon found 3 extra packages. Extend the migration scope?',
+    options: [
+      { id: 'yes', label: 'Extend scope', effect: 'approve' },
+      { id: 'no', label: 'Keep scope as-is', effect: 'reject' },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `human.responded` v1 → v2 (KAR-13.1). See schemas/CHANGELOG.md.
+ *
+ * v2 adds one optional field — `by`, which distinguishes an operator's choice
+ * from the one a `deadline.onTimeout: 'default'` made on their behalf — so the
+ * hop is the identity.
+ *
+ * The field is left **absent**, and here that is not merely honest but the only
+ * safe answer available: before v2 there was no deadline path, so every v1
+ * response really was a person's. Writing `by: 'operator'` in would be true
+ * today and false the moment a ledger written by a build with the deadline path
+ * but an older payload version is replayed — and *"the operator approved this at
+ * 14:12"* is exactly the claim NF10 exists to keep provable.
+ */
+registerUpcaster({
+  kind: 'human.responded',
+  from: 1,
+  to: HumanRespondedSchema,
+  fixture: {
+    node: 'approve-scope',
+    optionId: 'yes',
+    at: '2026-08-07T14:12:00.000Z',
   },
   up: (payload) => payload,
 });

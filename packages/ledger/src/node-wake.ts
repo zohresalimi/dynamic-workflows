@@ -249,3 +249,32 @@ export function appendEventsConsumingWakes(
     return seqs;
   });
 }
+
+/**
+ * KAR-13.1 AC1 — appends `drafts` and writes `rows` in **one** transaction: the
+ * opening half of the rule `appendEventsConsumingWakes` closes.
+ *
+ * Admitting a `human` node appends `human.requested`, appends `node.suspended`
+ * and writes the `node_wake` row. Split them and a crash in the window leaves
+ * one of two states, both silent: a request nothing will ever wake up to
+ * notice, or a wait for a question nobody asked. Neither logs a durability
+ * failure; the run simply never comes back.
+ *
+ * The events go first for the same reason they do next door — a refused
+ * envelope takes the rows with it, and an append-only table cannot be repaired
+ * afterwards. The rows go through `scheduleWake`, so an out-of-vocabulary
+ * `reason` or a fractional `wake_at` rolls the whole transaction back rather
+ * than landing a row nothing can explain.
+ */
+export function appendEventsSchedulingWakes(
+  db: Db,
+  drafts: readonly EventDraft[],
+  rows: readonly NodeWakeRow[],
+  options: AppendOptions = {},
+): EventSeq[] {
+  return db.transaction(() => {
+    const seqs = appendEvents(db, drafts, options);
+    for (const row of rows) scheduleWake(db, row);
+    return seqs;
+  });
+}

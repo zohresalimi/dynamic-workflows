@@ -44,10 +44,12 @@ import {
   type RunId,
   type RunState,
   type StartNode,
+  type SuspendNode,
   toNodeFailure,
 } from '@DeFlow/core';
 import {
   appendEvents,
+  appendEventsSchedulingWakes,
   drainEvents,
   type EventDraft,
   headSeq,
@@ -162,6 +164,10 @@ const ENDED = ['completed', 'aborted'];
  */
 const HALTED_STATUSES: readonly string[] = ['paused', 'needs-human'];
 
+/** A command that is nothing but *"this node is still waiting for a person"*. */
+const isHumanGateWait = (command: Command): boolean =>
+  command.kind === 'ScheduleWake' && command.reason === 'human_gate';
+
 const eventVersionOf = (kind: string): number =>
   (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
 
@@ -272,6 +278,19 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
       continue;
     }
 
+    // KAR-13.1 AC10 — the run is `running` and has nothing left to do but wait
+    // for a person. Every remaining command is the gate's own row restated, and
+    // no clock this loop can advance will ever make it due: an unanswered
+    // `human` node is answered by an event from outside this process, which may
+    // arrive minutes or days later on a daemon that is not this one.
+    //
+    // Deliberately narrow. A `backoff` row *does* come due as the loop advances
+    // its clock, and returning on one would turn a retry into a stall; only
+    // `human_gate` is a wait nothing here can satisfy.
+    if (commands.length > 0 && inflight.size === 0 && commands.every(isHumanGateWait)) {
+      return { state, ticks, started, failure: endingFailure(state) };
+    }
+
     if (Date.now() > deadline) {
       throw new Error(
         `the run wedged: ${ticks} ticks, ${inflight.size} in flight, last commands ` +
@@ -338,12 +357,45 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
         });
         return;
 
+      case 'SuspendNode':
+        suspend(command);
+        return;
+
       case 'CancelNode':
         // Cancellation is `cancelNode`'s ladder (KAR-06.7), which owns a
         // process group and a verification step this loop has no business
         // reimplementing.
         throw new Error('this executor was never taught to perform CancelNode');
     }
+  }
+
+  /**
+   * KAR-13.1 AC1 — the events and the row, in one transaction.
+   *
+   * `appendEventsSchedulingWakes` rather than an append followed by an upsert,
+   * because splitting them leaves one of two states after a crash and both are
+   * silent: a `human.requested` nothing will wake up to notice, or a wait for a
+   * question nobody asked. The run simply never comes back, and no log line says
+   * why.
+   */
+  function suspend(command: SuspendNode): void {
+    options.phase?.(`suspend:${command.node}`);
+    const seqs = appendEventsSchedulingWakes(
+      db,
+      command.events.map((event) => ({
+        runId,
+        ts: clock.now(),
+        epoch: options.epoch,
+        kind: event.kind,
+        v: eventVersionOf(event.kind),
+        nodeId: command.node,
+        attempt: command.attempt,
+        payload: event.payload,
+      })),
+      [{ runId, nodeId: command.node, wakeAt: command.wakeAt, reason: command.reason }],
+    );
+    const last = seqs.at(-1);
+    if (last !== undefined) options.onEvent?.(last, fold(db, runId));
   }
 
   /** Hands one attempt to the performer without awaiting it. */

@@ -192,7 +192,45 @@ export interface EmitEvent {
   readonly event: EmittedEvent;
 }
 
-export type Command = StartNode | CancelNode | AcquireLock | ReleaseLock | ScheduleWake | EmitEvent;
+/**
+ * KAR-13.1 AC1 — put a node to sleep: the wake row **and** the events that
+ * explain it, as one command and therefore as one transaction.
+ *
+ * The alternative — two `EmitEvent`s and a `ScheduleWake` — makes the atomicity
+ * a property of the order a list happens to be in, and the crash that broke it
+ * would be invisible: a `human.requested` with no row is a question nothing will
+ * ever wake up to notice, and a row with no request is a wait for a question
+ * nobody asked. Neither shows up in a log as "durability failure"; the run
+ * simply never comes back.
+ *
+ * So the events travel on the command. `EffectRunner` appends them and writes
+ * the row inside one `BEGIN IMMEDIATE`, and a `SuspendNode` that reaches a
+ * runner which has not been taught it is a compile error rather than a shrug.
+ *
+ * `attempt` is the attempt the node is suspended *on*, and it is the same
+ * attempt it resumes on: a human gate is not a retry, so no new idempotency key
+ * is minted by going to sleep or by waking up (AC3).
+ */
+export interface SuspendNode {
+  readonly kind: 'SuspendNode';
+  readonly runId: RunId;
+  readonly node: NodeId;
+  readonly attempt: number;
+  /** An absolute instant, `NO_DEADLINE_WAKE_AT` for a wait with no deadline. */
+  readonly wakeAt: number;
+  readonly reason: WakeReason;
+  /** Appended with the row, never before it and never after it. */
+  readonly events: readonly EmittedEvent[];
+}
+
+export type Command =
+  | StartNode
+  | CancelNode
+  | AcquireLock
+  | ReleaseLock
+  | ScheduleWake
+  | SuspendNode
+  | EmitEvent;
 
 /**
  * The order commands are returned in when two are enabled by the same event
@@ -207,5 +245,6 @@ export const COMMAND_ORDER = [
   'AcquireLock',
   'StartNode',
   'CancelNode',
+  'SuspendNode',
   'ScheduleWake',
 ] as const satisfies readonly Command['kind'][];

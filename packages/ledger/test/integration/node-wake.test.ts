@@ -21,6 +21,7 @@ import { it } from '@DeFlow/testkit';
 import { expect, describe as suite } from 'vitest';
 import {
   appendEventsConsumingWakes,
+  appendEventsSchedulingWakes,
   clearWake,
   dueWakes,
   type EventDraft,
@@ -361,6 +362,108 @@ suite('the wall clock is not monotonic (EPIC-06-S22 scenario 4, AC8)', () => {
       scheduleWake(db, wake({ nodeId: 'm', reason: 'poll', wakeAt: NOW - 1 }));
 
       expect(dueWakes(db, NOW).map((row) => row.nodeId)).toEqual(['m', 'a', 'z']);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+/**
+ * KAR-13.1 AC1 — the *opening* half of the same rule. `appendEventsConsumingWakes`
+ * makes firing a wake atomic; this makes entering one atomic, which is the half a
+ * crash during admission would otherwise split.
+ */
+suite('the row and the events that explain it commit together (EPIC-13-S3, AC1)', () => {
+  const requested = (nodeId = 'gate-approve'): EventDraft => ({
+    runId: RUN,
+    ts: NOW,
+    kind: 'human.requested',
+    v: 3,
+    epoch: 1,
+    nodeId,
+    payload: {
+      node: nodeId,
+      prompt: 'Extend the migration scope?',
+      options: [{ id: 'yes', label: 'Extend scope', effect: 'approve' }],
+    },
+  });
+
+  const suspended = (nodeId = 'gate-approve'): EventDraft => ({
+    runId: RUN,
+    ts: NOW,
+    kind: 'node.suspended',
+    v: 1,
+    epoch: 1,
+    nodeId,
+    payload: { node: nodeId, until: { kind: 'human' } },
+  });
+
+  it('writes both events and the row in one transaction', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      const seqs = appendEventsSchedulingWakes(db, [requested(), suspended()], [wake()]);
+
+      expect(seqs).toHaveLength(2);
+      expect(readWakes(db)).toEqual([wake()]);
+      expect(readRange(db, RUN, 0, 10).events.map((event) => event.kind)).toEqual([
+        'human.requested',
+        'node.suspended',
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('writes no row when the append is refused — a request without its wait is unanswerable', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      expect(() =>
+        appendEventsSchedulingWakes(
+          db,
+          [requested(), { ...suspended(), kind: '' } as EventDraft],
+          [wake()],
+        ),
+      ).toThrow();
+
+      // Neither half landed: no question in the log, and nothing asleep.
+      expect(readWakes(db)).toEqual([]);
+      expect(readRange(db, RUN, 0, 10).events).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('appends nothing when a row is refused, so a wait nothing will fire is impossible', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      expect(() =>
+        appendEventsSchedulingWakes(
+          db,
+          [requested(), suspended()],
+          [{ ...wake(), reason: 'whenever' } as unknown as NodeWakeRow],
+        ),
+      ).toThrow(InvalidWakeReason);
+
+      expect(readRange(db, RUN, 0, 10).events).toEqual([]);
+      expect(readWakes(db)).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('is the upsert, so a restatement moves the row rather than duplicating it', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      appendEventsSchedulingWakes(db, [requested()], [wake()]);
+      appendEventsSchedulingWakes(db, [requested()], [wake({ wakeAt: NOW + days(30) })]);
+
+      expect(readWakes(db)).toEqual([wake({ wakeAt: NOW + days(30) })]);
     } finally {
       db.close();
     }

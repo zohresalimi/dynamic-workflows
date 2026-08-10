@@ -33,6 +33,7 @@ import {
   RUN_OUTCOMES,
   type RunOutcome,
 } from './event-payloads.ts';
+import { type HumanGateState, HumanGateStateSchema } from './human-gate.ts';
 import {
   type CriterionId,
   CriterionIdSchema,
@@ -436,6 +437,23 @@ export interface RunState {
   readonly gateVerdicts: Readonly<Record<string, GateVerdictState>>;
   readonly needsHuman: NeedsHumanState | null;
   /**
+   * KAR-13.1 — every `human` node gate this run has opened, keyed by node id,
+   * open or answered (./human-gate.ts).
+   *
+   * The projection the approval queue, the `409` on a second answer and the
+   * deadline path all read, and there is deliberately no second home for it:
+   * NF10 requires every state the UI shows to trace to a named event, and a
+   * pending-approvals `Map` in the daemon evaporates on exactly the restart the
+   * gate exists to survive — moments before several runs resume at once, which
+   * is when the queue matters most.
+   *
+   * Answered gates are kept rather than deleted. *"The operator approved this at
+   * 14:12"* is the state somebody asks about three days later, and it is what
+   * lets a second `respond` echo the original decision instead of applying a
+   * second one.
+   */
+  readonly humanGates: Readonly<Record<string, HumanGateState>>;
+  /**
    * KAR-11.4 AC10 — F2.5's rule table as this run pinned it, or `null` for a
    * run whose ledger has no `policy.patch.loaded` (one written before the pin
    * existed, which falls back to the shipped defaults).
@@ -558,15 +576,15 @@ export interface RunState {
  * the cache is a pure optimisation, free to be thrown away and never to be
  * believed when stale.
  *
- * The same applies to how an existing field is *derived*. The bumps:
- * 4 `NodeState.wakeAt`; 5 `RunState.cancel`; 6 F4.7's no-progress fields;
- * 7 the per-node cost rollup; 8 `ceilings` and `NodeState.startedTs`;
- * 9 the reconciled estimate; 10 `CostRollup.authModes`; 11 `specApproved`,
- * without which a restored daemon derives a ready set nobody approved; 12 the
- * pinned `patchPolicy`; 13 `gateVerdicts`, without which it re-opens the gate
- * ladder and buys a review on a typecheck that already failed.
+ * The same applies to how an existing field is *derived*. The bumps: 4
+ * `NodeState.wakeAt`; 5 `cancel`; 6 F4.7's no-progress fields; 7 the per-node
+ * cost rollup; 8 `ceilings` and `NodeState.startedTs`; 9 the reconciled
+ * estimate; 10 `CostRollup.authModes`; 11 `specApproved`; 12 `patchPolicy`;
+ * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
+ * tell an answered gate from an open one and re-asks a question already
+ * answered.
  */
-export const CHECKPOINT_VERSION = 13;
+export const CHECKPOINT_VERSION = 14;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -612,6 +630,7 @@ export function initialRunState(): RunState {
     criteriaSatisfied: [],
     gateVerdicts: {},
     needsHuman: null,
+    humanGates: {},
     patchPolicy: null,
     cancel: null,
     planHash: null,
@@ -735,6 +754,7 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   needsHuman: z
     .strictObject({ reason: z.enum(RUN_NEEDS_HUMAN_REASONS), detail: singleLine() })
     .nullable(),
+  humanGates: z.record(z.string(), HumanGateStateSchema),
   patchPolicy: z
     .strictObject({
       hash: z.string().min(1),

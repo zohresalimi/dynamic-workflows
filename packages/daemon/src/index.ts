@@ -305,6 +305,17 @@ export type { RunSummary } from './http/run-summary.ts';
 export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
 export { DEFAULT_HOSTNAME, DEFAULT_PORT, startHttp } from './http/server.ts';
+// KAR-13.1 — the two writes that close a blocking `human` node: the operator's
+// answer, and the deadline nobody met. Both move their `node_wake` row in the
+// same transaction as the event that explains it.
+export type {
+  ExpiredHumanGate,
+  ExpireOptions,
+  RespondOptions,
+  RespondRefusalCode,
+  RespondResult,
+} from './human/gate.ts';
+export { expireDueHumanGates, respondToHumanNode } from './human/gate.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export type { WorkflowPhase, WorkflowTool } from './mcp/catalog.ts';

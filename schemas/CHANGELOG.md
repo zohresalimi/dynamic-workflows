@@ -470,3 +470,38 @@ exist at once.
 prompt, a permission decision, a clarifying question — and none of them has attempts to carry. A
 required field would make every one of them invent an empty list, which the schema refuses anyway
 (`attempts` is `.min(1)`: a repair escalation with no attempts is not an escalation).
+
+### human.requested v3
+
+**KAR-13.1 AC7.** A `human` node's `deadline.onTimeout: 'escalate'` appends a *second*
+`human.requested` when the first goes unanswered. `escalated` is what makes that second one
+distinguishable from the first without walking the log.
+
+| Change                   | Kind           | Why it is not lossy                                                                                                                                            |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ escalated` (optional) | optional field | Left **absent**. Every v2 payload predates the deadline path, so none of them was an escalation — but absent says _"this ledger predates the distinction"_ and `false` would say _"this was checked"_. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why a field rather than a convention.** *"Higher-visibility"* has to be something the approval
+queue (KAR-13.2) and the notification badge can sort on, and _"it is the second `human.requested`
+for this node"_ is a scan of the whole run's ledger per row. It also carries the reason an escalated
+request declares no deadline of its own: an escalation that expired again would either fail the
+branch on a rule nobody wrote or re-escalate for ever.
+
+### human.responded v2
+
+**KAR-13.1 AC7.** `by` says who chose the option: `operator` for a person,
+`policy` for the answer `deadline.onTimeout: 'default'` gave on their behalf. KAR-13.4 reuses it for
+a permission escalation that expires to `reject_once`.
+
+| Change            | Kind           | Why it is not lossy                                                                                                                        |
+| ----------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `+ by` (optional) | optional field | Left **absent**, and read as `operator`. Before v2 there was no path that could append a response other than a person's, so nothing is lost. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the hop does not write `by: 'operator'` in.** It would be true of every ledger written before
+this change and false the moment one written by a build that *has* the deadline path but an older
+payload version is replayed. _"The operator approved this at 14:12"_ is exactly the claim NF10 exists
+to keep provable, and a fabricated attribution is worse than an absent one — a reader can see a gap.

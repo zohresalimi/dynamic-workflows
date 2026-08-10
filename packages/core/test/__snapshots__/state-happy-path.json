@@ -65,6 +65,29 @@
     }
   },
   "needsHuman": null,
+  "humanGates": {
+    "step-21": {
+      "node": "step-21",
+      "prompt": "The codemod changed 41 files. Proceed?",
+      "options": [
+        {
+          "id": "yes",
+          "label": "Proceed",
+          "effect": "approve"
+        }
+      ],
+      "deadline": null,
+      "escalated": false,
+      "requestedSeq": 1057,
+      "response": {
+        "optionId": "yes",
+        "text": null,
+        "by": "operator",
+        "at": "2026-08-02T15:02:11.000Z",
+        "seq": 1058
+      }
+    }
+  },
   "patchPolicy": null,
   "cancel": null,
   "planHash": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

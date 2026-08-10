@@ -1515,7 +1515,31 @@ export const HumanRequestedSchema = z.strictObject({
    * to read, and reading is not something a budget assertion can do.
    */
   reason: PermissionDeniedSchema.shape.reason.optional(),
+  /**
+   * KAR-13.1 AC7 — v3: this request is the *second* one, appended because a
+   * deadline passed with nobody having answered the first
+   * (`deadline.onTimeout: 'escalate'`).
+   *
+   * A field rather than a convention, because "higher-visibility" has to be
+   * something the approval queue and the notification badge can sort on. It
+   * also carries the reason the escalated request declares no deadline: an
+   * escalation that expired again would either fail the branch on a rule
+   * nobody wrote or re-escalate for ever.
+   */
+  escalated: z.boolean().optional(),
 });
+
+/**
+ * KAR-13.1 AC7 — who chose the option.
+ *
+ * `policy` is the deadline path: `onTimeout: 'default'` answers on the
+ * operator's behalf, and a timeline that recorded that as an operator decision
+ * would be a timeline nobody could audit. KAR-13.4 reuses it for an escalation
+ * that expires to `reject_once`.
+ */
+export const HUMAN_RESPONDERS = ['operator', 'policy'] as const;
+
+export type HumanResponder = (typeof HUMAN_RESPONDERS)[number];
 
 export const HumanRespondedSchema = z.strictObject({
   node: NodeIdSchema,
@@ -1523,6 +1547,12 @@ export const HumanRespondedSchema = z.strictObject({
   text: z.string().optional(),
   /** Display only — ordering is by `seq`, never by this timestamp. */
   at: z.iso.datetime(),
+  /**
+   * KAR-13.1 AC7 — v2. Optional so that every response already on disk stays
+   * valid; absent reads as `operator`, which is what every v1 response was —
+   * nothing but a person could append one before the deadline path existed.
+   */
+  by: z.enum(HUMAN_RESPONDERS).optional(),
 });
 
 // ── money and providers ──────────────────────────────────────────────────────
@@ -1809,8 +1839,8 @@ export const EVENT_SCHEMAS = {
   'fact.invalidated': { v: 1, payload: FactInvalidatedSchema },
   'handoff.oversize': { v: 1, payload: HandoffOversizeSchema },
   'gate.evaluated': { v: 4, payload: GateEvaluatedSchema },
-  'human.requested': { v: 2, payload: HumanRequestedSchema },
-  'human.responded': { v: 1, payload: HumanRespondedSchema },
+  'human.requested': { v: 3, payload: HumanRequestedSchema },
+  'human.responded': { v: 2, payload: HumanRespondedSchema },
   'budget.consumed': { v: 3, payload: BudgetConsumedSchema },
   'budget.exceeded': { v: 2, payload: BudgetExceededSchema },
   'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },

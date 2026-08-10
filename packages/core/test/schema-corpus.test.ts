@@ -20,6 +20,7 @@ import type { z } from 'zod';
 import { ContextPacketSchema } from '../src/context-packet.ts';
 import { FactSchema } from '../src/fact.ts';
 import { TaskSpecDraftSchema } from '../src/framing.ts';
+import { HumanDecisionSchema } from '../src/human-gate.ts';
 import { REGISTERED_SCHEMA_IDS } from '../src/json-schema.ts';
 import { PlanGraphSchema } from '../src/plan-graph.ts';
 import { PlanPatchSchema } from '../src/plan-patch.ts';
@@ -44,6 +45,7 @@ const CONFORMING: Record<string, string> = {
   'DeFlow.fact.v1': join(corpus, 'DeFlow.fact.v1.valid.json'),
   'DeFlow.finding.v1': join(corpus, 'DeFlow.finding.v1.valid.json'),
   'DeFlow.finding.v2': join(corpus, 'DeFlow.finding.v2.valid.json'),
+  'DeFlow.humandecision.v1': join(corpus, 'DeFlow.humandecision.v1.valid.json'),
   'DeFlow.plangraph.v1': join(repoRoot, 'packages/core/test/fixtures/plans/seven-types.json'),
   'DeFlow.planpatch.v1': join(repoRoot, 'packages/core/test/fixtures/patches/three-ops.json'),
   'DeFlow.reconfact.v1': join(corpus, 'DeFlow.reconfact.v1.valid.json'),
@@ -64,6 +66,7 @@ const ZOD: Record<string, z.ZodType> = {
   'DeFlow.fact.v1': FactSchema,
   'DeFlow.finding.v1': FindingSchema,
   'DeFlow.finding.v2': FindingV2Schema,
+  'DeFlow.humandecision.v1': HumanDecisionSchema,
   'DeFlow.plangraph.v1': PlanGraphSchema,
   'DeFlow.planpatch.v1': PlanPatchSchema,
   'DeFlow.reconfact.v1': ReconFactValueSchema,

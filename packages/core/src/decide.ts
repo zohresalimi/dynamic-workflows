@@ -35,9 +35,11 @@ import type {
   ReleaseLock,
   ScheduleWake,
   StartNode,
+  SuspendNode,
   WakeReason,
 } from './command.ts';
 import { admitGates, type GateClass, type LadderGate } from './gate-ladder.ts';
+import { humanGateWakeAt, humanRequestPayload, isHumanNode } from './human-gate.ts';
 import type { EventSeq, GateId, NodeId, RunId } from './ids.ts';
 import { claimId, type LockClaim, lockClaims, lockHolder } from './locks.ts';
 import { needsHumanOf, noProgress } from './no-progress.ts';
@@ -128,6 +130,13 @@ export function decide(state: RunState, now: number): Command[] {
     ? NOTHING_ADMITTED
     : admitReadyNodes(state, runId, now, plan, poisoned, trippedNodes);
 
+  // KAR-13.1 AC1, AC10. A `human` node is admitted by being put to sleep: one
+  // `SuspendNode` carrying `human.requested`, `node.suspended` and the
+  // `node_wake` write, which the effect boundary commits together. It spawns
+  // nothing, so it consumes no agent slot and takes no lock — which is the
+  // whole of *"a suspended human node blocks its dependents and nothing else"*.
+  const gates = halted ? NO_GATES : admitHumanGates(state, runId, now, plan, poisoned);
+
   // Concatenated in COMMAND_ORDER, each group sorted by the seq of the event
   // that enabled it and then by node id (AC6). Grouping first and sorting
   // within is the same total order as one comparator over the whole list, and
@@ -140,6 +149,7 @@ export function decide(state: RunState, now: number): Command[] {
     ...admission.acquires,
     ...admission.starts,
     ...cancelInFlight(state, runId, ended),
+    ...gates,
     ...scheduleWakes(state, runId, now),
   ];
 }
@@ -398,6 +408,62 @@ function gateTierIsOpen(state: RunState, plan: PlanGraph, node: NodeId): boolean
   return admitGates(gates, outcomes).some((gate) => gate.node === node);
 }
 
+// ── human gates ──────────────────────────────────────────────────────────────
+
+const NO_GATES: readonly SuspendNode[] = [];
+
+/**
+ * KAR-13.1 AC1 — the `human` nodes that become ready on this tick, each as one
+ * durable suspension.
+ *
+ * Separate from `admitReadyNodes` rather than a branch inside it, and the
+ * separation is the acceptance criterion rather than tidiness: a human gate
+ * spawns no process, so it must not spend one of `globalAgentSlots` and must
+ * not contend for a lock. A run whose only slot went to a node that is asleep
+ * is a run that stopped for a reason nobody could see (AC10).
+ *
+ * The command carries `human.requested`, `node.suspended` and the row together,
+ * because splitting them means a restart inside the window either loses the
+ * wait or double-counts it.
+ */
+function admitHumanGates(
+  state: RunState,
+  runId: RunId,
+  now: number,
+  plan: PlanGraph | null,
+  poisoned: ReadonlyMap<NodeId, number>,
+): readonly SuspendNode[] {
+  if (plan === null || state.status !== 'running') return NO_GATES;
+
+  return readySet(state, now, plan, poisoned)
+    .filter(isHumanNode)
+    .map((node) => {
+      const wakeAt = humanGateWakeAt(node.deadline ?? null);
+      const attempt = nodeState(state, node.id).attempts;
+      return {
+        kind: 'SuspendNode' as const,
+        runId,
+        node: node.id,
+        attempt,
+        wakeAt,
+        reason: 'human_gate' as const,
+        events: [
+          { kind: 'human.requested' as const, payload: humanRequestPayload(node) },
+          {
+            kind: 'node.suspended' as const,
+            payload: {
+              node: node.id,
+              until: {
+                kind: 'human' as const,
+                ...(node.deadline === undefined ? {} : { wakeAt: node.deadline.wakeAt }),
+              },
+            },
+          },
+        ],
+      };
+    });
+}
+
 /** What the run may start this tick, and the lock traffic that goes with it. */
 interface Admission {
   readonly acquires: readonly AcquireLock[];
@@ -450,6 +516,9 @@ function admitReadyNodes(
   let slots = state.policy.globalAgentSlots - countRunning(state);
 
   for (const node of readySet(state, now, plan, poisoned)) {
+    // KAR-13.1 AC10 — a `human` node is admitted by `admitHumanGates`, which
+    // spends no slot and takes no lock: there is no process to run.
+    if (isHumanNode(node)) continue;
     if (slots <= 0) break;
     // Withheld whole, and without spending a slot: the node is about to be
     // suspended by the trip emitted earlier in this same command list, and
