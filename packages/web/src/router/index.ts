@@ -45,6 +45,16 @@ export const routes = [
     props: true,
   },
   {
+    // F10.5. Lazy for the same reason the scrubber is — it is not the landing
+    // view — and additionally because it is the first route to pull
+    // `@DeFlow/core`'s compaction module in as a *value*: `compactionChart()`
+    // is KAR-09.6's rendering contract, and the boot chunk has no use for it.
+    path: '/runs/:runId/context',
+    name: 'run-context',
+    component: () => import('../views/ContextBudgetView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),
