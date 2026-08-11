@@ -58,6 +58,7 @@ import { computed } from 'vue';
 import { INSPECTOR_OVERLAY } from '../app/ids.ts';
 import { packetKey } from '../ledger/projections/context.ts';
 import {
+  attemptRows,
   attemptSparkline,
   diffPackets,
   type InspectorSources,
@@ -102,8 +103,16 @@ const sources = computed<InspectorSources>(() => {
 
 const nodeId = computed(() => ui.inspectedNodeId);
 
+/**
+ * The attempt list alone, which is what resolves *"the latest"* below.
+ *
+ * `attemptRows` rather than `inspectNode(…, 0).attempts`: the full join also
+ * builds a packet section and a provenance table, and asking for it here would
+ * compute both twice per render — once to find out how many attempts there are,
+ * and again for the attempt that answer selects.
+ */
 const attempts = computed(() =>
-  nodeId.value === null ? [] : inspectNode(sources.value, nodeId.value, 0).attempts,
+  nodeId.value === null ? [] : attemptRows(sources.value, nodeId.value),
 );
 
 /**
