@@ -1,5 +1,5 @@
 /**
- * KAR-16.5 — the six-fixture corpus: what each one proves, and where it came
+ * KAR-16.5 — the fixture corpus: what each one proves, and where it came
  * from.
  *
  * Verifies: EPIC-16-S32, EPIC-16-S34 · AC6, AC9, AC10
@@ -45,6 +45,11 @@ const CORPUS = [
   'compaction',
   'crash-resume-seq-gap',
   'stress-400',
+  // KAR-17.3's, and the seventh: the only recording with **more than one
+  // context packet for the same node**. EPIC-17-S13's side-by-side of attempt 1
+  // against attempt 3 has nothing to compare without it, and neither does the
+  // node inspector's per-attempt cost or its failure history.
+  'repair-attempts',
 ] as const;
 
 const authorized = authorizedFetch();
@@ -75,8 +80,8 @@ const json = async (origin: string, path: string): Promise<unknown> => {
   return (await response.json()) as unknown;
 };
 
-suite('EPIC-16-S32 — all six fixtures exist, one file per run (AC6)', () => {
-  it('holds exactly the six the corpus names, each as a single events.jsonl', () => {
+suite('EPIC-16-S32 — every fixture exists, one file per run (AC6)', () => {
+  it('holds exactly the ones the corpus names, each as a single events.jsonl', () => {
     const directories = readdirSync(FIXTURES, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -160,6 +165,29 @@ suite('EPIC-16-S32 — each fixture serves the views it exists for', () => {
     };
     expect(diff.reason).toBeTruthy();
     expect(diff.decision).not.toBeNull();
+  });
+
+  it('repair-attempts: one node, three attempts, a packet for each', async ({ tmp }) => {
+    // KAR-17.3. Asserted through `GET …/nodes/:nodeId/packet?attempt=` rather
+    // than by reading the file, for the reason at the top of this module — and
+    // because the *endpoint* answering per attempt is precisely what the
+    // inspector's attempt selector depends on. A corpus entry that the harness
+    // could only serve the latest attempt of would be useless to it.
+    const replay = await served(tmp, 'repair-attempts');
+    const [runId] = replay.runIds;
+
+    const totals: number[] = [];
+    for (const attempt of [0, 1, 2]) {
+      const packet = (await json(
+        replay.origin,
+        `/api/runs/${runId}/nodes/impl-oauth/packet?attempt=${attempt}`,
+      )) as { totals: { tokens: number }; segments: unknown[] };
+      totals.push(packet.totals.tokens);
+    }
+
+    // Three distinct packets, and the last two identical — the repair that
+    // changed nothing, which EPIC-17-S13 needs a fixture to demonstrate.
+    expect(totals).toEqual([262, 290, 290]);
   });
 
   it('gate-failure-repair: a failing verdict, then a passing one', async ({ tmp }) => {
