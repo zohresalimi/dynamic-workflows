@@ -60,6 +60,43 @@ export { runDoctor } from './doctor/run.ts';
 // client of. It calls straight into `@DeFlow/daemon`'s `initWorkspace`.
 export type { InitCommandOptions, InitCommandResult } from './init.ts';
 export { runInit } from './init.ts';
+// KAR-18.7 — the two diagnostics. Neither is a client of the daemon's HTTP
+// API either: `status` has to answer when the daemon is *dead*, and a snapshot
+// is taken with a read-only SQLite connection while it keeps serving.
+export type {
+  CommandResult,
+  LedgerSnapshotOptions,
+  ParsedLedgerArgs,
+  SnapshotArgs,
+  SnapshotReport,
+} from './ledger-snapshot.ts';
+export {
+  EX_CANTCREAT,
+  EX_NOINPUT,
+  parseLedgerArgs,
+  renderSnapshotReport,
+  runLedgerSnapshot,
+} from './ledger-snapshot.ts';
+export type {
+  ActiveRun,
+  DaemonStatus,
+  NoStatus,
+  RunningStatus,
+  StaleReason,
+  StaleStatus,
+  StatusArgs,
+  StatusOptions,
+  StatusResult,
+} from './status.ts';
+export {
+  classifyDaemonFile,
+  formatUptime,
+  parseStatusArgs,
+  readStatus,
+  renderStatusJson,
+  renderStatusText,
+  runStatus,
+} from './status.ts';
 
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */

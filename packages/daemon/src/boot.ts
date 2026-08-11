@@ -37,7 +37,12 @@ import {
 } from '@DeFlow/ledger';
 import { randomBytes } from 'node:crypto';
 import { systemClock } from './clock.ts';
-import { handoffUrl, removeDaemonFile, writeDaemonFile } from './daemon-file.ts';
+import {
+  handoffUrl,
+  ownProcessStartTime,
+  removeDaemonFile,
+  writeDaemonFile,
+} from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
 import { mintDaemonToken } from './http/auth.ts';
 import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
@@ -353,6 +358,10 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       port: http.port,
       token,
       startedAt: systemClock.now(),
+      // KAR-18.7 AC4 — the evidence that makes the pid above checkable. Read
+      // here rather than by whoever reads the file later, because by then this
+      // pid may belong to something else entirely.
+      processStartedAt: ownProcessStartTime(),
     });
     step('bind-port');
   } catch (error) {

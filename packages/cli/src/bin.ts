@@ -28,7 +28,9 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
+import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
 import { runRun } from './run/run.ts';
+import { parseStatusArgs, runStatus } from './status.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
 
 /** sysexits(3) `EX_USAGE`, the same code the MCP shim uses for a bad argv. */
@@ -60,6 +62,8 @@ Commands:
   up              Start the daemon and open the UI
   run             Start a run and watch it, with no browser at all
   doctor          Report what this machine can do, and what it cannot
+  status          Report the running daemon, or say there is none
+  ledger snapshot Copy the ledger to one file, for a bug report
 
 Options for "up":
   --port <n>      Bind this port instead of 7777, or fail if it is taken
@@ -97,6 +101,17 @@ Options:
 
 Exit codes for "doctor": 0 when every check is ok or warn, 5 when any check
 fails. Nothing else, so CI can branch on it without a table.
+
+Options for "status":
+  --json          One JSON document instead of the report
+
+"status" always exits 0 — it is a query, not an assertion, and "no daemon is
+running" is the ordinary answer.
+
+Usage for "ledger":
+  DeFlow ledger snapshot <runId> --out <path>
+                  One consistent SQLite file, WAL included and no sidecar,
+                  inspectable with plain sqlite3 on a machine with no DeFlow.
 `;
 
 /**
@@ -180,6 +195,44 @@ async function doctor(argv: readonly string[]): Promise<number> {
   return result.exitCode;
 }
 
+/**
+ * `DeFlow status` (KAR-18.7) — and it does not get to fail.
+ *
+ * The exit code is the command's own, which is always 0: a bad *flag* is a
+ * usage error and exits 64, but every answer about the daemon — running, stale,
+ * absent — is a successful query.
+ */
+function status(argv: readonly string[]): number {
+  const parsed = parseStatusArgs(argv);
+  if (!parsed.ok) {
+    process.stderr.write(`${parsed.message}\n\n${USAGE}`);
+    return EX_USAGE;
+  }
+
+  const result = runStatus({ env: process.env, json: parsed.args.json });
+  process.stdout.write(result.stdout);
+  return result.exitCode;
+}
+
+/** `DeFlow ledger snapshot <runId> --out <path>` (KAR-18.7). */
+function ledger(argv: readonly string[]): number {
+  const parsed = parseLedgerArgs(argv);
+  if (!parsed.ok) {
+    process.stderr.write(`${parsed.message}\n\n${USAGE}`);
+    return EX_USAGE;
+  }
+
+  const result = runLedgerSnapshot({
+    env: process.env,
+    cwd: process.cwd(),
+    runId: parsed.args.runId,
+    out: parsed.args.out,
+  });
+  if (result.stdout !== '') process.stdout.write(result.stdout);
+  if (result.stderr !== '') process.stderr.write(result.stderr);
+  return result.exitCode;
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [command] = argv;
 
@@ -196,6 +249,10 @@ async function main(argv: readonly string[]): Promise<number> {
   if (command === 'up') return up(argv.slice(1));
 
   if (command === 'doctor') return doctor(argv.slice(1));
+
+  if (command === 'status') return status(argv.slice(1));
+
+  if (command === 'ledger') return ledger(argv.slice(1));
 
   if (command === 'run') {
     return runRun({

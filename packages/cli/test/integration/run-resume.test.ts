@@ -18,7 +18,7 @@
  * Verifies: EPIC-18-S22 · AC5 · test plan #5
  */
 import type { RunId } from '@DeFlow/core';
-import { writeDaemonFile } from '@DeFlow/daemon';
+import { ownProcessStartTime, writeDaemonFile } from '@DeFlow/daemon';
 import { appendEvents, type EventDraft } from '@DeFlow/ledger';
 import { it, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import { copyFileSync } from 'node:fs';
@@ -78,6 +78,7 @@ suite('EPIC-18-S22 — resume by explicit cursor, gap and all (AC5)', () => {
       port,
       token: TEST_DAEMON_TOKEN,
       startedAt: T0,
+      processStartedAt: ownProcessStartTime(),
     });
 
     // Every request line this daemon serves, including the reconnects.

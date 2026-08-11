@@ -509,6 +509,14 @@ npx DeFlow up
 6. **Generate a token.** 32 random bytes from `crypto.randomBytes`, base64url-encoded. Write
    `.DeFlow/daemon.json` as `{ pid, port, token, startedAt }` at mode `0600`, in the gitignored
    data directory — the first person to commit a `daemon.json` commits a bearer token.
+
+   > **Extended by KAR-18.7.** The file also carries `processStartedAt`: the OS's own start time
+   > for that pid, as an opaque platform-specific string (`/proc/<pid>/stat` field 22 on Linux,
+   > `ps -o lstart=` on macOS), `null` where the platform cannot answer. `startedAt` is wall-clock
+   > milliseconds and cannot answer "is pid 4242 still _this_ daemon?"; pids are recycled within
+   > hours, so `DeFlow status` compares this string for equality before it will report a running
+   > daemon — the same `(pid, process_start_time)` discipline orphan reaping uses (§13), applied
+   > to a read-only command.
 7. **Bind `127.0.0.1` only — and still authenticate.** A localhost bind is _not_ a security
    boundary: any local process, and any web page via DNS rebinding, can reach 7777. Require
    `Authorization: Bearer`, reject requests whose `Origin` is not ours, and send `Vary: Origin`.

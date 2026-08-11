@@ -19,7 +19,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, describe as suite } from 'vitest';
 import { type Booted, boot } from '../../src/boot.ts';
-import { DAEMON_FILE_NAME, type DaemonFile, handoffUrl } from '../../src/daemon-file.ts';
+import {
+  DAEMON_FILE_NAME,
+  type DaemonFile,
+  handoffUrl,
+  ownProcessStartTime,
+} from '../../src/daemon-file.ts';
 
 const MAIN = fileURLToPath(new URL('../../src/main.ts', import.meta.url));
 
@@ -41,14 +46,25 @@ async function readDaemonJson(): Promise<DaemonFile> {
 }
 
 suite('DeFlow up generates and records the token (AC7, EPIC-15-S12 scenario 1)', () => {
-  it('writes { pid, port, token, startedAt } at mode 0600', async () => {
+  it('writes { pid, port, token, startedAt, processStartedAt } at mode 0600', async () => {
     booted = await boot({ dataDir: dir, port: 0, dev: false });
     const file = await readDaemonJson();
 
-    expect(Object.keys(file).sort()).toEqual(['pid', 'port', 'startedAt', 'token']);
+    expect(Object.keys(file).sort()).toEqual([
+      'pid',
+      'port',
+      'processStartedAt',
+      'startedAt',
+      'token',
+    ]);
     expect(file.pid).toBe(process.pid);
     expect(file.port).toBe(booted.port);
     expect(typeof file.startedAt).toBe('number');
+    // KAR-18.7 — the OS's own start time for that pid, as an opaque string.
+    // `startedAt` above is wall-clock milliseconds and cannot tell this daemon
+    // from whatever holds its pid an hour after it dies; this can.
+    expect(file.processStartedAt).toBe(ownProcessStartTime());
+    expect(typeof file.processStartedAt).toBe('string');
 
     // 0600 and nothing wider: every other process running as this user can
     // still read it — that limit is honest and recorded — but no *other* user

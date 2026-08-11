@@ -51,6 +51,7 @@ export {
   DAEMON_FILE_NAME,
   daemonFilePath,
   handoffUrl,
+  ownProcessStartTime,
   removeDaemonFile,
   writeDaemonFile,
 } from './daemon-file.ts';

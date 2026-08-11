@@ -72,6 +72,9 @@ interface DaemonFile {
   readonly port: number;
   readonly token: string;
   readonly startedAt: number;
+  /** KAR-18.7 — the OS's own start time for `pid`, opaque and compared for
+   * equality by `DeFlow status`. */
+  readonly processStartedAt: string | null;
 }
 
 const daemonFile = (dataDir: string): DaemonFile =>
@@ -101,9 +104,18 @@ suite('DeFlow up, first boot (EPIC-18-S7)', () => {
     expect(token).not.toContain('=');
     expect(url).not.toContain('?token=');
 
-    // AC1 — the daemon file, its four fields and its mode.
+    // AC1 — the daemon file, its fields and its mode. `processStartedAt` is
+    // KAR-18.7's: the OS's own start time for that pid, which is what makes
+    // `DeFlow status` able to tell this daemon from a recycled pid.
     const file = daemonFile(dataDir);
-    expect(Object.keys(file).sort()).toEqual(['pid', 'port', 'startedAt', 'token']);
+    expect(Object.keys(file).sort()).toEqual([
+      'pid',
+      'port',
+      'processStartedAt',
+      'startedAt',
+      'token',
+    ]);
+    expect(file.processStartedAt).toEqual(expect.any(String));
     expect(file.port).toBe(port);
     expect(file.token).toBe(token);
     expect(file.pid).toBe(cli.child.pid);
