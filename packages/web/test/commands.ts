@@ -35,7 +35,22 @@ export const emulateMedia: BrowserCommand<[MediaPreferences]> = async (context, 
 };
 
 /**
- * The command is declared on `BrowserCommands` as well as registered in
+ * KAR-17.7 AC8 — grants the page's browser *context* clipboard read and write.
+ *
+ * `navigator.clipboard.writeText` from a real user gesture generally succeeds
+ * in Chromium without this, but `navigator.clipboard.readText()` — the only
+ * honest way for a spec to confirm what actually landed on the clipboard
+ * rather than trusting the page's own account of what it wrote — is gated
+ * behind the `clipboard-read` permission, and a page cannot grant that to
+ * itself. `BrowserContext.grantPermissions` is the browser-process side of
+ * that gate, exactly as `emulateMedia` above is for `prefers-*` media.
+ */
+export const grantClipboard: BrowserCommand<[]> = async (context) => {
+  await context.page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+};
+
+/**
+ * The commands are declared on `BrowserCommands` as well as registered in
  * `../vitest.config.ts`: the runtime lookup is by name, so without this
  * augmentation `commands.emulateMedia(...)` is a type error in every spec that
  * uses it — and casting it away in each of them is how a renamed command stops
@@ -44,5 +59,6 @@ export const emulateMedia: BrowserCommand<[MediaPreferences]> = async (context, 
 declare module 'vitest/browser' {
   interface BrowserCommands {
     emulateMedia: (preferences: MediaPreferences) => Promise<void>;
+    grantClipboard: () => Promise<void>;
   }
 }

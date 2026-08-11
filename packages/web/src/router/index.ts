@@ -66,6 +66,16 @@ export const routes = [
     props: true,
   },
   {
+    // F10.8. Lazy for the same reason the scrubber and the context view are —
+    // not the landing view — though the board itself pulls in nothing heavier
+    // than the plan graph: it is built from `../ledger/projections/gates.ts`,
+    // which every route already loads.
+    path: '/runs/:runId/criteria',
+    name: 'run-criteria',
+    component: () => import('../views/AcceptanceCriteriaView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

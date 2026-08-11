@@ -51,15 +51,16 @@ const evidence = computed(() =>
 );
 
 /**
- * Where clicking the criterion goes.
+ * Where clicking the criterion goes (EPIC-17-S24's "and back again").
  *
- * A query parameter rather than a route, because the acceptance-criteria board
- * is KAR-17.7 and does not exist yet. The deep link is the durable half — the
- * criterion id in the URL — and the board picks it up when it lands, which is
- * the shape EPIC-17-S24's third scenario needs.
+ * The acceptance-criteria board KAR-17.7 built, at this same run, with the
+ * criterion id in the URL — `../../views/AcceptanceCriteriaView.vue` reads
+ * `?criterion=` on arrival, opens that row and scrolls it into view.
  */
 const criterionTo = computed(() => ({
-  query: { ...(route.query as LocationQueryRaw), criterion: props.finding.criterion },
+  name: 'run-criteria',
+  params: { runId: route.params['runId'] },
+  query: { criterion: props.finding.criterion },
 }));
 
 /** The ledger position the verdict was written at (AC10). */

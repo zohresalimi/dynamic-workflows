@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 import { diffSyntaxAlias } from './scripts/diff-syntax-alias.ts';
-import { emulateMedia } from './test/commands.ts';
+import { emulateMedia, grantClipboard } from './test/commands.ts';
 
 // The `web` slice of the root config's test.projects (docs/14-testing-strategy.md §13).
 //
@@ -81,7 +81,7 @@ export default defineConfig({
       // are OS inputs the page cannot set for itself, and stubbing
       // `window.matchMedia` would leave the CSS media block (the thing AC8 is
       // actually about) inert. See ./test/commands.ts.
-      commands: { emulateMedia },
+      commands: { emulateMedia, grantClipboard },
     },
   },
 });
