@@ -217,7 +217,13 @@ suite('EPIC-16-S40 — the graph is reachable from the keyboard and by a reader'
 
     const canvas = screen.container.querySelector('[data-graph-canvas]');
     expect(canvas?.getAttribute('aria-label')).toContain('Plan graph');
-    expect(screen.container.querySelector('svg title')?.textContent).toContain('12');
+    // The caption's own `<svg>`, by class rather than by `svg title`: KAR-17.1
+    // AC9 added a minimap, which brings a `<title>` of its own ("Vue Flow mini
+    // map") and would otherwise be the first one in the document. Both titles
+    // are correct; this assertion is about the one describing the drawing.
+    expect(screen.container.querySelector('.graph-canvas__caption title')?.textContent).toContain(
+      '12',
+    );
   });
 
   it('offers the same graph as a table, which is also the paste-into-a-PR surface', async () => {

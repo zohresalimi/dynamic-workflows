@@ -38,6 +38,13 @@ export interface GraphCanvasProps {
    */
   readonly costs?: ReadonlyMap<string, string>;
   /**
+   * Per-node elapsed time, already formatted, for the same reason `costs` is:
+   * *how long has this been going* depends on a clock, and a canvas that read
+   * one would tick at whatever rate its own render loop happened to run at.
+   * `./node-body.ts` formats it; the view supplies it.
+   */
+  readonly durations?: ReadonlyMap<string, string>;
+  /**
    * Positions computed elsewhere — the plan-evolution scrubber's union-graph
    * layout (KAR-17.2), laid out once and cached so a surviving node cannot move
    * between versions. Given these, the canvas runs no layout of its own.

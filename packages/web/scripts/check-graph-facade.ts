@@ -40,8 +40,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 /** The one file allowed to import Vue Flow, package-relative. */
 export const FACADE = 'src/components/graph/GraphCanvas.vue';
 
-/** The package this rule is about. Sub-paths of it count too. */
-const SPECIFIER = '@vue-flow/core';
+/**
+ * The **scope** this rule is about — every package in it, and every sub-path.
+ *
+ * It was `@vue-flow/core` alone until KAR-17.1 AC9 brought the minimap and the
+ * zoom controls into the facade. Both are addons that reach the renderer's own
+ * store through `useVueFlow`, so a rule that named only the core package would
+ * leave a view free to import `@vue-flow/minimap`, hold that store, and quietly
+ * make "replace the renderer" a two-file change again. The boundary the facade
+ * draws is around the renderer, not around one of its packages.
+ */
+const SPECIFIER = '@vue-flow/';
 
 /**
  * The one stylesheet the renderer's own sheet may be `@import`ed from, and the
@@ -108,7 +117,7 @@ export function graphFacadeViolations(files: readonly ScannedFile[]): FacadeViol
     violations.push({
       where: file.path,
       message:
-        `${file.path} reaches past the graph facade: it names ${SPECIFIER} itself. ` +
+        `${file.path} reaches past the graph facade: it names a ${SPECIFIER} package itself. ` +
         `${FACADE} is the only file allowed to (KAR-16.6 AC1). Vue Flow is the largest ` +
         'third-party risk in this frontend — one maintainer, no announced v2 — and the ' +
         'facade is what keeps replacing it a one-file change. Whatever this file needs ' +

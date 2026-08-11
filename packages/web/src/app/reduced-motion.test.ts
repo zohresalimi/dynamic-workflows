@@ -20,18 +20,16 @@
  * media query wraps the wrong rule"*, and a rule that was never doing anything
  * in the first place satisfies "computed transition is none" perfectly.
  */
+import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { commands } from 'vitest/browser';
+import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
 import { API_BASE, type Asked, daemonFetch, RUN } from '../../test/three-patches.ts';
 import { createClient } from '../api/client.ts';
+import { useRunStore } from '../stores/useRunStore.ts';
 
 let shell: MountedShell;
-
-const NODES = [
-  { id: 'n_plan', title: 'Plan the work', status: 'completed' as const },
-  { id: 'n_impl_1', title: 'Implement the reducer', status: 'running' as const },
-];
 
 /** The transition on the first element matching `selector`. */
 function transitionOf(selector: string): { property: string; duration: string } {
@@ -49,9 +47,18 @@ afterEach(async () => {
 suite('AC8 — the graph stops moving', () => {
   beforeEach(async () => {
     await commands.emulateMedia({ reducedMotion: 'no-preference' });
-    shell = await mountShell();
-    shell.ui.setNodes(NODES);
-    await expect.poll(() => document.querySelector('.vue-flow__node')).not.toBeNull();
+    // Through the run store and a real recording, because that is where the
+    // graph's nodes come from since KAR-17.1 wired the stream to it. The UI
+    // store this used to call `setNodes` on holds the *selection*, not the
+    // plan — feeding it here would draw nothing and the motion assertions
+    // below would have no element to be about.
+    shell = await mountShell({ at: { name: 'run-plan', params: { runId: HAPPY_PATH_RUN } } });
+    setActivePinia(shell.pinia);
+    const run = useRunStore(shell.pinia);
+    for (const event of happyPath12()) run.applyEvent(event);
+    await expect
+      .poll(() => document.querySelector('.vue-flow__node'), { timeout: 15_000 })
+      .not.toBeNull();
   });
 
   it('animates by default, so the rule below is switching something off', () => {

@@ -17,7 +17,9 @@
   "dependencies": {
     "@DeFlow/core": "workspace:*",
     "@pinia/colada": "catalog:",
+    "@vue-flow/controls": "catalog:",
     "@vue-flow/core": "catalog:",
+    "@vue-flow/minimap": "catalog:",
     "@vue/devtools-api": "catalog:",
     "@vueuse/core": "catalog:",
     "clsx": "catalog:",

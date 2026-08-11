@@ -1,92 +1,215 @@
 <script setup lang="ts">
 /**
- * F10.1's live plan graph — the landing view.
+ * KAR-17.1 — F10.1's live plan graph. The landing view, and the shell the
+ * other eight views hang off.
+ *
+ * Verifies: EPIC-17-S1, EPIC-17-S2, EPIC-17-S3, EPIC-16-S1 (the two rendering
+ * clauses EPIC-16 could not close) · AC1–AC7, AC10
  *
  * This view renders **through `GraphCanvas`** and imports no renderer of its
  * own; `packages/web/scripts/check-graph-facade.ts` fails `pnpm lint` if any
- * view ever does (KAR-16.6 AC1). What that buys is the thing the roadmap asks
- * for: Vue Flow is the largest third-party risk in this frontend, and replacing
- * it is a change to one file in `../components/graph/` rather than to every
- * view that ever drew a node.
+ * view ever reaches past it (KAR-16.6 AC1). What that buys is the thing the
+ * roadmap asks for: Vue Flow is the largest third-party risk in this frontend,
+ * and replacing it is a change to one directory rather than to every view that
+ * ever drew a node.
  *
- * The view's own job is small and stays small: it supplies the **node body** —
- * the slot the facade calls once per node — and it hands the canvas its
- * selection. Layout, motion, keyboard traversal and the accessible names are
- * the canvas's, which is why they are tested once rather than once per view.
+ * ## What this view is responsible for, and what it is not
  *
- * The nodes themselves arrive from the shell's UI store, which is what makes
- * the keyboard map testable against a store instead of against a server. Their
- * full view-model — provider, cost, gate verdicts, streaming phase — is the run
- * store's (KAR-16.4) and arrives with EPIC-17's wiring; `asPlanNode` below is
- * the honest stand-in until then, and it invents nothing: what the shell does
- * not know is `null`.
+ * **It joins and it renders. It does not reduce.** Every value on screen came
+ * off a projection through `useRunStore`'s selectors, and the one piece of
+ * arithmetic here is `toNodeBody`, which is a pure function in a file of its
+ * own with its own spec. There is deliberately no `if` about an event kind
+ * anywhere below.
+ *
+ * **It owns the run's connection** (`../app/useRunFeed.ts`). EPIC-16 shipped
+ * `openLedgerStream`, `useRunStore.applyEvent` and this view with no wire
+ * between any two of them, so the application opened against a real replay and
+ * drew an empty graph however deep the ledger was. The wire is one composable
+ * and it is the first thing this view does.
+ *
+ * **It keeps the shell's UI store in step with the plan.** The keyboard map
+ * (`j`/`k`/`Enter`), the Cmd-K jumper and the inspector all read `useUiStore`,
+ * which holds the operator's *selection* rather than the ledger's *nodes* —
+ * so the plan's node list is pushed into it whenever the plan changes. That is
+ * the whole of AC7's traversal: no key handler lives in this file, because a
+ * handler bound to a view stops working on every other route (KAR-16.1 AC7).
+ *
+ * ## The two performance rules this view has to keep
+ *
+ * 1. **Body objects are memoised by content.** `useNow` ticks once a second so
+ *    a running node's elapsed time moves; without memoisation that would hand
+ *    four hundred child components a new prop object every second, and the
+ *    graph would re-render itself for the life of the run. `memoise` reuses the
+ *    previous body for every node whose rendered values did not change, so a
+ *    tick patches exactly the nodes that are actually running.
+ * 2. **Nothing here writes a transform or triggers a layout.** Both belong to
+ *    the facade, which relays out on the graph's *shape* and not on its
+ *    contents (KAR-17.1 AC3).
  */
-import { computed } from 'vue';
+import { useNow } from '@vueuse/core';
+import { computed, watch } from 'vue';
+import { type LocationQueryRaw, useRoute, useRouter } from 'vue-router';
+import { useRunFeed } from '../app/useRunFeed.ts';
 import GraphCanvas from '../components/graph/GraphCanvas.vue';
-import StateChip from '../components/StateChip.vue';
-import type { PlanNodeVM } from '../ledger/vm.ts';
-import { type GraphNode, useUiStore } from '../stores/useUiStore.ts';
+import { type NodeBodyVM, toNodeBody } from '../components/graph/node-body.ts';
+import PlanNode from '../components/graph/PlanNode.vue';
+import { copy, memoise, shallowUnchanged } from '../stores/memoise.ts';
+import { useRunStore } from '../stores/useRunStore.ts';
+import { useUiStore } from '../stores/useUiStore.ts';
+
+const props = defineProps<{
+  /** From `/runs/:runId`. Absent on the bare landing route. */
+  readonly runId?: string;
+}>();
 
 const ui = useUiStore();
+const run = useRunStore();
+const route = useRoute();
+const router = useRouter();
+
+const runId = computed<string | null>(() => props.runId ?? null);
+const { status } = useRunFeed(runId);
 
 /**
- * The shell's node, in the projection's vocabulary.
+ * The tab's clock, at one tick a second.
  *
- * Every field the shell cannot answer yet is `null` rather than a plausible
- * default: a `provider` of `'claude-code'` invented here would be announced to
- * a screen reader as fact.
+ * A running node's elapsed time has to move, and the only honest source for
+ * "how long has this been going" on an *open* span is now. One shared ticker
+ * for the whole view rather than a timer per node — four hundred intervals is
+ * four hundred wakeups a second — and the arithmetic itself is
+ * `./node-body.ts`'s, which takes `now` as a parameter and reads no clock.
  */
-function asPlanNode(node: GraphNode): PlanNodeVM {
-  return {
-    id: node.id,
-    title: node.title,
-    type: null,
-    lifecycle: 'active',
-    status: node.status,
-    state: ui.stateOf(node),
-    provider: null,
-    model: null,
-    permission: null,
-    worktree: null,
-    binary: null,
-    attempt: 0,
-    phase: null,
-    progressMessage: null,
-    failure: null,
-    suspendedUntil: null,
-    blocked: null,
-    retry: null,
-    unschedulable: null,
-  };
+const now = useNow({ interval: 1000 });
+
+const nodes = computed(() => run.planNodes);
+const edges = computed(() => run.planEdges);
+
+/**
+ * The bodies, memoised by content.
+ *
+ * See rule 1 in the module note: the cache is what keeps a one-second tick from
+ * re-rendering a four-hundred-node graph. `shallowUnchanged` is exactly right
+ * here because every field of a `NodeBodyVM` is a primitive.
+ */
+const bodyCache = new Map<string, NodeBodyVM>();
+
+const bodies = computed<ReadonlyMap<string, NodeBodyVM>>(() => {
+  const at = now.value.getTime();
+  const live = new Map<string, NodeBodyVM>(
+    nodes.value.map((node) => [
+      node.id,
+      toNodeBody({
+        node,
+        span: run.nodeSpans.get(node.id) ?? null,
+        verdict: run.nodeVerdicts.get(node.id) ?? null,
+        spend: run.nodeSpend.get(node.id) ?? null,
+        now: at,
+      }),
+    ]),
+  );
+  return new Map(memoise(bodyCache, live, shallowUnchanged, copy).map((body) => [body.id, body]));
+});
+
+/** The two already-formatted columns the data-table twin renders (AC10). */
+const costs = computed(
+  () => new Map([...bodies.value].map(([id, body]) => [id, body.cost] as const)),
+);
+const durations = computed(
+  () => new Map([...bodies.value].map(([id, body]) => [id, body.elapsed] as const)),
+);
+
+/**
+ * The plan, in the shell's vocabulary.
+ *
+ * `useUiStore` holds what belongs to *this tab* — the selection, the overlay
+ * stack — and it needs the node list to move a selection through it. Pushed
+ * from here rather than read from the run store by the store itself, because a
+ * UI store that imported a projection would no longer be the half of the split
+ * that has nothing to do with the ledger (docs/12 §3.2).
+ */
+watch(
+  nodes,
+  (list) => {
+    ui.setNodes(list.map((node) => ({ id: node.id, title: node.title, status: node.status })));
+  },
+  { immediate: true },
+);
+
+/**
+ * AC7 — the selection, in the URL.
+ *
+ * `replace` and not `push`: a graph you cannot press Back out of is a graph
+ * whose history is thirty entries deep after a minute of holding `j`. What the
+ * URL buys is the other direction — a link to a position in a run that opens
+ * on the node the sender was looking at, which is half of what makes a
+ * five-minute diagnosis shareable (PRD §12).
+ */
+watch(
+  () => ui.selectedNodeId,
+  (selected) => {
+    const current = route.query['node'];
+    if ((selected ?? undefined) === current) return;
+    void router.replace({
+      query: selected === null ? omitNode(route.query) : { ...route.query, node: selected },
+    });
+  },
+);
+
+function omitNode(query: LocationQueryRaw): LocationQueryRaw {
+  const { node: _dropped, ...rest } = query;
+  return rest;
 }
 
-const nodes = computed<readonly PlanNodeVM[]>(() => ui.nodes.map(asPlanNode));
+/**
+ * And back the other way, once the plan holding that node has arrived.
+ *
+ * The node named in the URL is almost never in the store when the view mounts —
+ * the graph is hydrated from the daemon a moment later — so this watches the
+ * plan rather than the route: the link selects its node as soon as there is a
+ * node to select, and says nothing if the run never contained one.
+ */
+watch(
+  [nodes, () => route.query['node']],
+  ([list, wanted]) => {
+    if (typeof wanted !== 'string' || wanted === ui.selectedNodeId) return;
+    if (list.some((node) => node.id === wanted)) ui.selectNode(wanted);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
   <section class="plan-graph" aria-label="Plan graph">
     <GraphCanvas
       :nodes="nodes"
-      :edges="[]"
+      :edges="edges"
       :selected="ui.selectedNodeId"
+      :costs="costs"
+      :durations="durations"
       @select="(id: string) => ui.selectNode(id)"
       @activate="(id: string) => { ui.selectNode(id); ui.inspectSelected('inspector'); }"
     >
-      <template #node="{ node }">
-        <article
-          class="plan-node"
-          :data-node="node.id"
-          :data-selected="node.id === ui.selectedNodeId ? 'true' : 'false'"
-          :style="{ borderColor: `var(--state-${node.state})` }"
-        >
-          <h3 class="plan-node__title">{{ node.title }}</h3>
-          <StateChip :state="node.state" />
-        </article>
+      <template #node="{ node, selected }">
+        <PlanNode
+          v-if="bodies.get(node.id) !== undefined"
+          :body="bodies.get(node.id) as NodeBodyVM"
+          :selected="selected"
+        />
       </template>
     </GraphCanvas>
 
-    <p v-if="ui.nodes.length === 0" class="plan-graph__empty">
-      No plan yet. A run's graph appears here as soon as its first plan is compiled.
+    <p v-if="nodes.length === 0" class="plan-graph__empty">
+      <template v-if="runId === null">
+        No run open. Open one at <code>/runs/&lt;runId&gt;</code>, or start one with
+        <code>DeFlow run</code>.
+      </template>
+      <template v-else-if="status === 'hydrating'">Reading the run's ledger…</template>
+      <template v-else-if="status === 'reconnecting'">
+        Reconnecting to the daemon. The graph is what this tab last saw.
+      </template>
+      <template v-else>
+        No plan yet. A run's graph appears here as soon as its first plan is compiled.
+      </template>
     </p>
   </section>
 </template>
@@ -98,26 +221,6 @@ const nodes = computed<readonly PlanNodeVM[]>(() => ui.nodes.map(asPlanNode));
   min-height: 20rem;
 }
 
-.plan-node {
-  display: grid;
-  gap: 0.4rem;
-  padding: 0.6rem 0.75rem;
-  border: 2px solid var(--edge);
-  border-radius: 0.5rem;
-  background: var(--surface-raised);
-  min-width: 12rem;
-  text-align: left;
-}
-
-.plan-node[data-selected="true"] {
-  box-shadow: 0 0 0 2px var(--focus-ring);
-}
-
-.plan-node__title {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
 .plan-graph__empty {
   position: absolute;
   inset: 0;
@@ -125,6 +228,7 @@ const nodes = computed<readonly PlanNodeVM[]>(() => ui.nodes.map(asPlanNode));
   place-content: center;
   color: var(--ink-muted);
   pointer-events: none;
+  text-align: center;
 }
 
 /*

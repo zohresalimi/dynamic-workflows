@@ -60,7 +60,13 @@ import type { Event, EventKind, RunState } from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, markRaw, type Ref, ref, type ShallowRef, shallowRef } from 'vue';
 import type { ApiClient } from '../api/client.ts';
-import { createScrubber, type Scrubber, type ScrubPosition } from '../api/scrub.ts';
+// Type-only, and that is the point: `../api/scrub.ts` reaches `foldEvents` and
+// through it every zod schema `@DeFlow/core` owns — about 42 KB gzip of domain
+// vocabulary that the landing view's *first paint* has no use for. A type
+// import is erased, so the boot chunk does not carry it; `scrubberFor` below
+// pulls the module the first time somebody actually scrubs. See the
+// "Scrubbing" note above and `../test/integration/bundle-budget.test.ts`.
+import type { Scrubber, ScrubPosition } from '../api/scrub.ts';
 import { createLedgerApply, type LedgerApply, type RunLedger } from '../ledger/apply.ts';
 import {
   type BlackboardProjection,
@@ -86,7 +92,13 @@ import {
   type ProjectionName,
 } from '../ledger/projections/kinds.ts';
 import { createEventRing, DEBUG_RING_CAP } from '../ledger/ring.ts';
-import type { PlanEdgeVM, PlanNodeVM, TimelineSpanVM } from '../ledger/vm.ts';
+import type {
+  CostFigures,
+  GateAttemptVM,
+  PlanEdgeVM,
+  PlanNodeVM,
+  TimelineSpanVM,
+} from '../ledger/vm.ts';
 import {
   copy,
   copySpan,
@@ -221,6 +233,16 @@ export const useRunStore = defineStore('run', () => {
   let ledger: LedgerApply | null = null;
   let watched: RunLedger | null = null;
   let scrubber: Scrubber | null = null;
+  /**
+   * What a scrubber would be built from, held until one is needed.
+   *
+   * `open()` is called on every run panel that mounts; `scrubTo()` is called
+   * only when an operator drags a rail. Recording the ingredients rather than
+   * constructing the thing is what keeps `../api/scrub.ts` — and the whole
+   * `@DeFlow/core` schema graph behind it — out of the chunk the landing view
+   * boots from.
+   */
+  let scrubbing: { readonly client: ApiClient; readonly replayWindow: number } | null = null;
 
   /** The projections a kind is folded into. `[]` for one no view projects. */
   const ownersOf = (kind: EventKind): readonly ProjectionName[] =>
@@ -281,10 +303,33 @@ export const useRunStore = defineStore('run', () => {
       runId.value = id;
       rebase(id, 0);
     }
-    scrubber =
-      options.client === undefined
-        ? scrubber
-        : createScrubber(options.client, id, { replayWindow: options.replayWindow ?? 0 });
+    if (options.client !== undefined) {
+      scrubbing = { client: options.client, replayWindow: options.replayWindow ?? 0 };
+      // A scrubber built for the previous run answers about the previous run.
+      scrubber = null;
+    }
+  }
+
+  /**
+   * The scrubber for the open run, built on first use.
+   *
+   * `null` when `open()` was never given a client — a panel that cannot scrub
+   * is a supported shape, and it is what `scrubTo()` returning `null` means.
+   */
+  async function scrubberFor(id: string): Promise<Scrubber | null> {
+    if (scrubber !== null) return scrubber;
+    const ingredients = scrubbing;
+    if (ingredients === null) return null;
+
+    const { createScrubber } = await import('../api/scrub.ts');
+    // Re-read rather than trust: an await is a place where `close()` can have
+    // happened, and a scrubber adopted for a run this store is no longer on
+    // would answer the next `scrubTo` about the wrong ledger.
+    if (scrubbing !== ingredients || runId.value !== id) return null;
+    scrubber = createScrubber(ingredients.client, id, {
+      replayWindow: ingredients.replayWindow,
+    });
+    return scrubber;
   }
 
   /**
@@ -300,6 +345,7 @@ export const useRunStore = defineStore('run', () => {
     ledger = null;
     watched = null;
     scrubber = null;
+    scrubbing = null;
     runId.value = null;
     runState.value = null;
     for (const name of PROJECTION_NAMES) {
@@ -344,9 +390,12 @@ export const useRunStore = defineStore('run', () => {
    */
   async function scrubTo(target: number | 'head'): Promise<ScrubPosition | null> {
     const id = runId.value;
-    if (scrubber === null || id === null) return null;
+    if (id === null) return null;
 
-    const position = await scrubber.positionAt(target);
+    const held = await scrubberFor(id);
+    if (held === null) return null;
+
+    const position = await held.positionAt(target);
     rebase(id, position.seq);
     runState.value = position.state;
     return position;
@@ -390,6 +439,50 @@ export const useRunStore = defineStore('run', () => {
   const timelineSpans = computed<readonly TimelineSpanVM[]>(() => {
     void versions.timeline.value;
     return memoise(spanSnapshots, timeline.value.spans, spanUnchanged, copySpan);
+  });
+
+  // ── the three per-node joins F10.1's node body needs (KAR-17.1 AC4) ────────
+  //
+  // A node body shows elapsed time, cost so far and a gate verdict beside the
+  // node's own state, and those live in three other projections keyed three
+  // other ways. The join is here rather than in the component for the reason
+  // the selectors above exist at all: a template that walked
+  // `timeline.spans` would be holding a `Map` keyed `${nodeId}#${attempt}`,
+  // which is the projection's private index (KAR-16.4 AC6), and it would walk
+  // it once per node per render.
+  //
+  // Each is a `Map` rather than an array because the caller looks nodes up by
+  // id, and each reads its own projection's counter — so a cost event does not
+  // invalidate the span map and a gate verdict does not invalidate either.
+
+  /** `nodeId` → the span of its **latest** attempt. Repairs show the retry. */
+  const nodeSpans = computed<ReadonlyMap<string, TimelineSpanVM>>(() => {
+    void versions.timeline.value;
+    const latest = new Map<string, TimelineSpanVM>();
+    for (const span of timeline.value.spans.values()) {
+      const held = latest.get(span.nodeId);
+      if (held === undefined || span.attempt >= held.attempt) latest.set(span.nodeId, span);
+    }
+    return latest;
+  });
+
+  /** `nodeId` → the last gate verdict against its work, if any gate has run. */
+  const nodeVerdicts = computed<ReadonlyMap<string, GateAttemptVM>>(() => {
+    void versions.gates.value;
+    const last = new Map<string, GateAttemptVM>();
+    for (const [nodeId, attempts] of gates.value.attemptsByNode) {
+      const latest = attempts.at(-1);
+      if (latest !== undefined) last.set(nodeId, latest);
+    }
+    return last;
+  });
+
+  /** `nodeId` → its four figures. Which one to show is the renderer's choice. */
+  const nodeSpend = computed<ReadonlyMap<string, CostFigures>>(() => {
+    void versions.cost.value;
+    const spend = new Map<string, CostFigures>();
+    for (const [nodeId, bucket] of cost.value.byNode) spend.set(nodeId, bucket.costUsd);
+    return spend;
   });
 
   // ── foreign libraries ──────────────────────────────────────────────────────
@@ -459,6 +552,9 @@ export const useRunStore = defineStore('run', () => {
     planNodes,
     planEdges,
     timelineSpans,
+    nodeSpans,
+    nodeVerdicts,
+    nodeSpend,
 
     // lifecycle
     open,

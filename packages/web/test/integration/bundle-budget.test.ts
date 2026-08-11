@@ -41,6 +41,34 @@ const INITIAL_CHUNK_BUDGET = 200 * 1024;
  */
 const BANNED_FROM_INITIAL = ['elkjs', 'shiki', '@xterm/', '@git-diff-view/', 'echarts'] as const;
 
+/**
+ * Text that only a **development** build of Vue emits.
+ *
+ * Vue's ESM entry is the same file in both builds; what differs is whether the
+ * `__DEV__` branches survive, and `[Vue warn]` is the cheapest sentence that
+ * only exists inside them. That code costs about 59 KB gzip — a third of the
+ * whole budget, spent on warnings and the devtools bridge the shipped
+ * application does not contain.
+ *
+ * It has to be pinned because it is easy to measure by accident. Vitest runs
+ * with `NODE_ENV=test`, a `vite build` spawned with the runner's own
+ * environment inherits it, and Vite resolves Vue's conditional exports against
+ * the building process's `NODE_ENV` — so this spec measured a bundle nobody
+ * ships until `BUILD_ENV` below was passed explicitly. Left unpinned the budget
+ * is either 59 KB pessimistic or, worse, a number that moves when the runner
+ * does. A source-path check cannot see this: both builds list the same module.
+ */
+const DEV_ONLY_MARKER = '[Vue warn]';
+
+/**
+ * The environment the build runs in.
+ *
+ * Explicit rather than inherited: `mode` alone does not settle it, because Vite
+ * resolves conditional exports against `process.env.NODE_ENV` in the process
+ * doing the building.
+ */
+const BUILD_ENV = { ...process.env, NODE_ENV: 'production' };
+
 interface BuiltChunk {
   readonly file: string;
   readonly bytes: Buffer;
@@ -65,7 +93,11 @@ let buildOutput: string;
 
 function run(command: string, args: readonly string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, [...args], {
+      cwd,
+      env: BUILD_ENV,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString();
@@ -168,6 +200,18 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
       size,
       `initial payload is ${(size / 1024).toFixed(1)} KB gzip — ${breakdown}`,
     ).toBeLessThanOrEqual(INITIAL_CHUNK_BUDGET);
+  });
+
+  it('measures the bundle that ships, not a development one', () => {
+    // The control under every number in this file. A budget asserted against a
+    // build carrying Vue's development runtime is a budget about a build nobody
+    // serves — and it fails, or passes, for reasons that have nothing to do with
+    // what this project put in the chunk.
+    const dev = initial.filter((chunk) => chunk.bytes.includes(DEV_ONLY_MARKER));
+    expect(
+      dev.map((chunk) => chunk.file),
+      'the initial payload carries Vue’s development build',
+    ).toEqual([]);
   });
 
   it('has @vue-flow/core in it, because the plan graph is the landing view', () => {

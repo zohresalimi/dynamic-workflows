@@ -6,6 +6,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "sideEffects": [
+    "./src/upcasters.ts",
+    "./dist/index.js"
+  ],
   "publishConfig": {
     "exports": {
       ".": {

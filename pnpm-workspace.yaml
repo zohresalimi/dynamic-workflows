@@ -118,6 +118,13 @@ catalog:
   # bundle (aria-live, per-node ariaLabel, keyboard traversal). It is 345 KB raw
   # and deliberately IN the initial chunk: the plan graph is the landing view.
   "@vue-flow/core": ^1.48.2
+  # KAR-17.1 AC9's two: a minimap and zoom controls, both named by docs/12 §6.1.
+  # They are addons over `@vue-flow/core`'s own store rather than second
+  # renderers — each is a few KB and neither is reachable from a view, because
+  # `packages/web/scripts/check-graph-facade.ts` guards the whole `@vue-flow/`
+  # scope and not only the core package.
+  "@vue-flow/controls": ^1.1.3
+  "@vue-flow/minimap": ^1.5.4
   # KAR-16.6 / KAR-00.4. The layout engine, exact rather than caret: 0.12.0 is
   # the build S3 settled — `elkjs/lib/elk-worker.min.js?worker` plus ELK's
   # `workerFactory`, never the documented `workerUrl`, which wants a publicly
