@@ -1,0 +1,70 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`EPIC-18-S46 — the clean room runs doctor and gets an honest, agent-free report > exits 0, renders every section and reports zero agents with install hints 1`] = `
+{
+  "checks": [
+    {
+      "data": {
+        "installed": 0,
+      },
+      "detail": "0 installed — which is not a failure. Install any one of these:
+  gemini: npm install -g @google/gemini-cli
+  copilot: npm install -g @github/copilot
+  opencode: npm install -g opencode-ai
+  claude: npm install -g @agentclientprotocol/claude-agent-acp
+  codex: npm install -g @agentclientprotocol/codex-acp
+  The bundled mock agent runs a whole plan with no vendor CLI, and "DeFlow replay <fixture>" serves a recorded run over the same HTTP contract the UI speaks to a live daemon, so development and replay work regardless.",
+      "id": "agents.summary",
+      "status": "ok",
+    },
+    {
+      "data": {
+        "provider": "claude",
+        "status": "not-installed",
+      },
+      "detail": "claude is not installed here: no executable "claude-agent-acp" was found on PATH — install it with \`npm install -g @agentclientprotocol/claude-agent-acp\` (or your platform's own installer for that package) and run 'DeFlow init' again",
+      "id": "agents.claude",
+      "status": "ok",
+    },
+    {
+      "data": {
+        "provider": "codex",
+        "status": "not-installed",
+      },
+      "detail": "codex is not installed here: no executable "codex-acp" was found on PATH — install it with \`npm install -g @agentclientprotocol/codex-acp\` (or your platform's own installer for that package) and run 'DeFlow init' again",
+      "id": "agents.codex",
+      "status": "ok",
+    },
+    {
+      "data": {
+        "provider": "copilot",
+        "status": "not-installed",
+      },
+      "detail": "copilot is not installed here: no executable "copilot" was found on PATH — install it with \`npm install -g @github/copilot\` (or your platform's own installer for that package) and run 'DeFlow init' again",
+      "id": "agents.copilot",
+      "status": "ok",
+    },
+    {
+      "data": {
+        "provider": "gemini",
+        "status": "not-installed",
+      },
+      "detail": "gemini is not installed here: no executable "gemini" was found on PATH — install it with \`npm install -g @google/gemini-cli\` (or your platform's own installer for that package) and run 'DeFlow init' again",
+      "id": "agents.gemini",
+      "status": "ok",
+    },
+    {
+      "data": {
+        "provider": "opencode",
+        "status": "not-installed",
+      },
+      "detail": "opencode is not installed here: no executable "opencode" was found on PATH — install it with \`npm install -g opencode-ai\` (or your platform's own installer for that package) and run 'DeFlow init' again",
+      "id": "agents.opencode",
+      "status": "ok",
+    },
+  ],
+  "id": "agents",
+  "status": "ok",
+  "title": "Agents",
+}
+`;
