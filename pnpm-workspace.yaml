@@ -72,6 +72,15 @@ catalog:
   oxlint: 1.76.0
   oxlint-tsgolint: ^7.0.2001 # the type-aware engine "--type-aware" spawns; peerDependency of oxlint
   tsdown: 0.22.14 # exact: still 0.x
+  # KAR-18.5 — the two package-shape linters `pnpm pack:check` runs against the
+  # built package, both pinned exact because a gate that changes what it accepts
+  # between two runs of the same release script is not a gate. `publint` reads
+  # the manifest the way npm and every bundler will (files, bin, exports,
+  # extensions); `attw` resolves each entry point the way each of the six module
+  # resolution modes will, which is the half that catches a masked entry point
+  # `pnpm dev` never exercises.
+  publint: 0.3.22
+  "@arethetypeswrong/cli": 0.18.5
   "@lydell/node-pty": 1.2.0-beta.14 # per-platform optionalDependencies; never node-gyp
   yaml: 2.9.0
   lefthook: ^2.1.10 # replaces husky *and* lint-staged; one Go binary via optionalDependencies

@@ -1,11 +1,14 @@
 /**
  * DeFlow — the only package published to npm.
  *
- * `bin`, `files` and the tsdown config that inlines every @DeFlow/* package
- * (noExternal: [/^@DeFlow\//], external: ["@lydell/node-pty"]) arrive with
- * EPIC-18. Declaring bins before dist/ exists would make `pnpm install` link
- * paths that are not there yet, so they are deliberately absent from the
- * scaffold.
+ * KAR-18.5 landed the packaging: `bin`, `files`, and `tsdown.config.ts`, which
+ * inlines every @DeFlow/* package (`deps.alwaysBundle: [/^@DeFlow\//]`) and
+ * leaves exactly two native runtime dependencies external. This module is the
+ * package's `.` export inside the workspace and the fourth build entry; the
+ * three bins beside it are `src/bin.ts`, `src/mcp.ts` and `src/mock-agent.ts`.
+ * On a clean checkout `pnpm install` warns that it cannot link the bins,
+ * because `dist/` does not exist until `pnpm build` runs — expected, and
+ * documented in docs/03-local-development.md §13.
  *
  * KAR-10.1 adds `runTask`, the body of `DeFlow run "…"` (docs/11 §7.1) — ahead
  * of the argv parser and the `bin` entry EPIC-18 wires up, because the ACs it

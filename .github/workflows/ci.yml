@@ -56,6 +56,17 @@ jobs:
       # a pre-commit hook — it loads the whole domain package, and
       # docs/14-testing-strategy.md §14.1 keeps that hook under ~2 seconds.
       - run: pnpm schemas:check
+      # KAR-18.5 AC4. The release gate: the real build (SPA -> copy -> tsdown)
+      # followed by publint and attw against the packed artefact. It is here
+      # rather than in the `test` matrix because that matrix is held back behind
+      # RUN_TESTS_IN_CI, and a release gate nobody runs is not a gate.
+      #
+      # It is also the only step in this job that proves the tarball builds at
+      # all — typechecking a workspace that resolves @DeFlow/* to live source
+      # says nothing about whether they inline, and the failures this catches
+      # (a lost `files` entry, an unresolvable exports map, a @DeFlow/* specifier
+      # that survived) are invisible until somebody installs the package.
+      - run: pnpm pack:check
 
   test:
     # HELD BACK (owner's decision, 2026-08-05): no tests run in CI for now.

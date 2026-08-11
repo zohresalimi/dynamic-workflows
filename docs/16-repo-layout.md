@@ -59,24 +59,43 @@ DeFlow/
 
 ## 2. Why exactly one package is published
 
-`packages/cli` is `"name": "DeFlow"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `noExternal: [/^@DeFlow\//]`.
+`packages/cli` is `"name": "DeFlow"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `deps.alwaysBundle: [/^@DeFlow\//]`.
 
 ```ts
 // packages/cli/tsdown.config.ts
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/bin.ts", "src/mcp.ts", "src/mock-agent.ts"],
+  entry: ["src/bin.ts", "src/mcp.ts", "src/mock-agent.ts", "src/index.ts"],
   format: "esm",
   platform: "node",
   target: "node24",
   dts: false,
-  clean: true,
   outDir: "dist",
-  noExternal: [/^@DeFlow\//], // inline every workspace package
-  external: ["@lydell/node-pty"], // native; must stay a real runtime dep
+  outExtensions: () => ({ js: ".mjs" }),
+  // NOT clean: true — the UI is copied into dist/ui/ by the step before this
+  // one, and cleaning the directory would delete it.
+  clean: ["*.mjs", "*.d.mts", "*.map"],
+  deps: {
+    alwaysBundle: [/^@DeFlow\//], // inline every workspace package
+    neverBundle: ["better-sqlite3", "@lydell/node-pty", "vite"],
+    onlyImport: ["better-sqlite3", "@lydell/node-pty", "vite"], // fail the build on any other
+  },
 });
 ```
+
+Three notes on that config, each of which cost a build to find (KAR-18.5):
+
+- **`noExternal` / `external` are the pre-0.22 spelling.** tsdown@0.22.14 still accepts them, warns on
+  every build, and maps them onto `deps.alwaysBundle` / `deps.neverBundle`. Same semantics, current
+  names. `deps.onlyImport` has no old equivalent and is worth having: it turns "no unexpected runtime
+  import survived" from a spec that runs later into a build that fails now, naming the chunk.
+- **`vite` is on both lists.** `startHttp`'s dev branch reaches for it through `await import('vite')`
+  under `DeFlow_DEV === '1'`, and a bundler follows `import()` like any other edge: without the entry
+  it inlines a dev server, its CJS interop and `tsx/cjs/api` behind `bin.mjs`. External leaves it as an
+  unreachable specifier — no bytes, no dependency.
+- **`clean` names files, not the directory.** The UI arrives in `dist/ui/` between the two build
+  steps; `clean: true` deletes it and the symptom is a daemon that starts and serves a blank page.
 
 This deletes the entire multi-package versioning problem. There are no changesets, no release orchestration, no inter-package semver ranges to keep honest: the release is `npm version patch && pnpm publish`. `@changesets/cli@2.31.1` is alive and fine, but it solves coordination you deliberately do not have. (pnpm 11.13+ also ships native release management — `pnpm change`, `pnpm version -r`, `pnpm lane`, configured under a `versioning:` key — which would be the thing to reach for if `@DeFlow/*` ever do get published separately. **Unverified**: confirm the exact command surface against pnpm's docs before adopting.)
 
@@ -84,7 +103,7 @@ D17 calls `@DeFlow/mock-agent` a first-class shipped package. "Shipped" means it
 
 **Bundler: `tsdown@0.22.14`** (Rolldown-based, from the Vite/VoidZero org; peer-supports TypeScript ^5/^6/^7; engines `^22.18 || >=24.11`). Pin it exactly — it is still 0.x. `tsup@8.5.1` last published 2025-11-12 and its maintainers now direct new projects to tsdown; treat it as end-of-life. Plain `tsc` cannot inline `@DeFlow/*` into one file, which is the whole point.
 
-**Exactly one native runtime dependency** survives into the tarball. `better-sqlite3@13.0.2` ships prebuilt N-API binaries — `prebuilds/{darwin,linux,linuxmusl,win32}-{x64,arm64}.node`, `gypfile: false`, **no install script**; `npm i better-sqlite3@13.0.2` completed in **1 second** with zero compilation (**Verified 2026-08-02**). `@lydell/node-pty@1.2.0-beta.14` installed in **514 ms** with zero compilation via npm-native per-platform `optionalDependencies` — unlike `node-pty@1.1.0`, whose `scripts.install` falls back to `node-gyp rebuild` and **failed outright** in the verification environment. Make it an `optionalDependency` with a plain-`spawn` fallback so an unsupported platform degrades to no-TTY rather than failing installation.
+**Exactly two dependencies** survive into the tarball, and both are native for the same reason: each locates a platform binary from its own module path at runtime, so inlining it points that lookup at a directory that is not in the package. Everything else — `hono`, `pino`, `execa`, `zod`, `ajv`, the ACP and MCP SDKs, `gpt-tokenizer`, `yaml`, `rfc6902` and every `@DeFlow/*` — is inlined (**verified 2026-08-11** against the real build; `deps.onlyImport` above is what keeps it that way). `better-sqlite3@13.0.2` ships prebuilt N-API binaries — `prebuilds/{darwin,linux,linuxmusl,win32}-{x64,arm64}.node`, `gypfile: false`, **no install script**; `npm i better-sqlite3@13.0.2` completed in **1 second** with zero compilation (**Verified 2026-08-02**). `@lydell/node-pty@1.2.0-beta.14` installed in **514 ms** with zero compilation via npm-native per-platform `optionalDependencies` — unlike `node-pty@1.1.0`, whose `scripts.install` falls back to `node-gyp rebuild` and **failed outright** in the verification environment. Make it an `optionalDependency` with a plain-`spawn` fallback so an unsupported platform degrades to no-TTY rather than failing installation.
 
 Build order and the UI:
 
@@ -93,6 +112,11 @@ pnpm --filter @DeFlow/web build        # -> packages/web/dist
 copy packages/web/dist -> packages/cli/dist/ui/
 pnpm --filter DeFlow build             # tsdown, @DeFlow/* inlined
 ```
+
+The three steps live in `packages/cli/scripts/build.ts`, which is the whole of `pnpm build`. One
+script rather than three `&&`-joined commands, because the order is the load-bearing part and a
+`--out-dir` flag lets `packages/cli/test/integration/build.test.ts` run the real thing rather than a
+re-implementation of it.
 
 UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/DeFlow-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
 

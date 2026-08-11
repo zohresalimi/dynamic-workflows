@@ -477,9 +477,19 @@ source→dist swap).
 
 1. `pnpm build` runs the fixed order and produces `packages/cli/dist/` containing `bin.mjs`,
    `mcp.mjs`, `mock-agent.mjs` and `ui/` with the Vite output as plain hashed files.
-2. The bundle contains no `@DeFlow/` import specifier and no `.ts` import specifier; the only
-   external runtime import is `@lydell/node-pty`, declared as an `optionalDependency` with a
-   plain-`spawn` fallback.
+2. The bundle contains no `@DeFlow/` import specifier and no `.ts` import specifier. Exactly two
+   runtime imports stay external, and both are native: `better-sqlite3` as a `dependency`, and
+   `@lydell/node-pty` as an `optionalDependency` with a plain-`spawn` fallback.
+
+   > **Amended 2026-08-11 while implementing KAR-18.5.** This criterion originally read "the only
+   > external runtime import is `@lydell/node-pty`". `better-sqlite3` cannot be inlined: it locates
+   > its own prebuilt binary with
+   > `require(path.join(__dirname, '..', 'prebuilds', '<platform>-<arch>.node'))`, so bundling it
+   > points that lookup at `packages/cli/prebuilds/`, which is nowhere — and the failure arrives
+   > when a user opens a ledger, not when the build runs. [16 §2](../../16-repo-layout.md) already
+   > assumed the tarball asks npm for it when it measured `npm i better-sqlite3@13.0.2` at one
+   > second with zero compilation. The criterion the build now enforces (through tsdown's
+   > `deps.onlyImport`) is the stronger one: those two and *nothing else*.
 3. `packages/cli/package.json` declares `"files": ["dist"]`, `"type": "module"`,
    `engines.node >= 24`, and bins for `DeFlow`, `DeFlow-mcp` and `DeFlow-mock-agent`. There is no
    dual CJS build.

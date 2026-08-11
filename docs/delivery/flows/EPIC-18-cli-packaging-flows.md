@@ -1171,17 +1171,20 @@ Feature: packaging
     When the built "dist/*.mjs" files are scanned
     Then no import specifier begins with "@DeFlow/"
     And no import specifier ends with ".ts"
-    And "@lydell/node-pty" is the only external specifier resolved at runtime
+    And "better-sqlite3" and "@lydell/node-pty" are the only external specifiers
     And "vite" appears in no built file
     And "packages/cli/package.json" lists "@lydell/node-pty" under optionalDependencies
+    And "packages/cli/package.json" lists "better-sqlite3" under dependencies
     And "packages/cli/package.json" lists no "@DeFlow/*" dependency
 ```
 
-**Notes:** `noExternal: [/^@DeFlow\//]` is what makes the single-package design work — every
-`@DeFlow/*` package is private, so a leaked specifier means npm tries to fetch a name that does not
-exist and the install fails for the user with a 404. `vite` is a devDependency imported dynamically
-only under `DeFlow_DEV === '1'`; if it appears in the bundle, the published package drags a dev
-server behind it.
+**Notes:** `deps.alwaysBundle: [/^@DeFlow\//]` (spelled `noExternal` before tsdown 0.22) is what
+makes the single-package design work — every `@DeFlow/*` package is private, so a leaked specifier
+means npm tries to fetch a name that does not exist and the install fails for the user with a 404.
+`vite` is a devDependency imported dynamically only under `DeFlow_DEV === '1'`; if it appears in the
+bundle, the published package drags a dev server behind it. The two natives are external because
+each resolves a platform binary from its own module path, which inlining moves — see the amendment
+on AC2 in the epic for why `better-sqlite3` joined this line on 2026-08-11.
 
 ---
 

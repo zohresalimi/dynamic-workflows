@@ -3,31 +3,45 @@
   "version": "0.0.0",
   "type": "module",
   "description": "The one published package: DeFlow's bins, the inlined daemon and the built UI.",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "DeFlow": "./dist/bin.mjs",
+    "DeFlow-mcp": "./dist/mcp.mjs",
+    "DeFlow-mock-agent": "./dist/mock-agent.mjs"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
   "publishConfig": {
     "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      ".": "./dist/index.mjs"
     }
   },
+  "scripts": {
+    "build": "tsdown"
+  },
   "dependencies": {
-    "@DeFlow/core": "workspace:*",
-    "@DeFlow/daemon": "workspace:*",
-    "@DeFlow/mock-agent": "workspace:*",
-    "@DeFlow/web": "workspace:*",
-    "hono": "catalog:"
+    "better-sqlite3": "catalog:"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/core": "workspace:*",
+    "@DeFlow/daemon": "workspace:*",
     "@DeFlow/ledger": "workspace:*",
+    "@DeFlow/mock-agent": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
+    "@DeFlow/web": "workspace:*",
+    "@arethetypeswrong/cli": "catalog:",
     "@types/node": "catalog:",
+    "hono": "catalog:",
+    "publint": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

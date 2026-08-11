@@ -127,7 +127,10 @@ package boundaries. No watch-build chain, no stale `dist`, and goto-definition l
     "dev:pretty": "pnpm dev | pino-pretty",
     "dev:replay": "DeFlow_DEV=1 node --watch --watch-path=packages packages/cli/src/bin.ts replay fixtures/happy-path-12.jsonl --speed 20x",
 
-    "build": "pnpm --filter @DeFlow/web build && pnpm --filter DeFlow build",
+    // The web build, the copy into packages/cli/dist/ui/ and tsdown, in that
+    // order — see docs/16-repo-layout.md §2. It is a script because the order
+    // is the load-bearing part and it has to be testable.
+    "build": "node packages/cli/scripts/build.ts",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
 
     "test": "vitest run",
@@ -719,6 +722,7 @@ the worst possible combination.
 | Agent CLIs keep running after `DeFlowd` is SIGKILLed          | Children reparented to init                                                                                        | They are spawned `detached: true` so the whole process group can be killed. On restart, orphans are reaped by matching `(pid, process_start_time)` — never by bare pid       |
 | Browser tab becomes unusable during a long run                | Unbounded client-side retention, or xterm scrollback                                                               | Never keep the raw event array; keep a bounded ring of ~2,000 for the debug pane. `scrollback: 5000` in xterm and never raise it                                             |
 | The published tarball serves a blank page                     | `dist/ui/` missing from `files`                                                                                    | `pnpm pack` and install into a temp dir (§10) as part of every release                                                                                                       |
+| `pnpm install` warns "Failed to create bin at …/dist/bin.mjs" | A clean checkout has no `packages/cli/dist` yet, and `packages/cli` declares its three bins there                  | Expected, and harmless — the install still exits 0. `pnpm build` creates them; the next install links them. The alternative is not declaring the bins, which is what ships broken |
 
 ---
 

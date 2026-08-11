@@ -12,6 +12,8 @@
     "dev": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/adapters --watch-path=packages/daemon --watch-path=packages/cli --watch-path=packages/mock-agent packages/daemon/src/main.ts",
     "dev:pretty": "pnpm dev | pino-pretty",
     "dev:replay": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/daemon --watch-path=packages/web/src packages/daemon/src/replay/main.ts happy-path-12 --speed 20x --port 7777 --dev",
+    "build": "node packages/cli/scripts/build.ts",
+    "pack:check": "pnpm build && pnpm --filter DeFlow exec publint && pnpm --filter DeFlow exec attw --pack",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
     "lint": "oxlint --type-aware && biome check . && pnpm lint:graph-facade && pnpm lint:terminal-facade",
     "lint:graph-facade": "node packages/web/scripts/check-graph-facade.ts",

@@ -517,7 +517,9 @@ export function checkNoDeepWorkspaceImports(
                 `${file.path} imports "${specifier}"; import "${offended}" instead. The deep path ` +
                 'does not exist in the tarball, because publishConfig swaps exports "." to ' +
                 './dist/index.js, so this works in development and fails at runtime for anyone who ' +
-                'installs the package. Deep imports also turn every internal file into public API.',
+                "installs the package. index.ts is the package's contract: every package's " +
+                'exports map exposes "." and nothing else, so deep imports also turn every ' +
+                'internal file into public API.',
             });
           }
         }
