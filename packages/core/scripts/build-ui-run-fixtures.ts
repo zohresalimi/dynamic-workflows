@@ -334,48 +334,66 @@ function approvedSpec(): TaskSpec {
  * per-kind sums equal `totals.byKind` for **all nine** — is only worth making
  * over a packet that has all nine.
  */
-async function packetRecord(nodeId: string, attempt: number, builtAtEvent: number, spec: TaskSpec) {
-  const segments = await Promise.all([
-    contextSegment({
+async function packetRecord(
+  nodeId: string,
+  attempt: number,
+  builtAtEvent: number,
+  spec: TaskSpec,
+  options: { readonly runId?: string; readonly omit?: readonly string[] } = {},
+) {
+  const drafts = [
+    {
       id: 'brief',
       kind: 'task.brief',
       text: `Migrate ${nodeId}.`,
       sourceEvent: eventSeq(2),
-    }),
-    contextSegment({
+    },
+    {
       id: 'fact-auth-jwt',
       kind: 'fact',
       text: 'finding/auth-uses-jwt: the auth module verifies a JWT in a router guard.',
       sourceEvent: eventSeq(9),
-    }),
-    contextSegment({
+    },
+    {
       id: 'artifact-diff',
       kind: 'artifact.handle',
       text: `${handle('diff')} — the diff of the previous attempt`,
       sourceEvent: eventSeq(11),
-    }),
-    contextSegment({
+    },
+    {
       id: 'retrieved-guards',
       kind: 'retrieved',
       text: 'src/router/guards.ts lines 1-40, retrieved by the reads resolver.',
       sourceEvent: eventSeq(12),
-    }),
-    contextSegment({
+    },
+    {
       id: 'history-summary',
       kind: 'history.summary',
       text: 'Attempt 0 failed the typecheck gate with one blocker.',
       sourceEvent: eventSeq(13),
-    }),
-    contextSegment({
+    },
+    {
       id: 'tool-output',
       kind: 'tool.output',
       text: 'pnpm typecheck\nsrc/router/guards.ts(88,5): error TS2345.',
       sourceEvent: eventSeq(14),
-    }),
-  ]);
+    },
+  ] as const;
+
+  // `omit` is how `repair-attempts` builds a **smaller** first packet than the
+  // one the repair loop later hands the same node: attempt 0 has no history
+  // summary and no tool output because nothing has happened yet, and attempt 1
+  // does. That difference is the whole subject of KAR-17.3's attempt
+  // comparison, and it has to come out of *this* builder rather than out of an
+  // edited copy — otherwise the comparison is over two packets assembled
+  // differently, and it would agree with itself no matter what the code did.
+  const omit = options.omit ?? [];
+  const segments = await Promise.all(
+    drafts.filter((draft) => !omit.includes(draft.id)).map((draft) => contextSegment(draft)),
+  );
 
   const built = await buildPacket({
-    runId: HAPPY_PATH_RUN,
+    runId: options.runId ?? HAPPY_PATH_RUN,
     nodeId,
     attempt,
     builtAtEvent,
@@ -1443,6 +1461,317 @@ async function threePatchesEvents(): Promise<Event[]> {
  * stay under the 256 KiB inline ceiling or a real daemon would have spilled it
  * to the blob store and the fixture would no longer be one file.
  */
+// ── repair-attempts ──────────────────────────────────────────────────────────
+
+/**
+ * KAR-17.3 — one node, three attempts, **a context packet per attempt**.
+ *
+ * No other fixture in the corpus has two packets for the same node, and without
+ * one the node inspector's attempt comparison (AC6, EPIC-17-S13) cannot be
+ * asserted against anything: a side-by-side of attempt 1 and attempt 3 that has
+ * only ever been shown one packet agrees with itself.
+ *
+ * The three attempts are shaped to make the two interesting readings visible:
+ *
+ * - **attempt 1 → attempt 2 changed the context.** The first packet is built
+ *   before anything has happened, so it carries no `history.summary` and no
+ *   `tool.output`; the repaired second one carries both. That is a repair that
+ *   did something, and it is what the diff should say.
+ * - **attempt 2 → attempt 3 changed nothing.** The third packet is byte-identical
+ *   to the second, segment for segment. *"A repair that produced an identical
+ *   packet is a visible, diagnosable no-op"* (EPIC-17-S13) — and it is only
+ *   diagnosable if a fixture contains one.
+ *
+ * The ladder ends on `contract.schema-invalid`, carrying the Ajv errors in the
+ * failure's own `detail` and the offending output as an evidence handle, which
+ * is AC5's *"shows the Ajv error beside the offending output rather than a
+ * generic message"* given something to show. And `probe-oauth-tokens` fails at
+ * `adapter.spawn-failed` — under ACP the binary is spawned and handshaken
+ * *before* a prompt is ever sent, so that node genuinely never had a packet,
+ * which is the honest-emptiness case of AC9.
+ */
+export const REPAIR_ATTEMPTS_RUN = 'run_20260811T140000Z_c4d5e6';
+
+const REPAIR_BINARY = {
+  path: '/tmp/deflow-repair-attempts/bin/claude',
+  version: '2.1.220',
+  sha256: bareSha('claude-code-repair'),
+};
+
+/**
+ * The Ajv errors, in Ajv's own `ErrorObject` shape.
+ *
+ * `NodeFailure.detail` is `Record<string, unknown>` — *"reason-specific and
+ * JSON-only"* — and this is what a `contract.schema-invalid` puts in it. Written
+ * in the validator's vocabulary (`instancePath`, `schemaPath`, `keyword`,
+ * `params`) rather than flattened to a sentence, because the inspector's job is
+ * to point at the field that failed and a sentence cannot be pointed with.
+ */
+const AJV_ERRORS = [
+  {
+    instancePath: '/findings/0/severity',
+    schemaPath: '#/properties/findings/items/properties/severity/enum',
+    keyword: 'enum',
+    params: { allowedValues: ['blocker', 'major', 'minor', 'nit'] },
+    message: 'must be equal to one of the allowed values',
+  },
+  {
+    instancePath: '/summary',
+    schemaPath: '#/properties/summary/type',
+    keyword: 'type',
+    params: { type: 'string' },
+    message: 'must be string',
+  },
+] as const;
+
+async function repairAttemptsPlan(): Promise<PlanGraph> {
+  const nodes: NodeDocument[] = [
+    agentNode('impl-oauth', 'Move the OAuth callback onto the new router'),
+    agentNode('probe-oauth-tokens', 'Probe the token store', { permission: 'read' }),
+    gateNode('gate-contract', 'The API contract holds', 'contract', ['impl-oauth']),
+  ];
+
+  const edges: EdgeDocument[] = [{ from: 'impl-oauth', to: 'gate-contract', kind: 'control' }];
+
+  return await seal(REPAIR_ATTEMPTS_RUN, 1, null, nodes, edges);
+}
+
+async function repairAttemptsEvents(): Promise<Event[]> {
+  const plan = await repairAttemptsPlan();
+  const spec = approvedSpec();
+  const run = REPAIR_ATTEMPTS_RUN;
+
+  // Attempt 0 is built before anything has happened to summarise; attempts 1
+  // and 2 are built from the same six drafts and are therefore identical.
+  const first = await packetRecord('impl-oauth', 0, 9, spec, {
+    runId: run,
+    omit: ['history-summary', 'tool-output'],
+  });
+  const second = await packetRecord('impl-oauth', 1, 16, spec, { runId: run });
+  const third = await packetRecord('impl-oauth', 2, 23, spec, { runId: run });
+
+  const startedOn = (node: string, attempt: number) => ({
+    node,
+    attempt,
+    ikey: `${run}/${node}/${attempt}/0`,
+    binary: REPAIR_BINARY,
+  });
+
+  const spent = (attempt: number, input: number, output: number, costUsd: number) => ({
+    node: 'impl-oauth',
+    attempt,
+    provider: 'claude-code',
+    usage: usage(input, output, 'vendor-reported'),
+    costUsd,
+    authMode: 'subscription',
+  });
+
+  return envelopes(run, [
+    {
+      seq: 1,
+      kind: 'run.created',
+      payload: {
+        spec,
+        cwd: '/tmp/deflow-repair-attempts/repo',
+        repo: { head: 'c4d5e6f', branch: 'main' },
+      },
+    },
+    { seq: 2, kind: 'run.spec.approved', payload: { specHash: spec.specHash, by: 'ui' } },
+    {
+      seq: 4,
+      kind: 'plan.proposed',
+      payload: { version: 1, planHash: plan.planHash, graph: plan, by: 'planner' },
+    },
+    { seq: 5, kind: 'run.started', payload: { planHash: plan.planHash } },
+
+    // ── attempt 0: a packet with no history, and a transient timeout ──────────
+    {
+      seq: 7,
+      kind: 'node.scheduled',
+      nodeId: 'impl-oauth',
+      payload: scheduled('impl-oauth', 'claude-code', 'worktree'),
+    },
+    {
+      seq: 8,
+      kind: 'node.started',
+      nodeId: 'impl-oauth',
+      attempt: 0,
+      payload: startedOn('impl-oauth', 0),
+    },
+    {
+      seq: 9,
+      kind: 'context.built',
+      nodeId: 'impl-oauth',
+      attempt: 0,
+      payload: { node: 'impl-oauth', attempt: 0, packet: first },
+    },
+    {
+      seq: 11,
+      kind: 'budget.consumed',
+      nodeId: 'impl-oauth',
+      attempt: 0,
+      payload: spent(0, 5_100, 640, 0.084),
+    },
+    {
+      seq: 12,
+      kind: 'node.failed',
+      nodeId: 'impl-oauth',
+      attempt: 0,
+      payload: {
+        node: 'impl-oauth',
+        attempt: 0,
+        failure: {
+          reason: 'timeout',
+          class: 'transient',
+          message: 'the turn exceeded its wall-clock budget',
+          evidence: [],
+          occurredAtEvent: 12,
+          attempt: 0,
+        },
+      },
+    },
+    {
+      seq: 13,
+      kind: 'node.retry.scheduled',
+      nodeId: 'impl-oauth',
+      payload: { node: 'impl-oauth', nextAttempt: 1, wakeAt: T0 + 5 * HOUR + MINUTE },
+    },
+
+    // ── attempt 1: the repaired packet, and a non-zero exit ───────────────────
+    {
+      seq: 15,
+      kind: 'node.started',
+      nodeId: 'impl-oauth',
+      attempt: 1,
+      payload: startedOn('impl-oauth', 1),
+    },
+    {
+      seq: 16,
+      kind: 'context.built',
+      nodeId: 'impl-oauth',
+      attempt: 1,
+      payload: { node: 'impl-oauth', attempt: 1, packet: second },
+    },
+    {
+      seq: 18,
+      kind: 'budget.consumed',
+      nodeId: 'impl-oauth',
+      attempt: 1,
+      payload: spent(1, 6_400, 910, 0.091),
+    },
+    {
+      seq: 19,
+      kind: 'node.failed',
+      nodeId: 'impl-oauth',
+      attempt: 1,
+      payload: {
+        node: 'impl-oauth',
+        attempt: 1,
+        failure: {
+          reason: 'agent.nonzero-exit',
+          class: 'transient',
+          message: 'the CLI exited 2 after writing a partial patch',
+          detail: { exitCode: 2 },
+          evidence: [handle('oauth-attempt-1-stdout')],
+          occurredAtEvent: 19,
+          attempt: 1,
+        },
+      },
+    },
+    {
+      seq: 20,
+      kind: 'node.retry.scheduled',
+      nodeId: 'impl-oauth',
+      payload: { node: 'impl-oauth', nextAttempt: 2, wakeAt: T0 + 5 * HOUR + 2 * MINUTE },
+    },
+
+    // ── attempt 2: the same packet again — the no-op repair — and the end ─────
+    {
+      seq: 22,
+      kind: 'node.started',
+      nodeId: 'impl-oauth',
+      attempt: 2,
+      payload: startedOn('impl-oauth', 2),
+    },
+    {
+      seq: 23,
+      kind: 'context.built',
+      nodeId: 'impl-oauth',
+      attempt: 2,
+      payload: { node: 'impl-oauth', attempt: 2, packet: third },
+    },
+    {
+      seq: 25,
+      kind: 'budget.consumed',
+      nodeId: 'impl-oauth',
+      attempt: 2,
+      payload: spent(2, 6_400, 880, 0.096),
+    },
+    {
+      seq: 26,
+      kind: 'node.failed',
+      nodeId: 'impl-oauth',
+      attempt: 2,
+      payload: {
+        node: 'impl-oauth',
+        attempt: 2,
+        failure: {
+          reason: 'contract.schema-invalid',
+          class: 'permanent',
+          message: 'the returned object does not satisfy DeFlow.verdict.v4',
+          detail: { schemaId: 'DeFlow.verdict.v4', ajv: structuredClone(AJV_ERRORS) },
+          evidence: [handle('oauth-attempt-2-output')],
+          occurredAtEvent: 26,
+          attempt: 2,
+        },
+      },
+    },
+
+    // ── a node that never had a packet at all ────────────────────────────────
+    {
+      seq: 28,
+      kind: 'node.scheduled',
+      nodeId: 'probe-oauth-tokens',
+      payload: scheduled('probe-oauth-tokens', 'gemini-cli', 'read'),
+    },
+    {
+      seq: 29,
+      kind: 'node.started',
+      nodeId: 'probe-oauth-tokens',
+      attempt: 0,
+      payload: {
+        node: 'probe-oauth-tokens',
+        attempt: 0,
+        ikey: `${run}/probe-oauth-tokens/0/0`,
+        binary: {
+          path: '/tmp/deflow-repair-attempts/bin/gemini',
+          version: '0.9.4',
+          sha256: bareSha('gemini-cli-repair'),
+        },
+      },
+    },
+    {
+      seq: 30,
+      kind: 'node.failed',
+      nodeId: 'probe-oauth-tokens',
+      attempt: 0,
+      payload: {
+        node: 'probe-oauth-tokens',
+        attempt: 0,
+        failure: {
+          reason: 'adapter.spawn-failed',
+          class: 'permanent',
+          message: 'spawn /tmp/deflow-repair-attempts/bin/gemini ENOENT',
+          detail: { errno: -2, code: 'ENOENT' },
+          evidence: [handle('gemini-spawn-stderr')],
+          occurredAtEvent: 30,
+          attempt: 0,
+        },
+      },
+    },
+  ]);
+}
+
 export const STRESS_400_RUN = 'run_20260811T120000Z_e3f4a5';
 
 /** AC10's floor is 400 *plan nodes*; the fan-out alone clears it. */
@@ -1739,6 +2068,19 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
         'was applied.',
     },
     {
+      name: 'repair-attempts',
+      run: REPAIR_ATTEMPTS_RUN,
+      events: await repairAttemptsEvents(),
+      what:
+        'One node, three attempts, and **a context packet per attempt** — the only\n' +
+        'fixture in the corpus with two packets for the same node. Attempt 2’s packet\n' +
+        'gains the history summary and tool output attempt 1 could not have had;\n' +
+        'attempt 3’s is identical to attempt 2’s, which is what a repair that changed\n' +
+        'nothing looks like from the inside. The ladder ends on\n' +
+        '`contract.schema-invalid` carrying its Ajv errors, and a second node fails at\n' +
+        '`adapter.spawn-failed` before any packet was ever built.',
+    },
+    {
       name: 'stress-400',
       run: STRESS_400_RUN,
       events: await stress400Events(),
@@ -1766,6 +2108,6 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   await buildUiRunFixtures(process.argv[2] ?? RUN_FIXTURES_DIR);
   process.stdout.write(
-    `wrote happy-path-12, three-patches and stress-400 into ${RUN_FIXTURES_DIR}\n`,
+    `wrote happy-path-12, three-patches, repair-attempts and stress-400 into ${RUN_FIXTURES_DIR}\n`,
   );
 }

@@ -170,3 +170,146 @@ suite('AC11 — an unknown kind is ignored, without throwing and without mutatin
     expect({ ...plan, appliedSeq: before.appliedSeq }).toEqual(before);
   });
 });
+
+/**
+ * KAR-17.3 — what the node inspector needs of a failure, and could not get.
+ *
+ * `failure` is the *latest* one, which is the right thing for a node body: a
+ * chip has room for one reason. The inspector's attempt table has a row per
+ * attempt and needs the failure that ended each of them, and `detail` is where
+ * a `contract.schema-invalid` keeps its Ajv errors — *"shows the Ajv error
+ * beside the offending output rather than a generic message"* (AC5). Dropping
+ * `detail` on the way through the projection made that criterion unmeetable
+ * from the ledger the tab holds.
+ *
+ * The list is bounded by the node's own retry ladder (`maxAttempts`), so this
+ * is not the unbounded per-node accumulation KAR-16.4's memory rules forbid.
+ */
+suite('KAR-17.3 — the failure history, and the detail on each failure', () => {
+  const repair = (): PlanProjection => fold('repair-attempts', emptyPlan, applyPlan);
+
+  it('keeps one failure per attempt, oldest first', () => {
+    const node = repair().nodes.get('impl-oauth');
+
+    expect(node?.failures.map((one) => [one.attempt, one.reason])).toEqual([
+      [0, 'timeout'],
+      [1, 'agent.nonzero-exit'],
+      [2, 'contract.schema-invalid'],
+    ]);
+  });
+
+  it('still reports the latest one as `failure`, for the node body’s chip', () => {
+    expect(repair().nodes.get('impl-oauth')?.failure?.reason).toBe('contract.schema-invalid');
+  });
+
+  it('carries the Ajv errors through on the failure that has them', () => {
+    const last = repair().nodes.get('impl-oauth')?.failures.at(-1);
+
+    // The validator's own vocabulary, not a flattened sentence: the inspector's
+    // job is to point at the field that failed, and a sentence cannot be
+    // pointed with.
+    // Asserted as one object rather than by reaching into `detail` behind an
+    // optional chain: `detail` is `Record<string, unknown>` by construction —
+    // *"reason-specific and JSON-only"* (docs/04 §8) — so any path into it is a
+    // cast, and a cast that short-circuits to `undefined` throws inside the
+    // expectation instead of failing it.
+    expect(last?.detail).toMatchObject({
+      schemaId: 'DeFlow.verdict.v4',
+      ajv: [
+        { instancePath: '/findings/0/severity', keyword: 'enum' },
+        { instancePath: '/summary', keyword: 'type' },
+      ],
+    });
+  });
+
+  it('leaves `detail` null on a failure that carried none', () => {
+    // `null` rather than `{}`: an empty object reads as "the failure had detail
+    // and it was empty", which is a different claim from "it had none".
+    expect(repair().nodes.get('impl-oauth')?.failures[0]?.detail).toBeNull();
+  });
+
+  it('records the failure of a node that never got past spawn, too', () => {
+    const node = repair().nodes.get('probe-oauth-tokens');
+
+    expect(node?.failures).toHaveLength(1);
+    expect(node?.failures[0]?.reason).toBe('adapter.spawn-failed');
+    expect(node?.failures[0]?.evidence).toHaveLength(1);
+  });
+
+  it('does not double-count an attempt whose node.failed is replayed', () => {
+    // Backfill legitimately re-sends events at or below the cursor (docs/11
+    // §5). The per-projection `seq` guard already refuses them; this is the
+    // assertion that the new list is behind that guard and not in front of it.
+    const state = repair();
+    const before = state.nodes.get('impl-oauth')?.failures.length;
+    for (const event of ledger('repair-attempts')) applyPlan(state, event);
+
+    expect(state.nodes.get('impl-oauth')?.failures).toHaveLength(before as number);
+  });
+});
+
+/**
+ * KAR-17.3 AC5 — *"raw output and normalised/validated output are shown
+ * separately"*.
+ *
+ * The normalised, schema-validated object is `node.completed.result.output`,
+ * and until now the projection threw it away: only the *fact* of completion was
+ * kept. The raw bytes are never inlined — they are an artifact handle, resolved
+ * through `GET /api/artifacts/:sha` — so what is retained here is one small
+ * object per node, bounded by the plan and by the node's own
+ * `returns.maxTokens`, not by the length of the run.
+ */
+suite('KAR-17.3 — the output a completed node returned', () => {
+  const happy = (): PlanProjection => fold('happy-path-12', emptyPlan, applyPlan);
+
+  it('keeps the validated output and the schema it was validated against', () => {
+    const result = happy().nodes.get('recon-auth-surface')?.result;
+
+    expect(result?.output).toEqual({ text: 'auth verifies a JWT' });
+    expect(result?.outputSchemaId).toBe('DeFlow.finding.v1');
+  });
+
+  it('links the output to the node.completed that carried it', () => {
+    // AC7 again: a value with no producing event cannot exist.
+    expect(happy().nodes.get('recon-auth-surface')?.result?.seq).toBe(11);
+  });
+
+  it('leaves `result` null on a node that never completed', () => {
+    // Not `{}` and not an empty string: a failed node returned nothing, and an
+    // empty output pane that looks like a returned empty object is exactly the
+    // fabrication AC9 is about.
+    expect(happy().nodes.get('impl-login')?.result).toBeNull();
+  });
+});
+
+/**
+ * KAR-17.3 AC1 — *"opening a node shows … permission level, path scopes,
+ * worktree path"*.
+ *
+ * Permission and worktree were already here; the path scopes were in the plan
+ * document and were dropped on the way through. They are the answer to *"was
+ * this node even allowed to touch that file"*, which is the second question
+ * asked of a bad diff and one the inspector could not previously answer.
+ */
+suite('KAR-17.3 — the path scopes a node was given', () => {
+  it('carries the read and write scopes off the plan document', () => {
+    const node = fold('happy-path-12', emptyPlan, applyPlan).nodes.get('impl-signup');
+
+    expect(node?.pathScopes).toEqual({ write: ['src/**'], read: ['src/**'] });
+  });
+
+  it('reports a gate’s empty write scope as empty, not as absent', () => {
+    // `write: []` is a real answer — "this node may write nothing" — and it is
+    // a different claim from "the plan did not say".
+    const node = fold('happy-path-12', emptyPlan, applyPlan).nodes.get('gate-typecheck');
+
+    expect(node?.pathScopes).toEqual({ write: [], read: [] });
+  });
+
+  it('leaves them null on a node no plan document has described yet', () => {
+    const state = emptyPlan();
+    for (const event of ledger('crash-resume-seq-gap')) applyPlan(state, event);
+
+    expect(state.nodes.get('impl')?.pathScopes).toBeNull();
+  });
+});

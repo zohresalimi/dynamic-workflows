@@ -38,6 +38,29 @@ export const useUiStore = defineStore('ui', () => {
   const inspectedNodeId = ref<string | null>(null);
 
   /**
+   * Which attempt of the inspected node the panel is showing, or `null` for
+   * "the latest" (KAR-17.3 AC6).
+   *
+   * `null` rather than a number, because the panel opens before anybody knows
+   * how many attempts there are — and a default of `0` would open every
+   * retried node on its *first* attempt, which is the one an operator chasing a
+   * bad diff is least likely to want.
+   */
+  const inspectedAttempt = ref<number | null>(null);
+
+  /** The attempt the inspected one is being compared against. `null` = none. */
+  const comparedAttempt = ref<number | null>(null);
+
+  /**
+   * The `seq` the debug ring is parked on (KAR-17.3 AC7).
+   *
+   * Tab-local like everything else here: it is where this operator clicked, it
+   * survives no reload, and it belongs to nobody's ledger. The *envelope* it
+   * names lives in the run store's ring — this is only the cursor onto it.
+   */
+  const selectedEventSeq = ref<number | null>(null);
+
+  /**
    * Overlays, innermost last.
    *
    * A stack rather than a set of booleans, because `Esc` closes *the topmost
@@ -91,7 +114,18 @@ export const useUiStore = defineStore('ui', () => {
     // A selection that survived a replan pointing at a node the new plan does
     // not contain is how `Enter` opens an inspector on nothing.
     if (!next.some((node) => node.id === selectedNodeId.value)) selectedNodeId.value = null;
-    if (!next.some((node) => node.id === inspectedNodeId.value)) inspectedNodeId.value = null;
+    if (!next.some((node) => node.id === inspectedNodeId.value)) {
+      inspectedNodeId.value = null;
+      // The attempt belongs to the node. Leaving `2` behind for a node the new
+      // plan does not have is how an inspector opens on attempt 2 of something
+      // that ran once.
+      resetAttempt();
+    }
+  }
+
+  function resetAttempt(): void {
+    inspectedAttempt.value = null;
+    comparedAttempt.value = null;
   }
 
   function selectNode(id: string | null): void {
@@ -132,8 +166,38 @@ export const useUiStore = defineStore('ui', () => {
   function inspectSelected(overlay: string): boolean {
     if (selectedNodeId.value === null) return false;
     inspectedNodeId.value = selectedNodeId.value;
+    resetAttempt();
     openOverlay(overlay);
     return true;
+  }
+
+  /**
+   * Moves the open inspector to another node — the provenance table's *"each
+   * row links to the writing node's inspector"* (KAR-17.3 AC8).
+   *
+   * The attempt and the comparison are reset with it: they were coordinates in
+   * the node being left, and carrying "attempt 2, compared with 1" onto a node
+   * that ran once renders an empty panel that looks like a bug.
+   */
+  function inspectNodeById(id: string): void {
+    inspectedNodeId.value = id;
+    selectedNodeId.value = id;
+    resetAttempt();
+  }
+
+  /** Which attempt the panel shows. `null` returns it to "the latest". */
+  function inspectAttempt(attempt: number | null): void {
+    inspectedAttempt.value = attempt;
+  }
+
+  /** Which attempt to diff the shown one against. `null` closes the compare. */
+  function compareAttempt(attempt: number | null): void {
+    comparedAttempt.value = attempt;
+  }
+
+  /** Parks the debug ring on the event that produced a displayed value. */
+  function selectEvent(seq: number | null): void {
+    selectedEventSeq.value = seq;
   }
 
   function setPlanVersions(versions: readonly number[]): void {
@@ -164,6 +228,9 @@ export const useUiStore = defineStore('ui', () => {
     selectedNodeId,
     selectedNode,
     inspectedNodeId,
+    inspectedAttempt,
+    comparedAttempt,
+    selectedEventSeq,
     overlays,
     planVersions,
     planVersion,
@@ -179,6 +246,10 @@ export const useUiStore = defineStore('ui', () => {
     closeTopOverlay,
     isOverlayOpen,
     inspectSelected,
+    inspectNodeById,
+    inspectAttempt,
+    compareAttempt,
+    selectEvent,
     setPlanVersions,
     selectPlanVersion,
     stepPlanVersion,

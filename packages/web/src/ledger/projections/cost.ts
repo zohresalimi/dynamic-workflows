@@ -66,6 +66,19 @@ export interface CostBucket {
   /** Which measurement tiers contributed here at all. */
   sources: UsageSource[];
   events: number;
+  /**
+   * The `seq` of the newest event folded into this bucket; `0` for a bucket
+   * nothing has been folded into.
+   *
+   * KAR-17.3 AC7 — *"clicking a cost figure selects the producing event in the
+   * debug ring"*. A running total is produced by the last event that moved it,
+   * so that event's `seq` is the link, and it has to be recorded here: the ring
+   * holds 2,000 envelopes and a nine-hour run rolls the answer out of it.
+   *
+   * `0` rather than `null` because 0 is the one `seq` the ledger never mints
+   * (docs/11 §4.2), so "no producing event" needs no second representation.
+   */
+  lastSeq: number;
 }
 
 export interface CeilingVM {
@@ -109,6 +122,20 @@ export interface CostProjection {
   appliedSeq: number;
   run: CostBucket;
   byNode: Map<string, CostBucket>;
+  /**
+   * `${nodeId}#${attempt}` → what *that attempt* consumed (KAR-17.3).
+   *
+   * The node inspector's attempt table shows a cost per attempt, and a per-node
+   * total cannot answer that question. The obvious substitute — the node total
+   * divided by the attempt count — reports three equal figures for three
+   * attempts that consumed different amounts, which is worse than no figure at
+   * all because it looks like a measurement.
+   *
+   * An **index**, never a second accounting: the same `budget.consumed` is
+   * folded into the run, the provider, the node and the attempt, so the header
+   * and the table can never disagree about the same money.
+   */
+  byAttempt: Map<string, CostBucket>;
   byProvider: Map<string, CostBucket>;
   ceilings: CeilingVM[];
   ceilingsSet: CeilingSetVM[];
@@ -124,14 +151,19 @@ function emptyBucket(): CostBucket {
     unaccounted: [],
     sources: [],
     events: 0,
+    lastSeq: 0,
   };
 }
+
+/** The key `byAttempt` is indexed by. The same shape the ledger's ikey uses. */
+export const attemptKey = (nodeId: string, attempt: number): string => `${nodeId}#${attempt}`;
 
 export function emptyCost(): CostProjection {
   return {
     appliedSeq: 0,
     run: emptyBucket(),
     byNode: new Map(),
+    byAttempt: new Map(),
     byProvider: new Map(),
     ceilings: [],
     ceilingsSet: [],
@@ -149,6 +181,18 @@ export function applyCost(state: CostProjection, event: Event): void {
       const buckets = [state.run, bucket(state.byProvider, event.payload.provider)];
       if (event.payload.node !== undefined) {
         buckets.push(bucket(state.byNode, event.payload.node));
+        // `attempt` is documented as *"absent exactly when `node` is"*, but the
+        // schema declares the two `.optional()` independently, so a node-scoped
+        // payload naming no attempt parses. It is withheld from `byAttempt`
+        // rather than folded in under `attempt ?? 0`: the inspector's attempt
+        // table reads those buckets as measurements of a specific attempt, and
+        // an unattributed spend merged into attempt 0 is a wrong measurement
+        // rather than a missing one. The node total below still counts it.
+        if (event.payload.attempt !== undefined) {
+          buckets.push(
+            bucket(state.byAttempt, attemptKey(event.payload.node, event.payload.attempt)),
+          );
+        }
       }
       for (const target of buckets) {
         absorb(
@@ -157,6 +201,7 @@ export function applyCost(state: CostProjection, event: Event): void {
           event.payload.costUsd,
           event.payload.authMode,
           event.payload.provider,
+          event.seq,
         );
       }
       return;
@@ -238,8 +283,13 @@ function absorb(
   costUsd: number | null,
   authMode: 'subscription' | 'api_key',
   provider: string,
+  seq: number,
 ): void {
   target.events += 1;
+  // Before the early return below, deliberately: a `costUsd: null` event still
+  // moved this bucket — it is what put a provider in `unaccounted` — so it is
+  // still the event that produced what the bucket now says.
+  target.lastSeq = seq;
   if (!target.sources.includes(usage.source)) target.sources.push(usage.source);
 
   const key = usage.source === 'vendor-reported' ? 'vendorReported' : 'estimated';

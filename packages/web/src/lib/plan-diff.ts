@@ -288,17 +288,24 @@ function toVersionNode(node: PlanNodeShape): PlanVersionNodeVM {
     provider: node.provider?.prefer?.[0] ?? null,
     model: node.model ?? null,
     permission: node.permission ?? null,
-    // `pathScopes` is deliberately not carried. A plan node has them, and the
-    // *inspector* is where they belong (KAR-17.3); this view's node body shows
-    // type, provider, permission and `derivedFrom`, and a field nothing renders
-    // is a field that goes stale without anybody noticing.
+    // `pathScopes` is left `null` rather than read off `node`, and the null is
+    // the honest answer here rather than a shortcut. This VM describes a node
+    // **as some earlier plan version declared it**, not as it ran; the scrubber
+    // renders type, provider, permission and `derivedFrom` and nothing else.
+    // Carrying scopes only this view never reads would put a second, silently
+    // diverging copy of KAR-17.3's answer one import away from the inspector.
+    pathScopes: null,
     derivedFrom: [...(node.derivedFrom ?? [])],
     worktree: null,
     binary: null,
     attempt: 0,
     phase: null,
     progressMessage: null,
+    // A historical plan node has no run outcome by construction: this is what
+    // version N *said*, and results and failures belong to the live projection.
+    result: null,
     failure: null,
+    failures: [],
     suspendedUntil: null,
     blocked: null,
     retry: null,

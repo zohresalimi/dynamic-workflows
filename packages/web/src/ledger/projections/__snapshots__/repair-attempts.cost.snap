@@ -1,0 +1,163 @@
+{
+  "appliedSeq": 30,
+  "byAttempt": Map {
+    "impl-oauth#0" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.084,
+        "vendorReported": 0.084,
+      },
+      "events": 1,
+      "lastSeq": 11,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 5100,
+          "outputTokens": 640,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "impl-oauth#1" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.091,
+        "vendorReported": 0.091,
+      },
+      "events": 1,
+      "lastSeq": 18,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 6400,
+          "outputTokens": 910,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "impl-oauth#2" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.096,
+        "vendorReported": 0.096,
+      },
+      "events": 1,
+      "lastSeq": 25,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 6400,
+          "outputTokens": 880,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+  },
+  "byNode": Map {
+    "impl-oauth" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.271,
+        "vendorReported": 0.271,
+      },
+      "events": 3,
+      "lastSeq": 25,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 17900,
+          "outputTokens": 2430,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+  },
+  "byProvider": Map {
+    "claude-code" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.271,
+        "vendorReported": 0.271,
+      },
+      "events": 3,
+      "lastSeq": 25,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 17900,
+          "outputTokens": 2430,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+  },
+  "ceilings": [],
+  "ceilingsSet": [],
+  "paused": false,
+  "rateLimits": [],
+  "run": {
+    "costUsd": {
+      "apiKey": null,
+      "estimated": null,
+      "subscription": 0.271,
+      "vendorReported": 0.271,
+    },
+    "events": 3,
+    "lastSeq": 25,
+    "sources": [
+      "vendor-reported",
+    ],
+    "unaccounted": [],
+    "usage": {
+      "estimated": null,
+      "vendorReported": {
+        "cacheCreationInputTokens": null,
+        "cacheReadInputTokens": null,
+        "inputTokens": 17900,
+        "outputTokens": 2430,
+        "reasoningOutputTokens": null,
+        "source": "vendor-reported",
+      },
+    },
+  },
+}

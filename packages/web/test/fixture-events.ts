@@ -9,25 +9,23 @@
  * wire produces, and would keep passing after a payload schema changed
  * underneath it.
  *
- * Two of the fixtures are exported rather than all of them, and each earns its
- * place:
+ * Two of the six fixtures are exported rather than all of them, and each earns
+ * its place:
  *
  * - **`happy-path-12`** is the one KAR-17.1's test plan names, and it is the one
  *   that happens to contain **all seven display states at once** — pending,
  *   running, blocked, passed, failed, abandoned and awaiting-human — which is
  *   what lets EPIC-17-S2's state matrix be asserted against a real recording
- *   rather than against seven hand-built nodes. It is also the only recording
- *   carrying a `pin.integrity_violated` and the `safety.pin-integrity-violated`
- *   failure that goes with it, which is KAR-17.4 AC6.
- * - **`gate-failure-repair`** is the one KAR-17.6 is developed against: a real
- *   `tsc` behind a real gate definition failed with a `blocker` finding at
- *   `src/date-picker.ts:2`, a surgical fix node wrote the regression test and
- *   then the fix, and the gate set re-ran and passed. It is the only recording
- *   holding a whole repair loop, which is what F7.5's before → after animates.
- * - **`compaction`** is the only ledger holding **one `context.compacted` of
+ *   rather than against seven hand-built nodes. It is also the only fixture with
+ *   facts that are read, invalidated and taint their readers, which is
+ *   KAR-17.3's provenance table.
+ * - **`repair-attempts`** is the only fixture with **more than one context
+ *   packet for the same node**. EPIC-17-S13's side-by-side of attempt 1 and
+ *   attempt 3 has nothing to compare without it.
+ * - **`compaction`** is the only fixture holding **one `context.compacted` of
  *   each fidelity** — an `exact` one DeFlow measured both ends of, and a
- *   `partial` one the vendor reported a `pre_tokens` for and nothing else. It is
- *   exported from a real `ledger.db` rather than assembled, and KAR-17.4's
+ *   `partial` one the vendor reported a `pre_tokens` for and nothing else. It
+ *   is exported from a real `ledger.db` rather than assembled, and KAR-17.4's
  *   *"render the gap as a gap"* has nothing to render without it.
  *
  * Add another here when a spec needs one; do not hand-write events.
@@ -36,12 +34,16 @@ import { type Event, parseEvent } from '@DeFlow/core';
 import compactionRaw from '../../../test/fixtures/runs/compaction/events.jsonl?raw';
 import gateRepairRaw from '../../../test/fixtures/runs/gate-failure-repair/events.jsonl?raw';
 import happyRaw from '../../../test/fixtures/runs/happy-path-12/events.jsonl?raw';
+import repairRaw from '../../../test/fixtures/runs/repair-attempts/events.jsonl?raw';
 
 /** The run the `happy-path-12` recording belongs to. */
 export const HAPPY_PATH_RUN = 'run_20260811T090000Z_a1b2c3';
 
 /** The run the `gate-failure-repair` recording belongs to. */
 export const GATE_REPAIR_RUN = 'run_20260810T090000Z_9f31ab';
+
+/** The run the `repair-attempts` recording belongs to. */
+export const REPAIR_ATTEMPTS_RUN = 'run_20260811T140000Z_c4d5e6';
 
 /** The run the `compaction` recording belongs to. */
 export const COMPACTION_RUN = 'run_20260806T120000Z_c0ffee';
@@ -72,6 +74,9 @@ function parse(name: string, raw: string): readonly Event[] {
 
 /** Every event of `happy-path-12`, in `seq` order, parsed. */
 export const happyPath12 = (): readonly Event[] => parse('happy-path-12', happyRaw);
+
+/** Every event of `repair-attempts`, in `seq` order, parsed. */
+export const repairAttempts = (): readonly Event[] => parse('repair-attempts', repairRaw);
 
 /** Every event of `compaction`, in `seq` order, parsed. */
 export const compactionRun = (): readonly Event[] => parse('compaction', compactionRaw);
