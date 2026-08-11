@@ -86,6 +86,19 @@ export const routes = [
     props: true,
   },
   {
+    // F10.6. **The route the `@xterm/*` half of the budget rule was written
+    // for**: `test/integration/bundle-budget.test.ts` bans `@xterm/` from the
+    // initial chunk, and the only thing keeping it out is that this route is
+    // lazy. It is also the route with two renderers behind it — the terminal
+    // for CLI-shim nodes and the typed message list for ACP ones — so a build
+    // that eagerly imported it would pay for both on a landing view that needs
+    // neither (KAR-17.5, docs/12 §6.6, §10).
+    path: '/runs/:runId/nodes/:nodeId/output',
+    name: 'run-node-output',
+    component: () => import('../views/NodeOutputView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

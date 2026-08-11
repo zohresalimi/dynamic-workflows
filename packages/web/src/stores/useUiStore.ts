@@ -60,6 +60,26 @@ export const useUiStore = defineStore('ui', () => {
    */
   const planMove = ref<'select' | 'step'>('select');
 
+  /**
+   * KAR-17.5 AC9 — xterm's `screenReaderMode`, **off by default**.
+   *
+   * It is not a default anybody should pay for silently: it makes the terminal
+   * maintain a parallel live-region representation of the buffer, on a stream
+   * that can produce megabytes, and the cost is proportional to the output
+   * rather than to the viewport. So it is a setting the operator turns on —
+   * which is also why it lives here rather than in a component: it is a fact
+   * about *this tab*, it survives no reload, and it belongs to nobody's ledger.
+   *
+   * The panel's accessible story without it is the archive viewer, which is
+   * ordinary DOM text, and the typed ACP list, which is ordinary DOM
+   * everything.
+   */
+  const screenReaderMode = ref(false);
+
+  function setScreenReaderMode(on: boolean): void {
+    screenReaderMode.value = on;
+  }
+
   const selectedNode = computed<GraphNode | null>(
     () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
   );
@@ -148,6 +168,8 @@ export const useUiStore = defineStore('ui', () => {
     planVersions,
     planVersion,
     planMove,
+    screenReaderMode,
+    setScreenReaderMode,
     stateOf,
     setNodes,
     selectNode,

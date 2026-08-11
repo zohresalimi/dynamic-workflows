@@ -243,6 +243,18 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
     expect(holds(initial, 'DiffReviewView')).toBe(false);
     expect(names.some((module) => module.includes('@git-diff-view/'))).toBe(true);
     expect(names.some((module) => module.includes('@shikijs/'))).toBe(true);
+
+    // KAR-17.5. `@xterm/` becomes load-bearing here for the same reason
+    // `@git-diff-view/` did: the terminal is a real dependency of this build
+    // now, and the only thing keeping it and its three addons out of the boot
+    // chunk is that `/runs/:runId/nodes/:nodeId/output` is a lazy route. The
+    // positive assertion is what distinguishes "correctly split" from "the
+    // route was never built" — which is the shape that makes the ban above
+    // pass for the wrong reason.
+    expect(names.some((module) => module.includes('NodeOutputView'))).toBe(true);
+    expect(holds(initial, 'NodeOutputView')).toBe(false);
+    expect(names.some((module) => module.includes('@xterm/'))).toBe(true);
+    expect(names.some((module) => module.includes('@tanstack/'))).toBe(true);
   });
 
   it('ships exactly one syntax highlighter, in no chunk at all but Shiki (AC9)', () => {

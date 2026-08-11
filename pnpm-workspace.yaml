@@ -220,3 +220,40 @@ catalog:
   "@types/d3-array": ^3.2.2
   d3-time-format: ^4.1.0
   "@types/d3-time-format": ^4.0.3
+  # KAR-17.5 — the live agent output panel (docs/12-frontend-architecture.md §6.6).
+  #
+  # **`@xterm/xterm@6`, and only for the CLI-shim path.** The scope migration is
+  # complete: unscoped `xterm` is frozen at 5.3.0 (2023-09-07) and the PRD's
+  # package name is stale. v6 removed `@xterm/addon-canvas` entirely, so the
+  # renderer is DOM or WebGL and nothing else — which is why `addon-webgl` is
+  # here with a DOM fallback wired to its `onContextLoss`, and why no canvas
+  # addon appears below. Re-verified against the real 6.0.0 tarball on
+  # 2026-08-11 (A3-8 records that the v6 changelog was previously read through a
+  # summarizer that got the release date wrong): `BufferLine`'s constructor is
+  # `new Uint32Array(cols * CELL_SIZE)` with `CELL_SIZE = 3`, i.e. **12 bytes
+  # per cell**, which is the arithmetic behind `TERMINAL_SCROLLBACK` in
+  # `packages/web/src/lib/terminal-session.ts` and must not be raised.
+  #
+  # `addon-serialize` is not a nicety: it is the whole dispose discipline. One
+  # `Terminal` per *visible* terminal means a closing panel serialises to a
+  # string and disposes, and browsers cap WebGL contexts at roughly 8–16 with a
+  # silent failure in the *oldest* terminal when you go over.
+  "@xterm/xterm": ^6.0.0
+  "@xterm/addon-fit": ^0.11.0
+  "@xterm/addon-serialize": ^0.14.0
+  "@xterm/addon-webgl": ^0.19.0
+  # KAR-17.5 AC2 — incremental highlighting for the ACP path, and a member of
+  # the Shiki family above, so it is pinned exactly with them: it consumes
+  # `HighlighterCore` and `ThemedToken` from `@shikijs/core`, and those are the
+  # types that move across a minor. `ShikiStreamTokenizer.enqueue(chunk)`
+  # re-tokenises only the trailing unstable region and returns
+  # `{recall, stable, unstable}` — which is what makes a 2,000-chunk stream cost
+  # per-chunk time that does not grow with the buffer. It is fed by the app's
+  # one highlighter (docs/12 §7); it never constructs a second.
+  "@shikijs/stream": 4.4.3
+  # KAR-17.5 AC1/AC7 — the virtualiser behind both the typed ACP message list
+  # and the read-only archive viewer. Headless: it computes offsets and returns
+  # the window, and the DOM stays Vue's — the same rule that keeps `d3-selection`
+  # out of this package. It is what lets "Open full log" hold a 400 MB artifact
+  # as a line index plus a handful of byte-range fetches instead of a buffer.
+  "@tanstack/vue-virtual": ^3.13.35
