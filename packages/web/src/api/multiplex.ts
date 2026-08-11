@@ -83,6 +83,32 @@ export interface StreamHubOptions {
    */
   readonly build?: string;
   /**
+   * The filter to **open** with. Empty — the default — is the hello-and-
+   * keepalive stream a tab holds before its first panel.
+   *
+   * The one value that cannot be added later is `'*'`: the global lifecycle
+   * topic is resolved from the query string when the connection is served, so
+   * a tab that wants it has to ask at open (docs/11 §5).
+   */
+  readonly runs?: readonly string[];
+  /**
+   * An event for a run no panel is watching — which is what every frame on the
+   * `runs=*` topic is, since a lifecycle event carries the id of the run it
+   * happened to. Dropped when this is absent, as a stale subscription's tail
+   * should be.
+   */
+  readonly onUnrouted?: (event: Event) => void;
+  /** The connection was established. Fires again on every reconnect. */
+  readonly onConnect?: () => void;
+  /** The connection was broken. The library will reconnect unless closed. */
+  readonly onDisconnect?: () => void;
+  /** A `: keepalive` comment. Counted by KAR-16.2, ignored by everything else. */
+  readonly onComment?: (comment: string) => void;
+  /** A reconnect was scheduled, with the interval the server last named. */
+  readonly onScheduleReconnect?: (info: { delay: number }) => void;
+  /** The highest `seq` this hub has seen moved. The tab's cursor hangs off it. */
+  readonly onCursor?: (cursor: number) => void;
+  /**
    * A `fatal` frame, after the hub has decided whether it may reconnect.
    * `terminal` is true for exactly `bad_token` and `epoch_mismatch` (AC15).
    */
@@ -128,6 +154,17 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
   });
 
   const panels = new Map<string, (event: Event) => void>();
+  /**
+   * The filter this hub *wants*, as opposed to the one the daemon last stated.
+   *
+   * They differ for exactly as long as a `subscribe` is in flight, and they
+   * differ again the instant a connection drops: the daemon resolves a
+   * connection's filter from its query string, so the runs this tab subscribed
+   * to have to be re-stamped on every attempt or the reconnect comes back
+   * watching nothing. That failure is silent — the stream is open, `hello`
+   * arrives, and no event ever does.
+   */
+  const desired = new Set<string>(options.runs ?? []);
   let filter: string[] = [];
   let id: string | null = null;
   let connections = 0;
@@ -186,7 +223,7 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
   };
 
   const dispatcher: Dispatcher = createDispatcher({
-    applyEvent: fanOutByRun((runId) => panels.get(runId)),
+    applyEvent: fanOutByRun((runId) => panels.get(runId) ?? options.onUnrouted),
     control: onControl,
   });
 
@@ -196,14 +233,28 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.token === undefined ? {} : { token: options.token }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    runs: [],
+    ...(options.onConnect === undefined ? {} : { onConnect: options.onConnect }),
+    ...(options.onDisconnect === undefined ? {} : { onDisconnect: options.onDisconnect }),
+    ...(options.onComment === undefined ? {} : { onComment: options.onComment }),
+    ...(options.onScheduleReconnect === undefined
+      ? {}
+      : { onScheduleReconnect: options.onScheduleReconnect }),
+    // Read per attempt, exactly as `since` is, and for the same reason.
+    runs: () => [...desired],
     // Read per attempt: a reconnect resumes from what this tab has applied, and
     // falls back to where it opened only while it has applied nothing. `max`
     // rather than the dispatcher's cursor alone, because a hub that opened at
     // 10,432 and has seen nothing since must not resume from 0 (KAR-15.4 AC1).
     since: () => Math.max(openedAt, dispatcher.cursor()),
     onMessage: (message) => {
+      const before = dispatcher.cursor();
       dispatcher.onFrame({ event: message.event, id: message.id ?? undefined, data: message.data });
+      // Reported off the dispatcher rather than off the applied event, because
+      // the cursor advances past a kind this build cannot read too — and a tab
+      // that persisted only what it understood would re-request that frame on
+      // every reconnect for the life of the run.
+      const after = dispatcher.cursor();
+      if (after > before) options.onCursor?.(after);
     },
   });
 
@@ -215,9 +266,11 @@ export function openStreamHub(options: StreamHubOptions = {}): StreamHub {
     connections: () => connections,
     unwatch(runId) {
       panels.delete(runId);
+      desired.delete(runId);
     },
     async watch(runId, apply) {
       panels.set(runId, apply);
+      desired.add(runId);
       if (filter.includes(runId)) return;
       await opened.promise;
       if (id === null) throw new Error('the stream announced no streamId to subscribe against');

@@ -1,0 +1,131 @@
+{
+  "appliedSeq": 80,
+  "byProducer": Map {
+    "recon-auth-surface" => [
+      "fact_7840fc76d0aec49888de749c90",
+    ],
+    "plan-migration" => [
+      "fact_e8d87892b0287c860826701c30",
+    ],
+    "review-security" => [
+      "fact_48fa1c9a80daa49830c2dc7e30",
+    ],
+  },
+  "facts": Map {
+    "fact_7840fc76d0aec49888de749c90" => {
+      "consumers": [
+        {
+          "node": "plan-migration",
+          "seq": 15,
+        },
+      ],
+      "id": "fact_7840fc76d0aec49888de749c90",
+      "invalid": null,
+      "key": "finding/auth-uses-jwt",
+      "kind": "finding",
+      "provenance": {
+        "at": "<ts>",
+        "atEvent": 9,
+        "byModel": "sonnet-4-6",
+        "byNode": "recon-auth-surface",
+        "byProvider": "claude-code",
+        "confidence": "verified",
+        "fromEvidence": [
+          "artifact://a8e838b2f04074fe58a6c854c0eed49888de749c9062a0d41892c096d03aec44",
+        ],
+      },
+      "schemaId": "DeFlow.finding.v1",
+      "supersedes": null,
+      "value": {
+        "text": "finding/auth-uses-jwt as observed by recon-auth-surface",
+      },
+      "writtenAtSeq": 9,
+    },
+    "fact_e8d87892b0287c860826701c30" => {
+      "consumers": [
+        {
+          "node": "impl-login",
+          "seq": 22,
+        },
+      ],
+      "id": "fact_e8d87892b0287c860826701c30",
+      "invalid": {
+        "by": "review-security",
+        "reason": "the guard shape changed in the router upgrade",
+        "seq": 78,
+        "taints": [
+          "impl-login",
+          "impl-signup",
+        ],
+      },
+      "key": "decision/router-guard-shape",
+      "kind": "decision",
+      "provenance": {
+        "at": "<ts>",
+        "atEvent": 16,
+        "byModel": "sonnet-4-6",
+        "byNode": "plan-migration",
+        "byProvider": "claude-code",
+        "confidence": "asserted",
+        "fromEvidence": [
+          "artifact://c8ba1c3410fac4ae1894cc70f058fcd2f8e66418b0def4a8b88a0c46d032d8bc",
+        ],
+      },
+      "schemaId": "DeFlow.finding.v1",
+      "supersedes": null,
+      "value": {
+        "text": "decision/router-guard-shape as observed by plan-migration",
+      },
+      "writtenAtSeq": 16,
+    },
+    "fact_48fa1c9a80daa49830c2dc7e30" => {
+      "consumers": [
+        {
+          "node": "impl-signup",
+          "seq": 80,
+        },
+      ],
+      "id": "fact_48fa1c9a80daa49830c2dc7e30",
+      "invalid": null,
+      "key": "risk/legacy-shim-needed",
+      "kind": "risk",
+      "provenance": {
+        "at": "<ts>",
+        "atEvent": 79,
+        "byModel": "sonnet-4-6",
+        "byNode": "review-security",
+        "byProvider": "claude-code",
+        "confidence": "speculative",
+        "fromEvidence": [
+          "artifact://e8be5012f09a90deb0d2cc4c70be4436585e8c962058f0a6587874da7030b414",
+        ],
+      },
+      "schemaId": "DeFlow.finding.v1",
+      "supersedes": "fact_e8d87892b0287c860826701c30",
+      "value": {
+        "text": "risk/legacy-shim-needed as observed by review-security",
+      },
+      "writtenAtSeq": 79,
+    },
+  },
+  "orphanInvalidations": Map {},
+  "orphanReads": Map {},
+  "taints": Map {
+    "impl-login" => [
+      {
+        "by": "review-security",
+        "factId": "fact_e8d87892b0287c860826701c30",
+        "reason": "the guard shape changed in the router upgrade",
+        "seq": 78,
+      },
+    ],
+    "impl-signup" => [
+      {
+        "by": "review-security",
+        "factId": "fact_e8d87892b0287c860826701c30",
+        "reason": "the guard shape changed in the router upgrade",
+        "seq": 78,
+      },
+    ],
+  },
+}

@@ -156,6 +156,59 @@ const INSERT_PLAN_SQL = `
 
 const READ_PLAN_SQL = 'SELECT doc FROM plan WHERE hash = ?';
 
+/**
+ * The one statement that writes the content-addressed plan table.
+ *
+ * A function rather than three call sites of the same SQL, because *"exactly
+ * one code path inserts into the plan table"* is an asserted structural
+ * property (KAR-11.2 AC9, `test/one-plan-write-site.test.ts`) and not a
+ * convention: a second `INSERT INTO plan` anywhere in the workspace is a write
+ * path that never saw a `Diagnostic[]`, however well-intentioned. Callers here
+ * have each already proved the document addresses its own hash.
+ *
+ * `ON CONFLICT DO NOTHING` because the table is content-addressed and
+ * immutable: a hash already present *is the same document*, which a retry after
+ * a transient failure — and a replay restoring a recorded proposal — both
+ * produce, and neither must be an error or rewrite a row an earlier event
+ * already references.
+ */
+function insertPlanDoc(db: Db, hash: string, runId: string, createdAt: number, doc: string): void {
+  db.prepare(INSERT_PLAN_SQL).run(hash, runId, createdAt, doc);
+}
+
+/**
+ * KAR-16.5 — one recorded `plan.proposed`'s document, re-filed under the
+ * address it already carries.
+ *
+ * `DeFlow replay` restores a recording into an empty ledger, and the plan
+ * document is the one thing an `event` export cannot reconstruct by itself: it
+ * travels inline on `plan.proposed`, and `GET /api/runs/:id/plans/:version`
+ * resolves through this table. Restoring it is a re-file of the same bytes
+ * under the same address — **checked**, through the same `sealedDoc` every
+ * other writer here uses, so a change to the hasher fails the restore instead
+ * of quietly filing a document under an address that no longer addresses it.
+ *
+ * Two calls rather than one because hashing is async and SQLite's write
+ * transaction is not: the caller seals every document first, then inserts them
+ * all inside its own transaction.
+ */
+export async function sealRecordedPlan(graph: PlanGraph): Promise<string> {
+  return await sealedDoc(graph);
+}
+
+/** @see sealRecordedPlan — the write half, called with the write lock held. */
+export function storeRecordedPlanDoc(
+  db: Db,
+  plan: {
+    readonly hash: string;
+    readonly runId: string;
+    readonly createdAt: number;
+    readonly doc: string;
+  },
+): void {
+  insertPlanDoc(db, plan.hash, plan.runId, plan.createdAt, plan.doc);
+}
+
 /** The stored canonical encoding of the plan `hash` addresses, or `null`. */
 export function readPlanDoc(db: Db, hash: string): string | null {
   const statement: DbStatement<{ doc: string }> = db.prepare(READ_PLAN_SQL);
@@ -254,7 +307,7 @@ export async function persistPlanVersion(
   } as EventDraft;
 
   const seq = db.transaction(() => {
-    db.prepare(INSERT_PLAN_SQL).run(graph.planHash, graph.runId, options.ts, doc);
+    insertPlanDoc(db, graph.planHash, graph.runId, options.ts, doc);
     const [assigned] = appendEvents(db, [draft]);
     if (assigned === undefined) throw new Error('appending plan.proposed returned no seq');
     return assigned;
@@ -443,7 +496,7 @@ export async function applyPatchedPlanVersion(
     }
 
     const path = writePlanFile(runDir, graph);
-    db.prepare(INSERT_PLAN_SQL).run(graph.planHash, graph.runId, options.ts, doc);
+    insertPlanDoc(db, graph.planHash, graph.runId, options.ts, doc);
     db.prepare(UPDATE_RUN_PLAN_HASH_SQL).run(graph.planHash, graph.runId);
     options.crashPoint?.();
     const [, seq] = appendEvents(db, [proposal, draft]);

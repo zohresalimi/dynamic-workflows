@@ -11,8 +11,10 @@
     "prepare": "lefthook install",
     "dev": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/adapters --watch-path=packages/daemon --watch-path=packages/cli --watch-path=packages/mock-agent packages/daemon/src/main.ts",
     "dev:pretty": "pnpm dev | pino-pretty",
+    "dev:replay": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/daemon --watch-path=packages/web/src packages/daemon/src/replay/main.ts happy-path-12 --speed 20x --port 7777 --dev",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
-    "lint": "oxlint --type-aware && biome check .",
+    "lint": "oxlint --type-aware && biome check . && pnpm lint:graph-facade",
+    "lint:graph-facade": "node packages/web/scripts/check-graph-facade.ts",
     "format": "biome check --write .",
     "schemas:emit": "node packages/core/scripts/emit-schemas.ts",
     "schemas:check": "node packages/core/scripts/check-schemas.ts",
@@ -22,6 +24,7 @@
     "test:e2e": "vitest run --project e2e",
     "test:fuzz": "vitest run --project crash-fuzz",
     "test:record": "node packages/adapters/scripts/record-goldens.ts",
+    "measure:graph": "node packages/web/scripts/measure-graph.ts",
     "spike:s3:record": "DeFlow_RECORD_MEASUREMENTS=1 vitest run --project e2e e2e/spike-s3-elk-worker.test.ts"
   },
   "devDependencies": {

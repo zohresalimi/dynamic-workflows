@@ -24,3 +24,10 @@ __screenshots__/
 # repository's: they hold ledgers, blobs and machine-local paths.
 .DeFlow/
 .claude/
+
+# The built SPA, where DeFlowd resolves it to when run from source. It is a
+# build output that happens to land under src/ because `./ui/` relative to the
+# server module is `dist/ui` in the published tarball and this from the
+# repository (packages/daemon/src/http/server.ts). e2e/ui-bootstrap.test.ts
+# writes it and removes it again.
+packages/daemon/src/http/ui/

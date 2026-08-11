@@ -90,8 +90,17 @@ suite('the warning is written in exactly one place (AC5)', () => {
     // @DeFlow/core is where the *kind* is declared — its schema table and its
     // reducer case. Everywhere else, naming the string means writing the event,
     // and there is one place allowed to do that.
+    //
+    // KAR-16.3 adds the one other legitimate mention. The UI's projection
+    // ownership table is a total `Record<EventKind, ProjectionName[]>` — that
+    // totality is what turns a new event kind into a compile error in the
+    // browser build — so it names *every* kind by construction, this one
+    // included, and it appends nothing: `packages/web` cannot write to the
+    // ledger at all. Exempted by name rather than by a looser pattern, so the
+    // grep keeps its teeth everywhere else.
+    const DECLARATIONS = ['packages/core/src/', 'packages/web/src/ledger/projections/kinds.ts'];
     const writers = matching(NAMES_WARNING).filter(
-      (path) => !path.startsWith('packages/core/src/'),
+      (path) => !DECLARATIONS.some((allowed) => path.startsWith(allowed)),
     );
     expect(writers).toEqual(['packages/adapters/src/scope-audit.ts']);
   });

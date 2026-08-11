@@ -90,6 +90,28 @@ suite('every relative import under packages/*/src ends in .ts (AC8)', () => {
     expect(sources.length).toBeGreaterThan(0);
     expect(render(checkRelativeImportsHaveTsExtension(sources))).toBe('');
   });
+
+  it('reads a Vite resource query as the suffix it is, not as the extension', () => {
+    // `./elk.worker.ts?worker` (KAR-16.6 AC5) writes the extension down and
+    // then asks the bundler for a worker; the rule is about the extension
+    // being explicit, not about it being the last character of the string.
+    expect(
+      checkRelativeImportsHaveTsExtension([
+        {
+          path: 'packages/web/src/graph/layout.ts',
+          text: "import W from './elk.worker.ts?worker';",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('still refuses one with the extension left off', () => {
+    expect(
+      checkRelativeImportsHaveTsExtension([
+        { path: 'packages/web/src/graph/layout.ts', text: "import W from './elk.worker?worker';" },
+      ]),
+    ).toHaveLength(1);
+  });
 });
 
 suite('there is no flag that would make banned syntax run (EPIC-01-S7 scenario 3)', () => {

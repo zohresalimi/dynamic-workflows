@@ -1,0 +1,176 @@
+{
+  "appliedSeq": 80,
+  "attemptsByNode": Map {
+    "impl-signup" => [
+      {
+        "attempt": 0,
+        "gate": "typecheck",
+        "outcome": "pass",
+        "seq": 52,
+      },
+      {
+        "attempt": 0,
+        "gate": "contract",
+        "outcome": "needs-human",
+        "seq": 57,
+      },
+    ],
+  },
+  "criteria": Map {
+    "unit-tests-pass" => {
+      "decidedAtSeq": 52,
+      "gates": [
+        "typecheck",
+      ],
+      "id": "unit-tests-pass",
+      "statement": "All existing checkout unit tests pass unmodified.",
+      "status": "satisfied",
+      "unmapped": false,
+    },
+    "no-v-model-regression" => {
+      "decidedAtSeq": 57,
+      "gates": [
+        "contract",
+      ],
+      "id": "no-v-model-regression",
+      "statement": "No v-model modifier is silently dropped by the codemod.",
+      "status": "unverifiable",
+      "unmapped": false,
+    },
+    "manual-visual-check" => {
+      "decidedAtSeq": null,
+      "gates": [],
+      "id": "manual-visual-check",
+      "statement": "The checkout flow renders identically in a manual pass.",
+      "status": "unverifiable",
+      "unmapped": true,
+    },
+  },
+  "definitions": Map {},
+  "escalations": [
+    {
+      "answeredAtSeq": 68,
+      "answeredBy": "operator",
+      "answeredWith": "proceed",
+      "node": "review-security",
+      "options": [
+        {
+          "id": "proceed",
+          "label": "Proceed",
+        },
+        {
+          "id": "stop",
+          "label": "Stop",
+        },
+      ],
+      "prompt": "The reviewer found an auth change it cannot judge. Proceed?",
+      "seq": 65,
+    },
+  ],
+  "failureCount": 0,
+  "findingsByFile": Map {
+    "src/api/contract.ts" => [
+      {
+        "criterion": "no-v-model-regression",
+        "evidence": [],
+        "gate": "contract",
+        "id": "f-contract-2",
+        "location": {
+          "blobSha": "58e86c7830ce6cb4c09ecca8103ea0a6505444aa",
+          "endLine": null,
+          "file": "src/api/contract.ts",
+          "line": 12,
+        },
+        "message": "the request type gained an optional field",
+        "seq": 57,
+        "severity": "minor",
+      },
+      {
+        "criterion": "no-v-model-regression",
+        "evidence": [
+          "artifact://58e86c783050d8429044b446e00e60fa202a109cb0f4ccb4c09ecca600289c68",
+        ],
+        "gate": "contract",
+        "id": "f-contract-1",
+        "location": {
+          "blobSha": "58e86c7830ce6cb4c09ecca8103ea0a6505444aa",
+          "endLine": 34,
+          "file": "src/api/contract.ts",
+          "line": 31,
+        },
+        "message": "the signup response drops `emailVerified`",
+        "seq": 57,
+        "severity": "major",
+      },
+    ],
+  },
+  "needsHumanCount": 1,
+  "passCount": 1,
+  "verdicts": [
+    {
+      "attempt": 0,
+      "criteria": [
+        {
+          "id": "unit-tests-pass",
+          "status": "satisfied",
+        },
+      ],
+      "evaluatedNode": "impl-signup",
+      "findings": [],
+      "gate": "typecheck",
+      "outcome": "pass",
+      "seq": 52,
+      "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+      "summary": "typecheck is clean",
+    },
+    {
+      "attempt": 0,
+      "criteria": [
+        {
+          "id": "no-v-model-regression",
+          "status": "unverifiable",
+        },
+      ],
+      "evaluatedNode": "impl-signup",
+      "findings": [
+        {
+          "criterion": "no-v-model-regression",
+          "evidence": [
+            "artifact://58e86c783050d8429044b446e00e60fa202a109cb0f4ccb4c09ecca600289c68",
+          ],
+          "gate": "contract",
+          "id": "f-contract-1",
+          "location": {
+            "blobSha": "58e86c7830ce6cb4c09ecca8103ea0a6505444aa",
+            "endLine": 34,
+            "file": "src/api/contract.ts",
+            "line": 31,
+          },
+          "message": "the signup response drops `emailVerified`",
+          "seq": 57,
+          "severity": "major",
+        },
+        {
+          "criterion": "no-v-model-regression",
+          "evidence": [],
+          "gate": "contract",
+          "id": "f-contract-2",
+          "location": {
+            "blobSha": "58e86c7830ce6cb4c09ecca8103ea0a6505444aa",
+            "endLine": null,
+            "file": "src/api/contract.ts",
+            "line": 12,
+          },
+          "message": "the request type gained an optional field",
+          "seq": 57,
+          "severity": "minor",
+        },
+      ],
+      "gate": "contract",
+      "outcome": "needs-human",
+      "seq": 57,
+      "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+      "summary": "the contract checker is not installed",
+    },
+  ],
+}

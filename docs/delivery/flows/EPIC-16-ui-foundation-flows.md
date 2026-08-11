@@ -95,7 +95,8 @@ Background:
 
 ## EPIC-16-S1 — Happy path: a cold tab boots, hydrates, streams and renders
 
-**Verifies:** KAR-16.1, KAR-16.2 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-16.1, KAR-16.2 · **Type:** Happy path · **Automated at:** e2e — except the two
+rendering clauses, **deferred to EPIC-17** (see below)
 
 ```gherkin
 Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
@@ -125,6 +126,39 @@ Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
          EventEnvelope — there is no other data path into the store
     And no view calls a REST endpoint to obtain run state
 ```
+
+**Automated (KAR-16.2, the store half):** the hydrate-then-stream order, the honest progress
+denominator taken from `headSeq`, the `hello` frame, and live frames landing on the hydrated state
+in `seq` order are all closed against a real socket in `packages/web/src/ledger/stream.test.ts` and
+`cursor.test.ts`, with the "everything came from an event" claim held structurally rather than by
+assertion: `openLedgerStream` is the only path into `createLedgerApply`, and the only path into that
+is `applyEvent`.
+
+**Deferred to [EPIC-17](../epics/EPIC-17-p0-views.md) — the two rendering clauses.** *"the plan graph
+renders every node from the hydrated state before the first live frame"* and *"the node `n_impl_3`
+renders in the `running` state within one frame"* are **not** closed by this epic, and the reason has
+moved since this note first said "the view does not exist yet".
+
+Every *piece* now exists and is Done — `plan.ts` (KAR-16.3), `useRunStore` (KAR-16.4), the replay
+harness (KAR-16.5), `GraphCanvas.vue` and `PlanGraphView.vue` (KAR-16.6). What does not exist is the
+**wire between them**: `PlanGraphView` renders from `useUiStore`, nothing in the shipped SPA ever
+calls `openLedgerStream`, and `useUiStore.setNodes` has no production caller — so opening the app
+against a replay renders an empty graph however deep the ledger is. That wiring is EPIC-17's first
+deliverable by this epic's own scope statement (*"this epic ends with a shell, a store, a facade and
+a harness; the first thing EPIC-17 does is render into them"*,
+[EPIC-16 §Out of scope](../epics/EPIC-16-ui-foundation.md)), and it is Playwright smoke #1 —
+*"load a completed run; the plan graph renders every node with the right state colour"*
+([14 §13](../../14-testing-strategy.md)).
+
+It would be easy to make these two clauses green here by composing the pieces inside a test page, and
+that is exactly what must not happen: it would assert that the parts *can* be wired while the shipped
+app still renders nothing, which is the plausible-but-wrong picture NF10 is about. **EPIC-17 closes
+them, at the e2e level this scenario names, against `DeFlow replay`.**
+
+**Automated (KAR-16.2, the browser half).** The e2e halves of EPIC-16-S7 and EPIC-16-S8 are closed —
+they needed no view, only a real browser — in [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts),
+which boots `DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin and
+drives the **shipped** `openLedgerStream` from a real Chromium. See those two scenarios below.
 
 **Notes:** the hydrate-then-stream order is not an optimisation, it is the correctness requirement of
 [11 §4.1](../../11-api-and-realtime.md). Note also the `headSeq` detail: it exists so the UI can show
@@ -171,6 +205,15 @@ long-lived token that authorises **spawning processes on the user's machine**
 ([11 §8.1](../../11-api-and-realtime.md)). Do not use `@microsoft/fetch-event-source` (abandoned
 2021-04-25) or plain `eventsource@^4.1.0` (inherits the no-headers limitation by design).
 
+**Automated (KAR-16.1):** the fragment read and strip is `packages/web/src/api/token.test.ts`; the
+header on the first request is `packages/web/src/app/shell-boot.test.ts`; the third scenario — the
+second tab, with no fragment — is `packages/web/src/views/TokenRequired.test.ts`, which asserts the
+three negatives AC3 names (no `progressbar`, not blank, **and no request at all**, which is the only
+form of "no 401 loop" that cannot be satisfied by retrying slowly). Scenarios 1, 2 and 4 are closed
+end to end in `e2e/ui-bootstrap.test.ts`: a real DeFlowd serving the built SPA, a real Chromium, and
+an assertion over **every** request the page made — that none carries the token in its URL, that
+none carries it in a `Referer`, and that none leaves 127.0.0.1.
+
 ---
 
 ## EPIC-16-S3 — Seven states, two themes, and never colour alone
@@ -215,6 +258,18 @@ label, every time, is WCAG 1.4.1 and it is also simply better for a status board
 not Tailwind classes is that seven views then stay consistent by construction and dark mode works
 because you redefine seven values, not because you audited nine views.
 
+**Automated (KAR-16.1):** the stylesheet half — seven names declared under `:root` and under `.dark`,
+and a mapping from `@DeFlow/core`'s `NODE_STATUSES` that is total, so a ninth domain status fails
+here rather than rendering as an unstyled chip six views later — is
+`packages/web/src/lib/state-palette.test.ts`. The rendering half is
+`packages/web/src/components/StateChip.test.ts`, which locates each chip **by role and accessible
+name** and never by fill, and asserts seven distinct glyphs so that "renders a glyph" cannot be
+satisfied by one shape seven times. That the two themes resolve to *different* values, rather than
+to a class with no redefinition behind it, is `packages/web/src/app/theme.test.ts`. The second
+scenario is a repository-wide guard, `test/ui-foundation.test.ts`: no hex literal and no Tailwind
+colour utility anywhere under `packages/web`, with the palette files themselves the only
+exemption.
+
 ---
 
 ## EPIC-16-S4 — Driving the whole surface from the keyboard, with motion off
@@ -255,6 +310,18 @@ Feature: Keyboard map and reduced motion (12 §9.4, 9.5)
 ([12 §9.5](../../12-frontend-architecture.md)). `resizable` and `command` from shadcn-vue _"carry an
 operator UI further than any amount of visual polish"_ — they are taken, not built.
 
+**Automated (KAR-16.1):** `packages/web/src/app/keyboard.test.ts`, which presses every key in the map
+three ways — against the store directly, against a focused text field (where `j` and `/` must reach
+the field and only `Esc` and `Cmd-K` may not), and against the **whole application after a route
+change**, because "handlers bound to a component that is not always mounted" is the failure this map
+is shaped to avoid. The skip-link is reached with a real `Tab` rather than a `.focus()` call, and
+the ring is asserted on `outline-style` before `outline-width`: with `outline: none` Chromium still
+reports the specified width, so a width check alone passes against a ring that has been switched
+off. The reduced-motion scenario is `packages/web/src/app/reduced-motion.test.ts`, emulating the
+preference in the browser process so the CSS `@media` block is actually evaluated, and pairing every
+assertion with its motion-on control so that a query wrapping a rule which never did anything cannot
+pass.
+
 ---
 
 ## EPIC-16-S5 — The initial chunk stays under budget
@@ -288,6 +355,15 @@ Feature: Bundle budget for NF3 (12 §10)
 execute time** ([12 §10](../../12-frontend-architecture.md)). Measure with the 400-node stress fixture
 through `DeFlow replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
 defaults to Oxc; diff the built CSS once on the first upgrade.
+
+**Automated (KAR-16.1):** `packages/web/test/integration/bundle-budget.test.ts` runs a real `vite
+build` into a tmpdir and measures the **initial payload** — the entry chunk plus every chunk the
+built `index.html` preloads, plus its stylesheet — rather than the entry file alone, which would
+fall every time the bundler moved a megabyte one chunk to the left. Membership is read out of each
+chunk's sourcemap, because a substring search of minified code answers questions about variable
+names. The second scenario is `test/ui-foundation.test.ts` (`build.rolldownOptions`, never
+`rollupOptions`) plus an assertion in the budget file that the build emitted no circular-import
+warning. Measuring through the 400-node stress fixture is KAR-16.6's; this is the static budget.
 
 ---
 
@@ -329,6 +405,18 @@ Feature: Exactly one SSE connection per tab (11 §2)
 cap is real ([11 §2](../../11-api-and-realtime.md)). The `SharedWorker` + `BroadcastChannel`
 hardening that would reduce N tabs to one connection total is deliberately deferred until three-plus
 tabs is a habit rather than a hypothetical.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts`, over a real `node:http` SSE
+origin in a real Chromium. Three panels are opened one at a time and the count of open streams is
+read **from the server** — a page cannot observe its own socket count, and inferring it from
+`performance` entries would be counting resource loads. The `streamId` is asserted unchanged, which
+is what says "filter mutation" rather than "reconnect". The fourth scenario — the design being
+rejected — is `packages/web/src/api/multiplex.test.ts`, which opens one stream per panel and watches
+an ordinary `fetch` sit unresolved for ten seconds with no error at all, then completes the instant
+the six are closed. The global-topic scenario is asserted here as the *client* half (the connection
+carries `runs=*` and lifecycle frames are routed away from every run panel); the membership itself —
+four kinds, and zero `node.progress` from any run — is asserted against a real DeFlowd in
+`packages/daemon/test/integration/stream-contract.test.ts`, because it is the server that filters.
 
 ---
 
@@ -373,6 +461,29 @@ is the common one in development, and it is the one that makes "it worked when I
 misleading signal. Note the client's cursor lives in `sessionStorage` (`cursor.ts`), so it is per-tab
 and cannot be poisoned by another tab's position.
 
+**Automated (KAR-16.2):** `packages/web/src/ledger/cursor.test.ts` for the cursor itself — monotonic,
+`sessionStorage`-backed, readable by a second `Cursor` over the same storage, and unbothered by a
+storage that refuses to write. The reload is `packages/web/src/ledger/stream.test.ts`: a tab applies
+five events and goes away, three more are appended while it is gone, and the tab that comes back is
+asserted to hold **all eight** — which it reaches by folding the run again through
+`GET /api/runs/:id/events` while opening the stream at the cursor it persisted. The fourth scenario
+is automated as the failure it describes rather than as prose: the same case is driven through a
+connection whose `?since=` is stripped, and every event of the outage is asserted **absent**, with
+no `Last-Event-ID` to fall back on because the connection had never opened before.
+
+**Automated at e2e (KAR-16.2):** [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts).
+The specs above drive `openLedgerStream` in **Node**, where `Last-Event-ID` is not a mechanism that
+exists — undici will never send one, so *"the client does not rely on it"* is unfalsifiable there. It
+is only a claim once a real browser is on the other end. So this spec boots
+`DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin, opens it in a
+real Chromium at the handoff URL, and reloads the page for real: scenario 1 asserts the stream
+reopens at exactly the `sessionStorage` cursor and that **no request the browser sent** — including
+the ones nobody wrote — carried a `Last-Event-ID`; scenario 2 appends across the outage and asserts
+the applied set is that of a tab that never reloaded. Scenario 4 is the paired negative control, at
+the same level: the identical reload through a connection whose `?since=` is stripped on the wire and
+whose hydrate is refused, with every event of the outage asserted **absent** — which is what stops
+the assertion above from being one that cannot fail.
+
 ---
 
 ## EPIC-16-S8 — The connection drops mid-run and comes back with no seam
@@ -406,6 +517,44 @@ Feature: Resume by cursor, not by hope
 speed, kill the connection, assert the UI reconnects and backfills without a gap or a duplicate."_
 It is one of only five E2E specs the project allows itself, and it earns its place because no
 browser-mode component test can exercise a severed socket.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts` severs the socket at the server —
+no final frame, no clean end — while a run is mid-flight, and asserts the applied `seq` sequence
+across the seam is strictly increasing with no duplicate and nothing missing, and that the reconnect
+carried `?since=` at the tab's own cursor rather than at the one it first opened with. The second
+scenario is asserted against the interval the library actually scheduled, through
+`onScheduleReconnect`, so `retry: 2000` and the client's policy are compared rather than assumed
+equal. The third — projections unharmed by an overlapping replay — is
+`packages/web/src/ledger/apply.test.ts`.
+
+Finding it here rather than in a browser cost this story a real bug: the daemon resolves a
+connection's filter from its **query string**, and a reconnect is a new connection, so a client that
+opened with `runs=` and subscribed afterwards came back subscribed to nothing at all. The stream was
+open, `hello` arrived, and no event ever did. `?runs=` is now re-stamped on every attempt, exactly
+as `?since=` already was.
+
+**Automated at e2e (KAR-16.2):** [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts) —
+smoke #4 itself. A real Chromium runs the shipped `openLedgerStream` against
+`DeFlow replay stress-400 --speed 50x`, `ReplayHarness.sever()` destroys every socket mid-burst
+while playback keeps running, and the tab is asserted to come back on its own policy with the applied
+`seq` sequence strictly increasing, nothing twice and nothing missing below the head it reached — on
+one connection, not one per attempt. Where the browser *does* supply a `Last-Event-ID` on that
+automatic reconnect, it is asserted to **agree** with `?since=`, which is what makes the server's
+`since` > `Last-Event-ID` precedence a no-op rather than a silent rewind.
+
+**And it cost this story a second real bug, which only the browser round could find.** `status`
+never left `live` for the whole outage. `eventsource-client@1.2.0` calls `onDisconnect` from exactly
+one branch — the one where `reader.read()` resolves `done: true`, a body the server ended *cleanly* —
+while a **destroyed** socket rejects the read instead, landing in the library's `.catch`, which
+schedules a reconnect and reports nothing. So on every failure that is not a polite `res.end()` (a
+lid closing, Wi-Fi going, a daemon restarting) a view rendering its connection indicator off `status`
+showed a healthy stream throughout, and `live` was never cleared either, so a `watch()` on a run
+mid-backfill resolved immediately as already caught up. `connectStream` now **derives** the
+disconnect from `onScheduleReconnect` — the one signal the library raises on both paths —
+de-duplicated against the library's own callback. The regression guard is
+`packages/web/src/ledger/stream.test.ts` *"says it is reconnecting while it is reconnecting"*; the
+existing specs missed it because they asserted the applied events and the retry interval, and never
+the state the operator actually sees.
 
 ---
 
@@ -442,6 +591,14 @@ correct stream and, worse, may try to "repair" by refetching from zero
 reason: a bare `INTEGER PRIMARY KEY` reuses rowids after a delete, so the moment run retention ships,
 every persisted cursor would point at a different event than the one it was written for — silently.
 **Verified 2026-08-02.**
+
+**Automated (KAR-16.2):** the applying half is `packages/web/src/ledger/apply.test.ts` and
+`cursor.test.ts` (a `4, 5, 7, 8, 12` fixture through the hydrate loop, asserting five applied against
+a head of twelve and every window asked for exactly once), and end to end over a socket in
+`stream.test.ts`, where the same ledger is served to a cold tab and the connection state is asserted
+`live` with no `fatal`. The second scenario is `test/no-gap-detection.test.ts`, a repository-wide
+scan for every spelling of a successor and of density, with its own planted-positive case so the
+patterns are known to have teeth.
 
 ---
 
@@ -482,6 +639,12 @@ the _"there is no other input"_ claim in [12 §1](../../12-frontend-architecture
 reading one function. `hello.daemonEpoch` and `hello.build` are consumed by the connection layer and
 never by a projection.
 
+**Automated (KAR-16.2):** `packages/web/src/api/dispatch.test.ts` holds the routing (named frames to
+`handleControl`, unnamed to `applyEvent`, and an *unknown* name still treated as control), and
+`packages/web/src/ledger/apply.test.ts` holds the assertion the acceptance criterion actually names —
+that every projection is byte-identical after `hello`, `subscribed`, `caught_up` and `fatal` — since
+that one needs projections attached and the dispatcher has none.
+
 ---
 
 ## EPIC-16-S11 — An old tab meets a newer daemon
@@ -517,6 +680,24 @@ without corruption"_ ([11 §3.2](../../11-api-and-realtime.md)). The type-only i
 the _other_ direction — a kind the UI should have handled — into a compile error rather than a silent
 omission. Both halves are needed; neither substitutes for the other.
 
+**Automated (KAR-16.2 for the first two scenarios):** `packages/web/src/ledger/apply.test.ts` feeds a
+kind this build has never heard of and asserts no projection moved by so much as a field, while the
+cursor advanced past it — a client that skipped both would re-request that event on every reconnect
+for the life of the run. The build-skew scenario is `packages/web/src/ledger/stream.test.ts`, which
+distinguishes it from a restarted daemon: two different facts with two different remedies.
+
+**Automated (KAR-16.3) — the compile-time half.** The two directions pull against each other: a
+`default: return` is what makes an unknown kind harmless at runtime, and it is also exactly what
+would swallow a kind added to the union. `packages/web/src/ledger/projections/kinds.ts` is how they
+coexist — one `satisfies Record<EventKind, ProjectionName[]>` table, so a kind added in
+`@DeFlow/core` fails to compile *there* until somebody decides which views care, and each
+projection's `default` branch then passes its narrowed event to `ignored<'name'>()`, whose parameter
+is every event **except** the ones that projection claims. A claimed kind left unhandled is still in
+the union at that point and does not typecheck. `projections/exhaustive.type-test.ts` is the proof
+it has teeth: it is compiled by `pnpm typecheck`, never executed, and every `@ts-expect-error` in it
+fails in both directions — an unused directive is itself an error, so a mechanism that quietly
+stopped working reports as one.
+
 ---
 
 ## EPIC-16-S12 — The daemon restarted underneath the tab
@@ -549,6 +730,12 @@ Feature: daemon_epoch fencing, observed from the client
 ([11 §3.2](../../11-api-and-realtime.md)). The distinction that matters for the operator is that a
 restart is not a new run: the ledger is the truth, the tab's cursor is still valid, and the only
 thing that changed is which process is appending.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts`. The origin's `daemonEpoch` is
+moved, the socket is severed, and the tab is asserted to surface the restart, to resume from **its
+own** cursor rather than from head, and — the part that matters to the operator — to keep every
+projection it had, with the events appended during recovery applied in order onto them. A restart is
+not a new run. The 409 on a write is EPIC-15's `epoch-guard`, asserted in the daemon's specs.
 
 ---
 
@@ -585,6 +772,13 @@ freely ([11 §10](../../11-api-and-realtime.md)). Carrying `seq` on the error is
 error path, which is exactly where auditability usually stops_ — the UI can link "this failed" to
 "here is the event that says so".
 
+**Automated (KAR-16.2):** the code table is `packages/web/src/api/dispatch.test.ts`
+(`stopsRetrying`), and the *behaviour* is `packages/web/src/ledger/stream.test.ts`: after a
+`bad_token` the server's accepted-connection count is asserted unchanged well past two retry
+intervals, which is the only honest way to assert "stopped"; after an `internal` the client is
+asserted to come back on its own and pick the run up. `epoch_mismatch` is asserted to be terminal
+**and** to ask for a reload, which is the one remedy that fixes it.
+
 ---
 
 ## EPIC-16-S14 — Fifteen idle minutes, and the events that arrive in a clump
@@ -619,6 +813,16 @@ inactivity timer in the path quiet, and _"long-running DeFlow nodes are routinel
 is not one"_ — encoding that as a named scenario is how the afternoon it would otherwise cost gets
 saved.
 
+**Automated (KAR-16.2, first scenario):** `packages/web/src/ledger/stream.test.ts` feeds sixty
+`: keepalive` comments — fifteen minutes at the daemon's 15-second cadence — and asserts the tab
+consumed all sixty, opened no second connection, reached no reducer with any of them, and was still
+serving live frames on the same socket afterwards. The wall clock is compressed and the reason it
+can be is the property itself: **this client contributes no timer to advance.** It has no inactivity
+timeout of its own, so what fifteen real minutes would add is sixty more comments and nothing else.
+The second and third scenarios belong to KAR-16.5's replay harness and to the daemon's own
+`stream-contract` specs — measuring inter-arrival times needs a producer emitting on a schedule, and
+this story has no such producer to point at.
+
 ---
 
 ## EPIC-16-S15 — Projections are pure, and the suite proves it
@@ -651,6 +855,18 @@ count"_ ([12 §3.3](../../12-frontend-architecture.md)). The ratio is a design t
 observation — if the browser-mode suite grows past the projection suite, logic has leaked out of the
 projections and into components, and the cost of every subsequent test goes up by two orders of
 magnitude.
+
+**Automated (KAR-16.3):** the lint half is an `.oxlintrc.json` override over
+`packages/web/src/ledger/projections/**` restricting `vue`, `vue-router`, `pinia`, `@vue*`, `node:*`
+and the DOM globals — this directory is the one part of `packages/web` oxlint sees at all, exempted
+by a single `!` from the package-wide `ignorePatterns` entry. `purity.test.ts` beside it asserts that
+the exemption is still there (delete it and the rule passes loudly for ever) and re-runs the same
+matchers against a planted violation, so a scan that has never matched anything is not mistaken for a
+scan that works. The suite runs in the **`unit`** project — Node's environment, no DOM, no mount —
+which cost one change per side: `packages/web/vitest.config.ts` excludes the directory and the root
+config's `unit` project re-admits it past the blanket web exclusion, depth-explicitly, because a `**`
+carve-out would swallow the `projections` segment. `test/web-suite-split.test.ts` asserts the two
+sets partition every web spec, so a new one cannot fall between the projects and never run.
 
 ---
 
@@ -693,6 +909,16 @@ defines — that alignment is deliberate and is what makes S3's enumeration test
 `node.progress` is _cheap, frequent, and does not advance the progress watermark_
 ([04 §9](../../04-domain-model.md)); treating it as a state change makes the graph flicker.
 
+**Automated (KAR-16.3):** `packages/web/src/ledger/projections/plan.test.ts` folds
+`test/fixtures/runs/happy-path-12/events.jsonl` and asserts all seven states are *reached* as well as
+that no eighth or `undefined` one is — an enumeration over a fixture that only reaches four proves
+much less than it looks. The seven cannot be produced by hand at all: `PlanNodeVM.state` is derived
+through `NODE_STATUS_DISPLAY`, the total `Record<NodeStatus, DisplayState>` KAR-16.1 shipped, so an
+eighth would be a compile error in the palette rather than a wrong chip here. The abandoned node
+comes from a real `plan.patched`, and it works because the projection holds the `plan.patch.proposed`
+that carries the ops — `plan.patched` names only a `patchId`, so a projection without that pairing
+could not answer *which* node a patch abandoned.
+
 ---
 
 ## EPIC-16-S17 — `planHistory.ts`: the rail carries rejected patches too
@@ -731,6 +957,16 @@ Feature: The version rail behind the scrubber (F10.2, F2.6)
 change-detection hash and not fine for anything needing stability across versions**
 ([12 §6.2](../../12-frontend-architecture.md)). `planHash` itself is computed by the daemon with its
 own canonical encoder ([04 §3](../../04-domain-model.md)); the UI never recomputes it.
+
+**Automated (KAR-16.3):** `planHistory.test.ts` over `test/fixtures/runs/three-patches/events.jsonl`
+— an insert, a split and a provider replace, plus a fourth proposal that was refused. The rail is a
+chronology of *decisions* rather than a list of versions, so the rejection is on it and the version
+count stays at four; `versionsOf()` is the four that moved the plan. v1 carries `decision: null`,
+which is what the daemon's own `…/plans` response says — inventing an `auto` for the initial compile
+would report a rule that never fired. The per-node `contentHash` is FNV-1a over `@DeFlow/core`'s own
+`canonicalJson` rather than `ohash`: the repository already has one answer to "stable key ordering"
+and two would be two answers, and a synchronous reducer cannot await `crypto.subtle`. It is prefixed
+`h-` so a hash that leaked into a key or a URL is obvious on sight.
 
 ---
 
@@ -777,6 +1013,17 @@ Feature: Compaction fidelity (F6.6, F10.5)
 _"Encoding that uncertainty in the type is the difference between an auditable system and one that
 quietly lies"_ ([04 §9.1](../../04-domain-model.md)).
 
+**Automated (KAR-16.3):** `context.test.ts` folds `test/fixtures/runs/compaction/events.jsonl`,
+which is a **recording** — `packages/ledger/scripts/build-compaction-fixture.ts` demoted a real
+oversized body through the real packet builder, and the `vendor.session` half carries the `pre_tokens`
+the committed `compact_boundary` stream really has. A hand-written object that happened to say `null`
+would prove nothing about what DeFlow writes. The projection exposes `saved` as `before - after` and
+as **`null`** for the partial mark, which is where a `?? 0` would otherwise hide. The segment-sum
+assertions run over `happy-path-12`, whose packets are built by `buildPacket` and carry all nine
+`SegmentKind`s — a per-kind assertion over a packet with four of them is not the assertion AC6 makes.
+The pin-integrity half is the same fixture's `impl-login`, which fails with
+`safety.pin-integrity-violated` after a pinned segment's digest stops matching.
+
 ---
 
 ## EPIC-16-S19 — `gates.ts`: `unverifiable` and `needs-human` are not failures
@@ -815,6 +1062,16 @@ repair will fix"_ ([04 §7](../../04-domain-model.md)). The `unverifiable` state
 spec becomes visible — the SDD literature's primary failure mode, surfaced as data rather than as a
 feeling.
 
+**Automated (KAR-16.3):** `gates.test.ts` over two ledgers, and which answers which matters. The
+repair loop is `test/fixtures/runs/gate-failure-repair/`, a **recording** of a real `tsc` failing
+behind a real gate definition, a real fix node, and the re-run that passed — so the attempt sequence
+and the criterion moving from `unsatisfied` to `satisfied` are the engine's own output. The three
+states and `needs-human` are `happy-path-12`, which has a gate whose tooling is missing. The board is
+seeded from the run's **spec** rather than from the criteria some gate mentioned, which is the only
+way `manual-visual-check` — mapped to no gate at all — can surface as `unverifiable` and `unmapped`
+rather than as a missing row; F7.4's defect is rendered as data. `failureCount` counts `fail` and
+nothing else.
+
 ---
 
 ## EPIC-16-S20 — `cost.ts`: vendor-reported and estimated are never mixed
@@ -851,6 +1108,14 @@ Feature: Live cost accounting (F9.1)
 ([04 §8](../../04-domain-model.md)). A3 open risk A4-3 records that token accounting is unverified for
 Copilot, Gemini/Antigravity, Cursor and OpenCode — only Claude Code and Codex were checked — so the
 `'none'` branch is not hypothetical.
+
+**Automated (KAR-16.3):** `cost.test.ts` over `happy-path-12`, which carries both sources and a
+provider that prices nothing. `CostBucket` ships **no `total` field** — the two sources are separate
+cells plus a `sources` list saying which a displayed number could have come from, and there is
+deliberately nothing for somebody to reach for in week three. A `costUsd: null` puts the provider in
+`unaccounted` and its *tokens* still count, because those are not missing. Money is added at six
+decimal places so a replay produces the same bytes; the ceiling trip records that the run **paused**,
+with `estimateDriven` off the event's own basis rather than guessed.
 
 ---
 
@@ -891,6 +1156,15 @@ Feature: Execution spans for the Gantt (F10.9)
 The Gantt's x-axis is wall clock and therefore uses `ts`, but any _ordering_ decision in the
 projection uses `seq`.
 
+**Automated (KAR-16.3):** `timeline.test.ts` over `happy-path-12`. `impl-signup` starts and never
+terminates, so its span is open — `endTs` is `null`, and the spec asserts specifically that it is not
+the last event's `ts`, which is the plausible mistake rather than a hypothetical one. `review-security`
+is suspended on a human gate and answered six hours later, and the suspension is a segment of the span
+with `suspendedMs` beside it, so six idle hours are never drawn as six busy ones. `approve-release`
+waited without ever starting and therefore gets **no span at all** — one would have to invent a start
+— and its suspension stays open with `untilTs: null` rather than being closed at `now`. `impl-logout`
+yields two spans keyed by `(nodeId, attempt)` in one lane.
+
 ---
 
 ## EPIC-16-S22 — `blackboard.ts`: provenance, consumers and taint
@@ -925,6 +1199,13 @@ Feature: Memory sharing as data (F6.3, F10.4)
 _"nothing is lost by deferring it — `fact.written` and `fact.read` are ledger events regardless. The
 data accrues from day one; only the rendering slips"_ ([roadmap §3](../../17-roadmap.md)). The
 provenance table inside the node inspector (KAR-17.3) consumes this projection directly.
+
+**Automated (KAR-16.3):** `blackboard.test.ts` over `happy-path-12`. The taint list is the one the
+`fact.invalidated` event **carries**, never one recomputed from the consumers this tab happens to
+hold: the daemon computes it as the reads at a `seq` earlier than the invalidation, and a taint list
+that depended on when you opened the page would not be a taint list. A `fact.read` whose `fact.written`
+is below the tab's cursor is held and adopted if the write arrives — dropping it would under-report
+the consumer set for the life of the tab, which is the ordinary case for a panel opened mid-run.
 
 ---
 
@@ -966,6 +1247,12 @@ Feature: Projection idempotency
 memory, which is exactly what KAR-16.4 exists to prevent. Guard on the highest applied `seq` per
 projection and drop anything at or below it.
 
+**Automated (KAR-16.3):** `idempotency.test.ts` runs the outline over all seven through
+`projections/index.ts`, three ways — the last envelope re-applied, *every* envelope applied twice,
+and a six-event backfill window replayed over a folded state — plus the unknown-kind case for each.
+The guard is the per-projection high-water mark the note asks for, and it was verified to have teeth
+by deleting it from `cost.ts` and watching three of these fail before it was put back.
+
 ---
 
 ## EPIC-16-S24 — Subscribe-backfill overlaps the cursor
@@ -996,6 +1283,20 @@ Feature: Adding a run panel while events are arriving
 **Notes:** the fan-out is by `e.runId` in one dispatcher, not by one connection per run
 ([11 §2](../../11-api-and-realtime.md)). This scenario is where S23's idempotency requirement stops
 being theoretical: the overlap is a designed-in property of the subscribe path, not an error case.
+
+**Automated (KAR-16.3 for the projection half):** the overlap window's *"the projections are
+byte-identical after the duplicates"* is `idempotency.test.ts`'s backfill case, over each of the seven
+and over the recorded ledgers rather than over a synthetic pair. The routing and `caught_up` halves
+are KAR-16.2's, below.
+
+**Automated (KAR-16.2):** `packages/web/src/ledger/stream.test.ts` opens a second panel against an
+origin that backfills a newly subscribed run from the cursor the *connection* opened at — the
+daemon's own behaviour, and the reason the overlap exists at all — and asserts the second run's
+projections hold each event exactly once while the first run's are untouched. The idempotency
+underneath it is `packages/web/src/ledger/apply.test.ts`: re-applying a window changes nothing,
+because the guard is "strictly greater than what this run has folded" and never a successor check.
+The `caught_up` boundary is what `watch()` resolves on, so a panel cannot render before the run it
+is showing has been backfilled.
 
 ---
 
@@ -1104,6 +1405,29 @@ Feature: The soak that proves the memory rules
 ([12 §5](../../12-frontend-architecture.md)). All four rules are cheap on day one and miserable to
 retrofit, which is why the soak exists in this epic rather than after EPIC-17 has built nine views on
 top of an unbounded store.
+
+**Automated as the per-push proxy this scenario itself specifies; the scheduled six-hour run is
+owed.** `packages/web/test/integration/store-soak.test.ts` spawns
+`packages/web/test/integration/store-soak-child.ts` under `node --expose-gc`, folds 600,000 events
+through the real `useRunStore`, reads the selectors on every phase so the lazy `computed`s actually
+allocate, and asserts all four of this scenario's `Then` lines:
+
+- **heap growth within the recorded ceiling** — `heapUsed` sampled immediately after a forced major
+  collection, so what is measured is *retained* memory. The ceiling is **three times this machine's
+  own phase-to-phase variation over the first half of the run**, with a 2 MB floor, rather than a
+  fixed budget that would flake on a loaded laptop or be too loose to catch anything. Verified to
+  have teeth: a build that also pushed each envelope onto an unbounded array fails it by 66 MB.
+- **object counts bounded by node count** — `counts().nodes` and the length of every derived
+  view-model array stay at the plan's 400 across all ten phases.
+- **the ring at exactly its cap** — `counts().events === counts().ringCap === 2000`, every phase.
+- **zero undisposed `Terminal` instances** — one adopted and disposed per phase, and `close()`
+  disposes anything left.
+
+The two lines it does **not** yet cover are the ones that need a running application:
+`DeFlow replay --speed max` over `fixtures/stress-400.jsonl` (KAR-16.5's harness and corpus) with the
+plan graph, timeline and inspector mounted, and _"a node click still opens the inspector within the
+NF3 budget"_ (KAR-16.6's canvas, KAR-17.4's inspector). Both are recorded in
+[the epic](../epics/EPIC-16-ui-foundation.md) as owed once those stories land.
 
 ---
 
@@ -1252,6 +1576,35 @@ projection of an event stream either way"_ ([03 §6.2](../../03-local-developmen
 scenario is not pedantry — a harness that skips auth is a harness that lets an auth regression ship,
 because the harness is what most development runs against.
 
+**Automated by KAR-16.5**, at integration, in three files — because the four scenarios are three
+different kinds of claim:
+
+- **Booting the harness, the stream contract and the auth scenarios** —
+  `packages/daemon/test/integration/replay-harness.test.ts`, over a real `boot()` on a real
+  ephemeral port with frames read off the socket by hand: `hello` carrying
+  `{ streamId, apiVersion, build, daemonEpoch, headSeq }`, `retry: 2000` matched exactly once in the
+  raw byte stream, every ledger frame's `id:` equal to its own `seq`, keepalives still arriving on a
+  stream whose recording has run out, `401 missing_token` unauthenticated, `403 bad_origin` from a
+  foreign `Origin`, and `GET /api/health` still open.
+- **"Their response shapes are byte-identical to a live daemon's"** —
+  `packages/daemon/test/integration/replay-contract-equality.test.ts` asks the **same ten routes of
+  two daemons**: one served the recorded `ledger.db` that `gate-failure-repair` was produced into,
+  the other `DeFlow replay` over that run's own `events.jsonl`. Status, `X-DeFlow-Api` and body are
+  compared value for value, not shape for shape, and the sweep fails if fewer than six routes
+  answered `200` — a daemon that 404ed everything would otherwise "match" perfectly. Verified to
+  have teeth: dropping the plan document from the restore fails it on `…/plans/1` with 404 ≠ 200.
+- **"A grep of packages/web/src for any replay-related identifier returns nothing"** —
+  `test/no-replay-branch-in-web.test.ts`, over the shipped frontend with comments stripped, with a
+  control asserting the rule catches `if (isReplay)`. Two narrowings are recorded in that file:
+  prose *about* a fixture server is not a branch, and `replay` alone is the client's own word for
+  folding events forward from a snapshot (`api/scrub.ts`), so what is forbidden is an identifier
+  naming the *mode* — `isReplay`, `replayMode`, a `VITE_*REPLAY*` flag, a second server.
+
+The reason no UI branch is needed is structural rather than disciplined: `startReplay` calls the
+same `boot()` `DeFlowd` does, and the only difference is that the writer is a recording on a
+schedule instead of an orchestrator — a difference entirely on the write side, where no client can
+observe it.
+
 ---
 
 ## EPIC-16-S32 — The six fixtures and what each one proves
@@ -1291,6 +1644,35 @@ Note `compaction` must contain **both** fidelities: without the `vendor.session`
 rendering in KAR-17.4 has nothing to be tested against, and it is exactly the case that will occur in
 real runs against Claude Code.
 
+**Automated by KAR-16.5** in `packages/daemon/test/integration/replay-corpus.test.ts`, and each
+fixture is asserted **through the harness** rather than by reading its file — the scenario says
+*"when it is served by the replay harness"*, and a test that read the JSON would pass for a fixture
+the harness cannot serve. `stress-400` was added by this story
+(`packages/core/scripts/build-ui-run-fixtures.ts`): 400 materialised `map` children with real
+`<mapNodeId>--<itemId>` ids minted by `mapChildId`, each moving `pending → running → passed`, plus
+an assertion that the `plan.proposed` payload stays inside the 256 KiB inline ceiling — over it, a
+real run would have spilled the document to the blob store and the fixture would no longer be one
+file.
+
+Two directory names differ from the table above and are deliberately not renamed: `crash-resume` is
+committed as `crash-resume-seq-gap` and `gate-fail-repair` as `gate-failure-repair`, the names the
+stories that recorded them (KAR-15.4, KAR-12.5) created.
+
+**Two fixture defects this story's assertions exposed, both fixed here rather than asserted around:**
+
+- `happy-path-12`'s gate verdicts carried a filler `specHash`, so `reduce()` treated every one of
+  them as **void** (KAR-12.4) and `GET /api/runs/:id/gates` was empty however many gates the run
+  evaluated. The fixture now carries the run's real approved hash.
+- `three-patches` recorded `plan.patched` alone for v2–v4. A real `applyPatchedPlanVersion` writes
+  **both** `plan.proposed` (carrying the successor document) and `plan.patched` (carrying the hashes
+  and the decision) in one transaction, so the version rail had one rung and `…/plans/diff` 404ed on
+  a real replay — in a fixture whose entire purpose is the plan-evolution scrubber. All four
+  versions are now sealed documents emitted as the daemon emits them, which in turn exposed that
+  `packages/web/src/ledger/projections/planHistory.ts` pushed a rail row for *both* events and so
+  doubled every rung on any real ledger (visible in the recorded `gate-failure-repair` snapshot too).
+  The projection now merges a promotion into the proposal it belongs to; its own specs pass
+  unchanged.
+
 ---
 
 ## EPIC-16-S33 — Speed control, pause and seek
@@ -1329,6 +1711,26 @@ Feature: Playback control
 ([03 §6.2](../../03-local-development.md)). `--speed max` is what makes the six-hour soak in S27 and
 the graph measurement in S36 practical at all.
 
+**Automated by KAR-16.5** at two levels, because the Examples table and the dev loop are different
+claims:
+
+- **The speed table** — `packages/daemon/src/replay/speed.test.ts`, over the pure scheduler:
+  `1x`/`20x`/`50x` map the recorded timeline by division and `max` yields zero delay for every
+  event. The schedule is computed as **offsets from the first recorded event**, never gap by gap,
+  and there is a test for exactly that: ten thousand 3 ms gaps at 20x land the last frame where the
+  recording says it is, where a per-gap divide accumulates rounding into seconds of drift.
+- **Pause, seek and the dev loop** — `packages/daemon/test/integration/replay-harness.test.ts` and
+  `e2e/replay-dev-loop.test.ts`. Paused, the position does not move while keepalives keep arriving
+  and the socket stays open; a forward seek fast-forwards the commit to that `seq` and
+  `…/snapshot?seq=<N>` answers at it. **A backward seek commits nothing and withdraws nothing** —
+  the ledger is append-only, so it moves the reported position only and the client re-hydrates from
+  the snapshot endpoint, which is what this scenario's own *"the client is expected to re-hydrate
+  from the snapshot endpoint at that seq"* asks for. The e2e runs the real `dev:replay` script out
+  of `package.json` (only its port substituted), and asserts the handoff URL, the `hello`/`retry`
+  frames, a restart on a source edit at the same origin, and that a replay never writes into
+  `DeFlow_DATA_DIR` — a replay keeps its ledger in a directory of its own, so pointing one at a real
+  `.DeFlow/` cannot graft a fixture onto somebody's run.
+
 ---
 
 ## EPIC-16-S34 — Fixtures are recorded, never hand-written
@@ -1361,6 +1763,23 @@ Feature: Fixture provenance
 not start W11 until at least one full run completes headlessly through W12's CLI. A run you can drive
 from the terminal is a run you can build a fixture from, and the replay-fixture harness is the main
 structural defence against the view work sprawling."_
+
+**Automated by KAR-16.5** in `packages/daemon/test/integration/replay-corpus.test.ts`: every fixture's
+README must name a producing script, that script must exist on disk, and the README must say in as
+many words that it was never hand-written. `gate-failure-repair` — the one fixture in the corpus that
+really is a mock-agent recording — must also record the `--seed`, and the seed in its README is
+compared against `MOCK_AGENT_SEED` in the script that passes it, so the two cannot drift.
+
+**The dependency, stated honestly, as this scenario's third block requires.** `DeFlow run`
+(EPIC-18 KAR-18.3) still does not exist, so three of the six are **assembled** rather than recorded
+— `happy-path-12`, `three-patches` and `stress-400`, all by
+`packages/core/scripts/build-ui-run-fixtures.ts`, which authors no payload shape (every packet from
+`buildPacket`, every hash from `planHash`, every envelope through `parseEvent`) and is regenerated
+and diffed byte for byte by `packages/core/test/integration/ui-run-fixtures.test.ts`. That is
+KAR-16.5 AC7's regeneration check, for three fixtures rather than one. The other three are
+recordings: a real packet builder, a real repair loop, a real `kill -9`. **When KAR-18.3 lands, the
+three assemblies are to be replaced by recordings at the same three paths** — the corpus test, the
+projections and the harness all read the same `events.jsonl` and do not move.
 
 ---
 
@@ -1396,6 +1815,32 @@ Feature: GraphCanvas is the only Vue Flow importer (12 §6.1)
 `GraphCanvas` facade on day one of W10. One day of work against the largest single third-party risk
 in the frontend."_ The escape hatches if the ceiling is hit are `sigma@^3.0.3` + `graphology@^0.26.0`
 (comfortable into the tens of thousands) or `@cosmograph/cosmos@^3.4.1` for GPU force layout.
+
+**Automated by KAR-16.6**, in three places, because the scenario makes three different kinds of
+claim:
+
+- **The rule** — `test/one-vue-flow-importer.test.ts` over
+  `packages/web/scripts/check-graph-facade.ts`, which `pnpm lint` and CI's `check` job run. It
+  matches the **specifier**, not an import form, so all twelve spellings that reach the renderer are
+  refused by file name — default, named, type-only, side-effect, re-export, star re-export, dynamic
+  `import()`, `require`, subpath and a CSS `@import` — which is the test plan's stated red (*"the
+  rule matches only the default export"*). It is a script rather than a lint-config entry for a
+  reason the epic's own CONTRIBUTING note gives: oxlint sees only the `<script>` block of an SFC, and
+  every file at risk here *is* an SFC.
+- **The one documented exemption** — `src/styles/theme.css` may `@import` the renderer's stylesheet,
+  because two rules below it override that sheet and an override only wins at equal specificity if
+  it comes later in the cascade (KAR-16.1). It is one line, named in the rule, and every other
+  mention of the package in that same file is refused exactly as it is anywhere else.
+- **The surface** — `packages/web/src/components/graph/types.ts` is where the props, the emits and
+  the slot are declared, in `PlanNodeVM`/`PlanEdgeVM` terms and nothing else; both renderers declare
+  themselves from it.
+- **The swap** — `e2e/graph-facade-swap.test.ts`. The spike branch is committed rather than
+  imagined: `GraphCanvas.stub.vue` beside the facade, selected by `DeFlow_GRAPH_RENDERER=stub`
+  through one alias used by both build configs. The spec builds the **whole application** that way
+  (every view compiles), asserts `@vue-flow/core` is absent from every chunk of that build — 345 KB
+  gone because one file stopped importing it — and then renders a real 400-node plan through the
+  stub in a real Chromium, through the caller's `#node` slot, with the same accessible names. A stub
+  that rendered nothing would satisfy the first two and is what the third exists to catch.
 
 ---
 
@@ -1439,6 +1884,30 @@ Feature: Replacing an extrapolation with a measurement (A3-2)
 of W11 … that number decides §3."_ Re-run the measurement when the Vue pin moves: 3.6's reactivity
 rewrite could shift it either way, and Vue Flow's store leans hard on the internals 3.6 rewrites.
 
+**Automated by KAR-16.6**, at e2e: `pnpm measure:graph`
+(`packages/web/scripts/measure-graph.ts`) takes the measurement and writes
+[`docs/measurements/vue-flow-400.md`](../../measurements/vue-flow-400.md) and the budget beside it;
+`e2e/measure-graph.test.ts` re-takes it on every run and asserts the p95s against that budget.
+
+The measured loop is real end to end: a `vite build` of the harness page, served by plain
+`node:http` with no dev server anywhere in it; a real `DeFlow replay stress-400 --speed max` daemon,
+whose API the events are read from; the real `plan.ts` projection and the real `GraphCanvas`; and a
+real headless Chromium driven through a 40-step pointer drag and 40 wheel steps, sampling every
+animation frame. Both passes — culling off and on — record all four numbers.
+
+**The number came back the other way from the estimate:** 404 nodes pan and zoom at a p95 of
+~17–19 ms, which is the machine's own idle frame time. The published ~300–500 figure was pessimistic
+here, so `onlyRenderVisibleElements` defaults to **off** and F10.4 is not at risk from the renderer.
+What the file records honestly is what it does *not* measure: `stress-400` is 404 nodes and 2 edges,
+so the estimate's other half — stalling past ~4,000 edges — remains unverified.
+
+**Not flaky, and not toothless.** The assertion fails only above the widest of three ceilings: the
+recorded p95 × 2, a 32 ms floor, and three times *this run's own idle frame p95* measured on the same
+page seconds earlier. The third is the control EPIC-05 established for timing budgets — it compares
+the graph against the machine rather than against a constant. The budget file is generated by the
+same function the script uses, so hand-editing a ceiling to clear a red build fails a separate
+assertion.
+
 ---
 
 ## EPIC-16-S37 — ELK in a worker, in the built output
@@ -1477,6 +1946,25 @@ in [12 §6.1](../../12-frontend-architecture.md) is marked **Unverified** and is
 before this epic starts. A `vite build` — not just `vite dev` — is the success criterion, because the
 failure mode is specifically an asset-path one.
 
+**Automated by KAR-16.6**, at integration:
+`packages/web/test/integration/graph-worker-chunk.test.ts` runs a real `vite build` and asserts on
+what it produced — exactly one ELK worker chunk, hashed, over a megabyte, carrying
+`elk.alg.layered`; that chunk absent from everything the first paint loads, by sourcemap module
+list *and* by byte fingerprint (`elk.alg.layered`, `org.eclipse.elk.alg`, `ELK Layered`), which is
+what would catch an inlined worker hiding under a name no sourcemap mentions; and a `new Worker` in
+the layout chunk pointing at the hashed asset name Vite chose.
+
+The wiring is S3's, unchanged: `src/components/graph/elk.worker.ts` is one line importing
+`elkjs/lib/elk-worker.min.js`, and `layout.ts` imports *that* with `?worker` and hands it to ELK's
+`workerFactory`. `workerUrl` is not used — the spec asserts the positive form of that claim rather
+than the absence of the word, because the word is a parameter name inside elkjs's own `elk-api.js`
+and asserting on its absence would be asserting about a dependency's source.
+
+**The fallback was not taken.** S3's decision stands: elkjs in a worker builds, loads over plain
+HTTP from `dist/` and lays 404 nodes out in ~120 ms off the main thread, so `@dagrejs/dagre` does
+not drive the live graph and is not a dependency of `@DeFlow/web`. That choice is recorded in
+[the measurement file](../../measurements/vue-flow-400.md), as the scenario requires.
+
 ---
 
 ## EPIC-16-S38 — Adding a node does not reshuffle the graph
@@ -1510,6 +1998,26 @@ stability mechanism for the scrubber is the union-graph layout computed once and
 KAR-17.2's business. Both exist because reflow between versions destroys the one thing the scrubber
 is for.
 
+**Automated by KAR-16.6**, in a real Chromium over the real worker:
+`packages/web/src/components/graph/layout.test.ts`. A 60-node ternary tree with forward cross-edges
+is laid out, a node is added in ledger order, and the pre-existing nodes' **drawing order** — by
+layer, then down the column — is asserted unchanged. Its control is in the same run: at least one
+pre-existing node must sit at *different coordinates*, because "nothing moved" would satisfy an
+ordering assertion perfectly and prove nothing.
+
+**One finding, and it changes the recipe.** On elkjs 0.12.0
+`considerModelOrder.strategy = NODES_AND_EDGES` is **not sufficient on its own**: with the strategy
+set and nothing else, inserting a node reshuffles the existing ones exactly as it does with no
+options at all. The sibling `crossingMinimization.forceNodeModelOrder = true` is what makes it bite.
+Both are set in `LAYOUT_OPTIONS`, and a second spec lays the same graph out with
+`forceNodeModelOrder` off and watches the ordering break — so the option is proven load-bearing
+rather than assumed. This is the same shape as S3's constraint finding: an option that is accepted,
+is listed by `knownLayoutOptions()`, and does nothing observable alone.
+
+The scenario's third part — that `layerChoiceConstraint` and `positionChoiceConstraint` are not the
+mechanism — is asserted as their absence from the graph handed to ELK, with S3's evidence recorded
+in `layout.ts` beside it.
+
 ---
 
 ## EPIC-16-S39 — The node animation you must not write
@@ -1541,6 +2049,26 @@ Feature: Node motion (12 §6.1, corrected)
 **Notes:** this is one of the corrected claims in [12 §6.1](../../12-frontend-architecture.md) — the
 obvious approach is wrong in a way that produces intermittent rather than total failure, which is the
 worst kind to diagnose.
+
+**Automated by KAR-16.6**, at browser:
+`packages/web/src/components/graph/GraphCanvas.test.ts` reads the *computed* style of a rendered
+`.vue-flow__node` and asserts `transition-property: transform`, `200ms`, `ease-out` — and nothing
+else in the property list, which is the "and nothing else" half. The facade's own source (comments
+stripped, so the explanation can stay) is asserted to contain no `style.transform =` and no
+`translate3d`.
+
+Switching it off is asserted through real input and a mutation observer, because the state that
+matters exists only *during* the gesture: a real pointer drag of a node records `off` then `on`; a
+real wheel gesture over the pane records the same, with the viewport transform asserted to have
+actually changed so the sequence cannot pass vacuously; and `prefers-reduced-motion: reduce`,
+emulated in the browser process rather than by stubbing `matchMedia`, computes to `none`.
+
+**A second finding, from the renderer.** `@vue-flow/core@1.48.2` emits `moveStart` unconditionally
+and `moveEnd` **only if the viewport actually changed** — so a press and release that moves nothing
+switches the transition off and never switches it back, and the graph quietly stops animating for
+the rest of the session with nothing in the DOM to say why. The facade restores motion on
+`pointerup`/`pointercancel` as well, and a spec asserts the restore lands before the renderer's own
+end event would have.
 
 ---
 
@@ -1576,6 +2104,26 @@ Feature: What Vue Flow gives free, and must not be undone (12 §9.3)
 [12 §9.3](../../12-frontend-architecture.md), and the temptation to set it is real — it is the
 quickest way to stop key handlers conflicting with a custom keymap. Resolve the conflict in the
 keymap instead.
+
+**Automated by KAR-16.6**, at browser, in
+`packages/web/src/components/graph/GraphCanvas.test.ts`:
+
+- **`disableKeyboardA11y` is not set** — asserted twice, in the facade's source (comments stripped)
+  and in the consequence, that every rendered node carries `tabindex="0"`.
+- **The one line that carries most of it** — `ariaLabelOf` in
+  `packages/web/src/components/graph/types.ts` produces
+  `` `${node.type} ${node.title}, ${node.state}, ${node.provider}` ``, and it lives in the shared
+  types rather than in either renderer because it is a promise about the *graph*. A node whose
+  `type` and `provider` have not arrived yet degrades to words: the string `null` never reaches a
+  screen reader.
+- **Traversal** — focusing the first node emits `select` for it, `Tab` moves to the next and emits
+  `select` for that one (selection follows focus, because traversal without navigation leaves a
+  keyboard operator unable to tell which node they are on), and `Enter` emits `activate`. The
+  `j`/`k` half of the map is KAR-16.1's and is asserted in `src/app/keyboard.test.ts`.
+- **The escape route** — the drawing carries an `aria-label` and an SVG `<title>` naming the node
+  and edge counts, and a toggleable table lists every node with its state, provider and cost. Cost
+  arrives as a prop already in its owner's money vocabulary; a node nobody priced reads *not priced*
+  rather than `$0.00`.
 
 ---
 

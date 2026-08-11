@@ -33,6 +33,7 @@
  */
 import {
   DEFAULT_PATCH_RULE_SPECS,
+  EVENT_CURRENT_VERSIONS,
   HandleSchema,
   type NodeId,
   type PlanGraph,
@@ -142,6 +143,18 @@ const PROVIDER: ProviderId = 'claude' as ProviderId;
 const MODEL = 'claude-sonnet-4-5';
 const PLANNER = { model: 'a-model', effort: 'max', tier: 'strongest' } as const;
 const POLICY_HASH = `sha256-${'e'.repeat(64)}`;
+
+/**
+ * The `--seed` every mock-agent process in this recording is driven with
+ * (KAR-16.5 AC6: a fixture's provenance note names the mock-agent script *and*
+ * the seed that produced it).
+ *
+ * A constant rather than a literal at the call site because the README below is
+ * generated from it: a seed recorded in prose that no longer matches the one
+ * the script passes is worse than no seed at all, since it invites a
+ * reproduction attempt that cannot work.
+ */
+export const MOCK_AGENT_SEED = 42;
 
 /** A fixed instant for the seeded prologue. The run itself is on the system
  * clock — there are live child processes, and a gate's timeout is measured on
@@ -549,11 +562,21 @@ export async function buildGateRepairFixture(options: {
         runId: GATE_REPAIR_FIXTURE_RUN,
         ts: T0 + 1_000,
         kind: 'node.started',
-        v: 1,
+        v: EVENT_CURRENT_VERSIONS['node.started'],
         epoch,
         nodeId: PRODUCER,
         attempt: 0,
-        payload: { node: PRODUCER, attempt: 0 },
+        // The whole payload `NodeStartedSchema` requires, not the two fields
+        // this prologue happens to read back. A seeded event that does not
+        // satisfy its own schema is a fixture that `parseEvent` refuses — and
+        // the consumer that discovers it is a projection three epics away,
+        // reading `binary` off an object that never had one.
+        payload: {
+          node: PRODUCER,
+          attempt: 0,
+          ikey: `${GATE_REPAIR_FIXTURE_RUN}/${PRODUCER}/0/0`,
+          binary: agentBinary,
+        },
       },
       {
         runId: GATE_REPAIR_FIXTURE_RUN,
@@ -698,7 +721,7 @@ export async function buildGateRepairFixture(options: {
           worktree,
           baseSha,
           binary: agentBinary,
-          argv: ['--seed', '42', '--scenario', scenario],
+          argv: ['--seed', String(MOCK_AGENT_SEED), '--scenario', scenario],
           prompt: planned.type === 'agent' ? planned.brief : 'repair the finding',
           gate: loadGateDefinition('.DeFlow/gates/typecheck.yaml', TYPECHECK_YAML),
           specHash: spec.specHash,
@@ -832,6 +855,9 @@ node packages/daemon/scripts/build-gate-repair-fixture.ts
 \`\`\`
 
 - run: \`${summary.runId}\`, final status \`${summary.status}\`
+- the fix node is a **mock agent** (\`@DeFlow/mock-agent\`), driven with
+  \`--seed ${String(MOCK_AGENT_SEED)} --scenario <workDir>/scenarios/<node>.json\`, so the same
+  seed reproduces the same events
 - finding \`${summary.finding}\` → fix node \`${summary.fixNode}\` → re-run gate
   \`${summary.rerunNode}\`
 - verdicts, in ledger order: ${summary.verdicts

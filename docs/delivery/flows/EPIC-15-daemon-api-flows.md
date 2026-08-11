@@ -1337,8 +1337,8 @@ Feature: A requested seq may name a value that was never committed
 
 ## EPIC-15-S47 — Scrubbing a multi-hour run does not replay from zero in the browser
 
-**Verifies:** KAR-15.7 · **Type:** Edge case · **Automated at:** browser (three lines) + deferred to
-EPIC-16 (two lines)
+**Verifies:** KAR-15.7 · **Type:** Edge case · **Automated at:** browser (three lines here, two in
+EPIC-16) — **fully automated as of KAR-16.1**
 
 ```gherkin
 Feature: The reason this endpoint exists is browser memory
@@ -1378,16 +1378,31 @@ about the *client's request pattern* are automated here, against a real Chromium
   in the browser and issues no request with `since=0`, and a scrubber that is *holding* the `seq` 0
   position (the initial state under another name) still refuses to fold forward from it.
 
-**Deferred to EPIC-16 — the two remaining lines.** *"And the tab remains responsive throughout"* and
-*"And the rendered diff for each step matches the plans/diff response for the same pair"* cannot be
-automated in this epic and are **not** covered by the file above. Both are assertions about a view
-that does not exist yet: there is no scrubber control to drag and no diff surface to render, so the
-`When` they hang off — *"the operator drags the scrubber"* — has no subject. They belong with the
-plan-evolution view in [EPIC-16](../epics/EPIC-16-ui-foundation.md) (KAR-16.2, KAR-16.4), which
-owns what the browser does with these modules, and are to be automated there as a Playwright drag
-over the same `three-patches` fixture, asserting a responsive main thread and the rendered diff
-against `GET /api/runs/:id/plans/diff?from=N&to=M` for the same pair. Until that lands, this
-scenario is **partially** automated and is recorded as such rather than as closed.
+**The two remaining lines were deferred to EPIC-16, and closed by KAR-16.1.** *"And the tab remains
+responsive throughout"* and *"And the rendered diff for each step matches the plans/diff response
+for the same pair"* could not be automated in this epic: both are assertions about a view that did
+not exist yet, so the `When` they hang off — *"the operator drags the scrubber"* — had no subject.
+They are now automated in `packages/web/src/views/plan-evolution.test.ts`, against
+`packages/web/src/views/PlanEvolutionView.vue`, in a real Chromium over this same `three-patches`
+fixture and — as this note required — through the **same `createScrubber`** module rather than a
+second client:
+
+- **"the rendered diff for each step matches the plans/diff response for the same pair"** — the drag
+  back to v1 and forward issues `…/plans/diff?from=N&to=M` for each adjacent pair, and every id in
+  each response is asserted present on screen under its own change kind, with nothing else there:
+  `added`, `removed`, `changed` and `unchanged` node ids and both edge sets, plus the `reason` and
+  `decision` the endpoint joins in. A view that computed the diff itself from the two snapshots it
+  is already holding — the plausible shortcut — renders nothing and fails all three cases.
+- **"the tab remains responsive throughout"** — the worst gap between animation frames during the
+  drag is measured and compared **against a control on the same machine**: the same page, the same
+  measurement, over the same wall clock, doing nothing. Three times the machine's own idle jitter
+  with a 50 ms floor, rather than a fixed budget that would either flake on a loaded laptop or be
+  too loose to catch anything.
+
+The `seq` values differ by one position from the list above because the view takes each version's
+`seq` from `GET …/plans` — 1, 6, 9, 13, the seq that *proposed* each version — where
+`scrub.test.ts` drags to 2, 6, 9, 13. Both are the same four positions of the same timeline; one
+is named by the version rail and the other by hand.
 
 ---
 

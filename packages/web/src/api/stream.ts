@@ -32,8 +32,17 @@ import { defaultBaseUrl } from './client.ts';
 export interface StreamOptions {
   /** Defaults to the page's own origin plus `/api`, as `createClient` does. */
   readonly baseUrl?: string;
-  /** The runs this connection multiplexes. Empty is a valid subscription. */
-  readonly runs: readonly string[];
+  /**
+   * The runs this connection multiplexes. Empty is a valid subscription.
+   *
+   * A **function** where the filter moves, which is every case but a one-shot
+   * connection. `POST …/subscribe` mutates the filter of one *connection*, and
+   * a reconnect is a new connection: it is served from its query string alone,
+   * so a client that opened with `runs=` and subscribed afterwards would come
+   * back from a blip subscribed to nothing at all — and the symptom is silence,
+   * not an error (KAR-16.2 AC5).
+   */
+  readonly runs: readonly string[] | (() => readonly string[]);
   /**
    * The cursor to resume from. `0` means "everything", never "from now".
    *
@@ -54,6 +63,23 @@ export interface StreamOptions {
   readonly onMessage?: (event: EventSourceMessage) => void;
   readonly onConnect?: () => void;
   readonly onDisconnect?: () => void;
+  /**
+   * An SSE comment line — `: keepalive` and nothing else, in this protocol.
+   *
+   * A comment carries no field, so every client ignores it and no reducer ever
+   * sees one; it is here so a tab can *count* them, which is how KAR-16.2
+   * asserts that fifteen idle minutes produce no reconnect rather than
+   * asserting it about the absence of a timer nobody wrote.
+   */
+  readonly onComment?: (comment: string) => void;
+  /**
+   * KAR-16.2 AC10 — the reconnection policy, observed.
+   *
+   * `delay` is the library's current interval, which starts at 2,000 ms and is
+   * replaced by whatever the server's `retry:` line last said. Exposing it is
+   * what lets a spec assert the two agree instead of assuming they do.
+   */
+  readonly onScheduleReconnect?: (info: { delay: number }) => void;
   /** Injected in tests, and by nothing else. */
   readonly fetch?: FetchLike;
 }
@@ -103,31 +129,73 @@ export function streamUrl(baseUrl: string, runs: readonly string[], since: numbe
  * mechanism, and this client's cursor lives in `?since=` exclusively, which is
  * what makes the UI and `DeFlow`'s CLI — which has no `Last-Event-ID`
  * mechanism at all — resume through one code path rather than two (AC9).
+ *
+ * ## Why `onDisconnect` is derived rather than forwarded
+ *
+ * **Verified 2026-08-11 against eventsource-client@1.2.0's shipped code.** The
+ * library calls `onDisconnect` from exactly one branch: the one where
+ * `reader.read()` resolves `done: true`, i.e. a response body the server ended
+ * *cleanly*. A **destroyed** socket does not end a body — it rejects the read,
+ * and that lands in the library's `.catch`, which calls `scheduleReconnect()`
+ * and nothing else.
+ *
+ * So on every failure that is not a polite `res.end()` — a lid closing, Wi-Fi
+ * going, a daemon restarting, `closeAllConnections()` — a forwarded
+ * `onDisconnect` never fires, and a client built on it reports a healthy
+ * connection for the whole outage. That is the plausible-but-wrong picture NF10
+ * exists to prevent, and it is the *common* case rather than the exotic one.
+ *
+ * `scheduleReconnect` is the one signal the library raises on **both** paths, so
+ * the disconnect is derived from whichever arrives first and de-duplicated
+ * against the other. `connected` is reset by `onConnect`, which the library
+ * calls on every response, so the pair stays balanced across any number of
+ * reconnects.
  */
 export function connectStream(options: StreamOptions): StreamConnection {
   const baseUrl = options.baseUrl ?? defaultBaseUrl();
   const token = options.token?.();
   const cursor =
     typeof options.since === 'function' ? options.since : () => options.since as number;
+  const filter =
+    typeof options.runs === 'function' ? options.runs : () => options.runs as readonly string[];
   const fetching: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
 
+  /** Whether a response is currently open, as the two callbacks below see it. */
+  let connected = false;
+  const disconnected = (): void => {
+    if (!connected) return;
+    connected = false;
+    options.onDisconnect?.();
+  };
+
   const client: EventSourceClient = createEventSource({
-    url: streamUrl(baseUrl, options.runs, cursor()),
+    url: streamUrl(baseUrl, filter(), cursor()),
     ...(token === null || token === undefined || token === ''
       ? {}
       : { headers: { Authorization: `Bearer ${token}` } }),
-    fetch: (url, init) => fetching(withCursor(url, cursor()), init),
+    fetch: (url, init) => fetching(stamped(url, filter(), cursor()), init),
     ...(options.onMessage === undefined ? {} : { onMessage: options.onMessage }),
-    ...(options.onConnect === undefined ? {} : { onConnect: options.onConnect }),
-    ...(options.onDisconnect === undefined ? {} : { onDisconnect: options.onDisconnect }),
+    onConnect: () => {
+      connected = true;
+      options.onConnect?.();
+    },
+    onDisconnect: disconnected,
+    ...(options.onComment === undefined ? {} : { onComment: options.onComment }),
+    onScheduleReconnect: (info) => {
+      // Ordered so a listener never sees a reconnect scheduled for a connection
+      // it still believes is up.
+      disconnected();
+      options.onScheduleReconnect?.(info);
+    },
   });
 
   return { close: () => client.close() };
 }
 
-/** `url` with `since` set to `cursor` — the one parameter an attempt rewrites. */
-function withCursor(url: string | URL, cursor: number): string {
-  const stamped = new URL(url.toString());
-  stamped.searchParams.set('since', String(cursor));
-  return stamped.toString();
+/** `url` with both parameters as of the moment the request is actually sent. */
+function stamped(url: string | URL, runs: readonly string[], cursor: number): string {
+  const next = new URL(url.toString());
+  next.searchParams.set('runs', runs.join(','));
+  next.searchParams.set('since', String(cursor));
+  return next.toString();
 }

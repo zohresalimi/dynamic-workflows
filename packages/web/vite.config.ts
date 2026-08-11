@@ -1,5 +1,7 @@
+import tailwind from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
+import { graphRendererAlias } from './scripts/renderer-alias.ts';
 
 /**
  * The SPA build config.
@@ -15,12 +17,45 @@ import { defineConfig } from 'vite';
  * the transport this product is built on: events buffer until the stream ends,
  * streams die after some minutes, and client closes never reach the backend
  * (vitejs/vite#12157). See docs/03-local-development.md §4.3.
+ *
+ * Tailwind 4 is CSS-first — no tailwind.config.js and no PostCSS step — so this
+ * plugin plus `src/styles/theme.css` is the entire styling integration
+ * (docs/12-frontend-architecture.md §8).
  */
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [tailwind(), vue()],
+  /**
+   * KAR-16.6 AC10. Empty unless `DeFlow_GRAPH_RENDERER=stub` is set, in which
+   * case every import of the graph facade resolves to the stub renderer and
+   * nothing else in the application changes — which is the claim.
+   */
+  resolve: { alias: graphRendererAlias() },
   build: {
     // The published package ships the built SPA next to the bundled daemon.
     outDir: '../daemon/dist/ui',
     emptyOutDir: true,
+
+    /**
+     * KAR-16.1 AC10 — `rolldownOptions`, **not** `rollupOptions`.
+     *
+     * Vite 8 bundles with Rolldown and auto-converts the old name through a
+     * compat layer, so the wrong spelling works — which is exactly why it is
+     * worth getting right now rather than debugging a shim later
+     * (docs/12-frontend-architecture.md §2.2). `test/ui-foundation.test.ts`
+     * fails the build if it ever comes back.
+     *
+     * The output naming is stated rather than defaulted because AC9's budget is
+     * asserted against a named entry chunk: `packages/web/test/integration/bundle-budget.test.ts`
+     * reads the entry out of the built `index.html` and its module list out of
+     * the sourcemap beside it, and a build with no stated output shape is one
+     * where "the initial chunk" is whatever the bundler felt like that day.
+     */
+    rolldownOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
   },
 });

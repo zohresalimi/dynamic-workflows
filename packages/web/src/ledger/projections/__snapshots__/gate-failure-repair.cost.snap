@@ -1,0 +1,89 @@
+{
+  "appliedSeq": 30,
+  "byNode": Map {
+    "fix-65207341fbd9" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [
+        "claude",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 160,
+          "outputTokens": 0,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
+  "byProvider": Map {
+    "claude" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [
+        "claude",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 160,
+          "outputTokens": 0,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
+  "ceilings": [],
+  "ceilingsSet": [],
+  "paused": false,
+  "rateLimits": [],
+  "run": {
+    "costUsd": {
+      "apiKey": null,
+      "estimated": null,
+      "subscription": null,
+      "vendorReported": null,
+    },
+    "events": 1,
+    "sources": [
+      "estimated",
+    ],
+    "unaccounted": [
+      "claude",
+    ],
+    "usage": {
+      "estimated": {
+        "cacheCreationInputTokens": null,
+        "cacheReadInputTokens": null,
+        "inputTokens": 160,
+        "outputTokens": 0,
+        "reasoningOutputTokens": null,
+        "source": "estimated",
+      },
+      "vendorReported": null,
+    },
+  },
+}

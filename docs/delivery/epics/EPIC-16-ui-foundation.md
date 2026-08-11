@@ -274,6 +274,12 @@ per origin at about six, and an SSE connection never closes. One stream per run 
 three tabs exhausts the budget, and the failure mode is not an error — every subsequent `fetch`
 silently queues behind the streams forever, which reads as "the daemon hung".
 
+> **Clarified while building it (2026-08-11):** "at app start" is one connection *ever*, not one
+> connection *immediately*. EPIC-16-S1 requires the hydrate to finish before the socket opens —
+> `?since=` carries the cursor that loop returned — so the connection is opened by the first panel
+> rather than by the bootstrap, and a tab with no panel open holds none. The property AC1 asserts is
+> unchanged: one connection while three panels are open, and no reconnect when a fourth is added.
+
 The client is `eventsource-client@^1.2.0`, chosen because native `EventSource` cannot send custom
 headers at all, which would force the bearer token into the query string. Avoid
 `@microsoft/fetch-event-source` (abandoned, last published 2021-04-25) and plain `eventsource@^4.1.0`
@@ -557,13 +563,40 @@ _may shift either way under Vue 3.6's alien-signals reactivity_
 ([12 §2.1](../../12-frontend-architecture.md)). That is one more reason the epic pins 3.5.40, and it
 is why the soak in AC-8 must be re-run — not assumed — whenever the Vue pin moves.
 
+**Two parts of this story are carried forward, and both are recorded here rather than absorbed
+(§9).**
+
+- **AC-8's six-hour soak is served by its per-push proxy, not by the scheduled run.** EPIC-16-S27
+  itself specifies both — _"this runs on a schedule, not on every push, because it costs six hours"_
+  and _"a per-push proxy for it is a ten-minute run at `--speed max` with the same assertions"_ —
+  and the proxy is what shipped: `packages/web/test/integration/store-soak.test.ts` folds 600,000
+  events through the real store in a `node --expose-gc` subprocess and asserts all four of AC-8's
+  bounds (retained heap against a control-relative ceiling, projection object counts bounded by node
+  count, the debug ring at exactly its cap, zero undisposed terminals). The scheduled run over
+  `fixtures/stress-400.jsonl` with the graph, timeline and inspector mounted needs **KAR-16.5**'s
+  replay harness and fixture corpus and **KAR-16.6**'s canvas, neither of which exists yet; it is
+  owed once both land, and AC-8 is not closed by this story alone.
+- **AC-10's `/api/runs` query has no route to point at.** The daemon serves `POST /api/runs` and
+  `GET /api/runs/:id` and no run **list** ([EPIC-15](EPIC-15-daemon-api.md)); `GET /api/runs/:id` is
+  a ledger-derived summary, which this story's own rule puts on the projection side rather than the
+  query side. The path stays sanctioned in both copies of the allowlist
+  (`packages/web/src/api/queries.ts` and `test/support/guards.ts`) so the query lands as a one-line
+  addition, and the three endpoints that do exist — `/api/providers`, `/api/config`,
+  `/api/artifacts/:sha` — are implemented and covered. Adding the list route is a daemon change and
+  belongs with the story that needs it (the runs dashboard, `KAR-17.8`).
+
+**Note on AC-5's `GraphCanvas` prop walk.** `GraphCanvas` is KAR-16.6's and does not exist yet, so
+the proxy audit walks what the *store* hands out — every view model, every derived array, and every
+object passed through `adopt()` / `adoptTerminal()`, which is the seam a canvas will receive them
+through. KAR-16.6 inherits the assertion rather than replacing it.
+
 ---
 
 ### KAR-16.5 — The replay harness serving recorded runs
 
 |                 |                                                                           |
 | --------------- | ------------------------------------------------------------------------- |
-| **Status**      | Not started                                                               |
+| **Status**      | Done                                                                      |
 | **Priority**    | P0                                                                        |
 | **Size**        | M                                                                         |
 | **Depends on**  | KAR-16.2, EPIC-15 KAR-15.3, EPIC-18 KAR-18.3, EPIC-04 KAR-04.1            |
@@ -659,13 +692,62 @@ until at least one full run completes headlessly through W12's CLI."_ That makes
 slower. If EPIC-18 slips, the honest interim is to record fixtures from the mock agent driven by the
 orchestrator's own test harness rather than to hand-write them — never the latter.
 
+**What shipped, and the one criterion that is only half met.**
+
+`DeFlow replay` is a *daemon mode*, not a replay server: `startReplay`
+(`packages/daemon/src/replay/harness.ts`) calls the same `boot()` `DeFlowd` calls — same lease, same
+epoch, same ledger view, same `startHttp`, same auth, same `/api/*` chain, same SSE loop — and the
+only difference is the writer. `packages/daemon/src/replay/player.ts` commits the recording into the
+ledger on the speed schedule, through the injected `Clock`, and `restoreRecordedEvents`
+(`@DeFlow/ledger`) writes each envelope under its **recorded `seq`**, gaps included, refusing any
+`seq` at or below the ledger's head so a restore can extend a ledger and never edit one. That is why
+AC-2 needed no discipline: there is nothing downstream of the write for a client to detect.
+
+**AC-6 is met except for its middle clause**, and this is the story's one honest gap. All six
+fixtures exist, each as one file per run, and each has a provenance note naming the script that
+produces it — but only `gate-failure-repair` names a **mock-agent script and `--seed`**, because it
+is the only one a mock agent produced. `happy-path-12`, `three-patches` and the new `stress-400` are
+*assembled* by `packages/core/scripts/build-ui-run-fixtures.ts`, which is the interim the Notes above
+prescribe and not hand-writing: no payload shape is authored (`buildPacket`, `planHash`, `parseEvent`
+throughout), and all three are regenerated and diffed byte for byte on every push, which is AC-7 for
+three fixtures rather than one. **When EPIC-18 KAR-18.3 lands, the three assemblies are to be
+replaced by recordings at the same three paths**, and nothing that reads them has to move.
+
+Two fixture defects surfaced while asserting the corpus against a real daemon, and both were fixed
+rather than asserted around: `happy-path-12`'s verdicts carried a filler `specHash` and were
+therefore all *void* (so `…/gates` was empty), and `three-patches` recorded `plan.patched` without
+the `plan.proposed` a real `applyPatchedPlanVersion` writes alongside it (so the version rail had one
+rung and `…/plans/diff` 404ed — in the scrubber's own fixture). Fixing the second exposed that
+KAR-16.3's `planHistory` projection pushed a rail row for both events and so doubled every rung on
+any real ledger; it now merges the promotion into the proposal, with its own specs passing
+unchanged. See the flow file's notes under EPIC-16-S32.
+
+`pnpm dev:replay` runs `packages/daemon/src/replay/main.ts` under `node --watch`, not
+`packages/cli/src/bin.ts replay` as [03 §5](../../03-local-development.md)'s illustrative
+`package.json` has it: there is no `bin.ts` until EPIC-18 builds the argv table. `parseReplayArgv`
+and `resolveFixture` are exported for that table to call, so wiring `DeFlow replay` to them is a
+subcommand registration and not a second implementation.
+
+The five Playwright smokes of test plan row 8 are **not** here: four of them render the nine views,
+which are EPIC-17's. What exists is the driver they will run against, plus
+`e2e/replay-dev-loop.test.ts`, which drives the real `pnpm dev:replay` script cross-process.
+
+**Smoke #4 landed here after all (2026-08-11).** _"Replay at speed, kill the connection, assert the
+UI reconnects and backfills without a gap or a duplicate"_ turned out to need no view — only a real
+browser — so it is `e2e/replay-stream.test.ts`, closing the e2e halves of EPIC-16-S7 and EPIC-16-S8
+against the shipped `openLedgerStream`. It added one method to this harness: **`sever()`**, which
+destroys every open socket while playback keeps running. It belongs here rather than in a proxy a
+spec stands up, because a browser cannot sever a stream it has already opened —
+`BrowserContext.setOffline` blocks *new* requests and leaves an established SSE socket streaming,
+which is a slow way to learn that the outage never happened.
+
 ---
 
 ### KAR-16.6 — Graph canvas facade and a measured performance baseline
 
 |                 |                                                                              |
 | --------------- | ---------------------------------------------------------------------------- |
-| **Status**      | Not started                                                                  |
+| **Status**      | Done (Linear is the live SSOT)                                               |
 | **Priority**    | P0                                                                           |
 | **Size**        | M                                                                            |
 | **Depends on**  | KAR-16.4, KAR-16.5, EPIC-00 KAR-00.4                                         |
@@ -757,6 +839,37 @@ relative ordering stable across plan versions with no per-node constraints at al
 | 7   | integration   | `vite build`, then assert the worker chunk exists, is hashed, and elkjs is absent from the initial chunk                | Worker wiring works in dev only                                           |
 | 8   | e2e           | `pnpm measure:graph` against `stress-400` through `DeFlow replay`, emitting the measurement file                        | The measurement was done by hand once and never again                     |
 | 9   | e2e           | Replace the facade internals with a stub renderer; every view still compiles and renders                                | Something reached past the facade                                         |
+
+**What building it settled** (KAR-16.6, 2026-08-11)
+
+1. **The measurement came back the other way from the estimate.**
+   [`docs/measurements/vue-flow-400.md`](../../measurements/vue-flow-400.md) records 404 nodes
+   panning and zooming at a p95 frame time of ~17–19 ms — the machine's own idle frame time — with
+   culling **off**. So `onlyRenderVisibleElements` defaults to off, F10.4 is not at risk from the
+   renderer, and roadmap §3's "slip KAR-17.9 to M2" branch is not taken. The file also records what
+   it does not measure: `stress-400` is 404 nodes and **2 edges**, so the estimate's edge half stays
+   unverified.
+2. **`considerModelOrder.strategy` alone does not hold the ordering.** On elkjs 0.12.0 it is
+   accepted, listed by `knownLayoutOptions()` and inert: inserting a node into the 60-node fixture
+   reshuffles the existing ones exactly as it does with no options at all. The sibling
+   `crossingMinimization.forceNodeModelOrder = true` is what makes it bite; both are set, and a
+   control spec lays the same graph out with the second off and watches the ordering break. Same
+   shape as S3's constraint finding — AC6 as written is one option short.
+3. **The renderer's `moveEnd` is conditional.** `@vue-flow/core@1.48.2` emits `moveStart`
+   unconditionally and `moveEnd` only if the viewport actually changed, so a gesture that moves
+   nothing leaves AC7's transition switched off for the rest of the session. The facade restores
+   motion on `pointerup` as well.
+4. **`fitViewOnInit` fits nothing, and `minZoom` defaults too high.** The canvas renders no nodes
+   until the first layout lands, so the on-init fit sees an empty graph; and at the renderer's
+   default `minZoom: 0.5` a twelve-node chain cannot fit a pane at all. The facade fits on
+   `nodesInitialized` and lowers the floor — a plan graph is wide by nature.
+5. **AC10's spike branch is committed rather than imagined.** `GraphCanvas.stub.vue` plus one build
+   alias (`DeFlow_GRAPH_RENDERER=stub`) is the swap, and `e2e/graph-facade-swap.test.ts` builds the
+   whole app that way, proves `@vue-flow/core` leaves the bundle entirely, and renders a real
+   400-node plan through the stub.
+6. **`@dagrejs/dagre` is not a dependency of `@DeFlow/web`.** S3 concluded the worker path is
+   viable and the fallback is not needed; the measurement file records that choice, and the spike
+   keeps dagre executable so the named alternative cannot rot into a paragraph.
 
 **Notes / risks** — do **not** test this surface in jsdom or happy-dom. They have no SVG measurement
 (`getBBox`, `getComputedTextLength`, `getScreenCTM`), no canvas and no WebGL, and _the failure mode is
