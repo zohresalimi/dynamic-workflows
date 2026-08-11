@@ -79,9 +79,24 @@ export interface LedgerApplyOptions {
   readonly onProjectionError?: (projection: string, event: Event, error: unknown) => void;
 }
 
+export interface WatchOptions {
+  /**
+   * The `seq` this set is already folded to — the floor an event must clear to
+   * be applied at all. `0`, the default, is a set that has seen nothing.
+   *
+   * It exists for one caller: KAR-16.4's scrub. When the store hydrates a
+   * position from `GET …/snapshot?seq=N`, the server has already folded
+   * everything at or below `N`, and the tab must fold **none** of it — that is
+   * the whole reason the endpoint exists (docs/11 §7.3). Re-watching at
+   * `fromSeq: N` makes "no event below the snapshot is applied" a property of
+   * the dispatcher rather than a discipline every caller has to keep.
+   */
+  readonly fromSeq?: number;
+}
+
 export interface LedgerApply {
   /** Opens a panel's projection set, or returns the one already open. */
-  watch(runId: string): RunLedger;
+  watch(runId: string, options?: WatchOptions): RunLedger;
   /** Closes it. The server-side filter is `../api/multiplex.ts`'s business. */
   unwatch(runId: string): void;
   ledger(runId: string): RunLedger | undefined;
@@ -104,10 +119,10 @@ export function createLedgerApply(options: LedgerApplyOptions): LedgerApply {
     unwatch(runId) {
       runs.delete(runId);
     },
-    watch(runId) {
+    watch(runId, options) {
       const existing = runs.get(runId);
       if (existing !== undefined) return existing;
-      const fresh = openRunLedger(runId, registered);
+      const fresh = openRunLedger(runId, registered, options?.fromSeq ?? 0);
       runs.set(runId, fresh);
       return fresh;
     },
@@ -131,11 +146,12 @@ interface MutableRunLedger extends RunLedger {
 function openRunLedger(
   runId: string,
   registered: readonly Projection<unknown>[],
+  fromSeq: number,
 ): MutableRunLedger {
   const states = new Map<Projection<unknown>, unknown>(
     registered.map((projection) => [projection, projection.create()] as const),
   );
-  let seq = 0;
+  let seq = fromSeq;
   let count = 0;
 
   return {

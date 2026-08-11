@@ -39,6 +39,7 @@ import {
   checkNoWorkspaceImports,
   checkOxlintConfig,
   checkPinoPrettyIsNotARuntimeTransport,
+  checkQueryProjectionBoundary,
   checkRecordedCiRuntime,
   checkRelativeImportsHaveTsExtension,
   checkRolldownBuildOptions,
@@ -1582,5 +1583,72 @@ suite('checkStateColoursComeFromThePalette (KAR-16.1 AC4, EPIC-16-S3)', () => {
     ]);
 
     expect(violations).toEqual([]);
+  });
+});
+
+suite('checkQueryProjectionBoundary (KAR-16.4 AC10)', () => {
+  it('rejects a Colada query over the event log', () => {
+    const violations = checkQueryProjectionBoundary([
+      {
+        path: 'packages/web/src/views/RunView.vue',
+        text: [
+          'const events = useQuery({',
+          "  key: ['events', runId],",
+          "  query: () => client.runs[':id'].events.$get({ param: { id: runId } }),",
+          '});',
+        ].join('\n'),
+      },
+    ]);
+
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('the stream already carries it');
+  });
+
+  it('rejects one over a snapshot, which is the scrubber wearing a cache', () => {
+    const violations = checkQueryProjectionBoundary([
+      {
+        path: 'packages/web/src/views/RunView.vue',
+        text: "defineQuery(() => ({ key: ['snapshot'], query: () => rpc.runs.snapshot.$get() }))",
+      },
+    ]);
+
+    expect(violations).toHaveLength(1);
+  });
+
+  it('accepts the three file-shaped reads the query layer owns', () => {
+    const violations = checkQueryProjectionBoundary([
+      {
+        path: 'packages/web/src/views/ProvidersView.vue',
+        text: [
+          'const providers = useQuery(providersQuery(client));',
+          'const config = useQuery(configQuery(client, cwd));',
+          'const bytes = useQuery(artifactQuery(client, sha));',
+        ].join('\n'),
+      },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag a ledger read that is not behind a query at all', () => {
+    const violations = checkQueryProjectionBoundary([
+      {
+        path: 'packages/web/src/api/scrub.ts',
+        text: "const page = await client.runs[':id'].events.$get({ query: { since } });",
+      },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('names the sanctioned paths in the failure, so the fix is in the message', () => {
+    const violations = checkQueryProjectionBoundary([
+      {
+        path: 'packages/web/src/views/GatesView.vue',
+        text: "useQuery({ key: ['gates'], query: () => client.runs[':id'].gates.$get() })",
+      },
+    ]);
+
+    expect(render(violations)).toContain('/api/providers');
   });
 });

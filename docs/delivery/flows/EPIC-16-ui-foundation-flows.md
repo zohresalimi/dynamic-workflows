@@ -1351,6 +1351,29 @@ Feature: The soak that proves the memory rules
 retrofit, which is why the soak exists in this epic rather than after EPIC-17 has built nine views on
 top of an unbounded store.
 
+**Automated as the per-push proxy this scenario itself specifies; the scheduled six-hour run is
+owed.** `packages/web/test/integration/store-soak.test.ts` spawns
+`packages/web/test/integration/store-soak-child.ts` under `node --expose-gc`, folds 600,000 events
+through the real `useRunStore`, reads the selectors on every phase so the lazy `computed`s actually
+allocate, and asserts all four of this scenario's `Then` lines:
+
+- **heap growth within the recorded ceiling** — `heapUsed` sampled immediately after a forced major
+  collection, so what is measured is *retained* memory. The ceiling is **three times this machine's
+  own phase-to-phase variation over the first half of the run**, with a 2 MB floor, rather than a
+  fixed budget that would flake on a loaded laptop or be too loose to catch anything. Verified to
+  have teeth: a build that also pushed each envelope onto an unbounded array fails it by 66 MB.
+- **object counts bounded by node count** — `counts().nodes` and the length of every derived
+  view-model array stay at the plan's 400 across all ten phases.
+- **the ring at exactly its cap** — `counts().events === counts().ringCap === 2000`, every phase.
+- **zero undisposed `Terminal` instances** — one adopted and disposed per phase, and `close()`
+  disposes anything left.
+
+The two lines it does **not** yet cover are the ones that need a running application:
+`DeFlow replay --speed max` over `fixtures/stress-400.jsonl` (KAR-16.5's harness and corpus) with the
+plan graph, timeline and inspector mounted, and _"a node click still opens the inspector within the
+NF3 budget"_ (KAR-16.6's canvas, KAR-17.4's inspector). Both are recorded in
+[the epic](../epics/EPIC-16-ui-foundation.md) as owed once those stories land.
+
 ---
 
 ## EPIC-16-S28 — No Vue proxy reaches Vue Flow, ELK or xterm

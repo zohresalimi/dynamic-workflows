@@ -104,6 +104,12 @@ catalog:
   # not fail; devtools simply go quiet, which is a bad way to find out.
   pinia: ^4.0.2
   "@vue/devtools-api": ^8.2.1
+  # KAR-16.4 AC10. The *query* half of the state split (docs/12 §3.4): if the
+  # answer changes because an event was appended it is a projection, and if it
+  # changes because a file on disk changed it is a query. Colada owns the
+  # second kind only — `/api/providers`, `/api/config`, `/api/artifacts/:sha` —
+  # and `test/ui-foundation.test.ts` is the rule that keeps run state out of it.
+  "@pinia/colada": ^1.4.2
   # `useDark()` — the whole of dark mode: it flips `.dark` on <html>, seeds from
   # the OS `prefers-color-scheme` on first load and persists an explicit
   # override. The seven `--state-*` tokens are redefined under that one class.

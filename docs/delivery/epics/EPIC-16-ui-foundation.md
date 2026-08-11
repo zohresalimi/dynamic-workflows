@@ -563,6 +563,33 @@ _may shift either way under Vue 3.6's alien-signals reactivity_
 ([12 §2.1](../../12-frontend-architecture.md)). That is one more reason the epic pins 3.5.40, and it
 is why the soak in AC-8 must be re-run — not assumed — whenever the Vue pin moves.
 
+**Two parts of this story are carried forward, and both are recorded here rather than absorbed
+(§9).**
+
+- **AC-8's six-hour soak is served by its per-push proxy, not by the scheduled run.** EPIC-16-S27
+  itself specifies both — _"this runs on a schedule, not on every push, because it costs six hours"_
+  and _"a per-push proxy for it is a ten-minute run at `--speed max` with the same assertions"_ —
+  and the proxy is what shipped: `packages/web/test/integration/store-soak.test.ts` folds 600,000
+  events through the real store in a `node --expose-gc` subprocess and asserts all four of AC-8's
+  bounds (retained heap against a control-relative ceiling, projection object counts bounded by node
+  count, the debug ring at exactly its cap, zero undisposed terminals). The scheduled run over
+  `fixtures/stress-400.jsonl` with the graph, timeline and inspector mounted needs **KAR-16.5**'s
+  replay harness and fixture corpus and **KAR-16.6**'s canvas, neither of which exists yet; it is
+  owed once both land, and AC-8 is not closed by this story alone.
+- **AC-10's `/api/runs` query has no route to point at.** The daemon serves `POST /api/runs` and
+  `GET /api/runs/:id` and no run **list** ([EPIC-15](EPIC-15-daemon-api.md)); `GET /api/runs/:id` is
+  a ledger-derived summary, which this story's own rule puts on the projection side rather than the
+  query side. The path stays sanctioned in both copies of the allowlist
+  (`packages/web/src/api/queries.ts` and `test/support/guards.ts`) so the query lands as a one-line
+  addition, and the three endpoints that do exist — `/api/providers`, `/api/config`,
+  `/api/artifacts/:sha` — are implemented and covered. Adding the list route is a daemon change and
+  belongs with the story that needs it (the runs dashboard, `KAR-17.8`).
+
+**Note on AC-5's `GraphCanvas` prop walk.** `GraphCanvas` is KAR-16.6's and does not exist yet, so
+the proxy audit walks what the *store* hands out — every view model, every derived array, and every
+object passed through `adopt()` / `adoptTerminal()`, which is the seam a canvas will receive them
+through. KAR-16.6 inherits the assertion rather than replacing it.
+
 ---
 
 ### KAR-16.5 — The replay harness serving recorded runs

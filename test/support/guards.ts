@@ -3150,3 +3150,94 @@ export function checkStateColoursComeFromThePalette(files: readonly SourceFile[]
   }
   return violations;
 }
+
+export const QUERY_BOUNDARY_MESSAGE =
+  'the state split is one sentence and it is load-bearing (KAR-16.4 AC10, ' +
+  'docs/12-frontend-architecture.md §3.4): if the answer changes because an event was appended ' +
+  'it is a projection, and if it changes because a file on disk changed it is a query. Run ' +
+  'state behind a fetch cache is two sources of truth that disagree for exactly as long as the ' +
+  'stale window — which is the interval an operator spends looking at a node that finished.';
+
+/**
+ * The API paths `@pinia/colada` is allowed to own.
+ *
+ * Kept here as well as in `packages/web/src/api/queries.ts` on purpose: a rule
+ * whose allowlist lives only in the file it polices is a rule that widens
+ * itself. `test/ui-foundation.test.ts` asserts the two agree, so sanctioning a
+ * fourth endpoint is a two-file edit somebody has to mean.
+ */
+export const SANCTIONED_QUERY_PATHS: readonly string[] = [
+  '/api/runs',
+  '/api/providers',
+  '/api/config',
+  '/api/artifacts/:sha',
+];
+
+/** `useQuery`, `defineQuery` and the option builders they take. */
+const COLADA_ENTRY_POINTS = /\b(?:useQuery|useInfiniteQuery|defineQuery|defineQueryOptions)\s*\(/;
+
+/**
+ * The reads whose answer changes because an event was appended.
+ *
+ * Spelled as URL fragments rather than as key names because that is what a
+ * violation actually looks like: somebody writes `useQuery({ key: ['events', id],
+ * query: () => client.runs[':id'].events.$get(...) })` because the run list
+ * next to it is a query and the symmetry is inviting.
+ */
+const LEDGER_DERIVED_READS: readonly (readonly [RegExp, string])[] = [
+  [/\/events\b|\.events\.\$get/, 'the event log — the stream already carries it'],
+  [/\/snapshot\b|\.snapshot\.\$get/, 'a snapshot at a seq — that is the scrubber, not a cache'],
+  [/\/plans\b|\.plans\./, 'the plan rail and diffs — a replan appends events'],
+  [/\/gates\b|\.gates\.\$get/, 'gate verdicts — every one of them is an event'],
+  [/\/criteria\b|\.criteria\./, 'the criteria board — a projection over gate events'],
+  [/\/findings\b|\.findings\./, 'findings — appended as gates evaluate'],
+  [/\/facts\b|\.facts\./, 'the blackboard — fact.written is an event'],
+  [/\/nodes\/|\.nodes\[/, 'node detail — every field of it moves with the run'],
+];
+
+/**
+ * KAR-16.4 AC10 — run state must not be put behind the fetch cache.
+ *
+ * The scan is per **statement block** rather than per file: `../api/queries.ts`
+ * legitimately names every sanctioned path, and a whole-file grep would either
+ * have to exempt it — losing the rule where it matters most — or flag it. So a
+ * violation is a Colada entry point with a ledger-derived read *inside the same
+ * call*, which is exactly the shape of the mistake.
+ */
+export function checkQueryProjectionBoundary(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    const code = codeOnly(file.text);
+    for (const call of coladaCalls(code)) {
+      for (const [pattern, why] of LEDGER_DERIVED_READS) {
+        if (!pattern.test(call.text)) continue;
+        violations.push({
+          where: `${file.path}:${call.line}`,
+          message:
+            `${file.path} puts ${why} behind a @pinia/colada query. ${QUERY_BOUNDARY_MESSAGE} ` +
+            `The sanctioned query paths are ${SANCTIONED_QUERY_PATHS.join(', ')}.`,
+        });
+        break;
+      }
+    }
+  }
+
+  return violations;
+}
+
+/** Each Colada call in `code`, as its text and the line it starts on. */
+function coladaCalls(code: string): { text: string; line: number }[] {
+  const found: { text: string; line: number }[] = [];
+  const lines = code.split('\n');
+
+  for (const [index, line] of lines.entries()) {
+    if (!COLADA_ENTRY_POINTS.test(line)) continue;
+    // The call plus the block it opens, bounded: an option object spanning
+    // more than a dozen lines is not what this rule is looking for, and reading
+    // to a matching brace would need a parser to be right about strings.
+    found.push({ text: lines.slice(index, index + 12).join('\n'), line: index + 1 });
+  }
+
+  return found;
+}
