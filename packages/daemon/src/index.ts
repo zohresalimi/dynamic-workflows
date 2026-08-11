@@ -392,6 +392,25 @@ export {
   recordInterjectionsDelivered,
   steeringFor,
 } from './human/interject.ts';
+export type { ConfigValidation } from './init/config-schema.ts';
+// KAR-18.1 — `DeFlow init`'s workspace bootstrap: the committed half of
+// `.DeFlow/`, the `.gitignore` merge for the per-machine half, the global
+// state directory, and the provider detection pass that writes only there.
+export {
+  CONFIG_SCHEMA_FILE,
+  CONFIG_SCHEMA_ID,
+  configJsonSchema,
+  validateAgainstConfigSchema,
+} from './init/config-schema.ts';
+export type { GitignoreMerge } from './init/gitignore-merge.ts';
+export { GITIGNORE_ENTRIES, mergeGitignore } from './init/gitignore-merge.ts';
+export type { InitPorts, InitReport, PathReport, PathStatus } from './init/workspace-init.ts';
+export {
+  DataDirUnwritable,
+  INIT_EX_REFUSED,
+  initWorkspace,
+  NotAGitWorkingTree,
+} from './init/workspace-init.ts';
 export type { CreateLoggerOptions } from './logging.ts';
 export { CENSOR, createLogger, log, REDACT_PATHS } from './logging.ts';
 export type { WorkflowPhase, WorkflowTool } from './mcp/catalog.ts';
@@ -490,6 +509,12 @@ export {
   resolveLoginShellPathOnce,
   VENDOR_CONFIG_DIR_VARS,
 } from './proc/env.ts';
+export type {
+  DetectProvidersPorts,
+  ProviderDetectionEntry,
+  ProviderDetectionStatus,
+} from './providers/detect.ts';
+export { detectProviders } from './providers/detect.ts';
 // KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor` (the command is
 // EPIC-18, KAR-18.4): per provider, the most recent `provider.rate_limited`
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.

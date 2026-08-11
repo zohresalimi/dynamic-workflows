@@ -32,6 +32,12 @@ import {
   type StreamConnection,
 } from '@DeFlow/web';
 
+// KAR-18.1 — `DeFlow init`. Unlike `runTask`/`approveSpec` below, it is not a
+// client of the daemon's HTTP API: there is nothing running yet to be a
+// client of. It calls straight into `@DeFlow/daemon`'s `initWorkspace`.
+export type { InitCommandOptions, InitCommandResult } from './init.ts';
+export { runInit } from './init.ts';
+
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
   readonly baseUrl: string;
