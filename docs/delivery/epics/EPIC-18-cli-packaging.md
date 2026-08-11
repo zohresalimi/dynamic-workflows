@@ -128,6 +128,10 @@ observable from a clean temp directory.
       level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] `npx <packed tarball> up` in a `mktemp -d` clean room serves the UI and completes a mock run,
       and this is wired as a CI job — not a checklist item someone remembers.
+      _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
+      images, on every tag and on demand — and the clean room serves the UI and drives real ACP
+      turns against the installed mock agent. **"Completes a mock run" stays open**: no shipped code
+      path executes a submitted run past intake yet. See KAR-18.6 AC2's amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
 - [ ] The capability matrix is a generated fixture file in the repository with a probe timestamp;
@@ -642,6 +646,32 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
    milestone even without a release.
 7. The clean room is removed on success and preserved under `DeFlow_KEEP_TMP=1` on failure, with the
    directory uploaded by `actions/upload-artifact` in CI.
+
+> **Amended 2026-08-12 while implementing KAR-18.6.** AC2 asks for _"a scripted multi-node run
+> completes through `npx <tgz> run` and exits 0"_. The completion half is **not reachable in this
+> repository and is not faked** — the same deferral [KAR-18.3](#kar-183--DeFlow-run-headless-execution)
+> already carries, recorded here rather than left in a commit message, because
+> [README §9](../README.md#9-changing-the-plan) is explicit that a cut is recorded and never
+> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and
+> `POST /api/runs` stops at `task.submitted` by design (KAR-10.1: _"No interpretation happens
+> here"_), so every submitted run parks after intake. That wiring is EPIC-06/EPIC-10/EPIC-11 and is
+> in this epic's **Out of scope**; this epic is a _client_ of the daemon.
+>
+> What ships instead is the criterion's own stated reason — _"this proves the inlined daemon, the
+> inlined mock agent and the shipped UI are all present in one artefact"_ — asserted directly, and
+> more strongly than a green exit code would have:
+>
+> - the installed daemon **spawns the installed `DeFlow-mock-agent` and drives real ACP turns
+>   against it**: an `initialize` whose response is what the capability matrix is regenerated from,
+>   then the F3.4 conformance battery, which is a turn per assertion. Both processes are tarball
+>   bytes, and the assertion refuses an agent that is on `PATH` but holds no turn
+>   (`e2e/install-verification-broken.test.ts` proves it goes red);
+> - a run submitted through the installed `DeFlow run` reaches the installed daemon and is reported
+>   as `task.submitted`, never as a run that completed.
+>
+> **The completion half stays open**: it is the epic's Definition of Done item below, and the first
+> thing to re-assert here once an orchestrated run exists. Until then AC2 is met in reason and not
+> in letter, and this note is the record of that difference.
 
 **Test plan (TDD)**
 

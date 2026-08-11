@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import type { DoctorCheck, DoctorReport } from '../../src/index.ts';
 
 export const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 export const cliDir = join(repoRoot, 'packages/cli');
@@ -250,6 +251,30 @@ export async function removeCleanRoom(room: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * AC7's own rule, which is *not* the repository's usual tmpdir idiom: **"the
+ * clean room is removed on success and preserved under `DeFlow_KEEP_TMP=1` on
+ * failure"**. Returns whether the room was kept.
+ *
+ * The conjunction is what the CI job needs. `DeFlow_KEEP_TMP` has to be set on
+ * the step, before anybody knows whether the step will fail; the upload is
+ * `if: failure()`. Under the plain "keep whenever the variable is set" idiom
+ * that combination leaves an installed tarball and a whole npm cache behind on
+ * every green release run and uploads neither — the success half broken by the
+ * mechanism that makes the failure half work.
+ *
+ * `removeCleanRoom` above keeps the plain idiom for the specs, whose rooms are
+ * per-`it` fixtures rather than the artefact of a release gate.
+ */
+export async function settleCleanRoom(
+  room: string,
+  outcome: { readonly failed: boolean },
+): Promise<boolean> {
+  if (outcome.failed && process.env.DeFlow_KEEP_TMP !== undefined) return true;
+  await rm(room, { recursive: true, force: true });
+  return false;
+}
+
 export interface CliProcess {
   readonly child: ChildProcess;
   readonly stdout: () => string;
@@ -380,6 +405,116 @@ export async function assertUiShipped(baseUrl: string): Promise<{ assetPath: str
     );
   }
   return { assetPath };
+}
+
+/** What the F3.4 battery got out of the installed agent, per AC2. */
+export interface InstalledAgentTurns {
+  /** The absolute path doctor resolved and spawned — what DeFlowd would store. */
+  readonly binary: string;
+  readonly passed: number;
+  readonly failed: number;
+  readonly skipped: number;
+}
+
+/**
+ * AC2's reachable half, and the one that actually proves the sentence the
+ * criterion gives as its reason: *"the inlined daemon, the inlined mock agent
+ * and the shipped UI are all present in one artefact"*.
+ *
+ * `npx <tgz> doctor` with the tarball's own `DeFlow-mock-agent` shimmed onto
+ * `PATH` makes the **installed daemon spawn the installed agent** and hold
+ * real ACP conversations with it: an `initialize` whose response is what the
+ * capability matrix is regenerated from (AR-5 — the matrix is never a
+ * constant), and then the F3.4 conformance battery, which stages a turn per
+ * assertion. Both processes are tarball bytes.
+ *
+ * Three ways it refuses, each naming what was missing rather than "doctor did
+ * not say what I expected":
+ *
+ *  - the capability matrix reports `capabilities.none` — nothing answered an
+ *    `initialize`, which is what an installed agent that throws on import
+ *    looks like from the daemon's side (the exact bug this epic hit: a fixture
+ *    read through an `import.meta.url`-relative path that exists in the
+ *    workspace and not in the tarball);
+ *  - the battery reported no counts at all — `conformance.skipped`,
+ *    `conformance.none` or `conformance.error`, all of which doctor prints as
+ *    warnings and none of which is a pass;
+ *  - it ran and nothing passed.
+ *
+ * What it deliberately does *not* require is `failed === 0`. The mock agent's
+ * default scenario stages neither a cancel nor a permission request, so those
+ * battery rows fail against the workspace binary too — that is a property of
+ * the scenario, not of the packaging, and pinning it here would make this
+ * gate red for a reason it is not looking at.
+ */
+export async function assertInstalledAgentDrivesTurns(options: {
+  readonly tgz: string;
+  readonly install: CliInstall;
+  /** The directory holding the `claude-agent-acp` shim (see `shimMockAgent`). */
+  readonly binDir: string;
+}): Promise<InstalledAgentTurns> {
+  const doctor = await runInstalled({
+    tgz: options.tgz,
+    bin: 'DeFlow',
+    argv: ['doctor', '--json'],
+    install: options.install,
+    binDirs: [options.binDir],
+  });
+  if (doctor.status !== 0) {
+    throw new Error(`npx <tgz> doctor exited ${String(doctor.status)}:\n${doctor.stderr}`);
+  }
+
+  let report: DoctorReport;
+  try {
+    report = JSON.parse(doctor.stdout) as DoctorReport;
+  } catch {
+    throw new Error(`npx <tgz> doctor --json printed no JSON document:\n${doctor.stdout}`);
+  }
+  const checks = (id: string): readonly DoctorCheck[] =>
+    report.sections.find((section) => section.id === id)?.checks ?? [];
+
+  const binary = join(options.binDir, 'claude-agent-acp');
+  if (checks('capabilities').some((check) => check.id === 'capabilities.none')) {
+    throw new Error(
+      'no ACP turn was possible: the installed daemon got no initialize response out of the ' +
+        `installed agent at ${binary}, so no capability matrix could be ` +
+        'regenerated. That is what an agent binary that throws on import looks like from the ' +
+        `daemon's side.\n${checks('agents')
+          .map((check) => `  [${check.status}] ${check.id}: ${check.detail}`)
+          .join('\n')}`,
+    );
+  }
+
+  const conformance = checks('conformance');
+  const counted = conformance
+    .map((check) => ({
+      check,
+      match: /(\d+) passed, (\d+) failed, (\d+) skipped/.exec(check.detail),
+    }))
+    .find((entry) => entry.match !== null);
+  if (counted === undefined || counted.match === null) {
+    throw new Error(
+      'no ACP turn was driven: the F3.4 conformance battery reported no result against the ' +
+        'installed agent. doctor prints that as a warning and exits 0, which is not a pass.\n' +
+        conformance.map((check) => `  [${check.status}] ${check.id}: ${check.detail}`).join('\n'),
+    );
+  }
+
+  const [, passed = '0', failed = '0', skipped = '0'] = counted.match;
+  const turns: InstalledAgentTurns = {
+    binary,
+    passed: Number(passed),
+    failed: Number(failed),
+    skipped: Number(skipped),
+  };
+  if (turns.passed === 0) {
+    throw new Error(
+      `no ACP turn completed: the conformance battery staged ${turns.failed} failed and ` +
+        `${turns.skipped} skipped assertions against ${turns.binary} and passed none of them.\n` +
+        `  ${counted.check.detail}`,
+    );
+  }
+  return turns;
 }
 
 /** AC4 — nothing in the install transcript may name node-gyp. */

@@ -1321,6 +1321,21 @@ Feature: install verification
 answers 200 on `/` perfectly happily, because the SPA fallback serves `index.html` regardless. Only
 following through to a referenced asset distinguishes "the UI shipped" from "the blank page shipped".
 
+> **Amended 2026-08-12 while implementing KAR-18.6.** The line _"a scripted multi-node run driven by
+> `npx …/DeFlow-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
+> shipped code path executes a submitted run** — the same limit this file already records for
+> EPIC-18-S18 (KAR-18.3): nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
+> and `POST /api/runs` stops at `task.submitted` by design (KAR-10.1). What that line is _for_ —
+> "the inlined daemon, the inlined mock agent and the shipped UI are all present in one artefact" —
+> is automated in its place, and by a stronger route than an exit code: the installed daemon spawns
+> the installed `DeFlow-mock-agent` and drives **real ACP turns** against it (an `initialize` that
+> regenerates the capability matrix, then the F3.4 battery, a turn per assertion), and the run
+> submitted through the installed `DeFlow run` is asserted as `task.submitted` and reported as
+> exactly that. `e2e/install-verification-broken.test.ts` proves the new assertion goes red against
+> an agent that is on `PATH` but holds no turn. The completion half stays open against the
+> orchestration wiring (EPIC-06/EPIC-10/EPIC-11) rather than being faked; the epic's Definition of
+> Done keeps it open.
+
 ---
 
 ## EPIC-18-S43 — A missing `files` entry drops `dist/ui/` and serves a blank page

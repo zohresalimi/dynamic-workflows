@@ -15,19 +15,27 @@
  * `packages/cli/test/integration/verify-install-bin.test.ts` so the script and
  * its own test suite cannot silently drift apart.
  *
- * **AC2's honest limit.** This step submits a run through the installed
- * `DeFlow run` and waits for `task.submitted` — proof that the inlined
- * daemon, the inlined mock agent and the shipped UI are one artefact. It does
- * not wait for the run to *complete*: no code path in this repository ever
- * executes a submitted run past intake (`packages/daemon/src/boot.ts` starts
- * no ticker; see the identical, already-recorded limit in
- * `e2e/run.test.ts`'s 2026-08-11 amendment, KAR-18.3). That is
- * EPIC-06/EPIC-10/EPIC-11 wiring this epic explicitly does not own — "AC2 —
- * task.submitted" is reported as its own line below rather than folded into a
- * false "run completed".
+ * **AC2's honest limit.** AC2 asks for "a scripted multi-node run completes
+ * through `npx <tgz> run` and exits 0", *because* that would prove "the
+ * inlined daemon, the inlined mock agent and the shipped UI are all present in
+ * one artefact". The completion half is not reachable in this repository —
+ * nothing executes a submitted run past intake (`packages/daemon/src/boot.ts`
+ * starts no ticker; `POST /api/runs` stops at `task.submitted` by design,
+ * KAR-10.1), which is EPIC-06/EPIC-10/EPIC-11 wiring this epic does not own
+ * and which `e2e/run.test.ts` and the epic file both already carry as a
+ * recorded deferral. Faking an exit 0 here is the one thing the working
+ * agreement forbids outright.
+ *
+ * So the reason AC2 gives is asserted directly, and in two steps rather than
+ * one: the installed daemon **spawns the installed mock agent and drives real
+ * ACP turns against it** (`initialize` into a regenerated capability matrix,
+ * then the F3.4 battery, a turn per assertion), and a run submitted through
+ * the installed `DeFlow run` reaches the installed daemon. Both are stated as
+ * what they are, never folded into a "run completed" that did not happen.
  */
 import process from 'node:process';
 import {
+  assertInstalledAgentDrivesTurns,
   assertNoNodeGyp,
   assertUiShipped,
   type CliInstall,
@@ -38,8 +46,8 @@ import {
   findInstalledMockAgent,
   makeCleanRoom,
   packGoodTarball,
-  removeCleanRoom,
   runInstalled,
+  settleCleanRoom,
   shimMockAgent,
   spawnInstalled,
   waitForUrl,
@@ -113,10 +121,21 @@ async function main(): Promise<number> {
         assertUiShipped(baseUrl),
       );
 
+      const binDir = `${install.dataDir}-agentbin`;
+      await step(
+        'AC2 — the installed daemon drives ACP turns against the installed mock agent',
+        async () => {
+          const mockAgent = await findInstalledMockAgent(install.npmCacheDir);
+          await shimMockAgent(binDir, mockAgent);
+          const turns = await assertInstalledAgentDrivesTurns({ tgz: good.tgz, install, binDir });
+          process.stdout.write(
+            `       ${String(turns.passed)} passed, ${String(turns.failed)} failed, ` +
+              `${String(turns.skipped)} skipped against ${turns.binary}\n`,
+          );
+        },
+      );
+
       await step('AC2 — task.submitted reaches the installed daemon', async () => {
-        const binDir = `${install.dataDir}-agentbin`;
-        const mockAgent = await findInstalledMockAgent(install.npmCacheDir);
-        await shimMockAgent(binDir, mockAgent);
         const run = spawnInstalled({
           tgz: good.tgz,
           bin: 'DeFlow',
@@ -151,14 +170,16 @@ async function main(): Promise<number> {
     if (up !== undefined) await up.stop();
   }
 
-  // AC7 — the same rule every tmpdir fixture in this repository follows
-  // (docs/03 §11): removed unless DeFlow_KEEP_TMP is set, regardless of
-  // outcome. CI sets it unconditionally on the job and uploads the directory
-  // only `if: failure()`, so a green run still cleans up after itself.
-  const kept = !(await removeCleanRoom(install.room));
+  // AC7 — "removed on success and preserved under DeFlow_KEEP_TMP=1 on
+  // failure, with the directory uploaded by actions/upload-artifact in CI".
+  // The CI job sets the variable on the step (it cannot know in advance which
+  // runs will fail) and uploads `if: failure()`, so this conjunction is what
+  // makes a green release run clean up after itself while a red one still has
+  // an installed tarball and an npm cache left to look at.
+  const failed = results.filter((result) => !result.ok);
+  const kept = await settleCleanRoom(install.room, { failed: failed.length > 0 });
   cleanupPackedTarball(good);
   cleanupSystemToolsDir();
-  const failed = results.filter((result) => !result.ok);
   if (kept) process.stdout.write(`\nclean room kept at ${install.room} (DeFlow_KEEP_TMP is set)\n`);
 
   process.stdout.write(

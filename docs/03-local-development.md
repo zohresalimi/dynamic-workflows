@@ -570,9 +570,23 @@ The build order is fixed and matters: `pnpm --filter @DeFlow/web build` → `pac
 copied into `packages/cli/dist/ui/` → `tsdown` bundles `bin.ts` with `@DeFlow/*` inlined and the two
 natives external.
 
-Run this on every release, and once per milestone even without a release. You are also the M2
-"colleague installs it unaided" test subject, so `docs/CONTRIBUTING.md` should open with literally
-`git clone && pnpm install && pnpm dev` and be re-verified on the same cadence.
+Run this on every release, and once per milestone even without a release.
+
+You do not type the block above by hand: **`pnpm verify:install`** is the whole sequence, unattended
+— build, `pack:check`, `pnpm pack`, `mktemp -d`, `git init -b main`, `init`, `up`, then the
+assertions a person would forget (a referenced `/assets/*.js` that answers JavaScript rather than
+merely a 200 on `/`; the installed daemon holding real ACP turns against the installed
+`DeFlow-mock-agent`; nothing in the install transcript naming `node-gyp`). It removes the clean room
+on success and, under `DeFlow_KEEP_TMP=1`, keeps it when it failed so there is something to look at.
+
+In CI it is the **`verify-install`** job in `.github/workflows/ci.yml`, on `ubuntu-26.04` and
+`macos-26`: it runs on every tag push and on a manual **Run workflow** dispatch, which is how the
+"once per milestone even without a release" pass is taken without cutting a tag you did not want. A
+failing leg uploads its clean room as an artefact. It is deliberately not on ordinary pushes — the
+push loop is budgeted at ten minutes and this job installs from npm twice.
+
+You are also the M2 "colleague installs it unaided" test subject, so `docs/CONTRIBUTING.md` should
+open with literally `git clone && pnpm install && pnpm dev` and be re-verified on the same cadence.
 
 ---
 

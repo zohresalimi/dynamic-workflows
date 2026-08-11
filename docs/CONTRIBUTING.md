@@ -232,9 +232,19 @@ a human asked for it by name.
 
 ## CI
 
-Three jobs in `.github/workflows/ci.yml`: `check` (Linux, Node 24), `test` (a four-leg matrix,
-`{ubuntu-26.04, macos-26} × {24, 26}`, `fail-fast: false`) and `browser-e2e` (Linux only — a browser
-job on the macOS legs triples macOS minutes for no extra signal).
+Four jobs in `.github/workflows/ci.yml`: `check` (Linux, Node 24), `test` (a four-leg matrix,
+`{ubuntu-26.04, macos-26} × {24, 26}`, `fail-fast: false`), `browser-e2e` (Linux only — a browser
+job on the macOS legs triples macOS minutes for no extra signal) and `verify-install`.
+
+**`verify-install` is the release gate, and it is not on the push path.** It runs `pnpm
+verify:install` — `pnpm pack` and then the real tarball installed by `npx` into a `mktemp -d` clean
+room — on `ubuntu-26.04` and `macos-26`, and its `if` restricts it to a tag push and to a manual
+**Run workflow** dispatch. The dispatch is how KAR-18.6 AC6's "once per milestone even without a
+release" pass is taken: Actions → ci → Run workflow, on any branch. It is not held behind
+`vars.RUN_TESTS_IN_CI` for the same reason `pnpm pack:check` is not — a release gate nobody runs is
+not a gate — and it costs nothing on an ordinary push because no ordinary push matches its `if`. A
+failing leg keeps its clean room (`DeFlow_KEEP_TMP`) and uploads it as `clean-room-<os>`, which is
+the only way a packaging failure on the platform you do not own is diagnosable.
 
 **Action pins, verified against the marketplace on 2026-08-04** — roadmap risk A2-7, which recorded
 `pnpm/action-setup@v6` and `actions/setup-node@v6` as *unverified*:

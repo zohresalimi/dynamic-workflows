@@ -20,8 +20,12 @@
  *
  * Verifies: EPIC-18-S43 · AC5
  */
+import { chmodSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
+  assertInstalledAgentDrivesTurns,
   assertUiShipped,
   type CliInstall,
   type CliProcess,
@@ -107,5 +111,36 @@ suite('EPIC-18-S43 — a missing files entry drops dist/ui/ and serves a blank p
     );
 
     await up.stop();
+  }, 120_000);
+});
+
+suite('AC2 — an agent that is on PATH but holds no turn does not pass the verifier', () => {
+  it('rejects, naming the battery that never ran, rather than counting the binary as proof', async () => {
+    // The AC5 idea applied to AC2's assertion instead of AC1's: an assertion
+    // is only worth what it refuses. `assertInstalledAgentDrivesTurns` is the
+    // release gate's evidence that the inlined daemon and the inlined mock
+    // agent are one working artefact, so it has to go red when the agent
+    // *cannot* be talked to — otherwise "the binary exists and answers
+    // --version" would be quietly accepted as the whole of AC2, which is
+    // exactly the shape of the mock-agent packaging bug this epic already hit.
+    //
+    // The stand-in is a binary that answers `--version` and then exits without
+    // speaking a word of ACP — the observable behaviour of a `mock-agent.mjs`
+    // that reached the tarball but throws on import.
+    const install = await room();
+    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    expect(init.status, init.stderr).toBe(0);
+
+    const binDir = join(install.room, 'silent-agent-bin');
+    await mkdir(binDir, { recursive: true });
+    const shim = join(binDir, 'claude-agent-acp');
+    writeFileSync(shim, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "9.9.9"; fi\nexit 0\n', {
+      mode: 0o755,
+    });
+    chmodSync(shim, 0o755);
+
+    await expect(
+      assertInstalledAgentDrivesTurns({ tgz: good.tgz, install, binDir }),
+    ).rejects.toThrow(/no ACP turn|conformance/i);
   }, 120_000);
 });

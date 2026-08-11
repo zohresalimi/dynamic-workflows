@@ -1607,6 +1607,8 @@ export interface WorkflowStep {
 
 export interface WorkflowJob {
   readonly 'runs-on'?: string;
+  /** The job-level condition. Evaluated in the header, so `runner.*` is illegal in it. */
+  readonly if?: string;
   readonly env?: Record<string, string>;
   readonly strategy?: {
     readonly 'fail-fast'?: boolean;

@@ -33,6 +33,7 @@ import {
   EXPECTED_TEST_MATRIX,
   expandMatrixTemplate,
   PINNED_ACTIONS,
+  RUNNER_TEMP_EXPRESSION,
   describe as render,
 } from './support/guards.ts';
 import {
@@ -193,6 +194,67 @@ suite('the crash-fuzz slice is wired into the test legs (KAR-06.9 AC7)', () => {
       expect(step.env?.DeFlow_KEEP_TMP, `step "${step.run}"`).toBe('1');
       expect(step.env?.TMPDIR, `step "${step.run}"`).toBe('${{ runner.temp }}');
     }
+  });
+});
+
+suite('the install-verification job (KAR-18.6 AC6, AC7)', () => {
+  // AC6 is two halves — "runnable locally with one command" and "runs in CI on
+  // ubuntu-26.04 and macos-26 for every release tag … and once per milestone"
+  // — and only the first shipped with the story. This suite holds the second.
+  //
+  // It is **not** held back behind `vars.RUN_TESTS_IN_CI` with the `test` and
+  // `browser-e2e` jobs, for the reason KAR-18.5 already wrote into the `check`
+  // job next to `pnpm pack:check`: a release gate nobody runs is not a gate.
+  // Nor does it cost anything on an ordinary push — the job's `if` restricts it
+  // to a release tag and to a manual dispatch, which is what "once per
+  // milestone even without a release" is asked to be triggerable by.
+  const job = () => workflow().jobs?.['verify-install'];
+
+  it('exists, and runs the one command the story fixes as the procedure', () => {
+    expect(job(), 'ci.yml declares no "verify-install" job').toBeDefined();
+    expect((job()?.steps ?? []).map((step) => step.run)).toContain('pnpm verify:install');
+  });
+
+  it('runs on both platforms NF5 promises, with fail-fast off', () => {
+    // ubuntu-26.04 and macos-26 — the same two images as the test matrix, and
+    // for a stronger reason here: the tarball's native dependencies resolve a
+    // *different prebuild* per platform, so a green Linux leg says nothing
+    // about the macOS one.
+    expect(job()?.strategy?.matrix?.os).toEqual([...EXPECTED_TEST_MATRIX.os]);
+    expect(job()?.strategy?.['fail-fast']).toBe(false);
+    expect(job()?.['runs-on']).toBe('${{ matrix.os }}');
+  });
+
+  it('is scoped to release tags and manual dispatch, and is not held back by RUN_TESTS_IN_CI', () => {
+    const condition = job()?.if ?? '';
+    expect(condition).toContain('refs/tags/');
+    expect(condition).toContain('workflow_dispatch');
+    // The gate the owner set over the test slices is deliberately not on this
+    // job: it is the release gate, and a release gate behind an unset variable
+    // has never run when the release happens.
+    expect(condition).not.toContain('RUN_TESTS_IN_CI');
+    // …and the trigger it names has to exist, or "run it once per milestone"
+    // is a button that is not there.
+    expect(JSON.stringify(workflow().on)).toContain('workflow_dispatch');
+  });
+
+  it('keeps the clean room and uploads it when the job fails (AC7)', () => {
+    const step = (job()?.steps ?? []).find((entry) => entry.run === 'pnpm verify:install');
+    // Without these two the upload below collects nothing: the verifier
+    // removes its clean room, and `os.tmpdir()` is /var/folders/…/T on the
+    // macOS leg rather than the /tmp a fixed path would name.
+    expect(step?.env?.DeFlow_KEEP_TMP).toBe('1');
+    expect(step?.env?.TMPDIR).toBe(RUNNER_TEMP_EXPRESSION);
+
+    const upload = (job()?.steps ?? []).find((entry) => entry.uses?.includes('upload-artifact'));
+    expect(upload?.if).toBe('failure()');
+    expect(upload?.with?.path).toContain(RUNNER_TEMP_EXPRESSION);
+    // One artefact per leg, or the leg that failed loses its evidence to the
+    // one that did not.
+    const names = expandMatrixTemplate(upload?.with?.name ?? '', {
+      os: EXPECTED_TEST_MATRIX.os,
+    });
+    expect(new Set(names).size).toBe(2);
   });
 });
 

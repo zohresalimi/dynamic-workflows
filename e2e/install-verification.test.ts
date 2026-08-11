@@ -17,8 +17,10 @@
  * EPIC-18-S46 (honest doctor report) · AC1, AC2, AC3, AC4, AC7
  */
 import { DOCTOR_SECTION_IDS, type DoctorReport } from 'DeFlow';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
+  assertInstalledAgentDrivesTurns,
   assertNoNodeGyp,
   assertUiShipped,
   type CliInstall,
@@ -148,6 +150,43 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // and the CLI itself exits 130.
     expect(code).toBe(130);
   }, 60_000);
+
+  it('AC2 — the installed daemon drives real ACP turns against the installed mock agent', async () => {
+    // The half of AC2 that *is* reachable, asserted properly rather than
+    // asserted away. "This proves the inlined daemon, the inlined mock agent
+    // and the shipped UI are all present in one artefact" is a claim about the
+    // three of them working together, and the spec above only shows the second
+    // one starting up (`--version`) and the first one accepting an intake.
+    //
+    // Here the installed daemon *spawns* the installed mock agent and holds
+    // real ACP conversations with it — an `initialize` whose response becomes
+    // the capability matrix, then the F3.4 conformance battery, which is a
+    // turn per assertion. Every byte on both sides of those turns came out of
+    // the tarball. The failure this catches is precisely the one the story was
+    // written for and which this epic already hit once: `@DeFlow/mock-agent`
+    // resolving a fixture through an `import.meta.url`-relative path that
+    // exists in the workspace and not in the tarball, so the installed binary
+    // threw before it could answer anything.
+    const install = await room();
+    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    expect(init.status, init.stderr).toBe(0);
+
+    const mockAgent = await findInstalledMockAgent(install.npmCacheDir);
+    const binDir = `${install.dataDir}-agentbin`;
+    await shimMockAgent(binDir, mockAgent);
+
+    const turns = await assertInstalledAgentDrivesTurns({ tgz: good.tgz, install, binDir });
+
+    // The battery staged assertions and some of them passed — a turn was
+    // driven end to end through installed bytes. It is not `failed === 0`: the
+    // mock agent's default scenario does not stage a cancel or a permission
+    // request, so the battery reports those as failures on this machine too
+    // (`packages/cli/test/integration/doctor.test.ts` asserts the same shape
+    // against the *workspace* binary). What matters here is the packaging
+    // claim, and a battery that could not start reports zero of everything.
+    expect(turns.passed).toBeGreaterThan(0);
+    expect(turns.binary).toBe(join(binDir, 'claude-agent-acp'));
+  }, 120_000);
 });
 
 suite('EPIC-18-S45 — no compiler on the box: nothing invokes node-gyp', () => {
