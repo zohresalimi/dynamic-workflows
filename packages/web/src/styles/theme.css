@@ -138,12 +138,35 @@ body {
  * so that the `reduce` block below is switching off rules it can see. A
  * media query that wraps the wrong rule is the failure AC8's spec is written
  * against, and the only way to detect it is for the default to be real.
+ *
+ * KAR-16.6 AC7 — node motion is `transform 200ms ease-out` and **nothing
+ * else**, and no code writes a `transform` on a node. The renderer writes an
+ * inline transform on every node on every frame, so a hand-authored
+ * `translate3d` animation is overwritten intermittently rather than reliably —
+ * it appears to work sometimes and not others, which is the worst kind of bug
+ * to diagnose (docs/12 §6.1, corrected). Transitioning the property the
+ * renderer already writes is the only version of this that holds.
  */
-.vue-flow__node,
+.vue-flow__node {
+  transition: transform 200ms ease-out;
+}
+
 .plan-node {
   transition:
     box-shadow 120ms ease,
     transform 160ms ease;
+}
+
+/*
+ * Off while a node is being dragged and while the viewport is panning or
+ * zooming (`data-motion` on the canvas, set from the renderer's own drag and
+ * move events). A 200 ms transition on top of a pointer-driven position is
+ * input lag: the node trails the cursor and the drag feels like it is fighting
+ * you. Same for the pane — every node transitions at once and the whole graph
+ * smears.
+ */
+[data-graph-canvas][data-motion="off"] .vue-flow__node {
+  transition: none;
 }
 
 .version-rail__marker {

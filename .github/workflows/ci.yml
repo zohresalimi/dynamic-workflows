@@ -45,6 +45,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm biome ci .
       - run: pnpm oxlint --type-aware
+      # KAR-16.6 AC1. oxlint sees only the <script> block of an SFC, and every
+      # file at risk of reaching past the graph facade is one — so the rule that
+      # keeps `GraphCanvas.vue` the single importer of @vue-flow/core is its own
+      # script rather than a lint config entry that would be inert here.
+      - run: pnpm lint:graph-facade
       - run: pnpm typecheck
       # KAR-02.8 AC2: the emitted JSON Schemas under schemas/ are regenerated
       # from the Zod source and compared by content. It belongs here and not in

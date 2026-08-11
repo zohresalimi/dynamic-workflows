@@ -1,6 +1,7 @@
 import tailwind from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
+import { graphRendererAlias } from './scripts/renderer-alias.ts';
 
 /**
  * The SPA build config.
@@ -23,6 +24,12 @@ import { defineConfig } from 'vite';
  */
 export default defineConfig({
   plugins: [tailwind(), vue()],
+  /**
+   * KAR-16.6 AC10. Empty unless `DeFlow_GRAPH_RENDERER=stub` is set, in which
+   * case every import of the graph facade resolves to the stub renderer and
+   * nothing else in the application changes — which is the claim.
+   */
+  resolve: { alias: graphRendererAlias() },
   build: {
     // The published package ships the built SPA next to the bundled daemon.
     outDir: '../daemon/dist/ui',

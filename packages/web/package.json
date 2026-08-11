@@ -21,6 +21,7 @@
     "@vue/devtools-api": "catalog:",
     "@vueuse/core": "catalog:",
     "clsx": "catalog:",
+    "elkjs": "catalog:",
     "eventsource-client": "catalog:",
     "hono": "catalog:",
     "lucide-vue-next": "catalog:",

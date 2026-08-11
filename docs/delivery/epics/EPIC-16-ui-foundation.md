@@ -738,7 +738,7 @@ drives the real `pnpm dev:replay` script cross-process.
 
 |                 |                                                                              |
 | --------------- | ---------------------------------------------------------------------------- |
-| **Status**      | Not started                                                                  |
+| **Status**      | Done (Linear is the live SSOT)                                               |
 | **Priority**    | P0                                                                           |
 | **Size**        | M                                                                            |
 | **Depends on**  | KAR-16.4, KAR-16.5, EPIC-00 KAR-00.4                                         |
@@ -830,6 +830,37 @@ relative ordering stable across plan versions with no per-node constraints at al
 | 7   | integration   | `vite build`, then assert the worker chunk exists, is hashed, and elkjs is absent from the initial chunk                | Worker wiring works in dev only                                           |
 | 8   | e2e           | `pnpm measure:graph` against `stress-400` through `DeFlow replay`, emitting the measurement file                        | The measurement was done by hand once and never again                     |
 | 9   | e2e           | Replace the facade internals with a stub renderer; every view still compiles and renders                                | Something reached past the facade                                         |
+
+**What building it settled** (KAR-16.6, 2026-08-11)
+
+1. **The measurement came back the other way from the estimate.**
+   [`docs/measurements/vue-flow-400.md`](../../measurements/vue-flow-400.md) records 404 nodes
+   panning and zooming at a p95 frame time of ~17–19 ms — the machine's own idle frame time — with
+   culling **off**. So `onlyRenderVisibleElements` defaults to off, F10.4 is not at risk from the
+   renderer, and roadmap §3's "slip KAR-17.9 to M2" branch is not taken. The file also records what
+   it does not measure: `stress-400` is 404 nodes and **2 edges**, so the estimate's edge half stays
+   unverified.
+2. **`considerModelOrder.strategy` alone does not hold the ordering.** On elkjs 0.12.0 it is
+   accepted, listed by `knownLayoutOptions()` and inert: inserting a node into the 60-node fixture
+   reshuffles the existing ones exactly as it does with no options at all. The sibling
+   `crossingMinimization.forceNodeModelOrder = true` is what makes it bite; both are set, and a
+   control spec lays the same graph out with the second off and watches the ordering break. Same
+   shape as S3's constraint finding — AC6 as written is one option short.
+3. **The renderer's `moveEnd` is conditional.** `@vue-flow/core@1.48.2` emits `moveStart`
+   unconditionally and `moveEnd` only if the viewport actually changed, so a gesture that moves
+   nothing leaves AC7's transition switched off for the rest of the session. The facade restores
+   motion on `pointerup` as well.
+4. **`fitViewOnInit` fits nothing, and `minZoom` defaults too high.** The canvas renders no nodes
+   until the first layout lands, so the on-init fit sees an empty graph; and at the renderer's
+   default `minZoom: 0.5` a twelve-node chain cannot fit a pane at all. The facade fits on
+   `nodesInitialized` and lowers the floor — a plan graph is wide by nature.
+5. **AC10's spike branch is committed rather than imagined.** `GraphCanvas.stub.vue` plus one build
+   alias (`DeFlow_GRAPH_RENDERER=stub`) is the swap, and `e2e/graph-facade-swap.test.ts` builds the
+   whole app that way, proves `@vue-flow/core` leaves the bundle entirely, and renders a real
+   400-node plan through the stub.
+6. **`@dagrejs/dagre` is not a dependency of `@DeFlow/web`.** S3 concluded the worker path is
+   viable and the fallback is not needed; the measurement file records that choice, and the spike
+   keeps dagre executable so the named alternative cannot rot into a paragraph.
 
 **Notes / risks** — do **not** test this surface in jsdom or happy-dom. They have no SVG measurement
 (`getBBox`, `getComputedTextLength`, `getScreenCTM`), no canvas and no WebGL, and _the failure mode is

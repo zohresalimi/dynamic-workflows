@@ -637,9 +637,14 @@ export function checkRelativeImportsHaveTsExtension(files: readonly SourceFile[]
       let match: RegExpExecArray | null = RELATIVE_IMPORT_SPECIFIER.exec(line);
       while (match !== null) {
         const specifier = match[1] ?? match[2];
+        // Vite's resource queries — `?worker`, `?raw`, `?url` — come *after*
+        // the extension, so `./elk.worker.ts?worker` (KAR-16.6 AC5) carries an
+        // explicit `.ts` and still fails an `endsWith`. The rule is about the
+        // extension being written down, not about it being the last character.
+        const path = specifier?.split('?')[0];
         const explicit =
-          specifier !== undefined &&
-          EXPLICIT_RELATIVE_EXTENSIONS.some((extension) => specifier.endsWith(extension));
+          path !== undefined &&
+          EXPLICIT_RELATIVE_EXTENSIONS.some((extension) => path.endsWith(extension));
         if (specifier !== undefined && !explicit) {
           violations.push({
             where: `${file.path}:${index + 1}`,

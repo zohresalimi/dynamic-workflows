@@ -118,6 +118,14 @@ catalog:
   # bundle (aria-live, per-node ariaLabel, keyboard traversal). It is 345 KB raw
   # and deliberately IN the initial chunk: the plan graph is the landing view.
   "@vue-flow/core": ^1.48.2
+  # KAR-16.6 / KAR-00.4. The layout engine, exact rather than caret: 0.12.0 is
+  # the build S3 settled — `elkjs/lib/elk-worker.min.js?worker` plus ELK's
+  # `workerFactory`, never the documented `workerUrl`, which wants a publicly
+  # served path that `vite build`'s hashing destroys (docs/spikes/S3-elk-worker.md).
+  # It is GWT-transpiled Java, its own README acknowledges bundler friction, and
+  # a floating range would move the 1.4 MB worker chunk under a recipe verified
+  # against one build.
+  elkjs: 0.12.0
   # Tailwind 4 is CSS-first: no tailwind.config.js and no PostCSS step, so the
   # Vite plugin is the whole integration and `@theme` lives in a stylesheet.
   tailwindcss: ^4.3.3
