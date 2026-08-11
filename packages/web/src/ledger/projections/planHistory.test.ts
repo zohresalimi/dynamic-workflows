@@ -7,6 +7,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { fold, ledger, unknownKind } from '../../../test/run-fixtures.ts';
 import {
   applyPlanHistory,
+  contentHash,
   emptyPlanHistory,
   type PlanHistoryProjection,
   versionsOf,
@@ -138,5 +139,74 @@ suite('AC11 — an unknown kind is ignored, without throwing and without mutatin
     }).not.toThrow();
 
     expect({ ...state, appliedSeq: before.appliedSeq }).toEqual(before);
+  });
+});
+
+/**
+ * KAR-17.2 test 1 — the change-detection hash the scrubber classifies `changed`
+ * with (EPIC-17-S7's third scenario).
+ *
+ * The red this is written against is *"`JSON.stringify` was used and key order
+ * leaks in"*, and it is a red that never announces itself: two structurally
+ * identical nodes built by different code paths — one composed by the planner,
+ * one reassembled by a patch reducer — stringify differently, every node
+ * classifies as `changed` on every replan, and the scrubber shows a forty-node
+ * plan in which everything moved and nothing did.
+ */
+suite('KAR-17.2 AC4 — contentHash is a change detector, not a serialisation', () => {
+  const NODE = {
+    id: 'impl-checkout-payment',
+    type: 'agent',
+    permission: 'worktree',
+    brief: 'Rewrite the payment step',
+    reads: [{ kind: 'spec', section: 'goal' }],
+    writes: [],
+    retry: { maxAttempts: 3, backoff: { base: 1000, cap: 30_000 } },
+    provider: { prefer: ['claude-code'] },
+  } as const;
+
+  it('is stable across key reordering, which JSON.stringify is not', () => {
+    // The reordering has to be **nested** to mean anything, and finding that out
+    // is the reason this test was written before trusting the implementation:
+    // `contentHash` assembles its own top-level object with its own key order,
+    // so a node whose *outer* keys arrived in a different order hashes the same
+    // under any encoder at all — including `JSON.stringify`. The order that
+    // actually leaks is inside `retry`, inside `provider` and inside each
+    // `reads` entry, which is exactly where a patch reducer rebuilding a node
+    // differs from the planner that first composed it.
+    const reordered = {
+      provider: { prefer: NODE.provider.prefer },
+      retry: { backoff: { cap: 30_000, base: 1000 }, maxAttempts: 3 },
+      writes: NODE.writes,
+      reads: [{ section: 'goal', kind: 'spec' }],
+      brief: NODE.brief,
+      permission: NODE.permission,
+      type: NODE.type,
+      id: NODE.id,
+    };
+
+    expect(JSON.stringify(NODE)).not.toBe(JSON.stringify(reordered));
+    expect(contentHash(reordered)).toBe(contentHash(NODE));
+  });
+
+  it('moves when the provider moves — the quota reroute this view exists to show', () => {
+    expect(contentHash({ ...NODE, provider: { prefer: ['codex'] } })).not.toBe(contentHash(NODE));
+  });
+
+  it('moves when the permission moves, because that is what the patch policy gates on', () => {
+    expect(contentHash({ ...NODE, permission: 'worktree+net' })).not.toBe(contentHash(NODE));
+  });
+
+  it('ignores the fields it is not over: a title change is not a content change', () => {
+    // `contentHash` covers type, provider, permission, brief, reads, writes and
+    // the retry policy — and deliberately not the title, which the daemon's own
+    // RFC 6902 patch reports as the field-level change it is.
+    expect(contentHash({ ...NODE, title: 'Rewrite the payment step, carefully' })).toBe(
+      contentHash(NODE),
+    );
+  });
+
+  it('is never mistaken for an identity: the prefix says so on sight', () => {
+    expect(contentHash(NODE)).toMatch(/^h-[0-9a-f]{8}$/);
   });
 });

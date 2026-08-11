@@ -657,3 +657,158 @@ export function listPlanVersions(db: Db, runId: string, limit: number): PlanVers
     return [{ version: row.version, seq: row.seq, planHash: parsed.planHash }];
   });
 }
+
+/**
+ * KAR-17.2 AC1 — every patch this run *proposed*, and what became of each.
+ *
+ * The version rail above answers "what versions exist". This answers the
+ * question that rail structurally cannot: **what was proposed and refused**.
+ * A rejected patch never produces a version, so it leaves no `plan.proposed`
+ * and no tick — and it is the mark on the scrubber an operator most wants,
+ * because a planner that proposed the same widening three times and was
+ * refused three times is a diagnosable pattern that is invisible when only
+ * applied patches are shown (docs/04-domain-model.md §9, F2.4, F2.5).
+ *
+ * One statement plus one small per-row lookup for the outcome, rather than a
+ * fold: bounded by `limit`, so a looping planner — exactly the run where this
+ * list is longest — still costs a page rather than a replay.
+ *
+ * `min(seq)` per `patch.id` for the same reason `listPlanVersions` groups: two
+ * rival proposers can raise the same id (KAR-11.3 AC10), and the row a reader
+ * means is the first.
+ */
+const LIST_PLAN_PATCHES_SQL = `
+  SELECT min(seq) AS seq, json_extract(payload, '$.patch.id') AS patch_id
+  FROM event
+  WHERE run_id = ? AND kind = 'plan.patch.proposed'
+  GROUP BY patch_id
+  ORDER BY seq
+  LIMIT ?
+`;
+
+/**
+ * The event that decided a proposal, whichever of the three kinds it was.
+ *
+ * `kind IN (…)` rather than three statements, because "what became of this
+ * patch" has exactly one answer and asking three times invites a row that is
+ * both applied and rejected to be reported as whichever query ran last.
+ */
+const SELECT_PATCH_OUTCOME_SQL = `
+  SELECT seq, kind, payload FROM event
+  WHERE seq = (
+    SELECT min(seq) FROM event
+    WHERE run_id = ?
+      AND kind IN ('plan.patched', 'plan.patch.rejected', 'plan.patch.queued')
+      AND json_extract(payload, '$.patchId') = ?
+  )
+`;
+
+/** What became of a proposal. `pending` is the real window between the
+ * proposal and the policy engine's answer, and is reported rather than hidden:
+ * a mark that blinks into existence is worse than one that says "undecided". */
+export type PlanPatchOutcome = 'applied' | 'rejected' | 'queued' | 'pending';
+
+/** One non-version mark on the scrubber's rail. */
+export interface PlanPatchRow {
+  readonly patchId: string;
+  /** The `seq` of the `plan.patch.proposed` (NF10). */
+  readonly seq: number;
+  /** The patch's own `reason`, verbatim — never summarised (docs/04 §3). */
+  readonly reason: string;
+  readonly proposedBy: string | null;
+  readonly outcome: PlanPatchOutcome;
+  /** The `seq` of the event that decided it, or `null` while nothing has. */
+  readonly decidedSeq: number | null;
+  /** The plan version an applied patch produced. `null` otherwise. */
+  readonly version: number | null;
+  /** `auto` | `approved` on an applied patch; `null` otherwise. */
+  readonly decision: string | null;
+  /** The policy rule that decided it, where the decision named one. */
+  readonly rule: string | null;
+  readonly by: string | null;
+}
+
+interface PatchRow {
+  readonly seq: number;
+  readonly patch_id: string;
+}
+
+interface OutcomeRow {
+  readonly seq: number;
+  readonly kind: string;
+  readonly payload: string;
+}
+
+export function listPlanPatches(db: Db, runId: string, limit: number): PlanPatchRow[] {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new RangeError(`listPlanPatches: limit must be an integer >= 1, got ${limit}`);
+  }
+
+  const proposals = db.prepare<PatchRow>(LIST_PLAN_PATCHES_SQL).all(runId, limit);
+  const outcomeOf = db.prepare<OutcomeRow>(SELECT_PATCH_OUTCOME_SQL);
+  const proposalPayload = db.prepare<PayloadRow>(SELECT_PLAN_PATCH_PROPOSED_SQL);
+
+  return proposals.flatMap((row) => {
+    const proposed = proposalPayload.get(runId, row.patch_id);
+    if (proposed === undefined) return [];
+    const patch = (
+      JSON.parse(proposed.payload) as {
+        readonly patch: { readonly reason: string; readonly proposedBy?: string };
+      }
+    ).patch;
+
+    return [
+      {
+        patchId: row.patch_id,
+        seq: row.seq,
+        reason: patch.reason,
+        proposedBy: patch.proposedBy ?? null,
+        ...decidedBy(outcomeOf.get(runId, row.patch_id)),
+      },
+    ];
+  });
+}
+
+/** The outcome half of a row, from the event that decided it — or the
+ * undecided shape when nothing has. */
+function decidedBy(
+  outcome: OutcomeRow | undefined,
+): Pick<PlanPatchRow, 'outcome' | 'decidedSeq' | 'version' | 'decision' | 'rule' | 'by'> {
+  if (outcome === undefined) {
+    return {
+      outcome: 'pending',
+      decidedSeq: null,
+      version: null,
+      decision: null,
+      rule: null,
+      by: null,
+    };
+  }
+
+  const payload = JSON.parse(outcome.payload) as {
+    readonly version?: number;
+    readonly rule?: string;
+    readonly by?: string;
+    readonly decision?: { readonly decision: string; readonly by: string; readonly rule?: string };
+  };
+
+  if (outcome.kind === 'plan.patched') {
+    return {
+      outcome: 'applied',
+      decidedSeq: outcome.seq,
+      version: payload.version ?? null,
+      decision: payload.decision?.decision ?? null,
+      rule: payload.decision?.rule ?? null,
+      by: payload.decision?.by ?? null,
+    };
+  }
+
+  return {
+    outcome: outcome.kind === 'plan.patch.rejected' ? 'rejected' : 'queued',
+    decidedSeq: outcome.seq,
+    version: null,
+    decision: null,
+    rule: payload.rule ?? null,
+    by: payload.by ?? null,
+  };
+}

@@ -1362,6 +1362,41 @@ export const api = new Hono()
   )
 
   /**
+   * KAR-17.2 AC1 — `GET /api/runs/:id/patches`: every patch this run
+   * *proposed*, and what became of each (docs/04-domain-model.md §9, F2.4).
+   *
+   * The version rail above answers *"what versions exist"*, and it structurally
+   * cannot answer this one. A patch that was **refused** produced no version,
+   * so it leaves no `plan.proposed` and no tick — and it is the mark on the
+   * scrubber an operator most wants, because a planner that proposed the same
+   * widening three times and was refused three times is a diagnosable pattern
+   * that is invisible when only applied patches are shown.
+   *
+   * It is a separate route rather than more rows on `/plans` deliberately: that
+   * response is *one row per version*, several clients read it that way, and a
+   * list whose members are sometimes versions and sometimes not is a shape
+   * every caller has to branch on.
+   */
+  .get(
+    '/runs/:id/patches',
+    // Declared rather than read straight off `c.req.query()`, for the reason
+    // `/plans` above declares its own: the scrubber is this route's only
+    // caller, and `limit` belongs in the type it compiles against.
+    validator('query', (value) => ({
+      limit: typeof value.limit === 'string' ? value.limit : undefined,
+    })),
+    (c) => {
+      const found = resolveRun(c);
+      if ('response' in found) return found.response;
+
+      const limit = boundedLimit(c.req.valid('query').limit, READ_LIMITS.patches);
+      c.header(LIMIT_HEADER, String(limit));
+
+      return c.json(found.view.planPatches(found.runId, limit), 200);
+    },
+  )
+
+  /**
    * KAR-15.6 AC1 — `GET /api/runs/:id/plans/:version`: the immutable plan
    * document that version names.
    *

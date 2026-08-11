@@ -39,6 +39,14 @@ export interface ReadLimit {
 export const READ_LIMITS = {
   /** `GET /runs/:id/plans` — one row per plan version. */
   plans: { fallback: 200, cap: 500 },
+  /**
+   * `GET /runs/:id/patches` — one row per patch *proposed*, applied or not
+   * (KAR-17.2 AC1). Sized like `plans` rather than smaller: a refused proposal
+   * produces no version, so on a run whose planner looped on one refused change
+   * this list is legitimately longer than the version rail beside it, and that
+   * run is exactly the one somebody is looking at when they open the scrubber.
+   */
+  patches: { fallback: 200, cap: 500 },
   /** `GET /runs/:id/nodes/:nodeId/io` — chunks per page, head or tail. */
   io: { fallback: 500, cap: 2_000 },
   /** `GET /runs/:id/facts`. */

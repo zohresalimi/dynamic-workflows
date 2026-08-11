@@ -45,6 +45,7 @@ import type {
   IoChunkPage,
   IoChunkSelector,
   NodeTiming,
+  PlanPatchRow,
   PlanVersionRow,
   ProviderCapabilityRow,
   RunOrigin,
@@ -55,6 +56,7 @@ import type {
 import {
   headSeq as ledgerHeadSeq,
   runHeadSeq as ledgerRunHeadSeq,
+  listPlanPatches,
   listPlanVersions,
   listRunIds,
   openRead,
@@ -173,6 +175,15 @@ export interface LedgerView {
    * proposed, in order, at most `limit` of them.
    */
   planVersions(runId: RunId, limit: number): readonly PlanVersionRow[];
+  /**
+   * KAR-17.2 AC1 — every patch this run *proposed*, and what became of each.
+   *
+   * The half of the scrubber's rail `planVersions` structurally cannot answer:
+   * a refused patch produces no version, so it has no tick, and *"the proposal
+   * is recorded even when it was refused"* would be a property of the ledger no
+   * client could read.
+   */
+  planPatches(runId: RunId, limit: number): readonly PlanPatchRow[];
   /** KAR-15.6 AC3 — when a node first started and last stopped. */
   nodeTiming(runId: RunId, nodeId: string): NodeTiming;
   /** KAR-15.6 AC3 — the packet manifest one node attempt was built with. */
@@ -246,6 +257,7 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
     },
     planVersion: (runId, version) => readPlanVersion(db, runId, version),
     planVersions: (runId, limit) => listPlanVersions(db, runId, limit),
+    planPatches: (runId, limit) => listPlanPatches(db, runId, limit),
     nodeTiming: (runId, nodeId) => readNodeTiming(db, runId, nodeId),
     contextPacket: (runId, nodeId, attempt) => readContextPacket(db, runId, nodeId, attempt),
     ioPage: (selector, afterSeq, limit) => readIoChunks(db, selector, afterSeq, limit),

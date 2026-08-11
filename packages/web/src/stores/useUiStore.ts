@@ -48,6 +48,18 @@ export const useUiStore = defineStore('ui', () => {
   const planVersions = shallowRef<readonly number[]>([]);
   const planVersion = ref<number | null>(null);
 
+  /**
+   * How the operator last moved the scrubber: by **stepping** (`←`/`→`) or by
+   * **picking** a version off the rail.
+   *
+   * The plan-evolution view needs the difference and cannot recover it from the
+   * version alone (KAR-17.2 AC3). Stepping between the two halves of one patch
+   * has to stay on that patch's union layout, so that nothing moves; clicking a
+   * tick is a jump to *that version*, and shows the patch that produced it.
+   * Both can land on the same number, and they mean different things.
+   */
+  const planMove = ref<'select' | 'step'>('select');
+
   const selectedNode = computed<GraphNode | null>(
     () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
   );
@@ -112,6 +124,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function selectPlanVersion(version: number | null): void {
+    planMove.value = 'select';
     planVersion.value = version;
   }
 
@@ -122,6 +135,7 @@ export const useUiStore = defineStore('ui', () => {
 
     const current = versions.indexOf(planVersion.value ?? Number.NaN);
     const next = current === -1 ? 0 : Math.min(Math.max(current + delta, 0), versions.length - 1);
+    planMove.value = 'step';
     planVersion.value = versions[next] ?? null;
   }
 
@@ -133,6 +147,7 @@ export const useUiStore = defineStore('ui', () => {
     overlays,
     planVersions,
     planVersion,
+    planMove,
     stateOf,
     setNodes,
     selectNode,
