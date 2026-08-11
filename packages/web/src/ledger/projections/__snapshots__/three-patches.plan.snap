@@ -15,6 +15,20 @@
       "kind": "control",
       "to": "review-checkout",
     },
+    "recon→impl-checkout-cart:control" => {
+      "carries": [],
+      "from": "recon",
+      "id": "recon→impl-checkout-cart:control",
+      "kind": "control",
+      "to": "impl-checkout-cart",
+    },
+    "recon→impl-checkout-payment:control" => {
+      "carries": [],
+      "from": "recon",
+      "id": "recon→impl-checkout-payment:control",
+      "kind": "control",
+      "to": "impl-checkout-payment",
+    },
     "impl-checkout-cart→review-checkout:control" => {
       "carries": [],
       "from": "impl-checkout-cart",
@@ -137,7 +151,7 @@
       "worktree": null,
     },
   },
-  "planHash": "sha256-c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8",
+  "planHash": "sha256-c2b3868b43587e9c980917a13c81179c6903b27d97ec120df2e637f7faaffc1a",
   "proposals": Map {
     "p-insert-review" => {
       "ops": [

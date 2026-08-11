@@ -1521,6 +1521,35 @@ projection of an event stream either way"_ ([03 §6.2](../../03-local-developmen
 scenario is not pedantry — a harness that skips auth is a harness that lets an auth regression ship,
 because the harness is what most development runs against.
 
+**Automated by KAR-16.5**, at integration, in three files — because the four scenarios are three
+different kinds of claim:
+
+- **Booting the harness, the stream contract and the auth scenarios** —
+  `packages/daemon/test/integration/replay-harness.test.ts`, over a real `boot()` on a real
+  ephemeral port with frames read off the socket by hand: `hello` carrying
+  `{ streamId, apiVersion, build, daemonEpoch, headSeq }`, `retry: 2000` matched exactly once in the
+  raw byte stream, every ledger frame's `id:` equal to its own `seq`, keepalives still arriving on a
+  stream whose recording has run out, `401 missing_token` unauthenticated, `403 bad_origin` from a
+  foreign `Origin`, and `GET /api/health` still open.
+- **"Their response shapes are byte-identical to a live daemon's"** —
+  `packages/daemon/test/integration/replay-contract-equality.test.ts` asks the **same ten routes of
+  two daemons**: one served the recorded `ledger.db` that `gate-failure-repair` was produced into,
+  the other `DeFlow replay` over that run's own `events.jsonl`. Status, `X-DeFlow-Api` and body are
+  compared value for value, not shape for shape, and the sweep fails if fewer than six routes
+  answered `200` — a daemon that 404ed everything would otherwise "match" perfectly. Verified to
+  have teeth: dropping the plan document from the restore fails it on `…/plans/1` with 404 ≠ 200.
+- **"A grep of packages/web/src for any replay-related identifier returns nothing"** —
+  `test/no-replay-branch-in-web.test.ts`, over the shipped frontend with comments stripped, with a
+  control asserting the rule catches `if (isReplay)`. Two narrowings are recorded in that file:
+  prose *about* a fixture server is not a branch, and `replay` alone is the client's own word for
+  folding events forward from a snapshot (`api/scrub.ts`), so what is forbidden is an identifier
+  naming the *mode* — `isReplay`, `replayMode`, a `VITE_*REPLAY*` flag, a second server.
+
+The reason no UI branch is needed is structural rather than disciplined: `startReplay` calls the
+same `boot()` `DeFlowd` does, and the only difference is that the writer is a recording on a
+schedule instead of an orchestrator — a difference entirely on the write side, where no client can
+observe it.
+
 ---
 
 ## EPIC-16-S32 — The six fixtures and what each one proves
@@ -1560,6 +1589,35 @@ Note `compaction` must contain **both** fidelities: without the `vendor.session`
 rendering in KAR-17.4 has nothing to be tested against, and it is exactly the case that will occur in
 real runs against Claude Code.
 
+**Automated by KAR-16.5** in `packages/daemon/test/integration/replay-corpus.test.ts`, and each
+fixture is asserted **through the harness** rather than by reading its file — the scenario says
+*"when it is served by the replay harness"*, and a test that read the JSON would pass for a fixture
+the harness cannot serve. `stress-400` was added by this story
+(`packages/core/scripts/build-ui-run-fixtures.ts`): 400 materialised `map` children with real
+`<mapNodeId>--<itemId>` ids minted by `mapChildId`, each moving `pending → running → passed`, plus
+an assertion that the `plan.proposed` payload stays inside the 256 KiB inline ceiling — over it, a
+real run would have spilled the document to the blob store and the fixture would no longer be one
+file.
+
+Two directory names differ from the table above and are deliberately not renamed: `crash-resume` is
+committed as `crash-resume-seq-gap` and `gate-fail-repair` as `gate-failure-repair`, the names the
+stories that recorded them (KAR-15.4, KAR-12.5) created.
+
+**Two fixture defects this story's assertions exposed, both fixed here rather than asserted around:**
+
+- `happy-path-12`'s gate verdicts carried a filler `specHash`, so `reduce()` treated every one of
+  them as **void** (KAR-12.4) and `GET /api/runs/:id/gates` was empty however many gates the run
+  evaluated. The fixture now carries the run's real approved hash.
+- `three-patches` recorded `plan.patched` alone for v2–v4. A real `applyPatchedPlanVersion` writes
+  **both** `plan.proposed` (carrying the successor document) and `plan.patched` (carrying the hashes
+  and the decision) in one transaction, so the version rail had one rung and `…/plans/diff` 404ed on
+  a real replay — in a fixture whose entire purpose is the plan-evolution scrubber. All four
+  versions are now sealed documents emitted as the daemon emits them, which in turn exposed that
+  `packages/web/src/ledger/projections/planHistory.ts` pushed a rail row for *both* events and so
+  doubled every rung on any real ledger (visible in the recorded `gate-failure-repair` snapshot too).
+  The projection now merges a promotion into the proposal it belongs to; its own specs pass
+  unchanged.
+
 ---
 
 ## EPIC-16-S33 — Speed control, pause and seek
@@ -1598,6 +1656,26 @@ Feature: Playback control
 ([03 §6.2](../../03-local-development.md)). `--speed max` is what makes the six-hour soak in S27 and
 the graph measurement in S36 practical at all.
 
+**Automated by KAR-16.5** at two levels, because the Examples table and the dev loop are different
+claims:
+
+- **The speed table** — `packages/daemon/src/replay/speed.test.ts`, over the pure scheduler:
+  `1x`/`20x`/`50x` map the recorded timeline by division and `max` yields zero delay for every
+  event. The schedule is computed as **offsets from the first recorded event**, never gap by gap,
+  and there is a test for exactly that: ten thousand 3 ms gaps at 20x land the last frame where the
+  recording says it is, where a per-gap divide accumulates rounding into seconds of drift.
+- **Pause, seek and the dev loop** — `packages/daemon/test/integration/replay-harness.test.ts` and
+  `e2e/replay-dev-loop.test.ts`. Paused, the position does not move while keepalives keep arriving
+  and the socket stays open; a forward seek fast-forwards the commit to that `seq` and
+  `…/snapshot?seq=<N>` answers at it. **A backward seek commits nothing and withdraws nothing** —
+  the ledger is append-only, so it moves the reported position only and the client re-hydrates from
+  the snapshot endpoint, which is what this scenario's own *"the client is expected to re-hydrate
+  from the snapshot endpoint at that seq"* asks for. The e2e runs the real `dev:replay` script out
+  of `package.json` (only its port substituted), and asserts the handoff URL, the `hello`/`retry`
+  frames, a restart on a source edit at the same origin, and that a replay never writes into
+  `DeFlow_DATA_DIR` — a replay keeps its ledger in a directory of its own, so pointing one at a real
+  `.DeFlow/` cannot graft a fixture onto somebody's run.
+
 ---
 
 ## EPIC-16-S34 — Fixtures are recorded, never hand-written
@@ -1630,6 +1708,23 @@ Feature: Fixture provenance
 not start W11 until at least one full run completes headlessly through W12's CLI. A run you can drive
 from the terminal is a run you can build a fixture from, and the replay-fixture harness is the main
 structural defence against the view work sprawling."_
+
+**Automated by KAR-16.5** in `packages/daemon/test/integration/replay-corpus.test.ts`: every fixture's
+README must name a producing script, that script must exist on disk, and the README must say in as
+many words that it was never hand-written. `gate-failure-repair` — the one fixture in the corpus that
+really is a mock-agent recording — must also record the `--seed`, and the seed in its README is
+compared against `MOCK_AGENT_SEED` in the script that passes it, so the two cannot drift.
+
+**The dependency, stated honestly, as this scenario's third block requires.** `DeFlow run`
+(EPIC-18 KAR-18.3) still does not exist, so three of the six are **assembled** rather than recorded
+— `happy-path-12`, `three-patches` and `stress-400`, all by
+`packages/core/scripts/build-ui-run-fixtures.ts`, which authors no payload shape (every packet from
+`buildPacket`, every hash from `planHash`, every envelope through `parseEvent`) and is regenerated
+and diffed byte for byte by `packages/core/test/integration/ui-run-fixtures.test.ts`. That is
+KAR-16.5 AC7's regeneration check, for three fixtures rather than one. The other three are
+recordings: a real packet builder, a real repair loop, a real `kill -9`. **When KAR-18.3 lands, the
+three assemblies are to be replaced by recordings at the same three paths** — the corpus test, the
+projections and the harness all read the same `events.jsonl` and do not move.
 
 ---
 

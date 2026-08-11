@@ -144,6 +144,18 @@ const MODEL = 'claude-sonnet-4-5';
 const PLANNER = { model: 'a-model', effort: 'max', tier: 'strongest' } as const;
 const POLICY_HASH = `sha256-${'e'.repeat(64)}`;
 
+/**
+ * The `--seed` every mock-agent process in this recording is driven with
+ * (KAR-16.5 AC6: a fixture's provenance note names the mock-agent script *and*
+ * the seed that produced it).
+ *
+ * A constant rather than a literal at the call site because the README below is
+ * generated from it: a seed recorded in prose that no longer matches the one
+ * the script passes is worse than no seed at all, since it invites a
+ * reproduction attempt that cannot work.
+ */
+export const MOCK_AGENT_SEED = 42;
+
 /** A fixed instant for the seeded prologue. The run itself is on the system
  * clock — there are live child processes, and a gate's timeout is measured on
  * the same clock the loop advances. */
@@ -709,7 +721,7 @@ export async function buildGateRepairFixture(options: {
           worktree,
           baseSha,
           binary: agentBinary,
-          argv: ['--seed', '42', '--scenario', scenario],
+          argv: ['--seed', String(MOCK_AGENT_SEED), '--scenario', scenario],
           prompt: planned.type === 'agent' ? planned.brief : 'repair the finding',
           gate: loadGateDefinition('.DeFlow/gates/typecheck.yaml', TYPECHECK_YAML),
           specHash: spec.specHash,
@@ -843,6 +855,9 @@ node packages/daemon/scripts/build-gate-repair-fixture.ts
 \`\`\`
 
 - run: \`${summary.runId}\`, final status \`${summary.status}\`
+- the fix node is a **mock agent** (\`@DeFlow/mock-agent\`), driven with
+  \`--seed ${String(MOCK_AGENT_SEED)} --scenario <workDir>/scenarios/<node>.json\`, so the same
+  seed reproduces the same events
 - finding \`${summary.finding}\` → fix node \`${summary.fixNode}\` → re-run gate
   \`${summary.rerunNode}\`
 - verdicts, in ledger order: ${summary.verdicts

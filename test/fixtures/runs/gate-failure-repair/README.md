@@ -13,6 +13,9 @@ node packages/daemon/scripts/build-gate-repair-fixture.ts
 ```
 
 - run: `run_20260810T090000Z_9f31ab`, final status `completed`
+- the fix node is a **mock agent** (`@DeFlow/mock-agent`), driven with
+  `--seed 42 --scenario <workDir>/scenarios/<node>.json`, so the same
+  seed reproduces the same events
 - finding `65207341fbd9` → fix node `fix-65207341fbd9` → re-run gate
   `gate-typecheck-r2`
 - verdicts, in ledger order: `typecheck` fail @ 11, `typecheck` pass @ 28

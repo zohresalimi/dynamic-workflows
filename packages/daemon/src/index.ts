@@ -524,6 +524,27 @@ export type {
   RecoveryStep,
 } from './recovery.ts';
 export { RECOVERED_STEPS, RECOVERY_STEPS, recover } from './recovery.ts';
+// KAR-16.5 — `DeFlow replay <fixture> --speed <n>x --port <p>`: the daemon
+// mode that serves a recorded run through the normal routes, so nine views can
+// be developed offline and no frontend anywhere has to know it is a replay.
+export {
+  BadReplayArgv,
+  CORPUS_DIR,
+  corpus,
+  DEFAULT_REPLAY_PORT,
+  parseReplayArgv,
+  type ReplayCommand,
+  resolveFixture,
+} from './replay/cli.ts';
+export {
+  loadFixture,
+  type RecordedLedger,
+  readFixture,
+  UnreadableFixture,
+} from './replay/fixture.ts';
+export { type ReplayHarness, type ReplayOptions, startReplay } from './replay/harness.ts';
+export { EMIT_BATCH, type Player, type PlayerOptions, startPlayer } from './replay/player.ts';
+export { BadSpeed, emissionOffsets, parseSpeed, SPEEDS, type Speed } from './replay/speed.ts';
 export type { RecordedFailure, RecordFailureInput } from './retry.ts';
 export { recordNodeFailure } from './retry.ts';
 export { daemonEpoch, headSeq, setDaemonEpoch, setHeadSeq } from './runtime.ts';

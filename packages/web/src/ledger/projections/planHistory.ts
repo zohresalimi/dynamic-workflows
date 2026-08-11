@@ -146,7 +146,11 @@ export function applyPlanHistory(state: PlanHistoryProjection, event: Event): vo
         decision: null,
         by: null,
         rule: null,
-        reason: 'the initial plan',
+        // Overwritten by the `plan.patched` that promotes it, when there is
+        // one; v1 has none, and *"the initial plan"* is the whole of its story.
+        // A later version whose promotion has not arrived yet says so, because
+        // it is a real state a tab can be in for the length of one transaction.
+        reason: event.payload.version === 1 ? 'the initial plan' : 'proposed; not yet promoted',
         patchId: null,
         proposedBy: String(event.payload.by),
         nodes: hashNodes(state.nodes),
@@ -167,9 +171,52 @@ export function applyPlanHistory(state: PlanHistoryProjection, event: Event): vo
 
     case 'plan.patched': {
       const held = state.proposals.get(event.payload.patchId);
-      if (held !== undefined) for (const op of held.ops) applyOp(state.nodes, op);
-
       state.version = event.payload.version;
+
+      /**
+       * The promotion of a version this rail already has a row for.
+       *
+       * `applyPatchedPlanVersion` writes **both** `plan.proposed` (carrying the
+       * successor document) and `plan.patched` (carrying the hashes and the
+       * decision) in one transaction, because *"`plan.patched` carries hashes
+       * and no document"* — so on a real ledger every version above v1 arrives
+       * as a pair. One rung per version, not two: the proposal contributes the
+       * document and the promotion contributes why it happened, and a rail that
+       * pushed both would double every step of the scrubber.
+       */
+      const proposal = state.rail.at(-1);
+      if (
+        proposal !== undefined &&
+        proposal.kind === 'version' &&
+        proposal.version === event.payload.version &&
+        proposal.planHash === event.payload.toHash
+      ) {
+        state.rail[state.rail.length - 1] = {
+          ...proposal,
+          decision: event.payload.decision.decision,
+          by: event.payload.decision.by,
+          rule: event.payload.decision.rule ?? null,
+          reason: held?.reason ?? 'the proposal for this patch is not in this window',
+          patchId: event.payload.patchId,
+          proposedBy:
+            event.payload.proposedBy === undefined
+              ? (held?.proposedBy ?? proposal.proposedBy)
+              : String(event.payload.proposedBy),
+        };
+        // `planVersionSeq` keeps the *proposal's* seq, which is the number the
+        // daemon's own `GET /api/runs/:id/plans` reports for the version
+        // (`min(seq)` over `plan.proposed`). Two rails naming two different
+        // seqs for one version is how a scrubber and a snapshot request end up
+        // one event apart.
+        return;
+      }
+
+      // No proposal in this window — an older ledger, or a tab that joined
+      // mid-run. The ops are then the only description of the successor there
+      // is, so they are applied, and the row says the reason is missing rather
+      // than leaving the cell blank: a hole the operator can see is worth more
+      // than one they cannot.
+      if (held !== undefined) for (const op of held.ops) applyOp(state.nodes, op);
       state.planVersionSeq.set(event.payload.version, event.seq);
       state.rail.push({
         kind: 'version',
@@ -179,9 +226,6 @@ export function applyPlanHistory(state: PlanHistoryProjection, event: Event): vo
         decision: event.payload.decision.decision,
         by: event.payload.decision.by,
         rule: event.payload.decision.rule ?? null,
-        // A patch whose proposal this tab never saw still gets a rail row, and
-        // it says so rather than leaving the cell blank: a hole the operator
-        // can see is worth more than one they cannot.
         reason: held?.reason ?? 'the proposal for this patch is not in this window',
         patchId: event.payload.patchId,
         proposedBy:

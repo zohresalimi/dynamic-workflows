@@ -50,57 +50,6 @@
       "type": "agent",
       "writes": [],
     },
-    "review-checkout" => {
-      "brief": "Review the checkout rewrite, and report what changed.",
-      "budget": {
-        "maxCostUsd": 2,
-        "maxWallClockMs": 600000,
-      },
-      "deps": [
-        "impl-checkout",
-      ],
-      "id": "review-checkout",
-      "lifecycle": "active",
-      "pathScopes": {
-        "read": [
-          "src/**",
-        ],
-        "write": [
-          "src/**",
-        ],
-      },
-      "permission": "read",
-      "provider": {
-        "prefer": [
-          "claude-code",
-        ],
-        "requires": [
-          "structuredOutput",
-        ],
-      },
-      "reads": [
-        {
-          "kind": "spec",
-          "section": "goal",
-        },
-      ],
-      "resume": "native-if-available",
-      "retry": {
-        "backoff": {
-          "base": 1000,
-          "cap": 30000,
-          "jitter": "full",
-        },
-        "maxAttempts": 3,
-      },
-      "returns": {
-        "maxTokens": 4000,
-        "schemaId": "DeFlow.finding.v1",
-      },
-      "title": "Review the checkout rewrite",
-      "type": "agent",
-      "writes": [],
-    },
     "impl-checkout-cart" => {
       "brief": "Rewrite the cart, and report what changed.",
       "budget": {
@@ -109,6 +58,9 @@
       },
       "deps": [
         "recon",
+      ],
+      "derivedFrom": [
+        "impl-checkout",
       ],
       "id": "impl-checkout-cart",
       "lifecycle": "active",
@@ -161,6 +113,9 @@
       "deps": [
         "recon",
       ],
+      "derivedFrom": [
+        "impl-checkout",
+      ],
       "id": "impl-checkout-payment",
       "lifecycle": "active",
       "model": "gpt-5-codex",
@@ -176,6 +131,9 @@
       "provider": {
         "prefer": [
           "codex",
+        ],
+        "requires": [
+          "structuredOutput",
         ],
       },
       "reads": [
@@ -198,6 +156,58 @@
         "schemaId": "DeFlow.finding.v1",
       },
       "title": "Rewrite the payment step",
+      "type": "agent",
+      "writes": [],
+    },
+    "review-checkout" => {
+      "brief": "Review the checkout rewrite, and report what changed.",
+      "budget": {
+        "maxCostUsd": 2,
+        "maxWallClockMs": 600000,
+      },
+      "deps": [
+        "impl-checkout-cart",
+        "impl-checkout-payment",
+      ],
+      "id": "review-checkout",
+      "lifecycle": "active",
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "read",
+      "provider": {
+        "prefer": [
+          "claude-code",
+        ],
+        "requires": [
+          "structuredOutput",
+        ],
+      },
+      "reads": [
+        {
+          "kind": "spec",
+          "section": "goal",
+        },
+      ],
+      "resume": "native-if-available",
+      "retry": {
+        "backoff": {
+          "base": 1000,
+          "cap": 30000,
+          "jitter": "full",
+        },
+        "maxAttempts": 3,
+      },
+      "returns": {
+        "maxTokens": 4000,
+        "schemaId": "DeFlow.finding.v1",
+      },
+      "title": "Review the checkout rewrite",
       "type": "agent",
       "writes": [],
     },
@@ -459,7 +469,7 @@
         "review-checkout" => "h-a403c0ad",
       },
       "patchId": "p-insert-review",
-      "planHash": "sha256-c0227cecc02af4ecc0227cecc02af4ecc0227cecc02af4ecc0227cecc02af4ec",
+      "planHash": "sha256-6f38ba7466bb40e6efec0312c4236ab75eb863b8f5eb96c1443fb9511cbeb391",
       "proposedBy": "planner",
       "reason": "a security review is required before checkout ships",
       "rule": "adds-no-write-capability",
@@ -472,12 +482,12 @@
       "kind": "version",
       "nodes": Map {
         "recon" => "h-146ee429",
-        "review-checkout" => "h-a403c0ad",
         "impl-checkout-cart" => "h-279eb160",
         "impl-checkout-payment" => "h-1774d8f6",
+        "review-checkout" => "h-a403c0ad",
       },
       "patchId": "p-split-impl",
-      "planHash": "sha256-c0227ceac02af4e2c0227ceac02af4e2c0227ceac02af4e2c0227ceac02af4e2",
+      "planHash": "sha256-c29e94ec65d0f8f69d47d0ee447ed63f8e2f4b3613e78d408fba5f09c4d98db1",
       "proposedBy": "planner",
       "reason": "the checkout rewrite is two independent changes",
       "rule": "default",
@@ -490,12 +500,12 @@
       "kind": "version",
       "nodes": Map {
         "recon" => "h-146ee429",
-        "review-checkout" => "h-a403c0ad",
         "impl-checkout-cart" => "h-279eb160",
         "impl-checkout-payment" => "h-b4ce0b97",
+        "review-checkout" => "h-a403c0ad",
       },
       "patchId": "p-reroute-payment",
-      "planHash": "sha256-c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8c0227ce8c02af4e8",
+      "planHash": "sha256-c2b3868b43587e9c980917a13c81179c6903b27d97ec120df2e637f7faaffc1a",
       "proposedBy": "scheduler",
       "reason": "claude-code is out of quota for the next four hours",
       "rule": "quota-reroute-equivalent",

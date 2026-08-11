@@ -51,7 +51,8 @@ import { buildPacket } from '../src/build-packet.ts';
 import { EVENT_CURRENT_VERSIONS, type EventKind } from '../src/event-payloads.ts';
 import { type Event, parseEvent } from '../src/events.ts';
 import { planHash } from '../src/hash.ts';
-import { type EventSeq, EventSeqSchema } from '../src/ids.ts';
+import { type EventSeq, EventSeqSchema, type NodeId } from '../src/ids.ts';
+import { mapChildId } from '../src/map-child-id.ts';
 import { contextSegment } from '../src/pinned-set.ts';
 import type { PlanGraph } from '../src/plan-graph.ts';
 import { PLANGRAPH_SCHEMA_ID, PlanGraphSchema } from '../src/plan-graph.ts';
@@ -452,7 +453,12 @@ function verdict(
     gate,
     evaluatedNode: node,
     by: { node: gate, provider: 'deflow', model: 'deterministic-gate' },
-    specHash: sha256('spec'),
+    // The run's **real** approved spec hash, not a filler: `reduce()` treats a
+    // verdict whose `specHash` is not the contract now in force as *void*
+    // (KAR-12.4), so a fixture with a fabricated hash here produces a run whose
+    // `/api/runs/:id/gates` is empty however many gates it evaluated — and the
+    // criteria board it exists to develop has nothing to render.
+    specHash: approvedSpec().specHash,
     criteria: [...criteria],
     findings: [...findings],
     summary,
@@ -1139,13 +1145,93 @@ function abandonPatch() {
 
 // ── three-patches ────────────────────────────────────────────────────────────
 
-async function threePatchesPlan(): Promise<PlanGraph> {
-  const nodes: NodeDocument[] = [
-    agentNode('recon', 'Survey the checkout flow', { permission: 'read' }),
-    agentNode('impl-checkout', 'Rewrite the checkout flow', { deps: ['recon'] }),
-  ];
-  const edges: EdgeDocument[] = [{ from: 'recon', to: 'impl-checkout', kind: 'control' }];
-  return await seal(THREE_PATCHES_RUN, 1, null, nodes, edges);
+/**
+ * The four versions this run walks, each sealed as a real document.
+ *
+ * Every one of them is emitted as its own `plan.proposed`, because that is what
+ * `applyPatchedPlanVersion` does: *"`plan.patched` carries hashes and no
+ * document"*, and the successor's graph reaches the ledger as a proposal in the
+ * same transaction. A fixture that wrote only the promotion would have a
+ * version rail with one rung and a `…/plans/diff` that 404s — which is exactly
+ * the state the scrubber fixture exists to make impossible.
+ */
+async function threePatchesPlans(): Promise<readonly PlanGraph[]> {
+  const recon = agentNode('recon', 'Survey the checkout flow', { permission: 'read' });
+  const impl = agentNode('impl-checkout', 'Rewrite the checkout flow', { deps: ['recon'] });
+  const review = agentNode('review-checkout', 'Review the checkout rewrite', {
+    deps: ['impl-checkout'],
+    permission: 'read',
+  });
+
+  const v1 = await seal(
+    THREE_PATCHES_RUN,
+    1,
+    null,
+    [recon, impl],
+    [{ from: 'recon', to: 'impl-checkout', kind: 'control' }],
+  );
+
+  // The insert: one node added, one edge added, nothing else moved.
+  const v2 = await seal(
+    THREE_PATCHES_RUN,
+    2,
+    v1.planHash,
+    [recon, impl, review],
+    [
+      { from: 'recon', to: 'impl-checkout', kind: 'control' },
+      { from: 'impl-checkout', to: 'review-checkout', kind: 'control' },
+    ],
+  );
+
+  // The split: `impl-checkout` becomes two nodes that name it as their
+  // ancestor, which is what lets the scrubber animate a split as a split
+  // rather than as a delete and two inserts (F2.5).
+  const cart = {
+    ...agentNode('impl-checkout-cart', 'Rewrite the cart', { deps: ['recon'] }),
+    derivedFrom: ['impl-checkout'],
+  };
+  const payment = {
+    ...agentNode('impl-checkout-payment', 'Rewrite the payment step', { deps: ['recon'] }),
+    derivedFrom: ['impl-checkout'],
+  };
+  const reviewAfterSplit = {
+    ...review,
+    deps: ['impl-checkout-cart', 'impl-checkout-payment'],
+  };
+  const v3 = await seal(
+    THREE_PATCHES_RUN,
+    3,
+    v2.planHash,
+    [recon, cart, payment, reviewAfterSplit],
+    [
+      { from: 'recon', to: 'impl-checkout-cart', kind: 'control' },
+      { from: 'recon', to: 'impl-checkout-payment', kind: 'control' },
+      { from: 'impl-checkout-cart', to: 'review-checkout', kind: 'control' },
+      { from: 'impl-checkout-payment', to: 'review-checkout', kind: 'control' },
+    ],
+  );
+
+  // The reroute: one node's provider replaced, and nothing about the shape of
+  // the graph changes — the case a diff that compared node *sets* would miss.
+  const reroutedPayment = {
+    ...payment,
+    provider: { prefer: ['codex'], requires: ['structuredOutput'] },
+    model: 'gpt-5-codex',
+  };
+  const v4 = await seal(
+    THREE_PATCHES_RUN,
+    4,
+    v3.planHash,
+    [recon, cart, reroutedPayment, reviewAfterSplit],
+    [
+      { from: 'recon', to: 'impl-checkout-cart', kind: 'control' },
+      { from: 'recon', to: 'impl-checkout-payment', kind: 'control' },
+      { from: 'impl-checkout-cart', to: 'review-checkout', kind: 'control' },
+      { from: 'impl-checkout-payment', to: 'review-checkout', kind: 'control' },
+    ],
+  );
+
+  return [v1, v2, v3, v4];
 }
 
 const patchPolicy = (depth: number) => ({
@@ -1158,8 +1244,10 @@ const patchPolicy = (depth: number) => ({
 });
 
 async function threePatchesEvents(): Promise<Event[]> {
-  const plan = await threePatchesPlan();
-  const hashes = [plan.planHash, sha256('three-v2'), sha256('three-v3'), sha256('three-v4')];
+  const versions = await threePatchesPlans();
+  const [plan] = versions;
+  if (plan === undefined) throw new Error('threePatchesPlans returned no versions');
+  const hashes = versions.map((version) => version.planHash);
 
   const decision = (
     outcome: 'auto' | 'approved' | 'rejected',
@@ -1252,13 +1340,18 @@ async function threePatchesEvents(): Promise<Event[]> {
     { seq: 103, kind: 'plan.patch.proposed', payload: { patch: insert, basePlanHash: hashes[0] } },
     {
       seq: 104,
+      kind: 'plan.proposed',
+      payload: { version: 2, planHash: hashes[1], graph: versions[1], by: 'planner' },
+    },
+    {
+      seq: 105,
       kind: 'plan.patched',
       payload: {
         version: 2,
         fromHash: hashes[0],
         toHash: hashes[1],
         patchId: insert.id,
-        decision: decision('auto', 'policy', 'adds-no-write-capability', 104),
+        decision: decision('auto', 'policy', 'adds-no-write-capability', 105),
         proposedBy: 'planner',
       },
     },
@@ -1266,13 +1359,18 @@ async function threePatchesEvents(): Promise<Event[]> {
     { seq: 107, kind: 'plan.patch.proposed', payload: { patch: split, basePlanHash: hashes[1] } },
     {
       seq: 108,
+      kind: 'plan.proposed',
+      payload: { version: 3, planHash: hashes[2], graph: versions[2], by: 'planner' },
+    },
+    {
+      seq: 109,
       kind: 'plan.patched',
       payload: {
         version: 3,
         fromHash: hashes[1],
         toHash: hashes[2],
         patchId: split.id,
-        decision: decision('approved', 'human', 'default', 108),
+        decision: decision('approved', 'human', 'default', 109),
         proposedBy: 'planner',
       },
     },
@@ -1284,13 +1382,18 @@ async function threePatchesEvents(): Promise<Event[]> {
     },
     {
       seq: 112,
+      kind: 'plan.proposed',
+      payload: { version: 4, planHash: hashes[3], graph: versions[3], by: 'planner' },
+    },
+    {
+      seq: 113,
       kind: 'plan.patched',
       payload: {
         version: 4,
         fromHash: hashes[2],
         toHash: hashes[3],
         patchId: reroute.id,
-        decision: decision('auto', 'policy', 'quota-reroute-equivalent', 112),
+        decision: decision('auto', 'policy', 'quota-reroute-equivalent', 113),
         proposedBy: 'scheduler',
       },
     },
@@ -1305,6 +1408,266 @@ async function threePatchesEvents(): Promise<Event[]> {
       payload: { patchId: refused.id, rule: 'escalates-permission', by: 'policy' },
     },
   ]);
+}
+
+// ── stress-400 ───────────────────────────────────────────────────────────────
+
+/**
+ * KAR-16.5 AC10 — the wide `map` fan-out, and the fixture KAR-16.6's render
+ * budget, ELK layout time and scrubber responsiveness are all measured against.
+ *
+ * The children are **materialised nodes with real ids**, minted by the
+ * production `mapChildId` rather than formatted here: a `map` node's children
+ * are ordinary plan nodes (`<mapNodeId>--<itemId>`) precisely so the scheduler,
+ * the effect journal and the graph canvas need no special case for them
+ * (docs/04-domain-model.md §1.1). Rendering 400 of *those* is the measurement;
+ * rendering one map node with a count on it is not, and would let a canvas that
+ * collapses fan-outs pass a budget it never paid.
+ *
+ * The nodes are deliberately lean — no per-node prose beyond what the schema
+ * needs — because 400 of anything is a size question: the committed file has to
+ * stay something a repository can carry, and the `plan.proposed` payload has to
+ * stay under the 256 KiB inline ceiling or a real daemon would have spilled it
+ * to the blob store and the fixture would no longer be one file.
+ */
+export const STRESS_400_RUN = 'run_20260811T120000Z_e3f4a5';
+
+/** AC10's floor is 400 *plan nodes*; the fan-out alone clears it. */
+export const STRESS_400_FANOUT = 400;
+
+/** The collection the map fans out over — one legacy view per child. */
+const stressItems = (): readonly { readonly path: string }[] =>
+  Array.from({ length: STRESS_400_FANOUT }, (_, index) => ({
+    path: `src/legacy/views/view-${String(index + 1).padStart(3, '0')}.vue`,
+  }));
+
+function stressChild(item: { readonly path: string }, index: number): NodeDocument {
+  return {
+    id: mapChildId('migrate-views' as NodeId, item, index),
+    title: `Migrate ${item.path.slice(item.path.lastIndexOf('/') + 1)}`,
+    type: 'agent',
+    deps: ['migrate-views'],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'worktree',
+    pathScopes: { write: [item.path] },
+    returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1_000 },
+    retry: structuredClone(RETRY),
+    budget: { maxCostUsd: 0.5, maxWallClockMs: 120_000 },
+    brief: `Migrate ${item.path} to Vue 3.`,
+    provider: { prefer: ['claude-code'], requires: ['structuredOutput'] },
+    resume: 'native-if-available',
+  };
+}
+
+async function stress400Plan(): Promise<PlanGraph> {
+  const items = stressItems();
+
+  const mapNode: NodeDocument = {
+    id: 'migrate-views',
+    title: 'Migrate every legacy view',
+    type: 'map',
+    deps: ['recon-legacy-views'],
+    lifecycle: 'active',
+    reads: [{ kind: 'fact', key: 'finding/legacy-views' }],
+    writes: [],
+    permission: 'worktree',
+    pathScopes: { write: ['src/legacy/**'] },
+    returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1_000 },
+    retry: structuredClone(RETRY),
+    budget: { maxCostUsd: 200, maxWallClockMs: 7_200_000 },
+    over: { kind: 'fact', key: 'finding/legacy-views' },
+    concurrency: 8,
+    body: 'migrate-one-view',
+    itemIdFrom: 'value-hash',
+  };
+
+  const nodes: NodeDocument[] = [
+    agentNode('recon-legacy-views', 'Enumerate the legacy views', {
+      permission: 'read',
+      writes: [{ kind: 'fact', key: 'finding/legacy-views', schemaId: 'DeFlow.finding.v1' }],
+    }),
+    mapNode,
+    // The body template the children were instantiated from. It stays in the
+    // graph and never runs — the children are what run — which is exactly the
+    // shape a renderer has to cope with.
+    agentNode('migrate-one-view', 'Migrate one legacy view', { deps: ['recon-legacy-views'] }),
+    ...items.map((item, index) => stressChild(item, index)),
+    gateNode('gate-typecheck', 'The project typechecks', 'typecheck', ['migrate-views']),
+  ];
+
+  const edges: EdgeDocument[] = [
+    {
+      from: 'recon-legacy-views',
+      to: 'migrate-views',
+      kind: 'data',
+      carries: ['finding/legacy-views'],
+    },
+    { from: 'migrate-views', to: 'gate-typecheck', kind: 'control' },
+  ];
+
+  return await seal(STRESS_400_RUN, 1, null, nodes, edges);
+}
+
+async function stress400Events(): Promise<Event[]> {
+  const plan = await stress400Plan();
+  const spec = approvedSpec();
+  const items = stressItems();
+  const children = items.map((item, index) => String(stressChild(item, index).id));
+
+  const drafts: Draft[] = [
+    {
+      seq: 1,
+      kind: 'run.created',
+      payload: {
+        spec,
+        cwd: '/tmp/deflow-stress-400/repo',
+        repo: { head: 'e3f4a5b', branch: 'main' },
+      },
+    },
+    { seq: 2, kind: 'run.spec.approved', payload: { specHash: spec.specHash, by: 'ui' } },
+    {
+      seq: 4,
+      kind: 'plan.proposed',
+      payload: { version: 1, planHash: plan.planHash, graph: plan, by: 'planner' },
+    },
+    { seq: 5, kind: 'run.started', payload: { planHash: plan.planHash } },
+    {
+      seq: 7,
+      kind: 'node.scheduled',
+      nodeId: 'recon-legacy-views',
+      payload: scheduled('recon-legacy-views', 'claude-code', 'read'),
+    },
+    {
+      seq: 8,
+      kind: 'node.started',
+      nodeId: 'recon-legacy-views',
+      attempt: 0,
+      payload: {
+        node: 'recon-legacy-views',
+        attempt: 0,
+        ikey: `${STRESS_400_RUN}/recon-legacy-views/0/0`,
+        binary: AGENT_BINARY,
+      },
+    },
+    {
+      seq: 9,
+      kind: 'fact.written',
+      nodeId: 'recon-legacy-views',
+      payload: {
+        fact: {
+          id: factId('legacy-views'),
+          key: 'finding/legacy-views',
+          kind: 'finding',
+          schemaId: 'DeFlow.finding.v1',
+          value: { text: `${STRESS_400_FANOUT} legacy views remain on Vue 2` },
+          provenance: {
+            byNode: 'recon-legacy-views',
+            byProvider: 'claude-code',
+            byModel: 'sonnet-4-6',
+            fromEvidence: [handle('legacy-views')],
+            atEvent: 9,
+            at: new Date(T0 + 9_000).toISOString(),
+            confidence: 'verified',
+          },
+        },
+      },
+    },
+    {
+      seq: 10,
+      kind: 'node.completed',
+      nodeId: 'recon-legacy-views',
+      attempt: 0,
+      payload: {
+        node: 'recon-legacy-views',
+        attempt: 0,
+        result: completed({ text: `${STRESS_400_FANOUT} legacy views` }, 3_100, 600, 0.048),
+      },
+    },
+  ];
+
+  // Every child's three lifecycle events, striding `seq` by four so the file
+  // carries the holes a shared AUTOINCREMENT really leaves. This is the bulk of
+  // the fixture and it is the point: 400 nodes moving through `pending` →
+  // `running` → `passed` is what a projection store and a canvas have to keep
+  // up with (KAR-16.4, KAR-16.6).
+  //
+  // The numbers are *allocated* by a counter rather than derived from one
+  // another: `test/no-gap-detection.test.ts` bans writing the successor of a
+  // `seq` anywhere under `src/` or `scripts/`, and it is right to — a fixture
+  // builder that spelled `seq + 1` reads exactly like the gap detector the
+  // whole corpus exists to catch.
+  let allocated = 11;
+  const nextSeq = (): number => {
+    allocated += 1;
+    return allocated;
+  };
+
+  for (const [index, node] of children.entries()) {
+    drafts.push(
+      {
+        seq: nextSeq(),
+        kind: 'node.scheduled',
+        nodeId: node,
+        payload: scheduled(node, 'claude-code', 'worktree'),
+      },
+      {
+        seq: nextSeq(),
+        kind: 'node.started',
+        nodeId: node,
+        attempt: 0,
+        payload: {
+          node,
+          attempt: 0,
+          ikey: `${STRESS_400_RUN}/${node}/0/0`,
+          binary: AGENT_BINARY,
+        },
+      },
+      {
+        seq: nextSeq(),
+        kind: 'node.completed',
+        nodeId: node,
+        attempt: 0,
+        payload: {
+          node,
+          attempt: 0,
+          result: completed({ text: `migrated ${items[index]?.path ?? node}` }, 1_800, 420, 0.021),
+        },
+      },
+    );
+    // One burned number per node, so the committed sequence has the holes a
+    // shared AUTOINCREMENT really leaves.
+    allocated += 1;
+  }
+
+  drafts.push(
+    {
+      seq: nextSeq(),
+      kind: 'gate.evaluated',
+      nodeId: 'gate-typecheck',
+      attempt: 0,
+      payload: {
+        gate: 'typecheck',
+        node: 'migrate-views',
+        verdict: verdict(
+          'typecheck',
+          'migrate-views',
+          'pass',
+          [{ id: 'typecheck-clean', status: 'satisfied' }],
+          [],
+          `${STRESS_400_FANOUT} migrated views typecheck`,
+        ),
+      },
+    },
+    {
+      seq: (allocated += 2),
+      kind: 'run.completed',
+      payload: { outcome: 'succeeded', criteriaSatisfied: ['typecheck-clean'] },
+    },
+  );
+
+  return envelopes(STRESS_400_RUN, drafts);
 }
 
 // ── the writer ───────────────────────────────────────────────────────────────
@@ -1362,6 +1725,18 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
         'refused, so the version rail can be asked what was proposed as well as what\n' +
         'was applied.',
     },
+    {
+      name: 'stress-400',
+      run: STRESS_400_RUN,
+      events: await stress400Events(),
+      what:
+        `A wide \`map\` fan-out: ${STRESS_400_FANOUT} materialised child nodes, each with real\n` +
+        '`<mapNodeId>--<itemId>` ids minted by `mapChildId`, each moving through\n' +
+        '`pending` → `running` → `passed`. This is the fixture\n' +
+        '[KAR-16.6](../../../docs/delivery/epics/EPIC-16-ui-foundation.md)’s render\n' +
+        'budget, ELK layout time and scrubber responsiveness are measured against, and\n' +
+        'the one KAR-16.4’s bounded-memory ring is exercised by.',
+    },
   ];
 
   for (const fixture of fixtures) {
@@ -1377,5 +1752,7 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   await buildUiRunFixtures(process.argv[2] ?? RUN_FIXTURES_DIR);
-  process.stdout.write(`wrote happy-path-12 and three-patches into ${RUN_FIXTURES_DIR}\n`);
+  process.stdout.write(
+    `wrote happy-path-12, three-patches and stress-400 into ${RUN_FIXTURES_DIR}\n`,
+  );
 }

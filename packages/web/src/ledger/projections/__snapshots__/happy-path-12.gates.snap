@@ -120,7 +120,7 @@
       "gate": "typecheck",
       "outcome": "pass",
       "seq": 52,
-      "specHash": "sha256-50de101ad056909250de101ad056909250de101ad056909250de101ad0569092",
+      "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
       "summary": "typecheck is clean",
     },
     {
@@ -169,7 +169,7 @@
       "gate": "contract",
       "outcome": "needs-human",
       "seq": 57,
-      "specHash": "sha256-50de101ad056909250de101ad056909250de101ad056909250de101ad0569092",
+      "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
       "summary": "the contract checker is not installed",
     },
   ],

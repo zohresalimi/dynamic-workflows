@@ -596,7 +596,7 @@ through. KAR-16.6 inherits the assertion rather than replacing it.
 
 |                 |                                                                           |
 | --------------- | ------------------------------------------------------------------------- |
-| **Status**      | Not started                                                               |
+| **Status**      | Done                                                                      |
 | **Priority**    | P0                                                                        |
 | **Size**        | M                                                                         |
 | **Depends on**  | KAR-16.2, EPIC-15 KAR-15.3, EPIC-18 KAR-18.3, EPIC-04 KAR-04.1            |
@@ -691,6 +691,46 @@ until at least one full run completes headlessly through W12's CLI."_ That makes
 (KAR-18.3) a genuine predecessor, and it is stated in `Depends on` even though it makes the plan look
 slower. If EPIC-18 slips, the honest interim is to record fixtures from the mock agent driven by the
 orchestrator's own test harness rather than to hand-write them — never the latter.
+
+**What shipped, and the one criterion that is only half met.**
+
+`DeFlow replay` is a *daemon mode*, not a replay server: `startReplay`
+(`packages/daemon/src/replay/harness.ts`) calls the same `boot()` `DeFlowd` calls — same lease, same
+epoch, same ledger view, same `startHttp`, same auth, same `/api/*` chain, same SSE loop — and the
+only difference is the writer. `packages/daemon/src/replay/player.ts` commits the recording into the
+ledger on the speed schedule, through the injected `Clock`, and `restoreRecordedEvents`
+(`@DeFlow/ledger`) writes each envelope under its **recorded `seq`**, gaps included, refusing any
+`seq` at or below the ledger's head so a restore can extend a ledger and never edit one. That is why
+AC-2 needed no discipline: there is nothing downstream of the write for a client to detect.
+
+**AC-6 is met except for its middle clause**, and this is the story's one honest gap. All six
+fixtures exist, each as one file per run, and each has a provenance note naming the script that
+produces it — but only `gate-failure-repair` names a **mock-agent script and `--seed`**, because it
+is the only one a mock agent produced. `happy-path-12`, `three-patches` and the new `stress-400` are
+*assembled* by `packages/core/scripts/build-ui-run-fixtures.ts`, which is the interim the Notes above
+prescribe and not hand-writing: no payload shape is authored (`buildPacket`, `planHash`, `parseEvent`
+throughout), and all three are regenerated and diffed byte for byte on every push, which is AC-7 for
+three fixtures rather than one. **When EPIC-18 KAR-18.3 lands, the three assemblies are to be
+replaced by recordings at the same three paths**, and nothing that reads them has to move.
+
+Two fixture defects surfaced while asserting the corpus against a real daemon, and both were fixed
+rather than asserted around: `happy-path-12`'s verdicts carried a filler `specHash` and were
+therefore all *void* (so `…/gates` was empty), and `three-patches` recorded `plan.patched` without
+the `plan.proposed` a real `applyPatchedPlanVersion` writes alongside it (so the version rail had one
+rung and `…/plans/diff` 404ed — in the scrubber's own fixture). Fixing the second exposed that
+KAR-16.3's `planHistory` projection pushed a rail row for both events and so doubled every rung on
+any real ledger; it now merges the promotion into the proposal, with its own specs passing
+unchanged. See the flow file's notes under EPIC-16-S32.
+
+`pnpm dev:replay` runs `packages/daemon/src/replay/main.ts` under `node --watch`, not
+`packages/cli/src/bin.ts replay` as [03 §5](../../03-local-development.md)'s illustrative
+`package.json` has it: there is no `bin.ts` until EPIC-18 builds the argv table. `parseReplayArgv`
+and `resolveFixture` are exported for that table to call, so wiring `DeFlow replay` to them is a
+subcommand registration and not a second implementation.
+
+The five Playwright smokes of test plan row 8 are **not** here: they render the nine views, which are
+EPIC-17's. What exists is the driver they will run against, plus `e2e/replay-dev-loop.test.ts`, which
+drives the real `pnpm dev:replay` script cross-process.
 
 ---
 
