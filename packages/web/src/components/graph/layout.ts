@@ -73,10 +73,19 @@ const ElkConstructor = ElkModule as unknown as new (args?: ELKConstructorArgumen
  * The box the renderer draws a node at.
  *
  * ELK spaces boxes, not points, so this has to be the size `GraphCanvas`
- * actually renders or the drawing is spaced for a graph nobody sees. It is
- * exported so the component and the engine cannot disagree about it.
+ * actually renders or the drawing is spaced for a graph nobody sees. Declared
+ * in `./node-size.ts` — a module with no imports — and re-exported here, so
+ * that the facade can read the number without dragging `elkjs` into the
+ * initial chunk; see that file for why that matters.
+ *
+ * It grew from 224×84 with KAR-17.1: F10.1's node body carries a type glyph, a
+ * title, a state chip, a gate verdict, provider/model/permission, a live phase
+ * line and two figures (AC4), and a box spaced for the smaller one draws that
+ * content overlapping its neighbours.
  */
-export const NODE_SIZE = { width: 224, height: 84 } as const;
+export { NODE_SIZE } from './node-size.ts';
+
+import { NODE_SIZE } from './node-size.ts';
 
 /**
  * One set of options for every layout, so two layouts are comparable.

@@ -468,6 +468,29 @@ export function renderMeasurement(measurement: GraphMeasurement, budget: GraphBu
     `${round(pass.pan.p95Ms)} | ${round(pass.zoom.medianMs)} | ${round(pass.zoom.p95Ms)} |`;
 
   const full = measurement.passes.find((pass) => !pass.culling) ?? measurement.passes[0];
+  /**
+   * Two frames at 60 Hz, and the bar both decisions below turn on: the culling
+   * default and — KAR-17.9 AC8 / EPIC-17-S34 — whether this project can afford
+   * a **second** Vue Flow surface at all. `test/memory-graph-decision.test.ts`
+   * derives the same boolean from the committed JSON and fails if the router
+   * disagrees with this paragraph.
+   */
+  const affordable =
+    (full?.pan.p95Ms ?? 0) <= budget.floorMs && (full?.zoom.p95Ms ?? 0) <= budget.floorMs;
+  // Wrapped here rather than by a formatter: this file's output is markdown
+  // somebody reads in a diff, and one 400-column bullet in a document wrapped
+  // at a hundred is the kind of thing nobody fixes because nobody owns it.
+  const secondSurface = affordable
+    ? "**KAR-17.9's memory graph ships.** F10.4's blackboard view is a second graph on this\n" +
+      '  renderer, and the number above is what unblocked it: the story sat at `Blocked` by design\n' +
+      '  until this file existed and its figures supported one. The view is a lazy route and\n' +
+      '  aggregates by producing node before it renders, so what it asks of the renderer is the\n' +
+      '  plan graph’s order of magnitude and not the blackboard’s.'
+    : '**KAR-17.9’s memory graph slips to M2.** A second graph surface is not affordable at this\n' +
+      '  frame time, and roadmap §3 says what happens instead: F10.4’s M1 coverage is KAR-17.3’s\n' +
+      '  provenance table plus the `blackboard.ts` projection. Nothing is lost — `fact.written`\n' +
+      '  and `fact.read` are ledger events regardless, so the data accrues from day one and\n' +
+      '  adding the view later needs no migration and no re-run.';
   const verdict =
     (full?.pan.p95Ms ?? 0) <= 32 && (full?.zoom.p95Ms ?? 0) <= 32
       ? `**${String(full?.nodes ?? 0)} nodes render and interact inside two frames at the 95th ` +
@@ -552,6 +575,7 @@ ${verdict}
 - Culling is not free: every node body re-mounts as it scrolls into view, so the state chip and the
   streaming badge flicker during a pan. It buys first paint and costs steadiness, which is why the
   default follows the measurement rather than the instinct.
+- ${secondSurface}
 - If a future re-run puts the 400-node p95 above the budget, the roadmap §3 recommendation applies:
   \`onlyRenderVisibleElements\` becomes the default for the plan graph and KAR-17.9's memory graph
   slips to M2. **That decision is recorded here rather than in someone's memory.**

@@ -24,6 +24,24 @@
  * `./vm.type-test.ts` is the assertion. It is a type-level test — nothing to
  * run — because the claim is about what will not compile.
  */
+
+/**
+ * What a node **cost**, as the money projection reports it.
+ *
+ * Re-exported for KAR-17.1's node body, which shows "cost so far" on the graph.
+ * `CostFigures` is a view model — four independent figures, one per measurement
+ * path — and not the projection's bookkeeping; `CostProjection` itself stays
+ * unexported here for the same reason `PlanProjection` does.
+ */
+export type { CostFigures, UsageSource } from './projections/cost.ts';
+/**
+ * What a **gate** said about a node, for the verdict chip on its body.
+ *
+ * `GateAttemptVM` is the compact form — gate, attempt, outcome, `seq` — which is
+ * all a chip needs; the findings and the criteria behind it belong to the review
+ * surface (KAR-17.6) and are reached through the same projection there.
+ */
+export type { GateAttemptVM, VerdictOutcome } from './projections/gates.ts';
 export type {
   NodeBinaryVM,
   NodeBlockedVM,

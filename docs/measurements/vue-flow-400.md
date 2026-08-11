@@ -70,6 +70,11 @@ is a run in which the graph was not the cost.
 - Culling is not free: every node body re-mounts as it scrolls into view, so the state chip and the
   streaming badge flicker during a pan. It buys first paint and costs steadiness, which is why the
   default follows the measurement rather than the instinct.
+- **KAR-17.9's memory graph ships.** F10.4's blackboard view is a second graph on this
+  renderer, and the number above is what unblocked it: the story sat at `Blocked` by design
+  until this file existed and its figures supported one. The view is a lazy route and
+  aggregates by producing node before it renders, so what it asks of the renderer is the
+  plan graph’s order of magnitude and not the blackboard’s.
 - If a future re-run puts the 400-node p95 above the budget, the roadmap §3 recommendation applies:
   `onlyRenderVisibleElements` becomes the default for the plan graph and KAR-17.9's memory graph
   slips to M2. **That decision is recorded here rather than in someone's memory.**

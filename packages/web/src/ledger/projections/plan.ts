@@ -54,6 +54,37 @@ export interface NodeFailureVM {
   readonly message: string;
   readonly attempt: number;
   readonly evidence: readonly string[];
+  /**
+   * `NodeFailure.detail` — *"reason-specific and JSON-only"* (docs/04 §8):
+   * an exit code, an errno, a byte count, or the Ajv errors behind a
+   * `contract.schema-invalid`.
+   *
+   * Carried rather than dropped because KAR-17.3 AC5 asks the inspector to show
+   * *"the Ajv error beside the offending output rather than a generic
+   * message"*, and there is nowhere else in the ledger that error lives.
+   * `null` — not `{}` — when the failure carried none: an empty object reads as
+   * "it had detail, and the detail was empty".
+   */
+  readonly detail: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * What a completed node returned (KAR-17.3 AC5).
+ *
+ * The **normalised, schema-validated** half of the inspector's two output
+ * panes. The raw half is never inlined anywhere in the ledger — it is an
+ * artifact handle resolved through `GET /api/artifacts/:sha` — so what is
+ * retained here is one small object per node, bounded by the plan and by the
+ * node's own `returns.maxTokens`.
+ */
+export interface NodeResultVM {
+  readonly output: unknown;
+  readonly outputSchemaId: string;
+  /** Handles the node produced; the raw transcript is one of them when it has one. */
+  readonly artifacts: readonly string[];
+  /** The `seq` of the `node.completed` that carried it (NF10). */
+  readonly seq: number;
+  readonly attempt: number;
 }
 
 export interface NodeBlockedVM {
@@ -83,13 +114,38 @@ export interface PlanNodeVM {
   provider: string | null;
   model: string | null;
   permission: string | null;
+  /**
+   * What the plan document allowed this node to read and write (KAR-17.3 AC1).
+   *
+   * `null` until a plan document has described the node — a distinct answer
+   * from `{ write: [], read: [] }`, which is the plan saying "nothing". The
+   * inspector renders the two differently because they answer *"was this node
+   * even allowed to touch that file"* differently.
+   */
+  pathScopes: { readonly write: readonly string[]; readonly read: readonly string[] } | null;
   worktree: string | null;
   binary: NodeBinaryVM | null;
   attempt: number;
   /** The live phase from `node.progress`. Not a state. */
   phase: string | null;
   progressMessage: string | null;
+  /**
+   * What the node returned, once it completed (KAR-17.3 AC5). `null` on a node
+   * that never did — which is a different claim from an empty output.
+   */
+  result: NodeResultVM | null;
+  /** The **latest** failure. One reason is all a node body's chip has room for. */
   failure: NodeFailureVM | null;
+  /**
+   * One failure per attempt that had one, oldest first (KAR-17.3 AC1).
+   *
+   * The inspector's attempt table has a row per attempt and needs the failure
+   * that ended each of them, which `failure` above cannot answer once a retry
+   * has overwritten it. Bounded by the node's own retry ladder — `maxAttempts`,
+   * a small number in the plan document — so this is not the unbounded per-node
+   * accumulation KAR-16.4's memory rules forbid.
+   */
+  failures: NodeFailureVM[];
   suspendedUntil: { readonly kind: string; readonly wakeAt?: string | undefined } | null;
   blocked: NodeBlockedVM | null;
   retry: NodeRetryVM | null;
@@ -209,6 +265,13 @@ export function applyPlan(state: PlanProjection, event: Event): void {
     case 'node.completed': {
       const node = upsert(state, event.payload.node);
       node.attempt = event.payload.attempt;
+      node.result = {
+        output: event.payload.result.output,
+        outputSchemaId: event.payload.result.outputSchemaId,
+        artifacts: [...event.payload.result.artifacts],
+        seq: event.seq,
+        attempt: event.payload.attempt,
+      };
       restate(node, 'completed');
       return;
     }
@@ -216,13 +279,23 @@ export function applyPlan(state: PlanProjection, event: Event): void {
     case 'node.failed': {
       const node = upsert(state, event.payload.node);
       node.attempt = event.payload.attempt;
-      node.failure = {
+      const failure: NodeFailureVM = {
         reason: event.payload.failure.reason,
         class: event.payload.failure.class,
         message: event.payload.failure.message,
         attempt: event.payload.failure.attempt,
         evidence: [...event.payload.failure.evidence],
+        detail: event.payload.failure.detail ?? null,
       };
+      node.failure = failure;
+      // Keyed on the attempt rather than appended blindly, so a `node.failed`
+      // re-sent above this projection's guard — a resume that re-delivers the
+      // same envelope at a higher `seq` never happens, but a second failure
+      // event for one attempt is a daemon bug this must not amplify into a
+      // growing list.
+      const existing = node.failures.findIndex((one) => one.attempt === failure.attempt);
+      if (existing === -1) node.failures.push(failure);
+      else node.failures[existing] = failure;
       restate(node, 'failed');
       return;
     }
@@ -286,6 +359,12 @@ interface GraphNodeShape {
   readonly deps: readonly string[];
   readonly lifecycle: NodeLifecycle;
   readonly permission?: string | undefined;
+  readonly pathScopes?:
+    | {
+        readonly write?: readonly string[] | undefined;
+        readonly read?: readonly string[] | undefined;
+      }
+    | undefined;
   readonly provider?: { readonly prefer: readonly string[] } | undefined;
   readonly model?: string | undefined;
 }
@@ -314,6 +393,12 @@ function absorbGraph(state: PlanProjection, graph: GraphShape): void {
     vm.provider ??= node.provider?.prefer[0] ?? null;
     vm.model ??= node.model ?? null;
     vm.permission ??= node.permission ?? null;
+    // Replaced rather than `??=`: a patched plan may widen or narrow a node's
+    // scopes, and a stale scope on an inspector panel is worse than none.
+    vm.pathScopes =
+      node.pathScopes === undefined
+        ? vm.pathScopes
+        : { write: [...(node.pathScopes.write ?? [])], read: [...(node.pathScopes.read ?? [])] };
     restate(vm, vm.status);
   }
 
@@ -424,12 +509,15 @@ function upsert(state: PlanProjection, id: string): PlanNodeVM {
     provider: null,
     model: null,
     permission: null,
+    pathScopes: null,
     worktree: null,
     binary: null,
     attempt: 0,
     phase: null,
     progressMessage: null,
+    result: null,
     failure: null,
+    failures: [],
     suspendedUntil: null,
     blocked: null,
     retry: null,

@@ -45,6 +45,74 @@ export const routes = [
     props: true,
   },
   {
+    // F10.5. Lazy for the same reason the scrubber is — it is not the landing
+    // view — and additionally because it is the first route to pull
+    // `@DeFlow/core`'s compaction module in as a *value*: `compactionChart()`
+    // is KAR-09.6's rendering contract, and the boot chunk has no use for it.
+    path: '/runs/:runId/context',
+    name: 'run-context',
+    component: () => import('../views/ContextBudgetView.vue'),
+    props: true,
+  },
+  {
+    // F10.7. The route the lazy-loading rule was written for: `@git-diff-view/*`
+    // and the Shiki instance behind it are the heaviest thing in the frontend
+    // that is not the plan graph, and neither belongs in the initial chunk —
+    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
+    // either creeps in (KAR-17.6 AC8, docs/12 §10).
+    path: '/runs/:runId/diff',
+    name: 'run-diff',
+    component: () => import('../views/DiffReviewView.vue'),
+    props: true,
+  },
+  {
+    // F10.8. Lazy for the same reason the scrubber and the context view are —
+    // not the landing view — though the board itself pulls in nothing heavier
+    // than the plan graph: it is built from `../ledger/projections/gates.ts`,
+    // which every route already loads.
+    path: '/runs/:runId/criteria',
+    name: 'run-criteria',
+    component: () => import('../views/AcceptanceCriteriaView.vue'),
+    props: true,
+  },
+  {
+    // F10.9. Lazy like the rest of the non-landing views, and cheap besides:
+    // the Gantt's whole dependency is the arithmetic half of d3 — four small
+    // modules of pure functions — and `d3-selection` is not in the graph at all
+    // (KAR-17.8 AC10, `test/no-d3-selection-in-web.test.ts`).
+    path: '/runs/:runId/timeline',
+    name: 'run-timeline',
+    component: () => import('../views/RunTimelineView.vue'),
+    props: true,
+  },
+  {
+    // F10.6. **The route the `@xterm/*` half of the budget rule was written
+    // for**: `test/integration/bundle-budget.test.ts` bans `@xterm/` from the
+    // initial chunk, and the only thing keeping it out is that this route is
+    // lazy. It is also the route with two renderers behind it — the terminal
+    // for CLI-shim nodes and the typed message list for ACP ones — so a build
+    // that eagerly imported it would pay for both on a landing view that needs
+    // neither (KAR-17.5, docs/12 §6.6, §10).
+    path: '/runs/:runId/nodes/:nodeId/output',
+    name: 'run-node-output',
+    component: () => import('../views/NodeOutputView.vue'),
+    props: true,
+  },
+  {
+    // F10.4. **The lazy route AC5 is about.** It is the second Vue Flow surface
+    // in the application, and the one whose node count is unbounded in a way
+    // the plan graph's is not — so it stays out of the landing chunk on
+    // purpose, even though the renderer it shares with the plan graph is
+    // already there. What is deferred is this view, its node body and the
+    // aggregation behind them (KAR-17.9 AC5, docs/12 §10), and
+    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
+    // any of it creeps into the first chunk.
+    path: '/runs/:runId/memory',
+    name: 'run-memory',
+    component: () => import('../views/MemoryGraphView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

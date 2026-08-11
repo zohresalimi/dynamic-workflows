@@ -49,18 +49,29 @@
  * lists the same graph in a form a non-visual reader can read top to bottom —
  * which doubles as the copy-into-a-PR-description surface.
  */
+import { Controls } from '@vue-flow/controls';
+import '@vue-flow/controls/dist/style.css';
 import {
   type CoordinateExtent,
+  MarkerType,
   type NodeMouseEvent,
   VueFlow,
   type VueFlowStore,
 } from '@vue-flow/core';
+import { MiniMap } from '@vue-flow/minimap';
+import '@vue-flow/minimap/dist/style.css';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import type { PlanNodeVM } from '../../ledger/vm.ts';
+import type { PlanEdgeVM, PlanNodeVM } from '../../ledger/vm.ts';
 import { GRAPH_DEFAULTS } from './defaults.ts';
 import type { GraphLayout, LayoutEngine } from './layout.ts';
+// A value import, and from `./node-size.ts` rather than from `./layout.ts` on
+// purpose: the latter pulls `elkjs` into whatever chunk imports it, and this
+// file reaches the layout engine through a dynamic `import()` for exactly that
+// reason. See the note in `./node-size.ts`.
+import { COLUMN_STRIDE, NODE_SIZE } from './node-size.ts';
 import {
   ariaLabelOf,
+  type Extent,
   type GraphCanvasEmits,
   type GraphCanvasProps,
   type GraphCanvasSlots,
@@ -78,6 +89,31 @@ import {
  * a fit.
  */
 const MIN_ZOOM = 0.05;
+
+/**
+ * How far outside the drawing a node may be dragged, in world pixels.
+ *
+ * KAR-17.1 AC9's *"prevents the graph being panned into empty space and lost"*.
+ * The bound is derived from the layout rather than configured, because the only
+ * honest edge of a plan graph is the plan: a constant would be too tight on a
+ * 400-node fan-out and pointless on a three-node chain. It is deliberately
+ * loose — a node has to be draggable clear of its neighbours to be reorganised
+ * by hand — and its job is to stop a drag or a pan ending somewhere with no
+ * landmark in any direction, not to keep the drawing tidy.
+ */
+const EXTENT_PADDING = 400;
+
+/**
+ * How far the *viewport* may travel past the same box.
+ *
+ * `nodeExtent` bounds where nodes may be; it says nothing about where the
+ * camera may point, and "panned into empty space" is a statement about the
+ * camera. Vue Flow's knob for that is `translateExtent`, so AC9 needs both, and
+ * this one is generous on purpose: roughly a graph's width of blank on every
+ * side, so there is always somewhere to put a node down and never an infinite
+ * plane to get lost on.
+ */
+const TRAVEL_PADDING = 1000;
 
 // Only the three that have a *value* to default to. `costs`, `positions` and
 // `nodeExtent` are absent-or-given, and `withDefaults` wants a factory rather
@@ -140,6 +176,33 @@ const placement = computed<NodePlacement | null>(
 );
 
 /**
+ * The selected node's immediate neighbourhood — everything one edge away.
+ *
+ * KAR-17.1 AC7. Both directions, because *"what fed this node"* is the first
+ * question an operator asks of a bad node and *"what did it feed"* is the
+ * second, and a highlight that only followed the arrows would answer one of
+ * them. Empty when nothing is selected, which is what makes "dim the rest" a
+ * no-op rather than a graph that starts out half faded.
+ */
+const neighbourhood = computed<ReadonlySet<string>>(() => {
+  const selected = props.selected;
+  if (selected === null || selected === undefined) return new Set();
+  const near = new Set<string>();
+  for (const edge of props.edges) {
+    if (edge.from === selected) near.add(edge.to);
+    if (edge.to === selected) near.add(edge.from);
+  }
+  return near;
+});
+
+/** Selected / one edge away / everything else — or nothing at all. */
+function proximityOf(nodeId: string): string {
+  if (props.selected === null || props.selected === undefined) return '';
+  if (nodeId === props.selected) return ' is-selected';
+  return neighbourhood.value.has(nodeId) ? ' is-neighbour' : ' is-distant';
+}
+
+/**
  * The renderer's nodes.
  *
  * Empty until there is a placement, deliberately: a graph that paints at the
@@ -154,13 +217,27 @@ const flowNodes = computed(() => {
     return {
       id: node.id,
       type: 'plan' as const,
-      position: { x: position?.x ?? 0, y: position?.y ?? index * 96 },
+      position: { x: position?.x ?? 0, y: position?.y ?? index * COLUMN_STRIDE },
       ariaLabel: ariaLabelOf(node),
       selected: node.id === props.selected,
+      class: `plan-node-shell${proximityOf(node.id)}`,
       data: node,
     };
   });
 });
+
+/**
+ * What an edge says it carries — F10.1's *"edges labelled with what flows"*.
+ *
+ * `carries[]` is a field on the projection's edge, populated for `kind: 'data'`
+ * (docs/04 §3), so this is a rendering of real data rather than a label
+ * invented here. A control edge gets **no label element at all**: an empty one
+ * would still draw a background chip on the drawing and would still be read
+ * out, and "this edge carries nothing" is not a thing a control edge needs to
+ * say — carrying nothing is what a control edge *is*.
+ */
+const carriedBy = (edge: PlanEdgeVM): string | undefined =>
+  edge.kind === 'data' && edge.carries.length > 0 ? edge.carries.join(', ') : undefined;
 
 /**
  * The renderer's edges — and, like the nodes, nothing at all until there is a
@@ -171,30 +248,98 @@ const flowNodes = computed(() => {
 const flowEdges = computed(() =>
   placement.value === null
     ? []
-    : props.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.from,
-        target: edge.to,
-        class: `plan-edge plan-edge--${edge.kind}`,
-        ariaLabel: `${edge.kind} edge from ${edge.from} to ${edge.to}`,
-      })),
+    : props.edges.map((edge) => {
+        const carries = carriedBy(edge);
+        const adjacent =
+          props.selected !== null &&
+          props.selected !== undefined &&
+          (edge.from === props.selected || edge.to === props.selected);
+        return {
+          id: edge.id,
+          source: edge.from,
+          target: edge.to,
+          class: `plan-edge plan-edge--${edge.kind}${adjacent ? ' is-adjacent' : ''}`,
+          // AC1's *"every edge with its direction"*. A DAG drawn without arrow
+          // heads is a picture of a graph with no dependencies in it, which is
+          // the one thing this drawing exists to show.
+          markerEnd: MarkerType.ArrowClosed,
+          ...(carries === undefined ? {} : { label: carries }),
+          ariaLabel:
+            carries === undefined
+              ? `${edge.kind} edge from ${edge.from} to ${edge.to}`
+              : `${edge.kind} edge from ${edge.from} to ${edge.to}, carries ${carries}`,
+        };
+      }),
 );
 
 /**
- * `nodeExtent`, bound only when there is one.
+ * The world, as a pair of corners — the caller's if it stated one, and
+ * otherwise the drawing's own bounding box with room to move around it.
  *
- * Under `exactOptionalPropertyTypes` the renderer's prop does not admit
+ * `null` until the first layout lands: an extent derived from no positions is
+ * a point at the origin, and binding *that* pins every node to 0,0 before the
+ * graph has been drawn once.
+ */
+const world = computed<Extent | null>(() => {
+  if (props.nodeExtent !== undefined) return props.nodeExtent;
+  const at = placement.value;
+  if (at === null || at.size === 0) return null;
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const { x, y } of at.values()) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  return [
+    [minX - EXTENT_PADDING, minY - EXTENT_PADDING],
+    [maxX + EXTENT_PADDING, maxY + EXTENT_PADDING],
+  ];
+});
+
+/**
+ * The same box, published on the DOM so it can be asserted on.
+ *
+ * A bound nobody can observe is a bound nobody can test, and "the graph cannot
+ * be lost" is exactly the kind of claim that quietly stops being true when a
+ * later change reorders two computeds.
+ */
+const extentAttribute = computed<string | undefined>(() => {
+  const box = world.value;
+  return box === null ? undefined : `${box[0][0]},${box[0][1]},${box[1][0]},${box[1][1]}`;
+});
+
+/**
+ * `nodeExtent` and `translateExtent`, bound only when there is a world.
+ *
+ * Under `exactOptionalPropertyTypes` the renderer's props do not admit
  * `undefined`, and passing it anyway is a type error rather than the "absent"
  * it means at runtime — so an absent extent is an absent *binding*.
  */
-const extent = computed<{ nodeExtent?: CoordinateExtent }>(() =>
-  props.nodeExtent === undefined
-    ? {}
-    : { nodeExtent: props.nodeExtent as unknown as CoordinateExtent },
+const extent = computed<{ nodeExtent?: CoordinateExtent; translateExtent?: CoordinateExtent }>(
+  () => {
+    const box = world.value;
+    if (box === null) return {};
+    const travel: Extent = [
+      [box[0][0] - TRAVEL_PADDING, box[0][1] - TRAVEL_PADDING],
+      [box[1][0] + TRAVEL_PADDING, box[1][1] + TRAVEL_PADDING],
+    ];
+    return {
+      nodeExtent: box as unknown as CoordinateExtent,
+      translateExtent: travel as unknown as CoordinateExtent,
+    };
+  },
 );
 
 const isSelected = (node: PlanNodeVM): boolean => node.id === props.selected;
 const costOf = (node: PlanNodeVM): string => props.costs?.get(node.id) ?? 'not priced';
+const durationOf = (node: PlanNodeVM): string => props.durations?.get(node.id) ?? 'not started';
+/** The table's cell for AC5's `carries[]`; never blank, because blank is a bug. */
+const carriesOf = (edge: PlanEdgeVM): string => carriedBy(edge) ?? 'nothing';
 
 /** Re-lays the graph out. Off the main thread; see `./layout.ts`. */
 async function relayout(): Promise<void> {
@@ -223,22 +368,49 @@ async function relayout(): Promise<void> {
       positions: new Map(
         props.nodes.map((node, index) => [
           node.id,
-          { id: node.id, x: 0, y: index * 96, width: 224, height: 84 },
+          {
+            id: node.id,
+            x: 0,
+            y: index * COLUMN_STRIDE,
+            width: NODE_SIZE.width,
+            height: NODE_SIZE.height,
+          },
         ]),
       ),
-      width: 224,
-      height: props.nodes.length * 96,
+      width: NODE_SIZE.width,
+      height: props.nodes.length * COLUMN_STRIDE,
       ms: 0,
     };
   }
 }
 
-watch(
-  () => [props.nodes, props.edges] as const,
-  () => {
-    void relayout();
-  },
+/**
+ * The graph's **shape**, as a string: which nodes exist and which edges join
+ * them, in order.
+ *
+ * KAR-17.1 AC3, and the single most expensive mistake available in this file.
+ * The store hands out a fresh memoised array on every projection bump, so the
+ * `nodes` prop's identity changes on every `node.progress` event — and a
+ * chatty agent emits one every few hundred milliseconds. A watcher on that
+ * identity runs ELK for the life of the node, for a drawing whose shape never
+ * moved, and the symptom is not an error: it is a graph that feels sluggish
+ * while a run is live and fine the moment it finishes.
+ *
+ * Layout is a function of the ids and the edges and of nothing else — node
+ * boxes are a fixed size (`./layout.ts`) — so this string is exactly the input
+ * that can change the drawing, and a phase, a cost or a state change is
+ * correctly *not* in it. The node bodies still update: `flowNodes` reads
+ * `props.nodes` directly and re-derives without the layout being touched.
+ */
+const topology = computed(
+  () =>
+    `${props.nodes.map((node) => node.id).join(' ')}|` +
+    `${props.edges.map((edge) => edge.id).join(' ')}`,
 );
+
+watch(topology, () => {
+  void relayout();
+});
 
 onMounted(() => {
   void relayout();
@@ -305,6 +477,7 @@ function onKeydown(event: KeyboardEvent): void {
     class="graph-canvas"
     data-graph-canvas
     :data-motion="motion"
+    :data-extent="extentAttribute"
     :aria-label="`Plan graph, ${props.nodes.length} nodes`"
     @focusin="onFocusIn"
     @keydown="onKeydown"
@@ -338,6 +511,16 @@ function onKeydown(event: KeyboardEvent): void {
           </article>
         </slot>
       </template>
+
+      <!--
+        AC9. Both are addons over the renderer's own store rather than second
+        renderers, and both live here rather than in a view for the same reason
+        `VueFlow` does: a view that reached for `@vue-flow/minimap` would be
+        reaching past the facade, which `packages/web/scripts/check-graph-facade.ts`
+        refuses across the whole `@vue-flow/` scope.
+      -->
+      <MiniMap pannable zoomable />
+      <Controls :show-interactive="false" />
     </VueFlow>
 
     <!--
@@ -362,27 +545,63 @@ function onKeydown(event: KeyboardEvent): void {
       {{ tableOpen ? 'Hide the node table' : 'Show the node table' }}
     </button>
 
-    <table v-if="tableOpen" class="graph-canvas__table" data-graph-table>
-      <caption>
-        Every node in this plan, with its state, provider and cost.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Node</th>
-          <th scope="col">State</th>
-          <th scope="col">Provider</th>
-          <th scope="col">Cost</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="node in props.nodes" :key="node.id" :data-table-node="node.id">
-          <th scope="row">{{ node.title }}</th>
-          <td>{{ node.state }}</td>
-          <td>{{ node.provider ?? 'no provider yet' }}</td>
-          <td>{{ costOf(node) }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <!--
+      AC10 — the whole view, in a form a non-visual reader can read top to
+      bottom and anybody can paste into a PR description. Two tables rather than
+      one: the nodes are the work, and the edges are what flowed between them
+      (AC5), and a single table cannot carry both without inventing a row type.
+    -->
+    <div v-if="tableOpen" class="graph-canvas__tables">
+      <table class="graph-canvas__table" data-graph-table>
+        <caption>
+          Every node in this plan, with its state, provider, permission, duration and cost.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Node</th>
+            <th scope="col">Type</th>
+            <th scope="col">State</th>
+            <th scope="col">Provider</th>
+            <th scope="col">Permission</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="node in props.nodes" :key="node.id" :data-table-node="node.id">
+            <th scope="row">{{ node.title }}</th>
+            <td>{{ node.type ?? 'node' }}</td>
+            <td>{{ node.state }}</td>
+            <td>{{ node.provider ?? 'no provider yet' }}</td>
+            <td>{{ node.permission ?? 'no permission recorded' }}</td>
+            <td>{{ durationOf(node) }}</td>
+            <td>{{ costOf(node) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="graph-canvas__table" data-graph-edge-table>
+        <caption>
+          Every edge, and the facts each data edge carries.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">From</th>
+            <th scope="col">To</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Carries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="edge in props.edges" :key="edge.id" :data-table-edge="edge.id">
+            <th scope="row">{{ edge.from }}</th>
+            <td>{{ edge.to }}</td>
+            <td>{{ edge.kind }}</td>
+            <td>{{ carriesOf(edge) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 </template>
 
@@ -429,12 +648,18 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: 0.8125rem;
 }
 
-.graph-canvas__table {
+.graph-canvas__tables {
   position: absolute;
   inset: auto 0.5rem 2.5rem 0.5rem;
   z-index: 5;
+  display: grid;
+  gap: 0.5rem;
   max-height: 60%;
   overflow: auto;
+}
+
+.graph-canvas__table {
+  width: 100%;
   border: 1px solid var(--edge);
   border-radius: 0.5rem;
   background: var(--surface-raised);
@@ -463,6 +688,61 @@ function onKeydown(event: KeyboardEvent): void {
 .graph-node__title {
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/*
+ * AC7 — a selection has a neighbourhood, and the rest of the graph recedes.
+ *
+ * Opacity and **not** `transition`, deliberately: the renderer's own node
+ * transition is `transform 200ms ease-out` and nothing else (KAR-16.6 AC7,
+ * asserted on the computed style), so a second transition declared here would
+ * silently break that promise while looking like a nicety.
+ *
+ * `:deep()` because `.vue-flow__node` is the renderer's own element and a
+ * scoped rule would never reach it — the node body inside it is the slot's, but
+ * the box around it is not.
+ */
+.graph-canvas :deep(.vue-flow__node.is-distant) {
+  opacity: 0.32;
+}
+
+.graph-canvas :deep(.vue-flow__edge.is-adjacent .vue-flow__edge-path) {
+  stroke: var(--focus-ring);
+  stroke-width: 2;
+}
+
+/*
+ * AC5 — a data edge's `carries[]`, on hover.
+ *
+ * Always in the DOM (so a reader and the data-table twin can both reach it) and
+ * transparent until the pointer or the keyboard arrives, because a forty-node
+ * plan with a permanent label on every data edge is unreadable — which is the
+ * reason the acceptance criterion says "on hover" rather than "always".
+ */
+.graph-canvas :deep(.vue-flow__edge-textwrapper) {
+  opacity: 0;
+  /*
+   * A label sits on the midpoint of the edge it labels — which is exactly
+   * where the renderer's wide transparent hit path is — so a label that took
+   * pointer events would swallow the hover that is meant to reveal it, and the
+   * only way to see it would be to have already seen it.
+   */
+  pointer-events: none;
+}
+
+.graph-canvas :deep(.vue-flow__edge:hover .vue-flow__edge-textwrapper),
+.graph-canvas :deep(.vue-flow__edge:focus-within .vue-flow__edge-textwrapper),
+.graph-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-textwrapper) {
+  opacity: 1;
+}
+
+.graph-canvas :deep(.vue-flow__edge-text) {
+  fill: var(--ink);
+  font-size: 11px;
+}
+
+.graph-canvas :deep(.vue-flow__edge-textbg) {
+  fill: var(--surface-raised);
 }
 
 /*

@@ -69,6 +69,23 @@ suite('AC1 — every way of reaching Vue Flow is caught', () => {
     ).toEqual([]);
   });
 
+  it.each([
+    ['the minimap', "import { MiniMap } from '@vue-flow/minimap';"],
+    ['the controls', "import { Controls } from '@vue-flow/controls';"],
+    ["the minimap's stylesheet", "import '@vue-flow/minimap/dist/style.css';"],
+  ])('refuses %s too, because the scope is the boundary and not the package', (_what, line) => {
+    // KAR-17.1 AC9 brought two addons into the facade — a minimap and zoom
+    // controls — and both reach the renderer's store through `useVueFlow`. A
+    // rule that guarded only `@vue-flow/core` would leave a view able to import
+    // `@vue-flow/minimap`, hold the same store, and make the swap this facade
+    // exists to protect a two-file change again. The boundary is the scope.
+    const violations = graphFacadeViolations([file('src/views/PlanGraphView.vue', line)]);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.where).toBe('src/views/PlanGraphView.vue');
+    expect(violations[0]?.message).toContain(FACADE);
+  });
+
   it('says nothing about a file that never mentions it', () => {
     expect(
       graphFacadeViolations([file('src/views/PlanGraphView.vue', "import { ref } from 'vue';")]),

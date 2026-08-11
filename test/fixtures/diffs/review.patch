@@ -1,0 +1,60 @@
+diff --git a/assets/logo.png b/assets/logo.png
+index f37764b1f7606623616dcdc169cc858273ea2d94..c446c2d018977acf8d7f986be37d78ab0e9d845c 100644
+GIT binary patch
+delta 8
+PcmZ?soZ!aHz{msu2?YUc
+
+delta 4
+LcmeZto8Sfj17HDW
+
+diff --git a/src/api/contract.ts b/src/api/contract.ts
+index 581a4f2..5b3596e 100644
+--- a/src/api/contract.ts
++++ b/src/api/contract.ts
+@@ -9,7 +9,7 @@ export interface SignupRequest {
+   readonly extra3?: string;
+   readonly extra4?: string;
+ }
+-// request field: none
++// request field: optional
+ 
+ export interface SignupResponse {
+   readonly id: string;
+@@ -28,7 +28,7 @@ export interface SignupResponse {
+   readonly pad12: string;
+   readonly pad13: string;
+ 
+-  readonly emailVerified: boolean;
++  readonly verifiedAt: boolean;
+ }
+ 
+ export const SIGNUP_PATH = "/api/signup";
+diff --git a/src/date-picker.ts b/src/date-picker.ts
+index 6d1cddc..41b9e71 100644
+--- a/src/date-picker.ts
++++ b/src/date-picker.ts
+@@ -1,3 +1,3 @@
+ export function daysUntil(target: Date): number {
+-  return target;
++  return Math.round(target.getTime() / 86_400_000);
+ }
+diff --git a/src/dead-code.ts b/src/dead-code.ts
+deleted file mode 100644
+index b79aa99..0000000
+--- a/src/dead-code.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-export const unused = true;
+diff --git a/src/legacy-format.ts b/src/formatting.ts
+similarity index 100%
+rename from src/legacy-format.ts
+rename to src/formatting.ts
+diff --git a/test/days-until.test.ts b/test/days-until.test.ts
+new file mode 100644
+index 0000000..48b6d64
+--- /dev/null
++++ b/test/days-until.test.ts
+@@ -0,0 +1,3 @@
++import { daysUntil } from '../src/date-picker.ts';
++
++export const days: number = daysUntil(new Date());

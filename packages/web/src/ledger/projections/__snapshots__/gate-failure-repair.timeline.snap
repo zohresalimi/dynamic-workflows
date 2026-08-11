@@ -14,9 +14,16 @@
     "fix-65207341fbd9",
     "gate-typecheck-r2",
   ],
+  "pauses": [],
+  "rateLimits": [],
   "spans": Map {
     "impl-1#0" => {
       "attempt": 0,
+      "costUsd": {
+        "estimated": null,
+        "unaccounted": [],
+        "vendorReported": null,
+      },
       "endSeq": 7,
       "endTs": 1754812802000,
       "lane": 0,
@@ -30,6 +37,11 @@
     },
     "gate-typecheck#0" => {
       "attempt": 0,
+      "costUsd": {
+        "estimated": null,
+        "unaccounted": [],
+        "vendorReported": null,
+      },
       "endSeq": 12,
       "endTs": 1786402564331,
       "lane": 1,
@@ -43,6 +55,13 @@
     },
     "fix-65207341fbd9#0" => {
       "attempt": 0,
+      "costUsd": {
+        "estimated": null,
+        "unaccounted": [
+          "claude",
+        ],
+        "vendorReported": null,
+      },
       "endSeq": 21,
       "endTs": 1786402564612,
       "lane": 2,
@@ -56,6 +75,11 @@
     },
     "gate-typecheck-r2#0" => {
       "attempt": 0,
+      "costUsd": {
+        "estimated": null,
+        "unaccounted": [],
+        "vendorReported": null,
+      },
       "endSeq": 29,
       "endTs": 1786402565368,
       "lane": 3,
@@ -68,5 +92,6 @@
       "suspensions": [],
     },
   },
+  "stalls": [],
   "suspensions": [],
 }

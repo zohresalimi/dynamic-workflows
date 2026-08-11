@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 export const RUN_FIXTURES = [
   'happy-path-12',
   'three-patches',
+  // KAR-17.3: the only fixture with more than one packet for the same node.
+  'repair-attempts',
   'compaction',
   'gate-failure-repair',
   'crash-resume-seq-gap',

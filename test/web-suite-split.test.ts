@@ -71,6 +71,11 @@ suite('AC2 — the web suite is partitioned, not overlapped', () => {
       `${PROJECTIONS}cost.test.ts`,
       `${PROJECTIONS}gates.test.ts`,
       `${PROJECTIONS}idempotency.test.ts`,
+      // KAR-17.9's aggregation. A pure selector over a folded blackboard, so it
+      // belongs on this side of the split for the same reason the seven
+      // reducers do: no Vue, no DOM, no mount, and milliseconds instead of a
+      // page load.
+      `${PROJECTIONS}memory-graph.test.ts`,
       `${PROJECTIONS}plan.test.ts`,
       `${PROJECTIONS}planHistory.test.ts`,
       `${PROJECTIONS}purity.test.ts`,

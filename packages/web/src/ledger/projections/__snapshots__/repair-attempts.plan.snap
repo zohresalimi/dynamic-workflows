@@ -1,0 +1,237 @@
+{
+  "appliedSeq": 30,
+  "edges": Map {
+    "impl-oauth→gate-contract:control" => {
+      "carries": [],
+      "from": "impl-oauth",
+      "id": "impl-oauth→gate-contract:control",
+      "kind": "control",
+      "to": "gate-contract",
+    },
+  },
+  "nodes": Map {
+    "impl-oauth" => {
+      "attempt": 2,
+      "binary": {
+        "path": "/tmp/deflow-repair-attempts/bin/claude",
+        "sha256": "5092cc9a105a6406f0b8bc4630f8f4ae081410d6c0d6d09ee80a3878f04a7cb8",
+        "version": "2.1.220",
+      },
+      "blocked": null,
+      "failure": {
+        "attempt": 2,
+        "class": "permanent",
+        "detail": {
+          "ajv": [
+            {
+              "instancePath": "/findings/0/severity",
+              "keyword": "enum",
+              "message": "must be equal to one of the allowed values",
+              "params": {
+                "allowedValues": [
+                  "blocker",
+                  "major",
+                  "minor",
+                  "nit",
+                ],
+              },
+              "schemaPath": "#/properties/findings/items/properties/severity/enum",
+            },
+            {
+              "instancePath": "/summary",
+              "keyword": "type",
+              "message": "must be string",
+              "params": {
+                "type": "string",
+              },
+              "schemaPath": "#/properties/summary/type",
+            },
+          ],
+          "schemaId": "DeFlow.verdict.v4",
+        },
+        "evidence": [
+          "artifact://98d88cd8c0d0c4ae9840703eb08a304eb0426c36c058d4988898cc90c02ad440",
+        ],
+        "message": "the returned object does not satisfy DeFlow.verdict.v4",
+        "reason": "contract.schema-invalid",
+      },
+      "failures": [
+        {
+          "attempt": 0,
+          "class": "transient",
+          "detail": null,
+          "evidence": [],
+          "message": "the turn exceeded its wall-clock budget",
+          "reason": "timeout",
+        },
+        {
+          "attempt": 1,
+          "class": "transient",
+          "detail": {
+            "exitCode": 2,
+          },
+          "evidence": [
+            "artifact://98d88cd8c0d0c45e5046703eb08a304eb042bc78c058d4988898cc90c01a904a",
+          ],
+          "message": "the CLI exited 2 after writing a partial patch",
+          "reason": "agent.nonzero-exit",
+        },
+        {
+          "attempt": 2,
+          "class": "permanent",
+          "detail": {
+            "ajv": [
+              {
+                "instancePath": "/findings/0/severity",
+                "keyword": "enum",
+                "message": "must be equal to one of the allowed values",
+                "params": {
+                  "allowedValues": [
+                    "blocker",
+                    "major",
+                    "minor",
+                    "nit",
+                  ],
+                },
+                "schemaPath": "#/properties/findings/items/properties/severity/enum",
+              },
+              {
+                "instancePath": "/summary",
+                "keyword": "type",
+                "message": "must be string",
+                "params": {
+                  "type": "string",
+                },
+                "schemaPath": "#/properties/summary/type",
+              },
+            ],
+            "schemaId": "DeFlow.verdict.v4",
+          },
+          "evidence": [
+            "artifact://98d88cd8c0d0c4ae9840703eb08a304eb0426c36c058d4988898cc90c02ad440",
+          ],
+          "message": "the returned object does not satisfy DeFlow.verdict.v4",
+          "reason": "contract.schema-invalid",
+        },
+      ],
+      "id": "impl-oauth",
+      "lifecycle": "active",
+      "model": null,
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "worktree",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "claude-code",
+      "result": null,
+      "retry": {
+        "nextAttempt": 2,
+        "wakeAt": 1786456920000,
+      },
+      "state": "failed",
+      "status": "failed",
+      "suspendedUntil": null,
+      "title": "Move the OAuth callback onto the new router",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "probe-oauth-tokens" => {
+      "attempt": 0,
+      "binary": {
+        "path": "/tmp/deflow-repair-attempts/bin/gemini",
+        "sha256": "185aac9a40d4f056e8d23856d09a6406f0f2fc6e30c2789078267c547038b4ae",
+        "version": "0.9.4",
+      },
+      "blocked": null,
+      "failure": {
+        "attempt": 0,
+        "class": "permanent",
+        "detail": {
+          "code": "ENOENT",
+          "errno": -2,
+        },
+        "evidence": [
+          "artifact://185aac9a007c7c4830267c5470303c6e504268b630e27c06105ec01ce05ab8de",
+        ],
+        "message": "spawn /tmp/deflow-repair-attempts/bin/gemini ENOENT",
+        "reason": "adapter.spawn-failed",
+      },
+      "failures": [
+        {
+          "attempt": 0,
+          "class": "permanent",
+          "detail": {
+            "code": "ENOENT",
+            "errno": -2,
+          },
+          "evidence": [
+            "artifact://185aac9a007c7c4830267c5470303c6e504268b630e27c06105ec01ce05ab8de",
+          ],
+          "message": "spawn /tmp/deflow-repair-attempts/bin/gemini ENOENT",
+          "reason": "adapter.spawn-failed",
+        },
+      ],
+      "id": "probe-oauth-tokens",
+      "lifecycle": "active",
+      "model": null,
+      "pathScopes": {
+        "read": [
+          "src/**",
+        ],
+        "write": [
+          "src/**",
+        ],
+      },
+      "permission": "read",
+      "phase": null,
+      "progressMessage": null,
+      "provider": "gemini-cli",
+      "result": null,
+      "retry": null,
+      "state": "failed",
+      "status": "failed",
+      "suspendedUntil": null,
+      "title": "Probe the token store",
+      "type": "agent",
+      "unschedulable": null,
+      "worktree": null,
+    },
+    "gate-contract" => {
+      "attempt": 0,
+      "binary": null,
+      "blocked": null,
+      "failure": null,
+      "failures": [],
+      "id": "gate-contract",
+      "lifecycle": "active",
+      "model": null,
+      "pathScopes": {
+        "read": [],
+        "write": [],
+      },
+      "permission": "read",
+      "phase": null,
+      "progressMessage": null,
+      "provider": null,
+      "result": null,
+      "retry": null,
+      "state": "pending",
+      "status": "scheduled",
+      "suspendedUntil": null,
+      "title": "The API contract holds",
+      "type": "gate",
+      "unschedulable": null,
+      "worktree": null,
+    },
+  },
+  "planHash": "sha256-f338fabe00b1209dcad7b42c8bdecf02c10b6aae824cbd91166c430b1e04cc12",
+  "proposals": Map {},
+  "version": 1,
+}

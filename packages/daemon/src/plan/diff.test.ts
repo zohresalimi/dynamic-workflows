@@ -22,6 +22,7 @@
  */
 import type { NodeId, PlanGraph, ProviderId } from '@DeFlow/core';
 import { PlanGraphSchema } from '@DeFlow/core';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { diffPlanGraphs } from './diff.ts';
 
@@ -204,5 +205,72 @@ describe('diffPlanGraphs — the version pair it describes', () => {
 
     expect(diff.from).toBe(1);
     expect(diff.to).toBe(4);
+  });
+});
+
+/**
+ * KAR-17.2 test 4 — the field-level patch the scrubber's "why did this change"
+ * panel renders (EPIC-17-S8).
+ *
+ * The panel is `packages/web/src/lib/plan-patch.ts` and it renders operations;
+ * **this** is where those operations are produced, so this is where the two
+ * halves of the story's fourth test that are about *production* belong: a patch
+ * over `reads[]` as well as over `/provider`, and the library that made it.
+ */
+describe('diffPlanGraphs — the field-level patch behind F10.2 (KAR-17.2 AC5)', () => {
+  it('reports a reads[] change as its own operation, on the reads pointer', () => {
+    const before = graph([agent(IMPLEMENT, { reads: [{ kind: 'spec', section: 'goal' }] })]);
+    const after = graph(
+      [
+        agent(IMPLEMENT, {
+          reads: [
+            { kind: 'spec', section: 'goal' },
+            { kind: 'fact', key: 'repo.layout' },
+          ],
+        }),
+      ],
+      [],
+      2,
+    );
+
+    const patch = diffPlanGraphs(before, after).nodes.changed[0]?.patch ?? [];
+
+    // Structural, on a pointer into the document — not a diff of two rendered
+    // strings, which is what the panel's own spec is written against.
+    expect(patch).toHaveLength(1);
+    expect(patch[0]?.op).toBe('add');
+    // `-`, not `1`: RFC 6902 §4.1's append token, which is what `createPatch`
+    // emits for a value added past the end of an array. Worth pinning rather
+    // than normalising — the panel renders the pointer verbatim, so this is
+    // the string an operator actually reads.
+    expect(patch[0]?.path).toBe('/reads/-');
+  });
+
+  it('calls a permission escalation out as its own operation, which F2.5 gates on', () => {
+    const before = graph([agent(IMPLEMENT, { permission: 'worktree' })]);
+    const after = graph([agent(IMPLEMENT, { permission: 'worktree+net' })], [], 2);
+
+    expect(diffPlanGraphs(before, after).nodes.changed[0]?.patch).toEqual([
+      { op: 'replace', path: '/permission', value: 'worktree+net' },
+    ]);
+  });
+
+  it('is produced with rfc6902 and not with fast-json-patch (EPIC-17-S8, scenario 3)', async () => {
+    // A dependency fact, asserted where the dependency is: `fast-json-patch`
+    // last shipped in 2022 (docs/02-tech-stack.md §4), and the day somebody
+    // reaches for it because the import name is shorter, this fails rather than
+    // the frontend quietly rendering a patch of a different shape.
+    const manifest = JSON.parse(
+      await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    ) as { dependencies: Record<string, string> };
+
+    expect(manifest.dependencies['rfc6902']).toBe('catalog:');
+    expect(manifest.dependencies).not.toHaveProperty('fast-json-patch');
+
+    const catalog = await readFile(
+      new URL('../../../../pnpm-workspace.yaml', import.meta.url),
+      'utf8',
+    );
+    expect(catalog).toContain('rfc6902: ^5.3.0');
   });
 });

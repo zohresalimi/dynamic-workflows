@@ -28,6 +28,30 @@
  * bar. Merging them would hide the retry, which is the single most useful thing
  * the Gantt has to say about a flaky node — and the gap between them is where
  * the backoff lives.
+ *
+ * ## The three markers (KAR-17.8 AC5, AC6, AC7)
+ *
+ * `budget.exceeded`, `provider.rate_limited` and `run.stalled` are folded here
+ * as well as in `./cost.ts`, and that is not a duplication to tidy away: the
+ * seven projections never read one another (KAR-16.3), and what the two modules
+ * keep is different. `cost.ts` keeps a ceiling's `basis` because the cost view
+ * has to say whether an estimate drove the trip; the timeline keeps the `ts`,
+ * because a marker on a wall-clock axis needs an x and a `seq` is not one.
+ *
+ * All three are **observations**. A `budget.exceeded` PAUSED the run — the
+ * schema's `failureClass: 'gate'` is what stops anything downstream retrying
+ * into the same wall — and a `run.stalled` is a report and never a kill, because
+ * a long build and a wedged agent look identical from here (docs/06 §7). The
+ * projection therefore carries no `failed` flag for either, so no renderer can
+ * reach for one.
+ *
+ * ## Money per attempt, with the sources kept apart
+ *
+ * AC9's data table has a cost column per `(nodeId, attempt)`, so the same
+ * `budget.consumed` that moves `costSeries` also lands on its span. Vendor
+ * figures and estimates stay in separate cells for `./cost.ts`'s reason — their
+ * sum is neither of them — and a provider that priced nothing is *named* in
+ * `unaccounted` rather than charged `0`.
  */
 import type { Event } from '@DeFlow/core';
 import { type Ignorable, ignored } from './kinds.ts';
@@ -45,6 +69,21 @@ export interface SuspensionVM {
   untilTs: number | null;
 }
 
+/**
+ * What one attempt spent, by the tier that measured it.
+ *
+ * `null` is "nothing of this kind has landed", never zero: a `0` in
+ * `vendorReported` is a claim the vendor billed nothing, and an attempt whose
+ * provider does not report costs is a different statement from a free one
+ * (docs/08 §7).
+ */
+export interface SpanCost {
+  vendorReported: number | null;
+  estimated: number | null;
+  /** Providers that spent something nobody could price. Named, not counted. */
+  unaccounted: string[];
+}
+
 export interface SpanVM {
   readonly nodeId: string;
   readonly attempt: number;
@@ -59,6 +98,8 @@ export interface SpanVM {
   suspensions: SuspensionVM[];
   /** Idle time inside this span, or `null` while a suspension is unanswered. */
   suspendedMs: number | null;
+  /** What this attempt alone consumed. Never a per-node total shared out. */
+  costUsd: SpanCost;
 }
 
 export interface CostPointVM {
@@ -67,6 +108,41 @@ export interface CostPointVM {
   /** Cumulative, per source. Never one mixed number — see `./cost.ts`. */
   readonly vendorReported: number | null;
   readonly estimated: number | null;
+}
+
+/**
+ * A ceiling that **paused** the run (AC5).
+ *
+ * There is deliberately no `failed` here and no `outcome`: `budget.exceeded`
+ * stops a run, and a timeline that drew it the way it draws `node.failed` would
+ * be telling the operator to go looking for a broken agent.
+ */
+export interface PauseVM {
+  readonly seq: number;
+  readonly ts: number;
+  readonly scope: 'node' | 'run';
+  readonly node: string | null;
+  readonly dimension: 'cost' | 'wallclock';
+  readonly limit: number;
+  readonly actual: number;
+}
+
+/** A stall with an **external** cause (AC6). */
+export interface RateLimitMarkVM {
+  readonly seq: number;
+  readonly ts: number;
+  readonly provider: string;
+  /** ms epoch. `null` when the vendor named no reset. */
+  readonly resetsAt: number | null;
+}
+
+/** F4.7's report. Surfaced, never a kill (AC7). */
+export interface StallVM {
+  readonly seq: number;
+  readonly ts: number;
+  readonly watermarkSeq: number;
+  readonly idleMs: number;
+  readonly runningNodes: readonly string[];
 }
 
 export interface TimelineProjection {
@@ -78,10 +154,22 @@ export interface TimelineProjection {
   /** Every suspension, including those on nodes that never executed. */
   suspensions: SuspensionVM[];
   costSeries: CostPointVM[];
+  pauses: PauseVM[];
+  rateLimits: RateLimitMarkVM[];
+  stalls: StallVM[];
 }
 
 export function emptyTimeline(): TimelineProjection {
-  return { appliedSeq: 0, spans: new Map(), lanes: [], suspensions: [], costSeries: [] };
+  return {
+    appliedSeq: 0,
+    spans: new Map(),
+    lanes: [],
+    suspensions: [],
+    costSeries: [],
+    pauses: [],
+    rateLimits: [],
+    stalls: [],
+  };
 }
 
 export const spanKey = (nodeId: string, attempt: number): string => `${nodeId}#${attempt}`;
@@ -110,6 +198,7 @@ export function applyTimeline(state: TimelineProjection, event: Event): void {
         outcome: null,
         suspensions: [],
         suspendedMs: null,
+        costUsd: { vendorReported: null, estimated: null, unaccounted: [] },
       });
       return;
     }
@@ -164,8 +253,59 @@ export function applyTimeline(state: TimelineProjection, event: Event): void {
         point[key] = addMoney(point[key], event.payload.costUsd);
       }
       state.costSeries.push(point);
+
+      // The same event, on the attempt that spent it. An index rather than a
+      // second accounting: the series and the table's cost column can never
+      // disagree about the same money because they are folded together.
+      // `attempt` is required on this payload exactly where `node` is, but the
+      // schema states that in prose and the type states it as two independent
+      // optionals — so the pair is checked rather than asserted. Run-level
+      // spend that no node owns lands in the series and on no bar, which is
+      // correct: there is no attempt to charge it to.
+      if (event.payload.node !== undefined && event.payload.attempt !== undefined) {
+        const span = state.spans.get(spanKey(event.payload.node, event.payload.attempt));
+        if (span === undefined) return;
+        if (event.payload.costUsd === null) {
+          if (!span.costUsd.unaccounted.includes(event.payload.provider)) {
+            span.costUsd.unaccounted.push(event.payload.provider);
+          }
+          return;
+        }
+        span.costUsd[key] = addMoney(span.costUsd[key], event.payload.costUsd);
+      }
       return;
     }
+
+    case 'budget.exceeded':
+      state.pauses.push({
+        seq: event.seq,
+        ts: event.ts,
+        scope: event.payload.scope,
+        node: event.payload.node ?? null,
+        dimension: event.payload.dimension,
+        limit: event.payload.limit,
+        actual: event.payload.actual,
+      });
+      return;
+
+    case 'provider.rate_limited':
+      state.rateLimits.push({
+        seq: event.seq,
+        ts: event.ts,
+        provider: event.payload.provider,
+        resetsAt: event.payload.resetsAt ?? null,
+      });
+      return;
+
+    case 'run.stalled':
+      state.stalls.push({
+        seq: event.seq,
+        ts: event.ts,
+        watermarkSeq: event.payload.watermarkSeq,
+        idleMs: event.payload.idleMs,
+        runningNodes: [...event.payload.runningNodes],
+      });
+      return;
 
     default:
       ignored<'timeline'>(event as Ignorable<'timeline'>);

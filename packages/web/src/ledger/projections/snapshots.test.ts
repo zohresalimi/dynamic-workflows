@@ -39,6 +39,12 @@ const MATRIX: readonly (readonly [RunFixture, string])[] = [
   ['happy-path-12', 'timeline'],
   ['three-patches', 'plan'],
   ['three-patches', 'planHistory'],
+  // KAR-17.3's fixture: three packets for one node, and the per-attempt cost
+  // and failure history the inspector's attempt table reads.
+  ['repair-attempts', 'context'],
+  ['repair-attempts', 'cost'],
+  ['repair-attempts', 'plan'],
+  ['repair-attempts', 'timeline'],
   ['compaction', 'context'],
   ['gate-failure-repair', 'plan'],
   ['gate-failure-repair', 'planHistory'],

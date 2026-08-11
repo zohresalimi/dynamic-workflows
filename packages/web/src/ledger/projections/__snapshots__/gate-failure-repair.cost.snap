@@ -1,5 +1,34 @@
 {
   "appliedSeq": 30,
+  "byAttempt": Map {
+    "fix-65207341fbd9#0" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "lastSeq": 20,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [
+        "claude",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 160,
+          "outputTokens": 0,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
   "byNode": Map {
     "fix-65207341fbd9" => {
       "costUsd": {
@@ -9,6 +38,7 @@
         "vendorReported": null,
       },
       "events": 1,
+      "lastSeq": 20,
       "sources": [
         "estimated",
       ],
@@ -37,6 +67,7 @@
         "vendorReported": null,
       },
       "events": 1,
+      "lastSeq": 20,
       "sources": [
         "estimated",
       ],
@@ -68,6 +99,7 @@
       "vendorReported": null,
     },
     "events": 1,
+    "lastSeq": 20,
     "sources": [
       "estimated",
     ],

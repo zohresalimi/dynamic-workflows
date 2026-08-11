@@ -231,12 +231,39 @@ suite('AC3 — no store array accumulates node.progress (EPIC-16-S26)', () => {
     store.applyEvent(progress(2, 'n-a'));
     store.applyEvent(progress(3, 'n-a'));
 
-    const node = store.plan.nodes.get('n-a');
-    expect(node?.progressMessage).toBe('tick 3');
-    // Nothing on the node is an unbounded collection: every array-valued field
-    // it has is bounded by the plan, and `node.progress` contributes to none.
-    const arrays = Object.entries(node ?? {}).filter(([, value]) => Array.isArray(value));
-    expect(arrays).toEqual([]);
+    expect(store.plan.nodes.get('n-a')?.progressMessage).toBe('tick 3');
+  });
+
+  /**
+   * The rule this suite is really about, stated as the rule rather than as a
+   * proxy for it.
+   *
+   * It used to read *"the node has no array-valued field at all"*, which was
+   * true when none existed and was never the invariant: KAR-17.3's inspector
+   * needs one failure per attempt (`failures`), which **is** an array and is
+   * bounded — by the node's own `retry.maxAttempts`, a small number in the plan
+   * document. What must never happen is an array that grows with the *event*
+   * count, and that is what is asserted here: five thousand `node.progress`
+   * events, and every array on the node exactly as long as it was.
+   */
+  it('lets no array on a node grow with the event count', () => {
+    const store = opened();
+    store.applyEvent(scheduled(1, 'n-a'));
+
+    const lengths = (): Record<string, number> =>
+      Object.fromEntries(
+        Object.entries(store.plan.nodes.get('n-a') ?? {})
+          .filter(([, value]) => Array.isArray(value))
+          .map(([key, value]) => [key, (value as readonly unknown[]).length]),
+      );
+
+    const before = lengths();
+    for (let seq = 10; seq < 5_010; seq += 1) store.applyEvent(progress(seq, 'n-a'));
+
+    expect(lengths()).toEqual(before);
+    // And the fields themselves are the known, plan-bounded ones — so a new
+    // unbounded collection cannot be added without this line being changed.
+    expect(Object.keys(before)).toEqual(['failures']);
   });
 });
 

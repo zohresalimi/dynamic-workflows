@@ -41,6 +41,34 @@ const INITIAL_CHUNK_BUDGET = 200 * 1024;
  */
 const BANNED_FROM_INITIAL = ['elkjs', 'shiki', '@xterm/', '@git-diff-view/', 'echarts'] as const;
 
+/**
+ * Text that only a **development** build of Vue emits.
+ *
+ * Vue's ESM entry is the same file in both builds; what differs is whether the
+ * `__DEV__` branches survive, and `[Vue warn]` is the cheapest sentence that
+ * only exists inside them. That code costs about 59 KB gzip — a third of the
+ * whole budget, spent on warnings and the devtools bridge the shipped
+ * application does not contain.
+ *
+ * It has to be pinned because it is easy to measure by accident. Vitest runs
+ * with `NODE_ENV=test`, a `vite build` spawned with the runner's own
+ * environment inherits it, and Vite resolves Vue's conditional exports against
+ * the building process's `NODE_ENV` — so this spec measured a bundle nobody
+ * ships until `BUILD_ENV` below was passed explicitly. Left unpinned the budget
+ * is either 59 KB pessimistic or, worse, a number that moves when the runner
+ * does. A source-path check cannot see this: both builds list the same module.
+ */
+const DEV_ONLY_MARKER = '[Vue warn]';
+
+/**
+ * The environment the build runs in.
+ *
+ * Explicit rather than inherited: `mode` alone does not settle it, because Vite
+ * resolves conditional exports against `process.env.NODE_ENV` in the process
+ * doing the building.
+ */
+const BUILD_ENV = { ...process.env, NODE_ENV: 'production' };
+
 interface BuiltChunk {
   readonly file: string;
   readonly bytes: Buffer;
@@ -65,7 +93,11 @@ let buildOutput: string;
 
 function run(command: string, args: readonly string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, [...args], {
+      cwd,
+      env: BUILD_ENV,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => {
       output += chunk.toString();
@@ -170,6 +202,18 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
     ).toBeLessThanOrEqual(INITIAL_CHUNK_BUDGET);
   });
 
+  it('measures the bundle that ships, not a development one', () => {
+    // The control under every number in this file. A budget asserted against a
+    // build carrying Vue's development runtime is a budget about a build nobody
+    // serves — and it fails, or passes, for reasons that have nothing to do with
+    // what this project put in the chunk.
+    const dev = initial.filter((chunk) => chunk.bytes.includes(DEV_ONLY_MARKER));
+    expect(
+      dev.map((chunk) => chunk.file),
+      'the initial payload carries Vue’s development build',
+    ).toEqual([]);
+  });
+
   it('has @vue-flow/core in it, because the plan graph is the landing view', () => {
     expect(holds(initial, '@vue-flow/core')).toBe(true);
   });
@@ -187,6 +231,60 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
 
     expect(names.some((module) => module.includes('PlanEvolutionView'))).toBe(true);
     expect(holds(initial, 'PlanEvolutionView')).toBe(false);
+
+    // KAR-17.6 AC8 / test plan row 8. The four `BANNED_FROM_INITIAL` entries
+    // above are now load-bearing rather than anticipatory: `@git-diff-view/*`
+    // and the Shiki instance behind it are real dependencies of this build, and
+    // the only thing keeping them out of the first chunk is that the diff route
+    // is lazy. Asserting the *positive* — that they landed in a chunk of their
+    // own — is what distinguishes "correctly split" from "not built at all",
+    // which is the row's red: `the route was imported eagerly for a type`.
+    expect(names.some((module) => module.includes('DiffReviewView'))).toBe(true);
+    expect(holds(initial, 'DiffReviewView')).toBe(false);
+    expect(names.some((module) => module.includes('@git-diff-view/'))).toBe(true);
+    expect(names.some((module) => module.includes('@shikijs/'))).toBe(true);
+
+    // KAR-17.5. `@xterm/` becomes load-bearing here for the same reason
+    // `@git-diff-view/` did: the terminal is a real dependency of this build
+    // now, and the only thing keeping it and its three addons out of the boot
+    // chunk is that `/runs/:runId/nodes/:nodeId/output` is a lazy route. The
+    // positive assertion is what distinguishes "correctly split" from "the
+    // route was never built" — which is the shape that makes the ban above
+    // pass for the wrong reason.
+    expect(names.some((module) => module.includes('NodeOutputView'))).toBe(true);
+    expect(holds(initial, 'NodeOutputView')).toBe(false);
+    expect(names.some((module) => module.includes('@xterm/'))).toBe(true);
+    expect(names.some((module) => module.includes('@tanstack/'))).toBe(true);
+
+    // KAR-17.9 AC5 / test plan row 6 — the memory graph is the odd one out on
+    // this list: it brings **no new dependency** at all, because it shares the
+    // renderer with the landing view. It is lazy anyway, and deliberately: it
+    // is the second Vue Flow surface, the one whose node count grows with the
+    // run rather than with the plan, and the aggregation, node body and detail
+    // panel behind it are dead weight on a boot that is about to draw a plan.
+    // The row's red is `the route was eagerly imported`, and it is the *whole*
+    // route that has to move — the view, its node body and the projection
+    // selector under it — which is why all three are named.
+    expect(names.some((module) => module.includes('MemoryGraphView'))).toBe(true);
+    expect(holds(initial, 'MemoryGraphView')).toBe(false);
+    expect(names.some((module) => module.includes('MemoryNode.vue'))).toBe(true);
+    expect(holds(initial, 'MemoryNode.vue')).toBe(false);
+    expect(names.some((module) => module.includes('memory-graph.ts'))).toBe(true);
+    expect(holds(initial, 'memory-graph.ts')).toBe(false);
+  });
+
+  it('ships exactly one syntax highlighter, in no chunk at all but Shiki (AC9)', () => {
+    // `@git-diff-view/core` statically imports `@git-diff-view/lowlight`, whose
+    // first line is `createLowlight(all)` — every highlight.js grammar, ~900 KB
+    // raw — as the renderer's *default* highlighter. This application always
+    // registers its own, so those grammars would be a complete, unreachable
+    // second highlighter riding along in the diff route's chunk.
+    // `packages/web/scripts/diff-syntax-alias.ts` is what keeps them out, and
+    // this is what notices if the alias is ever dropped.
+    const everywhere = [...initial, ...lazy].flatMap((chunk) => chunk.modules);
+
+    expect(everywhere.filter((module) => module.includes('highlight.js'))).toEqual([]);
+    expect(everywhere.filter((module) => /node_modules\/lowlight\//.test(module))).toEqual([]);
     // `@DeFlow/core`'s reducer and its zod schemas arrive with `scrub.ts`, and
     // they are three times the size of the view that pulls them in. Behind the
     // lazy route they cost nothing at boot; in the initial payload they would

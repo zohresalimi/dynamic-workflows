@@ -295,6 +295,15 @@ export function applyPlanHistory(state: PlanHistoryProjection, event: Event): vo
 /** The fields the scrubber highlights a change in. */
 export interface NodeDocument {
   readonly id: string;
+  /**
+   * Carried but **deliberately not hashed**.
+   *
+   * A retitled node is not a changed node as far as the scrubber's four-way
+   * encoding goes — the daemon's own RFC 6902 patch reports the title move as
+   * the field-level change it is (KAR-17.2 AC5). It is declared here so that
+   * passing a real plan node, which always has one, is not a type error.
+   */
+  readonly title?: string;
   readonly type?: string;
   readonly permission?: string;
   readonly brief?: string;

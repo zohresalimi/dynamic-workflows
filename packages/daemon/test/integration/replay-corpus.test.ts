@@ -1,5 +1,5 @@
 /**
- * KAR-16.5 — the six-fixture corpus: what each one proves, and where it came
+ * KAR-16.5 — the fixture corpus: what each one proves, and where it came
  * from.
  *
  * Verifies: EPIC-16-S32, EPIC-16-S34 · AC6, AC9, AC10
@@ -45,6 +45,20 @@ const CORPUS = [
   'compaction',
   'crash-resume-seq-gap',
   'stress-400',
+  // KAR-17.3's, and the seventh: the only recording with **more than one
+  // context packet for the same node**. EPIC-17-S13's side-by-side of attempt 1
+  // against attempt 3 has nothing to compare without it, and neither does the
+  // node inspector's per-attempt cost or its failure history.
+  'repair-attempts',
+  // EPIC-17-S35's own, and the eighth. The scenario names a **22-node** run —
+  // 18 passed, 1 failed, 2 abandoned, 1 awaiting-human — whose failure is only
+  // explicable by walking six views in sequence, and no other fixture in this
+  // corpus carries all six stops: `gate-failure-repair` has verdicts and
+  // findings but never built a context packet, `repair-attempts` has three
+  // packets but no gate ever spoke, and `compaction` is three events with no
+  // run at all. A five-minute diagnosis cannot be timed over a fixture that
+  // cannot be diagnosed.
+  'five-minute-diagnosis',
 ] as const;
 
 const authorized = authorizedFetch();
@@ -75,8 +89,8 @@ const json = async (origin: string, path: string): Promise<unknown> => {
   return (await response.json()) as unknown;
 };
 
-suite('EPIC-16-S32 — all six fixtures exist, one file per run (AC6)', () => {
-  it('holds exactly the six the corpus names, each as a single events.jsonl', () => {
+suite('EPIC-16-S32 — every fixture exists, one file per run (AC6)', () => {
+  it('holds exactly the ones the corpus names, each as a single events.jsonl', () => {
     const directories = readdirSync(FIXTURES, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
@@ -162,6 +176,29 @@ suite('EPIC-16-S32 — each fixture serves the views it exists for', () => {
     expect(diff.decision).not.toBeNull();
   });
 
+  it('repair-attempts: one node, three attempts, a packet for each', async ({ tmp }) => {
+    // KAR-17.3. Asserted through `GET …/nodes/:nodeId/packet?attempt=` rather
+    // than by reading the file, for the reason at the top of this module — and
+    // because the *endpoint* answering per attempt is precisely what the
+    // inspector's attempt selector depends on. A corpus entry that the harness
+    // could only serve the latest attempt of would be useless to it.
+    const replay = await served(tmp, 'repair-attempts');
+    const [runId] = replay.runIds;
+
+    const totals: number[] = [];
+    for (const attempt of [0, 1, 2]) {
+      const packet = (await json(
+        replay.origin,
+        `/api/runs/${runId}/nodes/impl-oauth/packet?attempt=${attempt}`,
+      )) as { totals: { tokens: number }; segments: unknown[] };
+      totals.push(packet.totals.tokens);
+    }
+
+    // Three distinct packets, and the last two identical — the repair that
+    // changed nothing, which EPIC-17-S13 needs a fixture to demonstrate.
+    expect(totals).toEqual([262, 290, 290]);
+  });
+
   it('gate-failure-repair: a failing verdict, then a passing one', async ({ tmp }) => {
     const replay = await served(tmp, 'gate-failure-repair');
     const [runId] = replay.runIds;
@@ -212,6 +249,100 @@ suite('EPIC-16-S32 — each fixture serves the views it exists for', () => {
     );
     expect(contiguous).toBe(false);
     expect(JSON.stringify(page)).not.toMatch(/missing|gap|data loss/i);
+  });
+
+  it('five-minute-diagnosis: all six stops of EPIC-17-S35, in one run', async ({ tmp }) => {
+    // EPIC-17-S35. Asserted stop by stop rather than as "the fixture loads",
+    // because the scenario's claim is that **one** run answers all six
+    // questions: a corpus entry that answered five of them would still make the
+    // timed walk impossible, and the walk is the epic's Definition of Done.
+    const replay = await served(tmp, 'five-minute-diagnosis');
+    const [runId] = replay.runIds;
+
+    // 1 — orientation: 22 nodes, and the four plan versions behind them.
+    const graph = (await json(replay.origin, `/api/runs/${runId}/plans/4`)) as {
+      nodes: { id: string }[];
+    };
+    expect(graph.nodes.length).toBeGreaterThanOrEqual(20);
+    const plans = (await json(replay.origin, `/api/runs/${runId}/plans`)) as { version: number }[];
+    expect(plans.map((one) => one.version)).toEqual([1, 2, 3, 4]);
+
+    // 2 — what failed, and against what.
+    //
+    // Read off `/gates` and the verdict itself rather than off `/criteria`:
+    // `boardVerdicts` parses gate documents with `VerdictV2Schema`, which has
+    // no `blobSha` on a finding's location, so it silently drops every v4
+    // verdict whose findings are located — which is every verdict a real gate
+    // produces (docs/10 §5 requires the blob). That is a pre-existing defect in
+    // this endpoint and it belongs to KAR-15.6, not here; the board the
+    // scenario walks is fed by `gate.evaluated` over SSE and is unaffected.
+    const gates = (await json(replay.origin, `/api/runs/${runId}/gates`)) as {
+      gate: string;
+      outcome: string;
+      summary: string;
+    }[];
+    const boundary = gates.find((one) => one.gate === 'import-boundary');
+    expect(boundary?.outcome).toBe('fail');
+    expect(boundary?.summary).toBe('3 files import from the internal namespace');
+
+    // 3 — where, exactly.
+    const findings = (await json(replay.origin, `/api/runs/${runId}/findings`)) as {
+      file: string;
+      findings: { severity: string; location: { line: number } | null }[];
+    }[];
+    const button = findings.find((group) => group.file === 'packages/ui/src/Button.vue');
+    expect(button?.findings[0]?.severity).toBe('blocker');
+    expect(button?.findings[0]?.location?.line).toBe(42);
+
+    // 4 — what the agent was told, and by whom.
+    const packet = (await json(
+      replay.origin,
+      `/api/runs/${runId}/nodes/n-impl-3/packet?attempt=0`,
+    )) as { segments: { id: string }[] };
+    expect(packet.segments.map((segment) => segment.id)).toContain('fact-import-policy');
+
+    const page = (await json(replay.origin, `/api/runs/${runId}/events?since=0`)) as {
+      events: {
+        kind: string;
+        payload: {
+          droppedSegments?: string[];
+          fidelity?: string;
+          pinnedKept?: string[];
+          fact?: { key: string; provenance: { byNode: string; confidence: string } };
+          verdict?: { gate: string; criteria: { id: string; status: string }[] };
+        };
+      }[];
+    };
+    // The provenance the inspector renders: who wrote the fact, at what
+    // confidence. Off the event, because the ledger's fact *index* is written
+    // by a live orchestrator and a restored recording has none — `/facts` is
+    // empty for every fixture in this corpus, `happy-path-12` included.
+    const written = page.events.find((event) => event.kind === 'fact.written');
+    expect(written?.payload.fact?.key).toBe('decision/import-policy');
+    expect(written?.payload.fact?.provenance.byNode).toBe('n-recon');
+
+    const refusal = page.events.find(
+      (event) =>
+        event.kind === 'gate.evaluated' && event.payload.verdict?.gate === 'import-boundary',
+    );
+    expect(refusal?.payload.verdict?.criteria).toEqual([{ id: 'ac-3', status: 'unsatisfied' }]);
+
+    // 5 — what compaction did to it. The dropped segment is the fact segment,
+    // and the pinned spec is in `pinnedKept`: a plan defect, not a pin failure.
+    const compacted = page.events.find((event) => event.kind === 'context.compacted');
+    expect(compacted?.payload.fidelity).toBe('exact');
+    expect(compacted?.payload.droppedSegments).toContain('fact-import-policy');
+    expect((compacted?.payload.pinnedKept ?? []).length).toBeGreaterThan(0);
+
+    // 6 — why the node exists at all, and why with this provider.
+    const split = (await json(replay.origin, `/api/runs/${runId}/plans/diff?from=1&to=2`)) as {
+      reason: string | null;
+    };
+    expect(split.reason).toBe('Recon found 3 additional packages; splitting the migration node');
+    const reroute = (await json(replay.origin, `/api/runs/${runId}/plans/diff?from=2&to=3`)) as {
+      reason: string | null;
+    };
+    expect(reroute.reason).toContain('codex');
   });
 
   it('stress-400: at least 400 plan nodes, served from one file (AC10)', async ({ tmp }) => {

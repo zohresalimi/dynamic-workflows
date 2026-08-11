@@ -315,10 +315,13 @@ export type {
 // as one grouped, bounded statement.
 export {
   applyPatchedPlanVersion,
+  listPlanPatches,
   listPlanVersions,
   PATCH_STALE,
   PlanHashMismatch,
   PlanNotValidated,
+  type PlanPatchOutcome,
+  type PlanPatchRow,
   type PlanVersionRow,
   persistPlanVersion,
   planDirOf,

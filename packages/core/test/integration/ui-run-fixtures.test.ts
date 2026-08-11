@@ -6,17 +6,17 @@
  *
  * Two different guarantees, and the fixtures need both for different reasons.
  *
- * **Reproducible.** `happy-path-12`, `three-patches` and `stress-400` are
- * *assembled* rather than recorded (see
+ * **Reproducible.** `happy-path-12`, `three-patches`, `repair-attempts` and
+ * `stress-400` are *assembled* rather than recorded (see
  * `packages/core/scripts/build-ui-run-fixtures.ts` for why, and for how long
  * that is meant to remain true). An assembled fixture that cannot be
  * regenerated is a snapshot of a moment nobody can get back to, so this
- * rebuilds all three into a tmpdir and compares byte for byte. A change to the
+ * rebuilds all four into a tmpdir and compares byte for byte. A change to the
  * builder that was never re-run fails here — which is KAR-16.5 AC7's "a CI
  * check regenerates one fixture from its recorded script and fails if the shape
- * drifts from the committed copy", for three of them rather than one.
+ * drifts from the committed copy", for four of them rather than one.
  *
- * **Readable.** All six fixtures — including the three real recordings — are
+ * **Readable.** All seven fixtures — including the three real recordings — are
  * re-parsed through `parseEvent`. A payload schema that moves under a committed
  * ledger fails *here*, naming the `seq` and the issues, rather than three
  * packages away inside a projection that quietly ignored the event and rendered
@@ -34,8 +34,14 @@ import { parseEvent } from '../../src/events.ts';
 
 const COMMITTED = fileURLToPath(new URL('../../../../test/fixtures/runs/', import.meta.url));
 
-/** The three this builder owns. */
-const ASSEMBLED = ['happy-path-12', 'three-patches', 'stress-400'] as const;
+/** The five this builder owns. */
+const ASSEMBLED = [
+  'happy-path-12',
+  'three-patches',
+  'repair-attempts',
+  'stress-400',
+  'five-minute-diagnosis',
+] as const;
 
 /** Everything with an `events.jsonl`, assembled or recorded. */
 const ALL = [...ASSEMBLED, 'compaction', 'gate-failure-repair', 'crash-resume-seq-gap'] as const;

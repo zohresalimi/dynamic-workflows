@@ -69,13 +69,17 @@ suite('EPIC-16-S3 scenario 2 — the state palette has exactly one definition', 
 
   it('the seven names are declared in the stylesheet and read as variables elsewhere', () => {
     const theme = readText('packages/web/src/styles/theme.css');
-    const graph = readText('packages/web/src/views/PlanGraphView.vue');
+    // The node **body**, which is where the state is painted since KAR-17.1
+    // gave the graph a real one: `PlanGraphView.vue` supplies the slot and
+    // `PlanNode.vue` draws in it. The rule is unchanged and so is what it
+    // protects — only the file that paints has moved one directory.
+    const body = readText('packages/web/src/components/graph/PlanNode.vue');
 
     expect(theme).toContain('--state-failed:');
-    // The view paints with the variable rather than with a colour, which is
+    // The body paints with the variable rather than with a colour, which is
     // what makes dark mode seven redefinitions instead of an audit.
-    expect(graph).toContain('var(--state-');
-    expect(graph).not.toContain('--state-failed:');
+    expect(body).toContain('var(--state-');
+    expect(body).not.toContain('--state-failed:');
   });
 });
 

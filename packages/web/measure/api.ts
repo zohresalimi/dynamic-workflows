@@ -40,8 +40,40 @@ export interface DrawnGraph {
   readonly renderer: string;
 }
 
+/**
+ * KAR-17.9 test plan row 7 — render the **memory** graph through the facade.
+ *
+ * The same harness, the same `GraphCanvas`, a different projection: the
+ * blackboard folded from the same recording and aggregated by
+ * `../src/ledger/projections/memory-graph.ts`. What it exists to prove is that
+ * the second graph surface goes through the facade as completely as the first —
+ * a renderer swap that left the memory view broken would be a swap that is not
+ * a one-file change.
+ */
+export interface MemoryRenderRequest {
+  readonly events: readonly unknown[];
+  /** A producing node to expand, so fact nodes are drawn as well as bubbles. */
+  readonly expand?: string;
+}
+
+export interface MemoryRenderResult {
+  /** Facts on the blackboard the recording folded to. */
+  readonly facts: number;
+  /** Nodes drawn: bubbles, plus the expanded producer's page of facts. */
+  readonly drawn: number;
+  /** Of those, how many are facts rather than aggregate bubbles. */
+  readonly drawnFacts: number;
+  /** Every node body's `data-memory-kind`, in the order they were drawn. */
+  readonly kinds: readonly string[];
+  /** `'stub'` when the swapped-in renderer drew this, `'vue-flow'` otherwise. */
+  readonly renderer: string;
+  /** The first bubble's accessible name, as a screen reader would hear it. */
+  readonly firstLabel: string;
+}
+
 export interface MeasureApi {
   render(request: RenderRequest): Promise<RenderResult>;
+  renderMemory(request: MemoryRenderRequest): Promise<MemoryRenderResult>;
   /** Starts sampling animation frames. */
   startFrames(): void;
   /** Stops sampling and returns the intervals, in milliseconds. */

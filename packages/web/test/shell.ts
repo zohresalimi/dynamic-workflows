@@ -23,6 +23,8 @@ import type { ApiClient } from '../src/api/client.ts';
 import { provideApiClient } from '../src/api/provide.ts';
 import { TOKEN_STORAGE_KEY } from '../src/api/token.ts';
 import { createDeFlowApp } from '../src/app/create-app.ts';
+import { RUN_FEED } from '../src/app/useRunFeed.ts';
+import type { RunFeed, RunFeedFactory } from '../src/ledger/feed.ts';
 import { type UiStore, useUiStore } from '../src/stores/useUiStore.ts';
 import '../src/styles/theme.css';
 
@@ -49,7 +51,25 @@ export interface MountOptions {
    * client made*, and the typed client is the thing that decides that.
    */
   readonly client?: ApiClient;
+  /**
+   * The run feed a view opens (`../src/app/useRunFeed.ts`).
+   *
+   * Defaults to one that opens nothing at all, because the real one opens a
+   * real SSE connection against the *runner's* origin — a Vite dev server,
+   * which has no `/api/runs/:id/events` — and every spec in this package would
+   * then be waiting on a hydrate that 404s. A spec that drives the store
+   * directly is asserting on the view; the wire from socket to node body is
+   * `e2e/plan-graph.test.ts`'s, against a real daemon.
+   */
+  readonly feed?: RunFeedFactory;
 }
+
+/** A feed that connects to nothing and reports it, for the default above. */
+const silentFeed: RunFeedFactory = ({ runId }): RunFeed => ({
+  runId,
+  ready: Promise.resolve(),
+  close: () => {},
+});
 
 /**
  * A UI store on a pinia of its own, for the specs that drive the store directly
@@ -74,6 +94,7 @@ export async function mountShell(options: MountOptions = {}): Promise<MountedShe
   const { app, router, pinia } = createDeFlowApp(createMemoryHistory());
   setActivePinia(pinia);
   if (options.client !== undefined) provideApiClient(app, options.client);
+  app.provide(RUN_FEED, options.feed ?? silentFeed);
 
   await router.push(options.at ?? '/');
   await router.isReady();

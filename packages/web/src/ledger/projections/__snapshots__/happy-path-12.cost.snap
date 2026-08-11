@@ -1,5 +1,92 @@
 {
   "appliedSeq": 80,
+  "byAttempt": Map {
+    "recon-auth-surface#0" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.062,
+        "vendorReported": 0.062,
+      },
+      "events": 1,
+      "lastSeq": 10,
+      "sources": [
+        "vendor-reported",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": null,
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 4200,
+          "outputTokens": 810,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "impl-signup#0" => {
+      "costUsd": {
+        "apiKey": null,
+        "estimated": null,
+        "subscription": 0.147,
+        "vendorReported": 0.147,
+      },
+      "events": 2,
+      "lastSeq": 43,
+      "sources": [
+        "vendor-reported",
+        "estimated",
+      ],
+      "unaccounted": [
+        "gemini-cli",
+      ],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 1200,
+          "outputTokens": 300,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 9800,
+          "outputTokens": 1450,
+          "reasoningOutputTokens": null,
+          "source": "vendor-reported",
+        },
+      },
+    },
+    "review-security#0" => {
+      "costUsd": {
+        "apiKey": 0.081,
+        "estimated": 0.081,
+        "subscription": null,
+        "vendorReported": null,
+      },
+      "events": 1,
+      "lastSeq": 63,
+      "sources": [
+        "estimated",
+      ],
+      "unaccounted": [],
+      "usage": {
+        "estimated": {
+          "cacheCreationInputTokens": null,
+          "cacheReadInputTokens": null,
+          "inputTokens": 6400,
+          "outputTokens": 900,
+          "reasoningOutputTokens": null,
+          "source": "estimated",
+        },
+        "vendorReported": null,
+      },
+    },
+  },
   "byNode": Map {
     "recon-auth-surface" => {
       "costUsd": {
@@ -9,6 +96,7 @@
         "vendorReported": 0.062,
       },
       "events": 1,
+      "lastSeq": 10,
       "sources": [
         "vendor-reported",
       ],
@@ -33,6 +121,7 @@
         "vendorReported": 0.147,
       },
       "events": 2,
+      "lastSeq": 43,
       "sources": [
         "vendor-reported",
         "estimated",
@@ -67,6 +156,7 @@
         "vendorReported": null,
       },
       "events": 1,
+      "lastSeq": 63,
       "sources": [
         "estimated",
       ],
@@ -93,6 +183,7 @@
         "vendorReported": 0.209,
       },
       "events": 2,
+      "lastSeq": 42,
       "sources": [
         "vendor-reported",
       ],
@@ -117,6 +208,7 @@
         "vendorReported": null,
       },
       "events": 1,
+      "lastSeq": 43,
       "sources": [
         "estimated",
       ],
@@ -143,6 +235,7 @@
         "vendorReported": null,
       },
       "events": 1,
+      "lastSeq": 63,
       "sources": [
         "estimated",
       ],
@@ -192,6 +285,7 @@
       "vendorReported": 0.209,
     },
     "events": 4,
+    "lastSeq": 63,
     "sources": [
       "vendor-reported",
       "estimated",

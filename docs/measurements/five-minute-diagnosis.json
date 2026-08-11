@@ -1,0 +1,500 @@
+{
+  "budget": {
+    "medianMs": 1615,
+    "tolerance": 2,
+    "floorMs": 60000,
+    "controlRatio": 3,
+    "targetMs": 300000
+  },
+  "measurement": {
+    "takenAt": "2026-08-11",
+    "machine": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "release": "25.5.0",
+      "cpu": "Apple M3",
+      "cores": 8,
+      "memoryGiB": 8,
+      "node": "v26.6.0"
+    },
+    "chromium": "151.0.7922.34",
+    "walks": [
+      {
+        "fixture": "five-minute-diagnosis",
+        "rootCause": "the import-policy fact the node needed was compacted out of its packet — the fact was never pinned, which is a plan defect in the node’s reads declaration",
+        "runId": "run_20260811T160000Z_d7e8f9",
+        "totalMs": 1682,
+        "answered": 7,
+        "checkpoints": [
+          {
+            "name": "plan-graph",
+            "route": "/runs/run_20260811T160000Z_d7e8f9",
+            "ms": 340,
+            "answered": true,
+            "readout": {
+              "nodes": 22,
+              "states": {
+                "passed": 18,
+                "awaiting-human": 1,
+                "abandoned": 2,
+                "failed": 1
+              },
+              "failedNode": "n-impl-3",
+              "failedState": "failed"
+            }
+          },
+          {
+            "name": "criteria-board",
+            "route": "/runs/run_20260811T160000Z_d7e8f9/criteria",
+            "ms": 287,
+            "answered": true,
+            "readout": {
+              "criterion": "ac-3",
+              "status": "unsatisfied",
+              "statement": "no component may import from @voyado/ui/internal",
+              "evidence": [
+                {
+                  "gate": "import-boundary",
+                  "outcome": "fail",
+                  "summary": "3 files import from the internal namespace",
+                  "findings": [
+                    {
+                      "id": "f-import-boundary-1",
+                      "message": "packages/ui/src/Button.vue imports Tokens from @voyado/ui/internal",
+                      "diffHref": "/runs/run_20260811T160000Z_d7e8f9/diff?scope=node&node=n-impl-3&file=packages/ui/src/Button.vue&line=42"
+                    },
+                    {
+                      "id": "f-import-boundary-2",
+                      "message": "packages/ui/src/Dialog.vue imports Overlay from @voyado/ui/internal",
+                      "diffHref": "/runs/run_20260811T160000Z_d7e8f9/diff?scope=node&node=n-impl-3&file=packages/ui/src/Dialog.vue&line=7"
+                    },
+                    {
+                      "id": "f-import-boundary-3",
+                      "message": "packages/app/src/Shell.vue imports Layout from @voyado/ui/internal",
+                      "diffHref": "/runs/run_20260811T160000Z_d7e8f9/diff?scope=node&node=n-impl-3&file=packages/app/src/Shell.vue&line=11"
+                    }
+                  ]
+                }
+              ],
+              "noEvidence": false
+            }
+          },
+          {
+            "name": "diff-line",
+            "route": "/runs/run_20260811T160000Z_d7e8f9/diff",
+            "ms": 162,
+            "answered": true,
+            "readout": {
+              "present": true,
+              "file": "packages/ui/src/Button.vue",
+              "severity": "blocker",
+              "message": "packages/ui/src/Button.vue imports Tokens from @voyado/ui/internal",
+              "extendsTheLine": true,
+              "onScreen": true
+            }
+          },
+          {
+            "name": "node-inspector",
+            "route": "/runs/run_20260811T160000Z_d7e8f9",
+            "ms": 231,
+            "answered": true,
+            "readout": {
+              "open": true,
+              "status": "built",
+              "total": 237,
+              "segmentTokens": [42, 9, 49, 63, 14, 14, 28, 18],
+              "attempts": ["0", "1", "2"],
+              "provenance": [
+                {
+                  "key": "decision/import-policy",
+                  "writer": "n-recon",
+                  "confidence": "speculative"
+                }
+              ],
+              "failureReason": "gate.failed"
+            }
+          },
+          {
+            "name": "context-budget",
+            "route": "/runs/run_20260811T160000Z_d7e8f9/context",
+            "ms": 178,
+            "answered": true,
+            "readout": {
+              "bars": ["n-impl-3#0", "n-impl-3#1", "n-impl-3#2"],
+              "marks": [
+                {
+                  "seq": "70",
+                  "scope": "DeFlow.packet",
+                  "fidelity": "exact",
+                  "dropped": ["fact-import-policy"],
+                  "pinnedKept": 5
+                }
+              ]
+            }
+          },
+          {
+            "name": "plan-scrubber",
+            "route": "/runs/run_20260811T160000Z_d7e8f9/evolution",
+            "ms": 307,
+            "answered": true,
+            "readout": {
+              "version": "2",
+              "rail": ["1", "2", "3", "4"],
+              "reason": "Plan v2autoRecon found 3 additional packages; splitting the migration node",
+              "patch": {
+                "node": "n-impl-3",
+                "ops": "{ \"op\": \"add\", \"path\": \"/model\", \"value\": \"gpt-5-codex\" } { \"op\": \"replace\", \"path\": \"/provider/prefer/0\", \"value\": \"codex\" }"
+              }
+            }
+          },
+          {
+            "name": "timeline",
+            "route": "/runs/run_20260811T160000Z_d7e8f9/timeline",
+            "ms": 177,
+            "answered": true,
+            "readout": {
+              "lanes": 20,
+              "bars": 22,
+              "nodeBars": 3,
+              "costLines": 1
+            }
+          }
+        ]
+      },
+      {
+        "fixture": "gate-failure-repair",
+        "rootCause": "the implementation returned a Date where a number was declared; the deterministic typecheck gate caught it and the repair loop fixed it",
+        "runId": "run_20260810T090000Z_9f31ab",
+        "totalMs": 1615,
+        "answered": 4,
+        "checkpoints": [
+          {
+            "name": "plan-graph",
+            "route": "/runs/run_20260810T090000Z_9f31ab",
+            "ms": 319,
+            "answered": true,
+            "readout": {
+              "nodes": 4,
+              "states": {
+                "passed": 3,
+                "abandoned": 1
+              },
+              "failedNode": "impl-1",
+              "failedState": "passed"
+            }
+          },
+          {
+            "name": "criteria-board",
+            "route": "/runs/run_20260810T090000Z_9f31ab/criteria",
+            "ms": 231,
+            "answered": true,
+            "readout": {
+              "criterion": "ac-1",
+              "status": "satisfied",
+              "statement": "the project typechecks",
+              "evidence": [
+                {
+                  "gate": "typecheck",
+                  "outcome": "fail",
+                  "summary": "typecheck failed with 1 finding(s)",
+                  "findings": []
+                },
+                {
+                  "gate": "typecheck",
+                  "outcome": "pass",
+                  "summary": "typecheck passed",
+                  "findings": []
+                }
+              ],
+              "noEvidence": false
+            }
+          },
+          {
+            "name": "diff-line",
+            "route": "/runs/run_20260810T090000Z_9f31ab/diff",
+            "ms": 454,
+            "answered": true,
+            "readout": {
+              "present": true,
+              "file": "src/date-picker.ts",
+              "severity": "blocker",
+              "message": "ts2322: Type 'Date' is not assignable to type 'number'.",
+              "extendsTheLine": true,
+              "onScreen": true
+            }
+          },
+          {
+            "name": "node-inspector",
+            "route": "/runs/run_20260810T090000Z_9f31ab",
+            "ms": 195,
+            "answered": false,
+            "readout": {
+              "open": true,
+              "status": "none",
+              "total": -1,
+              "segmentTokens": [],
+              "attempts": ["0"],
+              "provenance": [],
+              "failureReason": ""
+            }
+          },
+          {
+            "name": "context-budget",
+            "route": "/runs/run_20260810T090000Z_9f31ab/context",
+            "ms": 70,
+            "answered": false,
+            "readout": {
+              "bars": [],
+              "marks": []
+            }
+          },
+          {
+            "name": "plan-scrubber",
+            "route": "/runs/run_20260810T090000Z_9f31ab/evolution",
+            "ms": 172,
+            "answered": false,
+            "readout": {
+              "version": "3",
+              "rail": ["1", "2", "3"],
+              "reason": "Plan v3the initial compilethe initial plan, proposed by the planner"
+            }
+          },
+          {
+            "name": "timeline",
+            "route": "/runs/run_20260810T090000Z_9f31ab/timeline",
+            "ms": 174,
+            "answered": true,
+            "readout": {
+              "lanes": 4,
+              "bars": 4,
+              "nodeBars": 1,
+              "costLines": 0
+            }
+          }
+        ]
+      },
+      {
+        "fixture": "repair-attempts",
+        "rootCause": "three attempts ending on contract.schema-invalid, the last two built from an identical packet — a repair that changed nothing",
+        "runId": "run_20260811T140000Z_c4d5e6",
+        "totalMs": 1457,
+        "answered": 4,
+        "checkpoints": [
+          {
+            "name": "plan-graph",
+            "route": "/runs/run_20260811T140000Z_c4d5e6",
+            "ms": 350,
+            "answered": true,
+            "readout": {
+              "nodes": 3,
+              "states": {
+                "failed": 2,
+                "pending": 1
+              },
+              "failedNode": "impl-oauth",
+              "failedState": "failed"
+            }
+          },
+          {
+            "name": "criteria-board",
+            "route": "/runs/run_20260811T140000Z_c4d5e6/criteria",
+            "ms": 204,
+            "answered": false,
+            "readout": {
+              "criterion": null
+            }
+          },
+          {
+            "name": "diff-line",
+            "route": "/runs/run_20260811T140000Z_c4d5e6/diff",
+            "ms": 194,
+            "answered": false,
+            "readout": {
+              "present": false,
+              "files": 1,
+              "findings": 0
+            }
+          },
+          {
+            "name": "node-inspector",
+            "route": "/runs/run_20260811T140000Z_c4d5e6",
+            "ms": 183,
+            "answered": true,
+            "readout": {
+              "open": true,
+              "status": "built",
+              "total": 290,
+              "segmentTokens": [54, 9, 46, 73, 12, 5, 18, 28, 17, 14, 14],
+              "attempts": ["0", "1", "2"],
+              "provenance": [],
+              "failureReason": "timeout"
+            }
+          },
+          {
+            "name": "context-budget",
+            "route": "/runs/run_20260811T140000Z_c4d5e6/context",
+            "ms": 172,
+            "answered": true,
+            "readout": {
+              "bars": ["impl-oauth#0", "impl-oauth#1", "impl-oauth#2"],
+              "marks": []
+            }
+          },
+          {
+            "name": "plan-scrubber",
+            "route": "/runs/run_20260811T140000Z_c4d5e6/evolution",
+            "ms": 179,
+            "answered": false,
+            "readout": {
+              "version": "1",
+              "rail": ["1"],
+              "reason": "Plan v1the initial compilethe initial plan, proposed by the planner"
+            }
+          },
+          {
+            "name": "timeline",
+            "route": "/runs/run_20260811T140000Z_c4d5e6/timeline",
+            "ms": 175,
+            "answered": true,
+            "readout": {
+              "lanes": 2,
+              "bars": 4,
+              "nodeBars": 3,
+              "costLines": 1
+            }
+          }
+        ]
+      }
+    ],
+    "control": {
+      "fixture": "happy-path-12",
+      "rootCause": "nothing — the control: a run that reached every display state and completed",
+      "runId": "run_20260811T090000Z_a1b2c3",
+      "totalMs": 1649,
+      "answered": 6,
+      "checkpoints": [
+        {
+          "name": "plan-graph",
+          "route": "/runs/run_20260811T090000Z_a1b2c3",
+          "ms": 369,
+          "answered": true,
+          "readout": {
+            "nodes": 12,
+            "states": {
+              "passed": 5,
+              "failed": 1,
+              "running": 2,
+              "blocked": 1,
+              "abandoned": 1,
+              "awaiting-human": 1,
+              "pending": 1
+            },
+            "failedNode": "impl-login",
+            "failedState": "failed"
+          }
+        },
+        {
+          "name": "criteria-board",
+          "route": "/runs/run_20260811T090000Z_a1b2c3/criteria",
+          "ms": 258,
+          "answered": true,
+          "readout": {
+            "criterion": "no-v-model-regression",
+            "status": "unverifiable",
+            "statement": "No v-model modifier is silently dropped by the codemod.",
+            "evidence": [
+              {
+                "gate": "contract",
+                "outcome": "needs-human",
+                "summary": "the contract checker is not installed",
+                "findings": [
+                  {
+                    "id": "f-contract-1",
+                    "message": "the signup response drops `emailVerified`",
+                    "diffHref": "/runs/run_20260811T090000Z_a1b2c3/diff?scope=node&node=impl-signup&file=src/api/contract.ts&line=31"
+                  },
+                  {
+                    "id": "f-contract-2",
+                    "message": "the request type gained an optional field",
+                    "diffHref": "/runs/run_20260811T090000Z_a1b2c3/diff?scope=node&node=impl-signup&file=src/api/contract.ts&line=12"
+                  }
+                ]
+              }
+            ],
+            "noEvidence": false
+          }
+        },
+        {
+          "name": "diff-line",
+          "route": "/runs/run_20260811T090000Z_a1b2c3/diff",
+          "ms": 269,
+          "answered": true,
+          "readout": {
+            "present": true,
+            "file": "src/api/contract.ts",
+            "severity": "major",
+            "message": "the signup response drops `emailVerified`",
+            "extendsTheLine": true,
+            "onScreen": true
+          }
+        },
+        {
+          "name": "node-inspector",
+          "route": "/runs/run_20260811T090000Z_a1b2c3",
+          "ms": 204,
+          "answered": true,
+          "readout": {
+            "open": true,
+            "status": "built",
+            "total": 290,
+            "segmentTokens": [54, 9, 46, 73, 12, 5, 18, 28, 17, 14, 14],
+            "attempts": ["0"],
+            "provenance": [
+              {
+                "key": "risk/legacy-shim-needed",
+                "writer": "review-security",
+                "confidence": "speculative"
+              }
+            ],
+            "failureReason": ""
+          }
+        },
+        {
+          "name": "context-budget",
+          "route": "/runs/run_20260811T090000Z_a1b2c3/context",
+          "ms": 177,
+          "answered": true,
+          "readout": {
+            "bars": ["impl-login#0", "impl-signup#0", "review-security#0"],
+            "marks": []
+          }
+        },
+        {
+          "name": "plan-scrubber",
+          "route": "/runs/run_20260811T090000Z_a1b2c3/evolution",
+          "ms": 182,
+          "answered": false,
+          "readout": {
+            "version": "1",
+            "rail": ["1"],
+            "reason": "Plan v1the initial compilethe initial plan, proposed by the planner"
+          }
+        },
+        {
+          "name": "timeline",
+          "route": "/runs/run_20260811T090000Z_a1b2c3/timeline",
+          "ms": 190,
+          "answered": true,
+          "readout": {
+            "lanes": 8,
+            "bars": 10,
+            "nodeBars": 1,
+            "costLines": 2
+          }
+        }
+      ]
+    },
+    "medianMs": 1615,
+    "targetMs": 300000
+  }
+}

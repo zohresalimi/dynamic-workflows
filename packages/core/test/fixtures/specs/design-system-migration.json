@@ -1,0 +1,47 @@
+{
+  "schemaId": "DeFlow.taskspec.v1",
+  "goal": "Migrate every product surface onto the new design system without reaching into @voyado/ui internals.",
+  "scope": {
+    "included": ["packages/ui/**", "packages/app/**"],
+    "paths": ["packages/ui", "packages/app"]
+  },
+  "nonGoals": ["Redesigning the tokens themselves"],
+  "constraints": ["must not change the public API of @voyado/ui"],
+  "priorDecisions": [
+    {
+      "decision": "The internal namespace stays private; consumers import from the package root",
+      "rationale": "The internal tree is refactored on every minor release",
+      "source": "file://docs/adr/0010-typescript-6-pin-esm-only-erasable-syntax.md#L1-L5"
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "ac-1",
+      "statement": "Every migrated component renders with the new tokens.",
+      "check": { "kind": "gate", "gate": "visual-regression" },
+      "coveredByGates": []
+    },
+    {
+      "id": "ac-2",
+      "statement": "The package still typechecks under the new component types.",
+      "check": { "kind": "command", "run": "pnpm typecheck", "expect": "exit-zero" },
+      "coveredByGates": []
+    },
+    {
+      "id": "ac-3",
+      "statement": "no component may import from @voyado/ui/internal",
+      "check": { "kind": "gate", "gate": "import-boundary" },
+      "coveredByGates": []
+    }
+  ],
+  "knownFailureModes": [
+    {
+      "id": "internal-import-creep",
+      "description": "a migrated component reaches into the internal namespace for a token it cannot find",
+      "detection": "the import-boundary gate walks every import specifier in the changed files",
+      "mitigation": "publish the missing token from the package root before the migration node runs"
+    }
+  ],
+  "approvedBy": null,
+  "specHash": "sha256-0000000000000000000000000000000000000000000000000000000000000000"
+}
