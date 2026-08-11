@@ -231,6 +231,32 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
 
     expect(names.some((module) => module.includes('PlanEvolutionView'))).toBe(true);
     expect(holds(initial, 'PlanEvolutionView')).toBe(false);
+
+    // KAR-17.6 AC8 / test plan row 8. The four `BANNED_FROM_INITIAL` entries
+    // above are now load-bearing rather than anticipatory: `@git-diff-view/*`
+    // and the Shiki instance behind it are real dependencies of this build, and
+    // the only thing keeping them out of the first chunk is that the diff route
+    // is lazy. Asserting the *positive* — that they landed in a chunk of their
+    // own — is what distinguishes "correctly split" from "not built at all",
+    // which is the row's red: `the route was imported eagerly for a type`.
+    expect(names.some((module) => module.includes('DiffReviewView'))).toBe(true);
+    expect(holds(initial, 'DiffReviewView')).toBe(false);
+    expect(names.some((module) => module.includes('@git-diff-view/'))).toBe(true);
+    expect(names.some((module) => module.includes('@shikijs/'))).toBe(true);
+  });
+
+  it('ships exactly one syntax highlighter, in no chunk at all but Shiki (AC9)', () => {
+    // `@git-diff-view/core` statically imports `@git-diff-view/lowlight`, whose
+    // first line is `createLowlight(all)` — every highlight.js grammar, ~900 KB
+    // raw — as the renderer's *default* highlighter. This application always
+    // registers its own, so those grammars would be a complete, unreachable
+    // second highlighter riding along in the diff route's chunk.
+    // `packages/web/scripts/diff-syntax-alias.ts` is what keeps them out, and
+    // this is what notices if the alias is ever dropped.
+    const everywhere = [...initial, ...lazy].flatMap((chunk) => chunk.modules);
+
+    expect(everywhere.filter((module) => module.includes('highlight.js'))).toEqual([]);
+    expect(everywhere.filter((module) => /node_modules\/lowlight\//.test(module))).toEqual([]);
     // `@DeFlow/core`'s reducer and its zod schemas arrive with `scrub.ts`, and
     // they are three times the size of the view that pulls them in. Behind the
     // lazy route they cost nothing at boot; in the initial payload they would

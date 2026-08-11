@@ -150,3 +150,56 @@ catalog:
   # over their own without a specificity war.
   clsx: ^2.1.1
   tailwind-merge: ^3.6.0
+  # KAR-17.3 AC4 — syntax highlighting, and the entrypoint matters more than the
+  # version. **Never the bundled `shiki` entry**: it pulls every grammar and
+  # every theme and costs multiple megabytes (docs/12 §7). `@shikijs/core`'s
+  # `createHighlighterCore` takes the grammars it is given and nothing else, and
+  # `@shikijs/engine-javascript` is what removes the WASM download — Oniguruma
+  # is a 500 KB `.wasm` fetch the JavaScript engine does not need. The langs and
+  # themes packages are consumed one deep import at a time
+  # (`@shikijs/langs/typescript`), so the chunk carries the fourteen this
+  # project highlights rather than the two hundred it does not. All four move
+  # together: they share an internal grammar format with no compatibility
+  # promise across minors.
+  "@shikijs/core": 4.4.3
+  "@shikijs/engine-javascript": 4.4.3
+  "@shikijs/langs": 4.4.3
+  "@shikijs/themes": 4.4.3
+  # KAR-17.6 AC6 / F7.5 — token-level before/after on the surgical repair loop.
+  # Part of the same family and pinned with it: it consumes `ThemedToken` and
+  # `TokensResult` from the core above, and those are the types that move.
+  "@shikijs/magic-move": 4.4.3
+  # **Types only, and never imported.** `@shikijs/magic-move`'s `.d.mts` files
+  # import `ThemedToken` from `shiki/core`, so the name has to resolve for
+  # `vue-tsc` — but nothing in `packages/web/src` may import it, because this is
+  # the bundled entry the block above forbids. `test/one-shiki-instance.test.ts`
+  # is what keeps that true, and the runtime highlighter is
+  # `packages/web/src/lib/highlighter.ts`'s single `createHighlighterCore`.
+  shiki: 4.4.3
+  # KAR-17.6 — the diff and review surface (docs/12 §6.7). Pinned **exactly,
+  # with no caret**: it is pre-1.0, and a caret is how a minor bump silently
+  # changes the surface an operator reviews a run on. Read the changelog before
+  # bumping; `test/workspace-structure.test.ts` fails a range operator here.
+  #
+  # `@git-diff-view/core` parses the unified patch DeFlowd gets out of `git
+  # diff`; `@git-diff-view/vue` is chosen over `diff2html@3.4.56` for one narrow
+  # and decisive reason — first-class widget/extend slots **per line**, which is
+  # what lets F7.7's verdicts be Vue components attached at `location.line`
+  # rather than DOM surgery on a generated HTML string.
+  #
+  # `@git-diff-view/shiki@0.1.7` is the third package of that set and is
+  # deliberately absent: it calls `createHighlighter` from the bundled `shiki`
+  # entry with 34 grammars of its own, which is both the thing docs/12 §7
+  # forbids and a *second* highlighter beside this app's shared one. Its only
+  # real contract is the `DiffHighlighter` object shape, and `registerHighlighter`
+  # takes ours — see `packages/web/src/lib/highlighter.ts`.
+  "@git-diff-view/core": 0.1.7
+  "@git-diff-view/vue": 0.1.7
+  # KAR-17.3 AC11 — the **shape** half of d3 and deliberately not the rest.
+  # `d3-shape`'s `line()` is a pure function from data to an SVG path string, so
+  # a sparkline is a `<path :d>` in a Vue template and the DOM stays Vue's.
+  # `d3-selection` is the half that owns the DOM itself, and a component that
+  # imported it would have two frameworks writing the same subtree — which is
+  # the bug `test/no-d3-selection-in-web.test.ts` exists to make impossible.
+  d3-shape: ^3.2.0
+  "@types/d3-shape": ^3.1.8

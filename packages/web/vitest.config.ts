@@ -2,6 +2,7 @@ import tailwind from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
+import { diffSyntaxAlias } from './scripts/diff-syntax-alias.ts';
 import { emulateMedia } from './test/commands.ts';
 
 // The `web` slice of the root config's test.projects (docs/14-testing-strategy.md §13).
@@ -23,12 +24,20 @@ export default defineConfig({
   // resolves to the empty string and the seven-colour assertions pass or fail
   // for reasons that have nothing to do with the component.
   plugins: [tailwind(), vue()],
+  // KAR-17.6 AC9 — the same alias the SPA build uses, so the browser specs
+  // exercise the module graph that ships rather than a fatter one that happens
+  // to behave the same. See ./scripts/diff-syntax-alias.ts.
+  resolve: { alias: diffSyntaxAlias() },
   // Pre-bundled up front rather than discovered mid-run. Vite's optimizer
   // reloads the page when it meets a new CommonJS-ish dependency, and a reload
   // in the middle of a browser test is reported as a flake rather than as what
   // it is — so the shell's runtime dependencies are named here.
   optimizeDeps: {
     include: [
+      '@git-diff-view/core',
+      '@git-diff-view/vue',
+      '@shikijs/magic-move/core',
+      '@shikijs/magic-move/vue',
       '@vue-flow/core',
       '@vueuse/core',
       'lucide-vue-next',

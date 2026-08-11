@@ -55,6 +55,17 @@ export const routes = [
     props: true,
   },
   {
+    // F10.7. The route the lazy-loading rule was written for: `@git-diff-view/*`
+    // and the Shiki instance behind it are the heaviest thing in the frontend
+    // that is not the plan graph, and neither belongs in the initial chunk —
+    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
+    // either creeps in (KAR-17.6 AC8, docs/12 §10).
+    path: '/runs/:runId/diff',
+    name: 'run-diff',
+    component: () => import('../views/DiffReviewView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),

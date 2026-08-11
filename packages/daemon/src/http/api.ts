@@ -1682,25 +1682,40 @@ export const api = new Hono()
    * (docs/15-security-model.md §3), and an endpoint that would run
    * `git -C <anything>` is a repository reader with a different name.
    */
-  .get('/runs/:id/diff', async (c) => {
-    const found = resolveRun(c);
-    if ('response' in found) return found.response;
+  .get(
+    '/runs/:id/diff',
+    // Declared rather than only read off `c.req.query()`, for the reason
+    // `/runs/:id/plans/diff` declares its `from` and `to`: it puts the three
+    // selectors into the *type* of this chain and therefore into `hc<ApiType>`.
+    // KAR-17.6's review surface is the caller, it switches between all three,
+    // and a view naming a selector this route stopped accepting should be a
+    // compile error rather than a silent whole-run diff in a tab. `diffTarget`
+    // below still owns what they mean; nothing here interprets them.
+    validator('query', (value) => ({
+      node: typeof value.node === 'string' ? value.node : undefined,
+      worktree: typeof value.worktree === 'string' ? value.worktree : undefined,
+      cumulative: typeof value.cumulative === 'string' ? value.cumulative : undefined,
+    })),
+    async (c) => {
+      const found = resolveRun(c);
+      if ('response' in found) return found.response;
 
-    const target = diffTarget(c, found.view, found.runId, found.state);
-    if ('response' in target) return target.response;
+      const target = diffTarget(c, found.view, found.runId, found.state);
+      if ('response' in target) return target.response;
 
-    const patch = await worktreePatch(target.dir, target.base);
-    if (patch === null) {
-      return c.json(
-        ...apiError('internal', 'git could not produce a diff for that worktree', {
-          detail: { dir: '<worktree>' },
-        }),
-      );
-    }
+      const patch = await worktreePatch(target.dir, target.base);
+      if (patch === null) {
+        return c.json(
+          ...apiError('internal', 'git could not produce a diff for that worktree', {
+            detail: { dir: '<worktree>' },
+          }),
+        );
+      }
 
-    c.header('Content-Type', 'text/x-patch; charset=utf-8');
-    return c.body(patch, 200);
-  })
+      c.header('Content-Type', 'text/x-patch; charset=utf-8');
+      return c.body(patch, 200);
+    },
+  )
 
   /**
    * KAR-15.6 AC7 — `GET /api/artifacts/:sha`, and `HEAD` beside it.

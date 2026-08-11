@@ -142,6 +142,12 @@ export const EXACT_PINNED_CATALOG_ENTRIES: Readonly<Record<string, string>> = {
   '@agentclientprotocol/sdk': '1.3.0',
   tsdown: '0.22.14',
   '@biomejs/biome': '2.5.6',
+  // KAR-17.6 — the diff and review surface. Pre-1.0, and a caret here is how a
+  // minor bump silently changes the surface an operator reviews a run on
+  // (docs/12-frontend-architecture.md §6.7). `@git-diff-view/shiki` is
+  // deliberately **not** installed; see `packages/web/src/lib/highlighter.ts`.
+  '@git-diff-view/core': '0.1.7',
+  '@git-diff-view/vue': '0.1.7',
 };
 
 export function checkExactCatalogPins(catalog: Record<string, string>): Violation[] {

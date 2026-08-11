@@ -48,6 +48,7 @@ import {
   checkViteImportIsDynamic,
   checkWebImportsDaemonTypesOnly,
   checkWorkflowExecutablesAreDeclared,
+  EXACT_PINNED_CATALOG_ENTRIES,
   REQUIRED_OXLINT_PLUGINS,
   REQUIRED_TYPE_AWARE_RULES,
   describe as render,
@@ -168,28 +169,31 @@ suite('workspaceDependencyEdges', () => {
 });
 
 suite('checkExactCatalogPins', () => {
-  it('rejects a caret on the ACP SDK and on tsdown', () => {
+  // Read off the rule's own table rather than written as a number. The set grew
+  // when KAR-17.6 pinned `@git-diff-view/*`, and a hard-coded count turns every
+  // future addition into a spec edit that says nothing about the rule.
+  const exact = { ...EXACT_PINNED_CATALOG_ENTRIES };
+  const caretted = Object.fromEntries(
+    Object.entries(exact).map(([name, version]) => [name, `^${version}`]),
+  );
+
+  it('rejects a caret on every entry that must be exact', () => {
     const violations = checkExactCatalogPins({
-      '@agentclientprotocol/sdk': '^1.3.0',
-      tsdown: '^0.22.14',
-      '@biomejs/biome': '2.5.6',
+      ...caretted,
+      '@biomejs/biome': exact['@biomejs/biome'] as string,
     });
-    expect(violations).toHaveLength(2);
+
+    // Every entry but the one left alone.
+    expect(violations).toHaveLength(Object.keys(exact).length - 1);
     expect(render(violations)).toContain('changed both npm scope and GitHub org');
   });
 
   it('reports a missing entry', () => {
-    expect(checkExactCatalogPins({})).toHaveLength(3);
+    expect(checkExactCatalogPins({})).toHaveLength(Object.keys(exact).length);
   });
 
   it('accepts the exact pins', () => {
-    expect(
-      checkExactCatalogPins({
-        '@agentclientprotocol/sdk': '1.3.0',
-        tsdown: '0.22.14',
-        '@biomejs/biome': '2.5.6',
-      }),
-    ).toEqual([]);
+    expect(checkExactCatalogPins(exact)).toEqual([]);
   });
 });
 

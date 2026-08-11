@@ -1,6 +1,7 @@
 import tailwind from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
+import { diffSyntaxAlias } from './scripts/diff-syntax-alias.ts';
 import { graphRendererAlias } from './scripts/renderer-alias.ts';
 
 /**
@@ -25,11 +26,25 @@ import { graphRendererAlias } from './scripts/renderer-alias.ts';
 export default defineConfig({
   plugins: [tailwind(), vue()],
   /**
+   * KAR-17.6 — the diff surface's dependencies are CommonJS-ish enough that
+   * Vite's optimizer wants to pre-bundle them, and a dependency discovered
+   * mid-run triggers a page reload. In the app that is a flicker; in a browser
+   * spec it is reported as a flake.
+   */
+  optimizeDeps: {
+    include: [
+      '@git-diff-view/core',
+      '@git-diff-view/vue',
+      '@shikijs/magic-move/core',
+      '@shikijs/magic-move/vue',
+    ],
+  },
+  /**
    * KAR-16.6 AC10. Empty unless `DeFlow_GRAPH_RENDERER=stub` is set, in which
    * case every import of the graph facade resolves to the stub renderer and
    * nothing else in the application changes — which is the claim.
    */
-  resolve: { alias: graphRendererAlias() },
+  resolve: { alias: [...graphRendererAlias(), ...diffSyntaxAlias()] },
   build: {
     // The published package ships the built SPA next to the bundled daemon.
     outDir: '../daemon/dist/ui',
