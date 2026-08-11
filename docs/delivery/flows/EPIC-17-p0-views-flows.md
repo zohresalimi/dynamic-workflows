@@ -1345,6 +1345,14 @@ time-to-diagnose a failed run < 5 min_ as an M1 target, and PRD §13 states the 
 _"the visualisation is pretty but not diagnostic"_ as: **measure it. If it doesn't drop, the views
 are wrong.**
 
+**Automated by** `e2e/five-minute-diagnosis.test.ts`, over the seeded fixture
+`test/fixtures/runs/five-minute-diagnosis/`, with the timed result committed at
+[docs/measurements/five-minute-diagnosis.md](../../measurements/five-minute-diagnosis.md).
+Three clauses below were **amended when the scenario was automated**, because the domain cannot
+express them as written; each amendment is marked `# amended:` in place, and the timed-manual half
+of _"Automated at: e2e + timed manual"_ is **still owed** — the committed number times a scripted
+walk, not a person, and the measurement document says so.
+
 ```gherkin
 Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
 
@@ -1357,11 +1365,15 @@ Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
     # 0:00 — orientation
     When the Operator opens the run
     Then the plan graph shows 22 nodes: 18 passed, 1 failed, 2 abandoned, 1 awaiting-human
-    And the failed node "n_impl_3" is immediately identifiable by state colour, glyph and label
+    # amended: node ids are kebab-case. NodeIdSchema is /^[a-z0-9][a-z0-9-]{0,62}$/, so
+    # "n_impl_3" is an id this system cannot mint; the fixture's node is "n-impl-3".
+    And the failed node "n-impl-3" is immediately identifiable by state colour, glyph and label
 
     # 0:20 — what failed, and against what
     When the Operator opens the acceptance-criteria board
-    Then criterion "AC-3" — "no component may import from @voyado/ui/internal" — is unsatisfied
+    # amended: criterion ids are kebab-case too, for the same reason — CriterionIdSchema is the
+    # same pattern, so "AC-3" is "ac-3". The statement is unchanged.
+    Then criterion "ac-3" — "no component may import from @voyado/ui/internal" — is unsatisfied
     And the gate "import-boundary" is listed as the gate that speaks to it
     And its verdict summary reads "3 files import from the internal namespace"
 
@@ -1371,10 +1383,12 @@ Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
     And the finding renders inline at that line with severity "blocker" and its evidence handle
 
     # 1:30 — was the agent wrong, or was it told the wrong thing?
-    When the Operator opens the node inspector for "n_impl_3"
+    When the Operator opens the node inspector for "n-impl-3"
     Then the context packet lists its segments with per-segment token counts
+    # amended: confidence is an enum, not a number. FactSchema.provenance.confidence is
+    # asserted | verified | speculative, so "0.6" is recorded as the band it falls in.
     And the provenance table shows it read fact "decision/import-policy"
-         written by "n_recon" with confidence 0.6
+         written by "n-recon" with confidence "speculative"
 
     # 2:20 — what did compaction do to it?
     When the Operator opens the context-budget view for that invocation
@@ -1395,9 +1409,12 @@ Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
     And the cumulative cost line shows this node as the steepest section
 
     # 4:10 — the diagnosis
+    # amended: the re-route is v3, not v4. The clause above asks for the version that introduced
+    # the node and then for *the next version's* re-route, so the two are adjacent by
+    # construction: v2 splits, v3 re-routes, v4 abandons the legacy branch.
     Then the Operator can state, in one sentence:
-         "n_impl_3 was split out by the v2 patch, re-routed to Codex in v4, and its third attempt
-          failed AC-3 because the import-policy fact it needed was compacted out of its packet —
+         "n-impl-3 was split out by the v2 patch, re-routed to Codex in v3, and its third attempt
+          failed ac-3 because the import-policy fact it needed was compacted out of its packet —
           the fact was never pinned, which is a plan defect in the node's reads declaration."
     And the elapsed time is under five minutes
 
@@ -1412,6 +1429,24 @@ Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
     And the epic is not Done
     And the specific step that consumed the time identifies which view to fix
 ```
+
+**What the automation does and does not settle.** The committed measurement times a *scripted*
+walk: seven navigations in a real Chromium against a real `DeFlow replay` daemon, clocked from
+opening the run to the last checkpoint having its evidence on screen. That is the part of the five
+minutes this codebase controls — daemon response, projection fold, render, navigation — and it is a
+lower bound on nothing else. **A person reading a chart and forming a hypothesis is not in the
+number**, and the "timed manual" half of this scenario's `Automated at:` line is therefore still
+outstanding: run it against a fixture the operator has not seen, with a real stopwatch, before
+quoting five minutes as a human figure. What the scripted walk *does* settle is the property PRD
+§13 doubts — that the evidence is reachable, that each stop hands the next the fact it needs, and
+that no stop requires a log, a second tool or a database query.
+
+Two of the three fixtures the median is taken over cannot answer every stop, and that is a property
+of those recordings rather than of the views: `gate-failure-repair` never built a context packet and
+`repair-attempts` has no gate verdict. `five-minute-diagnosis` was seeded for this scenario because
+nothing in the corpus carried the whole chain. The two corpus entries left out — `compaction`, which
+has no `run.created` at all, and `crash-resume-seq-gap`, which records a sequence hole and no
+failure — are excluded on evidence asserted by the spec, not by preference.
 
 **Notes:** the five checkpoints in the main scenario map one-to-one onto the views
 [roadmap §3](../../17-roadmap.md) argues carry the metric — plan graph for orientation, criteria

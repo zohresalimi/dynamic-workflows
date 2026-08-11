@@ -161,6 +161,99 @@ export async function materialiseReviewRepo(repo: string): Promise<string> {
 }
 
 /**
+ * EPIC-17-S35 — the repository `five-minute-diagnosis` was recorded against.
+ *
+ * A **second** repository rather than three more files in the one above, and
+ * that is deliberate: `review.patch` is a committed fixture, several specs
+ * assert its exact file set, and widening the repository the patch is taken of
+ * would rewrite bytes that have nothing to do with this scenario. Nothing here
+ * touches `materialiseReviewRepo`.
+ *
+ * The content is the scenario's: `packages/ui/src/Button.vue` long enough for
+ * line 42 to exist, with the internal import the `import-boundary` gate refuses
+ * sitting **on** line 42, plus the two other files the verdict's `major`
+ * findings name. Left dirty, as an agent would have left it, so the daemon's
+ * own `git diff` produces the patch the diff surface renders.
+ *
+ * Answers the base commit, like its sibling.
+ */
+export async function materialiseMigrationRepo(repo: string): Promise<string> {
+  await mkdir(join(repo, 'packages', 'ui', 'src'), { recursive: true });
+  await mkdir(join(repo, 'packages', 'app', 'src'), { recursive: true });
+
+  await writeFile(join(repo, 'packages', 'ui', 'src', 'Button.vue'), button('root'));
+  await writeFile(join(repo, 'packages', 'ui', 'src', 'Dialog.vue'), dialog('root'));
+  await writeFile(join(repo, 'packages', 'app', 'src', 'Shell.vue'), shell('root'));
+
+  await git(repo, ['init', '--quiet', '--initial-branch=main']);
+  await git(repo, ['add', '-A']);
+  await git(repo, ['commit', '--quiet', '-m', 'base']);
+  const base = (await git(repo, ['rev-parse', 'HEAD'])).stdout.trim();
+
+  // What the migration node left behind: three imports that reach into the
+  // internal namespace, which is the change the gate refused.
+  await writeFile(join(repo, 'packages', 'ui', 'src', 'Button.vue'), button('internal'));
+  await writeFile(join(repo, 'packages', 'ui', 'src', 'Dialog.vue'), dialog('internal'));
+  await writeFile(join(repo, 'packages', 'app', 'src', 'Shell.vue'), shell('internal'));
+
+  return base;
+}
+
+/**
+ * A component whose line 42 is the import the finding names.
+ *
+ * Counted rather than eyeballed: `MIGRATION_BUTTON_LINE` below is asserted
+ * against this text, so a padding line added here fails a test rather than
+ * moving a finding onto the wrong line of a real patch.
+ */
+const button = (from: 'root' | 'internal'): string =>
+  [
+    '<script setup lang="ts">',
+    ...Array.from({ length: 40 }, (_, index) => `// migrated prop ${String(index + 1)}`),
+    from === 'root'
+      ? "import { Tokens } from '@voyado/ui';"
+      : "import { Tokens } from '@voyado/ui/internal';",
+    'defineProps<{ readonly label: string }>();',
+    '</script>',
+    '',
+    '<template><button :style="Tokens.button">{{ label }}</button></template>',
+    '',
+  ].join('\n');
+
+const dialog = (from: 'root' | 'internal'): string =>
+  [
+    '<script setup lang="ts">',
+    '// migrated dialog',
+    '',
+    'defineProps<{ readonly open: boolean }>();',
+    '',
+    '// the overlay primitive',
+    from === 'root'
+      ? "import { Overlay } from '@voyado/ui';"
+      : "import { Overlay } from '@voyado/ui/internal';",
+    '</script>',
+    '',
+    '<template><Overlay v-if="open" /></template>',
+    '',
+  ].join('\n');
+
+const shell = (from: 'root' | 'internal'): string =>
+  [
+    '<script setup lang="ts">',
+    ...Array.from({ length: 9 }, (_, index) => `// shell region ${String(index + 1)}`),
+    from === 'root'
+      ? "import { Layout } from '@voyado/ui';"
+      : "import { Layout } from '@voyado/ui/internal';",
+    '</script>',
+    '',
+    '<template><Layout /></template>',
+    '',
+  ].join('\n');
+
+/** Where the blocker sits in `Button.vue`, and where `Dialog`/`Shell` sit. */
+export const MIGRATION_BUTTON_LINE = 42;
+
+/**
  * A patch of one repository's change, produced exactly the way `DeFlowd` does.
  *
  * Exported so `../test/integration/patch-real-git.test.ts` can assert the

@@ -50,7 +50,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildPacket } from '../src/build-packet.ts';
 import { EVENT_CURRENT_VERSIONS, type EventKind } from '../src/event-payloads.ts';
 import { type Event, parseEvent } from '../src/events.ts';
-import { planHash } from '../src/hash.ts';
+import { planHash, specHash } from '../src/hash.ts';
 import { type EventSeq, EventSeqSchema, type NodeId } from '../src/ids.ts';
 import { mapChildId } from '../src/map-child-id.ts';
 import { contextSegment } from '../src/pinned-set.ts';
@@ -2012,6 +2012,903 @@ async function stress400Events(): Promise<Event[]> {
   return envelopes(STRESS_400_RUN, drafts);
 }
 
+// ── five-minute-diagnosis ────────────────────────────────────────────────────
+
+/**
+ * EPIC-17-S35 — the run the five-minute diagnosis is measured over.
+ *
+ * The scenario is the epic's Definition of Done and it is written as one
+ * continuous journey: *"a four-hour design-system migration produced a bad
+ * diff"*, diagnosed in six stops — plan graph, criteria board, diff line, node
+ * inspector, context budget, plan scrubber — with a stopwatch running. It needs
+ * **one run that answers all six questions**, and no other fixture in the
+ * corpus does:
+ *
+ * - `gate-failure-repair` has a failing verdict with a located finding, and
+ *   never built a context packet, so stops four and five are empty;
+ * - `repair-attempts` has three packets for one node, and no gate ever spoke,
+ *   so stops two and three are empty;
+ * - `compaction` is three events with no `run.created` at all — no plan, no
+ *   criteria, nothing to orient on.
+ *
+ * So this one carries the whole chain, and the chain is the point: every stop
+ * is a *fact the next stop needs*, which is what makes the walk a diagnosis
+ * rather than six independent smoke tests.
+ *
+ * ```
+ *   n-recon writes decision/import-policy          (confidence: speculative)
+ *     → n-impl-3's attempt-0 packet carries it as segment `fact-import-policy`
+ *       → compaction at `exact` fidelity drops that segment, keeps every pin
+ *         → attempts 1 and 2 are built without it
+ *           → the import-boundary gate fails AC-3 with a blocker at
+ *             packages/ui/src/Button.vue:42
+ * ```
+ *
+ * The honest conclusion the scenario asks the views to make available: the
+ * constraint that was dropped was a **fact**, not a pinned constraint —
+ * `pinnedKept` proves the pinned spec survived — so this is a plan defect in
+ * the node's `reads` declaration and not a pinning failure.
+ *
+ * ## Two places this departs from the scenario's prose, on purpose
+ *
+ * - **`confidence` is `speculative`, not `0.6`.** `FactSchema.provenance.confidence`
+ *   is a three-value enum (`asserted | verified | speculative`), not a number;
+ *   a fixture cannot record 0.6 and the inspector cannot render it. The flow
+ *   file is amended to match the domain rather than the domain bent to match
+ *   the flow file.
+ * - **The re-route is v3, not v4.** The scenario asks the scrubber for the
+ *   version that introduced the node and then for *"the next version's"*
+ *   provider re-route, so the two are adjacent by construction: v2 splits,
+ *   v3 re-routes, v4 abandons the legacy branch.
+ *
+ * ## The twenty-two nodes
+ *
+ * The count the scenario states — 18 passed, 1 failed, 2 abandoned, 1
+ * awaiting-human — is a count of the *projection*, not of any single plan
+ * document. v1 holds nineteen nodes; v2's `split-node` adds three and abandons
+ * the node it split (that is what `split-node` means to the plan projection,
+ * not a delete); v4's `abandon-branch` abandons the legacy shim. Twenty-two
+ * nodes, and the two abandoned ones are abandoned for two different reasons,
+ * which is the distinction the graph has to be able to draw.
+ */
+export const DIAGNOSIS_RUN = 'run_20260811T160000Z_d7e8f9';
+
+/** The gate that speaks to AC-3, and the criterion it refuses. */
+const IMPORT_BOUNDARY_GATE = 'import-boundary';
+const AC3 = 'ac-3';
+
+/** Where the blocker is, verbatim from the scenario. */
+const BUTTON_FILE = 'packages/ui/src/Button.vue';
+const BUTTON_LINE = 42;
+
+/** The fact the packet loses, and the node that wrote it. */
+const POLICY_KEY = 'decision/import-policy';
+const POLICY_SEGMENT = 'fact-import-policy';
+
+const DIAGNOSIS_SPEC_FIXTURE = fileURLToPath(
+  new URL('../test/fixtures/specs/design-system-migration.json', import.meta.url),
+);
+
+const DIAGNOSIS_BINARY = {
+  path: '/tmp/deflow-five-minute-diagnosis/bin/claude',
+  version: '2.1.220',
+  sha256: bareSha('claude-code-diagnosis'),
+};
+
+const DIAGNOSIS_CWD = '/tmp/deflow-five-minute-diagnosis/repo';
+
+/**
+ * The spec, approved, with a **computed** `specHash`.
+ *
+ * Computed rather than a literal because every verdict below cites it, and
+ * `reduce()` treats a verdict whose `specHash` is not the contract in force as
+ * *void* (KAR-12.4) — a fixture with a hand-typed hash produces a criteria
+ * board that is silently empty, which is precisely the stop this fixture exists
+ * to put something on.
+ */
+async function diagnosisSpec(): Promise<TaskSpec> {
+  const draft: Record<string, unknown> = JSON.parse(readFileSync(DIAGNOSIS_SPEC_FIXTURE, 'utf8'));
+  draft.approvedBy = { at: '2026-08-11T15:55:00Z', via: 'ui' };
+  return TaskSpecSchema.parse({ ...draft, specHash: await specHash(draft) });
+}
+
+/** The migration nodes, whose write scope is the package the finding is in. */
+function migrationNode(id: string, title: string, options: AgentOptions = {}): NodeDocument {
+  return {
+    ...agentNode(id, title, options),
+    pathScopes: { write: ['packages/ui/**', 'packages/app/**'], read: ['packages/**'] },
+  };
+}
+
+/** The three nodes `n-impl-migrate` is split into, as v2's patch names them. */
+function splitInto(): NodeDocument[] {
+  return [
+    {
+      ...migrationNode('n-impl-3', 'Migrate the Button surface', {
+        deps: ['n-plan'],
+        // The `reads` declaration the diagnosis indicts: the node asks for the
+        // spec goal and never names the fact it cannot work without, so the
+        // fact is compactable and compaction is within its rights to drop it.
+        writes: [],
+      }),
+      derivedFrom: ['n-impl-migrate'],
+    },
+    {
+      ...migrationNode('n-impl-4', 'Migrate the Dialog surface', { deps: ['n-plan'] }),
+      derivedFrom: ['n-impl-migrate'],
+    },
+    {
+      ...migrationNode('n-impl-5', 'Migrate the Table surface', { deps: ['n-plan'] }),
+      derivedFrom: ['n-impl-migrate'],
+    },
+  ];
+}
+
+/** The nodes that never change across the four versions. */
+function diagnosisFixedNodes(): NodeDocument[] {
+  return [
+    migrationNode('n-recon', 'Survey the component surface', {
+      permission: 'read',
+      writes: [{ kind: 'fact', key: POLICY_KEY, schemaId: 'DeFlow.finding.v1' }],
+    }),
+    migrationNode('n-plan', 'Plan the migration', { deps: ['n-recon'] }),
+    migrationNode('n-impl-1', 'Migrate the Badge surface', { deps: ['n-plan'] }),
+    migrationNode('n-impl-2', 'Migrate the Card surface', { deps: ['n-plan'] }),
+    ...['6', '7', '8', '9', '10'].map((index) =>
+      migrationNode(`n-impl-${index}`, `Migrate product surface ${index}`, { deps: ['n-plan'] }),
+    ),
+    gateNode('n-gate-typecheck', 'The packages typecheck', 'typecheck', ['n-impl-1']),
+    gateNode('n-gate-lint', 'The packages lint', 'lint', ['n-impl-1']),
+    gateNode('n-gate-tests', 'The unit tests pass', 'tests', ['n-impl-1']),
+    gateNode('n-gate-import-boundary', 'No internal imports', IMPORT_BOUNDARY_GATE, ['n-impl-1']),
+    migrationNode('n-docs', 'Update the component docs', { deps: ['n-gate-typecheck'] }),
+    migrationNode('n-changelog', 'Write the changelog', { deps: ['n-docs'] }),
+    migrationNode('n-release-notes', 'Draft the release notes', { deps: ['n-changelog'] }),
+    humanNode('n-approve', 'Operator approves the migration', ['n-release-notes']),
+    // A branch of its own, with nothing downstream: v4's `abandon-branch`
+    // abandons exactly this node and the graph has to show that it stopped
+    // being work rather than that it failed.
+    migrationNode('n-legacy-shim', 'Keep the Vue 2 shim alive', { deps: ['n-plan'] }),
+  ];
+}
+
+function diagnosisEdges(implIds: readonly string[]): EdgeDocument[] {
+  return [
+    // The one data edge: the fact that the whole diagnosis turns on, drawn as
+    // what crosses the edge rather than as an arrow.
+    { from: 'n-recon', to: 'n-plan', kind: 'data', carries: [POLICY_KEY] },
+    ...implIds.map((to): EdgeDocument => ({ from: 'n-plan', to, kind: 'control' })),
+    { from: 'n-plan', to: 'n-legacy-shim', kind: 'control' },
+    ...['n-gate-typecheck', 'n-gate-lint', 'n-gate-tests', 'n-gate-import-boundary'].map(
+      (to): EdgeDocument => ({ from: 'n-impl-1', to, kind: 'control' }),
+    ),
+    { from: 'n-gate-typecheck', to: 'n-docs', kind: 'control' },
+    { from: 'n-docs', to: 'n-changelog', kind: 'control' },
+    { from: 'n-changelog', to: 'n-release-notes', kind: 'control' },
+    { from: 'n-release-notes', to: 'n-approve', kind: 'control' },
+  ];
+}
+
+/** v1 → v4: nineteen nodes, then the split, then the re-route, then the abandon. */
+async function diagnosisPlans(): Promise<readonly PlanGraph[]> {
+  const migrate = migrationNode('n-impl-migrate', 'Migrate the component surfaces', {
+    deps: ['n-plan'],
+  });
+  const fixed = diagnosisFixedNodes();
+  const split = splitInto();
+
+  const v1 = await seal(
+    DIAGNOSIS_RUN,
+    1,
+    null,
+    [...fixed, migrate],
+    diagnosisEdges([
+      'n-impl-1',
+      'n-impl-2',
+      'n-impl-migrate',
+      ...['6', '7', '8', '9', '10'].map((index) => `n-impl-${index}`),
+    ]),
+  );
+
+  const afterSplit = [
+    'n-impl-1',
+    'n-impl-2',
+    'n-impl-3',
+    'n-impl-4',
+    'n-impl-5',
+    'n-impl-6',
+    'n-impl-7',
+    'n-impl-8',
+    'n-impl-9',
+    'n-impl-10',
+  ];
+  const v2 = await seal(
+    DIAGNOSIS_RUN,
+    2,
+    v1.planHash,
+    [...fixed, ...split],
+    diagnosisEdges(afterSplit),
+  );
+
+  // The re-route: one node's provider replaced and nothing about the shape of
+  // the graph moved — which is exactly the change the operator is asking the
+  // scrubber about at 3:10.
+  const rerouted = split.map((node) =>
+    node.id === 'n-impl-3'
+      ? {
+          ...node,
+          provider: { prefer: ['codex'], requires: ['structuredOutput'] },
+          model: 'gpt-5-codex',
+        }
+      : node,
+  );
+  const v3 = await seal(
+    DIAGNOSIS_RUN,
+    3,
+    v2.planHash,
+    [...fixed, ...rerouted],
+    diagnosisEdges(afterSplit),
+  );
+
+  const v4 = await seal(
+    DIAGNOSIS_RUN,
+    4,
+    v3.planHash,
+    [
+      ...fixed.map((node) =>
+        node.id === 'n-legacy-shim' ? { ...node, lifecycle: 'abandoned' } : node,
+      ),
+      ...rerouted,
+    ],
+    diagnosisEdges(afterSplit),
+  );
+
+  return [v1, v2, v3, v4];
+}
+
+/**
+ * `n-impl-3`'s packet for one attempt.
+ *
+ * `withPolicy` is the whole fixture in one boolean: attempt 0 is built with the
+ * segment carrying `decision/import-policy`, and attempts 1 and 2 are built
+ * without it because the compaction between them dropped it. The two packets
+ * come out of the **same builder** rather than out of an edited copy, so the
+ * difference the inspector's attempt comparison reports is a difference the
+ * production `buildPacket` really produces.
+ */
+async function diagnosisPacket(
+  spec: TaskSpec,
+  attempt: number,
+  builtAtEvent: number,
+  withPolicy: boolean,
+) {
+  const drafts = [
+    {
+      id: 'brief',
+      kind: 'task.brief' as const,
+      text: 'Migrate the Button surface onto the new design system.',
+      sourceEvent: eventSeq(2),
+    },
+    ...(withPolicy
+      ? [
+          {
+            id: POLICY_SEGMENT,
+            kind: 'fact' as const,
+            text: `${POLICY_KEY}: the internal namespace is private; import from the package root.`,
+            sourceEvent: eventSeq(12),
+          },
+        ]
+      : []),
+    {
+      id: 'retrieved-button',
+      kind: 'retrieved' as const,
+      text: 'packages/ui/src/Button.vue lines 1-60, retrieved by the reads resolver.',
+      sourceEvent: eventSeq(14),
+    },
+    {
+      id: 'artifact-tokens',
+      kind: 'artifact.handle' as const,
+      text: `${handle('token-map')} — the token map produced by recon`,
+      sourceEvent: eventSeq(16),
+    },
+  ];
+
+  const segments = await Promise.all(drafts.map((draft) => contextSegment(draft)));
+  const built = await buildPacket({
+    runId: DIAGNOSIS_RUN,
+    nodeId: 'n-impl-3',
+    attempt,
+    builtAtEvent,
+    target: { provider: 'claude-code', model: 'sonnet-4-6', maxContext: 200_000 },
+    pinned: {
+      spec,
+      node: { pathScopes: ['packages/ui/**'], permission: 'worktree' },
+      constraints: [
+        { form: 'allow-only', subject: 'write-path', allowed: ['packages/ui/**'] },
+        { form: 'require', statement: 'Every migrated component keeps its public props.' },
+      ],
+      sourceEvent: eventSeq(4),
+    },
+    segments,
+  });
+
+  return {
+    ...built.packet,
+    segments: built.packet.segments.map(({ text: _text, ...record }) => record),
+  };
+}
+
+async function diagnosisEvents(): Promise<Event[]> {
+  const versions = await diagnosisPlans();
+  const [v1] = versions;
+  if (v1 === undefined) throw new Error('diagnosisPlans returned no versions');
+  const hashes = versions.map((version) => version.planHash);
+  const spec = await diagnosisSpec();
+
+  const withPolicy = await diagnosisPacket(spec, 0, 60, true);
+  const withoutPolicy1 = await diagnosisPacket(spec, 1, 72, false);
+  const withoutPolicy2 = await diagnosisPacket(spec, 2, 82, false);
+  const droppedSegment = withPolicy.segments.find((segment) => segment.id === POLICY_SEGMENT);
+  if (droppedSegment === undefined) {
+    throw new Error('attempt 0’s packet has no import-policy segment to drop');
+  }
+
+  const policyFactId = factId(POLICY_KEY);
+
+  const startedOn = (node: string, attempt: number) => ({
+    node,
+    attempt,
+    ikey: `${DIAGNOSIS_RUN}/${node}/${attempt}/0`,
+    binary: DIAGNOSIS_BINARY,
+  });
+
+  const spent = (node: string, attempt: number, costUsd: number, provider = 'claude-code') => ({
+    node,
+    attempt,
+    provider,
+    usage: usage(7_200, 1_100, 'vendor-reported'),
+    costUsd,
+    authMode: 'subscription',
+  });
+
+  const diagnosisVerdict = (
+    gate: string,
+    node: string,
+    outcome: 'pass' | 'fail',
+    criteria: readonly { id: string; status: 'satisfied' | 'unsatisfied' | 'unverifiable' }[],
+    findings: readonly unknown[],
+    summary: string,
+  ) => ({
+    schemaId: 'DeFlow.verdict.v4',
+    outcome,
+    gate,
+    evaluatedNode: node,
+    by: { node: gate, provider: 'deflow', model: 'deterministic-gate' },
+    specHash: spec.specHash,
+    criteria: [...criteria],
+    findings: [...findings],
+    summary,
+  });
+
+  const drafts: Draft[] = [];
+  let seq = 0;
+  const at = (step = 2): number => (seq += step);
+
+  /** One node that ran once and passed — the eleven that are not the story. */
+  const passed = (node: string, provider: string, costUsd: number): void => {
+    drafts.push(
+      {
+        seq: at(),
+        kind: 'node.scheduled',
+        nodeId: node,
+        payload: scheduled(node, provider, 'worktree'),
+      },
+      { seq: at(), kind: 'node.started', nodeId: node, attempt: 0, payload: startedOn(node, 0) },
+      {
+        seq: at(),
+        kind: 'budget.consumed',
+        nodeId: node,
+        attempt: 0,
+        payload: spent(node, 0, costUsd, provider),
+      },
+      {
+        seq: at(),
+        kind: 'node.completed',
+        nodeId: node,
+        attempt: 0,
+        payload: {
+          node,
+          attempt: 0,
+          result: completed({ text: `${node} done` }, 7_200, 1_100, costUsd),
+        },
+      },
+    );
+  };
+
+  /** A gate node that ran and returned `verdict`. */
+  const gateRan = (node: string, gate: string, verdictDoc: unknown): void => {
+    drafts.push(
+      {
+        seq: at(),
+        kind: 'node.scheduled',
+        nodeId: node,
+        payload: scheduled(node, 'deflow', 'read'),
+      },
+      { seq: at(), kind: 'node.started', nodeId: node, attempt: 0, payload: startedOn(node, 0) },
+      {
+        seq: at(),
+        kind: 'gate.evaluated',
+        nodeId: node,
+        attempt: 0,
+        payload: { gate, node: 'n-impl-3', verdict: verdictDoc },
+      },
+      {
+        seq: at(),
+        kind: 'node.completed',
+        nodeId: node,
+        attempt: 0,
+        payload: { node, attempt: 0, result: completed({ outcome: 'evaluated' }, 0, 0, 0) },
+      },
+    );
+  };
+
+  const patch = (id: string, reason: string, ops: readonly unknown[], depth: number) => ({
+    schemaId: 'DeFlow.planpatch.v1',
+    id,
+    proposedBy: 'planner',
+    reason,
+    ops: [...ops],
+    policy: {
+      estimatedCostDeltaUsd: 1.2,
+      estimatedWallClockDeltaMs: 600_000,
+      blastRadius: { paths: ['packages/ui/**'], nodeCount: 3 },
+      replanDepth: depth,
+      escalatesPermission: null,
+      addsWriteCapability: false,
+    },
+  });
+
+  const decision = (outcome: 'auto' | 'approved', by: 'policy' | 'human', rule: string) => ({
+    decision: outcome,
+    by,
+    rule,
+    at: new Date(T0 + 6 * HOUR).toISOString(),
+  });
+
+  const splitPatch = patch(
+    'p-split-migration',
+    'Recon found 3 additional packages; splitting the migration node',
+    [{ op: 'split-node', node: 'n-impl-migrate', into: splitInto(), edges: [] }],
+    1,
+  );
+  const reroutePatch = patch(
+    'p-reroute-impl-3',
+    'claude-code is out of quota; re-routing the Button surface to codex',
+    [{ op: 'replace-provider', node: 'n-impl-3', provider: 'codex', model: 'gpt-5-codex' }],
+    2,
+  );
+  const abandonPatchDoc = patch(
+    'p-abandon-legacy-shim',
+    'the Vue 2 shim has no consumers left; abandoning the branch',
+    [{ op: 'abandon-branch', root: 'n-legacy-shim', reason: 'no consumers left' }],
+    3,
+  );
+
+  // ── the run opens, and recon writes the fact everything turns on ───────────
+  drafts.push(
+    {
+      seq: at(),
+      kind: 'run.created',
+      payload: { spec, cwd: DIAGNOSIS_CWD, repo: { head: 'd7e8f9a', branch: 'main' } },
+    },
+    { seq: at(), kind: 'run.spec.approved', payload: { specHash: spec.specHash, by: 'ui' } },
+    {
+      seq: at(),
+      kind: 'plan.proposed',
+      payload: { version: 1, planHash: hashes[0], graph: v1, by: 'planner' },
+    },
+    { seq: at(), kind: 'run.started', payload: { planHash: hashes[0] } },
+  );
+
+  passed('n-recon', 'claude-code', 0.07);
+  drafts.push({
+    seq: at(),
+    kind: 'fact.written',
+    nodeId: 'n-recon',
+    payload: {
+      fact: {
+        id: policyFactId,
+        key: POLICY_KEY,
+        kind: 'decision',
+        schemaId: 'DeFlow.finding.v1',
+        value: { text: 'the internal namespace is private; import from the package root' },
+        provenance: {
+          byNode: 'n-recon',
+          byProvider: 'claude-code',
+          byModel: 'sonnet-4-6',
+          fromEvidence: [handle('import-policy-evidence')],
+          atEvent: seq,
+          at: new Date(T0 + seq * 1_000).toISOString(),
+          // The scenario says "0.6". `ConfidenceSchema` is an enum, so the
+          // fixture records the band 0.6 falls in and the flow file says so.
+          confidence: 'speculative',
+        },
+      },
+    },
+  });
+  passed('n-plan', 'claude-code', 0.05);
+
+  // ── v2: the split that created the failed node, then v3's re-route ─────────
+  drafts.push(
+    {
+      seq: at(),
+      kind: 'plan.patch.proposed',
+      payload: { patch: splitPatch, basePlanHash: hashes[0] },
+    },
+    {
+      seq: at(),
+      kind: 'plan.proposed',
+      payload: { version: 2, planHash: hashes[1], graph: versions[1], by: 'planner' },
+    },
+    {
+      seq: at(),
+      kind: 'plan.patched',
+      payload: {
+        version: 2,
+        fromHash: hashes[0],
+        toHash: hashes[1],
+        patchId: splitPatch.id,
+        decision: decision('auto', 'policy', 'adds-no-write-capability'),
+        proposedBy: 'planner',
+      },
+    },
+    {
+      seq: at(),
+      kind: 'plan.patch.proposed',
+      payload: { patch: reroutePatch, cause: 'quota', basePlanHash: hashes[1] },
+    },
+    {
+      seq: at(),
+      kind: 'plan.proposed',
+      payload: { version: 3, planHash: hashes[2], graph: versions[2], by: 'planner' },
+    },
+    {
+      seq: at(),
+      kind: 'plan.patched',
+      payload: {
+        version: 3,
+        fromHash: hashes[1],
+        toHash: hashes[2],
+        patchId: reroutePatch.id,
+        decision: decision('auto', 'policy', 'quota-reroute-equivalent'),
+        proposedBy: 'scheduler',
+      },
+    },
+  );
+
+  passed('n-impl-1', 'claude-code', 0.06);
+  passed('n-impl-2', 'claude-code', 0.06);
+
+  // ── n-impl-3: three attempts, and the compaction between the first two ─────
+  drafts.push(
+    {
+      seq: at(),
+      kind: 'node.scheduled',
+      nodeId: 'n-impl-3',
+      payload: scheduled('n-impl-3', 'codex', 'worktree'),
+    },
+    {
+      seq: at(),
+      kind: 'node.started',
+      nodeId: 'n-impl-3',
+      attempt: 0,
+      payload: startedOn('n-impl-3', 0),
+    },
+    {
+      seq: at(),
+      kind: 'fact.read',
+      nodeId: 'n-impl-3',
+      payload: { factId: policyFactId, key: POLICY_KEY, by: 'n-impl-3' },
+    },
+    {
+      seq: at(),
+      kind: 'context.built',
+      nodeId: 'n-impl-3',
+      attempt: 0,
+      payload: { node: 'n-impl-3', attempt: 0, packet: withPolicy },
+    },
+    {
+      seq: at(),
+      kind: 'budget.consumed',
+      nodeId: 'n-impl-3',
+      attempt: 0,
+      payload: spent('n-impl-3', 0, 1.42, 'codex'),
+    },
+    {
+      seq: at(),
+      kind: 'node.failed',
+      nodeId: 'n-impl-3',
+      attempt: 0,
+      payload: {
+        node: 'n-impl-3',
+        attempt: 0,
+        failure: {
+          reason: 'gate.failed',
+          class: 'transient',
+          message: 'the import-boundary gate refused the change',
+          evidence: [handle('impl-3-attempt-0')],
+          occurredAtEvent: seq,
+          attempt: 0,
+        },
+      },
+    },
+    {
+      seq: at(),
+      kind: 'node.retry.scheduled',
+      nodeId: 'n-impl-3',
+      payload: { node: 'n-impl-3', nextAttempt: 1, wakeAt: T0 + 7 * HOUR },
+    },
+    // The event the whole diagnosis converges on. `exact` fidelity, every pin
+    // kept, and the one thing dropped is the fact segment.
+    {
+      seq: at(),
+      kind: 'context.compacted',
+      nodeId: 'n-impl-3',
+      attempt: 0,
+      payload: {
+        node: 'n-impl-3',
+        scope: 'DeFlow.packet',
+        trigger: 'threshold',
+        fidelity: 'exact',
+        before: withPolicy.totals.tokens,
+        after: withoutPolicy1.totals.tokens,
+        droppedSegments: [POLICY_SEGMENT],
+        demotedToHandles: [],
+        pinnedKept: withPolicy.pinnedDigests,
+        originalHandle: handle('impl-3-packet-before-compaction'),
+      },
+    },
+    {
+      seq: at(),
+      kind: 'node.started',
+      nodeId: 'n-impl-3',
+      attempt: 1,
+      payload: startedOn('n-impl-3', 1),
+    },
+    {
+      seq: at(),
+      kind: 'context.built',
+      nodeId: 'n-impl-3',
+      attempt: 1,
+      payload: { node: 'n-impl-3', attempt: 1, packet: withoutPolicy1 },
+    },
+    {
+      seq: at(),
+      kind: 'budget.consumed',
+      nodeId: 'n-impl-3',
+      attempt: 1,
+      payload: spent('n-impl-3', 1, 1.61, 'codex'),
+    },
+    {
+      seq: at(),
+      kind: 'node.failed',
+      nodeId: 'n-impl-3',
+      attempt: 1,
+      payload: {
+        node: 'n-impl-3',
+        attempt: 1,
+        failure: {
+          reason: 'gate.failed',
+          class: 'transient',
+          message: 'the import-boundary gate refused the change again',
+          evidence: [handle('impl-3-attempt-1')],
+          occurredAtEvent: seq,
+          attempt: 1,
+        },
+      },
+    },
+    {
+      seq: at(),
+      kind: 'node.retry.scheduled',
+      nodeId: 'n-impl-3',
+      payload: { node: 'n-impl-3', nextAttempt: 2, wakeAt: T0 + 8 * HOUR },
+    },
+    {
+      seq: at(),
+      kind: 'node.started',
+      nodeId: 'n-impl-3',
+      attempt: 2,
+      payload: startedOn('n-impl-3', 2),
+    },
+    {
+      seq: at(),
+      kind: 'context.built',
+      nodeId: 'n-impl-3',
+      attempt: 2,
+      payload: { node: 'n-impl-3', attempt: 2, packet: withoutPolicy2 },
+    },
+    {
+      seq: at(),
+      kind: 'budget.consumed',
+      nodeId: 'n-impl-3',
+      attempt: 2,
+      payload: spent('n-impl-3', 2, 1.84, 'codex'),
+    },
+    {
+      seq: at(),
+      kind: 'node.failed',
+      nodeId: 'n-impl-3',
+      attempt: 2,
+      payload: {
+        node: 'n-impl-3',
+        attempt: 2,
+        failure: {
+          reason: 'gate.failed',
+          class: 'permanent',
+          message: 'the import-boundary gate refused the change three times',
+          detail: { criterion: AC3, gate: IMPORT_BOUNDARY_GATE },
+          evidence: [handle('impl-3-attempt-2')],
+          occurredAtEvent: seq,
+          attempt: 2,
+        },
+      },
+    },
+  );
+
+  for (const [index, node] of [
+    'n-impl-4',
+    'n-impl-5',
+    'n-impl-6',
+    'n-impl-7',
+    'n-impl-8',
+    'n-impl-9',
+    'n-impl-10',
+  ].entries()) {
+    passed(node, 'claude-code', 0.04 + index / 1_000);
+  }
+
+  // ── the gates: three clean, and the one that speaks to AC-3 ────────────────
+  gateRan(
+    'n-gate-typecheck',
+    'typecheck',
+    diagnosisVerdict(
+      'typecheck',
+      'n-impl-3',
+      'pass',
+      [{ id: 'ac-2', status: 'satisfied' }],
+      [],
+      'typecheck is clean',
+    ),
+  );
+  gateRan(
+    'n-gate-lint',
+    'lint',
+    diagnosisVerdict('lint', 'n-impl-3', 'pass', [], [], 'lint is clean'),
+  );
+  gateRan(
+    'n-gate-tests',
+    'tests',
+    diagnosisVerdict(
+      'tests',
+      'n-impl-3',
+      'pass',
+      [{ id: 'ac-1', status: 'satisfied' }],
+      [],
+      'the unit tests pass',
+    ),
+  );
+  gateRan(
+    'n-gate-import-boundary',
+    IMPORT_BOUNDARY_GATE,
+    diagnosisVerdict(
+      IMPORT_BOUNDARY_GATE,
+      'n-impl-3',
+      'fail',
+      [{ id: AC3, status: 'unsatisfied' }],
+      [
+        {
+          id: 'f-import-boundary-1',
+          severity: 'blocker',
+          criterion: AC3,
+          location: { file: BUTTON_FILE, line: BUTTON_LINE, blobSha: hex('button-blob', 40) },
+          message: `${BUTTON_FILE} imports Tokens from @voyado/ui/internal`,
+          evidence: [handle('import-boundary-report')],
+        },
+        {
+          id: 'f-import-boundary-2',
+          severity: 'major',
+          criterion: AC3,
+          location: {
+            file: 'packages/ui/src/Dialog.vue',
+            line: 7,
+            blobSha: hex('dialog-blob', 40),
+          },
+          message: 'packages/ui/src/Dialog.vue imports Overlay from @voyado/ui/internal',
+          evidence: [],
+        },
+        {
+          id: 'f-import-boundary-3',
+          severity: 'major',
+          criterion: AC3,
+          location: {
+            file: 'packages/app/src/Shell.vue',
+            line: 11,
+            blobSha: hex('shell-blob', 40),
+          },
+          message: 'packages/app/src/Shell.vue imports Layout from @voyado/ui/internal',
+          evidence: [],
+        },
+      ],
+      '3 files import from the internal namespace',
+    ),
+  );
+
+  passed('n-docs', 'claude-code', 0.03);
+  passed('n-changelog', 'claude-code', 0.02);
+  passed('n-release-notes', 'claude-code', 0.02);
+
+  // ── v4: the legacy branch is abandoned, and the run stops for a human ──────
+  drafts.push(
+    {
+      seq: at(),
+      kind: 'plan.patch.proposed',
+      payload: { patch: abandonPatchDoc, basePlanHash: hashes[2] },
+    },
+    {
+      seq: at(),
+      kind: 'plan.proposed',
+      payload: { version: 4, planHash: hashes[3], graph: versions[3], by: 'planner' },
+    },
+    {
+      seq: at(),
+      kind: 'plan.patched',
+      payload: {
+        version: 4,
+        fromHash: hashes[2],
+        toHash: hashes[3],
+        patchId: abandonPatchDoc.id,
+        decision: decision('approved', 'human', 'default'),
+        proposedBy: 'planner',
+      },
+    },
+    {
+      seq: at(),
+      kind: 'node.scheduled',
+      nodeId: 'n-approve',
+      payload: scheduled('n-approve', 'human', 'read'),
+    },
+    {
+      seq: at(),
+      kind: 'node.started',
+      nodeId: 'n-approve',
+      attempt: 0,
+      payload: startedOn('n-approve', 0),
+    },
+    {
+      seq: at(),
+      kind: 'node.suspended',
+      nodeId: 'n-approve',
+      attempt: 0,
+      payload: { node: 'n-approve', until: { kind: 'human' } },
+    },
+    {
+      seq: at(),
+      kind: 'human.requested',
+      nodeId: 'n-approve',
+      payload: {
+        node: 'n-approve',
+        prompt: 'One surface failed the import boundary. Ship the rest?',
+        options: [
+          { id: 'ship', label: 'Ship it', effect: 'approve' },
+          { id: 'hold', label: 'Hold', effect: 'reject' },
+        ],
+      },
+    },
+  );
+
+  return envelopes(DIAGNOSIS_RUN, drafts);
+}
+
 // ── the writer ───────────────────────────────────────────────────────────────
 
 const README = (name: string, run: string, what: string) => `# \`${name}\`
@@ -2092,6 +2989,24 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
         'budget, ELK layout time and scrubber responsiveness are measured against, and\n' +
         'the one KAR-16.4’s bounded-memory ring is exercised by.',
     },
+    {
+      name: 'five-minute-diagnosis',
+      run: DIAGNOSIS_RUN,
+      events: await diagnosisEvents(),
+      what:
+        'The run [EPIC-17-S35](../../../docs/delivery/flows/EPIC-17-p0-views-flows.md)\n' +
+        'is timed over: a design-system migration whose 22 nodes end 18 passed, 1\n' +
+        'failed, 2 abandoned and 1 awaiting-human, and whose failure is only\n' +
+        'explicable by walking six views in sequence. `n-recon` writes\n' +
+        '`decision/import-policy`; `n-impl-3`’s first packet carries it; a\n' +
+        '`context.compacted` at `exact` fidelity drops that one segment while keeping\n' +
+        'every pin; the two later attempts are built without it; the\n' +
+        '`import-boundary` gate then refuses `AC-3` with a blocker at\n' +
+        '`packages/ui/src/Button.vue:42`. The plan versions carry the split that\n' +
+        'created the node (v2) and the provider re-route that followed it (v3).\n' +
+        'This is the only fixture in the corpus that answers all six of the\n' +
+        'scenario’s questions from one run.',
+    },
   ];
 
   for (const fixture of fixtures) {
@@ -2108,6 +3023,7 @@ export async function buildUiRunFixtures(dir: string): Promise<void> {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   await buildUiRunFixtures(process.argv[2] ?? RUN_FIXTURES_DIR);
   process.stdout.write(
-    `wrote happy-path-12, three-patches, repair-attempts and stress-400 into ${RUN_FIXTURES_DIR}\n`,
+    'wrote happy-path-12, three-patches, repair-attempts, stress-400 and ' +
+      `five-minute-diagnosis into ${RUN_FIXTURES_DIR}\n`,
   );
 }

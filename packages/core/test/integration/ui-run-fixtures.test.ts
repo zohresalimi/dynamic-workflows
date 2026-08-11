@@ -34,8 +34,14 @@ import { parseEvent } from '../../src/events.ts';
 
 const COMMITTED = fileURLToPath(new URL('../../../../test/fixtures/runs/', import.meta.url));
 
-/** The four this builder owns. */
-const ASSEMBLED = ['happy-path-12', 'three-patches', 'repair-attempts', 'stress-400'] as const;
+/** The five this builder owns. */
+const ASSEMBLED = [
+  'happy-path-12',
+  'three-patches',
+  'repair-attempts',
+  'stress-400',
+  'five-minute-diagnosis',
+] as const;
 
 /** Everything with an `events.jsonl`, assembled or recorded. */
 const ALL = [...ASSEMBLED, 'compaction', 'gate-failure-repair', 'crash-resume-seq-gap'] as const;
