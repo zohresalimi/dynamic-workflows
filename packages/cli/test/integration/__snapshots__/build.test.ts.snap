@@ -7,6 +7,7 @@ exports[`the fixed build order (AC1, EPIC-18-S37) > emits the three bins and the
   "index.mjs",
   "mcp.mjs",
   "mock-agent.mjs",
+  "rolldown-<hash>.mjs",
   "src-<hash>.mjs",
   "ui/assets/*.css",
   "ui/assets/*.js",

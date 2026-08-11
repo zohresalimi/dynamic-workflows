@@ -473,6 +473,33 @@ run — and land the battery integration second. That split is the deliberate mi
 risk below; it is a sequencing decision, not a scope cut, and it must be recorded on the board if
 taken.
 
+> **The split was not taken** (implemented 2026-08-11). All eight categories, the battery included,
+> landed together, because the battery already existed: `runProviderDoctor` was built by KAR-15.6
+> for `GET /api/providers/doctor`, and `doctor`'s Conformance section is a second caller of it
+> rather than a second implementation. `agents.ts` runs one pass over the machine — detect, probe,
+> regenerate the matrix, then the battery — because probing twice would mean spawning every
+> installed vendor CLI twice.
+>
+> Two decisions worth recording, both of which the acceptance criteria imply but do not state.
+>
+> **Only two things produce a `fail`**, and they are exactly the two the criteria enumerate: a git
+> below the 2.38 floor (AC3) and an unwritable state directory (AC8), plus a Node below 24 and a
+> bug inside `doctor` itself. Everything else — a degraded sandbox ladder, capability drift, a
+> failed conformance assertion, a missing pty — is a `warn`. The rule is that exit `5` means
+> *DeFlow cannot run here*, not *something here is imperfect*, which is what keeps the exit code
+> worth branching on in CI (AC11).
+>
+> **A capability the agent never mentioned reads as `false` in the matrix**, matching
+> `canResume`/`canFork`/`canList` in `@DeFlow/adapters`, because a capability nobody advertised is
+> one DeFlow must not route through. The distinction between "never mentioned it" and "told us no"
+> is not lost: `capability()`'s reason is carried alongside the matrix in the regenerated fixture
+> and in `--json`.
+>
+> The regenerated fixture is written to `<dataDir>/capabilities/<agent>@<version>.json` by default
+> rather than into the operator's repository, and the baseline it diffs against is the most
+> recently probed fixture for the same agent — so a version bump is a new file *and* a reported
+> diff, not a silent replacement.
+
 ---
 
 ### KAR-18.5 — Single-package build and asset bundling

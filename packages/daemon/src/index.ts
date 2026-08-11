@@ -143,6 +143,12 @@ export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
 // worktree it found and the worktree it left.
 export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
 export { shellEffect } from './effects/shell-effect.ts';
+// The `LedgerSink` @DeFlow/adapters writes through, over a real SQLite
+// connection. Exported because `DeFlow doctor` (KAR-18.4) probes providers
+// from the CLI process, and an adapter that was handed a sink inventing
+// sequence numbers would be told its events were committed when they were not.
+export type { LedgerSinkOptions } from './exec/ledger-sink.ts';
+export { sqliteLedgerSink } from './exec/ledger-sink.ts';
 // The orchestrator loop: reduce → decide → perform → append, with what a node
 // *does* injected as a `NodePerformer`.
 export type {
@@ -535,6 +541,22 @@ export type {
   ProviderDetectionStatus,
 } from './providers/detect.ts';
 export { detectProviders, pathRoots } from './providers/detect.ts';
+// KAR-15.6 AC8 / KAR-18.4 — re-probe every recorded adapter and run the F3.4
+// battery against it. `GET /api/providers/doctor` and `DeFlow doctor`'s
+// Conformance section are the two callers, and they share one implementation
+// so a CI exit code and an operator's terminal describe the same run.
+export type {
+  ProbeStatus,
+  ProviderDoctorEntry,
+  ProviderDoctorPorts,
+  ProviderDoctorReport,
+} from './providers/doctor.ts';
+export {
+  DOCTOR_DIR,
+  runProviderDoctor,
+  UNSTAGEABLE_CASES,
+  UNSTAGEABLE_REASON,
+} from './providers/doctor.ts';
 // KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor` (the command is
 // EPIC-18, KAR-18.4): per provider, the most recent `provider.rate_limited`
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.

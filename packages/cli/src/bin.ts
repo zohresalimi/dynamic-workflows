@@ -12,11 +12,11 @@
  * split `packages/daemon/bin/DeFlow-mcp.ts` and `packages/mock-agent/bin/
  * mock-agent.ts` already use.
  *
- * `run` and `doctor` are deliberately absent: they are KAR-18.3 and KAR-18.4,
- * and a usage line advertising a command that does not exist is worse than one
- * that does not mention it. What this file settles is the *packaging* claim —
- * that there is a real, executable, single-file `DeFlow` in the tarball with
- * the whole daemon inlined behind it.
+ * `run` is deliberately absent: it is KAR-18.3, and a usage line advertising a
+ * command that does not exist is worse than one that does not mention it. What
+ * this file settles is the *packaging* claim — that there is a real,
+ * executable, single-file `DeFlow` in the tarball with the whole daemon
+ * inlined behind it.
  *
  * `up` (KAR-18.2) is the one command here that does not return: it starts a
  * daemon and then waits for a signal. The waiting is this file's job, because
@@ -25,6 +25,7 @@
  */
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
 
@@ -55,15 +56,26 @@ Usage: DeFlow <command> [options]
 Commands:
   init            Prepare .DeFlow/ in the current git repository
   up              Start the daemon and open the UI
+  doctor          Report what this machine can do, and what it cannot
 
 Options for "up":
   --port <n>      Bind this port instead of 7777, or fail if it is taken
   --no-open       Print the URL without launching a browser
   --timings       Print per-step milliseconds for the eight boot steps
 
+Options for "doctor":
+  --json          Emit one machine-readable document instead of the report
+  --skip-conformance
+                  Skip the F3.4 battery, which spawns a real turn per
+                  assertion per installed adapter. The section then reports
+                  that it did not run, which is not the same as passing.
+
 Options:
   -h, --help      Print this message
   -v, --version   Print the version
+
+Exit codes for "doctor": 0 when every check is ok or warn, 5 when any check
+fails. Nothing else, so CI can branch on it without a table.
 `;
 
 /**
@@ -120,6 +132,33 @@ async function up(argv: readonly string[]): Promise<number> {
   return runUntilSignalled(result);
 }
 
+/**
+ * `DeFlow doctor` (KAR-18.4).
+ *
+ * The exit code comes straight off the report — `runDoctor` reduced it, and
+ * this function does not get to have an opinion. That is the whole of AC10:
+ * CI consumes the exit code, humans consume the text, and both come out of one
+ * status model.
+ */
+async function doctor(argv: readonly string[]): Promise<number> {
+  const unknown = argv.filter((flag) => flag !== '--json' && flag !== '--skip-conformance');
+  if (unknown.length > 0) {
+    process.stderr.write(`DeFlow doctor: unknown option "${unknown[0]}"\n\n${USAGE}`);
+    return EX_USAGE;
+  }
+
+  const result = await runDoctor({
+    cwd: process.cwd(),
+    env: process.env,
+    json: argv.includes('--json'),
+    conformance: !argv.includes('--skip-conformance'),
+  });
+
+  process.stdout.write(result.stdout);
+  if (result.stderr !== '') process.stderr.write(result.stderr);
+  return result.exitCode;
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [command] = argv;
 
@@ -134,6 +173,8 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === 'up') return up(argv.slice(1));
+
+  if (command === 'doctor') return doctor(argv.slice(1));
 
   if (command === 'init') {
     const result = await runInit({ cwd: process.cwd() });

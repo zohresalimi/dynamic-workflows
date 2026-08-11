@@ -32,6 +32,7 @@
     "@lydell/node-pty": "catalog:"
   },
   "devDependencies": {
+    "@DeFlow/adapters": "workspace:*",
     "@DeFlow/core": "workspace:*",
     "@DeFlow/daemon": "workspace:*",
     "@DeFlow/ledger": "workspace:*",

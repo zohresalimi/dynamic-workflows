@@ -35,6 +35,26 @@ import {
   type StreamConnection,
 } from '@DeFlow/web';
 
+// KAR-18.4 — `DeFlow doctor`. Like `init`, it is not a client of the daemon's
+// HTTP API: it answers questions about the machine the daemon would run on,
+// and most of them have to be answerable when no daemon can start at all.
+export type {
+  CheckStatus,
+  DoctorCheck,
+  DoctorReport,
+  DoctorSection,
+  DoctorSectionId,
+} from './doctor/report.ts';
+export {
+  DOCTOR_EX_FAIL,
+  DOCTOR_SECTION_IDS,
+  DOCTOR_SECTION_TITLES,
+  reduceReport,
+  renderJson,
+  renderText,
+} from './doctor/report.ts';
+export type { DoctorOptions, DoctorResult } from './doctor/run.ts';
+export { runDoctor } from './doctor/run.ts';
 // KAR-18.1 — `DeFlow init`. Unlike `runTask`/`approveSpec` below, it is not a
 // client of the daemon's HTTP API: there is nothing running yet to be a
 // client of. It calls straight into `@DeFlow/daemon`'s `initWorkspace`.
