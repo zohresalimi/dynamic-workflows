@@ -255,6 +255,22 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
     expect(holds(initial, 'NodeOutputView')).toBe(false);
     expect(names.some((module) => module.includes('@xterm/'))).toBe(true);
     expect(names.some((module) => module.includes('@tanstack/'))).toBe(true);
+
+    // KAR-17.9 AC5 / test plan row 6 — the memory graph is the odd one out on
+    // this list: it brings **no new dependency** at all, because it shares the
+    // renderer with the landing view. It is lazy anyway, and deliberately: it
+    // is the second Vue Flow surface, the one whose node count grows with the
+    // run rather than with the plan, and the aggregation, node body and detail
+    // panel behind it are dead weight on a boot that is about to draw a plan.
+    // The row's red is `the route was eagerly imported`, and it is the *whole*
+    // route that has to move — the view, its node body and the projection
+    // selector under it — which is why all three are named.
+    expect(names.some((module) => module.includes('MemoryGraphView'))).toBe(true);
+    expect(holds(initial, 'MemoryGraphView')).toBe(false);
+    expect(names.some((module) => module.includes('MemoryNode.vue'))).toBe(true);
+    expect(holds(initial, 'MemoryNode.vue')).toBe(false);
+    expect(names.some((module) => module.includes('memory-graph.ts'))).toBe(true);
+    expect(holds(initial, 'memory-graph.ts')).toBe(false);
   });
 
   it('ships exactly one syntax highlighter, in no chunk at all but Shiki (AC9)', () => {

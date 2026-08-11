@@ -37,7 +37,7 @@ import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, chromium } from 'playwright';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
-import type { DrawnGraph, MeasureGlobal } from '../packages/web/measure/api.ts';
+import type { DrawnGraph, MeasureGlobal, MemoryRenderResult } from '../packages/web/measure/api.ts';
 import { RENDERER_ENV } from '../packages/web/scripts/renderer-alias.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -50,6 +50,8 @@ let browser: Browser | undefined;
 let site: { origin: string; close: () => Promise<void> };
 /** How many nodes the stub drew, and what the first one is called. */
 let drawn: DrawnGraph;
+/** KAR-17.9 row 7 — the same, for the *memory* graph. */
+let memory: MemoryRenderResult;
 
 /*
  * Every `page.evaluate` body below spells out
@@ -192,6 +194,26 @@ beforeAll(async () => {
   drawn = await page.evaluate(() =>
     (globalThis as unknown as MeasureGlobal).__deflowMeasure.drawn(),
   );
+
+  // KAR-17.9 test plan row 7 — the *second* graph surface, through the same
+  // stub. `happy-path-12` rather than `stress-400` because it is the recording
+  // with a blackboard: three facts, three writers, three readers and an
+  // invalidation, which is a memory graph with something in it.
+  const happy = (
+    await readFile(join(repoRoot, 'test/fixtures/runs/happy-path-12/events.jsonl'), 'utf8')
+  )
+    .trimEnd()
+    .split('\n')
+    .map((line) => JSON.parse(line) as unknown);
+
+  memory = await page.evaluate(
+    (payload) =>
+      (globalThis as unknown as MeasureGlobal).__deflowMeasure.renderMemory({
+        events: payload as unknown[],
+        expand: 'plan-migration',
+      }),
+    happy,
+  );
 }, 600_000);
 
 afterAll(async () => {
@@ -243,5 +265,27 @@ suite('EPIC-16-S35 — the swap is provably one file', () => {
     expect(drawn.firstLabel).toMatch(
       /^.+ .+, (pending|running|blocked|passed|failed|abandoned|awaiting-human), /,
     );
+  });
+});
+
+suite('KAR-17.9 — the memory graph goes through the same one file', () => {
+  it('draws the aggregate through the stub renderer, from the real blackboard', () => {
+    // Row 7's red is *"something reached past the facade"*: a view holding a
+    // `useVueFlow()` composable, a `.vue-flow__*` behaviour or a renderer type
+    // would either fail the build in `beforeAll` or draw nothing here.
+    expect(memory.renderer).toBe('stub');
+    expect(memory.facts).toBe(3);
+    // Five nodes wrote or read a fact in `happy-path-12`, plus the one fact of
+    // the expanded producer.
+    expect(memory.drawn).toBe(6);
+    expect(memory.firstLabel).toContain('fact');
+  });
+
+  it('aggregates before it renders, with facts only where one was expanded', () => {
+    // AC1 and AC2 at the far end of a real build: the bubbles are the default
+    // and the single fact node is there because the request asked for it.
+    expect(memory.drawnFacts).toBe(1);
+    expect(memory.kinds.filter((kind) => kind === 'producer')).toHaveLength(5);
+    expect(memory.kinds.filter((kind) => kind === 'fact')).toHaveLength(1);
   });
 });

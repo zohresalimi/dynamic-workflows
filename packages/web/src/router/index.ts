@@ -99,6 +99,20 @@ export const routes = [
     props: true,
   },
   {
+    // F10.4. **The lazy route AC5 is about.** It is the second Vue Flow surface
+    // in the application, and the one whose node count is unbounded in a way
+    // the plan graph's is not — so it stays out of the landing chunk on
+    // purpose, even though the renderer it shares with the plan graph is
+    // already there. What is deferred is this view, its node body and the
+    // aggregation behind them (KAR-17.9 AC5, docs/12 §10), and
+    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
+    // any of it creeps into the first chunk.
+    path: '/runs/:runId/memory',
+    name: 'run-memory',
+    component: () => import('../views/MemoryGraphView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),
