@@ -13,7 +13,7 @@
  * CLI is installed" cannot find the developer's own and pass for the wrong
  * reason.
  */
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -23,6 +23,19 @@ import { fileURLToPath } from 'node:url';
 export const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 export const CLI_BIN = join(repoRoot, 'packages/cli/src/bin.ts');
 export const MOCK_AGENT_BIN = join(repoRoot, 'packages/mock-agent/bin/mock-agent.ts');
+
+/**
+ * git's own directory, which is on the hermetic PATH and nothing else is.
+ *
+ * `DeFlow up` never shells out to git; `DeFlow run` refuses to start a run on a
+ * machine whose git is below 2.38 (KAR-18.3 AC6's fifth code), so a PATH with
+ * no git at all would make every `run` spec here exit 5 for a reason none of
+ * them is about. git is not an agent CLI, so the "nothing is installed" specs
+ * are unaffected.
+ */
+export const GIT_DIR = dirname(
+  execFileSync('/usr/bin/env', ['sh', '-c', 'command -v git'], { encoding: 'utf8' }).trim(),
+);
 
 export const makeDataDir = (): Promise<string> => mkdtemp(join(tmpdir(), 'DeFlow-up-'));
 
@@ -51,16 +64,34 @@ export interface SpawnUpOptions {
   readonly binDirs?: readonly string[];
   /** Merged over the hermetic base. */
   readonly env?: NodeJS.ProcessEnv;
+  /** The working directory. Defaults to the repository root. */
+  readonly cwd?: string;
+}
+
+export interface SpawnCliOptions extends SpawnUpOptions {
+  /** The subcommand and everything after it. */
+  readonly argv: readonly string[];
 }
 
 export function spawnUp(options: SpawnUpOptions): CliProcess {
+  return spawnCli({ ...options, argv: ['up', ...(options.args ?? [])] });
+}
+
+/**
+ * Any `DeFlow` subcommand, spawned the way `npx DeFlow …` spawns it.
+ *
+ * `spawnUp` above is this with `up` in front of the argv, kept because every
+ * KAR-18.2 spec reads that way. KAR-18.3's specs need `run` and `--attach`, and
+ * a second copy of the hermetic environment is exactly the thing that drifts.
+ */
+export function spawnCli(options: SpawnCliOptions): CliProcess {
   const out: string[] = [];
   const err: string[] = [];
 
-  const child = spawn(process.execPath, [CLI_BIN, 'up', ...(options.args ?? [])], {
-    cwd: repoRoot,
+  const child = spawn(process.execPath, [CLI_BIN, ...options.argv], {
+    cwd: options.cwd ?? repoRoot,
     env: {
-      PATH: [...(options.binDirs ?? []), dirname(process.execPath)].join(':'),
+      PATH: [...(options.binDirs ?? []), dirname(process.execPath), GIT_DIR].join(':'),
       HOME: options.dataDir,
       DeFlow_DATA_DIR: options.dataDir,
       DeFlow_LOG_LEVEL: 'silent',

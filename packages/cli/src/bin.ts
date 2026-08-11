@@ -12,21 +12,23 @@
  * split `packages/daemon/bin/DeFlow-mcp.ts` and `packages/mock-agent/bin/
  * mock-agent.ts` already use.
  *
- * `run` is deliberately absent: it is KAR-18.3, and a usage line advertising a
- * command that does not exist is worse than one that does not mention it. What
- * this file settles is the *packaging* claim — that there is a real,
- * executable, single-file `DeFlow` in the tarball with the whole daemon
- * inlined behind it.
- *
  * `up` (KAR-18.2) is the one command here that does not return: it starts a
  * daemon and then waits for a signal. The waiting is this file's job, because
  * "how the process ends" is a property of the process rather than of the
  * command — `runUp` hands back a `stop()` and stays testable without one.
+ *
+ * `run` (KAR-18.3) owns its own signal handling instead, and that is not an
+ * inconsistency: `up`'s Ctrl-C means "stop the daemon" and `run`'s means
+ * "detach, unless you say it twice", which is a decision about the *run* rather
+ * than about the process. It is registered inside `runRun` so that the
+ * three-second window and the sentence it prints can be tested without a
+ * process at all.
  */
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
+import { runRun } from './run/run.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
 
 /** sysexits(3) `EX_USAGE`, the same code the MCP shim uses for a bad argv. */
@@ -56,12 +58,31 @@ Usage: DeFlow <command> [options]
 Commands:
   init            Prepare .DeFlow/ in the current git repository
   up              Start the daemon and open the UI
+  run             Start a run and watch it, with no browser at all
   doctor          Report what this machine can do, and what it cannot
 
 Options for "up":
   --port <n>      Bind this port instead of 7777, or fail if it is taken
   --no-open       Print the URL without launching a browser
   --timings       Print per-step milliseconds for the eight boot steps
+
+Options for "run":
+  --file <path>   Take the task from a file in this repository
+  --issue <ref>   Take it from a git issue: a URL, or owner/repo#42
+  --spec <path>   Take it from a spec document
+  --attach <id>   Watch a run that already exists instead of creating one
+  --json          One JSON object per line, for a pipe
+  --no-wait       Exit 4 on an open human gate instead of waiting for it
+  --permission <level>
+                  read | worktree | repo | system; worktree by default
+
+Ctrl-C once detaches — the run keeps going and the daemon keeps serving it.
+Ctrl-C twice within three seconds cancels the run.
+
+Exit codes for "run": 0 completed with every gate passed, 1 a failed gate or a
+failed node, 2 the daemon refused to start, 3 paused on a budget ceiling, 4
+waiting on a human gate under --no-wait, 5 this machine cannot host a run, 130
+interrupted.
 
 Options for "doctor":
   --json          Emit one machine-readable document instead of the report
@@ -175,6 +196,19 @@ async function main(argv: readonly string[]): Promise<number> {
   if (command === 'up') return up(argv.slice(1));
 
   if (command === 'doctor') return doctor(argv.slice(1));
+
+  if (command === 'run') {
+    return runRun({
+      argv: argv.slice(1),
+      cwd: process.cwd(),
+      env: process.env,
+      stdout: (chunk) => process.stdout.write(chunk),
+      stderr: (chunk) => process.stderr.write(chunk),
+      // Read per line rather than captured here, which is what keeps colour
+      // out of a pipe even when the command was started from a terminal.
+      isTty: () => process.stdout.isTTY === true,
+    });
+  }
 
   if (command === 'init') {
     const result = await runInit({ cwd: process.cwd() });

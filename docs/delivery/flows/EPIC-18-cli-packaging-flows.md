@@ -586,6 +586,16 @@ one full run completes headlessly."_ It is also the recorder — the six replay 
 from real mock-agent runs driven through this command, never hand-written, because hand-written
 fixtures encode assumptions about the event stream rather than its actual shape.
 
+> **Amended 2026-08-11 while implementing KAR-18.3.** The last four lines of the scenario — the
+> node transitions, the gate verdict, the branch name, the cost/duration line and the exit code 0 —
+> describe a run that executes, and **no shipped code path executes a submitted run**: nothing
+> calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at
+> `task.submitted` by design (KAR-10.1). `e2e/run.test.ts` automates everything above that line —
+> the detached autostart, the unauthenticated health poll, the run created, the subscription from
+> seq 0, the transcript snapshot through the normalising serializer and a documented exit code —
+> and the completion half stays open against the orchestration wiring rather than being faked. The
+> six replay fixtures cannot be recorded from this command until it closes.
+
 ---
 
 ## EPIC-18-S19 — `DeFlow run` attaches to a daemon that is already up
@@ -640,6 +650,15 @@ enough that the message must state both alternatives. The double-tap is the same
 already know from other long-running CLIs, and it maps onto the F5.7 kill switch rather than onto a
 polite shutdown.
 
+> **Amended 2026-08-11 while implementing KAR-18.3.** _"the run reaches `run.completed`
+> afterwards"_ and _"every child process in the run's process groups is terminated"_ both need a
+> run that executes; see the note on EPIC-18-S18. The cancel is real and asserted against a real
+> daemon (`packages/cli/test/integration/run-signals.test.ts`): it goes through
+> `POST /runs/:id/cancel`, falling back to `POST /runs/:id/spec/abandon` when the daemon answers
+> `spec_not_approved` — KAR-15.5 AC6 forbids controlling a run whose spec is not approved — and
+> `run.aborted` lands in the ledger. A run that has not been framed at all can be stopped by
+> neither route, which is a hole in the daemon's write surface and a follow-up on `MET-418`.
+
 ---
 
 ## EPIC-18-S21 — Killing the CLI does not kill the run
@@ -663,6 +682,12 @@ Feature: headless execution
 resumes"_ — and that property starts with the daemon not being a child of whatever launched it. If
 `DeFlowd` were spawned in the CLI's process group, closing the terminal would take down an
 hours-long run, which is precisely the failure mode this whole architecture exists to avoid.
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** _"the agent child process is still alive"_ is
+> unreachable for the reason given on EPIC-18-S18: no node is ever scheduled, so no agent is ever
+> spawned. Everything else is asserted — DeFlowd survives the `SIGKILL`, its process group id
+> differs from the CLI's, `/api/health` still answers, and a second terminal's
+> `DeFlow run --attach` renders the transcript.
 
 ---
 
@@ -755,6 +780,12 @@ Feature: headless execution
 **Notes:** recording the _locator_ as well as the content is what lets the node inspector answer
 "where did this task come from" six weeks later. A `--file` implementation that inlines content and
 discards the path loses that permanently, and the loss is invisible until someone asks.
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** The `--spec` row's kind is `file`, not
+> `spec`. KAR-10.1 AC1 settled that the wire carries three shapes and that _"a spec document is the
+> `file` kind with its own `mediaType` in provenance — there is no fourth shape"_; the locator,
+> which is what the scenario's note is actually about, is recorded either way. The `--issue` row's
+> locator is the shorthand expanded to the one URL shape `resolveIssue` accepts.
 
 ---
 

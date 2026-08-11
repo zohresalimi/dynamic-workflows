@@ -306,7 +306,7 @@ first time cold start regresses, the cause is one line of output rather than an 
 
 |                 |                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Status**      | Not started                                                                                                               |
+| **Status**      | Done — see the amendment under the acceptance criteria                                                                    |
 | **Priority**    | P0                                                                                                                        |
 | **Size**        | M                                                                                                                         |
 | **Depends on**  | KAR-18.2, EPIC-15 KAR-15.3/KAR-15.4/KAR-15.5, EPIC-10 KAR-10.1 (intake), EPIC-06 KAR-06.7 (pause/resume/cancel as events) |
@@ -354,6 +354,28 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
    is recorded in `task.submitted`'s provenance so the run's source is inspectable on disk (NF8).
    (`run.created` carried this until 7 August 2026; the locator lives on the intake event now —
    `KAR-10.1` AC2.)
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** Two clauses above describe a run that
+> executes, and this repository has no code path that executes one: nothing calls `compilePlanV1`
+> or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at `task.submitted` by
+> design (KAR-10.1: _"No interpretation happens here"_). Every submitted run therefore parks after
+> intake. What that changes here:
+>
+> - **AC1's "streams node lifecycle … until a terminal state"** is implemented and asserted for
+>   every terminal state the ledger can currently reach (an open human gate under `--no-wait`, an
+>   abort, a completion appended by a spec through the daemon's own functions). The four-node
+>   plan running to `run.completed` is not reachable and is **not** faked; `e2e/run.test.ts`
+>   carries the deferral and the epic's DoD keeps it open.
+> - **AC3's second Ctrl-C** cancels through the daemon's own routes — `POST /runs/:id/cancel`,
+>   falling back to `POST /runs/:id/spec/abandon` when the daemon answers `spec_not_approved`,
+>   because KAR-15.5 AC6 forbids controlling a run whose spec is not approved. A run that has not
+>   been framed at all can be stopped by **neither** route (the gate is not open either), which is a
+>   real hole in the daemon's write surface rather than in this command; it is recorded as a
+>   follow-up on `MET-418` rather than patched from the CLI.
+> - **AC8's `--spec`** produces the `file` wire kind, not a fourth one. KAR-10.1 settled that
+>   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
+>   `mediaType` in provenance — there is no fourth shape"_), and the locator — which is what makes
+>   the source inspectable six weeks later — is recorded either way.
 
 **Test plan (TDD)**
 

@@ -151,10 +151,29 @@ function isEnvelope(body: unknown): body is Envelope {
  * the `task.submitted` event the daemon appends (../../daemon/src/http/api.ts).
  */
 export async function runTask(text: string, options: RunTaskOptions): Promise<RunTaskResult> {
+  return createRun({ kind: 'text', text }, options);
+}
+
+/**
+ * KAR-18.3 AC8 — the same submission, over all three of F1.1's wire shapes.
+ *
+ * `runTask` above is this function with the `text` shape spelled out, kept
+ * because it is what KAR-10.1's specs and `DeFlow run "…"` read like. Adding a
+ * second poster for `--file` and `--issue` would have been the drift AC7 exists
+ * to prevent, so there is one, and the four operator-facing sources collapse
+ * onto the three wire kinds in `./run/args.ts` where the argv is parsed.
+ */
+export async function createRun(
+  input:
+    | { readonly kind: 'text'; readonly text: string }
+    | { readonly kind: 'file'; readonly path: string }
+    | { readonly kind: 'issue'; readonly url: string },
+  options: RunTaskOptions,
+): Promise<RunTaskResult> {
   const response = await clientFor(options.baseUrl, options.token).runs.$post(
     {
       json: {
-        input: { kind: 'text', text },
+        input,
         cwd: options.cwd,
         permission: options.permission ?? 'worktree',
         ...(options.budget === undefined ? {} : { budget: options.budget }),
