@@ -30,6 +30,7 @@ import {
   bumpEpoch,
   type Lease,
   type LedgerReplay,
+  type Migration,
   openLedger,
   type RunReplay,
   replayAll,
@@ -55,11 +56,13 @@ import {
   startHttp,
 } from './http/server.ts';
 import { log } from './logging.ts';
+import type { ProviderDetectionEntry } from './providers/boot-probe.ts';
 import { clearPtySessions } from './pty/pty-sessions.ts';
 import { daemonRandom } from './random.ts';
 import type { ReapDecision } from './reaper.ts';
 import { type Recovery, recover } from './recovery.ts';
 import { setDaemonEpoch, setHeadSeq } from './runtime.ts';
+import { stopChildren } from './shutdown.ts';
 
 /**
  * The 6-lowercase-hex suffix `mintRunId` (@DeFlow/core) needs — real entropy,
@@ -121,6 +124,30 @@ export interface BootOptions {
   readonly allowNonLoopback?: boolean | undefined;
   /** Called as each step completes. The ordering assertion's only hook. */
   readonly onStep?: ((step: BootStep) => void) | undefined;
+  /**
+   * KAR-18.2 — the `probe-providers` step's body.
+   *
+   * A port rather than a call into `./providers/boot-probe.ts`, because a probe
+   * *spawns vendor binaries found on `PATH`*, and DeFlowd's own `PATH` at
+   * daemon start is not the operator's login-shell one (§4.3). `DeFlow up`
+   * runs in their terminal and knows the right environment; a daemon booted by
+   * a spec, a fixture or a supervisor has no business searching whatever
+   * `PATH` it inherited. Omitted means the step is a no-op and the report is
+   * empty — which is honest, rather than a probe of the wrong machine.
+   */
+  readonly probeProviders?:
+    | ((ports: { db: Db; dataDir: string }) => Promise<readonly ProviderDetectionEntry[]>)
+    | undefined;
+  /**
+   * The migration set, defaulting to every migration this build ships.
+   *
+   * The seam exists for one reason: shipped migrations are append-only and are
+   * never edited once released (docs/05-durable-execution.md §7.2), so a spec
+   * that needs to watch a migration *fail* — AC5's "the ledger is left at the
+   * old user_version, and no HTTP listener was ever bound" — has no other way
+   * to produce one.
+   */
+  readonly migrations?: readonly Migration[] | undefined;
 }
 
 export interface Booted {
@@ -138,6 +165,13 @@ export interface Booted {
   /** What the orphan reaper decided about each row the last daemon left
    * behind — reaped, discarded as a PID reuse, or already gone (KAR-05.9). */
   readonly reaped: readonly ReapDecision[];
+  /**
+   * What step 4 found: one entry per registered provider, `detected`,
+   * `cached`, `not-installed` or `probe-failed`. Empty when no probe port was
+   * supplied — which is not the same claim as "nothing is installed", and is
+   * why `DeFlow up` is the caller that passes one.
+   */
+  readonly providers: readonly ProviderDetectionEntry[];
   readonly http: StartedHttp;
   /** The port actually bound, and the one `.DeFlow/daemon.json` records. */
   readonly port: number;
@@ -213,8 +247,9 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   let epoch: number;
   let replayed: LedgerReplay;
   let recovered: Recovery;
+  let providers: readonly ProviderDetectionEntry[] = [];
   try {
-    db = openLedger(dataDir);
+    db = openLedger(dataDir, options.migrations);
     epoch = bumpEpoch(db);
     setDaemonEpoch(epoch);
 
@@ -261,7 +296,16 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     });
     replayed = { ...replayed, runs: recovered.runs };
 
-    // EPIC-05 fills this in. Its position is what KAR-03.7 asserts.
+    // KAR-18.2 — step 4, after the reaper and before the bind. Its *position*
+    // is what KAR-03.7 asserts and it has not moved: a probe is a spawn, and
+    // spawning anything while a previous daemon's agents are still alive is
+    // how two generations of agents end up in one worktree.
+    //
+    // A probe never fails a boot. `probeProvidersOnBoot` reports absence and
+    // refusal as entries rather than throwing, and the one thing that could
+    // still escape — a data directory that cannot be written — would have
+    // failed the ledger open several lines above this.
+    providers = (await options.probeProviders?.({ db, dataDir })) ?? [];
     step('probe-providers');
   } catch (error) {
     lease.release();
@@ -327,6 +371,8 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     'DeFlowd booted',
   );
 
+  let stopped = false;
+
   return {
     dataDir,
     lease,
@@ -336,11 +382,21 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     replays: replayed.replays,
     headSeq: replayed.headSeq,
     reaped: recovered.reaped,
+    providers,
     http,
     port: http.port,
     token,
     url: handoffUrl(http.port, token),
     async shutdown(): Promise<void> {
+      // Idempotent, like `lease.release()` and for the same reason: two
+      // shutdowns is the normal shape of this, not a misuse. A signal handler
+      // and a `finally` both reach for it, `node --watch` can deliver SIGTERM
+      // twice, and a spec that stops a harness in `beforeAll` will stop it
+      // again in `afterAll`. Everything below tolerated a second call by
+      // accident until this one had a ledger *write* in it; now it says so.
+      if (stopped) return;
+      stopped = true;
+
       // Reverse order: stop accepting work, then close the ledger, then let
       // the next daemon in. The read view is unregistered before it is closed,
       // so a route can never reach a connection that has already gone.
@@ -349,6 +405,18 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // port and a token, and both stop being true the moment the port closes.
       removeDaemonFile(dataDir);
       await http.close();
+
+      // KAR-18.2 AC7 — this daemon's own children, stopped and verified, and
+      // the attempts that were holding them concluded so the next boot does
+      // not have to reconcile a node no process is executing. After the port
+      // closes, so nothing can start a further one while this runs, and before
+      // the ledger closes, because concluding an attempt is a write.
+      await stopChildren(db, {
+        clock: systemClock,
+        epoch,
+        random: daemonRandom(),
+        spillTo: dataDir,
+      });
       // The sockets went with the server; the registry has to be emptied by
       // hand, or a second daemon in the same process would find this one's
       // dead terminals.

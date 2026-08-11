@@ -49,6 +49,12 @@ catalog:
   "@agentclientprotocol/sdk": 1.3.0 # exact: 0.4.5 -> 1.3.0 plus an npm-scope and org change in ~10 months
   "@modelcontextprotocol/sdk": 1.30.0
   execa: 10.0.1
+  # KAR-18.2 — step 5 of the boot sequence: "7777, or the next free one"
+  # (docs/02 §3, docs/03-local-development.md §9). Pure JS, no dependencies of
+  # its own, and it is here rather than hand-rolled because the interesting
+  # half is not "bind and see": it is the short-lived lock that stops two
+  # daemons started microseconds apart being handed the same free port.
+  get-port: ^7.2.0
   # KAR-09.7 Tier 2. Consumed **only** through the encoding-specific entrypoint
   # ("gpt-tokenizer/encoding/o200k_base"): the barrel pulls every BPE table into
   # the daemon for no accuracy gain, and packages/daemon/test/token-entrypoint.test.ts

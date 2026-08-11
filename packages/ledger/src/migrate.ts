@@ -10,6 +10,7 @@
  * to be wrong.
  */
 import type { Db } from '@DeFlow/core';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { LedgerTooNew } from './errors.ts';
 
@@ -43,6 +44,15 @@ function highestId(migrations: readonly Migration[]): number {
  */
 function backupBeforeMigrating(db: Db, dbDir: string, userVersion: number): void {
   const backupFile = join(dbDir, `pre-migrate-${userVersion}.db`);
+  // `VACUUM INTO` refuses an existing file with "output file already exists",
+  // and there is one situation that reliably produces one: a migration that
+  // failed, was fixed, and is being retried against the same ledger — which is
+  // precisely the situation the backup exists for, and which would otherwise be
+  // a daemon that cannot start at all (KAR-18.2 AC5, EPIC-18-S12). Both files
+  // are snapshots of the same `user_version`, so the newer one is strictly the
+  // more useful of the two; it is removed here rather than left to accumulate
+  // under timestamped names nobody would know which of to restore.
+  rmSync(backupFile, { force: true });
   db.prepare('VACUUM INTO ?').run(backupFile);
 }
 

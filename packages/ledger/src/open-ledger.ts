@@ -9,14 +9,22 @@
  */
 import type { Db } from '@DeFlow/core';
 import { join } from 'node:path';
-import { migrate } from './migrate.ts';
+import { type Migration, migrate } from './migrate.ts';
 import { MIGRATIONS } from './migrations/index.ts';
 import { openWrite } from './sqlite-db.ts';
 
-export function openLedger(dataDir: string): Db {
+/**
+ * `migrations` defaults to every migration this build ships, and the parameter
+ * exists for exactly one caller: a spec that has to watch a migration *fail*
+ * (KAR-18.2 AC5). Shipped migrations are append-only and are never edited once
+ * released, so there is no other honest way to produce a failing one — and
+ * "the daemon refuses to serve a half-migrated ledger" is a guarantee that has
+ * to be tested rather than asserted.
+ */
+export function openLedger(dataDir: string, migrations: readonly Migration[] = MIGRATIONS): Db {
   const db = openWrite(join(dataDir, 'ledger.db'));
   try {
-    migrate(db, MIGRATIONS, dataDir);
+    migrate(db, migrations, dataDir);
   } catch (error) {
     db.close();
     throw error;

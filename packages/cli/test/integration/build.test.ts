@@ -113,7 +113,7 @@ const said = (command: string, child: Ran): string =>
  * like `import { type Foo } from '@DeFlow/core'`. A text scan reports those as
  * live imports, which is a test that fails for a reason that is not true.
  */
-function specifiersOf(code: string, fileName: string): string[] {
+function specifiersOf(code: string, fileName: string, only?: 'static'): string[] {
   const source = ts.createSourceFile(
     fileName,
     code,
@@ -132,6 +132,7 @@ function specifiersOf(code: string, fileName: string): string[] {
       found.add(node.moduleSpecifier.text);
     }
     if (
+      only !== 'static' &&
       ts.isCallExpression(node) &&
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
@@ -200,6 +201,10 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
   const specifiers = (file: string): string[] =>
     specifiersOf(readFileSync(join(distDir, file), 'utf8'), file);
 
+  /** Only what the module graph *evaluates on load* — no `import()` calls. */
+  const staticSpecifiers = (file: string): string[] =>
+    specifiersOf(readFileSync(join(distDir, file), 'utf8'), file, 'static');
+
   it('inlines every workspace package', () => {
     for (const file of emitted()) {
       expect(
@@ -220,7 +225,7 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
 
   it('externalises the two natives and nothing else', () => {
     for (const file of emitted()) {
-      const bare = specifiers(file).filter(
+      const bare = staticSpecifiers(file).filter(
         (specifier) =>
           !specifier.startsWith('.') &&
           !specifier.startsWith('/') &&
@@ -241,9 +246,25 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
     expect(emitted().flatMap(specifiers)).toContain('better-sqlite3');
   });
 
+  /**
+   * **Amended 2026-08-11 while implementing KAR-18.2.** This test used to
+   * assert that the string `vite` appeared in no specifier of any kind. That
+   * held only for as long as nothing in the entry graph reached
+   * `startHttp` — `DeFlow init` does not — and `DeFlow up` does, so the
+   * unreachable `import('vite')` inside its `DeFlow_DEV` branch now survives
+   * into a chunk.
+   *
+   * That is the shape `tsdown.config.ts` describes and intends: `vite` is on
+   * both `neverBundle` and `onlyImport` precisely so that the specifier is left
+   * as an unevaluated `import()` — no bytes, no dependency, and an honest
+   * MODULE_NOT_FOUND for anyone who sets `DeFlow_DEV=1` against an installed
+   * package, where there is no source tree for Vite to serve anyway. What must
+   * never happen is the two things below: Vite on the **static** graph, where
+   * it would be loaded on every `DeFlow up`, and Vite's bytes inlined.
+   */
   it('never drags vite in', () => {
     for (const file of emitted()) {
-      expect(specifiers(file), `${file} imports vite`).not.toContain('vite');
+      expect(staticSpecifiers(file), `${file} imports vite on load`).not.toContain('vite');
       // Not only the specifier: Vite arrives with a CJS-interop tree behind it,
       // and `tsx/cjs/api` is the fingerprint of an inlined one.
       expect(readFileSync(join(distDir, file), 'utf8')).not.toContain('tsx/cjs/api');

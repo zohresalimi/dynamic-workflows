@@ -21,12 +21,19 @@ import type { CapabilityStore, LedgerSink, ProviderSpec, ResolvedProvider } from
 import { PROVIDER_SPECS, probeProvider, spawnPlan } from '@DeFlow/adapters';
 import type { Clock, ProviderId } from '@DeFlow/core';
 import { ProviderIdSchema } from '@DeFlow/core';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream, mkdtempSync, rmSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import process from 'node:process';
 
-export type ProviderDetectionStatus = 'detected' | 'not-installed' | 'probe-failed';
+/**
+ * `'cached'` is KAR-18.2's addition and the one status that is a *decision*
+ * rather than an observation: the binary resolved, its bytes hash to a row this
+ * machine already probed, and no `initialize` handshake was performed. It is
+ * what keeps the boot probe inside NF3 (EPIC-18-S17).
+ */
+export type ProviderDetectionStatus = 'detected' | 'cached' | 'not-installed' | 'probe-failed';
 
 export interface ProviderDetectionEntry {
   readonly provider: string;
@@ -52,10 +59,38 @@ export interface DetectProvidersPorts {
    * to `process.env` — pass the operator's own for `init`, and a hermetic one
    * from a spec that wants to prove no ambient variable leaked in. */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * KAR-18.2 — answer from the recorded manifest when the binary's bytes are
+   * unchanged, instead of handshaking it again (EPIC-18-S17).
+   *
+   * Off by default, and deliberately so: `DeFlow init` is the command an
+   * operator runs *because* something about their installation changed, and a
+   * cached answer there would be the wrong one. `DeFlow up` runs on every
+   * start, is on the NF3 budget, and turns it on.
+   */
+  readonly reuseCache?: boolean;
 }
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** `PATH`, split into the directories a binary is looked for in, in order. */
+export function pathRoots(env: NodeJS.ProcessEnv): string[] {
+  return (env.PATH ?? '').split(delimiter).filter((entry) => entry !== '');
+}
+
+/**
+ * sha256 of the resolved entry file, streamed — the same digest `probeProvider`
+ * records, computed the same way, because the two are compared.
+ *
+ * Streamed rather than read whole: a vendor bin can be tens of megabytes, and
+ * this runs on every boot.
+ */
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Uint8Array);
+  return hash.digest('hex');
+}
 
 /** What an operator can do about a provider nothing on `roots` resolved. */
 function installHint(spec: ProviderSpec): string {
@@ -89,6 +124,33 @@ async function detectOne(
       version: null,
       detail: installHint(spec),
     };
+  }
+
+  // KAR-18.2 — the cache check, before anything is spawned. Keyed on the
+  // sha256 of the entry file rather than on the reported version, because
+  // reading the version is itself a spawn: asking `--version` five times is
+  // most of what the cache exists to avoid, and a rebuilt binary at an
+  // unchanged version — routine with a nightly or a `pnpm link` — would slip
+  // past a version-only key anyway. A hash mismatch is a re-probe, and the
+  // re-probe is what re-reads the version.
+  if (ports.reuseCache === true) {
+    const digest = await sha256File(resolved.path);
+    const cached = ports.capabilities
+      .read(id)
+      .find((row) => row.binarySha256 === digest && row.binaryPath === resolved.path);
+    if (cached !== undefined) {
+      // "We looked again just now": the only column a repeat probe moves.
+      ports.capabilities.record({ ...cached, probedAt: ports.clock.now() });
+      return {
+        provider: id,
+        status: 'cached',
+        binaryPath: resolved.path,
+        version: cached.version,
+        detail:
+          `${resolved.path} is unchanged since the last probe (${cached.version}); answered from ` +
+          'the capability manifest without an initialize handshake',
+      };
+    }
   }
 
   const home = await scratchFor(ports.scratchDir, id);

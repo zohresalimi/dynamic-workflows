@@ -42,6 +42,18 @@ export { systemClock } from './clock.ts';
 // `DeFlow doctor` (the command itself is EPIC-18, KAR-18.4).
 export { CONFIG_RELATIVE_PATH, loadWorkspaceConfig } from './config/workspace-config.ts';
 export { renderConstraintReport, workspaceConstraintReport } from './constraints/doctor.ts';
+// KAR-15.2 AC7 / KAR-18.2 AC1 — `.DeFlow/daemon.json` and the handoff URL that
+// carries the token in its **fragment**, which is what keeps it out of every
+// access log there will ever be.
+export type { DaemonFile } from './daemon-file.ts';
+export {
+  DAEMON_FILE_MODE,
+  DAEMON_FILE_NAME,
+  daemonFilePath,
+  handoffUrl,
+  removeDaemonFile,
+  writeDaemonFile,
+} from './daemon-file.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
@@ -318,6 +330,10 @@ export {
   openLedgerView,
   setLedgerView,
 } from './http/ledger-view.ts';
+// KAR-18.2 AC4 — step 5: 7777, or the next free one, and a pinned port that is
+// refused rather than silently replaced.
+export type { PickPortOptions } from './http/pick-port.ts';
+export { PortInUse, pickPort } from './http/pick-port.ts';
 // KAR-15.8 — the interactive terminal channel: the frame table's two text
 // frames, the route parser, and the upgrade handler that carries them.
 export type { ClientCommand, PtyTarget, ResizeCommand } from './http/pty-protocol.ts';
@@ -509,12 +525,16 @@ export {
   resolveLoginShellPathOnce,
   VENDOR_CONFIG_DIR_VARS,
 } from './proc/env.ts';
+// KAR-18.2 — step 4 of `DeFlow up`'s boot: the same detection with the probe
+// cache turned on, so an unchanged binary costs no handshake (EPIC-18-S17).
+export type { BootProbePorts } from './providers/boot-probe.ts';
+export { availableCount, probeProvidersOnBoot } from './providers/boot-probe.ts';
 export type {
   DetectProvidersPorts,
   ProviderDetectionEntry,
   ProviderDetectionStatus,
 } from './providers/detect.ts';
-export { detectProviders } from './providers/detect.ts';
+export { detectProviders, pathRoots } from './providers/detect.ts';
 // KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor` (the command is
 // EPIC-18, KAR-18.4): per provider, the most recent `provider.rate_limited`
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.
@@ -535,6 +555,11 @@ export { DEFAULT_COLS, DEFAULT_ROWS, loadNodePty, openPtySession } from './pty/p
 export { clearPtySessions, ptySessionFor, registerPtySession } from './pty/pty-sessions.ts';
 export type { DaemonSeed, SeedEnv } from './random.ts';
 export { daemonRandom, daemonSeed, RANDOM_SEED_ENV } from './random.ts';
+// KAR-05.9 / KAR-18.2 AC6 — what the boot reaper decided about each row a dead
+// daemon left behind, and (KAR-18.2 AC7) the shutdown half: this daemon's own
+// children, stopped and verified on the way out.
+export type { ReapDecision, ReapOutcome, ReapPorts } from './reaper.ts';
+export { reapOrphans } from './reaper.ts';
 // KAR-06.9 — crash recovery: the fixed startup sequence, and the three things
 // only a restart can settle — an effect whose fate the ledger cannot tell, an
 // attempt whose daemon is gone, and a child that outlived its parent.
@@ -679,6 +704,8 @@ export type {
   TerminalServiceOptions,
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
+export type { StopChildrenPorts, StoppedChild } from './shutdown.ts';
+export { stopChildren } from './shutdown.ts';
 export { amendSpec } from './spec/amend.ts';
 // KAR-06.5 — the imperative half of the retry ladder: the classified failure,
 // the wake row and the events, in one transaction.

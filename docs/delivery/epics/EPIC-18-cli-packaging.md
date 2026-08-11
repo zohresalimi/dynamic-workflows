@@ -271,6 +271,35 @@ behaviour on migration failure is to refuse to serve rather than to serve a half
 probe cache is refreshed on a version change, not on every start. `--timings` exists so that the
 first time cold start regresses, the cause is one line of output rather than an afternoon.
 
+> **Cold start measured 2026-08-11 while implementing this story** (author's machine, macOS 26,
+> Node 26, one agent binary on `PATH`, empty data directory, `DeFlow up --timings --no-open`),
+> in milliseconds:
+>
+> | step             | first start (cold probe cache) | second start (warm) |
+> | ---------------- | ------------------------------ | ------------------- |
+> | pick-port        | 8                              | 8                   |
+> | resolve-data-dir | 1                              | 0                   |
+> | lease            | 2                              | 1                   |
+> | migrate          | 7                              | 6                   |
+> | reap-orphans     | 1                              | 1                   |
+> | probe-providers  | **441**                        | **8**               |
+> | bind-port        | 1                              | 2                   |
+> | open-browser     | 0                              | 0                   |
+> | **total**        | **461**                        | **26**              |
+>
+> NF3's budget is 3000 ms and the warm number is 26. The prediction in this section held exactly:
+> the probe is 96% of a cold start and 31% of a warm one, and everything else together is under
+> 20 ms. The numbers are from the source tree (`node packages/cli/src/bin.ts up`), so they exclude
+> Node's own startup and the difference between running `src/` and the bundled `dist/bin.mjs`;
+> KAR-18.6 measures the tarball.
+>
+> Two amendments this story made to code it did not own, both recorded where they were made:
+> `migrate()` now removes an existing `pre-migrate-<v>.db` before `VACUUM INTO` (SQLite refuses an
+> existing output file, which made the "fix the migration and boot again" half of EPIC-18-S12
+> impossible), and `packages/cli/test/integration/build.test.ts` now distinguishes static from
+> dynamic specifiers, because `DeFlow up` reaches `startHttp` and its unevaluated
+> `import('vite')` — the shape `tsdown.config.ts` deliberately produces — now survives into a chunk.
+
 ---
 
 ### KAR-18.3 — `DeFlow run` headless execution
