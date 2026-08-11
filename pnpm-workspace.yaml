@@ -203,3 +203,20 @@ catalog:
   # the bug `test/no-d3-selection-in-web.test.ts` exists to make impossible.
   d3-shape: ^3.2.0
   "@types/d3-shape": ^3.1.8
+  # KAR-17.8 AC10 — the rest of the arithmetic half, for the run timeline.
+  # `scaleTime` and `scaleBand` turn (ts, lane) into (x, y), `extent`/`max`
+  # bound the domains and `timeFormat` labels the ticks. All four are pure
+  # functions from data to numbers or strings; none of them touches the DOM.
+  #
+  # `d3-axis` is the one member of AC10's allowed set this app does not install,
+  # and the reason is the rule directly above it: `axisBottom(scale)` is a
+  # renderer that only knows how to run *against a d3 selection*, so importing
+  # it would put `d3-selection` back in the bundle and a second owner back on
+  # the subtree. The ticks a Vue template needs are `scale.ticks()` and
+  # `scale.tickFormat()`, which are `d3-scale`'s and need no selection at all.
+  d3-scale: ^4.0.2
+  "@types/d3-scale": ^4.0.9
+  d3-array: ^3.2.4
+  "@types/d3-array": ^3.2.2
+  d3-time-format: ^4.1.0
+  "@types/d3-time-format": ^4.0.3

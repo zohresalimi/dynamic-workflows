@@ -35,7 +35,7 @@
  * session against a 10,000-token packet budget: they are different quantities,
  * and drawing one on the other's axis is a claim neither event makes.
  */
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import {
   type BudgetBarVM,
   type BudgetChartVM,
@@ -43,6 +43,7 @@ import {
   PINNED_SURVIVED_LABEL,
 } from '../lib/context-budget.ts';
 import CompactionBars from './CompactionBars.vue';
+import DataTableTwin from './DataTableTwin.vue';
 
 const props = defineProps<{ readonly chart: BudgetChartVM }>();
 
@@ -79,6 +80,26 @@ const slicesOf = (bar: BudgetBarVM): readonly BudgetSliceVM[] =>
 function open(bar: BudgetBarVM, slice: BudgetSliceVM): void {
   emit('inspect', { nodeId: bar.nodeId, attempt: bar.attempt, segmentId: slice.segmentId });
 }
+
+const TABLE_COLUMNS = [
+  { key: 'invocation', label: 'Invocation' },
+  { key: 'kind', label: 'Segment kind' },
+  { key: 'tokens', label: 'Tokens' },
+  { key: 'method', label: 'Method' },
+] as const;
+
+/** The rects, as rows. The same walk, in the same order, formatted once. */
+const tableRows = computed(() =>
+  props.chart.bars.flatMap((bar) =>
+    slicesOf(bar).map((slice) => ({
+      key: `${bar.invocation}/${slice.segmentId}`,
+      invocation: bar.invocation,
+      kind: slice.kind,
+      tokens: tokens(slice.tokens),
+      method: slice.method,
+    })),
+  ),
+);
 </script>
 
 <template>
@@ -276,37 +297,23 @@ function open(bar: BudgetBarVM, slice: BudgetSliceVM): void {
 
     <!--
       EPIC-17-S32 — the chart, in a form a non-visual reader can read top to
-      bottom and anybody can paste into a PR description. It walks the same
-      `bands`/`slices` the rects are drawn from: a table built from a second
-      derivation is a second source of truth, and it disagrees eventually.
+      bottom and anybody can paste into a PR description. `tableRows` walks the
+      same `bands`/`slices` the rects are drawn from: a table built from a
+      second derivation is a second source of truth, and it disagrees
+      eventually.
+
+      The markup is `DataTableTwin.vue`, shared with the run timeline
+      (EPIC-17-S32 scenario 3) — the twin is one component parameterised per
+      chart, not one table per view drifting apart a column at a time.
     -->
-    <table v-if="tableOpen" class="budget__table" data-budget-table>
-      <caption>
-        Every context segment of every invocation, with the method its token count came from.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Invocation</th>
-          <th scope="col">Segment kind</th>
-          <th scope="col">Tokens</th>
-          <th scope="col">Method</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="bar in props.chart.bars" :key="bar.invocation">
-          <tr
-            v-for="slice in slicesOf(bar)"
-            :key="slice.segmentId"
-            :data-row="`${bar.invocation}/${slice.segmentId}`"
-          >
-            <th scope="row">{{ bar.invocation }}</th>
-            <td>{{ slice.kind }}</td>
-            <td>{{ tokens(slice.tokens) }}</td>
-            <td>{{ slice.method }}</td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+    <DataTableTwin
+      v-if="tableOpen"
+      name="budget"
+      caption="Every context segment of every invocation, with the method its token count came
+        from."
+      :columns="TABLE_COLUMNS"
+      :rows="tableRows"
+    />
   </figure>
 </template>
 
@@ -448,17 +455,5 @@ function open(bar: BudgetBarVM, slice: BudgetSliceVM): void {
   gap: 0.4rem;
   padding-block-start: 0.5rem;
   border-block-start: 1px solid var(--edge);
-}
-
-.budget__table {
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.budget__table th,
-.budget__table td {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid var(--edge);
-  text-align: start;
 }
 </style>

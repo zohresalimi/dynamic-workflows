@@ -65,7 +65,11 @@ export const EVENT_KIND_OWNERS = {
   'run.cancel.requested': [],
   'run.completed': [],
   'run.aborted': [],
-  'run.stalled': [],
+  // KAR-17.8 AC7 — a marker on the Gantt naming the idle time and the nodes
+  // that were running. Surfaced and never presented as a kill: from here a long
+  // build and a wedged agent are the same picture, and the operator is the one
+  // who can tell them apart.
+  'run.stalled': ['timeline'],
   'run.kill_failed': [],
   'run.needs_human': [],
 
@@ -150,10 +154,14 @@ export const EVENT_KIND_OWNERS = {
 
   // ── cost ───────────────────────────────────────────────────────────────────
   'budget.consumed': ['cost', 'timeline'],
-  'budget.exceeded': ['cost'],
+  // The timeline marks it as the point the run PAUSED (KAR-17.8 AC5), which is
+  // a different fact from the ceiling detail `cost` keeps.
+  'budget.exceeded': ['cost', 'timeline'],
   'budget.ceiling.set': ['cost'],
   'provider.probed': [],
-  'provider.rate_limited': ['cost'],
+  // A stall with an external cause, so it can be told apart from one the run
+  // caused itself (KAR-17.8 AC6).
+  'provider.rate_limited': ['cost', 'timeline'],
   'export.blocked': [],
 } as const satisfies Record<EventKind, readonly ProjectionName[]>;
 

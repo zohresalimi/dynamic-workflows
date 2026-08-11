@@ -825,6 +825,19 @@ async function happyPathEvents(): Promise<Event[]> {
       },
     },
 
+    // F4.7's report, and the reason the timeline has a marker for it: the rate
+    // limit above stopped the only running node from producing anything, and
+    // ten idle minutes later the daemon says so. `run.stalled` is an
+    // observation and never a kill — a long build looks identical to a wedged
+    // agent from here — so nothing downstream of this event differs because of
+    // it, which is exactly why it has to be *visible*.
+    {
+      seq: 45,
+      kind: 'run.stalled',
+      ts: T0 + 11 * MINUTE,
+      payload: { watermarkSeq: 41, idleMs: 10 * MINUTE, runningNodes: ['impl-signup'] },
+    },
+
     // The patch that abandons the legacy shim.
     {
       seq: 46,

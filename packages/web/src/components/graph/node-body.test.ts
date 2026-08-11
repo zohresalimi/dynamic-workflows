@@ -66,6 +66,9 @@ function span(over: Partial<TimelineSpanVM> = {}): TimelineSpanVM {
     outcome: null,
     suspensions: [],
     suspendedMs: null,
+    // KAR-17.8 — what this one attempt spent. `null` is "nothing has landed",
+    // never zero: the node body renders a blank cell for it rather than $0.00.
+    costUsd: { vendorReported: null, estimated: null, unaccounted: [] },
     ...over,
   };
 }

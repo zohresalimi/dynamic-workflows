@@ -76,6 +76,16 @@ export const routes = [
     props: true,
   },
   {
+    // F10.9. Lazy like the rest of the non-landing views, and cheap besides:
+    // the Gantt's whole dependency is the arithmetic half of d3 — four small
+    // modules of pure functions — and `d3-selection` is not in the graph at all
+    // (KAR-17.8 AC10, `test/no-d3-selection-in-web.test.ts`).
+    path: '/runs/:runId/timeline',
+    name: 'run-timeline',
+    component: () => import('../views/RunTimelineView.vue'),
+    props: true,
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),
