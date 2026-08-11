@@ -228,6 +228,62 @@ export function reviewIndex(gates: GatesProjection): ReviewIndexVM {
 }
 
 /**
+ * Where a node's verdict points into the diff.
+ *
+ * The other end of AC2. The findings index answers *"what does this line say"*
+ * once the operator is on the file; this answers the question they ask first,
+ * from the plan graph, which is *"where do I go"* — and the honest answer is a
+ * file **and a line**, because a link that carries only the file lands them at
+ * the top of a diff and leaves them to find the verdict themselves. That is the
+ * two-windows workflow this whole surface exists to replace, rebuilt inside one
+ * window.
+ */
+export interface DiffPointerVM {
+  /** Whose work was judged. The `?node=` scope the diff opens in. */
+  readonly node: string;
+  readonly file: string;
+  readonly line: number;
+}
+
+/**
+ * `evaluatedNode` → the line its **latest** verdict points at, where there is
+ * one.
+ *
+ * Three refusals, each of which would otherwise produce a link that lies:
+ *
+ * - **The latest verdict, not the worst one.** A node whose failure has since
+ *   been repaired must stop pointing at the bug that is no longer there.
+ * - **The worst finding, not the first.** Ordered by line, a `minor` at line 12
+ *   precedes a `major` at line 31, and the first thing a reader should be shown
+ *   is the one that matters most.
+ * - **A located finding, or nothing at all.** A verdict whose findings are all
+ *   about the change as a whole has no line to offer, and `?line=1` would be a
+ *   guess dressed as a fact (AC3). The chip still links to the node's diff —
+ *   it simply says nothing about where to look.
+ */
+export function diffPointers(gates: GatesProjection): ReadonlyMap<string, DiffPointerVM> {
+  const latest = new Map<string, { readonly seq: number; readonly findings: readonly FindingVM[] }>(
+    [],
+  );
+
+  for (const verdict of gates.verdicts) {
+    const held = latest.get(verdict.evaluatedNode);
+    if (held !== undefined && held.seq > verdict.seq) continue;
+    latest.set(verdict.evaluatedNode, { seq: verdict.seq, findings: verdict.findings });
+  }
+
+  const pointers = new Map<string, DiffPointerVM>();
+  for (const [node, verdict] of latest) {
+    const located = verdict.findings.filter((one) => one.location !== null);
+    const worst = worstSeverity(located.map((one) => one.severity));
+    const finding = located.find((one) => one.severity === worst);
+    if (finding?.location == null) continue;
+    pointers.set(node, { node, file: finding.location.file, line: finding.location.line });
+  }
+  return pointers;
+}
+
+/**
  * AC6 — the surgical repair loop as a pair of states plus its cap.
  *
  * The join is on the **gate**, not on the node, and that is not a shortcut: the

@@ -37,6 +37,7 @@ import type {
   TimelineSpanVM,
   VerdictOutcome,
 } from '../../ledger/vm.ts';
+import type { DiffPointerVM } from '../../lib/review-index.ts';
 import { type DisplayState, STATE_LABELS } from '../../lib/state-palette.ts';
 
 /**
@@ -80,6 +81,16 @@ export interface NodeBodyVM {
   /** The outcome of the last gate to judge this node's work, if any. */
   readonly verdict: VerdictOutcome | null;
   readonly verdictGate: string | null;
+  /**
+   * The file and line that verdict points at, where a finding located it.
+   *
+   * Two primitives rather than one object, and that is the memoisation
+   * contract: `shallowUnchanged` in `../../stores/memoise.ts` compares field by
+   * field, and a nested object would be a new reference on every tick — which
+   * would re-render every node body once a second for the life of the run.
+   */
+  readonly verdictFile: string | null;
+  readonly verdictLine: number | null;
   /** Human-readable elapsed time, or `UNKNOWN.elapsed`. */
   readonly elapsed: string;
   /** The same number, for a caller that wants to sort by it. */
@@ -95,6 +106,14 @@ export interface NodeBodyInput {
   readonly verdict: GateAttemptVM | null;
   /** This node's bucket of `cost.ts`'s four figures, or `null` for none. */
   readonly spend: CostFigures | null;
+  /**
+   * Where that verdict points into the diff, from `../../lib/review-index.ts`.
+   *
+   * Optional because most callers of this function have no interest in the
+   * review surface at all, and absent is the honest default: a verdict with no
+   * located finding has no line to offer, and inventing one is AC3's red.
+   */
+  readonly pointer?: DiffPointerVM | null;
   /** ms epoch. Passed in — see the module note. */
   readonly now: number;
 }
@@ -167,7 +186,7 @@ export function formatSpend(spend: CostFigures | null): string {
  * `pending`.
  */
 export function toNodeBody(input: NodeBodyInput): NodeBodyVM {
-  const { node, span, verdict, spend, now } = input;
+  const { node, span, verdict, spend, now, pointer } = input;
   const elapsedMs = elapsedMsOf(span, now);
 
   return {
@@ -185,6 +204,8 @@ export function toNodeBody(input: NodeBodyInput): NodeBodyVM {
     progressMessage: node.progressMessage,
     verdict: verdict?.outcome ?? null,
     verdictGate: verdict?.gate ?? null,
+    verdictFile: pointer?.file ?? null,
+    verdictLine: pointer?.line ?? null,
     elapsed: elapsedMs === null ? UNKNOWN.elapsed : formatElapsed(elapsedMs),
     elapsedMs,
     cost: formatSpend(spend),

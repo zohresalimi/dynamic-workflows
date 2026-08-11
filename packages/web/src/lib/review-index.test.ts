@@ -26,6 +26,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { gateEvaluated, gateFailureRepair, happyPath12 } from '../../test/fixture-events.ts';
 import { applyGates, emptyGates, type GatesProjection } from '../ledger/projections/gates.ts';
 import {
+  diffPointers,
   FINDING_SEVERITY_ORDER,
   OUTCOME_STYLE,
   repairLoops,
@@ -297,5 +298,78 @@ suite('KAR-17.6 test 6 — the repair loop, as a pair of states (AC6)', () => {
     const clean = fold(happyPath12().filter((event) => event.seq !== 57));
 
     expect(repairLoops(clean)).toEqual([]);
+  });
+});
+
+suite('KAR-17.6 — where a node’s verdict points into the diff (AC1, AC2)', () => {
+  it('points at the line of the worst located finding of the verdict that judged it', () => {
+    const pointers = diffPointers(repair());
+
+    expect(pointers.get('impl-1')).toEqual({
+      node: 'impl-1',
+      file: 'src/date-picker.ts',
+      line: 2,
+    });
+  });
+
+  it('picks the worst finding rather than the first, because that is what a reader wants', () => {
+    // `happy-path-12`'s contract gate reported a `major` at line 31 and a
+    // `minor` at line 12. Ordered by line the minor comes first; the link is
+    // for the blocker-shaped one.
+    expect(diffPointers(happy()).get('impl-signup')).toEqual({
+      node: 'impl-signup',
+      file: 'src/api/contract.ts',
+      line: 31,
+    });
+  });
+
+  it('says nothing about a node whose latest verdict found nothing to point at', () => {
+    // The fix node's re-run passed with no findings — a chip that still linked
+    // to a line would be pointing at the bug that is no longer there.
+    expect(diffPointers(repair()).has('fix-65207341fbd9')).toBe(false);
+  });
+
+  it('follows the latest verdict, so a repaired node stops pointing at its old failure', () => {
+    const repaired = fold([
+      ...gateFailureRepair(),
+      gateEvaluated({
+        seq: 901,
+        runId: 'run_20260810T090000Z_9f31ab',
+        gate: 'typecheck',
+        gateNode: 'gate-typecheck-r3',
+        evaluatedNode: 'impl-1',
+        outcome: 'pass',
+        attempt: 1,
+        summary: 'typecheck passed',
+        findings: [],
+      }),
+    ]);
+
+    expect(diffPointers(repaired).has('impl-1')).toBe(false);
+  });
+
+  it('never guesses a line for a verdict whose findings have no location (AC3)', () => {
+    const unlocated = fold([
+      ...gateFailureRepair().filter((event) => event.seq <= 10),
+      gateEvaluated({
+        seq: 902,
+        runId: 'run_20260810T090000Z_9f31ab',
+        gate: 'review',
+        gateNode: 'gate-review',
+        evaluatedNode: 'impl-1',
+        outcome: 'fail',
+        summary: 'one judgement about the change as a whole',
+        findings: [
+          {
+            id: 'f-whole-change',
+            severity: 'blocker',
+            message: 'no test covers the new branch',
+            evidence: [],
+          },
+        ],
+      }),
+    ]);
+
+    expect(diffPointers(unlocated).has('impl-1')).toBe(false);
   });
 });

@@ -53,6 +53,7 @@ import { useRunFeed } from '../app/useRunFeed.ts';
 import GraphCanvas from '../components/graph/GraphCanvas.vue';
 import { type NodeBodyVM, toNodeBody } from '../components/graph/node-body.ts';
 import PlanNode from '../components/graph/PlanNode.vue';
+import { diffPointers } from '../lib/review-index.ts';
 import { copy, memoise, shallowUnchanged } from '../stores/memoise.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
@@ -85,6 +86,22 @@ const nodes = computed(() => run.planNodes);
 const edges = computed(() => run.planEdges);
 
 /**
+ * Where each node's verdict points into the diff (KAR-17.6 AC1).
+ *
+ * The graph is where a failing gate is announced, so it is where the journey to
+ * the offending line starts. `diffPointers` is pure and lives beside the review
+ * index rather than here; the view's job is to recompute it when — and only
+ * when — a verdict arrives, which is what the projection's own counter is for.
+ *
+ * Cheap enough to be a plain `computed`: it walks the verdict list, which is
+ * bounded by the number of gate evaluations in the run, not by the tick.
+ */
+const pointers = computed(() => {
+  void run.version('gates');
+  return diffPointers(run.gates);
+});
+
+/**
  * The bodies, memoised by content.
  *
  * See rule 1 in the module note: the cache is what keeps a one-second tick from
@@ -104,6 +121,7 @@ const bodies = computed<ReadonlyMap<string, NodeBodyVM>>(() => {
         verdict: run.nodeVerdicts.get(node.id) ?? null,
         spend: run.nodeSpend.get(node.id) ?? null,
         now: at,
+        pointer: pointers.value.get(node.id) ?? null,
       }),
     ]),
   );
@@ -194,6 +212,7 @@ watch(
           v-if="bodies.get(node.id) !== undefined"
           :body="bodies.get(node.id) as NodeBodyVM"
           :selected="selected"
+          :run-id="runId"
         />
       </template>
     </GraphCanvas>

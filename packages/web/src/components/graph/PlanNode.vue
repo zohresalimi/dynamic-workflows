@@ -24,6 +24,7 @@
  * and every component instance on that path is paid for on every relayout.
  */
 import { computed } from 'vue';
+import type { RouteLocationRaw } from 'vue-router';
 import StateChip from '../StateChip.vue';
 import { glyphFor } from './glyphs.ts';
 import type { NodeBodyVM } from './node-body.ts';
@@ -31,9 +32,47 @@ import type { NodeBodyVM } from './node-body.ts';
 const props = defineProps<{
   readonly body: NodeBodyVM;
   readonly selected: boolean;
+  /**
+   * The run this graph belongs to, for the verdict chip's link (KAR-17.6 AC1).
+   *
+   * Absent on the bare landing route, where there is no run to open a diff of —
+   * and the chip is then plain text rather than a link to nowhere.
+   */
+  readonly runId?: string | null;
 }>();
 
 const glyph = computed(() => glyphFor(props.body.type === 'node' ? null : props.body.type));
+
+/**
+ * KAR-17.6 AC1 — the chip is the way in to the review surface.
+ *
+ * The per-node scope, because the question the chip answers is *"what did this
+ * node do"*, and **the file and the line** where the verdict located its worst
+ * finding. Carrying only the file would land the operator at the top of a diff
+ * to hunt for what the gate already told them — which is the two-window
+ * workflow F7.7 exists to delete.
+ */
+const verdictTo = computed<RouteLocationRaw | null>(() => {
+  if (props.runId == null || props.runId === '') return null;
+  return {
+    name: 'run-diff',
+    params: { runId: props.runId },
+    query: {
+      scope: 'node',
+      node: props.body.id,
+      ...(props.body.verdictFile === null || props.body.verdictLine === null
+        ? {}
+        : { file: props.body.verdictFile, line: String(props.body.verdictLine) }),
+    },
+  };
+});
+
+/** What a screen reader is told the chip does, rather than "typecheck: fail". */
+const verdictLabel = computed(() => {
+  const what = `${props.body.verdictGate ?? 'gate'}: ${props.body.verdict ?? ''}`;
+  if (props.body.verdictFile === null) return `${what} — open this node's diff`;
+  return `${what} — open ${props.body.verdictFile} at line ${String(props.body.verdictLine)}`;
+});
 </script>
 
 <template>
@@ -68,8 +107,19 @@ const glyph = computed(() => glyphFor(props.body.type === 'node' ? null : props.
         gate — "which of my steps did a gate refuse" is the question, and it is
         asked of the step.
       -->
+      <RouterLink
+        v-if="body.verdict !== null && verdictTo !== null"
+        class="plan-node__verdict"
+        :to="verdictTo"
+        :data-verdict="body.verdict"
+        :data-verdict-line="body.verdictLine"
+        data-slot="verdict"
+        :aria-label="verdictLabel"
+      >
+        {{ body.verdictGate }}: {{ body.verdict }}
+      </RouterLink>
       <span
-        v-if="body.verdict !== null"
+        v-else-if="body.verdict !== null"
         class="plan-node__verdict"
         :data-verdict="body.verdict"
         data-slot="verdict"

@@ -35,7 +35,7 @@ import { DiffFile, type DiffFileHighlighter, getLang } from '@git-diff-view/core
 // alone. Importing it from `core` type-checks and is `undefined` in the browser.
 import { DiffModeEnum, DiffView } from '@git-diff-view/vue';
 import '@git-diff-view/vue/styles/diff-view.css';
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import type { PatchFileVM } from '../../lib/patch.ts';
 import {
   type FileReviewVM,
@@ -52,6 +52,16 @@ const props = defineProps<{
   /** The shared Shiki instance, wearing the renderer's face (AC9). */
   readonly highlighter?: DiffFileHighlighter | undefined;
   readonly dark?: boolean;
+  /**
+   * The line a deep link asked for, on the new side — `?line=` in the URL.
+   *
+   * A link that carries a file lands the operator at the top of a diff; this is
+   * the half that lands them on the verdict. It also overrides the collapse
+   * (AC7): a link that names a line **is** the explicit ask that a large file
+   * otherwise waits for, and answering it with "expand this file" would be the
+   * surface refusing an instruction it was given.
+   */
+  readonly focusLine?: number | null;
 }>();
 
 /**
@@ -73,8 +83,9 @@ const VIRTUALISE_ABOVE_LINES = 200;
 /** How tall the scroll container is when a file is being windowed. */
 const VIEWPORT_HEIGHT = 480;
 
-const expanded = ref(!props.file.collapsed);
+const expanded = ref(!props.file.collapsed || props.focusLine != null);
 const scrollTop = ref(0);
+const panel = ref<HTMLElement | null>(null);
 const viewport = ref<HTMLElement | null>(null);
 const diffFile = shallowRef<DiffFile | null>(null);
 
@@ -187,20 +198,64 @@ onBeforeUnmount(() => {
 watch(
   () => props.file,
   () => {
-    expanded.value = !props.file.collapsed;
+    expanded.value = !props.file.collapsed || props.focusLine != null;
     scrollTop.value = 0;
     if (viewport.value !== null) viewport.value.scrollTop = 0;
   },
+);
+
+/**
+ * Puts the line a deep link named on the screen.
+ *
+ * Two moves, because there are two scrollers between the operator and the line
+ * and only the second one is this panel's:
+ *
+ * 1. **Into the window.** A file being virtualised has the line in the DOM only
+ *    if `scrollTop` selects a range containing it, so the range is chosen
+ *    arithmetically first — otherwise there would be nothing to scroll *to*.
+ * 2. **Into view.** `scrollIntoView` then walks every scrolling ancestor,
+ *    which is what moves the page itself: the review route is the scroller for
+ *    a file small enough not to be windowed, and it is the one that leaves a
+ *    verdict below the fold.
+ *
+ * Rerun whenever the rendered instance changes, because the first render of a
+ * file is usually not the one that has the line in it.
+ */
+watch(
+  [rendered, () => props.focusLine, expanded],
+  async () => {
+    const line = props.focusLine;
+    if (line == null || !expanded.value) return;
+
+    if (windowed.value) {
+      const wanted = Math.max(0, (line - 1) * ROW_HEIGHT - VIEWPORT_HEIGHT / 2);
+      if (Math.abs(wanted - scrollTop.value) > VIEWPORT_HEIGHT / 2) {
+        scrollTop.value = wanted;
+        if (viewport.value !== null) viewport.value.scrollTop = wanted;
+        return;
+      }
+    }
+
+    await nextTick();
+    const row = panel.value?.querySelector(`[data-line-new-num="${String(line)}"]`) ?? null;
+    // `center` rather than `start`: the verdict widget renders in a row *under*
+    // the line, and a line pinned to the top of the viewport puts its own
+    // verdict off the bottom of it.
+    row?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  },
+  { immediate: true },
 );
 </script>
 
 <template>
   <section
+    ref="panel"
     class="diff-panel"
     :data-diff-file="file.path"
     :data-tone="review?.tone ?? 'clean'"
     :data-collapsed="String(!expanded)"
     :data-binary="String(file.binary)"
+    :data-focus-line="focusLine ?? null"
     :aria-label="`Diff for ${file.path}`"
   >
     <header class="diff-panel__head">

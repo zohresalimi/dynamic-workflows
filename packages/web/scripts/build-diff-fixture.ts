@@ -119,6 +119,48 @@ async function git(cwd: string, args: readonly string[], env: Record<string, str
 }
 
 /**
+ * Builds the repository the patch is taken of, in `repo`, and leaves it
+ * **dirty** — one commit of the "before" state, and the run's change sitting
+ * uncommitted in the working tree exactly as an agent would have left it.
+ *
+ * Exported because a patch and a repository are two different things to need.
+ * `buildReviewPatch` below wants the bytes; `../../../e2e/diff-review.test.ts`
+ * wants a directory a real `DeFlowd` can run `git diff` in, because the journey
+ * it follows only means anything if the patch on screen came off a real
+ * repository through the real endpoint.
+ *
+ * Answers the base commit, which is the revision the daemon diffs from.
+ */
+export async function materialiseReviewRepo(repo: string): Promise<string> {
+  await mkdir(join(repo, 'src', 'api'), { recursive: true });
+  await mkdir(join(repo, 'test'), { recursive: true });
+  await mkdir(join(repo, 'assets'), { recursive: true });
+
+  await writeFile(join(repo, 'src', 'date-picker.ts'), BUGGY);
+  await writeFile(join(repo, 'src', 'api', 'contract.ts'), CONTRACT_BEFORE);
+  await writeFile(join(repo, 'src', 'legacy-format.ts'), MOVED);
+  await writeFile(join(repo, 'src', 'dead-code.ts'), DEAD);
+  await writeFile(join(repo, 'assets', 'logo.png'), PNG);
+
+  await git(repo, ['init', '--quiet', '--initial-branch=main']);
+  await git(repo, ['add', '-A']);
+  await git(repo, ['commit', '--quiet', '-m', 'base']);
+  const base = (await git(repo, ['rev-parse', 'HEAD'])).stdout.trim();
+
+  // The change the run produced: a fix, a new test, a rename, a delete, and
+  // a binary file whose bytes changed.
+  await writeFile(join(repo, 'src', 'date-picker.ts'), FIXED);
+  await writeFile(join(repo, 'src', 'api', 'contract.ts'), CONTRACT_AFTER);
+  await writeFile(join(repo, 'test', 'days-until.test.ts'), REGRESSION);
+  await writeFile(join(repo, 'src', 'formatting.ts'), MOVED);
+  await rm(join(repo, 'src', 'legacy-format.ts'));
+  await rm(join(repo, 'src', 'dead-code.ts'));
+  await writeFile(join(repo, 'assets', 'logo.png'), Buffer.concat([PNG, Buffer.from([0, 1, 2])]));
+
+  return base;
+}
+
+/**
  * A patch of one repository's change, produced exactly the way `DeFlowd` does.
  *
  * Exported so `../test/integration/patch-real-git.test.ts` can assert the
@@ -131,30 +173,7 @@ export async function buildReviewPatch(): Promise<string> {
   const repo = join(root, 'repo');
 
   try {
-    await mkdir(join(repo, 'src', 'api'), { recursive: true });
-    await mkdir(join(repo, 'test'), { recursive: true });
-    await mkdir(join(repo, 'assets'), { recursive: true });
-
-    await writeFile(join(repo, 'src', 'date-picker.ts'), BUGGY);
-    await writeFile(join(repo, 'src', 'api', 'contract.ts'), CONTRACT_BEFORE);
-    await writeFile(join(repo, 'src', 'legacy-format.ts'), MOVED);
-    await writeFile(join(repo, 'src', 'dead-code.ts'), DEAD);
-    await writeFile(join(repo, 'assets', 'logo.png'), PNG);
-
-    await git(repo, ['init', '--quiet', '--initial-branch=main']);
-    await git(repo, ['add', '-A']);
-    await git(repo, ['commit', '--quiet', '-m', 'base']);
-    const base = (await git(repo, ['rev-parse', 'HEAD'])).stdout.trim();
-
-    // The change the run produced: a fix, a new test, a rename, a delete, and
-    // a binary file whose bytes changed.
-    await writeFile(join(repo, 'src', 'date-picker.ts'), FIXED);
-    await writeFile(join(repo, 'src', 'api', 'contract.ts'), CONTRACT_AFTER);
-    await writeFile(join(repo, 'test', 'days-until.test.ts'), REGRESSION);
-    await writeFile(join(repo, 'src', 'formatting.ts'), MOVED);
-    await rm(join(repo, 'src', 'legacy-format.ts'));
-    await rm(join(repo, 'src', 'dead-code.ts'));
-    await writeFile(join(repo, 'assets', 'logo.png'), Buffer.concat([PNG, Buffer.from([0, 1, 2])]));
+    const base = await materialiseReviewRepo(repo);
 
     // `worktreePatch`'s exact shape: a scratch index, so the repository's own
     // index and worktree are untouched and untracked files are still included.

@@ -224,6 +224,37 @@ suite('AC4 — a body says what a node is, and says so about what it does not kn
     expect(without.verdict).toBeNull();
     expect(without.verdictGate).toBeNull();
   });
+
+  it('carries the file AND the line the verdict points at, so the chip can link to it', () => {
+    // KAR-17.6 AC1/AC2 from the graph's end. The line is half the link: without
+    // it the operator lands at the top of a diff and hunts for the verdict.
+    const body = toNodeBody({
+      node: node(),
+      span: null,
+      verdict: attempt('fail'),
+      spend: null,
+      now: T0,
+      pointer: { node: 'n1', file: 'src/date-picker.ts', line: 2 },
+    });
+
+    expect(body.verdictFile).toBe('src/date-picker.ts');
+    expect(body.verdictLine).toBe(2);
+  });
+
+  it('says nothing about a line when no finding located the failure', () => {
+    const body = toNodeBody({
+      node: node(),
+      span: null,
+      verdict: attempt('fail'),
+      spend: null,
+      now: T0,
+    });
+
+    // Not line 1, and not the empty string: the chip still links to the node's
+    // diff, and simply makes no claim about where in it to look (AC3).
+    expect(body.verdictFile).toBeNull();
+    expect(body.verdictLine).toBeNull();
+  });
 });
 
 suite('AC4 — elapsed time', () => {

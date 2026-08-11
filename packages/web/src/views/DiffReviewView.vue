@@ -87,6 +87,37 @@ const scope = computed<DiffScope>(() => {
 });
 
 const node = computed(() => (typeof route.query['node'] === 'string' ? route.query['node'] : null));
+
+/**
+ * `?line=` — the line a deep link wants on screen (AC1, AC2).
+ *
+ * The other half of `?file=`, and the half that makes the link worth sending:
+ * a verdict names a file *and* a line, and a surface that honoured only the
+ * first would hand the operator back the search it had already been done for
+ * them. Parsed defensively because it arrives from a URL — a `?line=nonsense`
+ * means "no line asked for" and never line 1, which is the same refusal
+ * `../lib/review-index.ts` makes about a finding with no location.
+ */
+const focusLine = computed<number | null>(() => {
+  const raw = route.query['line'];
+  if (typeof raw !== 'string') return null;
+  const line = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(line) && line > 0 ? line : null;
+});
+
+/**
+ * Back to the graph the operator came from, with the node still selected.
+ *
+ * A lazy route reached from a chip needs a way out that is not the browser's
+ * Back button: the journey is *"a gate failed → what line → and back"*, and the
+ * plan graph reads `?node=` as its selection (KAR-17.1 AC7), so the node this
+ * diff is scoped to survives the round trip.
+ */
+const backTo = computed(() => ({
+  name: 'run-plan',
+  params: { runId: runId.value },
+  query: node.value === null ? {} : { node: node.value },
+}));
 const worktree = computed(() =>
   typeof route.query['worktree'] === 'string' ? route.query['worktree'] : null,
 );
@@ -214,6 +245,9 @@ function switchScope(next: DiffScope): void {
 
     <template v-else>
       <nav class="review__scopes" data-review-scope aria-label="Diff scope">
+        <RouterLink class="review__back" :to="backTo" data-review-back>
+          ← back to the plan
+        </RouterLink>
         <button
           v-for="one of SCOPES"
           :key="one.id"
@@ -293,6 +327,7 @@ function switchScope(next: DiffScope): void {
             :review="review"
             :highlighter="highlighter ?? undefined"
             :dark="dark"
+            :focus-line="selected.path === route.query['file'] ? focusLine : null"
           />
         </div>
       </div>
@@ -313,6 +348,12 @@ function switchScope(next: DiffScope): void {
 .review__scopes {
   display: flex;
   gap: 0.5rem;
+  align-items: baseline;
+}
+
+.review__back {
+  margin-inline-end: auto;
+  font-size: 0.8125rem;
 }
 
 .review__scopes button[aria-pressed="true"] {
