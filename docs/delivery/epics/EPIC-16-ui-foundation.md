@@ -728,9 +728,18 @@ unchanged. See the flow file's notes under EPIC-16-S32.
 and `resolveFixture` are exported for that table to call, so wiring `DeFlow replay` to them is a
 subcommand registration and not a second implementation.
 
-The five Playwright smokes of test plan row 8 are **not** here: they render the nine views, which are
-EPIC-17's. What exists is the driver they will run against, plus `e2e/replay-dev-loop.test.ts`, which
-drives the real `pnpm dev:replay` script cross-process.
+The five Playwright smokes of test plan row 8 are **not** here: four of them render the nine views,
+which are EPIC-17's. What exists is the driver they will run against, plus
+`e2e/replay-dev-loop.test.ts`, which drives the real `pnpm dev:replay` script cross-process.
+
+**Smoke #4 landed here after all (2026-08-11).** _"Replay at speed, kill the connection, assert the
+UI reconnects and backfills without a gap or a duplicate"_ turned out to need no view — only a real
+browser — so it is `e2e/replay-stream.test.ts`, closing the e2e halves of EPIC-16-S7 and EPIC-16-S8
+against the shipped `openLedgerStream`. It added one method to this harness: **`sever()`**, which
+destroys every open socket while playback keeps running. It belongs here rather than in a proxy a
+spec stands up, because a browser cannot sever a stream it has already opened —
+`BrowserContext.setOffline` blocks *new* requests and leaves an established SSE socket streaming,
+which is a slow way to learn that the outage never happened.
 
 ---
 

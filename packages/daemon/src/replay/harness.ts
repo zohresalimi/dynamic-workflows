@@ -88,6 +88,22 @@ export interface ReplayHarness {
   seek(seq: number): Promise<number>;
   /** Resolves once the whole recording has been served. */
   played(): Promise<void>;
+  /**
+   * Destroys every open socket: no final frame, no clean end, and no `close`
+   * the client could mistake for the server being finished.
+   *
+   * Playback is untouched — the recording keeps advancing while nobody is
+   * listening, which is the half that makes a reconnect prove anything. This is
+   * the harness's part of Playwright smoke #4
+   * ([14 §13](../../../../docs/14-testing-strategy.md)), *"replay at speed,
+   * **kill the connection**, assert the UI reconnects and backfills without a
+   * gap or a duplicate"* — the smoke is specified as running against this
+   * harness, so the severance belongs to it rather than to a proxy a spec
+   * stands up in front of it. A browser cannot sever a stream it has already
+   * opened: `setOffline` blocks new requests and leaves an established SSE
+   * socket streaming, so the only honest place to cut is here.
+   */
+  sever(): void;
   close(): Promise<void>;
 }
 
@@ -167,6 +183,9 @@ export async function startReplay(options: ReplayOptions): Promise<ReplayHarness
     resume: () => player.resume(),
     seek: (seq) => player.seek(seq),
     played: () => player.played(),
+    sever: () => {
+      booted.http.server.closeAllConnections();
+    },
     close: async () => {
       // Playback first: a player still committing into a ledger the shutdown
       // has closed is a confusing SQLite error rather than an honest stop.

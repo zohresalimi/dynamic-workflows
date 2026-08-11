@@ -314,6 +314,38 @@ suite('EPIC-16-S8 — the connection drops mid-run and comes back with no seam (
     expect(seen.open).toBe(1);
   }, 40_000);
 
+  it('says it is reconnecting while it is reconnecting', async () => {
+    // Found by `e2e/replay-stream.test.ts` — moving this scenario into a real
+    // browser is what surfaced it — but it is not a browser bug, and this is
+    // where it belongs.
+    //
+    // `eventsource-client` calls `onDisconnect` from exactly one place: the
+    // branch where `reader.read()` returns `done: true`, i.e. a body the server
+    // ended **cleanly**. A destroyed socket does not end a body; it *rejects*
+    // the read, and that lands in the library's `.catch`, which calls
+    // `scheduleReconnect()` and nothing else. So on the common failure — a lid
+    // closing, Wi-Fi going, a daemon restarting, anything that is not a polite
+    // `res.end()` — the connection was gone and this client still said `live`.
+    //
+    // Which is the one thing NF10 forbids: a view rendering its indicator off
+    // `status` showed a healthy connection for the whole outage, and `live` was
+    // never cleared either, so a `watch()` on a run mid-backfill resolved
+    // immediately as already caught up.
+    const stream = open();
+    await stream.watch(RUN_A);
+    expect(stream.state().status).toBe('live');
+
+    await post('/__sever', {});
+
+    await vi.waitFor(() => expect(stream.state().status).toBe('reconnecting'), { timeout: 10_000 });
+    // And nothing is claimed to be caught up while the socket is down.
+    expect(stream.state().live).toEqual([]);
+
+    // Then back, on its own: the state is a report, not a latch.
+    await vi.waitFor(() => expect(stream.state().status).toBe('live'), { timeout: 20_000 });
+    expect(stream.state().live).toEqual([RUN_A]);
+  }, 40_000);
+
   it('reconnects on the interval the server itself asked for', async () => {
     const stream = open();
     await stream.watch(RUN_A);

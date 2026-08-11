@@ -172,6 +172,16 @@ for the settled layout, both fed nodes in ledger-insertion order with
 `considerModelOrder.strategy = 'NODES_AND_EDGES'` so nothing reshuffles when a node arrives.
 `onlyRenderVisibleElements` defaults from KAR-16.6's measurement rather than from taste.
 
+**Inherited from EPIC-16 (recorded 2026-08-11).** This story also closes the two rendering clauses of
+[EPIC-16-S1](../flows/EPIC-16-ui-foundation-flows.md) — _"the plan graph renders every node from the
+hydrated state before the first live frame"_ and _"the node `n_impl_3` renders in the `running` state
+within one frame"_. EPIC-16 finished with every piece built and **no wire between them**:
+`PlanGraphView` renders from `useUiStore`, nothing in the shipped SPA calls `openLedgerStream`, and
+`useUiStore.setNodes` has no production caller, so the app opened against a replay draws an empty
+graph however deep the ledger is. Supplying that wire — `openLedgerStream` → `plan.ts` →
+`useRunStore` → `GraphCanvas` — is the first thing this story does, and AC1 below is where the two
+clauses land, at the e2e level EPIC-16-S1 names.
+
 **Acceptance criteria**
 
 1. Loading a completed run renders every node with its correct state colour, glyph and label, and

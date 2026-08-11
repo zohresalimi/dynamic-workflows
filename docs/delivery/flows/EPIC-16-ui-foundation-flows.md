@@ -95,7 +95,8 @@ Background:
 
 ## EPIC-16-S1 — Happy path: a cold tab boots, hydrates, streams and renders
 
-**Verifies:** KAR-16.1, KAR-16.2 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-16.1, KAR-16.2 · **Type:** Happy path · **Automated at:** e2e — except the two
+rendering clauses, **deferred to EPIC-17** (see below)
 
 ```gherkin
 Feature: The UI is a projection of the ledger, not a REST client (F4.1, NF10)
@@ -133,13 +134,31 @@ in `seq` order are all closed against a real socket in `packages/web/src/ledger/
 assertion: `openLedgerStream` is the only path into `createLedgerApply`, and the only path into that
 is `applyEvent`.
 
-**Still open — the rendering clauses.** *"the plan graph renders every node from the hydrated state"*
-and *"the node renders in the running state within one frame"* are assertions about a view that does
-not exist yet: `plan.ts` is KAR-16.3's and `GraphCanvas.vue` is KAR-16.6's, so the `Then` has no
-subject to hang off. They close with those stories, at the e2e level this scenario names, against
-`DeFlow replay` (KAR-16.5) — which is also where the e2e halves of EPIC-16-S7 and EPIC-16-S8 land,
-since Playwright smoke #4 is specified as *"replay at speed, kill the connection"* and there is no
-replay harness to run at speed until then.
+**Deferred to [EPIC-17](../epics/EPIC-17-p0-views.md) — the two rendering clauses.** *"the plan graph
+renders every node from the hydrated state before the first live frame"* and *"the node `n_impl_3`
+renders in the `running` state within one frame"* are **not** closed by this epic, and the reason has
+moved since this note first said "the view does not exist yet".
+
+Every *piece* now exists and is Done — `plan.ts` (KAR-16.3), `useRunStore` (KAR-16.4), the replay
+harness (KAR-16.5), `GraphCanvas.vue` and `PlanGraphView.vue` (KAR-16.6). What does not exist is the
+**wire between them**: `PlanGraphView` renders from `useUiStore`, nothing in the shipped SPA ever
+calls `openLedgerStream`, and `useUiStore.setNodes` has no production caller — so opening the app
+against a replay renders an empty graph however deep the ledger is. That wiring is EPIC-17's first
+deliverable by this epic's own scope statement (*"this epic ends with a shell, a store, a facade and
+a harness; the first thing EPIC-17 does is render into them"*,
+[EPIC-16 §Out of scope](../epics/EPIC-16-ui-foundation.md)), and it is Playwright smoke #1 —
+*"load a completed run; the plan graph renders every node with the right state colour"*
+([14 §13](../../14-testing-strategy.md)).
+
+It would be easy to make these two clauses green here by composing the pieces inside a test page, and
+that is exactly what must not happen: it would assert that the parts *can* be wired while the shipped
+app still renders nothing, which is the plausible-but-wrong picture NF10 is about. **EPIC-17 closes
+them, at the e2e level this scenario names, against `DeFlow replay`.**
+
+**Automated (KAR-16.2, the browser half).** The e2e halves of EPIC-16-S7 and EPIC-16-S8 are closed —
+they needed no view, only a real browser — in [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts),
+which boots `DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin and
+drives the **shipped** `openLedgerStream` from a real Chromium. See those two scenarios below.
 
 **Notes:** the hydrate-then-stream order is not an optimisation, it is the correctness requirement of
 [11 §4.1](../../11-api-and-realtime.md). Note also the `headSeq` detail: it exists so the UI can show
@@ -452,6 +471,19 @@ is automated as the failure it describes rather than as prose: the same case is 
 connection whose `?since=` is stripped, and every event of the outage is asserted **absent**, with
 no `Last-Event-ID` to fall back on because the connection had never opened before.
 
+**Automated at e2e (KAR-16.2):** [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts).
+The specs above drive `openLedgerStream` in **Node**, where `Last-Event-ID` is not a mechanism that
+exists — undici will never send one, so *"the client does not rely on it"* is unfalsifiable there. It
+is only a claim once a real browser is on the other end. So this spec boots
+`DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin, opens it in a
+real Chromium at the handoff URL, and reloads the page for real: scenario 1 asserts the stream
+reopens at exactly the `sessionStorage` cursor and that **no request the browser sent** — including
+the ones nobody wrote — carried a `Last-Event-ID`; scenario 2 appends across the outage and asserts
+the applied set is that of a tab that never reloaded. Scenario 4 is the paired negative control, at
+the same level: the identical reload through a connection whose `?since=` is stripped on the wire and
+whose hydrate is refused, with every event of the outage asserted **absent** — which is what stops
+the assertion above from being one that cannot fail.
+
 ---
 
 ## EPIC-16-S8 — The connection drops mid-run and comes back with no seam
@@ -500,6 +532,29 @@ connection's filter from its **query string**, and a reconnect is a new connecti
 opened with `runs=` and subscribed afterwards came back subscribed to nothing at all. The stream was
 open, `hello` arrived, and no event ever did. `?runs=` is now re-stamped on every attempt, exactly
 as `?since=` already was.
+
+**Automated at e2e (KAR-16.2):** [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts) —
+smoke #4 itself. A real Chromium runs the shipped `openLedgerStream` against
+`DeFlow replay stress-400 --speed 50x`, `ReplayHarness.sever()` destroys every socket mid-burst
+while playback keeps running, and the tab is asserted to come back on its own policy with the applied
+`seq` sequence strictly increasing, nothing twice and nothing missing below the head it reached — on
+one connection, not one per attempt. Where the browser *does* supply a `Last-Event-ID` on that
+automatic reconnect, it is asserted to **agree** with `?since=`, which is what makes the server's
+`since` > `Last-Event-ID` precedence a no-op rather than a silent rewind.
+
+**And it cost this story a second real bug, which only the browser round could find.** `status`
+never left `live` for the whole outage. `eventsource-client@1.2.0` calls `onDisconnect` from exactly
+one branch — the one where `reader.read()` resolves `done: true`, a body the server ended *cleanly* —
+while a **destroyed** socket rejects the read instead, landing in the library's `.catch`, which
+schedules a reconnect and reports nothing. So on every failure that is not a polite `res.end()` (a
+lid closing, Wi-Fi going, a daemon restarting) a view rendering its connection indicator off `status`
+showed a healthy stream throughout, and `live` was never cleared either, so a `watch()` on a run
+mid-backfill resolved immediately as already caught up. `connectStream` now **derives** the
+disconnect from `onScheduleReconnect` — the one signal the library raises on both paths —
+de-duplicated against the library's own callback. The regression guard is
+`packages/web/src/ledger/stream.test.ts` *"says it is reconnecting while it is reconnecting"*; the
+existing specs missed it because they asserted the applied events and the retry interval, and never
+the state the operator actually sees.
 
 ---
 

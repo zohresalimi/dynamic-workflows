@@ -129,6 +129,27 @@ export function streamUrl(baseUrl: string, runs: readonly string[], since: numbe
  * mechanism, and this client's cursor lives in `?since=` exclusively, which is
  * what makes the UI and `DeFlow`'s CLI — which has no `Last-Event-ID`
  * mechanism at all — resume through one code path rather than two (AC9).
+ *
+ * ## Why `onDisconnect` is derived rather than forwarded
+ *
+ * **Verified 2026-08-11 against eventsource-client@1.2.0's shipped code.** The
+ * library calls `onDisconnect` from exactly one branch: the one where
+ * `reader.read()` resolves `done: true`, i.e. a response body the server ended
+ * *cleanly*. A **destroyed** socket does not end a body — it rejects the read,
+ * and that lands in the library's `.catch`, which calls `scheduleReconnect()`
+ * and nothing else.
+ *
+ * So on every failure that is not a polite `res.end()` — a lid closing, Wi-Fi
+ * going, a daemon restarting, `closeAllConnections()` — a forwarded
+ * `onDisconnect` never fires, and a client built on it reports a healthy
+ * connection for the whole outage. That is the plausible-but-wrong picture NF10
+ * exists to prevent, and it is the *common* case rather than the exotic one.
+ *
+ * `scheduleReconnect` is the one signal the library raises on **both** paths, so
+ * the disconnect is derived from whichever arrives first and de-duplicated
+ * against the other. `connected` is reset by `onConnect`, which the library
+ * calls on every response, so the pair stays balanced across any number of
+ * reconnects.
  */
 export function connectStream(options: StreamOptions): StreamConnection {
   const baseUrl = options.baseUrl ?? defaultBaseUrl();
@@ -139,6 +160,14 @@ export function connectStream(options: StreamOptions): StreamConnection {
     typeof options.runs === 'function' ? options.runs : () => options.runs as readonly string[];
   const fetching: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
 
+  /** Whether a response is currently open, as the two callbacks below see it. */
+  let connected = false;
+  const disconnected = (): void => {
+    if (!connected) return;
+    connected = false;
+    options.onDisconnect?.();
+  };
+
   const client: EventSourceClient = createEventSource({
     url: streamUrl(baseUrl, filter(), cursor()),
     ...(token === null || token === undefined || token === ''
@@ -146,12 +175,18 @@ export function connectStream(options: StreamOptions): StreamConnection {
       : { headers: { Authorization: `Bearer ${token}` } }),
     fetch: (url, init) => fetching(stamped(url, filter(), cursor()), init),
     ...(options.onMessage === undefined ? {} : { onMessage: options.onMessage }),
-    ...(options.onConnect === undefined ? {} : { onConnect: options.onConnect }),
-    ...(options.onDisconnect === undefined ? {} : { onDisconnect: options.onDisconnect }),
+    onConnect: () => {
+      connected = true;
+      options.onConnect?.();
+    },
+    onDisconnect: disconnected,
     ...(options.onComment === undefined ? {} : { onComment: options.onComment }),
-    ...(options.onScheduleReconnect === undefined
-      ? {}
-      : { onScheduleReconnect: options.onScheduleReconnect }),
+    onScheduleReconnect: (info) => {
+      // Ordered so a listener never sees a reconnect scheduled for a connection
+      // it still believes is up.
+      disconnected();
+      options.onScheduleReconnect?.(info);
+    },
   });
 
   return { close: () => client.close() };
