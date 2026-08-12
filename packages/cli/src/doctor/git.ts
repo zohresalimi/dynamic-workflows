@@ -51,6 +51,16 @@ function scratchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   };
 }
 
+/**
+ * KAR-18.9 AC5 — the one command that answers every check in this section.
+ *
+ * Both git checks fail for the same reason and are fixed the same way, so they
+ * name the same action rather than each inventing a variation on it.
+ */
+const GIT_UPGRADE =
+  "install git 2.45 or later (macOS: 'brew upgrade git'; Debian/Ubuntu: 'sudo apt install " +
+  "git'), then run 'DeFlow doctor' again";
+
 /** The version band, with the consequence spelled out in DeFlow's terms. */
 function versionCheck(check: GitVersionCheck): DoctorCheck {
   if (check.status === 'fail') {
@@ -61,6 +71,7 @@ function versionCheck(check: GitVersionCheck): DoctorCheck {
         `${check.message} Until git is upgraded, DeFlow cannot schedule any write node: ` +
         '"git merge-tree --write-tree" is how it detects a conflict between two concurrent ' +
         'write nodes before either of them lands, and there is no fallback.',
+      action: GIT_UPGRADE,
       data: { version: check.version },
     };
   }
@@ -69,6 +80,7 @@ function versionCheck(check: GitVersionCheck): DoctorCheck {
       id: 'git.version',
       status: 'warn',
       detail: check.message,
+      action: GIT_UPGRADE,
       data: { version: check.version },
     };
   }
@@ -148,6 +160,7 @@ export async function gitChecks(input: GitChecksInput): Promise<readonly DoctorC
           'not attempted: the installed git is below the 2.38 floor, so "merge-tree ' +
           '--write-tree" does not exist to be executed. This is the same failure as above, ' +
           'reported here so the section is not silent about the command it actually depends on.',
+        action: GIT_UPGRADE,
       },
     ];
   }
@@ -184,6 +197,7 @@ export async function gitChecks(input: GitChecksInput): Promise<readonly DoctorC
           `clean merge exited ${result.clean} (expected 0) and a conflicting merge exited ` +
           `${result.conflicting} (expected 1). ${result.detail} Write nodes cannot be scheduled ` +
           'against a git whose conflict signal cannot be trusted.',
+        action: GIT_UPGRADE,
         data: { clean: result.clean, conflicting: result.conflicting },
       },
     ];
@@ -196,6 +210,7 @@ export async function gitChecks(input: GitChecksInput): Promise<readonly DoctorC
         detail:
           '"git merge-tree --write-tree" could not be executed against a scratch repository: ' +
           `${error instanceof Error ? error.message : String(error)}`,
+        action: GIT_UPGRADE,
       },
     ];
   } finally {

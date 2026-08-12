@@ -99,6 +99,21 @@ Background:
 | EPIC-18-S47 | `DeFlow ledger snapshot` produces one consistent, sidecar-free file                    | KAR-18.7           | Happy path  |
 | EPIC-18-S48 | `DeFlow status` with a live daemon, and with none at all                               | KAR-18.7           | Happy path  |
 | EPIC-18-S49 | `DeFlow status` after a SIGKILL reports `stale`, and signals nothing                   | KAR-18.7           | Recovery    |
+| EPIC-18-S50 | **Happy path: the vendor CLI is installed, its ACP adapter is not**                    | KAR-18.8           | Happy path  |
+| EPIC-18-S51 | Three states per provider, and `adapter-missing` is unreachable for a native one       | KAR-18.8           | Edge case   |
+| EPIC-18-S52 | **`claude is not installed` is never printed when `claude` is on PATH**                | KAR-18.8           | Failure     |
+| EPIC-18-S53 | `--fix` installs without prompting; `--json` never prompts and never reads stdin       | KAR-18.8           | Edge case   |
+| EPIC-18-S54 | The install fails: the real error, a `warn`, and never a silent success                | KAR-18.8           | Failure     |
+| EPIC-18-S55 | Declining the offer installs nothing and changes no exit code                          | KAR-18.8           | Edge case   |
+| EPIC-18-S56 | No network egress, and a provider whose vendor CLI is absent                           | KAR-18.8           | Failure     |
+| EPIC-18-S57 | **Happy path: a report that says what to do before it says everything else**           | KAR-18.9           | Happy path  |
+| EPIC-18-S58 | **Never colour alone: glyph, label and colour for all four states**                    | KAR-18.9           | Edge case   |
+| EPIC-18-S59 | When styling is switched off: not a TTY, `NO_COLOR`, `TERM=dumb`, `--json`             | KAR-18.9           | Edge case   |
+| EPIC-18-S60 | Piping any command into a file produces clean text and the same exit code              | KAR-18.9           | Edge case   |
+| EPIC-18-S61 | Long explanations wrap to the width and indent under what they explain                 | KAR-18.9           | Edge case   |
+| EPIC-18-S62 | **The `--json` documents do not change: presentation, not contract**                   | KAR-18.9           | Failure     |
+| EPIC-18-S63 | One presentation layer, five commands, no second formatter                             | KAR-18.9           | Edge case   |
+| EPIC-18-S64 | A terminal that is not UTF-8, and a terminal whose width is unknown                    | KAR-18.9           | Failure     |
 
 ---
 
@@ -1536,6 +1551,529 @@ Feature: diagnostics
 **Notes:** the same `(pid, process_start_time)` discipline as orphan reaping (EPIC-18-S14), applied
 to a read-only command. A `status` that reports a recycled pid as a live daemon sends the operator
 looking for a process that is not DeFlow, and — worse — invites them to kill it.
+
+---
+
+## EPIC-18-S50 — Happy path: the vendor CLI is installed, its ACP adapter is not
+
+**Verifies:** KAR-18.8 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario: claude is on PATH, claude-agent-acp is not, and the operator says yes
+    Given a "claude" executable on the temp PATH at "<tmp>/bin/claude"
+    And no "claude-agent-acp" anywhere on that PATH
+    And an "npm" shim on the temp PATH that records its argv and exits 0, creating
+        "<tmp>/bin/claude-agent-acp"
+    And stdout is a TTY
+    When the operator runs "DeFlow doctor"
+    Then the Agents section reports claude as "adapter-missing" with status "warn"
+    And the check names "<tmp>/bin/claude" as the resolved vendor CLI
+    And it names "@agentclientprotocol/claude-agent-acp" as the missing ACP adapter
+    And the operator is prompted once, and the prompt contains
+        "npm install -g @agentclientprotocol/claude-agent-acp"
+    When the operator answers "y"
+    Then the npm shim was invoked exactly once with
+        "install -g @agentclientprotocol/claude-agent-acp"
+    And the report states the command, its exit code 0 and its elapsed milliseconds
+    And claude is re-resolved in the same run and reported as "installed"
+    And the Capabilities section carries a regenerated fixture for the now-present adapter
+    And the exit code is 0
+```
+
+**Notes:** the re-resolution is the part that is easy to skip and expensive to skip. A `doctor` that
+installs an adapter and then renders the snapshot it took at start tells the operator to install
+something that is already there, which is the same class of wrongness this story exists to remove —
+and the Capabilities and Conformance sections would still be describing a machine that no longer
+exists. Re-resolve, do not infer from the exit code (AC8, AC9).
+
+---
+
+## EPIC-18-S51 — Three states per provider, and `adapter-missing` is unreachable for a native one
+
+**Verifies:** KAR-18.8 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: agent adapters
+
+  Scenario Outline: what the operator is told, from two resolutions and a kind
+    Given a provider of kind "<kind>"
+    And its vendor CLI "<vendor>" and the binary DeFlow spawns "<spawned>"
+    When the Agents section is reduced from those resolutions
+    Then the reported state is "<state>"
+    And the check status is "<status>"
+    And the sentence contains "<contains>"
+
+    Examples:
+      | kind    | vendor  | spawned | state           | status | contains                          |
+      | adapter | present | present | installed       | ok     | the resolved absolute path        |
+      | adapter | present | absent  | adapter-missing | warn   | the ACP adapter is what's missing |
+      | adapter | absent  | absent  | not-installed   | warn   | is not installed                  |
+      | native  | present | present | installed       | ok     | the resolved absolute path        |
+      | native  | absent  | absent  | not-installed   | warn   | is not installed                  |
+
+  Scenario: a native provider can never be reported as adapter-missing
+    Given a provider whose "kind" is "native"
+    Then its vendor CLI and the binary DeFlow spawns are the same executable name
+    And no reduction of its resolutions produces the state "adapter-missing"
+```
+
+**Notes:** the registry already distinguishes the two — `spec.bin` is what DeFlow spawns,
+`spec.shim.bin` is the vendor CLI, and only `kind: 'adapter'` entries (claude, codex) can differ.
+The bug this replaces is not missing information, it is a report that resolved one binary and spoke
+about the other. Codex is the second case and is worth an example row of its own when the table is
+written: `codex-acp` is the bridge, `codex` is the vendor CLI, and the bridge needs `CODEX_PATH`
+pointed at it.
+
+---
+
+## EPIC-18-S52 — `claude is not installed` is never printed when `claude` is on PATH
+
+**Verifies:** KAR-18.8 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario: the sentence that reads as a bug
+    Given a "claude" executable on the temp PATH
+    And no "claude-agent-acp" on that PATH
+    When the operator runs "DeFlow doctor --json"
+    And the operator runs "DeFlow doctor" with stdout piped to a file
+    Then the string "claude is not installed" appears in neither stdout, nor stderr, nor the
+        JSON document
+    And each rendering names the resolved vendor CLI path and the missing adapter package
+    And the exit code is 0 in both cases
+
+  Scenario: the sentence is still correct when it is true
+    Given a temp PATH with neither "claude" nor "claude-agent-acp"
+    When the operator runs "DeFlow doctor"
+    Then the claude check does say the vendor CLI is not installed
+    And it names "npm install -g @agentclientprotocol/claude-agent-acp" as the install command
+    And the exit code is 0
+```
+
+**Notes:** the second scenario is the guard against over-correcting. "Not installed" is the right
+sentence for a machine with no `claude`, and a fix that removes the phrase entirely trades one wrong
+report for another. What must be impossible is the phrase co-occurring with a resolved vendor path
+(AC2, and the unit guard in the test plan).
+
+---
+
+## EPIC-18-S53 — `--fix` installs without prompting; `--json` never prompts and never reads stdin
+
+**Verifies:** KAR-18.8 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario: one keystroke, or none at all
+    Given "claude" and "codex" on the temp PATH and neither bridge installed
+    And an npm shim that records its argv and exits 0
+    And stdout is not a TTY
+    When the operator runs "DeFlow doctor --fix"
+    Then no prompt is written to stdout
+    And the npm shim was invoked once per missing adapter and no more
+    And each install result carries the command, the exit code and the elapsed milliseconds
+    And the exit code is 0
+
+  Scenario: --json is machine output and must never block
+    Given the same machine, with stdin closed
+    When the operator runs "DeFlow doctor --json --fix"
+    Then the process does not read from stdin and does not block
+    And stdout parses as exactly one JSON document
+    And the document carries a per-provider install result
+    And no ANSI escape appears anywhere in stdout
+    And the exit code is 0
+
+  Scenario: no TTY and no --fix installs nothing
+    Given the same machine with stdout piped
+    When the operator runs "DeFlow doctor"
+    Then no npm process is spawned
+    And each adapter-missing provider is reported as "warn" with the command to run
+    And the exit code is 0
+```
+
+**Notes:** the blocking failure is the one that costs a real afternoon. A prompt gated on
+`process.stdout.isTTY` alone still tries to read stdin in a CI job whose stdin is closed or is a
+pipe that never delivers a newline, and the job hangs until the runner's timeout with no output
+explaining why. Prompting is gated on the TTY **and** on not being in `--json`, and `--fix` is the
+only install path when either fails.
+
+---
+
+## EPIC-18-S54 — The install fails: the real error, a `warn`, and never a silent success
+
+**Verifies:** KAR-18.8 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario Outline: an install that does not work says so
+    Given "claude" on the temp PATH and no "claude-agent-acp"
+    And an npm shim that exits <code> printing "<stderr>" on stderr
+    When the operator runs "DeFlow doctor --fix"
+    Then the Agents section reports claude as "adapter-missing" after the attempt
+    And the check status is "warn"
+    And the report contains "<stderr>" verbatim, not a paraphrase of it
+    And the report does not say the adapter was installed
+    And the npm shim was invoked exactly once — the attempt is not retried
+    And the exit code is 0
+
+    Examples:
+      | code | stderr                                                     |
+      | 1    | npm error code E401 — incorrect or missing credentials     |
+      | 1    | npm error code EACCES — permission denied, mkdir '/usr/lib' |
+      | 127  | npm: command not found                                     |
+
+  Scenario: the state after a failed install is resolved, not assumed
+    Given an npm shim that exits 0 but installs nothing
+    When the operator runs "DeFlow doctor --fix"
+    Then claude is still reported as "adapter-missing"
+    And the report states that the command reported success and the adapter is still not resolvable
+```
+
+**Notes:** the last scenario is the one that matters most and the one nobody writes. A package
+manager exiting 0 is not evidence that a binary is now on `PATH` — a different global prefix, a
+`PATH` that does not include it, or a partially written package all produce exactly that — so the
+only honest report comes from resolving again (AC8). Trusting the exit code is how `doctor` ends up
+telling an operator something is installed while the daemon cannot spawn it.
+
+---
+
+## EPIC-18-S55 — Declining the offer installs nothing and changes no exit code
+
+**Verifies:** KAR-18.8 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario Outline: the answer that must be safe by default
+    Given "claude" on the temp PATH and no "claude-agent-acp"
+    And stdout is a TTY
+    When the operator runs "DeFlow doctor" and answers "<answer>"
+    Then no child process is spawned for the install
+    And claude is reported as "adapter-missing" with status "warn"
+    And the report prints "npm install -g @agentclientprotocol/claude-agent-acp" for the
+        operator to run themselves
+    And the exit code is 0
+
+    Examples:
+      | answer      |
+      | n           |
+      | <Enter>     |
+      | EOF on stdin|
+
+  Scenario: the exit-code contract is untouched by any of this
+    Given a machine whose git is older than 2.38, so one check is a "fail"
+    And "claude" on the temp PATH and no "claude-agent-acp"
+    When the operator runs "DeFlow doctor --fix"
+    Then the exit code is 5 because of the git check and for no other reason
+    And an adapter-missing provider, a declined offer and a failed install each contribute "warn"
+```
+
+**Notes:** bare Enter meaning **no** is deliberate: this is the one prompt in DeFlow whose yes
+mutates the operator's machine outside the repository, and a defaulted-yes turns a distracted return
+keypress into a global install. The second scenario pins KAR-18.4 AC11 — `0` for ok-or-warn, `5` for
+any fail — against a story that adds three new ways to produce a `warn`.
+
+---
+
+## EPIC-18-S56 — No network egress, and a provider whose vendor CLI is absent
+
+**Verifies:** KAR-18.8 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: agent adapters
+
+  Scenario: offline, behind a proxy, or with egress blocked
+    Given "claude" on the temp PATH and no "claude-agent-acp"
+    And an npm shim that exits 1 printing "npm error network request to
+        https://registry.npmjs.org/... failed, reason: getaddrinfo ENOTFOUND"
+    When the operator runs "DeFlow doctor --fix"
+    Then the offer was still made and the attempt was still reported
+    And the failure names the network error as npm reported it
+    And the report states that the adapter can be installed later from a machine with egress
+    And the attempt is made once and not retried
+    And the exit code is 0
+
+  Scenario: nothing is installed for a vendor that is not on the machine
+    Given a temp PATH with no "gemini", no "copilot", no "opencode", no "codex" and no "claude"
+    When the operator runs "DeFlow doctor --fix"
+    Then no npm process is spawned at all
+    And every provider is reported as "not-installed" with its own install hint
+    And the exit code is 0
+```
+
+**Notes:** NF1 is _"full functionality with no network beyond what the provider CLIs themselves
+need"_, and an offer that cannot be completed offline must therefore be survivable rather than fatal
+— `doctor`'s job on that machine is to report accurately, which it still does. The second scenario is
+AC7 and it is the whole safety property of `--fix`: the flag's blast radius is "adapters for vendor
+CLIs you already have", never "everything the registry knows about".
+
+---
+
+## EPIC-18-S57 — Happy path: a report that says what to do before it says everything else
+
+**Verifies:** KAR-18.9 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario: doctor on a machine with one thing wrong
+    Given a TTY 100 columns wide
+    And a machine whose sandbox section warns and whose other checks are "ok"
+    When the operator runs "DeFlow doctor"
+    Then each section heading is preceded by a blank line and its checks are indented under it
+    And within a section every check's status begins at the same column
+    And the last block of the report is the summary
+    And the first line of that summary names one command to run next
+    And the summary reports the overall status and a count per state
+    And the rendered report matches the committed file snapshot through the normalising serializer
+    And the exit code is 0
+
+  Scenario: nothing is wrong, so there is nothing to do next
+    Given a fully provisioned machine
+    When the operator runs "DeFlow doctor"
+    Then the summary reports the overall status "ok" and the per-state counts
+    And it names no next action
+    And the exit code is 0
+```
+
+**Notes:** the owner asked for a summary "at the end … ahead of the detail", which reads as a
+contradiction and is settled in KAR-18.9 AC5: **last in the report, first within the block**. That is
+where a terminal leaves the cursor after a long report and it is what the vendor CLIs do. The second
+scenario exists because a "next action" that is always present is one nobody reads — a healthy
+machine must produce a summary with nothing to do in it.
+
+---
+
+## EPIC-18-S58 — Never colour alone: glyph, label and colour for all four states
+
+**Verifies:** KAR-18.9 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario Outline: every state survives having its colour removed
+    Given styling is enabled
+    When a check with status "<state>" is rendered
+    Then the rendered line contains the glyph "<glyph>" and the text label "<state>"
+    And it contains an ANSI colour sequence
+    And with every ANSI sequence stripped, the state is still identifiable from glyph and label
+
+    Examples:
+      | state   | glyph |
+      | ok      | ✓     |
+      | warn    | !     |
+      | fail    | ✗     |
+      | skipped | –     |
+
+  Scenario: no two states share a glyph or a label
+    When the four states are rendered
+    Then their glyphs are pairwise distinct
+    And their text labels are pairwise distinct
+```
+
+**Notes:** [12 §9.2](../../12-frontend-architecture.md) — _"colour + glyph + text label, every
+time"_ — is a WCAG 1.4.1 requirement written for the UI, and a terminal is the easier case to get
+wrong, not the harder: colour disappears under a pipe, under `NO_COLOR` and on a dumb terminal, so
+any meaning carried by colour alone is meaning that is routinely absent. `skipped` is the fourth
+state because `doctor` already reports one — _"skipped — no adapter installed"_ — and a state that
+exists in prose but not in the model gets rendered inconsistently.
+
+---
+
+## EPIC-18-S59 — When styling is switched off: not a TTY, `NO_COLOR`, `TERM=dumb`, `--json`
+
+**Verifies:** KAR-18.9 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario Outline: one decision, made once per process
+    Given stdout is a TTY: "<tty>"
+    And NO_COLOR is "<no_color>" and TERM is "<term>" and FORCE_COLOR is "<force>"
+    And the command was invoked with "<flags>"
+    When the styling decision is computed
+    Then ANSI styling is "<styling>"
+
+    Examples:
+      | tty | no_color | term   | force | flags      | styling  |
+      | yes | unset    | xterm  | unset |            | enabled  |
+      | no  | unset    | xterm  | unset |            | disabled |
+      | yes | ""       | xterm  | unset |            | disabled |
+      | yes | 1        | xterm  | unset |            | disabled |
+      | yes | unset    | dumb   | unset |            | disabled |
+      | yes | unset    | xterm  | unset | --json     | disabled |
+      | yes | unset    | xterm  | unset | --no-color | disabled |
+      | no  | unset    | xterm  | 1     |            | enabled  |
+      | no  | unset    | xterm  | 1     | --json     | disabled |
+      | no  | 1        | xterm  | 1     |            | disabled |
+```
+
+**Notes:** `NO_COLOR` set to the empty string still means no colour — the convention is presence, not
+truthiness, and testing it as a boolean is the standard way to get this wrong. `FORCE_COLOR`
+overrides only the TTY test, because its purpose is "I know this is a pipe and I want colour anyway",
+and it must never override `--json`, whose consumer is a parser. The decision is computed once from
+an injected environment so that no call site can re-derive it differently.
+
+---
+
+## EPIC-18-S60 — Piping any command into a file produces clean text and the same exit code
+
+**Verifies:** KAR-18.9 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario Outline: five commands, one tool
+    Given stdout is redirected to a file
+    When the operator runs "<command>"
+    Then the file contains no 0x1b byte
+    And no line in the file exceeds 80 characters
+    And the exit code is the one "<command>"'s own story asserts
+
+    Examples:
+      | command                                     |
+      | DeFlow init                                 |
+      | DeFlow doctor                               |
+      | DeFlow status                               |
+      | DeFlow run "task" --no-wait                 |
+      | DeFlow ledger snapshot <runId> --out <path> |
+```
+
+**Notes:** the exit-code clause is not padding. This story rewrites output for five commands whose
+exit codes are load-bearing contracts — KAR-18.3's closed set, KAR-18.4's two-valued one, `status`'s
+deliberate zero on "nothing running" — and the assertion that they are unchanged is what makes this a
+presentation change. The 80-column clause is AC9's default width applied to the one case where the
+width genuinely cannot be known.
+
+---
+
+## EPIC-18-S61 — Long explanations wrap to the width and indent under what they explain
+
+**Verifies:** KAR-18.9 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario: a paragraph that used to run off the edge
+    Given a terminal 60 columns wide
+    And a check whose detail is 400 characters of prose
+    When the check is rendered
+    Then no rendered line exceeds 60 columns
+    And every line after the first is indented to the column the detail started at
+    And no word is split across two lines
+
+  Scenario: a path is longer than the terminal
+    Given a terminal 60 columns wide
+    And a check whose detail contains a 120-character absolute path
+    When the check is rendered
+    Then the path appears on a line of its own, whole and unbroken
+    And it can be selected and copied as one token
+
+  Scenario: a very wide terminal is not used to its full width
+    Given a terminal 240 columns wide
+    When a report is rendered
+    Then no rendered line exceeds 100 columns
+```
+
+**Notes:** the unbroken-path rule is the one worth writing down. A wrapper that breaks on character
+count splits `/Users/…/pre-migrate-7.db` across two lines, and the operator who copies it gets half a
+path — which is precisely the moment they most need to copy it. The 100-column ceiling on a wide
+terminal is a readability limit, not a technical one: a 240-character line of prose is unreadable
+regardless of whether it fits.
+
+---
+
+## EPIC-18-S62 — The `--json` documents do not change: presentation, not contract
+
+**Verifies:** KAR-18.9 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario Outline: byte-for-byte, against a golden captured before the change
+    Given the golden "<golden>" captured from "<command>" before this story
+    When the operator runs "<command>" against the same fixtures
+    Then stdout is byte-identical to the golden
+    And it contains no ANSI escape, no summary block and no wrapped line
+
+    Examples:
+      | command             | golden                   |
+      | DeFlow doctor --json| doctor.golden.json       |
+      | DeFlow status --json| status.golden.json       |
+      | DeFlow run --json   | run.golden.ndjson        |
+
+  Scenario: the failure this scenario exists to catch
+    Given the summary block is appended to every rendered output including --json
+    When the golden comparison runs
+    Then it fails, naming the added lines
+```
+
+**Notes:** the second scenario is the point of the first — a golden nobody has watched go red is a
+golden nobody can trust. `--json` is what CI branches on (KAR-18.4 AC10, KAR-18.3 AC7), and a
+presentation story that changes it is not a presentation story. Note the NDJSON case: `run --json`
+emits one object per line, so "byte-identical" includes the line framing.
+
+---
+
+## EPIC-18-S63 — One presentation layer, five commands, no second formatter
+
+**Verifies:** KAR-18.9 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario: the guard that keeps this from decaying
+    Given the source tree under "packages/cli/src"
+    When every file outside the render module is scanned
+    Then none contains an ANSI escape literal
+    And none contains a status glyph literal
+    And none computes a terminal width of its own
+
+  Scenario: a new command is added later
+    Given a new command that prints a report without using the render module
+    When the guard runs
+    Then it fails, naming the file and stating that the five commands must look like one tool
+```
+
+**Notes:** this is the story's only defence against next month. Every per-command formatter in the
+current CLI was written by someone reasonably deciding that one command's output was a small special
+case, and five small special cases are exactly the state this story is fixing. A guard that names the
+file and the reason is cheaper than a review that has to notice.
+
+---
+
+## EPIC-18-S64 — A terminal that is not UTF-8, and a terminal whose width is unknown
+
+**Verifies:** KAR-18.9 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: terminal presentation
+
+  Scenario: a non-UTF-8 locale
+    Given LC_ALL is "C" and LANG is "C"
+    When a report is rendered
+    Then the ASCII glyph set is used
+    And the four glyphs are pairwise distinct
+    And no replacement character appears in the output
+    And every state is still identifiable from glyph and label
+
+  Scenario: the width cannot be determined
+    Given stdout reports no column count and COLUMNS is unset
+    When a report is rendered
+    Then the layout is computed at 80 columns
+    And no line exceeds 80 columns
+    And nothing throws and no width is NaN
+```
+
+**Notes:** both halves are the same failure — a value assumed to be present. `stdout.columns` is
+`undefined` under a pipe and on several CI runners, and an arithmetic on `undefined` produces a `NaN`
+width that a naive wrapper turns into one character per line; a UTF-8 glyph on a Latin-1 terminal
+turns the status column into replacement characters, which is AC2's failure arriving through the
+locale rather than through colour.
 
 ---
 

@@ -14,9 +14,9 @@
 |                                 |                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | **Epics**                       | 19 (EPIC-00 … EPIC-18)                                                                       |
-| **Stories**                     | 137                                                                                          |
-| **Scenarios**                   | 636                                                                                          |
-| **Estimated size**              | **~310 working days** (sum of the epics' own declared totals)                                |
+| **Stories**                     | 139                                                                                          |
+| **Scenarios**                   | 651                                                                                          |
+| **Estimated size**              | **~316 working days** (sum of the epics' own declared totals)                                |
 | **Longest dependency chain**    | **~228 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17          |
 | **P0 requirements in M1 scope** | 55 functional + NF1–NF10 + AR-1 — F3.3 moved to M2 on 2026-08-06                             |
 | **Uncovered P0 requirements**   | **0** — F3.3 was the one gap and is now out of the M1 line (see [§7.1](#71-the-one-uncovered-requirement)) |
@@ -27,11 +27,11 @@
 | Level   | `Not started` | `Ready` | `In progress` | `Blocked` | `In review` | `Done` |
 | ------- | ------------- | ------- | ------------- | --------- | ----------- | ------ |
 | Epics   | 19            | 0       | 0             | 0         | 0           | 0      |
-| Stories | 121           | 15      | 0             | 1         | 0           | 0      |
+| Stories | 123           | 15      | 0             | 1         | 0           | 0      |
 
-**Size distribution** — `XS` 2 · `S` 39 · `M` 76 · `L` 20 · `XL` **0** (no story is sized `XL`, which is the rule holding).
+**Size distribution** — `XS` 2 · `S` 39 · `M` 78 · `L` 20 · `XL` **0** (no story is sized `XL`, which is the rule holding).
 
-**Priority distribution** — `P0` 130 · `P1` 7 · `P2` 0. The seven `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7 — they sit inside M1 epics but are not part of M1's definition of done.
+**Priority distribution** — `P0` 130 · `P1` 9 · `P2` 0. The nine `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 — they sit inside M1 epics but are not part of M1's definition of done.
 
 Nothing has started. Fifteen stories are `Ready` — their Definition of Ready is already satisfied by the architecture documents — and one, KAR-17.9, is `Blocked` pending the KAR-16.6 performance measurement.
 
@@ -60,10 +60,10 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 | **▸** | [EPIC-12](./epics/EPIC-12-verification-gates.md)  | Verification gates and the repair loop       | Not started | P0  | M1  | W8a                     | 6       | 39   | ~15d  | EPIC-02, EPIC-07, EPIC-08, EPIC-09, EPIC-10, EPIC-11, EPIC-06 | "Has the requested outcome been achieved?" is answered mechanically — deterministic gates first, adversarial review second, typed verdicts, capped surgical repair.              |
 | **▸** | [EPIC-15](./epics/EPIC-15-daemon-api.md)          | Daemon API and event stream                  | Not started | P0  | M1  | W9                      | 8       | 48   | ~19d  | EPIC-02, EPIC-03, EPIC-11, EPIC-06, EPIC-12, EPIC-13          | Exactly one HTTP API and one multiplexed, resumable SSE stream, consumed by both the browser and the CLI through the same typed module.                                          |
 | **▸** | [EPIC-16](./epics/EPIC-16-ui-foundation.md)       | Web UI foundation and projection store       | Not started | P0  | M1  | W10                     | 6       | 40   | ~20d  | EPIC-15, EPIC-02, EPIC-00                                     | A Vue application that is a second reducer over the same ledger, with pure projections, bounded memory and a replay harness.                                                     |
-|       | [EPIC-18](./epics/EPIC-18-cli-packaging.md)       | CLI, doctor and packaging                    | Not started | P0  | M1  | W12                     | 7       | 49   | ~16d  | EPIC-15, EPIC-03, EPIC-05, EPIC-01                            | DeFlow becomes something a person installs and runs rather than clones: `init`, `up`, `run`, `doctor`, and a tarball that works in a clean environment.                          |
+|       | [EPIC-18](./epics/EPIC-18-cli-packaging.md)       | CLI, doctor and packaging                    | Not started | P0  | M1  | W12                     | 9       | 64   | ~22d  | EPIC-15, EPIC-03, EPIC-05, EPIC-01                            | DeFlow becomes something a person installs and runs rather than clones: `init`, `up`, `run`, `doctor`, and a tarball that works in a clean environment.                          |
 | **▸** | [EPIC-17](./epics/EPIC-17-p0-views.md)            | P0 visualisation views                       | Not started | P0  | M1  | W11                     | 9       | 35   | ~28d  | EPIC-16, EPIC-15, EPIC-13, EPIC-12, EPIC-11, EPIC-10, EPIC-09 | "Why did this run do that?" becomes a screen rather than a transcript, and the median time to that answer is measured, not asserted.                                             |
 
-**Totals:** 19 epics · 137 stories · 636 scenarios · ~310 days.
+**Totals:** 19 epics · 139 stories · 651 scenarios · ~316 days.
 
 Two workstream labels are not W-numbers: EPIC-00 is the M0 spike set and EPIC-01 is pre-W0 toolchain work, neither of which the roadmap's W0–W12 table covers. EPIC-14 is explicitly cross-cutting — its accounting half belongs to W6 and its ceiling half to W4.
 
@@ -186,7 +186,7 @@ Four divergences from the W0–W12 graph in [roadmap §2.1 and §2.2](../17-road
 
 ## 4. The full story index
 
-All 137 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan).
+All 139 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan).
 
 | Story                                              | Title                                                                           | Epic    | Status      | Pri | Size | PRD refs                                                                                      | Verified by                                                                                                                                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ----------- | --- | ---- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -327,12 +327,14 @@ All 137 stories, in epic order. `Verified by` is the story's own declaration; §
 | [KAR-18.5](./epics/EPIC-18-cli-packaging.md)       | Single-package build and asset bundling                                         | EPIC-18 | Not started | P0  | M    | NF6, NF5                                                                                      | EPIC-18-S37, EPIC-18-S38, EPIC-18-S39, EPIC-18-S40, EPIC-18-S41                                                                                                        |
 | [KAR-18.6](./epics/EPIC-18-cli-packaging.md)       | Install verification in a clean environment                                     | EPIC-18 | Not started | P0  | S    | NF6, NF5, NF1                                                                                 | EPIC-18-S42, EPIC-18-S43, EPIC-18-S44, EPIC-18-S45, EPIC-18-S46                                                                                                        |
 | [KAR-18.7](./epics/EPIC-18-cli-packaging.md)       | Diagnostics: `DeFlow status` and `DeFlow ledger snapshot` _(added)_             | EPIC-18 | Not started | P1  | S    | NF8, NF10                                                                                     | EPIC-18-S47, EPIC-18-S48, EPIC-18-S49                                                                                                                                  |
+| [KAR-18.8](./epics/EPIC-18-cli-packaging.md)       | `doctor` detects installed agent CLIs and offers to install their ACP adapters _(added)_ | EPIC-18 | Not started | P1  | M    | F3.1, F3.2, NF1, NF6, NF7                                                                     | EPIC-18-S50, EPIC-18-S51, EPIC-18-S52, EPIC-18-S53, EPIC-18-S54, EPIC-18-S55, EPIC-18-S56                                                                              |
+| [KAR-18.9](./epics/EPIC-18-cli-packaging.md)       | Readable terminal output across every CLI command _(added)_                     | EPIC-18 | Not started | P1  | M    | NF6, NF8                                                                                      | EPIC-18-S57, EPIC-18-S58, EPIC-18-S59, EPIC-18-S60, EPIC-18-S61, EPIC-18-S62, EPIC-18-S63, EPIC-18-S64                                                                 |
 
 ---
 
 ## 5. PRD requirement coverage matrix
 
-**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 137 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
+**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 139 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
 
 ### 5.1 M1 (P0) functional requirements
 
@@ -347,8 +349,8 @@ All 137 stories, in epic order. `Verified by` is the story's own declaration; §
 | F2.4     | Runtime plan mutation — any node may emit a `PlanPatch`                                    | KAR-02.4, KAR-05.6, KAR-11.3, KAR-12.5, KAR-17.2                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
 | F2.5     | Patch policy engine: auto-apply / queue / reject on declarative rules                      | KAR-02.4, KAR-11.4, KAR-12.5, KAR-14.3, KAR-15.5, KAR-17.2                                                                                                     | Covered                                                                                                                                                                                                                                                                             |
 | F2.6     | Every plan version retained and scrubbable                                                 | KAR-02.1, KAR-02.9, KAR-11.3, KAR-11.5, KAR-15.6, KAR-17.2                                                                                                     | Covered                                                                                                                                                                                                                                                                             |
-| F3.1     | ACP-first — DeFlow is an ACP client                                                        | KAR-00.1, KAR-00.7, KAR-05.1, KAR-05.3, KAR-05.6                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
-| F3.2     | CLI shim fallback for non-ACP agents                                                       | KAR-00.7, KAR-04.6, KAR-05.8                                                                                                                                   | **At risk** — KAR-05.8 is EPIC-05's named scope-cut candidate; if it is deferred (the epic's own Risks row costs it at −4–5 days) F3.2 goes **knowingly unmet at M1** and only the _test_ shim KAR-04.6 remains.                                                                    |
+| F3.1     | ACP-first — DeFlow is an ACP client                                                        | KAR-00.1, KAR-00.7, KAR-05.1, KAR-05.3, KAR-05.6, KAR-18.8                                                                                                     | Covered                                                                                                                                                                                                                                                                             |
+| F3.2     | CLI shim fallback for non-ACP agents                                                       | KAR-00.7, KAR-04.6, KAR-05.8, KAR-18.8                                                                                                                         | **At risk** — KAR-05.8 is EPIC-05's named scope-cut candidate; if it is deferred (the epic's own Risks row costs it at −4–5 days) F3.2 goes **knowingly unmet at M1** and only the _test_ shim KAR-04.6 remains.                                                                    |
 | **F3.3** | **Direct API adapter** when the user supplies their own key                                | — (KAR-05.10, M2)                                                                                                                                              | **Moved to M2 on 2026-08-06** — PRD §11's M1 line amended to `F3.1, F3.2, F3.4–F3.7`. Not an M1 gap; see [§7.1](#71-the-one-uncovered-requirement).                                                                                                                                 |
 | F3.4     | Adapter conformance suite — the fixed battery, run on `doctor`                             | KAR-00.1, KAR-04.2, KAR-04.3, KAR-04.5, KAR-04.6, KAR-05.4, KAR-05.7, KAR-05.8, KAR-18.4                                                                       | Covered                                                                                                                                                                                                                                                                             |
 | F3.5     | Capability manifest per adapter; planner cannot schedule against an unsupported capability | KAR-00.1, KAR-02.8, KAR-04.4, KAR-05.2, KAR-05.5, KAR-11.1, KAR-11.2, KAR-15.6, KAR-18.4                                                                       | Covered                                                                                                                                                                                                                                                                             |
@@ -403,14 +405,14 @@ the PRD defines it.
 
 | Req  | Requirement                                                                    | Covered by                                                                                                                                                                                                                                                          | Status  |
 | ---- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| NF1  | Local-first — full functionality with no network beyond the provider CLIs' own | KAR-09.7, KAR-18.4, KAR-18.6                                                                                                                                                                                                                                        | Covered |
+| NF1  | Local-first — full functionality with no network beyond the provider CLIs' own | KAR-09.7, KAR-18.4, KAR-18.6, KAR-18.8                                                                                                                                                                                                                              | Covered |
 | NF2  | Zero credential handling (AR-1), verifiable by inspection                      | KAR-08.4, KAR-15.2                                                                                                                                                                                                                                                  | Covered |
 | NF3  | Cold start < 3 s for the daemon; UI interactive < 1 s on localhost             | KAR-00.3, KAR-01.3, KAR-03.4, KAR-03.6, KAR-05.4, KAR-15.1, KAR-15.3, KAR-15.7, KAR-16.1, KAR-16.2, KAR-16.4, KAR-16.6, KAR-17.1, KAR-18.2                                                                                                                          | Covered |
 | NF4  | Run state survives daemon restart, OS restart and laptop sleep                 | KAR-00.5, KAR-01.6, KAR-03.7, KAR-03.8, KAR-05.5, KAR-06.6, KAR-06.9, KAR-07.8, KAR-10.3, KAR-13.1, KAR-14.2, KAR-15.4, KAR-16.4                                                                                                                                    | Covered |
 | NF5  | Cross-platform: macOS and Linux at M1                                          | KAR-00.2, KAR-00.5, KAR-01.1, KAR-01.6, KAR-18.4, KAR-18.5, KAR-18.6                                                                                                                                                                                                | Covered |
-| NF6  | Single-binary-ish install — `npx DeFlow up`, no DB server, no Docker           | KAR-00.2, KAR-00.5, KAR-00.6, KAR-01.1, KAR-01.2, KAR-03.1, KAR-03.2, KAR-03.7, KAR-05.4, KAR-05.6, KAR-07.1, KAR-07.5, KAR-09.7, KAR-15.1, KAR-18.1, KAR-18.2, KAR-18.3, KAR-18.5, KAR-18.6                                                                        | Covered |
-| NF7  | Graceful provider degradation                                                  | KAR-05.3, KAR-11.6, KAR-12.2, KAR-14.4                                                                                                                                                                                                                              | Covered |
-| NF8  | Every artifact inspectable on disk in an open format                           | KAR-02.8, KAR-03.2, KAR-03.9, KAR-07.4, KAR-09.2, KAR-09.5, KAR-10.1, KAR-11.1, KAR-11.5, KAR-12.1, KAR-15.1, KAR-15.6, KAR-16.5, KAR-17.5, KAR-18.1, KAR-18.7                                                                                                      | Covered |
+| NF6  | Single-binary-ish install — `npx DeFlow up`, no DB server, no Docker           | KAR-00.2, KAR-00.5, KAR-00.6, KAR-01.1, KAR-01.2, KAR-03.1, KAR-03.2, KAR-03.7, KAR-05.4, KAR-05.6, KAR-07.1, KAR-07.5, KAR-09.7, KAR-15.1, KAR-18.1, KAR-18.2, KAR-18.3, KAR-18.5, KAR-18.6, KAR-18.8, KAR-18.9                                                    | Covered |
+| NF7  | Graceful provider degradation                                                  | KAR-05.3, KAR-11.6, KAR-12.2, KAR-14.4, KAR-18.8                                                                                                                                                                                                                    | Covered |
+| NF8  | Every artifact inspectable on disk in an open format                           | KAR-02.8, KAR-03.2, KAR-03.9, KAR-07.4, KAR-09.2, KAR-09.5, KAR-10.1, KAR-11.1, KAR-11.5, KAR-12.1, KAR-15.1, KAR-15.6, KAR-16.5, KAR-17.5, KAR-18.1, KAR-18.7, KAR-18.9                                                                                            | Covered |
 | NF9  | Deterministic core — no nondeterminism outside adapter boundaries              | KAR-01.2, KAR-01.4, KAR-01.5, KAR-02.7, KAR-02.9, KAR-03.1, KAR-03.5, KAR-03.8, KAR-04.1, KAR-05.1, KAR-06.1, KAR-09.2, KAR-09.8, KAR-11.3, KAR-16.3                                                                                                                | Covered |
 | NF10 | Auditable — any state in the UI traceable to specific ledger events            | KAR-00.3, KAR-01.3, KAR-02.1, KAR-02.7, KAR-02.9, KAR-02.10, KAR-03.3, KAR-03.5, KAR-09.6, KAR-09.8, KAR-10.1, KAR-10.3, KAR-10.4, KAR-11.3, KAR-11.4, KAR-11.5, KAR-13.2, KAR-14.1, KAR-14.2, KAR-15.3, KAR-15.4, KAR-16.2, KAR-16.3, KAR-16.4, KAR-17.3, KAR-18.7 | Covered |
 | AR-1 | DeFlow never possesses a model credential                                      | KAR-00.1, KAR-00.7, KAR-08.4, KAR-08.8, KAR-18.2, KAR-18.4                                                                                                                                                                                                          | Covered |
@@ -447,12 +449,12 @@ Mechanical, both directions, across all 19 epic files and all 19 flow files.
 
 | Check                                                           | Result                                                               |
 | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Every story cites ≥ 1 PRD requirement id                        | **137 / 137 pass**                                                   |
-| Every story declares ≥ 1 `Verified by` scenario                 | **137 / 137 pass**                                                   |
-| Every `Verified by` scenario id exists in that epic's flow file | **684 / 684 references resolve**                                     |
-| Every scenario declares ≥ 1 `Verifies` story                    | **636 / 636 pass**                                                   |
-| Every `Verifies` story id exists in that epic's file            | **684 / 684 references resolve across 636 scenarios**                |
-| Every story is named by ≥ 1 scenario                            | **137 / 137 pass** — no orphan stories                               |
+| Every story cites ≥ 1 PRD requirement id                        | **139 / 139 pass**                                                   |
+| Every story declares ≥ 1 `Verified by` scenario                 | **139 / 139 pass**                                                   |
+| Every `Verified by` scenario id exists in that epic's flow file | **699 / 699 references resolve**                                     |
+| Every scenario declares ≥ 1 `Verifies` story                    | **651 / 651 pass**                                                   |
+| Every `Verifies` story id exists in that epic's file            | **699 / 699 references resolve across 651 scenarios**                |
+| Every story is named by ≥ 1 scenario                            | **139 / 139 pass** — no orphan stories                               |
 | Flow index table matches the scenario bodies in that file       | **19 / 19 files agree on scenario ids and on every `Verifies` cell** |
 | Story `Verified by` ⇄ scenario `Verifies` reciprocity           | **0 breaks** — the three found on the first pass are fixed, below    |
 
@@ -519,7 +521,7 @@ comes from an env var **named from** `.DeFlow/config.yaml`, never stored by DeFl
 
 ### 7.3 Sizing
 
-**No story is sized `XL`.** The split-it rule is holding, and 117 of 137 stories are `M` or smaller.
+**No story is sized `XL`.** The split-it rule is holding, and 119 of 139 stories are `M` or smaller.
 
 Four `L` stories are nonetheless disguised `XL`s on the evidence of their own breadth, and all four are
 on or adjacent to the critical path:
@@ -539,15 +541,15 @@ cut still needs enough specification to cut it _knowingly_.
 
 |                                                      |                                                                                                                                                                                             |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sum of the epics' declared totals                    | **~310 working days**                                                                                                                                                                       |
+| Sum of the epics' declared totals                    | **~316 working days**                                                                                                                                                                       |
 | Longest dependency chain                             | **~228 working days**                                                                                                                                                                       |
-| Epics over the ~15-day solo-builder guidance         | **11 of 19** — EPIC-03 (16), EPIC-05 (28), EPIC-06 (22), EPIC-07 (17), EPIC-09 (21), EPIC-11 (16), EPIC-15 (19), EPIC-16 (20), EPIC-17 (28), EPIC-18 (16), plus EPIC-12 (15) at the ceiling |
+| Epics over the ~15-day solo-builder guidance         | **11 of 19** — EPIC-03 (16), EPIC-05 (28), EPIC-06 (22), EPIC-07 (17), EPIC-09 (21), EPIC-11 (16), EPIC-15 (19), EPIC-16 (20), EPIC-17 (28), EPIC-18 (22), plus EPIC-12 (15) at the ceiling |
 | Of those, how many say so in their own Risks section | **11 of 11**                                                                                                                                                                                |
 
 The per-epic honesty is complete — every over-budget epic declares it and names its reduction levers.
-**What no single epic can say, and the board must, is the total.** 310 days is "working days for one
+**What no single epic can say, and the board must, is the total.** 316 days is "working days for one
 person alongside a job and a degree", and the delivery plan is explicit that these are not ideal
-engineering days. At a realistic sustained rate of 2–3 such days a week, ~310 days is **two to three
+engineering days. At a realistic sustained rate of 2–3 such days a week, ~316 days is **two to three
 calendar years** to M1. At the same rate the critical path alone is ~18 months.
 
 That is not an argument that the plan is wrong — the estimates are individually defensible and the
@@ -560,8 +562,8 @@ that the choice is which of these to take:
 2. **Cut EPIC-14 to KAR-14.1 + KAR-14.2 for M1.** Pre-flight estimation (KAR-14.3) and rate-limit
    scheduling (KAR-14.4) cover F9.3 and P1 F3.9/F9.4; F9.3's P0 half is also cited by KAR-11.2 and
    KAR-11.4. Saves ~5 days off a cross-cutting epic that is not on the critical path.
-3. **Defer the seven `P1` stories out of M1 entirely** — KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6,
-   KAR-15.8, KAR-17.9, KAR-18.7. They total roughly **10–12 days** sitting inside M1 epics for
+3. **Defer the nine `P1` stories out of M1 entirely** — KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6,
+   KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9. They total roughly **15–17 days** sitting inside M1 epics for
    requirements PRD §11 puts in M2. This is the cheapest cut available and it costs nothing in M1's
    definition of done. (KAR-08.8 is the one to think about — auth shadowing is P1 but it is also the
    fastest way to lose a day to a confusing failure.)
@@ -610,12 +612,12 @@ marked "no action" or M2+ in the register itself.
 
 Stated because an audit that only lists problems is not a useful instrument:
 
-- **Traceability is clean.** 683 story→scenario references and 683 scenario→story references resolve,
+- **Traceability is clean.** 698 story→scenario references and 698 scenario→story references resolve,
   with zero orphans in either direction and — after the three one-directional link-rot fixes recorded
   in [§6](#6-traceability-check) — zero reciprocity breaks. That is a better result than most
   maintained backlogs achieve.
-- **Every story cites a PRD requirement.** 137 of 137. No ceremony stories survived.
-- **The scenario density is real.** 635 scenarios for 137 stories — 4.6 per story — and the flow files
+- **Every story cites a PRD requirement.** 139 of 139. No ceremony stories survived.
+- **The scenario density is real.** 650 scenarios for 139 stories — 4.7 per story — and the flow files
   hold to the two-to-four-non-happy-paths-per-happy-path rule rather than padding with happy paths.
 - **Every over-budget epic says it is over budget**, and names specific reduction levers rather than
   hoping. The only budget nobody owns is the total, which is what §7.4 is for.

@@ -1,0 +1,119 @@
+{
+  "status": "fail",
+  "exitCode": 5,
+  "sections": [
+    {
+      "id": "runtime",
+      "title": "Runtime",
+      "status": "warn",
+      "checks": [
+        {
+          "id": "runtime.node",
+          "status": "ok",
+          "detail": "Node 24.3.0 meets the >= 24 floor",
+          "data": {
+            "version": "24.3.0",
+            "major": 24
+          }
+        },
+        {
+          "id": "runtime.pnpm",
+          "status": "warn",
+          "detail": "pnpm is not on PATH. It is the development workflow's package manager; an installed DeFlow runs without it."
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "title": "git",
+      "status": "fail",
+      "checks": [
+        {
+          "id": "git.version",
+          "status": "fail",
+          "detail": "git 2.30.0 is below the 2.38 floor",
+          "data": {
+            "version": "2.30.0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sandboxing",
+      "title": "Sandboxing",
+      "status": "warn",
+      "checks": [
+        {
+          "id": "sandboxing.levels",
+          "status": "warn",
+          "detail": "this platform can honour read",
+          "data": {
+            "honourable": [
+              "read"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "title": "Agents",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "agents.summary",
+          "status": "ok",
+          "detail": "1 installed, 4 not installed"
+        }
+      ]
+    },
+    {
+      "id": "capabilities",
+      "title": "Capabilities",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "capabilities.claude",
+          "status": "ok",
+          "detail": "ResumeBySessionId"
+        }
+      ]
+    },
+    {
+      "id": "conformance",
+      "title": "Conformance",
+      "status": "warn",
+      "checks": [
+        {
+          "id": "conformance.skipped",
+          "status": "warn",
+          "detail": "skipped — no adapter installed."
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "Auth shadowing",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "auth.shadowing",
+          "status": "ok",
+          "detail": "no shadowing variable"
+        }
+      ]
+    },
+    {
+      "id": "memory",
+      "title": "PTY and Memory layer",
+      "status": "ok",
+      "checks": [
+        {
+          "id": "memory.pty",
+          "status": "ok",
+          "detail": "node-pty loaded"
+        }
+      ]
+    }
+  ]
+}

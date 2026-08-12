@@ -108,6 +108,12 @@ export function parseUpArgs(argv: readonly string[]): ParsedUpArgs {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] ?? '';
 
+    // KAR-18.9 AC7 — accepted and *consumed* here, never acted on: the styling
+    // decision is `bin.ts`'s, computed once for the whole process. A parser
+    // that refused this flag would make "--no-color works everywhere" false
+    // for four of the five commands.
+    if (argument === '--no-color') continue;
+
     if (argument === '--timings') {
       timings = true;
       continue;

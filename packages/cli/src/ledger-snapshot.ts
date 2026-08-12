@@ -32,6 +32,8 @@ import { openRead } from '@DeFlow/ledger';
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import process from 'node:process';
+import { type Report, renderReport } from './render/report.ts';
+import { plainStyle, type Style } from './render/style.ts';
 
 /** sysexits(3) `EX_NOINPUT` — the ledger or the run is not there. */
 export const EX_NOINPUT = 66;
@@ -73,6 +75,12 @@ export function parseLedgerArgs(argv: readonly string[]): ParsedLedgerArgs {
 
   for (let index = 0; index < rest.length; index += 1) {
     const argument = rest[index] ?? '';
+    // KAR-18.9 AC7 — accepted and *consumed* here, never acted on: the styling
+    // decision is `bin.ts`'s, computed once for the whole process. A parser
+    // that refused this flag would make "--no-color works everywhere" false
+    // for four of the five commands.
+    if (argument === '--no-color') continue;
+
     if (argument === '--out' || argument.startsWith('--out=')) {
       const value = argument.startsWith('--out=') ? argument.slice('--out='.length) : rest[++index];
       if (value === undefined || value === '') {
@@ -140,20 +148,51 @@ function formatBytes(bytes: number): string {
  * with no query beside it leaves the reader to invent one from a schema they
  * have never seen.
  */
-export function renderSnapshotReport(report: SnapshotReport): string {
-  return [
-    `DeFlow ledger snapshot: wrote ${report.out}`,
-    `  run       ${report.runId} — ${report.runEvents} events`,
-    `  ledger    ${report.runs} runs, ${report.totalEvents} events, ` +
-      `${formatBytes(report.bytes)} (${report.elapsedMs} ms)`,
-    '  one file, no "-wal" or "-shm" sidecar: safe to attach to an issue.',
-    '  inspect it with plain sqlite3, on a machine with no DeFlow at all:',
-    `    sqlite3 ${report.out} \\`,
-    `      "SELECT seq, kind, node_id, attempt FROM event WHERE run_id='${report.runId}' ` +
-      'ORDER BY seq LIMIT 50;"',
-    `    sqlite3 ${report.out} "PRAGMA integrity_check;"`,
-    '',
-  ].join('\n');
+export function toReport(report: SnapshotReport): Report {
+  return {
+    title: `DeFlow ledger snapshot: wrote ${report.out}`,
+    sections: [
+      {
+        title: 'Snapshot',
+        rows: [
+          { id: 'run', state: 'ok', detail: `${report.runId} — ${report.runEvents} events` },
+          {
+            id: 'ledger',
+            state: 'ok',
+            detail:
+              `${report.runs} runs, ${report.totalEvents} events, ` +
+              `${formatBytes(report.bytes)} (${report.elapsedMs} ms)`,
+          },
+          {
+            id: 'attachable',
+            state: 'ok',
+            detail: 'one file, no "-wal" or "-shm" sidecar: safe to attach to an issue.',
+          },
+        ],
+      },
+      {
+        title: 'Inspect it with plain sqlite3, on a machine with no DeFlow at all',
+        rows: [
+          {
+            id: 'events',
+            state: 'ok',
+            detail:
+              `sqlite3 ${report.out} "SELECT seq, kind, node_id, attempt FROM event WHERE ` +
+              `run_id='${report.runId}' ORDER BY seq LIMIT 50;"`,
+          },
+          {
+            id: 'integrity',
+            state: 'ok',
+            detail: `sqlite3 ${report.out} "PRAGMA integrity_check;"`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function renderSnapshotReport(report: SnapshotReport, style: Style = plainStyle()): string {
+  return renderReport(toReport(report), style);
 }
 
 export interface LedgerSnapshotOptions {
@@ -164,6 +203,8 @@ export interface LedgerSnapshotOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Time enters here and nowhere else (NF9) — this is the measured figure. */
   readonly clock?: Clock;
+  /** KAR-18.9 — the styling decision, computed once by `bin.ts`. */
+  readonly style?: Style;
 }
 
 export interface CommandResult {
@@ -237,15 +278,18 @@ export function runLedgerSnapshot(options: LedgerSnapshotOptions): CommandResult
 
     return {
       exitCode: 0,
-      stdout: renderSnapshotReport({
-        out,
-        runId: options.runId,
-        runEvents,
-        totalEvents: totals.events,
-        runs: totals.runs,
-        bytes: statSync(out).size,
-        elapsedMs: clock.now() - startedAt,
-      }),
+      stdout: renderSnapshotReport(
+        {
+          out,
+          runId: options.runId,
+          runEvents,
+          totalEvents: totals.events,
+          runs: totals.runs,
+          bytes: statSync(out).size,
+          elapsedMs: clock.now() - startedAt,
+        },
+        options.style ?? plainStyle(),
+      ),
       stderr: '',
     };
   } catch (error) {

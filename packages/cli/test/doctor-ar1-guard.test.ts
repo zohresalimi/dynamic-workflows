@@ -71,6 +71,19 @@ function spawnedLiterals(source: string): string[] {
   );
 }
 
+suite('the guard covers the code that can spawn (KAR-18.8 AC11)', () => {
+  it('scans the module that runs "npm install -g"', () => {
+    // KAR-18.8 gave `doctor` the ability to spawn a package manager, and both
+    // rules below are only worth anything if they are read over the file that
+    // does it. The scan is a directory walk, so a future move of the install
+    // out of `src/doctor/` would drop it from the guard silently — this is what
+    // turns that into a failing test instead.
+    expect(sourceFiles(DOCTOR_SRC).map((file) => file.replace(DOCTOR_SRC, ''))).toContain(
+      'agent-install.ts',
+    );
+  });
+});
+
 suite('doctor opens no credential file (AR-1)', () => {
   it('names no vendor credential directory anywhere in its code', () => {
     for (const file of sourceFiles(DOCTOR_SRC)) {

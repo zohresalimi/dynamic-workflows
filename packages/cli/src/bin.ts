@@ -29,12 +29,25 @@ import process from 'node:process';
 import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
+import { processStyle } from './render/style.ts';
 import { runRun } from './run/run.ts';
 import { parseStatusArgs, runStatus } from './status.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
 
 /** sysexits(3) `EX_USAGE`, the same code the MCP shim uses for a bad argv. */
 const EX_USAGE = 64;
+
+/**
+ * KAR-18.9 AC7 — the styling decision, computed **once per process** and
+ * passed to every command from here.
+ *
+ * Here and nowhere else: this is the only place that knows whether stdout is a
+ * terminal, how wide it is and what the operator's environment asked for, and
+ * a second call site deriving its own is how one forgotten branch writes an
+ * escape sequence into somebody's log file. `test/render-guard.test.ts` is the
+ * mechanical check that keeps it that way.
+ */
+const STYLE = processStyle(process.argv.slice(2));
 
 /**
  * `../package.json` from this module, which is the right file in both layouts:
@@ -90,6 +103,11 @@ interrupted.
 
 Options for "doctor":
   --json          Emit one machine-readable document instead of the report
+  --fix           Install the missing ACP adapter for every vendor CLI that is
+                  already on your PATH, without asking. Without it, doctor
+                  offers once per provider when stdout is a terminal and
+                  installs nothing otherwise. One package, one attempt, no
+                  retry — and the result is re-checked, not assumed.
   --skip-conformance
                   Skip the F3.4 battery, which spawns a real turn per
                   assertion per installed adapter. The section then reports
@@ -98,6 +116,9 @@ Options for "doctor":
 Options:
   -h, --help      Print this message
   -v, --version   Print the version
+  --no-color      Never emit an ANSI escape, even on a terminal. NO_COLOR in
+                  the environment and TERM=dumb do the same; --json never
+                  colours whatever else is set.
 
 Exit codes for "doctor": 0 when every check is ok or warn, 5 when any check
 fails. Nothing else, so CI can branch on it without a table.
@@ -177,7 +198,8 @@ async function up(argv: readonly string[]): Promise<number> {
  * status model.
  */
 async function doctor(argv: readonly string[]): Promise<number> {
-  const unknown = argv.filter((flag) => flag !== '--json' && flag !== '--skip-conformance');
+  const known = new Set(['--json', '--fix', '--skip-conformance', '--no-color']);
+  const unknown = argv.filter((flag) => !known.has(flag));
   if (unknown.length > 0) {
     process.stderr.write(`DeFlow doctor: unknown option "${unknown[0]}"\n\n${USAGE}`);
     return EX_USAGE;
@@ -187,7 +209,13 @@ async function doctor(argv: readonly string[]): Promise<number> {
     cwd: process.cwd(),
     env: process.env,
     json: argv.includes('--json'),
+    fix: argv.includes('--fix'),
     conformance: !argv.includes('--skip-conformance'),
+    style: STYLE,
+    // Read at call time rather than captured at import, for the same reason
+    // `run`'s `isTty` is: a module-level `process.stdout.isTTY` is evaluated
+    // once, before anything knows whether this process's stdout is a pipe.
+    isTty: () => process.stdout.isTTY === true,
   });
 
   process.stdout.write(result.stdout);
@@ -209,7 +237,7 @@ function status(argv: readonly string[]): number {
     return EX_USAGE;
   }
 
-  const result = runStatus({ env: process.env, json: parsed.args.json });
+  const result = runStatus({ env: process.env, json: parsed.args.json, style: STYLE });
   process.stdout.write(result.stdout);
   return result.exitCode;
 }
@@ -227,6 +255,7 @@ function ledger(argv: readonly string[]): number {
     cwd: process.cwd(),
     runId: parsed.args.runId,
     out: parsed.args.out,
+    style: STYLE,
   });
   if (result.stdout !== '') process.stdout.write(result.stdout);
   if (result.stderr !== '') process.stderr.write(result.stderr);
@@ -262,13 +291,16 @@ async function main(argv: readonly string[]): Promise<number> {
       stdout: (chunk) => process.stdout.write(chunk),
       stderr: (chunk) => process.stderr.write(chunk),
       // Read per line rather than captured here, which is what keeps colour
-      // out of a pipe even when the command was started from a terminal.
+      // out of a pipe even when the command was started from a terminal. The
+      // width and the charset come from STYLE, which does not change under a
+      // live transcript.
       isTty: () => process.stdout.isTTY === true,
+      style: STYLE,
     });
   }
 
   if (command === 'init') {
-    const result = await runInit({ cwd: process.cwd() });
+    const result = await runInit({ cwd: process.cwd(), style: STYLE });
     if (result.stdout !== '') process.stdout.write(result.stdout);
     if (result.stderr !== '') process.stderr.write(result.stderr);
     return result.exitCode;

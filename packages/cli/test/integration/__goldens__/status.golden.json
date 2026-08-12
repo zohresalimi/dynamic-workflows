@@ -1,0 +1,20 @@
+{
+  "status": "running",
+  "dataDir": "/tmp/DeFlow-golden/data",
+  "daemonFile": "/tmp/DeFlow-golden/data/daemon.json",
+  "pid": 4242,
+  "port": 7777,
+  "daemonEpoch": 3,
+  "startedAt": 1754812800000,
+  "uptimeMs": 65000,
+  "runs": [
+    {
+      "runId": "run_20260810T101500Z_c4a5b1",
+      "status": "running",
+      "nodeCounts": {
+        "completed": 2,
+        "running": 1
+      }
+    }
+  ]
+}

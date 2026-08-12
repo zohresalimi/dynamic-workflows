@@ -30,6 +30,9 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
+import { createInterface } from 'node:readline/promises';
+import type { Style } from '../render/style.ts';
+import { installMode } from './agent-install.ts';
 import { type AgentsInput, type AgentsResult, agentChecks } from './agents.ts';
 import { authChecks } from './auth.ts';
 import { gitChecks } from './git.ts';
@@ -85,6 +88,19 @@ export interface DoctorOptions {
   readonly capabilityFixtureDir?: string;
   /** Run the F3.4 battery. Default true. */
   readonly conformance?: boolean;
+  /** KAR-18.8 — install the ACP adapter for every `adapter-missing` provider
+   * without asking. The only way an install happens with no TTY (AC6). */
+  readonly fix?: boolean;
+  /** Whether stdout is a terminal, so an offer can be made at all. An input so
+   * a spec can stage one without a pty. */
+  readonly isTty?: () => boolean;
+  /** Prints one question and reads the answer — the only reader of stdin in
+   * this command, and never called under `--json` or `--fix`. */
+  readonly prompt?: (question: string) => Promise<string>;
+  /** KAR-18.9 AC7 — the styling decision, computed once by `bin.ts` and passed
+   * here. Absent means "no stream said anything", which is no colour and 80
+   * columns. */
+  readonly style?: Style;
 }
 
 export interface DoctorResult {
@@ -97,6 +113,43 @@ export interface DoctorResult {
 
 /** Six lowercase hex characters for the probe session's run id. */
 const randomHex = (): string => randomBytes(3).toString('hex');
+
+/**
+ * One question on `output`, one answer off `input` — and an answer either way
+ * (KAR-18.8 AC4).
+ *
+ * The interface is opened per question and closed again, rather than held for
+ * the length of the command, because `doctor`'s ordinary path never asks
+ * anything — and a readline interface attached to stdin keeps the process alive
+ * whether or not anybody typed into it.
+ *
+ * The `close` race is the part that matters. `Interface#question` on a stream
+ * that ends without ever delivering a line **never settles**, so a machine
+ * whose stdout is a terminal and whose stdin is closed — a `doctor` under a
+ * supervisor, in a job that attached a tty for debugging, or behind a pipe
+ * nobody writes to — would sit at the prompt forever with no way out. Ending
+ * the stream is an answer: it is `''`, and `''` is *no*.
+ */
+export function askOn(
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
+): (question: string) => Promise<string> {
+  return async (question: string): Promise<string> => {
+    const lines = createInterface({ input, output });
+    try {
+      return await new Promise<string>((resolve) => {
+        lines.on('close', () => resolve(''));
+        void lines.question(question).then(resolve, () => resolve(''));
+      });
+    } finally {
+      lines.close();
+    }
+  };
+}
+
+/** The default prompt: the question on stdout, the answer off stdin. */
+const askOnStdin = (question: string): Promise<string> =>
+  askOn(process.stdin, process.stdout)(question);
 
 /** Runs one category, turning a throw into a visible `fail` rather than a
  * stack trace on stderr. */
@@ -118,6 +171,7 @@ async function collect(
               error instanceof Error ? error.message : String(error)
             }. That is a bug in doctor rather than a fact about this machine, and it is reported ` +
             'here rather than thrown so the other categories still answer.',
+          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
         },
       ],
     };
@@ -199,6 +253,14 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
       epoch: epochOrZero(db),
       capabilityFixtureDir: options.capabilityFixtureDir ?? join(dataDir, CAPABILITY_FIXTURE_DIR),
       conformance: options.conformance ?? true,
+      install: {
+        mode: installMode({
+          json: options.json === true,
+          fix: options.fix === true,
+          tty: (options.isTty ?? (() => process.stdout.isTTY === true))(),
+        }),
+        prompt: options.prompt ?? askOnStdin,
+      },
     });
     sections.push(
       { id: 'agents', checks: probed.agents },
@@ -219,7 +281,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
     const report = reduceReport(sections);
     return {
       exitCode: report.exitCode,
-      stdout: options.json === true ? renderJson(report) : renderText(report),
+      stdout: options.json === true ? renderJson(report) : renderText(report, options.style),
       stderr: '',
       report,
     };
@@ -249,10 +311,11 @@ async function agentPass(input: AgentsInput): Promise<AgentsResult> {
     const detail = `the provider pass could not be completed: ${
       error instanceof Error ? error.message : String(error)
     }. Every section it feeds is reported as failed rather than left empty.`;
+    const action = "run 'DeFlow doctor --json' and attach its output to a bug report";
     return {
-      agents: [{ id: 'agents.error', status: 'fail', detail }],
-      capabilities: [{ id: 'capabilities.error', status: 'fail', detail }],
-      conformance: [{ id: 'conformance.error', status: 'fail', detail }],
+      agents: [{ id: 'agents.error', status: 'fail', detail, action }],
+      capabilities: [{ id: 'capabilities.error', status: 'fail', detail, action }],
+      conformance: [{ id: 'conformance.error', status: 'fail', detail, action }],
       loginCommands: new Map(),
     };
   }

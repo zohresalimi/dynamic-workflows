@@ -31,3 +31,6 @@ __screenshots__/
 # repository (packages/daemon/src/http/server.ts). e2e/ui-bootstrap.test.ts
 # writes it and removes it again.
 packages/daemon/src/http/ui/
+.DeFlow/daemon.json
+.DeFlow/wt/
+.DeFlow/runs/

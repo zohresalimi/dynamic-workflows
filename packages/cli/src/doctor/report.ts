@@ -20,6 +20,9 @@
  * a CI job can branch on it without a table.
  */
 
+import { type Report, type ReportState, renderReport } from '../render/report.ts';
+import { plainStyle, type Style } from '../render/style.ts';
+
 /** The only three verdicts a check may carry. `warn` does not fail the run. */
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 
@@ -63,6 +66,26 @@ export interface DoctorCheck {
   /** Structured extras that belong in `--json` but would clutter the text —
    * the resolved binary path, the parsed version, the capability matrix. */
   readonly data?: Readonly<Record<string, unknown>>;
+  /**
+   * KAR-18.9 AC5 — one command to run when *this* check is the worst thing in
+   * the report.
+   *
+   * Presentation, not contract: it is never serialised into `--json`, which is
+   * what keeps AC6 true while AC5's summary block still has something worth
+   * saying. Every check that can be the worst one needs one, and writing them
+   * is the half of this story that actually shortens a diagnosis.
+   */
+  readonly action?: string;
+  /**
+   * KAR-18.9 AC2 — the *rendered* state, when it differs from the verdict.
+   *
+   * `skipped` is a first-class presentation state and is not a verdict: the
+   * conformance battery that could not run is a `warn` to the exit code and a
+   * `skipped` to the eye, and conflating the two would either turn a skip green
+   * or change the exit code CI branches on. Never serialised, for the same
+   * reason `action` is not.
+   */
+  readonly display?: ReportState;
 }
 
 /** What a category hands the reducer. It states no status of its own. */
@@ -105,6 +128,7 @@ function emptySectionCheck(id: DoctorSectionId): DoctorCheck {
       `the ${DOCTOR_SECTION_TITLES[id]} section produced no checks — a category that reports ` +
       'nothing has not passed, it has not run, and this is a bug in doctor itself rather than a ' +
       'fact about this machine',
+    action: "run 'DeFlow doctor --json' and attach its output to a bug report",
   };
 }
 
@@ -133,38 +157,48 @@ export function reduceReport(inputs: readonly DoctorSectionInput[]): DoctorRepor
   return { sections, status, exitCode: status === 'fail' ? DOCTOR_EX_FAIL : 0 };
 }
 
-/** Indents a multi-line reason under its own bullet, so a paragraph does not
- * fall out of the list it belongs to. */
-function indent(detail: string, prefix: string): string {
-  return detail
-    .split('\n')
-    .map((line, index) => (index === 0 ? line : `${prefix}${line}`))
-    .join('\n');
+/**
+ * When the worst check has nothing better to suggest (KAR-18.9 AC5).
+ *
+ * A next action naming no command would be a restatement of the problem, so
+ * this names the one command that turns the report into something attachable
+ * to a bug report — which is genuinely the next thing to do when doctor has
+ * found something none of its own checks knows how to fix.
+ */
+const DOCTOR_FALLBACK_ACTION =
+  "run 'DeFlow doctor --json' and attach its output — the checks above name what is wrong, and " +
+  'the document names it in a form a bug report can carry';
+
+/** The doctor's status model as the presentation layer's model (AC1). */
+export function toReport(report: DoctorReport): Report {
+  return {
+    title: 'DeFlow doctor',
+    state: report.status,
+    exitCode: report.exitCode,
+    fallbackAction: DOCTOR_FALLBACK_ACTION,
+    sections: report.sections.map((section) => ({
+      title: section.title,
+      rows: section.checks.map((check) => ({
+        id: check.id,
+        state: check.display ?? check.status,
+        detail: check.detail,
+        ...(check.action === undefined ? {} : { action: check.action }),
+      })),
+    })),
+  };
 }
 
 /**
- * The human rendering.
+ * The human rendering — now one call into the presentation layer (AC1).
  *
- * No colour and no TTY detection anywhere: the renderer is a pure function of
- * the report, which is what keeps `DeFlow doctor > report.txt` free of escape
- * sequences without a `process.stdout.isTTY` branch that gets evaluated at
- * import time (the failure EPIC-18-S25's note describes).
+ * The styling decision arrives as a `Style` rather than being taken here: a
+ * renderer that consulted `process.stdout.isTTY` itself is how one forgotten
+ * branch writes an escape sequence into somebody's log, and it is the failure
+ * EPIC-18-S25's note describes. `plainStyle()` is the default because a caller
+ * that says nothing about a stream does not have one.
  */
-export function renderText(report: DoctorReport): string {
-  const lines: string[] = ['DeFlow doctor'];
-
-  for (const section of report.sections) {
-    lines.push('', `${section.title} — ${section.status}`);
-    for (const check of section.checks) {
-      lines.push(`  [${check.status}] ${check.id}: ${indent(check.detail, '        ')}`);
-    }
-  }
-
-  // The exit code is printed as well as returned, because the number a human
-  // sees and the number their CI branched on being the same number is the
-  // whole of AC10 and the first thing anyone doubts when they disagree.
-  lines.push('', `overall: ${report.status} — exit ${report.exitCode}`);
-  return `${lines.join('\n')}\n`;
+export function renderText(report: DoctorReport, style: Style = plainStyle()): string {
+  return renderReport(toReport(report), style);
 }
 
 /**

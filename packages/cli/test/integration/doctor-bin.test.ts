@@ -17,12 +17,19 @@
  */
 import { makeRepo, makeTempDir, removeTempDir } from '@DeFlow/testkit';
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
-import { doctorEnv, resolveOnHostPath, writeGitShim } from './support/doctor-fixture.ts';
+import {
+  doctorEnv,
+  fakeBin,
+  resolveOnHostPath,
+  writeFakeNpm,
+  writeGitShim,
+  writeMockAgentShim,
+} from './support/doctor-fixture.ts';
 
 /** The file `dist/bin.mjs` is built from, and the one `npx` runs. */
 const CLI_BIN = fileURLToPath(new URL('../../src/bin.ts', import.meta.url));
@@ -104,6 +111,56 @@ suite('DeFlow doctor through the binary', () => {
     expect(ran.code).toBe(64);
     expect(ran.stderr).toContain('--nope');
   }, 60_000);
+
+  /**
+   * KAR-18.8 EPIC-18-S53 — `--json --fix` with **stdin closed**.
+   *
+   * `doctor-adapter-install.test.ts` drives the same flags through `runDoctor`
+   * with an injected prompt port, which settles what the code decides. What
+   * only a spawned process settles is what happens to a process whose stdin is
+   * `'ignore'`: the failure this guards against is not a wrong answer, it is a
+   * CI job that hangs until the runner's timeout with no output explaining
+   * why, and no in-process spec can go red on it.
+   */
+  it('never reads stdin under --json --fix, even with stdin closed', async () => {
+    const cwd = await workspace('bin-fix');
+    const binDir = join(tmp, 'bin-fix-bin');
+    const npmLog = join(tmp, 'bin-fix-npm.jsonl');
+    const staging = join(tmp, 'bin-fix-staging');
+    await fakeBin(binDir, 'claude');
+    await writeFakeNpm(binDir, {
+      log: npmLog,
+      installs: {
+        [join(binDir, 'claude-agent-acp')]: await writeMockAgentShim(staging, {
+          name: 'claude-agent-acp',
+          version: '0.64.1',
+        }),
+      },
+    });
+    const env = doctorEnv({ dataDir: join(tmp, 'bin-fix-data'), binDirs: [binDir], realGit: true });
+
+    const ran = await runBin(['doctor', '--json', '--fix', '--skip-conformance'], { cwd, env });
+
+    expect(ran.code).toBe(0);
+    const parsed = JSON.parse(ran.stdout) as {
+      exitCode: number;
+      sections: { checks: { id: string; status: string; data?: Record<string, unknown> }[] }[];
+    };
+    const checks = parsed.sections.flatMap((entry) => entry.checks);
+    const install = checks.find((entry) => entry.id === 'agents.claude.install');
+    expect(install?.status).toBe('ok');
+    expect(install?.data?.command).toBe('npm install -g @agentclientprotocol/claude-agent-acp');
+    expect(checks.find((entry) => entry.id === 'agents.claude')?.data?.state).toBe('installed');
+
+    expect(JSON.parse(await readFile(npmLog, 'utf8'))).toEqual([
+      'install',
+      '-g',
+      '@agentclientprotocol/claude-agent-acp',
+    ]);
+    // No ANSI escape anywhere in the machine document.
+    expect(ran.stdout).not.toMatch(/\[/);
+    expect(parsed.exitCode).toBe(0);
+  }, 120_000);
 
   it('advertises doctor in its usage', async () => {
     const cwd = await workspace('bin-help');

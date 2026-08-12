@@ -64,6 +64,16 @@ import {
 } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  type AdapterInstallResult,
+  type AgentInstallState,
+  type InstallMode,
+  offerAdapterInstalls,
+  type ProviderResolution,
+  type ProviderVerdict,
+  providerVerdict,
+  resolveProviderStates,
+} from './agent-install.ts';
 import type { DoctorCheck } from './report.ts';
 
 /** Where the goldens are refreshed from, named in every drift warning (AC7). */
@@ -91,6 +101,12 @@ export interface AgentsInput {
   readonly capabilityFixtureDir: string;
   /** Run the F3.4 battery. Off makes `doctor` fast and says it did not test. */
   readonly conformance: boolean;
+  /** KAR-18.8 — whether an `adapter-missing` provider may be offered a fix,
+   * and how the operator is asked. */
+  readonly install: {
+    readonly mode: InstallMode;
+    readonly prompt: (question: string) => Promise<string>;
+  };
 }
 
 export interface AgentsResult {
@@ -120,9 +136,18 @@ async function sha256File(path: string): Promise<string> {
 
 const short = (sha: string): string => sha.slice(0, 12);
 
-/** Every provider the registry knows, with the command that installs it. */
-function installHints(): string {
+/**
+ * Every provider the registry knows, with the command that installs it —
+ * except the ones whose vendor CLI is already here.
+ *
+ * The exclusion is KAR-18.8 AC2. Listing `claude: npm install -g …` under "0
+ * installed" for an operator who is *running* `claude` is the same wrong
+ * instruction the story exists to delete, one line further down the report;
+ * those providers get their own line naming what is actually missing instead.
+ */
+function installHints(skip: ReadonlySet<string>): string {
   return Object.values(PROVIDER_SPECS)
+    .filter((spec) => !skip.has(spec.id))
     .map((spec) => `  ${spec.id}: npm install -g ${spec.package}`)
     .join('\n');
 }
@@ -130,17 +155,50 @@ function installHints(): string {
 const usable = (entry: ProviderDetectionEntry): boolean =>
   entry.status === 'detected' || entry.status === 'cached';
 
+/** What the bundled fallbacks give an operator with no vendor CLI at all. */
+const NO_VENDOR_FALLBACK =
+  '  The bundled mock agent runs a whole plan with no vendor CLI, and ' +
+  '"DeFlow replay <fixture>" serves a recorded run over the same HTTP contract the UI ' +
+  'speaks to a live daemon, so development and replay work regardless.';
+
 /** The summary line, and — when nothing is installed — what to do about it. */
-function summaryCheck(entries: readonly ProviderDetectionEntry[]): DoctorCheck {
+function summaryCheck(
+  entries: readonly ProviderDetectionEntry[],
+  resolutions: readonly ProviderResolution[],
+): DoctorCheck {
   const installed = entries.filter(usable);
+  const adapterMissing = resolutions.filter((entry) => entry.state === 'adapter-missing');
+  const named = adapterMissing.map((entry) => entry.provider).join(', ');
+  const skip = new Set(adapterMissing.map((entry) => entry.provider));
+  const data = { installed: installed.length, adapterMissing: adapterMissing.length };
+
   if (installed.length > 0) {
     return {
       id: 'agents.summary',
       status: 'ok',
-      detail: `${installed.length} installed: ${installed
-        .map((entry) => entry.provider)
-        .join(', ')}`,
-      data: { installed: installed.length },
+      detail:
+        `${installed.length} installed: ${installed.map((entry) => entry.provider).join(', ')}` +
+        (adapterMissing.length === 0
+          ? ''
+          : `. ${adapterMissing.length} more vendor CLI(s) are installed here without their ACP ` +
+            `adapter: ${named} — see below.`),
+      data,
+    };
+  }
+
+  if (adapterMissing.length > 0) {
+    return {
+      id: 'agents.summary',
+      status: 'ok',
+      detail: [
+        `0 with a working ACP adapter — but ${adapterMissing.length} vendor CLI(s) are installed ` +
+          `here: ${named}. DeFlow spawns the ACP adapter, not the vendor CLI, and it is the ` +
+          'adapter that is missing; the per-provider line below names it and the command that ' +
+          'installs it. The rest are not installed at all:',
+        installHints(skip),
+        NO_VENDOR_FALLBACK,
+      ].join('\n'),
+      data,
     };
   }
 
@@ -149,12 +207,35 @@ function summaryCheck(entries: readonly ProviderDetectionEntry[]): DoctorCheck {
     status: 'ok',
     detail: [
       '0 installed — which is not a failure. Install any one of these:',
-      installHints(),
-      '  The bundled mock agent runs a whole plan with no vendor CLI, and ' +
-        '"DeFlow replay <fixture>" serves a recorded run over the same HTTP contract the UI ' +
-        'speaks to a live daemon, so development and replay work regardless.',
+      installHints(skip),
+      NO_VENDOR_FALLBACK,
     ].join('\n'),
-    data: { installed: 0 },
+    data,
+  };
+}
+
+/**
+ * KAR-18.8 AC1, AC2 — a provider DeFlow cannot spawn, and why.
+ *
+ * The sentence and the status are `providerVerdict`'s, not this function's, so
+ * the invariant behind the whole story — "is not installed" never co-occurs
+ * with a resolved vendor-CLI path — is decided in one pure place and asserted
+ * over the whole registry as a table, rather than re-read here by eye.
+ */
+function resolutionCheck(resolution: ProviderResolution, verdict: ProviderVerdict): DoctorCheck {
+  return {
+    id: `agents.${resolution.provider}`,
+    status: verdict.status,
+    detail: verdict.detail,
+    ...(verdict.action === undefined ? {} : { action: verdict.action }),
+    data: {
+      provider: resolution.provider,
+      state: verdict.state,
+      vendorBin: resolution.vendorBin,
+      vendorPath: resolution.vendorPath,
+      adapterBin: resolution.adapterBin,
+      package: resolution.package,
+    },
   };
 }
 
@@ -163,16 +244,26 @@ function installedCheck(
   entry: ProviderDetectionEntry,
   sha: string | null,
   row: CapabilityRow | undefined,
+  verdict: ProviderVerdict | undefined,
 ): DoctorCheck {
+  // The leading sentence is the reducer's whenever the reducer agrees this is
+  // installed. It can disagree — a cached probe whose binary has since been
+  // removed resolves to nothing — and in that case the entry's own path is the
+  // honest thing to print rather than a sentence about a state it is not in.
+  const lead =
+    verdict?.state === 'installed'
+      ? verdict.detail
+      : `${entry.provider} resolves at ${entry.binaryPath}.`;
+
   return {
     id: `agents.${entry.provider}`,
     status: 'ok',
     detail:
-      `${entry.provider} ${entry.version ?? '(no version reported)'} at ${entry.binaryPath} ` +
-      `(sha256 ${sha === null ? 'unreadable' : short(sha)}) — the absolute path DeFlowd would ` +
-      "spawn, resolved now rather than looked up on the daemon's own PATH later.",
+      `${entry.provider} ${entry.version ?? '(no version reported)'}, sha256 ` +
+      `${sha === null ? 'unreadable' : short(sha)} — ${lead}`,
     data: {
       provider: entry.provider,
+      state: verdict?.state ?? 'not-installed',
       binaryPath: entry.binaryPath,
       version: entry.version,
       sha256: sha,
@@ -213,6 +304,7 @@ function driftCheck(
       `${installed.version} sha256 ${short(installed.sha256)}. Recordings are keyed on the exact ` +
       `agent version, so refresh the goldens with "${RECORD_COMMAND}" before trusting a replay ` +
       'against them.',
+    action: RECORD_COMMAND,
     data: {
       drift: [...drift],
       recorded: { version: recorded.version, sha256: recorded.binarySha256 },
@@ -374,6 +466,7 @@ async function capabilityCheck(
       `${head} Conformance-relevant change against the recorded baseline ${baseline.file} — ` +
       `adapter ${provider}, ${named}. Re-run the F3.4 battery and refresh the goldens with ` +
       `"${RECORD_COMMAND}" before trusting a recording made against the old answer.`,
+    action: RECORD_COMMAND,
     data: {
       matrix,
       reasons,
@@ -411,6 +504,13 @@ function conformanceChecks(report: ProviderDoctorReport): readonly DoctorCheck[]
             : `Failed: ${failed
                 .map((result) => `#${result.assertion} ${result.name} (${result.detail})`)
                 .join('; ')}`),
+        ...(failed.length === 0
+          ? {}
+          : {
+              action:
+                `re-run 'DeFlow doctor' after updating ${entry.provider}, and route around it ` +
+                "with 'provider:' in .DeFlow/config.yaml until the assertions pass",
+            }),
         data: { passed, failed: failed.length, skipped: skipped.length },
       };
     });
@@ -424,6 +524,9 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       detail:
         'not checked: the global state directory could not be opened, and the capability ' +
         'manifest lives in it — see the Runtime section.',
+      action:
+        "fix the global state directory named in the Runtime section, then run 'DeFlow doctor' " +
+        'again',
     });
     return {
       loginCommands: new Map(),
@@ -443,6 +546,21 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       { ...row, provider: ProviderIdSchema.parse(row.provider) } as CapabilityRow,
     ]),
   );
+
+  // KAR-18.8 — resolve both binaries per provider, offer the missing adapters,
+  // and do it *before* detection. Detection is what probes, and AC9 wants the
+  // Capabilities and Conformance sections to describe the adapter that exists
+  // when doctor finishes rather than the machine as it was when it started.
+  const offered: AdapterInstallResult = await offerAdapterInstalls({
+    resolutions: resolveProviderStates(input.roots),
+    mode: input.install.mode,
+    prompt: input.install.prompt,
+    roots: input.roots,
+    clock: input.clock,
+    dataDir: input.dataDir,
+    env: input.env,
+  });
+  const stateOf = new Map(offered.resolutions.map((entry) => [entry.provider, entry]));
 
   const scratchDir = join(input.dataDir, PROBE_SCRATCH);
   let entries: readonly ProviderDetectionEntry[];
@@ -471,18 +589,34 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
     rmSync(scratchDir, { recursive: true, force: true });
   }
 
-  const agents: DoctorCheck[] = [summaryCheck(entries)];
+  const agents: DoctorCheck[] = [summaryCheck(entries, offered.resolutions)];
   const capabilities: DoctorCheck[] = [];
   const loginCommands = new Map<string, readonly string[]>();
 
   for (const entry of entries) {
+    const resolution = stateOf.get(entry.provider);
+    const verdict = resolution === undefined ? undefined : providerVerdict(resolution);
+    const state: AgentInstallState = verdict?.state ?? 'not-installed';
+    // The install attempt, or the decline, sits directly under the provider it
+    // was made for — appended after whichever branch below writes that line.
+    const attempted = offered.checks.get(entry.provider);
+
     if (!usable(entry) || entry.binaryPath === null) {
-      agents.push({
-        id: `agents.${entry.provider}`,
-        status: 'ok',
-        detail: entry.detail,
-        data: { provider: entry.provider, status: entry.status },
-      });
+      agents.push(
+        // AC1, AC2 — the sentence and the status come from the two resolutions,
+        // so "not installed" is printed only for a vendor CLI that did not
+        // resolve. A probe that ran and failed keeps `detectProviders`' own
+        // diagnostic, because no resolution can reconstruct it.
+        verdict !== undefined && resolution !== undefined && verdict.state !== 'installed'
+          ? resolutionCheck(resolution, verdict)
+          : {
+              id: `agents.${entry.provider}`,
+              status: 'ok',
+              detail: entry.detail,
+              data: { provider: entry.provider, state, status: entry.status },
+            },
+      );
+      if (attempted !== undefined) agents.push(attempted);
       continue;
     }
 
@@ -499,7 +633,8 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       .filter((row) => sha === null || row.binarySha256 === sha)
       .toSorted((a, b) => b.probedAt - a.probedAt)[0];
 
-    agents.push(installedCheck(entry, sha, probed));
+    agents.push(installedCheck(entry, sha, probed, verdict));
+    if (attempted !== undefined) agents.push(attempted);
 
     const previously = recorded.get(entry.provider);
     if (previously !== undefined && sha !== null && entry.version !== null) {
@@ -530,6 +665,8 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         'no matrix could be generated: no adapter answered an ACP initialize on this machine, ' +
         'and the matrix is derived from live responses rather than read from a constant (AR-5). ' +
         'Install a vendor CLI and run doctor again.',
+      action:
+        "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
     });
   }
 
@@ -545,10 +682,16 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
           // "skipped", never "passed": a green doctor on a machine where
           // nothing was tested is how a broken adapter reaches a three-hour run.
           status: 'warn',
+          // KAR-18.9 AC2 — the verdict stays `warn` so the exit code and the
+          // `--json` document do not move; the eye is told `skipped`, which is
+          // what this check has said in prose since KAR-18.4.
+          display: 'skipped',
           detail:
             'skipped — no adapter installed. The F3.4 battery asserts what an installed vendor ' +
             'CLI actually does, and there is nothing here to assert it against. This is not a ' +
             'pass.',
+          action:
+            "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
         },
       ],
     };
@@ -563,9 +706,11 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         {
           id: 'conformance.skipped',
           status: 'warn',
+          display: 'skipped',
           detail:
             'skipped — --skip-conformance was passed. The battery spawns a real turn per ' +
             'assertion per adapter; nothing below was tested, which is not the same as passing.',
+          action: "run 'DeFlow doctor' without --skip-conformance to actually test the adapters",
         },
       ],
     };
@@ -594,6 +739,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
                 detail:
                   'the battery produced no adapter report: every installed binary failed to ' +
                   're-probe. See the Agents section for which one and why.',
+                action: "fix the adapter named in the Agents section, then run 'DeFlow doctor'",
               },
             ],
     };
@@ -610,6 +756,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'the F3.4 battery could not be run: ' +
             `${error instanceof Error ? error.message : String(error)}. Nothing below was ` +
             'tested, which is not the same as passing.',
+          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
         },
       ],
     };

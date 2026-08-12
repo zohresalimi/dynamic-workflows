@@ -193,6 +193,54 @@ lines.on('close', () => process.exit(0));
   );
 }
 
+export interface FakeNpmOptions {
+  /** One JSON array of argv per invocation, appended. */
+  readonly log: string;
+  /** What a successful install puts on `PATH`: destination path ← source path. */
+  readonly installs?: Readonly<Record<string, string>>;
+  /** Exit non-zero with this on stderr instead of installing anything. */
+  readonly failure?: { readonly exitCode: number; readonly stderr: string };
+}
+
+/**
+ * An `npm` that records what it was asked to do (KAR-18.8).
+ *
+ * A real executable on the temp `PATH` rather than a mocked module, because
+ * every assertion around it is about a *child process*: that none was spawned
+ * when the offer was declined, that exactly one was spawned when the install
+ * failed, that the argv was `install -g <one package>` and nothing wider.
+ * Asserting "we did not call spawn" would be asserting about the caller; an
+ * empty log written by the callee is the same claim made from the other side.
+ *
+ * It writes a `package-lock.json` into its own working directory on success, so
+ * "no lockfile in the operator's repository" (AC11) is a fact about where the
+ * install ran rather than a fact about npm's own behaviour.
+ */
+export async function writeFakeNpm(binDir: string, options: FakeNpmOptions): Promise<string> {
+  await mkdir(binDir, { recursive: true });
+  return writeExecutable(
+    join(binDir, 'npm'),
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+fs.appendFileSync(${JSON.stringify(options.log)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+
+const failure = ${JSON.stringify(options.failure ?? null)};
+if (failure !== null) {
+  process.stderr.write(failure.stderr);
+  process.exit(failure.exitCode);
+}
+
+fs.writeFileSync(path.join(process.cwd(), 'package-lock.json'), '{"lockfileVersion":3}\\n');
+for (const [dest, src] of Object.entries(${JSON.stringify(options.installs ?? {})})) {
+  fs.copyFileSync(src, dest);
+  fs.chmodSync(dest, 0o755);
+}
+process.exit(0);
+`,
+  );
+}
+
 /** A binary that exists and does nothing — presence on `PATH` is the assertion. */
 export async function fakeBin(binDir: string, name: string): Promise<string> {
   await mkdir(binDir, { recursive: true });
