@@ -227,6 +227,7 @@ function resolutionCheck(resolution: ProviderResolution, verdict: ProviderVerdic
     id: `agents.${resolution.provider}`,
     status: verdict.status,
     detail: verdict.detail,
+    ...(verdict.action === undefined ? {} : { action: verdict.action }),
     data: {
       provider: resolution.provider,
       state: verdict.state,
@@ -303,6 +304,7 @@ function driftCheck(
       `${installed.version} sha256 ${short(installed.sha256)}. Recordings are keyed on the exact ` +
       `agent version, so refresh the goldens with "${RECORD_COMMAND}" before trusting a replay ` +
       'against them.',
+    action: RECORD_COMMAND,
     data: {
       drift: [...drift],
       recorded: { version: recorded.version, sha256: recorded.binarySha256 },
@@ -464,6 +466,7 @@ async function capabilityCheck(
       `${head} Conformance-relevant change against the recorded baseline ${baseline.file} — ` +
       `adapter ${provider}, ${named}. Re-run the F3.4 battery and refresh the goldens with ` +
       `"${RECORD_COMMAND}" before trusting a recording made against the old answer.`,
+    action: RECORD_COMMAND,
     data: {
       matrix,
       reasons,
@@ -501,6 +504,13 @@ function conformanceChecks(report: ProviderDoctorReport): readonly DoctorCheck[]
             : `Failed: ${failed
                 .map((result) => `#${result.assertion} ${result.name} (${result.detail})`)
                 .join('; ')}`),
+        ...(failed.length === 0
+          ? {}
+          : {
+              action:
+                `re-run 'DeFlow doctor' after updating ${entry.provider}, and route around it ` +
+                "with 'provider:' in .DeFlow/config.yaml until the assertions pass",
+            }),
         data: { passed, failed: failed.length, skipped: skipped.length },
       };
     });
@@ -514,6 +524,9 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       detail:
         'not checked: the global state directory could not be opened, and the capability ' +
         'manifest lives in it — see the Runtime section.',
+      action:
+        "fix the global state directory named in the Runtime section, then run 'DeFlow doctor' " +
+        'again',
     });
     return {
       loginCommands: new Map(),
@@ -652,6 +665,8 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         'no matrix could be generated: no adapter answered an ACP initialize on this machine, ' +
         'and the matrix is derived from live responses rather than read from a constant (AR-5). ' +
         'Install a vendor CLI and run doctor again.',
+      action:
+        "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
     });
   }
 
@@ -667,10 +682,16 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
           // "skipped", never "passed": a green doctor on a machine where
           // nothing was tested is how a broken adapter reaches a three-hour run.
           status: 'warn',
+          // KAR-18.9 AC2 — the verdict stays `warn` so the exit code and the
+          // `--json` document do not move; the eye is told `skipped`, which is
+          // what this check has said in prose since KAR-18.4.
+          display: 'skipped',
           detail:
             'skipped — no adapter installed. The F3.4 battery asserts what an installed vendor ' +
             'CLI actually does, and there is nothing here to assert it against. This is not a ' +
             'pass.',
+          action:
+            "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
         },
       ],
     };
@@ -685,9 +706,11 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         {
           id: 'conformance.skipped',
           status: 'warn',
+          display: 'skipped',
           detail:
             'skipped — --skip-conformance was passed. The battery spawns a real turn per ' +
             'assertion per adapter; nothing below was tested, which is not the same as passing.',
+          action: "run 'DeFlow doctor' without --skip-conformance to actually test the adapters",
         },
       ],
     };
@@ -716,6 +739,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
                 detail:
                   'the battery produced no adapter report: every installed binary failed to ' +
                   're-probe. See the Agents section for which one and why.',
+                action: "fix the adapter named in the Agents section, then run 'DeFlow doctor'",
               },
             ],
     };
@@ -732,6 +756,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'the F3.4 battery could not be run: ' +
             `${error instanceof Error ? error.message : String(error)}. Nothing below was ` +
             'tested, which is not the same as passing.',
+          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
         },
       ],
     };

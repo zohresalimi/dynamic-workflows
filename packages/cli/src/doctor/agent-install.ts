@@ -121,6 +121,9 @@ export interface ProviderVerdict {
   readonly state: AgentInstallState;
   readonly status: 'ok' | 'warn';
   readonly detail: string;
+  /** KAR-18.9 AC5 — the one command to run when this provider is the worst
+   * thing in the report. Absent for `installed`, which needs nothing. */
+  readonly action?: string;
 }
 
 /**
@@ -162,6 +165,7 @@ export function providerVerdict(resolution: ProviderResolution): ProviderVerdict
         `"${resolution.adapterBin}", which comes from ${resolution.package}, and nothing on PATH ` +
         `resolves it. Install it with "${installCommand(resolution.package)}", or re-run ` +
         '"DeFlow doctor --fix" and answer yes.',
+      action: `${installCommand(resolution.package)} (or run 'DeFlow doctor --fix')`,
     };
   }
 
@@ -182,6 +186,10 @@ export function providerVerdict(resolution: ProviderResolution): ProviderVerdict
     detail:
       `${resolution.provider} is not installed here: no executable "${resolution.vendorBin}" was ` +
       `found on PATH — ${next}`,
+    action:
+      resolution.kind === 'native'
+        ? installCommand(resolution.package)
+        : `install "${resolution.vendorBin}", then ${installCommand(resolution.package)}`,
   };
 }
 

@@ -16,6 +16,8 @@ import {
   NotAGitWorkingTree,
   systemClock,
 } from '@DeFlow/daemon';
+import { type Report, type ReportState, renderReport } from './render/report.ts';
+import { plainStyle, type Style } from './render/style.ts';
 
 export interface InitCommandOptions {
   /** The directory the operator ran `DeFlow init` from. */
@@ -24,6 +26,8 @@ export interface InitCommandOptions {
    * both come from here. */
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
+  /** KAR-18.9 — the styling decision, computed once by `bin.ts`. */
+  readonly style?: Style;
 }
 
 export interface InitCommandResult {
@@ -32,23 +36,66 @@ export interface InitCommandResult {
   readonly stderr: string;
 }
 
-function renderPaths(paths: InitReport['paths']): string {
-  return paths.map((path) => `  ${path.relativePath}  ${path.status}`).join('\n');
-}
+/**
+ * A path's disposition as a state (KAR-18.9 AC2).
+ *
+ * All four are `ok`, and that is the honest reading: `init` is idempotent by
+ * design, so *"this was already here and I did not touch it"* is a success and
+ * colouring it as anything else would train an operator to ignore the section.
+ */
+const PATH_STATES: Readonly<Record<InitReport['paths'][number]['status'], ReportState>> = {
+  created: 'ok',
+  unchanged: 'ok',
+  updated: 'ok',
+  'kept (edited)': 'ok',
+};
 
-function renderProviders(providers: InitReport['providers']): string {
-  if (providers.length === 0) return '  (no providers registered)';
-  return providers.map((provider) => `  ${provider.provider}: ${provider.detail}`).join('\n');
-}
+/** A provider's detection result as a state. Nothing here is a failure: a
+ * machine with no agent CLI is one `init` completes on (KAR-18.1 AC6). */
+const PROVIDER_STATES: Readonly<Record<string, ReportState>> = {
+  detected: 'ok',
+  cached: 'ok',
+  'not-installed': 'skipped',
+  'probe-failed': 'warn',
+};
 
-function renderReport(report: InitReport): string {
-  return (
-    `DeFlow init: workspace ready at ${report.repoRoot}\n` +
-    `${renderPaths(report.paths)}\n` +
-    `global state directory: ${report.dataDir}\n` +
-    'providers:\n' +
-    `${renderProviders(report.providers)}\n`
-  );
+/** `init`'s own report, as the presentation layer's model (KAR-18.9 AC1). */
+export function toReport(report: InitReport): Report {
+  return {
+    title: `DeFlow init: workspace ready at ${report.repoRoot}`,
+    fallbackAction: "run 'DeFlow doctor' for what this machine can and cannot do",
+    sections: [
+      {
+        title: 'Workspace',
+        rows: report.paths.map((path) => ({
+          id: path.relativePath,
+          state: PATH_STATES[path.status],
+          detail: path.status,
+        })),
+      },
+      {
+        title: 'Global state directory',
+        rows: [{ id: 'data dir', state: 'ok', detail: report.dataDir }],
+      },
+      {
+        title: 'Providers',
+        rows:
+          report.providers.length === 0
+            ? [
+                {
+                  id: 'providers',
+                  state: 'skipped',
+                  detail: 'no providers are registered in this build',
+                },
+              ]
+            : report.providers.map((provider) => ({
+                id: provider.provider,
+                state: PROVIDER_STATES[provider.status] ?? 'warn',
+                detail: provider.detail,
+              })),
+      },
+    ],
+  };
 }
 
 /**
@@ -62,7 +109,11 @@ export async function runInit(options: InitCommandOptions): Promise<InitCommandR
 
   try {
     const report = await initWorkspace(options.cwd, { clock, env });
-    return { exitCode: 0, stdout: renderReport(report), stderr: '' };
+    return {
+      exitCode: 0,
+      stdout: renderReport(toReport(report), options.style ?? plainStyle()),
+      stderr: '',
+    };
   } catch (error) {
     if (error instanceof NotAGitWorkingTree || error instanceof DataDirUnwritable) {
       return { exitCode: INIT_EX_REFUSED, stdout: '', stderr: `${error.message}\n` };

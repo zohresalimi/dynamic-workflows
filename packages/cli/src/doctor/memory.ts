@@ -59,6 +59,10 @@ function ptyCheck(loaded: unknown): DoctorCheck {
         'to a no-TTY spawn over plain pipes, and the terminal capability is not advertised to ' +
         'agents, so a run completes with terminal-dependent behaviour absent rather than ' +
         'failing. No agent needs a TTY — ACP is a pipe protocol for all five measured vendors.',
+      // Nothing to install: the module is an optionalDependency and this
+      // platform is one it has no prebuild for. The action is to confirm the
+      // degradation is acceptable, which is a decision rather than a command,
+      // so this check names none and the summary falls back.
       data: { loaded: false },
     };
   }
@@ -82,6 +86,9 @@ function ftsCheck(db: Db): DoctorCheck {
       detail:
         'FTS5 is not available: this SQLite build was not compiled with ENABLE_FTS5, so F6.7 ' +
         'artifact retrieval cannot run. better-sqlite3 bundles FTS5; a system SQLite may not.',
+      action:
+        "reinstall DeFlow so it uses its own bundled better-sqlite3 ('npm install -g DeFlow'), " +
+        'rather than a system SQLite built without ENABLE_FTS5',
       data: { fts5: false },
     };
   }
@@ -92,6 +99,7 @@ function ftsCheck(db: Db): DoctorCheck {
       detail:
         'FTS5 is available, but artifact_fts does not exist yet — run the ledger migrations ' +
         '(KAR-09.10, migration 0012) before relying on retrieval.',
+      action: "run 'DeFlow up' once — it runs the pending ledger migrations at boot",
       data: { fts5: true, table: false },
     };
   }
@@ -106,6 +114,9 @@ function ftsCheck(db: Db): DoctorCheck {
         `documented setting ${ARTIFACT_FTS_TOKENIZE} — recall on snake_case, kebab-case and ` +
         'dotted identifiers is degraded until the table is dropped and rebuilt. The tokenizer ' +
         'cannot be changed in place.',
+      action:
+        "run 'DeFlow ledger snapshot <runId> --out <path>' to keep a copy, then drop and rebuild " +
+        'artifact_fts — the tokenizer cannot be changed in place',
       data: { fts5: true, table: true, tokenize },
     };
   }
@@ -168,6 +179,8 @@ function secretlintCheck(): DoctorCheck {
       'exported artifacts and transcripts are not scanned for provider credentials yet. The ' +
       'controls that do apply today are the child-environment allowlist and the credential-path ' +
       'denies in the sandbox policy.',
+    // Deliberately no action: nothing an operator can run turns F5.9 on, and
+    // inventing one would send them looking for a flag that does not exist.
     data: { rules: 0 },
   };
 }
@@ -190,6 +203,9 @@ export function memoryChecks(input: MemoryInput): readonly DoctorCheck[] {
         'the ledger could not be opened, so FTS5, the artifact_fts tokenizer and the token ' +
         'calibration could not be read — see the Runtime section for why the global state ' +
         'directory is unusable.',
+      action:
+        'fix the global state directory named in the Runtime section, then run ' +
+        "'DeFlow doctor' again",
     });
   } else {
     checks.push(ftsCheck(input.db), calibrationCheck(input.db));

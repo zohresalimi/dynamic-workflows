@@ -67,9 +67,16 @@ suite('the report a snapshot prints (AC2)', () => {
     expect(report).toContain('/tmp/DeFlow-bug-1234.db');
     expect(report).toContain('run_20260810T090000Z_9f31ab');
     expect(report).toContain('18');
-    expect(report).toContain(
-      "SELECT seq, kind, node_id, attempt FROM event WHERE run_id='run_20260810T090000Z_9f31ab' " +
-        'ORDER BY seq LIMIT 50;',
+    // KAR-18.9 wraps a detail to the terminal's width, and this query is far
+    // wider than 80 columns — so the assertion is that the whole one-liner is
+    // handed over, modulo the line breaks the presentation layer inserts. The
+    // query itself is unchanged, which is what AC2 is about.
+    const flat = (text: string): string => text.replaceAll(/\s+/g, ' ');
+    expect(flat(report)).toContain(
+      flat(
+        "SELECT seq, kind, node_id, attempt FROM event WHERE run_id='run_20260810T090000Z_9f31ab' " +
+          'ORDER BY seq LIMIT 50;',
+      ),
     );
     expect(report).toContain('PRAGMA integrity_check;');
     // The snapshot is the whole ledger, and saying so is the difference between

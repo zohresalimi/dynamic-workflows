@@ -36,6 +36,7 @@ import { initialRunState, RunIdSchema, reduce } from '@DeFlow/core';
 import { checkGitVersion, EX_ALREADY_RUNNING, resolveDataDir, systemClock } from '@DeFlow/daemon';
 import process from 'node:process';
 import { createRun, type FollowRunResult, followRun, RunTaskRejected } from '../index.ts';
+import type { Style } from '../render/style.ts';
 import type { RunArgs } from './args.ts';
 import { parseRunArgs } from './args.ts';
 import { cancelRun } from './cancel.ts';
@@ -60,6 +61,9 @@ export interface RunCommandOptions {
   readonly stderr: (chunk: string) => void;
   /** Consulted per rendered line, never captured (AC7). */
   readonly isTty: () => boolean;
+  /** KAR-18.9 — the width and charset half of the styling decision, computed
+   * once by `bin.ts`. Absent means 80 columns and no colour. */
+  readonly style?: Style;
   /** Time enters here and nowhere else (NF9) — the wall-clock total. */
   readonly clock?: Clock;
   /**
@@ -213,6 +217,7 @@ async function execute(
     mode: args.json ? 'json' : 'human',
     isTty: options.isTty,
     runId,
+    ...(options.style === undefined ? {} : { style: options.style }),
   });
   if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
 

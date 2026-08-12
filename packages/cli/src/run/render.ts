@@ -21,6 +21,9 @@
  * stdout, where a person is looking.
  */
 import type { Event, RunId } from '@DeFlow/core';
+import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../render/glyphs.ts';
+import { wrapDetail } from '../render/layout.ts';
+import { createStyle, type Style, type StyleColour } from '../render/style.ts';
 import type { RunVerdict } from './exit-codes.ts';
 
 /** Money as the rollup carries it: four cells, any of them `null`, never
@@ -52,22 +55,26 @@ export interface RunRenderer {
 
 export interface RendererOptions {
   readonly mode: 'human' | 'json';
-  /** Consulted per line. Never captured. */
+  /**
+   * Consulted per line. Never captured.
+   *
+   * KAR-18.9 moved every escape sequence and every glyph into
+   * `src/render/`, but not this: `run` is a *live transcript*, and AC7's
+   * once-per-process decision is about a report that is rendered in one go.
+   * A renderer whose stream can change under it — which is what
+   * `./render.test.ts` flips mid-run to prove — asks each time.
+   */
   readonly isTty: () => boolean;
   readonly runId: RunId;
+  /**
+   * The width and charset half of the decision, which does *not* change under
+   * a live renderer. `bin.ts` passes the process's own; a caller that says
+   * nothing gets 80 columns and whatever the locale established.
+   */
+  readonly style?: Style;
 }
 
-// ── colour ───────────────────────────────────────────────────────────────────
-
-const CODES = {
-  dim: '\u001B[2m',
-  red: '\u001B[31m',
-  green: '\u001B[32m',
-  yellow: '\u001B[33m',
-  reset: '\u001B[0m',
-} as const;
-
-type Colour = keyof Omit<typeof CODES, 'reset'>;
+type Colour = StyleColour;
 
 // ── the human transcript ─────────────────────────────────────────────────────
 
@@ -99,11 +106,14 @@ export function formatCost(cost: RenderedCost): string {
 const NODE_COLUMN = 22;
 
 interface Line {
-  readonly glyph: string;
+  readonly glyph: TranscriptGlyph;
   readonly colour: Colour | null;
   readonly subject: string;
   readonly status: string;
   readonly detail: string;
+  /** A detail assembled from parts, joined with the charset's own separator
+   * rather than with a literal this file would have to spell. */
+  readonly parts?: readonly string[];
 }
 
 /** What this event says in a transcript, or `null` for one a transcript is
@@ -112,7 +122,7 @@ function humanLine(event: Event): Line | null {
   switch (event.kind) {
     case 'task.submitted':
       return {
-        glyph: '·',
+        glyph: 'note',
         colour: 'dim',
         subject: 'task',
         status: 'submitted',
@@ -120,22 +130,23 @@ function humanLine(event: Event): Line | null {
       };
 
     case 'run.created':
-      return { glyph: '·', colour: 'dim', subject: 'run', status: 'created', detail: '' };
+      return { glyph: 'note', colour: 'dim', subject: 'run', status: 'created', detail: '' };
 
     case 'node.scheduled':
       return {
-        glyph: '◦',
+        glyph: 'pending',
         colour: 'dim',
         subject: event.payload.node,
         status: 'scheduled',
-        detail: [event.payload.provider, event.payload.permission, event.payload.worktree]
-          .filter((part) => part !== undefined && part !== '')
-          .join(' · '),
+        parts: [event.payload.provider, event.payload.permission, event.payload.worktree].filter(
+          (part): part is string => part !== undefined && part !== '',
+        ),
+        detail: '',
       };
 
     case 'node.started':
       return {
-        glyph: '▸',
+        glyph: 'active',
         colour: null,
         subject: event.payload.node,
         status: 'started',
@@ -144,7 +155,7 @@ function humanLine(event: Event): Line | null {
 
     case 'node.completed':
       return {
-        glyph: '✓',
+        glyph: 'done',
         colour: 'green',
         subject: event.payload.node,
         status: 'completed',
@@ -153,7 +164,7 @@ function humanLine(event: Event): Line | null {
 
     case 'node.failed':
       return {
-        glyph: '✗',
+        glyph: 'gone',
         colour: 'red',
         subject: event.payload.node,
         status: 'failed',
@@ -162,7 +173,7 @@ function humanLine(event: Event): Line | null {
 
     case 'gate.evaluated':
       return {
-        glyph: event.payload.verdict.outcome === 'pass' ? '✓' : '✗',
+        glyph: event.payload.verdict.outcome === 'pass' ? 'done' : 'gone',
         colour: event.payload.verdict.outcome === 'pass' ? 'green' : 'red',
         subject: event.payload.gate,
         status: `gate ${event.payload.verdict.outcome}`,
@@ -171,7 +182,7 @@ function humanLine(event: Event): Line | null {
 
     case 'human.requested':
       return {
-        glyph: '?',
+        glyph: 'asking',
         colour: 'yellow',
         subject: event.payload.node,
         status: 'asking',
@@ -180,7 +191,7 @@ function humanLine(event: Event): Line | null {
 
     case 'run.paused':
       return {
-        glyph: '‖',
+        glyph: 'paused',
         colour: 'yellow',
         subject: 'run',
         status: 'paused',
@@ -189,7 +200,7 @@ function humanLine(event: Event): Line | null {
 
     case 'run.needs_human':
       return {
-        glyph: '?',
+        glyph: 'asking',
         colour: 'yellow',
         subject: 'run',
         status: 'needs a human',
@@ -199,7 +210,7 @@ function humanLine(event: Event): Line | null {
     case 'run.completed':
     case 'run.aborted':
       return {
-        glyph: event.kind === 'run.completed' ? '✓' : '✗',
+        glyph: event.kind === 'run.completed' ? 'done' : 'gone',
         colour: event.kind === 'run.completed' ? 'green' : 'red',
         subject: 'run',
         status: event.kind === 'run.completed' ? 'completed' : 'aborted',
@@ -213,9 +224,25 @@ function humanLine(event: Event): Line | null {
 
 // ── the renderers ────────────────────────────────────────────────────────────
 
+/** The painter, and only the painter: a style whose sole job is to hold the
+ * escape sequences, so this file never spells one. */
+const ANSI = createStyle({ isTty: true, env: { TERM: 'xterm' } });
+
 export function createRenderer(options: RendererOptions): RunRenderer {
+  // The layout half of the decision, taken once: neither the width nor the
+  // charset changes while a run is being watched.
+  const layout = options.style ?? createStyle({ isTty: false, env: {} });
+  const glyphs: Readonly<Record<TranscriptGlyph, string>> = TRANSCRIPT_GLYPHS[layout.charset];
+
+  // The colour half, asked per line — @see RendererOptions.isTty. Two gates,
+  // and they answer different questions: `layout.colour` is whether this
+  // *environment* permits colour at all (`NO_COLOR`, `TERM=dumb`, `--json`,
+  // `--no-color`), decided once by `bin.ts`; `isTty()` is whether the stream is
+  // a terminal *right now*. Painting itself is still `src/render/`'s — this
+  // file spells no escape sequence of its own.
+  const permitted = options.style === undefined || options.style.colour;
   const paint = (text: string, colour: Colour | null): string =>
-    colour === null || !options.isTty() ? text : `${CODES[colour]}${text}${CODES.reset}`;
+    colour === null || !permitted || !options.isTty() ? text : ANSI.paint(text, colour);
 
   if (options.mode === 'json') {
     return {
@@ -238,16 +265,39 @@ export function createRenderer(options: RendererOptions): RunRenderer {
     event(event) {
       const line = humanLine(event);
       if (line === null) return '';
-      const head = `${line.glyph} ${line.subject}`.padEnd(NODE_COLUMN);
-      const tail = line.detail === '' ? '' : `  ${paint(line.detail, 'dim')}`;
-      return `${paint(`${head}${line.status}`, line.colour)}${tail}\n`;
+      const head = `${glyphs[line.glyph]} ${line.subject}`.padEnd(NODE_COLUMN);
+      const painted = paint(`${head}${line.status}`, line.colour);
+      const detailText =
+        line.parts === undefined ? line.detail : line.parts.join(PART_SEPARATORS[layout.charset]);
+      if (detailText === '') return `${painted}\n`;
+
+      // KAR-18.9 AC4 — a detail that would run off the edge wraps under itself
+      // rather than off it, and a worktree path stays one token an operator can
+      // copy. The column is where the detail starts, so a continuation line
+      // reads as part of the event above it.
+      const column = head.length + line.status.length + 2;
+      const detail = wrapDetail(detailText, { width: layout.width, indent: column });
+      const tail = detail
+        .map((part, index) => (index === 0 ? `  ${paint(part, 'dim')}` : paint(part, 'dim')))
+        .join('\n');
+      return `${painted}${tail}\n`;
     },
     final(verdict, totals) {
       const colour: Colour = verdict.exitCode === 0 ? 'green' : 'red';
+      const totalsLine = `(${formatCost(totals.costUsd)}, ${formatDuration(totals.wallclockMs)})`;
+      const head = `run ${options.runId} ${verdict.reason}`;
+      // One line when it fits, wrapped when it does not — the totals belong
+      // beside the verdict, and a verdict that runs off the edge is the last
+      // line of a run nobody can read.
+      if (head.length + 2 + totalsLine.length <= layout.width) {
+        return { stdout: `${paint(head, colour)}  ${paint(totalsLine, 'dim')}\n`, stderr: '' };
+      }
+      const wrapped = wrapDetail(head, { width: layout.width, indent: 2 });
       return {
-        stdout:
-          `${paint(`run ${options.runId} ${verdict.reason}`, colour)}  ` +
-          `${paint(`(${formatCost(totals.costUsd)}, ${formatDuration(totals.wallclockMs)})`, 'dim')}\n`,
+        stdout: `${wrapped.map((line) => paint(line, colour)).join('\n')}\n${paint(
+          totalsLine,
+          'dim',
+        )}\n`,
         stderr: '',
       };
     },

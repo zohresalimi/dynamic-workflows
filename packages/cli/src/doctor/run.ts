@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
+import type { Style } from '../render/style.ts';
 import { installMode } from './agent-install.ts';
 import { type AgentsInput, type AgentsResult, agentChecks } from './agents.ts';
 import { authChecks } from './auth.ts';
@@ -96,6 +97,10 @@ export interface DoctorOptions {
   /** Prints one question and reads the answer — the only reader of stdin in
    * this command, and never called under `--json` or `--fix`. */
   readonly prompt?: (question: string) => Promise<string>;
+  /** KAR-18.9 AC7 — the styling decision, computed once by `bin.ts` and passed
+   * here. Absent means "no stream said anything", which is no colour and 80
+   * columns. */
+  readonly style?: Style;
 }
 
 export interface DoctorResult {
@@ -166,6 +171,7 @@ async function collect(
               error instanceof Error ? error.message : String(error)
             }. That is a bug in doctor rather than a fact about this machine, and it is reported ` +
             'here rather than thrown so the other categories still answer.',
+          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
         },
       ],
     };
@@ -275,7 +281,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorResult> {
     const report = reduceReport(sections);
     return {
       exitCode: report.exitCode,
-      stdout: options.json === true ? renderJson(report) : renderText(report),
+      stdout: options.json === true ? renderJson(report) : renderText(report, options.style),
       stderr: '',
       report,
     };
@@ -305,10 +311,11 @@ async function agentPass(input: AgentsInput): Promise<AgentsResult> {
     const detail = `the provider pass could not be completed: ${
       error instanceof Error ? error.message : String(error)
     }. Every section it feeds is reported as failed rather than left empty.`;
+    const action = "run 'DeFlow doctor --json' and attach its output to a bug report";
     return {
-      agents: [{ id: 'agents.error', status: 'fail', detail }],
-      capabilities: [{ id: 'capabilities.error', status: 'fail', detail }],
-      conformance: [{ id: 'conformance.error', status: 'fail', detail }],
+      agents: [{ id: 'agents.error', status: 'fail', detail, action }],
+      capabilities: [{ id: 'capabilities.error', status: 'fail', detail, action }],
+      conformance: [{ id: 'conformance.error', status: 'fail', detail, action }],
       loginCommands: new Map(),
     };
   }

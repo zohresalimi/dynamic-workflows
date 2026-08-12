@@ -59,6 +59,7 @@ export function authChecks(input: AuthInput): readonly DoctorCheck[] {
       id: `auth.shadowing.${row.provider}`,
       status: 'warn',
       detail: `${row.detail} ${STRIPPED_AT_RUN_START} Effective auth mode: ${row.effectiveMode}.`,
+      action: `unset ${row.variable} in the shell you run DeFlow from, if you meant to use the subscription`,
       data: { provider: row.provider, variable: row.variable, effectiveMode: row.effectiveMode },
     });
   }
@@ -72,6 +73,7 @@ export function authChecks(input: AuthInput): readonly DoctorCheck[] {
       detail:
         `${provider} reported that it is not authenticated. Run this yourself — DeFlow prints ` +
         `it and never executes it (AR-1): ${commands.join(' ; ')}`,
+      action: commands.join(' ; '),
       data: { provider, commands: [...commands] },
     });
   }

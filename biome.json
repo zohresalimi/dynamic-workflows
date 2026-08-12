@@ -11,6 +11,7 @@
       "**",
       "!.claude/**",
       "!**/__snapshots__/**",
+      "!**/__goldens__/**",
       "!schemas/**",
       "!**/test/fixtures/runs/**"
     ]

@@ -148,6 +148,10 @@ export function sandboxChecks(input: SandboxInput): readonly DoctorCheck[] {
       detail:
         `honourable permission levels on this machine: ${assessment.honourable.join(', ')}. ` +
         reason(input, assessment),
+      // KAR-18.9 AC5 — the packages are the fix on every degraded Linux ladder,
+      // and on a platform with no sandbox at all there is nothing to run, so
+      // the action is left off and the summary falls back.
+      ...(degraded && assessment.missing.length > 0 ? { action: SANDBOX_INSTALL_HINT } : {}),
       data: {
         platform: input.platform,
         honourable: [...assessment.honourable],

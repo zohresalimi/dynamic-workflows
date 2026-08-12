@@ -1,0 +1,3 @@
+{"seq":1,"runId":"run_20260810T101500Z_c4a5b1","ts":1754812800000,"epoch":1,"kind":"task.submitted","v":1,"payload":{"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","raw":"add a health endpoint","provenance":{"kind":"text","by":"cli","submittedAt":1754812800000}}}
+{"seq":2,"runId":"run_20260810T101500Z_c4a5b1","ts":1754812800000,"epoch":1,"nodeId":"impl","kind":"node.scheduled","v":1,"payload":{"node":"impl","provider":"claude","permission":"worktree","worktree":"DeFlow/run_20260810T101500Z_c4a5b1__impl"}}
+{"seq":3,"runId":"run_20260810T101500Z_c4a5b1","ts":1754812800000,"epoch":1,"kind":"run.completed","v":1,"payload":{"outcome":"succeeded","criteriaSatisfied":[]}}

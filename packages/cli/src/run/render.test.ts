@@ -106,11 +106,27 @@ const STREAM: readonly Event[] = [
 const renderAll = (renderer: ReturnType<typeof createRenderer>): string =>
   STREAM.map((e) => renderer.event(e)).join('');
 
+/**
+ * The lines that open an event, without the ones that continue it.
+ *
+ * KAR-18.9 gave the transcript AC4's wrapping, so a long detail now runs onto
+ * an indented continuation line instead of off the edge of the terminal. That
+ * makes "one line per event" false and leaves the claim these specs make —
+ * *the human renderer never sees an event the machine one did not* — a claim
+ * about **events**, which is what it always meant. A continuation line is
+ * indented; an event line begins with its glyph.
+ */
+const eventLines = (text: string): string[] =>
+  text
+    .split('\n')
+    .filter(Boolean)
+    .filter((line) => !line.startsWith(' '));
+
 suite('the human transcript (AC7, EPIC-18-S18)', () => {
   it('shows each node through scheduled → started → completed, with its branch', () => {
     const text = renderAll(createRenderer({ mode: 'human', isTty: () => false, runId: RUN }));
 
-    const impl = text.split('\n').filter((line) => line.includes('impl'));
+    const impl = eventLines(text).filter((line) => line.includes('impl'));
     // `<glyph> <node> <status> …` — the status is the third column.
     expect(impl.map((line) => line.trim().split(/\s+/)[2])).toEqual([
       'scheduled',
@@ -230,6 +246,6 @@ suite('one stream, two renderings (AC7)', () => {
     // log — but it may never see an event the machine one did not, and every
     // event it renders must name its own node.
     expect(seqs).toEqual(STREAM.map((e) => e.seq));
-    expect(renderAll(human).split('\n').filter(Boolean).length).toBeLessThanOrEqual(seqs.length);
+    expect(eventLines(renderAll(human)).length).toBeLessThanOrEqual(seqs.length);
   });
 });

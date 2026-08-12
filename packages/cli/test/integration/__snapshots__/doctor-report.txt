@@ -1,0 +1,34 @@
+DeFlow doctor
+
+Runtime
+  runtime.node           ✓ ok  Node 24.3.0 meets the >= 24 floor
+  runtime.workspace-dir  ✓ ok  the repo-local .DeFlow/ directory is writable
+  runtime.state-dir      ✓ ok  the global state directory is writable:
+                               <tmp>/state/DeFlow
+
+git
+  git.version  ✓ ok  git 2.51.0
+
+Sandboxing
+  sandboxing.levels  ! warn  this platform can honour read only: bubblewrap is
+                             not on PATH, so worktree, worktree+net and full
+                             cannot be entered and every node asking for one
+                             will refuse to start rather than run unsandboxed.
+
+Agents
+  agents.summary  ✓ ok  1 installed
+
+Capabilities
+  capabilities.claude  ✓ ok  ResumeBySessionId
+
+Conformance
+  conformance.claude  ✓ ok  9 passed, 0 failed, 0 skipped
+
+Auth shadowing
+  auth.shadowing  ✓ ok  no shadowing variable
+
+PTY and Memory layer
+  memory.pty  ✓ ok  node-pty loaded
+
+next: sudo apt install bubblewrap socat
+overall: ! warn — 9 ok, 1 warn, 0 fail, 0 skipped — exit 0

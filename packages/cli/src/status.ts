@@ -42,6 +42,8 @@ import { listRunIds, openRead, readEpoch, replayRun } from '@DeFlow/ledger';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
+import { type Report, type ReportSection, renderReport } from './render/report.ts';
+import { plainStyle, type Style } from './render/style.ts';
 
 /** What `DeFlow status`'s flags mean, once parsed. */
 export interface StatusArgs {
@@ -59,6 +61,12 @@ export type ParsedStatusArgs =
 export function parseStatusArgs(argv: readonly string[]): ParsedStatusArgs {
   let json = false;
   for (const argument of argv) {
+    // KAR-18.9 AC7 — accepted and *consumed* here, never acted on: the styling
+    // decision is `bin.ts`'s, computed once for the whole process. A parser
+    // that refused this flag would make "--no-color works everywhere" false
+    // for four of the five commands.
+    if (argument === '--no-color') continue;
+
     if (argument === '--json') {
       json = true;
       continue;
@@ -286,75 +294,125 @@ function renderNodeCounts(counts: Readonly<Partial<Record<NodeStatus, number>>>)
   return parts.length === 0 ? 'no nodes yet' : parts.join(', ');
 }
 
-const LABEL = 14;
-const field = (name: string, value: string): string => `  ${name.padEnd(LABEL)}${value}`;
+/** Why a stale record is stale, as the sentence an operator reads. */
+function staleDetail(status: StaleStatus): string {
+  if (status.reason === 'unreadable') {
+    return `${status.daemonFile} is not a daemon.json this build can read`;
+  }
+  if (status.reason === 'pid-gone') {
+    return `${status.daemonFile} records pid ${status.pid}, and no such process is running`;
+  }
+  if (status.reason === 'pid-recycled') {
+    return (
+      `${status.daemonFile} records pid ${status.pid}, but that pid now belongs to a different ` +
+      `process — recorded start time ${JSON.stringify(status.recordedStartTime)}, the OS ` +
+      `reports ${JSON.stringify(status.observedStartTime)}`
+    );
+  }
+  return `${status.daemonFile} records pid ${status.pid} with no start time, so it cannot be verified`;
+}
 
-/** The report an operator reads. @see renderStatusJson for the same values. */
-export function renderStatusText(status: DaemonStatus): string {
+/** The runs section, which exists even when it is empty — a heading with
+ * nothing under it reads as "I did not look" (KAR-18.4 AC1's rule, here too). */
+function runsSection(status: RunningStatus): ReportSection {
+  if (status.ledgerError !== null) {
+    return {
+      title: 'Runs',
+      rows: [
+        {
+          id: 'ledger',
+          state: 'warn',
+          detail: `the ledger could not be read: ${status.ledgerError}`,
+          action: `run 'DeFlow doctor' — it reports why ${status.dataDir} cannot be read`,
+        },
+      ],
+    };
+  }
+  if (status.runs.length === 0) {
+    return { title: 'Runs', rows: [{ id: 'runs', state: 'ok', detail: 'no active runs' }] };
+  }
+  return {
+    title: 'Runs',
+    rows: status.runs.map((run) => ({
+      id: run.runId,
+      state: 'ok' as const,
+      detail: `${run.status} — ${renderNodeCounts(run.nodeCounts)}`,
+    })),
+  };
+}
+
+/** `status`'s three answers, as the presentation layer's model (KAR-18.9 AC1). */
+export function toReport(status: DaemonStatus): Report {
   if (status.kind === 'none') {
-    return [
-      'DeFlow status: no daemon is running',
-      `  there is no ${status.daemonFile}`,
-      "  run 'DeFlow up' to start one",
-      '',
-    ].join('\n');
+    return {
+      title: 'DeFlow status',
+      sections: [
+        {
+          title: 'Daemon',
+          rows: [
+            {
+              id: 'daemon',
+              state: 'skipped',
+              detail: `no daemon is running: there is no ${status.daemonFile}`,
+              action: "run 'DeFlow up' to start one",
+            },
+          ],
+        },
+      ],
+    };
   }
 
   if (status.kind === 'stale') {
-    const lines = ['DeFlow status: stale'];
-    if (status.reason === 'unreadable') {
-      lines.push(`  ${status.daemonFile} is not a daemon.json this build can read`);
-    } else if (status.reason === 'pid-gone') {
-      lines.push(
-        `  ${status.daemonFile} records pid ${status.pid}, and no such process is running`,
-      );
-    } else if (status.reason === 'pid-recycled') {
-      lines.push(
-        `  ${status.daemonFile} records pid ${status.pid}, but that pid now belongs to a ` +
-          'different process',
-        `  recorded start time ${JSON.stringify(status.recordedStartTime)}, the OS reports ` +
-          `${JSON.stringify(status.observedStartTime)}`,
-      );
-    } else {
-      lines.push(
-        `  ${status.daemonFile} records pid ${status.pid} with no start time, so it cannot be ` +
-          'verified',
-      );
-    }
-    lines.push(
-      '  no signal was sent to that pid, and none should be',
-      "  run 'DeFlow up' — it will take over cleanly",
-      '',
-    );
-    return lines.join('\n');
+    return {
+      title: 'DeFlow status',
+      sections: [
+        {
+          title: 'Daemon',
+          rows: [
+            {
+              id: 'daemon',
+              state: 'warn',
+              detail: `stale — ${staleDetail(status)}`,
+              action: "run 'DeFlow up' — it will take over cleanly",
+            },
+            {
+              id: 'signal',
+              state: 'ok',
+              detail: 'no signal was sent to that pid, and none should be',
+            },
+          ],
+        },
+      ],
+    };
   }
 
-  const lines = [
-    'DeFlow status: running',
-    field('pid', String(status.pid)),
-    field('port', String(status.port)),
-    field('daemon_epoch', status.epoch === null ? 'unknown' : String(status.epoch)),
-    field('uptime', formatUptime(status.uptimeMs)),
-    field('data dir', status.dataDir),
-    field('url', `http://127.0.0.1:${status.port}`),
-  ];
+  return {
+    title: 'DeFlow status',
+    sections: [
+      {
+        title: 'Daemon',
+        rows: [
+          { id: 'state', state: 'ok', detail: 'running' },
+          { id: 'pid', state: 'ok', detail: String(status.pid) },
+          { id: 'port', state: 'ok', detail: String(status.port) },
+          {
+            id: 'daemon_epoch',
+            state: 'ok',
+            detail: status.epoch === null ? 'unknown' : String(status.epoch),
+          },
+          { id: 'uptime', state: 'ok', detail: formatUptime(status.uptimeMs) },
+          { id: 'data dir', state: 'ok', detail: status.dataDir },
+          { id: 'url', state: 'ok', detail: `http://127.0.0.1:${status.port}` },
+        ],
+      },
+      runsSection(status),
+    ],
+  };
+}
 
-  if (status.ledgerError !== null) {
-    lines.push(`  the ledger could not be read: ${status.ledgerError}`);
-  } else if (status.runs.length === 0) {
-    lines.push('  no active runs');
-  } else {
-    lines.push(`  ${status.runs.length} active run${status.runs.length === 1 ? '' : 's'}`);
-    const width = Math.max(...status.runs.map((run) => run.status.length));
-    for (const run of status.runs) {
-      lines.push(
-        `    ${run.runId}  ${run.status.padEnd(width)}  ${renderNodeCounts(run.nodeCounts)}`,
-      );
-    }
-  }
-
-  lines.push('');
-  return lines.join('\n');
+/** The report an operator reads. @see renderStatusJson for the same values. */
+export function renderStatusText(status: DaemonStatus, style: Style = plainStyle()): string {
+  return renderReport(toReport(status), style);
 }
 
 /** The same values as `renderStatusText`, in one document (AC3). */
@@ -400,11 +458,16 @@ export interface StatusResult {
 }
 
 /** `DeFlow status` — the whole command, minus the process it runs in. */
-export function runStatus(options: StatusOptions & { readonly json?: boolean } = {}): StatusResult {
+export function runStatus(
+  options: StatusOptions & { readonly json?: boolean; readonly style?: Style } = {},
+): StatusResult {
   const status = readStatus(options);
   return {
     exitCode: 0,
-    stdout: options.json === true ? renderStatusJson(status) : renderStatusText(status),
+    stdout:
+      options.json === true
+        ? renderStatusJson(status)
+        : renderStatusText(status, options.style ?? plainStyle()),
     stderr: '',
   };
 }
