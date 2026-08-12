@@ -89,7 +89,7 @@ Background:
 | EPIC-18-S37 | Happy path: one build, one tarball, UI assets as plain files                           | KAR-18.5           | Happy path  |
 | EPIC-18-S38 | `@DeFlow/*` inlined, `@lydell/node-pty` external                                       | KAR-18.5           | Edge case   |
 | EPIC-18-S39 | `publint` and `attw` gate the release                                                  | KAR-18.5           | Failure     |
-| EPIC-18-S40 | **A `paths` alias: green in dev, broken in the tarball, no warning**                   | KAR-18.5           | Failure     |
+| EPIC-18-S40 | **A `paths` alias: survives emit, breaks in the tarball**                              | KAR-18.5           | Failure     |
 | EPIC-18-S41 | A deep cross-package import breaks the published resolution                            | KAR-18.5           | Failure     |
 | EPIC-18-S42 | **Happy path: the real tarball installed into a clean temp directory and run**         | KAR-18.6           | Happy path  |
 | EPIC-18-S43 | **A missing `files` entry drops `dist/ui/` and serves a blank page**                   | KAR-18.6           | Failure     |
@@ -1238,7 +1238,7 @@ not a gate. This is the same rule as "the red must be observed", applied to a re
 
 ---
 
-## EPIC-18-S40 — A `paths` alias: green in dev, broken in the tarball, no warning
+## EPIC-18-S40 — A `paths` alias: survives emit, breaks in the tarball
 
 **Verifies:** KAR-18.5 · **Type:** Failure · **Automated at:** integration
 
@@ -1247,12 +1247,19 @@ Feature: packaging
 
   Scenario: the single most expensive mistake available in this layout
     Given a "paths" alias mapping "@/*" to "src/*" in a tsconfig
-    And a source file importing "@/patch.ts"
-    When "pnpm dev" runs
-    Then the daemon starts and the import resolves, because the .ts file genuinely exists
-    When the package is built and installed from the tarball
-    Then the published bundle still contains the specifier "@/patch.ts"
-    And the installed CLI fails at runtime with a module-not-found error
+    And a source file importing "@/patch.ts" beside a relative import of "./helper.ts"
+    When the project is compiled
+    Then "./helper.ts" is rewritten to "./helper.js" in the emitted JavaScript
+    But the emitted JavaScript still contains the specifier "@/patch.ts" verbatim
+    And running the emitted JavaScript fails with ERR_MODULE_NOT_FOUND
+
+  Scenario: the compiler objects, but the release build never asks it to
+    Given the same aliased import
+    When "tsc" compiles it
+    Then it reports TS2877, because the alias is not a relative path and will not be rewritten
+    And the same alias spelled "@/patch" reports TS2307 instead, because nodenext needs the extension
+    But "tsc" emits the broken file regardless, having no "noEmitOnError"
+    And "pnpm build" is tsdown, which does not typecheck at all
 
   Scenario: the guard that stops it reaching a release
     When the config guard test runs
@@ -1261,10 +1268,18 @@ Feature: packaging
         through aliases (microsoft/TypeScript#61991)
 ```
 
-**Notes:** the whole hazard is that **development works**. `rewriteRelativeImportExtensions` rewrites
-relative `.ts` specifiers to `.js` on emit but does not follow a `paths` alias, so the alias survives
-into the emitted JavaScript. There is no warning at build time and no failure until a user installs
-the package. A cheap config test is the only defence that runs before a release.
+**Notes:** `rewriteRelativeImportExtensions` rewrites relative `.ts` specifiers to `.js` on emit but
+does not follow a `paths` alias, so the alias survives into the emitted JavaScript and dies at
+runtime under Node, which has no idea what `@/` means.
+
+> **Amended 2026-08-12 on the EPIC-18 gate.** This scenario was written as "green in dev, broken in
+> the tarball, **no warning**", and the last clause does not survive contact with TypeScript 6.0.3:
+> `test/integration/paths-alias-hazard.test.ts` measures TS2877 for `@/patch.ts` and TS2307 for
+> `@/patch`, so the compiler is a real second line of defence and the title's "no warning" has been
+> dropped. What is unchanged is why the guard earns its keep: `tsc` emits the broken file anyway,
+> and the release build is `tsdown`, which never typechecks — so a `paths` alias still reaches a
+> tarball without anything in `pnpm build` objecting. The config test is the defence that runs on
+> the path a release actually takes.
 
 ---
 
