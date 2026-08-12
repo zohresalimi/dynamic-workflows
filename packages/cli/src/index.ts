@@ -1,11 +1,14 @@
 /**
  * DeFlow — the only package published to npm.
  *
- * `bin`, `files` and the tsdown config that inlines every @DeFlow/* package
- * (noExternal: [/^@DeFlow\//], external: ["@lydell/node-pty"]) arrive with
- * EPIC-18. Declaring bins before dist/ exists would make `pnpm install` link
- * paths that are not there yet, so they are deliberately absent from the
- * scaffold.
+ * KAR-18.5 landed the packaging: `bin`, `files`, and `tsdown.config.ts`, which
+ * inlines every @DeFlow/* package (`deps.alwaysBundle: [/^@DeFlow\//]`) and
+ * leaves exactly two native runtime dependencies external. This module is the
+ * package's `.` export inside the workspace and the fourth build entry; the
+ * three bins beside it are `src/bin.ts`, `src/mcp.ts` and `src/mock-agent.ts`.
+ * On a clean checkout `pnpm install` warns that it cannot link the bins,
+ * because `dist/` does not exist until `pnpm build` runs — expected, and
+ * documented in docs/03-local-development.md §13.
  *
  * KAR-10.1 adds `runTask`, the body of `DeFlow run "…"` (docs/11 §7.1) — ahead
  * of the argv parser and the `bin` entry EPIC-18 wires up, because the ACs it
@@ -31,6 +34,69 @@ import {
   hydrateRun,
   type StreamConnection,
 } from '@DeFlow/web';
+
+// KAR-18.4 — `DeFlow doctor`. Like `init`, it is not a client of the daemon's
+// HTTP API: it answers questions about the machine the daemon would run on,
+// and most of them have to be answerable when no daemon can start at all.
+export type {
+  CheckStatus,
+  DoctorCheck,
+  DoctorReport,
+  DoctorSection,
+  DoctorSectionId,
+} from './doctor/report.ts';
+export {
+  DOCTOR_EX_FAIL,
+  DOCTOR_SECTION_IDS,
+  DOCTOR_SECTION_TITLES,
+  reduceReport,
+  renderJson,
+  renderText,
+} from './doctor/report.ts';
+export type { DoctorOptions, DoctorResult } from './doctor/run.ts';
+export { runDoctor } from './doctor/run.ts';
+// KAR-18.1 — `DeFlow init`. Unlike `runTask`/`approveSpec` below, it is not a
+// client of the daemon's HTTP API: there is nothing running yet to be a
+// client of. It calls straight into `@DeFlow/daemon`'s `initWorkspace`.
+export type { InitCommandOptions, InitCommandResult } from './init.ts';
+export { runInit } from './init.ts';
+// KAR-18.7 — the two diagnostics. Neither is a client of the daemon's HTTP
+// API either: `status` has to answer when the daemon is *dead*, and a snapshot
+// is taken with a read-only SQLite connection while it keeps serving.
+export type {
+  CommandResult,
+  LedgerSnapshotOptions,
+  ParsedLedgerArgs,
+  SnapshotArgs,
+  SnapshotReport,
+} from './ledger-snapshot.ts';
+export {
+  EX_CANTCREAT,
+  EX_NOINPUT,
+  parseLedgerArgs,
+  renderSnapshotReport,
+  runLedgerSnapshot,
+} from './ledger-snapshot.ts';
+export type {
+  ActiveRun,
+  DaemonStatus,
+  NoStatus,
+  RunningStatus,
+  StaleReason,
+  StaleStatus,
+  StatusArgs,
+  StatusOptions,
+  StatusResult,
+} from './status.ts';
+export {
+  classifyDaemonFile,
+  formatUptime,
+  parseStatusArgs,
+  readStatus,
+  renderStatusJson,
+  renderStatusText,
+  runStatus,
+} from './status.ts';
 
 export interface RunTaskOptions {
   /** The daemon's own origin, e.g. `http://127.0.0.1:4173` — never assumed. */
@@ -122,10 +188,29 @@ function isEnvelope(body: unknown): body is Envelope {
  * the `task.submitted` event the daemon appends (../../daemon/src/http/api.ts).
  */
 export async function runTask(text: string, options: RunTaskOptions): Promise<RunTaskResult> {
+  return createRun({ kind: 'text', text }, options);
+}
+
+/**
+ * KAR-18.3 AC8 — the same submission, over all three of F1.1's wire shapes.
+ *
+ * `runTask` above is this function with the `text` shape spelled out, kept
+ * because it is what KAR-10.1's specs and `DeFlow run "…"` read like. Adding a
+ * second poster for `--file` and `--issue` would have been the drift AC7 exists
+ * to prevent, so there is one, and the four operator-facing sources collapse
+ * onto the three wire kinds in `./run/args.ts` where the argv is parsed.
+ */
+export async function createRun(
+  input:
+    | { readonly kind: 'text'; readonly text: string }
+    | { readonly kind: 'file'; readonly path: string }
+    | { readonly kind: 'issue'; readonly url: string },
+  options: RunTaskOptions,
+): Promise<RunTaskResult> {
   const response = await clientFor(options.baseUrl, options.token).runs.$post(
     {
       json: {
-        input: { kind: 'text', text },
+        input,
         cwd: options.cwd,
         permission: options.permission ?? 'worktree',
         ...(options.budget === undefined ? {} : { budget: options.budget }),

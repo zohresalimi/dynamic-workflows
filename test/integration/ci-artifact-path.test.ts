@@ -25,6 +25,7 @@ import { globSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
+import { makeCleanRoom } from '../../packages/cli/scripts/verify-install/lib.ts';
 import { makeTempDir } from '../../packages/testkit/src/tmp.ts';
 import { type CiWorkflow, RUNNER_TEMP_EXPRESSION } from '../support/guards.ts';
 import { readYaml } from '../support/workspace.ts';
@@ -81,3 +82,40 @@ suite('the uploaded path matches what the fixtures actually create', () => {
     ).toContain(created);
   });
 });
+
+suite(
+  'the verify-install job uploads the clean room the verifier actually makes (KAR-18.6 AC7)',
+  () => {
+    // The same class of failure as above, against a different directory: the
+    // release gate's clean room is made by `makeCleanRoom()` rather than by the
+    // shared tmpdir fixture, and nothing but this assertion keeps the two
+    // prefixes in step. A verify-install leg that fails on the platform you do
+    // not own, having uploaded nothing, is the one failure this job exists to be
+    // diagnosable from.
+    const verifyJob = workflow.jobs?.['verify-install'];
+
+    it('the verify:install step points TMPDIR at the runner temp directory', () => {
+      const step = (verifyJob?.steps ?? []).find((entry) => entry.run === 'pnpm verify:install');
+      expect(step?.env?.TMPDIR).toBe(RUNNER_TEMP_EXPRESSION);
+    });
+
+    it('globbing the declared artefact path finds the room makeCleanRoom() made', async () => {
+      const uploadStep = (verifyJob?.steps ?? []).find((step) =>
+        step.uses?.includes('upload-artifact'),
+      );
+      const declaredPath = uploadStep?.with?.path;
+      expect(declaredPath, 'the upload step must declare a path').toBeDefined();
+
+      const install = await makeCleanRoom();
+      expect(install.room.startsWith(runnerTemp)).toBe(true);
+
+      const matched = globSync(expand(declaredPath ?? ''));
+
+      expect(
+        matched,
+        `The verify-install job uploads "${declaredPath}", which does not match "${install.room}" — ` +
+          'the clean room the release gate creates on this platform.',
+      ).toContain(install.room);
+    });
+  },
+);

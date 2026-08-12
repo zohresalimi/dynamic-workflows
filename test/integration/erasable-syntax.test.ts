@@ -181,10 +181,27 @@ suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
   // spec. Nothing was wrong with the build: it was the ceiling that had been
   // sized on an idle machine.
   //
-  // 120 s is 24x the idle build and 5x the worst honest sample measured, which
-  // leaves room for a box more saturated than any of those, while still failing
-  // in reasonable time if `tsc` ever genuinely wedges. It buys no slack in what
-  // is asserted — exit 0, with the compiler's own output as the message.
+  // Re-measured 2026-08-12 on the EPIC-18 gate, because the build this ceiling
+  // was sized against no longer exists. The 5 s idle figure above was taken
+  // when the solution graph was mostly empty; EPIC-15, EPIC-16, EPIC-17 and
+  // EPIC-18 have since filled in packages/daemon, packages/web and
+  // packages/cli, and the same cold check now costs 15.3 s, 16.0 s and 16.2 s
+  // idle on the same 8-core machine — three consecutive runs with the buildinfo
+  // files present, still indistinguishable, because `noEmit` still means they
+  // buy nothing. Beside eight CPU hogs it costs 24.7 s, 32.0 s and 35.0 s, and
+  // beside a live full suite it was measured at 157.7 s. It had already
+  // overrun the 120 s ceiling twice on this gate.
+  //
+  // So the ceiling tripled with the build rather than the build regressing:
+  // 24.7 s of CPU, single-threaded for most of its life, against eight forked
+  // workers that are themselves spawning real git and agent subprocesses.
+  //
+  // 600 s is ~37x the idle build and ~3.8x the worst sample measured beside a
+  // full suite. It still buys no slack in what is asserted — exit 0, with the
+  // compiler's own output as the message — and there is no timing claim here to
+  // weaken: this ceiling exists only so that a genuinely wedged `tsc` fails in
+  // bounded time instead of hanging the slice. The real "does the workspace
+  // still typecheck" gate is `pnpm typecheck`, which runs unloaded.
   //
   // The neighbouring `vue-tsc` spec keeps the default: it covers one package,
   // measures 1.33 s idle, and has never been near the ceiling.
@@ -194,7 +211,7 @@ suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
       encoding: 'utf8',
     });
     expect(result.status, `${result.stdout ?? ''}${result.stderr ?? ''}`).toBe(0);
-  }, 120_000);
+  }, 600_000);
 
   it('"vue-tsc --noEmit" passes against packages/web on an empty workspace', () => {
     expect(existsSync(join(repoRoot, 'packages/web/node_modules/.bin/vue-tsc'))).toBe(true);

@@ -46,8 +46,13 @@ export default defineConfig({
    */
   resolve: { alias: [...graphRendererAlias(), ...diffSyntaxAlias()] },
   build: {
-    // The published package ships the built SPA next to the bundled daemon.
-    outDir: '../daemon/dist/ui',
+    // `packages/web/dist`, and the copy into `packages/cli/dist/ui/` is a
+    // separate step in `packages/cli/scripts/build.ts` (docs/16-repo-layout.md
+    // §2). Building straight into the CLI's output directory would look
+    // tidier and would put the two steps in the wrong order: the bundler runs
+    // after this and cleans what it emits, so the UI has to arrive between the
+    // two, not before both.
+    outDir: 'dist',
     emptyOutDir: true,
 
     /**

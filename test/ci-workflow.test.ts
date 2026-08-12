@@ -33,6 +33,7 @@ import {
   EXPECTED_TEST_MATRIX,
   expandMatrixTemplate,
   PINNED_ACTIONS,
+  RUNNER_TEMP_EXPRESSION,
   describe as render,
 } from './support/guards.ts';
 import {
@@ -193,6 +194,149 @@ suite('the crash-fuzz slice is wired into the test legs (KAR-06.9 AC7)', () => {
       expect(step.env?.DeFlow_KEEP_TMP, `step "${step.run}"`).toBe('1');
       expect(step.env?.TMPDIR, `step "${step.run}"`).toBe('${{ runner.temp }}');
     }
+  });
+});
+
+/**
+ * Whether a pushed tag still reaches this workflow at all.
+ *
+ * A job's `if:` filters the events the workflow was started for; it cannot
+ * start one. So "runs for every release tag" is a property of `on.push`, and
+ * every way of losing it is an edit nobody makes on release day: `branches:`
+ * added to speed the push loop up (a tag matches no branch pattern, so tags
+ * stop arriving entirely), or `paths:` added to skip docs-only pushes (a tag
+ * push is diffed against its predecessor, and a release tag on a commit that
+ * touched only the changelog matches nothing).
+ *
+ * A bare `push:` — every branch and every tag — is the shape this repository
+ * has, and the only one that needs no further argument.
+ */
+function tagPushProblems(on: unknown): string[] {
+  const absent = ['ci.yml has no "push" trigger, so pushing a release tag starts nothing'];
+  if (typeof on === 'string') return on === 'push' ? [] : absent;
+  if (Array.isArray(on)) return on.includes('push') ? [] : absent;
+  if (typeof on !== 'object' || on === null) return ['ci.yml declares no readable "on:" trigger'];
+
+  const triggers = on as Record<string, unknown>;
+  if (!('push' in triggers)) return absent;
+  const push = triggers.push;
+  // `push:` with nothing under it parses as null: unfiltered, which is exactly
+  // what AC6 wants.
+  if (push === null || push === undefined) return [];
+  if (typeof push !== 'object') return ['ci.yml declares no readable "on.push:" filter'];
+
+  const filters = push as Record<string, unknown>;
+  const problems: string[] = [];
+  if (('branches' in filters || 'branches-ignore' in filters) && !('tags' in filters)) {
+    problems.push(
+      'the push trigger is filtered to branches with no "tags:" filter, so no release tag starts this workflow',
+    );
+  }
+  if ('paths' in filters || 'paths-ignore' in filters) {
+    problems.push(
+      'the push trigger has a path filter, so a release tag that touches nothing else runs no job at all',
+    );
+  }
+  return problems;
+}
+
+suite('the install-verification job (KAR-18.6 AC6, AC7)', () => {
+  // AC6 is two halves — "runnable locally with one command" and "runs in CI on
+  // ubuntu-26.04 and macos-26 for every release tag … and once per milestone"
+  // — and only the first shipped with the story. This suite holds the second.
+  //
+  // It is **not** held back behind `vars.RUN_TESTS_IN_CI` with the `test` and
+  // `browser-e2e` jobs, for the reason KAR-18.5 already wrote into the `check`
+  // job next to `pnpm pack:check`: a release gate nobody runs is not a gate.
+  // Nor does it cost anything on an ordinary push — the job's `if` restricts it
+  // to a release tag and to a manual dispatch, which is what "once per
+  // milestone even without a release" is asked to be triggerable by.
+  const job = () => workflow().jobs?.['verify-install'];
+
+  it('exists, and runs the one command the story fixes as the procedure', () => {
+    expect(job(), 'ci.yml declares no "verify-install" job').toBeDefined();
+    expect((job()?.steps ?? []).map((step) => step.run)).toContain('pnpm verify:install');
+  });
+
+  it('runs on both platforms NF5 promises, with fail-fast off', () => {
+    // ubuntu-26.04 and macos-26 — the same two images as the test matrix, and
+    // for a stronger reason here: the tarball's native dependencies resolve a
+    // *different prebuild* per platform, so a green Linux leg says nothing
+    // about the macOS one.
+    expect(job()?.strategy?.matrix?.os).toEqual([...EXPECTED_TEST_MATRIX.os]);
+    expect(job()?.strategy?.['fail-fast']).toBe(false);
+    expect(job()?.['runs-on']).toBe('${{ matrix.os }}');
+  });
+
+  it('is scoped to release tags and manual dispatch, and is not held back by RUN_TESTS_IN_CI', () => {
+    const condition = job()?.if ?? '';
+    expect(condition).toContain('refs/tags/');
+    expect(condition).toContain('workflow_dispatch');
+    // The gate the owner set over the test slices is deliberately not on this
+    // job: it is the release gate, and a release gate behind an unset variable
+    // has never run when the release happens.
+    expect(condition).not.toContain('RUN_TESTS_IN_CI');
+    // …and the trigger it names has to exist, or "run it once per milestone"
+    // is a button that is not there.
+    expect(JSON.stringify(workflow().on)).toContain('workflow_dispatch');
+  });
+
+  it('is reachable by a release tag at all — the job condition is only half of it', () => {
+    // `if: startsWith(github.ref, 'refs/tags/')` selects among the events the
+    // workflow was *started* for, and starts nothing. AC6 says "for every
+    // release tag", and the one-line edit that silently ends that is a
+    // `branches:` filter under `on.push` — added for an unrelated reason, on a
+    // day nobody is cutting a release, with no failing job to notice it.
+    expect(tagPushProblems(workflow().on)).toEqual([]);
+  });
+
+  it('catches a push trigger narrowed to branches, which no tag would match', () => {
+    expect(tagPushProblems({ push: { branches: ['master'] }, workflow_dispatch: null })).toEqual([
+      'the push trigger is filtered to branches with no "tags:" filter, so no release tag starts this workflow',
+    ]);
+  });
+
+  it('catches a path filter a tag push can fail to match', () => {
+    expect(tagPushProblems({ push: { paths: ['packages/**'] } })).toEqual([
+      'the push trigger has a path filter, so a release tag that touches nothing else runs no job at all',
+    ]);
+  });
+
+  it('catches a workflow with no push trigger left', () => {
+    expect(tagPushProblems({ pull_request: null, workflow_dispatch: null })).toEqual([
+      'ci.yml has no "push" trigger, so pushing a release tag starts nothing',
+    ]);
+  });
+
+  it('cannot hang for six hours', () => {
+    // Measured, on this job's first real dispatch (run 31547004082): the
+    // verifier printed "10/10 steps passed" forty seconds in and the process
+    // then sat there until it was cancelled twenty-two minutes later, because
+    // a surviving grandchild still held its stdout pipe. That defect is fixed
+    // in the verifier itself; this is the second line of defence, because
+    // GitHub's default job timeout is *360 minutes* and the failure mode of a
+    // release gate that hangs is a release that quietly never gets verified.
+    expect(job()?.['timeout-minutes']).toBeLessThanOrEqual(30);
+    expect(job()?.['timeout-minutes']).toBeGreaterThan(0);
+  });
+
+  it('keeps the clean room and uploads it when the job fails (AC7)', () => {
+    const step = (job()?.steps ?? []).find((entry) => entry.run === 'pnpm verify:install');
+    // Without these two the upload below collects nothing: the verifier
+    // removes its clean room, and `os.tmpdir()` is /var/folders/…/T on the
+    // macOS leg rather than the /tmp a fixed path would name.
+    expect(step?.env?.DeFlow_KEEP_TMP).toBe('1');
+    expect(step?.env?.TMPDIR).toBe(RUNNER_TEMP_EXPRESSION);
+
+    const upload = (job()?.steps ?? []).find((entry) => entry.uses?.includes('upload-artifact'));
+    expect(upload?.if).toBe('failure()');
+    expect(upload?.with?.path).toContain(RUNNER_TEMP_EXPRESSION);
+    // One artefact per leg, or the leg that failed loses its evidence to the
+    // one that did not.
+    const names = expandMatrixTemplate(upload?.with?.name ?? '', {
+      os: EXPECTED_TEST_MATRIX.os,
+    });
+    expect(new Set(names).size).toBe(2);
   });
 });
 

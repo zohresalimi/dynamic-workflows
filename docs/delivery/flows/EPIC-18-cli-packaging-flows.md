@@ -89,7 +89,7 @@ Background:
 | EPIC-18-S37 | Happy path: one build, one tarball, UI assets as plain files                           | KAR-18.5           | Happy path  |
 | EPIC-18-S38 | `@DeFlow/*` inlined, `@lydell/node-pty` external                                       | KAR-18.5           | Edge case   |
 | EPIC-18-S39 | `publint` and `attw` gate the release                                                  | KAR-18.5           | Failure     |
-| EPIC-18-S40 | **A `paths` alias: green in dev, broken in the tarball, no warning**                   | KAR-18.5           | Failure     |
+| EPIC-18-S40 | **A `paths` alias: survives emit, breaks in the tarball**                              | KAR-18.5           | Failure     |
 | EPIC-18-S41 | A deep cross-package import breaks the published resolution                            | KAR-18.5           | Failure     |
 | EPIC-18-S42 | **Happy path: the real tarball installed into a clean temp directory and run**         | KAR-18.6           | Happy path  |
 | EPIC-18-S43 | **A missing `files` entry drops `dist/ui/` and serves a blank page**                   | KAR-18.6           | Failure     |
@@ -586,6 +586,16 @@ one full run completes headlessly."_ It is also the recorder — the six replay 
 from real mock-agent runs driven through this command, never hand-written, because hand-written
 fixtures encode assumptions about the event stream rather than its actual shape.
 
+> **Amended 2026-08-11 while implementing KAR-18.3.** The last four lines of the scenario — the
+> node transitions, the gate verdict, the branch name, the cost/duration line and the exit code 0 —
+> describe a run that executes, and **no shipped code path executes a submitted run**: nothing
+> calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at
+> `task.submitted` by design (KAR-10.1). `e2e/run.test.ts` automates everything above that line —
+> the detached autostart, the unauthenticated health poll, the run created, the subscription from
+> seq 0, the transcript snapshot through the normalising serializer and a documented exit code —
+> and the completion half stays open against the orchestration wiring rather than being faked. The
+> six replay fixtures cannot be recorded from this command until it closes.
+
 ---
 
 ## EPIC-18-S19 — `DeFlow run` attaches to a daemon that is already up
@@ -640,6 +650,15 @@ enough that the message must state both alternatives. The double-tap is the same
 already know from other long-running CLIs, and it maps onto the F5.7 kill switch rather than onto a
 polite shutdown.
 
+> **Amended 2026-08-11 while implementing KAR-18.3.** _"the run reaches `run.completed`
+> afterwards"_ and _"every child process in the run's process groups is terminated"_ both need a
+> run that executes; see the note on EPIC-18-S18. The cancel is real and asserted against a real
+> daemon (`packages/cli/test/integration/run-signals.test.ts`): it goes through
+> `POST /runs/:id/cancel`, falling back to `POST /runs/:id/spec/abandon` when the daemon answers
+> `spec_not_approved` — KAR-15.5 AC6 forbids controlling a run whose spec is not approved — and
+> `run.aborted` lands in the ledger. A run that has not been framed at all can be stopped by
+> neither route, which is a hole in the daemon's write surface and a follow-up on `MET-418`.
+
 ---
 
 ## EPIC-18-S21 — Killing the CLI does not kill the run
@@ -663,6 +682,12 @@ Feature: headless execution
 resumes"_ — and that property starts with the daemon not being a child of whatever launched it. If
 `DeFlowd` were spawned in the CLI's process group, closing the terminal would take down an
 hours-long run, which is precisely the failure mode this whole architecture exists to avoid.
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** _"the agent child process is still alive"_ is
+> unreachable for the reason given on EPIC-18-S18: no node is ever scheduled, so no agent is ever
+> spawned. Everything else is asserted — DeFlowd survives the `SIGKILL`, its process group id
+> differs from the CLI's, `/api/health` still answers, and a second terminal's
+> `DeFlow run --attach` renders the transcript.
 
 ---
 
@@ -755,6 +780,12 @@ Feature: headless execution
 **Notes:** recording the _locator_ as well as the content is what lets the node inspector answer
 "where did this task come from" six weeks later. A `--file` implementation that inlines content and
 discards the path loses that permanently, and the loss is invisible until someone asks.
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** The `--spec` row's kind is `file`, not
+> `spec`. KAR-10.1 AC1 settled that the wire carries three shapes and that _"a spec document is the
+> `file` kind with its own `mediaType` in provenance — there is no fourth shape"_; the locator,
+> which is what the scenario's note is actually about, is recorded either way. The `--issue` row's
+> locator is the shorthand expanded to the one URL shape `resolveIssue` accepts.
 
 ---
 
@@ -1171,17 +1202,20 @@ Feature: packaging
     When the built "dist/*.mjs" files are scanned
     Then no import specifier begins with "@DeFlow/"
     And no import specifier ends with ".ts"
-    And "@lydell/node-pty" is the only external specifier resolved at runtime
+    And "better-sqlite3" and "@lydell/node-pty" are the only external specifiers
     And "vite" appears in no built file
     And "packages/cli/package.json" lists "@lydell/node-pty" under optionalDependencies
+    And "packages/cli/package.json" lists "better-sqlite3" under dependencies
     And "packages/cli/package.json" lists no "@DeFlow/*" dependency
 ```
 
-**Notes:** `noExternal: [/^@DeFlow\//]` is what makes the single-package design work — every
-`@DeFlow/*` package is private, so a leaked specifier means npm tries to fetch a name that does not
-exist and the install fails for the user with a 404. `vite` is a devDependency imported dynamically
-only under `DeFlow_DEV === '1'`; if it appears in the bundle, the published package drags a dev
-server behind it.
+**Notes:** `deps.alwaysBundle: [/^@DeFlow\//]` (spelled `noExternal` before tsdown 0.22) is what
+makes the single-package design work — every `@DeFlow/*` package is private, so a leaked specifier
+means npm tries to fetch a name that does not exist and the install fails for the user with a 404.
+`vite` is a devDependency imported dynamically only under `DeFlow_DEV === '1'`; if it appears in the
+bundle, the published package drags a dev server behind it. The two natives are external because
+each resolves a platform binary from its own module path, which inlining moves — see the amendment
+on AC2 in the epic for why `better-sqlite3` joined this line on 2026-08-11.
 
 ---
 
@@ -1204,7 +1238,7 @@ not a gate. This is the same rule as "the red must be observed", applied to a re
 
 ---
 
-## EPIC-18-S40 — A `paths` alias: green in dev, broken in the tarball, no warning
+## EPIC-18-S40 — A `paths` alias: survives emit, breaks in the tarball
 
 **Verifies:** KAR-18.5 · **Type:** Failure · **Automated at:** integration
 
@@ -1213,12 +1247,19 @@ Feature: packaging
 
   Scenario: the single most expensive mistake available in this layout
     Given a "paths" alias mapping "@/*" to "src/*" in a tsconfig
-    And a source file importing "@/patch.ts"
-    When "pnpm dev" runs
-    Then the daemon starts and the import resolves, because the .ts file genuinely exists
-    When the package is built and installed from the tarball
-    Then the published bundle still contains the specifier "@/patch.ts"
-    And the installed CLI fails at runtime with a module-not-found error
+    And a source file importing "@/patch.ts" beside a relative import of "./helper.ts"
+    When the project is compiled
+    Then "./helper.ts" is rewritten to "./helper.js" in the emitted JavaScript
+    But the emitted JavaScript still contains the specifier "@/patch.ts" verbatim
+    And running the emitted JavaScript fails with ERR_MODULE_NOT_FOUND
+
+  Scenario: the compiler objects, but the release build never asks it to
+    Given the same aliased import
+    When "tsc" compiles it
+    Then it reports TS2877, because the alias is not a relative path and will not be rewritten
+    And the same alias spelled "@/patch" reports TS2307 instead, because nodenext needs the extension
+    But "tsc" emits the broken file regardless, having no "noEmitOnError"
+    And "pnpm build" is tsdown, which does not typecheck at all
 
   Scenario: the guard that stops it reaching a release
     When the config guard test runs
@@ -1227,10 +1268,18 @@ Feature: packaging
         through aliases (microsoft/TypeScript#61991)
 ```
 
-**Notes:** the whole hazard is that **development works**. `rewriteRelativeImportExtensions` rewrites
-relative `.ts` specifiers to `.js` on emit but does not follow a `paths` alias, so the alias survives
-into the emitted JavaScript. There is no warning at build time and no failure until a user installs
-the package. A cheap config test is the only defence that runs before a release.
+**Notes:** `rewriteRelativeImportExtensions` rewrites relative `.ts` specifiers to `.js` on emit but
+does not follow a `paths` alias, so the alias survives into the emitted JavaScript and dies at
+runtime under Node, which has no idea what `@/` means.
+
+> **Amended 2026-08-12 on the EPIC-18 gate.** This scenario was written as "green in dev, broken in
+> the tarball, **no warning**", and the last clause does not survive contact with TypeScript 6.0.3:
+> `test/integration/paths-alias-hazard.test.ts` measures TS2877 for `@/patch.ts` and TS2307 for
+> `@/patch`, so the compiler is a real second line of defence and the title's "no warning" has been
+> dropped. What is unchanged is why the guard earns its keep: `tsc` emits the broken file anyway,
+> and the release build is `tsdown`, which never typechecks — so a `paths` alias still reaches a
+> tarball without anything in `pnpm build` objecting. The config test is the defence that runs on
+> the path a release actually takes.
 
 ---
 
@@ -1286,6 +1335,21 @@ Feature: install verification
 `/assets/` assertion is the whole point of this scenario: a daemon whose `dist/ui/` is missing
 answers 200 on `/` perfectly happily, because the SPA fallback serves `index.html` regardless. Only
 following through to a referenced asset distinguishes "the UI shipped" from "the blank page shipped".
+
+> **Amended 2026-08-12 while implementing KAR-18.6.** The line _"a scripted multi-node run driven by
+> `npx …/DeFlow-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
+> shipped code path executes a submitted run** — the same limit this file already records for
+> EPIC-18-S18 (KAR-18.3): nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
+> and `POST /api/runs` stops at `task.submitted` by design (KAR-10.1). What that line is _for_ —
+> "the inlined daemon, the inlined mock agent and the shipped UI are all present in one artefact" —
+> is automated in its place, and by a stronger route than an exit code: the installed daemon spawns
+> the installed `DeFlow-mock-agent` and drives **real ACP turns** against it (an `initialize` that
+> regenerates the capability matrix, then the F3.4 battery, a turn per assertion), and the run
+> submitted through the installed `DeFlow run` is asserted as `task.submitted` and reported as
+> exactly that. `e2e/install-verification-broken.test.ts` proves the new assertion goes red against
+> an agent that is on `PATH` but holds no turn. The completion half stays open against the
+> orchestration wiring (EPIC-06/EPIC-10/EPIC-11) rather than being faked; the epic's Definition of
+> Done keeps it open.
 
 ---
 

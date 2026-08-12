@@ -25,6 +25,7 @@
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
     "execa": "catalog:",
+    "get-port": "catalog:",
     "gpt-tokenizer": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",

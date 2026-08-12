@@ -1,9 +1,12 @@
 # CI (docs/14-testing-strategy.md §14, NF4/NF5).
 #
-# Three jobs. `check` is the fast, single-platform gate. `test` is the only
-# thing here that costs real time, and it is a four-leg matrix because macOS and
-# Linux are the two platforms NF5 promises and Node 24 (Active LTS floor, D2)
-# and 26 (Current) are the two runtimes. `browser-e2e` is Linux only.
+# Four jobs. `check` is the fast, single-platform gate. `test` is the only
+# thing here that costs real time on a push, and it is a four-leg matrix because
+# macOS and Linux are the two platforms NF5 promises and Node 24 (Active LTS
+# floor, D2) and 26 (Current) are the two runtimes. `browser-e2e` is Linux only.
+# `verify-install` is the release gate (KAR-18.6): it installs the packed
+# tarball into a clean room on both platforms, and runs on tags and on demand
+# rather than on every push.
 #
 # Two 2026 footguns are enforced by guard tests rather than by comments alone —
 # see test/ci-workflow.test.ts:
@@ -26,7 +29,14 @@
 
 name: ci
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  # KAR-18.6 AC6's second trigger: the clean-room install verification is run
+  # "once per milestone even without a release" (docs/03-local-development.md
+  # §10), and a milestone is not a git ref. Without this the only way to run it
+  # on hosted runners would be to cut a tag you did not want.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -56,6 +66,17 @@ jobs:
       # a pre-commit hook — it loads the whole domain package, and
       # docs/14-testing-strategy.md §14.1 keeps that hook under ~2 seconds.
       - run: pnpm schemas:check
+      # KAR-18.5 AC4. The release gate: the real build (SPA -> copy -> tsdown)
+      # followed by publint and attw against the packed artefact. It is here
+      # rather than in the `test` matrix because that matrix is held back behind
+      # RUN_TESTS_IN_CI, and a release gate nobody runs is not a gate.
+      #
+      # It is also the only step in this job that proves the tarball builds at
+      # all — typechecking a workspace that resolves @DeFlow/* to live source
+      # says nothing about whether they inline, and the failures this catches
+      # (a lost `files` entry, an unresolvable exports map, a @DeFlow/* specifier
+      # that survived) are invisible until somebody installs the package.
+      - run: pnpm pack:check
 
   test:
     # HELD BACK (owner's decision, 2026-08-05): no tests run in CI for now.
@@ -130,6 +151,76 @@ jobs:
           # Per matrix cell: two legs uploading under one name is one leg losing
           # its evidence, and it is the failing leg you will want.
           name: tmp-${{ matrix.os }}-${{ matrix.node }}
+          path: ${{ runner.temp }}/DeFlow-*
+          if-no-files-found: warn
+          retention-days: 7
+
+  verify-install:
+    # KAR-18.6 AC6, AC7 — the release gate: `pnpm pack` and then the *real*
+    # tarball installed by npx into a `mktemp -d` clean room with no
+    # node_modules above it, on both platforms NF5 promises. `pnpm build`
+    # producing a green local run proves nothing about the tarball
+    # (docs/03-local-development.md §10), and neither does a green `check`:
+    # publint and attw read a package's metadata, they never install it.
+    #
+    # Two things about its placement are deliberate.
+    #
+    # It is **not** behind `vars.RUN_TESTS_IN_CI`, which holds back the `test`
+    # and `browser-e2e` jobs. Same reason `pnpm pack:check` sits in `check`: a
+    # release gate nobody runs is not a gate, and the failures this one catches
+    # (a `files` array that dropped `dist/ui`, an `@DeFlow/*` specifier that did
+    # not inline, a native dependency that reaches for node-gyp on a runner
+    # image you do not own) are invisible until somebody installs the package.
+    #
+    # It is also **not** on every push. The `if` below restricts it to a release
+    # tag — AC6's "for every release tag" — and to a manual dispatch, which is
+    # how "run it once per milestone even without a release" is triggered. So it
+    # costs nothing on an ordinary push and cannot slow the push loop AC12
+    # budgets, while still being the thing that runs when a release is cut.
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    # GitHub's default is 360 minutes. Measured on this job's first dispatch
+    # (run 31547004082, ubuntu-26.04): the verifier passed all ten steps in
+    # forty seconds and then sat there holding a pipe a surviving grandchild
+    # had not closed. That bug is fixed in the verifier; this is the bound that
+    # keeps the *next* one from costing six hours of a release evening.
+    timeout-minutes: 20
+    strategy:
+      # Same reasoning as the test matrix, and it bites harder here: the two
+      # native dependencies resolve a *different prebuild* per platform
+      # (better-sqlite3's prebuilds/, @lydell/node-pty's per-platform
+      # optionalDependency), so cancelling the macOS leg because Linux failed
+      # discards the only leg that could have told you which of the two it was.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify:install
+        env:
+          # AC7. The verifier removes its clean room on a green run and keeps
+          # it on a red one; this makes the keep explicit rather than implied,
+          # so the upload below always has the room a failure left behind.
+          DeFlow_KEEP_TMP: "1"
+          # The same macOS trap the test job documents: os.tmpdir() is
+          # /var/folders/…/T there and /tmp on Linux, so a fixed path would
+          # match nothing on exactly one leg — silently, because
+          # upload-artifact treats an empty match as a warning.
+          # test/integration/ci-artifact-path.test.ts globs this path against
+          # a real clean room.
+          TMPDIR: ${{ runner.temp }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          # Per leg: the failing platform is the one whose clean room you want,
+          # and two legs uploading under one name is one of them losing it.
+          name: clean-room-${{ matrix.os }}
           path: ${{ runner.temp }}/DeFlow-*
           if-no-files-found: warn
           retention-days: 7

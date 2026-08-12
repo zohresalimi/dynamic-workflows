@@ -517,7 +517,9 @@ export function checkNoDeepWorkspaceImports(
                 `${file.path} imports "${specifier}"; import "${offended}" instead. The deep path ` +
                 'does not exist in the tarball, because publishConfig swaps exports "." to ' +
                 './dist/index.js, so this works in development and fails at runtime for anyone who ' +
-                'installs the package. Deep imports also turn every internal file into public API.',
+                "installs the package. index.ts is the package's contract: every package's " +
+                'exports map exposes "." and nothing else, so deep imports also turn every ' +
+                'internal file into public API.',
             });
           }
         }
@@ -1605,6 +1607,10 @@ export interface WorkflowStep {
 
 export interface WorkflowJob {
   readonly 'runs-on'?: string;
+  /** The job-level condition. Evaluated in the header, so `runner.*` is illegal in it. */
+  readonly if?: string;
+  /** GitHub's default is 360 minutes, which is not a timeout so much as a budget. */
+  readonly 'timeout-minutes'?: number;
   readonly env?: Record<string, string>;
   readonly strategy?: {
     readonly 'fail-fast'?: boolean;
@@ -3251,4 +3257,65 @@ function coladaCalls(code: string): { text: string; line: number }[] {
   }
 
   return found;
+}
+
+export const CREDENTIAL_READ_MESSAGE =
+  'reads a provider credential. AR-1 is that DeFlow never touches a vendor credential and never ' +
+  'captures the output of an auth command: the vendor CLI is already logged in, its own ' +
+  'credential store is its business, and every key DeFlow can see is a key DeFlow can leak into ' +
+  'a log line, an event payload or a bug report. "DeFlow up" is where the shortcut gets taken — ' +
+  'forwarding ANTHROPIC_API_KEY into the daemon environment "so agents inherit it", or reading ' +
+  '~/.claude/.credentials.json to print a nicer status line — and every runtime test in this ' +
+  'repository would still pass afterwards. Where a provider needs a login, print the command ' +
+  'for the operator to run themselves (packages/adapters/src/provider-availability.ts).';
+
+/**
+ * A read of an environment variable whose name says it carries a credential.
+ *
+ * The families are the ones docs/15-security-model.md names: a vendor API key,
+ * anything ending `_TOKEN`, and the two credential *files* the ACP-mode CLIs
+ * keep. `DeFlow_RUN_TOKEN` and the daemon's own bearer token are deliberately
+ * not in it — they are secrets DeFlow *mints*, which is the opposite of the
+ * class this rule is about — so the pattern requires a vendor-shaped prefix.
+ */
+const CREDENTIAL_ENV_READ =
+  /\b(?:process\.)?env(?:\.|\[\s*['"`])(?:[A-Z][A-Z0-9]*_)?(?:API_KEY|APIKEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|CREDENTIALS?)\b/;
+
+/** The same variables named as a literal, which is how an allowlist entry or
+ * an object key spells them. */
+const CREDENTIAL_ENV_LITERAL =
+  /['"`](?:ANTHROPIC|OPENAI|GEMINI|GOOGLE|COPILOT|GITHUB|CURSOR|OPENCODE|XAI|MISTRAL)_(?:API_KEY|TOKEN)['"`]/;
+
+/** A vendor credential *file*: the two directories the CLIs keep them in. */
+const CREDENTIAL_FILE_READ = /['"`/$][.]?(?:claude|codex)[/'"`].{0,40}(?:credential|auth|token)/i;
+
+/** A bare `X_API_KEY` / `X_TOKEN` identifier being read out of an env-ish bag. */
+const CREDENTIAL_PROPERTY_READ =
+  /\b(?:ANTHROPIC|OPENAI|GEMINI|GOOGLE|COPILOT|GITHUB|CURSOR|OPENCODE|XAI|MISTRAL)_(?:API_KEY|TOKEN)\b/;
+
+/**
+ * AR-1 (KAR-18.2 AC9) — no module `DeFlow up` is assembled from may read a
+ * vendor credential, from the environment or from disk.
+ *
+ * Comments are stripped first: this rule's own explanation, and every doc
+ * comment that says "DeFlow never reads ~/.claude", would otherwise be the
+ * first thing it flagged.
+ */
+export function checkNoCredentialReads(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    for (const [index, line] of codeOnly(file.text).split('\n').entries()) {
+      const offends =
+        CREDENTIAL_ENV_READ.test(line) ||
+        CREDENTIAL_ENV_LITERAL.test(line) ||
+        CREDENTIAL_FILE_READ.test(line) ||
+        CREDENTIAL_PROPERTY_READ.test(line);
+      if (!offends) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message: `${file.path} line ${index + 1} ${CREDENTIAL_READ_MESSAGE}`,
+      });
+    }
+  }
+  return violations;
 }

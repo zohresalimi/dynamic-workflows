@@ -522,19 +522,49 @@ suite('AC8: a five-branch run probes ten pairs (test plan row 7)', () => {
       );
       expect(pairs).toHaveLength(10);
 
-      const startedAt = performance.now();
-      for (const [left, right] of pairs) {
-        await s.prober.conflictState(
-          RUN,
-          { branch: left, commit: known.get(left) as string },
-          { branch: right, commit: known.get(right) as string },
-        );
+      // Each pair contributes one probe sample and one bare-control sample,
+      // taken adjacent in time rather than in two consecutive phases. The two
+      // phases used to be ~1.6 s each beside a live slice, which is exactly the
+      // timescale on which the other forked workers start and finish specs — so
+      // the halves sampled different machines and the ratio measured the drift
+      // between them. Interleaved, a stall lands on both halves at once and
+      // cancels, which is the whole premise of a control-relative budget.
+      const probeEach: number[] = [];
+      const controlEach: number[] = [];
+      for (const [index, [left, right]] of pairs.entries()) {
+        const leftCommit = known.get(left) as string;
+        const rightCommit = known.get(right) as string;
+        const probeOnce = async (): Promise<void> => {
+          const before = performance.now();
+          await s.prober.conflictState(
+            RUN,
+            { branch: left, commit: leftCommit },
+            { branch: right, commit: rightCommit },
+          );
+          probeEach.push(performance.now() - before);
+        };
+        const controlOnce = async (): Promise<void> => {
+          const before = performance.now();
+          await tryGit(s.repo, mergeTreeArgs(leftCommit, rightCommit));
+          controlEach.push(performance.now() - before);
+        };
+        // Whichever half runs first pays for the cold trees and warms the page
+        // cache for the other. Alternating cancels that across the ten pairs;
+        // running the probe first every time was a systematic gift to the
+        // control, on the wrong side of the assertion.
+        if (index % 2 === 0) {
+          await probeOnce();
+          await controlOnce();
+        } else {
+          await controlOnce();
+          await probeOnce();
+        }
       }
-      const elapsed = performance.now() - startedAt;
 
       // The red condition the budget is really about: a probe that shells out
       // more than once per pair. Ten pairs, ten `merge-tree` invocations, ten
-      // rows.
+      // rows. `tryGit` above spawns git directly rather than through the
+      // recording port, so the control's ten do not land in this count.
       expect(s.mergeTreeCalls()).toHaveLength(10);
       expect(readConflictProbes(s.db, RUN)).toHaveLength(10);
 
@@ -557,11 +587,21 @@ suite('AC8: a five-branch run probes ten pairs (test plan row 7)', () => {
       // loaded box stretches real work further than it stretches a spawn, and
       // the ratio drifted to 2.70 in a full-suite run — measuring how unlike
       // the two commands are, not what the probe costs.
-      const controlStartedAt = performance.now();
-      for (const [left, right] of pairs) {
-        await tryGit(s.repo, mergeTreeArgs(known.get(left) as string, known.get(right) as string));
-      }
-      const control = performance.now() - controlStartedAt;
+
+      /** The middle sample, which is what "what a probe costs" means here. */
+      const middle = (samples: readonly number[]): number => {
+        const sorted = [...samples].sort((left, right) => left - right);
+        return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
+      };
+      // Median rather than the total, for the reason
+      // packages/ledger/test/integration/control-plane-split.test.ts records:
+      // a total is a mean by another name, and one descheduled fork+exec in ten
+      // moves it by a tenth of that stall. The sum form of this same ratio
+      // failed at 1.63 on a full-suite run with the prober untouched: 2,625 ms
+      // of probe phase against a 1,610 ms control phase, a full second of drift
+      // between two phases that were never sampled at the same moment.
+      const perProbe = middle(probeEach);
+      const perControl = middle(controlEach);
 
       // Measured 2026-08-06, git 2.50.1, seven samples: idle, ten probes in
       // 124 ms against a 124 ms control — a ratio of 1.00, comfortably inside
@@ -569,19 +609,26 @@ suite('AC8: a five-branch run probes ten pairs (test plan row 7)', () => {
       // 0.88, 0.91, 0.93, 1.16, 1.22, 1.27 — the probe's own bookkeeping is
       // lost in the noise of ten fork+execs, which is the point.
       //
-      // The 1.6 is calibrated against the regression, not guessed. One extra
-      // `rev-parse` spawn per pair inside `#probe` — a second shell-out that
-      // `mergeTreeCalls()` above would not see — measured 1.78, 1.82 and 1.85
-      // idle and 1.91, 2.15 and 2.68 loaded. So 1.6 sits 26% above the worst
-      // honest sample and below every regressed one.
+      // Re-measured 2026-08-12 as median against median over interleaved pairs,
+      // git 2.50.1. Honest: 0.996, 0.996, 1.001, 1.001 and 1.006 idle, and
+      // 0.892, 0.925 and 1.057 beside a full integration slice — where the bare
+      // control itself moved from 54 ms to 134-271 ms, which is the load both
+      // halves are meant to absorb together. The regression this budget exists
+      // to catch — one extra `rev-parse` spawn per pair inside `#probe`, a
+      // second shell-out `mergeTreeCalls()` above would not see — measured
+      // 1.938, 1.942, 1.943, 1.964 and 1.967 idle and 2.416 loaded.
+      //
+      // So 1.4 sits 32% above the worst honest sample and 28% below the
+      // cheapest regressed one, near the geometric middle of the two bands.
       //
       // The absolute millisecond number is the one thing that cannot be
       // asserted here: the same ten spawns beside a saturated suite cost four
       // times what they cost idle, which measures the box and not the probe.
       expect(
-        elapsed,
-        `ten bare merge-tree invocations on this machine took ${control.toFixed(0)} ms`,
-      ).toBeLessThan(control * 1.6);
+        perProbe,
+        `median probe ${perProbe.toFixed(1)} ms against a median bare merge-tree of ` +
+          `${perControl.toFixed(1)} ms on this machine`,
+      ).toBeLessThan(perControl * 1.4);
     } finally {
       s.close();
     }

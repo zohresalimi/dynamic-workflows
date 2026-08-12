@@ -127,7 +127,10 @@ package boundaries. No watch-build chain, no stale `dist`, and goto-definition l
     "dev:pretty": "pnpm dev | pino-pretty",
     "dev:replay": "DeFlow_DEV=1 node --watch --watch-path=packages packages/cli/src/bin.ts replay fixtures/happy-path-12.jsonl --speed 20x",
 
-    "build": "pnpm --filter @DeFlow/web build && pnpm --filter DeFlow build",
+    // The web build, the copy into packages/cli/dist/ui/ and tsdown, in that
+    // order — see docs/16-repo-layout.md §2. It is a script because the order
+    // is the load-bearing part and it has to be testable.
+    "build": "node packages/cli/scripts/build.ts",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
 
     "test": "vitest run",
@@ -506,6 +509,14 @@ npx DeFlow up
 6. **Generate a token.** 32 random bytes from `crypto.randomBytes`, base64url-encoded. Write
    `.DeFlow/daemon.json` as `{ pid, port, token, startedAt }` at mode `0600`, in the gitignored
    data directory — the first person to commit a `daemon.json` commits a bearer token.
+
+   > **Extended by KAR-18.7.** The file also carries `processStartedAt`: the OS's own start time
+   > for that pid, as an opaque platform-specific string (`/proc/<pid>/stat` field 22 on Linux,
+   > `ps -o lstart=` on macOS), `null` where the platform cannot answer. `startedAt` is wall-clock
+   > milliseconds and cannot answer "is pid 4242 still _this_ daemon?"; pids are recycled within
+   > hours, so `DeFlow status` compares this string for equality before it will report a running
+   > daemon — the same `(pid, process_start_time)` discipline orphan reaping uses (§13), applied
+   > to a read-only command.
 7. **Bind `127.0.0.1` only — and still authenticate.** A localhost bind is _not_ a security
    boundary: any local process, and any web page via DNS rebinding, can reach 7777. Require
    `Authorization: Bearer`, reject requests whose `Origin` is not ours, and send `Vary: Origin`.
@@ -559,9 +570,23 @@ The build order is fixed and matters: `pnpm --filter @DeFlow/web build` → `pac
 copied into `packages/cli/dist/ui/` → `tsdown` bundles `bin.ts` with `@DeFlow/*` inlined and the two
 natives external.
 
-Run this on every release, and once per milestone even without a release. You are also the M2
-"colleague installs it unaided" test subject, so `docs/CONTRIBUTING.md` should open with literally
-`git clone && pnpm install && pnpm dev` and be re-verified on the same cadence.
+Run this on every release, and once per milestone even without a release.
+
+You do not type the block above by hand: **`pnpm verify:install`** is the whole sequence, unattended
+— build, `pack:check`, `pnpm pack`, `mktemp -d`, `git init -b main`, `init`, `up`, then the
+assertions a person would forget (a referenced `/assets/*.js` that answers JavaScript rather than
+merely a 200 on `/`; the installed daemon holding real ACP turns against the installed
+`DeFlow-mock-agent`; nothing in the install transcript naming `node-gyp`). It removes the clean room
+on success and, under `DeFlow_KEEP_TMP=1`, keeps it when it failed so there is something to look at.
+
+In CI it is the **`verify-install`** job in `.github/workflows/ci.yml`, on `ubuntu-26.04` and
+`macos-26`: it runs on every tag push and on a manual **Run workflow** dispatch, which is how the
+"once per milestone even without a release" pass is taken without cutting a tag you did not want. A
+failing leg uploads its clean room as an artefact. It is deliberately not on ordinary pushes — the
+push loop is budgeted at ten minutes and this job installs from npm twice.
+
+You are also the M2 "colleague installs it unaided" test subject, so `docs/CONTRIBUTING.md` should
+open with literally `git clone && pnpm install && pnpm dev` and be re-verified on the same cadence.
 
 ---
 
@@ -719,6 +744,7 @@ the worst possible combination.
 | Agent CLIs keep running after `DeFlowd` is SIGKILLed          | Children reparented to init                                                                                        | They are spawned `detached: true` so the whole process group can be killed. On restart, orphans are reaped by matching `(pid, process_start_time)` — never by bare pid       |
 | Browser tab becomes unusable during a long run                | Unbounded client-side retention, or xterm scrollback                                                               | Never keep the raw event array; keep a bounded ring of ~2,000 for the debug pane. `scrollback: 5000` in xterm and never raise it                                             |
 | The published tarball serves a blank page                     | `dist/ui/` missing from `files`                                                                                    | `pnpm pack` and install into a temp dir (§10) as part of every release                                                                                                       |
+| `pnpm install` warns "Failed to create bin at …/dist/bin.mjs" | A clean checkout has no `packages/cli/dist` yet, and `packages/cli` declares its three bins there                  | Expected, and harmless — the install still exits 0. `pnpm build` creates them; the next install links them. The alternative is not declaring the bins, which is what ships broken |
 
 ---
 

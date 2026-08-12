@@ -114,10 +114,25 @@ suite('the unit slice stays fast enough to run on every save (AC2)', () => {
   // 2.5x the control lands just under it, so nothing about this budget got
   // looser where the loosening would have mattered.
   //
-  // The 120 s spec timeout is two nested runs of the whole unit slice, and the
+  // The spec timeout covers two nested runs of the whole unit slice, and the
   // point of the spec is that both are slow when the box is loaded — the
   // integration slice's default 30 s would be the old flat budget by the back
   // door.
+  //
+  // Re-measured 2026-08-12 on the EPIC-18 gate, because the slice this ceiling
+  // was sized against has doubled: 168 unit files then, 353 now, after EPIC-15
+  // through EPIC-18. Idle at four workers the run leg costs 32.2 s and the
+  // control leg 26.5 s — 58.7 s of nested work before the outer slice is even
+  // considered, against 9.5 s when 120 s was chosen. Beside eight CPU hogs the
+  // legs cost 42.0 s and 33.5 s. Beside a live full suite the pair went past
+  // 120 s twice on this gate, which is the whole failure: the spec never
+  // reached its assertion.
+  //
+  // 600 s is ~10x the idle pair, and it loosens nothing that is asserted. The
+  // budget itself is the ratio below and it has not moved — measured 1.22 idle
+  // and 1.25 under eight hogs against the same 2.5x ceiling, so the regression
+  // this exists to catch (a unit spec that starts sleeping or spawning, which
+  // moves only the run leg) is caught exactly as before.
   // Both nested legs are capped at four workers rather than taking the whole
   // box. This spec starts a full unit slice from inside a slice that is already
   // running seven forked workers of its own, on eight cores, and then does it a
@@ -156,5 +171,5 @@ suite('the unit slice stays fast enough to run on every save (AC2)', () => {
     expect(run.ms, `control (collect-only) for the same slice was ${control.ms} ms`).toBeLessThan(
       Math.max(10_000, control.ms * 2.5),
     );
-  }, 120_000);
+  }, 600_000);
 });

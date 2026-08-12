@@ -20,8 +20,10 @@
  * shell history, terminal scrollback, browser history, the `Referer` header of
  * any outbound link, and any access log anyone ever adds.
  */
+import { processStartTime } from '@DeFlow/adapters';
 import { chmodSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 
 /** The file's name inside the data directory. */
 export const DAEMON_FILE_NAME = 'daemon.json';
@@ -36,6 +38,38 @@ export interface DaemonFile {
   readonly token: string;
   /** Epoch milliseconds, from the daemon's `Clock` port. */
   readonly startedAt: number;
+  /**
+   * KAR-18.7 AC4 — when the OS says this pid started, as an **opaque string**.
+   *
+   * `startedAt` above cannot answer "is pid 4242 still *this* daemon?": it is
+   * wall-clock milliseconds, and the only thing the OS will tell you about a
+   * pid is its own start time in its own units — `/proc/<pid>/stat` field 22 in
+   * ticks since boot on Linux, `ps -o lstart=` to the second on macOS. Compared
+   * for equality and never parsed, exactly as the boot reaper compares it
+   * (../reaper.ts): pids are recycled within hours, and a `DeFlow status` that
+   * trusted a bare pid would report an unrelated process as a live daemon and
+   * invite the operator to kill it.
+   *
+   * `null` when the platform cannot answer — Windows, which NF5 puts at M3.
+   * "We could not verify it" is then reported as such rather than as a
+   * running daemon, which is the same refusal the reaper makes.
+   */
+  readonly processStartedAt: string | null;
+}
+
+/**
+ * This process's start time as the OS reports it, or `null`.
+ *
+ * Never throws: on a platform with no implementation the honest answer is "no
+ * evidence", and a daemon that refused to write its own file over it would be
+ * a daemon that cannot start.
+ */
+export function ownProcessStartTime(): string | null {
+  try {
+    return processStartTime(process.pid);
+  } catch {
+    return null;
+  }
 }
 
 export function daemonFilePath(dataDir: string): string {

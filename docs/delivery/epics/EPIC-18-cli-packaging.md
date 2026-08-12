@@ -105,6 +105,17 @@ observable from a clean temp directory.
   (PRD §6.3); the whole point of the daemon shape is that M1 pays none of that cost.
 - **Publishing to npm.** `npm version patch && pnpm publish` is two commands precisely because
   [16 §2](../../16-repo-layout.md) deleted the multi-package release problem. It needs no story.
+- **Driving a submitted run to completion** — and therefore the completion half of **KAR-18.6 AC2**
+  (_"a scripted multi-node run completes … and exits 0"_) and of KAR-18.3's EPIC-18-S18. It lives in
+  [EPIC-06](./EPIC-06-orchestrator.md) KAR-06.9 — `RECOVERY_STEPS`' eighth step, `start-ticker`,
+  which `recovery.ts` leaves to its caller and `boot()` does not yet perform, because there is no run
+  driver to tick — over the intake→spec→plan path of [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
+  [EPIC-11](./EPIC-11-dynamic-planning.md). This epic is a _client_ of the daemon; it submits runs and
+  reports what the daemon says about them, and every criterion here that assumed a run reaching a
+  terminal state is amended in place rather than asserted away (see KAR-18.6 AC2's amendment, the
+  epic's Definition of Done, and `test/run-completion-deferral.test.ts`, which fails the day a
+  shipped source starts a ticker, compiles a plan or executes a run — so the cut cannot outlive its
+  reason).
 
 ## Definition of Ready (epic level)
 
@@ -128,6 +139,10 @@ observable from a clean temp directory.
       level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] `npx <packed tarball> up` in a `mktemp -d` clean room serves the UI and completes a mock run,
       and this is wired as a CI job — not a checklist item someone remembers.
+      _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
+      images, on every tag and on demand — and the clean room serves the UI and drives real ACP
+      turns against the installed mock agent. **"Completes a mock run" stays open**: no shipped code
+      path executes a submitted run past intake yet. See KAR-18.6 AC2's amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
 - [ ] The capability matrix is a generated fixture file in the repository with a probe timestamp;
@@ -271,13 +286,42 @@ behaviour on migration failure is to refuse to serve rather than to serve a half
 probe cache is refreshed on a version change, not on every start. `--timings` exists so that the
 first time cold start regresses, the cause is one line of output rather than an afternoon.
 
+> **Cold start measured 2026-08-11 while implementing this story** (author's machine, macOS 26,
+> Node 26, one agent binary on `PATH`, empty data directory, `DeFlow up --timings --no-open`),
+> in milliseconds:
+>
+> | step             | first start (cold probe cache) | second start (warm) |
+> | ---------------- | ------------------------------ | ------------------- |
+> | pick-port        | 8                              | 8                   |
+> | resolve-data-dir | 1                              | 0                   |
+> | lease            | 2                              | 1                   |
+> | migrate          | 7                              | 6                   |
+> | reap-orphans     | 1                              | 1                   |
+> | probe-providers  | **441**                        | **8**               |
+> | bind-port        | 1                              | 2                   |
+> | open-browser     | 0                              | 0                   |
+> | **total**        | **461**                        | **26**              |
+>
+> NF3's budget is 3000 ms and the warm number is 26. The prediction in this section held exactly:
+> the probe is 96% of a cold start and 31% of a warm one, and everything else together is under
+> 20 ms. The numbers are from the source tree (`node packages/cli/src/bin.ts up`), so they exclude
+> Node's own startup and the difference between running `src/` and the bundled `dist/bin.mjs`;
+> KAR-18.6 measures the tarball.
+>
+> Two amendments this story made to code it did not own, both recorded where they were made:
+> `migrate()` now removes an existing `pre-migrate-<v>.db` before `VACUUM INTO` (SQLite refuses an
+> existing output file, which made the "fix the migration and boot again" half of EPIC-18-S12
+> impossible), and `packages/cli/test/integration/build.test.ts` now distinguishes static from
+> dynamic specifiers, because `DeFlow up` reaches `startHttp` and its unevaluated
+> `import('vite')` — the shape `tsdown.config.ts` deliberately produces — now survives into a chunk.
+
 ---
 
 ### KAR-18.3 — `DeFlow run` headless execution
 
 |                 |                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Status**      | Not started                                                                                                               |
+| **Status**      | Done — see the amendment under the acceptance criteria                                                                    |
 | **Priority**    | P0                                                                                                                        |
 | **Size**        | M                                                                                                                         |
 | **Depends on**  | KAR-18.2, EPIC-15 KAR-15.3/KAR-15.4/KAR-15.5, EPIC-10 KAR-10.1 (intake), EPIC-06 KAR-06.7 (pause/resume/cancel as events) |
@@ -325,6 +369,28 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
    is recorded in `task.submitted`'s provenance so the run's source is inspectable on disk (NF8).
    (`run.created` carried this until 7 August 2026; the locator lives on the intake event now —
    `KAR-10.1` AC2.)
+
+> **Amended 2026-08-11 while implementing KAR-18.3.** Two clauses above describe a run that
+> executes, and this repository has no code path that executes one: nothing calls `compilePlanV1`
+> or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at `task.submitted` by
+> design (KAR-10.1: _"No interpretation happens here"_). Every submitted run therefore parks after
+> intake. What that changes here:
+>
+> - **AC1's "streams node lifecycle … until a terminal state"** is implemented and asserted for
+>   every terminal state the ledger can currently reach (an open human gate under `--no-wait`, an
+>   abort, a completion appended by a spec through the daemon's own functions). The four-node
+>   plan running to `run.completed` is not reachable and is **not** faked; `e2e/run.test.ts`
+>   carries the deferral and the epic's DoD keeps it open.
+> - **AC3's second Ctrl-C** cancels through the daemon's own routes — `POST /runs/:id/cancel`,
+>   falling back to `POST /runs/:id/spec/abandon` when the daemon answers `spec_not_approved`,
+>   because KAR-15.5 AC6 forbids controlling a run whose spec is not approved. A run that has not
+>   been framed at all can be stopped by **neither** route (the gate is not open either), which is a
+>   real hole in the daemon's write surface rather than in this command; it is recorded as a
+>   follow-up on `MET-418` rather than patched from the CLI.
+> - **AC8's `--spec`** produces the `file` wire kind, not a fourth one. KAR-10.1 settled that
+>   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
+>   `mediaType` in provenance — there is no fourth shape"_), and the locator — which is what makes
+>   the source inspectable six weeks later — is recorded either way.
 
 **Test plan (TDD)**
 
@@ -444,6 +510,33 @@ run — and land the battery integration second. That split is the deliberate mi
 risk below; it is a sequencing decision, not a scope cut, and it must be recorded on the board if
 taken.
 
+> **The split was not taken** (implemented 2026-08-11). All eight categories, the battery included,
+> landed together, because the battery already existed: `runProviderDoctor` was built by KAR-15.6
+> for `GET /api/providers/doctor`, and `doctor`'s Conformance section is a second caller of it
+> rather than a second implementation. `agents.ts` runs one pass over the machine — detect, probe,
+> regenerate the matrix, then the battery — because probing twice would mean spawning every
+> installed vendor CLI twice.
+>
+> Two decisions worth recording, both of which the acceptance criteria imply but do not state.
+>
+> **Only two things produce a `fail`**, and they are exactly the two the criteria enumerate: a git
+> below the 2.38 floor (AC3) and an unwritable state directory (AC8), plus a Node below 24 and a
+> bug inside `doctor` itself. Everything else — a degraded sandbox ladder, capability drift, a
+> failed conformance assertion, a missing pty — is a `warn`. The rule is that exit `5` means
+> *DeFlow cannot run here*, not *something here is imperfect*, which is what keeps the exit code
+> worth branching on in CI (AC11).
+>
+> **A capability the agent never mentioned reads as `false` in the matrix**, matching
+> `canResume`/`canFork`/`canList` in `@DeFlow/adapters`, because a capability nobody advertised is
+> one DeFlow must not route through. The distinction between "never mentioned it" and "told us no"
+> is not lost: `capability()`'s reason is carried alongside the matrix in the regenerated fixture
+> and in `--json`.
+>
+> The regenerated fixture is written to `<dataDir>/capabilities/<agent>@<version>.json` by default
+> rather than into the operator's repository, and the baseline it diffs against is the most
+> recently probed fixture for the same agent — so a version bump is a new file *and* a reported
+> diff, not a silent replacement.
+
 ---
 
 ### KAR-18.5 — Single-package build and asset bundling
@@ -477,9 +570,19 @@ source→dist swap).
 
 1. `pnpm build` runs the fixed order and produces `packages/cli/dist/` containing `bin.mjs`,
    `mcp.mjs`, `mock-agent.mjs` and `ui/` with the Vite output as plain hashed files.
-2. The bundle contains no `@DeFlow/` import specifier and no `.ts` import specifier; the only
-   external runtime import is `@lydell/node-pty`, declared as an `optionalDependency` with a
-   plain-`spawn` fallback.
+2. The bundle contains no `@DeFlow/` import specifier and no `.ts` import specifier. Exactly two
+   runtime imports stay external, and both are native: `better-sqlite3` as a `dependency`, and
+   `@lydell/node-pty` as an `optionalDependency` with a plain-`spawn` fallback.
+
+   > **Amended 2026-08-11 while implementing KAR-18.5.** This criterion originally read "the only
+   > external runtime import is `@lydell/node-pty`". `better-sqlite3` cannot be inlined: it locates
+   > its own prebuilt binary with
+   > `require(path.join(__dirname, '..', 'prebuilds', '<platform>-<arch>.node'))`, so bundling it
+   > points that lookup at `packages/cli/prebuilds/`, which is nowhere — and the failure arrives
+   > when a user opens a ledger, not when the build runs. [16 §2](../../16-repo-layout.md) already
+   > assumed the tarball asks npm for it when it measured `npm i better-sqlite3@13.0.2` at one
+   > second with zero compilation. The criterion the build now enforces (through tsdown's
+   > `deps.onlyImport`) is the stronger one: those two and *nothing else*.
 3. `packages/cli/package.json` declares `"files": ["dist"]`, `"type": "module"`,
    `engines.node >= 24`, and bins for `DeFlow`, `DeFlow-mcp` and `DeFlow-mock-agent`. There is no
    dual CJS build.
@@ -554,6 +657,32 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
    milestone even without a release.
 7. The clean room is removed on success and preserved under `DeFlow_KEEP_TMP=1` on failure, with the
    directory uploaded by `actions/upload-artifact` in CI.
+
+> **Amended 2026-08-12 while implementing KAR-18.6.** AC2 asks for _"a scripted multi-node run
+> completes through `npx <tgz> run` and exits 0"_. The completion half is **not reachable in this
+> repository and is not faked** — the same deferral [KAR-18.3](#kar-183--DeFlow-run-headless-execution)
+> already carries, recorded here rather than left in a commit message, because
+> [README §9](../README.md#9-changing-the-plan) is explicit that a cut is recorded and never
+> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and
+> `POST /api/runs` stops at `task.submitted` by design (KAR-10.1: _"No interpretation happens
+> here"_), so every submitted run parks after intake. That wiring is EPIC-06/EPIC-10/EPIC-11 and is
+> in this epic's **Out of scope**; this epic is a _client_ of the daemon.
+>
+> What ships instead is the criterion's own stated reason — _"this proves the inlined daemon, the
+> inlined mock agent and the shipped UI are all present in one artefact"_ — asserted directly, and
+> more strongly than a green exit code would have:
+>
+> - the installed daemon **spawns the installed `DeFlow-mock-agent` and drives real ACP turns
+>   against it**: an `initialize` whose response is what the capability matrix is regenerated from,
+>   then the F3.4 conformance battery, which is a turn per assertion. Both processes are tarball
+>   bytes, and the assertion refuses an agent that is on `PATH` but holds no turn
+>   (`e2e/install-verification-broken.test.ts` proves it goes red);
+> - a run submitted through the installed `DeFlow run` reaches the installed daemon and is reported
+>   as `task.submitted`, never as a run that completed.
+>
+> **The completion half stays open**: it is the epic's Definition of Done item below, and the first
+> thing to re-assert here once an orchestrated run exists. Until then AC2 is met in reason and not
+> in letter, and this note is the record of that difference.
 
 **Test plan (TDD)**
 

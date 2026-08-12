@@ -49,6 +49,12 @@ catalog:
   "@agentclientprotocol/sdk": 1.3.0 # exact: 0.4.5 -> 1.3.0 plus an npm-scope and org change in ~10 months
   "@modelcontextprotocol/sdk": 1.30.0
   execa: 10.0.1
+  # KAR-18.2 — step 5 of the boot sequence: "7777, or the next free one"
+  # (docs/02 §3, docs/03-local-development.md §9). Pure JS, no dependencies of
+  # its own, and it is here rather than hand-rolled because the interesting
+  # half is not "bind and see": it is the short-lived lock that stops two
+  # daemons started microseconds apart being handed the same free port.
+  get-port: ^7.2.0
   # KAR-09.7 Tier 2. Consumed **only** through the encoding-specific entrypoint
   # ("gpt-tokenizer/encoding/o200k_base"): the barrel pulls every BPE table into
   # the daemon for no accuracy gain, and packages/daemon/test/token-entrypoint.test.ts
@@ -72,6 +78,15 @@ catalog:
   oxlint: 1.76.0
   oxlint-tsgolint: ^7.0.2001 # the type-aware engine "--type-aware" spawns; peerDependency of oxlint
   tsdown: 0.22.14 # exact: still 0.x
+  # KAR-18.5 — the two package-shape linters `pnpm pack:check` runs against the
+  # built package, both pinned exact because a gate that changes what it accepts
+  # between two runs of the same release script is not a gate. `publint` reads
+  # the manifest the way npm and every bundler will (files, bin, exports,
+  # extensions); `attw` resolves each entry point the way each of the six module
+  # resolution modes will, which is the half that catches a masked entry point
+  # `pnpm dev` never exercises.
+  publint: 0.3.22
+  "@arethetypeswrong/cli": 0.18.5
   "@lydell/node-pty": 1.2.0-beta.14 # per-platform optionalDependencies; never node-gyp
   yaml: 2.9.0
   lefthook: ^2.1.10 # replaces husky *and* lint-staged; one Go binary via optionalDependencies

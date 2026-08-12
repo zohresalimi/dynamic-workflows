@@ -18,9 +18,30 @@
  * than an absent key. Naive optional-chaining flattens all three into one —
  * which is precisely the bug this fixture exists to make visible in a unit
  * test instead of hours into a real multi-hour run.
+ *
+ * **`CAPABILITY_PROFILES` is computed from a *statically imported* copy of
+ * the fixture, found by KAR-18.6 (2026-08-12).** A `readFileSync` against
+ * `CAPABILITY_MATRIX_PATH` (`import.meta.url`-relative) resolves correctly
+ * inside the workspace, where this file is a sibling of
+ * `../fixtures/capability-matrix.json` — but tsdown inlines this module's
+ * *code* into `packages/cli/dist/mock-agent.mjs` without carrying the fixture
+ * along, so the same relative path in the tarball points at
+ * `packages/cli/dist/fixtures/capability-matrix.json`, which `files:
+ * ["dist"]` never ships. The result was not a graceful degradation: every
+ * invocation of the installed `DeFlow-mock-agent` binary, including `--version`,
+ * threw `ENOENT` at import time, before a single line of argv parsing ran —
+ * caught by `e2e/install-verification.test.ts`'s EPIC-18-S42 spec, which runs
+ * the real packed tarball rather than the workspace source. The `import …
+ * with { type: 'json' }` below makes the JSON part of the module graph tsdown
+ * already bundles, so there is no path to resolve at runtime at all — in the
+ * workspace or in the tarball. `CAPABILITY_MATRIX_PATH` and
+ * `readCapabilityMatrix` stay: `test/capability-profiles.test.ts`'s AC2 spec
+ * needs an independent read of the fixture off disk to compare against, and
+ * that test only ever runs against workspace source.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import capabilityMatrixFixture from '../fixtures/capability-matrix.json' with { type: 'json' };
 
 /** In this exact order: it is also the order AC2's error message lists. */
 export const CAPABILITY_PROFILE_NAMES = [
@@ -79,11 +100,17 @@ export function generateCapabilityProfiles(matrix: CapabilityMatrix): Capability
   return Object.freeze(profiles);
 }
 
+/** An independent read of the fixture off disk — workspace-only; see
+ * `test/capability-profiles.test.ts`'s AC2 spec, the reason this stays. */
 function readCapabilityMatrix(): CapabilityMatrix {
   return JSON.parse(readFileSync(CAPABILITY_MATRIX_PATH, 'utf8')) as CapabilityMatrix;
 }
 
-/** The six named profiles, generated from the fixture at load time. */
+/**
+ * The six named profiles, generated from a *statically imported* copy of the
+ * fixture — part of this module's own bundle in the tarball, not a path
+ * resolved at runtime. See the module doc comment above.
+ */
 export const CAPABILITY_PROFILES: CapabilityProfiles = generateCapabilityProfiles(
-  readCapabilityMatrix(),
+  capabilityMatrixFixture as CapabilityMatrix,
 );
