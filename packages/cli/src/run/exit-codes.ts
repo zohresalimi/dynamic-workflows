@@ -48,6 +48,19 @@ export const RUN_EXIT_CODES = {
 
 export type RunExitCode = (typeof RUN_EXIT_CODES)[keyof typeof RUN_EXIT_CODES];
 
+/**
+ * sysexits(3) `EX_USAGE` — deliberately **not** a member of the table above.
+ *
+ * A bad argv is not a run outcome. `RUN_EXIT_CODES` is the closed set of codes a
+ * *run* can end with, and `./exit-codes.test.ts` asserts it stays exactly seven;
+ * folding 64 into it would make "the run finished" and "you typed the flag
+ * wrong" the same kind of answer. It lives here rather than beside its callers
+ * because `cancel.ts` and the run command must exit the same code for the same
+ * mistake, and two `const EX_USAGE = 64` declarations are two things to keep
+ * true.
+ */
+export const EX_USAGE = 64;
+
 export interface RunVerdict {
   /** Whether the CLI should stop watching. `false` means "still going". */
   readonly terminal: boolean;
