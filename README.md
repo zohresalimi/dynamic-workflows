@@ -16,18 +16,47 @@ You will need:
 
 - **Node 24 or newer** and **pnpm**
 - **git**, and a repository to work in — DeFlow refuses to run outside a git working tree
-- **at least one agent CLI installed and logged in**: `claude`, `codex`, `gemini`, `copilot` or
-  `opencode`. DeFlow shells out to these; your existing login is what pays for the work.
+- **at least one agent CLI installed and logged in**. DeFlow shells out to these, and your existing
+  login is what pays for the work:
 
-DeFlow is not on npm yet. For now you run it from this repository:
+  ```bash
+  npm install -g @agentclientprotocol/claude-agent-acp   # claude
+  npm install -g @agentclientprotocol/codex-acp          # codex
+  npm install -g @google/gemini-cli                      # gemini
+  npm install -g @github/copilot                         # copilot
+  npm install -g opencode-ai                             # opencode
+  ```
+
+  You can skip this to begin with — a mock agent ships with DeFlow and runs a whole plan without
+  any vendor CLI, which is enough to see how the tool behaves.
+
+## Installing
+
+DeFlow is not published to npm yet, so you build it from this repository:
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-That produces the `DeFlow` binary at `packages/cli/dist/bin.mjs`. Put it on your `PATH`, or alias
-it, and the commands below will work as written.
+That produces the `DeFlow` command at `packages/cli/dist/bin.mjs`. To type `DeFlow` instead of that
+path, link it once:
+
+```bash
+cd packages/cli && npm link
+```
+
+Then `DeFlow --version` should answer from any directory. If it does not, your npm global bin folder
+is not on your `PATH` — `npm prefix -g` tells you where it is.
+
+Two alternatives, if you would rather not link anything globally:
+
+```bash
+node packages/cli/dist/bin.mjs doctor        # call it directly
+alias DeFlow='node /full/path/to/packages/cli/dist/bin.mjs'
+```
+
+Whichever you pick, the commands below are written as `DeFlow <command>`.
 
 ## Your first run
 
