@@ -1141,6 +1141,10 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-19.1 AC6 — the one producer of the status string the CLI, `DeFlow
+// status` and the UI's run list all print. `test/one-status-label.test.ts`
+// fails the day a second one appears.
+export { RUN_STATUS_LABELS, runStatusLabel } from './run-status-label.ts';
 // KAR-08.5 — the per-node sandbox policy, in each enforcement engine's own
 // dialect. Pure: this package generates the documents, `@DeFlow/adapters` puts
 // them on an argv (D12 — DeFlow owns policy, the vendor owns enforcement).

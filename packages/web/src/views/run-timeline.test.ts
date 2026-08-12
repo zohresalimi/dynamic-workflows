@@ -65,7 +65,7 @@ suite('KAR-17.8 — the route', () => {
   });
 
   it('tells a tab with no run open where a run id goes', async () => {
-    shell = await mountShell({ at: { name: 'plan' } });
+    shell = await mountShell({ at: { name: 'runs' } });
     setActivePinia(shell.pinia);
     await shell.router.push({ path: '/timeline-with-no-run' });
     // The catch-all takes an unroutable path; the timeline route itself is only

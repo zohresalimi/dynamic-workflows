@@ -55,6 +55,18 @@ export interface DaemonFile {
    * running daemon, which is the same refusal the reaper makes.
    */
   readonly processStartedAt: string | null;
+  /**
+   * KAR-19.1 AC2 — the interval, in milliseconds, of the ticker this daemon
+   * life started.
+   *
+   * A number rather than a boolean, because "running" on its own is a claim and
+   * this is a measurement: `DeFlow status` reports the loop *and* how often it
+   * looks, which is the difference between "the daemon says it is fine" and
+   * "the daemon will notice a due wake within a second". `null` for a file
+   * written by a build older than this story, which is reported as unknown
+   * rather than as stopped.
+   */
+  readonly tickIntervalMs: number | null;
 }
 
 /**

@@ -24,7 +24,9 @@ import { provideApiClient } from '../src/api/provide.ts';
 import { TOKEN_STORAGE_KEY } from '../src/api/token.ts';
 import { createDeFlowApp } from '../src/app/create-app.ts';
 import { RUN_FEED } from '../src/app/useRunFeed.ts';
+import { RUNS_FEED } from '../src/app/useRunList.ts';
 import type { RunFeed, RunFeedFactory } from '../src/ledger/feed.ts';
+import type { RunsFeed, RunsFeedFactory } from '../src/ledger/runs-feed.ts';
 import { type UiStore, useUiStore } from '../src/stores/useUiStore.ts';
 import '../src/styles/theme.css';
 
@@ -62,11 +64,26 @@ export interface MountOptions {
    * `e2e/plan-graph.test.ts`'s, against a real daemon.
    */
   readonly feed?: RunFeedFactory;
+  /**
+   * The global `?runs=*` feed the root route opens (`../src/app/useRunList.ts`).
+   *
+   * Defaults to one that connects to nothing, for exactly the reason `feed`
+   * does. A spec that wants to prove the list is live pushes frames through the
+   * `onLifecycle` callback this factory is handed, which is the same callback a
+   * real `runs=*` frame arrives on.
+   */
+  readonly runsFeed?: RunsFeedFactory;
 }
 
 /** A feed that connects to nothing and reports it, for the default above. */
 const silentFeed: RunFeedFactory = ({ runId }): RunFeed => ({
   runId,
+  ready: Promise.resolve(),
+  close: () => {},
+});
+
+/** The same, for the root route's global subscription. */
+const silentRunsFeed: RunsFeedFactory = (): RunsFeed => ({
   ready: Promise.resolve(),
   close: () => {},
 });
@@ -95,6 +112,7 @@ export async function mountShell(options: MountOptions = {}): Promise<MountedShe
   setActivePinia(pinia);
   if (options.client !== undefined) provideApiClient(app, options.client);
   app.provide(RUN_FEED, options.feed ?? silentFeed);
+  app.provide(RUNS_FEED, options.runsFeed ?? silentRunsFeed);
 
   await router.push(options.at ?? '/');
   await router.isReady();

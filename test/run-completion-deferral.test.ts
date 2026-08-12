@@ -5,10 +5,10 @@
  * and exits 0"_. The completion half is not reachable in this repository and
  * is not faked: no shipped code path executes a submitted run past intake.
  * `POST /api/runs` stops at `task.submitted` by design (KAR-10.1, _"No
- * interpretation happens here"_), nothing calls `compilePlanV1` or
- * `executeRun`, and `boot()` never performs `RECOVERY_STEPS`' eighth step,
- * `start-ticker` — which `recovery.ts` explicitly leaves to its caller. So
- * every submitted run parks after intake, and the same sentence is already
+ * interpretation happens here"_) and nothing calls `compilePlanV1` or
+ * `executeRun`. Since KAR-19.1 the run *is* framed — `boot()` performs
+ * `start-ticker` and intake schedules the framing wake — and it still reaches
+ * no terminal state, because there is no plan to execute. The same sentence is
  * written into `e2e/run.test.ts` for KAR-18.3.
  *
  * [README §9](../docs/delivery/README.md) is the rule this file enforces: **a
@@ -20,9 +20,11 @@
  *   - **the record exists**, in the section README §9 names, pointing at the
  *     epic that owns the missing capability rather than at nothing;
  *   - **the record expires with its own premise.** The day a shipped source
- *     under any package's `src/` starts a ticker, compiles a plan or executes a
- *     run, the reason AC2 was deferred has gone — and this file goes red,
- *     naming the two e2e specs whose deferral notes are then lies.
+ *     under any package's `src/` compiles a plan or executes a run, the reason
+ *     AC2 was deferred has gone — and this file goes red, naming the two e2e
+ *     specs whose deferral notes are then lies. It has already done this once:
+ *     `startTicker` was a third premise until KAR-19.1 started the ticker, and
+ *     the expiry was applied to the plan rather than to the assertion.
  *
  * A guard over the *absence* of a call site can only be trusted if it is shown
  * to bite, so every check here is a pure function over sources handed to it,
@@ -50,7 +52,17 @@ const EPIC_FILE = 'docs/delivery/epics/EPIC-18-cli-packaging.md';
  * defines it.
  */
 const DRIVERS: readonly (readonly [name: string, definedIn: string])[] = [
-  ['startTicker', 'packages/daemon/src/ticker.ts'],
+  // `startTicker` was the third member until 2026-08-12, and it is gone from
+  // this list because **the guard did its job**: KAR-19.1 wired `boot()` to
+  // `RECOVERY_STEPS`' eighth step, this suite went red, and the deferral was
+  // narrowed in the epic file rather than relaxed here (README §9). Removing
+  // it is the expiry the file's own note prescribes, applied to the one premise
+  // that has actually gone.
+  //
+  // The other two are untouched and are the whole of what is still deferred: a
+  // submitted run is now framed and can still reach no terminal state, because
+  // nothing shipped compiles a plan or executes one. KAR-19.3 and KAR-19.4 take
+  // those, and KAR-19.5 deletes this file.
   ['executeRun', 'packages/daemon/src/exec/run-executor.ts'],
   ['compilePlanV1', 'packages/daemon/src/plan/compile.ts'],
 ];
@@ -167,16 +179,9 @@ suite('KAR-18.6 AC2 — the deferral expires with its premise', () => {
     // re-assert the completion half in `e2e/install-verification.test.ts`
     // (AC2, "completes … and exits 0") and in `e2e/run.test.ts` (EPIC-18-S18's
     // four-node plan), strike the two amendments and the Out-of-scope bullet
-    // this file guards, and delete this suite.
+    // this file guards, and delete this suite — which is KAR-19.5 AC8, and is
+    // what happened to `startTicker` on 2026-08-12 (see DRIVERS above).
     expect(driverCallSites(packageProductionSources())).toEqual([]);
-  });
-
-  it('bites when a shipped source starts the ticker', () => {
-    const wired: Source = {
-      path: 'packages/daemon/src/boot.ts',
-      text: 'const ticker = startTicker({ clock, onTick, nextWakeAt });',
-    };
-    expect(driverCallSites([wired])).toEqual(['packages/daemon/src/boot.ts: startTicker(']);
   });
 
   it('bites when a shipped source compiles a plan or executes a run', () => {

@@ -25,15 +25,35 @@
  * is folded"*. `run.created` is KAR-10.2's to append, once the framing
  * interview has actually produced the spec it carries.
  */
-import type { Clock, Db, RunId } from '@DeFlow/core';
+import type { Clock, Db, RunId, WakeReason } from '@DeFlow/core';
 import { canonicalJson, mintRunId, normaliseInput, sha256Hex } from '@DeFlow/core';
-import { appendEvents, lookupIntakeKey, putBlob, readRange, recordIntakeKey } from '@DeFlow/ledger';
+import {
+  appendEvents,
+  lookupIntakeKey,
+  putBlob,
+  readRange,
+  recordIntakeKey,
+  scheduleWake,
+} from '@DeFlow/ledger';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { z } from 'zod';
+import { FRAMING_NODE } from '../spec/gate.ts';
 import { firstInvalidField, RunIntakeBodySchema } from './request-schema.ts';
 import { resolveIssue } from './resolve-issue.ts';
 import { resolveWithinRepo } from './resolve-path.ts';
+
+/**
+ * KAR-19.1 AC1 — why the framing hand-off is a `poll` and not a fifth reason.
+ *
+ * `WAKE_REASONS` is a closed vocabulary rendered verbatim in the timeline, and
+ * the four members answer *"why is this node asleep"*. This wait is none of the
+ * three specific ones — it is not a backoff, not a human gate, not a vendor
+ * quota — it is "look at this run again, now", which is exactly what `poll`
+ * means. Widening the set would be a `@DeFlow/core` vocabulary change made from
+ * the wrong file for a wait that already has a word.
+ */
+export const FRAMING_WAKE_REASON: WakeReason = 'poll';
 
 export interface RunIntakePorts {
   readonly db: Db;
@@ -178,9 +198,13 @@ export async function submitTask(
       ? null
       : `sha256-${await sha256Hex(canonicalJson(request.body))}`;
 
-  // The append and the journal row are **one** transaction (AC6): a crash
-  // between them would leave either a run no key can find — so a retry starts a
-  // second one — or a key naming a run the ledger does not hold.
+  // The append, the framing wake and the journal row are **one** transaction
+  // (AC6, and KAR-19.1 AC1): a crash between the first two would leave either a
+  // run no key can find — so a retry starts a second one — or a key naming a run
+  // the ledger does not hold; a crash between the event and the row would leave
+  // a run nothing will ever pick up, which is the failure this story exists to
+  // remove and the one nobody notices, because it looks exactly like a run that
+  // has not got there yet.
   const seq = ports.db.transaction(() => {
     const [appended] = appendEvents(ports.db, [
       {
@@ -193,6 +217,18 @@ export async function submitTask(
       },
     ]);
     if (appended === undefined) throw new Error('appendEvents returned no seq for task.submitted');
+
+    // KAR-19.1 AC1 — the hand-off to framing, as the one durable thing a wait
+    // is allowed to be. Due at `now`, because the operator is watching a prompt
+    // and the next tick is the whole of AC3's budget; keyed on `(runId,
+    // framing)`, so two submissions in the same millisecond are two rows and
+    // neither inherits the other's (AC8).
+    scheduleWake(ports.db, {
+      runId,
+      nodeId: FRAMING_NODE,
+      wakeAt: ports.clock.now(),
+      reason: FRAMING_WAKE_REASON,
+    });
 
     if (request.idempotencyKey !== undefined && requestHash !== null) {
       recordIntakeKey(ports.db, {

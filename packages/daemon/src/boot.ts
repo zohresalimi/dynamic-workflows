@@ -24,12 +24,14 @@
  * unreliable, so the epoch is what makes a daemon that somehow started anyway
  * harmless (see @DeFlow/ledger's epoch.ts).
  */
+import type { Clock, StallReport } from '@DeFlow/core';
 import { type Db, describeSkipped, type RunId, type RunState } from '@DeFlow/core';
 import {
   acquireLease,
   bumpEpoch,
   type Lease,
   type LedgerReplay,
+  nextWakeAt as ledgerNextWakeAt,
   type Migration,
   openLedger,
   type RunReplay,
@@ -44,6 +46,7 @@ import {
   writeDaemonFile,
 } from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
+import { createRunDriver, type FramingRunner, type RunDriver } from './drive.ts';
 import { mintDaemonToken } from './http/auth.ts';
 import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
 import {
@@ -65,9 +68,10 @@ import type { ProviderDetectionEntry } from './providers/boot-probe.ts';
 import { clearPtySessions } from './pty/pty-sessions.ts';
 import { daemonRandom } from './random.ts';
 import type { ReapDecision } from './reaper.ts';
-import { type Recovery, recover } from './recovery.ts';
+import { type Recovery, type RecoveryStep, recover } from './recovery.ts';
 import { setDaemonEpoch, setHeadSeq } from './runtime.ts';
 import { stopChildren } from './shutdown.ts';
+import { startTicker, TICK_INTERVAL_MS, type Ticker } from './ticker.ts';
 
 /**
  * The 6-lowercase-hex suffix `mintRunId` (@DeFlow/core) needs — real entropy,
@@ -144,6 +148,33 @@ export interface BootOptions {
     | ((ports: { db: Db; dataDir: string }) => Promise<readonly ProviderDetectionEntry[]>)
     | undefined;
   /**
+   * KAR-19.1 AC2 — the port `start-ticker` dispatches a due framing wake to.
+   *
+   * Omitted means the ticker still runs — the table is still read, and a stall
+   * is still reported — and a due framing wake is logged rather than consumed.
+   * That is the honest state of a daemon with no way to reach a provider, and
+   * it is deliberately not a silent one.
+   */
+  readonly runFraming?: FramingRunner | undefined;
+  /** AC7 — called for every `run.stalled` the driver appends, so `DeFlow up`
+   * can print the one line the operator reads. */
+  readonly onStalled?: ((runId: RunId, report: StallReport) => void) | undefined;
+  /**
+   * The clock the ticker and the run driver run on. Defaults to `systemClock`.
+   *
+   * Injected so a spec drives a ten-minute stall window in microseconds without
+   * faking a timer (docs/14-testing-strategy.md §8). Recovery keeps the system
+   * clock regardless: `daemonStartedAt` is a fact about *this process*, and an
+   * inherited-effect boundary drawn on a test clock would be drawn in the
+   * wrong place.
+   */
+  readonly clock?: Clock | undefined;
+  /** Overridable so a spec can tick faster than 1 Hz; production never does. */
+  readonly tickIntervalMs?: number | undefined;
+  /** Called as each of `RECOVERY_STEPS`' eight completes — the assertion hook
+   * for "boot performs all of them, `start-ticker` included". */
+  readonly onRecoveryStep?: ((step: RecoveryStep) => void) | undefined;
+  /**
    * The migration set, defaulting to every migration this build ships.
    *
    * The seam exists for one reason: shipped migrations are append-only and are
@@ -178,6 +209,15 @@ export interface Booted {
    */
   readonly providers: readonly ProviderDetectionEntry[];
   readonly http: StartedHttp;
+  /**
+   * KAR-19.1 AC2 — `RECOVERY_STEPS`' eighth step, performed.
+   *
+   * Live by the time `boot()` returns, which is what makes the `node_wake` row
+   * intake wrote a wait somebody is keeping rather than a row nothing reads.
+   */
+  readonly ticker: Ticker;
+  /** The loop the ticker calls: wakes dispatched, stalls reported. */
+  readonly driver: RunDriver;
   /** The port actually bound, and the one `.DeFlow/daemon.json` records. */
   readonly port: number;
   /** This life's bearer token (KAR-15.2 AC7). */
@@ -235,6 +275,11 @@ function reportReplay(replays: readonly RunReplay[]): void {
  */
 export async function boot(options: BootOptions = {}): Promise<Booted> {
   const step = (name: BootStep): void => options.onStep?.(name);
+  // KAR-19.1 AC2 — `RECOVERY_STEPS`' eight, reported as they are performed.
+  // `recover()` does five of them and says so; the other three are this
+  // function's, and until this story only two of those three happened.
+  const recoveryStep = (name: RecoveryStep): void => options.onRecoveryStep?.(name);
+  const clock = options.clock ?? systemClock;
 
   const dataDir = options.dataDir ?? resolveDataDir();
   step('resolve-data-dir');
@@ -247,6 +292,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   // Before anything else that touches the world.
   const lease = acquireLease(dataDir);
   step('lease');
+  recoveryStep('flock');
 
   let db: Db;
   let epoch: number;
@@ -257,6 +303,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     db = openLedger(dataDir, options.migrations);
     epoch = bumpEpoch(db);
     setDaemonEpoch(epoch);
+    recoveryStep('bump-epoch');
 
     // F4.2: the run continues from the last completed boundary rather than
     // from zero. Before the port is bound, so nothing can ask about a run this
@@ -297,6 +344,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       spillTo: dataDir,
       onStep: (name) => {
         if (name === 'reap-orphans') step('reap-orphans');
+        recoveryStep(name);
       },
     });
     replayed = { ...replayed, runs: recovered.runs };
@@ -316,6 +364,36 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     lease.release();
     throw error;
   }
+
+  // KAR-19.1 AC2 — `RECOVERY_STEPS`' eighth and last step, which `recovery.ts`
+  // has always declared and its only caller has never performed. Everything the
+  // ordering protects is behind it: effects reconciled, dead attempts
+  // concluded, orphans reaped, due wakes loaded. Only now may anything run.
+  //
+  // Before the bind rather than after, because the ticker needs no port and
+  // §12's sequence puts the whole of recovery ahead of "this daemon accepts
+  // work". A bind that then fails stops it again in the catch below.
+  const driver = createRunDriver({
+    db,
+    clock,
+    epoch,
+    startedAt: clock.now(),
+    spillTo: dataDir,
+    ...(options.runFraming === undefined ? {} : { runFraming: options.runFraming }),
+    ...(options.onStalled === undefined ? {} : { onStalled: options.onStalled }),
+  });
+  const tickIntervalMs = options.tickIntervalMs ?? TICK_INTERVAL_MS;
+  const ticker = startTicker({
+    clock,
+    intervalMs: tickIntervalMs,
+    onTick: (now) => driver.tick(now).then(() => undefined),
+    nextWakeAt: () => ledgerNextWakeAt(db),
+    // A tick that throws is a tick, not the end of the daemon: the loop is what
+    // reconciles a run back to a sane state, so stopping on the first error is
+    // how every run in the directory wedges at once.
+    onError: (error) => daemon.error({ err: error }, 'a tick failed; the loop continues'),
+  });
+  recoveryStep('start-ticker');
 
   let http: StartedHttp;
   let view: OpenedLedgerView | null = null;
@@ -362,9 +440,15 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // here rather than by whoever reads the file later, because by then this
       // pid may belong to something else entirely.
       processStartedAt: ownProcessStartTime(),
+      // KAR-19.1 AC2 — the interval the ticker this daemon life started is
+      // running at, so `DeFlow status` can report it. Written *after* the
+      // ticker exists and removed with the file on shutdown, so it is a record
+      // of something that happened rather than an intention.
+      tickIntervalMs,
     });
     step('bind-port');
   } catch (error) {
+    ticker.stop();
     clearUpgradeHandler();
     clearPtySessions();
     clearIntakePorts();
@@ -392,6 +476,8 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     headSeq: replayed.headSeq,
     reaped: recovered.reaped,
     providers,
+    ticker,
+    driver,
     http,
     port: http.port,
     token,
@@ -412,6 +498,10 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       //
       // The daemon file goes first: for as long as it exists it advertises a
       // port and a token, and both stop being true the moment the port closes.
+      // The ticker stops first: everything below closes something a tick reads,
+      // and a tick that started before the ledger closed would be a tick
+      // finishing against a connection that is gone.
+      ticker.stop();
       removeDaemonFile(dataDir);
       await http.close();
 

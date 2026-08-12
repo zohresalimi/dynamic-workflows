@@ -56,6 +56,10 @@ export {
   writeDaemonFile,
 } from './daemon-file.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
+// KAR-19.1 — the run driver the ticker calls, and the framing port `DeFlow up`
+// binds to a live ACP session (KAR-19.3).
+export type { DriverPorts, FramingRunner, FramingWake, RunDriver, TickReport } from './drive.ts';
+export { createRunDriver, FRAMING_RETRY_MS } from './drive.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
 export type {
@@ -352,6 +356,10 @@ export {
   parsePtyPath,
 } from './http/pty-protocol.ts';
 export { installPtyUpgrade, ptyUpgradeHandler } from './http/pty-socket.ts';
+// KAR-19.1 AC4 — the list `GET /api/runs` answers with, including the runs
+// nothing has framed yet.
+export type { RunListEntry, RunListPage, RunListQuery } from './http/run-list.ts';
+export { RUN_LIST_DEFAULT_LIMIT, RUN_LIST_MAX_LIMIT, runList } from './http/run-list.ts';
 export type { RunSummary } from './http/run-summary.ts';
 export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';

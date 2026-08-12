@@ -35,13 +35,24 @@ const running: DaemonStatus = {
   epoch: 3,
   startedAt: 1_754_308_400_000,
   uptimeMs: 65_000,
+  // KAR-19.1 AC2 — the ticker this daemon life started, as daemon.json records
+  // it.
+  tickIntervalMs: 1_000,
   runs: [
     {
       runId: 'run_20260810T090000Z_9f31ab',
       status: 'running',
+      label: 'running',
       nodeCounts: { completed: 2, running: 1 },
     },
-    { runId: 'run_20260810T101500Z_c4a5b1', status: 'created', nodeCounts: {} },
+    {
+      runId: 'run_20260810T101500Z_c4a5b1',
+      status: 'created',
+      // KAR-19.1 AC6 — `runStatusLabel`'s string, which is what this surface
+      // now renders instead of the enum member.
+      label: 'submitted — waiting to be framed',
+      nodeCounts: {},
+    },
   ],
   ledgerError: null,
 };
@@ -110,7 +121,9 @@ suite('a live daemon (AC3)', () => {
 
     const second = lines.find((line) => line.includes('run_20260810T101500Z_c4a5b1'));
     expect(second).toBeDefined();
-    expect(second).toContain('created');
+    // KAR-19.1 AC6 — the shared sentence, not this command's own word for the
+    // same state.
+    expect(second).toContain('submitted — waiting to be framed');
   });
 
   it('--json carries the same values in one document', () => {
@@ -124,13 +137,20 @@ suite('a live daemon (AC3)', () => {
       daemonEpoch: 3,
       startedAt: 1_754_308_400_000,
       uptimeMs: 65_000,
+      tickIntervalMs: 1_000,
       runs: [
         {
           runId: 'run_20260810T090000Z_9f31ab',
           status: 'running',
+          label: 'running',
           nodeCounts: { completed: 2, running: 1 },
         },
-        { runId: 'run_20260810T101500Z_c4a5b1', status: 'created', nodeCounts: {} },
+        {
+          runId: 'run_20260810T101500Z_c4a5b1',
+          status: 'created',
+          label: 'submitted — waiting to be framed',
+          nodeCounts: {},
+        },
       ],
     });
   });

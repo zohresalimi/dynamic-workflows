@@ -100,6 +100,7 @@ import { IO_NDJSON_MEDIA_TYPE, IO_NDJSON_UNVERSIONED, ioChunkLine } from './io-n
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
+import { runList } from './run-list.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
 import { subscribeStream } from './streams.ts';
@@ -937,6 +938,48 @@ export const api = new Hono()
     }
     return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
   })
+
+  /**
+   * KAR-19.1 AC4 — `GET /api/runs?status=&limit=&cursor=`, the list
+   * docs/11-api-and-realtime.md §6 has always documented and nothing has ever
+   * served.
+   *
+   * Its whole point is the run it must **not** hide: one whose ledger holds a
+   * single `task.submitted`. A list assembled from runs that have a `RunState`
+   * omits exactly the runs an operator goes looking for when nothing appears to
+   * be happening, which is how 2026-08-12's afternoon was spent in the address
+   * bar. `./run-list.ts` iterates the `event` table's own answer to "which runs
+   * exist" for that reason.
+   *
+   * The three query parameters are declared rather than read off
+   * `c.req.query()`, so they are part of this chain's *type* and therefore part
+   * of `hc<ApiType>`: the run list in @DeFlow/web is the caller, and a page it
+   * asks for with a parameter this route stopped accepting should be a compile
+   * error rather than a silently unfiltered list.
+   */
+  .get(
+    '/runs',
+    validator('query', (value) => ({
+      status: typeof value.status === 'string' ? value.status : undefined,
+      limit: typeof value.limit === 'string' ? value.limit : undefined,
+      cursor: typeof value.cursor === 'string' ? value.cursor : undefined,
+    })),
+    (c) => {
+      const view = ledgerView();
+      if (view === null) return notReady(c);
+
+      const query = c.req.valid('query');
+      const limit = query.limit === undefined ? undefined : Number.parseInt(query.limit, 10);
+      return c.json(
+        runList(view, {
+          ...(query.status === undefined ? {} : { status: query.status }),
+          ...(limit === undefined || Number.isNaN(limit) ? {} : { limit }),
+          ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+        }),
+        200,
+      );
+    },
+  )
 
   /**
    * KAR-10.3 AC4 — the F1.3 gate's four operator actions, as four routes.

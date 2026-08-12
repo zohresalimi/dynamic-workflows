@@ -358,10 +358,59 @@ suite('the stall detector reports and never acts (AC2, AC3, AC4, AC9)', () => {
     }
   });
 
-  it('says nothing when no node is running, however quiet the run is', () => {
+  it('says nothing when no node is running but one is waiting on a backoff', () => {
     const idle = started([{ id: 'a' }, { id: 'b', deps: ['a'] }], [retryScheduled('a', 1, T0 + 1)]);
 
     expect(emitted(decide(idle, T0 + 40 * MINUTE), 'run.stalled')).toEqual([]);
+  });
+
+  // ── KAR-19.1 AC7 — the half of the detector the 2026-08-12 run needed ───────
+  //
+  // A run with a node running and a quiet ledger is one kind of stall, and it
+  // is the one this detector was written for. The other kind — a run with
+  // **nothing in flight at all**, which is what the operator actually had — was
+  // silent by construction, because the report required a non-empty running
+  // set. That is the state where DeFlow itself owes the next move and is not
+  // making it, and it is precisely the state nobody can tell from a run that
+  // has simply not got there yet.
+
+  /** A run whose first node finished and whose second was never started: the
+   * ledger has stopped, nothing is running, nothing is waiting. */
+  function nothingInFlight(): RunState {
+    return started(
+      [{ id: 'a' }, { id: 'b', deps: ['a'] }],
+      [startNode('a'), completed('a', 0, T0 + MINUTE)],
+    );
+  }
+
+  it('reports a run with nothing in flight at all, carrying an empty running list', () => {
+    const idle = nothingInFlight();
+    // The watermark is `a`'s completion at T0 + 1 minute, so the window opens
+    // ten minutes after that and not after T0.
+    const reports = emitted(decide(idle, T0 + 11 * MINUTE + SECOND), 'run.stalled');
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.event.payload).toEqual({
+      watermarkSeq: idle.watermarkSeq,
+      idleMs: 10 * MINUTE + SECOND,
+      runningNodes: [],
+    });
+  });
+
+  it('reports that run once and not once per tick, however many windows pass', () => {
+    const idle = nothingInFlight();
+    const report = emitted(decide(idle, T0 + 12 * MINUTE), 'run.stalled')[0];
+    if (report === undefined) throw new Error('expected a stall report');
+
+    const reported = foldOnto(idle, [{ kind: 'run.stalled', payload: report.event.payload }]);
+
+    for (const window of [1, 2, 3, 10]) {
+      expect(emitted(decide(reported, T0 + window * 10 * MINUTE), 'run.stalled')).toEqual([]);
+    }
+  });
+
+  it('still says nothing before the window, with nothing in flight', () => {
+    expect(emitted(decide(nothingInFlight(), T0 + 11 * MINUTE), 'run.stalled')).toEqual([]);
   });
 
   it('takes its threshold from config', () => {

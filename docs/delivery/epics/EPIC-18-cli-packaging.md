@@ -121,15 +121,21 @@ observable from a clean temp directory.
   [16 §2](../../16-repo-layout.md) deleted the multi-package release problem. It needs no story.
 - **Driving a submitted run to completion** — and therefore the completion half of **KAR-18.6 AC2**
   (_"a scripted multi-node run completes … and exits 0"_) and of KAR-18.3's EPIC-18-S18. It lives in
-  [EPIC-06](./EPIC-06-orchestrator.md) KAR-06.9 — `RECOVERY_STEPS`' eighth step, `start-ticker`,
-  which `recovery.ts` leaves to its caller and `boot()` does not yet perform, because there is no run
-  driver to tick — over the intake→spec→plan path of [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
+  [EPIC-19](./EPIC-19-live-run-pipeline.md), over the intake→spec→plan path of
+  [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
   [EPIC-11](./EPIC-11-dynamic-planning.md). This epic is a _client_ of the daemon; it submits runs and
   reports what the daemon says about them, and every criterion here that assumed a run reaching a
   terminal state is amended in place rather than asserted away (see KAR-18.6 AC2's amendment, the
   epic's Definition of Done, and `test/run-completion-deferral.test.ts`, which fails the day a
-  shipped source starts a ticker, compiles a plan or executes a run — so the cut cannot outlive its
-  reason).
+  shipped source compiles a plan or executes a run — so the cut cannot outlive its reason).
+
+  **Narrowed 2026-08-12 by KAR-19.1**, and recorded here rather than absorbed
+  ([README §9](../README.md#9-changing-the-plan)). `RECOVERY_STEPS`' eighth step, `start-ticker`, is
+  now performed: `boot()` starts the ticker, intake writes a framing `node_wake` in the same
+  transaction as `task.submitted`, and the driver consumes it. What is still deferred — and all that
+  is — is the rest of the chain: **nothing shipped calls `compilePlanV1` or `executeRun`**, so a
+  submitted run still cannot reach a terminal state. Those two are KAR-19.3 and KAR-19.4, and the
+  guard above now watches exactly them.
 
 ## Definition of Ready (epic level)
 
@@ -683,9 +689,11 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > repository and is not faked** — the same deferral [KAR-18.3](#kar-183--DeFlow-run-headless-execution)
 > already carries, recorded here rather than left in a commit message, because
 > [README §9](../README.md#9-changing-the-plan) is explicit that a cut is recorded and never
-> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and
+> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, and
 > `POST /api/runs` stops at `task.submitted` by design (KAR-10.1: _"No interpretation happens
-> here"_), so every submitted run parks after intake. That wiring is EPIC-06/EPIC-10/EPIC-11 and is
+> here"_), so every submitted run parks after intake. (**Narrowed 2026-08-12 by KAR-19.1**: `boot()`
+> now does start the ticker, and intake now does schedule framing. The two calls that remain missing
+> — `compilePlanV1` and `executeRun` — are what still make the completion half unreachable.) That wiring is EPIC-06/EPIC-10/EPIC-11 and is
 > in this epic's **Out of scope**; this epic is a _client_ of the daemon.
 >
 > What ships instead is the criterion's own stated reason — _"this proves the inlined daemon, the

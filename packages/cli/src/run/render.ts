@@ -21,6 +21,7 @@
  * stdout, where a person is looking.
  */
 import type { Event, RunId } from '@DeFlow/core';
+import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../render/glyphs.ts';
 import { wrapDetail } from '../render/layout.ts';
 import { createStyle, type Style, type StyleColour } from '../render/style.ts';
@@ -132,6 +133,32 @@ function humanLine(event: Event): Line | null {
     case 'run.created':
       return { glyph: 'note', colour: 'dim', subject: 'run', status: 'created', detail: '' };
 
+    /**
+     * KAR-19.1 AC7 — F4.7's report, rendered as one line.
+     *
+     * `subject` carries the run id rather than the bare word `run`, because a
+     * stall is the one line an operator is likely to read out of context — in a
+     * scrollback beside three other runs, or pasted into a message — and
+     * *which* run has gone quiet is the first thing they need. The detail names
+     * `DeFlow status` because a line that says something is wrong and not what
+     * to do next is the line people learn to ignore.
+     *
+     * Nothing here says failed, and nothing here says killed: F4.7 is
+     * "surfaced, never auto-killed", and a long build, a large test suite and a
+     * wedged agent are indistinguishable from out here.
+     */
+    case 'run.stalled':
+      return {
+        glyph: 'paused',
+        colour: 'yellow',
+        subject: event.runId,
+        status: 'stalled',
+        detail:
+          `no progress for ${formatDuration(event.payload.idleMs)}` +
+          `${event.payload.runningNodes.length === 0 ? ', nothing in flight' : ''}` +
+          " — run 'DeFlow status' to see where it is",
+      };
+
     case 'node.scheduled':
       return {
         glyph: 'pending',
@@ -194,7 +221,10 @@ function humanLine(event: Event): Line | null {
         glyph: 'paused',
         colour: 'yellow',
         subject: 'run',
-        status: 'paused',
+        // KAR-19.1 AC6 — every run-level status this view prints comes from
+        // `@DeFlow/core`'s table, so this surface cannot acquire a fourth word
+        // for a state `DeFlow status` and the UI already describe.
+        status: RUN_STATUS_LABELS.paused,
         detail: event.payload.reason ?? `by ${event.payload.by}`,
       };
 
@@ -203,7 +233,7 @@ function humanLine(event: Event): Line | null {
         glyph: 'asking',
         colour: 'yellow',
         subject: 'run',
-        status: 'needs a human',
+        status: RUN_STATUS_LABELS['needs-human'],
         detail: event.payload.reason,
       };
 
@@ -213,7 +243,8 @@ function humanLine(event: Event): Line | null {
         glyph: event.kind === 'run.completed' ? 'done' : 'gone',
         colour: event.kind === 'run.completed' ? 'green' : 'red',
         subject: 'run',
-        status: event.kind === 'run.completed' ? 'completed' : 'aborted',
+        status:
+          event.kind === 'run.completed' ? RUN_STATUS_LABELS.completed : RUN_STATUS_LABELS.aborted,
         detail: event.payload.outcome,
       };
 
