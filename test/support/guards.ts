@@ -1609,6 +1609,8 @@ export interface WorkflowJob {
   readonly 'runs-on'?: string;
   /** The job-level condition. Evaluated in the header, so `runner.*` is illegal in it. */
   readonly if?: string;
+  /** GitHub's default is 360 minutes, which is not a timeout so much as a budget. */
+  readonly 'timeout-minutes'?: number;
   readonly env?: Record<string, string>;
   readonly strategy?: {
     readonly 'fail-fast'?: boolean;

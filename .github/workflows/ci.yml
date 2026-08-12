@@ -179,6 +179,12 @@ jobs:
     # budgets, while still being the thing that runs when a release is cut.
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
+    # GitHub's default is 360 minutes. Measured on this job's first dispatch
+    # (run 31547004082, ubuntu-26.04): the verifier passed all ten steps in
+    # forty seconds and then sat there holding a pipe a surviving grandchild
+    # had not closed. That bug is fixed in the verifier; this is the bound that
+    # keeps the *next* one from costing six hours of a release evening.
+    timeout-minutes: 20
     strategy:
       # Same reasoning as the test matrix, and it bites harder here: the two
       # native dependencies resolve a *different prebuild* per platform

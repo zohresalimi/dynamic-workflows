@@ -342,13 +342,87 @@ export function spawnInstalled(options: SpawnInstalledOptions): CliProcess {
   });
 
   const stop = async (): Promise<void> => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    child.kill('SIGINT');
-    await Promise.race([exited, sleep(10_000).then(() => child.kill('SIGKILL'))]);
-    await exited;
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGINT');
+      await Promise.race([exited, sleep(10_000).then(() => child.kill('SIGKILL'))]);
+      await exited;
+    }
+    // Releasing the pipes is not tidiness, it is the difference between a
+    // script that exits and one that does not. `child` here is *npx*, and on
+    // Linux npx reaches the bin through an `sh -c` wrapper that does not
+    // forward SIGINT — so the daemon underneath outlives the wait above,
+    // holding the write end of these two pipes. A pipe with a live writer
+    // never ends, an unended stream is an active handle, and an active handle
+    // is a Node process that has finished all its work and will not exit.
+    // Measured: CI run 31547004082, ubuntu-26.04, "10/10 steps passed" at
+    // 40 s and still running when it was cancelled 22 minutes later. macOS
+    // forwards the signal, so nothing about this is visible there.
+    child.stdout.destroy();
+    child.stderr.destroy();
   };
 
   return { child, stdout: () => out.join(''), stderr: () => err.join(''), exited, stop };
+}
+
+/** What became of the daemon the clean room's `daemon.json` names. */
+export type DaemonOutcome = 'absent' | 'stopped' | 'killed' | 'refused';
+
+/**
+ * Stops the daemon recorded in `<dataDir>/daemon.json`, by pid.
+ *
+ * Killing the npx child is not enough and is not the same thing. `DeFlow up`
+ * is reached through npx — on Linux through an `sh -c` wrapper — and the
+ * signal does not always arrive at the process that holds the port, the
+ * `flock` and the ledger. What always identifies it is the pid the daemon
+ * itself wrote down, which is exactly how `e2e/run.test.ts` stops the daemon
+ * `DeFlow run` autostarts.
+ *
+ * A release gate that leaves a listening daemon and a held lock on the machine
+ * has not finished, whatever its exit code says — so this escalates: SIGTERM,
+ * then SIGKILL if the graceful path did not take.
+ */
+export async function stopRecordedDaemon(
+  dataDir: string,
+  timeoutMs = 10_000,
+): Promise<DaemonOutcome> {
+  let pid: number;
+  try {
+    pid = (JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8')) as { pid: number }).pid;
+  } catch {
+    return 'absent';
+  }
+
+  const gone = (): boolean => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  if (gone()) return 'absent';
+
+  const waitFor = async (deadline: number): Promise<boolean> => {
+    while (Date.now() < deadline) {
+      if (gone()) return true;
+      await sleep(50);
+    }
+    return gone();
+  };
+
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch {
+    return 'absent';
+  }
+  if (await waitFor(Date.now() + timeoutMs)) return 'stopped';
+
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    return 'stopped';
+  }
+  return (await waitFor(Date.now() + timeoutMs)) ? 'killed' : 'refused';
 }
 
 /** Runs a `DeFlow` subcommand to completion and returns its result. */

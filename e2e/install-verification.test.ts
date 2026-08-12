@@ -17,7 +17,9 @@
  * EPIC-18-S46 (honest doctor report) · AC1, AC2, AC3, AC4, AC7
  */
 import { DOCTOR_SECTION_IDS, type DoctorReport } from 'DeFlow';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 import { afterAll, afterEach, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
   assertInstalledAgentDrivesTurns,
@@ -35,6 +37,7 @@ import {
   runInstalled,
   shimMockAgent,
   spawnInstalled,
+  stopRecordedDaemon,
   waitForUrl,
 } from '../packages/cli/scripts/verify-install/lib.ts';
 
@@ -46,6 +49,20 @@ beforeAll(() => {
 
 const rooms: string[] = [];
 const running: CliProcess[] = [];
+
+interface DaemonFile {
+  readonly pid: number;
+}
+
+/** Whether a pid still exists — signal 0 is the question, not an instruction. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function room(): Promise<CliInstall> {
   const install = await makeCleanRoom();
@@ -150,6 +167,44 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // and the CLI itself exits 130.
     expect(code).toBe(130);
   }, 60_000);
+
+  it('leaves no daemon behind and releases its pipes, so the release gate can exit', async () => {
+    // Measured on this job's first real CI dispatch (run 31547004082,
+    // ubuntu-26.04): `pnpm verify:install` printed "10/10 steps passed" forty
+    // seconds in and then **never exited** — cancelled twenty-two minutes
+    // later, with three orphan processes reported by the runner (npx, sh,
+    // node). Every assertion had passed; the script simply could not end.
+    //
+    // The mechanism is the one thing a spawned CLI can do to its parent that
+    // no assertion about its exit code notices: `stop()` waits for the *npx*
+    // child, and on Linux that child is reached through an `sh -c` wrapper
+    // that does not forward SIGINT to the daemon underneath it. The daemon
+    // survives, holding the write end of the pipes this process is reading, so
+    // the streams never end and the event loop never empties. macOS forwards
+    // the signal and hides all of it.
+    //
+    // So both halves are asserted here, and neither is platform-specific: the
+    // daemon named in `daemon.json` is gone, and the pipes are released
+    // whatever happened to it.
+    const install = await room();
+    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    expect(init.status, init.stderr).toBe(0);
+
+    const up = spawnInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['up', '--no-open'], install });
+    await waitForUrl(up);
+
+    const daemon = JSON.parse(
+      readFileSync(join(install.dataDir, 'daemon.json'), 'utf8'),
+    ) as DaemonFile;
+    // Exactly the verifier's own teardown, in the same order.
+    await up.stop();
+    expect(await stopRecordedDaemon(install.dataDir)).toMatch(/^(absent|stopped|killed)$/);
+
+    expect(alive(daemon.pid), `daemon pid ${String(daemon.pid)} outlived the verifier`).toBe(false);
+    // A pipe nobody closed is the whole of the twenty-two minutes.
+    expect(up.child.stdout?.destroyed, 'stdout was left open').toBe(true);
+    expect(up.child.stderr?.destroyed, 'stderr was left open').toBe(true);
+  }, 120_000);
 
   it('AC2 — the installed daemon drives real ACP turns against the installed mock agent', async () => {
     // The half of AC2 that *is* reachable, asserted properly rather than

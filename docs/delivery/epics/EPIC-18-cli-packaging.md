@@ -105,6 +105,17 @@ observable from a clean temp directory.
   (PRD §6.3); the whole point of the daemon shape is that M1 pays none of that cost.
 - **Publishing to npm.** `npm version patch && pnpm publish` is two commands precisely because
   [16 §2](../../16-repo-layout.md) deleted the multi-package release problem. It needs no story.
+- **Driving a submitted run to completion** — and therefore the completion half of **KAR-18.6 AC2**
+  (_"a scripted multi-node run completes … and exits 0"_) and of KAR-18.3's EPIC-18-S18. It lives in
+  [EPIC-06](./EPIC-06-orchestrator.md) KAR-06.9 — `RECOVERY_STEPS`' eighth step, `start-ticker`,
+  which `recovery.ts` leaves to its caller and `boot()` does not yet perform, because there is no run
+  driver to tick — over the intake→spec→plan path of [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
+  [EPIC-11](./EPIC-11-dynamic-planning.md). This epic is a _client_ of the daemon; it submits runs and
+  reports what the daemon says about them, and every criterion here that assumed a run reaching a
+  terminal state is amended in place rather than asserted away (see KAR-18.6 AC2's amendment, the
+  epic's Definition of Done, and `test/run-completion-deferral.test.ts`, which fails the day a
+  shipped source starts a ticker, compiles a plan or executes a run — so the cut cannot outlive its
+  reason).
 
 ## Definition of Ready (epic level)
 

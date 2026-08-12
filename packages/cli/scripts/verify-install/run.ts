@@ -50,6 +50,7 @@ import {
   settleCleanRoom,
   shimMockAgent,
   spawnInstalled,
+  stopRecordedDaemon,
   waitForUrl,
 } from './lib.ts';
 
@@ -168,6 +169,14 @@ async function main(): Promise<number> {
     });
   } finally {
     if (up !== undefined) await up.stop();
+    // By pid, because stopping the npx child is not the same as stopping the
+    // daemon it started — see `stopRecordedDaemon`. A gate that leaves a
+    // daemon holding a port, a `flock` and the ledger behind has not finished,
+    // and on Linux it does not even exit.
+    const outcome = await stopRecordedDaemon(install.dataDir);
+    if (outcome === 'killed' || outcome === 'refused') {
+      report(`the clean room's daemon had to be ${outcome}`, outcome === 'killed');
+    }
   }
 
   // AC7 — "removed on success and preserved under DeFlow_KEEP_TMP=1 on
