@@ -90,6 +90,11 @@ interrupted.
 
 Options for "doctor":
   --json          Emit one machine-readable document instead of the report
+  --fix           Install the missing ACP adapter for every vendor CLI that is
+                  already on your PATH, without asking. Without it, doctor
+                  offers once per provider when stdout is a terminal and
+                  installs nothing otherwise. One package, one attempt, no
+                  retry — and the result is re-checked, not assumed.
   --skip-conformance
                   Skip the F3.4 battery, which spawns a real turn per
                   assertion per installed adapter. The section then reports
@@ -177,7 +182,8 @@ async function up(argv: readonly string[]): Promise<number> {
  * status model.
  */
 async function doctor(argv: readonly string[]): Promise<number> {
-  const unknown = argv.filter((flag) => flag !== '--json' && flag !== '--skip-conformance');
+  const known = new Set(['--json', '--fix', '--skip-conformance']);
+  const unknown = argv.filter((flag) => !known.has(flag));
   if (unknown.length > 0) {
     process.stderr.write(`DeFlow doctor: unknown option "${unknown[0]}"\n\n${USAGE}`);
     return EX_USAGE;
@@ -187,7 +193,12 @@ async function doctor(argv: readonly string[]): Promise<number> {
     cwd: process.cwd(),
     env: process.env,
     json: argv.includes('--json'),
+    fix: argv.includes('--fix'),
     conformance: !argv.includes('--skip-conformance'),
+    // Read at call time rather than captured at import, for the same reason
+    // `run`'s `isTty` is: a module-level `process.stdout.isTTY` is evaluated
+    // once, before anything knows whether this process's stdout is a pipe.
+    isTty: () => process.stdout.isTTY === true,
   });
 
   process.stdout.write(result.stdout);
