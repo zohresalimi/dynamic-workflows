@@ -610,6 +610,14 @@ effect journal, which is precisely the invariant that makes crash recovery sound
 > three runs of 2026-08-12 did. From KAR-19.6, `planRunControl` applies the `UNAPPROVED` check
 > **below** the verb split: `cancel` on an unapproved run appends `run.cancel.requested` and
 > `run.aborted` in one transaction, and `pause` / `resume` still answer `422`.
+>
+> AC2's `409 run_not_pausable` moved with it, for `cancel` only. Cancelling a run that has already
+> ended is a **repeat** — the operator asked for the state the run is in — and AC2's own rule for a
+> repeat is `200` with the `seq` already in the log and nothing appended. So `cancel` on a
+> `completed` or `aborted` run answers `200` carrying the `seq` of the event that ended it, which is
+> also how the CLI can say *how* it ended without a second read; `pause` and `resume` keep the
+> `409`, because neither is a state an ended run is in. Asserted in
+> `packages/daemon/test/integration/cancel-unstarted.test.ts`.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 

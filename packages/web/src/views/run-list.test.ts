@@ -155,6 +155,44 @@ suite('EPIC-19-S2 — a run created while the UI is open (AC5)', () => {
     expect(rows()).toHaveLength(1);
   });
 
+  /**
+   * KAR-19.6 AC7 / EPIC-19-S42 — a stopped run stops looking live.
+   *
+   * The operator's complaint was not only that the runs would not stop; it was
+   * that they kept appearing. A cancel that ends the ledger and leaves three
+   * surfaces rendering the run as live has moved the defect rather than fixed
+   * it — so the `run.aborted` frame is asserted here on exactly the terms the
+   * `run.completed` one above is, and the `?status=active` half of the same
+   * clause is asserted against a real daemon in
+   * `packages/daemon/test/integration/cancel-unstarted.test.ts`.
+   */
+  it('updates the row in place when the run is cancelled, with no refetch', async () => {
+    const client = listClient([]);
+    const feed = pushableFeed();
+    shell = await mountShell({ at: '/', client, runsFeed: feed.factory });
+    setActivePinia(shell.pinia);
+    await expect.poll(() => useRunListStore(shell.pinia).hydrated).toBe(true);
+    feed.push(created(NEW_RUN));
+    await expect.poll(() => rows().length).toBe(1);
+    const fetchesBefore = client.calls.length;
+
+    feed.push(lifecycle('run.aborted', NEW_RUN, 41, { outcome: 'failed', criteriaSatisfied: [] }));
+
+    await expect
+      .poll(() =>
+        shell.container
+          .querySelector<HTMLElement>(`[data-run-status="${NEW_RUN}"]`)
+          ?.textContent?.trim(),
+      )
+      // `runStatusLabel`'s own string for `aborted`, and no fourth spelling.
+      .toBe('aborted');
+    // In place: one row, neither duplicated nor gone.
+    expect(rows()).toHaveLength(1);
+    // And nothing went back to the server to make it update.
+    expect(client.calls.length).toBe(fetchesBefore);
+    expect(useRunListStore(shell.pinia).fetches).toBe(1);
+  });
+
   it('lists what GET /api/runs already held, including a run nothing has framed', async () => {
     shell = await mountShell({
       at: '/',

@@ -41,9 +41,11 @@
  * EPIC-10-S29 · AC1-AC5, AC7, AC8, AC9
  */
 import type {
+  CancelMode,
   Constraint,
   Db,
   Event,
+  EventSeq,
   RunId,
   SpecAmendment,
   SpecCoverageIssue,
@@ -69,6 +71,7 @@ import {
   appendEventsConsumingWakes,
   headSeq,
   readRange,
+  readWakes,
   replayAll,
   scheduleWake,
 } from '@DeFlow/ledger';
@@ -561,20 +564,139 @@ export interface AbandonOptions extends GateOptions {
 export function abandonRun(options: AbandonOptions): void {
   const events = ledger(options.db, options.runId);
   if (!gateIsOpen(events)) throw new SpecGateNotOpen(options.runId, 'abandon');
+  atGate(options);
+}
 
-  appendEventsConsumingWakes(
+// ── the operator's stop ──────────────────────────────────────────────────────
+
+/**
+ * KAR-19.6 AC4, AC5 — ending a run because a person said so, in **one** place.
+ *
+ * This half of the file is not about the F1.3 gate and lives beside it anyway,
+ * because the gate's abandon *is* the operator's stop for the one state that
+ * had a way out, and AC5 is explicit that there must be one implementation of
+ * that rather than two: *"a source guard asserts that exactly one shipped
+ * module appends `run.aborted` on an operator stop"* — `../../../test/
+ * one-abandon-site.test.ts`. Every draft of `run.aborted` an operator caused is
+ * therefore written by `abortDraft` below, and the two callers differ only in
+ * what they write **in front of** it.
+ *
+ * The distinction the second event carries is the one this story cannot afford
+ * to lose. A bare `run.aborted { outcome: 'failed' }` is indistinguishable from
+ * a run that died of a defect — which is exactly how the three runs of
+ * 2026-08-12 were produced — so an abandon records who asked: at the gate, the
+ * `human.responded { optionId: 'abandon' }` that is already the shipped answer;
+ * with no gate open, the `run.cancel.requested` the operator's `cancel` means.
+ * Both are one transaction with the abort, so `cancelling` never becomes an
+ * observable status for a run with nothing in flight and a crash between the
+ * two is impossible by construction rather than by ordering luck.
+ */
+
+/** The one draft of the event that ends a run an operator stopped. */
+function abortDraft(options: GateOptions): EventDraft {
+  return {
+    runId: options.runId,
+    ts: options.ts,
+    kind: 'run.aborted',
+    v: 1,
+    epoch: options.epoch,
+    // `failed` because `RUN_OUTCOMES` is a closed set of three and `partial`
+    // claims some acceptance criteria were satisfied, which a run stopped by
+    // hand cannot say.
+    payload: { outcome: 'failed', criteriaSatisfied: [] },
+  };
+}
+
+/** The gate path: the option the operator effectively chose, then the abort,
+ * with the gate's own `node_wake` row consumed in the same transaction. */
+function atGate(options: GateOptions): EventSeq {
+  const seqs = appendEventsConsumingWakes(
+    options.db,
+    [responded(options, 'abandon'), abortDraft(options)],
+    [{ runId: options.runId, nodeId: SPEC_GATE_NODE }],
+  );
+  return endedAt(seqs);
+}
+
+/** The seq of the `run.aborted`, which is the last draft of either path. */
+function endedAt(seqs: readonly EventSeq[]): EventSeq {
+  const seq = seqs.at(-1);
+  if (seq === undefined) throw new Error('the abandon transaction appended nothing');
+  return seq;
+}
+
+export interface TerminateOptions extends GateOptions {
+  /** Recorded on the `run.cancel.requested` when there is no gate to answer. */
+  readonly mode: CancelMode;
+}
+
+export interface TerminateResult {
+  /** The `seq` of the `run.aborted` that ended the run. */
+  readonly seq: EventSeq;
+  /** Which of the two paths ran, for the log and for a spec to assert on. */
+  readonly via: 'gate' | 'cancel';
+}
+
+/**
+ * AC3, AC4, AC5 — stops a run that never started, whichever of the two states
+ * it never started in.
+ *
+ * The daemon chooses the path from the reduced log, and the operator is never
+ * asked to know which of two commands their run's status entitles them to:
+ * that question is what made `run_20260812T133401Z_318740` unstoppable, since
+ * `cancel` refused it and `spec/abandon` threw at it.
+ *
+ * Every pending wake of the run goes with it, in the same transaction. A run
+ * that ends holding a due `node_wake` row is a run the next tick dispatches a
+ * framing turn for — which is a run the operator stopped and the daemon
+ * carried on working.
+ */
+export function terminateRun(options: TerminateOptions): TerminateResult {
+  if (gateIsOpen(ledger(options.db, options.runId))) {
+    return { seq: atGate(options), via: 'gate' };
+  }
+
+  const wakes = readWakes(options.db, options.runId).map((row) => ({
+    runId: options.runId,
+    nodeId: row.nodeId,
+  }));
+
+  const seqs = appendEventsConsumingWakes(
     options.db,
     [
-      responded(options, 'abandon'),
       {
         runId: options.runId,
         ts: options.ts,
-        kind: 'run.aborted',
+        kind: 'run.cancel.requested',
         v: 1,
         epoch: options.epoch,
-        payload: { outcome: 'failed', criteriaSatisfied: [] },
+        payload: { mode: options.mode },
       },
+      abortDraft(options),
     ],
-    [{ runId: options.runId, nodeId: SPEC_GATE_NODE }],
+    wakes,
   );
+  return { seq: endedAt(seqs), via: 'cancel' };
+}
+
+/**
+ * AC8 — the second half of a cancel that a crash interrupted: the `run.aborted`
+ * a run whose ladder has finished is still owed.
+ *
+ * Called from the driver rather than from a route, because *"the operator
+ * issues no second command"* is the whole claim: the request appended
+ * `run.cancel.requested` and may have died before anything else, and what
+ * finishes the job is a daemon reading the ledger — never a flag held in the
+ * process that took the request (05 §10.4).
+ */
+export function completeCancel(options: GateOptions): EventSeq {
+  const seqs = appendEventsConsumingWakes(
+    options.db,
+    [abortDraft(options)],
+    readWakes(options.db, options.runId).map((row) => ({
+      runId: options.runId,
+      nodeId: row.nodeId,
+    })),
+  );
+  return endedAt(seqs);
 }

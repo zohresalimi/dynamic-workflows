@@ -130,6 +130,9 @@ export {
   resolveContextBudget,
   SegmentContentHashMismatch,
 } from './build-packet.ts';
+// KAR-19.6 AC2 — the one refusal the cancel route and `DeFlow cancel` both
+// speak when a mode is not one of the two ladders.
+export { cancelModeList, invalidCancelModeMessage } from './cancel-mode.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';

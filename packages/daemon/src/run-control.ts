@@ -50,6 +50,7 @@ import {
   runHeadSeq,
 } from '@DeFlow/ledger';
 import { decisionSurfaceMoved } from './human/patch-decision.ts';
+import { terminateRun } from './spec/gate.ts';
 
 export type RunControlVerb = 'pause' | 'resume' | 'cancel';
 
@@ -103,8 +104,24 @@ export interface RunControlAppend {
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * KAR-19.6 AC3 — end this run now, in one transaction, rather than append a
+ * request something else will act on.
+ *
+ * Planned for a `cancel` of a run that never started: nothing is in flight, so
+ * there is no ladder with a rung on it and `cancelling` would be a status no
+ * surface could render honestly. What performs it is `terminateRun` in
+ * `./spec/gate.ts` — the one module that appends `run.aborted` for an operator
+ * (AC5) — and not this file.
+ */
+export interface RunControlTerminate {
+  readonly outcome: 'terminate';
+  readonly mode: CancelMode;
+}
+
 export type RunControlPlan =
   | RunControlAppend
+  | RunControlTerminate
   /** Nothing to do: the run is already in the state asked for. */
   | { readonly outcome: 'unchanged'; readonly seq: number }
   | {
@@ -125,9 +142,17 @@ export type RunControlPlan =
  *
  * `created` and `awaiting-spec-approval` are the same fact from two sides:
  * intake appended `task.submitted` and framing has either not produced a spec
- * or not had it approved. Controlling such a run is meaningless — there is
- * nothing running to pause and nothing scheduled to cancel — and the operator
- * has `POST /runs/:id/spec/abandon` for the thing they actually mean.
+ * or not had it approved. There is nothing running to pause and nothing
+ * scheduled to resume, so those two verbs refuse.
+ *
+ * > **Amended 2026-08-12 by KAR-19.6 AC3.** This check used to sit above the
+ * > verb split and refuse `cancel` here too, with the sentence *"the operator
+ * > has `POST /runs/:id/spec/abandon` for the thing they actually mean"* — and
+ * > that route begins `if (!gateIsOpen(events)) throw new SpecGateNotOpen(…)`.
+ * > A run accepted and never framed was therefore refused by both, and three of
+ * > them accumulated in one operator's `DeFlow status` with no way out at all.
+ * > `cancel` now takes the verb split first and plans a termination for these
+ * > two statuses; `pause` and `resume` are unchanged.
  */
 const UNAPPROVED: readonly RunStatus[] = ['created', 'awaiting-spec-approval'];
 
@@ -170,7 +195,11 @@ export function planRunControl(
     return refused(404, 'run_not_found', 'this ledger holds no such run');
   }
 
-  if (UNAPPROVED.includes(status)) {
+  // Below the verb split for `cancel`, and above everything else for the two
+  // verbs that admit work (AC3). Written as one guard rather than moved into
+  // the `pause` and `resume` arms so that the *order* of the answers — the
+  // contract this file's specs assert — is still readable in one place.
+  if (request.verb !== 'cancel' && UNAPPROVED.includes(status)) {
     return refused(
       422,
       'spec_not_approved',
@@ -225,9 +254,17 @@ function planCancel(
   situation: RunSituation,
   status: RunStatus,
 ): RunControlPlan {
-  if (ENDED.includes(status)) return notPausable('cancel', status);
+  // AC6, and it is KAR-15.5 AC2's rule reaching a path it was never exercised
+  // against rather than a new one: a cancel of a run that has already ended is
+  // a *repeat* — the operator asked for the state it is in — so it answers with
+  // the seq that ended it and appends nothing. `pause` and `resume` keep their
+  // `409`; neither is a state an ended run is in.
+  if (ENDED.includes(status)) return { outcome: 'unchanged', seq: situation.establishedSeq };
 
   const mode: CancelMode = request.mode ?? 'cooperative';
+
+  // AC3 — a run that never started ends here and now. @see UNAPPROVED
+  if (UNAPPROVED.includes(status)) return { outcome: 'terminate', mode };
   const inFlight = situation.cancel ?? null;
   if (status === 'cancelling' && inFlight !== null && inFlight.mode === mode) {
     return { outcome: 'unchanged', seq: inFlight.requestedSeq };
@@ -276,10 +313,28 @@ export type ControlRunResult =
  * came last: a run that started has a `run.started`, one that was approved and
  * has not started yet has only the approval.
  */
-const ESTABLISHED_BY: Readonly<Record<'paused' | 'admitting', readonly string[]>> = {
+const ESTABLISHED_BY: Readonly<Record<'paused' | 'admitting' | 'ended', readonly string[]>> = {
   paused: ['run.paused'],
   admitting: ['run.resumed', 'run.started', 'run.spec.approved'],
+  /** KAR-19.6 AC6 — what a cancel of a run that has already ended echoes: the
+   * event that ended it, so the CLI can say *how* it ended without a re-read. */
+  ended: ['run.completed', 'run.aborted'],
 };
+
+/**
+ * The seq a repeated `cancel` echoes: the request already in flight, or — for a
+ * run that has ended — the event that ended it (AC6).
+ *
+ * A run cancelled twice reaches the second branch rather than the first, and
+ * that is the honest answer: by then the cancel is not in flight, it is done,
+ * and `run.aborted`'s seq is the one that tells the operator so.
+ */
+function cancelEstablishedSeq(db: Db, runId: RunId, state: RunState): number {
+  if (ENDED.includes(state.status)) {
+    return lastSeqOfKinds(db, runId, ESTABLISHED_BY.ended) ?? runHeadSeq(db, runId);
+  }
+  return state.cancel?.requestedSeq ?? 0;
+}
 
 /** The reduced state of one run, or `null` when the ledger holds none. */
 function situationOf(
@@ -303,7 +358,7 @@ function situationOf(
   const kinds = verb === 'pause' ? ESTABLISHED_BY.paused : ESTABLISHED_BY.admitting;
   const established =
     verb === 'cancel'
-      ? (state.cancel?.requestedSeq ?? 0)
+      ? cancelEstablishedSeq(db, runId, state)
       : (lastSeqOfKinds(db, runId, kinds) ?? runHeadSeq(db, runId));
 
   // `Number.isSafeInteger` rather than a truthiness check: seq 0 is a
@@ -364,6 +419,20 @@ export function controlRun(options: ControlRunOptions): ControlRunResult {
       // branch that already read a status.
       runStatus: situation.status as RunStatus,
     };
+  }
+
+  // AC3, AC5 — the run ends here, and it ends in `terminateRun`: this file
+  // decides, `./spec/gate.ts` writes, and there is one module that appends
+  // `run.aborted` for an operator rather than one per route.
+  if (plan.outcome === 'terminate') {
+    const ended = terminateRun({
+      db,
+      runId,
+      epoch: options.epoch,
+      ts: options.ts,
+      mode: plan.mode,
+    });
+    return { status: 'ok', http: 200, seq: ended.seq, appended: true, runStatus: 'aborted' };
   }
 
   const draft: EventDraft = {

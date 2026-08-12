@@ -33,23 +33,26 @@
  * Verifies: EPIC-19-S1, EPIC-19-S4, EPIC-19-S5, EPIC-19-S8 · KAR-19.1 AC2,
  * AC3, AC7
  */
-import type { Clock, Db, EventSeq, NodeId, RunId, StallReport } from '@DeFlow/core';
+import type { CancelMode, Clock, Db, EventSeq, NodeId, RunId, StallReport } from '@DeFlow/core';
 import { DEFAULT_NO_PROGRESS_POLICY, EVENT_CURRENT_VERSIONS, noProgress } from '@DeFlow/core';
 import type { AppendOptions, NodeWakeRow } from '@DeFlow/ledger';
 import {
   appendEvents,
   clearWake,
   dueWakes,
+  lastSeqOfKinds,
   listRunIds,
   readEventTs,
+  readProcesses,
   readRunCreatedSpec,
   readWake,
   replayRun,
   runHeadSeq,
   scheduleWake,
 } from '@DeFlow/ledger';
+import { type KillRunOutcome, killRun } from './kill-switch.ts';
 import { log } from './logging.ts';
-import { FRAMING_NODE } from './spec/gate.ts';
+import { completeCancel, FRAMING_NODE } from './spec/gate.ts';
 
 const driver = log.child({ mod: 'drive' });
 
@@ -139,13 +142,29 @@ export interface DriverPorts {
    * the operator reads "idle for six days" rather than "idle for ten minutes".
    */
   readonly startedAt?: number | undefined;
+  /**
+   * KAR-19.6 AC8 — the kill switch, as a port.
+   *
+   * Injected only so a spec can watch which runs the ladder was walked for and
+   * with which mode; the default is the shipped `killRun`, and there is no
+   * second implementation of a ladder behind it.
+   */
+  readonly killRun?: KillRunner | undefined;
 }
+
+/** What the driver asks of the kill switch: one run, one mode, the outcome. */
+export type KillRunner = (
+  runId: RunId,
+  mode: CancelMode,
+) => Promise<{ readonly outcome: KillRunOutcome }>;
 
 export interface TickReport {
   /** Runs whose framing wake was dispatched on this tick. */
   readonly dispatched: readonly RunId[];
   /** Runs that appended a `run.stalled` on this tick. */
   readonly stalled: readonly RunId[];
+  /** KAR-19.6 AC8 — runs whose cancel this tick carried to `run.aborted`. */
+  readonly cancelled: readonly RunId[];
 }
 
 export interface RunDriver {
@@ -166,13 +185,88 @@ export interface RunDriver {
  */
 export function createRunDriver(ports: DriverPorts): RunDriver {
   const framing = new Set<RunId>();
+  /** Runs whose kill ladder this process is part-way through. Per-process by
+   * construction, exactly like `framing`, and never the durable record. */
+  const cancelling = new Set<RunId>();
+  const kill: KillRunner =
+    ports.killRun ??
+    ((runId, mode) =>
+      killRun(runId, { db: ports.db, clock: ports.clock, epoch: ports.epoch, mode, by: 'user' }));
   const startedAt = ports.startedAt ?? ports.clock.now();
   const appendOptions: AppendOptions =
     ports.spillTo === undefined ? {} : { spillTo: ports.spillTo };
 
   async function tick(now: number): Promise<TickReport> {
+    // Cancels first. A run the operator has stopped must not have a framing
+    // turn dispatched for it on the very tick that finishes stopping it.
+    const cancelled = await finishCancels(now);
     const dispatched = await dispatchWakes(now);
-    return { dispatched, stalled: reportStalls(now) };
+    return { dispatched, stalled: reportStalls(now), cancelled };
+  }
+
+  /**
+   * KAR-19.6 AC8 — every run that is `cancelling`, carried to its end.
+   *
+   * This is the half of a cancel that a crash interrupts. The request is an
+   * event and the ladder is a sequence of timed signals, so the tempting
+   * implementation is a timer held by the process that took the request — and a
+   * daemon that died between the two would come back to a run parked at
+   * `cancelling` for ever, with the operator no longer watching (05 §10.4).
+   * Nothing is remembered here: the state is read from the ledger on every
+   * tick, `killRun` is idempotent, and the run ends when there is nothing of it
+   * left running.
+   *
+   * **Cooperative is never promoted.** A cooperative cancel whose agent has not
+   * answered leaves live processes behind, and this loop leaves them alone: an
+   * automatic escalation would make `--force` decorative and would truncate the
+   * transcript the operator cancelled the run in order to read (EPIC-19-S38).
+   */
+  async function finishCancels(now: number): Promise<RunId[]> {
+    const finished: RunId[] = [];
+
+    for (const runId of listRunIds(ports.db)) {
+      // Two covering-index seeks rather than a replay, for the same reason the
+      // stall pre-filter exists: this runs once a second for every run the
+      // directory has ever held.
+      const requested = lastSeqOfKinds(ports.db, runId, ['run.cancel.requested']);
+      if (requested === null) continue;
+      const ended = lastSeqOfKinds(ports.db, runId, ['run.completed', 'run.aborted']);
+      if (ended !== null && ended > requested) continue;
+      if (cancelling.has(runId)) continue;
+
+      const state = replayRun(ports.db, runId).state;
+      if (state.status !== 'cancelling') continue;
+      const mode: CancelMode = state.cancel?.mode ?? 'cooperative';
+
+      cancelling.add(runId);
+      try {
+        if (mode === 'forceful') {
+          const report = await kill(runId, mode);
+          if (report.outcome === 'survived') {
+            // `run.kill_failed` already names the survivors. Ending the run
+            // here would claim a stop that demonstrably did not happen.
+            driver.error(
+              { runId },
+              `the kill switch did not empty run ${runId}'s process groups; it stays cancelling`,
+            );
+            continue;
+          }
+        }
+
+        const live = readProcesses(ports.db).filter(
+          (row) => row.runId === runId && row.state === 'live',
+        );
+        if (live.length > 0) continue;
+
+        completeCancel({ db: ports.db, runId, epoch: ports.epoch, ts: now });
+        driver.info({ runId, mode }, `the cancel of run ${runId} is complete`);
+        finished.push(runId);
+      } finally {
+        cancelling.delete(runId);
+      }
+    }
+
+    return finished;
   }
 
   /**
@@ -189,6 +283,16 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       if (wake.nodeId !== FRAMING_NODE) continue;
       const runId = wake.runId as RunId;
       if (framing.has(runId)) continue;
+
+      // KAR-19.6 AC8 — a run that has ended admits no further work, whatever
+      // rows it left behind. `terminateRun` consumes a stopped run's wakes in
+      // the same transaction as the abort, so this is the second line of
+      // defence rather than the first: a row that outlives its run by any other
+      // route is cleared here rather than framed.
+      if (lastSeqOfKinds(ports.db, runId, ['run.completed', 'run.aborted']) !== null) {
+        clearWake(ports.db, { runId, nodeId: wake.nodeId });
+        continue;
+      }
 
       // Already framed — a wake left behind by a crash between `run.created`
       // and the delete. Clearing it is the whole repair: the event is the
