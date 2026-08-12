@@ -126,6 +126,12 @@ Rules:
    the OS's, a proxy's — ever sees a silent connection. Long-running DeFlow nodes are routinely
    idle for minutes.
 
+   **A per-run subscription ends rather than keeping alive forever** (KAR-19.2 AC8). Once every run
+   named in `?runs=` has delivered a `run.completed` or `run.aborted`, the server closes the
+   connection: that run will never emit again, and a socket that stays open on keepalives gives a
+   UI no way to tell "still working" from "will never speak again". `?runs=*` is never closed this
+   way — the global topic is about runs that do not exist yet.
+
 4. **Ledger events use the default (unnamed) event type**, so the client needs exactly one
    `onmessage` handler feeding `applyEvent`. Discriminate on the payload's `kind` field, not on the
    SSE `event:` name. Named SSE events are reserved for **stream-control frames**, which are not
@@ -414,6 +420,43 @@ itself (§9 of [the domain model](./04-domain-model.md)), which intake cannot ho
 "no interpretation happens here" ([06 §1.1](./06-planning-and-replanning.md)) — so it is framing's
 event to append, not intake's.
 
+**Admission happens before the response** (KAR-19.2). If no provider in the registry resolves to a
+spawnable adapter, the request is refused with `422 no_usable_provider` — or
+`422 provider_handshake_failed` when one resolved and did not answer ACP `initialize`:
+
+```jsonc
+// 422 Unprocessable Content
+{
+  "error": {
+    "code": "no_usable_provider",
+    "message": "…", // doctor's own sentences, then the mock-agent hint
+    "detail": {
+      "runId": "r_01JXQ…",
+      "providers": [
+        {
+          "id": "claude",
+          "state": "adapter-missing", // installed | adapter-missing | not-installed | handshake-failed
+          "vendorPath": "/opt/homebrew/bin/claude",
+          "adapterPackage": "@agentclientprotocol/claude-agent-acp",
+        },
+      ],
+    },
+    "retryable": false,
+    "seq": 10435, // the `run.aborted` that ended it
+  },
+}
+```
+
+The run still exists: its ledger holds `task.submitted`, one `provider.probed` per registered
+provider recording what was and was not found, and `run.aborted` with `outcome: "failed"` — so the
+refusal reaches the `runs=*` topic like any other ending, and is answerable six weeks later (NF8).
+`GET /api/runs/:id` carries the same `{ code, message, providers }` under `refusal`. `message` is
+rendered by the function `DeFlow doctor` prints from, never a second wording, and `DeFlow run`
+exits `5` (`environmentUnusable`) on it.
+
+Admission is a read of what the daemon probed at boot: it spawns no child of its own, so a machine
+with a usable provider pays nothing for the check.
+
 ### 7.2 `GET /api/runs/:id/events?since=<seq>`
 
 ```jsonc
@@ -697,6 +740,7 @@ a client branching on `code` would have to unpick `detail` to find out what actu
 | 409  | `already_answered`                                                             | a human gate, or a spec gate, that somebody already decided                  |
 | 409  | `node_not_running`, `use_respond`                                              | KAR-13.3's two interjection refusals — different remedies, different words   |
 | 422  | `unknown_option`, `missing_payload`, `empty_text`, `not_applicable`, `apply_unavailable` | understood, and not actionable as asked                             |
+| 422  | `no_usable_provider`, `provider_handshake_failed`                              | KAR-19.2's admission refusals — this machine cannot host a run (see §7.1)    |
 
 `packages/daemon/src/http/errors.ts` is where the union lives — one enumerated list, one status per
 code — and `errors.test.ts` transcribes the first table by hand and checks every pair, so the two

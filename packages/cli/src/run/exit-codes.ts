@@ -22,6 +22,7 @@
  *
  * Verifies: EPIC-18-S23 · AC6
  */
+import { isRunRefusalCode } from '@DeFlow/adapters';
 import type { RunState } from '@DeFlow/core';
 import { openHumanGates } from '@DeFlow/core';
 
@@ -57,9 +58,29 @@ export type RunExitCode = (typeof RUN_EXIT_CODES)[keyof typeof RUN_EXIT_CODES];
  * wrong" the same kind of answer. It lives here rather than beside its callers
  * because `cancel.ts` and the run command must exit the same code for the same
  * mistake, and two `const EX_USAGE = 64` declarations are two things to keep
- * true.
+ * true. A CI job branching on the seven codes should never see it for a run
+ * that started.
  */
 export const EX_USAGE = 64;
+
+/**
+ * KAR-19.2 AC5 — what `DeFlow run` exits when `POST /api/runs` refused it.
+ *
+ * Two of the refusal codes are facts about the *machine* rather than about the
+ * request: no provider on it can serve a run, or the one bridge it has does not
+ * speak ACP. Both are `environmentUnusable`, which is already documented as
+ * *"this machine cannot host a run"* and is already what this command exits
+ * when git is too old — the same class of fact, discovered one step earlier.
+ * Everything else the daemon refuses is a request that was wrong, which is 64.
+ *
+ * The table gains no eighth member, and `isRunRefusalCode` is the closed
+ * vocabulary from `@DeFlow/adapters` rather than two string literals repeated
+ * here — the daemon and the CLI must agree on which codes these are, and a
+ * copy is a way for them to stop agreeing.
+ */
+export function rejectionExitCode(code: string | null): number {
+  return code !== null && isRunRefusalCode(code) ? RUN_EXIT_CODES.environmentUnusable : EX_USAGE;
+}
 
 export interface RunVerdict {
   /** Whether the CLI should stop watching. `false` means "still going". */

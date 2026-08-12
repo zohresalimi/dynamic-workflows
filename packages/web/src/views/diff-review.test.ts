@@ -135,8 +135,8 @@ suite('KAR-17.6 test 3 — the finding renders at the line, not after the hunk (
     await openDiff({ query: { file: 'src/date-picker.ts' } });
     const widget = inDiff('65207341fbd9');
 
-    expect(widget?.getAttribute('data-seq')).toBe('11');
-    expect(widget?.querySelector('[data-seq-link]')?.textContent).toContain('11');
+    expect(widget?.getAttribute('data-seq')).toBe('12');
+    expect(widget?.querySelector('[data-seq-link]')?.textContent).toContain('12');
   });
 
   it('renders a criterion as a link into the acceptance board when there is one', async () => {

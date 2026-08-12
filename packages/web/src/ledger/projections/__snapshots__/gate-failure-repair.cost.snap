@@ -1,5 +1,5 @@
 {
-  "appliedSeq": 30,
+  "appliedSeq": 31,
   "byAttempt": Map {
     "fix-65207341fbd9#0" => {
       "costUsd": {
@@ -9,7 +9,7 @@
         "vendorReported": null,
       },
       "events": 1,
-      "lastSeq": 20,
+      "lastSeq": 21,
       "sources": [
         "estimated",
       ],
@@ -38,7 +38,7 @@
         "vendorReported": null,
       },
       "events": 1,
-      "lastSeq": 20,
+      "lastSeq": 21,
       "sources": [
         "estimated",
       ],
@@ -67,7 +67,7 @@
         "vendorReported": null,
       },
       "events": 1,
-      "lastSeq": 20,
+      "lastSeq": 21,
       "sources": [
         "estimated",
       ],
@@ -99,7 +99,7 @@
       "vendorReported": null,
     },
     "events": 1,
-    "lastSeq": 20,
+    "lastSeq": 21,
     "sources": [
       "estimated",
     ],

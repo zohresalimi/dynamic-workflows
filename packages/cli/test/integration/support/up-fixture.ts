@@ -9,9 +9,17 @@
  */
 
 import type { DaemonFile } from '@DeFlow/daemon';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 
 /**
@@ -99,16 +107,36 @@ export interface UpEnvOptions {
 }
 
 /**
+ * A directory holding a `node` and nothing else, one per test process.
+ *
+ * The shebang problem, solved without the side effect. Every fake here is a
+ * `#!/usr/bin/env node` script, so `node` has to be findable — but putting
+ * *its own directory* on `PATH` puts the npm global bin directory there with it
+ * on every normal installation, which is where a developer's real
+ * `claude-agent-acp` lives. A spec asserting "zero providers" then finds the
+ * author's own, the boot probe succeeds, and the probe's synthetic run turns up
+ * in a `DeFlow status` listing that expected two.
+ *
+ * Corrected 2026-08-12 while implementing KAR-19.2 — same correction as
+ * `doctor-fixture.ts`'s `doctorEnv`, for the same reason, found the same way.
+ */
+function nodeOnlyDir(): string {
+  const dir = join(tmpdir(), `DeFlow-node-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  return dir;
+}
+
+/**
  * The environment a `DeFlow up` spec runs the command under.
  *
- * `PATH` holds only what is passed in plus the directory `node` itself lives
- * in — never the developer's own `PATH`, or a spec asserting "no agent CLI is
- * installed" would find a real one and pass for the wrong reason. The `node`
- * directory has to be there: every fake here is a `#!/usr/bin/env node`
- * script, and a shebang that cannot resolve is an ENOENT with no explanation.
+ * `PATH` holds only what is passed in, plus a directory holding nothing but a
+ * `node` — never the developer's own `PATH`, or a spec asserting "no agent CLI
+ * is installed" would find a real one and pass for the wrong reason.
  */
 export function upEnv(options: UpEnvOptions): NodeJS.ProcessEnv {
-  const path = [...(options.binDirs ?? []), dirname(process.execPath)].join(':');
+  const path = [...(options.binDirs ?? []), nodeOnlyDir()].join(':');
   return {
     PATH: path,
     HOME: options.dataDir,

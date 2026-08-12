@@ -78,6 +78,14 @@ export const API_ERROR_STATUS = {
   payload_too_large: 413,
 
   // 422 — understood, and not actionable as asked.
+  //
+  // KAR-19.2's two admission refusals are 422 and not 503: `provider_unavailable`
+  // (503) says *"try again shortly"*, and this machine will not grow an ACP
+  // adapter on its own. A retryable status here would train a client — and
+  // `DeFlow run`'s own watcher — to sit in a loop waiting for an install that
+  // only a human can perform, which is the silence this story exists to end.
+  no_usable_provider: 422,
+  provider_handshake_failed: 422,
   spec_not_approved: 422,
   capability_unsupported: 422,
   unknown_option: 422,

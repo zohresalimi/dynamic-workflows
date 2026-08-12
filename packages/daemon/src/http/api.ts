@@ -101,6 +101,7 @@ import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
 import { runList } from './run-list.ts';
+import { runRefusal } from './run-refusal.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
 import { subscribeStream } from './streams.ts';
@@ -936,6 +937,22 @@ export const api = new Hono()
         ...apiError('invalid_request', result.message, { detail: { field: result.field } }),
       );
     }
+
+    // KAR-19.2 AC1, AC2 — admission refused, and the run exists anyway.
+    //
+    // `seq` is the `run.aborted` that ended it, which is what the envelope's
+    // optional `seq` is for (docs/11 §10: *"present when the failure also
+    // produced a ledger event"*) — so the 4xx and the ledger row a UI would
+    // show are joined rather than merely consistent.
+    if (result.outcome === 'refused') {
+      return c.json(
+        ...apiError(result.code, result.message, {
+          detail: { runId: result.runId, providers: result.providers },
+          seq: result.seq,
+        }),
+      );
+    }
+
     return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
   })
 
@@ -1137,8 +1154,23 @@ export const api = new Hono()
     // The accounting fidelity comes from the provider registry, which is where
     // the capability manifest lands (KAR-05.2): a summary that assumed `'exact'`
     // for an unknown vendor would report an enforceable ceiling that never fires.
+    //
+    // KAR-19.2 AC2, AC8 — and, for a run admission refused at submission, why.
+    // Attached here rather than folded into `RunState` because it is not run
+    // state: it is a fact about the machine on the day the run was submitted,
+    // re-rendered from the `provider.probed` rows the refusal wrote (NF8).
+    const refusal = runRefusal(view, runId);
     return c.json(
-      runSummary(runId, state, view.headSeq(), providerTokenAccounting, preflightEstimator(view)),
+      {
+        ...runSummary(
+          runId,
+          state,
+          view.headSeq(),
+          providerTokenAccounting,
+          preflightEstimator(view),
+        ),
+        ...(refusal === null ? {} : { refusal }),
+      },
       200,
     );
   })

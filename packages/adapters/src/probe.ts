@@ -199,6 +199,25 @@ async function handshake(
   await started;
   const pgid = child.pid ?? 0;
 
+  // KAR-19.2 AC7 — the child's own account of why it could not answer.
+  //
+  // `stdio` has always been `pipe` here and nothing has ever read this stream,
+  // so an adapter that died saying `Cannot find module ./dist/index.js` said it
+  // into a pipe nobody drained: the probe reported "closed without answering
+  // initialize", and the operator was left to conclude that a package they had
+  // installed was not installed.
+  //
+  // `text()` rather than a `'data'` listener, which is the rule this package's
+  // shape guard enforces and `readVersion` above already follows. It resolves
+  // when the stream ends, which is why every failure below is *recorded* and
+  // rethrown after the teardown rather than thrown from inside the loop: the
+  // teardown is what ends the child, and therefore what makes its last words
+  // readable.
+  const saidOnStderr = text(child.stderr).then(
+    (raw) => raw.trim(),
+    () => '',
+  );
+
   // The whole conversation is bounded, measured on the injected clock: an
   // agent that answers nothing and exits never is otherwise a daemon boot that
   // never finishes. Armed before the first byte is read, because the wedge
@@ -228,6 +247,8 @@ async function handshake(
 
   const lines = createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
   let capsJson: string | null = null;
+  /** An `initialize` the agent answered with a JSON-RPC error, if it did. */
+  let refused: unknown = null;
   try {
     for await (const line of lines) {
       if (line.trim() === '') continue;
@@ -241,10 +262,8 @@ async function handshake(
       }
       if (frame.id !== INITIALIZE_ID) continue;
       if (frame.error !== undefined) {
-        throw probeFailed(
-          `${request.binaryPath} refused initialize: ${JSON.stringify(frame.error)}`,
-          { binaryPath: request.binaryPath, error: frame.error },
-        );
+        refused = frame.error;
+        break;
       }
       capsJson = sliceMember(line, 'result');
       break;
@@ -263,12 +282,25 @@ async function handshake(
     deadline.cancel();
   }
 
+  // The child has exited, so its stderr is complete: whatever it said while
+  // failing is available now, and is carried verbatim (KAR-19.2 AC7).
+  const said = await saidOnStderr;
+  const evidence = said === '' ? {} : { stderr: said };
+
+  if (refused !== null) {
+    throw probeFailed(`${request.binaryPath} refused initialize: ${JSON.stringify(refused)}`, {
+      binaryPath: request.binaryPath,
+      error: refused,
+      ...evidence,
+    });
+  }
+
   if (capsJson === null) {
     throw probeFailed(
       timing.wedged
         ? `${request.binaryPath} did not answer initialize inside the handshake window and was signalled`
         : `${request.binaryPath} closed without answering initialize, so there is nothing to record`,
-      { binaryPath: request.binaryPath, wedged: timing.wedged },
+      { binaryPath: request.binaryPath, wedged: timing.wedged, ...evidence },
     );
   }
   return { capsJson, exit: await exited };

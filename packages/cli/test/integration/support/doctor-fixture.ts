@@ -21,8 +21,9 @@
  *    prerequisites: `bwrap` and `socat` are checked for *presence on PATH*,
  *    and presence is the whole assertion.
  */
-import { chmodSync, existsSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -258,19 +259,40 @@ export interface DoctorEnvOptions {
 }
 
 /**
+ * A directory containing a `node` and nothing else, one per test process.
+ *
+ * The shebang problem, solved without the side effect. Every fake in this file
+ * is a `#!/usr/bin/env node` script, so `node` has to be findable — but putting
+ * *its own directory* on `PATH` puts the whole npm global bin directory there
+ * with it on every normal installation, and that is where a developer's real
+ * `claude-agent-acp` lives. A spec staging `adapter-missing` then resolves the
+ * author's own adapter and reports `installed`, which is a green suite on one
+ * machine and a red one on the next.
+ *
+ * Corrected 2026-08-12 while implementing KAR-19.2, after installing the real
+ * adapter on the development machine turned seventeen of these specs red at
+ * once without a line of their source changing.
+ */
+function nodeOnlyDir(): string {
+  const dir = join(tmpdir(), `DeFlow-node-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  return dir;
+}
+
+/**
  * The environment a `doctor` spec runs under.
  *
- * `PATH` holds only what the spec asked for plus the directory `node` itself
- * lives in — never the developer's own, or a spec asserting "no agent CLI is
- * installed" finds a real one and passes for the wrong reason. The `node`
- * directory has to be there: every fake here is a `#!/usr/bin/env node`
- * script, and a shebang that cannot resolve is an ENOENT with no explanation.
+ * `PATH` holds only what the spec asked for, plus a directory holding nothing
+ * but a `node` — never the developer's own, or a spec asserting "no agent CLI
+ * is installed" finds a real one and passes for the wrong reason.
  */
 export function doctorEnv(options: DoctorEnvOptions): NodeJS.ProcessEnv {
   const git = options.realGit === true ? resolveOnHostPath('git') : null;
   const path = [
     ...(options.binDirs ?? []),
-    dirname(process.execPath),
+    nodeOnlyDir(),
     ...(git === null ? [] : [dirname(git)]),
   ].join(delimiter);
 

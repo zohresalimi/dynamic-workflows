@@ -41,11 +41,14 @@ import type { RunArgs } from './args.ts';
 import { parseRunArgs } from './args.ts';
 import { cancelRun } from './cancel.ts';
 import { type DaemonEndpoint, ensureDaemon } from './daemon.ts';
-import { classifyRun, RUN_EXIT_CODES, type RunVerdict } from './exit-codes.ts';
+import {
+  classifyRun,
+  EX_USAGE,
+  RUN_EXIT_CODES,
+  type RunVerdict,
+  rejectionExitCode,
+} from './exit-codes.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
-
-/** sysexits(3) `EX_USAGE`, the same code a bad argv gets everywhere else here. */
-const EX_USAGE = 64;
 
 /** How long a second Ctrl-C has to arrive before the detach stands (AC3). */
 export const DETACH_WINDOW_MS = 3_000;
@@ -202,8 +205,20 @@ async function execute(
       runId = RunIdSchema.parse(created.runId);
     } catch (error) {
       if (error instanceof RunTaskRejected) {
-        options.stderr(`DeFlow run: ${error.field}: ${error.message}\n`);
-        return EX_USAGE;
+        const exitCode = rejectionExitCode(error.code);
+        // KAR-19.2 AC5, AC8 — an admission refusal is printed as the daemon
+        // wrote it and nothing else: it is already several sentences of
+        // `doctor`'s own words, and prefixing it with a field name that does
+        // not exist would put a phantom request problem in front of a machine
+        // problem. The attached view never opens, because there is nothing
+        // left to watch — which is the whole of "the CLI's attached view stops
+        // rather than waiting".
+        options.stderr(
+          exitCode === EX_USAGE
+            ? `DeFlow run: ${error.field}: ${error.message}\n`
+            : `${error.message}\n`,
+        );
+        return exitCode;
       }
       throw error;
     }

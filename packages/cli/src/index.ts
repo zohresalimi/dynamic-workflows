@@ -131,11 +131,19 @@ export interface RunTaskResult {
  * `detail`, and the envelope's own human-readable `message`. */
 export class RunTaskRejected extends Error {
   readonly field: string;
+  /**
+   * KAR-19.2 AC5 — the envelope's `code`, so the caller can tell a request that
+   * was wrong from a machine that cannot host a run. A member of the closed
+   * union, or `null` when the daemon answered with something that was not an
+   * error envelope at all.
+   */
+  readonly code: string | null;
 
-  constructor(field: string, message: string) {
+  constructor(field: string, message: string, code: string | null = null) {
     super(message);
     this.name = 'RunTaskRejected';
     this.field = field;
+    this.code = code;
   }
 }
 
@@ -237,6 +245,7 @@ export async function createRun(
       ? payload.error.detail.field
       : '<root>',
     isEnvelope(payload) ? payload.error.message : `POST /api/runs failed with ${response.status}`,
+    isEnvelope(payload) ? payload.error.code : null,
   );
 }
 

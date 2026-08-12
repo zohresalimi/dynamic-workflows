@@ -8,12 +8,12 @@
     {
       "gate": "typecheck",
       "outcome": "fail",
-      "seq": 11
+      "seq": 12
     },
     {
       "gate": "typecheck",
       "outcome": "pass",
-      "seq": 28
+      "seq": 29
     }
   ],
   "commits": [
@@ -32,6 +32,6 @@
       "outcome": "pass"
     }
   ],
-  "lastWriteSeq": 21,
+  "lastWriteSeq": 22,
   "milestoneAdvanced": true
 }

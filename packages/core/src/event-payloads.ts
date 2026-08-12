@@ -1961,12 +1961,50 @@ export const BudgetCeilingSetSchema = z
   });
 
 /** F3.4/F3.5 — capabilities are derived from a probe, never hardcoded. */
-export const ProviderProbedSchema = z.strictObject({
+export const ProviderHandshakeProbedSchema = z.strictObject({
   provider: ProviderIdSchema,
   version: z.string().min(1),
   capsJson: z.unknown(),
   binarySha256: BareSha256Schema,
 });
+
+/**
+ * KAR-19.2 AC1 — what admission found about one provider, including finding
+ * nothing.
+ *
+ * The second arm exists because `provider.probed` has to be able to record an
+ * *absence*. EPIC-19 rules out new event kinds — *"the refusal is recorded with
+ * `provider.probed` and `run.aborted`, both of which exist"* — and the arm
+ * above cannot say it: `version` and `binarySha256` describe a binary that
+ * answered, and there is none. Filling them with a placeholder would put a
+ * fiction into an append-only table to satisfy a schema, which is the one thing
+ * `event` may never hold.
+ *
+ * A union rather than a widened single object, so the probe arm is byte-for-byte
+ * the shape KAR-05.2 has always written and every existing row still validates
+ * against the same fields it was written against. The arms are unambiguous
+ * because both are strict: `admission` appears in exactly one of them.
+ */
+export const ProviderAdmissionProbedSchema = z.strictObject({
+  provider: ProviderIdSchema,
+  /** The three-state vocabulary KAR-18.8 settled, plus KAR-19.2's fourth. */
+  admission: z.enum(['installed', 'adapter-missing', 'not-installed', 'handshake-failed']),
+  /** The vendor CLI's name and its absolute resolved path, or `null`. */
+  vendorBin: singleLine(),
+  vendorPath: singleLine().nullable(),
+  /** The binary DeFlow spawns, and where it resolved. */
+  adapterBin: singleLine(),
+  adapterPath: singleLine().nullable(),
+  /** The npm package that provides `adapterBin`. */
+  package: singleLine(),
+  /** The child's own stderr from a handshake that failed. Never paraphrased. */
+  stderr: z.string().optional(),
+});
+
+export const ProviderProbedSchema = z.union([
+  ProviderHandshakeProbedSchema,
+  ProviderAdmissionProbedSchema,
+]);
 
 /** Parsed from Claude Code's `rate_limit_event` frame; `raw` keeps the frame
  * verbatim because the vendor's shape is not ours to normalise. */

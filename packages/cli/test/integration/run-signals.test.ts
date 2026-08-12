@@ -34,12 +34,15 @@ import { drainEvents } from '@DeFlow/ledger';
 import { it, makeRepo } from '@DeFlow/testkit';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, describe as suite } from 'vitest';
 import {
   alive,
   api,
   daemonFile,
+  HERMETIC_PATH,
+  MOCK_AGENT_BIN,
   type RunProcess,
   sleep,
   spawnRun,
@@ -64,6 +67,21 @@ afterEach(async () => {
 
 const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 
+/**
+ * KAR-19.2 — the bundled mock agent, linked on under both names admission
+ * resolves. Needed only by S21, whose `DeFlow run` autostarts its own daemon
+ * and would otherwise be refused at submission before there is anything to
+ * signal; harmless for S20, whose daemon is already up and was admitted (or
+ * not) at its own boot, before this ever runs.
+ */
+async function usableProviderBinDir(dir: string): Promise<string> {
+  const binDir = join(dir, 'bin');
+  await mkdir(binDir, { recursive: true });
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude-agent-acp'));
+  return binDir;
+}
+
 /** Starts `DeFlow run` and waits until it has created a run and is watching. */
 async function startWatching(
   tmp: string,
@@ -71,8 +89,14 @@ async function startWatching(
   const dataDir = join(tmp, 'data');
   mkdirSync(dataDir, { recursive: true });
   const repo = await makeRepo({ dir: join(tmp, 'repo') });
+  const binDir = await usableProviderBinDir(tmp);
 
-  const cli = spawnRun({ dataDir, cwd: repo.dir, args: ['add a health endpoint'] });
+  const cli = spawnRun({
+    dataDir,
+    cwd: repo.dir,
+    args: ['add a health endpoint'],
+    env: { PATH: [binDir, HERMETIC_PATH].join(':') },
+  });
   started.push({ dataDir, process: cli });
 
   const runId = await until('the CLI printed a run id', () => {

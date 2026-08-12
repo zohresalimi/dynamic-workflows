@@ -1,12 +1,12 @@
 {
-  "appliedSeq": 30,
+  "appliedSeq": 31,
   "attemptsByNode": Map {
     "impl-1" => [
       {
         "attempt": 0,
         "gate": "typecheck",
         "outcome": "fail",
-        "seq": 11,
+        "seq": 12,
       },
     ],
     "fix-65207341fbd9" => [
@@ -14,13 +14,13 @@
         "attempt": 0,
         "gate": "typecheck",
         "outcome": "pass",
-        "seq": 28,
+        "seq": 29,
       },
     ],
   },
   "criteria": Map {
     "ac-1" => {
-      "decidedAtSeq": 28,
+      "decidedAtSeq": 29,
       "gates": [
         "typecheck",
       ],
@@ -49,7 +49,7 @@
           "line": 2,
         },
         "message": "ts2322: Type 'Date' is not assignable to type 'number'.",
-        "seq": 11,
+        "seq": 12,
         "severity": "blocker",
       },
     ],
@@ -81,13 +81,13 @@
             "line": 2,
           },
           "message": "ts2322: Type 'Date' is not assignable to type 'number'.",
-          "seq": 11,
+          "seq": 12,
           "severity": "blocker",
         },
       ],
       "gate": "typecheck",
       "outcome": "fail",
-      "seq": 11,
+      "seq": 12,
       "specHash": "sha256-886a20b389ec2f64a9dc3ebc064f5cf43e9774269b0e6b73a6169f4071d588dd",
       "summary": "typecheck failed with 1 finding(s)",
     },
@@ -103,7 +103,7 @@
       "findings": [],
       "gate": "typecheck",
       "outcome": "pass",
-      "seq": 28,
+      "seq": 29,
       "specHash": "sha256-886a20b389ec2f64a9dc3ebc064f5cf43e9774269b0e6b73a6169f4071d588dd",
       "summary": "typecheck passed",
     },

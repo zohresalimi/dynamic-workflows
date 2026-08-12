@@ -29,6 +29,7 @@ import {
   EX_ALREADY_RUNNING,
   PortInUse,
   type ProviderDetectionEntry,
+  pathRoots,
   pickPort,
   probeProvidersOnBoot,
   type ReapDecision,
@@ -356,6 +357,12 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
       onStep: (step) => took(step),
       probeProviders: ({ db, dataDir: dir }) =>
         probeProvidersOnBoot({ db, clock, dataDir: dir, env, randomHex }),
+      // KAR-19.2 AC1 — the roots admission resolves against, which are the
+      // operator's own. This command runs in their terminal, which is the one
+      // context where reading `PATH` is correct rather than a machine-specific
+      // bug (§4.3) — and the same argument that makes `probeProviders` a port
+      // here rather than a call inside `boot()`.
+      providerRoots: pathRoots(env),
     });
   } catch (error) {
     if (error instanceof DaemonAlreadyRunning) {

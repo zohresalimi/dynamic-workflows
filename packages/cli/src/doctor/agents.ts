@@ -68,6 +68,7 @@ import {
   type AdapterInstallResult,
   type AgentInstallState,
   type InstallMode,
+  installCommand,
   offerAdapterInstalls,
   type ProviderResolution,
   type ProviderVerdict,
@@ -146,10 +147,15 @@ const short = (sha: string): string => sha.slice(0, 12);
  * those providers get their own line naming what is actually missing instead.
  */
 function installHints(skip: ReadonlySet<string>): string {
-  return Object.values(PROVIDER_SPECS)
-    .filter((spec) => !skip.has(spec.id))
-    .map((spec) => `  ${spec.id}: npm install -g ${spec.package}`)
-    .join('\n');
+  return (
+    Object.values(PROVIDER_SPECS)
+      .filter((spec) => !skip.has(spec.id))
+      // `installCommand` rather than a second template: KAR-19.2 AC3 keeps one
+      // spelling of the command, so the line offered here and the line the
+      // `--fix` path actually runs cannot drift apart.
+      .map((spec) => `  ${spec.id}: ${installCommand(spec.package)}`)
+      .join('\n')
+  );
 }
 
 const usable = (entry: ProviderDetectionEntry): boolean =>

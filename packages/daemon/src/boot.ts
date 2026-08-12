@@ -24,6 +24,7 @@
  * unreliable, so the epoch is what makes a daemon that somehow started anyway
  * harmless (see @DeFlow/ledger's epoch.ts).
  */
+import { admitRun } from '@DeFlow/adapters';
 import type { Clock, StallReport } from '@DeFlow/core';
 import { type Db, describeSkipped, type RunId, type RunState } from '@DeFlow/core';
 import {
@@ -64,6 +65,7 @@ import {
   startHttp,
 } from './http/server.ts';
 import { log } from './logging.ts';
+import { admissionResolutions } from './providers/admission.ts';
 import type { ProviderDetectionEntry } from './providers/boot-probe.ts';
 import { clearPtySessions } from './pty/pty-sessions.ts';
 import { daemonRandom } from './random.ts';
@@ -147,6 +149,18 @@ export interface BootOptions {
   readonly probeProviders?:
     | ((ports: { db: Db; dataDir: string }) => Promise<readonly ProviderDetectionEntry[]>)
     | undefined;
+  /**
+   * KAR-19.2 AC1 — the `PATH` roots admission resolves provider binaries
+   * against, split by the caller.
+   *
+   * The same argument as `probeProviders`, one step further: DeFlowd's own
+   * `PATH` at daemon start is not the operator's login-shell one, so a daemon
+   * that read its own would refuse or admit on the strength of the wrong
+   * machine. `DeFlow up` runs in their terminal and passes theirs. **Omitted
+   * means no admission**, and therefore no refusal — a daemon that was never
+   * told which machine it is on has no honest basis for one.
+   */
+  readonly providerRoots?: readonly string[] | undefined;
   /**
    * KAR-19.1 AC2 — the port `start-ticker` dispatches a due framing wake to.
    *
@@ -411,7 +425,25 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     // a task through. Registered on the same write connection `boot` already
     // holds, not a second one: intake appends through the daemon's one writer,
     // the same as every other command.
-    setIntakePorts({ db, epoch, clock: systemClock, dataDir, randomHex: randomRunIdSuffix });
+    // KAR-19.2 AC1, AC6 — admission, resolved once per daemon life.
+    //
+    // Computed here rather than per submission because both of its inputs are
+    // facts about this boot: the probe ran three steps ago, and `PATH` came
+    // from the terminal that started the daemon. A submission then costs one
+    // reduction over five records and spawns nothing (EPIC-19-S12).
+    const resolutions =
+      options.providerRoots === undefined
+        ? null
+        : admissionResolutions({ roots: options.providerRoots, probe: providers });
+
+    setIntakePorts({
+      db,
+      epoch,
+      clock: systemClock,
+      dataDir,
+      randomHex: randomRunIdSuffix,
+      ...(resolutions === null ? {} : { admit: () => admitRun(resolutions) }),
+    });
 
     // KAR-15.8 — the one WebSocket route, registered before the port binds so
     // an upgrade can never arrive at a handler that is not there yet. It

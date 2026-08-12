@@ -28,10 +28,12 @@
 
 import { makeRepo } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
+import { mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   type CliProcess,
+  MOCK_AGENT_BIN,
   makeDataDir,
   removeDataDir,
   sleep,
@@ -39,6 +41,21 @@ import {
   spawnUp,
   waitForUrl,
 } from './support/up.ts';
+
+/**
+ * KAR-19.2 — the bundled mock agent, linked on under both names admission
+ * resolves (`claude`, its ACP bridge), so this spec's machine is a usable one
+ * rather than the "nothing installed" machine `e2e/admission.test.ts` covers.
+ * Without this, `POST /api/runs` refuses every run here at submission and
+ * every scenario below exits 5 before it reaches anything this file is about.
+ */
+async function usableProviderBinDir(dir: string): Promise<string> {
+  const binDir = join(dir, 'bin');
+  await mkdir(binDir, { recursive: true });
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude-agent-acp'));
+  return binDir;
+}
 
 let tmp = '';
 const running: CliProcess[] = [];
@@ -114,11 +131,13 @@ suite('EPIC-18-S18 — one command, one run, no browser (AC1)', () => {
   it('autostarts DeFlowd detached, polls health unauthenticated, and streams the run', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const binDir = await usableProviderBinDir(tmp);
 
     const cli = start({
       dataDir,
       cwd: repo.dir,
       argv: ['run', 'add a health endpoint'],
+      binDirs: [binDir],
     });
 
     const runId = await waitFor('the CLI printed a run id', () => {
@@ -163,8 +182,12 @@ suite('EPIC-18-S19 — attach, never launch a second (AC2)', () => {
   it('reuses a running daemon, leaves daemon_epoch alone and never trips the lease', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const binDir = await usableProviderBinDir(tmp);
 
-    const up = start({ dataDir, argv: ['up', '--no-open'] });
+    // KAR-19.2 — admission is resolved once, at boot, from the PATH the daemon
+    // was started with (AC6). The mock agent has to be on `up`'s PATH; `run`
+    // below only attaches to the daemon `up` already started.
+    const up = start({ dataDir, argv: ['up', '--no-open'], binDirs: [binDir] });
     await waitForUrl(up);
 
     const before = daemonFile(dataDir);

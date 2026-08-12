@@ -1,5 +1,5 @@
 {
-  "appliedSeq": 30,
+  "appliedSeq": 31,
   "nodes": Map {
     "impl-1" => {
       "brief": "Implement daysUntil.",
@@ -178,8 +178,8 @@ Repair only this finding. Do not touch the gate definition, the CI configuration
   },
   "planVersionSeq": Map {
     1 => 4,
-    2 => 13,
-    3 => 23,
+    2 => 14,
+    3 => 24,
   },
   "proposals": Map {},
   "rail": [
@@ -209,11 +209,11 @@ Repair only this finding. Do not touch the gate definition, the CI configuration
         "fix-65207341fbd9" => "h-36f3a4bf",
       },
       "patchId": "repair-typecheck-65207341fbd9",
-      "planHash": "sha256-adb80b5c0adfc0a6f5cae73b146f29ed7da2007a81362f1d056de1f731fbdeb7",
+      "planHash": "sha256-e294e6e0238914a1d914a1b145ba88c36579bed4aabf78364a2008f8c68f32c4",
       "proposedBy": "scheduler",
       "reason": "the proposal for this patch is not in this window",
       "rule": "surgical-repair",
-      "seq": 13,
+      "seq": 14,
       "version": 2,
     },
     {
@@ -227,11 +227,11 @@ Repair only this finding. Do not touch the gate definition, the CI configuration
         "gate-typecheck-r2" => "h-68a61911",
       },
       "patchId": "rerun-fix-65207341fbd9-r2",
-      "planHash": "sha256-c8485615e401b21ac4d0158ccc164190fba7693980b663f76f6348f10a2519c5",
+      "planHash": "sha256-a9c13a1220f5b6a4cb8b3accbafb560ea43038a4bcdfed147d5e2a5b2c8092ee",
       "proposedBy": "scheduler",
       "reason": "the proposal for this patch is not in this window",
       "rule": "read-only-analysis",
-      "seq": 23,
+      "seq": 24,
       "version": 3,
     },
   ],

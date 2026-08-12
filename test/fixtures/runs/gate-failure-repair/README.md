@@ -18,7 +18,7 @@ node packages/daemon/scripts/build-gate-repair-fixture.ts
   seed reproduces the same events
 - finding `65207341fbd9` → fix node `fix-65207341fbd9` → re-run gate
   `gate-typecheck-r2`
-- verdicts, in ledger order: `typecheck` fail @ 11, `typecheck` pass @ 28
+- verdicts, in ledger order: `typecheck` fail @ 12, `typecheck` pass @ 29
 
 `repair.json` is the same story as JSON, for a consumer that cannot open
 SQLite — a browser spec, above all. The run was built under

@@ -19,6 +19,7 @@
  * Verifies: EPIC-18-S50, EPIC-18-S52, EPIC-18-S53, EPIC-18-S54, EPIC-18-S55,
  * EPIC-18-S56 · AC1-AC11 · test plan #3-#8
  */
+import { admitRun, MOCK_AGENT_SENTENCE, resolveProviderStates } from '@DeFlow/adapters';
 import { systemClock } from '@DeFlow/daemon';
 import { makeRepo, makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { existsSync } from 'node:fs';
@@ -229,6 +230,34 @@ suite('the vendor CLI is installed, its ACP adapter is not (EPIC-18-S50)', () =>
     // AC3 — a provider DeFlow cannot route through is not a broken machine.
     expect(result.exitCode).toBe(0);
     expect(result.report.status).not.toBe('fail');
+  });
+
+  /**
+   * KAR-19.2 AC3, EPIC-19-S13 — one sentence, three surfaces.
+   *
+   * `doctor`'s Agents line and the daemon's admission refusal are rendered for
+   * the same machine state and compared **byte for byte**. A second, friendlier
+   * wording written for the refusal would be correct on the day it was written
+   * and would drift within a month; this is what makes that a failing test
+   * rather than a thing to remember. The source half of the same guard —
+   * that exactly one module composes the sentence at all — is
+   * `test/one-install-renderer.test.ts`.
+   */
+  it('renders the same sentence doctor prints into the admission refusal (KAR-19.2 AC3)', async () => {
+    const host = await machine('s13-wording', { vendors: ['claude'] });
+
+    const doctored = check((await runDoctor(base(host))).report, 'agents.claude');
+    const refusal = admitRun(resolveProviderStates([host.binDir]));
+
+    expect(doctored?.detail).toBeDefined();
+    expect(refusal.outcome).toBe('refused');
+    if (refusal.outcome !== 'refused') return;
+
+    expect(refusal.message).toContain(doctored?.detail as string);
+    expect(refusal.message).not.toContain('claude is not installed');
+    // AC4 — and the refusal, unlike the report, ends with the way to proceed
+    // with nothing installed at all.
+    expect(refusal.message.trimEnd().endsWith(MOCK_AGENT_SENTENCE.trimEnd())).toBe(true);
   });
 });
 

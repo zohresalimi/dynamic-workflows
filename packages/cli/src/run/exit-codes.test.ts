@@ -13,7 +13,7 @@
 import type { GateId, NodeId, RunState } from '@DeFlow/core';
 import { initialRunState } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
-import { classifyRun, RUN_EXIT_CODES } from './exit-codes.ts';
+import { classifyRun, EX_USAGE, RUN_EXIT_CODES, rejectionExitCode } from './exit-codes.ts';
 
 const completed = (): RunState => ({
   ...initialRunState(),
@@ -161,5 +161,31 @@ suite('EPIC-18-S23 — the exit code is a closed contract (AC6)', () => {
       expect(verdict.reason).not.toContain('\n');
       expect(verdict.reason.endsWith('.')).toBe(false);
     }
+  });
+});
+
+/**
+ * KAR-19.2 AC5 — a submission the daemon *admitted nothing* for.
+ *
+ * Exit `5` and not `1`: `1` is "the run failed", and a client — or a CI job —
+ * that saw one would go looking at the task. Nothing about the task was wrong.
+ * `5` is already documented as *"this machine cannot host a run"* and is
+ * already what `DeFlow run` exits when git is too old, which is the same class
+ * of fact discovered one step earlier.
+ */
+suite('EPIC-19-S10 — a machine that cannot host a run exits 5 (KAR-19.2 AC5)', () => {
+  it('maps both admission refusals to environmentUnusable', () => {
+    expect(rejectionExitCode('no_usable_provider')).toBe(RUN_EXIT_CODES.environmentUnusable);
+    expect(rejectionExitCode('provider_handshake_failed')).toBe(RUN_EXIT_CODES.environmentUnusable);
+  });
+
+  it('leaves every other refusal at EX_USAGE, which is not in the table', () => {
+    expect(rejectionExitCode('invalid_request')).toBe(EX_USAGE);
+    expect(rejectionExitCode(null)).toBe(EX_USAGE);
+    expect(Object.values(RUN_EXIT_CODES)).not.toContain(EX_USAGE);
+  });
+
+  it('adds no eighth code', () => {
+    expect(Object.values(RUN_EXIT_CODES).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 130]);
   });
 });

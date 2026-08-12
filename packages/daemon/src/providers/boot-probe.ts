@@ -12,9 +12,18 @@
  *
  * Nothing here throws for a machine with no agent CLI on it. Zero providers is
  * a fact about the machine, not a failure of boot: the daemon starts, reports
- * what to install, and refuses to *schedule* agent nodes later (NF7, AC8). A
- * probe that threw here would be the opaque `ENOENT: spawn claude` that
- * EPIC-18-S15 exists to make impossible.
+ * what to install, and refuses the *run* later (NF7, AC8). A probe that threw
+ * here would be the opaque `ENOENT: spawn claude` that EPIC-18-S15 exists to
+ * make impossible.
+ *
+ * **Where the refusal actually happens: `POST /api/runs`** (KAR-19.2). This
+ * comment used to promise a refusal to "schedule agent nodes later", and for
+ * one release nothing implemented it — so "refuses to schedule" became "never
+ * schedules, and says nothing", which cost an operator an afternoon on
+ * 2026-08-12. Admission now reads what this probe found, at submission,
+ * *before* the 201: `./admission.ts` folds it onto the two binary resolutions
+ * and `@DeFlow/adapters`' `admitRun` decides. A node is never reached at all on
+ * a machine that cannot serve one.
  *
  * **AR-1.** Nothing in this path reads a credential file or an API-key
  * environment variable. The probe hands the child the environment it was given

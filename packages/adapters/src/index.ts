@@ -207,6 +207,31 @@ export type {
   ProviderAvailability,
 } from './provider-availability.ts';
 export { renderAuthMethods, reportAvailability } from './provider-availability.ts';
+// KAR-18.8 and KAR-19.2 — what this machine has installed, in one sentence per
+// provider, and the admission decision `POST /api/runs` makes from it. One
+// renderer: `doctor`'s Agents section and the daemon's refusal are the same
+// string, byte for byte.
+export type {
+  AgentInstallState,
+  ProviderResolution,
+  ProviderVerdict,
+  RefusedProvider,
+  RunAdmission,
+  RunRefusalCode,
+} from './provider-install.ts';
+export {
+  admitRun,
+  installCommand,
+  installPrompt,
+  isRunRefusalCode,
+  MOCK_AGENT_FLAG,
+  MOCK_AGENT_SENTENCE,
+  providerVerdict,
+  RUN_REFUSAL_CODES,
+  renderRefusal,
+  resolveProviderState,
+  resolveProviderStates,
+} from './provider-install.ts';
 // KAR-05.3 — the verified provider table, encoded once. The only file in this
 // package that names a vendor, and it names no capability.
 export type {

@@ -16,6 +16,7 @@ import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_pr
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -39,6 +40,33 @@ export function gitDir(): string {
   return dirname(
     execFileSync('/usr/bin/env', ['sh', '-c', 'command -v git'], { encoding: 'utf8' }).trim(),
   );
+}
+
+let nodeOnlyDirCache: string | undefined;
+
+/**
+ * A directory holding a `node` symlink and nothing else.
+ *
+ * The shebang problem, solved without the side effect. `npx`'s target is a
+ * `#!/usr/bin/env node` script, so `node` has to be findable — but putting
+ * *its own directory* on the clean room's `PATH` puts the real npm global bin
+ * directory there with it on every normal installation, which is exactly
+ * where a developer's own vendor CLIs and ACP adapters live. EPIC-18-S46's
+ * "clean room" then finds the author's own `claude-agent-acp`, doctor probes
+ * it successfully, and the "agent-free report" the scenario is named for
+ * reports one — a real package the spec never put there.
+ *
+ * Corrected 2026-08-12 while implementing KAR-19.2 — same correction as
+ * `e2e/support/up.ts`'s `nodeOnlyDir`, for the same reason, found the same
+ * way.
+ */
+function nodeOnlyDir(): string {
+  if (nodeOnlyDirCache !== undefined) return nodeOnlyDirCache;
+  const dir = mkdtempSync(join(tmpdir(), 'DeFlow-verify-node-'));
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  nodeOnlyDirCache = dir;
+  return dir;
 }
 
 let toolsDirCache: string | undefined;
@@ -309,12 +337,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export function spawnInstalled(options: SpawnInstalledOptions): CliProcess {
   const out: string[] = [];
   const err: string[] = [];
-  const path = [
-    ...(options.binDirs ?? []),
-    dirname(process.execPath),
-    gitDir(),
-    systemToolsDir(),
-  ].join(':');
+  const path = [...(options.binDirs ?? []), nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
 
   const child = spawn(
     join(dirname(process.execPath), 'npx'),
@@ -598,17 +621,24 @@ export function assertNoNodeGyp(installLog: string): void {
   }
 }
 
-/** A `<binDir>/claude-agent-acp` shim onto the tarball's own installed mock agent. */
+/**
+ * `<binDir>/claude` and `<binDir>/claude-agent-acp`, both shimmed onto the
+ * tarball's own installed mock agent.
+ *
+ * KAR-19.2 — admission is a function of *both* binaries a `kind: 'adapter'`
+ * provider needs (`resolveProviderState`): a `claude-agent-acp` with no
+ * `claude` underneath it resolves as `not-installed`, same as nothing at all,
+ * and `POST /api/runs` refuses the run before this file's assertion that it
+ * was accepted. Two shims rather than one is what makes this machine the
+ * "usable" one admission is written to recognise.
+ */
 export async function shimMockAgent(binDir: string, mockAgentBin: string): Promise<string> {
   await mkdir(binDir, { recursive: true });
+  const source = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentBin)} "$@"\n`;
+  writeFileSync(join(binDir, 'claude'), source, { mode: 0o755 });
+  chmodSync(join(binDir, 'claude'), 0o755);
   const path = join(binDir, 'claude-agent-acp');
-  writeFileSync(
-    path,
-    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentBin)} "$@"\n`,
-    {
-      mode: 0o755,
-    },
-  );
+  writeFileSync(path, source, { mode: 0o755 });
   chmodSync(path, 0o755);
   return path;
 }
