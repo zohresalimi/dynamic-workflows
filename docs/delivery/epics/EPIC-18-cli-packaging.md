@@ -400,7 +400,10 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 > executes, and this repository has no code path that executes one: nothing calls `compilePlanV1`
 > or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at `task.submitted` by
 > design (KAR-10.1: _"No interpretation happens here"_). Every submitted run therefore parks after
-> intake. What that changes here:
+> intake. (**Narrowed 2026-08-12 by KAR-19.1**, which started the ticker and scheduled framing, and
+> again **2026-08-13 by KAR-19.3**, whose run chain frames, pins, surveys and compiles a
+> `PlanGraph`. One call is still missing — `executeRun` — and it is the whole of why a run still
+> reaches no terminal state.) What that changes here:
 >
 > - **AC1's "streams node lifecycle … until a terminal state"** is implemented and asserted for
 >   every terminal state the ledger can currently reach (an open human gate under `--no-wait`, an
@@ -695,8 +698,10 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, and
 > `POST /api/runs` stops at `task.submitted` by design (KAR-10.1: _"No interpretation happens
 > here"_), so every submitted run parks after intake. (**Narrowed 2026-08-12 by KAR-19.1**: `boot()`
-> now does start the ticker, and intake now does schedule framing. The two calls that remain missing
-> — `compilePlanV1` and `executeRun` — are what still make the completion half unreachable.) That wiring is EPIC-06/EPIC-10/EPIC-11 and is
+> now does start the ticker, and intake now does schedule framing. **Narrowed again 2026-08-13 by
+> KAR-19.3**: an approved spec is now pinned, surveyed and compiled into a validated `PlanGraph` by
+> `packages/daemon/src/pipeline/run-chain.ts`. The one call that remains missing — `executeRun` — is
+> what still makes the completion half unreachable.) That wiring is EPIC-06/EPIC-10/EPIC-11 and is
 > in this epic's **Out of scope**; this epic is a _client_ of the daemon.
 >
 > What ships instead is the criterion's own stated reason — _"this proves the inlined daemon, the

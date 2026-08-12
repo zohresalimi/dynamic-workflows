@@ -400,10 +400,16 @@ async function resolveAndNormalise(
 ): ReturnType<typeof normaliseInput> {
   const now = ports.clock.now();
   const store = (bytes: Uint8Array, mediaType: string) => putBlob(ports.dataDir, bytes, mediaType);
+  // KAR-19.3 — the repository, recorded rather than validated and dropped.
+  // The framing turn happens on a later tick, possibly on a later daemon, and
+  // `run.created.cwd` is written *by* that turn: without this the caller that
+  // has to open the interview has no way of knowing which repository the run
+  // belongs to.
+  const cwd = body.cwd;
 
   switch (body.input.kind) {
     case 'text':
-      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store });
+      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store, cwd });
 
     case 'file': {
       const resolution = await resolveWithinRepo(body.cwd, body.input.path);
@@ -430,7 +436,7 @@ async function resolveAndNormalise(
           resolvedPath: resolution.path,
           mediaType: mediaTypeForPath(resolution.path),
         },
-        { now, by, store },
+        { now, by, store, cwd },
       );
     }
 
@@ -453,7 +459,7 @@ async function resolveAndNormalise(
           resolver: resolved.resolver,
           httpStatus: resolved.httpStatus,
         },
-        { now, by, store },
+        { now, by, store, cwd },
       );
     }
   }

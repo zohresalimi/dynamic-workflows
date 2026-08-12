@@ -5,11 +5,12 @@
  * and exits 0"_. The completion half is not reachable in this repository and
  * is not faked: no shipped code path executes a submitted run past intake.
  * `POST /api/runs` stops at `task.submitted` by design (KAR-10.1, _"No
- * interpretation happens here"_) and nothing calls `compilePlanV1` or
- * `executeRun`. Since KAR-19.1 the run *is* framed — `boot()` performs
- * `start-ticker` and intake schedules the framing wake — and it still reaches
- * no terminal state, because there is no plan to execute. The same sentence is
- * written into `e2e/run.test.ts` for KAR-18.3.
+ * interpretation happens here"_). Since KAR-19.1 the run *is* framed —
+ * `boot()` performs `start-ticker` and intake schedules the framing wake — and
+ * since KAR-19.3 an approved spec is pinned, surveyed and compiled into a
+ * `PlanGraph`. It still reaches no terminal state, because nothing shipped
+ * calls `executeRun` over that plan. The same sentence is written into
+ * `e2e/run.test.ts` for KAR-18.3.
  *
  * [README §9](../docs/delivery/README.md) is the rule this file enforces: **a
  * scope cut is recorded, never silently absorbed** — "note in the epic's Risks
@@ -52,19 +53,20 @@ const EPIC_FILE = 'docs/delivery/epics/EPIC-18-cli-packaging.md';
  * defines it.
  */
 const DRIVERS: readonly (readonly [name: string, definedIn: string])[] = [
-  // `startTicker` was the third member until 2026-08-12, and it is gone from
-  // this list because **the guard did its job**: KAR-19.1 wired `boot()` to
-  // `RECOVERY_STEPS`' eighth step, this suite went red, and the deferral was
-  // narrowed in the epic file rather than relaxed here (README §9). Removing
-  // it is the expiry the file's own note prescribes, applied to the one premise
-  // that has actually gone.
+  // This list has been narrowed twice, and both times because **the guard did
+  // its job**: it went red, and the deferral was narrowed in the epic file
+  // rather than relaxed here (README §9).
   //
-  // The other two are untouched and are the whole of what is still deferred: a
-  // submitted run is now framed and can still reach no terminal state, because
-  // nothing shipped compiles a plan or executes one. KAR-19.3 and KAR-19.4 take
-  // those, and KAR-19.5 deletes this file.
+  //   - `startTicker` left on 2026-08-12, when KAR-19.1 wired `boot()` to
+  //     `RECOVERY_STEPS`' eighth step;
+  //   - `compilePlanV1` left on 2026-08-13, when KAR-19.3's run chain became
+  //     its one shipped caller — a submitted run is now framed, gated, pinned,
+  //     surveyed and **planned**.
+  //
+  // One premise is left, and it is the whole of what is still deferred: a run
+  // with a compiled plan still reaches no terminal state, because nothing
+  // shipped executes one. KAR-19.4 takes it, and KAR-19.5 deletes this file.
   ['executeRun', 'packages/daemon/src/exec/run-executor.ts'],
-  ['compilePlanV1', 'packages/daemon/src/plan/compile.ts'],
 ];
 
 /**
@@ -180,17 +182,17 @@ suite('KAR-18.6 AC2 — the deferral expires with its premise', () => {
     // (AC2, "completes … and exits 0") and in `e2e/run.test.ts` (EPIC-18-S18's
     // four-node plan), strike the two amendments and the Out-of-scope bullet
     // this file guards, and delete this suite — which is KAR-19.5 AC8, and is
-    // what happened to `startTicker` on 2026-08-12 (see DRIVERS above).
+    // what happened to `startTicker` on 2026-08-12 and to `compilePlanV1` on
+    // 2026-08-13 (see DRIVERS above).
     expect(driverCallSites(packageProductionSources())).toEqual([]);
   });
 
-  it('bites when a shipped source compiles a plan or executes a run', () => {
+  it('bites when a shipped source executes a run', () => {
     const wired: Source = {
       path: 'packages/daemon/src/services/supervisor.ts',
-      text: 'await compilePlanV1(options);\nawait executeRun(ports);\n',
+      text: 'await executeRun(ports);\n',
     };
     expect(driverCallSites([wired])).toEqual([
-      'packages/daemon/src/services/supervisor.ts: compilePlanV1(',
       'packages/daemon/src/services/supervisor.ts: executeRun(',
     ]);
   });

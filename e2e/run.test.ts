@@ -16,7 +16,14 @@
  * > and `POST /api/runs` deliberately stops at `task.submitted` (KAR-10.1:
  * > *"No interpretation happens here"*). Every run therefore parks after intake
  * > until the orchestration wiring exists, which is EPIC-06/EPIC-10/EPIC-11
- * > work and explicitly out of this epic's scope. What is asserted below is
+ * > work and explicitly out of this epic's scope.
+ * >
+ * > **Narrowed 2026-08-12 by KAR-19.1** — `boot()` starts the ticker and intake
+ * > schedules the framing wake — and **again 2026-08-13 by KAR-19.3**, whose
+ * > run chain frames, gates, pins, surveys and compiles a validated
+ * > `PlanGraph`. `executeRun` is the one call still missing, so a run still
+ * > reaches no terminal state and the four-node completion stays deferred to
+ * > KAR-19.4. What is asserted below is
  * > everything the scenario claims that *is* reachable — the detached
  * > autostart, the unauthenticated health poll, the run created, the
  * > subscription from seq 0, the rendered transcript through the normalising

@@ -44,14 +44,15 @@ import {
   listRunIds,
   readEventTs,
   readProcesses,
-  readRunCreatedSpec,
   readWake,
   replayRun,
   runHeadSeq,
   scheduleWake,
 } from '@DeFlow/ledger';
+import { FRAMING_WAKE_REASON } from './intake/intake.ts';
 import { type KillRunOutcome, killRun } from './kill-switch.ts';
 import { log } from './logging.ts';
+import { framingCouldBePending, framingIsPending } from './pipeline/framing-schedule.ts';
 import { completeCancel, FRAMING_NODE } from './spec/gate.ts';
 
 const driver = log.child({ mod: 'drive' });
@@ -97,6 +98,32 @@ export interface FramingWake {
  */
 export type FramingRunner = (wake: FramingWake) => Promise<void> | void;
 
+/**
+ * KAR-19.3 — what the driver hands the post-approval half of the chain.
+ *
+ * The same shape as `FramingWake` minus the node, because this half is not
+ * dispatched from a `node_wake` row at all: it is derived from the ledger on
+ * every tick, which is what makes a daemon killed between `spec.pinned` and
+ * `plan.proposed` pick the run up again on the next boot with nothing
+ * remembered (AC8, EPIC-19-S22). A wake row would work too and would be one
+ * more thing that can be lost.
+ */
+export interface AdvanceInput {
+  readonly runId: RunId;
+  readonly now: number;
+  readonly db: Db;
+  readonly epoch: number;
+}
+
+/**
+ * The port that carries an approved run from its pinned spec to `plan.proposed`.
+ *
+ * A port for the same reason `FramingRunner` is one: recon surveys a real
+ * worktree and the planner opens a session on a provider resolved against the
+ * operator's own `PATH`, neither of which DeFlowd's own environment knows.
+ */
+export type RunAdvancer = (input: AdvanceInput) => Promise<void> | void;
+
 export interface DriverPorts {
   readonly db: Db;
   /** Time enters here and nowhere else (NF9). */
@@ -106,6 +133,13 @@ export interface DriverPorts {
   /** Data directory an oversized event payload spills into (KAR-03.9). */
   readonly spillTo?: string | undefined;
   readonly runFraming?: FramingRunner | undefined;
+  /**
+   * KAR-19.3 — the port a run that has passed the F1.3 gate is carried on with.
+   *
+   * Omitted means an approved run stops at `spec.pinned`, which is what every
+   * daemon did before this story and is deliberately logged rather than silent.
+   */
+  readonly advanceRun?: RunAdvancer | undefined;
   /**
    * Called once per appended `run.stalled`, with the run and the report.
    *
@@ -165,6 +199,8 @@ export interface TickReport {
   readonly stalled: readonly RunId[];
   /** KAR-19.6 AC8 — runs whose cancel this tick carried to `run.aborted`. */
   readonly cancelled: readonly RunId[];
+  /** KAR-19.3 — runs this tick carried on from their pinned spec. */
+  readonly advanced: readonly RunId[];
 }
 
 export interface RunDriver {
@@ -188,6 +224,8 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
   /** Runs whose kill ladder this process is part-way through. Per-process by
    * construction, exactly like `framing`, and never the durable record. */
   const cancelling = new Set<RunId>();
+  /** Runs whose recon-and-compile turn this process is part-way through. */
+  const advancing = new Set<RunId>();
   const kill: KillRunner =
     ports.killRun ??
     ((runId, mode) =>
@@ -200,8 +238,102 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
     // Cancels first. A run the operator has stopped must not have a framing
     // turn dispatched for it on the very tick that finishes stopping it.
     const cancelled = await finishCancels(now);
+    // KAR-19.3 — a run whose framing was answered, or whose spec was rejected,
+    // is owed a turn nothing is currently holding a row for. Re-armed before
+    // the dispatch so the same tick performs it, rather than a tick later.
+    rearmFraming(now);
     const dispatched = await dispatchWakes(now);
-    return { dispatched, stalled: reportStalls(now), cancelled };
+    const advanced = await advanceRuns(now);
+    return { dispatched, stalled: reportStalls(now), cancelled, advanced };
+  }
+
+  /**
+   * KAR-19.3 AC4 — the framing wake, put back for a run that is owed a turn and
+   * has no row waiting.
+   *
+   * Two things consume a framing run's wake without finishing it. Answering a
+   * clarifying question deletes the row in the same transaction as
+   * `human.responded` — which is right, and is what makes the answer atomic —
+   * and rejecting a spec appends a `node.scheduled` for the framing node with
+   * no row at all (KAR-10.3 AC7). Both leave a run that is waiting for
+   * something nobody is going to do, which is precisely the shape of the
+   * failure this epic exists to remove.
+   *
+   * The row is re-armed rather than the turn being dispatched directly, so
+   * there is exactly one path into framing and a crash between the two leaves
+   * the durable record — not a promise — behind.
+   */
+  function rearmFraming(now: number): void {
+    if (ports.runFraming === undefined) return;
+
+    for (const runId of listRunIds(ports.db)) {
+      if (framing.has(runId)) continue;
+      if (lastSeqOfKinds(ports.db, runId, ['run.completed', 'run.aborted']) !== null) continue;
+      if (readWake(ports.db, { runId, nodeId: FRAMING_NODE }) !== null) continue;
+      // Two covering-index seeks before any fold, for the same reason the stall
+      // detector has a pre-filter: this runs once a second for every run the
+      // directory has ever held.
+      if (!framingCouldBePending(ports.db, runId)) continue;
+      if (!framingIsPending(ports.db, runId)) continue;
+
+      scheduleWake(ports.db, {
+        runId,
+        nodeId: FRAMING_NODE,
+        wakeAt: now,
+        reason: FRAMING_WAKE_REASON,
+      });
+    }
+  }
+
+  /**
+   * KAR-19.3 AC2, AC8 — every run that has passed the F1.3 gate and has no
+   * plan, carried on.
+   *
+   * Derived from the ledger on every tick and never from a row this process
+   * wrote, which is the whole of *"a `SIGKILL` between `spec.pinned` and
+   * `plan.proposed` resumes without re-framing"*: a fresh daemon reads the same
+   * log, reaches the same conclusion, and compiles against the spec the
+   * operator already approved.
+   */
+  async function advanceRuns(now: number): Promise<RunId[]> {
+    const advance = ports.advanceRun;
+    if (advance === undefined) return [];
+
+    const advanced: RunId[] = [];
+    const turns: Promise<void>[] = [];
+
+    for (const runId of listRunIds(ports.db)) {
+      if (advancing.has(runId)) continue;
+      if (lastSeqOfKinds(ports.db, runId, ['run.completed', 'run.aborted']) !== null) continue;
+
+      const pinned = lastSeqOfKinds(ports.db, runId, ['spec.pinned']);
+      if (pinned === null) continue;
+      const planned = lastSeqOfKinds(ports.db, runId, ['plan.proposed']);
+      if (planned !== null && planned > pinned) continue;
+      // A run the compiler already escalated is a decision for the operator,
+      // not a loop (06 §3.5 forbids a third automatic attempt).
+      const escalated = lastSeqOfKinds(ports.db, runId, ['run.needs_human']);
+      if (escalated !== null && escalated > pinned) continue;
+
+      advancing.add(runId);
+      advanced.push(runId);
+      turns.push(advanceOneRun(advance, runId, now));
+    }
+
+    await Promise.all(turns);
+    return advanced;
+  }
+
+  async function advanceOneRun(advance: RunAdvancer, runId: RunId, now: number): Promise<void> {
+    try {
+      await advance({ runId, now, db: ports.db, epoch: ports.epoch });
+    } catch (error) {
+      // One run's failure is not the daemon's — the same rule the framing
+      // dispatch follows, and for the same reason.
+      driver.error({ runId, err: error }, `carrying run ${runId} on from its spec threw`);
+    } finally {
+      advancing.delete(runId);
+    }
   }
 
   /**
@@ -297,7 +429,13 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       // Already framed — a wake left behind by a crash between `run.created`
       // and the delete. Clearing it is the whole repair: the event is the
       // record, and the row was only ever the reminder.
-      if (readRunCreatedSpec(ports.db, runId) !== null) {
+      //
+      // KAR-19.3 widened this from *"a `run.created` exists"* to *"the newest
+      // `run.created` is newer than the newest request for a framing turn"*. A
+      // rejected spec and an answered clarifying question both ask for a second
+      // turn on a run that already has a `run.created`, and the narrower test
+      // deleted the row for both of them.
+      if (!framingIsPending(ports.db, runId)) {
         clearWake(ports.db, { runId, nodeId: wake.nodeId });
         continue;
       }
@@ -364,7 +502,7 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       return;
     }
 
-    if (readRunCreatedSpec(ports.db, runId) !== null) {
+    if (!framingIsPending(ports.db, runId)) {
       clearWake(ports.db, { runId, nodeId: dispatchedFrom.nodeId });
       return;
     }

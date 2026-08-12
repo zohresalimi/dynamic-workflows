@@ -49,17 +49,38 @@ const BareSha256Schema = z.string().regex(/^[0-9a-f]{64}$/, 'must be a 64-charac
  * is rejected at the schema boundary rather than silently carrying no
  * kind-specific fields at all.
  */
+/**
+ * KAR-19.3 — the repository the task was submitted against.
+ *
+ * **Optional, and added after the fact.** Until this field existed, `cwd`
+ * arrived on the request, was validated, and was then thrown away: the only
+ * durable record of which repository a run belonged to was `run.created.cwd`,
+ * which is written *by* the framing interview — so the caller that has to open
+ * that interview had no way to find the repository at all. That is one of the
+ * missing joints EPIC-19 exists to reconnect, and it is invisible until
+ * something tries to make the call.
+ *
+ * Optional rather than required because payloads already on disk do not have it
+ * — including the three runs from 2026-08-12 that started this epic — and a
+ * required field would make them unreadable, which is the one thing a ledger
+ * may never do to its own history. A `task.submitted` with no `cwd` is a run
+ * this build cannot frame, and it says so rather than guessing at a directory.
+ */
+const submittedCwd = z.string().min(1).optional();
+
 export const TaskProvenanceSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('text'),
     by: z.enum(INTAKE_SUBMITTERS),
     /** ms epoch, from the injected `Clock` — never read internally. */
     submittedAt: z.number().int().nonnegative(),
+    cwd: submittedCwd,
   }),
   z.strictObject({
     kind: z.literal('file'),
     by: z.enum(INTAKE_SUBMITTERS),
     submittedAt: z.number().int().nonnegative(),
+    cwd: submittedCwd,
     /** Absolute, post-`realpath` — AC4's resolution, never the agent's own string. */
     resolvedPath: z.string().min(1),
     /** The size of the source, in bytes — independent of whether it was inlined. */
@@ -70,6 +91,7 @@ export const TaskProvenanceSchema = z.discriminatedUnion('kind', [
     kind: z.literal('issue'),
     by: z.enum(INTAKE_SUBMITTERS),
     submittedAt: z.number().int().nonnegative(),
+    cwd: submittedCwd,
     url: z.string().min(1),
     /** Which resolver answered — `'gh'` today; a name, never a claim about
      * HTTPS being used, so a future non-GitHub fallback has somewhere to say so. */
@@ -150,6 +172,12 @@ export interface NormaliseInputPorts {
    * `@DeFlow/ledger`'s `putBlob`.
    */
   readonly store: (bytes: Uint8Array, mediaType: string) => Handle;
+  /**
+   * KAR-19.3 — the repository the run was submitted against, recorded so the
+   * framing turn that happens later can find it. Absent leaves the field off
+   * the payload entirely rather than writing an empty string.
+   */
+  readonly cwd?: string;
 }
 
 const utf8Encoder = new TextEncoder();
@@ -171,11 +199,12 @@ function bytesAndProvenanceOf(
   ports: NormaliseInputPorts,
 ): { bytes: Uint8Array; provenance: TaskProvenance } {
   const { now, by } = ports;
+  const where = ports.cwd === undefined ? {} : { cwd: ports.cwd };
   switch (input.kind) {
     case 'text':
       return {
         bytes: utf8Encoder.encode(input.text),
-        provenance: { kind: 'text', by, submittedAt: now },
+        provenance: { kind: 'text', by, submittedAt: now, ...where },
       };
     case 'file':
       return {
@@ -184,6 +213,7 @@ function bytesAndProvenanceOf(
           kind: 'file',
           by,
           submittedAt: now,
+          ...where,
           resolvedPath: input.resolvedPath,
           bytes: input.bytes.byteLength,
           mediaType: input.mediaType,
@@ -196,6 +226,7 @@ function bytesAndProvenanceOf(
           kind: 'issue',
           by,
           submittedAt: now,
+          ...where,
           url: input.url,
           resolver: input.resolver,
           httpStatus: input.httpStatus,

@@ -417,6 +417,35 @@ resumes when the answer arrives.
 | 7   | unit        | A source guard over `packages/*/src`: exactly one shipped caller each for `runFramingInterview`, `compilePlanV1`, `validatePlan`; no second `PlanGraph` producer                         | A "temporary" inline planner is added to get a run moving and is still there at M1                                             |
 | 8   | integration | File-backed ledger; close the DB after `spec.pinned`, reopen with a fresh engine; assert resume compiles the plan, invokes no framing turn, and carries the same `specHash`             | Resume replays from `task.submitted` and re-frames, producing a second spec and a `specHash` nothing downstream agrees with    |
 
+> **Amended 2026-08-13 while implementing KAR-19.3.** The chain shipped:
+> `packages/daemon/src/pipeline/run-chain.ts` is the one production caller of
+> `runFramingInterview`, `runReconNode` and `compilePlanV1`, the driver dispatches both halves off
+> the ticker, and AC1–AC8 are asserted at the levels above — with **two departures recorded here
+> rather than absorbed** ([README §9](../README.md#9-changing-the-plan)):
+>
+> - **Test plan #1 was automated at `integration`, not `e2e`, and its `provider.probed` clause was
+>   dropped.** Both changes follow from what shipped rather than from convenience. The framing,
+>   recon and planner turns all carry a `returns` contract, so `admitFraming` (KAR-10.2 AC3) refuses
+>   every adapter without a `structuredOutputFlag` — today that is every adapter except `claude`'s
+>   **exec-shim** path, and the bundled `DeFlow-mock-agent` speaks ACP only. There is therefore no
+>   agent on this machine that can serve a framing turn, so an e2e against a real binary cannot yet
+>   exist, and a fake vendor binary at e2e would assert nothing the integration spec does not. And
+>   `provider.probed` is written by intake **only on a refusal** (KAR-19.2's shipped shape), so an
+>   admitted run's ledger does not contain one; the sequence asserted is
+>   `task.submitted → run.created → run.spec.approved → spec.pinned → plan.proposed`, by `seq`.
+> - **The chain is not yet bound in `DeFlow up`.** `boot()` takes `runFraming` and `advanceRun` as
+>   ports and `@DeFlow/daemon` exports `createRunChain`; what is missing between them is a
+>   `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real vendor process, which for the reason above
+>   cannot be exercised against anything installable today. Building it unexercised would be the
+>   defect this epic exists to remove, one level up, so it is **not** done here.
+>
+> Both point at the same prerequisite: **a structured-output path for the bundled mock agent**
+> (an exec-shim mode, or an ACP-native return), which is [EPIC-04](./EPIC-04-mock-agent.md)'s
+> mechanism and this epic's Out-of-scope rule sends there. It blocks the e2e half of this story,
+> KAR-19.4's binding, KAR-19.5's `pnpm test:smoke` and the epic's own manual acceptance test —
+> *"in a scratch repository, with only the bundled mock agent, `DeFlow run --file <path>` produces
+> a plan and executes nodes"* — so it is the next thing to build, before KAR-19.4.
+
 ---
 
 ### KAR-19.4 — Nodes actually execute, and their output streams to both surfaces

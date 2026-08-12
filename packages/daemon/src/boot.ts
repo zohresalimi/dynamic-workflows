@@ -47,7 +47,7 @@ import {
   writeDaemonFile,
 } from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
-import { createRunDriver, type FramingRunner, type RunDriver } from './drive.ts';
+import { createRunDriver, type FramingRunner, type RunAdvancer, type RunDriver } from './drive.ts';
 import { mintDaemonToken } from './http/auth.ts';
 import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
 import {
@@ -170,6 +170,16 @@ export interface BootOptions {
    * it is deliberately not a silent one.
    */
   readonly runFraming?: FramingRunner | undefined;
+  /**
+   * KAR-19.3 — the port that carries an approved run from its pinned spec to
+   * `plan.proposed`.
+   *
+   * Omitted means an approved run stops there, which is what every daemon did
+   * before that story. Supplied by the same caller as `runFraming` and for the
+   * same reason: recon surveys a real worktree and the planner opens a session
+   * on a provider resolved against the operator's own `PATH`.
+   */
+  readonly advanceRun?: RunAdvancer | undefined;
   /** AC7 — called for every `run.stalled` the driver appends, so `DeFlow up`
    * can print the one line the operator reads. */
   readonly onStalled?: ((runId: RunId, report: StallReport) => void) | undefined;
@@ -394,6 +404,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     startedAt: clock.now(),
     spillTo: dataDir,
     ...(options.runFraming === undefined ? {} : { runFraming: options.runFraming }),
+    ...(options.advanceRun === undefined ? {} : { advanceRun: options.advanceRun }),
     ...(options.onStalled === undefined ? {} : { onStalled: options.onStalled }),
   });
   const tickIntervalMs = options.tickIntervalMs ?? TICK_INTERVAL_MS;

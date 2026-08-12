@@ -58,7 +58,15 @@ export {
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 // KAR-19.1 — the run driver the ticker calls, and the framing port `DeFlow up`
 // binds to a live ACP session (KAR-19.3).
-export type { DriverPorts, FramingRunner, FramingWake, RunDriver, TickReport } from './drive.ts';
+export type {
+  AdvanceInput,
+  DriverPorts,
+  FramingRunner,
+  FramingWake,
+  RunAdvancer,
+  RunDriver,
+  TickReport,
+} from './drive.ts';
 export { createRunDriver, FRAMING_RETRY_MS } from './drive.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
@@ -491,6 +499,15 @@ export {
 export type { ShimOptions } from './mcp/shim.ts';
 export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './mcp/shim.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+// KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
+// `runReconNode` and `compilePlanV1`, and the resolver `DeFlow up` binds it to.
+export type {
+  RunChain,
+  RunChainContext,
+  RunChainPorts,
+  RunChainResolver,
+} from './pipeline/run-chain.ts';
+export { createRunChain, PLANNER_NODE, RECON_NODE } from './pipeline/run-chain.ts';
 // KAR-11.2 — plan validation's one entry point on this side of the boundary:
 // git's verdict on every node id, and the gate a patched plan commits through.
 export type {
