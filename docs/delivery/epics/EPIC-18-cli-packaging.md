@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                                     |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                                     |
 | **Workstream**       | W12 (see [roadmap §2.2](../../17-roadmap.md))                                                                                                                                                                                                                                          |
-| **Size**             | ~16 days across 7 stories — at the top of the ~15-day guidance; see Risks                                                                                                                                                                                                              |
+| **Size**             | ~22 days across 9 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                       |
 | **Depends on**       | EPIC-15 (the HTTP server, `hc<ApiType>` and the stream module the CLI imports unchanged), EPIC-03 (migrations, the `flock` lease, `daemon_epoch`), EPIC-05 (the capability probe and the conformance battery `doctor` runs), EPIC-01 (the workspace, the build scripts, the CI matrix) |
 | **Blocks**           | Formally nothing. In practice **KAR-18.3 gates EPIC-17**: [roadmap §2.3](../../17-roadmap.md) says do not start W11 until at least one full run completes headlessly through W12's CLI, because a run you can drive from a terminal is a run you can record a fixture from             |
 | **PRD requirements** | F1.1, F3.4, F3.5, F3.6, F3.8, F4.4, F5.4, F5.7, NF1, NF3, NF5, NF6, NF8, AR-1                                                                                                                                                                                                          |
@@ -84,6 +84,12 @@ observable from a clean temp directory.
   Linux.
 - `DeFlow ledger snapshot` and `DeFlow status` — the two diagnostics that make a solo builder's
   post-mortems possible (added story, see KAR-18.7).
+- Distinguishing an absent **vendor CLI** from an absent **ACP adapter** in `doctor`'s Agents
+  section, and offering — on confirmation, or under `--fix` — to install the adapter for a vendor CLI
+  that is actually on the machine (added story, see KAR-18.8).
+- One presentation layer — glyphs, colour, section headings, column alignment, wrapping and a summary
+  block — shared by every command that prints a report, with the `--json` documents unchanged (added
+  story, see KAR-18.9).
 
 **Out of scope:**
 
@@ -101,6 +107,14 @@ observable from a clean temp directory.
   `killTree()` stays behind a port (roadmap A0-10), but no Windows code path is built here.
 - **Secret redaction on exports** (F5.9) — M2. `doctor` reports the secretlint rule count, which is
   legitimately `0` at M1, and no command in this epic exports anything shareable.
+- **Installing a vendor CLI itself, and installing anything without consent.** KAR-18.8 installs one
+  thing — the ACP adapter package of a vendor CLI already present on the machine — and only after a
+  confirmation or an explicit `--fix`. Acquiring `claude`, `codex` or `gemini` on the operator's
+  behalf, choosing their package manager for them, or repairing anything else under a general "fix
+  my machine" flag is not in this epic and needs its own argument.
+- **A TUI.** KAR-18.9 is line-oriented output that survives a pipe, `NO_COLOR` and a dumb terminal.
+  Full-screen rendering, progress spinners and alternate-screen redraw are neither needed by NF6 nor
+  compatible with the `--json`/CI path, and are not proposed anywhere.
 - **A desktop shell, a login item, an installer, code signing or auto-update.** M3 at the earliest
   (PRD §6.3); the whole point of the daemon shape is that M1 pays none of that cost.
 - **Publishing to npm.** `npm version patch && pnpm publish` is two commands precisely because
@@ -134,7 +148,7 @@ observable from a clean temp directory.
 
 ## Definition of Done (epic level)
 
-- [ ] All seven stories are Done.
+- [ ] All nine stories are Done.
 - [ ] Every scenario in [the flow file](../flows/EPIC-18-cli-packaging-flows.md) is automated at the
       level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] `npx <packed tarball> up` in a `mktemp -d` clean room serves the UI and completes a mock run,
@@ -145,6 +159,12 @@ observable from a clean temp directory.
       path executes a submitted run past intake yet. See KAR-18.6 AC2's amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
+- [ ] `DeFlow doctor` never reports a provider as _not installed_ while that vendor's own CLI
+      resolves on `PATH`: the three states of KAR-18.8 AC1 are what the Agents section reports, and
+      an operator with `claude` installed and no bridge is told the bridge is what is missing.
+- [ ] Every command that prints a report prints it through the one presentation layer (KAR-18.9
+      AC1), a piped run of each contains no ANSI byte, and every `--json` document is byte-identical
+      to the golden captured before that story.
 - [ ] The capability matrix is a generated fixture file in the repository with a probe timestamp;
       `grep` finds no hardcoded capability constant in `packages/cli` or `packages/adapters`.
 - [ ] Cold start measured on the author's own laptop is under 3 s (NF3), reported by `DeFlow up
@@ -745,17 +765,204 @@ FROM event WHERE run_id='<id>' ORDER BY seq LIMIT 50` returns rows — without D
 
 ---
 
+### KAR-18.8 — `doctor` detects installed agent CLIs and offers to install their ACP adapters _(added)_
+
+|                 |                                                                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                                 |
+| **Priority**    | P1                                                                                                                                                                          |
+| **Size**        | M                                                                                                                                                                           |
+| **Depends on**  | KAR-18.4 (the Agents/Capabilities/Conformance pass and the `ok`/`warn`/`fail` reducer this extends), KAR-18.1 (the global state directory the probe cache and fixtures live in), EPIC-05 KAR-05.2 (`detectProviders`, and the registry's `bin` / `package` / `shim.bin` / `kind` fields this reads) |
+| **PRD**         | F3.1, F3.2, NF1, NF6, NF7                                                                                                                                                   |
+| **Verified by** | EPIC-18-S50, EPIC-18-S51, EPIC-18-S52, EPIC-18-S53, EPIC-18-S54, EPIC-18-S55, EPIC-18-S56                                                                                    |
+
+**As** an operator who already has a vendor agent CLI installed and authenticated, **I want** `doctor`
+to say what is actually missing and offer to put it in place, **so that** a working `claude` on my
+`PATH` is never reported as _"claude is not installed"_ and the fix is a keystroke rather than a
+package name read out of a paragraph.
+
+Today the Agents section resolves exactly one binary per provider — `spec.bin`, which for the two
+`kind: 'adapter'` providers is the **ACP bridge** (`claude-agent-acp`, `codex-acp`) and not the
+vendor CLI. When the bridge is absent, `detectProviders` returns `not-installed` and prints
+_"claude is not installed here: no executable `claude-agent-acp` was found on PATH — install it with
+`npm install -g @agentclientprotocol/claude-agent-acp`"_. Every fact in that sentence is true and
+the first four words are wrong: the operator can run `claude`, so the report reads as a bug and the
+rest of it stops being trusted. The registry already carries what distinguishes the two — `spec.bin`
+is what DeFlow spawns, `spec.shim.bin` is the vendor CLI, and `spec.kind` says whether they can
+differ at all — so this is a resolution the report declines to make rather than information it lacks.
+
+**Detect-then-offer, never silent installation**, and the reason is worth stating because the
+shortcut is tempting. Installing a global npm package onto someone's machine without asking is a
+trust problem before it is anything else; it cannot work offline, behind a proxy, or on a box with no
+network egress — all three of which NF1 says DeFlow must survive; and it fails in ways strictly worse
+than the message it replaces, because a half-installed global package is harder to diagnose than a
+missing one. So `doctor` resolves both binaries, says which of the three states each provider is in,
+and asks before it spawns `npm`.
+
+**Acceptance criteria**
+
+1. The Agents section reports one of exactly three states per registry provider, derived from
+   resolving **two** binaries rather than one: `installed` (both the vendor CLI `spec.shim.bin` and
+   the binary DeFlow spawns `spec.bin` resolve on the operator's `PATH`), `adapter-missing` (the
+   vendor CLI resolves and its ACP adapter does not), `not-installed` (the vendor CLI does not
+   resolve). For a `kind: 'native'` provider the two are the same executable, so `adapter-missing` is
+   unreachable there and is never claimed.
+2. The words "not installed" are printed for a provider **only** when its vendor CLI did not resolve.
+   With `claude` on `PATH` and `claude-agent-acp` absent, the check names the vendor CLI's absolute
+   resolved path, states that the ACP adapter `@agentclientprotocol/claude-agent-acp` is what is
+   missing, and the string `claude is not installed` appears in no stream — stdout, stderr or
+   `--json`.
+3. `adapter-missing` is a `warn`. KAR-18.4 AC11's exit-code contract is unchanged by this story:
+   `0` when everything is `ok` or `warn`, `5` when anything is `fail`, and nothing else — including
+   after a declined offer, a successful install and a failed install.
+4. When stdout is a TTY and at least one provider is `adapter-missing`, `doctor` prompts once per
+   such provider, naming the exact command it will run (`npm install -g <spec.package>`), and spawns
+   nothing until an affirmative answer. The default on a bare Enter is **no**.
+5. Declining installs nothing, spawns no child process, and leaves the provider at `warn` with the
+   command printed for the operator to run themselves.
+6. `--fix` installs the adapter for every `adapter-missing` provider without prompting, and is the
+   only way an install happens when stdout is not a TTY. `--json` never prompts and never reads
+   stdin; `--json --fix` installs and reports each result inside the document.
+7. Nothing is installed for a provider whose vendor CLI did not resolve, under any flag combination:
+   no prompt, no `--fix` action, and the existing install hint for that vendor is kept as it is.
+8. Every install attempt is reported with the command run, its exit code, its elapsed wall-clock in
+   milliseconds, and — on failure — the child's own stderr, trimmed but not paraphrased. A failed
+   install is a `warn` at minimum and is never rendered as a success; the provider's state afterwards
+   is **re-resolved**, not assumed from the exit code.
+9. After a successful install the provider is re-resolved and probed in the same `doctor` run, so the
+   Capabilities and Conformance sections describe the adapter that now exists rather than the machine
+   as it was at start, and the regenerated capability fixture carries the newly installed version.
+10. With no network egress the offer is still made, the install fails, and the failure names the
+    underlying `npm` error. `doctor` retries an install at most zero times — one attempt, one report
+    — so an offline machine costs one timeout and not several.
+11. `doctor` installs only `spec.package`, only for a provider whose vendor CLI resolved. It runs no
+    global update, writes no lockfile into the operator's repository, and the AR-1 guard still holds
+    before and after an install: no credential file is read and no auth command's output is captured.
+
+**Test plan (TDD)**
+
+| #   | Level       | Test                                                                                                                                                                          | Red when                                                                                                                             |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | The provider-state reducer over a table of (vendor CLI resolved?, adapter resolved?, `kind`) → state, status and sentence                                                     | The state is derived from the single `spec.bin` resolution, so a machine with `claude` and no bridge still reduces to `not-installed` |
+| 2   | unit        | A wording guard over every rendered check: the substring `is not installed` never co-occurs with a resolved vendor-CLI path in the same check                                  | The message is left as `installHint()` writes it and the report contradicts itself                                                   |
+| 3   | integration | `doctor` with a fake `claude` shim on the temp `PATH` and no `claude-agent-acp`; assert `warn`, the adapter package named, the vendor path named, exit 0                       | The missing bridge is a `fail` and the exit code becomes 5 for a machine DeFlow can still partly use                                  |
+| 4   | integration | A scripted TTY answering `n`, and one answering bare Enter; assert no child process was spawned in either case and the command was printed                                     | The prompt defaults to yes on Enter, so an operator installs a package by pressing return                                             |
+| 5   | integration | `--fix` with a fake `npm` shim on the temp `PATH` recording its argv; assert exactly one call, `install -g @agentclientprotocol/claude-agent-acp`, and none for an absent vendor | `--fix` installs every package the registry knows, including for vendors that are not on the machine                                  |
+| 6   | integration | The same fake `npm` shim exiting 1 with `E401` on stderr; assert `warn`, that stderr text present in the report, and that the section does not claim the adapter is installed  | A non-zero exit is treated as done because the spawn promise resolved                                                                 |
+| 7   | integration | `doctor --json --fix` with stdout piped and **stdin closed**; assert the document parses, carries a per-provider install result, contains no ANSI, and the process never blocks | Prompting is gated on `process.stdout.isTTY` alone, so a CI job hangs on a read that can never be answered                            |
+| 8   | integration | After a successful fake install, assert the Capabilities section and the regenerated fixture describe the now-present bridge                                                   | The report is rendered from the detection snapshot taken before the install, so the fix is invisible until the next run               |
+| 9   | unit        | An AR-1 guard over the new install module: no read of `~/.claude`, `~/.codex` or `~/.config/gcloud`, and no capture of a login subcommand's stdout                             | Someone adds an "is it authenticated now?" check after the install and captures a login command's output                             |
+
+**Notes / risks** — the install is a spawn of the operator's own `npm`, resolved on `PATH` like any
+other binary; DeFlow does not embed a package manager and does not choose one for the operator. If
+`npm` itself is absent the state is a `warn` naming that, not a crash. `--fix` is deliberately
+per-adapter and not a general repair flag: a flag that fixes everything is a flag nobody can predict.
+
+---
+
+### KAR-18.9 — Readable terminal output across every CLI command _(added)_
+
+|                 |                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                        |
+| **Priority**    | P1                                                                                                                                                 |
+| **Size**        | M                                                                                                                                                  |
+| **Depends on**  | KAR-18.4 (the `DoctorCheck` / section model this renders), KAR-18.1, KAR-18.3 and KAR-18.7 (the other commands whose reports move onto the layer)  |
+| **PRD**         | NF6, NF8, and the never-colour-alone accessibility floor of [12 §9.2](../../12-frontend-architecture.md), applied to the terminal rather than the UI |
+| **Verified by** | EPIC-18-S57, EPIC-18-S58, EPIC-18-S59, EPIC-18-S60, EPIC-18-S61, EPIC-18-S62, EPIC-18-S63, EPIC-18-S64                                              |
+
+**As** an operator reading `DeFlow doctor` or `DeFlow init` for the first time, **I want** output
+structured the way the vendor CLIs structure theirs, **so that** the answer to "what is wrong and
+what do I do" is visible without reading every line.
+
+The information is already right and the presentation is not. `renderText` prints
+`  [warn] agents.claude: <a paragraph>` per check, one flat list under a bare heading, with no
+wrapping, no alignment and no summary — so a long detail runs off the edge, the statuses do not line
+up into a column the eye can scan, and the one line an operator needs ("here is what to do next") is
+somewhere in the middle. `init`, `status`, `run` and `ledger snapshot` each format their own output
+separately, which is why the five commands do not look like one tool.
+
+This story establishes **one presentation layer that every command prints through** rather than
+improving five renderers. Three constraints shape it. **Colour is never the carrier of meaning** —
+12 §9.2's rule is a WCAG 1.4.1 requirement in the UI and it is exactly as true in a terminal, where
+`NO_COLOR`, a dumb `TERM` and a pipe all strip it anyway; glyph and text label carry the state and
+colour only reinforces it. **Styling is a property of the stream, decided once** — piping into a file
+must produce clean text, and a per-call-site check is how one forgotten branch writes an escape
+sequence into somebody's log. And **`--json` is a contract, not a view**: CI branches on those
+documents, so this story must leave them byte-identical, which is the difference between a
+presentation change and a breaking one.
+
+**Acceptance criteria**
+
+1. One module owns glyph, colour, section heading, column alignment, wrapping and the summary block,
+   and `doctor`, `init`, `status`, `run` and `ledger snapshot` all print through it. A source guard
+   asserts no command module outside it emits an ANSI escape or a status glyph of its own.
+2. Four states — `ok` / `warn` / `fail` / `skipped` — each render as glyph **and** text label **and**
+   colour, in that fixed order. Stripping every ANSI sequence from a report loses no information:
+   each state is still identifiable from the glyph and the label alone. (`skipped` is promoted to a
+   first-class state; `doctor` already prints it in prose, e.g. _"skipped — no adapter installed"_.)
+3. Section headings are visually distinct from their contents — a blank line before, the heading
+   styled, the checks indented — and within a section the check ids and statuses align into columns
+   whose width is computed from the longest id **in that section**, never a constant.
+4. Detail text is wrapped to `min(stdout.columns, 100)` columns, and continuation lines are indented
+   under the first line of the detail rather than back at the left margin. No line exceeds the width;
+   a single token longer than the width (an absolute path, a URL) is emitted whole on its own line
+   rather than broken across two.
+5. Every report ends with a summary block: the overall status, a count per state, and — whenever the
+   overall status is not `ok` — **one next action naming a command to run, printed as the first line
+   of that block**, before any restatement of detail. (The owner asked for the summary "at the end,
+   ahead of the detail"; settled here as _last in the report, first within the block_, which is where
+   a terminal leaves the cursor and what the vendor CLIs do.)
+6. Every `--json` document is byte-identical to what the same command produced before this story:
+   same keys, same order, same values, no ANSI, no summary block, no wrapping. A committed golden
+   asserts it, so the shape CI branches on cannot drift as a side effect of a presentation change.
+7. No ANSI byte is written when any of the following holds: stdout is not a TTY, `NO_COLOR` is set to
+   any value including the empty string, `TERM` is `dumb`, `--json` is passed, or `--no-color` is
+   passed. `FORCE_COLOR` overrides the TTY test only, and never overrides `--json`. The decision is
+   computed once per process from an injected environment and never re-derived at a call site.
+8. No command's behaviour changes: same exit codes, same ledger events, same files written, same
+   JSON. The behavioural tests of KAR-18.1, KAR-18.3, KAR-18.4 and KAR-18.7 pass unmodified.
+9. An unknown terminal width (`stdout.columns` is `undefined` under a pipe or on a CI runner)
+   resolves to 80 columns and never throws or produces a `NaN`-width layout.
+10. When the terminal's encoding cannot be established as UTF-8 (`LC_ALL`/`LANG` naming a non-UTF-8
+    charset), the glyph set degrades to ASCII rather than emitting replacement characters, and AC2
+    still holds — the ASCII glyphs are distinct from each other.
+
+**Test plan (TDD)**
+
+| #   | Level       | Test                                                                                                                                                                       | Red when                                                                                                              |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | The styling decision over a table of (`isTTY`, `NO_COLOR`, `TERM`, `--json`, `--no-color`, `FORCE_COLOR`) → enabled / disabled                                              | Colour is decided by a library's own detection at import time, so `--json` still emits escapes                        |
+| 2   | unit        | Render a report with styling on, strip every ANSI sequence, and assert all four states are still distinguishable by glyph and label                                         | `warn` and `fail` differ only in colour, which is the exact failure 12 §9.2 exists to prevent                          |
+| 3   | unit        | Wrapping at width 60 over a 400-character detail and a 120-character absolute path                                                                                          | The wrapper breaks on character count and splits a path in half, so the path cannot be copied out of the terminal      |
+| 4   | unit        | Column alignment over a section whose check ids differ in length; assert statuses start at the same column and the width came from the longest id                           | The column width is a constant, and one long id pushes its status out of alignment for the whole section              |
+| 5   | integration | `doctor --json` over KAR-18.4's own fixtures, compared byte-for-byte against a golden captured before the change                                                            | The summary block is appended to the JSON document too, and every CI consumer's parse breaks                          |
+| 6   | integration | Each of `doctor`, `init`, `status`, `run`, `ledger snapshot` with stdout piped to a file; assert no `0x1b` byte in the file and the exit codes their own stories assert     | One command was missed and still writes its own colour, so a log file is full of escapes                              |
+| 7   | unit        | A source guard: no file under `packages/cli/src` outside the render module contains an ANSI escape literal or a status-glyph literal                                        | A new command is added later and formats its own output, and the tool goes back to looking like five tools            |
+| 8   | integration | Spawn with `stdout.columns` unavailable and with `COLUMNS` unset; assert an 80-column layout and no throw                                                                   | The width is read directly and `undefined` reaches the wrapper as `NaN`, producing one line per character             |
+| 9   | unit        | `LC_ALL=C` and `LANG=C`; assert the ASCII glyph set and that the four glyphs are pairwise distinct                                                                          | The glyphs are literals in the template, so a non-UTF-8 terminal prints replacement characters where the status was   |
+
+**Notes / risks** — this is a presentation change and the temptation is to improve a decision while
+in the file. Do not: AC8 is enforced by leaving the other stories' tests untouched, and any behaviour
+that needs to change belongs in its own story. The summary block's "next action" is chosen from the
+worst check, which means every check that can be worst needs an action worth printing — writing one
+per check is most of the work here, and it is the half that actually shortens a diagnosis.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                                                                      | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **~16 days is at the top of the ~15-day guidance**, and this epic sits last on the critical path where schedule pressure lands.                                                                                                           | KAR-18.4 is the split point: categories 1–5 and 8 (`runtime`, `git`, `sandboxing`, `agents`, `capabilities`, `PTY`/`memory`) gate a first real run; the F3.4 conformance battery integration can follow a week later. KAR-18.7 is P1 and cuttable. Nothing else here is optional — NF6 _is_ the install.                                                                                                  |
+| R1  | **~22 days is well over the ~15-day guidance** (it was ~16 before KAR-18.8 and KAR-18.9 were added on 2026-08-12), and this epic sits last on the critical path where schedule pressure lands.                                            | KAR-18.4 is the split point: categories 1–5 and 8 (`runtime`, `git`, `sandboxing`, `agents`, `capabilities`, `PTY`/`memory`) gate a first real run; the F3.4 conformance battery integration can follow a week later. The three `P1` stories — KAR-18.7, KAR-18.8 and KAR-18.9, ~7 days together — sit outside M1's definition of done and can slip to M2 whole, which is where their argument (a colleague installing this unaided) actually lands. Nothing else here is optional — NF6 _is_ the install. |
 | R2  | **A0-6: `@lydell/node-pty@1.2.0-beta.14` is a beta of a community fork and the only native dependency in the published package.**                                                                                                         | M0-S6's install matrix is a DoR item. `optionalDependencies` + a plain-`spawn` no-TTY fallback means an uncovered platform degrades rather than failing installation, and KAR-18.4 criterion 9 makes the degradation visible instead of mysterious. **No agent process needs a TTY** — ACP and every headless mode is a pure pipe protocol across all five agents probed — so the fallback is survivable. |
 | R3  | **A5-2 / A5-3: sandbox prerequisites are platform-specific and fail open.** macOS 26 Tahoe broke Seatbelt profiles in practice and whether Claude Code 2.1.220 fixes it is unverified; Ubuntu 24.04+ AppArmor blocks bubblewrap silently. | `doctor` reports _honourable levels_, not "sandbox: ok". EPIC-08 sets `failIfUnavailable: true` and `allowUnsandboxedCommands: false` for every non-`full` level so the ladder fails closed; this epic's job is to say so before a run starts.                                                                                                                                                            |
 | R4  | **A0-9: the capability matrix is a snapshot against five specific versions**, two published the day they were probed.                                                                                                                     | The matrix is a generated fixture with a probe timestamp, regenerated on every `doctor` run and diffed in CI weekly ([roadmap §5](../../17-roadmap.md)). The DoD forbids a hardcoded capability constant in this epic's packages.                                                                                                                                                                         |
 | R5  | **The tarball can regress between releases in ways only a clean room sees.**                                                                                                                                                              | KAR-18.6 is a CI job on every release tag plus a per-milestone manual run, and criterion 5 asserts the _verifier itself fails_ on a deliberately broken tarball — a green verifier that cannot go red is worse than none.                                                                                                                                                                                 |
 | R6  | **`npx DeFlow up` in two terminals is described in the architecture as "very common"**, and the refusal path is the first thing an operator meets when something is wrong.                                                                | KAR-18.2 criterion 3 fixes the exact sentence, including the live pid and port, and points at `DeFlow status`. The lease is EPIC-03's; the sentence is this epic's.                                                                                                                                                                                                                                       |
 | R7  | **Windows users will try this** despite NF5 putting it at M3.                                                                                                                                                                             | `doctor` names the platform as unsupported with the WSL2 instruction from [03 §1](../../03-local-development.md), rather than failing at the first `process.kill(-pid)`.                                                                                                                                                                                                                                  |
+| R8  | **A command that installs software onto someone's machine is a new kind of thing for DeFlow to be**, and the failure modes (no egress, a proxy, a read-only global prefix, a half-written package) are worse than the message it replaces. | KAR-18.8 is detect-then-offer: nothing is installed without a confirmation or an explicit `--fix`, only the ACP adapter of a vendor CLI that is already present, one attempt, and the result re-resolved rather than inferred. AC10 and EPIC-18-S56 make the no-egress path a first-class scenario rather than a surprise.                                                                                |
+| R9  | **A presentation rewrite silently changing a contract.** The `--json` documents are what CI branches on, and they are produced by the same code paths KAR-18.9 touches.                                                                   | KAR-18.9 AC6 pins every `--json` document to a golden captured before the change, AC8 forbids modifying the other stories' behavioural tests, and EPIC-18-S62 is the scenario that goes red the day a summary block leaks into a document.                                                                                                                                                                |
 
 ---
 
