@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                                          |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                                          |
 | **Workstream**       | W13 — added 2026-08-12, after the first live run did nothing (see [roadmap §2.2](../../17-roadmap.md) and §2.3)                                                                                                                                                                              |
-| **Size**             | ~17 days across 5 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                            |
+| **Size**             | ~20 days across 6 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                            |
 | **Depends on**       | EPIC-10 (intake, framing, spec gate, recon), EPIC-11 (plan compilation and validation), EPIC-06 (`decide()`, the ticker, `node_wake`, the effect journal), EPIC-09 (packet assembly), EPIC-05 (provider registry and capability probe), EPIC-15 (the HTTP API and the SSE stream), EPIC-16 and EPIC-17 (the store and the views that render it), EPIC-18 (`run`, `status`, `doctor`, the exit-code table), EPIC-13 (human nodes), EPIC-12 (gates), EPIC-14 (cost accounting) |
 | **Blocks**           | M1's definition of done. PRD §11 is _"you complete a real multi-hour task at work with it"_; until this epic lands, no task of any length can be completed, because no submitted run proceeds past intake                                                                                    |
 | **PRD requirements** | F1.1, F1.2, F1.3, F2.2, F2.3, F4.1, F4.2, F4.4, F4.7, F5.7, F6.1, F7.1, F9.1, F9.2, F10.1, F10.6, F10.9, NF3, NF6, NF7, NF8, NF10, AR-1                                                                                                                                                     |
@@ -56,7 +56,11 @@ tests pass green while a live run does nothing at all, because **no test ever dr
 real command through a live daemon to a node executing**. Each epic's own Definition of Done was
 satisfied. The integration between them belonged to nobody, so it was nobody's red test.
 
-Three things follow, and they shape the five stories.
+Three things follow, and they shape the first five stories. A sixth was added later the same day,
+after the operator's attempt to clean up after the failure hit a second dead end: there is no
+`DeFlow cancel` command at all, and a run that never started cannot be got rid of by any route.
+KAR-19.6 is that story, and it is the same defect wearing different clothes — a capability that
+exists in the daemon and reaches no operator.
 
 1. **Silence is the defect, not the symptom.** A run that cannot proceed must say so — in the
    ledger, in the terminal and in the UI. The operator lost an afternoon not because DeFlow refused,
@@ -89,12 +93,20 @@ Three things follow, and they shape the five stories.
   (F4.7's existing event) rather than sitting silent.
 - `pnpm test:smoke` — one live, fixture-free path from the real CLI binary through a real daemon and
   a real on-disk ledger to an executed node, against the bundled mock agent — wired into `pnpm test`.
+- `DeFlow cancel <runId>` over the control endpoint that already exists, and a way out for a run
+  that never started — the hole [KAR-18.3](./EPIC-18-cli-packaging.md#kar-183--DeFlow-run-headless-execution)'s
+  amendment recorded and left open. Every surface that lists runs stops showing a stopped run as
+  live (KAR-19.6).
 
 **Out of scope:**
 
 - **Any new mechanism.** If a step needs behaviour that does not exist, that is a story in the epic
   that owns the mechanism, not here. This epic's diff is calls, scheduling records, one documented
-  endpoint and one route — plus tests.
+  endpoint and one route — plus tests. KAR-19.6 adds no endpoint and no mechanism either: it is a
+  CLI command over the control route that has always existed, plus one reordering inside
+  `planRunControl`'s existing state machine. It does amend one shipped contract —
+  [KAR-15.5](./EPIC-15-daemon-api.md) AC6's blanket _"no control verb applies before approval"_ —
+  and that amendment is recorded in KAR-15.5's own file rather than absorbed here.
 - **New event kinds.** The refusal in KAR-19.2 is recorded with `provider.probed` and `run.aborted`,
   both of which exist and both of which already reduce correctly. Widening the `Event` union is
   [EPIC-02](./EPIC-02-domain-model.md)'s, and doing it from here would be a schema change made in
@@ -131,7 +143,7 @@ Three things follow, and they shape the five stories.
 
 ## Definition of Done (epic level)
 
-- [ ] All five stories are Done.
+- [ ] All six stories are Done.
 - [ ] Every scenario in [the flow file](../flows/EPIC-19-live-run-pipeline-flows.md) is automated at
       the level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] `pnpm test:smoke` is part of `pnpm test`, drives the real CLI binary against a real daemon and
@@ -149,6 +161,12 @@ Three things follow, and they shape the five stories.
       run that cannot proceed states why in all three of the ledger, the terminal and the UI.
 - [ ] `DeFlow run` on a machine with a vendor CLI and no ACP adapter exits `5` with `doctor`'s own
       sentence, and the same sentence appears in `GET /api/runs/:id` and in the UI.
+- [ ] `DeFlow cancel <runId>` exists, is the only documented way to stop a run, and stops one in
+      **any** state — including a run that never started. The three runs from 2026-08-12
+      (`run_20260812T133401Z_318740`, `run_20260812T133514Z_ed4f12`,
+      `run_20260812T133934Z_468702`) are each cleared by one command, and afterwards
+      `DeFlow status`, `GET /api/runs?status=active` and the web run list show none of them as live.
+      No documented path to stopping a run involves `curl` or a hand-extracted bearer token.
 - [ ] No `Unverified` claim is introduced. Where this epic discovers that an architecture doc
       describes a call nothing makes, the doc is corrected in the same session (AR-6).
 
@@ -569,15 +587,156 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 
 ---
 
+### KAR-19.6 — Cancel and discard a run from the CLI, including one that never started _(added)_
+
+|                 |                                                                                                                                                                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                                                                                                                                            |
+| **Priority**    | P0                                                                                                                                                                                                                                                                                     |
+| **Size**        | M                                                                                                                                                                                                                                                                                      |
+| **Depends on**  | KAR-19.1 (`GET /api/runs`, the live run list and the one status string every surface prints), EPIC-06 KAR-06.7 (pause/resume/cancel as events and the three-stage ladder), EPIC-08 KAR-08.6 (the kill switch's process-group mechanics), EPIC-15 KAR-15.5 (the control routes, their idempotency rules and the `spec_not_approved` refusal this story amends), EPIC-10 KAR-10.3 (the F1.3 gate's four options, of which `abandon` is one), EPIC-18 KAR-18.3 (the exit-code table and the detach sentence that already names this command), KAR-18.7 (`DeFlow status`) and KAR-18.9 (the shared terminal renderer) |
+| **PRD**         | F1.3, F4.1, F4.4, F5.7, F10.1, NF8, NF10                                                                                                                                                                                                                                               |
+| **Verified by** | EPIC-19-S37, EPIC-19-S38, EPIC-19-S39, EPIC-19-S40, EPIC-19-S41, EPIC-19-S42, EPIC-19-S43                                                                                                                                                                                              |
+
+**As** an operator with a run I no longer want, **I want** one command that stops it — whether it is
+halfway through a node or has never started at all — **so that** cleaning up after a bad afternoon
+costs me one line rather than a hand-extracted bearer token and a `curl` invocation I have to look
+up.
+
+**This is the second half of the same 2026-08-12 afternoon.** Having watched three runs do nothing,
+the operator typed `DeFlow cancel <runId>` — the command KAR-18.3 AC3's own detach sentence prints,
+verbatim: _"detached — run `<runId>` continues; `'DeFlow run --attach <runId>'` to watch,
+`'DeFlow cancel <runId>'` to stop"_. There is no such command. The daemon has had the capability
+since KAR-15.5: `POST /api/runs/:id/cancel` takes `{ mode: 'cooperative' | 'forceful' }`, `forceful`
+walks F5.7's ladder and answers only once the kill is verified. Nothing in the CLI is wired to it, so
+the only route to it is `curl` with the bearer token read out of the token file by hand. A capability
+no operator can reach is not a capability, and this is the third instance of that shape in this epic.
+
+**The dead end is the second half, and it is worse.** `planRunControl` refuses **every** control verb
+while the spec is unapproved — `UNAPPROVED = ['created', 'awaiting-spec-approval']` — with
+`422 spec_not_approved` and the sentence _"creating a run does not start it, and no control verb
+applies until `POST /api/runs/:id/spec/approve` has been answered"_. The gate's own escape hatch,
+`POST /runs/:id/spec/abandon`, calls `abandonRun`, which begins `if (!gateIsOpen(events)) throw new
+SpecGateNotOpen(...)`. A run stuck at `created` — no approval, and no gate open either, which is
+exactly the state KAR-19.1 exists to fix and exactly the state all three reported runs are in — can
+therefore be stopped by **neither** route, and accumulates in `DeFlow status` forever. KAR-18.3's
+amendment already named this _"a real hole in the daemon's write surface rather than in this
+command"_ and deferred it. This story is where the deferral is paid.
+
+**The vocabulary decision, and why it is not a new word.** Four candidate spellings were available
+and three are rejected in writing, because a second word for an outcome the ledger already has one
+for is a second thing to keep true — the argument KAR-18.8 won and KAR-19.2 AC3 re-states:
+
+- **No new run status.** `RUN_STATUSES` already ends at `aborted`, and it is reduced from events
+  rather than set, so a `discarded` member would be a `run-state.ts` change to express a distinction
+  the operator cannot act on differently.
+- **No new event kind and no new `RUN_OUTCOMES` member.** Both are `@DeFlow/core`'s files and
+  [EPIC-02](./EPIC-02-domain-model.md)'s story, and this epic's Out-of-scope forbids widening the
+  `Event` union from here. `run.aborted` already reduces correctly, is already one of the four
+  members of the `runs=*` global topic, and already ends a run.
+- **The word for ending an unstarted run is `abandon`,** which is already the vocabulary of
+  KAR-10.3's four gate options, of `human.responded.optionId = 'abandon'`, and of the shipped
+  `POST /runs/:id/spec/abandon` route. "Discard" would be a fifth spelling of a fourth concept.
+- **The operator's verb stays `cancel`,** because that is the word they typed, the word the detach
+  sentence prints and the word `POST /runs/:id/cancel` already carries. One operator verb, two
+  daemon paths, and the CLI says which one it took — the daemon chooses from reduced state, and the
+  operator is never asked to know which of two commands their run's status entitles them to.
+
+**What the ledger records, and the tempting shortcut.** An abandon of an unapproved run appends
+`run.cancel.requested { mode: 'cooperative' }` **and** `run.aborted` in one transaction. The
+shortcut is to append `run.aborted` alone, which is what `abandonRun` does today — and that is
+defensible at the gate, where `human.responded { optionId: 'abandon' }` sits immediately in front of
+it and records that a person asked. With no gate open nothing does, and a bare
+`run.aborted { outcome: 'failed' }` is **indistinguishable from a run that died of a defect** — which
+is precisely how these three runs were produced, so it is the one distinction this story cannot
+afford to lose. Both events in one transaction means `cancelling` never becomes an observable status
+for a run with nothing in flight, so no surface has to render a kill ladder that has zero rungs.
+
+**Acceptance criteria**
+
+1. `DeFlow cancel <runId>` exists as a first-class command and posts to the existing
+   `POST /api/runs/:id/cancel`, authenticating through the same token-file path every other CLI
+   command uses. It is `cooperative` by default — the mode that lets the agent flush its transcript
+   — and `--force` sends `{ mode: 'forceful' }`, F5.7's ladder. No documented way to stop a run
+   involves `curl` or a hand-extracted bearer token, and a guard asserts the string `curl` appears in
+   no CLI help text, error message or docs page as a way to control a run.
+2. The mode is stated, never guessed silently. The command's output names which mode it used and what
+   that mode means: cooperative names that the agent is being given the chance to flush its
+   transcript first; `--force` names the `session/cancel` → `SIGTERM` → grace → `SIGKILL` ladder and
+   that the transcript may be truncated. A `--mode` value outside `CANCEL_MODES` is refused by the
+   CLI with the closed list **before** any request is sent, mirroring the daemon's own refusal
+   wording rather than inventing a second one.
+3. `cancel` on a run whose spec has not been approved terminates it instead of refusing.
+   `planRunControl`'s `UNAPPROVED` check moves below the verb split: `pause` and `resume` on a run in
+   `created` or `awaiting-spec-approval` still answer `422 spec_not_approved` — there is nothing
+   admitting work to pause — and `cancel` plans a termination. This **amends KAR-15.5 AC6**, whose
+   blanket rule is what makes `run_20260812T133401Z_318740` unstoppable, and the amendment is
+   recorded in EPIC-15's file.
+4. That termination appends `run.cancel.requested { mode: 'cooperative' }` and `run.aborted` at
+   consecutive `seq` **in one transaction**. No intermediate read ever observes the run as
+   `cancelling`, no new event kind, run status or `RUN_OUTCOMES` member is introduced, and a crash
+   between the two is impossible by construction rather than by ordering luck.
+5. When the F1.3 gate **is** open, `cancel` goes through the shipped gate path: `human.responded`
+   with `optionId: 'abandon'` is still written and the gate's `node_wake` row is still consumed in
+   the same transaction, so the run's history records the option the operator effectively chose.
+   There is one abandon implementation, not two — a source guard asserts that exactly one shipped
+   module appends `run.aborted` on an operator stop.
+6. Repeats and unknown ids are safe. Cancelling a run that has already ended returns `200` with the
+   `seq` already in the log, appends nothing (KAR-15.5 AC2's rule, now reaching this path), and the
+   CLI exits `0` saying the run had already ended and how it ended. An unknown run id is
+   `404 run_not_found` with a non-zero exit and no partial write. Cancelling twice produces exactly
+   one `run.aborted`.
+7. Every surface stops showing a stopped run as live, at the same head sequence: `DeFlow status`
+   drops it from its active-run summary, `GET /api/runs?status=active` excludes it while plain
+   `GET /api/runs` still lists it with a terminal status, and the web run list updates the row in
+   place from the `run.aborted` frame on the `runs=*` topic **without a refresh**. The status string
+   is the one `runStatusLabel` produces (KAR-19.1 AC6); this story adds no fourth spelling.
+8. A cancel survives a restart and never escalates by itself. A daemon `SIGKILL`ed after
+   `run.cancel.requested` and before the ladder finished comes back, finishes the cancel, admits no
+   further work, and reaches `aborted` once — without the operator issuing a second command. A
+   cooperative cancel whose agent never answers **stays** `cancelling`: the CLI reports that and
+   names `--force`, and nothing promotes cooperative to forceful automatically, because the whole
+   point of the two modes is that one of them may lose a transcript.
+9. The three reported runs are the acceptance case. `run_20260812T133401Z_318740` (`task.submitted`
+   then `provider.probed`), `run_20260812T133514Z_ed4f12` (the same) and
+   `run_20260812T133934Z_468702` (`task.submitted` alone) are each cleared by a single
+   `DeFlow cancel <runId>` taking the same code path, and afterwards `DeFlow status` lists none of
+   them. Kill verification, where a ladder ran at all, excludes `Z`-state processes.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
+implementation.
+
+| #   | Level       | Test                                                                                                                                                                                              | Red when                                                                                                                                          |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | `planRunControl` over the full `RunStatus` × verb table; assert `cancel` plans a termination for `created` and `awaiting-spec-approval`, and that `pause` / `resume` still refuse `spec_not_approved` | The `UNAPPROVED` check still runs above the verb split, so all three verbs refuse and a run that never started can never be got rid of            |
+| 2   | unit        | The mode renderer and argument parser: cooperative and `--force` sentences, and an out-of-range `--mode` refused against `CANCEL_MODES` before any request is made                                  | The CLI silently defaults, so the operator cannot tell whether the agent was given the chance to flush its transcript                             |
+| 3   | integration | File-backed ledger holding only `task.submitted`; cancel it and assert `run.cancel.requested` and `run.aborted` at consecutive `seq`, written in one transaction, with no observable `cancelling`   | The two are appended separately, so a crash between them parks the run in `cancelling` forever — the reported defect under a new name              |
+| 4   | integration | Cancel with the F1.3 gate open; assert `human.responded { optionId: 'abandon' }`, the gate's `node_wake` row consumed in the same transaction, and one shipped module appending `run.aborted`      | A second abandon path is written for the CLI, and the record of which gate option the operator chose is lost                                       |
+| 5   | integration | Cancel twice, then cancel a `completed` run; assert `200` with the existing `seq`, exactly one `run.aborted` in the ledger, and exit `0` both times; then an unknown id → `404` and a non-zero exit | The repeat appends a second `run.aborted`, so the run list renders the same run ending twice and the timeline disagrees with itself                |
+| 6   | e2e         | Built binary + real daemon + a live mock-agent child; `DeFlow cancel <runId> --force`; assert the mode named on stdout, `run.aborted` on disk, the documented exit code, and no non-`Z` process left in the agent's group | The command does not exist, so the operator is back to `curl` with a token they extracted by hand — the reported defect                            |
+| 7   | web         | Run list open on the `runs=*` topic; push `run.aborted` for a listed run; assert the row updates in place with no refetch, and that a subsequent `?status=active` fetch omits it                   | The list keeps the run as live until a reload, so stopped runs accumulate on screen exactly as the operator's three did                            |
+| 8   | integration | `SIGKILL` the daemon after `run.cancel.requested` with a child in flight; reboot over the same data dir; assert the cancel completes, nothing further is admitted, and `run.aborted` appears once  | The ladder was held in memory, so the restart resumes a run the operator stopped and the second `DeFlow cancel` is the operator's job again        |
+| 9   | integration | A `Scenario Outline` over the three reported runs' exact ledger shapes; assert one command clears each and that `DeFlow status` afterwards lists none of them                                       | The `task.submitted`-only shape and the `provider.probed` shape take different paths, so one command clears one run and the operator has to guess |
+
+**Notes / risks** — the temptation here is a client-side special case: let the CLI notice a `422` and
+fall back to `POST /runs/:id/spec/abandon`, which is what `packages/cli/src/run/cancel.ts` already
+does for the second Ctrl-C. That fallback is what proves the point rather than solving it — it cannot
+help a run with no gate open, and it puts the daemon's state machine in the CLI, where the web UI and
+any future client cannot reach it. The fix belongs in `planRunControl`, and the CLI's fallback is
+deleted once one route answers for every state.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **~17 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring. |
+| R1  | **~20 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring. |
 | R2  | **The temptation to write a second, simpler implementation** of framing or planning to get a run moving today.                                                                                                                                      | KAR-19.3 AC7 is a source guard, not a convention, and it is in the test plan before the wiring. One caller per step, asserted mechanically.                                                                                                                                                                                                                     |
 | R3  | **The wiring may reveal that two components' contracts do not actually meet** — a packet shape, a capability field, an id that framing mints and the planner expects differently. Integration is where that is discovered, by construction.         | Any mismatch is fixed **in the owning epic's code with its own test**, and the divergence is written back into the architecture doc in the same session (AR-6). This epic's diff stays calls and scheduling; a mismatch that needs a mechanism change is a story in the owning epic, recorded under [README §9](../README.md#9-changing-the-plan).             |
 | R4  | **A green smoke test that cannot go red** — the exact failure this epic exists to correct, reproduced one level up.                                                                                                                                 | KAR-19.5 AC4's sabotage table: every link cut in turn, every cut asserted to fail. A row that passes fails the story.                                                                                                                                                                                                                                          |
-| R5  | **The e2e slice is already well past the ~5 budget** [14-testing-strategy.md](../../14-testing-strategy.md) sets, and this epic adds seven more (EPIC-19-S1, S10, S16, S24, S32, S33, S34).                                                          | Seven is the honest count and it is recorded here rather than absorbed. Four of them (S1, S16, S24, S32) are chain assertions nothing below e2e can make; the smoke pair (S33, S34) is the epic's product; S10 is the exit code, which only exists in a process. Everything else was pushed down to `integration` or `web` deliberately, and the budget line in 14 §2 should be restated as a per-epic figure rather than a global one. |
+| R5  | **The e2e slice is already well past the ~5 budget** [14-testing-strategy.md](../../14-testing-strategy.md) sets, and this epic adds eight (EPIC-19-S1, S10, S16, S24, S32, S33, S34, S37).                                                          | Eight is the honest count and it is recorded here rather than absorbed. Four of them (S1, S16, S24, S32) are chain assertions nothing below e2e can make; the smoke pair (S33, S34) is the epic's product; S10 and S37 are exit codes and a verified process-group kill, neither of which exists anywhere but in a process. Everything else was pushed down to `integration`, `web` or `unit` deliberately — KAR-19.6 spends one e2e out of seven scenarios for exactly that reason — and the budget line in 14 §2 should be restated as a per-epic figure rather than a global one. |
+| R8  | **Widening the cancel path could turn a refusal into a deletion.** `422 spec_not_approved` is a blunt rule, but it is currently the only thing standing between a mistyped run id and a terminal event on someone else's run.                        | KAR-19.6 changes what `cancel` does and nothing about what `pause` and `resume` do, keeps `404 run_not_found` ahead of every other check in `planRunControl`'s asserted order, and ends the run with events rather than deleting anything — every artifact stays inspectable on disk (NF8), which is what makes a mistaken cancel recoverable reading rather than lost work.                                                                    |
 | R6  | **Cold start plus framing plus compilation may not fit the smoke test's 90 s budget** on a cold CI runner, and the reflex will be to raise the number.                                                                                              | The budget is asserted by the test's own timeout and the number is written into this file. Raising it is a plan change with a written reason, not an edit — and the first place to look is the probe cache, measured at 441 ms cold and 8 ms warm in KAR-18.2's Notes.                                                                                          |
 | R7  | **Fixtures recorded from the pre-fix system may encode the broken shape**, so a projection tuned to them could disagree with a live run.                                                                                                            | The smoke test never reads a fixture. Once it passes, re-recording [03 §6.2](../../03-local-development.md)'s fixtures from real runs is the immediate follow-up, and any projection that changes as a result is a finding rather than a surprise.                                                                                                              |
 

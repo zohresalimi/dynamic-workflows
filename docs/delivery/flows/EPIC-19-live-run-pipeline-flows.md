@@ -94,6 +94,13 @@ Background:
 | EPIC-19-S34 | **Every link cut in turn, and the smoke test goes red for each**                   | KAR-19.5 | Failure     |
 | EPIC-19-S35 | No vendor CLI, no credential, no network, no home directory touched                | KAR-19.5 | Edge case   |
 | EPIC-19-S36 | It is in `pnpm test`, it is serialised, and it fits its budget                     | KAR-19.5 | Edge case   |
+| EPIC-19-S37 | **Happy path: `DeFlow cancel <runId>` stops a live run and says how**              | KAR-19.6 | Happy path  |
+| EPIC-19-S38 | The mode is stated, never guessed, and never escalated behind you                  | KAR-19.6 | Edge case   |
+| EPIC-19-S39 | **A run that never started can finally be got rid of**                             | KAR-19.6 | Happy path  |
+| EPIC-19-S40 | **The three stuck runs of 2026-08-12, cleared by one command each**                | KAR-19.6 | Edge case   |
+| EPIC-19-S41 | Cancelling twice, an ended run, and a run that is not there                        | KAR-19.6 | Failure     |
+| EPIC-19-S42 | A stopped run stops being live in every surface that lists runs                    | KAR-19.6 | Edge case   |
+| EPIC-19-S43 | A crash mid-cancel finishes the cancel, it does not resume the run                 | KAR-19.6 | Recovery    |
 
 ---
 
@@ -995,6 +1002,239 @@ Feature: the smoke test that would have caught this
 "we ran it", so a smoke test behind a flag would reproduce it exactly. The budget is asserted by the
 test's own timeout so that a regression in cold start or scheduling latency is a red test rather
 than a slow afternoon that someone eventually raises the number for.
+
+---
+
+## EPIC-19-S37 — Happy path: `DeFlow cancel <runId>` stops a live run and says how
+
+**Verifies:** KAR-19.6 · **Type:** Happy path · **Automated at:** e2e
+
+```gherkin
+Feature: one command stops a run
+
+  Scenario: the command the detach sentence has always named
+    Given a running DeFlowd driving a plan with one mock-agent node in flight
+    And the operator has never opened the token file
+    When the operator runs "DeFlow cancel <runId>"
+    Then the command posts to "POST /api/runs/<runId>/cancel" with mode "cooperative"
+    And it prints which mode it used and that the agent is being allowed to flush its transcript
+    And "run.cancel.requested" with mode "cooperative" is appended
+    And the agent answers with stopReason "cancelled" and its trailing updates are accepted
+    And "run.aborted" is appended and the run's projected status is "aborted"
+    And the process exit code is the one classifyRun prescribes for that terminal state
+
+  Scenario: the same command, forcefully
+    When the operator runs "DeFlow cancel <runId> --force"
+    Then the request carries mode "forceful"
+    And the output names the session/cancel → SIGTERM → grace → SIGKILL ladder and that the
+        transcript may be truncated
+    And the response is sent only after the kill is verified
+    And no process remains in the agent's process group, excluding entries in state "Z"
+```
+
+**Notes:** `'DeFlow cancel <runId>' to stop` has been printed by KAR-18.3 AC3's detach sentence since
+2026-08-11 and has never resolved to a command. The Z-state exclusion is the verified false-negative
+trap from [09 §11.1](../../09-workspace-and-safety.md), and it belongs here rather than only in
+EPIC-06 because this is the first scenario in which an **operator's own command** claims a kill
+happened — a claim the endpoint deliberately makes only after verifying it.
+
+---
+
+## EPIC-19-S38 — The mode is stated, never guessed, and never escalated behind you
+
+**Verifies:** KAR-19.6 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: one command stops a run
+
+  Scenario Outline: every invocation says what it did
+    Given the cancel command invoked as <invocation>
+    When its request and its first line of output are rendered
+    Then the request body carries mode <mode>
+    And the output names <mode> and what it means for the agent's transcript
+
+    Examples:
+      | invocation                   | mode        |
+      | DeFlow cancel r1             | cooperative |
+      | DeFlow cancel r1 --force     | forceful    |
+
+  Scenario: a mode the daemon does not have
+    When the operator runs "DeFlow cancel r1 --mode aggressive"
+    Then the command refuses before any HTTP request is made
+    And the refusal lists exactly the members of CANCEL_MODES
+    And the wording is the daemon's own invalid_request sentence, not a second one
+
+  Scenario: cooperative does not become forceful by itself
+    Given a cooperative cancel whose agent has not answered
+    When the run is inspected
+    Then its status is still "cancelling"
+    And no SIGTERM and no SIGKILL was sent
+    And the command's output names "--force" as the operator's next move
+```
+
+**Notes:** the daemon already refuses to guess — its `invalid_request` body says that guessing "would
+be guessing about whether that transcript survives" — and a CLI that quietly defaults undoes that
+refusal one layer up. The third scenario is the one with teeth: an automatic escalation would make
+`--force` decorative and would silently truncate the transcript of every long-running node, which is
+the artefact an operator cancels a run in order to read.
+
+---
+
+## EPIC-19-S39 — A run that never started can finally be got rid of
+
+**Verifies:** KAR-19.6 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: a way out for a run that never started
+
+  Scenario: cancelling a run parked before approval
+    Given a run whose ledger contains only "task.submitted"
+    And no F1.3 gate is open for it, because framing never ran
+    When "POST /api/runs/<runId>/cancel" is called
+    Then the response is 200 rather than 422 "spec_not_approved"
+    And "run.cancel.requested" with mode "cooperative" and "run.aborted" are appended at
+        consecutive seq in one transaction
+    And no read of the run at any point observes the status "cancelling"
+    And no new event kind, no new RunStatus and no new RUN_OUTCOMES member was introduced
+
+  Scenario: pause and resume are unchanged
+    Given the same run
+    When "POST /api/runs/<runId>/pause" and "POST /api/runs/<runId>/resume" are called
+    Then both are refused with 422 "spec_not_approved"
+    And the ledger is unchanged
+
+  Scenario: cancelling a run parked at the open spec gate
+    Given a run suspended at the F1.3 approval gate
+    When "POST /api/runs/<runId>/cancel" is called
+    Then "human.responded" with optionId "abandon" is appended
+    And the gate's node_wake row is consumed in the same transaction
+    And "run.aborted" is appended by the same shipped module as the previous scenario's
+```
+
+**Notes:** `abandonRun` opens with `if (!gateIsOpen(events)) throw new SpecGateNotOpen(...)`, and
+`planRunControl` refuses every verb while the status is `created` or `awaiting-spec-approval`. Between
+them, a run that was accepted and never framed can be stopped by neither route — which KAR-18.3's
+amendment recorded as _"a real hole in the daemon's write surface"_ and deferred. The second scenario
+is the guard on the fix: widening `cancel` must not widen `pause`, which would leave the API claiming
+to have paused a run that was never admitting work.
+
+---
+
+## EPIC-19-S40 — The three stuck runs of 2026-08-12, cleared by one command each
+
+**Verifies:** KAR-19.6 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: a way out for a run that never started
+
+  Scenario Outline: the reported runs, by their exact ledger shapes
+    Given a run whose ledger is exactly <shape>
+    When the operator runs "DeFlow cancel <runId>" once
+    Then the run reaches "aborted"
+    And the same code path handled it as every other row of this table
+    And "DeFlow status" afterwards does not list it among active runs
+    And "GET /api/runs?status=active" does not include it
+    And every artifact the run produced is still readable under .DeFlow/runs/<runId>/
+
+    Examples:
+      | shape                                  |
+      | task.submitted                         |
+      | task.submitted, provider.probed        |
+```
+
+**Notes:** the operator's three runs — `run_20260812T133401Z_318740`,
+`run_20260812T133514Z_ed4f12` and `run_20260812T133934Z_468702` — are two of the first shape and one
+of the second, and the "same code path" clause is what stops the fix being two special cases that
+each work on the run the author happened to test with. The artifacts clause is NF8: a cancel ends a
+run, it does not delete one, which is what makes a mistaken cancel a reading exercise rather than
+lost work.
+
+---
+
+## EPIC-19-S41 — Cancelling twice, an ended run, and a run that is not there
+
+**Verifies:** KAR-19.6 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: one command stops a run
+
+  Scenario: the second cancel changes nothing
+    Given a run that has already been cancelled
+    When it is cancelled again
+    Then the response is 200 carrying the seq already in the log
+    And the ledger contains exactly one "run.aborted" for that run
+    And the CLI exits 0 and says the run had already ended, and how
+
+  Scenario: cancelling a completed run
+    Given a run that reached "run.completed"
+    When it is cancelled
+    Then nothing is appended
+    And the response names the terminal status the run already had
+
+  Scenario: a run id that does not exist
+    When "DeFlow cancel run_does_not_exist" is run
+    Then the response is 404 "run_not_found"
+    And the CLI exits non-zero with that sentence and no stack trace
+    And no event was appended to any run
+```
+
+**Notes:** KAR-15.5 AC2's rule — a repeat answers `200` with the existing `seq` rather than an error
+— now has to hold on a path it was never exercised against. The failure it prevents is visible rather
+than theoretical: two `run.aborted` events for one run make the run list render the same run ending
+twice and make the timeline disagree with itself, on the exact screen the operator opened to confirm
+the cleanup worked.
+
+---
+
+## EPIC-19-S42 — A stopped run stops being live in every surface that lists runs
+
+**Verifies:** KAR-19.6 · **Type:** Edge case · **Automated at:** web
+
+```gherkin
+Feature: a stopped run stops looking live
+
+  Scenario: the run list updates in place
+    Given the web application is open at "/" with a subscription to "?runs=*"
+    And the list shows the run as running
+    When a "run.aborted" frame for that run arrives on the subscription
+    Then the row updates in place rather than duplicating or disappearing
+    And no refetch of "GET /api/runs" was issued to make it update
+    And the row's status string is the one runStatusLabel produces for "aborted"
+    And a subsequent "GET /api/runs?status=active" response does not contain the run
+    And "GET /api/runs" with no filter still lists it, with its terminal status
+```
+
+**Notes:** the operator's complaint was not only that the runs would not stop — it was that they kept
+appearing. A cancel that ends the ledger but leaves three surfaces rendering the run as live has
+moved the defect rather than fixed it, and the `runStatusLabel` clause is KAR-19.1 AC6 holding for a
+fourth state: three independently defensible descriptions of one run is how 2026-08-12 became an
+afternoon.
+
+---
+
+## EPIC-19-S43 — A crash mid-cancel finishes the cancel, it does not resume the run
+
+**Verifies:** KAR-19.6 · **Type:** Recovery · **Automated at:** integration
+
+```gherkin
+Feature: one command stops a run
+
+  Scenario: the daemon dies between the request and the ladder
+    Given a run with a node in flight whose ledger ends at "run.cancel.requested"
+    When the daemon is SIGKILLed before the ladder finished
+    And a new daemon boots over the same data directory
+    Then the run's reduced status is "cancelling", not "running"
+    And no StartNode is issued for it on any subsequent tick
+    And the cancel is carried to completion and "run.aborted" is appended exactly once
+    And the operator issues no second command
+    And no process remains in the old daemon's agent group, excluding entries in state "Z"
+```
+
+**Notes:** this is [05 §10.4](../../05-durable-execution.md)'s argument — _"never in-memory flags"_ —
+asserted against the one path where breaking it is most tempting, because the ladder is a sequence of
+timed signals and a timer is the natural way to write one. A cancel that does not survive a restart
+resumes a run the operator has already decided to stop, which is worse than never having cancelled
+it: they are no longer watching.
 
 ---
 

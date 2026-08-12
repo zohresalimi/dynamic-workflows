@@ -412,7 +412,10 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 >   because KAR-15.5 AC6 forbids controlling a run whose spec is not approved. A run that has not
 >   been framed at all can be stopped by **neither** route (the gate is not open either), which is a
 >   real hole in the daemon's write surface rather than in this command; it is recorded as a
->   follow-up on `MET-418` rather than patched from the CLI.
+>   follow-up on `MET-418` rather than patched from the CLI. **That follow-up is now
+>   [KAR-19.6](./EPIC-19-live-run-pipeline.md), added 2026-08-12** — which also builds
+>   `DeFlow cancel <runId>`, the command AC3's own detach sentence has printed since this story
+>   shipped and which has never existed.
 > - **AC8's `--spec`** produces the `file` wire kind, not a fourth one. KAR-10.1 settled that
 >   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
 >   `mediaType` in provenance — there is no fourth shape"_), and the locator — which is what makes

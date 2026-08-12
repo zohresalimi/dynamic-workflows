@@ -601,6 +601,16 @@ effect journal, which is precisely the invariant that makes crash recovery sound
 9. Every control endpoint returns the closed error envelope on failure, with `seq` populated when the
    failure itself produced a ledger event.
 
+> **Amended 2026-08-12 by [KAR-19.6](./EPIC-19-live-run-pipeline.md).** AC6's _"acting on an
+> unapproved run returns `422 spec_not_approved`"_ is a blanket rule over all three control verbs,
+> and it is right for two of them and wrong for the third. A run in `created` or
+> `awaiting-spec-approval` has nothing admitting work, so `pause` and `resume` are unchanged — but
+> `abandonRun` refuses when no F1.3 gate is open, so a run that was accepted and never framed could
+> be ended by **neither** route and accumulated in `DeFlow status` indefinitely. That is what the
+> three runs of 2026-08-12 did. From KAR-19.6, `planRunControl` applies the `UNAPPROVED` check
+> **below** the verb split: `cancel` on an unapproved run appends `run.cancel.requested` and
+> `run.aborted` in one transaction, and `pause` / `resume` still answer `422`.
+
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
 
 | #   | Level       | Test                                                                                                         | Red when                                      |
