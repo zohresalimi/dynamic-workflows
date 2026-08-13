@@ -31,8 +31,13 @@
  * is folded"*. `run.created` is KAR-10.2's to append, once the framing
  * interview has actually produced the spec it carries.
  */
-import type { ProviderResolution, RunAdmission, RunRefusalCode } from '@DeFlow/adapters';
-import type { Clock, Db, RunId, WakeReason } from '@DeFlow/core';
+import type {
+  ProviderResolution,
+  RunAdmission,
+  RunAdmissionRequest,
+  RunRefusalCode,
+} from '@DeFlow/adapters';
+import type { Clock, Db, ProviderChoiceFacts, RunId, WakeReason } from '@DeFlow/core';
 import { canonicalJson, mintRunId, normaliseInput, sha256Hex } from '@DeFlow/core';
 import type { EventDraft } from '@DeFlow/ledger';
 import {
@@ -91,8 +96,12 @@ export interface RunIntakePorts {
    * a `PATH` it happened to inherit would be worse than not asking. `boot()`
    * supplies it whenever it was given `providerRoots`, which `DeFlow up` and
    * `DeFlow run`'s autostart always do.
+   *
+   * KAR-19.10 — it takes the operator's `--provider`, because an explicitly
+   * named provider is honoured exactly or the run is refused (AC8), and that
+   * is a decision for the one function `doctor` and selection also read.
    */
-  readonly admit?: () => RunAdmission;
+  readonly admit?: (request: RunAdmissionRequest) => RunAdmission;
 }
 
 export type RunIntakeSubmitter = 'ui' | 'cli';
@@ -106,8 +115,26 @@ export interface RunIntakeRequest {
   readonly idempotencyKey?: string;
 }
 
+/**
+ * KAR-19.10 AC4 — what an accepted submission says about the agent it chose.
+ *
+ * The three facts and the limitation, carried on the 201 so the CLI can print
+ * the announcement **before the first turn** rather than discovering it from
+ * the stream after framing has started. `null` where nothing asked the question
+ * (a daemon booted without `providerRoots`).
+ */
+export interface AdmittedProviderChoice extends ProviderChoiceFacts {
+  /** AC7 — the turn this route will not reach, and how to fix it. */
+  readonly limitation: string | null;
+}
+
 export type RunIntakeResult =
-  | { readonly outcome: 'created'; readonly runId: RunId; readonly seq: number }
+  | {
+      readonly outcome: 'created';
+      readonly runId: RunId;
+      readonly seq: number;
+      readonly provider?: AdmittedProviderChoice;
+    }
   | { readonly outcome: 'rejected'; readonly field: string; readonly message: string }
   /**
    * KAR-19.2 — the machine cannot serve this run.
@@ -251,7 +278,7 @@ export async function submitTask(
   // already found. A machine that cannot serve the run is a fact that is
   // knowable now; discovering it at the first agent node instead is minutes of
   // framing spent and an operator who has already been told the run started.
-  const admission = ports.admit?.() ?? ADMITTED;
+  const admission = ports.admit?.({ provider: body.provider }) ?? (ADMITTED satisfies RunAdmission);
 
   // The append, the framing wake and the journal row are **one** transaction
   // (AC6, and KAR-19.1 AC1): a crash between the first two would leave either a
@@ -276,6 +303,7 @@ export async function submitTask(
         payload,
       },
       ...refusalEvents(runId, now, ports.epoch, admission),
+      ...choiceEvents(runId, now, ports.epoch, admission),
     ]);
     if (appended === undefined) throw new Error('appendEvents returned no seq for task.submitted');
 
@@ -325,10 +353,70 @@ export async function submitTask(
     };
   }
 
-  return { outcome: 'created', runId, seq };
+  // The refused arm returned above, so `admission` is the admitted one here.
+  const chosen = admission.chosen;
+  return {
+    outcome: 'created',
+    runId,
+    seq,
+    ...(chosen === null
+      ? {}
+      : {
+          provider: {
+            provider: chosen.provider,
+            binaryPath: chosen.binaryPath,
+            route: chosen.route,
+            limitation: admission.limitation,
+          },
+        }),
+  };
 }
 
-const ADMITTED: RunAdmission = { outcome: 'admitted' };
+/**
+ * KAR-19.10 AC4 — the choice, written into the run's own stream.
+ *
+ * One `provider.probed` on the admission arm, for the provider that was chosen
+ * and nothing else. It is the same event kind the refusal path writes and the
+ * same arm, so nothing new was invented to carry it — and it is what makes the
+ * announcement answerable six weeks later, and what `chooseProvider` obeys on a
+ * later tick instead of re-reducing the machine and possibly disagreeing (AC8).
+ */
+function choiceEvents(
+  runId: RunId,
+  ts: number,
+  epoch: number,
+  admission: RunAdmission,
+): EventDraft[] {
+  if (admission.outcome !== 'admitted' || admission.chosen === null) return [];
+  const chosen = admission.chosen;
+  return [
+    {
+      runId,
+      ts,
+      kind: 'provider.probed',
+      v: 1,
+      epoch,
+      payload: {
+        provider: chosen.provider,
+        admission: chosen.resolution.state,
+        vendorBin: chosen.resolution.vendorBin,
+        vendorPath: chosen.resolution.vendorPath,
+        adapterBin: chosen.resolution.adapterBin,
+        adapterPath: chosen.resolution.adapterPath,
+        package: chosen.resolution.package,
+        chosen: {
+          route: chosen.route,
+          binaryPath: chosen.binaryPath,
+          routes: chosen.routes,
+          unserved: [...chosen.unserved],
+          ...(admission.limitation === null ? {} : { limitation: admission.limitation }),
+        },
+      },
+    },
+  ];
+}
+
+const ADMITTED: RunAdmission = { outcome: 'admitted', chosen: null, limitation: null };
 
 /**
  * KAR-19.2 AC1 — what a refusal writes down, after `task.submitted`.

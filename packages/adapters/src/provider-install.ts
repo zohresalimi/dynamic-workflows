@@ -39,6 +39,8 @@
  * AC6, AC7
  */
 
+import type { ProviderRoute, RouteState } from '@DeFlow/core';
+import { routeLabel } from '@DeFlow/core';
 import { resolveExecutable } from './binary-resolver.ts';
 import { PROVIDER_SPECS, type ProviderSpec } from './provider-registry.ts';
 
@@ -146,6 +148,156 @@ export function resolveProviderStates(roots: readonly string[]): readonly Provid
   return Object.values(PROVIDER_SPECS)
     .toSorted((a, b) => a.id.localeCompare(b.id))
     .map((spec) => resolveProviderState(spec, roots));
+}
+
+// ── routes ───────────────────────────────────────────────────────────────────
+
+/**
+ * KAR-19.10 — provider state, as **one answer per route**.
+ *
+ * ## Why the shape changed
+ *
+ * On 2026-08-13 `doctor` reported `claude` as `adapter-missing` — one word,
+ * which every reader takes to mean *unusable* — and the run selected `claude`
+ * anyway, through `spec.shim.bin`, and spawned the vendor CLI. Neither half was
+ * lying. `adapter-missing` was a true sentence about a machine and a false one
+ * about a run, because one word per provider cannot say *"usable on one route,
+ * not the other"*.
+ *
+ * It is not that selection was wrong. `chooseProvider` takes `spec.shim.bin` on
+ * purpose: a pre-execution turn is driven through the vendor's own CLI because
+ * the return contract rides on `structuredOutputFlag`, which only the CLI has.
+ * Refusing to select it would mean deleting the path the whole chain runs on.
+ * So the report is what had to become route-aware, and this is the one function
+ * that answers it — `doctor`'s Agents section, `admitRun` and the chain's
+ * selection all reduce this structure and nothing else
+ * (`test/one-provider-route-reducer.test.ts` is what keeps that true).
+ *
+ * KAR-18.8's `AgentInstallState` survives unchanged: it is what the *install
+ * sentence* is keyed on, and the sentence is still right. What it is no longer
+ * allowed to be is the answer to *"can a run use this"*.
+ *
+ * `RouteState` and the route vocabulary itself live in `@DeFlow/core`, because
+ * the ledger payload and the UI both have to spell them and neither may depend
+ * on this package.
+ */
+export interface ProviderRoutes {
+  /** DeFlow spawns `spec.bin` and opens an ACP session. */
+  readonly acp: RouteState;
+  /** DeFlow spawns `spec.shim.bin` — the vendor's own CLI — for one turn. */
+  readonly shim: RouteState;
+}
+
+/**
+ * The turns a run takes, and the route each one needs.
+ *
+ * The keys are what a refusal names, so they are the words an operator would
+ * use rather than node ids. `node execution` is the one that needs the ACP
+ * session: streaming, permission negotiation and cancellation are all session
+ * concerns, and a turn driven through a one-shot CLI invocation has none of
+ * them. The three pre-execution turns need the shim, because that is where the
+ * `returns` contract lives.
+ */
+export const TURN_ROUTES = {
+  framing: 'shim',
+  recon: 'shim',
+  planner: 'shim',
+  'node execution': 'acp',
+} as const satisfies Readonly<Record<string, ProviderRoute>>;
+
+export type RunTurn = keyof typeof TURN_ROUTES;
+
+/** Every turn, in the order a run reaches them. */
+const ALL_TURNS = Object.keys(TURN_ROUTES) as readonly RunTurn[];
+
+/**
+ * Which routes this machine can open for one provider.
+ *
+ * The one asymmetry worth reading: the ACP route needs **both** binaries. A
+ * bridge with no vendor CLI under it bridges to nothing — `claude-agent-acp`
+ * spawns `claude` — so an ACP session cannot open there either, and calling
+ * that route available would move the 2026-08-13 confusion along by one binary
+ * instead of removing it. `handshake-failed` closes the ACP route for the same
+ * reason at one remove: a bridge that did not answer `initialize` is present
+ * and unusable, and only a probe can know it.
+ */
+export function providerRoutes(resolution: ProviderResolution): ProviderRoutes {
+  const shim: RouteState = resolution.vendorPath === null ? 'missing' : 'available';
+  const acp: RouteState =
+    resolution.adapterPath !== null &&
+    shim === 'available' &&
+    resolution.state !== 'handshake-failed'
+      ? 'available'
+      : 'missing';
+  return { acp, shim };
+}
+
+/** The turns these routes can serve, in run order. */
+export function turnsServedBy(routes: ProviderRoutes): readonly RunTurn[] {
+  return ALL_TURNS.filter((turn) => routes[TURN_ROUTES[turn]] === 'available');
+}
+
+/** The turns these routes cannot serve — what a partial machine is told at
+ * admission rather than at the node three minutes later (AC7). */
+export function unservedTurns(routes: ProviderRoutes): readonly RunTurn[] {
+  return ALL_TURNS.filter((turn) => routes[TURN_ROUTES[turn]] !== 'available');
+}
+
+/** True when at least one turn can be served here. */
+const hasUsableRoute = (resolution: ProviderResolution): boolean =>
+  turnsServedBy(providerRoutes(resolution)).length > 0;
+
+/**
+ * The route the **next** turn of a fresh run takes, or `null` for a provider
+ * that can serve nothing.
+ *
+ * A run's first turn is framing, so this is the shim wherever the shim is
+ * open. It is computed from the turn rather than from the registry's
+ * preference, because AC5's claim is that the announced route is the route
+ * actually taken — and a preference is exactly what would lie on the one
+ * machine where the two differ.
+ */
+export function routeForNextTurn(resolution: ProviderResolution): ProviderRoute | null {
+  const served = turnsServedBy(providerRoutes(resolution));
+  const first = served[0];
+  return first === undefined ? null : TURN_ROUTES[first];
+}
+
+/** The absolute path the child on `route` is spawned from. */
+export function binaryForRoute(
+  resolution: ProviderResolution,
+  route: ProviderRoute,
+): string | null {
+  return route === 'acp' ? resolution.adapterPath : resolution.vendorPath;
+}
+
+/**
+ * KAR-19.10 AC6 — the two routes, as one line of `doctor`'s Agents section.
+ *
+ * The sentence `doctor` was missing on 2026-08-13. It printed one word per
+ * provider, that word was `adapter-missing`, and every reader took it to mean
+ * *this machine cannot use claude* — while a run was, correctly, using it. So
+ * the report now says which routes are open and where each one's binary is,
+ * from the same reducer admission and selection read.
+ *
+ * The install sentence is deliberately **not** duplicated here: `providerVerdict`
+ * is still the one thing that says what to do about a route that is closed, and
+ * `doctor` appends it after this line (KAR-19.2 AC3).
+ */
+export function renderRouteReport(resolution: ProviderResolution): string {
+  const routes = providerRoutes(resolution);
+  const where = (route: ProviderRoute): string => {
+    const path = binaryForRoute(resolution, route);
+    return routes[route] === 'available' && path !== null ? `available at ${path}` : 'missing';
+  };
+  const served = turnsServedBy(routes);
+  return (
+    `Routes — ${routeLabel('acp')}: ${where('acp')}; ${routeLabel('shim')}: ${where('shim')}. ` +
+    (served.length === 0
+      ? 'No turn of a run can be served here.'
+      : `This machine can serve ${served.join(', ')} on it` +
+        `${unservedTurns(routes).length === 0 ? '.' : `, but not ${unservedTurns(routes).join(', ')}.`}`)
+  );
 }
 
 /** The state, the check status and the sentence — from the resolution alone. */
@@ -355,8 +507,43 @@ export interface RefusedProvider {
   readonly adapterPackage: string;
 }
 
+/**
+ * KAR-19.10 AC4 — the choice admission made, recorded so nothing downstream has
+ * to make it again.
+ *
+ * The whole point is that this is *decided once*. The chain obeys the record
+ * rather than re-reducing the machine on a later tick, which is what makes "the
+ * run never silently falls back onto a different provider" (AC8) a property of
+ * the code rather than a coincidence of two reductions agreeing.
+ */
+export interface ChosenProvider {
+  readonly provider: string;
+  /** The route the next turn takes. Announced, and asserted against the child. */
+  readonly route: ProviderRoute;
+  /** Absolute, and the path the child is actually spawned from. */
+  readonly binaryPath: string;
+  readonly routes: ProviderRoutes;
+  /** The turns this provider cannot serve here. Empty is the ordinary case. */
+  readonly unserved: readonly RunTurn[];
+  /** What the machine looked like when the choice was made, carried whole so
+   * the ledger row is answerable without re-probing (NF8). */
+  readonly resolution: ProviderResolution;
+}
+
 export type RunAdmission =
-  | { readonly outcome: 'admitted' }
+  | {
+      readonly outcome: 'admitted';
+      /**
+       * `null` only where nothing asked the question — a daemon booted without
+       * `providerRoots`, a spec constructing intake ports by hand. Absent means
+       * admitted has always meant "no honest basis on which to refuse", and it
+       * has no honest basis on which to announce either.
+       */
+      readonly chosen: ChosenProvider | null;
+      /** AC7 — what this machine will not be able to do, said now rather than
+       * at the first agent node. `null` when there is nothing to warn about. */
+      readonly limitation: string | null;
+    }
   | {
       readonly outcome: 'refused';
       readonly code: RunRefusalCode;
@@ -367,8 +554,6 @@ export type RunAdmission =
        * later without re-probing the machine it happened on (AC1, NF8). */
       readonly resolutions: readonly ProviderResolution[];
     };
-
-const ADMITTED: RunAdmission = { outcome: 'admitted' };
 
 /**
  * Which providers are worth printing.
@@ -421,42 +606,168 @@ export function renderRefusal(resolutions: readonly ProviderResolution[]): strin
  * Real adapters keep the order they arrived in (registry id order, which is
  * what `resolveProviderStates` produces); bundled ones follow, in the same
  * order among themselves. Nothing here reads a provider's name.
+ *
+ * **KAR-19.10 amended what "usable" means, not what the order is.** The filter
+ * was `state === 'installed'`, which excluded a vendor CLI with no ACP bridge —
+ * the exact machine whose run then selected it anyway through `spec.shim.bin`.
+ * A provider with one open route is usable *for the turns that route serves*,
+ * and admission says which; a provider with none is not here at all.
  */
 export function usableProviders(
   resolutions: readonly ProviderResolution[],
 ): readonly ProviderResolution[] {
-  const installed = resolutions.filter((entry) => entry.state === 'installed');
-  return [...installed.filter((e) => !e.bundled), ...installed.filter((e) => e.bundled)];
+  const usable = resolutions.filter(hasUsableRoute);
+  return [...usable.filter((e) => !e.bundled), ...usable.filter((e) => e.bundled)];
 }
 
 /**
- * Can anything here serve a run? — answered before the 201, from the manifest.
+ * KAR-19.10 AC7 — what a partially-capable machine is told, at admission.
  *
- * One installed adapter is enough. The bug this exists to stop is the *other*
- * reduction: inferring admission from "is any binary on `PATH`", which admits
- * the machine that has a vendor CLI and no bridge — the common machine, and the
- * one whose run then did nothing at all.
+ * The install sentence is KAR-18.8's and is unchanged; what this adds is *which
+ * turn* the missing route costs. Discovering it at the first agent node instead
+ * costs a framing turn, a recon turn, a planner turn and the operator's belief
+ * that the run was working — all of it knowable before the 201.
  */
-export function admitRun(resolutions: readonly ProviderResolution[]): RunAdmission {
-  if (usableProviders(resolutions).length > 0) return ADMITTED;
+export function renderRouteLimitation(resolution: ProviderResolution): string | null {
+  const routes = providerRoutes(resolution);
+  const unserved = unservedTurns(routes);
+  if (unserved.length === 0) return null;
+  return (
+    `${resolution.provider} can serve this run's ${turnsServedBy(routes).join(', ')} turns ` +
+    `through its exec shim at ${resolution.vendorPath}, but not ${unserved.join(', ')}: that ` +
+    'needs the ACP route, and this machine cannot open it. ' +
+    // `providerVerdict` and not a second sentence composed here. A machine
+    // whose bridge is *absent* and one whose bridge is *present and broken*
+    // need opposite next actions — install versus repair — and KAR-19.2 AC3
+    // already settled that there is one renderer of that difference. Writing
+    // an install command here would have told the operator of a broken bridge
+    // to install a package they already have, which is the exact failure
+    // KAR-18.8 removed from `doctor`.
+    providerVerdict(resolution).detail
+  );
+}
 
-  // A bridge that is installed and broken is a different sentence and a
-  // different next action from one that was never installed, and it wins the
-  // code: it is the more specific fact about this machine.
-  const code = resolutions.some((entry) => entry.state === 'handshake-failed')
+/** The choice, as the record everything downstream obeys. `null` for a
+ * resolution with no open route — the caller refuses rather than announcing. */
+function chooseFrom(resolution: ProviderResolution): ChosenProvider | null {
+  const route = routeForNextTurn(resolution);
+  if (route === null) return null;
+  const binaryPath = binaryForRoute(resolution, route);
+  if (binaryPath === null) return null;
+  return {
+    provider: resolution.provider,
+    route,
+    binaryPath,
+    routes: providerRoutes(resolution),
+    unserved: unservedTurns(providerRoutes(resolution)),
+    resolution,
+  };
+}
+
+/**
+ * KAR-19.2 AC7's vocabulary, chosen from the machine rather than from the call
+ * site.
+ *
+ * A bridge that is installed and broken is a different sentence and a different
+ * next action from one that was never installed, and it wins the code wherever
+ * it appears: it is the more specific fact about this machine. KAR-19.10 is why
+ * this is a function — after the route amendment a broken bridge over a working
+ * vendor CLI is *admitted* by default (it can still frame), so the only way
+ * left to be refused by one is to name it, and the code has to be the same one
+ * there or AC7 would have been deleted by a story that never mentioned it.
+ */
+const refusalCodeFor = (resolutions: readonly ProviderResolution[]): RunRefusalCode =>
+  resolutions.some((entry) => entry.state === 'handshake-failed')
     ? RUN_REFUSAL_CODES.handshakeFailed
     : RUN_REFUSAL_CODES.noUsableProvider;
 
+const refusedProvider = (entry: ProviderResolution): RefusedProvider => ({
+  id: entry.provider,
+  state: entry.state,
+  vendorPath: entry.vendorPath,
+  adapterPackage: entry.package,
+});
+
+/** A refusal over a chosen subset of the machine, with `doctor`'s own words. */
+function refuse(
+  resolutions: readonly ProviderResolution[],
+  message: string,
+  code: RunRefusalCode,
+): RunAdmission {
   return {
     outcome: 'refused',
     code,
-    message: renderRefusal(resolutions),
-    providers: resolutions.map((entry) => ({
-      id: entry.provider,
-      state: entry.state,
-      vendorPath: entry.vendorPath,
-      adapterPackage: entry.package,
-    })),
+    message,
+    providers: resolutions.map(refusedProvider),
     resolutions,
   };
+}
+
+/** KAR-19.10 AC1 — what the operator asked for, if they asked. */
+export interface RunAdmissionRequest {
+  /** A registry id. Validated before it gets here; an id nothing registers is
+   * an argument error (`EX_USAGE`), never an admission decision. */
+  readonly provider?: string | undefined;
+}
+
+/**
+ * Can anything here serve a run, on which provider, and by which route? —
+ * answered before the 201, from the manifest.
+ *
+ * The bug this exists to stop is the *other* reduction: inferring admission
+ * from "is any binary on `PATH`", which admits the machine that has a vendor
+ * CLI and no bridge and then does nothing at all. KAR-19.10 added the second
+ * and third questions, and one rule about the difference between them:
+ *
+ * **An explicitly named provider is honoured exactly, or the run is refused.**
+ * Without `--provider` a partial machine is admitted with its limitation
+ * stated (AC7) — DeFlow chose the best of what was there and says what that
+ * costs. With `--provider` it is refused with the turn named (AC8), because the
+ * operator ruled out the alternative: admitting would mean either falling back
+ * later, which is the defect this whole story is about, or dying at the node,
+ * which is the defect the story before it was about.
+ */
+export function admitRun(
+  resolutions: readonly ProviderResolution[],
+  request: RunAdmissionRequest = {},
+): RunAdmission {
+  const requested = request.provider;
+
+  if (requested !== undefined) {
+    const named = resolutions.filter((entry) => entry.provider === requested);
+    const only = named[0];
+    // An id the registry does not hold never reaches here — the CLI refuses it
+    // with `EX_USAGE` and the HTTP route rejects the body — so an empty list is
+    // a registered provider this daemon has no resolution for, which is the
+    // same fact as "not installed" and gets the same refusal.
+    if (only === undefined || !hasUsableRoute(only)) {
+      return refuse(named, renderRefusal(named), refusalCodeFor(named));
+    }
+    const limitation = renderRouteLimitation(only);
+    if (limitation !== null) {
+      return refuse(
+        named,
+        [
+          `DeFlow cannot start this run on "${requested}": you named it explicitly, and it cannot ` +
+            'serve every turn this run will take. DeFlow will not quietly run part of it on ' +
+            'something else.',
+          limitation,
+          MOCK_AGENT_SENTENCE,
+        ].join('\n\n'),
+        refusalCodeFor(named),
+      );
+    }
+    return { outcome: 'admitted', chosen: chooseFrom(only), limitation: null };
+  }
+
+  const [best] = usableProviders(resolutions);
+  if (best !== undefined) {
+    return {
+      outcome: 'admitted',
+      chosen: chooseFrom(best),
+      limitation: renderRouteLimitation(best),
+    };
+  }
+
+  return refuse(resolutions, renderRefusal(resolutions), refusalCodeFor(resolutions));
 }

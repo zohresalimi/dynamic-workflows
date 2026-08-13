@@ -56,12 +56,19 @@ import type { DoctorCheck } from './report.ts';
 export type {
   AgentInstallState,
   ProviderResolution,
+  ProviderRoutes,
   ProviderVerdict,
 } from '@DeFlow/adapters';
 export {
   installCommand,
   installPrompt,
+  // KAR-19.10 AC6 — the route reducer and its sentence, re-exported through the
+  // same seam as the install sentence rather than imported straight from
+  // `@DeFlow/adapters` by `agents.ts`. `doctor` has one door onto this package
+  // and `test/one-provider-route-reducer.test.ts` is what keeps it that way.
+  providerRoutes,
   providerVerdict,
+  renderRouteReport,
   resolveProviderState,
   resolveProviderStates,
 } from '@DeFlow/adapters';

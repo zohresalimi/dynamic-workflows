@@ -1019,6 +1019,17 @@ export {
   renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
+// KAR-19.10 — the one sentence a run says about the agent it chose, and the
+// closed set of routes it can take. Rendered by the CLI, the run API and the
+// UI's run header from one function, so three surfaces cannot disagree (AC4).
+export type { ProviderChoiceFacts, ProviderRoute, RouteState } from './provider-choice.ts';
+export {
+  announceProviderChoice,
+  isProviderRoute,
+  PROVIDER_ROUTES,
+  ROUTE_STATES,
+  routeLabel,
+} from './provider-choice.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
 // KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept

@@ -31,13 +31,20 @@
  * Returns an exit code rather than exiting: `bin.ts` owns the process, and a
  * function that called `process.exit` could not be tested without one.
  */
+import { PROVIDER_SPECS, resolveProviderStates, usableProviders } from '@DeFlow/adapters';
 import type { Clock, Event, RunId, RunState } from '@DeFlow/core';
-import { initialRunState, RunIdSchema, reduce } from '@DeFlow/core';
-import { checkGitVersion, EX_ALREADY_RUNNING, resolveDataDir, systemClock } from '@DeFlow/daemon';
+import { announceProviderChoice, initialRunState, RunIdSchema, reduce } from '@DeFlow/core';
+import {
+  checkGitVersion,
+  EX_ALREADY_RUNNING,
+  pathRoots,
+  resolveDataDir,
+  systemClock,
+} from '@DeFlow/daemon';
 import process from 'node:process';
 import { createRun, type FollowRunResult, followRun, RunTaskRejected } from '../index.ts';
 import type { Style } from '../render/style.ts';
-import type { RunArgs } from './args.ts';
+import type { ProviderChoice, RunArgs } from './args.ts';
 import { parseRunArgs } from './args.ts';
 import { cancelRun } from './cancel.ts';
 import { type DaemonEndpoint, ensureDaemon } from './daemon.ts';
@@ -125,6 +132,26 @@ async function environmentUnusable(env: NodeJS.ProcessEnv, cwd: string): Promise
   return `DeFlow run: ${git.message} Run 'DeFlow doctor' for the whole picture.`;
 }
 
+/**
+ * KAR-19.10 AC1 — every registered provider, and whether this machine can serve
+ * it, for the message a mistyped `--provider` gets.
+ *
+ * Both halves in one place because they answer one question, and both derived:
+ * the ids come from `PROVIDER_SPECS` so a registry entry changes the message
+ * with no other edit, and "usable" is `usableProviders` over the operator's own
+ * `PATH` — the same reduction admission makes, not a second guess at it. This
+ * is a read of the filesystem and is why it lives here rather than in the
+ * parser, which stays a pure function of its arguments.
+ */
+function providerChoices(env: NodeJS.ProcessEnv): readonly ProviderChoice[] {
+  const usable = new Set(
+    usableProviders(resolveProviderStates(pathRoots(env))).map((entry) => entry.provider),
+  );
+  return Object.keys(PROVIDER_SPECS)
+    .toSorted((a, b) => a.localeCompare(b))
+    .map((id) => ({ id, usable: usable.has(id) }));
+}
+
 interface Watched {
   readonly verdict: RunVerdict;
   readonly state: RunState;
@@ -197,6 +224,8 @@ async function execute(
   const startedAt = clock.now();
 
   let runId: RunId;
+  /** KAR-19.10 AC4 — what the daemon said it chose, off the 201. */
+  let announced: NonNullable<Awaited<ReturnType<typeof createRun>>['provider']> | null = null;
   if (args.attach !== null) {
     runId = RunIdSchema.parse(args.attach);
   } else if (args.input !== null) {
@@ -206,8 +235,10 @@ async function execute(
         token: endpoint.token,
         cwd: options.cwd,
         permission: args.permission,
+        ...(args.provider === null ? {} : { provider: args.provider }),
       });
       runId = RunIdSchema.parse(created.runId);
+      announced = created.provider ?? null;
     } catch (error) {
       if (error instanceof RunTaskRejected) {
         const exitCode = rejectionExitCode(error.code);
@@ -240,6 +271,31 @@ async function execute(
     ...(options.style === undefined ? {} : { style: options.style }),
   });
   if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
+
+  // KAR-19.10 AC4 — before the first turn, and before anything is watched: one
+  // line naming the provider, the resolved binary and the route. The sentence
+  // is `announceProviderChoice`'s in both modes — under `--json` it goes out as
+  // fields beside it, because nothing downstream should have to parse prose to
+  // learn which agent a run is on.
+  if (announced !== null) {
+    options.stdout(
+      args.json
+        ? `${JSON.stringify({
+            type: 'provider',
+            runId,
+            provider: announced.provider,
+            binaryPath: announced.binaryPath,
+            route: announced.route,
+            ...(announced.limitation === null ? {} : { limitation: announced.limitation }),
+          })}\n`
+        : `${announceProviderChoice(announced)}\n`,
+    );
+    // AC7 — and what this machine will not be able to do, said now rather than
+    // at the first agent node three minutes later.
+    if (announced.limitation !== null && !args.json) {
+      options.stdout(`${announced.limitation}\n`);
+    }
+  }
 
   // KAR-19.4 AC3 — the data plane, followed alongside the control plane. The
   // `io_chunk` table is deliberately not on the SSE stream (KAR-03.4), so a
@@ -340,7 +396,7 @@ async function execute(
  * behind.
  */
 export async function runRun(options: RunCommandOptions): Promise<number> {
-  const parsed = parseRunArgs(options.argv);
+  const parsed = parseRunArgs(options.argv, { providers: providerChoices(options.env) });
   if (!parsed.ok) {
     options.stderr(`${parsed.message}\n`);
     return EX_USAGE;

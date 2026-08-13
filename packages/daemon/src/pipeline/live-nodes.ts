@@ -189,7 +189,11 @@ function requirementsOf(node: PlanNode): readonly CapabilityRequirement[] {
 function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePerformer {
   return async (command: StartNode, ctx: ExecContext): Promise<void> => {
     const setting = settingFor(command, ctx);
-    const chosen = chooseProvider(ctx.db, options.providerRoots);
+    // KAR-19.10 AC8 — the run's own recorded choice, on the node path too.
+    // `--provider` that held for framing and then quietly stopped holding at
+    // the first agent node would be the announced-then-drifted failure this
+    // story exists to make impossible.
+    const chosen = chooseProvider(ctx.db, options.providerRoots, ctx.runId);
     if (chosen === null) {
       throw new NodeFailureError(
         `no adapter on this machine both resolves on the operator's PATH and has a probed ` +

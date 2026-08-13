@@ -19,7 +19,13 @@
  * Verifies: EPIC-18-S50, EPIC-18-S52, EPIC-18-S53, EPIC-18-S54, EPIC-18-S55,
  * EPIC-18-S56 · AC1-AC11 · test plan #3-#8
  */
-import { admitRun, MOCK_AGENT_SENTENCE, resolveProviderStates } from '@DeFlow/adapters';
+import {
+  admitRun,
+  MOCK_AGENT_SENTENCE,
+  type ProviderResolution,
+  providerVerdict,
+  resolveProviderStates,
+} from '@DeFlow/adapters';
 import { systemClock } from '@DeFlow/daemon';
 import { makeRepo, makeTempDir, removeTempDir, TestClock } from '@DeFlow/testkit';
 import { existsSync } from 'node:fs';
@@ -242,18 +248,33 @@ suite('the vendor CLI is installed, its ACP adapter is not (EPIC-18-S50)', () =>
    * rather than a thing to remember. The source half of the same guard —
    * that exactly one module composes the sentence at all — is
    * `test/one-install-renderer.test.ts`.
+   *
+   * **Amended 2026-08-13 by KAR-19.10.** This machine — a vendor CLI with no
+   * ACP bridge — is no longer refused by default: it can frame, survey and plan
+   * through the exec shim, so admission admits it and states what it cannot
+   * reach. The refusal it is compared against is therefore the one an operator
+   * gets when they name it explicitly, which is the case where DeFlow will not
+   * quietly serve part of the run on something else. The claim under test is
+   * unchanged: the sentence is `providerVerdict`'s, not a second wording.
    */
   it('renders the same sentence doctor prints into the admission refusal (KAR-19.2 AC3)', async () => {
     const host = await machine('s13-wording', { vendors: ['claude'] });
 
     const doctored = check((await runDoctor(base(host))).report, 'agents.claude');
-    const refusal = admitRun(resolveProviderStates([host.binDir]));
+    const resolutions = resolveProviderStates([host.binDir]);
+    const claude = resolutions.find((entry) => entry.provider === 'claude');
+    const refusal = admitRun(resolutions, { provider: 'claude' });
 
-    expect(doctored?.detail).toBeDefined();
+    expect(claude).toBeDefined();
+    const sentence = providerVerdict(claude as ProviderResolution).detail;
+
+    // The report and the refusal each carry the renderer's own sentence, so
+    // they cannot say different things about the same machine.
+    expect(doctored?.detail).toContain(sentence);
     expect(refusal.outcome).toBe('refused');
     if (refusal.outcome !== 'refused') return;
 
-    expect(refusal.message).toContain(doctored?.detail as string);
+    expect(refusal.message).toContain(sentence);
     expect(refusal.message).not.toContain('claude is not installed');
     // AC4 — and the refusal, unlike the report, ends with the way to proceed
     // with nothing installed at all.

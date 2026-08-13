@@ -930,6 +930,26 @@ other binary; DeFlow does not embed a package manager and does not choose one fo
 `npm` itself is absent the state is a `warn` naming that, not a crash. `--fix` is deliberately
 per-adapter and not a general repair flag: a flag that fixes everything is a flag nobody can predict.
 
+> **Amended 2026-08-13 by KAR-19.10** (`docs/delivery/epics/EPIC-19-live-run-pipeline.md`).
+> AC1's **three states per provider** are no longer the answer to *"can a run use this"*. They
+> remain exactly what they were — the vocabulary the **install sentence** is keyed on, and every
+> word of AC2's wording guard still holds — but a second answer now sits beside them: **one state
+> per route**, `{ acp, shim }`, each `available` or `missing`, produced by `providerRoutes` in
+> `packages/adapters/src/provider-install.ts` and read by `doctor`, admission and selection alike.
+>
+> The reason is that one word per provider cannot say *"usable on one route, not the other"*, and on
+> 2026-08-13 that gap became a wrong report: `doctor` called a machine `adapter-missing` — which
+> every reader takes to mean unusable — while a run on the same machine was, correctly, driving that
+> vendor's CLI through the exec shim. `adapter-missing` was a true sentence about the machine and a
+> false one about the run.
+>
+> So the Agents section now prints both routes per provider and where each one's binary is, **above**
+> the install sentence rather than instead of it. AC3 is unchanged (neither absence is a `fail`), and
+> AC1's states still decide what `--fix` offers and what AC4's prompt asks: the ACP bridge is still
+> what agent-node execution needs, and installing it is still the fix. What changed is that `doctor`
+> stops implying the machine can do nothing. The reasoning is recorded in KAR-19.10 and is not
+> restated here.
+
 ---
 
 ### KAR-18.9 — Readable terminal output across every CLI command _(added)_

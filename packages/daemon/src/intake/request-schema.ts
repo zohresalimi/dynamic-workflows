@@ -7,8 +7,20 @@
  * never drift into accepting different requests (AC7 — "the CLI is a client of
  * the HTTP API, not a second implementation").
  */
+import { PROVIDER_SPECS } from '@DeFlow/adapters';
 import { PERMISSION_LEVELS } from '@DeFlow/core';
 import { z } from 'zod';
+
+/**
+ * KAR-19.10 AC1 — the registered ids, read out of `PROVIDER_SPECS`.
+ *
+ * Derived rather than written down, so an entry added to the registry is
+ * accepted on the wire with no other edit — and so the one file allowed to name
+ * a vendor stays the one file that does (AC9).
+ */
+export const REGISTERED_PROVIDER_IDS: readonly string[] = Object.keys(PROVIDER_SPECS).toSorted(
+  (a, b) => a.localeCompare(b),
+);
 
 export const RunIntakeInputSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('text'), text: z.string().min(1) }),
@@ -33,6 +45,21 @@ export const RunIntakeBodySchema = z.strictObject({
   cwd: z.string().min(1),
   budget: RunIntakeBudgetSchema.optional(),
   permission: z.enum(PERMISSION_LEVELS),
+  /**
+   * KAR-19.10 AC1 — the provider the caller named, or omitted for "choose".
+   *
+   * An id nothing registers is a **request** problem and is rejected here with
+   * the field name (`EX_USAGE` at the CLI). An id that is registered and that
+   * this machine cannot serve is an **environment** problem and is refused by
+   * admission (exit 5). The two look identical on a command line and lead to
+   * opposite next actions, which is why they are two answers and not one.
+   */
+  provider: z
+    .string()
+    .refine((id) => REGISTERED_PROVIDER_IDS.includes(id), {
+      message: `provider must be one of ${REGISTERED_PROVIDER_IDS.join(', ')}`,
+    })
+    .optional(),
 });
 
 export type RunIntakeBody = z.infer<typeof RunIntakeBodySchema>;

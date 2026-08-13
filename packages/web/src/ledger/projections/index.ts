@@ -22,6 +22,7 @@ import { applyGates, emptyGates, type GatesProjection } from './gates.ts';
 import type { ProjectionName } from './kinds.ts';
 import { applyPlan, emptyPlan, type PlanProjection } from './plan.ts';
 import { applyPlanHistory, emptyPlanHistory, type PlanHistoryProjection } from './planHistory.ts';
+import { applyProvider, emptyProvider, type ProviderProjection } from './provider.ts';
 import { applyTimeline, emptyTimeline, type TimelineProjection } from './timeline.ts';
 
 /** A `Projection` whose `name` is one of the seven, rather than any string. */
@@ -70,6 +71,11 @@ export const timelineProjection: ProjectionModule<TimelineProjection> = projecti
   emptyTimeline,
   applyTimeline,
 );
+export const providerProjection: ProjectionModule<ProviderProjection> = projection(
+  'provider',
+  emptyProvider,
+  applyProvider,
+);
 
 /**
  * Every projection, in the order docs/12-frontend-architecture.md §3.2 lists
@@ -77,7 +83,7 @@ export const timelineProjection: ProjectionModule<TimelineProjection> = projecti
  *
  * The element type is `ProjectionModule<never>` for the same reason
  * `LedgerApplyOptions.projections` is a `Projection<unknown>[]`: the set is
- * heterogeneous by construction — seven reducers over seven unrelated state
+ * heterogeneous by construction — eight reducers over eight unrelated state
  * types — and the concrete type is recovered through the module object's own
  * identity by `RunLedger.state()`.
  */
@@ -89,6 +95,7 @@ export const PROJECTIONS = [
   gatesProjection,
   costProjection,
   timelineProjection,
+  providerProjection,
   // eslint-disable-next-line — the cast is the heterogeneity note above.
 ] as unknown as readonly ProjectionModule<never>[];
 
@@ -98,4 +105,5 @@ export type { CostProjection } from './cost.ts';
 export type { GatesProjection } from './gates.ts';
 export type { PlanProjection } from './plan.ts';
 export type { PlanHistoryProjection } from './planHistory.ts';
+export type { ProviderChoiceState, ProviderProjection } from './provider.ts';
 export type { TimelineProjection } from './timeline.ts';

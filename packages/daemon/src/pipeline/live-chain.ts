@@ -50,7 +50,7 @@ import type { CapabilityRow } from '@DeFlow/adapters';
 import { resolveProviderStates, usableProviders, vendorSessionId } from '@DeFlow/adapters';
 import type { Clock, Handle, NodeId, RunId } from '@DeFlow/core';
 import { NodeIdSchema, ProviderIdSchema } from '@DeFlow/core';
-import { getBlob, listProviderCapabilities, putBlob } from '@DeFlow/ledger';
+import { getBlob, listProviderCapabilities, putBlob, readRange } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -175,10 +175,18 @@ export interface Chosen {
 export function chooseProvider(
   db: Parameters<typeof listProviderCapabilities>[0],
   roots: readonly string[],
+  runId?: RunId,
 ): Chosen | null {
   const rows = new Map(listProviderCapabilities(db).map((row) => [row.provider, row]));
+  // KAR-19.10 AC5, AC8 — the choice admission recorded, if this run has one.
+  // Selection then *filters* to it rather than re-deciding: a second reduction
+  // of the same machine agrees until the moment it does not, and the moment it
+  // does not is a run silently spawning an agent nobody was told about. It is
+  // also what makes `--provider` mean anything after the 201.
+  const admitted = runId === undefined ? null : admittedProvider(db, runId);
 
   for (const candidate of usableProviders(resolveProviderStates(roots))) {
+    if (admitted !== null && candidate.provider !== admitted) continue;
     const row = rows.get(candidate.provider);
     if (row === undefined) continue;
     if (candidate.vendorPath === null) continue;
@@ -190,6 +198,33 @@ export function chooseProvider(
   }
   return null;
 }
+
+/**
+ * The provider id on this run's admission record, or `null`.
+ *
+ * Read structurally off the `provider.probed` payload rather than through the
+ * Zod union, exactly as `http/run-refusal.ts` reads its own arm: the row came
+ * back through `JSON.parse` and the honest thing to say about it is what was
+ * checked. `chosen` is the discriminator — only the admitted arm carries it,
+ * and a refusal chose nothing.
+ */
+function admittedProvider(
+  db: Parameters<typeof listProviderCapabilities>[0],
+  runId: RunId,
+): string | null {
+  // The admission rows sit at the head of a run's ledger, one per registered
+  // provider at most, so a small window reads all of them.
+  for (const event of readRange(db, runId, 0, ADMISSION_WINDOW).events) {
+    if (event.kind !== 'provider.probed') continue;
+    const payload = event.payload as { provider?: unknown; chosen?: unknown };
+    if (payload.chosen === undefined || typeof payload.provider !== 'string') continue;
+    return payload.provider;
+  }
+  return null;
+}
+
+/** Enough to cover the registry several times over. */
+const ADMISSION_WINDOW = 64;
 
 /**
  * The chain one daemon life runs, bound to this machine.
@@ -211,7 +246,7 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
 
   return createRunChain({
     resolve: async ({ runId, db, cwd, epoch }): Promise<RunChainContext | null> => {
-      const chosen = chooseProvider(db, options.providerRoots);
+      const chosen = chooseProvider(db, options.providerRoots, runId);
       if (chosen === null) {
         wiring.warn(
           { runId },

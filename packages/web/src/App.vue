@@ -29,6 +29,7 @@ import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import CommandJumper from './components/CommandJumper.vue';
 import NodeInspector from './components/NodeInspector.vue';
+import RunProviderBanner from './components/RunProviderBanner.vue';
 import { useSessionStore } from './stores/useSessionStore.ts';
 import { useUiStore } from './stores/useUiStore.ts';
 import TokenRequired from './views/TokenRequired.vue';
@@ -113,6 +114,15 @@ onUnmounted(() => {
           placeholder="Search nodes  ( / )"
         >
       </label>
+
+      <!--
+        KAR-19.10 AC4 — which agent the open run is on, and by which route.
+        In the shell rather than in a view because it is true of the run and not
+        of one panel of it, and because an operator comparing what `DeFlow
+        doctor` said with what the run did should not have to find the right tab
+        first. It renders nothing when no run is open.
+      -->
+      <RunProviderBanner />
     </header>
 
     <!--

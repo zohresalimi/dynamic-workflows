@@ -59,6 +59,7 @@ import {
   PlanPatchSchema,
   ProposedBySchema,
 } from './plan-patch.ts';
+import { PROVIDER_ROUTES, ROUTE_STATES } from './provider-choice.ts';
 import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
@@ -2017,6 +2018,31 @@ export const ProviderAdmissionProbedSchema = z.strictObject({
   package: singleLine(),
   /** The child's own stderr from a handshake that failed. Never paraphrased. */
   stderr: z.string().optional(),
+  /**
+   * KAR-19.10 AC4 — the choice admission made, on the row that recorded it.
+   *
+   * Optional, and absent on every row written before this story and on every
+   * row a *refusal* writes: a refusal chose nothing. Where it is present it is
+   * the whole announcement — the provider is the row's own `provider`, and
+   * these are the other two facts plus the route answers they came from.
+   */
+  chosen: z
+    .strictObject({
+      route: z.enum(PROVIDER_ROUTES),
+      /** Absolute — the path the child is spawned from, never a name. */
+      binaryPath: singleLine(),
+      routes: z.strictObject({
+        acp: z.enum(ROUTE_STATES),
+        shim: z.enum(ROUTE_STATES),
+      }),
+      /** The turns this route cannot serve. Empty is the ordinary case. */
+      unserved: z.array(singleLine()),
+      /** AC7's sentence, stored because it is what the operator was told at
+       * submission — and a run that was told something must be able to say
+       * what, six weeks later, without re-probing the machine (NF8). */
+      limitation: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const ProviderProbedSchema = z.union([

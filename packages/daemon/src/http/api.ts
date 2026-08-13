@@ -102,6 +102,7 @@ import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
 import { runFailure } from './run-failure.ts';
 import { runList } from './run-list.ts';
+import { runProvider } from './run-provider.ts';
 import { runRefusal } from './run-refusal.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
@@ -954,7 +955,19 @@ export const api = new Hono()
       );
     }
 
-    return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
+    // KAR-19.10 AC4 — the choice, on the 201 itself. A client that had to wait
+    // for the stream to learn which agent it was on would learn it *after* the
+    // first turn had started, which is the half of the defect that cost the
+    // afternoon: the announcement has to precede the thing it describes.
+    return c.json(
+      {
+        runId: result.runId,
+        seq: result.seq,
+        status: 'awaiting-spec-approval',
+        ...(result.provider === undefined ? {} : { provider: result.provider }),
+      },
+      201,
+    );
   })
 
   /**
@@ -1165,6 +1178,11 @@ export const api = new Hono()
     // sibling of `refusal` above and for the same reason: a refusal is why a
     // run never started, this is why one stopped, and neither is run state.
     const failure = runFailure(state);
+    // KAR-19.10 AC4 — and, for a run that *started*, on what. The third sibling
+    // of the two above: which agent and which route, from the same recorded
+    // facts the CLI printed at submission, so a UI and a terminal cannot say
+    // different things about one run.
+    const provider = runProvider(view, runId);
     return c.json(
       {
         ...runSummary(
@@ -1176,6 +1194,7 @@ export const api = new Hono()
         ),
         ...(refusal === null ? {} : { refusal }),
         ...(failure === null ? {} : { failure }),
+        ...(provider === null ? {} : { provider }),
       },
       200,
     );

@@ -25,7 +25,7 @@
  * implementation to keep in sync, which is the usual place a CLI and a UI
  * diverge.
  */
-import type { Event, PermissionLevel } from '@DeFlow/core';
+import type { Event, PermissionLevel, ProviderRoute } from '@DeFlow/core';
 import {
   type ApiClient,
   connectStream,
@@ -119,12 +119,34 @@ export interface RunTaskOptions {
   };
   /** Forwarded as the `Idempotency-Key` header (AC6). */
   readonly idempotencyKey?: string;
+  /**
+   * KAR-19.10 AC1 — the provider the operator named, or absent for "choose".
+   *
+   * A registry id, already validated against `PROVIDER_SPECS` by whoever built
+   * this. Whether *this machine* can serve it is a different question with a
+   * different exit code, and the daemon answers that one.
+   */
+  readonly provider?: string;
 }
 
 export interface RunTaskResult {
   readonly runId: string;
   readonly seq: number;
   readonly status: string;
+  /**
+   * KAR-19.10 AC4 — what the daemon chose, on the 201 itself.
+   *
+   * Absent when the daemon was never told which machine it is on (no
+   * `providerRoots`), which is the honest answer rather than a guess: it
+   * admitted because it had no basis on which to refuse, and it has none on
+   * which to announce either.
+   */
+  readonly provider?: {
+    readonly provider: string;
+    readonly binaryPath: string;
+    readonly route: ProviderRoute;
+    readonly limitation: string | null;
+  };
 }
 
 /** A submission the daemon refused — the `field` out of the envelope's
@@ -222,6 +244,7 @@ export async function createRun(
         cwd: options.cwd,
         permission: options.permission ?? 'worktree',
         ...(options.budget === undefined ? {} : { budget: options.budget }),
+        ...(options.provider === undefined ? {} : { provider: options.provider }),
       },
     },
     {
@@ -237,7 +260,12 @@ export async function createRun(
   const payload: unknown = await response.json();
   if (response.status === 201 && !isEnvelope(payload)) {
     const created = payload as RunTaskResult;
-    return { runId: created.runId, seq: created.seq, status: created.status };
+    return {
+      runId: created.runId,
+      seq: created.seq,
+      status: created.status,
+      ...(created.provider === undefined ? {} : { provider: created.provider }),
+    };
   }
 
   throw new RunTaskRejected(

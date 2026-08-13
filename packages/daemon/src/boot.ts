@@ -470,7 +470,12 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       clock: systemClock,
       dataDir,
       randomHex: randomRunIdSuffix,
-      ...(resolutions === null ? {} : { admit: () => admitRun(resolutions) }),
+      // KAR-19.10 AC1, AC8 — the operator's `--provider` reaches the same
+      // reduction rather than a second one beside it. The resolutions are still
+      // this boot's; what the request adds is which of them it is allowed to
+      // answer with, and refusing it here is what stops a fallback nobody
+      // announced.
+      ...(resolutions === null ? {} : { admit: (request) => admitRun(resolutions, request) }),
     });
 
     // KAR-15.8 — the one WebSocket route, registered before the port binds so

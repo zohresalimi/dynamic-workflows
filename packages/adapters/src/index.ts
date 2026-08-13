@@ -217,24 +217,36 @@ export { renderAuthMethods, reportAvailability } from './provider-availability.t
 // string, byte for byte.
 export type {
   AgentInstallState,
+  ChosenProvider,
   ProviderResolution,
+  ProviderRoutes,
   ProviderVerdict,
   RefusedProvider,
   RunAdmission,
+  RunAdmissionRequest,
   RunRefusalCode,
+  RunTurn,
 } from './provider-install.ts';
 export {
   admitRun,
+  binaryForRoute,
   installCommand,
   installPrompt,
   isRunRefusalCode,
   MOCK_AGENT_FLAG,
   MOCK_AGENT_SENTENCE,
+  providerRoutes,
   providerVerdict,
   RUN_REFUSAL_CODES,
   renderRefusal,
+  renderRouteLimitation,
+  renderRouteReport,
   resolveProviderState,
   resolveProviderStates,
+  routeForNextTurn,
+  TURN_ROUTES,
+  turnsServedBy,
+  unservedTurns,
   usableProviders,
 } from './provider-install.ts';
 // KAR-05.3 — the verified provider table, encoded once. The only file in this

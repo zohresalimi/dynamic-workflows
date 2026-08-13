@@ -75,7 +75,9 @@ import {
   offerAdapterInstalls,
   type ProviderResolution,
   type ProviderVerdict,
+  providerRoutes,
   providerVerdict,
+  renderRouteReport,
   resolveProviderStates,
 } from './agent-install.ts';
 import type { DoctorCheck } from './report.ts';
@@ -272,11 +274,16 @@ function resolutionCheck(resolution: ProviderResolution, verdict: ProviderVerdic
   return {
     id: `agents.${resolution.provider}`,
     status: verdict.status,
-    detail: verdict.detail,
+    // KAR-19.10 AC6 — the routes first, then what to do about the closed one.
+    // In that order deliberately: the sentence an operator on the 2026-08-13
+    // machine needed was *"the exec shim works, here is where"*, and putting it
+    // after four lines about a missing package is how it went unread.
+    detail: `${renderRouteReport(resolution)}\n${verdict.detail}`,
     ...(verdict.action === undefined ? {} : { action: verdict.action }),
     data: {
       provider: resolution.provider,
       state: verdict.state,
+      routes: providerRoutes(resolution),
       vendorBin: resolution.vendorBin,
       vendorPath: resolution.vendorPath,
       adapterBin: resolution.adapterBin,
@@ -291,6 +298,7 @@ function installedCheck(
   sha: string | null,
   row: CapabilityRow | undefined,
   verdict: ProviderVerdict | undefined,
+  resolution: ProviderResolution | undefined,
 ): DoctorCheck {
   // The leading sentence is the reducer's whenever the reducer agrees this is
   // installed. It can disagree — a cached probe whose binary has since been
@@ -306,10 +314,16 @@ function installedCheck(
     status: 'ok',
     detail:
       `${entry.provider} ${entry.version ?? '(no version reported)'}, sha256 ` +
-      `${sha === null ? 'unreadable' : short(sha)} — ${lead}`,
+      `${sha === null ? 'unreadable' : short(sha)} — ${lead}` +
+      // KAR-19.10 AC6 — both routes, on the working machine too. Reporting them
+      // only where something is missing would make the shape of the answer a
+      // property of the machine, and an operator comparing two machines would
+      // be comparing two different reports.
+      (resolution === undefined ? '' : `\n${renderRouteReport(resolution)}`),
     data: {
       provider: entry.provider,
       state: verdict?.state ?? 'not-installed',
+      ...(resolution === undefined ? {} : { routes: providerRoutes(resolution) }),
       binaryPath: entry.binaryPath,
       version: entry.version,
       sha256: sha,
@@ -705,8 +719,20 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
           : {
               id: `agents.${entry.provider}`,
               status: 'ok',
-              detail: entry.detail,
-              data: { provider: entry.provider, state, status: entry.status },
+              // KAR-19.10 AC6 — the routes go on this branch too. It is the one
+              // a bridge that resolves and then fails `initialize` lands on, and
+              // "which routes are open" is exactly the question that machine
+              // raises: the ACP one is not, and the exec-shim one may well be.
+              detail:
+                resolution === undefined
+                  ? entry.detail
+                  : `${renderRouteReport(resolution)}\n${entry.detail}`,
+              data: {
+                provider: entry.provider,
+                state,
+                ...(resolution === undefined ? {} : { routes: providerRoutes(resolution) }),
+                status: entry.status,
+              },
             },
       );
       if (attempted !== undefined) agents.push(attempted);
@@ -726,7 +752,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       .filter((row) => sha === null || row.binarySha256 === sha)
       .toSorted((a, b) => b.probedAt - a.probedAt)[0];
 
-    agents.push(installedCheck(entry, sha, probed, verdict));
+    agents.push(installedCheck(entry, sha, probed, verdict, resolution));
     if (attempted !== undefined) agents.push(attempted);
 
     const previously = recorded.get(entry.provider);
