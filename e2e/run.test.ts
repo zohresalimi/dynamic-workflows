@@ -19,16 +19,30 @@
  * > work and explicitly out of this epic's scope.
  * >
  * > **Narrowed 2026-08-12 by KAR-19.1** — `boot()` starts the ticker and intake
- * > schedules the framing wake — and **again 2026-08-13 by KAR-19.3**, whose
- * > run chain frames, gates, pins, surveys and compiles a validated
- * > `PlanGraph`. `executeRun` is the one call still missing, so a run still
- * > reaches no terminal state and the four-node completion stays deferred to
- * > KAR-19.4. What is asserted below is
- * > everything the scenario claims that *is* reachable — the detached
- * > autostart, the unauthenticated health poll, the run created, the
- * > subscription from seq 0, the rendered transcript through the normalising
- * > serializer, and a documented exit code — and the completion half is
- * > recorded as a follow-up on the story rather than faked here.
+ * > schedules the framing wake — **again 2026-08-13 by KAR-19.3**, whose run
+ * > chain frames, gates, pins, surveys and compiles a validated `PlanGraph` —
+ * > and **again by KAR-19.4**, whose `packages/daemon/src/pipeline/`
+ * > `run-execution.ts` is `executeRun`'s one shipped caller and drives that plan
+ * > to a terminal state off the ticker.
+ * >
+ * > **None of the original amendment's reasons survive; one new one does.** The
+ * > daemon can now carry a run from `task.submitted` to `run.completed` — that
+ * > is asserted end to end in
+ * > `packages/daemon/test/integration/live-execution.test.ts`. What it cannot do
+ * > *on a machine with only the bundled mock agent* is get past the framing turn:
+ * > framing, recon and planning all carry a `returns` contract, and
+ * > `admitFraming` (KAR-10.2 AC3) refuses every adapter with no
+ * > `structuredOutputFlag`, which `DeFlow-mock-agent` — ACP-only — does not have.
+ * > A run submitted by the spawned binary below therefore still parks at the
+ * > gate, so the four-node completion stays deferred. It is **EPIC-04's**
+ * > structured-output path that unblocks it, and KAR-19.5's smoke test is where
+ * > this scenario is finished.
+ * >
+ * > What is asserted below is everything the scenario claims that *is* reachable
+ * > — the detached autostart, the unauthenticated health poll, the run created,
+ * > the subscription from seq 0, the rendered transcript through the normalising
+ * > serializer, and a documented exit code — and the completion half is recorded
+ * > as a follow-up on the story rather than faked here.
  *
  * Verifies: EPIC-18-S18, EPIC-18-S19 · AC1, AC2 · test plan #1, #2
  */

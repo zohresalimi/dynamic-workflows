@@ -20,8 +20,9 @@
  * thing that breaks it at 3am. The human renderer puts the same sentence on
  * stdout, where a person is looking.
  */
-import type { Event, RunId } from '@DeFlow/core';
+import type { Event, NodeId, RunId } from '@DeFlow/core';
 import { RUN_STATUS_LABELS } from '@DeFlow/core';
+import type { IoChunkLine } from '@DeFlow/web';
 import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../render/glyphs.ts';
 import { wrapDetail } from '../render/layout.ts';
 import { createStyle, type Style, type StyleColour } from '../render/style.ts';
@@ -51,6 +52,22 @@ export interface RunRenderer {
   /** What this event looks like, or `''` when this rendering has nothing to
    * say about it. Always ends in a newline when it is not empty. */
   event(event: Event): string;
+  /**
+   * KAR-19.4 AC3 — one `io_chunk` from a node that is still running.
+   *
+   * The **human** rendering is the bytes, unchanged and unwrapped: this is the
+   * agent's own output on the operator's own terminal, and a renderer that
+   * prefixed, wrapped or re-coloured it would be editing a transcript somebody
+   * is reading in order to decide whether to intervene. It is deliberately not
+   * padded to `NODE_COLUMN` like an event line — those are DeFlow speaking,
+   * this is the agent.
+   *
+   * The **`--json`** rendering is one object per line, like every other frame on
+   * that stream. `JSON.stringify` escapes control characters, so an agent that
+   * emitted ANSI cannot put a raw escape byte on a machine-readable pipe — the
+   * content is preserved as `\u001b`, which is what a consumer can act on.
+   */
+  io(node: NodeId, chunk: IoChunkLine): string;
   final(verdict: RunVerdict, totals: RunTotals): FinalLines;
 }
 
@@ -278,6 +295,16 @@ export function createRenderer(options: RendererOptions): RunRenderer {
   if (options.mode === 'json') {
     return {
       event: (event) => `${JSON.stringify(event)}\n`,
+      io: (node, chunk) =>
+        `${JSON.stringify({
+          kind: 'DeFlow.cli.io',
+          runId: options.runId,
+          node,
+          seq: chunk.seq,
+          stream: chunk.stream,
+          ts: chunk.ts,
+          data: chunk.data,
+        })}\n`,
       final: (verdict, totals) => ({
         stdout: '',
         stderr: `${JSON.stringify({
@@ -293,6 +320,7 @@ export function createRenderer(options: RendererOptions): RunRenderer {
   }
 
   return {
+    io: (_node, chunk) => chunk.data,
     event(event) {
       const line = humanLine(event);
       if (line === null) return '';

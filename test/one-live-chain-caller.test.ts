@@ -1,6 +1,6 @@
 /**
  * KAR-19.3 AC7 / EPIC-19-S23 — one implementation per step: no second planner,
- * no second interview.
+ * no second interview, and since KAR-19.4 no second run loop.
  *
  * The pressure this file exists to resist is named in the epic and is entirely
  * reasonable in the moment: *"the temptation to write a small local planner
@@ -26,7 +26,8 @@
  * shape as `test/no-gap-detection.test.ts` and for the same reason: a scan that
  * has never failed is indistinguishable from a scan that cannot.
  *
- * Verifies: EPIC-19-S23 · KAR-19.3 AC7 · test plan #7
+ * Verifies: EPIC-19-S23, EPIC-19-S24 · KAR-19.3 AC7, KAR-19.4 AC1 ·
+ * test plan #7 (KAR-19.3), #9 (KAR-19.4)
  */
 import { expect, it, describe as suite } from 'vitest';
 import { packageProductionSources, readText } from './support/workspace.ts';
@@ -36,9 +37,12 @@ interface Source {
   readonly text: string;
 }
 
-/** The one shipped module this epic added, and the only one allowed to call
- * any of the three steps. */
+/** The one shipped module KAR-19.3 added, and the only one allowed to call any
+ * of the pre-execution steps. */
 const CALLER = 'packages/daemon/src/pipeline/run-chain.ts';
+
+/** KAR-19.4's, and the only one allowed to call the run loop. */
+const EXECUTOR = 'packages/daemon/src/pipeline/run-execution.ts';
 
 /**
  * Each step, with the file that defines it — which is allowed to contain its
@@ -57,6 +61,18 @@ const STEPS: readonly (readonly [name: string, definedIn: string, caller: string
     'packages/daemon/src/plan/validate.ts',
     'packages/daemon/src/plan/compile.ts',
   ],
+  // KAR-19.4 AC1, test plan #9. This entry replaces
+  // `test/run-completion-deferral.test.ts`, which held while **nothing**
+  // shipped executed a run and expired the day this caller landed. The
+  // stronger claim takes its place: the run loop has exactly one caller, and
+  // that caller is not allowed to re-implement admission.
+  //
+  // The red it is written against is named in the test plan — *"the shipped
+  // caller re-implements admission instead of using the executor's, and one
+  // node runs twice"*. A second caller of `executeRun` is a second answer to
+  // "which node may start now", and `executeRun`'s own `admitted` set is what
+  // closes the window between a `StartNode` and the performer's `node.started`.
+  ['executeRun', 'packages/daemon/src/exec/run-executor.ts', EXECUTOR],
 ];
 
 /**
@@ -182,17 +198,33 @@ suite('AC7 — nothing outside the plan package produces a PlanGraph', () => {
 
 suite('AC7 — the caller imports the steps rather than re-declaring them', () => {
   const caller = readText(CALLER);
+  const executor = readText(EXECUTOR);
 
   it('imports each step from the module that owns it', () => {
     expect(caller).toContain("from '../framing/interview.ts'");
     expect(caller).toContain("from '../plan/compile.ts'");
     expect(caller).toContain("from '../recon/recon.ts'");
+    expect(executor).toContain("from '../exec/run-executor.ts'");
   });
 
   it('declares none of them itself', () => {
     for (const [name] of STEPS) {
       expect(caller).not.toContain(`function ${name}`);
       expect(caller).not.toContain(`const ${name} =`);
+      expect(executor).not.toContain(`function ${name}`);
+      expect(executor).not.toContain(`const ${name} =`);
     }
+  });
+
+  it('leaves admission to the executor: the caller decides nothing per node', () => {
+    // KAR-19.4 test plan #9's red, as a property of the source. `executeRun`'s
+    // `admitted` set is what stops one node being started twice across the tick
+    // that arrives before the performer's own `node.started` lands; a caller
+    // that kept its own would be the second answer, and the one without the
+    // effect journal behind it. Over the **code**, not the prose — this file
+    // and that one both have to write the names down to explain them.
+    const body = code({ path: EXECUTOR, text: executor }).text;
+    expect(body).not.toMatch(/\bdecide\s*\(/);
+    expect(body).not.toMatch(/\badmitted\b/);
   });
 });

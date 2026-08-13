@@ -18,8 +18,10 @@
 import { expect, it, describe as suite } from 'vitest';
 import {
   IO_TAIL_CHUNKS,
+  type IoChunkLine,
   ioFollowQuery,
   ioTailQuery,
+  mergeIoChunks,
   NO_OUTPUT_AT_ALL,
   outputRendererFor,
   parseIoNdjson,
@@ -113,5 +115,43 @@ suite('EPIC-17-S21 — the right renderer for the right stream', () => {
   it('reports emptiness as emptiness (AC10)', () => {
     expect(outputRendererFor([])).toBe('none');
     expect(NO_OUTPUT_AT_ALL).toMatch(/no output/i);
+  });
+});
+
+suite('EPIC-19-S26 — a reconnect backfills with no gap and no duplicate (KAR-19.4 AC4)', () => {
+  const at = (seq: number): IoChunkLine => chunk({ seq, data: `line ${String(seq)}\n` });
+
+  it('appends what is new and keeps what was already on screen', () => {
+    expect(mergeIoChunks([at(1), at(2)], [at(3), at(4)]).map((one) => one.seq)).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
+  it('drops a re-delivered chunk rather than painting it twice', () => {
+    // The easy implementation of a reconnect re-fetches from zero, and on a
+    // long node that duplicates everything already on screen — which is worse
+    // than losing the connection, because the operator cannot tell which of the
+    // two copies is the live one.
+    const held = [at(1), at(2), at(3)];
+    expect(mergeIoChunks(held, [at(2), at(3), at(4)]).map((one) => one.seq)).toEqual([1, 2, 3, 4]);
+    expect(mergeIoChunks(held, held).map((one) => one.seq)).toEqual([1, 2, 3]);
+  });
+
+  it('keeps the produced order even when a page arrives out of order', () => {
+    expect(mergeIoChunks([at(5)], [at(2), at(9), at(7)]).map((one) => one.seq)).toEqual([
+      2, 5, 7, 9,
+    ]);
+  });
+
+  it('leaves a gap a gap: seqs are AUTOINCREMENT and pruning is permanent', () => {
+    // `seq > fromSeq` is the cursor contract, so a missing 3 is a pruned row
+    // rather than a frame to wait for. A merge that tried to close the hole
+    // would be inventing output.
+    expect(mergeIoChunks([at(1)], [at(2), at(4)]).map((one) => one.seq)).toEqual([1, 2, 4]);
+  });
+
+  it('follows on from the highest seq seen, never from that plus one', () => {
+    const seen = mergeIoChunks([], [at(1), at(9)]);
+    expect(ioFollowQuery(seen.at(-1)?.seq ?? 0).fromSeq).toBe('9');
   });
 });

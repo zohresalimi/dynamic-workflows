@@ -529,6 +529,60 @@ removes.
 | 8   | e2e         | `SIGKILL` the daemon mid-node, restart over the same data dir; assert no effect ran twice, the same terminal state, and no non-`Z` process left in the group                    | The kill check counts zombie grandchildren and reports a false negative                                                     |
 | 9   | unit        | `decide()` + the admitted-set over a fold where a node is ready and its `node.started` has not landed; assert one attempt                                                       | The shipped caller re-implements admission instead of using the executor's, and one node runs twice                         |
 
+> **Amended 2026-08-13 while implementing KAR-19.4.** The executor shipped:
+> `packages/daemon/src/pipeline/run-execution.ts` is the one production caller of
+> `executeRun`, the driver dispatches it off the ticker, and `DeFlow run` follows the `io_chunk`
+> data plane alongside the control stream so the agent's own bytes reach the terminal while its
+> node is still running. AC1–AC8 are asserted at the levels below — with **three departures
+> recorded here rather than absorbed** ([README §9](../README.md#9-changing-the-plan)):
+>
+> - **Test plan #1 and #8 were automated at `integration`, not `e2e`.** The same prerequisite
+>   KAR-19.3 recorded: the framing, recon and planner turns all carry a `returns` contract, so
+>   `admitFraming` refuses every adapter without a `structuredOutputFlag`, and the bundled
+>   `DeFlow-mock-agent` speaks ACP only. There is therefore no agent on this machine that can
+>   carry a run as far as a compiled plan through a real binary, so an e2e that started at
+>   `DeFlow run` and ended at an executed node cannot yet exist. What shipped instead:
+>   `packages/daemon/test/integration/live-execution.test.ts` drives the **whole** chain —
+>   `submitTask` → framing → the F1.3 gate → recon → `compilePlanV1` → `executeRun` — over a real
+>   file-backed ledger with scripted agent *ports*, and `packages/cli/test/integration/`
+>   `run-output-live.test.ts` spawns the real CLI binary against a real daemon over a real socket
+>   for the streaming half. The transcript **file snapshot** in #1 is not written, because the
+>   transcript it would pin is a rendering of scripted output rather than of a real turn.
+> - **#8's process-group clause is not asserted, and the `SIGKILL` is a second daemon life rather
+>   than a signal.** EPIC-19-S32's *"no process remains in the killed daemon's group, excluding
+>   entries in state `Z`"* is a claim about real grandchildren, and this story's performer spawns
+>   none — asserting it here would be asserting that zero processes are zero processes.
+>   `packages/daemon/test/crash-fuzz/` already holds that assertion against a real agent binary
+>   (KAR-06.9). What is asserted is the half this story newly owns: the ledger is closed and
+>   reopened at a higher epoch, a driver that inherited nothing picks the run up, no completed node
+>   is executed a second time, and the run reaches the terminal state it would have reached
+>   uninterrupted.
+> - **`executeNodes` is not yet bound in `DeFlow up`,** for the same reason `runFraming` and
+>   `advanceRun` are not (KAR-19.3's amendment): a daemon whose chain cannot reach a plan has
+>   nothing for an executor to execute, so binding one alone would be unexercised wiring — the
+>   defect this epic exists to remove, one level up.
+>
+> One thing shipped that no criterion asked for, and it is the kind of thing that is cheaper to
+> record than to rediscover. **The execution turn is launched by the tick, never awaited by it.**
+> `startTicker` schedules the next tick only once the current one has settled, so a driver that
+> waited for `executeRun` would freeze the whole daemon for the length of a node — no framing wake
+> dispatched, no stall reported, and KAR-19.6's cancel never carried out — on a run that can
+> legitimately take hours. What stops a second turn is the driver's `executing` set; what stops a
+> second *attempt* is the executor's own `admitted` set one level down. The cost is that a turn
+> outlives the tick, so `RunDriver.settle()` exists and `boot()`'s `shutdown()` waits on it before
+> closing the ledger — otherwise a daemon stopped mid-node would pull the connection out from
+> under a node that was part-way through appending its own completion.
+>
+> One deferral marker was **removed early**: `test/run-completion-deferral.test.ts` held while
+> *"nothing shipped drives a submitted run"*, and its own instructions say the day a shipped source
+> executes one, the record has outlived its reason. It went red on this story and was deleted
+> rather than relaxed; the stronger claim took its place in `test/one-live-chain-caller.test.ts`
+> (exactly one shipped caller of `executeRun`, which may not re-implement admission) and in
+> `test/one-run-verdict.test.ts` (AC6's single derivation). That is the first of
+> [KAR-19.5](#kar-195--a-live-smoke-test-that-would-have-caught-this) AC8's three markers; the
+> other two are notes whose premise — no agent can serve a schema-bearing turn — is still true, and
+> they were **narrowed** rather than deleted.
+
 ---
 
 ### KAR-19.5 — A live smoke test that would have caught this

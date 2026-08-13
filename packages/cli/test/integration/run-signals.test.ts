@@ -25,6 +25,15 @@
  * > still there to be advanced after the CLI is gone, and a second
  * > `DeFlow run --attach` renders the transcript so far. The completed-plan
  * > half belongs to the orchestration wiring and is a follow-up on the story.
+ * >
+ * > **Narrowed 2026-08-13 by KAR-19.3 and KAR-19.4.** The orchestration wiring
+ * > exists: `compilePlanV1` and `executeRun` both have shipped callers and the
+ * > ticker runs, so a submitted run does now reach `run.completed`. The reason
+ * > these two scenarios still stop short is narrower and is not this epic's —
+ * > the run below is submitted on a machine whose only provider is the bundled
+ * > ACP-only mock agent, which `admitFraming` refuses for a schema-bearing turn,
+ * > so it parks at the F1.3 gate rather than being planned. EPIC-04's
+ * > structured-output path is the prerequisite; KAR-19.5 is where it is spent.
  *
  * Verifies: EPIC-18-S20, EPIC-18-S21 · AC3, AC4 · test plan #3, #4
  */

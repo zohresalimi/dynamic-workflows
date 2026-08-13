@@ -48,6 +48,7 @@ import {
   type RunVerdict,
   rejectionExitCode,
 } from './exit-codes.ts';
+import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
 
 /** How long a second Ctrl-C has to arrive before the detach stands (AC3). */
@@ -143,6 +144,9 @@ async function watch(options: {
   readonly stdout: (chunk: string) => void;
   readonly noWait: boolean;
   readonly onFollowing: (following: FollowRunResult) => void;
+  /** KAR-19.4 AC3 — every control event is offered here too, so the agent's
+   * own bytes reach the terminal while its node is still running. */
+  readonly io: IoFollower;
 }): Promise<Watched> {
   let state = initialRunState();
   let rendered = 0;
@@ -154,6 +158,7 @@ async function watch(options: {
       rendered = event.seq;
       state = reduce(state, event);
       options.stdout(options.renderer.event(event));
+      options.io.onEvent(event);
 
       const verdict = classifyRun(state, { noWait: options.noWait });
       if (verdict.terminal) {
@@ -236,6 +241,20 @@ async function execute(
   });
   if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
 
+  // KAR-19.4 AC3 — the data plane, followed alongside the control plane. The
+  // `io_chunk` table is deliberately not on the SSE stream (KAR-03.4), so a
+  // command that only subscribed would render a perfect transcript of a
+  // ten-minute node and show the operator nothing the agent said.
+  const io = followNodeOutput({
+    runId,
+    baseUrl: endpoint.baseUrl,
+    token: endpoint.token,
+    onChunk: (node, chunk) => {
+      options.stdout(renderer.io(node, chunk));
+    },
+    ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+  });
+
   let following: FollowRunResult | null = null;
   let presses = 0;
 
@@ -276,14 +295,19 @@ async function execute(
     renderer,
     stdout: options.stdout,
     noWait: args.noWait,
+    io,
     onFollowing: (opened) => {
       following = opened;
       // A Ctrl-C that landed before the stream was open still detaches: the
       // press already printed its sentence, and this closes what it could not.
       if (presses > 0) opened.close();
     },
-  }).then((result): number => {
+  }).then(async (result): Promise<number> => {
     following?.close();
+    // The tail is drained before the verdict is printed: the last bytes of a
+    // node are produced in the same instant as the event that ends it, and the
+    // end of the output is the part that says what happened.
+    await io.close();
     const totals = {
       costUsd: result.state.budget.run.costUsd,
       wallclockMs: clock.now() - startedAt,
@@ -294,7 +318,16 @@ async function execute(
     return result.verdict.exitCode;
   });
 
-  return await Promise.race([watched, interrupted]);
+  return await Promise.race([
+    watched,
+    // A detach or a cancel closes the tail too — the viewer is going, and a
+    // poll left running would keep the process alive after its exit code was
+    // decided.
+    interrupted.then(async (code) => {
+      await io.close();
+      return code;
+    }),
+  ]);
 }
 
 /**

@@ -55,3 +55,20 @@ export type {
   LedgerStreamState,
 } from './ledger/stream.ts';
 export { openLedgerStream, RECONNECT_INTERVAL_MS } from './ledger/stream.ts';
+// KAR-17.5 / KAR-19.4 — the `io_chunk` tail's client half: how a surface asks
+// for the tail or for what has arrived since a cursor, and how it parses the
+// answer. Exported for `DeFlow run`, which follows a live node's output over
+// the same endpoint the panel does — `packages/cli/src/run/run.ts`'s rule is
+// that there is **no second protocol implementation**, and the tail is a
+// protocol like the stream is.
+export type { IoChunkLine, IoStream, OutputRenderer } from './lib/node-output.ts';
+export {
+  ENDED_WITHOUT_RESULT,
+  IO_TAIL_CHUNKS,
+  ioFollowQuery,
+  ioTailQuery,
+  mergeIoChunks,
+  NO_OUTPUT_AT_ALL,
+  outputRendererFor,
+  parseIoNdjson,
+} from './lib/node-output.ts';

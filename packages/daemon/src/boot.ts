@@ -47,7 +47,13 @@ import {
   writeDaemonFile,
 } from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
-import { createRunDriver, type FramingRunner, type RunAdvancer, type RunDriver } from './drive.ts';
+import {
+  createRunDriver,
+  type FramingRunner,
+  type RunAdvancer,
+  type RunDriver,
+  type RunNodeExecutor,
+} from './drive.ts';
 import { mintDaemonToken } from './http/auth.ts';
 import { clearIntakePorts, setIntakePorts } from './http/intake-ports.ts';
 import {
@@ -180,6 +186,16 @@ export interface BootOptions {
    * on a provider resolved against the operator's own `PATH`.
    */
   readonly advanceRun?: RunAdvancer | undefined;
+  /**
+   * KAR-19.4 — the port a run with a compiled plan is executed on.
+   *
+   * Omitted means the run stops at `plan.proposed`, which is what every daemon
+   * did before that story: a valid graph, visible in both surfaces, that
+   * nothing ever ran. Supplied by the same caller as `runFraming` and for the
+   * same reason — a performer spawns vendor binaries resolved against the
+   * operator's own `PATH` and writes into the run's own worktree.
+   */
+  readonly executeNodes?: RunNodeExecutor | undefined;
   /** AC7 — called for every `run.stalled` the driver appends, so `DeFlow up`
    * can print the one line the operator reads. */
   readonly onStalled?: ((runId: RunId, report: StallReport) => void) | undefined;
@@ -405,6 +421,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     spillTo: dataDir,
     ...(options.runFraming === undefined ? {} : { runFraming: options.runFraming }),
     ...(options.advanceRun === undefined ? {} : { advanceRun: options.advanceRun }),
+    ...(options.executeNodes === undefined ? {} : { executeNodes: options.executeNodes }),
     ...(options.onStalled === undefined ? {} : { onStalled: options.onStalled }),
   });
   const tickIntervalMs = options.tickIntervalMs ?? TICK_INTERVAL_MS;
@@ -545,6 +562,11 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // and a tick that started before the ledger closed would be a tick
       // finishing against a connection that is gone.
       ticker.stop();
+      // KAR-19.4 — the ticker no longer starts turns, but a turn it already
+      // started outlives it: `executeRun` is dispatched rather than awaited so
+      // that a ten-minute node cannot freeze the loop. Everything below closes
+      // something such a turn is holding, so it is waited for here.
+      await driver.settle();
       removeDaemonFile(dataDir);
       await http.close();
 

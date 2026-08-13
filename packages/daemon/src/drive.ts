@@ -124,6 +124,32 @@ export interface AdvanceInput {
  */
 export type RunAdvancer = (input: AdvanceInput) => Promise<void> | void;
 
+/**
+ * KAR-19.4 — what the driver hands the executor.
+ *
+ * `AdvanceInput` plus the two facts `executeRun` needs and cannot derive: the
+ * `Clock` every timeout inside a node is measured on, and the instant *this
+ * daemon life* began, which is the effect journal's fourth branch (KAR-06.3) —
+ * an effect row written before it belongs to a daemon that is gone.
+ *
+ * Derived from the ledger on every tick like `AdvanceInput`, and never from a
+ * row this process wrote: a daemon killed mid-node comes back, reads the same
+ * log, and picks the run up from the plan it already had (AC9).
+ */
+export interface ExecuteInput extends AdvanceInput {
+  readonly clock: Clock;
+  readonly daemonStartedAt: number;
+}
+
+/**
+ * The port that carries a run with a compiled plan to a terminal state.
+ *
+ * A port for the same reason `RunAdvancer` is one: a performer spawns vendor
+ * binaries resolved against the operator's own `PATH` and writes into the
+ * run's own worktree, neither of which DeFlowd's own environment knows.
+ */
+export type RunNodeExecutor = (input: ExecuteInput) => Promise<void> | void;
+
 export interface DriverPorts {
   readonly db: Db;
   /** Time enters here and nowhere else (NF9). */
@@ -140,6 +166,20 @@ export interface DriverPorts {
    * daemon did before this story and is deliberately logged rather than silent.
    */
   readonly advanceRun?: RunAdvancer | undefined;
+  /**
+   * KAR-19.4 — the port a run with a compiled plan is executed on.
+   *
+   * Omitted means a run stops at `plan.proposed`, which is what every daemon
+   * did before this story: the graph was visible, valid and never run. That
+   * state is deliberately logged rather than silent.
+   */
+  readonly executeNodes?: RunNodeExecutor | undefined;
+  /**
+   * When this daemon life began, for the effect journal's fourth branch. Passed
+   * to the executor unchanged; defaults to `clock.now()` at construction, the
+   * same instant `startedAt` defaults to.
+   */
+  readonly daemonStartedAt?: number | undefined;
   /**
    * Called once per appended `run.stalled`, with the run and the report.
    *
@@ -201,13 +241,34 @@ export interface TickReport {
   readonly cancelled: readonly RunId[];
   /** KAR-19.3 — runs this tick carried on from their pinned spec. */
   readonly advanced: readonly RunId[];
+  /** KAR-19.4 — runs this tick drove `executeRun` over. */
+  readonly executed: readonly RunId[];
 }
 
 export interface RunDriver {
   /** One tick. Never throws for a run's own failure — see `tick`. */
   tick(now: number): Promise<TickReport>;
+  /**
+   * KAR-19.4 — resolves once no execution turn this driver started is still
+   * running.
+   *
+   * `shutdown()` waits on it before closing the ledger. Without that, a daemon
+   * stopped while a node was part-way through appending its completion would
+   * pull the connection out from under it, and the run would come back on the
+   * next boot with an attempt nothing ever concluded.
+   */
+  settle(): Promise<void>;
   /** Runs whose framing turn has not settled yet. */
   readonly inFlight: number;
+  /**
+   * KAR-19.4 — runs this driver is currently inside `executeRun` for.
+   *
+   * Exposed because the turn outlives the tick that started it: a caller that
+   * needs to know whether this daemon is still working — a spec, or a shutdown
+   * that would rather not close the ledger underneath a node — has no other way
+   * to ask.
+   */
+  readonly executing: number;
 }
 
 /**
@@ -226,11 +287,40 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
   const cancelling = new Set<RunId>();
   /** Runs whose recon-and-compile turn this process is part-way through. */
   const advancing = new Set<RunId>();
+  /** Runs this process is currently inside `executeRun` for. */
+  const executing = new Set<RunId>();
+  /**
+   * The turns themselves, so `settle()` can wait for them.
+   *
+   * Needed because the turn deliberately outlives the tick that started it: a
+   * shutdown that closed the ledger while one was in flight would take the
+   * connection out from under a node that is part-way through appending its
+   * own completion.
+   */
+  const executingTurns = new Set<Promise<void>>();
+  /**
+   * KAR-19.4 — the head this run's log was at when the executor last returned
+   * without ending it.
+   *
+   * A run halted on a budget ceiling or an open human gate is not finished and
+   * must stay drivable, so it cannot be remembered as *done*; re-driving it on
+   * every tick, on the other hand, is a fold a second for as long as nobody
+   * answers. The head seq is the honest middle: nothing has happened to this
+   * run since the executor last looked, so there is nothing new to decide. One
+   * covering-index seek, and the moment the operator answers — a `run.resumed`,
+   * a `human.responded` — the head moves and the run is picked up again.
+   *
+   * Per-process by construction, exactly like `executing`, and never the
+   * durable record: a fresh daemon knows nothing and therefore drives every
+   * unfinished run once, which is what recovery means.
+   */
+  const settledAtHead = new Map<RunId, number>();
   const kill: KillRunner =
     ports.killRun ??
     ((runId, mode) =>
       killRun(runId, { db: ports.db, clock: ports.clock, epoch: ports.epoch, mode, by: 'user' }));
   const startedAt = ports.startedAt ?? ports.clock.now();
+  const daemonStartedAt = ports.daemonStartedAt ?? startedAt;
   const appendOptions: AppendOptions =
     ports.spillTo === undefined ? {} : { spillTo: ports.spillTo };
 
@@ -244,7 +334,11 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
     rearmFraming(now);
     const dispatched = await dispatchWakes(now);
     const advanced = await advanceRuns(now);
-    return { dispatched, stalled: reportStalls(now), cancelled, advanced };
+    // KAR-19.4 — after the compile, so a run whose plan this very tick produced
+    // starts executing on the same tick rather than a second later. Launched
+    // rather than awaited; see `executeRuns`.
+    const executed = executeRuns(now);
+    return { dispatched, stalled: reportStalls(now), cancelled, advanced, executed };
   }
 
   /**
@@ -333,6 +427,76 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       driver.error({ runId, err: error }, `carrying run ${runId} on from its spec threw`);
     } finally {
       advancing.delete(runId);
+    }
+  }
+
+  /**
+   * KAR-19.4 AC1, AC2 — every run with a compiled plan and no ending, driven.
+   *
+   * Derived from the ledger on every tick, which is what makes a `SIGKILL`
+   * mid-node resumable without anything being remembered (AC9): a fresh daemon
+   * reads the same log, finds the same plan, and the executor's own fold tells
+   * it which nodes are already done.
+   *
+   * **The turn is launched, never awaited.** `startTicker` schedules the next
+   * tick only once this one has settled, so a driver that waited for
+   * `executeRun` would freeze the whole daemon for the length of a node — no
+   * framing wake dispatched, no stall reported, and KAR-19.6's cancel never
+   * carried out — on a run that can legitimately take hours. What stops a
+   * second turn is `executing`, which is a set rather than an await, and what
+   * stops a second *attempt* is the executor's own `admitted` set one level
+   * down.
+   */
+  function executeRuns(now: number): RunId[] {
+    const execute = ports.executeNodes;
+    if (execute === undefined) return [];
+
+    const executed: RunId[] = [];
+
+    for (const runId of listRunIds(ports.db)) {
+      if (executing.has(runId)) continue;
+      // Three covering-index seeks before any fold, for the same reason the
+      // stall detector has a pre-filter: this runs once a second for every run
+      // the directory has ever held.
+      if (lastSeqOfKinds(ports.db, runId, ['run.completed', 'run.aborted']) !== null) continue;
+      if (lastSeqOfKinds(ports.db, runId, ['plan.proposed']) === null) continue;
+      // A run the operator has asked to stop is the cancel ladder's, not the
+      // executor's: starting a node on the tick that finishes stopping it would
+      // be the driver arguing with itself.
+      const requested = lastSeqOfKinds(ports.db, runId, ['run.cancel.requested']);
+      if (requested !== null) continue;
+      // @see settledAtHead — nothing has happened since the executor last
+      // returned, so there is nothing new to decide.
+      const head = runHeadSeq(ports.db, runId);
+      if (settledAtHead.get(runId) === head) continue;
+
+      executing.add(runId);
+      executed.push(runId);
+      const turn = executeOneRun(execute, runId, now);
+      executingTurns.add(turn);
+      void turn.finally(() => executingTurns.delete(turn));
+    }
+
+    return executed;
+  }
+
+  async function executeOneRun(execute: RunNodeExecutor, runId: RunId, now: number): Promise<void> {
+    try {
+      await execute({
+        runId,
+        now,
+        db: ports.db,
+        epoch: ports.epoch,
+        clock: ports.clock,
+        daemonStartedAt,
+      });
+    } catch (error) {
+      // One run's failure is not the daemon's — the same rule the framing
+      // dispatch follows, and for the same reason.
+      driver.error({ runId, err: error }, `executing run ${runId} threw`);
+    } finally {
+      executing.delete(runId);
+      settledAtHead.set(runId, runHeadSeq(ports.db, runId));
     }
   }
 
@@ -575,8 +739,20 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
 
   return {
     tick,
+    async settle(): Promise<void> {
+      // A loop rather than one `Promise.all`, because a turn that is settling
+      // can legitimately be the reason another one starts — a repair node, a
+      // gate's own follow-up — and a single snapshot would return while that
+      // successor was still writing.
+      while (executingTurns.size > 0) {
+        await Promise.all(executingTurns);
+      }
+    },
     get inFlight(): number {
       return framing.size;
+    },
+    get executing(): number {
+      return executing.size;
     },
   };
 }

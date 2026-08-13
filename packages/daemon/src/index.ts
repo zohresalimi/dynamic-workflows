@@ -61,10 +61,12 @@ export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
 export type {
   AdvanceInput,
   DriverPorts,
+  ExecuteInput,
   FramingRunner,
   FramingWake,
   RunAdvancer,
   RunDriver,
+  RunNodeExecutor,
   TickReport,
 } from './drive.ts';
 export { createRunDriver, FRAMING_RETRY_MS } from './drive.ts';
@@ -508,6 +510,15 @@ export type {
   RunChainResolver,
 } from './pipeline/run-chain.ts';
 export { createRunChain, PLANNER_NODE, RECON_NODE } from './pipeline/run-chain.ts';
+// KAR-19.4 — the live executor: the one shipped caller of `executeRun`, and the
+// resolver `DeFlow up` binds it to a performer over a real worktree.
+export type {
+  RunExecution,
+  RunExecutionContext,
+  RunExecutionPorts,
+  RunExecutionResolver,
+} from './pipeline/run-execution.ts';
+export { createRunExecution } from './pipeline/run-execution.ts';
 // KAR-11.2 — plan validation's one entry point on this side of the boundary:
 // git's verdict on every node id, and the gate a patched plan commits through.
 export type {
