@@ -10,8 +10,8 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                                          |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                                          |
 | **Workstream**       | W13 — added 2026-08-12, after the first live run did nothing (see [roadmap §2.2](../../17-roadmap.md) and §2.3)                                                                                                                                                                              |
-| **Size**             | ~20 days across 6 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                            |
-| **Depends on**       | EPIC-10 (intake, framing, spec gate, recon), EPIC-11 (plan compilation and validation), EPIC-06 (`decide()`, the ticker, `node_wake`, the effect journal), EPIC-09 (packet assembly), EPIC-05 (provider registry and capability probe), EPIC-15 (the HTTP API and the SSE stream), EPIC-16 and EPIC-17 (the store and the views that render it), EPIC-18 (`run`, `status`, `doctor`, the exit-code table), EPIC-13 (human nodes), EPIC-12 (gates), EPIC-14 (cost accounting) |
+| **Size**             | ~23 days across 7 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                            |
+| **Depends on**       | EPIC-10 (intake, framing, spec gate, recon), EPIC-11 (plan compilation and validation), EPIC-06 (`decide()`, the ticker, `node_wake`, the effect journal), EPIC-09 (packet assembly), EPIC-05 (provider registry and capability probe), EPIC-15 (the HTTP API and the SSE stream), EPIC-16 and EPIC-17 (the store and the views that render it), EPIC-18 (`run`, `status`, `doctor`, the exit-code table), EPIC-13 (human nodes), EPIC-12 (gates), EPIC-14 (cost accounting), EPIC-04 (the bundled mock agent — the binary every scenario here runs against, and the one KAR-19.7 extends) |
 | **Blocks**           | M1's definition of done. PRD §11 is _"you complete a real multi-hour task at work with it"_; until this epic lands, no task of any length can be completed, because no submitted run proceeds past intake                                                                                    |
 | **PRD requirements** | F1.1, F1.2, F1.3, F2.2, F2.3, F4.1, F4.2, F4.4, F4.7, F5.7, F6.1, F7.1, F9.1, F9.2, F10.1, F10.6, F10.9, NF3, NF6, NF7, NF8, NF10, AR-1                                                                                                                                                     |
 | **Architecture**     | [05-durable-execution.md §10](../../05-durable-execution.md) (the scheduler and the ticker), [06-planning-and-replanning.md §1, §2, §3](../../06-planning-and-replanning.md) (intake, framing, compilation, validation), [11-api-and-realtime.md §2, §3, §6, §7.1](../../11-api-and-realtime.md) (the global topic, the documented `GET /api/runs`), [12-frontend-architecture.md §1, §6](../../12-frontend-architecture.md), [14-testing-strategy.md §2, §12](../../14-testing-strategy.md) |
@@ -97,11 +97,20 @@ exists in the daemon and reaches no operator.
   that never started — the hole [KAR-18.3](./EPIC-18-cli-packaging.md#kar-183--DeFlow-run-headless-execution)'s
   amendment recorded and left open. Every surface that lists runs stops showing a stopped run as
   live (KAR-19.6).
+- **One named exception to the rule below: a structured-output path for the bundled mock agent**
+  (KAR-19.7, added 2026-08-13). It is mock-agent work, which the Out-of-scope rule sends to
+  EPIC-04, and it is being done here on purpose — this epic's Definition of Done says a run must
+  work end to end with only the bundled agent, and no vendor-free run can be framed today because
+  every turn with a `returns` contract needs a `structuredOutputFlag` no ACP adapter has. A
+  capability the acceptance test depends on cannot be out of scope for the epic that declares that
+  test. The exception is this one capability, in the mock agent and its registry entry only; it does
+  not reopen mock-agent scope generally, and EPIC-04's determinism guarantees and fixtures are
+  binding on it.
 
 **Out of scope:**
 
-- **Any new mechanism.** If a step needs behaviour that does not exist, that is a story in the epic
-  that owns the mechanism, not here. This epic's diff is calls, scheduling records, one documented
+- **Any new mechanism** (except the one named above). If a step needs behaviour that does not exist,
+  that is a story in the epic that owns the mechanism, not here. This epic's diff is calls, scheduling records, one documented
   endpoint and one route — plus tests. KAR-19.6 adds no endpoint and no mechanism either: it is a
   CLI command over the control route that has always existed, plus one reordering inside
   `planRunControl`'s existing state machine. It does amend one shipped contract —
@@ -143,7 +152,12 @@ exists in the daemon and reaches no operator.
 
 ## Definition of Done (epic level)
 
-- [ ] All six stories are Done.
+- [ ] All seven stories are Done.
+- [ ] **On a machine with no vendor agent CLI installed at all, a run can be framed, planned and
+      executed using only `DeFlow-mock-agent`** — with no credential, no network and no read of
+      `~/.DeFlow`. This is the epic's manual acceptance test and the property KAR-19.5's smoke test
+      automates; KAR-19.7 is what makes it reachable, and until it is, the two amendments in
+      KAR-19.3 and KAR-19.4 stand open.
 - [ ] Every scenario in [the flow file](../flows/EPIC-19-live-run-pipeline-flows.md) is automated at
       the level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] `pnpm test:smoke` is part of `pnpm test`, drives the real CLI binary against a real daemon and
@@ -445,6 +459,11 @@ resumes when the answer arrives.
 > KAR-19.4's binding, KAR-19.5's `pnpm test:smoke` and the epic's own manual acceptance test —
 > *"in a scratch repository, with only the bundled mock agent, `DeFlow run --file <path>` produces
 > a plan and executes nodes"* — so it is the next thing to build, before KAR-19.4.
+>
+> **Resolved as a plan change on 2026-08-13:** that prerequisite is now
+> [KAR-19.7](#kar-197--the-mock-agent-can-serve-a-framing-turn-so-a-run-works-with-no-vendor-cli-added),
+> authored in this epic rather than in EPIC-04, with the Out-of-scope override recorded in the Scope
+> section. This departure closes when KAR-19.7 is Done and test plan #1 is re-automated at `e2e`.
 
 ---
 
@@ -560,7 +579,9 @@ removes.
 > - **`executeNodes` is not yet bound in `DeFlow up`,** for the same reason `runFraming` and
 >   `advanceRun` are not (KAR-19.3's amendment): a daemon whose chain cannot reach a plan has
 >   nothing for an executor to execute, so binding one alone would be unexercised wiring — the
->   defect this epic exists to remove, one level up.
+>   defect this epic exists to remove, one level up. The prerequisite is
+>   [KAR-19.7](#kar-197--the-mock-agent-can-serve-a-framing-turn-so-a-run-works-with-no-vendor-cli-added),
+>   added 2026-08-13; this departure and the two above close when it is Done.
 >
 > One thing shipped that no criterion asked for, and it is the kind of thing that is cheaper to
 > record than to rediscover. **The execution turn is launched by the tick, never awaited by it.**
@@ -810,15 +831,145 @@ deleted once one route answers for every state.
 
 ---
 
+### KAR-19.7 — The mock agent can serve a framing turn, so a run works with no vendor CLI _(added)_
+
+|                 |                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                                                                                                                                                                                                                           |
+| **Priority**    | P0                                                                                                                                                                                                                                                                                                                                                                    |
+| **Size**        | M                                                                                                                                                                                                                                                                                                                                                                     |
+| **Depends on**  | KAR-19.3 (the chain whose amendment discovered this, and whose e2e half it unblocks), EPIC-04 KAR-04.1 (the mock agent binary and its real ACP session), KAR-04.2 (the scripted scenario format the scripted returns join) and KAR-04.4 (the capability-profile honesty rule this field joins), EPIC-05 KAR-05.2 (the probed capability row admission reads) and KAR-05.3 (`PROVIDER_SPECS`, the one file allowed to name a vendor), EPIC-09 KAR-09.9 (the `returns` contract and `structuredOutputContract`), EPIC-10 KAR-10.2 (`admitFraming`, which this story satisfies rather than relaxes) |
+| **PRD**         | F1.2, F2.2, F3.5, F3.7, NF1, NF6, NF9                                                                                                                                                                                                                                                                                                                                 |
+| **Verified by** | EPIC-19-S44, EPIC-19-S45, EPIC-19-S46, EPIC-19-S47, EPIC-19-S48, EPIC-19-S49, EPIC-19-S50, EPIC-19-S51                                                                                                                                                                                                                                                                 |
+
+**As** a person evaluating DeFlow on a machine with no vendor agent CLI, **I want** the bundled mock
+agent to be able to answer a turn that carries a schema, **so that** framing, planning and execution
+work end to end with nothing installed — and **so that** this epic's own acceptance test can be
+written at all.
+
+**This story exists because the gate found EPIC-19's acceptance test unreachable.** The framing,
+recon and planner turns each carry a `returns` contract, and `admitFraming`
+(`packages/adapters/src/framing-admission.ts`) refuses any provider without a `structuredOutputFlag`.
+In `packages/adapters/src/provider-registry.ts` only `claude` (`--json-schema`) and `codex`
+(`--output-schema`) have one, and both on the **exec-shim** path; `DeFlow-mock-agent` speaks ACP
+only. So on a machine with no vendor CLI nothing can get past framing — which is why KAR-19.3's
+amendment could not write its `e2e`, why KAR-19.4's amendment could not bind the chain in
+`DeFlow up`, and why KAR-19.5's smoke test — **the whole point of which is to need no vendor CLI, no
+credential and no network** — cannot be written.
+
+**The epic's Out-of-scope rule sends mock-agent work to [EPIC-04](./EPIC-04-mock-agent.md), and that
+rule is being overridden here deliberately.** The reason belongs in the story rather than in a commit
+message: EPIC-19's Definition of Done is behavioural — `DeFlow run` must work end to end with only
+the bundled mock agent — and **a capability that acceptance test depends on cannot be out of scope
+for the epic that declares it.** The override is recorded in this epic's Out-of-scope section too, so
+the exception is visible from the rule rather than only from here.
+
+**The guard is not the thing to change.** The tempting fix is one line in `admitFraming`: let the
+mock agent through, or drop the `structuredOutputFlag` requirement. Both are refused. That guard is
+what stops a **real** provider being handed a contract it cannot honour — KAR-10.2 AC3's argument
+that _"the fallback for a spec is not a softer contract, it is a different adapter"_ — and a
+special case for the test double is exactly the kind of exception that makes the production path
+untested by the only path anyone runs. So the change stays inside the mock agent and its registry
+entry: the binary genuinely takes a schema and genuinely returns a document that validates against
+it, the registry says so because it is true, and admission reaches the same `native` answer through
+the two questions it already asks, having learned nothing about mocks.
+
+**Determinism is not negotiable, and neither are EPIC-04's fixtures.** F3.7's mock provider is
+_"deterministic, free"_ and NF9 puts nondeterminism outside the adapter boundary; a document that
+carries a timestamp, an unseeded id or a directory-listing order would make every downstream snapshot
+in the repository flake. And the structured path is entered only when a schema is supplied, so a turn
+without one behaves byte-for-byte as it does today — otherwise this story's cost is re-recording
+every fixture EPIC-04 owns.
+
+**Acceptance criteria**
+
+1. `DeFlow-mock-agent` gains a structured-output path: given the schema flag its registry entry
+   declares and a schema file naming a schema it can serve, the turn returns **one** document that
+   validates against that schema and nothing else on the return channel. It serves at least
+   `DeFlow.taskspecdraft.v1` (framing), `DeFlow.reconsurvey.v1` with `DeFlow.reconfact.v1` (recon) and
+   `DeFlow.plangraph.v1` (planner) — the three turns the live chain needs — and its default plan
+   document has **at least two nodes**, so KAR-19.5 AC2's "at least two nodes" clause is reachable
+   against it.
+2. The registry declares the capability and the declaration is true. `PROVIDER_SPECS` gains a `mock`
+   entry whose `shim.structuredOutputFlag` is the flag AC1 implements, so
+   `providerStructuredOutput('mock')` reports `native` **because the binary honours the flag**, not
+   in order to make a check pass. The flag string the entry declares and the flag string the binary
+   parses are one exported constant, so a rename cannot leave the registry lying, and a test spawns
+   the real binary with the entry's own flag rather than asserting the two literals match.
+3. `admitFraming` is unchanged, and a source guard proves it. Framing on `mock` is admitted because a
+   probed capability row exists and the manifest says `native` — the same two questions
+   `framing-admission.ts` asks of every provider. `framing-admission.ts`, `admission.ts` and
+   `structured-output.ts` name no provider, `mock` included, and `provider-registry.ts` remains the
+   only file allowed to (KAR-05.3's `test/no-capability-table.test.ts` exemption).
+4. The returns are deterministic. The same schema id, the same prompt and the same seed produce a
+   **byte-identical** document across repeated spawns and across a changed `cwd`, `TMPDIR`, `TZ` and
+   locale. No `Date.now()`, no unseeded random and no filesystem enumeration order reaches the
+   document: ids and any time-like field come from the mock agent's existing deterministic sources
+   (`src/ids.ts`, `src/clock.ts`). Two runs of the smoke test produce the same plan.
+5. EPIC-04's existing behaviour is untouched. Every shipped scenario under
+   `packages/mock-agent/scenarios/` and every recording replayed under `recordings/` produces
+   byte-identical output before and after this story, and EPIC-04's suite passes **unchanged** — no
+   fixture is re-recorded and no expectation is relaxed. A turn invoked without a schema flag,
+   including every pathological scenario, behaves exactly as it does today.
+6. A schema it cannot serve is refused, never approximated. An unknown schema id, an absent or
+   unreadable schema file, or a schema for which the agent has no generator exits non-zero, names the
+   schema id, lists the ids it can serve, and writes **zero bytes** on the return channel. It never
+   emits a plausible-but-wrong document and never falls back to prose — a mock that guesses turns the
+   whole chain green for the wrong reason, which is this epic's own failure mode reproduced inside
+   the test double.
+7. The failure returns are scriptable too. A scenario can make the turn return a document that fails
+   validation, a truncated one, or one that is valid but unsatisfiable, so the invalid-draft path
+   (KAR-10.2), plan-validation failure (KAR-19.3 AC5, EPIC-19-S20) and schema-repair exhaustion are
+   all reachable **with no vendor CLI installed**. The unscripted default return is always valid, so
+   a scenario file is what makes a turn fail rather than the absence of one.
+8. The new entry does not become a silent routing hazard. On a machine where a real provider
+   resolves, nothing prefers `mock` to it: a run routes onto `mock` only when the operator's `PATH`
+   or configuration puts it there, and a source-level assertion covers the selection order rather
+   than a comment. `doctor` reports the entry truthfully — `installed` when the bundled binary
+   resolves — and never prints an `npm install -g` action for a package that ships in the same
+   tarball (KAR-18.8's rule that the words must fit the machine).
+9. **The acceptance case.** In an `fs.mkdtemp` git repository, on a `PATH` holding no vendor agent CLI
+   at all and only `DeFlow-mock-agent`, `DeFlow run --file <spec>` reaches `plan.proposed` and at
+   least one `node.completed`, with no credential variable in any child environment, no outbound
+   socket and no read of `~/.DeFlow`. This is precisely the run KAR-19.3's amendment recorded as
+   impossible today.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
+implementation.
+
+| #   | Level       | Test                                                                                                                                                                                          | Red when                                                                                                                                    |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | integration | Spawn the built `DeFlow-mock-agent` with the registry entry's own flag for each of the three schema ids; validate each returned document against `schemas/<id>.json` with ajv, and assert the plan document has ≥ 2 nodes | The binary ignores the flag and answers in prose, so the framing turn returns "valid-ish" and everything downstream is judged against it   |
+| 2   | unit        | `providerSpec('mock')` and `providerStructuredOutput('mock')`; assert `native`, and assert the declared flag is the same exported constant the binary's argument parser reads                 | The entry declares a flag the binary does not implement, and the registry becomes the lie admission trusts                                  |
+| 3   | unit        | `admitFraming({ provider: 'mock' }, row)` → `null` with a probed row, `NodeFailureError` with `row === null`; plus a source guard that `framing-admission.ts`, `admission.ts` and `structured-output.ts` name no provider | Admission was special-cased for the mock agent, so the guard that stops a real provider taking a contract it cannot honour now has a hole  |
+| 4   | integration | The same turn spawned twenty times with the same seed, under changed `cwd`, `TMPDIR`, `TZ` and locale; assert byte-identical documents every time                                             | A timestamp, a `Math.random()` or a readdir order reaches the document, and the smoke test's snapshot flakes about once a week             |
+| 5   | integration | EPIC-04's shipped scenarios and the `recordings/` replay, run before and after; assert byte-identical transcripts and an unchanged EPIC-04 suite                                              | The structured path changes the default turn, and every EPIC-04 fixture has to be re-recorded to stay green                                |
+| 6   | integration | An unknown schema id, an absent schema file and a schema with no generator; assert non-zero exit, the id named, the servable list printed, and zero bytes on the return channel                | It returns its nearest guess or an empty object, and the whole chain goes green on a document nothing actually produced                    |
+| 7   | integration | A scenario scripting an invalid draft and one scripting a truncated document; assert the caller's own refusal path fires for each, with no vendor CLI on `PATH`                               | Only the happy return is scriptable, so EPIC-19-S20's validation failure still needs an installed vendor to reach                          |
+| 8   | unit        | Provider selection over a resolved table holding a real vendor and `mock`; assert `mock` is never preferred, and assert `doctor`'s verdict for the bundled binary carries no `npm install -g` | Adding the entry quietly makes every machine's default provider a fake agent, and a run "succeeds" against a mock nobody chose             |
+| 9   | e2e         | A `PATH` with no vendor CLI and only `DeFlow-mock-agent`; `DeFlow run --file spec.md`; assert `plan.proposed`, ≥ 1 `node.completed` and a terminal `run.*` in the on-disk ledger              | The chain still cannot be framed on a clean machine, so this epic's Definition of Done and KAR-19.5 both remain unreachable                |
+
+**Notes / risks** — two things constrain the implementation and are cheaper to write down than to
+rediscover. **`@DeFlow/mock-agent` ships with exactly one dependency**
+([07 §13](../../07-provider-adapter-layer.md)), so ajv cannot come along: the emitted document is
+validated **in the tests**, not at runtime by the binary, and AC1's guarantee is therefore a
+test-time property of a generator that must be written to be obviously correct rather than a runtime
+check. And the second temptation, after special-casing admission, is to have the mock agent emit
+whatever the *caller* wants — reading the run's own context to shape the plan. It must not: a mock
+whose output depends on more than (schema, prompt, seed) is a second planner wearing a fixture's
+clothes, and KAR-19.3 AC7's one-implementation-per-step guard is the rule it would be evading.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **~20 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring. |
+| R1  | **~23 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring, and KAR-19.7 (~3 days, added 2026-08-13) cannot slip either, because KAR-19.5 cannot be written without it. |
 | R2  | **The temptation to write a second, simpler implementation** of framing or planning to get a run moving today.                                                                                                                                      | KAR-19.3 AC7 is a source guard, not a convention, and it is in the test plan before the wiring. One caller per step, asserted mechanically.                                                                                                                                                                                                                     |
 | R3  | **The wiring may reveal that two components' contracts do not actually meet** — a packet shape, a capability field, an id that framing mints and the planner expects differently. Integration is where that is discovered, by construction.         | Any mismatch is fixed **in the owning epic's code with its own test**, and the divergence is written back into the architecture doc in the same session (AR-6). This epic's diff stays calls and scheduling; a mismatch that needs a mechanism change is a story in the owning epic, recorded under [README §9](../README.md#9-changing-the-plan).             |
 | R4  | **A green smoke test that cannot go red** — the exact failure this epic exists to correct, reproduced one level up.                                                                                                                                 | KAR-19.5 AC4's sabotage table: every link cut in turn, every cut asserted to fail. A row that passes fails the story.                                                                                                                                                                                                                                          |
-| R5  | **The e2e slice is already well past the ~5 budget** [14-testing-strategy.md](../../14-testing-strategy.md) sets, and this epic adds eight (EPIC-19-S1, S10, S16, S24, S32, S33, S34, S37).                                                          | Eight is the honest count and it is recorded here rather than absorbed. Four of them (S1, S16, S24, S32) are chain assertions nothing below e2e can make; the smoke pair (S33, S34) is the epic's product; S10 and S37 are exit codes and a verified process-group kill, neither of which exists anywhere but in a process. Everything else was pushed down to `integration`, `web` or `unit` deliberately — KAR-19.6 spends one e2e out of seven scenarios for exactly that reason — and the budget line in 14 §2 should be restated as a per-epic figure rather than a global one. |
+| R5  | **The e2e slice is already well past the ~5 budget** [14-testing-strategy.md](../../14-testing-strategy.md) sets, and this epic adds nine (EPIC-19-S1, S10, S16, S24, S32, S33, S34, S37, S44).                                                      | Nine is the honest count and it is recorded here rather than absorbed. S44 is the ninth and is the one that makes four of the others runnable at all — an e2e against a real binary on a machine with no vendor CLI is exactly what KAR-19.3's and KAR-19.4's amendments recorded as impossible today. Four of them (S1, S16, S24, S32) are chain assertions nothing below e2e can make; the smoke pair (S33, S34) is the epic's product; S10 and S37 are exit codes and a verified process-group kill, neither of which exists anywhere but in a process. Everything else was pushed down to `integration`, `web` or `unit` deliberately — KAR-19.6 spends one e2e out of seven scenarios for exactly that reason — and the budget line in 14 §2 should be restated as a per-epic figure rather than a global one. |
 | R8  | **Widening the cancel path could turn a refusal into a deletion.** `422 spec_not_approved` is a blunt rule, but it is currently the only thing standing between a mistyped run id and a terminal event on someone else's run.                        | KAR-19.6 changes what `cancel` does and nothing about what `pause` and `resume` do, keeps `404 run_not_found` ahead of every other check in `planRunControl`'s asserted order, and ends the run with events rather than deleting anything — every artifact stays inspectable on disk (NF8), which is what makes a mistaken cancel recoverable reading rather than lost work.                                                                    |
 | R6  | **Cold start plus framing plus compilation may not fit the smoke test's 90 s budget** on a cold CI runner, and the reflex will be to raise the number.                                                                                              | The budget is asserted by the test's own timeout and the number is written into this file. Raising it is a plan change with a written reason, not an edit — and the first place to look is the probe cache, measured at 441 ms cold and 8 ms warm in KAR-18.2's Notes.                                                                                          |
 | R7  | **Fixtures recorded from the pre-fix system may encode the broken shape**, so a projection tuned to them could disagree with a live run.                                                                                                            | The smoke test never reads a fixture. Once it passes, re-recording [03 §6.2](../../03-local-development.md)'s fixtures from real runs is the immediate follow-up, and any projection that changes as a result is a finding rather than a surprise.                                                                                                              |
@@ -826,6 +977,7 @@ deleted once one route answers for every state.
 ---
 
 **Related:** [Flows](../flows/EPIC-19-live-run-pipeline-flows.md) · [Board](../board.md) ·
+[EPIC-04](./EPIC-04-mock-agent.md) ·
 [EPIC-10](./EPIC-10-task-intake.md) · [EPIC-11](./EPIC-11-dynamic-planning.md) ·
 [EPIC-06](./EPIC-06-orchestrator.md) · [EPIC-18](./EPIC-18-cli-packaging.md) ·
 [05-durable-execution.md](../../05-durable-execution.md) ·

@@ -3,7 +3,7 @@
 > Behavioural specification for [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) ·
 > [Board](../board.md) · [Delivery plan](../README.md)
 
-**Status:** Draft v1.0 · **Last reviewed:** 12 August 2026
+**Status:** Draft v1.0 · **Last reviewed:** 13 August 2026
 
 ## Actors
 
@@ -101,6 +101,14 @@ Background:
 | EPIC-19-S41 | Cancelling twice, an ended run, and a run that is not there                        | KAR-19.6 | Failure     |
 | EPIC-19-S42 | A stopped run stops being live in every surface that lists runs                    | KAR-19.6 | Edge case   |
 | EPIC-19-S43 | A crash mid-cancel finishes the cancel, it does not resume the run                 | KAR-19.6 | Recovery    |
+| EPIC-19-S44 | **Happy path: a framing turn served by the bundled agent, no vendor CLI at all**   | KAR-19.7 | Happy path  |
+| EPIC-19-S45 | Recon and planner turns come back schema-valid from the same binary                | KAR-19.7 | Happy path  |
+| EPIC-19-S46 | **The registry says `native` because the binary is, and admission is untouched**   | KAR-19.7 | Edge case   |
+| EPIC-19-S47 | The same turn twice: byte-identical, whatever the machine underneath               | KAR-19.7 | Edge case   |
+| EPIC-19-S48 | A schema it cannot serve is refused, never approximated                            | KAR-19.7 | Failure     |
+| EPIC-19-S49 | An invalid return can be scripted, so the refusal paths need no vendor CLI         | KAR-19.7 | Failure     |
+| EPIC-19-S50 | EPIC-04's scenarios and recordings are byte-identical after the change             | KAR-19.7 | Edge case   |
+| EPIC-19-S51 | The mock entry never becomes the machine's default provider                        | KAR-19.7 | Edge case   |
 
 ---
 
@@ -1235,6 +1243,268 @@ asserted against the one path where breaking it is most tempting, because the la
 timed signals and a timer is the natural way to write one. A cancel that does not survive a restart
 resumes a run the operator has already decided to stop, which is worse than never having cancelled
 it: they are no longer watching.
+
+---
+
+## EPIC-19-S44 — Happy path: a framing turn served by the bundled agent, no vendor CLI at all
+
+**Verifies:** KAR-19.7 · **Type:** Happy path · **Automated at:** e2e
+
+```gherkin
+Feature: the bundled agent can answer a turn that carries a schema
+
+  Scenario: a run framed on a machine with nothing installed
+    Given a temp PATH holding DeFlow-mock-agent and no vendor agent CLI of any kind
+    And no "claude", "codex", "gemini" or ACP adapter resolves anywhere on that PATH
+    When the operator runs "DeFlow run --file spec.md"
+    Then admission does not refuse the run and no "run.aborted" with code "no_usable_provider" is
+         appended
+    And the framing turn is served by DeFlow-mock-agent over a real ACP session
+    And the document it returns validates against "DeFlow.taskspecdraft.v1"
+    And the ledger contains, in seq order, "task.submitted", "run.created", "plan.proposed",
+        "node.started" and "node.completed", ending in a terminal "run.*"
+    And no variable matching "*_API_KEY" or "*_TOKEN" is present in any child environment
+    And no outbound socket is opened and nothing under the developer's home directory is read
+```
+
+**Notes:** this is the run [KAR-19.3](../epics/EPIC-19-live-run-pipeline.md)'s amendment recorded as
+impossible: every schema-bearing turn needs a `structuredOutputFlag`, only the two vendor exec-shim
+paths declare one, and the bundled agent speaks ACP only — so a machine with no vendor CLI could not
+get past framing, and this epic's own Definition of Done could not be demonstrated. The clause that
+carries the scenario is the PATH: it is asserted to hold no vendor CLI rather than merely to hold the
+mock agent, because a developer's own `claude` leaking in would make this pass for the wrong reason
+and on their machine only.
+
+---
+
+## EPIC-19-S45 — Recon and planner turns come back schema-valid from the same binary
+
+**Verifies:** KAR-19.7 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: the bundled agent can answer a turn that carries a schema
+
+  Scenario Outline: every schema the live chain needs
+    Given the built DeFlow-mock-agent binary
+    And the schema flag its own registry entry declares
+    When it is spawned for schema id <schema> with that flag and a schema file
+    Then exactly one document is written on the return channel and nothing else
+    And that document validates against "schemas/<schema>.json" under ajv
+    And the process exits zero
+
+    Examples:
+      | schema                     |
+      | DeFlow.taskspecdraft.v1    |
+      | DeFlow.reconsurvey.v1      |
+      | DeFlow.plangraph.v1        |
+
+  Scenario: the default plan is big enough to be a plan
+    When the planner schema is served with no scripted scenario
+    Then the returned PlanGraph has at least two nodes
+    And it passes the plan validator without a repair round
+    And each recon fact in "DeFlow.reconsurvey.v1" carries a "DeFlow.reconfact.v1" provenance field
+```
+
+**Notes:** three turns, not one — framing alone would leave the chain stopping at recon, which is the
+same defect one joint later. The "nothing else on the return channel" clause is what makes the
+document parseable without a heuristic: a mock that prefixes a friendly line is indistinguishable
+from a vendor that does, and the parser written to tolerate it is the parser that silently accepts a
+truncated return. The two-node clause exists because
+[KAR-19.5](../epics/EPIC-19-live-run-pipeline.md) AC2 asserts a compiled plan has at least two nodes,
+and a one-node default would make that clause unreachable against the only agent the smoke test has.
+
+---
+
+## EPIC-19-S46 — The registry says `native` because the binary is, and admission is untouched
+
+**Verifies:** KAR-19.7 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the declaration is true, and the guard is not the thing that changed
+
+  Scenario: the registry entry earns its answer
+    Given PROVIDER_SPECS' "mock" entry
+    Then "providerStructuredOutput('mock')" reports "native"
+    And the flag the entry declares and the flag the binary's argument parser reads are one
+        exported constant, referenced by both
+    And a test spawns the real binary with the entry's own flag rather than comparing two literals
+
+  Scenario: admission reaches the same answer through the questions it already asks
+    Given a probed capability row for "mock"
+    When "admitFraming" is called for a framing node routed to "mock"
+    Then it returns null — the run is admitted
+    When the probed capability row is absent
+    Then it raises a NodeFailureError, exactly as it does for every other provider
+
+  Scenario: no provider is named outside the one file allowed to name one
+    Given the shipped source of "framing-admission.ts", "admission.ts" and "structured-output.ts"
+    Then none of them contains the literal "mock", "claude", "codex" or "gemini"
+    And "provider-registry.ts" remains the only file exempted by
+        "test/no-capability-table.test.ts"
+```
+
+**Notes:** the tempting fix was one line in `admitFraming` — let the mock through, or drop the
+`structuredOutputFlag` requirement — and both are refused for the same reason KAR-10.2 AC3 gives:
+_"the fallback for a spec is not a softer contract, it is a different adapter"_. That guard is what
+stops a **real** provider being handed a contract it cannot honour, and a special case for the test
+double would leave the production branch exercised by nothing anybody runs. The third scenario is the
+mechanical form of that: if admission cannot name the mock agent, it cannot be special-cased for it.
+
+---
+
+## EPIC-19-S47 — The same turn twice: byte-identical, whatever the machine underneath
+
+**Verifies:** KAR-19.7 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: determinism is not negotiable
+
+  Scenario: the same inputs give the same bytes
+    Given the same schema id, the same prompt and the same seed
+    When the turn is served twenty times across twenty fresh spawns
+    Then all twenty documents are byte-identical
+    When the same turn is served again under a changed cwd, TMPDIR, TZ and locale
+    Then the document is byte-identical to the first twenty
+    And no "Date.now()", no unseeded random source and no directory enumeration order reaches the
+        document
+    And every id and time-like field in it comes from the mock agent's own deterministic sources
+
+  Scenario: the smoke test plans the same plan twice
+    Given two runs of the smoke scenario over two fresh tmpdirs
+    Then the two compiled PlanGraphs are equal once run and node ids are normalised
+```
+
+**Notes:** F3.7 calls the mock provider _"deterministic, free"_ and NF9 puts nondeterminism outside
+the adapter boundary; a returned document carrying a timestamp or an unseeded id would flake every
+downstream snapshot in the repository, at roughly the rate that trains a person to re-run the suite
+rather than read the failure. The changed-`TZ` clause is not decoration — a date rendered through the
+host locale is the realistic version of this bug and it passes on the author's machine indefinitely.
+
+---
+
+## EPIC-19-S48 — A schema it cannot serve is refused, never approximated
+
+**Verifies:** KAR-19.7 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the bundled agent can answer a turn that carries a schema
+
+  Scenario Outline: a turn it cannot honour ends loudly and empty
+    Given the built DeFlow-mock-agent binary
+    When it is spawned with the schema flag and <input>
+    Then it exits non-zero
+    And its stderr names the schema id it was asked for
+    And its stderr lists the schema ids it can serve
+    And exactly zero bytes are written on the return channel
+    And no partial or placeholder document is emitted
+
+    Examples:
+      | input                                     |
+      | an unknown schema id                      |
+      | a path to a schema file that is not there |
+      | an unreadable schema file                 |
+      | a known id with no generator behind it    |
+```
+
+**Notes:** a mock that guesses is this epic's own failure mode reproduced inside the test double —
+the chain goes green on a document nothing actually produced, and the next reader trusts it. The
+zero-bytes clause is the one with teeth: an empty object validates against a permissive schema, and a
+caller that receives one has no way to tell a served turn from an unserved one. Listing the servable
+ids on stderr is what turns "the smoke test failed" into a one-line diagnosis.
+
+---
+
+## EPIC-19-S49 — An invalid return can be scripted, so the refusal paths need no vendor CLI
+
+**Verifies:** KAR-19.7 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the failure returns are scriptable too
+
+  Scenario Outline: the caller's own refusal path fires with nothing installed
+    Given a temp PATH holding DeFlow-mock-agent and no vendor agent CLI
+    And a scenario file scripting the turn to return <return>
+    When the live chain reaches that turn
+    Then <caller refusal> fires
+    And no vendor binary was spawned at any point
+
+    Examples:
+      | return                            | caller refusal                                    |
+      | a document that fails validation  | KAR-10.2's invalid-draft repair path              |
+      | a truncated document              | the adapter's own parse failure, named            |
+      | a valid but unsatisfiable plan    | "plan.validation_failed" and "run.needs_human"    |
+
+  Scenario: the unscripted default is always valid
+    Given no scenario file for the turn
+    When the turn is served
+    Then the returned document validates
+    And making a turn fail requires a scenario file rather than the absence of one
+```
+
+**Notes:** the refusal paths are the half of the chain that is hardest to reach and easiest to leave
+untested, and until now reaching them at all needed an installed vendor CLI persuaded to misbehave.
+The last scenario is the trap the shape has to avoid: if an absent scenario file produced an invalid
+return, every test that forgot one would exercise the repair loop and nobody would notice the happy
+path had stopped being covered.
+
+---
+
+## EPIC-19-S50 — EPIC-04's scenarios and recordings are byte-identical after the change
+
+**Verifies:** KAR-19.7 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: EPIC-04's guarantees are binding on this story
+
+  Scenario: nothing that already worked changed
+    Given every shipped scenario under "packages/mock-agent/scenarios/"
+    And every recording replayed from "recordings/"
+    When each is run against the binary built after this story
+    Then its transcript is byte-identical to the one produced before this story
+    And EPIC-04's suite passes unchanged, with no fixture re-recorded and no expectation relaxed
+
+  Scenario: a turn with no schema flag is the turn it always was
+    When the binary is invoked without the structured-output flag, including for every
+         pathological scenario EPIC-04 ships
+    Then its behaviour and its bytes are exactly what they are today
+    And the structured path is entered only when a schema is supplied
+```
+
+**Notes:** the mock agent is what every test in this repository runs against, so a change to its
+default turn is a change to several hundred expectations at once — and the version of that change
+which "only" re-records the fixtures has quietly rewritten the baseline that made the fixtures worth
+having. Gating the new path on the flag's presence is what keeps this story's cost proportional to
+what it adds, and it is asserted rather than intended.
+
+---
+
+## EPIC-19-S51 — The mock entry never becomes the machine's default provider
+
+**Verifies:** KAR-19.7 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the new entry is not a routing hazard
+
+  Scenario: a real provider is always preferred
+    Given a resolved provider table holding a real vendor adapter and "mock"
+    When a run's provider is selected
+    Then "mock" is not chosen
+    And a run routes onto "mock" only where the operator's PATH or configuration puts it there
+    And the selection order is asserted at source rather than described in a comment
+
+  Scenario: doctor tells the truth about a binary that ships in the tarball
+    Given the bundled DeFlow-mock-agent resolves
+    When "doctor" renders its Agents section
+    Then the entry is reported as "installed"
+    And no "npm install -g" action is printed for it
+    And the string "not installed" does not appear for it
+```
+
+**Notes:** the failure this guards is quiet and expensive: a run that "succeeded" against an agent
+nobody chose, on a machine where the real provider was sitting right there. And the `doctor` half is
+KAR-18.8's rule holding for a new entry — the words have to fit the machine, and telling an operator
+to `npm install -g` a package that shipped in the same tarball is the same class of wrong as
+_"claude is not installed"_ on a machine where it resolves.
 
 ---
 
