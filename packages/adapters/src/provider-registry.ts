@@ -56,6 +56,7 @@ import {
   resolveExecutable,
 } from './binary-resolver.ts';
 import { permissionInexpressible, registryRefused, unsupportedOutputFormat } from './failures.ts';
+import type { SessionIdSpec } from './vendor-session.ts';
 
 /**
  * `native` speaks ACP itself; `adapter` reaches it through a bridge package
@@ -231,6 +232,21 @@ export interface ShimSpec {
    * secret, past the boundary `buildChildEnv()` can see.
    */
   readonly secretEnvFlag?: string;
+  /**
+   * KAR-19.8 AC8 — the flag this vendor takes a client-chosen session id on,
+   * and **the form it must be in**.
+   *
+   * Absent for every entry whose `build` passes no session id, and the absence
+   * is checked rather than assumed (`test/exec-shim-session-id.test.ts`
+   * asserts that an entry declaring nothing puts nothing on the argv).
+   *
+   * The form is here rather than in a test because it is invocation knowledge
+   * like every other field on this interface: nothing probes it, and on
+   * 2026-08-13 the one value nobody had written down — Claude Code 2.1.220
+   * validates `--session-id` as a UUID and exits 1 otherwise — cost an operator
+   * their afternoon.
+   */
+  readonly sessionId?: SessionIdSpec;
   /** Absolute paths for the vendor CLI, or a tagged `adapter.spawn-failed`. */
   resolve(ctx: ResolveContext): ResolvedProvider;
   /**
@@ -285,6 +301,8 @@ interface ShimEntry {
   /** KAR-14.2 AC9 — the vendor's own spend ceiling flag; see `ShimSpec`. */
   readonly costCeilingFlag?: string;
   readonly secretEnvFlag?: string;
+  /** KAR-19.8 AC8 — the session-id flag and its form; see `ShimSpec`. */
+  readonly sessionId?: SessionIdSpec;
   build(
     ctx: ShimContext,
     format: ShimFormat,
@@ -490,6 +508,7 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     ...(entry.efforts === undefined ? {} : { efforts: entry.efforts }),
     ...(entry.costCeilingFlag === undefined ? {} : { costCeilingFlag: entry.costCeilingFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
+    ...(entry.sessionId === undefined ? {} : { sessionId: entry.sessionId }),
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
       path: resolveExecutable(id, entry.bin, ctx),
@@ -569,6 +588,15 @@ export const PROVIDER_SPECS = {
         worktree: ['--approval-mode', 'auto_edit'],
         full: ['--approval-mode', 'yolo'],
       },
+      // KAR-19.8 AC8. The flag is verified (`--help`, 2026-08-02); the **form**
+      // is not — this vendor documents none, and no turn has ever been run
+      // against it with a session id of another shape. `uuid` is therefore a
+      // floor rather than a claim about its parser: it is the strictest form
+      // any entry in this table demands and DeFlow supplies one value to every
+      // vendor, so declaring it here means the day this vendor starts
+      // validating the flag is a diff in this row rather than another afternoon
+      // lost to the failure claude produced.
+      sessionId: { flag: '--session-id', form: 'uuid' },
       build: (ctx, format, flags) => [
         '-p',
         ctx.prompt,
@@ -691,6 +719,12 @@ export const PROVIDER_SPECS = {
       // recorded in order and `planner-effort.ts` takes its last member.
       effortFlag: '--effort',
       efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      // KAR-19.8 AC8. **Verified by execution on 2026-08-13**, the expensive
+      // way: this vendor exits 1 printing `Error: Invalid session ID. Must be a
+      // valid UUID.` for anything else, and did so on every attempt of a real
+      // operator's run. The form is declared here so the check is a table row
+      // rather than the next by-hand run.
+      sessionId: { flag: '--session-id', form: 'uuid' },
       // KAR-14.2 AC9. **Verified 2026-08-02** from the same 2.1.220 flag table:
       // `--max-budget-usd <amt>`, whose refusal comes back as the
       // `error_max_budget_usd` result subtype the classifier maps to `gate`.

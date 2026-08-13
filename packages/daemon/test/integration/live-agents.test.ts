@@ -25,7 +25,8 @@
  *
  * Verifies: EPIC-19-S16 · KAR-19.3 AC1 · test plan #1
  */
-import { NodeFailureError } from '@DeFlow/core';
+import { vendorSessionId } from '@DeFlow/adapters';
+import { NodeFailureError, NodeIdSchema, RunIdSchema } from '@DeFlow/core';
 import { DIALECT_ENV, it, linkFakeAgent, SCENARIO_ENV } from '@DeFlow/testkit';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -56,7 +57,14 @@ function turnOptions(over: Partial<LiveTurnOptions> & { cwd: string }): LiveTurn
     provider: 'mock',
     binaryPath: MOCK_AGENT_BIN,
     schemasDir: writeRunSchemas(over.cwd),
-    sessionId: 'live-agents-spec',
+    // KAR-19.8 — derived, never spelled: this file spawns a fake vendor CLI
+    // that enforces Claude Code 2.1.220's own rule, and `live-agents-spec` is
+    // exactly the shape of value the real binary refused on 2026-08-13.
+    sessionId: vendorSessionId({
+      runId: RunIdSchema.parse('run_20260813T110608Z_379fc8'),
+      nodeId: NodeIdSchema.parse('framing'),
+      attempt: 0,
+    }),
     env: childEnv(),
     ...over,
   };

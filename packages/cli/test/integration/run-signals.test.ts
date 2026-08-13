@@ -77,17 +77,30 @@ afterEach(async () => {
 const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 
 /**
- * KAR-19.2 — the bundled mock agent, linked on under both names admission
- * resolves. Needed only by S21, whose `DeFlow run` autostarts its own daemon
+ * KAR-19.2 — the bundled mock agent, linked on under the name it actually
+ * ships as. Needed only by S21, whose `DeFlow run` autostarts its own daemon
  * and would otherwise be refused at submission before there is anything to
  * signal; harmless for S20, whose daemon is already up and was admitted (or
  * not) at its own boot, before this ever runs.
+ *
+ * > **Corrected 2026-08-13 by KAR-19.8.** It used to link the same binary as
+ * > `claude` and `claude-agent-acp`, which made the daemon build *Claude
+ * > Code's* argv and hand it to a binary that answers `unknown argument "-p"`.
+ * > That was survivable only while such an exit was classified `transient`: the
+ * > framing turn failed, a retry was scheduled ~30 s out, and the run stayed in
+ * > flight long enough for the second terminal below to attach to it. KAR-19.8
+ * > AC6 makes an argument the vendor refuses `permanent`, so that run now
+ * > aborts at once — correctly — and there is nothing left to Ctrl-C.
+ * >
+ * > The fix is to stop lying about which binary this is. Under its own name the
+ * > bundled agent is admitted, serves the framing turn (KAR-19.7) and the run
+ * > parks at the F1.3 spec gate waiting for a human, which is a run that is
+ * > genuinely still in flight — what these two scenarios were always about.
  */
 async function usableProviderBinDir(dir: string): Promise<string> {
   const binDir = join(dir, 'bin');
   await mkdir(binDir, { recursive: true });
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude'));
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude-agent-acp'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'DeFlow-mock-agent'));
   return binDir;
 }
 

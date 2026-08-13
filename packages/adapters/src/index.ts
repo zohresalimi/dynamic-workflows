@@ -20,6 +20,10 @@ export {
   CAPABILITY_REQUIREMENTS,
   type CapabilityRequirement,
 } from './admission.ts';
+// KAR-19.8 — a vendor that refuses one of DeFlow's own arguments is reported
+// as an argument problem, permanently, with the flag and the value on it.
+export type { ArgumentRefusalInput, RejectedArgument } from './argument-refusal.ts';
+export { argumentRefused, excerptStderr, rejectedArgument } from './argument-refusal.ts';
 // KAR-05.3 — an absolute path or a failure that names what was looked for and
 // where. PATH is never consulted (§4.3).
 export type { ResolveContext, ResolvedProvider, SearchedPath } from './binary-resolver.ts';
@@ -425,3 +429,13 @@ export { agentTransport } from './transport.ts';
 export { TURN_COMPLETED_TYPE, turnCompletedReport } from './turn-frames.ts';
 export type { UpdateDescription } from './updates.ts';
 export { describeUpdate, toolCallContentText } from './updates.ts';
+// KAR-19.8 — the vendor-side session id, derived from DeFlow's own identifiers
+// rather than minted, so a run keeps its id and the vendor gets a uuid.
+export type { SessionIdForm, SessionIdSpec, VendorSessionKey } from './vendor-session.ts';
+export {
+  isUuid,
+  SESSION_ID_FORMS,
+  VENDOR_SESSION_NAMESPACE,
+  vendorSessionId,
+  vendorSessionIdFor,
+} from './vendor-session.ts';

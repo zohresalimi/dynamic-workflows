@@ -47,9 +47,9 @@
  * Verifies: EPIC-19-S16, EPIC-19-S21 · KAR-19.3 AC1, AC2
  */
 import type { CapabilityRow } from '@DeFlow/adapters';
-import { resolveProviderStates, usableProviders } from '@DeFlow/adapters';
-import type { Clock, Handle, RunId } from '@DeFlow/core';
-import { ProviderIdSchema } from '@DeFlow/core';
+import { resolveProviderStates, usableProviders, vendorSessionId } from '@DeFlow/adapters';
+import type { Clock, Handle, NodeId, RunId } from '@DeFlow/core';
+import { NodeIdSchema, ProviderIdSchema } from '@DeFlow/core';
 import { getBlob, listProviderCapabilities, putBlob } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
 import { mkdirSync } from 'node:fs';
@@ -93,6 +93,43 @@ export const PROVIDER_DEFAULT_MODEL = 'provider-default';
  * spec every gate verdict is then measured against.
  */
 export const ASSUMED_CONTEXT_FLOOR = 128_000;
+
+/**
+ * KAR-19.8 — the node ids the three pre-execution turns are recorded under.
+ *
+ * They are `NodeId`s rather than free strings because they are half of the
+ * tuple every vendor session id is derived from — `(runId, nodeId, attempt)`,
+ * the same one F4.3 builds an idempotency key from — and a turn kind spelled
+ * differently at two call sites would derive two sessions for one turn.
+ */
+export const PRE_EXECUTION_NODES = {
+  framing: NodeIdSchema.parse('framing'),
+  recon: NodeIdSchema.parse('recon'),
+  planner: NodeIdSchema.parse('planner'),
+} as const satisfies Readonly<Record<string, NodeId>>;
+
+/**
+ * The **first** attempt, which is the attempt every pre-execution turn's
+ * session is derived from.
+ *
+ * A pre-execution turn kind holds one vendor session per run on purpose: a
+ * repair (`FramingSession.repair`) and a re-framed spec are continuations of
+ * the same conversation, and deriving a second session for them would put the
+ * turn's transcript somewhere the ledger's handle does not point — the quiet
+ * half of the 2026-08-13 bug, and the same rule KAR-19.8 AC4 states for a node
+ * whose adapter resumes natively.
+ */
+const PRE_EXECUTION_ATTEMPT = 0;
+
+/** The vendor-side session id for one pre-execution turn of one run. The
+ * derivation is `@DeFlow/adapters`' and there is no second one: this function
+ * formats nothing itself. */
+const sessionFor = (runId: RunId, turn: keyof typeof PRE_EXECUTION_NODES): string =>
+  vendorSessionId({
+    runId,
+    nodeId: PRE_EXECUTION_NODES[turn],
+    attempt: PRE_EXECUTION_ATTEMPT,
+  });
 
 export interface LiveChainOptions {
   /** The daemon's data directory: run directories, blobs and schemas. */
@@ -214,16 +251,21 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
         maxContext: ASSUMED_CONTEXT_FLOOR,
         capabilityRow: chosen.row,
         agents: {
-          framing: liveFramingAgent({ ...turn, cwd, sessionId: `${runId}-framing` }),
+          // KAR-19.8 — the vendor gets an id of the form it demands, derived
+          // from the ids DeFlow keeps. Until 2026-08-13 these three lines read
+          // `` `${runId}-framing` `` and the like, and Claude Code 2.1.220
+          // refused every one of them: *"Invalid session ID. Must be a valid
+          // UUID."* The run id stays what the ledger, the CLI and the UI name.
+          framing: liveFramingAgent({ ...turn, cwd, sessionId: sessionFor(runId, 'framing') }),
           // Spawned **in the detached worktree** the chain provisions, not in
           // the repository: a survey of the operator's own working tree would
           // report uncommitted state as a fact about the run's base commit.
           recon: liveReconAgent({
             ...turn,
             cwd: reconWorktreePath(runDir),
-            sessionId: `${runId}-recon`,
+            sessionId: sessionFor(runId, 'recon'),
           }),
-          planner: livePlannerAgent({ ...turn, cwd, sessionId: `${runId}-planner` }),
+          planner: livePlannerAgent({ ...turn, cwd, sessionId: sessionFor(runId, 'planner') }),
         },
         schemas,
         registry: schemas,

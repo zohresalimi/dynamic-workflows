@@ -115,3 +115,98 @@ suite('EPIC-19-S62 — each failed attempt is one line naming node, attempt and 
     expect(parsed.payload.failure.reason).toBe('agent.nonzero-exit');
   });
 });
+
+/**
+ * KAR-19.8 AC5 — when the vendor refused one of DeFlow's *own* arguments, the
+ * line says which one.
+ *
+ * `agent.nonzero-exit` alone sends the operator to a stack trace to learn that
+ * the argument DeFlow chose was the problem — which is the whole of the
+ * 2026-08-13 defect from the outside. The flag and the value are on the
+ * failure's `detail`, so the line can name them without a second lookup.
+ */
+suite('EPIC-19-S55 — a refused argument is named on the terminal line', () => {
+  const refused = event(
+    'node.failed',
+    {
+      node: 'framing',
+      attempt: 0,
+      failure: {
+        reason: 'agent.nonzero-exit',
+        class: 'permanent',
+        message: 'claude refused the argument --session-id that DeFlow passed',
+        detail: {
+          provider: 'claude',
+          flag: '--session-id',
+          value: 'run_20260813T110608Z_379fc8-framing',
+          stderr: 'Error: Invalid session ID. Must be a valid UUID.',
+        },
+        evidence: [],
+        occurredAtEvent: 3,
+        attempt: 0,
+      },
+    },
+    20,
+    'framing',
+  );
+
+  it('names the flag and the value DeFlow passed', () => {
+    const line = human().event(refused);
+
+    expect(line).toContain('--session-id');
+    expect(line).toContain('run_20260813T110608Z_379fc8-framing');
+    expect(line).toContain('agent.nonzero-exit');
+  });
+
+  it('bounds a refused value, because one of them is a whole prompt', () => {
+    // `-p` carries the packet, and a binary that refuses *that* flag is a real
+    // case: the bundled agent answers `unknown argument "-p"` when it is handed
+    // Claude Code's argv. Without a bound, four hundred words of prompt land in
+    // the middle of a transcript somebody is reading.
+    const wordy = event(
+      'node.failed',
+      {
+        node: 'framing',
+        attempt: 0,
+        failure: {
+          reason: 'agent.nonzero-exit',
+          class: 'permanent',
+          message: 'the agent refused -p',
+          detail: { flag: '-p', value: `Safety constraints (pinned):\n${'word '.repeat(200)}` },
+          evidence: [],
+          occurredAtEvent: 3,
+          attempt: 0,
+        },
+      },
+      21,
+      'framing',
+    );
+
+    const line = human().event(wordy);
+
+    // Wrapped under itself by the layout, as every long detail is — so the
+    // claim is about the *bound*, not about the line breaks.
+    expect(line).toContain('-p Safety');
+    expect(line).toContain('…');
+    expect(line.replaceAll(/\s+/g, ' ')).toContain('-p Safety constraints (pinned): word word');
+    expect(line.length).toBeLessThan(400);
+  });
+
+  it('says nothing extra for a failure that is not about an argument', () => {
+    const line = human().event(failed(0, 3));
+
+    expect(line).not.toContain('--');
+  });
+
+  it('--json carries the same detail, unrendered', () => {
+    const rendered = json().event(refused);
+
+    expect(rendered).not.toContain(ESC);
+    const parsed = JSON.parse(rendered) as {
+      payload: { failure: { class: string; detail: { flag: string; value: string } } };
+    };
+    expect(parsed.payload.failure.class).toBe('permanent');
+    expect(parsed.payload.failure.detail.flag).toBe('--session-id');
+    expect(parsed.payload.failure.detail.value).toBe('run_20260813T110608Z_379fc8-framing');
+  });
+});

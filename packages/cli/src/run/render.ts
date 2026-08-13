@@ -134,6 +134,38 @@ interface Line {
   readonly parts?: readonly string[];
 }
 
+/**
+ * KAR-19.8 AC5 — the flag and the value DeFlow passed, when the failure is one
+ * the vendor raised about DeFlow's own argv.
+ *
+ * Empty for every other failure, so an ordinary one is not padded with words
+ * that mean nothing. The value is printed as it was sent: an operator whose run
+ * died on `--session-id run_…-framing` needs to see the string that was
+ * refused, not a description of it.
+ */
+function refusedArgument(failure: {
+  readonly detail?: Record<string, unknown> | undefined;
+}): string[] {
+  const flag = failure.detail?.flag;
+  if (typeof flag !== 'string' || flag === '') return [];
+  const value = failure.detail?.value;
+  if (typeof value !== 'string' || value === '') return [flag];
+
+  // A refused value is usually an identifier and occasionally a whole prompt —
+  // `-p` takes one, and a vendor that refuses `-p` would otherwise paste four
+  // hundred words of packet into the middle of a transcript. One line, bounded:
+  // the ledger keeps the value in full, and this is the line that has to stay
+  // readable next to the ones above and below it.
+  const single = value.replaceAll(/\s+/g, ' ').trim();
+  const shown =
+    single.length > REFUSED_VALUE_CHARS ? `${single.slice(0, REFUSED_VALUE_CHARS)}…` : single;
+  return [`${flag} ${shown}`];
+}
+
+/** How much of a refused value the line shows. A session id is 36 characters,
+ * which is the value this exists for; anything longer is a prompt. */
+const REFUSED_VALUE_CHARS = 60;
+
 /** What this event says in a transcript, or `null` for one a transcript is
  * quieter about than a log would be. */
 function humanLine(event: Event): Line | null {
@@ -229,7 +261,11 @@ function humanLine(event: Event): Line | null {
         colour: 'red',
         subject: event.payload.node,
         status: 'failed',
-        parts: [attempt, event.payload.failure.reason],
+        // KAR-19.8 AC5 — a vendor that refused one of DeFlow's *own* arguments
+        // is an argument problem, and the operator must not have to read a
+        // stack trace to learn which one. The flag and the value ride on the
+        // failure's `detail` (`argumentRefused`), so the line names them.
+        parts: [attempt, event.payload.failure.reason, ...refusedArgument(event.payload.failure)],
         detail: '',
       };
     }

@@ -75,6 +75,7 @@ import { dirname } from 'node:path';
 import process from 'node:process';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
+import { argumentRefused, rejectedArgument } from './argument-refusal.ts';
 import { budgetConsumed } from './budget-consumed.ts';
 import type { CapabilityRow } from './capabilities.ts';
 import { compactionEnv } from './compaction.ts';
@@ -1021,6 +1022,26 @@ export async function runShimNode(
         event('provider.rate_limited', { provider: request.provider, raw: blind.raw }),
       );
       return refuse(blind.thrown, common(exit));
+    }
+
+    // KAR-19.8 AC5, AC6 — the child refused an argument *DeFlow* chose. That
+    // is a different diagnosis from "the turn went wrong": it names the flag
+    // and the value in the failure, and it is `permanent`, because an argument
+    // this vendor refuses now is one it refuses on every attempt. The
+    // 2026-08-13 log — the same error at 11:07:13, 11:07:44, 11:08:14 — is what
+    // classifying it `transient` looks like from the outside.
+    const rejected = rejectedArgument({ argv: plan.argv, stderr: stderrTail(), spec });
+    if (rejected !== null) {
+      return refuse(
+        argumentRefused({
+          provider: request.provider,
+          rejected,
+          stderr: stderrTail(),
+          code: exit.code,
+          signal: exit.signal,
+        }),
+        common(exit),
+      );
     }
 
     // Exit without a result envelope, whatever the code. The worst outcome in

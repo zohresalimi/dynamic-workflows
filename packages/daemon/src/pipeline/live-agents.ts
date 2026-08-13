@@ -42,9 +42,11 @@
  */
 import {
   agentExited,
+  argumentRefused,
   killTree,
   parseShimLine,
   providerSpec,
+  rejectedArgument,
   shimStructuredOutput,
 } from '@DeFlow/adapters';
 import type { StructuredOutput } from '@DeFlow/core';
@@ -261,6 +263,25 @@ export async function structuredTurn(
   const result = await spawnTurn(options, argv);
 
   if (result.code !== 0) {
+    // KAR-19.8 AC5, AC6 — before anything else: if the child refused an
+    // argument *DeFlow* chose, that is what the operator needs to read, and it
+    // is `permanent` rather than a retry every thirty seconds for ever.
+    const rejected = rejectedArgument({ argv, stderr: result.stderr, spec });
+    if (rejected !== null) {
+      const refusal = argumentRefused({
+        provider: options.provider,
+        rejected,
+        stderr: result.stderr,
+        code: result.code,
+        signal: result.signal,
+      });
+      agents.warn(
+        { provider: options.provider, flag: rejected.flag, value: rejected.value },
+        refusal.message,
+      );
+      throw refusal;
+    }
+
     const failure = agentExited(result.code, result.signal);
     agents.warn(
       { provider: options.provider, code: result.code, signal: result.signal },

@@ -36,11 +36,14 @@ import {
   type CapabilityRow,
   capability,
   PROVIDER_SPECS,
+  providerSpec,
   renderAuthMethods,
+  SESSION_ID_FORMS,
   selectResumeStrategy,
+  vendorSessionId,
 } from '@DeFlow/adapters';
 import type { Clock, Db, RunId } from '@DeFlow/core';
-import { ProviderIdSchema } from '@DeFlow/core';
+import { NodeIdSchema, ProviderIdSchema, RunIdSchema } from '@DeFlow/core';
 import {
   detectProviders,
   type ProviderDetectionEntry,
@@ -521,6 +524,53 @@ async function capabilityCheck(
   };
 }
 
+/**
+ * KAR-19.8 AC7 — the F3.4 row that costs nothing to run, and the one that is
+ * opt-in.
+ *
+ * The battery below spawns a real turn per assertion, so it answers "does this
+ * adapter behave". It has never answered *"is the argv DeFlow builds one this
+ * vendor will accept"*, and on 2026-08-13 the answer was no: Claude Code
+ * 2.1.220 exited 1 on every attempt of a real run because DeFlow put its own
+ * `run_…`-shaped id on `--session-id`.
+ *
+ * What is checked here is the **form**, against the registry's own declaration
+ * — no process, no quota, and true on every machine. Spawning the real,
+ * authenticated CLI with that argv is the other half, and it is named as
+ * opt-in rather than quietly not done: a row that does not run must never read
+ * as a row that passed.
+ */
+function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
+  const runId = RunIdSchema.parse('run_20260101T000000Z_000000');
+  const nodeId = NodeIdSchema.parse('framing');
+  const sessionId = vendorSessionId({ runId, nodeId, attempt: 0 });
+
+  return providers.flatMap((provider): DoctorCheck[] => {
+    const declared = providerSpec(provider)?.shim.sessionId;
+    if (declared === undefined) return [];
+    const matches = SESSION_ID_FORMS[declared.form].test(sessionId);
+
+    return [
+      {
+        id: `conformance.argv.${provider}`,
+        status: matches ? 'ok' : 'fail',
+        detail: matches
+          ? `the session id DeFlow puts on ${provider}'s ${declared.flag} is a ${declared.form}, ` +
+            'the form that entry declares. Spawning the installed CLI with the whole argv is ' +
+            'opt-in and is not run here: DeFlow_MANUAL_VENDOR_CLI=1 pnpm vitest run ' +
+            '--project unit packages/adapters/test/exec-shim-argv.manual.test.ts'
+          : `the session id DeFlow builds for ${provider} is not a ${declared.form}, which is ` +
+            `what its entry declares ${declared.flag} must be — this invocation would be ` +
+            'refused by the vendor before the turn started',
+        ...(matches
+          ? {}
+          : { action: "report this as a DeFlow bug with 'DeFlow doctor --json' attached" }),
+        data: { provider, flag: declared.flag, form: declared.form, spawned: false },
+      },
+    ];
+  });
+}
+
 /** The battery's report, per adapter, as a check apiece. */
 function conformanceChecks(report: ProviderDoctorReport): readonly DoctorCheck[] {
   return report.providers
@@ -740,6 +790,11 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
     };
   }
 
+  // KAR-19.8 AC7 — the argument-form rows, for every installed exec-shim
+  // vendor. They spawn nothing, so they are computed once here and appended to
+  // whichever conformance list is returned below.
+  const argvForms = argvFormChecks(entries.filter(usable).map((entry) => entry.provider));
+
   if (!input.conformance) {
     return {
       loginCommands,
@@ -755,6 +810,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'assertion per adapter; nothing below was tested, which is not the same as passing.',
           action: "run 'DeFlow doctor' without --skip-conformance to actually test the adapters",
         },
+        ...argvForms,
       ],
     };
   }
@@ -767,7 +823,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       epoch: input.epoch,
       runId: input.runId,
     });
-    const checks = conformanceChecks(report);
+    const checks = [...conformanceChecks(report), ...argvForms];
     return {
       loginCommands,
       agents,

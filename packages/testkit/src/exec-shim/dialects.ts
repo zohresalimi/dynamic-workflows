@@ -36,6 +36,27 @@ export const CLAUDE_VERBOSE_REQUIRED =
   'Error: When using --print, --output-format=stream-json requires --verbose';
 
 /**
+ * Claude Code 2.1.220's second refusal, character for character (KAR-19.8).
+ *
+ * **Verified by execution on 2026-08-13**, the expensive way: an operator's run
+ * reached framing and died on this line, on every attempt, because DeFlow put
+ * its own `run_…`-shaped id on `--session-id`. Until this constant existed the
+ * fake accepted whatever it was handed — which is exactly why the whole
+ * provider-contract suite was green while the product could not complete a turn
+ * on the machine it ships to.
+ */
+export const CLAUDE_INVALID_SESSION_ID = 'Error: Invalid session ID. Must be a valid UUID.';
+
+/**
+ * The form Claude Code validates `--session-id` against: an RFC 4122 UUID.
+ *
+ * Narrow on purpose (`[1-5]` versions, `[89ab]` variant). The fake's job is to
+ * be at least as strict as the vendor, because a double that is more permissive
+ * than the real thing is a double that passes the code the vendor will refuse.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
  * The wire format an accepted invocation asks for.
  *
  * `jsonl` is Codex's `--json` rather than a fourth spelling of `stream-json`:
@@ -122,6 +143,14 @@ export function schemaPathIn(argv: readonly string[]): string | null {
  * `--verbose` requirement that only applies to one of the three.
  */
 function decideClaude(argv: readonly string[]): CliDecision {
+  // KAR-19.8. Checked before the format, as the vendor does: the argv is
+  // validated as a whole before a turn is attempted, so a run with two things
+  // wrong hears about the session id rather than about the stream.
+  const session = valueOf(argv, '--session-id');
+  if (session !== null && !UUID.test(session)) {
+    return { ok: false, exitCode: 1, stderr: CLAUDE_INVALID_SESSION_ID };
+  }
+
   const format = valueOf(argv, '--output-format') ?? 'text';
   if (format !== 'text' && format !== 'json' && format !== 'stream-json') {
     return {
