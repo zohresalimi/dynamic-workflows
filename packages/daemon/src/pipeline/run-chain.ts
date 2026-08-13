@@ -112,6 +112,17 @@ const EVENT_PAGE = 5_000;
 export const RECON_NODE: NodeId = NodeIdSchema.parse('recon');
 
 /**
+ * Where the recon node's detached worktree is provisioned.
+ *
+ * Exported because the agent that surveys it has to be *spawned in it*, and the
+ * composition root is what constructs that agent: two expressions of the same
+ * path is how a survey ends up read from the repository the run was submitted
+ * from rather than from the detached copy it was supposed to observe.
+ */
+export const reconWorktreePath = (runDir: string): string =>
+  join(runDir, 'worktrees', String(RECON_NODE));
+
+/**
  * Everything one run's chain needs that cannot be read out of its ledger.
  *
  * Resolved per run rather than once per daemon, because the answer genuinely
@@ -164,6 +175,17 @@ export type RunChainResolver = (input: {
   /** The repository the run was submitted against, as `task.submitted`
    * recorded it. */
   readonly cwd: string;
+  /**
+   * The daemon life this turn belongs to, as the driver handed it down.
+   *
+   * On the input rather than captured when the resolver was built, because
+   * everything a resolver constructs that *writes* — the `WorkspaceManager`'s
+   * worktree events above all — has to be stamped with the epoch of the daemon
+   * that is running now. A resolver built at boot and holding its own copy
+   * would be right until the first `bumpEpoch`, which is exactly the case
+   * fencing exists for.
+   */
+  readonly epoch: number;
 }) => Promise<RunChainContext | null>;
 
 export interface RunChainPorts {
@@ -338,7 +360,7 @@ export function createRunChain(ports: RunChainPorts): RunChain {
       return;
     }
 
-    const context = await ports.resolve({ runId, db, cwd });
+    const context = await ports.resolve({ runId, db, cwd, epoch });
     if (context === null) {
       chain.warn(
         { runId },
@@ -458,7 +480,7 @@ export function createRunChain(ports: RunChainPorts): RunChain {
     const cwd = submittedCwd(events);
     if (cwd === null) return;
 
-    const context = await ports.resolve({ runId, db, cwd });
+    const context = await ports.resolve({ runId, db, cwd, epoch });
     if (context === null) {
       chain.warn(
         { runId },
@@ -480,7 +502,7 @@ export function createRunChain(ports: RunChainPorts): RunChain {
       model: context.model,
       workspace: context.workspace,
       worktree: {
-        path: join(context.runDir, 'worktrees', String(RECON_NODE)),
+        path: reconWorktreePath(context.runDir),
         baseRef: repo?.head ?? 'HEAD',
       },
       scopePaths: spec.scope.included,

@@ -66,6 +66,16 @@ export const MOCK_STRUCTURED_OUTPUT_FLAG = '--return-schema';
 /** The turn's prompt. Only meaningful alongside the flag above. */
 export const MOCK_PROMPT_FLAG = '--prompt';
 
+/**
+ * This agent's own id in `PROVIDER_SPECS`.
+ *
+ * Declared here rather than in the registry entry that names it, for the same
+ * reason `MOCK_STRUCTURED_OUTPUT_FLAG` is: the plan this binary proposes routes
+ * its nodes onto itself, and a second spelling of the id would let the document
+ * name a provider the table does not have.
+ */
+export const BUNDLED_PROVIDER_ID = 'mock';
+
 export const DRAFT_SCHEMA_ID = 'DeFlow.taskspecdraft.v1';
 export const RECON_SURVEY_SCHEMA_ID = 'DeFlow.reconsurvey.v1';
 export const RECON_FACT_SCHEMA_ID = 'DeFlow.reconfact.v1';
@@ -166,10 +176,20 @@ const agentNode = (
   pathScopes: { write: ['**'] },
   returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
   brief,
-  // Empty on purpose. A default plan that named a vendor here would route
-  // every run onto a CLI the machine may not have — AC8's routing hazard,
-  // arriving through the document instead of through the registry.
-  provider: { prefer: [], requires: ['structuredOutput'] },
+  // The agent that proposed the plan, and nothing else.
+  //
+  // This was `[]` until KAR-19.3 ran the chain against it end to end. An empty
+  // list is not "no preference": `validatePlanVersion` reads it as a preference
+  // nothing satisfies and refuses every agent node with `PROVIDER_NOT_PROBED`,
+  // so the plan this binary proposes could never be compiled and the epic's own
+  // Definition of Done was unreachable.
+  //
+  // Naming *itself* is not the routing hazard AC8 is about — that hazard is a
+  // default plan naming a **vendor CLI the machine may not have**. This binary
+  // ships in the same tarball as DeFlow and is definitionally present on the
+  // machine that just used it to plan, and a machine with a real adapter never
+  // reaches this generator: its own planner wrote the document instead.
+  provider: { prefer: [BUNDLED_PROVIDER_ID], requires: ['structuredOutput'] },
   resume: 'always-replay',
 });
 

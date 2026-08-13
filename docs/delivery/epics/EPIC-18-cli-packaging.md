@@ -161,8 +161,13 @@ observable from a clean temp directory.
       and this is wired as a CI job — not a checklist item someone remembers.
       _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
       images, on every tag and on demand — and the clean room serves the UI and drives real ACP
-      turns against the installed mock agent. **"Completes a mock run" stays open**: no shipped code
-      path executes a submitted run past intake yet. See KAR-18.6 AC2's amendment.)_
+      turns against the installed mock agent. **"Completes a mock run" stays open**, and 2026-08-13
+      narrowed why: KAR-19.3 bound the run chain in `DeFlow up`, so a shipped path now does carry a
+      submitted run past intake — framed, gated, pinned, surveyed and compiled into a validated
+      `PlanGraph` against the bundled agent alone (`e2e/live-chain.test.ts`, and performed by hand
+      against the packed `dist/bin.mjs`). What is still unbound is `executeNodes`, so no run reaches
+      a terminal state and the word "completes" is still not earned. See KAR-18.6 AC2's
+      amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
 - [ ] `DeFlow doctor` never reports a provider as _not installed_ while that vendor's own CLI

@@ -501,6 +501,22 @@ export {
 export type { ShimOptions } from './mcp/shim.ts';
 export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './mcp/shim.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+export type { LiveTurnOptions } from './pipeline/live-agents.ts';
+export {
+  liveFramingAgent,
+  livePlannerAgent,
+  liveReconAgent,
+  MAX_TURN_BYTES,
+  structuredTurn,
+} from './pipeline/live-agents.ts';
+// KAR-19.3 — and the resolver itself: the binding that turns a daemon with a
+// chain into a daemon that runs one. `DeFlow up` is its production caller.
+export type { LiveChainOptions } from './pipeline/live-chain.ts';
+export {
+  ASSUMED_CONTEXT_FLOOR,
+  createLiveRunChain,
+  PROVIDER_DEFAULT_MODEL,
+} from './pipeline/live-chain.ts';
 // KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
 // `runReconNode` and `compilePlanV1`, and the resolver `DeFlow up` binds it to.
 export type {
@@ -509,7 +525,12 @@ export type {
   RunChainPorts,
   RunChainResolver,
 } from './pipeline/run-chain.ts';
-export { createRunChain, PLANNER_NODE, RECON_NODE } from './pipeline/run-chain.ts';
+export {
+  createRunChain,
+  PLANNER_NODE,
+  RECON_NODE,
+  reconWorktreePath,
+} from './pipeline/run-chain.ts';
 // KAR-19.4 — the live executor: the one shipped caller of `executeRun`, and the
 // resolver `DeFlow up` binds it to a performer over a real worktree.
 export type {

@@ -473,6 +473,44 @@ resumes when the answer arrives.
 > **unexercisable**: the `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real process, and the
 > `DeFlow up` binding that hands them to `createRunChain`. Test plan #1 moves to `e2e` in the same
 > change.
+>
+> **Closed on 2026-08-13.** Both departures are spent, and the binding they were about now ships:
+>
+> - `packages/daemon/src/pipeline/live-agents.ts` implements the three ports over a real process,
+>   through `PROVIDER_SPECS`'s own exec-shim argv builder — so the schema flag the registry declares
+>   is the flag the child actually gets. Both dialects are exercised against real binaries
+>   (`packages/daemon/test/integration/live-agents.test.ts`): `document` against the bundled agent,
+>   `stream-json` against the testkit's fake vendor CLI.
+> - `packages/daemon/src/pipeline/live-chain.ts` is the resolver, and **`packages/cli/src/up.ts` and
+>   `packages/daemon/src/main.ts` now pass `runFraming` and `advanceRun` to `boot()`.** That is the
+>   line whose absence was the whole 2026-08-12 failure. The provider is the one
+>   `usableProviders` already chose, its capability row is read from the probed table and nowhere
+>   else, the run's contracts are written with `writeRunSchemas` (which had no production caller
+>   either), and the child's environment is `buildChildEnv()`'s.
+> - **Test plan #1 is automated at `e2e`** — `e2e/live-chain.test.ts`, a real `DeFlow run --file` on
+>   a `PATH` holding only `DeFlow-mock-agent`, approved over the daemon's own HTTP route, asserting
+>   `task.submitted → run.created → run.spec.approved → spec.pinned → plan.proposed` by `seq`. The
+>   `provider.probed` clause stays dropped, for the reason recorded above: intake writes that row
+>   only on a refusal. EPIC-19-S16's flow line already declared `e2e` and is now true.
+> - **One defect in KAR-19.7's own output had to be fixed to get here**, recorded rather than
+>   absorbed: its default `PlanGraph` carried `provider.prefer: []` on both agent nodes, and
+>   `validatePlanVersion` reads an empty list as *a preference nothing satisfies* — every compile
+>   against the bundled agent ended in two `plan.validation_failed` rows and `run.needs_human`. The
+>   generator now names `mock`, which is not the routing hazard KAR-19.7 AC8 is about: that hazard
+>   is a default plan naming a **vendor CLI the machine may not have**, and this binary ships in
+>   DeFlow's own tarball.
+>
+> **What is still not bound is `executeNodes`** — KAR-19.4's, and the reason a run stops at
+> `plan.proposed` rather than at a terminal state. Performed by hand on 2026-08-13 against the
+> packed `packages/cli/dist/bin.mjs`, in a scratch git repository with only the bundled agent on
+> `PATH`: `DeFlow run --file task.md` printed `task submitted`, `run created` and the spec at the
+> F1.3 gate, and after the approval the ledger held
+> `run.spec.approved → spec.pinned → workspace.worktree_created → 4 × fact.written →
+> workspace.worktree_removed → plan.proposed` with a three-node plan. Two gaps that run exposed and
+> that belong to the stories after this one: the attached `DeFlow run` renderer has no case for
+> `plan.proposed`, so a compiled plan is silent on the terminal (KAR-18.3's renderer, KAR-19.4's
+> DoD), and the bundled agent still serves no `DeFlow.finding.v1`, so a node run against it would
+> fail its handoff.
 
 ---
 

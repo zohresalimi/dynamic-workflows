@@ -169,6 +169,7 @@ export {
 // `structuredOutputFlag`: one constant, so a rename cannot leave the registry
 // claiming a capability the binary does not have.
 export {
+  BUNDLED_PROVIDER_ID,
   canServe,
   DRAFT_SCHEMA_ID,
   type GeneratorInput,

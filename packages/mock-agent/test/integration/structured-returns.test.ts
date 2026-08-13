@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { expect, it, describe as suite } from 'vitest';
 import {
+  BUNDLED_PROVIDER_ID,
   MOCK_STRUCTURED_OUTPUT_FLAG,
   PLAN_SCHEMA_ID,
   SERVABLE_SCHEMA_IDS,
@@ -94,6 +95,25 @@ suite('EPIC-19-S45 — every schema the live chain needs', () => {
     // one-node default would make that clause unreachable against the only
     // agent the smoke test has.
     expect(plan.nodes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('routes its own nodes onto itself, so the plan can pass validation at all', async () => {
+    const turn = await turnFor(PLAN_SCHEMA_ID);
+    const plan = JSON.parse(turn.stdout) as {
+      nodes: readonly { type: string; provider?: { prefer: readonly string[] } }[];
+    };
+
+    // KAR-19.3 found this the hard way: `prefer: []` is not "no preference", it
+    // is a preference nothing satisfies, and `validatePlanVersion` refuses it
+    // with `PROVIDER_NOT_PROBED` for every agent node — so the plan the bundled
+    // agent proposes could never be compiled, and the epic's own Definition of
+    // Done was unreachable. Naming *itself* is not the routing hazard AC8 is
+    // about: this binary ships in the same tarball as DeFlow, and it is
+    // definitionally on the machine that just used it to plan.
+    for (const node of plan.nodes) {
+      if (node.type !== 'agent') continue;
+      expect(node.provider?.prefer).toEqual([BUNDLED_PROVIDER_ID]);
+    }
   });
 
   it('names no vendor in the plan it proposes', async () => {

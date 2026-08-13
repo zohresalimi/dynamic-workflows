@@ -25,15 +25,12 @@
  * > None of that is reachable in this repository yet, and the reasons are
  * > cheaper to write down than to rediscover:
  * >
- * > - **`DeFlow up` binds no `runFraming`, `advanceRun` or `executeNodes`
- * >   port**, so nothing consumes the framing wake this spec asserts. The chain
- * >   itself exists and is driven end to end in
- * >   `packages/daemon/test/integration/live-{chain,execution}.test.ts` — against
- * >   **scripted** agent ports. No `FramingAgent`, `ReconAgent`, `PlannerAgent`
- * >   or agent-node `NodePerformer` over a real process exists anywhere in
- * >   `src/`, so the composition root has nothing to bind. That is KAR-19.3's
- * >   test plan #1 and KAR-19.4's #1 and #8, recorded as departures on both
- * >   stories.
+ * > - **`run.created` and `plan.proposed` are no longer among them.** KAR-19.3
+ * >   bound the chain in `DeFlow up`, so this spec now carries the run through
+ * >   its framing turn and asserts the F1.3 gate it parks on; the whole
+ * >   sequence to `plan.proposed` is `e2e/live-chain.test.ts`, which approves
+ * >   the gate. What is still unbound is `executeNodes`, which is KAR-19.4's
+ * >   test plan #1 and #8.
  * > - **`node.completed` needs a return the bundled agent cannot serve.** The
  * >   default plan's agent nodes carry `returns.schemaId` `DeFlow.finding.v1`,
  * >   and `SCHEMA_GENERATORS` in `packages/mock-agent/src/structured.ts` serves
@@ -285,17 +282,26 @@ suite('EPIC-19-S44 — a run framed on a machine with nothing installed', () => 
     expect(recorded.probed.map((row) => row.provider)).toEqual([PROVIDER_SPECS.mock.id]);
     expect(recorded.probed[0]?.capsJson?.agentInfo?.name).toBe(PROVIDER_SPECS.mock.bin);
 
-    // The run is waiting for its framing turn on a durable row rather than on a
-    // promise (KAR-19.1 AC1) — which is the state S44's remaining clauses
-    // resume from once `DeFlow up` binds the chain. `framing` is the node id
-    // (`FRAMING_NODE`); `poll` is `WAKE_REASONS`' word for "due now, nothing to
-    // back off from", and both are spelled out here because `@DeFlow/daemon` is
-    // deliberately not a dependency of this package (R2).
-    expect(
-      wakes(dataDir),
-      'the framing wake is gone: if DeFlow up now binds the chain, this spec is ' +
-        "where S44's remaining clauses get written rather than where they get deleted",
-    ).toEqual([{ runId, nodeId: 'framing', reason: 'poll' }]);
+    // The wait is a durable row rather than a promise (KAR-19.1 AC1), and
+    // KAR-19.3 changed *which* row it is: `DeFlow up` now binds the chain, so
+    // the framing wake is consumed by the ticker within a second and what the
+    // run is waiting on afterwards is the F1.3 gate. Asserting the framing row
+    // itself would now be a race against the tick that does the work.
+    //
+    // So the clause is asserted where it survives: the run reaches
+    // `run.created` — the framing turn ran against the bundled agent — and it
+    // is then parked on a `human_gate` row for the operator's approval, with no
+    // process held. `spec-approval` is the gate node's id and `human_gate` is
+    // `WAKE_REASONS`' word for a blocking human node, both spelled out because
+    // `@DeFlow/daemon` is deliberately not a dependency here (R2).
+    await waitFor('the framing turn produced run.created', () =>
+      ledger(dataDir).streams.get(runId)?.includes('run.created') === true ? true : null,
+    );
+    const parked = await waitFor('the run parked on the F1.3 gate', () => {
+      const rows = wakes(dataDir).filter((wake) => wake.runId === runId);
+      return rows.length > 0 ? rows : null;
+    });
+    expect(parked).toEqual([{ runId, nodeId: 'spec-approval', reason: 'human_gate' }]);
 
     // Nothing told the operator to install anything: the bundled binary is not
     // a package `npm install -g` can fetch (AC8).
