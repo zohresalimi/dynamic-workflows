@@ -504,6 +504,13 @@ export async function assertUiShipped(baseUrl: string): Promise<{ assetPath: str
   return { assetPath };
 }
 
+/**
+ * The provider `shimMockAgent` puts on `PATH` under its adapter binary name,
+ * and therefore the only one whose battery result answers *"does the installed
+ * agent drive turns?"*.
+ */
+const SHIMMED_PROVIDER = 'claude';
+
 /** What the F3.4 battery got out of the installed agent, per AC2. */
 export interface InstalledAgentTurns {
   /** The absolute path doctor resolved and spawned — what DeFlowd would store. */
@@ -543,6 +550,15 @@ export interface InstalledAgentTurns {
  * battery rows fail against the workspace binary too — that is a property of
  * the scenario, not of the packaging, and pinning it here would make this
  * gate red for a reason it is not looking at.
+ *
+ * **It counts one provider's battery, and it is the shimmed one.** KAR-19.7 put
+ * a `mock` entry in `PROVIDER_SPECS`, and the bundled `DeFlow-mock-agent`
+ * resolves under its own name inside every installed tarball — so from this
+ * story on, doctor always has at least one agent that answers. Reading
+ * *whichever* conformance row carried a count would therefore make this gate
+ * pass on the strength of an agent the operator did not install, which is the
+ * precise failure `install-verification-broken` exists to catch: an agent on
+ * `PATH` that holds no turn must still be rejected.
  */
 export async function assertInstalledAgentDrivesTurns(options: {
   readonly tgz: string;
@@ -571,7 +587,10 @@ export async function assertInstalledAgentDrivesTurns(options: {
     report.sections.find((section) => section.id === id)?.checks ?? [];
 
   const binary = join(options.binDir, 'claude-agent-acp');
-  if (checks('capabilities').some((check) => check.id === 'capabilities.none')) {
+  // Keyed on the shimmed provider for the same reason the battery count below
+  // is: since KAR-19.7 the bundled agent always contributes a row, so
+  // `capabilities.none` alone can no longer mean "this agent said nothing".
+  if (!checks('capabilities').some((check) => check.id === `capabilities.${SHIMMED_PROVIDER}`)) {
     throw new Error(
       'no ACP turn was possible: the installed daemon got no initialize response out of the ' +
         `installed agent at ${binary}, so no capability matrix could be ` +
@@ -584,6 +603,7 @@ export async function assertInstalledAgentDrivesTurns(options: {
 
   const conformance = checks('conformance');
   const counted = conformance
+    .filter((check) => check.id === `conformance.${SHIMMED_PROVIDER}`)
     .map((check) => ({
       check,
       match: /(\d+) passed, (\d+) failed, (\d+) skipped/.exec(check.detail),
@@ -591,8 +611,10 @@ export async function assertInstalledAgentDrivesTurns(options: {
     .find((entry) => entry.match !== null);
   if (counted === undefined || counted.match === null) {
     throw new Error(
-      'no ACP turn was driven: the F3.4 conformance battery reported no result against the ' +
-        'installed agent. doctor prints that as a warning and exits 0, which is not a pass.\n' +
+      `no ACP turn was driven: the F3.4 conformance battery reported no result for ` +
+        `${SHIMMED_PROVIDER} — the agent installed at ${binary}. doctor prints that as a warning ` +
+        'and exits 0, which is not a pass, and a count from any other provider is not this one ' +
+        'answering.\n' +
         conformance.map((check) => `  [${check.status}] ${check.id}: ${check.detail}`).join('\n'),
     );
   }

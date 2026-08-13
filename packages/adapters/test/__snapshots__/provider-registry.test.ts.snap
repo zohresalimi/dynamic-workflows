@@ -52,5 +52,13 @@ exports[`the argv table is a golden snapshot (AC2) > spawns each vendor exactly 
     "package": "@agentclientprotocol/codex-acp",
     "provider": "codex",
   },
+  {
+    "argv": [],
+    "command": "/opt/DeFlow/bin/DeFlow-mock-agent",
+    "env": {},
+    "kind": "native",
+    "package": "DeFlow",
+    "provider": "mock",
+  },
 ]
 `;

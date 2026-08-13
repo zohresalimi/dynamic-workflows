@@ -878,9 +878,27 @@ Ten required behaviours:
 | 8   | Emit a **single 10 MB line** — exercises the framing cap (§10.2)                                                                                                              |
 | 9   | **Advertise a configurable `agentCapabilities` block**                                                                                                                        |
 | 10  | Honour `--seed` for all ids and timestamps, so runs are byte-reproducible                                                                                                     |
+| 11  | **Serve a schema-bearing turn** — `--return-schema <file>` writes one document that validates against it, and nothing else (KAR-19.7)                                         |
 
 Also ship `DeFlow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
 session becomes a mock provider for free.
+
+> **Item 11 is what makes items 1–10 reachable from a real run.** Every schema-bearing turn — framing,
+> recon, the planner, and every node with a `returns` contract — is admitted only onto a provider
+> whose registry entry declares a `structuredOutputFlag` (`admitFraming`, KAR-10.2 AC3). Until the
+> mock agent had one, the only entries that did were two vendor **exec-shim** paths, so a machine
+> with no vendor CLI could not get past framing and F3.7's *"deterministic, free"* provider could
+> serve none of the pipeline. The flag selects an **exec-shaped** invocation — one JSON document on
+> stdout, no ACP transport opened, a non-zero exit and zero bytes for a schema it cannot serve — and
+> `PROVIDER_SPECS.mock` declares that same exported constant, so the registry cannot claim a
+> capability the binary does not have. The path is entered **only** when a schema is supplied, which
+> is what keeps items 1–10 byte-identical to what they were before it existed.
+>
+> Two rules hold it honest. The document is a function of `(schema id, seed)` and nothing else — not
+> the prompt, not the cwd, not the run's own context, because a mock that shaped its plan from what
+> the caller wanted would be a second planner wearing a fixture's clothes. And a schema it has no
+> generator for is **refused**, never approximated: an empty object validates against a permissive
+> schema, so a caller that received one could not tell a served turn from an unserved one.
 
 > **Item 9 is the one people skip and regret.** It turns the uneven capability matrix of §5 from an
 > integration-test problem into a **unit-test problem** — you can exercise Gemini's no-resume profile

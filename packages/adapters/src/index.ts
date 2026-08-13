@@ -231,6 +231,7 @@ export {
   renderRefusal,
   resolveProviderState,
   resolveProviderStates,
+  usableProviders,
 } from './provider-install.ts';
 // KAR-05.3 — the verified provider table, encoded once. The only file in this
 // package that names a vendor, and it names no capability.

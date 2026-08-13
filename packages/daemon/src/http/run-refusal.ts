@@ -15,7 +15,12 @@
  *
  * Verifies: EPIC-19-S15 · AC2, AC8
  */
-import { admitRun, type ProviderResolution, type RunAdmission } from '@DeFlow/adapters';
+import {
+  admitRun,
+  type ProviderResolution,
+  providerSpec,
+  type RunAdmission,
+} from '@DeFlow/adapters';
 import type { RunId } from '@DeFlow/core';
 import type { LedgerView } from './ledger-view.ts';
 
@@ -64,6 +69,11 @@ function asResolution(payload: unknown): ProviderResolution | null {
     adapterBin: str(record.adapterBin),
     adapterPath: path(record.adapterPath),
     package: str(record.package),
+    // Not recorded either, and deliberately read from the registry rather than
+    // from the row: whether a binary ships inside DeFlow's own tarball is a
+    // property of the build rendering the sentence, not of the machine the
+    // refusal happened on six weeks ago (KAR-19.7 AC8).
+    bundled: providerSpec(record.provider)?.bundled ?? false,
     ...(typeof record.stderr === 'string' ? { handshakeStderr: record.stderr } : {}),
   };
 }

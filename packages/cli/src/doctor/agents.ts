@@ -145,11 +145,16 @@ const short = (sha: string): string => sha.slice(0, 12);
  * installed" for an operator who is *running* `claude` is the same wrong
  * instruction the story exists to delete, one line further down the report;
  * those providers get their own line naming what is actually missing instead.
+ *
+ * A **bundled** provider is excluded for the same reason one step further on
+ * (KAR-19.7 AC8): it came out of the same tarball as the `DeFlow` that is
+ * printing this, so there is no package for the operator to fetch and offering
+ * one is the words not fitting the machine.
  */
 function installHints(skip: ReadonlySet<string>): string {
   return (
     Object.values(PROVIDER_SPECS)
-      .filter((spec) => !skip.has(spec.id))
+      .filter((spec) => !skip.has(spec.id) && spec.bundled !== true)
       // `installCommand` rather than a second template: KAR-19.2 AC3 keeps one
       // spelling of the command, so the line offered here and the line the
       // `--fix` path actually runs cannot drift apart.
@@ -161,11 +166,18 @@ function installHints(skip: ReadonlySet<string>): string {
 const usable = (entry: ProviderDetectionEntry): boolean =>
   entry.status === 'detected' || entry.status === 'cached';
 
+/** The registry by id, for the one question a detection entry cannot answer:
+ * did this binary ship inside DeFlow's own tarball (KAR-19.7 AC8)? */
+const PROVIDER_SPECS_BY_ID: Readonly<Record<string, { readonly bundled?: boolean }>> =
+  PROVIDER_SPECS;
+
+/** The half of the fallback that holds however the agents resolved. */
+const REPLAY_FALLBACK =
+  '  "DeFlow replay <fixture>" also serves a recorded run over the same HTTP contract the UI ' +
+  'speaks to a live daemon, so replay works regardless.';
+
 /** What the bundled fallbacks give an operator with no vendor CLI at all. */
-const NO_VENDOR_FALLBACK =
-  '  The bundled mock agent runs a whole plan with no vendor CLI, and ' +
-  '"DeFlow replay <fixture>" serves a recorded run over the same HTTP contract the UI ' +
-  'speaks to a live daemon, so development and replay work regardless.';
+const NO_VENDOR_FALLBACK = `  The bundled mock agent runs a whole plan with no vendor CLI.\n${REPLAY_FALLBACK}`;
 
 /** The summary line, and — when nothing is installed — what to do about it. */
 function summaryCheck(
@@ -177,6 +189,31 @@ function summaryCheck(
   const named = adapterMissing.map((entry) => entry.provider).join(', ');
   const skip = new Set(adapterMissing.map((entry) => entry.provider));
   const data = { installed: installed.length, adapterMissing: adapterMissing.length };
+
+  // KAR-19.7 AC8 — a bundled agent is installed and is a real answer, but it is
+  // not a *vendor*, and an operator whose only agent shipped in the tarball
+  // still needs to be told what installing one would add. Before the bundled
+  // entry existed this branch could not fire without a vendor behind it, so the
+  // two are separated rather than left to coincide.
+  const vendors = installed.filter(
+    (entry) => PROVIDER_SPECS_BY_ID[entry.provider]?.bundled !== true,
+  );
+
+  if (installed.length > 0 && vendors.length === 0) {
+    return {
+      id: 'agents.summary',
+      status: 'ok',
+      detail: [
+        `${installed.length} installed: ${installed.map((entry) => entry.provider).join(', ')} — ` +
+          'the agent bundled with DeFlow. It runs a whole plan with no vendor CLI, no credential ' +
+          'and no network, so this machine can run DeFlow as it is. No vendor adapter is ' +
+          'installed here; install any one of these to run against a real model:',
+        installHints(skip),
+        REPLAY_FALLBACK,
+      ].join('\n'),
+      data,
+    };
+  }
 
   if (installed.length > 0) {
     return {

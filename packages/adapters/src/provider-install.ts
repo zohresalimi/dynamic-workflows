@@ -72,6 +72,15 @@ export interface ProviderResolution {
   /** The npm package that provides `adapterBin`. */
   readonly package: string;
   /**
+   * KAR-19.7 AC8 — this binary ships inside DeFlow's own tarball.
+   *
+   * Carried on the resolution rather than looked up from the registry at each
+   * reading, so `providerVerdict` stays a pure function of what it was handed
+   * — which is what makes "*is not installed* never co-occurs with a resolved
+   * path" a table-driven unit test rather than a sentence someone re-reads.
+   */
+  readonly bundled: boolean;
+  /**
    * KAR-19.2 AC7 — the child's own stderr from the `initialize` that failed,
    * trimmed and never paraphrased. Present only for `handshake-failed`, and
    * only when the child said anything at all.
@@ -128,6 +137,7 @@ export function resolveProviderState(
     adapterBin: spec.bin,
     adapterPath,
     package: spec.package,
+    bundled: spec.bundled ?? false,
   };
 }
 
@@ -232,6 +242,23 @@ export function providerVerdict(resolution: ProviderResolution): ProviderVerdict
     };
   }
 
+  // KAR-19.7 AC8 — a binary that shipped in the same tarball as the command the
+  // operator just ran cannot be installed from npm, and telling them to try is
+  // the same class of wrong as "claude is not installed" on a machine where it
+  // resolves. What it needs is to be on `PATH`, which is a different sentence
+  // and a different action.
+  if (resolution.bundled) {
+    return {
+      state: 'not-installed',
+      status: 'warn',
+      detail:
+        `"${resolution.vendorBin}" ships with DeFlow — there is nothing to install — but nothing ` +
+        'on PATH resolves it here. Put the one from this installation on PATH: ' +
+        `ln -s "$(command -v ${resolution.vendorBin})" "$(npm prefix -g)/bin/${resolution.vendorBin}".`,
+      action: `put "${resolution.vendorBin}" on PATH (it ships with DeFlow; nothing to install)`,
+    };
+  }
+
   // A native provider's vendor CLI *is* the ACP agent, so there is one package
   // to name. An adapter-kind one needs the vendor CLI first and the bridge
   // second, and saying only the second is how an operator ends up with a bridge
@@ -270,13 +297,16 @@ export function installPrompt(resolution: ProviderResolution): string {
 /**
  * KAR-19.2 AC4 — the flag the mock agent takes, named in every refusal.
  *
- * It is `DeFlow-mock-agent`'s own flag rather than a `DeFlow run` one, and that
- * is a statement about today rather than a preference: no `mock` entry exists in
- * `PROVIDER_SPECS` and nothing routes a run onto one, so a `DeFlow run
- * --mock-agent` invented here would name a mechanism that does not exist. What
- * *does* work today, and what every test in this repository does, is to put the
- * bundled binary on `PATH` under the adapter name DeFlow spawns; the flag is how
- * you choose which vendor's capability profile it answers with.
+ * It is `DeFlow-mock-agent`'s own flag rather than a `DeFlow run` one, and it
+ * still is after KAR-19.7 gave the binary a `mock` entry in `PROVIDER_SPECS`.
+ * The entry means a run *can* now be served by the bundled agent under its own
+ * name; what has deliberately not been invented is a `DeFlow run --mock-agent`
+ * switch, because a run reaches the bundled agent only where the operator's own
+ * `PATH` or configuration puts it (AC8) rather than where a flag overrides the
+ * machine. What works, and what every test in this repository does, is to put
+ * the bundled binary on `PATH` — under its own name, or under the adapter name
+ * DeFlow spawns for a vendor whose profile you want it to answer with, which is
+ * what the flag below selects.
  */
 export const MOCK_AGENT_FLAG = '--capabilities <vendor>';
 
@@ -379,6 +409,27 @@ export function renderRefusal(resolutions: readonly ProviderResolution[]): strin
 }
 
 /**
+ * KAR-19.7 AC8 — the providers a run may be routed onto, best first.
+ *
+ * The order is the whole of it. A bundled agent is a real answer on a machine
+ * that has nothing else — that is why it is in the registry — and it must never
+ * be the answer on a machine that has a vendor adapter sitting right there. A
+ * run that "succeeded" against an agent nobody chose is the quietest and most
+ * expensive failure this entry could introduce, so the preference is a function
+ * with a test rather than a comment beside the table.
+ *
+ * Real adapters keep the order they arrived in (registry id order, which is
+ * what `resolveProviderStates` produces); bundled ones follow, in the same
+ * order among themselves. Nothing here reads a provider's name.
+ */
+export function usableProviders(
+  resolutions: readonly ProviderResolution[],
+): readonly ProviderResolution[] {
+  const installed = resolutions.filter((entry) => entry.state === 'installed');
+  return [...installed.filter((e) => !e.bundled), ...installed.filter((e) => e.bundled)];
+}
+
+/**
  * Can anything here serve a run? — answered before the 201, from the manifest.
  *
  * One installed adapter is enough. The bug this exists to stop is the *other*
@@ -387,7 +438,7 @@ export function renderRefusal(resolutions: readonly ProviderResolution[]): strin
  * one whose run then did nothing at all.
  */
 export function admitRun(resolutions: readonly ProviderResolution[]): RunAdmission {
-  if (resolutions.some((entry) => entry.state === 'installed')) return ADMITTED;
+  if (usableProviders(resolutions).length > 0) return ADMITTED;
 
   // A bridge that is installed and broken is a different sentence and a
   // different next action from one that was never installed, and it wins the

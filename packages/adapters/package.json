@@ -16,12 +16,12 @@
   },
   "dependencies": {
     "@DeFlow/core": "workspace:*",
+    "@DeFlow/mock-agent": "workspace:*",
     "@agentclientprotocol/sdk": "catalog:",
     "@anthropic-ai/sandbox-runtime": "catalog:"
   },
   "devDependencies": {
     "@DeFlow/ledger": "workspace:*",
-    "@DeFlow/mock-agent": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",

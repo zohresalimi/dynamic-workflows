@@ -83,12 +83,20 @@ suite('detectProviders', () => {
       expect(claude?.binaryPath).toBe(join(binDir, 'claude-agent-acp'));
       expect(claude?.version).toBeTruthy();
 
-      // Every other registered provider is genuinely absent from this PATH.
+      // Every other registered provider is genuinely absent from this PATH,
+      // and each is told how to get it. The bundled agent's sentence is the one
+      // exception and it is the point of KAR-19.7 AC8: it ships in the same
+      // tarball as the command the operator just ran, so "npm install -g" would
+      // send them to fetch a package they already have. What it needs is to be
+      // on PATH, which is a different action and therefore a different line.
       const others = entries.filter((entry) => entry.provider !== 'claude');
       expect(others.length).toBeGreaterThan(0);
       for (const other of others) {
         expect(other.status).toBe('not-installed');
-        expect(other.detail).toContain('npm install -g');
+        expect(other.detail, other.provider).toContain(
+          other.provider === 'mock' ? 'ships with DeFlow' : 'npm install -g',
+        );
+        if (other.provider === 'mock') expect(other.detail).not.toContain('npm install -g');
       }
 
       // The probe cache — the ledger's own provider_capabilities table — holds

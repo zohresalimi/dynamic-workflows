@@ -49,6 +49,7 @@ import type {
   TokenAccounting,
 } from '@DeFlow/core';
 import { claudeSandboxPolicy, ProviderIdSchema } from '@DeFlow/core';
+import { MOCK_PROMPT_FLAG, MOCK_STRUCTURED_OUTPUT_FLAG } from '@DeFlow/mock-agent';
 import {
   type ResolveContext,
   type ResolvedProvider,
@@ -331,6 +332,18 @@ export interface ProviderSpec {
    * which is what every provider got before this existed.
    */
   readonly compaction?: CompactionSpec;
+  /**
+   * KAR-19.7 AC8 — true for a binary that ships inside DeFlow's own tarball
+   * rather than being installed by the operator.
+   *
+   * Two things read it, and both are about not lying to the operator.
+   * `providerVerdict` must never offer `npm install -g` for a package they
+   * already have (KAR-18.8's rule that the words have to fit the machine), and
+   * `usableProviders` puts bundled entries **last**, so a machine with a real
+   * vendor installed never quietly routes a run onto the test double. Absent
+   * means `false`, which is the answer for every vendor.
+   */
+  readonly bundled?: boolean;
   /** The bin name of the package that actually speaks ACP. */
   readonly bin: string;
   /** That package, at the version the spawn was verified against. */
@@ -381,6 +394,8 @@ export interface CompactionSpec {
 interface SpecEntry {
   readonly id: string;
   readonly kind: ProviderKind;
+  /** Absent means `false` — see `ProviderSpec.bundled`. */
+  readonly bundled?: boolean;
   readonly compaction?: CompactionSpec;
   /** Absent means `'default'` — see `ProviderSpec.family`. */
   readonly family?: string;
@@ -489,6 +504,7 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
     shim: defineShim(entry.id, entry.shim),
     id,
     kind: entry.kind,
+    ...(entry.bundled === undefined ? {} : { bundled: entry.bundled }),
     family: entry.family ?? DEFAULT_MODEL_FAMILY,
     tokenAccounting: entry.tokenAccounting ?? UNMEASURED_TOKEN_ACCOUNTING,
     ...(entry.compaction === undefined ? {} : { compaction: entry.compaction }),
@@ -759,6 +775,59 @@ export const PROVIDER_SPECS = {
         );
       }
       return { CODEX_PATH: ctx.resolved.companionPath };
+    },
+  }),
+  /**
+   * KAR-19.7 — the bundled agent, and the only entry here that is not a vendor.
+   *
+   * It is in this table for a behavioural reason rather than a convenient one.
+   * Every schema-bearing turn is admitted only onto a provider whose entry
+   * declares a `structuredOutputFlag` (`structured-output.ts`, read by
+   * `admitFraming`), and before this entry existed the only two that declared
+   * one were vendor exec-shim paths. So a machine with no vendor CLI could not
+   * get past framing at all, and *"`DeFlow run` works end to end with only the
+   * bundled agent"* — this epic's Definition of Done — was not testable.
+   *
+   * **The declaration is true, and that is the whole point.** The flag below is
+   * imported from the binary rather than spelled again, so a rename cannot
+   * leave this table claiming a capability the binary does not have; the binary
+   * parses that same constant, reads the schema file, and writes one document
+   * that validates against it. Nothing in `admitFraming` knows this provider
+   * exists.
+   *
+   * **`bundled: true` is what stops it becoming a routing hazard.** It ships in
+   * the same tarball as `DeFlow` itself, so `doctor` never offers to
+   * `npm install -g` it, and `usableProviders` puts it behind every real
+   * adapter — a run reaches it only where the operator's own `PATH` or
+   * configuration puts it there.
+   */
+  mock: defineSpec({
+    id: 'mock',
+    kind: 'native',
+    bundled: true,
+    bin: 'DeFlow-mock-agent',
+    // The published CLI, which carries this bin. Named honestly even though
+    // nothing will ever print an install command for it: a package field that
+    // said "@DeFlow/mock-agent" would name something npm cannot resolve.
+    package: 'DeFlow',
+    // It speaks ACP with no flag at all, which is what it has always done.
+    variants: [(): readonly string[] => []],
+    shim: {
+      bin: 'DeFlow-mock-agent',
+      // One format, because there is one: the structured turn writes a single
+      // JSON document for the whole invocation and nothing else. Declaring a
+      // streaming format it does not have is the class of lie this table is
+      // otherwise careful about.
+      formats: ['json'],
+      stream: 'json',
+      dialect: 'document',
+      // `read` only, and stated rather than defaulted. The shim path puts
+      // nothing in front of the agent's file access, and this agent expresses
+      // no permission flags of its own — so any level above `read` is refused
+      // at construction time rather than run at whatever the default is.
+      permissions: { read: [] },
+      structuredOutputFlag: MOCK_STRUCTURED_OUTPUT_FLAG,
+      build: (ctx, _format, flags) => [...flags, MOCK_PROMPT_FLAG, ctx.prompt],
     },
   }),
 } as const satisfies Record<string, ProviderSpec>;

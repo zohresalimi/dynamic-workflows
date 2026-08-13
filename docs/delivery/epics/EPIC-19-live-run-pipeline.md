@@ -464,6 +464,15 @@ resumes when the answer arrives.
 > [KAR-19.7](#kar-197--the-mock-agent-can-serve-a-framing-turn-so-a-run-works-with-no-vendor-cli-added),
 > authored in this epic rather than in EPIC-04, with the Out-of-scope override recorded in the Scope
 > section. This departure closes when KAR-19.7 is Done and test plan #1 is re-automated at `e2e`.
+>
+> **Narrowed on 2026-08-13:** KAR-19.7 shipped. `DeFlow-mock-agent` takes a schema and returns a
+> document that validates against it, `PROVIDER_SPECS` has a `mock` entry whose declaration is true,
+> and `admitFraming` admits a framing node routed there — so *"no agent on this machine can serve a
+> framing turn"* is no longer the case, and the reason this departure gave for existing is spent.
+> What is left of it is the second bullet alone, and it is now **unbuilt** rather than
+> **unexercisable**: the `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real process, and the
+> `DeFlow up` binding that hands them to `createRunChain`. Test plan #1 moves to `e2e` in the same
+> change.
 
 ---
 
@@ -582,6 +591,11 @@ removes.
 >   defect this epic exists to remove, one level up. The prerequisite is
 >   [KAR-19.7](#kar-197--the-mock-agent-can-serve-a-framing-turn-so-a-run-works-with-no-vendor-cli-added),
 >   added 2026-08-13; this departure and the two above close when it is Done.
+>
+>   **Narrowed on 2026-08-13:** KAR-19.7 shipped, so the bundled agent can serve every
+>   schema-bearing turn the chain needs and a run on a `PATH` with no vendor CLI is admitted. The
+>   binding is now merely unbuilt: `executeNodes`, `runFraming` and `advanceRun` are still
+>   unsupplied in `DeFlow up`, and #1 and #8's `e2e` halves move up when they are supplied.
 >
 > One thing shipped that no criterion asked for, and it is the kind of thing that is cheaper to
 > record than to rediscover. **The execution turn is launched by the tick, never awaited by it.**
@@ -841,6 +855,54 @@ deleted once one route answers for every state.
 | **Depends on**  | KAR-19.3 (the chain whose amendment discovered this, and whose e2e half it unblocks), EPIC-04 KAR-04.1 (the mock agent binary and its real ACP session), KAR-04.2 (the scripted scenario format the scripted returns join) and KAR-04.4 (the capability-profile honesty rule this field joins), EPIC-05 KAR-05.2 (the probed capability row admission reads) and KAR-05.3 (`PROVIDER_SPECS`, the one file allowed to name a vendor), EPIC-09 KAR-09.9 (the `returns` contract and `structuredOutputContract`), EPIC-10 KAR-10.2 (`admitFraming`, which this story satisfies rather than relaxes) |
 | **PRD**         | F1.2, F2.2, F3.5, F3.7, NF1, NF6, NF9                                                                                                                                                                                                                                                                                                                                 |
 | **Verified by** | EPIC-19-S44, EPIC-19-S45, EPIC-19-S46, EPIC-19-S47, EPIC-19-S48, EPIC-19-S49, EPIC-19-S50, EPIC-19-S51                                                                                                                                                                                                                                                                 |
+
+> **Amendment (implementation, 2026-08-13).** Three departures, and one wording in the scenarios
+> that the emitted schemas do not support.
+>
+> - **The structured path is exec-shaped, not ACP-native.** EPIC-19-S44 says the framing turn is
+>   *"served by `DeFlow-mock-agent` over a real ACP session"*, and the story's own prose leaves the
+>   choice open — _"an exec-shim mode, or an ACP-native return"_. It is the exec-shim mode, because
+>   the criteria decide it: AC2 puts the flag on `shim.structuredOutputFlag`, which is the field
+>   `providerStructuredOutput` reads and therefore the only field that can make admission answer
+>   `native`; AC1 says the return channel carries **one document and nothing else**, which is stdout
+>   rather than a frame inside a session; and AC6 and test plan #6 want a **non-zero exit** and zero
+>   bytes, which are process-level facts an ACP turn cannot state. So the flag selects an
+>   exec-shaped invocation and no transport is opened on that path — which is also what keeps a
+>   turn *without* the flag byte-identical to the one EPIC-04 shipped (AC5).
+> - **AC1's recon clause is two schema ids, not a nested provenance field.** EPIC-19-S45 asks that
+>   *"each recon fact in `DeFlow.reconsurvey.v1` carries a `DeFlow.reconfact.v1` provenance field"*,
+>   and `schemas/DeFlow.reconsurvey.v1.json` has no facts array to carry one: the survey is the
+>   agent's *claims* (toolchain, commands), and a `reconfact` is the separate document `runReconNode`
+>   writes when it establishes one. Serving both ids — which is what AC1's *"`DeFlow.reconsurvey.v1`
+>   with `DeFlow.reconfact.v1`"* literally asks for — is what shipped. Changing the emitted schema to
+>   make the scenario's sentence true would be EPIC-10's mechanism, altered to satisfy a test double.
+> - **Test plan #5's "before and after" is the suite itself, not a new spec.** *"Run each shipped
+>   scenario and each `recordings/` replay before and after this story; assert byte-identical
+>   transcripts"* cannot be written as a test that only exists afterwards — the "before" side has no
+>   observer. What EPIC-04's unchanged suite already asserts is byte-identity per seed and per
+>   golden, and it passes with no fixture re-recorded and no expectation relaxed, which is the claim.
+>   What is newly automated is the half a later reader could break: the structured path is entered
+>   only when a schema is supplied, a `returns` block is invisible to an ACP turn (byte-compared),
+>   and no shipped scenario declares one.
+> - **AC9 and test plan #9 are not automated here, and the reason is one level below this story.**
+>   Everything AC9 needs *from this story* is in place: a `PATH` holding only `DeFlow-mock-agent` now
+>   passes admission (`PROVIDER_SPECS` has a `mock` entry that resolves), `providerStructuredOutput`
+>   reports `native` because the binary honours the flag, and `admitFraming` admits a framing node
+>   routed there. What is still missing is the wiring KAR-19.3 and KAR-19.4 recorded as their own
+>   departure: `DeFlow up` binds no `runFraming`, `advanceRun` or `executeNodes` port, because no
+>   `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real process exists yet. That was **blocked**
+>   before this story and is merely **unbuilt** after it, which is the whole of what KAR-19.7 was
+>   for. AC9 closes with that binding, and the acceptance case is automated at `e2e` then — together
+>   with KAR-19.3's test plan #1 and KAR-19.4's #1 and #8, which close at the same moment.
+>
+> One thing shipped that no criterion named, and it is cheaper to record than to rediscover.
+> **`ProviderSpec` gained a `bundled` flag**, and `provider-install.ts` a `usableProviders` ordering
+> that puts bundled entries last. AC8 asks for both halves — *"nothing prefers `mock` to it"* and
+> *"never prints an `npm install -g` action for a package that ships in the same tarball"* — and both
+> have to be answered without naming a provider outside `provider-registry.ts`. A boolean on the spec
+> is what lets `providerVerdict` stay a pure function of the resolution it was handed, and
+> `admitRun` now reduces `usableProviders` rather than asking `some(installed)` a second time, so
+> the ordering is on the path a run actually takes rather than beside it.
 
 **As** a person evaluating DeFlow on a machine with no vendor agent CLI, **I want** the bundled mock
 agent to be able to answer a turn that carries a schema, **so that** framing, planning and execution
