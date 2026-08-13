@@ -139,16 +139,40 @@ const applied = (page: Page): Promise<number[]> =>
 const driverState = (page: Page): Promise<DriverState> =>
   page.evaluate<DriverState>('globalThis.__deflowE2e.state()');
 
-/**
- * The stream requests among `sent`, oldest first.
+/** Every `/api/stream` request this page made, oldest first, whoever opened it.
  *
  * Matched on the **pathname**, not on a substring: the page is served by Vite
  * from the daemon's own origin, so `/src/api/stream.ts` is a real request this
  * page makes and `url.includes('/api/stream')` collects it — which reads as the
  * client having opened a stream with no `?since=` at all.
  */
-const streams = (sent: readonly Sent[]): Sent[] =>
+const allStreams = (sent: readonly Sent[]): Sent[] =>
   sent.filter((one) => new URL(one.url).pathname === '/api/stream');
+
+const runsOf = (url: string): string => new URL(url).searchParams.get('runs') ?? '';
+
+/**
+ * The connections **this spec's driver** opened.
+ *
+ * Since KAR-19.1 the pathname alone no longer names one connection. The page
+ * this file boots lands on the root route, and `useRunList` opens a connection
+ * of its own there — `?runs=*`, the global lifecycle topic — before the driver
+ * has run at all. It is a real part of the shipped app, and it resumes from
+ * *its* cursor: the handful of lifecycle seqs it applied, not the several
+ * hundred run events the driver folded. So `streams(sent)[0]` used to be the
+ * driver's first connection and quietly became the run list's, and two
+ * assertions about where the driver reopened started reading a number that was
+ * never about the driver — `since=401` for a driver that reopened at 934,
+ * `since=1` for one that reconnected at 50.
+ *
+ * Selected by `runs` rather than by position, because position is what broke.
+ * Nothing is suppressed by narrowing it: the cardinality assertions below still
+ * go red if this filter ever selects nothing, and the `Last-Event-ID`
+ * assertions deliberately stay on `allStreams` so the run list's connection is
+ * held to the same rule as the driver's.
+ */
+const streams = (sent: readonly Sent[]): Sent[] =>
+  allStreams(sent).filter((one) => runsOf(one.url) !== '*');
 
 const sinceOf = (url: string): number => Number(new URL(url).searchParams.get('since') ?? '-1');
 
@@ -399,8 +423,10 @@ suite('EPIC-16-S8 — the connection drops mid-run and comes back with no seam',
       // And where the browser *did* supply a `Last-Event-ID` — this is the
       // library's own automatic reconnect, so it does — the two agree, which is
       // what makes the server's `since` > `Last-Event-ID` precedence a
-      // no-op rather than a silent rewind.
-      for (const request of opened) {
+      // no-op rather than a silent rewind. Over every connection the tab held,
+      // the run list's included: each resumes from its own cursor, and the rule
+      // is that the header never disagrees with the query string it rode in on.
+      for (const request of allStreams(sent)) {
         if (request.lastEventId === undefined) continue;
         expect(
           Number(request.lastEventId),
