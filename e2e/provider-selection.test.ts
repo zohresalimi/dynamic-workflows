@@ -183,9 +183,7 @@ suite('EPIC-19-S65 — the flag is honoured, not merely accepted', () => {
     await waitFor('the run reached its framing turn', () =>
       cli.stdout().includes('provider mock') && cli.child.exitCode === null ? true : null,
     );
-    expect(existsSync(witness()), 'the vendor CLI was spawned despite --provider mock').toBe(
-      false,
-    );
+    expect(existsSync(witness()), 'the vendor CLI was spawned despite --provider mock').toBe(false);
 
     cli.child.kill('SIGINT');
     expect((await cli.exited).code).toBe(130);

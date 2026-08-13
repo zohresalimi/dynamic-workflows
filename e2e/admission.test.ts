@@ -142,18 +142,45 @@ suite('EPIC-19-S10 — DeFlow run exits 5, and the refusal is in the ledger', ()
   });
 });
 
-suite('EPIC-19-S9 — the reported machine, through the real binary', () => {
-  it('exits 5 naming the adapter, and never says the vendor CLI is not installed', async () => {
-    const dataDir = join(tmp, 'data');
-    const repo = await makeRepo({ dir: join(tmp, 'repo') });
+async function waitFor<T>(what: string, read: () => T | null, timeoutMs = 60_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = read();
+    if (value !== null) return value;
+    await sleep(50);
+  }
+  throw new Error(`${what} did not happen within ${timeoutMs} ms`);
+}
 
-    // `claude` on PATH, working, answering `--version` — and no ACP bridge
-    // anywhere. This is the machine the incident happened on.
+suite('EPIC-19-S9 — the reported machine, through the real binary', () => {
+  /**
+   * **Amended 2026-08-13 by KAR-19.10.** This machine — `claude` on `PATH`,
+   * working, and no ACP bridge anywhere — used to exit 5. It no longer does,
+   * because it is not unusable: the pre-execution turns run through the vendor's
+   * own CLI, so it can frame, survey and plan, and refusing it would refuse the
+   * path the whole chain runs on.
+   *
+   * What survives, and is what this suite was really about, is the **sentence**:
+   * KAR-18.8's wording reaching an operator through a third surface without
+   * anyone having written it a third time, and `claude is not installed` never
+   * printed on a machine where `claude` resolves. It now arrives as a
+   * limitation stated at submission rather than as a refusal — with the turn
+   * this machine cannot reach named — and the refusal it used to produce is what
+   * an operator gets when they name the provider explicitly (AC8).
+   */
+  const vendorCliOnly = (): { binDir: string; shim: string } => {
     const binDir = join(tmp, 'bin');
     mkdirSync(binDir, { recursive: true });
     const shim = join(binDir, 'claude');
     writeFileSync(shim, `#!/bin/sh\necho 2.1.220\n`, { mode: 0o755 });
     chmodSync(shim, 0o755);
+    return { binDir, shim };
+  };
+
+  it('states the turn it cannot serve, naming the adapter and never "not installed"', async () => {
+    const dataDir = join(tmp, 'data');
+    const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const { binDir, shim } = vendorCliOnly();
 
     const cli = spawnCli({
       dataDir,
@@ -163,12 +190,54 @@ suite('EPIC-19-S9 — the reported machine, through the real binary', () => {
     });
     running.push(cli);
 
+    // AC7 — said at submission, on stdout, before the run reaches an agent node.
+    const said = await waitFor('the limitation reached the terminal', () => {
+      if (cli.child.exitCode !== null) {
+        throw new Error(
+          `DeFlow run exited ${cli.child.exitCode}:\nstderr:\n${cli.stderr()}\n` +
+            `stdout:\n${cli.stdout()}`,
+        );
+      }
+      const out = cli.stdout();
+      return out.includes('node execution') ? out : null;
+    });
+
+    // AC4 — the announcement: the provider, the resolved absolute path, the route.
+    expect(said).toContain('provider claude');
+    expect(said).toContain(shim);
+    expect(said).toContain('exec shim');
+
+    // AC3 — the sentence KAR-18.8 wrote, reaching an operator through a third
+    // surface without anyone having written it a third time.
+    expect(said).toContain(`"claude" is installed at ${shim}`);
+    expect(said).toContain('npm install -g @agentclientprotocol/claude-agent-acp');
+    expect(said).not.toContain('claude is not installed');
+
+    cli.child.kill('SIGINT');
+    await cli.exited;
+  });
+
+  it('exits 5 with the same sentence when the operator names it (AC2, AC8)', async () => {
+    const dataDir = join(tmp, 'data');
+    const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const { binDir, shim } = vendorCliOnly();
+
+    const cli = spawnCli({
+      dataDir,
+      cwd: repo.dir,
+      argv: ['run', '--provider', 'claude', 'add a health endpoint'],
+      env: { PATH: [binDir, GIT_DIR].join(':') },
+    });
+    running.push(cli);
+
     const exit = await cli.exited;
+    // An environment refusal and not an argument error: `claude` is a real
+    // registry id, so the operator installs a package rather than editing
+    // their command line.
     expect(exit.code, `stderr:\n${cli.stderr()}`).toBe(5);
 
     const stderr = cli.stderr();
-    // AC3 — the sentence KAR-18.8 wrote, reaching an operator through a third
-    // surface without anyone having written it a third time.
+    expect(stderr).toContain('node execution');
     expect(stderr).toContain(`"claude" is installed at ${shim}`);
     expect(stderr).toContain('npm install -g @agentclientprotocol/claude-agent-acp');
     expect(stderr).not.toContain('claude is not installed');

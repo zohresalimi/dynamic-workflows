@@ -159,6 +159,13 @@ function vendorCliOnPath(path: string): readonly string[] {
 interface Probed {
   readonly provider: string;
   readonly capsJson?: { readonly agentInfo?: { readonly name?: string } };
+  /**
+   * KAR-19.10 AC4 — present only on the row **admission** writes into the run's
+   * own stream, naming the provider it chose and the route it will take. The
+   * boot probe's rows never carry it, which is what lets the two be told apart
+   * without knowing which synthetic run id the probe used.
+   */
+  readonly chosen?: { readonly route: string; readonly binaryPath: string };
 }
 
 interface Ledger {
@@ -279,8 +286,18 @@ suite('EPIC-19-S44 — a run framed on a machine with nothing installed', () => 
     // is a real ACP `initialize` response from the binary on `PATH` — which is
     // what makes "no vendor CLI of any kind" a statement about this run rather
     // than about the directory listing above.
-    expect(recorded.probed.map((row) => row.provider)).toEqual([PROVIDER_SPECS.mock.id]);
-    expect(recorded.probed[0]?.capsJson?.agentInfo?.name).toBe(PROVIDER_SPECS.mock.bin);
+    // The probe rows: one, for `mock`, and the handshake in it is a real ACP
+    // `initialize` response from the binary on `PATH`.
+    const handshakes = recorded.probed.filter((row) => row.chosen === undefined);
+    expect(handshakes.map((row) => row.provider)).toEqual([PROVIDER_SPECS.mock.id]);
+    expect(handshakes[0]?.capsJson?.agentInfo?.name).toBe(PROVIDER_SPECS.mock.bin);
+
+    // KAR-19.10 AC4 — and admission's own row, in the run's stream, saying what
+    // it chose. On this machine there is only one thing it could have chosen,
+    // which is the point: the choice is now *recorded* rather than implied.
+    const chosen = recorded.probed.filter((row) => row.chosen !== undefined);
+    expect(chosen.map((row) => row.provider)).toEqual([PROVIDER_SPECS.mock.id]);
+    expect(chosen[0]?.chosen?.route).toBe('shim');
 
     // The wait is a durable row rather than a promise (KAR-19.1 AC1), and
     // KAR-19.3 changed *which* row it is: `DeFlow up` now binds the chain, so
