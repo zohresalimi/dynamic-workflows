@@ -128,6 +128,14 @@ Background:
 | EPIC-19-S68 | A registered provider this machine cannot serve is an environment refusal, not a typo | KAR-19.10 | Failure  |
 | EPIC-19-S69 | **`doctor` and admission answer the provider question through one function**       | KAR-19.10 | Edge case   |
 | EPIC-19-S70 | A machine that can frame but not execute is told at admission, not at the node     | KAR-19.10 | Failure     |
+| EPIC-19-S71 | **Happy path: the framing turn's schema argument is one the vendor parses**        | KAR-19.11 | Happy path  |
+| EPIC-19-S72 | Every argument of every exec-shim entry declares its form, and the value matches   | KAR-19.11 | Edge case   |
+| EPIC-19-S73 | The document for one vendor, the path for another, from the same contract          | KAR-19.11 | Edge case   |
+| EPIC-19-S74 | **The fakes refuse what the real CLIs refuse, so a wrong shape is red in CI**      | KAR-19.11 | Failure     |
+| EPIC-19-S75 | A schema too big for the command line is refused at construction, not by `spawn`   | KAR-19.11 | Failure     |
+| EPIC-19-S76 | A second refused argument is still named, quoted and not retried                   | KAR-19.11 | Failure     |
+| EPIC-19-S77 | **Every argument of the installed vendor CLI's argv** _(opt-in, manual)_           | KAR-19.11 | Edge case   |
+| EPIC-19-S78 | **Performed, not asserted: a real `claude` frames the run and a plan is produced** | KAR-19.11 | Happy path  |
 
 ---
 
@@ -2180,6 +2188,287 @@ bridge is missing costs a framing turn, a recon turn, a planner turn and the ope
 the run was working; all of it is knowable before the 201. The second scenario is the one that keeps
 `--provider` meaningful: a fallback nobody announced is the whole defect this story is about, and it
 is worse when the operator explicitly named the provider they wanted.
+
+---
+
+## EPIC-19-S71 — Happy path: the framing turn's schema argument is one the vendor parses
+
+**Verifies:** KAR-19.11 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: the structured-output argument is the shape its vendor accepts
+
+  Scenario: the framing turn survives the vendor's own parse of --json-schema
+    Given a temp PATH holding the testkit's fake vendor CLI under the name "claude"
+    And that fake JSON.parses the value of "--json-schema" and exits 1 when it does not parse,
+        exactly as Claude Code 2.1.220 does
+    And a probed capability row for "claude"
+    When the driver dispatches the framing wake for run "run_<ts>_<hex>"
+    Then the argv the child received carries "--json-schema" followed by one argument that parses
+        as JSON
+    And that parsed object equals the schema the structured-output contract selected
+    And no element of the argv is the path of a file under ".DeFlow/schemas"
+    And the child exits 0
+    And a "run.created" event is appended for that run
+
+  Scenario Outline: every turn that carries a returns contract, not only framing
+    When a <turn> is dispatched on the exec-shim path with a returns contract
+    Then its "--json-schema" value parses as JSON and equals that turn's schema
+
+    Examples:
+      | turn       |
+      | framing    |
+      | recon      |
+      | planner    |
+      | agent node |
+```
+
+**Notes:** the regression test for the defect observed by hand on 2026-08-13 at 19:59, one argument
+after KAR-19.8's fix landed. The failure was `claude exited 1: Error: --json-schema is not valid
+JSON: JSON Parse error: Unrecognized token '/'`, and the `'/'` is the first character of the absolute
+path DeFlow passed where the vendor wanted the document. As in EPIC-19-S52, the clause carrying the
+scenario is **the fake that refuses**: a double that accepts whatever it is handed proves the argv
+was built, not that it can be run.
+
+---
+
+## EPIC-19-S72 — Every argument of every exec-shim entry declares its form, and the value matches
+
+**Verifies:** KAR-19.11 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the audit is a table, checked, not a reading of --help
+
+  Scenario Outline: every value DeFlow supplies matches the form its entry declares
+    Given the PROVIDER_SPECS entry for <provider>
+    When it builds a shim invocation for each turn kind and each expressible permission level
+    Then every argument it emits has a declared form in the registry
+    And every supplied value matches that form
+    And the form and its provenance are read from the registry, never from a literal in the test
+
+    Examples:
+      | provider |
+      | claude   |
+      | gemini   |
+      | codex    |
+      | copilot  |
+      | opencode |
+      | mock     |
+
+  Scenario: an argument with no declared form fails rather than being skipped
+    Given an entry that emits a value on a flag with no declared form
+    Then this test fails, naming the entry and the flag
+    And it is not reported as passed or as skipped
+
+  Scenario: provenance is recorded as three distinct claims
+    Then each declared form records whether it is known from "--help", from the vendor bundle, or
+        from execution against the real binary, and on what date
+    And the set of forms never verified by execution is exactly the work list of EPIC-19-S77
+```
+
+**Notes:** two arguments in two days were found wrong by running the product, so the interesting
+number is how many are left, and nothing in the repository could answer it. Deriving the rows from
+`PROVIDER_SPECS` is what makes the answer maintainable — a vendor added next month is covered without
+anyone remembering — and separating *"read from `--help`"* from *"executed"* is what stops the audit
+from producing the same false confidence as the comment above `structuredOutputFlag`, which said
+**Verified 2026-08-02** about a form that had never been run.
+
+---
+
+## EPIC-19-S73 — The document for one vendor, the path for another, from the same contract
+
+**Verifies:** KAR-19.11 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: one structured-output contract, two argument shapes
+
+  Scenario: the same schema goes inline to one vendor and as a path to another
+    Given one structured-output contract for "DeFlow.taskspecdraft.v1"
+    When a shim invocation is built for "claude" and for "codex" from it
+    Then claude's "--json-schema" carries the schema document
+    And codex's "--output-schema" carries an absolute path to the schema file
+    And the bundled agent's structured-output flag carries an absolute path
+    And neither shape is produced by a branch outside provider-registry.ts
+
+  Scenario: the placement code no longer assumes a path
+    Then the argument is positioned from the entry's declared form
+    And an entry added without a declared form does not fall back to a path
+```
+
+**Notes:** the cause was not the value, it was the assumption. `shimInvocation` appends
+`[entry.structuredOutputFlag, ctx.schemaPath]` for every vendor from one line, so *"a schema argument
+is a path"* was applied uniformly to a table whose members disagree — Codex CLI documents
+`--output-schema <FILE>` and the bundled agent takes a path, while Claude Code wants the document.
+This scenario is what stops the fix from swinging the assumption the other way and breaking the two
+entries that were right all along.
+
+---
+
+## EPIC-19-S74 — The fakes refuse what the real CLIs refuse, so a wrong shape is red in CI
+
+**Verifies:** KAR-19.11 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the double enforces the vendor's rules
+
+  Scenario: a path on --json-schema turns the suite red with no vendor CLI installed
+    Given no vendor CLI on PATH and the testkit's fake exec-shim binaries only
+    And the shim is made to pass a filesystem path on "--json-schema"
+    When the suite runs
+    Then it fails, with the fake's message naming the flag and the unparseable value
+
+  Scenario: a non-UUID session id turns the suite red the same way
+    Given the shim is made to pass "run_<ts>_<hex>-framing" on "--session-id"
+    When the suite runs
+    Then it fails, with the fake's message naming the flag
+
+  Scenario: the fakes validate every declared form, not only these two
+    Then each fake vendor binary validates the declared form of every argument it receives
+    And a fake that accepts an argument its real vendor refuses fails this scenario
+```
+
+**Notes:** **this is the half of the story worth more than the fix.** Both defects passed every level
+of the suite and failed on the first real machine, for one reason: the argv is asserted against
+fixtures and against fakes that accept anything, so *"DeFlow builds an argument the vendor refuses"*
+was outside every test in the repository. The two proof cases are deliberately the two bugs that
+already happened — the check that would have caught **both** before an operator did, which is the
+bar this story sets for itself. It runs everywhere, with no vendor CLI, no credential and no network.
+
+---
+
+## EPIC-19-S75 — A schema too big for the command line is refused at construction, not by `spawn`
+
+**Verifies:** KAR-19.11 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: inlining a document has a ceiling, and it is stated
+
+  Scenario: an oversized schema is a typed refusal before any child exists
+    Given a schema whose serialised bytes exceed the platform's argument limit
+    When a shim invocation is built for "claude"
+    Then construction refuses with a typed refusal naming the limit and the schema id
+    And no child process is spawned
+    And the message is not an errno
+
+  Scenario: the document rides as one argument and is not pasted into logs
+    Then the schema is a single argv element, never shell-interpolated
+    And wherever argv is logged or recorded, the inline document is reduced to its schema id
+    And the schema file is still written under the run's ".DeFlow/schemas" directory
+    And the manifest and the ledger still name the schema id that was sent
+```
+
+**Notes:** moving a document from a file onto a command line trades one failure mode for another, and
+the new one is `E2BIG` at `spawn` on whichever schema grows past the platform limit first — an errno
+from the kernel, on the largest and most important turn, with no name attached. Refusing at
+construction makes it a sentence. The second scenario is the NF8 half: what the vendor is handed
+changes, what an operator can read afterwards does not, and a log line must not become a paste of the
+whole schema.
+
+---
+
+## EPIC-19-S76 — A second refused argument is still named, quoted and not retried
+
+**Verifies:** KAR-19.11 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: argument-refusal reporting is a property, not a special case of one flag
+
+  Scenario: the operator learns which argument was wrong, on a flag nobody wrote it for
+    Given a fake vendor CLI that exits 1 writing
+        "Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'"
+    When a turn is dispatched onto it
+    Then the typed failure's detail carries the flag "--json-schema" and the value that was passed
+    And it carries the child's stderr, trimmed and not paraphrased
+    And the terminal line names the flag and the value
+    And no stack trace is required to learn which argument was rejected
+
+  Scenario: it is permanent, and the run stops after one attempt
+    Then the failure's class is "permanent"
+    And exactly one child was spawned for that turn
+    And the run reaches a terminal state carrying the reason
+```
+
+**Notes:** KAR-19.8 built this reporting and it is the reason the 19:59 failure was diagnosable in one
+read — the flag named, the vendor's own words quoted, the class permanent so the run aborted rather
+than retrying every 31 seconds. The scenario exists because behaviour written for `--session-id` can
+easily be *implemented* for `--session-id`: a stderr matcher keyed to one flag looks identical in
+green until the second argument fails. Asserting it on a different flag is what makes it a property.
+
+---
+
+## EPIC-19-S77 — Every argument of the installed vendor CLI's argv _(opt-in, manual)_
+
+**Verifies:** KAR-19.11 · **Type:** Edge case · **Automated at:** manual
+
+```gherkin
+Feature: the F3.4 conformance battery, whole-argv, against a real vendor CLI
+
+  Scenario Outline: the real binary accepts the complete invocation DeFlow would send it
+    Given DeFlow_MANUAL_VENDOR_CLI=1 is set
+    And a real, installed, authenticated <provider> resolves on PATH
+    When the registry builds the complete argv for a <turn> at each expressible permission level
+    And that argv is passed to the real binary unmodified
+    Then the process exits 0
+    And its result envelope carries a parsed structured output where the turn declared one
+    And no stderr line reports an invalid, unparseable or unsupported argument
+
+    Examples:
+      | provider | turn    |
+      | claude   | framing |
+      | claude   | planner |
+      | codex    | framing |
+      | gemini   | framing |
+
+  Scenario: without the variable the rows are skipped, and the skip is visible
+    Given DeFlow_MANUAL_VENDOR_CLI is unset
+    When the suite runs
+    Then these cases are reported as skipped with the reason
+        "manual: needs an authenticated vendor CLI"
+    And they are never reported as passed
+    And "doctor" states which conformance rows ran and which need a vendor CLI on this machine
+```
+
+**Notes:** **this scenario does not run in CI, and saying so plainly is the point** — the same
+mechanism `packages/core/test/vendor-cli-schema.manual.test.ts` established for KAR-02.8, and the
+same honesty EPIC-19-S56 records for the session id. It spawns real authenticated CLIs and spends
+real quota. What it adds over S56 is coverage: the *whole* argv rather than one flag, per turn kind
+and per permission level, which is the only row in the system that can catch a vendor **changing** a
+rule. What runs everywhere is EPIC-19-S72's table and EPIC-19-S74's enforcing fakes; this is the row
+that keeps them honest, and the set of forms it has never executed is written down rather than
+assumed away.
+
+---
+
+## EPIC-19-S78 — Performed, not asserted: a real `claude` frames the run and a plan is produced
+
+**Verifies:** KAR-19.11 · **Type:** Happy path · **Automated at:** manual
+
+```gherkin
+Feature: the acceptance is a run somebody did, pasted
+
+  Scenario: the operator's own command completes the framing turn
+    Given the CLI built from this branch
+    And a scratch git repository created outside any DeFlow checkout
+    And "deflow init" has been run in it
+    And a real, installed, authenticated "claude" resolves on PATH
+    When the operator runs "deflow run --file <task.md>"
+    Then the framing turn completes
+    And the run produces a plan
+    And the command exits without being killed
+    And the command, its exit code and the run's event list are pasted into KAR-19.11 and onto its
+        Linear issue
+
+  Scenario: a green suite is not accepted as evidence for this story
+    Given every automated scenario in this file passes
+    And no such run has been performed since the change
+    Then KAR-19.11 is not Done
+```
+
+**Notes:** two defects in two days were found by one person running the product and by no test, at
+19:57 and again at 19:59. The second scenario is the one with teeth: this story's whole subject is
+that the suite was green while the product could not complete a turn, so accepting the suite as its
+own acceptance would reproduce the defect at the level of the plan. The transcript is the artefact —
+the command, the exit code and the events — and it is pasted rather than described.
 
 ---
 

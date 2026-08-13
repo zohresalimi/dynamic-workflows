@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                                          |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                                          |
 | **Workstream**       | W13 — added 2026-08-12, after the first live run did nothing (see [roadmap §2.2](../../17-roadmap.md) and §2.3)                                                                                                                                                                              |
-| **Size**             | ~30 days across 10 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                           |
+| **Size**             | ~33 days across 11 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                           |
 | **Depends on**       | EPIC-10 (intake, framing, spec gate, recon), EPIC-11 (plan compilation and validation), EPIC-06 (`decide()`, the ticker, `node_wake`, the effect journal), EPIC-09 (packet assembly), EPIC-05 (provider registry and capability probe), EPIC-15 (the HTTP API and the SSE stream), EPIC-16 and EPIC-17 (the store and the views that render it), EPIC-18 (`run`, `status`, `doctor`, the exit-code table), EPIC-13 (human nodes), EPIC-12 (gates), EPIC-14 (cost accounting), EPIC-04 (the bundled mock agent — the binary every scenario here runs against, and the one KAR-19.7 extends) |
 | **Blocks**           | M1's definition of done. PRD §11 is _"you complete a real multi-hour task at work with it"_; until this epic lands, no task of any length can be completed, because no submitted run proceeds past intake                                                                                    |
 | **PRD requirements** | F1.1, F1.2, F1.3, F2.2, F2.3, F3.1, F3.2, F3.4, F3.5, F3.7, F4.1, F4.2, F4.3, F4.4, F4.5, F4.7, F5.7, F6.1, F7.1, F9.1, F9.2, F10.1, F10.6, F10.9, NF1, NF3, NF6, NF7, NF8, NF9, NF10, AR-1                                                                                                 |
@@ -73,6 +73,14 @@ provider, with no way for the operator to say otherwise and no statement of what
 (KAR-19.10). All three are the same sentence as the first five — **silence is the defect** — one
 layer further in: the run now moves, and when it cannot, it still says nothing.
 
+**And at 19:59 the same evening, with KAR-19.8's fix in place, the next invocation failed on the next
+argument.** `claude` refused `--json-schema <path>` because it wants the schema document inline, not
+a file to read — the second DeFlow-chosen argument in two days to be found wrong by a person running
+the thing. KAR-19.11 is that story, and its subject is the rate rather than the argument: nothing in
+the repository checks the *shape* of an argument against what the vendor accepts, because the shim's
+argv is asserted against fixtures and against fakes that accept whatever they are given. So the
+number of remaining wrong arguments is unknown, and each one costs one real run to discover.
+
 1. **Silence is the defect, not the symptom.** A run that cannot proceed must say so — in the
    ledger, in the terminal and in the UI. The operator lost an afternoon not because DeFlow refused,
    but because it did not.
@@ -123,6 +131,12 @@ layer further in: the run now moves, and when it cannot, it still says nothing.
   EPIC-06's own classified retry rather than a second policy (KAR-19.9); and `DeFlow run
   --provider`, the statement of which provider and which route a run chose, and the reconciliation of
   `doctor`'s view with admission's (KAR-19.10).
+- **The fourth, found that evening once the third was fixed** (KAR-19.11): an audit of every argument
+  every exec-shim entry builds against what its vendor actually accepts — starting with the
+  `--json-schema` value that must be the schema document and was a file path — a declared form per
+  argument in the registry, fakes that enforce those forms so a wrong shape is red in `pnpm test`,
+  and the F3.4 conformance rows that need a real vendor CLI run behind
+  `DeFlow_MANUAL_VENDOR_CLI=1` and reported as skipped.
 
 **Out of scope:**
 
@@ -169,7 +183,7 @@ layer further in: the run now moves, and when it cannot, it still says nothing.
 
 ## Definition of Done (epic level)
 
-- [ ] All ten stories are Done.
+- [ ] All eleven stories are Done.
 - [ ] **On a machine with no vendor agent CLI installed at all, a run can be framed, planned and
       executed using only `DeFlow-mock-agent`** — with no credential, no network and no read of
       `~/.DeFlow`. This is the epic's manual acceptance test and the property KAR-19.5's smoke test
@@ -206,7 +220,17 @@ layer further in: the run now moves, and when it cannot, it still says nothing.
 - [ ] **Every exec-shim argv DeFlow builds is one the vendor it names accepts.** The F3.4 conformance
       battery covers the argument forms on every commit against the mock and the fake vendor CLI, and
       the real-vendor rows run behind `DeFlow_MANUAL_VENDOR_CLI=1` and are reported as skipped rather
-      than silently absent when they do not (KAR-19.8).
+      than silently absent when they do not (KAR-19.8). **Every** argument — not only the two that
+      have failed in front of an operator — carries a declared form and a provenance note in
+      `PROVIDER_SPECS`, the fake vendor binaries refuse the shapes the real ones refuse so a wrong
+      argument is red in `pnpm test`, and no argument value is supplied without a declared form
+      (KAR-19.11).
+- [ ] **A run has been performed, by hand, against a real vendor CLI, and pasted.** With the built
+      CLI, a scratch git repository, `deflow init` and `claude` on `PATH`,
+      `deflow run --file <task.md>` completes the framing turn and produces a plan; the command, its
+      exit code and the run's event list are recorded on KAR-19.11 and its Linear issue. Two defects
+      in two days were found this way and by no test, so a green suite does not close this epic on
+      its own.
 - [ ] **A run states which provider it chose and by which route**, in the terminal, the ledger and
       the UI; `DeFlow run --provider <id>` selects one and is validated against the registry; and
       `doctor` and admission answer the provider question through one function, so no route `doctor`
@@ -1569,11 +1593,157 @@ prose.
 
 ---
 
+### KAR-19.11 — Every exec-shim argument is the shape the vendor CLI actually accepts _(added)_
+
+|                 |                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Status**      | Not started                                                                                                                                                                                                                                                                                                                                           |
+| **Priority**    | P0                                                                                                                                                                                                                                                                                                                                                    |
+| **Size**        | M                                                                                                                                                                                                                                                                                                                                                     |
+| **Depends on**  | KAR-19.8 (the session-id fix, its `SessionIdSpec` declared-form mechanism and its argument-refusal reporting — this story generalises the first and keeps the second), KAR-19.3 (`live-agents.ts`, which fills the shim context for every pre-execution turn), KAR-19.4 (`live-nodes.ts`, the same argv on the node path), EPIC-05 KAR-05.3 (`PROVIDER_SPECS` and `shimInvocation`, the one place an argument is positioned), KAR-05.7 (the conformance battery this extends), KAR-05.8 (the exec-shim adapter and its dialects), EPIC-09 KAR-09.9 (the structured-output contract that produces the schema this argument carries), EPIC-04 KAR-04.6 (the testkit's fake exec-shim binaries, which currently accept anything), EPIC-02 KAR-02.8 (the `.manual` vendor-CLI spec), EPIC-18 KAR-18.4 (`doctor`'s conformance report) |
+| **PRD**         | F1.2, F3.2, F3.4, F3.7, NF9, NF10                                                                                                                                                                                                                                                                                                                     |
+| **Verified by** | EPIC-19-S71, EPIC-19-S72, EPIC-19-S73, EPIC-19-S74, EPIC-19-S75, EPIC-19-S76, EPIC-19-S77, EPIC-19-S78                                                                                                                                                                                                                                                 |
+
+**As** an operator on a machine where a vendor CLI is installed, **I want** every argument DeFlow
+puts on that CLI's command line to be one it accepts, **so that** a run is not refused one argument
+at a time, each discovered by a person watching it fail.
+
+**Observed by hand on 2026-08-13 at 19:59**, on `epic/19-live-run-pipeline`, immediately after
+KAR-19.8 had fixed the session id. The very next real invocation failed on the very next argument:
+
+```
+claude exited 1: Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'
+```
+
+DeFlow had passed `--json-schema <abs path>/.DeFlow/schemas/DeFlow.taskspecdraft.v1.json`. The
+vendor does not want a **file path** on that flag; it wants the **schema document itself**, inline,
+and it says so by trying to `JSON.parse` what it was handed and failing on the leading `/`.
+
+**This is the second argument in two days, and the pattern is the story.** KAR-19.8 fixed
+`--session-id` because a run failed on it; this one fixes `--json-schema` because the next run
+failed on the next argument. There is no reason to believe it is the last: nothing anywhere has ever
+checked the *shape* of a DeFlow-built argument against what the vendor accepts, so the count of
+remaining wrong arguments is unknown and is currently discovered at a rate of one per real
+invocation. **Fixing only the one that happens to be next is the failure mode**, so this story is an
+audit of every argument every exec-shim entry builds, not a second one-line patch.
+
+The registry's own provenance line is the sharpest evidence of how it happened. `provider-registry.ts`
+records, above `structuredOutputFlag`, *"Verified 2026-08-02 from the 2.1.220 bundle's flag table and
+zod schema: `--json-schema <file>` is accepted"* — a note that reads as verified and was verified by
+**reading**, never by execution. `shimInvocation` then positions `[entry.structuredOutputFlag,
+ctx.schemaPath]` for **every** vendor from one line, so a single unexamined assumption — *"a schema
+argument is a path"* — was applied uniformly to a table whose members disagree: Codex CLI documents
+`--output-schema <FILE>` and the bundled agent's flag takes a path, while Claude Code wants the
+document. One rule for arguments that are not one shape.
+
+**The deeper problem, and the more valuable half of this story: no test in the repository can fail
+this way.** The shim's argv is asserted against fixtures and against the testkit's fake exec-shim
+binaries, and the fakes accept whatever they are handed — so an argument the real vendor refuses
+passes every level of the suite and is found only on a machine with the vendor installed. Ten
+thousand green tests and a product that cannot complete a turn is the same sentence this epic opened
+with, one layer in. The honest home for the check is F3.4's conformance battery and the opt-in
+vendor-CLI manual spec (KAR-02.8), and **the opt-in half genuinely does not run everywhere — this
+story says so plainly rather than implying otherwise**. What must exist when this story is done is a
+check that **would have caught both bugs before an operator did**: the argument-form guard runs on
+every commit against fakes that now enforce each vendor's declared forms, and the real-CLI rows run
+behind `DeFlow_MANUAL_VENDOR_CLI=1` and are reported as skipped rather than quietly absent.
+
+**Credit where it is due, and what must not regress.** KAR-19.8's argument-refusal reporting is why
+this was diagnosable in one read: it named the argument, quoted `claude`'s own stderr verbatim, and
+classified the refusal `permanent`, so the run aborted after a single attempt instead of retrying it
+every 31 seconds for an afternoon. That behaviour is kept, and this story asserts it on a **second**
+flag so that it is a property of argument refusals rather than a special case of `--session-id`.
+
+**Acceptance criteria**
+
+1. The reported defect is fixed at the value, not at the call site. Every exec-shim invocation
+   DeFlow builds for `claude` that carries a structured-output contract puts the schema **document**
+   on `--json-schema` — bytes that `JSON.parse` accepts and that deep-equal the schema the contract
+   selected — on all four turn kinds that reach the shim (framing, recon, planner, agent node). No
+   filesystem path is ever the value of that flag for this entry, and the assertion parses the argv
+   value rather than matching a substring of it.
+2. The shape of an argument is **declared per entry**, and the positioning code reads the
+   declaration. `ShimSpec` carries a form for every value DeFlow supplies that its vendor validates,
+   drawn from one closed vocabulary (at least `inline-json`, `abs-path`, `uuid`, `enum`,
+   `free-text`), and `shimInvocation` stops assuming that a schema argument is a path: `claude` is
+   `inline-json`, `codex`'s `--output-schema` and the bundled agent's flag stay `abs-path`, and the
+   difference is one field of data rather than a branch or a vendor name outside the registry.
+   KAR-19.8's `SessionIdSpec` becomes a member of this vocabulary rather than a parallel mechanism.
+3. **Every argument is audited, and the audit has an artefact.** For each exec-shim entry, every
+   element its `build` can emit — the positional prompt, the format flag and its values, the
+   permission flags, `--verbose`, the sandbox `--settings` document, the session id, the
+   structured-output argument, `--effort`, `--max-budget-usd`, `--secret-env-vars`, `-C/--cd`,
+   `--skip-git-repo-check` — carries a declared form **and** a provenance note recording how that
+   form is known and when: read from `--help`, decoded from the bundle, or **executed against the
+   real binary**. The three are not the same claim and are not written as though they were. An
+   argument whose form has never been executed is marked as such, and the set of unexecuted rows is
+   exactly the work list for AC6's manual battery.
+4. The guard is over the table and runs everywhere. A table-driven test over `PROVIDER_SPECS` ×
+   turn kind × permission level asserts that every supplied value matches its entry's declared form,
+   with the rows derived from the table rather than listed by hand; an entry or an argument with no
+   declared form **fails** the test rather than being skipped. A vendor added tomorrow is covered
+   without anyone remembering to cover it.
+5. **The doubles stop accepting what the real CLIs refuse.** The testkit's fake exec-shim binaries
+   and `dialects.ts` validate the declared form of every argument they are handed and exit non-zero
+   with that vendor's own message shape when it does not match. Two proof cases are asserted
+   explicitly: a path on `claude`'s `--json-schema` and a non-UUID `--session-id` each turn the
+   existing suite **red** on a machine with no vendor CLI installed. A fake that accepts any argument
+   fails this criterion — that permissiveness is what let both defects ship.
+6. The F3.4 battery covers the whole argv, and its opt-in half is named as opt-in. Each exec-shim
+   vendor gains a conformance row asserting *the vendor accepts the complete argv this entry builds*
+   for each turn kind. The part that needs a real, installed, authenticated CLI runs only under
+   `DeFlow_MANUAL_VENDOR_CLI=1`, is **reported as skipped with its reason** rather than being
+   silently absent, is never reported as passed, and is described as manual in this story, in the
+   flow file and in `doctor`'s own conformance output — which states which rows ran and which need a
+   vendor CLI on this machine.
+7. KAR-19.8's refusal reporting is preserved and generalised. A shim child that exits non-zero having
+   named a flag DeFlow passed still yields a typed failure carrying the flag and the offending value,
+   the child's stderr trimmed and not paraphrased, and the class `permanent` — so the run aborts
+   after one attempt. This is asserted on `--json-schema` as well as on `--session-id`; losing any of
+   the three properties on either flag fails the story.
+8. Inlining changes the command line and nothing else. The schema file is still written under the
+   run's `.DeFlow/schemas/` directory and still named by schema id in the manifest and the ledger, so
+   an operator can read afterwards what was asked for (NF8); the document is passed as **one** argv
+   element, never shell-interpolated; wherever argv is logged or recorded, the inline document is
+   reduced to its schema id rather than pasted; and a schema whose serialised bytes would exceed the
+   platform's argument limit is refused at **construction** with a typed refusal naming the limit and
+   the schema id, not discovered as an `E2BIG` from `spawn`.
+9. **The acceptance is performed and pasted, not asserted.** With the CLI built from this branch, a
+   scratch git repository, `deflow init` and the real `claude` resolving on `PATH`,
+   `deflow run --file <task.md>` completes the framing turn and the run produces a plan. The command,
+   its exit code and the run's event list are pasted into this story's Notes and onto the Linear
+   issue. A green suite is not sufficient evidence for this story, because a green suite is precisely
+   what was already true on 2026-08-13 at 19:59.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
+implementation.
+
+| #   | Level       | Test                                                                                                                                                                                | Red when                                                                                                                            |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | `shimPlan` for `claude` with a structured-output contract, over the four turn kinds; assert the value after `--json-schema` `JSON.parse`s and deep-equals the selected schema        | The value is the absolute path `…/.DeFlow/schemas/DeFlow.taskspecdraft.v1.json` — the reported defect, at the smallest level         |
+| 2   | unit        | The form vocabulary itself: `inline-json` values parse, `abs-path` values are absolute, `uuid` values parse; and `shimInvocation` positions each entry's argument by its declaration | The shape is one rule for the whole table, so fixing `claude` breaks `codex`, whose flag really does take a file                     |
+| 3   | unit        | A `Scenario Outline` over `PROVIDER_SPECS` × turn kind × permission level; every supplied value matches its entry's declared form, and an undeclared form fails                     | Only the two arguments that have already failed are checked, and the third is found by the next by-hand run at 20:30 tonight         |
+| 4   | integration | The testkit's fake `claude` refusing a `--json-schema` value that does not parse, exactly as 2.1.220 does; drive a framing turn and assert it completes                             | The fake accepts anything, which is the whole reason both defects passed every test in the repository                                |
+| 5   | integration | A shim child exiting 1 with `--json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'`; assert the flag, the value, the trimmed stderr and class `permanent`       | The reporting KAR-19.8 built only recognises `--session-id`, so the second wrong argument is a stack trace again                     |
+| 6   | unit        | A schema whose serialised bytes exceed the platform argument limit; assert a typed construction-time refusal naming the limit and the schema id                                     | The refusal is an `E2BIG` from `spawn`, so the largest schema in the system fails in production and nowhere else                     |
+| 7   | manual      | The F3.4 battery behind `DeFlow_MANUAL_VENDOR_CLI=1`: spawn each installed vendor CLI with the entry's complete argv per turn kind; assert exit 0, a parsed return, and a reported skip when the variable is unset | Nothing spawns a real binary with DeFlow's own argv, so the next validated argument is found by an operator rather than by the suite |
+| 8   | manual      | The performed acceptance of AC9 — built CLI, scratch repo, `deflow init`, `deflow run --file` with the real `claude` — pasted into the story and the Linear issue                   | The story is called Done on a green suite, which is exactly the evidence that failed twice this week                                 |
+
+**Notes / risks** — the tempting shortcut is `readFileSync` at the one call site that broke: it makes
+tonight's error go away and leaves the vocabulary, the guard and the fakes' permissiveness untouched,
+so the third wrong argument arrives on the same schedule. The second risk is that *"audit every
+argument"* is unbounded if it is a reading exercise; it is bounded here by being a **column in the
+registry** — every argument gets a declared form and a provenance note, and an unexecuted form is a
+row in AC6's list rather than an omission. The third is scope creep into KAR-19.10's territory: this
+story changes what is on the command line and how it is checked, not which provider is chosen.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **~30 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled. It has also grown twice from the same cause — each by-hand run finds the next layer of silence.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring, and KAR-19.7 (~3 days, added 2026-08-13) cannot slip either, because KAR-19.5 cannot be written without it. The three stories added later on 2026-08-13 (~7 days) are ordered by how much of the operator's afternoon each returns: KAR-19.9 first — an unbounded, silent retry is what turns any other defect into a lost afternoon — then KAR-19.8, then KAR-19.10. |
+| R1  | **~33 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled. It has also grown three times from the same cause — each by-hand run finds the next layer of silence, and the last one found it one argument later.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring, and KAR-19.7 (~3 days, added 2026-08-13) cannot slip either, because KAR-19.5 cannot be written without it. The three stories added later on 2026-08-13 (~7 days) are ordered by how much of the operator's afternoon each returns: KAR-19.9 first — an unbounded, silent retry is what turns any other defect into a lost afternoon — then KAR-19.8, then KAR-19.10. KAR-19.11 (~3 days, added the same evening) follows KAR-19.8 immediately, because it is the story that stops the growth: every addition so far has been one more argument found by one more real run, and an audit with a guard is the only version of that work that ends. |
 | R2  | **The temptation to write a second, simpler implementation** of framing or planning to get a run moving today.                                                                                                                                      | KAR-19.3 AC7 is a source guard, not a convention, and it is in the test plan before the wiring. One caller per step, asserted mechanically.                                                                                                                                                                                                                     |
 | R3  | **The wiring may reveal that two components' contracts do not actually meet** — a packet shape, a capability field, an id that framing mints and the planner expects differently. Integration is where that is discovered, by construction.         | Any mismatch is fixed **in the owning epic's code with its own test**, and the divergence is written back into the architecture doc in the same session (AR-6). This epic's diff stays calls and scheduling; a mismatch that needs a mechanism change is a story in the owning epic, recorded under [README §9](../README.md#9-changing-the-plan).             |
 | R4  | **A green smoke test that cannot go red** — the exact failure this epic exists to correct, reproduced one level up.                                                                                                                                 | KAR-19.5 AC4's sabotage table: every link cut in turn, every cut asserted to fail. A row that passes fails the story.                                                                                                                                                                                                                                          |
@@ -1582,6 +1752,7 @@ prose.
 | R6  | **Cold start plus framing plus compilation may not fit the smoke test's 90 s budget** on a cold CI runner, and the reflex will be to raise the number.                                                                                              | The budget is asserted by the test's own timeout and the number is written into this file. Raising it is a plan change with a written reason, not an edit — and the first place to look is the probe cache, measured at 441 ms cold and 8 ms warm in KAR-18.2's Notes.                                                                                          |
 | R9  | **KAR-19.10's per-route provider state touches shipped admission behaviour** — `providerVerdict`, `usableProviders`, `admitRun` and `doctor`'s report at once, on a path KAR-19.2 and KAR-19.7 both already assert against.                          | The direction is decided in writing in KAR-19.10 rather than in a commit, the two amendments it makes (KAR-19.2 AC1, KAR-18.8's vocabulary) are recorded in those stories' own files, and AC6's guard is a single producer for all three callers — so a future divergence fails a test instead of an afternoon. The alternative that is explicitly refused is a `claude` special case inside `chooseProvider`, which would put a vendor name in a file not allowed to have one. |
 | R10 | **KAR-19.9's fix can overshoot**: a bound applied too eagerly turns a flaky vendor into a failed run, which is worse than the bug for anyone on a rate-limited plan.                                                                                  | AC7 and its test are the counterweight and are written before the bound: two failures then a success must still reach `run.created`. The ceiling is the node's own `RetryPolicy` under KAR-06.5 — one policy, tunable in a plan — and AC2's source guard fails the day a second one appears in `drive.ts`.                                                                                                                                                                    |
+| R11 | **KAR-19.11's audit can be performed as a reading exercise and produce nothing** — every argument re-read against a `--help` page, a note that it looks right, and the next real run failing on the argument nobody executed. The inverse risk is the fix itself: putting a whole schema document on the command line makes argv large, and large argv fails differently on each platform.                            | The audit's output is a **column in `PROVIDER_SPECS`** — a declared form and a provenance note per argument, with `read from --help`, `decoded from the bundle` and `executed` written as the three different claims they are — and AC4's guard fails the day an argument has no form. The argv-size half is bounded by AC8: one argv element, the document reduced to its schema id wherever argv is logged, and a typed construction-time refusal naming the platform limit rather than an `E2BIG` from `spawn`.                                                                     |
 | R7  | **Fixtures recorded from the pre-fix system may encode the broken shape**, so a projection tuned to them could disagree with a live run.                                                                                                            | The smoke test never reads a fixture. Once it passes, re-recording [03 §6.2](../../03-local-development.md)'s fixtures from real runs is the immediate follow-up, and any projection that changes as a result is a finding rather than a surprise.                                                                                                              |
 
 ---
