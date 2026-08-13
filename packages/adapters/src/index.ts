@@ -265,16 +265,40 @@ export type {
   SpawnPlan,
 } from './provider-registry.ts';
 export {
+  auditShimArgv,
   DEFAULT_MODEL_FAMILY,
   PROVIDER_SPECS,
   providerFamily,
   providerSpec,
   providerTokenAccounting,
+  redactedInline,
+  redactedShimArgv,
+  schemaIdOf,
   SHIM_FORMATS,
   shimPlan,
   spawnPlan,
   UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
+// KAR-19.11 — the closed vocabulary of argument shapes, and the audit that
+// checks a built argv against what its entry declared. Two arguments in two
+// days were found wrong by running the product; this is what answers how many
+// are left.
+export type {
+  ArgumentAuditRow,
+  ArgumentForm,
+  ArgumentFormCheck,
+  ArgumentProvenance,
+  ArgumentProvenanceKind,
+  ShimArgument,
+} from './argument-forms.ts';
+export {
+  ARGUMENT_FORMS,
+  ARGUMENT_PROVENANCE_KINDS,
+  auditArgv,
+  checkArgumentForm,
+  MAX_ARGV_ELEMENT_BYTES,
+  UUID_PATTERN,
+} from './argument-forms.ts';
 // KAR-11.6 — where a rate-limited node goes next, decided from the probed rows
 // and the recorded limits, or nowhere at all (F3.9, NF7).
 export type {
@@ -443,10 +467,9 @@ export type { UpdateDescription } from './updates.ts';
 export { describeUpdate, toolCallContentText } from './updates.ts';
 // KAR-19.8 — the vendor-side session id, derived from DeFlow's own identifiers
 // rather than minted, so a run keeps its id and the vendor gets a uuid.
-export type { SessionIdForm, SessionIdSpec, VendorSessionKey } from './vendor-session.ts';
+export type { SessionIdSpec, VendorSessionKey } from './vendor-session.ts';
 export {
   isUuid,
-  SESSION_ID_FORMS,
   VENDOR_SESSION_NAMESPACE,
   vendorSessionId,
   vendorSessionIdFor,

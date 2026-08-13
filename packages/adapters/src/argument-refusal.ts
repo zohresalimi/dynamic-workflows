@@ -29,7 +29,7 @@
  * Verifies: EPIC-19-S55 · KAR-19.8 AC5, AC6
  */
 import { NodeFailureError } from '@DeFlow/core';
-import type { ProviderSpec } from './provider-registry.ts';
+import { type ProviderSpec, redactedInline } from './provider-registry.ts';
 
 /** One argument the vendor refused: the flag, and what DeFlow put after it. */
 export interface RejectedArgument {
@@ -82,7 +82,48 @@ function valueAfter(argv: readonly string[], flag: string): string | null {
 const SUBJECTS: readonly {
   readonly pattern: RegExp;
   readonly flagOf: (spec: ProviderSpec) => string | undefined;
-}[] = [{ pattern: /session[ -]?id/i, flagOf: (spec) => spec.shim.sessionId?.flag }];
+}[] = [
+  { pattern: /session[ -]?id/i, flagOf: (spec) => spec.shim.sessionId?.flag },
+  // KAR-19.11. The second subject, and it is here for the same reason as the
+  // first: on 2026-08-13 at 19:59 Claude Code named `--json-schema` explicitly,
+  // so the flag loop above already catches that wording — but a vendor that
+  // says "the output schema was not valid" without naming its flag must still
+  // be diagnosable, and a matcher keyed to one flag looks identical in green
+  // until the second argument fails.
+  {
+    pattern: /(json|output)[ -]?schema/i,
+    flagOf: (spec) => spec.shim.structuredOutputFlag,
+  },
+];
+
+/**
+ * KAR-19.11 AC8 — a refused value as a failure payload records it.
+ *
+ * The value of an `inline-json` argument is a whole schema document, and a
+ * `node.failed` row the ledger keeps for ever must not become a paste of it.
+ * The schema id is what an operator wants there anyway: the document itself is
+ * still on disk under the run's `.DeFlow/schemas/`, named by that id (NF8).
+ */
+function refusedValue(
+  spec: ProviderSpec | undefined,
+  flag: string,
+  value: string | null,
+): string | null {
+  if (value === null || spec === undefined) return value;
+  const declared = spec.shim.arguments.find((argument) => argument.flag === flag);
+  if (declared?.form !== 'inline-json') return value;
+  // **Only a value that really is a document is reduced.** A value on that flag
+  // which does *not* parse is the whole diagnosis — `--json-schema
+  // /abs/…/DeFlow.taskspecdraft.v1.json` is the sentence that explains the
+  // 19:59 failure in one read — so it is carried verbatim, bounded by
+  // `recorded()` like every other refused value.
+  try {
+    JSON.parse(value);
+  } catch {
+    return value;
+  }
+  return redactedInline(flag, value);
+}
 
 export interface ArgumentRefusalInput {
   /** The argv DeFlow actually spawned the child with. */
@@ -101,17 +142,21 @@ export interface ArgumentRefusalInput {
 export function rejectedArgument(input: ArgumentRefusalInput): RejectedArgument | null {
   const stderr = input.stderr.trim();
   if (stderr === '' || !REFUSAL_WORDS.test(stderr)) return null;
+  const spec = input.spec;
 
   for (const flag of flagsOn(input.argv)) {
-    if (stderr.includes(flag)) return { flag, value: valueAfter(input.argv, flag) };
+    if (stderr.includes(flag)) {
+      return { flag, value: refusedValue(spec, flag, valueAfter(input.argv, flag)) };
+    }
   }
 
-  const spec = input.spec;
   if (spec !== undefined) {
     for (const subject of SUBJECTS) {
       const flag = subject.flagOf(spec);
       if (flag === undefined || !input.argv.includes(flag)) continue;
-      if (subject.pattern.test(stderr)) return { flag, value: valueAfter(input.argv, flag) };
+      if (subject.pattern.test(stderr)) {
+        return { flag, value: refusedValue(spec, flag, valueAfter(input.argv, flag)) };
+      }
     }
   }
 

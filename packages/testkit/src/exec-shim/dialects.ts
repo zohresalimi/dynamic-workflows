@@ -48,6 +48,31 @@ export const CLAUDE_VERBOSE_REQUIRED =
 export const CLAUDE_INVALID_SESSION_ID = 'Error: Invalid session ID. Must be a valid UUID.';
 
 /**
+ * Claude Code 2.1.220's third refusal, character for character (KAR-19.11).
+ *
+ * **Verified by execution on 2026-08-13 at 19:59**, two minutes after the one
+ * above and by the same route: an operator's next run reached framing and died
+ * on
+ *
+ * ```
+ * Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'
+ * ```
+ *
+ * because DeFlow put the schema *file's path* on a flag whose value the vendor
+ * `JSON.parse`s. The `'/'` is the first character of the absolute path. The
+ * message is built from the offending value rather than frozen, because the
+ * token the parser chokes on is what tells the reader which shape arrived.
+ */
+export function claudeInvalidJson(flag: string, value: string): string {
+  const first = value.slice(0, 1);
+  const detail =
+    first === ''
+      ? 'JSON Parse error: Unexpected EOF'
+      : `JSON Parse error: Unrecognized token '${first}'`;
+  return `Error: ${flag} is not valid JSON: ${detail}`;
+}
+
+/**
  * The form Claude Code validates `--session-id` against: an RFC 4122 UUID.
  *
  * Narrow on purpose (`[1-5]` versions, `[89ab]` variant). The fake's job is to
@@ -139,17 +164,126 @@ export function schemaPathIn(argv: readonly string[]): string | null {
 }
 
 /**
- * Claude Code 2.1.220: `--output-format text|json|stream-json`, and the
- * `--verbose` requirement that only applies to one of the three.
+ * KAR-19.11 AC5 — **what each vendor does with the shape of each argument.**
+ *
+ * The tables below are the fakes' half of the story, and the more valuable
+ * half. Both defects of 2026-08-13 passed every level of the suite and failed
+ * on the first real machine for one reason: the argv was asserted against
+ * fixtures and against doubles that accepted whatever they were handed, so
+ * *"DeFlow builds an argument the vendor refuses"* was outside every test in
+ * the repository. A fake that accepts any argument is not a fake of a CLI.
+ *
+ * These are the **vendor's** rules, written here rather than imported from
+ * `@DeFlow/adapters`' registry on purpose: a double that read DeFlow's own
+ * declarations would agree with DeFlow by construction and could never catch
+ * DeFlow declaring the wrong thing — which is precisely what happened.
+ */
+type FakeForm = 'inline-json' | 'abs-path' | 'uuid' | 'enum' | 'number' | 'free-text';
+
+interface FakeArgument {
+  readonly flag: string;
+  readonly form: FakeForm;
+  readonly values?: readonly string[];
+}
+
+/** Why `value` is the wrong shape for `form`, or `null`. */
+function wrongShape(argument: FakeArgument, value: string): string | null {
+  if (argument.form === 'inline-json') {
+    try {
+      JSON.parse(value);
+      return null;
+    } catch {
+      return 'json';
+    }
+  }
+  if (argument.form === 'abs-path') return value.startsWith('/') ? null : 'path';
+  if (argument.form === 'uuid') return UUID.test(value) ? null : 'uuid';
+  if (argument.form === 'number') return Number.isFinite(Number(value)) ? null : 'number';
+  if (argument.form === 'enum') {
+    return (argument.values ?? []).includes(value) ? null : 'enum';
+  }
+  return null;
+}
+
+/**
+ * Claude Code 2.1.220's own arguments, with the shape each one is validated
+ * against.
+ *
+ * `--json-schema` and `--session-id` are the two that have been **executed** —
+ * the vendor refused a wrong value on each, two minutes apart, on a real
+ * operator's run.
+ */
+const CLAUDE_ARGUMENTS: readonly FakeArgument[] = [
+  { flag: '--session-id', form: 'uuid' },
+  { flag: '--json-schema', form: 'inline-json' },
+  { flag: '--settings', form: 'inline-json' },
+  {
+    flag: '--permission-mode',
+    form: 'enum',
+    values: ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan'],
+  },
+  { flag: '--effort', form: 'enum', values: ['low', 'medium', 'high', 'xhigh', 'max'] },
+  { flag: '--max-budget-usd', form: 'number' },
+];
+
+const CODEX_ARGUMENTS: readonly FakeArgument[] = [
+  { flag: '--output-schema', form: 'abs-path' },
+  { flag: '-C', form: 'abs-path' },
+  {
+    flag: '--sandbox',
+    form: 'enum',
+    values: ['read-only', 'workspace-write', 'danger-full-access'],
+  },
+];
+
+const COPILOT_ARGUMENTS: readonly FakeArgument[] = [
+  { flag: '--output-format', form: 'enum', values: ['text', 'json'] },
+];
+
+/**
+ * The first argument this argv gets wrong, or `null`.
+ *
+ * `refuse` is the vendor's own message for that argument, so the fake refuses
+ * in the shape the real binary refuses in — which is what makes a shim's
+ * detection of the refusal testable at all.
+ */
+function firstWrongArgument(
+  declared: readonly FakeArgument[],
+  argv: readonly string[],
+  refuse: (argument: FakeArgument, value: string, why: string) => Refusal,
+): Refusal | null {
+  for (const argument of declared) {
+    const value = valueOf(argv, argument.flag);
+    if (value === null) continue;
+    const why = wrongShape(argument, value);
+    if (why !== null) return refuse(argument, value, why);
+  }
+  return null;
+}
+
+/**
+ * Claude Code 2.1.220: `--output-format text|json|stream-json`, the `--verbose`
+ * requirement that only applies to one of the three, and the argument shapes it
+ * validates before it does any work at all.
  */
 function decideClaude(argv: readonly string[]): CliDecision {
-  // KAR-19.8. Checked before the format, as the vendor does: the argv is
-  // validated as a whole before a turn is attempted, so a run with two things
-  // wrong hears about the session id rather than about the stream.
-  const session = valueOf(argv, '--session-id');
-  if (session !== null && !UUID.test(session)) {
-    return { ok: false, exitCode: 1, stderr: CLAUDE_INVALID_SESSION_ID };
-  }
+  // KAR-19.8, KAR-19.11. Checked before the format, as the vendor does: the
+  // argv is validated as a whole before a turn is attempted, so a run with two
+  // things wrong hears about the argument rather than about the stream.
+  const wrong = firstWrongArgument(CLAUDE_ARGUMENTS, argv, (argument, value, why) => {
+    if (argument.flag === '--session-id') {
+      return { ok: false, exitCode: 1, stderr: CLAUDE_INVALID_SESSION_ID };
+    }
+    if (why === 'json') {
+      return { ok: false, exitCode: 1, stderr: claudeInvalidJson(argument.flag, value) };
+    }
+    return {
+      ok: false,
+      exitCode: 1,
+      stderr: `Error: Invalid value for ${argument.flag}: ${value}`,
+    };
+  });
+  if (wrong !== null) return wrong;
 
   const format = valueOf(argv, '--output-format') ?? 'text';
   if (format !== 'text' && format !== 'json' && format !== 'stream-json') {
@@ -178,6 +312,15 @@ function decideClaude(argv: readonly string[]): CliDecision {
  * contract AC4 states is the non-zero exit.
  */
 function decideCopilot(argv: readonly string[]): CliDecision {
+  const wrong = firstWrongArgument(COPILOT_ARGUMENTS, argv, (argument, value) => ({
+    ok: false,
+    exitCode: 1,
+    stderr:
+      `error: option '${argument.flag} <value>' argument '${value}' is invalid. ` +
+      `Allowed choices are ${(argument.values ?? []).join(', ')}.`,
+  }));
+  if (wrong !== null) return wrong;
+
   const format = valueOf(argv, '--output-format') ?? 'text';
   if (format !== 'text' && format !== 'json') {
     return {
@@ -202,6 +345,21 @@ function decideCopilot(argv: readonly string[]): CliDecision {
  * depend on either.
  */
 function decideCodex(argv: readonly string[]): CliDecision {
+  // KAR-19.11 AC5. `--output-schema <FILE>` is a **path**, and this is the
+  // inverse of the defect the story fixes: sending Claude Code's inline
+  // document to Codex would be the same mistake pointed the other way. Refused
+  // in clap's shape, like everything else in this dialect — the flag set here
+  // is documentation rather than execution (see above), so nothing downstream
+  // may match on the wording.
+  const wrong = firstWrongArgument(CODEX_ARGUMENTS, argv, (argument, value) => ({
+    ok: false,
+    exitCode: 2,
+    stderr: `error: invalid value '${value.slice(0, 60)}' for '${argument.flag} <${
+      argument.form === 'abs-path' ? 'FILE' : 'VALUE'
+    }>'\n\nUsage: codex exec [OPTIONS] [PROMPT]`,
+  }));
+  if (wrong !== null) return wrong;
+
   if (argv.includes('--output-format')) {
     return {
       ok: false,
