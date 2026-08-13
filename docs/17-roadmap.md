@@ -258,6 +258,8 @@ graph LR
   W12 --> W13
   W7 --> W13
   W8 --> W13
+  W13 --> W14[W14 Install<br/>& the command name]
+  W12 --> W14
 ```
 
 The shape that matters: **W1 before everything, because everything is a projection of the ledger**;
@@ -274,6 +276,16 @@ the ledger ever received. `compilePlanV1` and `executeRun` had no shipped caller
 workstream had met its own definition of done. W13
 ([EPIC-19](./delivery/epics/EPIC-19-live-run-pipeline.md)) is the workstream whose subject is the
 joins, and it ends in the test that keeps them joined.
+
+**W14 was added on 2026-08-14 for the same class of reason.** No workstream here owns *installing the
+product*. W12 owns the tarball and proves it works in a clean room, which is a different claim from
+"a person can get this onto their machine": on 2026-08-12 the owner followed the documented steps on
+their own laptop and got `command not found`, and `pnpm link --global` exited 0 while producing no
+usable command, because pnpm's global bin directory was not on `PATH` and nothing said so. W14
+([EPIC-20](./delivery/epics/EPIC-20-install-and-naming.md)) is one command that installs `deflow`,
+puts it on `PATH`, verifies by running it, and reports honestly when it cannot — plus the lowercase
+rename the command should have had from the start, and a README whose every command is executed by a
+test.
 
 ### 2.2 The workstreams
 
@@ -293,6 +305,7 @@ joins, and it ends in the test that keeps them joined.
 | W11 | **The P0 views**, in the priority order argued in §3.                                                                                                                                                                                                                                                                                                                                                                      | F10.1–F10.9            | [12](./12-frontend-architecture.md)                                  | W10        |
 | W12 | **CLI, `doctor`, packaging.** `npx DeFlow init / up / run`. `doctor` regenerates the capability matrix, checks the AppArmor/bubblewrap and Seatbelt paths, and warns on auth shadowing. Tarball tested with `pnpm pack` + `npx ./DeFlow-x.y.z.tgz up` in a clean tmpdir, plus `publint` and `@arethetypeswrong/cli`.                                                                                                       | F3.8, NF6              | [03](./03-local-development.md), [16](./16-repo-layout.md)           | W9         |
 | W13 | **The live run pipeline, end to end** _(added 2026-08-12)_. Intake schedules framing and the ticker actually starts; admission refuses a machine with no usable provider at submission, in `doctor`'s own words, with exit 5; framing → spec → pin → recon → `PlanGraph` v1 runs on the live path through the existing functions; nodes execute and their output streams to terminal and browser; and one fixture-free smoke test drives the real binary to an executed node, inside `pnpm test`, with a sabotage table proving it can go red.                | F1.1–F1.3, F2.2, F4.1–F4.7, F10.1, NF3, NF7 | [05](./05-durable-execution.md), [06](./06-planning-and-replanning.md), [14](./14-testing-strategy.md) | W7, W8, W11, W12 |
+| W14 | **Install, and the command name** _(added 2026-08-14)_. One command — `npx deflow setup`, plus a macOS install script — installs or builds the CLI, puts `deflow` on `PATH` in a way that works in the next shell, verifies by spawning `deflow --version`, runs `doctor`, and offers the missing ACP adapters through W12's existing consent rules; it never edits a shell profile silently and never exits 0 over a `fail`. The published command becomes `deflow` (with `DeFlow` a deprecated alias for one release), and the README's every command is executed by a test.                | NF1, NF5, NF6, F3.1, F3.2, AR-1 | [03](./03-local-development.md), [16](./16-repo-layout.md) | W12, W13 |
 
 ### 2.3 Sequencing notes
 
@@ -313,6 +326,12 @@ joins, and it ends in the test that keeps them joined.
   coexisted with a run that appended one event. W13 is the only workstream that fails when two
   workstreams do not meet. Scheduling pressure will suggest trimming it because everything it
   touches is "already done"; that sentence is exactly the thing that was wrong on 2026-08-12.
+- **W14 comes after W13 and is the shortest workstream here.** It cannot precede it — it documents
+  and installs a product that works — and it is ~10 days against a critical path of ~255. It is also
+  the only workstream whose subject is somebody other than the author using this, which is M2's
+  definition of done and the first thing schedule pressure will offer to postpone. The counter-
+  argument is one sentence: on 2026-08-12 the documented install failed for the person who wrote the
+  build, and a tool nobody can install is a tool nobody uses.
 
 ---
 
