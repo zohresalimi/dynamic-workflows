@@ -415,14 +415,16 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 > design (KAR-10.1: _"No interpretation happens here"_). Every submitted run therefore parks after
 > intake. (**Narrowed 2026-08-12 by KAR-19.1**, which started the ticker and scheduled framing, and
 > again **2026-08-13 by KAR-19.3**, whose run chain frames, pins, surveys and compiles a
-> `PlanGraph`. One call is still missing — `executeRun` — and it is the whole of why a run still
-> reaches no terminal state.) What that changes here:
+> `PlanGraph`. One call was still missing at that point — `executeRun` — and it was the whole of why
+> a run reached no terminal state. It is no longer missing; see the closure below.) What that
+> changes here:
 >
 > - **AC1's "streams node lifecycle … until a terminal state"** is implemented and asserted for
 >   every terminal state the ledger can currently reach (an open human gate under `--no-wait`, an
->   abort, a completion appended by a spec through the daemon's own functions). The four-node
->   plan running to `run.completed` is not reachable and is **not** faked; `e2e/run.test.ts`
->   carries the deferral and the epic's DoD keeps it open.
+>   abort, a completion appended by a spec through the daemon's own functions). This bullet then
+>   read, verbatim and until the closure below: _"The four-node plan running to `run.completed` is
+>   not reachable and is **not** faked; `e2e/run.test.ts` carries the deferral and the epic's DoD
+>   keeps it open."_
 > - **AC3's second Ctrl-C** cancels through the daemon's own routes — `POST /runs/:id/cancel`,
 >   falling back to `POST /runs/:id/spec/abandon` when the daemon answers `spec_not_approved`,
 >   because KAR-15.5 AC6 forbids controlling a run whose spec is not approved. A run that has not
@@ -436,6 +438,39 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 >   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
 >   `mediaType` in provenance — there is no fourth shape"_), and the locator — which is what makes
 >   the source inspectable six weeks later — is recorded either way.
+>
+> **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.3, KAR-19.4 and
+> KAR-19.5.** Both of AC1's clauses are spent. This closure is written here rather than left in a
+> commit message — `c128481`'s message claimed to close _"EPIC-18's two open amendments"_ and closed
+> only one of them, which is the same silent absorption
+> [README §9](../README.md#9-changing-the-plan) forbids, arriving from the other direction.
+>
+> - **The four-node plan is reachable.** `packages/daemon/src/pipeline/run-execution.ts` is the one
+>   shipped caller of `executeRun`, and both composition roots — `packages/daemon/src/main.ts` and
+>   `packages/cli/src/up.ts` — now bind `runFraming`, `advanceRun` and `executeNodes` into `boot()`.
+>   Until that binding existed `drive.ts` returned early and every submitted run parked at the
+>   framing wake on a real machine, which is the 2026-08-12 operator failure EPIC-19 exists to fix.
+> - **`e2e/run.test.ts` no longer carries the deferral.** KAR-19.4 rewrote its header to name where
+>   the completion half lives instead: `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
+>   `DeFlow run --file` against the **built binary**, on a `PATH` holding only `DeFlow-mock-agent`,
+>   and asserts `task.submitted → run.created → plan.proposed → node.started → node.completed` in
+>   order out of the ledger the run wrote for itself, `run.completed` last, at least two planned
+>   nodes with at least one executed, agent output on the CLI's own stdout _while the run was still
+>   in flight_, and exit 0. `test/run-completion-deferral.test.ts` — the guard that was to expire the
+>   day a shipped source executed a run — went red and was deleted, exactly as it instructed.
+>   `test/run-deferral-closure.test.ts` is its counterpart on the far side of that event: while a run
+>   can complete, no delivery doc may still assert, unclosed, that none can.
+> - **What the epic's DoD still keeps open is a different thing**, and folding it into this deferral
+>   would overstate the closure: the completed run is asserted against `packages/cli/dist`, not
+>   against an installed tarball in the `verify-install` clean room. That gap is stated in the
+>   Definition of Done above and in KAR-18.6 AC2's own closure, and shutting it is a real change to
+>   `packages/cli/scripts/verify-install/`.
+> - **Not closed by this note**, and named rather than absorbed: the terminal lines this story's
+>   scenario asks for — the gate verdict, the `DeFlow/<runId>__<nodeId>` branch name and the final
+>   cost/duration line — and a file snapshot of a _completed_ transcript are asserted nowhere yet,
+>   and the six `recordings/` replay fixtures are still not recorded from this command. The reason is
+>   no longer that a run cannot complete; it is that nobody has asserted those lines yet. Carried on
+>   EPIC-18-S18's note in [the flow file](../flows/EPIC-18-cli-packaging-flows.md).
 
 **Test plan (TDD)**
 

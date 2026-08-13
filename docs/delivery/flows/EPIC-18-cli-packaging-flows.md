@@ -610,6 +610,21 @@ fixtures encode assumptions about the event stream rather than its actual shape.
 > seq 0, the transcript snapshot through the normalising serializer and a documented exit code —
 > and the completion half stays open against the orchestration wiring rather than being faked. The
 > six replay fixtures cannot be recorded from this command until it closes.
+>
+> **Closed 2026-08-13 by [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) KAR-19.3, KAR-19.4 and
+> KAR-19.5**, which is the closure of the deferral this file's other notes cite by name. The reason
+> above is spent: `executeRun` has a shipped caller (`run-execution.ts`), `boot()` starts the ticker,
+> and both composition roots bind `runFraming`, `advanceRun` and `executeNodes`, so a submitted run
+> is framed, gated, pinned, surveyed, planned, executed and concluded. `e2e/smoke/live-run.test.ts`
+> asserts it from the operator's own command against the **built binary**, on a `PATH` holding only
+> `DeFlow-mock-agent`: the kinds in order to `run.completed`, at least two planned nodes with at
+> least one executed, agent output on stdout while the run was still in flight, and exit 0.
+>
+> Two halves of _this scenario_ are still not asserted anywhere, and they are recorded here rather
+> than counted as closed: the gate verdict, the `DeFlow/<runId>__<nodeId>` branch name and the
+> cost/duration line as **terminal output**, and a file snapshot of a completed transcript. So are
+> the six replay fixtures — nothing under `recordings/` is recorded from this command yet. What
+> changed is the reason: not "a run cannot complete", but "nobody has asserted those lines yet".
 
 ---
 
@@ -673,6 +688,16 @@ polite shutdown.
 > `spec_not_approved` — KAR-15.5 AC6 forbids controlling a run whose spec is not approved — and
 > `run.aborted` lands in the ledger. A run that has not been framed at all can be stopped by
 > neither route, which is a hole in the daemon's write surface and a follow-up on `MET-418`.
+>
+> **Closed 2026-08-13 by [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) KAR-19.4** as to its
+> reason, which is all this note deferred: a run does now reach `run.completed` on the shipped path
+> (see EPIC-18-S18's closure). The clause _"the run reaches `run.completed` afterwards"_ is still not
+> asserted in `packages/cli/test/integration/run-signals.test.ts`, and that is deliberate rather than
+> outstanding — S20 boots its daemon **in this process** so the spec can open the F1.3 gate on the
+> run, and an in-process `boot()` binds no execution ports, so its run parks by construction. What
+> the spec asserts at the first press is that the run **outlived its viewer**: neither `run.aborted`
+> nor `run.completed` was appended by the detach. The completion property has one home, and it is
+> `e2e/smoke/live-run.test.ts`.
 
 ---
 
@@ -703,6 +728,15 @@ hours-long run, which is precisely the failure mode this whole architecture exis
 > spawned. Everything else is asserted — DeFlowd survives the `SIGKILL`, its process group id
 > differs from the CLI's, `/api/health` still answers, and a second terminal's
 > `DeFlow run --attach` renders the transcript.
+>
+> **Closed 2026-08-13 by [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) KAR-19.4** as to its
+> reason: nodes are scheduled and agents are spawned now, so _"the agent child process is still
+> alive"_ is **reachable** — S21's daemon is the one `DeFlow run` autostarts, which is the real
+> binary and does bind `executeNodes`. It is still not asserted in
+> `packages/cli/test/integration/run-signals.test.ts`, which stops at the daemon surviving in its own
+> process group, and that gap is left standing here rather than declared closed: asserting a live
+> agent grandchild after a `SIGKILL` is a new assertion somebody has to write, not a line in this
+> note.
 
 ---
 
@@ -1365,6 +1399,19 @@ following through to a referenced asset distinguishes "the UI shipped" from "the
 > an agent that is on `PATH` but holds no turn. The completion half stays open against the
 > orchestration wiring (EPIC-06/EPIC-10/EPIC-11) rather than being faked; the epic's Definition of
 > Done keeps it open.
+>
+> **Closed 2026-08-13 by [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) KAR-19.5**, mirroring the
+> closure on [KAR-18.6](../epics/EPIC-18-cli-packaging.md#kar-186--install-verification-in-a-clean-environment)
+> AC2 so the scenario record and the criterion record say the same thing. A run submitted on a
+> machine holding only the bundled agent reaches `run.completed` and exits 0
+> (`e2e/smoke/live-run.test.ts`).
+>
+> **What that closure does not deliver**, and this scenario is where it matters most: the completed
+> run is driven against `packages/cli/dist`, not against the installed tarball **inside this
+> scenario's clean room**. This line's own `npx /path/to/DeFlow-0.1.0.tgz run` still asserts
+> `task.submitted` and reports it as exactly that. Raising it to a completed run is a change to
+> `packages/cli/scripts/verify-install/`, and it is the one thing the epic's Definition of Done still
+> keeps open here.
 
 ---
 
