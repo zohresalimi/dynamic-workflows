@@ -172,6 +172,47 @@ async function waitForPhase(run: ScriptedRun, pattern: RegExp, name: string): Pr
 }
 
 /**
+ * Waits until the run has committed something, so that "the crash landed
+ * mid-run" is a precondition this iteration *establishes* rather than one it
+ * hopes for.
+ *
+ * The phase and the projections file are two different observations of the same
+ * run, and they are not in step: the phase is published as the run enters a
+ * node, and the projection line is appended after the *first event of that node
+ * commits*. The spread sleep between them can be zero — `Math.floor(random() *
+ * 120)` is uniform on 0..119 — so an iteration that observed `node:0:` and drew
+ * a short offset could SIGKILL the process before a single line existed, and
+ * then assert that a line existed. Measured on the EPIC-19 gate: iteration 0 of
+ * the first-node window read zero entries under a saturated box, where the gap
+ * between the two observations is widest.
+ *
+ * Nothing about the fuzz is weakened by closing it. The randomness that carries
+ * the suite is *where inside the window* the kill lands, and the spread sleep
+ * below still supplies all of it; what is removed is the sliver before the
+ * window has anything to crash into, which the assertion downstream already
+ * declares invalid. An iteration spent killing a run that had done nothing
+ * asserted nothing about recovery.
+ */
+async function waitForFirstProjection(
+  run: ScriptedRun,
+  projections: string,
+  name: string,
+): Promise<void> {
+  await waitFor(
+    () => {
+      if (run.settled()) {
+        throw new Error(`the scripted run finished before committing anything at ${name}`);
+      }
+      return readProjections(projections).entries.length > 0;
+    },
+    {
+      describe: `the scripted run to commit its first event at ${name}`,
+      timeoutMs: WEDGE_BUDGET_MS,
+    },
+  );
+}
+
+/**
  * One iteration, per kill window. A plain loop rather than `it.each`, because
  * Vitest works out which fixtures a test wants by reading the destructuring
  * pattern of its **first** parameter — and with `each` the first parameter is
@@ -204,6 +245,7 @@ function runIteration(killWindow: (typeof KILL_WINDOWS)[number], iteration: numb
       seed,
     });
     await waitForPhase(first, killWindow.phase, killWindow.name);
+    await waitForFirstProjection(first, projections, killWindow.name);
     await sleep(Math.floor(random() * killWindow.spreadMs));
 
     const crashed = await first.child.sigkill();

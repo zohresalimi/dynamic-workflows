@@ -87,19 +87,52 @@ export async function connectSse(url: string, options: ConnectOptions = {}): Pro
       endedAtMs = performance.now() - startedAt;
     });
 
+  /**
+   * Polls until `attempt` yields, and — this is the part that is not
+   * decoration — makes one more attempt *after* the deadline has passed.
+   *
+   * This loop and the pump above share one event loop. When the process is
+   * descheduled the `setTimeout(10)` below does not come back in 10 ms, it
+   * comes back whenever the runtime gets the CPU again, and the loop's next act
+   * is to compare `Date.now()` against a deadline that expired during the
+   * stall. Without a final attempt it then reports failure over a `received`
+   * array it never looked at again — so a stall that spans the deadline is
+   * indistinguishable from a server that sent nothing, and reads as the more
+   * alarming of the two. Measured on the EPIC-19 gate: `2 events did not happen
+   * within 10000 ms (0 received)` twice, in the integration slice, on a box
+   * deep into swap, against a stream that had hundreds of events queued for it.
+   *
+   * The final attempt costs one array read and cannot mask a real failure: if
+   * the events genuinely never arrived it yields nothing and the throw below
+   * still happens, now with the stall named in its message.
+   */
   const waitUntil = async <T>(
     attempt: () => T | undefined,
     timeoutMs: number,
     what: string,
   ): Promise<T> => {
-    const deadline = Date.now() + timeoutMs;
+    const startedWaitingAt = Date.now();
+    const deadline = startedWaitingAt + timeoutMs;
+    let polls = 0;
     while (Date.now() < deadline) {
       const found = attempt();
       if (found !== undefined) return found;
       if (ended) throw new Error(`the stream ended before ${what} (${received.length} received)`);
+      polls += 1;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    throw new Error(`${what} did not happen within ${timeoutMs} ms (${received.length} received)`);
+
+    const late = attempt();
+    if (late !== undefined) return late;
+
+    // How badly the loop was starved, in the message rather than in a guess:
+    // `polls` 10 ms sleeps inside `waitedMs` says whether this process was
+    // running at all while it waited.
+    const waitedMs = Date.now() - startedWaitingAt;
+    throw new Error(
+      `${what} did not happen within ${timeoutMs} ms (${received.length} received; ` +
+        `${polls} polls over ${waitedMs} ms, stream ${ended ? 'ended' : 'open'})`,
+    );
   };
 
   return {

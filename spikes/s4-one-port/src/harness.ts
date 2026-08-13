@@ -87,11 +87,34 @@ export async function stopAll(): Promise<void> {
   }
 }
 
+/**
+ * Reads the pid out of a `/api/health` body, or `undefined` when the body is
+ * not this server's own health payload.
+ *
+ * Two of the harness's own modes answer that route with something else, and
+ * both are the point of the spec that uses them rather than accidents:
+ * `S4_MODE=fallback-first` deliberately lets the SPA fallback shadow the API,
+ * so the body is `index.html`, and `proxy.ts` forwards the route to its target,
+ * so the pid it returns is the *target's* and never its own. Neither can answer
+ * "is this the child I spawned", so neither is asked.
+ */
+async function reportedPid(response: Response): Promise<number | undefined> {
+  if (!(response.headers.get('content-type') ?? '').includes('application/json')) return undefined;
+  try {
+    const body = (await response.json()) as { pid?: unknown };
+    return typeof body.pid === 'number' ? body.pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function spawnAndWait(
   entry: string,
   port: number,
   env: Record<string, string>,
   what: string,
+  /** False where `/api/health` is not this process's own — see `reportedPid`. */
+  ownsHealth = true,
 ): Promise<Harness> {
   const origin = `http://127.0.0.1:${port}`;
   const chunks: string[] = [];
@@ -125,8 +148,42 @@ async function spawnAndWait(
       throw new Error(`${what} exited with ${child.exitCode}:\n${output()}`);
     }
     try {
-      if ((await fetch(`${origin}/api/health`)).ok) return harness;
-    } catch {
+      const response = await fetch(`${origin}/api/health`);
+      if (response.ok) {
+        // "Something answers here" is not "the child I just spawned answers
+        // here", and on a fixed port they come apart. `startHarness` is handed
+        // AC1_PORT — 7777, because AC1 is a claim about that exact socket — so
+        // a stray server left behind by an earlier run answers this probe
+        // perfectly: same code, same routes, same headers. The child that was
+        // just spawned meanwhile dies of EADDRINUSE, and because its exit is
+        // raced against this fetch, the loop can return before noticing.
+        //
+        // Everything downstream then runs against the stranger. Routing,
+        // headers and socket-count specs pass, because a stranger running the
+        // same code serves those identically; only a spec whose meaning depends
+        // on *this* run's history can tell, and it reports the disagreement as
+        // a broken stream. Measured on the EPIC-19 gate: a `server.ts` from six
+        // days earlier still on 7777, and `EPIC-00-S13`'s Last-Event-ID spec
+        // failing twice with "0 received" against a server whose sequence had
+        // been climbing the whole time.
+        //
+        // The payload has always carried the server's own pid. Comparing it is
+        // the difference between that and a failure that names the squatter.
+        const reported = ownsHealth ? await reportedPid(response) : undefined;
+        if (reported !== undefined && reported !== child.pid) {
+          await stop();
+          throw new Error(
+            `${what} was asked for 127.0.0.1:${port}, but pid ${String(reported)} is already ` +
+              `listening there — this run spawned pid ${String(child.pid)}. Stop the stray ` +
+              `process (kill ${String(reported)}) and run again; adopting it would test ` +
+              `somebody else's server.\n${output()}`,
+          );
+        }
+        return harness;
+      }
+    } catch (error) {
+      // A refusal raised above is the answer, not a "not listening yet".
+      if (error instanceof Error && error.message.includes('is already')) throw error;
       // Not listening yet.
     }
     await sleep(25);
@@ -154,6 +211,9 @@ export async function startProxy(targetPort: number): Promise<Harness> {
     port,
     { S4_PROXY_PORT: String(port), S4_TARGET_PORT: String(targetPort) },
     'the proxy',
+    // The proxy forwards `/api/health` to the harness behind it, so the pid it
+    // reports is that harness's. There is nothing here to compare a pid to.
+    false,
   );
 }
 
