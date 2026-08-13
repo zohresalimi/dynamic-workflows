@@ -854,7 +854,7 @@ deleted once one route answers for every state.
 | **Size**        | M                                                                                                                                                                                                                                                                                                                                                                     |
 | **Depends on**  | KAR-19.3 (the chain whose amendment discovered this, and whose e2e half it unblocks), EPIC-04 KAR-04.1 (the mock agent binary and its real ACP session), KAR-04.2 (the scripted scenario format the scripted returns join) and KAR-04.4 (the capability-profile honesty rule this field joins), EPIC-05 KAR-05.2 (the probed capability row admission reads) and KAR-05.3 (`PROVIDER_SPECS`, the one file allowed to name a vendor), EPIC-09 KAR-09.9 (the `returns` contract and `structuredOutputContract`), EPIC-10 KAR-10.2 (`admitFraming`, which this story satisfies rather than relaxes) |
 | **PRD**         | F1.2, F2.2, F3.5, F3.7, NF1, NF6, NF9                                                                                                                                                                                                                                                                                                                                 |
-| **Verified by** | EPIC-19-S44, EPIC-19-S45, EPIC-19-S46, EPIC-19-S47, EPIC-19-S48, EPIC-19-S49, EPIC-19-S50, EPIC-19-S51                                                                                                                                                                                                                                                                 |
+| **Verified by** | EPIC-19-S44 (**partly** — the admission clauses, in `e2e/mock-only-run.test.ts`; the completion clauses are deferred with AC9, see the amendment), EPIC-19-S45, EPIC-19-S46, EPIC-19-S47, EPIC-19-S48, EPIC-19-S49, EPIC-19-S50, EPIC-19-S51                                                                                                                            |
 
 > **Amendment (implementation, 2026-08-13).** Three departures, and one wording in the scenarios
 > that the emitted schemas do not support.
@@ -894,6 +894,24 @@ deleted once one route answers for every state.
 >   before this story and is merely **unbuilt** after it, which is the whole of what KAR-19.7 was
 >   for. AC9 closes with that binding, and the acceptance case is automated at `e2e` then — together
 >   with KAR-19.3's test plan #1 and KAR-19.4's #1 and #8, which close at the same moment.
+>
+> **Corrected 2026-08-13, after the gate.** The paragraph above was true and the *record* was not:
+> `EPIC-19-S44` was left declared *"Automated at: e2e"* in the flows file and listed unqualified in
+> the `Verified by` row, so the plan claimed an e2e that did not exist, and
+> `packages/mock-agent/test/integration/structured-returns.test.ts` carried a `Verifies:
+> EPIC-19-S44` line for a spec that never runs `DeFlow run` or reads a ledger. Three things changed.
+> **The half AC9 does deliver is now automated at `e2e`**, in `e2e/mock-only-run.test.ts`: a `PATH`
+> holding only `DeFlow-mock-agent` — asserted against the binary names `PROVIDER_SPECS` declares,
+> not a list kept by hand — admits the run rather than refusing it, the one probe row is `mock`
+> carrying a real ACP `initialize` answer, no `run.aborted` is appended, and the run parks on the
+> durable framing wake. It goes red on the pre-story machine: with bundled entries dropped from
+> `usableProviders`, `DeFlow run` exits 5 with `no_usable_provider`. **The completion half is
+> recorded as deferred** in both the flows file and the `Verified by` row rather than only here.
+> **And one blocker below the binding is now written down**, because it would otherwise be found the
+> morning the binding lands: the default plan's agent nodes return `DeFlow.finding.v1`, and
+> `SCHEMA_GENERATORS` serves the four documents the *chain* needs and no node return — so
+> `node.completed` against the bundled agent needs a generator for the node contract too, and AC1's
+> *"the three turns the live chain needs"* did not cover it.
 >
 > One thing shipped that no criterion named, and it is cheaper to record than to rediscover.
 > **`ProviderSpec` gained a `bundled` flag**, and `provider-install.ts` a `usableProviders` ordering

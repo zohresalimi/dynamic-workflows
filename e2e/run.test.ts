@@ -28,15 +28,21 @@
  * > **None of the original amendment's reasons survive; one new one does.** The
  * > daemon can now carry a run from `task.submitted` to `run.completed` — that
  * > is asserted end to end in
- * > `packages/daemon/test/integration/live-execution.test.ts`. What it cannot do
- * > *on a machine with only the bundled mock agent* is get past the framing turn:
- * > framing, recon and planning all carry a `returns` contract, and
+ * > `packages/daemon/test/integration/live-execution.test.ts`, against
+ * > **scripted** agent ports.
+ * >
+ * > **Narrowed again 2026-08-13 by KAR-19.7.** The reason recorded here was that
  * > `admitFraming` (KAR-10.2 AC3) refuses every adapter with no
- * > `structuredOutputFlag`, which `DeFlow-mock-agent` — ACP-only — does not have.
- * > A run submitted by the spawned binary below therefore still parks at the
- * > gate, so the four-node completion stays deferred. It is **EPIC-04's**
- * > structured-output path that unblocks it, and KAR-19.5's smoke test is where
- * > this scenario is finished.
+ * > `structuredOutputFlag`, and `DeFlow-mock-agent` — ACP-only — had none. It
+ * > has one now: `PROVIDER_SPECS` has a `mock` entry, the binary honours the
+ * > flag it declares, and a run on a machine with no vendor CLI is admitted
+ * > rather than refused (`e2e/mock-only-run.test.ts`). What still parks the run
+ * > below is one level down: `DeFlow up` binds no `runFraming`, `advanceRun` or
+ * > `executeNodes` port, because no `FramingAgent`, `ReconAgent`,
+ * > `PlannerAgent` or agent-node `NodePerformer` over a real process exists in
+ * > `src/` yet. So the four-node completion stays deferred, and it closes with
+ * > that binding — KAR-19.3's test plan #1 and KAR-19.4's #1 and #8 — which is
+ * > also where KAR-19.5's smoke test picks it up.
  * >
  * > What is asserted below is everything the scenario claims that *is* reachable
  * > — the detached autostart, the unauthenticated health poll, the run created,

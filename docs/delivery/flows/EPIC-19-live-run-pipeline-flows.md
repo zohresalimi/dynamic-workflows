@@ -1248,7 +1248,9 @@ it: they are no longer watching.
 
 ## EPIC-19-S44 — Happy path: a framing turn served by the bundled agent, no vendor CLI at all
 
-**Verifies:** KAR-19.7 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-19.7 · **Type:** Happy path · **Automated at:** e2e — the admission clauses only,
+in `e2e/mock-only-run.test.ts`; the completion clauses are **deferred to the composition-root
+binding** (see below)
 
 ```gherkin
 Feature: the bundled agent can answer a turn that carries a schema
@@ -1274,6 +1276,30 @@ get past framing, and this epic's own Definition of Done could not be demonstrat
 carries the scenario is the PATH: it is asserted to hold no vendor CLI rather than merely to hold the
 mock agent, because a developer's own `claude` leaking in would make this pass for the wrong reason
 and on their machine only.
+
+**What is automated, and what is not (2026-08-13).** `e2e/mock-only-run.test.ts` carries the scenario
+down to its *"admission does not refuse the run"* line. The two `Given`s are asserted rather than
+arranged, and mechanically: the PATH is searched for every binary `PROVIDER_SPECS` itself declares
+for a non-bundled provider, so a vendor added later is covered without anyone remembering to. Two
+further facts are asserted because without them that line could be true for the wrong reason — the
+one `provider.probed` row is `mock` and its `capsJson` is a real ACP `initialize` answer from the
+binary on that PATH, and the run is parked on the durable `node_wake` row KAR-19.1 AC1 requires
+rather than dropped. It is red on the pre-story machine: with bundled entries dropped from
+`usableProviders`, `DeFlow run` exits 5 with `no_usable_provider`, which is the state this story
+exists to end.
+
+**The remaining lines are blocked one level below this story**, exactly as
+[KAR-19.7](../epics/EPIC-19-live-run-pipeline.md)'s amendment records. `DeFlow up` binds no
+`runFraming`, `advanceRun` or `executeNodes` port, because no `FramingAgent`, `ReconAgent`,
+`PlannerAgent` or agent-node `NodePerformer` over a real process exists in `src/` yet — the chain is
+driven end to end only against scripted ports, in
+`packages/daemon/test/integration/live-{chain,execution}.test.ts`. `node.completed` needs one thing
+more: the default plan's agent nodes return `DeFlow.finding.v1`, and `SCHEMA_GENERATORS` serves the
+four documents the *chain* needs and no node return, so a node run against the bundled agent today
+would fail its handoff rather than complete. The credential clause is about a turn's child
+environment, built by `buildChildEnv`, which nothing on this path calls yet; the only child this
+machine spawns is the capability probe, and that one is handed the daemon's environment on purpose.
+These close together with KAR-19.3's test plan #1 and KAR-19.4's #1 and #8.
 
 ---
 

@@ -263,6 +263,9 @@ importers:
 
   e2e:
     devDependencies:
+      '@DeFlow/adapters':
+        specifier: workspace:*
+        version: link:../packages/adapters
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../packages/core

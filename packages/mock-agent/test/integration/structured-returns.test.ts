@@ -11,7 +11,14 @@
  * so ajv cannot come along — which is why AC1's guarantee is a test-time
  * property of a generator written to be obviously correct.
  *
- * Verifies: EPIC-19-S44, EPIC-19-S45, EPIC-19-S48 · AC1, AC6 · test plan #1, #6
+ * **This file does not verify EPIC-19-S44**, though it claimed to until the gate
+ * read it. S44 is the acceptance case — `DeFlow run --file spec.md` on a machine
+ * with no vendor CLI, asserted against the on-disk ledger — and nothing here
+ * runs the command or opens a ledger. What it settles is the capability S44
+ * *depends on*: that the binary honours the flag its registry entry declares.
+ * S44's own clauses live in `e2e/mock-only-run.test.ts`.
+ *
+ * Verifies: EPIC-19-S45, EPIC-19-S48 · AC1, AC6 · test plan #1, #6
  */
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
