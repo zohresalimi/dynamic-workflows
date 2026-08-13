@@ -103,6 +103,18 @@ export type RunExecutionResolver = (input: {
   /** The repository the run was submitted against, as `run.created` recorded
    * it. */
   readonly cwd: string;
+  /**
+   * This daemon life's epoch, and the instant it began.
+   *
+   * Both are properties of the *dispatch* rather than of the resolver, which is
+   * why they arrive here rather than being closed over at construction: a
+   * production resolver builds the effect journal's runner, and a runner
+   * stamped with the epoch of a previous daemon life would journal this life's
+   * effects under the last one's — the fourth branch of the journal's
+   * reconciliation, silently taken.
+   */
+  readonly epoch: number;
+  readonly daemonStartedAt: number;
 }) => Promise<RunExecutionContext | null>;
 
 export interface RunExecutionPorts {
@@ -165,7 +177,7 @@ export function createRunExecution(ports: RunExecutionPorts): RunExecution {
       return;
     }
 
-    const context = await ports.resolve({ runId, db, cwd });
+    const context = await ports.resolve({ runId, db, cwd, epoch, daemonStartedAt });
     if (context === null) {
       runner.warn(
         { runId },

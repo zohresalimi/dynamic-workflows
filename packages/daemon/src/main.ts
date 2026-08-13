@@ -21,6 +21,7 @@ import { DEFAULT_PORT } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
 import { createLiveRunChain } from './pipeline/live-chain.ts';
+import { createLiveRunExecution } from './pipeline/live-nodes.ts';
 import { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
 import { pathRoots } from './providers/detect.ts';
 
@@ -60,6 +61,12 @@ const chain = createLiveRunChain({
   providerRoots: pathRoots(process.env),
   daemonEnv: process.env,
 });
+const execution = createLiveRunExecution({
+  dataDir,
+  clock: systemClock,
+  providerRoots: pathRoots(process.env),
+  daemonEnv: process.env,
+});
 
 let started: Booted;
 try {
@@ -68,6 +75,7 @@ try {
     port: port(),
     runFraming: chain.runFraming,
     advanceRun: chain.advanceRun,
+    executeNodes: execution.executeNodes,
     ...(process.env.DeFlow_HOST === undefined ? {} : { hostname: process.env.DeFlow_HOST }),
     // KAR-15.2 AC12 — the explicit flag, and the only way past loopback.
     // `DeFlow_HOST` on its own is not enough on purpose: naming an address is

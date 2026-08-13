@@ -517,6 +517,11 @@ export {
   createLiveRunChain,
   PROVIDER_DEFAULT_MODEL,
 } from './pipeline/live-chain.ts';
+// KAR-19.4 AC1 — the performer behind it: agent nodes on a real process in
+// their own worktree, gate nodes through `gateNodePerformer`. The second half
+// of the composition-root binding whose absence was the 2026-08-12 failure.
+export type { LiveExecutionOptions } from './pipeline/live-nodes.ts';
+export { createLiveRunExecution } from './pipeline/live-nodes.ts';
 // KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
 // `runReconNode` and `compilePlanV1`, and the resolver `DeFlow up` binds it to.
 export type {

@@ -20,11 +20,25 @@
  * element's width — is either the literal token `'--'`/`"--"` followed by a
  * comma, or a `--branch=` (or `--branch-name=`, `-b=`... no: exactly
  * `--branch=`) template prefix.
+ *
+ * **A third guarded shape was added by KAR-19.5**, when this check found its
+ * first real call site — `packages/daemon/src/pipeline/live-nodes.ts`, which
+ * provisions a node's worktree. That site names the branch as the `branch:` (or
+ * `salvageBranch:`) field of a `ProvisionRequest`/`RemoveRequest`, and never
+ * touches an argv: the value is spent by `worktreeAddArgs`, which puts it in
+ * `-b`'s **value** slot, and whose two bare positionals are `path` and
+ * `baseRef` — neither of which is a generated ref. A field name is therefore a
+ * genuine guard rather than a widened exception: it says the value is going to
+ * the workspace manager's typed request, which is the one place a branch
+ * reaches git, instead of into an array where the next element's position is
+ * whatever the caller wrote. Anything that assembles argv itself still has to
+ * use one of the first two forms.
  */
 
 const GENERATED_CALL = /\b(?:nodeBranch|integrationBranch)\(/g;
 const SEPARATOR_GUARD = /['"]--['"]\s*,\s*$/;
 const LONG_FORM_GUARD = /--branch=\$\{\s*$/;
+const REQUEST_FIELD_GUARD = /\b(?:branch|salvageBranch):\s*$/;
 /** How far back to look for a guard, in characters — comfortably more than
  * one array element ever needs (`'--', ` or `` `--branch=${ `` are each well
  * under this). */
@@ -48,7 +62,11 @@ export function findUnguardedGeneratedRefCalls(source: string): UnguardedCall[] 
   let match: RegExpExecArray | null = GENERATED_CALL.exec(source);
   while (match !== null) {
     const before = source.slice(Math.max(0, match.index - LOOKBEHIND), match.index);
-    if (!SEPARATOR_GUARD.test(before) && !LONG_FORM_GUARD.test(before)) {
+    if (
+      !SEPARATOR_GUARD.test(before) &&
+      !LONG_FORM_GUARD.test(before) &&
+      !REQUEST_FIELD_GUARD.test(before)
+    ) {
       const line = source.slice(0, match.index).split('\n').length;
       offenders.push({ offset: match.index, line });
     }

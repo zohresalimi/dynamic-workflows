@@ -108,7 +108,16 @@ jobs:
       # whole file — a run with zero jobs and no logs, not a red job. Measured:
       # run 30913790575. checkJobLevelContexts in test/support/guards.ts holds
       # the line; test/ci-workflow.test.ts runs it over this file.
-      - run: pnpm vitest run --project unit --project integration
+      # KAR-19.5 AC5 — the smoke slice runs here, on this step, on all four
+      # legs. Not a step of its own: it is the one test that starts at the
+      # operator's command and ends at an executed node, and the whole failure
+      # it corrects lived in the gap between "we should run that" and "we ran
+      # it" — so it belongs on the line that is always run rather than beside
+      # it. It builds the binary it runs, which is why it is not in the
+      # `browser-e2e` job with the e2e slice: that job is Linux-only, and NF5
+      # promises both platforms for exactly the subprocess-and-worktree surface
+      # this exercises.
+      - run: pnpm vitest run --project unit --project integration --project smoke
         env:
           # Keep the tmpdirs the fixtures create, so the upload step below has
           # something to collect. Locally this is opt-in; in CI it is the only

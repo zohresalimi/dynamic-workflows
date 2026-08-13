@@ -4,36 +4,28 @@
  *
  * ## Why this file exists at all
  *
- * `POST /api/runs` appends `task.submitted` and stops there — deliberately, per
- * KAR-10.1: *"No interpretation happens here."* What is supposed to happen next
- * is the framing interview, then the F1.3 gate, then a plan, then execution.
- * **As of KAR-18.3 nothing in the shipped daemon drives that**: no production
- * code path calls `compilePlanV1` or `executeRun`, and `boot()` starts no
- * ticker. A submitted run therefore sits at `task.submitted` for ever.
+ * Not because the daemon cannot drive a run — it can, and does: `boot()` starts
+ * the ticker (KAR-19.1), `packages/daemon/src/pipeline/run-chain.ts` is
+ * `compilePlanV1`'s one shipped caller (KAR-19.3), `.../run-execution.ts` is
+ * `executeRun`'s (KAR-19.4), and both composition roots bind all three ports
+ * (KAR-19.5). A `DeFlow run` on a machine with only the bundled agent goes all
+ * the way to `run.completed`, and `e2e/smoke/live-run.test.ts` asserts exactly
+ * that, end to end, against the built binary.
  *
- * That gap belongs to the orchestration epics, not to this one — EPIC-18 is a
- * *client* of the daemon (see the epic's "Out of scope") — so what these specs
- * do is exactly what `packages/cli/test/integration/resume-cursor.test.ts`
- * already does for KAR-15.4: append the events a daemon would, through the
- * daemon's own shipped functions, onto the daemon's own write connection, while
- * the CLI watches over a real socket. The CLI cannot tell the difference,
- * because there is none from its side of the stream — which is the whole point
- * of it being a client.
+ * It exists because **that is not what these specs are about**. EPIC-18 is a
+ * *client* of the daemon (see the epic's "Out of scope"), and a CLI spec about
+ * a resume cursor or a Ctrl-C window needs a run in a *known* state at a known
+ * instant — not a run whose timing depends on how long three real agent
+ * subprocesses take. So it does what
+ * `packages/cli/test/integration/resume-cursor.test.ts` already does for
+ * KAR-15.4: append the events a daemon would, through the daemon's own shipped
+ * functions, onto the daemon's own write connection, while the CLI watches over
+ * a real socket. The CLI cannot tell the difference, because there is none from
+ * its side of the stream — which is the whole point of it being a client.
  *
  * Everything here goes through a **shipped** function (`openSpecApprovalGate`)
  * rather than hand-written rows, so a spec cannot quietly assert a shape the
  * daemon does not produce.
- *
- * > **Narrowed 2026-08-13 by KAR-19.3 and KAR-19.4.** Two of the three claims
- * > above have expired. `boot()` starts the ticker (KAR-19.1),
- * > `packages/daemon/src/pipeline/run-chain.ts` is `compilePlanV1`'s one shipped
- * > caller (KAR-19.3) and `.../run-execution.ts` is `executeRun`'s (KAR-19.4),
- * > so a submitted run is now framed, gated, pinned, surveyed, planned and
- * > executed by the daemon itself. What is still true is the reason this file
- * > is *used*: those steps need a provider that can serve a schema-bearing turn,
- * > and the bundled mock agent speaks ACP with no structured-output flag, so a
- * > CLI spec that wanted a *planned* run on a hermetic machine still has to seed
- * > one. That prerequisite is EPIC-04's and is tracked on KAR-19.5.
  */
 import type { Db, NodeId, RunId, TaskSpecDraft } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';

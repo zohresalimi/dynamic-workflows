@@ -132,10 +132,18 @@ observable from a clean temp directory.
   **Narrowed 2026-08-12 by KAR-19.1**, and recorded here rather than absorbed
   ([README §9](../README.md#9-changing-the-plan)). `RECOVERY_STEPS`' eighth step, `start-ticker`, is
   now performed: `boot()` starts the ticker, intake writes a framing `node_wake` in the same
-  transaction as `task.submitted`, and the driver consumes it. What is still deferred — and all that
-  is — is the rest of the chain: **nothing shipped calls `compilePlanV1` or `executeRun`**, so a
-  submitted run still cannot reach a terminal state. Those two are KAR-19.3 and KAR-19.4, and the
-  guard above now watches exactly them.
+  transaction as `task.submitted`, and the driver consumes it.
+
+  **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.3, KAR-19.4 and
+  KAR-19.5.** A shipped path now carries a submitted run all the way: `run-chain.ts` frames, gates,
+  pins, surveys and compiles; `run-execution.ts` and `live-nodes.ts` execute; and both composition
+  roots — `packages/cli/src/up.ts` and `packages/daemon/src/main.ts` — bind `runFraming`,
+  `advanceRun` and `executeNodes`. `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
+  `DeFlow run --file` against the **built binary** on a `PATH` holding only `DeFlow-mock-agent` and
+  asserts `task.submitted → run.created → plan.proposed → node.started → node.completed →
+  run.completed` with exit 0. `test/run-completion-deferral.test.ts` was deleted by KAR-19.4 when it
+  went red, exactly as its own instructions said it should be, and the deferral it guarded is
+  therefore spent rather than merely narrowed.
 
 ## Definition of Ready (epic level)
 
@@ -161,12 +169,12 @@ observable from a clean temp directory.
       and this is wired as a CI job — not a checklist item someone remembers.
       _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
       images, on every tag and on demand — and the clean room serves the UI and drives real ACP
-      turns against the installed mock agent. **"Completes a mock run" stays open**, and 2026-08-13
-      narrowed why: KAR-19.3 bound the run chain in `DeFlow up`, so a shipped path now does carry a
-      submitted run past intake — framed, gated, pinned, surveyed and compiled into a validated
-      `PlanGraph` against the bundled agent alone (`e2e/live-chain.test.ts`, and performed by hand
-      against the packed `dist/bin.mjs`). What is still unbound is `executeNodes`, so no run reaches
-      a terminal state and the word "completes" is still not earned. See KAR-18.6 AC2's
+      turns against the installed mock agent. 2026-08-13, EPIC-19 KAR-19.5: **a run now completes**
+      — `executeNodes` is bound in both composition roots, and `DeFlow run --file` against the built
+      binary on a `PATH` holding only `DeFlow-mock-agent` reaches `run.completed` and exits 0
+      (`e2e/smoke/live-run.test.ts`, and performed by hand against the packed `dist/bin.mjs`). What
+      this item still asks for and does not yet have is that run **inside the clean room**: the
+      smoke test runs `packages/cli/dist`, not the installed tarball. See KAR-18.6 AC2's
       amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
@@ -721,9 +729,17 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > - a run submitted through the installed `DeFlow run` reaches the installed daemon and is reported
 >   as `task.submitted`, never as a run that completed.
 >
-> **The completion half stays open**: it is the epic's Definition of Done item below, and the first
-> thing to re-assert here once an orchestrated run exists. Until then AC2 is met in reason and not
-> in letter, and this note is the record of that difference.
+> **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.5.** `executeRun`'s
+> missing call now exists in both composition roots, and a run submitted on a machine with only the
+> bundled agent reaches `run.completed` and exit 0 — asserted against the built binary by
+> `e2e/smoke/live-run.test.ts`, and performed by hand in a scratch repository against the packed
+> `dist/bin.mjs`. AC2 is now met in letter as well as in reason.
+>
+> **One thing this amendment promised and this closure does not deliver**, so it is left standing
+> rather than quietly dropped: the completion is asserted against `packages/cli/dist`, not against
+> an installed tarball in the `verify-install` clean room. Test plan #2 above is still the room's
+> own scripted run, and raising it to a completed run there is a real change to
+> `packages/cli/scripts/verify-install/`, not a line in this note.
 
 **Test plan (TDD)**
 

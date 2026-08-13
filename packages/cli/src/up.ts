@@ -26,6 +26,7 @@ import {
   type Booted,
   boot,
   createLiveRunChain,
+  createLiveRunExecution,
   daemonFilePath,
   EX_ALREADY_RUNNING,
   PortInUse,
@@ -365,6 +366,16 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
     providerRoots: pathRoots(env),
     daemonEnv: env,
   });
+  // KAR-19.4 AC1 — and the executor, which is the same line one step further
+  // on. A daemon that frames and compiles but binds no `executeNodes` stops at
+  // `plan.proposed`, which is what an operator saw for a day after the chain
+  // was bound: a plan on screen and nothing running it.
+  const execution = createLiveRunExecution({
+    dataDir,
+    clock,
+    providerRoots: pathRoots(env),
+    daemonEnv: env,
+  });
 
   let daemon: Booted;
   try {
@@ -376,6 +387,7 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
       onStep: (step) => took(step),
       runFraming: chain.runFraming,
       advanceRun: chain.advanceRun,
+      executeNodes: execution.executeNodes,
       probeProviders: ({ db, dataDir: dir }) =>
         probeProvidersOnBoot({ db, clock, dataDir: dir, env, randomHex }),
       // KAR-19.2 AC1 — the roots admission resolves against, which are the

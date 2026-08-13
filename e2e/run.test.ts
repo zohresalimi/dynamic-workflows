@@ -9,46 +9,18 @@
  * they exercise; what only a spawned binary can settle is that the autostart,
  * the health poll and the attach are wired to them at all.
  *
- * > **Amended 2026-08-11 while implementing KAR-18.3.** EPIC-18-S18 ends with a
- * > four-node mock plan completing and an exit code of 0. That is not reachable
- * > in this repository: **no shipped code path executes a submitted run.**
- * > Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
- * > and `POST /api/runs` deliberately stops at `task.submitted` (KAR-10.1:
- * > *"No interpretation happens here"*). Every run therefore parks after intake
- * > until the orchestration wiring exists, which is EPIC-06/EPIC-10/EPIC-11
- * > work and explicitly out of this epic's scope.
- * >
- * > **Narrowed 2026-08-12 by KAR-19.1** — `boot()` starts the ticker and intake
- * > schedules the framing wake — **again 2026-08-13 by KAR-19.3**, whose run
- * > chain frames, gates, pins, surveys and compiles a validated `PlanGraph` —
- * > and **again by KAR-19.4**, whose `packages/daemon/src/pipeline/`
- * > `run-execution.ts` is `executeRun`'s one shipped caller and drives that plan
- * > to a terminal state off the ticker.
- * >
- * > **None of the original amendment's reasons survive; one new one does.** The
- * > daemon can now carry a run from `task.submitted` to `run.completed` — that
- * > is asserted end to end in
- * > `packages/daemon/test/integration/live-execution.test.ts`, against
- * > **scripted** agent ports.
- * >
- * > **Narrowed again 2026-08-13 by KAR-19.7.** The reason recorded here was that
- * > `admitFraming` (KAR-10.2 AC3) refuses every adapter with no
- * > `structuredOutputFlag`, and `DeFlow-mock-agent` — ACP-only — had none. It
- * > has one now: `PROVIDER_SPECS` has a `mock` entry, the binary honours the
- * > flag it declares, and a run on a machine with no vendor CLI is admitted
- * > rather than refused (`e2e/mock-only-run.test.ts`). What still parks the run
- * > below is one level down: `DeFlow up` binds no `runFraming`, `advanceRun` or
- * > `executeNodes` port, because no `FramingAgent`, `ReconAgent`,
- * > `PlannerAgent` or agent-node `NodePerformer` over a real process exists in
- * > `src/` yet. So the four-node completion stays deferred, and it closes with
- * > that binding — KAR-19.3's test plan #1 and KAR-19.4's #1 and #8 — which is
- * > also where KAR-19.5's smoke test picks it up.
- * >
- * > What is asserted below is everything the scenario claims that *is* reachable
- * > — the detached autostart, the unauthenticated health poll, the run created,
- * > the subscription from seq 0, the rendered transcript through the normalising
- * > serializer, and a documented exit code — and the completion half is recorded
- * > as a follow-up on the story rather than faked here.
+ * **Where the completion half of EPIC-18-S18 lives.** The scenario ends with a
+ * plan completing and an exit code of 0, and that is now a real, shipped path:
+ * `DeFlow up` and `DeFlow run` bind `runFraming`, `advanceRun` and
+ * `executeNodes`, so a submitted run is framed, gated, pinned, surveyed,
+ * planned, executed and concluded by the daemon itself. It is asserted from the
+ * operator's own command in `e2e/smoke/live-run.test.ts` (KAR-19.5), which
+ * exists precisely so that this end-to-end property has one home rather than a
+ * partial copy in every client spec. What this file settles is the half only a
+ * spawned `DeFlow run` can settle and the smoke test does not repeat: the
+ * detached autostart, the unauthenticated health poll, the subscription from
+ * seq 0, the rendered transcript through the normalising serializer, and the
+ * documented exit code.
  *
  * Verifies: EPIC-18-S18, EPIC-18-S19 · AC1, AC2 · test plan #1, #2
  */

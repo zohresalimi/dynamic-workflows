@@ -118,7 +118,7 @@ export interface LiveChainOptions {
 }
 
 /** The adapter a turn runs on, and the record that it was probed. */
-interface Chosen {
+export interface Chosen {
   readonly provider: string;
   readonly binaryPath: string;
   /** The probed row, verbatim — what `admitFraming` reads, and the only place
@@ -135,7 +135,7 @@ interface Chosen {
  * is driven through the vendor's own CLI, not through its ACP bridge, because
  * the return contract rides on a flag only the CLI has.
  */
-function chooseProvider(
+export function chooseProvider(
   db: Parameters<typeof listProviderCapabilities>[0],
   roots: readonly string[],
 ): Chosen | null {

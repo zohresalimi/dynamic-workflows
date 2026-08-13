@@ -500,8 +500,10 @@ resumes when the answer arrives.
 >   is a default plan naming a **vendor CLI the machine may not have**, and this binary ships in
 >   DeFlow's own tarball.
 >
-> **What is still not bound is `executeNodes`** — KAR-19.4's, and the reason a run stops at
-> `plan.proposed` rather than at a terminal state. Performed by hand on 2026-08-13 against the
+> **`executeNodes` was still unbound when this was written; it is bound now** —
+> [KAR-19.5](#kar-195--a-live-smoke-test-that-would-have-caught-this) supplied
+> `packages/daemon/src/pipeline/live-nodes.ts` to both composition roots, so a run no longer stops
+> at `plan.proposed`. What follows is the record of the state this story left behind. Performed by hand on 2026-08-13 against the
 > packed `packages/cli/dist/bin.mjs`, in a scratch git repository with only the bundled agent on
 > `PATH`: `DeFlow run --file task.md` printed `task submitted`, `run created` and the spec at the
 > F1.3 gate, and after the approval the ledger held
@@ -635,6 +637,26 @@ removes.
 >   binding is now merely unbuilt: `executeNodes`, `runFraming` and `advanceRun` are still
 >   unsupplied in `DeFlow up`, and #1 and #8's `e2e` halves move up when they are supplied.
 >
+>   **Closed 2026-08-13 by [KAR-19.5](#kar-195--a-live-smoke-test-that-would-have-caught-this),
+>   with one of the two rows re-levelled and the other left where it is** — re-verified honestly
+>   rather than declared closed:
+>
+>   - **Test plan #1 is now at `e2e`.** `packages/daemon/src/pipeline/live-nodes.ts` is the missing
+>     `NodePerformer`, both composition roots bind `executeNodes`, and
+>     `e2e/smoke/live-run.test.ts` drives a real `DeFlow run --file` against the built binary
+>     through `node.started`, `node.completed` and `run.completed` with exit 0. AC1 and AC8's
+>     binding clause are satisfied by a shipped path rather than by a spec's own wiring. Three of
+>     this story's own claims turned out to be false in production and are listed in KAR-19.5's
+>     amendment — an unreadable `node.started`, an uncomposable node branch, and an unwired scope
+>     auditor — none of which the integration specs could see, which is the argument for the level
+>     change stated as evidence.
+>   - **Test plan #8 stays at `integration`, and the reason is unchanged.** The clause that made it
+>     e2e is *"no non-`Z` process left in the killed daemon's group"*, and that is a claim about
+>     real grandchildren. This story's performer spawns an agent per node now, so the claim is at
+>     last *meaningful* — but nothing asserts it, and moving the row without writing the assertion
+>     would be exactly the bookkeeping this epic exists to stop. `EPIC-19-S32`'s flow line has been
+>     corrected to `integration` to match. **Raising it is a real follow-up, not a formality.**
+>
 > One thing shipped that no criterion asked for, and it is the kind of thing that is cheaper to
 > record than to rediscover. **The execution turn is launched by the tick, never awaited by it.**
 > `startTicker` schedules the next tick only once the current one has settled, so a driver that
@@ -662,7 +684,7 @@ removes.
 
 |                 |                                                                                                                                                          |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Status**      | Not started                                                                                                                                              |
+| **Status**      | Done                                                                                                                                                     |
 | **Priority**    | P0                                                                                                                                                       |
 | **Size**        | M                                                                                                                                                        |
 | **Depends on**  | KAR-19.1, KAR-19.2, KAR-19.3, KAR-19.4 (it asserts all four), EPIC-04 (the mock agent binary it runs against), EPIC-01 KAR-01.4 (the test runner's project slices), EPIC-18 KAR-18.5 (the built binary it invokes) |
@@ -740,6 +762,94 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 | 3   | integration | Inspect the smoke harness's child environment and `PATH`; assert no credential variable, `XDG_DATA_HOME` inside the tmpdir, and the mock agent as the only provider        | The harness inherits the developer's environment and passes on their laptop only                                     |
 | 4   | integration | Parse `vitest.config.ts` and `package.json`; assert the smoke project exists, is included by `pnpm test`, is serialised, and declares a timeout at the stated budget       | The slice is added but excluded from the default run, so the test exists and never executes                          |
 | 5   | integration | A guard asserting the three deferral markers no longer exist in the tree                                                                                                   | The deferral note survives its own resolution and the next reader believes completion is still impossible            |
+
+> **Implemented 2026-08-13.** `pnpm test:smoke` exists, is the `smoke` vitest project over
+> `e2e/smoke/`, is collected by a bare `pnpm test`, and runs the built `packages/cli/dist/bin.mjs` —
+> `DeFlow init` then `DeFlow run --file spec.md` — in an `fs.mkdtemp` git repository against a
+> `PATH` holding `DeFlow-mock-agent` and nothing else. It reaches `run.completed` and exit 0 in
+> **≈8 s** against the 90 s budget. All six AC4 rows are red when their link is cut, and each names
+> it. The three AC8 markers are gone and a guard holds them gone.
+>
+> **The story could not be written without finishing KAR-19.4's binding, so that is part of it.**
+> `executeNodes` was still unsupplied in both composition roots; `packages/daemon/src/pipeline/`
+> `live-nodes.ts` is the missing `RunExecutionResolver` — `byNodeType` over an agent performer that
+> provisions the node's own worktree, builds the packet with `buildPacket` and drives a real ACP
+> process through `runAcpNode`, and `gateNodePerformer` over gates discovered from the repository's
+> own `.DeFlow/gates` — and `packages/cli/src/up.ts` and `packages/daemon/src/main.ts` now pass it
+> to `boot()`. `RunExecutionResolver` gained `epoch` and `daemonStartedAt`, because a production
+> resolver builds the effect journal's runner and one stamped with a previous daemon life's epoch
+> journals this life's effects under the last one's.
+>
+> **Four defects the smoke test found on its first green chain**, none of which any existing test
+> could see, and all four fixed here:
+>
+> - **`node.started` with an empty `binary.sha256`.** `NodeStartedSchema` requires a bare sha256 and
+>   `appendEvents` does not validate payloads on **write** — so the event landed in the ledger and
+>   `parseEvent` refused it on **read**. The SSE stream dropped it, `DeFlow run` never learned the
+>   node had started, and it therefore never followed the node's `io_chunk` tail: a run that
+>   completed with **no agent output on the terminal at all**, which is the exact 2026-08-12
+>   symptom. This is also a standing hazard worth naming: an invalid payload is accepted on write
+>   and lost on read, silently.
+> - **No `RunId` could ever have a node branch.** A run id is `run_YYYYMMDDTHHMMSSZ_<hex>` and its
+>   `T`/`Z` are uppercase; `BRANCH_SAFE` is lowercase-only, so `nodeBranch` threw `UnsafeRefError`
+>   for **every run in existence** — invisible because nothing shipped had ever called it.
+>   `runRef()` (`git/branch-name.ts`) is the one place a run id is lowercased, and the note there
+>   records why that is injective for run ids and would not be for node ids.
+> - **A declared path scope with no auditor refuses the node.** Every agent node the planner emits
+>   declares one, and `runAcpNode` refuses before the spawn unless `scopeAudit` is wired — correctly,
+>   since *"a declared scope with nothing behind it reads exactly like an agent that behaved"*. The
+>   resolver wires `createScopeAudit()`.
+> - **A booted daemon is no longer inert beside a run with a plan.** `e2e/gate-ladder.test.ts` took
+>   its "before" cost reading from a real daemon over the seeded run and then expected a second
+>   process to run the gates; the daemon now wins that race and drives the run itself. The reading
+>   moved to a copy of the data directory, which is what it was always asserting.
+>
+> **One departure recorded rather than absorbed** ([README §9](../README.md#9-changing-the-plan)):
+> the live performer provisions a **worktree per node attempt** and does not merge its branch back.
+> That is EPIC-07's integration loop and inventing a second merge here would give a run two answers
+> about how work reaches the integration branch — but it does mean the second agent node starts from
+> `HEAD` rather than from the first one's output. `StartNode.worktree` is `null` on every node, so
+> the performer chooses the path itself — not because nothing writes `node.scheduled` (this claim was
+> made here on 2026-08-13 and is **false**: `packages/adapters/src/run-node.ts` appends it, and a
+> hand-driven run's ledger carries one per agent node), but because the payload it appends names the
+> node, provider and permission and **carries no worktree**. Whoever raises this to a real hand-off
+> is changing that payload, not adding a producer.
+>
+> **The composition-root binding itself was cut and the smoke test went red**, which is the one
+> sabotage the table above does not contain and the one the epic is actually about — every row in
+> AC4 cuts a call *inside* the pipeline, and the 2026-08-12 defect was a port left unbound *outside*
+> it. Removing `executeNodes: execution.executeNodes` from the bundled `up.ts` (exactly one
+> occurrence in `bin.mjs`) and running the scenario against that copy raised
+> `SmokeStageMissing: the smoke chain stopped at the plan reaching executeRun`. So the smoke test
+> fails for the original defect and names it, rather than only for the six rewired calls beneath it.
+>
+> **Performed by hand, as the Definition of Done requires**, on 2026-08-13 in a scratch git
+> repository with only `DeFlow-mock-agent` on `PATH` and the packed `packages/cli/dist/bin.mjs`:
+> `DeFlow init` reported `mock ✓ ok` and every vendor `– skipped`; `DeFlow run --file task.md`
+> printed `task submitted`, `run created` and the spec at the F1.3 gate; approving it over the
+> daemon's own route produced `implement → verify → review` with the agent's own bytes on the
+> terminal, `typecheck gate pass`, and `run … completed — every gate passed`. `GET /` served the
+> SPA, `GET /api/runs/:id` answered `status: completed, outcome: succeeded`, and
+> `GET /api/runs/:id/nodes/implement/io` served the same bytes the terminal showed.
+>
+> **Three follow-ups the walkthrough exposed**, none in this story's scope and all operator-facing:
+>
+> - `DeFlow run --attach <a run that is already terminal>` renders the whole transcript and the
+>   verdict and then **does not exit**. `run.ts`'s `watch()` resolves from inside the hydrate, so its
+>   `.then` runs `following?.close()` before `onFollowing` has assigned the handle — the SSE
+>   connection is never closed and holds the process open. `--file` is unaffected, because there the
+>   terminal event arrives after `onFollowing`. KAR-18.3's.
+> - The human renderer prints an `io_chunk` as `chunk.data`, which on the ACP path is the **raw
+>   JSON-RPC frame**. The agent's words are in it, so AC3 is satisfied and the smoke test asserts
+>   them there — but what an operator reads is a wall of `{"method":"session/update",…}`. Extracting
+>   the text belongs to KAR-18.9's renderer.
+> - Every agent node prints `▸ <node> started attempt 1` **twice**. The ledger is right and the
+>   renderer is not: `run-node.ts` appends `node.started` deliberately twice per attempt — once
+>   before the spawn, which is what makes at-least-once recovery possible, and once when
+>   `session/new` resolves the session id — and the human renderer draws a line per event without
+>   folding the pair. Confirmed on the hand-driven run below (ledger seq 21/22 and 33/34, against a
+>   single `node.started` for the gate-only `review` node, which spawns no session). Cosmetic, but it
+>   is the first thing an operator asks about; KAR-18.9's renderer again.
 
 ---
 

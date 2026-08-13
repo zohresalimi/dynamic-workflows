@@ -26,6 +26,7 @@
     "test:unit": "vitest run --project unit",
     "test:int": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
+    "test:smoke": "vitest run --project smoke",
     "test:fuzz": "vitest run --project crash-fuzz",
     "test:record": "node packages/adapters/scripts/record-goldens.ts",
     "measure:graph": "node packages/web/scripts/measure-graph.ts",

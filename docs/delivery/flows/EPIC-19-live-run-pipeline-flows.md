@@ -500,7 +500,12 @@ A keepalive-only tail on a run that will never emit again is the same defect one
 
 ## EPIC-19-S16 — Happy path: framing → spec → pin → recon → `PlanGraph` v1
 
-**Verifies:** KAR-19.3 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-19.3 · **Type:** Happy path · **Automated at:** e2e — `e2e/live-chain.test.ts`,
+the real binary against a `PATH` holding only the bundled agent. The level was honest only from
+2026-08-13: until KAR-19.7 no agent here could serve a schema-bearing framing turn, so the scenario
+lived at integration (`packages/daemon/test/integration/live-chain.test.ts`, which still carries it
+against scripted ports). The pointer is recorded by KAR-19.5, which checked the claim rather than
+trusting it
 
 ```gherkin
 Feature: the live chain to a plan
@@ -694,7 +699,10 @@ mechanical because the judgement is not reliable at hour three.
 
 ## EPIC-19-S24 — Happy path: the plan's nodes execute and the run completes
 
-**Verifies:** KAR-19.4 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-19.4 · **Type:** Happy path · **Automated at:** e2e — `e2e/smoke/live-run.test.ts`
+(KAR-19.5), the built binary against the bundled agent; `packages/daemon/test/integration/`
+`live-execution.test.ts` carries the same chain against scripted agent ports, which is what makes a
+budget, a gate verdict and a `SIGKILL` cheap to drive
 
 ```gherkin
 Feature: nodes execute
@@ -882,7 +890,14 @@ noise, which removes the ceiling's only purpose.
 
 ## EPIC-19-S32 — `SIGKILL` mid-node: resume, and nothing executes twice
 
-**Verifies:** KAR-19.4 · **Type:** Recovery · **Automated at:** e2e
+**Verifies:** KAR-19.4 · **Type:** Recovery · **Automated at:** integration — the record corrected
+2026-08-13 by KAR-19.5, which found this line claiming a level the scenario has never been automated
+at. It lives in `packages/daemon/test/integration/live-execution.test.ts`, and KAR-19.4's own
+amendment already recorded why: the "crash" there is a second daemon life over the same data
+directory rather than a signal, and the *"no process remains in the killed daemon's group"* clause is
+a claim about real grandchildren that this story's performer does not spawn. The signal half against
+a real agent binary is `packages/daemon/test/crash-fuzz/`'s (KAR-06.9). Raising this back to `e2e`
+means writing the missing spec, not editing this line
 
 ```gherkin
 Feature: nodes execute
@@ -907,7 +922,9 @@ first time over a run that a shipped code path actually drove.
 
 ## EPIC-19-S33 — Happy path: the live smoke test, real binary to executed node
 
-**Verifies:** KAR-19.5 · **Type:** Happy path · **Automated at:** e2e
+**Verifies:** KAR-19.5 · **Type:** Happy path · **Automated at:** e2e — `e2e/smoke/live-run.test.ts`,
+in the `smoke` vitest project rather than the `e2e` one. Same level and same substitutions; its own
+slice because its `testTimeout` **is** AC6's 90 s budget, which the e2e slice's 180 s would silence
 
 ```gherkin
 Feature: the smoke test that would have caught this
@@ -935,7 +952,8 @@ is a real executable speaking real ACP over a real subprocess.
 
 ## EPIC-19-S34 — Every link cut in turn, and the smoke test goes red for each
 
-**Verifies:** KAR-19.5 · **Type:** Failure · **Automated at:** e2e
+**Verifies:** KAR-19.5 · **Type:** Failure · **Automated at:** e2e — `e2e/smoke/sabotage.test.ts`,
+in the same `smoke` slice, with a per-row timeout of its own: six cut links are six whole runs
 
 ```gherkin
 Feature: the smoke test that would have caught this
@@ -1249,8 +1267,8 @@ it: they are no longer watching.
 ## EPIC-19-S44 — Happy path: a framing turn served by the bundled agent, no vendor CLI at all
 
 **Verifies:** KAR-19.7 · **Type:** Happy path · **Automated at:** e2e — the admission clauses only,
-in `e2e/mock-only-run.test.ts`; the completion clauses are **deferred to the composition-root
-binding** (see below)
+in `e2e/mock-only-run.test.ts`; the completion clauses are carried by
+`e2e/smoke/live-run.test.ts` (KAR-19.5), which is the same machine one story later
 
 ```gherkin
 Feature: the bundled agent can answer a turn that carries a schema
@@ -1276,6 +1294,12 @@ get past framing, and this epic's own Definition of Done could not be demonstrat
 carries the scenario is the PATH: it is asserted to hold no vendor CLI rather than merely to hold the
 mock agent, because a developer's own `claude` leaking in would make this pass for the wrong reason
 and on their machine only.
+
+**Closed 2026-08-13 by KAR-19.5.** The completion half of this scenario — the ordered ledger through
+`node.completed` and a terminal `run.*`, the credential-free child environment, the zero outbound
+sockets and the untouched home directory — is now automated, on the same machine and against the
+same bundled agent, by `e2e/smoke/live-run.test.ts` and `test/integration/smoke-hermetic.test.ts`.
+What is written below stays because it is the record of what the *admission* half asserts and why.
 
 **What is automated, and what is not (2026-08-13).** `e2e/mock-only-run.test.ts` carries the scenario
 down to its *"admission does not refuse the run"* line. The two `Given`s are asserted rather than
