@@ -101,6 +101,7 @@ import type { ReconAgent } from '../recon/recon.ts';
 import { runReconNode } from '../recon/recon.ts';
 import { FRAMING_NODE } from '../spec/gate.ts';
 import { framingIsPending } from './framing-schedule.ts';
+import { noProviderFailure, unframeableRunFailure } from './turn-failure.ts';
 
 const chain = log.child({ mod: 'chain' });
 
@@ -350,29 +351,29 @@ export function createRunChain(ports: RunChainPorts): RunChain {
   async function runFraming(wake: FramingWake): Promise<void> {
     const { db, runId, epoch, now } = wake;
     const events = ledger(db, runId);
+    // KAR-19.9 AC1 — every way out of this function that is not a turn is a
+    // *throw*, so the driver journals it, classifies it against the node's own
+    // policy and ends the run when the attempts are spent. Returning quietly is
+    // what left the reported run's wake due for ever with nothing in its ledger
+    // to say why, and a `chain.warn` is a line in a file the operator had no
+    // reason to open. The failures themselves are constructed in
+    // `./turn-failure.ts`: this file may not name a `NodeFailureReason` (AC2).
     const cwd = submittedCwd(events);
     if (cwd === null) {
-      chain.error(
-        { runId },
+      throw unframeableRunFailure(
         `run ${runId}'s task.submitted names no repository, so this build cannot frame it; ` +
           'it was submitted before intake recorded one (KAR-19.3)',
       );
-      return;
     }
 
     const context = await ports.resolve({ runId, db, cwd, epoch });
-    if (context === null) {
-      chain.warn(
-        { runId },
-        `no provider could be resolved for run ${runId}, so its framing turn was not attempted`,
-      );
-      return;
-    }
+    if (context === null) throw noProviderFailure(runId);
 
     const task = submittedTask(events, context.readTaskSource);
     if (task === null) {
-      chain.error({ runId }, `run ${runId} has no task.submitted, so there is nothing to frame`);
-      return;
+      throw unframeableRunFailure(
+        `run ${runId} has no task.submitted, so there is nothing to frame`,
+      );
     }
     // Belt to the driver's braces: the wake could have been written before an
     // answer landed, and framing a run that is no longer owed a turn would
@@ -448,12 +449,13 @@ export function createRunChain(ports: RunChainPorts): RunChain {
       ...(answered.length === 0 ? {} : { clarifications: answered }),
     });
 
-    if (outcome.outcome === 'failed') {
-      chain.error(
-        { runId, reason: outcome.failure.deflowFailure.reason },
-        `the framing turn for ${runId} failed: ${outcome.failure.message}`,
-      );
-    }
+    // The interview has already journalled its own `node.failed` for this
+    // attempt; what it has *not* done is decide whether the node retries, which
+    // is the scheduler's call and needs the failure as a value to make it (the
+    // interview's own module note). Rethrowing is how it gets there, and
+    // `recordTurnFailure` sees the record is already in the ledger and adds the
+    // classification rather than a second copy of the failure.
+    if (outcome.outcome === 'failed') throw outcome.failure;
   }
 
   async function advanceRun(input: AdvanceInput): Promise<void> {

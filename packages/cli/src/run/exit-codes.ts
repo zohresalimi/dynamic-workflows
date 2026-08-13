@@ -108,11 +108,12 @@ function failedGate(state: RunState): { gate: string; outcome: string } | null {
 }
 
 /** The first node the ledger says failed, by the seq that last moved it. */
-function failedNode(state: RunState): string | null {
+function failedNode(state: RunState): { node: string; reason: string | null } | null {
   const failures = Object.entries(state.nodes)
     .filter(([, node]) => node.status === 'failed')
     .toSorted((left, right) => left[1].updatedSeq - right[1].updatedSeq);
-  return failures[0]?.[0] ?? null;
+  const first = failures[0];
+  return first === undefined ? null : { node: first[0], reason: first[1].failure?.reason ?? null };
 }
 
 /** The run-scope ceiling this run tripped, if it tripped one. */
@@ -125,24 +126,41 @@ function runCeilingBreach(
     : { dimension: breach.dimension, limit: breach.limit, actual: breach.actual };
 }
 
-/** What a run that has ended is worth, as an exit code and a sentence. */
-function classifyEnded(state: RunState): RunVerdict {
+/**
+ * Why a run that has ended failed, as one sentence — or `null` for a run that
+ * did not.
+ *
+ * The two questions it asks are the two the projection can answer: did a gate
+ * refuse, and did a node run out of attempts. Both are facts the ledger wrote,
+ * which is what lets the same reader serve a run that *completed* with a failed
+ * gate and a run that was *aborted* because a node gave up — the difference
+ * between those two is the word in front, and `ended` is that word.
+ */
+function endedInFailure(state: RunState, ended: 'completed' | 'aborted'): string | null {
   const gate = failedGate(state);
   if (gate !== null) {
-    return {
-      terminal: true,
-      exitCode: RUN_EXIT_CODES.failed,
-      reason: `completed — the ${gate.gate} gate ${gate.outcome === 'fail' ? 'failed' : 'needs a human'}`,
-    };
+    return `${ended} — the ${gate.gate} gate ${gate.outcome === 'fail' ? 'failed' : 'needs a human'}`;
   }
 
   const node = failedNode(state);
   if (node !== null) {
-    return {
-      terminal: true,
-      exitCode: RUN_EXIT_CODES.failed,
-      reason: `completed — node ${node} failed`,
-    };
+    // KAR-19.9 AC5 — the typed reason from KAR-02.10's taxonomy when the
+    // projection holds one, because *"node framing failed"* on its own sends
+    // the operator to the daemon log, which is the afternoon this story is
+    // about. Never re-worded here: it is the same string `node.failed` carried.
+    return node.reason === null
+      ? `${ended} — node ${node.node} failed`
+      : `${ended} — node ${node.node} failed (${node.reason})`;
+  }
+
+  return null;
+}
+
+/** What a run that has ended is worth, as an exit code and a sentence. */
+function classifyEnded(state: RunState): RunVerdict {
+  const failure = endedInFailure(state, 'completed');
+  if (failure !== null) {
+    return { terminal: true, exitCode: RUN_EXIT_CODES.failed, reason: failure };
   }
 
   if (state.outcome !== null && state.outcome !== 'succeeded') {
@@ -172,12 +190,28 @@ export function classifyRun(state: RunState, options: ClassifyOptions): RunVerdi
     case 'completed':
       return classifyEnded(state);
 
-    case 'aborted':
+    case 'aborted': {
+      // KAR-19.9 AC5 — a run that **gave up** and a run somebody **stopped**
+      // both end at `run.aborted { outcome: 'failed' }`, and until this story
+      // one arm answered for both: every abort was read as a Ctrl-C and exited
+      // 130, which tells a CI job the build was interrupted when it failed.
+      //
+      // The discriminator is the projection's own and is deliberately not a new
+      // field. A run that ended holding a failed node or a failed gate failed —
+      // whether the node was a framing turn that spent its `RetryPolicy` or a
+      // plan node the executor could not finish. A run that ended holding
+      // neither was stopped by a person: an abandon at the F1.3 gate, or
+      // `DeFlow cancel`, neither of which leaves a failure behind.
+      const failure = endedInFailure(state, 'aborted');
+      if (failure !== null) {
+        return { terminal: true, exitCode: RUN_EXIT_CODES.failed, reason: failure };
+      }
       return {
         terminal: true,
         exitCode: RUN_EXIT_CODES.interrupted,
         reason: 'aborted — the run was cancelled',
       };
+    }
 
     case 'paused': {
       const breach = runCeilingBreach(state);

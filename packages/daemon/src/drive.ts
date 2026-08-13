@@ -33,7 +33,16 @@
  * Verifies: EPIC-19-S1, EPIC-19-S4, EPIC-19-S5, EPIC-19-S8 · KAR-19.1 AC2,
  * AC3, AC7
  */
-import type { CancelMode, Clock, Db, EventSeq, NodeId, RunId, StallReport } from '@DeFlow/core';
+import type {
+  CancelMode,
+  Clock,
+  Db,
+  EventSeq,
+  NodeId,
+  Random,
+  RunId,
+  StallReport,
+} from '@DeFlow/core';
 import { DEFAULT_NO_PROGRESS_POLICY, EVENT_CURRENT_VERSIONS, noProgress } from '@DeFlow/core';
 import type { AppendOptions, NodeWakeRow } from '@DeFlow/ledger';
 import {
@@ -53,19 +62,11 @@ import { FRAMING_WAKE_REASON } from './intake/intake.ts';
 import { type KillRunOutcome, killRun } from './kill-switch.ts';
 import { log } from './logging.ts';
 import { framingCouldBePending, framingIsPending } from './pipeline/framing-schedule.ts';
+import { attemptsSpent, recordTurnFailure } from './pipeline/turn-failure.ts';
+import { daemonRandom } from './random.ts';
 import { completeCancel, FRAMING_NODE } from './spec/gate.ts';
 
 const driver = log.child({ mod: 'drive' });
-
-/**
- * How long a framing wake is pushed forward after an attempt that produced no
- * `run.created`.
- *
- * Without it, a runner that fails fast is re-dispatched on every tick — one
- * agent spawn a second, for as long as nobody is watching. With it, the run is
- * retried at a human pace and the stall detector gets to speak about it.
- */
-export const FRAMING_RETRY_MS = 30_000;
 
 /** What the driver hands the framing runner: one due wake, and everything it
  * needs to append the result of acting on it. */
@@ -224,6 +225,16 @@ export interface DriverPorts {
    * second implementation of a ladder behind it.
    */
   readonly killRun?: KillRunner | undefined;
+  /**
+   * KAR-19.9 — the daemon life's jitter source, handed to the retry ladder when
+   * a pre-execution turn fails.
+   *
+   * Injected only so a spec can pin the draw and assert on the *window* rather
+   * than on a lucky number; the default is the shipped `daemonRandom()`, and
+   * every backoff in one daemon life is drawn from one generator so that twenty
+   * nodes failing at the same instant take twenty consecutive draws.
+   */
+  readonly random?: Random | undefined;
 }
 
 /** What the driver asks of the kill switch: one run, one mode, the outcome. */
@@ -321,6 +332,7 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       killRun(runId, { db: ports.db, clock: ports.clock, epoch: ports.epoch, mode, by: 'user' }));
   const startedAt = ports.startedAt ?? ports.clock.now();
   const daemonStartedAt = ports.daemonStartedAt ?? startedAt;
+  const random = ports.random ?? daemonRandom();
   const appendOptions: AppendOptions =
     ports.spillTo === undefined ? {} : { spillTo: ports.spillTo };
 
@@ -629,19 +641,33 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
     runId: RunId,
     now: number,
   ): Promise<void> {
+    const nodeId = wake.nodeId as NodeId;
+    // Read before the turn: the turn itself may journal a `node.failed`, and
+    // counting afterwards would read its own record as a previous attempt.
+    const attempt = attemptsSpent(ports.db, runId, nodeId);
     try {
-      await runFraming({
-        runId,
-        nodeId: wake.nodeId as NodeId,
-        now,
-        db: ports.db,
-        epoch: ports.epoch,
-      });
+      await runFraming({ runId, nodeId, now, db: ports.db, epoch: ports.epoch });
     } catch (error) {
-      // A framing turn that threw is this run's failure, not the daemon's: the
-      // loop is what reconciles a run back to a sane state, so a tick that
-      // stopped on the first error is how every *other* run wedges too.
+      // KAR-19.9 AC1, AC2 — a framing turn that threw is this run's failure,
+      // not the daemon's: the loop is what reconciles a run back to a sane
+      // state, so a tick that stopped on the first error is how every *other*
+      // run wedges too. What it is *not* is a private matter between this
+      // function and the daemon's log file, which is what it was until this
+      // story: the failure is journalled, classified and bounded by the node's
+      // own policy, and this file makes none of those three decisions.
       driver.error({ runId, err: error }, `the framing turn for ${runId} threw`);
+      recordTurnFailure({
+        db: ports.db,
+        runId,
+        nodeId,
+        epoch: ports.epoch,
+        ts: ports.clock.now(),
+        error,
+        attempt,
+        random,
+        ...(ports.spillTo === undefined ? {} : { dataDir: ports.spillTo }),
+        appendOptions,
+      });
     } finally {
       framing.delete(runId);
       settleFramingWake(wake, runId);
@@ -651,13 +677,21 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
   /**
    * What becomes of the row the turn was dispatched from.
    *
-   * Read back rather than assumed, because the interview may legitimately have
-   * *rewritten* it: a clarifying question suspends onto the same `(runId,
-   * framing)` key with `reason = 'human_gate'` and its own deadline, and
-   * deleting that would delete the suspension. So the row is cleared only when
-   * it is still the row that was dispatched, and pushed forward when framing
-   * produced nothing — a failed turn that stayed due would be re-dispatched at
-   * 1 Hz.
+   * Read back rather than assumed, because two other writers may legitimately
+   * have *rewritten* it. A clarifying question suspends onto the same `(runId,
+   * framing)` key with `reason = 'human_gate'` and its own deadline; a failed
+   * attempt writes a `backoff` row at the instant the node's own `RetryPolicy`
+   * chose. Deleting either would delete a wait somebody is relying on, so the
+   * row is touched only when it is still, byte for byte, the row that was
+   * dispatched.
+   *
+   * A row that survived a turn producing nothing at all is left exactly where
+   * it is. That used to be the interesting case — it was pushed forward by a
+   * flat `FRAMING_RETRY_MS`, which is the unbounded retry of 2026-08-13 — and
+   * it is now unreachable: every way a framing turn can fail throws, and a
+   * throw is bounded by `recordTurnFailure`. Leaving it rather than
+   * rescheduling it is what keeps this file free of an interval it would have
+   * to choose.
    */
   function settleFramingWake(dispatchedFrom: NodeWakeRow, runId: RunId): void {
     const current = readWake(ports.db, { runId, nodeId: dispatchedFrom.nodeId });
@@ -668,13 +702,7 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
 
     if (!framingIsPending(ports.db, runId)) {
       clearWake(ports.db, { runId, nodeId: dispatchedFrom.nodeId });
-      return;
     }
-
-    scheduleWake(ports.db, {
-      ...current,
-      wakeAt: ports.clock.now() + FRAMING_RETRY_MS,
-    });
   }
 
   /**

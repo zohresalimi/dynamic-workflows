@@ -101,6 +101,25 @@ export interface RecordFailureInput {
    */
   readonly quotaRoute?: QuotaRoute | undefined;
   readonly appendOptions?: AppendOptions;
+  /**
+   * KAR-19.9 — the failing turn already appended its own `node.failed` for this
+   * attempt, so record everything that follows from it and not the failure
+   * itself.
+   *
+   * It exists because one caller genuinely knows more than this module does.
+   * `runFramingInterview` writes the failure at the moment it refuses — before
+   * a session exists, or before a document is accepted — and the classification
+   * that follows is still the scheduler's to make. Without this flag the
+   * scheduler's own draft would be a *second* `node.failed` for one attempt,
+   * and `state.nodes[node].attempts` would count two, which is the "the attempt
+   * is spent twice" failure this module's own header warns about, arriving from
+   * the other direction.
+   *
+   * Never a way to skip journalling: the caller passing it has already
+   * journalled. Every other caller leaves it alone and this module writes the
+   * record, which is what AC1 requires of a turn that throws.
+   */
+  readonly journalled?: boolean;
 }
 
 export interface RecordedFailure {
@@ -144,7 +163,7 @@ export function recordNodeFailure(db: Db, input: RecordFailureInput): RecordedFa
       ...(input.providers === undefined ? {} : { providers: input.providers }),
     });
 
-    const drafts: EventDraft[] = [nodeFailed(input)];
+    const drafts: EventDraft[] = input.journalled === true ? [] : [nodeFailed(input)];
     let wakeAt: number | null = null;
     let reason: WakeReason = 'backoff';
     let patch: PlanPatch | null = null;
@@ -280,6 +299,10 @@ const nodeFailed = (input: RecordFailureInput): EventDraft =>
   envelope(input, 'node.failed', {
     node: input.nodeId,
     attempt: input.failure.attempt,
+    // KAR-19.9 AC4 — the ceiling this attempt was measured against, from the
+    // node's own policy, so the surfaces can say "attempt 2 of 3" without any
+    // of them holding a second copy of `maxAttempts`.
+    maxAttempts: input.retry.maxAttempts,
     failure: input.failure,
   });
 

@@ -34,10 +34,20 @@ const ABANDON_SEAM = 'packages/daemon/src/spec/gate.ts';
 /** The state machine that *decides* an operator stop, and writes none of it. */
 const DECIDER = 'packages/daemon/src/run-control.ts';
 
-/** Appenders that are not operator stops. @see the module note. */
+/**
+ * Appenders that are not operator stops. @see the module note.
+ *
+ * The third arrived with KAR-19.9 and is the pre-execution twin of the second:
+ * `run-executor.ts` ends a run whose *plan nodes* did not all complete, and
+ * `turn-failure.ts` ends one whose framing turn spent every attempt its own
+ * `RetryPolicy` allows. Both are the daemon reporting that the work failed,
+ * which is precisely the fact `abortDraft`'s callers exist to distinguish
+ * themselves from.
+ */
 const OTHER_APPENDERS = [
   'packages/daemon/src/intake/intake.ts',
   'packages/daemon/src/exec/run-executor.ts',
+  'packages/daemon/src/pipeline/turn-failure.ts',
 ];
 
 /** An event draft for `run.aborted`, as it is written in this repository. */

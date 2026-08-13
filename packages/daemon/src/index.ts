@@ -69,7 +69,7 @@ export type {
   RunNodeExecutor,
   TickReport,
 } from './drive.ts';
-export { createRunDriver, FRAMING_RETRY_MS } from './drive.ts';
+export { createRunDriver } from './drive.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
 export type {

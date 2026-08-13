@@ -100,6 +100,7 @@ import { IO_NDJSON_MEDIA_TYPE, IO_NDJSON_UNVERSIONED, ioChunkLine } from './io-n
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
+import { runFailure } from './run-failure.ts';
 import { runList } from './run-list.ts';
 import { runRefusal } from './run-refusal.ts';
 import { runSummary } from './run-summary.ts';
@@ -1160,6 +1161,10 @@ export const api = new Hono()
     // state: it is a fact about the machine on the day the run was submitted,
     // re-rendered from the `provider.probed` rows the refusal wrote (NF8).
     const refusal = runRefusal(view, runId);
+    // KAR-19.9 AC6 — and, for a run that *ended* on a failure, why. The
+    // sibling of `refusal` above and for the same reason: a refusal is why a
+    // run never started, this is why one stopped, and neither is run state.
+    const failure = runFailure(state);
     return c.json(
       {
         ...runSummary(
@@ -1170,6 +1175,7 @@ export const api = new Hono()
           preflightEstimator(view),
         ),
         ...(refusal === null ? {} : { refusal }),
+        ...(failure === null ? {} : { failure }),
       },
       200,
     );

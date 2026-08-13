@@ -249,6 +249,17 @@ export const LINKS = {
 
 export type SmokeLink = (typeof LINKS)[keyof typeof LINKS];
 
+/**
+ * The one sentence `stage()` writes when it gives up on the clock.
+ *
+ * Exported because the sabotage table asserts its **absence** for the row whose
+ * provider fails rather than whose link is missing (KAR-19.9 AC9): *"it does
+ * not reach its own timeout"*. A copy of the phrase over there would pass the
+ * day this one was reworded, which is the failure the clause exists to catch,
+ * one level up.
+ */
+export const SMOKE_STAGE_TIMED_OUT = 'it did not happen within';
+
 /** A stage that did not happen, carrying the link whose absence explains it. */
 export class SmokeStageMissing extends Error {
   readonly link: SmokeLink;
@@ -397,6 +408,24 @@ interface LedgerRead {
    * which is precisely the clause AC2 is making.
    */
   readonly agentSaid: string | null;
+  /**
+   * KAR-19.9 AC9 — why the run gave up, or `null` for a run that has not.
+   *
+   * Read off the run's own ledger rather than off the CLI's transcript, which
+   * is the point: before this story a run whose turns kept failing appended
+   * nothing at all, so there was no such sentence to read anywhere and the
+   * scenario could only report that time had passed.
+   */
+  readonly endedFailure: EndedFailure | null;
+}
+
+/** The typed failure a run ended on, as the ledger recorded it. */
+interface EndedFailure {
+  readonly node: string;
+  readonly reason: string;
+  readonly message: string;
+  /** How many attempts were journalled for that node before it gave up. */
+  readonly attempts: number;
 }
 
 /** The agent's own words inside one `session/update` frame, or `null`. */
@@ -416,6 +445,28 @@ function agentTextOf(frame: string): string | null {
   }
 }
 
+/**
+ * The failure a run **gave up** on, or `null`.
+ *
+ * Only for a run that reached `run.aborted`. A live run with a failed attempt
+ * behind it has not given up — its node is inside the retry ladder — and a
+ * scenario that ended itself on the first `node.failed` would fail the run that
+ * KAR-19.9 AC7 exists to protect: two failures and a success is a working run.
+ *
+ * The **last** failure rather than the first, because that is the attempt the
+ * ceiling was reached on, and its `attempt` count is what makes the sentence
+ * *"after 3 attempts"* true.
+ */
+function endedFailureOf(
+  kinds: readonly string[],
+  failures: readonly EndedFailure[],
+): EndedFailure | null {
+  if (!kinds.includes('run.aborted')) return null;
+  const last = failures.at(-1);
+  if (last === undefined) return null;
+  return { ...last, attempts: failures.filter((one) => one.node === last.node).length };
+}
+
 function readLedger(dataDir: string, runId: string): LedgerRead {
   let db: ReturnType<typeof openLedger> | null = null;
   try {
@@ -423,7 +474,20 @@ function readLedger(dataDir: string, runId: string): LedgerRead {
     const events = readRange(db, runId as RunId, 0, 2_000).events;
     const planNodes: string[] = [];
     const completedNodes: string[] = [];
+    const failures: EndedFailure[] = [];
     for (const event of events) {
+      if (event.kind === 'node.failed') {
+        const payload = event.payload as {
+          readonly node?: unknown;
+          readonly failure?: { readonly reason?: unknown; readonly message?: unknown };
+        };
+        failures.push({
+          node: String(payload.node),
+          reason: String(payload.failure?.reason),
+          message: String(payload.failure?.message),
+          attempts: 0,
+        });
+      }
       if (event.kind === 'plan.proposed') {
         const payload = event.payload as { readonly graph?: { readonly nodes?: unknown[] } };
         planNodes.length = 0;
@@ -451,15 +515,24 @@ function readLedger(dataDir: string, runId: string): LedgerRead {
       );
     }
 
+    const kinds = events.map((event) => event.kind);
     return {
-      kinds: events.map((event) => event.kind),
+      kinds,
       planNodes,
       completedNodes,
       ioChunks: chunks.length,
       agentSaid,
+      endedFailure: endedFailureOf(kinds, failures),
     };
   } catch {
-    return { kinds: [], planNodes: [], completedNodes: [], ioChunks: 0, agentSaid: null };
+    return {
+      kinds: [],
+      planNodes: [],
+      completedNodes: [],
+      ioChunks: 0,
+      agentSaid: null,
+      endedFailure: null,
+    };
   } finally {
     db?.close();
   }
@@ -550,11 +623,44 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
     cli = spawnCli({ distDir, argv: ['run', '--file', 'spec.md'], cwd: repo.dir, env });
     const process_ = cli;
 
+    /**
+     * The run id, once the CLI has printed it — so every stage after the first
+     * can ask the ledger whether the run is still going.
+     */
+    let submittedRunId: string | null = null;
+
+    /**
+     * KAR-19.9 AC9 — a run that **gave up** ends the scenario there and then,
+     * saying so.
+     *
+     * Without it a failing provider is indistinguishable from a missing link:
+     * the stage waits out its budget and reports that time passed, which is
+     * exactly the diagnosis-free timeout AC4 calls a hole in the smoke test.
+     * The sentence is the ledger's own — the typed reason from KAR-02.10's
+     * closed taxonomy, on the `node.failed` the run ended on — and it exists to
+     * be read only because AC1 made the daemon write it.
+     */
+    const gaveUp = (link: SmokeLink): SmokeStageMissing | null => {
+      if (submittedRunId === null) return null;
+      const failure = readLedger(dataDir, submittedRunId).endedFailure;
+      if (failure === null) return null;
+      return new SmokeStageMissing(
+        link,
+        `the run failed after ${String(failure.attempts)} attempt(s) on node ` +
+          `${failure.node}: ${failure.reason} — ${failure.message}\n` +
+          `stdout:\n${process_.stdout()}\nstderr:\n${process_.stderr()}`,
+      );
+    };
+
     const stage = async <T>(link: SmokeLink, read: () => T | null): Promise<T> => {
       const deadline = Date.now() + stageMs;
       while (Date.now() < deadline) {
         const value = read();
         if (value !== null) return value;
+        // Asked before the exit-code arm below, because both are true of a run
+        // that gave up and only one of them says why.
+        const ended = gaveUp(link);
+        if (ended !== null) throw ended;
         if (process_.child.exitCode !== null) {
           const value2 = read();
           if (value2 !== null) return value2;
@@ -568,12 +674,13 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
       }
       throw new SmokeStageMissing(
         link,
-        `it did not happen within ${String(stageMs)} ms\n` +
+        `${SMOKE_STAGE_TIMED_OUT} ${String(stageMs)} ms\n` +
           `stdout:\n${process_.stdout()}\nstderr:\n${process_.stderr()}`,
       );
     };
 
     const runId = await stage(LINKS.submitted, () => RUN_ID.exec(process_.stdout())?.[0] ?? null);
+    submittedRunId = runId;
     await stage(LINKS.submitted, () =>
       kindsOf(dataDir, runId).includes('task.submitted') ? true : null,
     );

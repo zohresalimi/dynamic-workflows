@@ -11,7 +11,7 @@
  * Verifies: EPIC-18-S23 · AC6 · test plan #6
  */
 import type { GateId, NodeId, RunState } from '@DeFlow/core';
-import { initialRunState } from '@DeFlow/core';
+import { initialRunState, NodeFailureSchema } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
 import { classifyRun, EX_USAGE, RUN_EXIT_CODES, rejectionExitCode } from './exit-codes.ts';
 
@@ -186,6 +186,92 @@ suite('EPIC-19-S10 — a machine that cannot host a run exits 5 (KAR-19.2 AC5)',
   });
 
   it('adds no eighth code', () => {
+    expect(Object.values(RUN_EXIT_CODES).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 130]);
+  });
+});
+
+/**
+ * KAR-19.9 AC5 / EPIC-19-S58, EPIC-19-S62 — a run that **gave up** is not a run
+ * somebody **stopped**.
+ *
+ * Both end at `run.aborted { outcome: 'failed' }`, which is why one arm answered
+ * for both until this story: `status === 'aborted'` was read as *"the operator
+ * pressed Ctrl-C"* and exited `130`. On 2026-08-13 the operator's run never got
+ * that far — it retried for ever and had to be killed — but the moment the
+ * retry was bounded, the code it would have exited with was `130`, which tells a
+ * CI job the build was interrupted when in fact it failed.
+ *
+ * The discriminator is the projection's own, and it is deliberately not a new
+ * field: a run that ended with a failed node or a failed gate **failed**, and a
+ * run that ended with neither was stopped by a person — an abandon at the F1.3
+ * gate, or `DeFlow cancel`. Nothing about the exit code is derived anywhere but
+ * here, which `test/one-run-verdict.test.ts` is the standing guard for.
+ */
+suite('EPIC-19-S58 — a run that gave up exits 1, not 130 (KAR-19.9 AC5)', () => {
+  const failedFraming = (): RunState => ({
+    ...initialRunState(),
+    status: 'aborted',
+    outcome: 'failed',
+    nodes: {
+      framing: {
+        status: 'failed',
+        attempt: 2,
+        attempts: 3,
+        provider: null,
+        model: null,
+        permission: null,
+        worktree: null,
+        result: null,
+        // Parsed rather than cast, so the fixture is a real member of
+        // KAR-02.10's closed taxonomy and cannot drift from it silently.
+        failure: NodeFailureSchema.parse({
+          reason: 'agent.nonzero-exit',
+          class: 'transient',
+          message: 'claude exited 1: Invalid session ID',
+          attempt: 2,
+          occurredAtEvent: 7,
+          evidence: [],
+          detail: { exitCode: 1 },
+        }),
+        suspension: null,
+        requestHash: null,
+        wakeAt: null,
+        startedTs: 0,
+        updatedSeq: 9,
+      },
+    },
+    nodeIds: { active: ['framing' as NodeId], retired: [] },
+  });
+
+  it('exits 1 when the run ended on a node that spent its attempts', () => {
+    const verdict = classifyRun(failedFraming(), { noWait: false });
+    expect(verdict).toMatchObject({ terminal: true, exitCode: RUN_EXIT_CODES.failed });
+  });
+
+  it('names the node and the typed reason, in one sentence', () => {
+    const verdict = classifyRun(failedFraming(), { noWait: false });
+    expect(verdict.reason).toBe('aborted — node framing failed (agent.nonzero-exit)');
+    expect(verdict.reason).not.toContain('\n');
+    expect(verdict.reason.endsWith('.')).toBe(false);
+  });
+
+  it('exits 1 when the run ended on a failed gate rather than a node', () => {
+    const state = withGate({ ...initialRunState(), status: 'aborted', outcome: 'failed' }, 'fail');
+    const verdict = classifyRun(state, { noWait: false });
+    expect(verdict).toMatchObject({ terminal: true, exitCode: RUN_EXIT_CODES.failed });
+    expect(verdict.reason).toBe('aborted — the typecheck gate failed');
+  });
+
+  it('still exits 130 for the operator stop, which has neither', () => {
+    const stopped: RunState = { ...initialRunState(), status: 'aborted', outcome: 'failed' };
+    expect(classifyRun(stopped, { noWait: false })).toMatchObject({
+      terminal: true,
+      exitCode: RUN_EXIT_CODES.interrupted,
+      reason: 'aborted — the run was cancelled',
+    });
+  });
+
+  it('adds no eighth code for either', () => {
     expect(Object.values(RUN_EXIT_CODES).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 130]);
   });
 });

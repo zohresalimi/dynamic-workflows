@@ -206,14 +206,33 @@ function humanLine(event: Event): Line | null {
         detail: '',
       };
 
-    case 'node.failed':
+    /**
+     * KAR-19.9 AC4 — the line an operator watching a failing run needs, printed
+     * as each attempt fails rather than summarised at the end.
+     *
+     * Three things or it is not worth printing: which node, which attempt *out
+     * of the ceiling*, and the typed reason. The ceiling comes off the event —
+     * the failing node's own `RetryPolicy.maxAttempts`, stated by the scheduler
+     * that applied it — because a `3` spelled here would be a second copy of a
+     * policy that lives in another process, and the two would disagree the
+     * first time a plan set `maxAttempts: 5`. A failure recorded by something
+     * that never consulted a policy says `attempt 1` and stops there rather
+     * than inventing a denominator.
+     */
+    case 'node.failed': {
+      const ceiling = event.payload.maxAttempts;
+      const attempt = `attempt ${event.payload.attempt + 1}${
+        ceiling === undefined ? '' : ` of ${ceiling}`
+      }`;
       return {
         glyph: 'gone',
         colour: 'red',
         subject: event.payload.node,
         status: 'failed',
-        detail: event.payload.failure.reason,
+        parts: [attempt, event.payload.failure.reason],
+        detail: '',
       };
+    }
 
     case 'gate.evaluated':
       return {

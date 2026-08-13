@@ -41,6 +41,7 @@ import {
   runSmokeScenario,
   type SmokeLink,
   SmokeStageMissing,
+  SMOKE_STAGE_TIMED_OUT as TIMED_OUT,
 } from './support/harness.ts';
 
 beforeAll(() => {
@@ -87,6 +88,36 @@ interface Sabotage {
   readonly cuts: readonly Cut[];
   /** The stage the smoke test must then name. */
   readonly names: SmokeLink;
+  /**
+   * KAR-19.9 AC9 — substrings the failure message must also carry.
+   *
+   * Every row above cuts a link, and the link's *name* is the whole diagnosis:
+   * the stage never happened, and which stage it was says why. The row this
+   * field exists for is different in kind — nothing is missing, a provider is
+   * **failing** — and for that one "the run did not reach `run.created`" is a
+   * true sentence that sends the next reader to exactly the wrong place. So
+   * that row asserts the ending as well as the link: the run *failed*, and it
+   * failed for a reason out of KAR-02.10's closed taxonomy.
+   */
+  readonly says?: readonly string[];
+  /**
+   * KAR-19.9 AC9 — *"it does not reach its own timeout"*.
+   *
+   * A row that fails by waiting out the stage budget tells the next reader
+   * nothing about which link broke, which AC4 already calls a hole. This is the
+   * inverse clause, and it is the whole point of the row: before this story the
+   * failing turn was re-dispatched every 30 s with no ceiling, so the scenario
+   * sat here until the budget expired and reported that time had passed.
+   *
+   * Asserted against the **sentence** rather than against a wall-clock bound,
+   * and that is the stronger of the two rather than the cheaper. `stage()` has
+   * exactly one arm that gives up on the clock and it says so in words, so its
+   * absence is the fact this clause is about, stated exactly. A bound on
+   * elapsed time would be measuring a scenario that also runs `DeFlow init`,
+   * two `git` invocations and a cold daemon start, and would read a loaded
+   * machine as a reintroduced infinite retry.
+   */
+  readonly notByTimeout?: boolean;
 }
 
 /**
@@ -169,6 +200,34 @@ const TABLE: readonly Sabotage[] = [
     ],
     names: LINKS.chunk,
   },
+  {
+    // KAR-19.9 AC9 / EPIC-19-S64 — not a cut link but a **failing provider**,
+    // which is the row the 2026-08-13 afternoon asked for. `renderReturn` is
+    // the last step of the bundled agent's structured turn; with it returning
+    // nothing the very next line refuses, so the binary exits non-zero with a
+    // sentence on stderr and zero bytes on stdout for *every* turn. That is a
+    // wedged vendor CLI exactly as DeFlow sees one — a real child's real exit
+    // code — and it is the shape of the reported failure.
+    //
+    // The capability probe is untouched, so the machine still has a working
+    // provider and the run is admitted as it would be anywhere. What fails is
+    // the turn, which is the distinction KAR-19.2 already covers the other half
+    // of.
+    row: 'a provider that fails every turn',
+    cuts: [
+      {
+        find: '\tconst document = renderReturn(schemaId, seed, scenario?.returns ?? null);',
+        replace: '\tconst document = null;',
+      },
+    ],
+    names: LINKS.created,
+    // Named as *failed*, with the typed reason beside it. Before this story
+    // there was no reason to name: the daemon retried the identical failure
+    // every 30 s and appended nothing, so the run's own ledger could not have
+    // produced this sentence and neither could any surface reading it.
+    says: ['the run failed', 'agent.nonzero-exit'],
+    notByTimeout: true,
+  },
 ];
 
 /** The bundle chunks a sabotage may be applied to. */
@@ -226,10 +285,13 @@ suite('EPIC-19-S34 — every link cut in turn, and the smoke test goes red for e
       // smoke test's own: a cut link is a stage that will never happen, and
       // six rows waiting out the full budget would cost ten minutes to learn
       // nothing.
-      const thrown = await runSmokeScenario({ distDir, stageTimeoutMs: 20_000 }).then(
+      const budgetMs = 20_000;
+      const began = Date.now();
+      const thrown = await runSmokeScenario({ distDir, stageTimeoutMs: budgetMs }).then(
         () => null,
         (error: unknown) => error,
       );
+      const tookMs = Date.now() - began;
 
       expect(
         thrown,
@@ -240,7 +302,22 @@ suite('EPIC-19-S34 — every link cut in turn, and the smoke test goes red for e
       expect((thrown as SmokeStageMissing).link).toBe(row.names);
       // S34's last clause: the message names the link rather than only
       // reporting that time ran out.
-      expect((thrown as SmokeStageMissing).message).toContain(row.names);
+      const message = (thrown as SmokeStageMissing).message;
+      expect(message).toContain(row.names);
+
+      // KAR-19.9 AC9 / EPIC-19-S64 — and, for the row whose provider fails
+      // rather than whose link is missing, what the run's own ledger says
+      // about the ending.
+      for (const phrase of row.says ?? []) expect(message, message).toContain(phrase);
+
+      if (row.notByTimeout === true) {
+        expect(
+          message,
+          `the row for "${row.row}" gave up on the clock after ${String(tookMs)} ms of a ` +
+            `${String(budgetMs)} ms stage budget, which is a timeout wearing a failure’s ` +
+            'clothes: a run that gave up must end the scenario, not outlast it',
+        ).not.toContain(TIMED_OUT);
+      }
     });
   }
 });

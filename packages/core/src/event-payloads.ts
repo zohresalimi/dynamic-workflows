@@ -688,6 +688,24 @@ export const NodeCompletedSchema = z.strictObject({
 export const NodeFailedSchema = z.strictObject({
   node: NodeIdSchema,
   attempt,
+  /**
+   * KAR-19.9 AC4 — the ceiling this attempt was measured against, when the
+   * appender knew it.
+   *
+   * Optional, and the optionality is a claim rather than convenience: the
+   * ceiling is the failing node's own `RetryPolicy.maxAttempts`, so only the
+   * scheduler that applied the policy can state it. An appender that recorded a
+   * failure without consulting a policy — the framing interview refusing an
+   * unprobed adapter before any scheduler is involved — leaves it out instead of
+   * inventing a default, and the surfaces then print *"attempt 1"* rather than
+   * *"attempt 1 of 3"*.
+   *
+   * On the event rather than re-derived by each reader, because the alternative
+   * is a copy of `maxAttempts` in the CLI, in the web run view and in
+   * `DeFlow status`, one process away from the daemon that actually applies it —
+   * three spellings that agree until somebody sets `maxAttempts: 5` in a plan.
+   */
+  maxAttempts: z.int().positive().optional(),
   failure: NodeFailureSchema,
 });
 
