@@ -27,6 +27,7 @@ import { NodeIdSchema, RunIdSchema } from '@DeFlow/core';
 import { DIALECT_ENV, type Dialect, it, linkFakeAgent, SCENARIO_ENV } from '@DeFlow/testkit';
 import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +37,8 @@ import { MOCK_AGENT_BIN } from './support/harness.ts';
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 const DRAFT_SCHEMA = join(SCHEMAS_DIR, 'DeFlow.taskspecdraft.v1.json');
+/** KAR-19.11 — the bytes, for the entries whose flag takes the document. */
+const DRAFT_DOCUMENT = readFileSync(DRAFT_SCHEMA, 'utf8');
 const SCENARIO = fileURLToPath(
   new URL('../../../testkit/scenarios/claude-turn.json', import.meta.url),
 );
@@ -94,7 +97,11 @@ function argvFor(spec: ProviderSpec, binary: string, worktree: string): readonly
     prompt: 'Frame this task.',
     sessionId: vendorSessionId({ runId: RUN, nodeId: NODE, attempt: 0 }),
     permission: 'read',
+    // Both, always: the registry entry's declared form is what decides which
+    // one reaches the command line, and a caller that supplied only one would
+    // be making that decision here instead (KAR-19.11 AC2).
     schemaPath: DRAFT_SCHEMA,
+    schemaDocument: DRAFT_DOCUMENT,
   }).argv;
 }
 

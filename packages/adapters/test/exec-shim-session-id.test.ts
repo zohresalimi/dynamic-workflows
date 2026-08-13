@@ -20,9 +20,10 @@
 import { NodeIdSchema, type PermissionLevel, RunIdSchema } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
 import {
+  ARGUMENT_FORMS,
+  checkArgumentForm,
   PROVIDER_SPECS,
   type ProviderSpec,
-  SESSION_ID_FORMS,
   type ShimPlan,
   shimPlan,
   vendorSessionId,
@@ -76,14 +77,18 @@ suite('KAR-19.8 AC1 — every claude turn carries a session id the vendor accept
     const argv = plan(claude, sessionId).argv;
 
     expect(valueOf(argv, '--session-id')).toBe(sessionId);
-    expect(SESSION_ID_FORMS.uuid.test(sessionId)).toBe(true);
+    // KAR-19.11 folded this form into the one argument vocabulary: the session
+    // id is now a row in the entry's own `arguments` audit rather than a
+    // mechanism beside it, so the check is the same one every other argument
+    // gets.
+    expect(checkArgumentForm({ form: 'uuid' }, sessionId)).toBeNull();
   });
 
   it('is the value the 2026-08-13 run died on that the form now refuses', () => {
     // The regression, stated as the assertion it should always have been: the
     // id DeFlow used to build is a well-formed DeFlow run id and is not a uuid,
     // so the vendor refused it on every attempt.
-    expect(SESSION_ID_FORMS.uuid.test(`${RUN}-framing`)).toBe(false);
+    expect(checkArgumentForm({ form: 'uuid' }, `${RUN}-framing`)).toMatch(/uuid/i);
   });
 });
 
@@ -109,7 +114,7 @@ suite('KAR-19.8 AC8 — the guard is over the table, not over the entry that bro
 
       const value = valueOf(argv, declared.flag);
       expect(value).toBe(sessionId);
-      expect(SESSION_ID_FORMS[declared.form].test(value ?? '')).toBe(true);
+      expect(checkArgumentForm({ form: declared.form }, value ?? '')).toBeNull();
     },
   );
 
@@ -126,10 +131,16 @@ suite('KAR-19.8 AC8 — the guard is over the table, not over the entry that bro
     }
   });
 
-  it('has a pattern for every form the table can name', () => {
+  it('names a form from the one closed vocabulary, and declares it as an argument too', () => {
     for (const spec of specs) {
-      if (spec.shim.sessionId === undefined) continue;
-      expect(SESSION_ID_FORMS[spec.shim.sessionId.form]).toBeInstanceOf(RegExp);
+      const declared = spec.shim.sessionId;
+      if (declared === undefined) continue;
+      // KAR-19.11 AC2 — a member of the vocabulary, not a parallel mechanism,
+      // and the same flag appears in the entry's audit table so the guard over
+      // the whole argv covers it without a second rule.
+      expect(ARGUMENT_FORMS).toContain(declared.form);
+      const audited = spec.shim.arguments.find((one) => one.flag === declared.flag);
+      expect([spec.id, audited?.form]).toEqual([spec.id, declared.form]);
     }
   });
 });

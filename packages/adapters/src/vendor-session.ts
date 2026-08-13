@@ -33,6 +33,7 @@
 import type { NodeId, RunId } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import { type ArgumentForm, UUID_PATTERN } from './argument-forms.ts';
 import { registryRefused } from './failures.ts';
 import type { ResumeStrategyName } from './resume.ts';
 
@@ -46,38 +47,24 @@ import type { ResumeStrategyName } from './resume.ts';
  */
 export const VENDOR_SESSION_NAMESPACE = '967f7f27-e7b2-4355-a36c-9c40d9846672';
 
-/**
- * A syntactically valid RFC 4122 UUID, versions 1–5.
- *
- * Deliberately the *narrow* pattern rather than the permissive one: the point
- * of the check is to agree with the strictest validator a vendor is plausibly
- * running, and a value that passes here passes both the `[1-5]` regexes and the
- * `[1-8]` ones.
- */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
 /**
- * The forms a registry entry can declare for the session id it passes
- * (KAR-19.8 AC8).
+ * Which flag a vendor takes a session id on, and what form it must be in.
  *
- * Read by `test/exec-shim-session-id.test.ts` off `ShimSpec.sessionId` rather
- * than restated there, so an entry added later is covered by the same outline
- * without anyone remembering to extend a list.
+ * **KAR-19.11 folded this into one vocabulary.** KAR-19.8 introduced a
+ * `SESSION_ID_FORMS` table of its own, which was right for one flag and wrong
+ * as a pattern: the next argument found wrong — `--json-schema`, two days later
+ * — would have needed a second parallel table, and the one after that a third.
+ * `form` is now an `ArgumentForm` like every other declared argument's, and the
+ * session id is a row in the entry's own `arguments` audit rather than a
+ * mechanism beside it.
  */
-export const SESSION_ID_FORMS = {
-  uuid: UUID_PATTERN,
-} as const;
-
-export type SessionIdForm = keyof typeof SESSION_ID_FORMS;
-
-/** Which flag a vendor takes a session id on, and what form it must be in. */
 export interface SessionIdSpec {
   readonly flag: string;
-  readonly form: SessionIdForm;
+  readonly form: ArgumentForm;
 }
 
 /** The tuple a vendor session id is a function of, and nothing else. */

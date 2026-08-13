@@ -50,6 +50,14 @@ import type {
 } from '@DeFlow/core';
 import { claudeSandboxPolicy, ProviderIdSchema } from '@DeFlow/core';
 import { MOCK_PROMPT_FLAG, MOCK_STRUCTURED_OUTPUT_FLAG } from '@DeFlow/mock-agent';
+import { Buffer } from 'node:buffer';
+import {
+  type ArgumentAuditRow,
+  type ArgumentProvenance,
+  auditArgv,
+  MAX_ARGV_ELEMENT_BYTES,
+  type ShimArgument,
+} from './argument-forms.ts';
 import {
   type ResolveContext,
   type ResolvedProvider,
@@ -134,8 +142,29 @@ export interface ShimContext {
    * (`structured-output.ts`). A path here on a vendor with no
    * `structuredOutputFlag` is silently *not* passed, which is the one place
    * that would be a lie if the mechanism were not also recorded.
+   *
+   * **KAR-19.11 — still supplied for every vendor, still written to disk, and
+   * no longer automatically what goes on the flag.** Whether the path or the
+   * document below reaches the command line is the entry's declared form, and
+   * the file is written either way so that an operator can read afterwards what
+   * the turn was asked for (NF8).
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-19.11 AC1 — the schema document's own bytes, for a vendor whose entry
+   * declares its structured-output argument `inline-json`.
+   *
+   * Claude Code 2.1.220 `JSON.parse`s the value of `--json-schema` and exits 1
+   * when it does not parse: on 2026-08-13 it was handed an absolute path and
+   * said so, `Unrecognized token '/'`. The document is carried here rather than
+   * read from `schemaPath` because this package performs no I/O — and because a
+   * registry that opened files would turn a construction-time refusal into an
+   * `ENOENT` at the least convenient moment.
+   *
+   * Omitting it for a vendor that wants the document inline is a **refusal**,
+   * not a fallback to the path. Falling back is precisely the bug.
+   */
+  readonly schemaDocument?: string;
   /**
    * KAR-14.2 AC9 — the node's own cost ceiling, in USD, armed on the vendor's
    * *own* budget flag as defence in depth below DeFlow's.
@@ -247,6 +276,26 @@ export interface ShimSpec {
    * their afternoon.
    */
   readonly sessionId?: SessionIdSpec;
+  /**
+   * KAR-19.11 AC3 — **the audit**: every element this entry's `build` can put
+   * on the command line, with the shape it must be in and how that shape is
+   * known.
+   *
+   * The artefact of an audit that would otherwise have been a reading exercise.
+   * Two arguments in two days were found wrong by running the product, so the
+   * interesting question was how many were left — and nothing in the repository
+   * could answer it, because no argument had a declared shape and no test could
+   * fail on one. Now `shimInvocation` positions the structured-output argument
+   * *from this table* rather than assuming a path, and
+   * `test/exec-shim-argument-forms.test.ts` fails any element the table does
+   * not declare.
+   *
+   * Every row carries provenance, and the three claims are kept apart: read
+   * from `--help`, decoded from the bundle, or executed against the real
+   * binary. The rows that have never been executed are the work list for the
+   * opt-in vendor-CLI battery (EPIC-19-S77).
+   */
+  readonly arguments: readonly ShimArgument[];
   /** Absolute paths for the vendor CLI, or a tagged `adapter.spawn-failed`. */
   resolve(ctx: ResolveContext): ResolvedProvider;
   /**
@@ -303,6 +352,8 @@ interface ShimEntry {
   readonly secretEnvFlag?: string;
   /** KAR-19.8 AC8 — the session-id flag and its form; see `ShimSpec`. */
   readonly sessionId?: SessionIdSpec;
+  /** KAR-19.11 AC3 — the declared shape of every element; see `ShimSpec`. */
+  readonly arguments: readonly ShimArgument[];
   build(
     ctx: ShimContext,
     format: ShimFormat,
@@ -448,6 +499,147 @@ export const DEFAULT_MODEL_FAMILY = 'default';
  */
 export const UNMEASURED_TOKEN_ACCOUNTING: TokenAccounting = 'none';
 
+/** The declaration this entry carries for `flag`, or `undefined`. */
+function declaredArgument(entry: ShimEntry, flag: string): ShimArgument | undefined {
+  return entry.arguments.find((argument) => argument.flag === flag);
+}
+
+/**
+ * The schema id a document names itself by, for a message and for a log line.
+ *
+ * Read from the document's own `title` — which is what
+ * `@DeFlow/core`'s emitter writes and what `DeFlow-mock-agent` reads back — and
+ * falling back to the file name the contract chose. Never invented: a refusal
+ * that named the wrong schema would be worse than one that named none.
+ */
+export function schemaIdOf(input: {
+  readonly schemaDocument?: string;
+  readonly schemaPath?: string;
+}): string | null {
+  if (input.schemaDocument !== undefined) {
+    try {
+      const parsed = JSON.parse(input.schemaDocument) as Record<string, unknown>;
+      const title = parsed['title'];
+      if (typeof title === 'string' && title !== '') return title;
+    } catch {
+      // Unparseable is exactly the case this whole story is about, and it is
+      // the path's turn to answer.
+    }
+  }
+  if (input.schemaPath === undefined) return null;
+  const file = input.schemaPath.split('/').at(-1) ?? '';
+  return file.replace(/\.json$/, '') || null;
+}
+
+/**
+ * KAR-19.11 AC1, AC2, AC8 — the structured-output argument, positioned from the
+ * form its own entry declares.
+ *
+ * The line this replaces was `[entry.structuredOutputFlag, ctx.schemaPath]`,
+ * for every vendor, from one place — and that single unexamined assumption is
+ * the whole defect. Codex CLI documents `--output-schema <FILE>` and the bundled
+ * agent takes a path; Claude Code 2.1.220 `JSON.parse`s what it is handed. Both
+ * are now data on the entry rather than a branch here, so the fix cannot swing
+ * the assumption the other way and break the two entries that were right.
+ *
+ * Three refusals, all at construction, none of them an errno:
+ *
+ * - an entry whose structured-output flag has **no declared form** does not
+ *   fall back to a path (falling back is the bug);
+ * - a vendor that wants the document inline and was handed only a path is
+ *   refused by name, rather than sending the path and learning from the child;
+ * - a document larger than one argv element is refused naming the limit and the
+ *   schema id, rather than arriving as `E2BIG` from `spawn` on the largest and
+ *   most important turn of the run.
+ */
+function schemaArgument(id: string, entry: ShimEntry, ctx: ShimContext): readonly string[] {
+  const flag = entry.structuredOutputFlag;
+  if (flag === undefined) return [];
+
+  const declared = declaredArgument(entry, flag);
+  if (declared === undefined) {
+    throw registryRefused(
+      `${id} declares ${flag} as its structured-output flag but no form for it, and there is no ` +
+        'default: assuming a schema argument is a path is the assumption that made claude exit 1 ' +
+        'on "--json-schema is not valid JSON" — declare the form on the entry',
+      { provider: id, flag },
+    );
+  }
+
+  if (declared.form === 'abs-path') {
+    return ctx.schemaPath === undefined ? [] : [flag, ctx.schemaPath];
+  }
+
+  if (declared.form !== 'inline-json') {
+    throw registryRefused(
+      `${id} declares ${flag} as ${declared.form}, which is not a shape a schema can be sent in`,
+      { provider: id, flag, form: declared.form },
+    );
+  }
+
+  if (ctx.schemaDocument === undefined) {
+    // No contract at all: the argv is unchanged, exactly as before.
+    if (ctx.schemaPath === undefined) return [];
+    throw registryRefused(
+      `${id} takes its schema document inline on ${flag} and was given only the path ` +
+        `${ctx.schemaPath}. It parses the value as JSON and exits 1 on a leading "/", which is ` +
+        'the failure of 2026-08-13 19:59 — supply ShimContext.schemaDocument',
+      { provider: id, flag, schemaPath: ctx.schemaPath },
+    );
+  }
+
+  const document = strippedForVendor(id, declared, ctx.schemaDocument);
+
+  const bytes = Buffer.byteLength(document, 'utf8');
+  if (bytes > MAX_ARGV_ELEMENT_BYTES) {
+    const schemaId = schemaIdOf(ctx) ?? 'an unnamed schema';
+    throw registryRefused(
+      `the ${schemaId} document is ${bytes} bytes and one argv element holds at most ` +
+        `${MAX_ARGV_ELEMENT_BYTES}, so ${id} cannot be handed it on ${flag}. Refused here rather ` +
+        'than as an E2BIG errno from spawn, which is what the kernel would have said instead',
+      { provider: id, flag, schemaId, bytes, limit: MAX_ARGV_ELEMENT_BYTES },
+    );
+  }
+
+  // One argv element, never shell-interpolated: `spawn` without a shell is what
+  // makes quoting a non-issue for a document full of braces and quotes.
+  return [flag, document];
+}
+
+/**
+ * KAR-19.11 — the schema document as *this vendor's* validator will accept it.
+ *
+ * The third finding of the same evening, and the reason the audit is worth more
+ * than either fix. With the document sent inline, Claude Code 2.1.220 got past
+ * its `JSON.parse` and refused the layer below: `Error: --json-schema is not a
+ * valid JSON Schema: no schema with key or ref
+ * "https://json-schema.org/draft/2020-12/schema"`. Its bundled validator has no
+ * 2020-12 meta-schema registered, so the dialect DeFlow declares is a ref it
+ * cannot resolve, and the same document without that one key completes the turn.
+ *
+ * Only the vendor's copy is changed. The file under the run's `.DeFlow/schemas/`
+ * is written whole and named by schema id, so what an operator reads afterwards
+ * is exactly what `DeFlow init` emitted (NF8).
+ */
+function strippedForVendor(id: string, declared: ShimArgument, document: string): string {
+  const strip = declared.stripKeys ?? [];
+  if (strip.length === 0) return document;
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(document) as Record<string, unknown>;
+  } catch (error) {
+    throw registryRefused(
+      `${id} takes its schema inline on ${declared.flag} and the document supplied is not JSON ` +
+        `(${(error as Error).message})`,
+      { provider: id, flag: declared.flag },
+    );
+  }
+
+  const kept = Object.fromEntries(Object.entries(parsed).filter(([key]) => !strip.includes(key)));
+  return JSON.stringify(kept);
+}
+
 /**
  * The two refusals every shim invocation is checked against, in one place.
  *
@@ -477,10 +669,7 @@ function shimInvocation(
   // where the vendor accepts options — Codex takes its prompt as a trailing
   // positional, so a flag appended after the whole argv would land as prompt
   // text. One insertion point, and no builder to forget it.
-  const schema =
-    entry.structuredOutputFlag !== undefined && ctx.schemaPath !== undefined
-      ? [entry.structuredOutputFlag, ctx.schemaPath]
-      : [];
+  const schema = schemaArgument(id, entry, ctx);
 
   // KAR-14.2 AC9, and it rides in beside the schema for the same reason: one
   // insertion point, and no vendor builder to forget it.
@@ -509,6 +698,7 @@ function defineShim(rawId: string, entry: ShimEntry): ShimSpec {
     ...(entry.costCeilingFlag === undefined ? {} : { costCeilingFlag: entry.costCeilingFlag }),
     ...(entry.secretEnvFlag === undefined ? {} : { secretEnvFlag: entry.secretEnvFlag }),
     ...(entry.sessionId === undefined ? {} : { sessionId: entry.sessionId }),
+    arguments: entry.arguments,
     resolve: (ctx: ResolveContext): ResolvedProvider => ({
       provider: id,
       path: resolveExecutable(id, entry.bin, ctx),
@@ -558,6 +748,45 @@ function defineSpec(entry: SpecEntry): ProviderSpec {
 }
 
 /**
+ * The audit's three provenance stamps, spelled once so they read as the three
+ * different claims they are (KAR-19.11 AC3).
+ *
+ * `HELP_2026_08_02` and `BUNDLE_2026_08_02` are what the table already had, and
+ * neither is evidence about a parser: the note above `structuredOutputFlag`
+ * said **Verified 2026-08-02** from a bundle read, and the form it recorded was
+ * wrong. `EXECUTED_2026_08_13` is on the two rows a real binary has actually
+ * ruled on, and it cost an operator an afternoon to earn each of them.
+ */
+const HELP_2026_08_02: ArgumentProvenance = {
+  how: 'help',
+  on: '2026-08-02',
+  note: "read from the installed binary's own --help",
+};
+const BUNDLE_2026_08_02: ArgumentProvenance = {
+  how: 'bundle',
+  on: '2026-08-02',
+  note: "decoded from the vendor's shipping bundle; never run",
+};
+const DOCS_2026_08_02: ArgumentProvenance = {
+  how: 'help',
+  on: '2026-08-02',
+  note: 'read from published documentation; the binary was not installed on the capture machine',
+};
+const OWN_BINARY: ArgumentProvenance = {
+  how: 'executed',
+  on: '2026-08-13',
+  note: 'DeFlow ships this binary and its own suite runs it on every commit',
+};
+
+/** The prompt, which every entry passes and no vendor validates. */
+const promptFlag = (flag: string): ShimArgument => ({
+  name: 'prompt',
+  flag,
+  form: 'free-text',
+  provenance: HELP_2026_08_02,
+});
+
+/**
  * The five verified providers.
  *
  * The three natively-ACP entries pass a flag or a subcommand; the two adapter
@@ -597,6 +826,28 @@ export const PROVIDER_SPECS = {
       // validating the flag is a diff in this row rather than another afternoon
       // lost to the failure claude produced.
       sessionId: { flag: '--session-id', form: 'uuid' },
+      // KAR-19.11 AC3. Every element this `build` can emit. `--session-id` is
+      // the one row this vendor shares with the entry that broke, and it is
+      // declared `uuid` for the reason above rather than because Gemini has
+      // been seen to demand one — the provenance says `help`, not `executed`.
+      arguments: [
+        promptFlag('-p'),
+        {
+          name: 'output-format',
+          flag: '--output-format',
+          form: 'enum',
+          values: ['text', 'json', 'stream-json'],
+          provenance: HELP_2026_08_02,
+        },
+        { name: 'session-id', flag: '--session-id', form: 'uuid', provenance: HELP_2026_08_02 },
+        {
+          name: 'approval-mode',
+          flag: '--approval-mode',
+          form: 'enum',
+          values: ['default', 'auto_edit', 'yolo', 'plan'],
+          provenance: HELP_2026_08_02,
+        },
+      ],
       build: (ctx, format, flags) => [
         '-p',
         ctx.prompt,
@@ -633,6 +884,33 @@ export const PROVIDER_SPECS = {
       // `buildChildEnv()` dropped; the flag is stated here because whether a
       // vendor has one is invocation, not capability.
       secretEnvFlag: '--secret-env-vars',
+      // KAR-19.11 AC3. `--secret-env-vars` is emitted by `sandbox.ts` rather
+      // than by this `build`, and it is declared here anyway: the audit is over
+      // every argument DeFlow puts on this vendor's command line, not over one
+      // function's return value.
+      arguments: [
+        promptFlag('-p'),
+        {
+          name: 'output-format',
+          flag: '--output-format',
+          form: 'enum',
+          values: ['text', 'json'],
+          provenance: HELP_2026_08_02,
+        },
+        {
+          name: 'allow-all-tools',
+          flag: '--allow-all-tools',
+          form: 'free-text',
+          valueless: true,
+          provenance: HELP_2026_08_02,
+        },
+        {
+          name: 'secret-env-vars',
+          flag: '--secret-env-vars',
+          form: 'free-text',
+          provenance: HELP_2026_08_02,
+        },
+      ],
       build: (ctx, format) => ['-p', ctx.prompt, '--output-format', format, '--allow-all-tools'],
     },
   }),
@@ -652,7 +930,40 @@ export const PROVIDER_SPECS = {
       stream: 'json',
       dialect: 'document',
       permissions: { read: [] },
-      build: (ctx, format, flags) => ['run', '--format', format, ...flags, ctx.prompt],
+      // KAR-19.11 AC3. Two positionals, declared rather than inferred: the
+      // subcommand leads and the message trails, and the audit matches them in
+      // this order among the tokens no flag claimed.
+      arguments: [
+        {
+          name: 'subcommand',
+          flag: null,
+          form: 'enum',
+          values: ['run'],
+          provenance: HELP_2026_08_02,
+        },
+        {
+          name: 'format',
+          flag: '--format',
+          form: 'enum',
+          values: ['default', 'json'],
+          provenance: HELP_2026_08_02,
+        },
+        { name: 'prompt', flag: null, form: 'free-text', provenance: HELP_2026_08_02 },
+      ],
+      // KAR-19.11 AC3 — **the audit's third finding.** This vendor's flag is
+      // `--format default|json`; it has no value spelled `text`, and DeFlow's
+      // own `ShimFormat` vocabulary calls that same thing `text`. The builder
+      // used to pass DeFlow's spelling straight through, so `--format text`
+      // would have been refused by the real binary the first time anyone asked
+      // for a non-streaming turn on OpenCode — the same class of defect as
+      // `--json-schema`, found by the same table rather than by an operator.
+      build: (ctx, format, flags) => [
+        'run',
+        '--format',
+        format === 'json' ? 'json' : 'default',
+        ...flags,
+        ctx.prompt,
+      ],
     },
   }),
   claude: defineSpec({
@@ -708,9 +1019,15 @@ export const PROVIDER_SPECS = {
       // sandbox policy goes on the command line and no file under `~/.claude`
       // is ever opened (docs/09-workspace-and-safety.md §9.2).
       sandbox: { flag: '--settings', build: claudeSandboxPolicy },
-      // KAR-09.9 AC2. **Verified 2026-08-02** from the 2.1.220 bundle's flag
-      // table and zod schema: `--json-schema <file>` is accepted and the parsed
-      // object arrives in the result envelope's `structured_output` field.
+      // KAR-09.9 AC2, corrected by KAR-19.11. The note that stood here said
+      // *"**Verified 2026-08-02** from the 2.1.220 bundle's flag table and zod
+      // schema: `--json-schema <file>` is accepted"* — verified by **reading**,
+      // never by execution, and wrong. On 2026-08-13 at 19:59 the real binary
+      // answered `Error: --json-schema is not valid JSON: JSON Parse error:
+      // Unrecognized token '/'`: it wants the schema **document**, and the '/'
+      // is the first character of the path DeFlow sent instead. The shape now
+      // lives in the `arguments` table below, where it is `inline-json` and its
+      // provenance is `executed`.
       structuredOutputFlag: '--json-schema',
       // KAR-11.1 AC8. **Verified 2026-08-02** from the same 2.1.220 flag table:
       // `--effort low|medium|high|xhigh|max`. 06 §6 wants the initial PlanGraph
@@ -729,6 +1046,97 @@ export const PROVIDER_SPECS = {
       // `--max-budget-usd <amt>`, whose refusal comes back as the
       // `error_max_budget_usd` result subtype the classifier maps to `gate`.
       costCeilingFlag: '--max-budget-usd',
+      // KAR-19.11 AC3 — **the audit, for the entry that produced both defects.**
+      // Every element that can reach this vendor's command line, whether it is
+      // placed by the `build` below, by `shimInvocation`'s insertion point or by
+      // `sandbox.ts`. Two rows are stamped `executed`, and those two are the
+      // only forms on this entry any binary has ever ruled on; the rest are
+      // reads, and EPIC-19-S77's opt-in battery is where they get run.
+      arguments: [
+        promptFlag('-p'),
+        {
+          name: 'output-format',
+          flag: '--output-format',
+          form: 'enum',
+          values: ['text', 'json', 'stream-json'],
+          provenance: {
+            how: 'executed',
+            on: '2026-08-02',
+            note: 'stream-json without --verbose exits 1, which is how the pairing was found',
+          },
+        },
+        {
+          name: 'verbose',
+          flag: '--verbose',
+          form: 'free-text',
+          valueless: true,
+          provenance: {
+            how: 'executed',
+            on: '2026-08-02',
+            note: 'required alongside -p --output-format stream-json; the binary exits 1 without it',
+          },
+        },
+        {
+          name: 'session-id',
+          flag: '--session-id',
+          form: 'uuid',
+          provenance: {
+            how: 'executed',
+            on: '2026-08-13',
+            note: 'exits 1 on "Error: Invalid session ID. Must be a valid UUID." for anything else',
+          },
+        },
+        {
+          name: 'permission-mode',
+          flag: '--permission-mode',
+          form: 'enum',
+          values: ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan'],
+          provenance: HELP_2026_08_02,
+        },
+        {
+          name: 'json-schema',
+          flag: '--json-schema',
+          form: 'inline-json',
+          // The third finding, minutes after the second: with the document
+          // inline the vendor got past `JSON.parse` and refused
+          // `Error: --json-schema is not a valid JSON Schema: no schema with
+          // key or ref "https://json-schema.org/draft/2020-12/schema"`. Its
+          // validator has no 2020-12 meta-schema registered. The same document
+          // without that key completes the turn — verified by a real run.
+          stripKeys: ['$schema'],
+          provenance: {
+            how: 'executed',
+            on: '2026-08-13',
+            note:
+              'exits 1 on "JSON Parse error: Unrecognized token \'/\'" when handed a path, and ' +
+              'on "no schema with key or ref \\"https://json-schema.org/draft/2020-12/schema\\"" ' +
+              'when the inline document declares that dialect; accepted without $schema',
+          },
+        },
+        {
+          name: 'settings',
+          flag: '--settings',
+          form: 'inline-json',
+          provenance: {
+            how: 'executed',
+            on: '2026-08-02',
+            note: 'KAR-08.5 — a whole settings document is accepted as one inline JSON argument',
+          },
+        },
+        {
+          name: 'effort',
+          flag: '--effort',
+          form: 'enum',
+          values: ['low', 'medium', 'high', 'xhigh', 'max'],
+          provenance: BUNDLE_2026_08_02,
+        },
+        {
+          name: 'max-budget-usd',
+          flag: '--max-budget-usd',
+          form: 'number',
+          provenance: BUNDLE_2026_08_02,
+        },
+      ],
       // `--verbose` is **required** alongside `-p --output-format stream-json`
       // or the process exits printing
       // `Error: When using --print, --output-format=stream-json requires
@@ -786,6 +1194,48 @@ export const PROVIDER_SPECS = {
       // what comes back has never been exercised here, so nothing downstream
       // may assume it arrives in a field named `structured_output`.
       structuredOutputFlag: '--output-schema',
+      // KAR-19.11 AC3 — and the reason the fix is a form per entry rather than
+      // "send the document everywhere". Codex CLI documents `--output-schema
+      // <FILE>`, so this row stays `abs-path`; swinging the assumption the
+      // other way would break the two entries that were right all along.
+      arguments: [
+        {
+          name: 'subcommand',
+          flag: null,
+          form: 'enum',
+          values: ['exec'],
+          provenance: DOCS_2026_08_02,
+        },
+        {
+          name: 'json',
+          flag: '--json',
+          form: 'free-text',
+          valueless: true,
+          provenance: DOCS_2026_08_02,
+        },
+        {
+          name: 'skip-git-repo-check',
+          flag: '--skip-git-repo-check',
+          form: 'free-text',
+          valueless: true,
+          provenance: DOCS_2026_08_02,
+        },
+        { name: 'cd', flag: '-C', form: 'abs-path', provenance: DOCS_2026_08_02 },
+        {
+          name: 'sandbox',
+          flag: '--sandbox',
+          form: 'enum',
+          values: ['read-only', 'workspace-write', 'danger-full-access'],
+          provenance: DOCS_2026_08_02,
+        },
+        {
+          name: 'output-schema',
+          flag: '--output-schema',
+          form: 'abs-path',
+          provenance: DOCS_2026_08_02,
+        },
+        { name: 'prompt', flag: null, form: 'free-text', provenance: DOCS_2026_08_02 },
+      ],
       build: (ctx, format, flags) => [
         'exec',
         ...(format === 'jsonl' ? ['--json'] : []),
@@ -861,12 +1311,77 @@ export const PROVIDER_SPECS = {
       // at construction time rather than run at whatever the default is.
       permissions: { read: [] },
       structuredOutputFlag: MOCK_STRUCTURED_OUTPUT_FLAG,
+      // KAR-19.11 AC3. The one entry whose provenance can honestly be
+      // `executed` on every row without a vendor CLI: DeFlow ships the binary,
+      // its argument parser is in this repository, and
+      // `test/integration/exec-shim-conformance.test.ts` runs it on every
+      // commit. It takes its schema as a **file**, like Codex and unlike Claude
+      // Code — which is why the form is per entry.
+      arguments: [
+        {
+          name: 'return-schema',
+          flag: MOCK_STRUCTURED_OUTPUT_FLAG,
+          form: 'abs-path',
+          provenance: OWN_BINARY,
+        },
+        { name: 'prompt', flag: MOCK_PROMPT_FLAG, form: 'free-text', provenance: OWN_BINARY },
+      ],
       build: (ctx, _format, flags) => [...flags, MOCK_PROMPT_FLAG, ctx.prompt],
     },
   }),
 } as const satisfies Record<string, ProviderSpec>;
 
 export type KnownProviderId = keyof typeof PROVIDER_SPECS;
+
+/**
+ * KAR-19.11 AC4 — what each element of `argv` is, according to `spec`'s own
+ * declarations.
+ *
+ * The guard the repository did not have. An element with no declared
+ * argument comes back with `argument: null` and a problem naming it, so
+ * *"DeFlow builds an argument nobody wrote a shape for"* is a failure rather
+ * than something outside every test in the tree.
+ */
+export function auditShimArgv(
+  spec: ProviderSpec,
+  argv: readonly string[],
+): readonly ArgumentAuditRow[] {
+  return auditArgv(spec.shim.arguments, argv);
+}
+
+/**
+ * KAR-19.11 AC8 — `argv` with every inline document reduced to its schema id.
+ *
+ * Inlining the schema changes the command line and nothing else. A `node.failed`
+ * payload the ledger keeps for ever, a log line, a terminal message: none of
+ * them may become a paste of the whole schema, and *"the DeFlow.plangraph.v1
+ * document"* is the thing an operator actually wants to read there anyway. The
+ * file is still on disk under the run's `.DeFlow/schemas/`, named by schema id,
+ * which is where they go to see the bytes (NF8).
+ */
+export function redactedShimArgv(spec: ProviderSpec, argv: readonly string[]): readonly string[] {
+  const inline = new Set(
+    spec.shim.arguments
+      .filter((argument) => argument.form === 'inline-json' && argument.flag !== null)
+      .map((argument) => argument.flag as string),
+  );
+  if (inline.size === 0) return argv;
+
+  return argv.map((element, index) => {
+    const flag = index === 0 ? undefined : argv[index - 1];
+    if (flag === undefined || !inline.has(flag)) return element;
+    return redactedInline(flag, element);
+  });
+}
+
+/** One inline document, as a log line records it. */
+export function redactedInline(flag: string, document: string): string {
+  const schemaId = schemaIdOf({ schemaDocument: document });
+  const bytes = Buffer.byteLength(document, 'utf8');
+  return schemaId === null
+    ? `<${flag} document, ${bytes} bytes>`
+    : `<${flag} document: ${schemaId}, ${bytes} bytes>`;
+}
 
 /** The spec for `id`, or `undefined` — an unknown provider is a planning
  * question, answered by the caller, not an exception thrown from a lookup. */

@@ -275,6 +275,18 @@ export interface ShimNodeRequest {
    */
   readonly schemaPath?: string;
   /**
+   * KAR-19.11 AC1 — the schema document's own bytes, for a vendor whose entry
+   * declares its structured-output argument `inline-json`.
+   *
+   * Claude Code 2.1.220 parses the value of `--json-schema` as JSON and exits 1
+   * when it does not parse. The caller reads the file — this package performs
+   * no I/O — and the registry decides from the entry's declared form whether
+   * the path or the document reaches the command line. Omitting it for a vendor
+   * that wants the document is a construction-time refusal, never a fallback to
+   * the path: falling back is the defect.
+   */
+  readonly schemaDocument?: string;
+  /**
    * KAR-14.2 AC9 — this node's own cost ceiling in USD, armed on the vendor's
    * own budget flag as defence in depth *below* DeFlow's admission check.
    *
@@ -623,6 +635,7 @@ export async function runShimNode(
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
         ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
+        ...(request.schemaDocument === undefined ? {} : { schemaDocument: request.schemaDocument }),
         ...(request.costCeilingUsd === undefined ? {} : { costCeilingUsd: request.costCeilingUsd }),
       },
       request.sandbox,

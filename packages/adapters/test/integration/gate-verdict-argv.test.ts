@@ -182,13 +182,29 @@ suite('the verdict schema reaches the CLI as a file (EPIC-12-S18 · test plan #8
     const schemaPath = await writeVerdictSchema(tmp);
     const test = await harness(tmp, agent.binary, successScenario(VERDICT));
 
-    const outcome = await test.run({ schemaPath });
+    const outcome = await test.run({
+      schemaPath,
+      schemaDocument: readFileSync(schemaPath, 'utf8'),
+    });
+
+    // KAR-19.11 — the **file** is still the artefact an operator reads
+    // afterwards, absolute and named `verdict.schema.json`; what the vendor is
+    // handed is the document, because Claude Code parses the value of this flag
+    // as JSON. Both halves are asserted: NF8 is about the file, AC1 about the
+    // argument.
+    expect(isAbsolute(schemaPath)).toBe(true);
+    expect(schemaPath.endsWith(VERDICT_SCHEMA_FILE)).toBe(true);
 
     const at = outcome.argv.indexOf('--json-schema');
     expect(at).toBeGreaterThanOrEqual(0);
-    expect(outcome.argv[at + 1]).toBe(schemaPath);
-    expect(isAbsolute(String(outcome.argv[at + 1]))).toBe(true);
-    expect(String(outcome.argv[at + 1]).endsWith(VERDICT_SCHEMA_FILE)).toBe(true);
+    // Minus `$schema`: claude's own validator has no 2020-12 meta-schema, and
+    // the entry declares that one key as stripped (`stripKeys`).
+    const { $schema: _dialect, ...sent } = JSON.parse(readFileSync(schemaPath, 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(JSON.parse(String(outcome.argv[at + 1]))).toEqual(sent);
+    expect(outcome.argv).not.toContain(schemaPath);
     test.ledger.close();
   });
 
@@ -197,7 +213,10 @@ suite('the verdict schema reaches the CLI as a file (EPIC-12-S18 · test plan #8
     const schemaPath = await writeVerdictSchema(tmp);
     const test = await harness(tmp, agent.binary, successScenario(VERDICT));
 
-    const outcome = await test.run({ schemaPath });
+    const outcome = await test.run({
+      schemaPath,
+      schemaDocument: readFileSync(schemaPath, 'utf8'),
+    });
 
     expect(outcome.status).toBe('completed');
     expect(outcome.structuredOutput).toEqual({ present: true, value: VERDICT });
@@ -229,7 +248,10 @@ suite('the vendor exhausted its own repair loop (EPIC-12-S20 · test plan #7)', 
     const schemaPath = await writeVerdictSchema(tmp);
     const test = await harness(tmp, agent.binary, exhaustedScenario);
 
-    const outcome = await test.run({ schemaPath });
+    const outcome = await test.run({
+      schemaPath,
+      schemaDocument: readFileSync(schemaPath, 'utf8'),
+    });
 
     expect(outcome.status).toBe('failed');
     expect(outcome.status === 'failed' && outcome.failure.reason).toBe(

@@ -151,12 +151,20 @@ suite('the schema reaches the CLI on its own flag (test plan #3)', () => {
     const schemaPath = writeSchema(tmp);
     const test = await harness(tmp, agent.binary, scenario(FINDING));
 
-    const outcome = await test.run({ schemaPath });
+    // KAR-19.11 — the file is still written where `DeFlow init` puts it, and
+    // what rides on `--json-schema` is the **document**: Claude Code 2.1.220
+    // parses the value as JSON and exited 1 on the path on 2026-08-13.
+    const schemaDocument = readFileSync(schemaPath, 'utf8');
+    const outcome = await test.run({ schemaPath, schemaDocument });
 
     expect(outcome.status).toBe('completed');
     const at = outcome.argv.indexOf('--json-schema');
     expect(at).toBeGreaterThanOrEqual(0);
-    expect(outcome.argv[at + 1]).toBe(schemaPath);
+    // Minus `$schema`: claude's own validator has no 2020-12 meta-schema, and
+    // the entry declares that one key as stripped (`stripKeys`).
+    const { $schema: _dialect, ...sent } = JSON.parse(schemaDocument) as Record<string, unknown>;
+    expect(JSON.parse(String(outcome.argv[at + 1]))).toEqual(sent);
+    expect(outcome.argv).not.toContain(schemaPath);
     expect(outcome.structuredOutput).toEqual({ present: true, value: FINDING });
     test.ledger.close();
   });

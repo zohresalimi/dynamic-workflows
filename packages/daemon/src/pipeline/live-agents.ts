@@ -53,6 +53,7 @@ import type { StructuredOutput } from '@DeFlow/core';
 import { NodeFailureError } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FramingAgent, FramingSession, FramingTurn } from '../framing/interview.ts';
 import { log } from '../logging.ts';
@@ -75,6 +76,37 @@ export const MAX_TURN_BYTES = 8 * 1024 * 1024;
 /** The schema file for a registered document id, inside a run's own copy. */
 export const schemaPathFor = (schemasDir: string, schemaId: string): string =>
   join(schemasDir, `${schemaId}.json`);
+
+/**
+ * KAR-19.11 AC1 — the emitted schema's own bytes.
+ *
+ * Claude Code 2.1.220 wants the **document** on `--json-schema`, not a path: it
+ * `JSON.parse`s the value and, on 2026-08-13 at 19:59, exited 1 on
+ * `Unrecognized token '/'` — the first character of the path DeFlow had sent
+ * for every vendor from one line. `@DeFlow/adapters` performs no I/O, so the
+ * read is here, and the file is still written under the run's
+ * `.DeFlow/schemas/` either way: what the vendor is handed changes, what an
+ * operator can read afterwards does not (NF8).
+ *
+ * An unreadable file is a typed refusal before a process exists, rather than a
+ * turn that runs with no contract and fails validation afterwards.
+ */
+function readSchemaDocument(schemaPath: string, provider: string): string {
+  try {
+    return readFileSync(schemaPath, 'utf8');
+  } catch (error) {
+    throw new NodeFailureError(
+      `the schema ${schemaPath} this turn is contracted to return could not be read ` +
+        `(${(error as NodeJS.ErrnoException).code ?? 'unknown'}), so ${provider} cannot be told ` +
+        'what to return',
+      {
+        reason: 'adapter.capability-missing',
+        class: 'permanent',
+        detail: { provider, schemaPath },
+      },
+    );
+  }
+}
 
 /** Everything one turn's invocation depends on. */
 export interface LiveTurnOptions {
@@ -258,6 +290,12 @@ export async function structuredTurn(
     // exists.
     permission: 'read',
     schemaPath: request.schemaPath,
+    // KAR-19.11 AC1 — the document as well as the path, because the two vendors
+    // disagree about which one their flag takes and the registry entry is what
+    // decides. The file is written by `writeRunSchemas` before any turn runs, so
+    // reading it here also fails *before* a process exists when it is missing,
+    // rather than as an empty contract the child silently ignores.
+    schemaDocument: readSchemaDocument(request.schemaPath, options.provider),
   });
 
   const result = await spawnTurn(options, argv);

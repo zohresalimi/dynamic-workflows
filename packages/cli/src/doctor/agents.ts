@@ -30,6 +30,7 @@
  * Verifies: EPIC-18-S26, EPIC-18-S27, EPIC-18-S31, EPIC-18-S32 · AC2, AC6, AC7
  */
 import {
+  auditShimArgv,
   binaryDrift,
   CAPABILITY_PATHS,
   type CapabilityKey,
@@ -38,12 +39,12 @@ import {
   PROVIDER_SPECS,
   providerSpec,
   renderAuthMethods,
-  SESSION_ID_FORMS,
   selectResumeStrategy,
   vendorSessionId,
 } from '@DeFlow/adapters';
 import type { Clock, Db, RunId } from '@DeFlow/core';
-import { NodeIdSchema, ProviderIdSchema, RunIdSchema } from '@DeFlow/core';
+import { NodeIdSchema, ProviderIdSchema, RunIdSchema, toJsonSchemaDocument } from '@DeFlow/core';
+
 import {
   detectProviders,
   type ProviderDetectionEntry,
@@ -81,6 +82,22 @@ import {
   resolveProviderStates,
 } from './agent-install.ts';
 import type { DoctorCheck } from './report.ts';
+
+/**
+ * KAR-19.11 AC6 — the turn kinds the argv battery covers, and the contract each
+ * one carries.
+ *
+ * The four that reach the exec shim: three pre-execution turns and an agent
+ * node. The schema id is real rather than a stand-in, because the argument that
+ * broke on 2026-08-13 *was* the schema — a battery that checked a made-up
+ * document would not have caught it.
+ */
+const DOCTOR_TURNS = [
+  { node: 'framing', schemaId: 'DeFlow.taskspecdraft.v1' },
+  { node: 'recon', schemaId: 'DeFlow.reconsurvey.v1' },
+  { node: 'planner', schemaId: 'DeFlow.plangraph.v1' },
+  { node: 'implement', schemaId: 'DeFlow.finding.v1' },
+] as const;
 
 /** Where the goldens are refreshed from, named in every drift warning (AC7). */
 export const RECORD_COMMAND = 'pnpm test:record';
@@ -539,47 +556,107 @@ async function capabilityCheck(
 }
 
 /**
- * KAR-19.8 AC7 — the F3.4 row that costs nothing to run, and the one that is
- * opt-in.
+ * KAR-19.8 AC7, generalised to the whole argv by KAR-19.11 AC6 — the F3.4 row
+ * that costs nothing to run, and the one that is opt-in.
  *
  * The battery below spawns a real turn per assertion, so it answers "does this
  * adapter behave". It has never answered *"is the argv DeFlow builds one this
- * vendor will accept"*, and on 2026-08-13 the answer was no: Claude Code
- * 2.1.220 exited 1 on every attempt of a real run because DeFlow put its own
- * `run_…`-shaped id on `--session-id`.
+ * vendor will accept"*, and on 2026-08-13 the answer was no twice in two
+ * minutes: Claude Code 2.1.220 exited 1 on the value DeFlow put on
+ * `--session-id`, and then on the value it put on `--json-schema`.
  *
- * What is checked here is the **form**, against the registry's own declaration
- * — no process, no quota, and true on every machine. Spawning the real,
- * authenticated CLI with that argv is the other half, and it is named as
- * opt-in rather than quietly not done: a row that does not run must never read
- * as a row that passed.
+ * What is checked here is **every argument's form**, against the registry's own
+ * declarations, for each turn kind and each permission level the entry can
+ * express — no process, no quota, and true on every machine. Handing that argv
+ * to the real, installed, authenticated CLI is the other half, and this check
+ * **says which rows ran and which need a vendor CLI on this machine** rather
+ * than leaving the difference to be inferred: a row that does not run must
+ * never read as a row that passed.
  */
 function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
   const runId = RunIdSchema.parse('run_20260101T000000Z_000000');
-  const nodeId = NodeIdSchema.parse('framing');
-  const sessionId = vendorSessionId({ runId, nodeId, attempt: 0 });
 
   return providers.flatMap((provider): DoctorCheck[] => {
-    const declared = providerSpec(provider)?.shim.sessionId;
-    if (declared === undefined) return [];
-    const matches = SESSION_ID_FORMS[declared.form].test(sessionId);
+    const spec = providerSpec(provider);
+    if (spec === undefined) return [];
+
+    const problems: string[] = [];
+    let rows = 0;
+
+    for (const turn of DOCTOR_TURNS) {
+      const document = JSON.stringify(toJsonSchemaDocument(turn.schemaId));
+      for (const permission of spec.shim.permissions) {
+        rows += 1;
+        let argv: readonly string[];
+        try {
+          // The entry's own builder, not `shimPlan` — `test/sandbox-boundaries.test.ts`
+          // reserves that one for `sandbox.ts`, because a plan with no policy on it
+          // must never be one line away from a spawn. Nothing is spawned here: this
+          // check reads the argv and never runs it, exactly as `live-agents.ts` builds
+          // its own invocation from the same entry.
+          argv = spec.shim.argv({
+            resolved: { provider: spec.id, path: spec.shim.bin },
+            worktree: '/tmp/DeFlow-doctor',
+            prompt: 'DeFlow doctor: a conformance invocation, never sent.',
+            sessionId: vendorSessionId({
+              runId,
+              nodeId: NodeIdSchema.parse(turn.node),
+              attempt: 0,
+            }),
+            permission,
+            ...(spec.shim.structuredOutputFlag === undefined
+              ? {}
+              : {
+                  schemaPath: `/tmp/DeFlow-doctor/.DeFlow/schemas/${turn.schemaId}.json`,
+                  schemaDocument: document,
+                }),
+          });
+        } catch (error) {
+          problems.push(`${turn.node}/${permission}: ${(error as Error).message}`);
+          continue;
+        }
+
+        for (const audited of auditShimArgv(spec, argv)) {
+          if (audited.argument === null || audited.problem !== null) {
+            problems.push(
+              `${turn.node}/${permission}: ${audited.problem ?? `${audited.token ?? ''} is undeclared`}`,
+            );
+          }
+        }
+      }
+    }
+
+    const manual =
+      `Handing that argv to the installed ${provider} is the other half of F3.4 and needs a ` +
+      'real, authenticated CLI, so it is **not run here**: ' +
+      'DeFlow_MANUAL_VENDOR_CLI=1 pnpm vitest run --project unit ' +
+      'packages/adapters/test/exec-shim-argv.manual.test.ts';
 
     return [
       {
         id: `conformance.argv.${provider}`,
-        status: matches ? 'ok' : 'fail',
-        detail: matches
-          ? `the session id DeFlow puts on ${provider}'s ${declared.flag} is a ${declared.form}, ` +
-            'the form that entry declares. Spawning the installed CLI with the whole argv is ' +
-            'opt-in and is not run here: DeFlow_MANUAL_VENDOR_CLI=1 pnpm vitest run ' +
-            '--project unit packages/adapters/test/exec-shim-argv.manual.test.ts'
-          : `the session id DeFlow builds for ${provider} is not a ${declared.form}, which is ` +
-            `what its entry declares ${declared.flag} must be — this invocation would be ` +
-            'refused by the vendor before the turn started',
-        ...(matches
+        status: problems.length === 0 ? 'ok' : 'fail',
+        detail:
+          problems.length === 0
+            ? `${rows} invocations DeFlow can build for ${provider} — ${DOCTOR_TURNS.length} turn ` +
+              `kinds × ${spec.shim.permissions.length} permission levels — carry only arguments ` +
+              `whose values match the form that entry declares. ${manual}`
+            : `${provider} would send an argument its own entry says is the wrong shape, so this ` +
+              `invocation would be refused before the turn started: ${problems.join('; ')}`,
+        ...(problems.length === 0
           ? {}
           : { action: "report this as a DeFlow bug with 'DeFlow doctor --json' attached" }),
-        data: { provider, flag: declared.flag, form: declared.form, spawned: false },
+        data: {
+          provider,
+          rows,
+          arguments: spec.shim.arguments.length,
+          // The three provenance claims, kept apart: the rows nobody has ever
+          // executed are exactly what the opt-in battery above is for, and
+          // printing the count is what stops "audited" reading as "run".
+          executed: spec.shim.arguments.filter((one) => one.provenance.how === 'executed').length,
+          spawned: false,
+          manualRows: DOCTOR_TURNS.length,
+        },
       },
     ];
   });

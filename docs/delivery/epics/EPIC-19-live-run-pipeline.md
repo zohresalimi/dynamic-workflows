@@ -1737,6 +1737,86 @@ registry** — every argument gets a declared form and a provenance note, and an
 row in AC6's list rather than an omission. The third is scope creep into KAR-19.10's territory: this
 story changes what is on the command line and how it is checked, not which provider is chosen.
 
+**What the audit found (2026-08-14).** The declared-form table was written first and then *run*, and
+running it produced two arguments nobody had reported:
+
+- **OpenCode's `--format`.** The flag is `default|json`; DeFlow's own `ShimFormat` vocabulary spells
+  the first of those `text`, and the builder passed DeFlow's spelling straight through. `--format
+  text` would have been refused by the real binary the first time anyone asked for a non-streaming
+  turn on OpenCode. Caught by the guard's format axis, not by an operator.
+- **Claude Code's `$schema`.** With the schema finally inline, the real `claude` 2.1.220 got past its
+  `JSON.parse` and refused the layer below: `Error: --json-schema is not a valid JSON Schema: no
+  schema with key or ref "https://json-schema.org/draft/2020-12/schema"`. Its bundled validator has
+  no 2020-12 meta-schema registered. The same document without that one key completes the turn, so
+  the key is declared as `stripKeys` on the entry and only the vendor's copy changes — the file under
+  the run's `.DeFlow/schemas/` is still written whole (NF8). **This one was found by executing the
+  audit, which is the entire argument for AC3's provenance column.**
+
+**Acceptance (AC9, performed 2026-08-14, pasted rather than asserted).** CLI built from this branch,
+a scratch git repository outside any DeFlow checkout, `deflow init`, and the real
+`claude 2.1.220` on `PATH`.
+
+Before the fix, from the same built CLI — the defect, reproduced live, and KAR-19.8's reporting
+doing its job on the *second* flag:
+
+```
+$ deflow run --file task.md --permission read
+run run_20260813T224034Z_187800 — watching; Ctrl-C detaches
+provider claude — /opt/homebrew/bin/claude — exec shim route
+· task                submitted  from file
+✗ framing             failed  attempt 1 of 3 · agent.nonzero-exit ·
+                              --json-schema
+                              /Users/…/.DeFlow/runs/run_20260813T224034Z_187800/.…
+✗ run                 aborted  failed
+run run_20260813T224034Z_187800 aborted — node framing failed (agent.nonzero-exit)
+  (no cost recorded, 2.2s)
+exit 1
+```
+
+The flag is named, the value is named, and the run stopped after **one** attempt of three rather than
+retrying — AC7, on a flag nobody wrote that reporting for.
+
+After the fix, the same command on the same machine:
+
+```
+$ deflow run --file task.md --permission read
+run run_20260813T231641Z_080ab6 — watching; Ctrl-C detaches
+provider claude — /opt/homebrew/bin/claude — exec shim route
+· task                submitted  from file
+· run                 created
+? spec-approval       asking  Goal
+                              Add an HTTP GET /health endpoint to the scratch service …
+                              [full TaskSpec draft: in scope, declared paths, non-goals,
+                               constraints, 9 acceptance criteria, failure modes,
+                               prior decisions]
+… spec approved …
+? confirm-probe-contract  asking  Acceptance criterion ac-probe-contract-match
+◦ discover-runtime    scheduled  claude · read
+```
+
+The framing turn completed and the run produced a plan:
+
+```
+planHash     sha256-2f36cfa93a6014f9659738da42e50617ee7b19f9a5ad72ff0ed5816f9c7ec0ea
+planVersion  1
+nodeCounts   { running: 1, suspended: 1, scheduled: 1 }
+plan nodes   discover-runtime, implement-endpoint, implement-test, repair-round,
+             gate-acceptance
+```
+
+The run was cancelled once the plan existed, because what this story is accepted on is the framing
+turn completing and a plan being produced, not a feature being built. `deflow doctor` on the same
+machine reports the argv rows and says which half did not run:
+
+```
+Conformance
+  conformance.argv.claude  ✓ ok  16 invocations DeFlow can build for claude — 4 turn kinds
+                                 × 4 permission levels — carry only arguments whose values
+                                 match the form that entry declares. Handing that argv to the
+                                 installed claude is the other half of F3.4 and needs a real,
+                                 authenticated CLI, so it is **not run here**: …
+```
+
 ---
 
 ## Risks
