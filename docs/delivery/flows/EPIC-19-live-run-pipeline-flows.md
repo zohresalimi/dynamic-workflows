@@ -109,6 +109,25 @@ Background:
 | EPIC-19-S49 | An invalid return can be scripted, so the refusal paths need no vendor CLI         | KAR-19.7 | Failure     |
 | EPIC-19-S50 | EPIC-04's scenarios and recordings are byte-identical after the change             | KAR-19.7 | Edge case   |
 | EPIC-19-S51 | The mock entry never becomes the machine's default provider                        | KAR-19.7 | Edge case   |
+| EPIC-19-S52 | **Happy path: the framing turn's session id is one the vendor accepts**            | KAR-19.8 | Happy path  |
+| EPIC-19-S53 | The vendor-side id is derived from DeFlow's, and is the same one every time        | KAR-19.8 | Edge case   |
+| EPIC-19-S54 | DeFlow's own ids are still what the ledger and the surfaces name                   | KAR-19.8 | Edge case   |
+| EPIC-19-S55 | An argument the vendor refuses is reported as an argument, and is not retried      | KAR-19.8 | Failure     |
+| EPIC-19-S56 | **The installed `claude` accepts the argv DeFlow builds** _(opt-in, manual)_       | KAR-19.8 | Edge case   |
+| EPIC-19-S57 | Every exec-shim vendor's session-id form is checked, not just the one that broke   | KAR-19.8 | Edge case   |
+| EPIC-19-S58 | **Happy path: a run that keeps failing gives up, says why, and exits**             | KAR-19.9 | Happy path  |
+| EPIC-19-S59 | Every failed attempt is in the ledger, so the run explains its own stall           | KAR-19.9 | Failure     |
+| EPIC-19-S60 | One retry policy: the node's own, and no second ceiling in the drive loop          | KAR-19.9 | Edge case   |
+| EPIC-19-S61 | Backoff is bounded above, and one child at a time                                  | KAR-19.9 | Edge case   |
+| EPIC-19-S62 | **The attached CLI shows the failures as they happen and gives the terminal back** | KAR-19.9 | Failure     |
+| EPIC-19-S63 | Two failures then a success is still a working run                                 | KAR-19.9 | Edge case   |
+| EPIC-19-S64 | **A provider that always fails turns the smoke test red rather than slow**         | KAR-19.9 | Failure     |
+| EPIC-19-S65 | **Happy path: `--provider` picks the provider, and the run uses it**               | KAR-19.10 | Happy path  |
+| EPIC-19-S66 | An unknown `--provider` is refused before submission, naming what is registered    | KAR-19.10 | Failure     |
+| EPIC-19-S67 | **The run states its provider, its binary and its route, in all three surfaces**   | KAR-19.10 | Happy path  |
+| EPIC-19-S68 | A registered provider this machine cannot serve is an environment refusal, not a typo | KAR-19.10 | Failure  |
+| EPIC-19-S69 | **`doctor` and admission answer the provider question through one function**       | KAR-19.10 | Edge case   |
+| EPIC-19-S70 | A machine that can frame but not execute is told at admission, not at the node     | KAR-19.10 | Failure     |
 
 ---
 
@@ -1555,6 +1574,612 @@ nobody chose, on a machine where the real provider was sitting right there. And 
 KAR-18.8's rule holding for a new entry — the words have to fit the machine, and telling an operator
 to `npm install -g` a package that shipped in the same tarball is the same class of wrong as
 _"claude is not installed"_ on a machine where it resolves.
+
+---
+
+## EPIC-19-S52 — Happy path: the framing turn's session id is one the vendor accepts
+
+**Verifies:** KAR-19.8 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: the exec-shim invocation is one the vendor will run
+
+  Scenario: the framing turn survives the vendor's own argument validation
+    Given a temp PATH holding the testkit's fake vendor CLI under the name "claude"
+    And that fake refuses any "--session-id" whose value is not a valid UUID, exactly as
+        Claude Code 2.1.220 does
+    And a probed capability row for "claude"
+    When the driver dispatches the framing wake for run "run_<ts>_<hex>"
+    Then the argv the child received contains "--session-id" followed by a value that parses as a
+        UUID
+    And the child exits 0
+    And a "run.created" event is appended for that run
+    And no event with reason "agent.nonzero-exit" is appended
+
+  Scenario Outline: every turn that reaches the shim, not only framing
+    When a <turn> is dispatched on the exec-shim path
+    Then its "--session-id" value parses as a UUID
+    And the value was produced by the one exported session-id function, asserted at source
+
+    Examples:
+      | turn       |
+      | framing    |
+      | recon      |
+      | planner    |
+      | agent node |
+```
+
+**Notes:** this is the regression test for the defect observed by hand on 2026-08-13. The failure
+was `claude exited 1 without completing the turn: Error: Invalid session ID. Must be a valid UUID.`,
+raised through `structuredTurn → open → runFramingInterview → runFraming → runOneFraming →
+dispatchWakes → tick`, and its cause is `` `${runId}-framing` `` — `run_20260813T110608Z_379fc8-framing`
+— arriving on a flag the vendor validates. The clause that carries the scenario is the **fake that
+refuses**: a fake accepting whatever it is handed is precisely why the whole provider-contract suite
+was green while the product could not complete a turn, so the assertion has to be made against a
+double that enforces the vendor's rule.
+
+---
+
+## EPIC-19-S53 — The vendor-side id is derived from DeFlow's, and is the same one every time
+
+**Verifies:** KAR-19.8 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: a stable mapping, not a fresh uuid per attempt
+
+  Scenario: the same tuple always gives the same id
+    Given the tuple (runId, nodeId, attempt)
+    When the vendor session id is derived for it twice in one process, and once in a fresh one
+    Then all three values are equal
+    And the value is a valid UUID
+
+  Scenario: different tuples never collide
+    Given 10000 distinct (runId, nodeId, attempt) tuples
+    When an id is derived for each
+    Then all 10000 values are distinct
+
+  Scenario: nothing random reaches it
+    Then no unseeded random source, clock read or environment variable is an input to the
+        derivation, asserted at source
+    And a "randomUUID()" per attempt fails this scenario while passing "is it a UUID"
+```
+
+**Notes:** the reason this is its own scenario is that the cheap fix passes the previous one. A fresh
+UUID per attempt satisfies the vendor and silently breaks two things nothing else asserts: `--resume`
+on the second attempt opens a session the first attempt's transcript is not in, and the transcript
+file under the vendor's own projects directory can no longer be found from the ledger. `(runId,
+nodeId, attempt)` is the tuple F4.3 already derives idempotency keys from, so this is the same
+question asked of the same inputs rather than a new identity scheme.
+
+---
+
+## EPIC-19-S54 — DeFlow's own ids are still what the ledger and the surfaces name
+
+**Verifies:** KAR-19.8 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: the vendor's id is carried beside DeFlow's, never instead of it
+
+  Scenario: the ledger keeps the id the operator greps for
+    Given a completed exec-shim turn for run "run_<ts>_<hex>" on node "implement"
+    Then every event appended for it carries runId "run_<ts>_<hex>" and nodeId "implement"
+    And "node.started" records the vendor session id in its session field, with origin "minted"
+    And the run id is nowhere rewritten into a UUID
+
+  Scenario: the surfaces are unchanged
+    When "DeFlow status" and "GET /api/runs/:id" are read for that run
+    Then both name "run_<ts>_<hex>"
+    And the UI's run header shows the same string
+    And the vendor session id appears only where a transcript lookup needs it
+```
+
+**Notes:** the trap the fix has to avoid is satisfying the vendor by changing DeFlow's own identity.
+A `run_20260813T110608Z_379fc8` sorts by time, is readable in a directory listing and is what NF8's
+*"inspectable on disk"* is mostly about; replacing it with a UUID would make every log line, every
+directory name and every support conversation worse in order to please one flag. The mapping goes the
+other way: DeFlow keeps its id and hands the vendor one it will accept.
+
+---
+
+## EPIC-19-S55 — An argument the vendor refuses is reported as an argument, and is not retried
+
+**Verifies:** KAR-19.8 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: a rejected argument is a permanent failure with a name on it
+
+  Scenario: the operator learns which argument was wrong
+    Given a fake vendor CLI that exits 1 writing "Error: Invalid session ID. Must be a valid UUID."
+    When a turn is dispatched onto it
+    Then the typed failure's detail carries the flag "--session-id" and the value that was passed
+    And it carries the child's stderr, trimmed and not paraphrased
+    And the terminal line names the flag and the value
+    And no stack trace is required to learn which of DeFlow's own arguments was rejected
+
+  Scenario: it is not classified transient
+    Then the failure's class is "permanent", not "transient"
+    And the run does not schedule another attempt for the same argument
+```
+
+**Notes:** the class is the load-bearing clause. On 2026-08-13 this failure came back
+`{ reason: 'agent.nonzero-exit', class: 'transient' }`, and a transient classification is a
+standing instruction to try again — which produced the identical error at 11:07:13, 11:07:44,
+11:08:14, 11:08:45, 11:09:15 and onwards. An argument the vendor will refuse identically on every
+attempt is the definition of `permanent` in KAR-02.10's taxonomy, and misclassifying it is what turned
+a one-line bug into an unbounded loop. The bound itself is [KAR-19.9](../epics/EPIC-19-live-run-pipeline.md)'s;
+this clause is the classification that should have made the bound unnecessary.
+
+---
+
+## EPIC-19-S56 — The installed `claude` accepts the argv DeFlow builds _(opt-in, manual)_
+
+**Verifies:** KAR-19.8 · **Type:** Edge case · **Automated at:** manual
+
+```gherkin
+Feature: the F3.4 conformance battery, against a real vendor CLI
+
+  Scenario: the real binary runs the invocation DeFlow would send it
+    Given DeFlow_MANUAL_VENDOR_CLI=1 is set
+    And a real, installed, authenticated "claude" resolves on PATH
+    When the registry's own argv builder produces a shim invocation for a framing turn
+    And that argv is passed to the real binary unmodified
+    Then the process exits 0
+    And its result envelope carries a parsed structured_output
+    And no stderr line reports an invalid or unsupported argument
+
+  Scenario: without the variable it is skipped, and the skip is visible
+    Given DeFlow_MANUAL_VENDOR_CLI is unset
+    When the suite runs
+    Then this case is reported as skipped with the reason "manual: needs an authenticated vendor CLI"
+    And it is never reported as passed
+```
+
+**Notes:** **this scenario does not run in CI, and saying so plainly is the point.** It spawns a real
+authenticated CLI and spends real quota, so it runs only when a person asks for it — the same
+mechanism `packages/core/test/vendor-cli-schema.manual.test.ts` established for KAR-02.8. Pretending
+otherwise would be the failure this epic is about, one level up: a green suite that proves nothing
+about the machine the product runs on. What runs everywhere is EPIC-19-S52 against a fake that
+enforces the vendor's rule, and EPIC-19-S57's argument-form table; this is the row that catches the
+vendor *changing* the rule, and it is why F3.4 exists at all.
+
+---
+
+## EPIC-19-S57 — Every exec-shim vendor's session-id form is checked, not just the one that broke
+
+**Verifies:** KAR-19.8 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the guard is over the table, not over one entry
+
+  Scenario Outline: the value DeFlow supplies matches the form the entry declares
+    Given the PROVIDER_SPECS entry for <provider>
+    When it builds a shim invocation carrying a session id
+    Then the value matches the form that entry declares for it
+    And the form is read from the registry rather than from a literal in the test
+
+    Examples:
+      | provider |
+      | claude   |
+      | gemini   |
+      | codex    |
+      | mock     |
+
+  Scenario: a new vendor is covered without anyone remembering to
+    Given an entry added to PROVIDER_SPECS that passes a session id
+    Then this outline covers it, because its rows are derived from the table
+```
+
+**Notes:** `gemini` takes `--session-id` too, and nothing today says what form it wants. Fixing only
+the entry that produced Wednesday's failure leaves the next one to be found the same way — by an
+operator, three minutes into a run — which is exactly the shape of defect this epic was created for.
+Deriving the rows from `PROVIDER_SPECS` rather than listing them is what makes the guard survive the
+next vendor being added.
+
+---
+
+## EPIC-19-S58 — Happy path: a run that keeps failing gives up, says why, and exits
+
+**Verifies:** KAR-19.9 · **Type:** Happy path · **Automated at:** e2e
+
+```gherkin
+Feature: a failing run reaches a terminal state
+
+  Scenario: the operator gets an answer and their terminal back
+    Given a running DeFlowd and a provider scripted to fail every turn
+    When the operator runs "DeFlow run --file task.md"
+    Then a failure line is printed for each attempt, naming the node, the attempt number out of the
+        ceiling, and the typed reason
+    And the number of attempts equals the node's own RetryPolicy maxAttempts
+    And a "run.aborted" event with outcome "failed" is appended, carrying the reason
+    And the command exits with code 1
+    And the process is no longer running
+    And "DeFlow status" reports the run as failed rather than active
+```
+
+**Notes:** this is the regression test for the second defect of 2026-08-13, and every clause is a
+sentence from that afternoon inverted. The run retried the identical failure every ~31 s
+indefinitely; `DeFlow run` printed nothing about any of it; it was still hanging after seven minutes
+and had to be killed. The clause with the most teeth is the last-but-one — **"the process is no
+longer running"** — because it is the one an assertion on a promise cannot make, and it is the reason
+this scenario is `e2e` rather than `integration`.
+
+---
+
+## EPIC-19-S59 — Every failed attempt is in the ledger, so the run explains its own stall
+
+**Verifies:** KAR-19.9 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: silence in the ledger is the defect
+
+  Scenario: a thrown turn is journalled before the wake is settled
+    Given a framing runner that throws on every attempt
+    And a file-backed ledger
+    When the driver dispatches the framing wake three times
+    Then the ledger contains three "node.failed" events, in seq order
+    And each carries a typed NodeFailure with a reason from the closed taxonomy, a class, and the
+        child's trimmed stderr
+    And each was appended before the wake row was rescheduled
+
+  Scenario: the ledger of the reported run would not have been silent
+    Given the shape of run "run_20260813T110608Z_379fc8" — provider.probed, provider.probed,
+          task.submitted, and nothing else after eight minutes of failing turns
+    Then that shape is no longer reachable: a run whose turns are failing has one node.failed per
+        attempt in its own ledger
+```
+
+**Notes:** the ledger for the reported run held `provider.probed`, `provider.probed` and
+`task.submitted` — nothing else — while the daemon threw the same error fifteen times. Because
+nothing was appended, neither the UI nor `DeFlow status` nor a `sqlite3` session six weeks later
+could have shown it: the only evidence anywhere was a daemon log the operator had no reason to open.
+The ordering clause matters too — journal first, then settle the wake — because a crash between the
+two must lose the retry, not the record.
+
+---
+
+## EPIC-19-S60 — One retry policy: the node's own, and no second ceiling in the drive loop
+
+**Verifies:** KAR-19.9 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: EPIC-06 already owns classified retry
+
+  Scenario: the dispatch routes its failures through the shipped policy
+    Given a failing turn
+    Then the attempt ceiling, the backoff and the classification all come from planRetry and
+        recordNodeFailure
+    And exhaustion is the "fail" action with exhausted true, not a count kept by the driver
+
+  Scenario: there is no second policy
+    Given the shipped source of "drive.ts" and the chain dispatch
+    Then it contains no attempt ceiling of its own
+    And it contains no backoff constant used as an attempt policy
+    And it contains no NodeFailureReason literal
+    And FRAMING_RETRY_MS is either removed or is demonstrably not an attempt policy
+```
+
+**Notes:** `FRAMING_RETRY_MS = 30_000` is the whole bug in one constant: it is a *re-dispatch
+interval* doing duty as a retry policy, with no ceiling behind it, in a file whose own header says it
+owns no policy. EPIC-06 built the answer — `planRetry` bounds attempts at `maxAttempts` and
+`recordNodeFailure` writes the events and the wake row in one transaction — and the drive loop is
+bypassing it. Writing a second bound here would be the two-implementations failure KAR-19.3 AC7 exists
+to refuse, arriving from the other direction.
+
+---
+
+## EPIC-19-S61 — Backoff is bounded above, and one child at a time
+
+**Verifies:** KAR-19.9 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: a retrying run does not become a spawn storm
+
+  Scenario: intervals stay inside the policy
+    Given a turn that fails immediately, on a TestClock
+    When the run is driven through its full attempt ceiling
+    Then successive attempts are separated by the policy's jittered backoff
+    And no interval exceeds the policy's cap
+    And the intervals are observed from real spawns rather than read off a constant
+
+  Scenario: never two attempts at once
+    Given a turn that fails slowly, so a tick arrives while it is still running
+    Then at most one child exists for that node at any instant
+    And the count is taken from real process observation, excluding processes in state "Z"
+```
+
+**Notes:** the failure mode this guards is the one that is invisible on a laptop and expensive on a
+rate-limited plan: a fix that bounds *attempts* but leaves the dispatch re-entrant spawns a second
+child on the tick after a slow failure, so the ceiling counts to three while five processes ran. The
+`Z`-state exclusion is the standing rule from the process-tree work — after a successful group kill,
+`ps` still lists grandchildren as zombies with `ppid=1`, and a naive count reads that as a live child.
+
+---
+
+## EPIC-19-S62 — The attached CLI shows the failures as they happen and gives the terminal back
+
+**Verifies:** KAR-19.9 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the operator watches the failure instead of guessing at it
+
+  Scenario: the lines arrive during the retries, not after them
+    Given the real CLI binary attached to a real daemon over a real socket
+    And a provider that fails every turn, slowly enough for the test to observe between attempts
+    When the run is submitted
+    Then the first attempt's failure line is on stdout before the second attempt is made
+    And each line names the node, the attempt number, and the typed reason
+
+  Scenario: --json says the same thing without ANSI
+    When the same run is followed with "--json"
+    Then each failure is one NDJSON object carrying the same node, attempt and reason
+    And no ANSI escape appears in the stream
+
+  Scenario: the exit code comes from one place
+    When the run reaches its terminal state
+    Then the process exits 1
+    And the code was produced by classifyRun, asserted to be the only derivation in the CLI
+    And "--no-wait" is not required to get the prompt back
+```
+
+**Notes:** the operator's actual experience was a command that printed *nothing* for seven minutes
+and then had to be killed, which is worse than a crash — a crash at least ends. The temptation in
+fixing it is to give `run` a timeout, which would make this scenario pass and would break every
+legitimate multi-hour run, so the exit is asserted to be *caused by the run reaching a terminal
+state*. `--no-wait` is explicitly not the answer: this run was not waiting on a human, it was waiting
+on nothing.
+
+---
+
+## EPIC-19-S63 — Two failures then a success is still a working run
+
+**Verifies:** KAR-19.9 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: giving up early is the same defect as never giving up
+
+  Scenario: the ceiling is the policy's, not the first failure
+    Given a framing runner that throws twice and then succeeds
+    And a node RetryPolicy with maxAttempts 3
+    When the run is driven
+    Then "run.created" is appended
+    And the run proceeds to the spec gate
+    And two "node.failed" events are in the ledger, both journalled
+    And no "run.aborted" is appended
+```
+
+**Notes:** this is the counterweight, and it is written before the bound rather than after it. A fix
+that treats the first failure as terminal turns a rate-limited or momentarily wedged vendor into a
+failed run, and for anyone on a subscription plan that is a worse product than the infinite retry it
+replaced. The two journalled failures in the Then clauses are deliberate: a run that recovered should
+still be able to tell you what it recovered from.
+
+---
+
+## EPIC-19-S64 — A provider that always fails turns the smoke test red rather than slow
+
+**Verifies:** KAR-19.9 · **Type:** Failure · **Automated at:** e2e
+
+```gherkin
+Feature: KAR-19.5's sabotage table gains a row
+
+  Scenario: the smoke test fails for the right reason, and fast
+    Given the smoke scenario, with the bundled agent scripted to fail every turn
+    When "pnpm test:smoke" runs
+    Then it fails with a message naming the run as failed and carrying the typed reason
+    And it does not reach its own timeout
+    And the failure names the link, exactly as every other sabotage row does
+
+  Scenario: the row is red before the story and green after
+    Given the pre-story driver, whose failing turn is re-dispatched every 30 s without a ceiling
+    Then this row hangs to the smoke budget instead of failing
+    And that is the regression this row exists to catch
+```
+
+**Notes:** AC4's rule from [KAR-19.5](../epics/EPIC-19-live-run-pipeline.md) is that a row which still
+passes is a hole in the smoke test; this row adds the inverse — a row that *times out* rather than
+failing is a hole too, because a timeout tells the next reader nothing about which link broke. It is
+also the cheapest possible guard against this defect returning: an unbounded retry reintroduced
+anywhere in the chain makes `pnpm test:smoke` hang, and a hanging smoke test is noticed within one
+commit rather than within one afternoon.
+
+---
+
+## EPIC-19-S65 — Happy path: `--provider` picks the provider, and the run uses it
+
+**Verifies:** KAR-19.10 · **Type:** Happy path · **Automated at:** e2e
+
+```gherkin
+Feature: the operator can say which agent to run on
+
+  Scenario: the flag is honoured, not merely accepted
+    Given a temp PATH holding DeFlow-mock-agent
+    When the operator runs "DeFlow run --provider mock --file spec.md"
+    Then the run is created
+    And every agent child spawned for it was the bundled mock binary
+    And the run reaches a terminal state
+    And no other provider's binary was spawned at any point
+
+  Scenario: without the flag, selection is what it was
+    When the same run is submitted with no "--provider"
+    Then the provider chosen is usableProviders' first entry
+    And bundled entries are still last (KAR-19.7 AC8)
+```
+
+**Notes:** the operator typed `--provider mock` on 2026-08-13 and got
+`DeFlow run: unknown option "--provider"`. The second clause of the first scenario is what makes this
+worth an `e2e`: a flag that is parsed and then dropped is worse than an absent one, because the
+operator now believes something about the run that is not true, and the only way to catch that is to
+look at which binary actually ran.
+
+---
+
+## EPIC-19-S66 — An unknown `--provider` is refused before submission, naming what is registered
+
+**Verifies:** KAR-19.10 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: a closed list, and a message that closes the question
+
+  Scenario Outline: the argument is validated against the registry
+    When "DeFlow run <argv>" is parsed
+    Then it is refused with EX_USAGE
+    And no run is created
+    And the message lists the registered provider ids, and which of them are usable here
+
+    Examples:
+      | argv                          |
+      | --provider                    |
+      | --provider ""                 |
+      | --provider clawed             |
+      | --provider CLAUDE --file s.md |
+
+  Scenario: the list is not kept by hand
+    Then the ids in the message come from PROVIDER_SPECS
+    And adding an entry to the registry changes the message with no other edit
+```
+
+**Notes:** `EX_USAGE` and not exit 5 — a misspelt argument is not an unusable machine, and
+`RUN_EXIT_CODES` is a closed set of *run outcomes* that a bad argv is not a member of. The
+usable-here half of the message is what stops the next question: knowing that `codex` is registered
+is not useful to an operator whose machine does not have it, and the two facts cost one line
+together.
+
+---
+
+## EPIC-19-S67 — The run states its provider, its binary and its route, in all three surfaces
+
+**Verifies:** KAR-19.10 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: a run says what it chose, before it acts on it
+
+  Scenario: one line, three facts, three surfaces
+    When a run is submitted on a machine with a usable provider
+    Then one line is printed before the first turn, naming the provider id, the resolved binary's
+        absolute path, and the route as "ACP adapter" or "exec shim"
+    And the same three facts are on the run's "provider.probed" payload in the ledger
+    And "GET /api/runs/:id" carries them
+    And the UI's run header renders them
+    And one function produced the sentence, asserted at source, with three callers
+
+  Scenario: the announced route is the route taken
+    When the first child is spawned
+    Then the binary it was spawned from matches the announced route
+    And a run whose route changes between phases announces the change rather than drifting
+
+  Scenario: --json carries fields, not prose
+    When the run is followed with "--json"
+    Then the provider, binary path and route are fields
+```
+
+**Notes:** the routes are not interchangeable and that is why the announcement names one. The exec
+shim is what can carry a `returns` contract — the schema flag lives on the vendor CLI and not on the
+ACP bridge (KAR-19.7) — and the ACP session is what carries streaming, permission negotiation and
+cancellation. An operator debugging a run needs to know which of those they have. The
+one-line/one-producer clauses exist because three surfaces deriving the same sentence separately is
+how `doctor` and the run came to disagree in the first place.
+
+---
+
+## EPIC-19-S68 — A registered provider this machine cannot serve is an environment refusal, not a typo
+
+**Verifies:** KAR-19.10 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: two kinds of wrong, two exit codes
+
+  Scenario: asking for something real that is not here
+    Given a temp PATH with no vendor agent CLI
+    When the operator runs "DeFlow run --provider codex --file spec.md"
+    Then the refusal is KAR-19.2's, rendered by the same function doctor uses
+    And it carries the typed refusal code
+    And the command exits 5
+    And the message ends with the mock-agent sentence and the exact flag to use
+    And it is not reported as an argument error
+
+  Scenario: and the difference is asserted
+    Then "--provider clawed" exits EX_USAGE and "--provider codex" on this machine exits 5
+```
+
+**Notes:** the distinction is worth a scenario because the two failures look identical on the command
+line and lead to opposite next actions: one edits the command, the other installs a package. The
+mock-agent sentence is carried here for the same reason KAR-19.2 AC4 carries it everywhere — an
+operator evaluating DeFlow who is told only what is missing has been sent to npm at the first step.
+
+---
+
+## EPIC-19-S69 — `doctor` and admission answer the provider question through one function
+
+**Verifies:** KAR-19.10 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the two views cannot disagree, because there is one view
+
+  Scenario Outline: state is an answer per route
+    Given a resolution where the ACP adapter is <acp> and the vendor CLI is <shim>
+    When the route reducer is applied
+    Then doctor's Agents section reports <acp route> for the ACP route and <shim route> for the
+        exec-shim route
+    And admission admits exactly the turns those routes can serve
+    And selection takes the same structure as its input
+
+    Examples:
+      | acp     | shim    | acp route | shim route |
+      | present | present | available | available  |
+      | absent  | present | missing   | available  |
+      | present | absent  | missing   | missing    |
+      | absent  | absent  | missing   | missing    |
+
+  Scenario: one producer
+    Given the shipped source of doctor's report, admitRun and the chain's provider selection
+    Then all three read the same route reducer
+    And a source guard fails if a second producer appears
+    And no provider is named outside "provider-registry.ts"
+
+  Scenario: the reported mismatch is unreachable
+    Given a machine where doctor calls claude's ACP adapter missing
+    Then no run silently selects claude by a route doctor did not report as available
+```
+
+**Notes:** the decision recorded in KAR-19.10 is that the exec shim **is** a real route and `doctor`
+must say so — because `chooseProvider` takes `spec.shim.bin` deliberately, and refusing to select it
+would mean deleting the path the entire pre-execution chain runs on. What was wrong was the shape of
+the answer: `adapter-missing` is a true sentence about a machine and a false one about a run, and one
+word per provider cannot express *"usable on one route, not the other"*. The third row of the outline
+is the one to read twice — an ACP bridge with no vendor CLI underneath it is not usable either, and
+the pre-fix code would have called it `installed`.
+
+---
+
+## EPIC-19-S70 — A machine that can frame but not execute is told at admission, not at the node
+
+**Verifies:** KAR-19.10 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: refuse at submission, not after — applied to a partial capability
+
+  Scenario: the shim-only machine is told what it will run into
+    Given a temp PATH holding a vendor CLI and no ACP bridge for it
+    When a run is submitted
+    Then admission admits the turns the exec-shim route can serve
+    And the submission states that agent-node execution needs the ACP bridge, naming the package and
+        the install command
+    And that statement is in the ledger, on stdout and on "GET /api/runs/:id"
+    And the run does not reach "plan.proposed" before the operator has been told
+
+  Scenario: an explicitly requested provider that cannot serve a turn
+    Given "--provider <p>" where p cannot serve one of the run's turns
+    Then the run is refused at admission with the turn named
+    And no other provider is spawned
+    And no silent fallback occurs
+```
+
+**Notes:** this is KAR-19.2's rule — *"refuse at submission, not after"* — applied to a machine that
+is partly capable rather than not capable at all. Discovering at the first agent node that the ACP
+bridge is missing costs a framing turn, a recon turn, a planner turn and the operator's belief that
+the run was working; all of it is knowable before the 201. The second scenario is the one that keeps
+`--provider` meaningful: a fallback nobody announced is the whole defect this story is about, and it
+is worse when the operator explicitly named the provider they wanted.
 
 ---
 
