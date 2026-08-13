@@ -11,6 +11,8 @@
  * The three machines below are the three an operator actually has:
  *
  *  - `claude` installed, its ACP bridge not — the reported one (EPIC-19-S9).
+ *    Amended by KAR-19.10: admitted for the turns the exec shim serves, and
+ *    refused with the turn named when the operator asks for it by name.
  *  - the bundled mock agent linked on as an adapter — the green one, which must
  *    never be refused and must pay for no extra handshake (EPIC-19-S12).
  *  - a bridge that resolves and then fails `initialize` — installed and broken,
@@ -36,6 +38,17 @@ const fetch = authorizedFetch();
 const MOCK_AGENT_BIN = fileURLToPath(
   new URL('../../../mock-agent/bin/mock-agent.ts', import.meta.url),
 );
+
+/** The 201 body, with KAR-19.10's announcement on it. */
+interface CreatedBody {
+  readonly runId: string;
+  readonly provider?: {
+    readonly provider: string;
+    readonly binaryPath: string;
+    readonly route: string;
+    readonly limitation: string | null;
+  };
+}
 
 interface ErrorBody {
   readonly error: {
@@ -182,7 +195,7 @@ function sleepOf() {
   return (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
 }
 
-async function submit(origin: string, text: string): Promise<Response> {
+async function submit(origin: string, text: string, provider?: string): Promise<Response> {
   return await fetch(`${origin}/api/runs`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -190,6 +203,10 @@ async function submit(origin: string, text: string): Promise<Response> {
       input: { kind: 'text', text },
       cwd: process.cwd(),
       permission: 'read',
+      // KAR-19.10 AC8 — an explicitly named provider is honoured exactly or the
+      // run is refused, which is how a partial machine is still made to produce
+      // a refusal after the route amendment admitted it by default.
+      ...(provider === undefined ? {} : { provider }),
     }),
   });
 }
@@ -212,88 +229,150 @@ function kindsInLedger(dataDir: string): { runId: string; kinds: string[] }[] {
   }
 }
 
-suite('EPIC-19-S9 — a vendor CLI with no ACP adapter is refused at submission', () => {
-  it('answers 4xx no_usable_provider and records the refusal in the ledger', async ({ tmp }) => {
-    const dataDir = join(tmp, 'data');
-    const binDir = join(tmp, 'bin');
-    await vendorCliOnly(binDir);
-    const daemon = await bootAgainst(dataDir, binDir);
+suite(
+  'EPIC-19-S9 — a vendor CLI with no ACP adapter is admitted, and told what it cannot do',
+  () => {
+    /**
+     * **Amended 2026-08-13 by KAR-19.10.** This suite used to assert a refusal,
+     * and that was the right assertion while provider state was one word: a
+     * machine with `claude` and no `claude-agent-acp` could not open an ACP
+     * session, so "unusable" was the only thing the vocabulary could say.
+     *
+     * It was still wrong about the run. The pre-execution turns are driven
+     * through the vendor's own CLI — the return contract rides on a flag only the
+     * CLI has — so this machine can frame, survey and plan, and refusing it would
+     * mean refusing the path the whole chain runs on. What it cannot do is
+     * execute an agent node, and the amendment is that it is told **that**, at
+     * submission, instead of being told it can do nothing.
+     *
+     * Every clause KAR-19.2 cared about is still here: the run exists, its ledger
+     * says what the machine was, the sentence is `providerVerdict`'s, the
+     * mock-agent way forward is offered, and `claude is not installed` is never
+     * printed for a machine where it resolves.
+     */
+    it('answers 201, names the turn it cannot serve, and records the choice', async ({ tmp }) => {
+      const dataDir = join(tmp, 'data');
+      const binDir = join(tmp, 'bin');
+      await vendorCliOnly(binDir);
+      const daemon = await bootAgainst(dataDir, binDir);
 
-    try {
-      const response = await submit(daemon.origin, 'Migrate the checkout module');
-      expect(response.status).toBeGreaterThanOrEqual(400);
-      expect(response.status).toBeLessThan(500);
+      let runId = '';
+      try {
+        const response = await submit(daemon.origin, 'Migrate the checkout module');
+        expect(response.status).toBe(201);
 
-      const body = (await response.json()) as ErrorBody;
-      expect(body.error.code).toBe(RUN_REFUSAL_CODES.noUsableProvider);
+        const body = (await response.json()) as CreatedBody;
+        runId = body.runId;
 
-      // AC2 — the providers, as the UI branches on them.
-      const claude = body.error.detail.providers?.find((entry) => entry.id === 'claude');
-      expect(claude?.state).toBe('adapter-missing');
-      expect(claude?.vendorPath).toBe(join(binDir, 'claude'));
+        // AC4 — the three facts, on the 201 itself, before the first turn.
+        expect(body.provider?.provider).toBe('claude');
+        expect(body.provider?.route).toBe('shim');
+        expect(body.provider?.binaryPath).toBe(join(binDir, 'claude'));
 
-      // AC3 — the package to install, the command that installs it, and the
-      // sentence KAR-18.8 deleted, absent.
-      expect(body.error.message).toContain('@agentclientprotocol/claude-agent-acp');
-      expect(body.error.message).toContain('npm install -g @agentclientprotocol/claude-agent-acp');
-      expect(body.error.message).toContain(join(binDir, 'claude'));
-      expect(body.error.message).not.toContain('claude is not installed');
+        // AC7 — and the turn this machine will not reach, with KAR-18.8's
+        // unchanged install sentence attached to the route that is missing.
+        const limitation = body.provider?.limitation ?? '';
+        expect(limitation).toContain('node execution');
+        expect(limitation).toContain('npm install -g @agentclientprotocol/claude-agent-acp');
+        expect(limitation).toContain(join(binDir, 'claude'));
+        // The sentence KAR-18.8 deleted, still absent.
+        expect(limitation).not.toContain('claude is not installed');
+      } finally {
+        await daemon.stop();
+      }
 
-      // AC4 — and the way to proceed with nothing installed.
-      expect(body.error.message).toContain('DeFlow-mock-agent');
-    } finally {
-      await daemon.stop();
-    }
+      // AC1 — the run exists and was never aborted: this machine can start it.
+      const ledger = kindsInLedger(dataDir);
+      const run = ledger.find((entry) => entry.runId === runId);
+      expect(run).toBeDefined();
+      expect(run?.kinds[0]).toBe('task.submitted');
+      expect(run?.kinds).toContain('provider.probed');
+      expect(run?.kinds).not.toContain('run.aborted');
+    });
 
-    // AC1 — the run exists, and its three events say what happened, in order.
-    const ledger = kindsInLedger(dataDir);
-    const run = ledger.find((entry) => entry.kinds.includes('task.submitted'));
-    expect(run).toBeDefined();
-    expect(run?.kinds[0]).toBe('task.submitted');
-    expect(run?.kinds).toContain('provider.probed');
-    expect(run?.kinds.at(-1)).toBe('run.aborted');
-    // The refusal is never also a hand-off: nothing may pick this run up later.
-    expect(run?.kinds).not.toContain('run.created');
-  });
+    it('refuses the same machine when the operator names it, with the turn (AC8)', async ({
+      tmp,
+    }) => {
+      const dataDir = join(tmp, 'data');
+      const binDir = join(tmp, 'bin');
+      await vendorCliOnly(binDir);
+      const daemon = await bootAgainst(dataDir, binDir);
 
-  it('records what was and was not found, with the absolute resolved path', async ({ tmp }) => {
-    const dataDir = join(tmp, 'data');
-    const binDir = join(tmp, 'bin');
-    await vendorCliOnly(binDir);
-    const daemon = await bootAgainst(dataDir, binDir);
-    let runId = '';
-    try {
-      const body = (await (
-        await submit(daemon.origin, 'Migrate the checkout module')
-      ).json()) as ErrorBody;
-      runId = body.error.detail.runId ?? '';
-      expect(runId).not.toBe('');
-    } finally {
-      await daemon.stop();
-    }
+      try {
+        const response = await submit(daemon.origin, 'Migrate the checkout module', 'claude');
+        expect(response.status).toBeGreaterThanOrEqual(400);
+        expect(response.status).toBeLessThan(500);
 
-    const db = openLedger(dataDir);
-    try {
-      // Scoped to the refused run: the boot probe appends `provider.probed`
-      // too, under a synthetic run id of its own, and AC1 is a claim about
-      // *this run's* ledger.
-      const probed = db
-        .prepare<{ payload: string }>(
-          "SELECT payload FROM event WHERE kind = 'provider.probed' AND run_id = ? ORDER BY seq",
-        )
-        .all(runId)
-        .map((row) => JSON.parse(row.payload) as Record<string, unknown>);
+        const body = (await response.json()) as ErrorBody;
+        expect(body.error.code).toBe(RUN_REFUSAL_CODES.noUsableProvider);
 
-      const claude = probed.find((payload) => payload.provider === 'claude');
-      expect(claude?.admission).toBe('adapter-missing');
-      expect(claude?.vendorPath).toBe(join(binDir, 'claude'));
-      expect(claude?.adapterPath).toBeNull();
-      expect(claude?.package).toBe('@agentclientprotocol/claude-agent-acp');
-    } finally {
-      db.close();
-    }
-  });
-});
+        // AC2 — the providers, as the UI branches on them.
+        const claude = body.error.detail.providers?.find((entry) => entry.id === 'claude');
+        expect(claude?.state).toBe('adapter-missing');
+        expect(claude?.vendorPath).toBe(join(binDir, 'claude'));
+
+        // AC8 — the turn it cannot serve is named, and no fallback is offered:
+        // DeFlow will not quietly run part of the run on something else.
+        expect(body.error.message).toContain('node execution');
+        // AC3 — the package, the command, and the sentence KAR-18.8 deleted.
+        expect(body.error.message).toContain(
+          'npm install -g @agentclientprotocol/claude-agent-acp',
+        );
+        expect(body.error.message).not.toContain('claude is not installed');
+        // AC4 — and the way to proceed with nothing installed.
+        expect(body.error.message).toContain('DeFlow-mock-agent');
+      } finally {
+        await daemon.stop();
+      }
+    });
+
+    it('records what was and was not found, with the absolute resolved path', async ({ tmp }) => {
+      const dataDir = join(tmp, 'data');
+      const binDir = join(tmp, 'bin');
+      await vendorCliOnly(binDir);
+      const daemon = await bootAgainst(dataDir, binDir);
+      let runId = '';
+      try {
+        const body = (await (
+          await submit(daemon.origin, 'Migrate the checkout module')
+        ).json()) as CreatedBody;
+        runId = body.runId;
+        expect(runId).not.toBe('');
+      } finally {
+        await daemon.stop();
+      }
+
+      const db = openLedger(dataDir);
+      try {
+        // Scoped to this run: the boot probe appends `provider.probed` too, under
+        // a synthetic run id of its own, and AC1 is a claim about *this run's*
+        // ledger.
+        const probed = db
+          .prepare<{ payload: string }>(
+            "SELECT payload FROM event WHERE kind = 'provider.probed' AND run_id = ? ORDER BY seq",
+          )
+          .all(runId)
+          .map((row) => JSON.parse(row.payload) as Record<string, unknown>);
+
+        const claude = probed.find((payload) => payload.provider === 'claude');
+        expect(claude?.admission).toBe('adapter-missing');
+        expect(claude?.vendorPath).toBe(join(binDir, 'claude'));
+        expect(claude?.adapterPath).toBeNull();
+        expect(claude?.package).toBe('@agentclientprotocol/claude-agent-acp');
+
+        // KAR-19.10 AC4 — and the choice, on the same row, so the announcement is
+        // answerable six weeks later without re-probing this machine (NF8).
+        const chosen = claude?.chosen as Record<string, unknown> | undefined;
+        expect(chosen?.route).toBe('shim');
+        expect(chosen?.binaryPath).toBe(join(binDir, 'claude'));
+        expect(chosen?.routes).toEqual({ acp: 'missing', shim: 'available' });
+        expect(chosen?.unserved).toEqual(['node execution']);
+      } finally {
+        db.close();
+      }
+    });
+  },
+);
 
 suite('EPIC-19-S12 — a usable machine is never refused', () => {
   it('answers 201 and appends no run.aborted', async ({ tmp }) => {
@@ -340,14 +419,23 @@ suite('EPIC-19-S12 — a usable machine is never refused', () => {
 });
 
 suite('EPIC-19-S14 — an adapter that resolves and then fails its handshake', () => {
-  it('refuses with provider_handshake_failed and the child’s own stderr', async ({ tmp }) => {
+  /**
+   * **Amended 2026-08-13 by KAR-19.10.** A bridge that is present and broken
+   * still sits on top of a vendor CLI that works, so this machine is admitted
+   * for the turns the exec shim serves rather than refused outright — the same
+   * amendment S9 above carries. AC7's vocabulary is unchanged and is asserted
+   * where it is now reachable: an operator who names the provider explicitly is
+   * refused, with the specific code, because a repair and an install are
+   * opposite next actions and the two must not be confused.
+   */
+  it('refuses with provider_handshake_failed and the child\u2019s own stderr', async ({ tmp }) => {
     const dataDir = join(tmp, 'data');
     const binDir = join(tmp, 'bin');
     await brokenBridge(binDir);
     const daemon = await bootAgainst(dataDir, binDir);
 
     try {
-      const response = await submit(daemon.origin, 'Migrate the checkout module');
+      const response = await submit(daemon.origin, 'Migrate the checkout module', 'claude');
       expect(response.status).toBeGreaterThanOrEqual(400);
 
       const body = (await response.json()) as ErrorBody;
@@ -358,6 +446,28 @@ suite('EPIC-19-S14 — an adapter that resolves and then fails its handshake', (
       expect(body.error.message).toContain(join(binDir, 'claude-agent-acp'));
       // And never the sentence that makes an operator uninstall a working CLI.
       expect(body.error.message).not.toContain('is not installed');
+    } finally {
+      await daemon.stop();
+    }
+  });
+
+  it('admits the same machine for the turns the exec shim can serve', async ({ tmp }) => {
+    const dataDir = join(tmp, 'data');
+    const binDir = join(tmp, 'bin');
+    await brokenBridge(binDir);
+    const daemon = await bootAgainst(dataDir, binDir);
+
+    try {
+      const response = await submit(daemon.origin, 'Migrate the checkout module');
+      expect(response.status).toBe(201);
+
+      const body = (await response.json()) as CreatedBody;
+      expect(body.provider?.route).toBe('shim');
+      // The limitation is the *repair* sentence, not an install one: the
+      // package is already here, and telling the operator to fetch it again is
+      // the failure KAR-18.8 removed from `doctor`.
+      expect(body.provider?.limitation).toContain('node execution');
+      expect(body.provider?.limitation).toContain('Cannot find module ./dist/index.js');
     } finally {
       await daemon.stop();
     }
