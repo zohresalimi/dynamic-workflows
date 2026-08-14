@@ -415,6 +415,61 @@ observation and report the truth**, including the truth that we could not do it.
 better than the current state, where the tool cannot tell the difference between a working install
 and a link into a directory nothing reads.
 
+**How it was implemented.** `packages/cli/src/setup/` in three files: `plan.ts` (pure — the shell
+→ profile-file mapping, the line in that shell's own syntax, the exit-code invariant, the Windows
+refusal), `profile.ts` (the only writer, under an `O_EXCL` lock so two concurrent runs cannot both
+append), and `run.ts` (the five steps and their subprocesses). `scripts/install.sh` is the
+curl-to-shell entry point and is deliberately inert: it checks `uname`, `node`, the Node major and
+`npx`, then `exec`s `npx --package=<pkg> -- deflow setup --from <pkg>`, so every byte it leaves
+behind is written by `setup` under `setup`'s consent rules. `test/install-script.test.ts` reads it
+the way a suspicious operator would and fails if it ever grows a second capability.
+
+The one idea the whole story rests on is `freshShellPath` (`plan.ts`): **the `PATH` this process can
+see is not the `PATH` the operator's next terminal will have.** `npx deflow setup` runs with the npx
+cache's `node_modules/.bin` prepended, so `deflow` resolves inside the running process no matter what
+the install did — verifying against that would print a green tick over the exact 2026-08-12 failure.
+So the ephemeral entries are dropped, the directories the *profile* now provides are added, and every
+observation (the "is it already installed?" pre-check, `verify`, `doctor`) is spawned through a shell
+given that computed `PATH`. `e2e/setup-install.test.ts` then goes one better and spawns a real
+interactive `zsh`/`bash`, which reads the profile file itself.
+
+**Four decisions worth recording.**
+
+- **AC6's "each step reports `ok — already`" applies to the two steps that do work.** `install` and
+  `link` say `already` and do nothing on a second run; `verify`, `doctor` and `adapters` run again
+  and say what they observed. Skipping the verification on the grounds that a previous run passed
+  would be precisely the inference this story exists to remove, and none of the three changes
+  anything. The fixpoint claim the scenario is actually about — a byte-identical profile, no second
+  link, exit 0 — is asserted in full.
+- **`doctor` is spawned as `deflow doctor --json --skip-conformance`.** `--json` because the step
+  needs a structured verdict rather than a screen of prose, and because it guarantees the child
+  cannot prompt; `--skip-conformance` because the battery spawns a turn per assertion per installed
+  adapter and the operator is four minutes into their first five. The step says the battery did not
+  run and names `deflow doctor` as the command that runs it. Its next action comes from
+  `toReport()` + `nextAction()` — doctor's own layer over doctor's own document — rather than from a
+  sentence written here; because KAR-18.9 AC6 keeps per-check actions out of `--json`, what surfaces
+  is doctor's own fallback action, which is doctor's words either way.
+- **"The exact line" is exact everywhere the renderer does not touch it**: in the step detail, in
+  the prompt question and in the `--json` document, and inside the `printf '%s\n' … >> …` next
+  action, which is single-quoted so the line's own double quotes survive. In the *rendered* report a
+  line longer than the terminal is wrapped, because KAR-18.9 AC4 wraps rather than truncates and
+  this story does not get to be the second formatter. That is only visible with very long prefixes —
+  a temp directory in a test, not `/usr/local/bin`.
+- **EPIC-20-S12's second scenario moved from `e2e` to a source guard.** "The script installs no
+  package the npx path does not, and writes no file the npx path does not" is a claim about what the
+  script *can* do; asserting it by observing one run would pass for a script that does something
+  else on a machine with Homebrew. `test/install-script.test.ts` reads the script; the e2e keeps the
+  end-state comparison, which is the half only a real install can answer.
+
+**The performed acceptance (AC15, EPIC-20-S25).** Run on 2026-08-14 on the owner's macOS machine,
+against the packed tarball, with a sandbox `HOME` and an npm prefix of its own so that the run could
+not touch the machine's real profile — everything else (node, npm, zsh, the filesystem) is this
+machine's own, and `deflow` was genuinely absent from the `PATH` the first shell was given. The
+transcript is on the Linear issue (MET-798); its shape is: `which deflow` in a fresh shell finds
+nothing → `sh scripts/install.sh --yes` reports install/link/verify/doctor/adapters → a **second**
+fresh shell finds `deflow` at an absolute path inside the sandbox prefix and `deflow doctor` runs and
+prints its report there.
+
 ---
 
 ### KAR-20.3 — The README documents the real install path

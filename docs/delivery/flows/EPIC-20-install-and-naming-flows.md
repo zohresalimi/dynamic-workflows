@@ -408,6 +408,15 @@ Feature: two entry points, one outcome
 script is a bootstrap for a machine without Node; it is not a second, more powerful installer, and
 the README shows the download-then-read form beside the piped one.
 
+**Amended 2026-08-14 while implementing KAR-20.2.** The first scenario is automated at `e2e`
+(`e2e/setup-install.test.ts`, both entry points into two clean rooms, then a real interactive shell
+in each). The **second** is automated at `unit`, as a source guard over the script
+(`test/install-script.test.ts`), and that is a strengthening rather than a downgrade: "it installs
+no package the npx path does not" is a claim about everything the script *can* do, and one observed
+run cannot distinguish a script that installs nothing from one that would install something on a
+machine with Homebrew on it. The guard reads the script the way a suspicious operator would — one
+`exec`, no second package name, no `sudo`, no redirection into a file, no `PATH` edit of its own.
+
 ---
 
 ## EPIC-20-S13 — Five steps, in order, each with a state and a summary block that says what to do next

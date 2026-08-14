@@ -28,11 +28,12 @@ import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { runCancel } from './cancel.ts';
 import { deprecationNotice } from './command-name.ts';
-import { runDoctor } from './doctor/run.ts';
+import { askOn, runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
 import { processStyle } from './render/style.ts';
 import { runRun } from './run/run.ts';
+import { parseSetupArgs, runSetup } from './setup/index.ts';
 import { parseStatusArgs, runStatus } from './status.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
 
@@ -73,6 +74,7 @@ const USAGE = `DeFlow — dynamic multi-agent workflows
 Usage: deflow <command> [options]
 
 Commands:
+  setup           Install deflow, put it on PATH and check the machine
   init            Prepare .DeFlow/ in the current git repository
   up              Start the daemon and open the UI
   run             Start a run and watch it, with no browser at all
@@ -116,6 +118,24 @@ Usage for "cancel":
 
 Exit codes for "cancel": 0 stopped, or already ended; 1 the daemon refused,
 including an unknown run id; 2 no daemon is running.
+
+Options for "setup":
+  --yes           Write the PATH line into your shell profile without asking,
+                  and install a missing ACP adapter for every vendor CLI that
+                  is already on your PATH. Without it, nothing is written
+                  unless you answer a question that names the file and shows
+                  the line first, and a bare Enter means no.
+  --fix           The adapter installs only, as "doctor --fix" does them.
+  --json          One machine-readable document, one entry per step. Never
+                  prompts and never reads stdin.
+  --from <spec>   Install this npm specifier instead of "deflow" — a pinned
+                  version, or a packed tarball. The same five steps either way.
+
+Exit codes for "setup": 0 when every step is ok, warn or skipped after a
+successful verify; 1 when any step failed — including "deflow is installed and
+your next shell still will not find it", which is the only outcome this command
+exists to stop being silent. A degraded machine that doctor exits 5 for is a
+successful install with a warning, and setup says which of the two happened.
 
 Options for "doctor":
   --json          Emit one machine-readable document instead of the report
@@ -293,6 +313,39 @@ async function cancel(argv: readonly string[]): Promise<number> {
   return result.exitCode;
 }
 
+/**
+ * `deflow setup` (KAR-20.2) — the one command that installs the tool.
+ *
+ * The prompt is `doctor`'s own (`askOn`): one question on stdout, one answer
+ * off stdin, and a closed stdin answers `''`, which is *no*. Sharing it is not
+ * tidiness — a second reader of stdin with its own idea of what a bare Enter
+ * means is exactly how two consent rules drift apart, and this one edits a file
+ * in the operator's home directory.
+ */
+async function setup(argv: readonly string[]): Promise<number> {
+  const parsed = parseSetupArgs(argv);
+  if (!parsed.ok) {
+    process.stderr.write(`${parsed.message}\n\n${USAGE}`);
+    return EX_USAGE;
+  }
+
+  const result = await runSetup({
+    cwd: process.cwd(),
+    env: process.env,
+    json: parsed.args.json,
+    yes: parsed.args.yes,
+    fix: parsed.args.fix,
+    from: parsed.args.from,
+    style: STYLE,
+    isTty: () => process.stdout.isTTY === true,
+    prompt: (question) => askOn(process.stdin, process.stdout)(question),
+  });
+
+  if (result.stdout !== '') process.stdout.write(result.stdout);
+  if (result.stderr !== '') process.stderr.write(result.stderr);
+  return result.exitCode;
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [command] = argv;
 
@@ -305,6 +358,8 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${version()}\n`);
     return 0;
   }
+
+  if (command === 'setup') return setup(argv.slice(1));
 
   if (command === 'up') return up(argv.slice(1));
 
