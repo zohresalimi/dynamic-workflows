@@ -40,7 +40,6 @@ import {
   providerSpec,
   renderAuthMethods,
   selectResumeStrategy,
-  shimPlan,
   vendorSessionId,
 } from '@DeFlow/adapters';
 import type { Clock, Db, RunId } from '@DeFlow/core';
@@ -590,7 +589,12 @@ function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
         rows += 1;
         let argv: readonly string[];
         try {
-          argv = shimPlan(spec, {
+          // The entry's own builder, not `shimPlan` — `test/sandbox-boundaries.test.ts`
+          // reserves that one for `sandbox.ts`, because a plan with no policy on it
+          // must never be one line away from a spawn. Nothing is spawned here: this
+          // check reads the argv and never runs it, exactly as `live-agents.ts` builds
+          // its own invocation from the same entry.
+          argv = spec.shim.argv({
             resolved: { provider: spec.id, path: spec.shim.bin },
             worktree: '/tmp/DeFlow-doctor',
             prompt: 'deflow doctor: a conformance invocation, never sent.',
@@ -606,7 +610,7 @@ function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
                   schemaPath: `/tmp/DeFlow-doctor/.DeFlow/schemas/${turn.schemaId}.json`,
                   schemaDocument: document,
                 }),
-          }).argv;
+          });
         } catch (error) {
           problems.push(`${turn.node}/${permission}: ${(error as Error).message}`);
           continue;
