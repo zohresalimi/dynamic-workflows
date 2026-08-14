@@ -64,6 +64,29 @@ export function openSpecGate(runId: RunId, at: LedgerAt): void {
 }
 
 /**
+ * KAR-19.12 — the framing node's completion, as far as the gate is concerned:
+ * `run.created` carrying the sealed spec, and then the gate over the draft.
+ *
+ * `openSpecGate` alone is enough for a spec that only watches the terminal, and
+ * it is *not* enough for one that answers: `approveSpec` reads the run's current
+ * spec out of `run.created` and refuses without one — which is what the real
+ * chain always appends before opening the gate.
+ */
+export function framedRun(runId: RunId, at: LedgerAt & { readonly cwd: string }): void {
+  appendEvents(at.db, [
+    {
+      runId,
+      ts: at.ts,
+      kind: 'run.created',
+      v: 1,
+      epoch: at.epoch,
+      payload: { spec: taskSpec(), cwd: at.cwd, repo: { head: 'e83c516', branch: 'main' } },
+    },
+  ]);
+  openSpecGate(runId, at);
+}
+
+/**
  * KAR-19.4 — a run with an approved spec and a one-node plan on it, ready for
  * the daemon's own executor to drive.
  *

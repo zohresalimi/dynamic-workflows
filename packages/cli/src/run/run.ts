@@ -33,7 +33,13 @@
  */
 import { PROVIDER_SPECS, resolveProviderStates, usableProviders } from '@DeFlow/adapters';
 import type { Clock, Event, RunId, RunState } from '@DeFlow/core';
-import { announceProviderChoice, initialRunState, RunIdSchema, reduce } from '@DeFlow/core';
+import {
+  announceProviderChoice,
+  initialRunState,
+  pendingGate,
+  RunIdSchema,
+  reduce,
+} from '@DeFlow/core';
 import {
   checkGitVersion,
   EX_ALREADY_RUNNING,
@@ -169,6 +175,8 @@ async function watch(options: {
   readonly endpoint: DaemonEndpoint;
   readonly renderer: RunRenderer;
   readonly stdout: (chunk: string) => void;
+  /** KAR-19.12 AC3 — where a `--json` gate announcement goes. @see `render.ts` */
+  readonly stderr: (chunk: string) => void;
   readonly noWait: boolean;
   readonly onFollowing: (following: FollowRunResult) => void;
   /** KAR-19.4 AC3 — every control event is offered here too, so the agent's
@@ -177,6 +185,9 @@ async function watch(options: {
 }): Promise<Watched> {
   let state = initialRunState();
   let rendered = 0;
+  /** The gate this view has already announced, so a re-delivered event does not
+   * announce it twice and a second gate still does. */
+  let announcedGate: string | null = null;
 
   return await new Promise<Watched>((resolve, reject) => {
     let settled = false;
@@ -186,6 +197,25 @@ async function watch(options: {
       state = reduce(state, event);
       options.stdout(options.renderer.event(event));
       options.io.onEvent(event);
+
+      // KAR-19.12 AC1, AC3 — a run that has stopped to ask says so, here, and
+      // **before** the verdict is asked for: under `--no-wait` the very next
+      // line settles the promise and the process exits, and a CI log that exits
+      // 4 saying nothing is the same silence one level up.
+      //
+      // Derived from the reduced state through `pendingGate` rather than by
+      // matching `human.requested` here, which is AC1's *one reader* clause as
+      // code: the answered case, the second-gate case and the re-delivery case
+      // are all already correct in the projection.
+      const gate = pendingGate(state);
+      if (gate !== null && gate.node !== announcedGate) {
+        announcedGate = gate.node;
+        const announcement = options.renderer.gate(gate);
+        if (announcement.stdout !== '') options.stdout(announcement.stdout);
+        if (announcement.stderr !== '') options.stderr(announcement.stderr);
+      } else if (gate === null) {
+        announcedGate = null;
+      }
 
       const verdict = classifyRun(state, { noWait: options.noWait });
       if (verdict.terminal) {
@@ -268,6 +298,9 @@ async function execute(
     mode: args.json ? 'json' : 'human',
     isTty: options.isTty,
     runId,
+    // KAR-19.12 AC2 — the daemon this command actually reached, so the URL a
+    // gate block prints goes to the port `deflow up` bound rather than to 7777.
+    baseUrl: endpoint.baseUrl,
     ...(options.style === undefined ? {} : { style: options.style }),
   });
   if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
@@ -350,6 +383,7 @@ async function execute(
     endpoint,
     renderer,
     stdout: options.stdout,
+    stderr: options.stderr,
     noWait: args.noWait,
     io,
     onFollowing: (opened) => {

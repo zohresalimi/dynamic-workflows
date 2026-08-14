@@ -302,7 +302,7 @@ export async function submitTask(
         epoch: ports.epoch,
         payload,
       },
-      ...refusalEvents(runId, now, ports.epoch, admission),
+      ...refusalEvents(runId, now, ports.epoch, admission, body.provider),
       ...choiceEvents(runId, now, ports.epoch, admission),
     ]);
     if (appended === undefined) throw new Error('appendEvents returned no seq for task.submitted');
@@ -436,6 +436,16 @@ function refusalEvents(
   ts: number,
   epoch: number,
   admission: RunAdmission,
+  /**
+   * KAR-19.12 — the provider the operator named, when they named one.
+   *
+   * Recorded because `admitRun` answers differently for a named provider than
+   * for a machine's own best choice (KAR-19.10 AC8), and `run-refusal.ts`
+   * re-renders this refusal by calling it again. A row that did not say a
+   * provider had been named would be re-read as an admission, and the run's
+   * summary would lose the refusal block KAR-19.2 AC2 requires.
+   */
+  requested: string | undefined,
 ): EventDraft[] {
   if (admission.outcome !== 'refused') return [];
 
@@ -448,6 +458,7 @@ function refusalEvents(
     payload: {
       provider: entry.provider,
       admission: entry.state,
+      ...(requested === undefined ? {} : { requested }),
       vendorBin: entry.vendorBin,
       vendorPath: entry.vendorPath,
       adapterBin: entry.adapterBin,

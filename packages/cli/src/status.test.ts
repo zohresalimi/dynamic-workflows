@@ -44,6 +44,9 @@ const running: DaemonStatus = {
       status: 'running',
       label: 'running',
       nodeCounts: { completed: 2, running: 1 },
+      // KAR-19.12 AC5 — this run is not waiting on anybody, which is the
+      // ordinary case and the one that must stay a plain `ok` row.
+      gate: null,
     },
     {
       runId: 'run_20260810T101500Z_c4a5b1',
@@ -52,6 +55,7 @@ const running: DaemonStatus = {
       // now renders instead of the enum member.
       label: 'submitted — waiting to be framed',
       nodeCounts: {},
+      gate: null,
     },
   ],
   ledgerError: null,
@@ -144,12 +148,17 @@ suite('a live daemon (AC3)', () => {
           status: 'running',
           label: 'running',
           nodeCounts: { completed: 2, running: 1 },
+          // KAR-19.12 AC5 — carried in the document even when it is `null`, so
+          // a consumer reads "not waiting on anybody" rather than "this build
+          // does not say".
+          gate: null,
         },
         {
           runId: 'run_20260810T101500Z_c4a5b1',
           status: 'created',
           label: 'submitted — waiting to be framed',
           nodeCounts: {},
+          gate: null,
         },
       ],
     });

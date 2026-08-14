@@ -36,8 +36,8 @@
  */
 
 import { processStartTime } from '@DeFlow/adapters';
-import type { Clock, NodeStatus, RunId, RunStatus } from '@DeFlow/core';
-import { runStatusLabel } from '@DeFlow/core';
+import type { Clock, NodeStatus, PendingGate, RunId, RunStatus } from '@DeFlow/core';
+import { pendingGate, pendingGateSummary, runStatusLabel } from '@DeFlow/core';
 import { type DaemonFile, daemonFilePath, resolveDataDir, systemClock } from '@DeFlow/daemon';
 import { listRunIds, openRead, readEpoch, replayRun } from '@DeFlow/ledger';
 import { readFileSync } from 'node:fs';
@@ -93,6 +93,17 @@ export interface ActiveRun {
   readonly label: string;
   /** Node ids grouped by status, with the empty statuses left out. */
   readonly nodeCounts: Readonly<Partial<Record<NodeStatus, number>>>;
+  /**
+   * KAR-19.12 AC5 — the gate this run has stopped on, or `null`.
+   *
+   * Beside the label rather than folded into it, because they answer different
+   * questions and only one of them is a *status*: a run whose status is
+   * `running` can be blocked on a `human` node, and `running` is then true,
+   * useless, and exactly the sentence that sends an operator to read the
+   * ledger. `runStatusLabel` gains no fourth spelling (KAR-19.1 AC6);
+   * `pendingGate` supplies this.
+   */
+  readonly gate: PendingGate | null;
 }
 
 /** Why the recorded daemon is not the daemon. @see the module note. */
@@ -232,7 +243,13 @@ function activeRuns(dataDir: string): {
       for (const node of Object.values(state.nodes)) {
         nodeCounts[node.status] = (nodeCounts[node.status] ?? 0) + 1;
       }
-      runs.push({ runId, status: state.status, label: runStatusLabel(state), nodeCounts });
+      runs.push({
+        runId,
+        status: state.status,
+        label: runStatusLabel(state),
+        nodeCounts,
+        gate: pendingGate(state),
+      });
     }
     return { runs, epoch, error: null };
   } catch (error) {
@@ -366,10 +383,17 @@ function runsSection(status: RunningStatus): ReportSection {
     title: 'Runs',
     rows: status.runs.map((run) => ({
       id: run.runId,
-      state: 'ok' as const,
+      // AC5 — a run that is waiting on a person is an outstanding fact, and an
+      // `ok` row is one an operator stops reading.
+      state: run.gate === null ? ('ok' as const) : ('warn' as const),
       detail: [run.label, renderNodeCounts(run.nodeCounts)]
         .filter((part) => part !== '')
         .join(' — '),
+      ...(run.gate === null
+        ? {}
+        : {
+            action: `${pendingGateSummary(run.gate)}; answer it with 'deflow answer ${run.runId} --gate ${run.gate.node} --option ${run.gate.options[0]?.id ?? '<option>'}'`,
+          }),
     })),
   };
 }
@@ -475,6 +499,7 @@ export function renderStatusJson(status: DaemonStatus): string {
             status: run.status,
             label: run.label,
             nodeCounts: run.nodeCounts,
+            gate: run.gate,
           })),
         }
       : status.kind === 'stale'

@@ -20,7 +20,7 @@
  * thing that breaks it at 3am. The human renderer puts the same sentence on
  * stdout, where a person is looking.
  */
-import type { Event, NodeId, RunId } from '@DeFlow/core';
+import type { Event, NodeId, PendingGate, RunId } from '@DeFlow/core';
 import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import type { IoChunkLine } from '@DeFlow/web';
 import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../render/glyphs.ts';
@@ -68,6 +68,26 @@ export interface RunRenderer {
    * content is preserved as `\u001b`, which is what a consumer can act on.
    */
   io(node: NodeId, chunk: IoChunkLine): string;
+  /**
+   * KAR-19.12 AC1, AC2 — the block a run prints when it stops to ask.
+   *
+   * Separate from `event()` and deliberately so. An event line describes
+   * something that *happened*; this describes something that is **still true**
+   * and is addressed to the person reading — which gate, that it is waiting for
+   * them, what it offers and the two ways to answer it. The caller derives the
+   * gate from the reduced `RunState` through `pendingGate` and hands it here, so
+   * this file never asks "is a gate open" a second way.
+   *
+   * Two streams for the same reason `final` has two (AC3). The human block goes
+   * to stdout, where a person is looking. Under `--json` it goes to **stderr**,
+   * beside the verdict, because stdout there is a `seq`-ordered stream of
+   * *events* — `./run-json.test.ts` asserts that every line of it carries a
+   * `runId`, a numeric `seq` and a `kind`, strictly increasing and unique — and
+   * an announcement is not an event: it has no `seq` of its own, and borrowing
+   * the one from the `human.requested` that opened the gate would put a
+   * duplicate in a stream whose uniqueness is the contract.
+   */
+  gate(gate: PendingGate): FinalLines;
   final(verdict: RunVerdict, totals: RunTotals): FinalLines;
 }
 
@@ -90,6 +110,15 @@ export interface RendererOptions {
    * nothing gets 80 columns and whatever the locale established.
    */
   readonly style?: Style;
+  /**
+   * KAR-19.12 AC2 — this daemon's own origin, for the URL a gate block prints.
+   *
+   * Never assumed and never defaulted to 7777: the port is whatever `deflow up`
+   * bound, and a printed URL that goes somewhere else is worse than no URL. A
+   * renderer given none prints the command and omits the link rather than
+   * inventing one.
+   */
+  readonly baseUrl?: string;
 }
 
 type Colour = StyleColour;
@@ -288,6 +317,29 @@ function humanLine(event: Event): Line | null {
         detail: event.payload.prompt,
       };
 
+    /**
+     * KAR-19.12 AC7 — a gate answered *anywhere* is a line in *this* terminal.
+     *
+     * The stream this command is already following carries `human.responded`
+     * whoever appended it — the browser, a second terminal, or a deadline
+     * policy — so the attached session learns about an answer it did not make
+     * without reconnecting to anything. Rendering it is the whole of the fix:
+     * before this, a run approved in the UI left the watching terminal sitting
+     * exactly as silently as it had been before the gate opened.
+     *
+     * `by` is optional on the v2 payload and absent reads as `operator`, which
+     * is what every v1 response was — see `HumanRespondedSchema`.
+     */
+    case 'human.responded':
+      return {
+        glyph: 'done',
+        colour: 'green',
+        subject: event.payload.node,
+        status: 'answered',
+        parts: [event.payload.optionId, `by ${event.payload.by ?? 'operator'}`],
+        detail: '',
+      };
+
     case 'run.paused':
       return {
         glyph: 'paused',
@@ -325,6 +377,27 @@ function humanLine(event: Event): Line | null {
   }
 }
 
+// ── the block a waiting run prints ───────────────────────────────────────────
+
+/**
+ * KAR-19.12 AC2 — the command that answers this gate, spelled so it can be
+ * copied.
+ *
+ * The **first** option is the one shown, because a line has to name one and the
+ * gate's own order is the order §1.3 declares — `approve` first for the F1.3
+ * gate. Every option is listed immediately above it, so the operator swapping
+ * one word is doing so having read all of them.
+ */
+export function answerGateCommand(runId: RunId, gate: PendingGate): string {
+  const option = gate.options[0]?.id ?? '<option>';
+  return `deflow answer ${runId} --gate ${gate.node} --option ${option}`;
+}
+
+/** Where this gate lives in a browser, on the daemon that is serving it. */
+function gateUrl(runId: RunId, baseUrl: string | undefined): string | null {
+  return baseUrl === undefined ? null : `${baseUrl.replace(/\/$/, '')}/runs/${runId}`;
+}
+
 // ── the renderers ────────────────────────────────────────────────────────────
 
 /** The painter, and only the painter: a style whose sole job is to hold the
@@ -350,6 +423,25 @@ export function createRenderer(options: RendererOptions): RunRenderer {
   if (options.mode === 'json') {
     return {
       event: (event) => `${JSON.stringify(event)}\n`,
+      // AC3 — exactly one object, like every other frame on this stream. A
+      // pipeline reading `while read line; do jq …` is the consumer this
+      // promise is for, and a multi-line block in the middle of a `seq`-ordered
+      // stream is what breaks it at 3am.
+      gate: (gate) => ({
+        stdout: '',
+        stderr: `${JSON.stringify({
+          kind: 'DeFlow.cli.gate',
+          runId: options.runId,
+          node: gate.node,
+          specApproval: gate.specApproval,
+          requestedSeq: gate.requestedSeq,
+          options: gate.options.map((option) => ({ id: option.id, label: option.label })),
+          answer: answerGateCommand(options.runId, gate),
+          ...(gateUrl(options.runId, options.baseUrl) === null
+            ? {}
+            : { url: gateUrl(options.runId, options.baseUrl) }),
+        })}\n`,
+      }),
       io: (node, chunk) =>
         `${JSON.stringify({
           kind: 'DeFlow.cli.io',
@@ -376,6 +468,45 @@ export function createRenderer(options: RendererOptions): RunRenderer {
 
   return {
     io: (_node, chunk) => chunk.data,
+    /**
+     * KAR-19.12 AC1, AC2 — the six lines that replace nine minutes of silence.
+     *
+     * A block rather than a line, and it is the one place in this renderer that
+     * earns more than one: the operator has to learn four things at once —
+     * that the run has stopped, which gate stopped it, what it will accept, and
+     * how to send one. A single padded line could carry at most two of them.
+     *
+     * The options are printed with their labels because an id on its own is
+     * DeFlow's vocabulary; the command is printed with the *first* option
+     * substituted so it can be copied and one word changed. Both ways to answer
+     * are given (AC2) — the operator at a terminal and the operator with a
+     * browser open are the same person on different days.
+     */
+    gate(gate) {
+      const head = paint(
+        `${glyphs.asking} ${gate.node}`.padEnd(NODE_COLUMN) + 'waiting for you',
+        'yellow',
+      );
+      // KAR-18.9 AC4 — wrapped like every other detail this file prints, and
+      // for the same reason `./terminal-output.test.ts` asserts: a redirected
+      // transcript may only run past the width for a single unbreakable token,
+      // and an answer command carrying a run id is comfortably longer than 80
+      // columns on its own.
+      const wrap = (text: string): string[] =>
+        wrapDetail(text, { width: layout.width, indent: 4 }).map((line, index) =>
+          index === 0 ? `  ${line}` : line,
+        );
+      const url = gateUrl(options.runId, options.baseUrl);
+      const body = [
+        ...gate.options.map((option) => `    ${option.id.padEnd(10)}${option.label}`),
+        ...wrap(`answer it with: ${answerGateCommand(options.runId, gate)}`),
+        ...(url === null ? [] : wrap(`or in the browser at ${url}`)),
+      ];
+      return {
+        stdout: `${[head, ...body.map((line) => paint(line, 'dim'))].join('\n')}\n`,
+        stderr: '',
+      };
+    },
     event(event) {
       const line = humanLine(event);
       if (line === null) return '';

@@ -24,7 +24,7 @@
  * **in place**, and its label is recomputed from the same table rather than
  * invented here.
  */
-import type { Event, RunStatus } from '@DeFlow/core';
+import type { Event, PendingGateOption, RunStatus } from '@DeFlow/core';
 import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, triggerRef } from 'vue';
@@ -39,6 +39,15 @@ export interface RunListRow {
   readonly headSeq: number;
   readonly planVersion: number;
   readonly cost?: unknown;
+  /**
+   * KAR-19.12 AC6 — the gate this run has stopped on, or `null`.
+   *
+   * `GET /api/runs` puts it on the row (from `pendingGate`), and a
+   * `human.requested` frame on this topic carries the same two facts — the node
+   * and the options — so a run that stops while the page is open names its gate
+   * without a refetch, exactly as its status word does.
+   */
+  readonly gate: { readonly node: string; readonly options: readonly PendingGateOption[] } | null;
 }
 
 /**
@@ -97,6 +106,7 @@ export const useRunListStore = defineStore('run-list', () => {
           createdAt: new Date(event.ts).toISOString(),
           headSeq: event.seq,
           planVersion: 0,
+          gate: gateOf(event),
         },
         ...rows.value,
       ];
@@ -115,6 +125,9 @@ export const useRunListStore = defineStore('run-list', () => {
       label: RUN_STATUS_LABELS[status],
       title: titleOf(event) ?? current.title,
       headSeq: Math.max(current.headSeq, event.seq),
+      // A run that ends stops waiting on anybody, so the gate goes with it —
+      // `gateOf` answers `null` for every kind that is not a request.
+      gate: gateOf(event),
     };
     rows.value = next;
     triggerRef(rows);
@@ -123,6 +136,32 @@ export const useRunListStore = defineStore('run-list', () => {
 
   return { list, rows, fetches, hydrated, hydrate, applyLifecycle };
 });
+
+/**
+ * KAR-19.12 AC6 — the gate a `human.requested` frame opened, or `null`.
+ *
+ * Read off the frame rather than folded, which is the same rule this store
+ * already applies to `status`: the four lifecycle kinds are the whole membership
+ * of this topic, and exactly one of them is a run stopping to ask. The other
+ * three end the run or start it, and neither leaves a gate open.
+ */
+function gateOf(event: Event): RunListRow['gate'] {
+  if (event.kind !== 'human.requested') return null;
+  const payload = event.payload as {
+    node?: unknown;
+    options?: readonly { id?: unknown; label?: unknown }[];
+  };
+  if (typeof payload.node !== 'string') return null;
+  return {
+    node: payload.node,
+    options: (payload.options ?? [])
+      .filter(
+        (option): option is { id: string; label: string } =>
+          typeof option.id === 'string' && typeof option.label === 'string',
+      )
+      .map((option) => ({ id: option.id, label: option.label })),
+  };
+}
 
 /** The goal a `run.created` carries, when the frame is one. Never invented:
  * a frame with no title leaves the row's own text alone. */

@@ -29,13 +29,17 @@ import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import CommandJumper from './components/CommandJumper.vue';
 import NodeInspector from './components/NodeInspector.vue';
+import RunGateBanner from './components/RunGateBanner.vue';
 import RunProviderBanner from './components/RunProviderBanner.vue';
+import { useRunStore } from './stores/useRunStore.ts';
 import { useSessionStore } from './stores/useSessionStore.ts';
 import { useUiStore } from './stores/useUiStore.ts';
 import TokenRequired from './views/TokenRequired.vue';
 
 const ui = useUiStore();
 const session = useSessionStore();
+// KAR-19.12 AC6 — the open run's pending gate, read off the store's own fold.
+const run = useRunStore();
 const client = useApiClient();
 const { isDark, toggleTheme } = useTheme();
 
@@ -123,6 +127,15 @@ onUnmounted(() => {
         first. It renders nothing when no run is open.
       -->
       <RunProviderBanner />
+
+      <!--
+        KAR-19.12 AC6 — and what the run is waiting for, if it is waiting for
+        anybody. Beside the provider line for the same reason it is: it is true
+        of the run rather than of one panel, and an operator who has just been
+        told the run is `needs a decision` should not have to find the right tab
+        to learn which decision. It renders nothing when no gate is open.
+      -->
+      <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
     </header>
 
     <!--

@@ -35,6 +35,9 @@ const running: DaemonStatus = {
       status: 'created',
       label: runStatusLabel({ ...initialRunState(), status: 'created' }),
       nodeCounts: {},
+      // KAR-19.12 AC5 — this run is waiting on nobody, which is what keeps the
+      // assertion below about the *label* rather than about a gate line.
+      gate: null,
     },
   ],
   ledgerError: null,

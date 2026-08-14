@@ -26,8 +26,8 @@
  * currency are two substances, and an unmeasurable provider contributes `null`
  * rather than `0`.
  */
-import type { BudgetRollup, RunId, RunState, RunStatus } from '@DeFlow/core';
-import { initialRunState, runStatusLabel, toSingleLine } from '@DeFlow/core';
+import type { BudgetRollup, PendingGate, RunId, RunState, RunStatus } from '@DeFlow/core';
+import { initialRunState, pendingGate, runStatusLabel, toSingleLine } from '@DeFlow/core';
 import type { LedgerView } from './ledger-view.ts';
 
 /** One row of the list. AC4's seven fields, plus the rendered `label`. */
@@ -49,6 +49,16 @@ export interface RunListEntry {
   readonly headSeq: number;
   readonly planVersion: number;
   readonly cost: BudgetRollup;
+  /**
+   * KAR-19.12 AC6 — the gate this run has stopped on, or `null`.
+   *
+   * On the row rather than only on `GET /api/runs/:id`, because the list is
+   * where an operator scans for the run that wants them: `needs a decision`
+   * with nothing to decide on is the same silence in a different font. Produced
+   * by `pendingGate` and by nothing else, so this row and the terminal cannot
+   * name different gates for one run at one head sequence.
+   */
+  readonly gate: PendingGate | null;
 }
 
 export interface RunListPage {
@@ -158,6 +168,7 @@ export function runList(view: LedgerView, query: RunListQuery = {}): RunListPage
       headSeq: view.runHeadSeq(runId),
       planVersion: state.planVersion,
       cost: state.budget,
+      gate: pendingGate(state),
     });
   }
 

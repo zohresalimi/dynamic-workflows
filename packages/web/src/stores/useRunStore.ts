@@ -75,6 +75,7 @@ import {
   type CostProjection,
   contextProjection,
   costProjection,
+  type EscalationVM,
   type GatesProjection,
   gatesProjection,
   type PlanHistoryProjection,
@@ -483,6 +484,22 @@ export const useRunStore = defineStore('run', () => {
     return last;
   });
 
+  /**
+   * KAR-19.12 AC6 — the gate this run has stopped on, or `null`.
+   *
+   * Read off the `gates` projection's `escalations`, which is this tab's
+   * **existing** fold of `human.requested`/`human.responded` — a ninth
+   * projection restating a fold the store already has would be exactly the
+   * second derivation this story exists to remove. Oldest first, matching
+   * `pendingGate`'s rule on the other three surfaces: a run can hold more than
+   * one open gate, and the one that has been waiting longest is blocking the
+   * most work.
+   */
+  const openGate = computed<EscalationVM | null>(() => {
+    void versions.gates.value;
+    return gates.value.escalations.find((one) => one.answeredWith === null) ?? null;
+  });
+
   /** `nodeId` → its four figures. Which one to show is the renderer's choice. */
   const nodeSpend = computed<ReadonlyMap<string, CostFigures>>(() => {
     void versions.cost.value;
@@ -562,6 +579,7 @@ export const useRunStore = defineStore('run', () => {
     nodeSpans,
     nodeVerdicts,
     nodeSpend,
+    openGate,
 
     // lifecycle
     open,

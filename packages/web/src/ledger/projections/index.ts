@@ -102,7 +102,7 @@ export const PROJECTIONS = [
 export type { BlackboardProjection } from './blackboard.ts';
 export type { ContextProjection } from './context.ts';
 export type { CostProjection } from './cost.ts';
-export type { GatesProjection } from './gates.ts';
+export type { EscalationVM, GatesProjection } from './gates.ts';
 export type { PlanProjection } from './plan.ts';
 export type { PlanHistoryProjection } from './planHistory.ts';
 export type { ProviderChoiceState, ProviderProjection } from './provider.ts';
