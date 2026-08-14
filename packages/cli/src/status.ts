@@ -36,7 +36,8 @@
  */
 
 import { processStartTime } from '@DeFlow/adapters';
-import type { Clock, NodeStatus, RunId, RunStatus } from '@DeFlow/core';
+import type { Clock, NodeStatus, PendingGate, RunId, RunStatus } from '@DeFlow/core';
+import { pendingGate, pendingGateSummary, runStatusLabel } from '@DeFlow/core';
 import { type DaemonFile, daemonFilePath, resolveDataDir, systemClock } from '@DeFlow/daemon';
 import { listRunIds, openRead, readEpoch, replayRun } from '@DeFlow/ledger';
 import { readFileSync } from 'node:fs';
@@ -80,8 +81,29 @@ export function parseStatusArgs(argv: readonly string[]): ParsedStatusArgs {
 export interface ActiveRun {
   readonly runId: string;
   readonly status: RunStatus;
+  /**
+   * KAR-19.1 AC6 — the sentence, from `runStatusLabel` in `@DeFlow/core`.
+   *
+   * Carried beside the machine value rather than derived at render time,
+   * because the render is where the second wording got in last time: this
+   * command printed `created — no nodes yet` while the CLI's attached view
+   * printed `task submitted` and the UI printed `No plan yet`, about one run at
+   * one instant, and each was locally defensible.
+   */
+  readonly label: string;
   /** Node ids grouped by status, with the empty statuses left out. */
   readonly nodeCounts: Readonly<Partial<Record<NodeStatus, number>>>;
+  /**
+   * KAR-19.12 AC5 — the gate this run has stopped on, or `null`.
+   *
+   * Beside the label rather than folded into it, because they answer different
+   * questions and only one of them is a *status*: a run whose status is
+   * `running` can be blocked on a `human` node, and `running` is then true,
+   * useless, and exactly the sentence that sends an operator to read the
+   * ledger. `runStatusLabel` gains no fourth spelling (KAR-19.1 AC6);
+   * `pendingGate` supplies this.
+   */
+  readonly gate: PendingGate | null;
 }
 
 /** Why the recorded daemon is not the daemon. @see the module note. */
@@ -105,6 +127,15 @@ export interface RunningStatus {
   readonly epoch: number | null;
   readonly startedAt: number;
   readonly uptimeMs: number;
+  /**
+   * KAR-19.1 AC2 — the interval of the ticker this daemon life started, as
+   * `daemon.json` recorded it; `null` for a file written before this story.
+   *
+   * Reported because a daemon that never started its loop is indistinguishable
+   * from a healthy one from out here — which is exactly how five of
+   * `RECOVERY_STEPS`' eight passed for all of them.
+   */
+  readonly tickIntervalMs: number | null;
   readonly runs: readonly ActiveRun[];
   /** Why the run list is empty, when it is empty because of a failure. */
   readonly ledgerError: string | null;
@@ -158,7 +189,8 @@ function readDaemonFile(path: string): DaemonFile | 'absent' | 'unreadable' {
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    const { pid, port, startedAt, processStartedAt } = parsed as Partial<DaemonFile>;
+    const { pid, port, startedAt, processStartedAt, tickIntervalMs } =
+      parsed as Partial<DaemonFile>;
     if (typeof pid !== 'number' || typeof port !== 'number' || typeof startedAt !== 'number') {
       return 'unreadable';
     }
@@ -168,6 +200,7 @@ function readDaemonFile(path: string): DaemonFile | 'absent' | 'unreadable' {
       token: '',
       startedAt,
       processStartedAt: typeof processStartedAt === 'string' ? processStartedAt : null,
+      tickIntervalMs: typeof tickIntervalMs === 'number' ? tickIntervalMs : null,
     };
   } catch {
     return 'unreadable';
@@ -210,7 +243,13 @@ function activeRuns(dataDir: string): {
       for (const node of Object.values(state.nodes)) {
         nodeCounts[node.status] = (nodeCounts[node.status] ?? 0) + 1;
       }
-      runs.push({ runId, status: state.status, nodeCounts });
+      runs.push({
+        runId,
+        status: state.status,
+        label: runStatusLabel(state),
+        nodeCounts,
+        gate: pendingGate(state),
+      });
     }
     return { runs, epoch, error: null };
   } catch (error) {
@@ -283,15 +322,24 @@ export function readStatus(options: StatusOptions = {}): DaemonStatus {
     epoch: ledger.epoch,
     startedAt: file.startedAt,
     uptimeMs: Math.max(0, clock.now() - file.startedAt),
+    tickIntervalMs: file.tickIntervalMs,
     runs: ledger.runs,
     ledgerError: ledger.error,
   };
 }
 
-/** `2 completed, 1 running`, or `no nodes yet`. */
+/**
+ * `2 completed, 1 running`, or the empty string for a run with no nodes.
+ *
+ * Empty rather than a sentence of its own: the run's *status* is already on the
+ * line, from `runStatusLabel`, and a second clause explaining the same fact in
+ * different words is how `created — no nodes yet` came to disagree with
+ * `task submitted` and `No plan yet` about one run (KAR-19.1 AC6).
+ */
 function renderNodeCounts(counts: Readonly<Partial<Record<NodeStatus, number>>>): string {
-  const parts = Object.entries(counts).map(([status, count]) => `${count} ${status}`);
-  return parts.length === 0 ? 'no nodes yet' : parts.join(', ');
+  return Object.entries(counts)
+    .map(([status, count]) => `${count} ${status}`)
+    .join(', ');
 }
 
 /** Why a stale record is stale, as the sentence an operator reads. */
@@ -335,8 +383,17 @@ function runsSection(status: RunningStatus): ReportSection {
     title: 'Runs',
     rows: status.runs.map((run) => ({
       id: run.runId,
-      state: 'ok' as const,
-      detail: `${run.status} — ${renderNodeCounts(run.nodeCounts)}`,
+      // AC5 — a run that is waiting on a person is an outstanding fact, and an
+      // `ok` row is one an operator stops reading.
+      state: run.gate === null ? ('ok' as const) : ('warn' as const),
+      detail: [run.label, renderNodeCounts(run.nodeCounts)]
+        .filter((part) => part !== '')
+        .join(' — '),
+      ...(run.gate === null
+        ? {}
+        : {
+            action: `${pendingGateSummary(run.gate)}; answer it with 'deflow answer ${run.runId} --gate ${run.gate.node} --option ${run.gate.options[0]?.id ?? '<option>'}'`,
+          }),
     })),
   };
 }
@@ -401,6 +458,14 @@ export function toReport(status: DaemonStatus): Report {
             detail: status.epoch === null ? 'unknown' : String(status.epoch),
           },
           { id: 'uptime', state: 'ok', detail: formatUptime(status.uptimeMs) },
+          {
+            id: 'ticker',
+            state: 'ok',
+            detail:
+              status.tickIntervalMs === null
+                ? 'unknown — this daemon.json records no ticker interval'
+                : `running, every ${status.tickIntervalMs} ms`,
+          },
           { id: 'data dir', state: 'ok', detail: status.dataDir },
           { id: 'url', state: 'ok', detail: `http://127.0.0.1:${status.port}` },
         ],
@@ -428,10 +493,13 @@ export function renderStatusJson(status: DaemonStatus): string {
           daemonEpoch: status.epoch,
           startedAt: status.startedAt,
           uptimeMs: status.uptimeMs,
+          tickIntervalMs: status.tickIntervalMs,
           runs: status.runs.map((run) => ({
             runId: run.runId,
             status: run.status,
+            label: run.label,
             nodeCounts: run.nodeCounts,
+            gate: run.gate,
           })),
         }
       : status.kind === 'stale'

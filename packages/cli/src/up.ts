@@ -25,10 +25,13 @@ import type { Clock } from '@DeFlow/core';
 import {
   type Booted,
   boot,
+  createLiveRunChain,
+  createLiveRunExecution,
   daemonFilePath,
   EX_ALREADY_RUNNING,
   PortInUse,
   type ProviderDetectionEntry,
+  pathRoots,
   pickPort,
   probeProvidersOnBoot,
   type ReapDecision,
@@ -346,6 +349,34 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
   took('pick-port');
 
   // ── 2–7. the daemon itself ─────────────────────────────────────────────────
+  //
+  // KAR-19.3 — and the chain, bound here.
+  //
+  // This is the line whose absence was the 2026-08-12 failure: `boot()` has
+  // taken `runFraming` and `advanceRun` as ports since KAR-19.1, `drive.ts`
+  // returns early when they are undefined, and every caller of `boot()` left
+  // them out — so a submitted run reached its framing wake and stopped, with a
+  // green suite in every direction. The chain is constructed *here* rather than
+  // inside `boot()` for the same reason `probeProviders` and `providerRoots`
+  // are passed in: it spawns vendor binaries resolved against the operator's
+  // own `PATH`, and this command is the one thing that runs in their terminal.
+  const chain = createLiveRunChain({
+    dataDir,
+    clock,
+    providerRoots: pathRoots(env),
+    daemonEnv: env,
+  });
+  // KAR-19.4 AC1 — and the executor, which is the same line one step further
+  // on. A daemon that frames and compiles but binds no `executeNodes` stops at
+  // `plan.proposed`, which is what an operator saw for a day after the chain
+  // was bound: a plan on screen and nothing running it.
+  const execution = createLiveRunExecution({
+    dataDir,
+    clock,
+    providerRoots: pathRoots(env),
+    daemonEnv: env,
+  });
+
   let daemon: Booted;
   try {
     daemon = await boot({
@@ -354,8 +385,17 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
       dev: false,
       ...(options.migrations === undefined ? {} : { migrations: options.migrations }),
       onStep: (step) => took(step),
+      runFraming: chain.runFraming,
+      advanceRun: chain.advanceRun,
+      executeNodes: execution.executeNodes,
       probeProviders: ({ db, dataDir: dir }) =>
         probeProvidersOnBoot({ db, clock, dataDir: dir, env, randomHex }),
+      // KAR-19.2 AC1 — the roots admission resolves against, which are the
+      // operator's own. This command runs in their terminal, which is the one
+      // context where reading `PATH` is correct rather than a machine-specific
+      // bug (§4.3) — and the same argument that makes `probeProviders` a port
+      // here rather than a call inside `boot()`.
+      providerRoots: pathRoots(env),
     });
   } catch (error) {
     if (error instanceof DaemonAlreadyRunning) {

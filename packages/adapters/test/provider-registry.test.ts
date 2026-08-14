@@ -43,14 +43,26 @@ function planFor(spec: ProviderSpec, variant = 0): ReturnType<typeof spawnPlan> 
 }
 
 suite('one entry per vendor, not one code path per vendor (AC1)', () => {
-  it('covers exactly the five verified providers', () => {
+  it('covers exactly the five verified providers, plus the bundled agent', () => {
+    // `mock` is KAR-19.7's and is not a sixth vendor: it is the agent that
+    // ships in DeFlow's own tarball, entered here because every schema-bearing
+    // turn is admitted only onto a provider that declares a
+    // `structuredOutputFlag`, and without it a machine with no vendor CLI
+    // could not get past framing at all. `bundled` is what keeps it from ever
+    // being preferred to one of the five.
     expect(Object.keys(PROVIDER_SPECS).toSorted()).toEqual([
       'claude',
       'codex',
       'copilot',
       'gemini',
+      'mock',
       'opencode',
     ]);
+    expect(
+      Object.values(PROVIDER_SPECS)
+        .filter((spec) => spec.bundled === true)
+        .map((spec) => spec.id),
+    ).toEqual(['mock']);
   });
 
   it('every spec declares id, kind, resolve, argv and env', () => {

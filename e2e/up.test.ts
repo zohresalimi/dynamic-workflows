@@ -113,6 +113,9 @@ suite('DeFlow up, first boot (EPIC-18-S7)', () => {
       'port',
       'processStartedAt',
       'startedAt',
+      // KAR-19.1 AC2 — the ticker this daemon life started, so `DeFlow status`
+      // reports the loop rather than assuming it.
+      'tickIntervalMs',
       'token',
     ]);
     expect(file.processStartedAt).toEqual(expect.any(String));

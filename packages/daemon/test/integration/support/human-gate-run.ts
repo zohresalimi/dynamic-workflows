@@ -108,15 +108,21 @@ export function humanPlan(deadline?: Deadline): Record<string, unknown> {
 /**
  * The ledger up to the instant the plan starts: approved spec, proposed plan,
  * started run. Everything after this is produced by the real scheduler.
+ *
+ * `epoch` is a parameter for the same reason `driveToTheGate`'s is: a spec that
+ * seeds this run into a **booted** daemon's ledger has to stamp that daemon's
+ * own epoch, because the reducer skips an event carrying an older one — a
+ * fixture written at a higher epoch than the daemon then answers at would leave
+ * the answer unread, and one written at a lower one would fold to nothing.
  */
-export function seedHumanRun(db: Db, deadline?: Deadline): void {
+export function seedHumanRun(db: Db, deadline?: Deadline, epoch: number = EPOCH): void {
   appendEvents(db, [
     {
       runId: HUMAN_RUN,
       ts: T0,
       kind: 'run.created',
       v: 1,
-      epoch: EPOCH,
+      epoch,
       payload: { spec: taskSpec, cwd: REPO, repo: { head: 'e83c516', branch: 'main' } },
     },
     {
@@ -124,7 +130,7 @@ export function seedHumanRun(db: Db, deadline?: Deadline): void {
       ts: T0,
       kind: 'run.spec.approved',
       v: 1,
-      epoch: EPOCH,
+      epoch,
       payload: { specHash: SPEC_HASH, by: 'ui' },
     },
     {
@@ -132,7 +138,7 @@ export function seedHumanRun(db: Db, deadline?: Deadline): void {
       ts: T0,
       kind: 'plan.proposed',
       v: 2,
-      epoch: EPOCH,
+      epoch,
       payload: { version: 1, planHash: PLAN_HASH, graph: humanPlan(deadline), by: 'planner' },
     },
     {
@@ -140,7 +146,7 @@ export function seedHumanRun(db: Db, deadline?: Deadline): void {
       ts: T0,
       kind: 'run.started',
       v: 1,
-      epoch: EPOCH,
+      epoch,
       payload: { planHash: PLAN_HASH },
     },
   ]);

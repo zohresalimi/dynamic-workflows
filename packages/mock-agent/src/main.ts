@@ -34,6 +34,7 @@ import {
   parseArgv,
   type ReplaySelection,
   SCENARIO_ENV,
+  type StructuredSelection,
   USAGE,
   VERSION_ENV,
 } from './cli.ts';
@@ -42,6 +43,14 @@ import { parseRecording, parseRecordingKey } from './recording.ts';
 import { lines, runReplay } from './replay.ts';
 import { parseScenario, type Scenario } from './scenario.ts';
 import { recordInvocation } from './side-effect-log.ts';
+import {
+  canServe,
+  MOCK_STRUCTURED_OUTPUT_FLAG,
+  renderReturn,
+  SERVABLE_SCHEMA_IDS,
+  schemaIdFromPath,
+  schemaIdOf,
+} from './structured.ts';
 
 export interface Io {
   readonly stdin: NodeJS.ReadableStream;
@@ -71,6 +80,16 @@ export const CAPABILITIES_EXIT_CODE = 4;
  * would read as its own.
  */
 export const RECORDING_EXIT_CODE = 5;
+
+/**
+ * KAR-19.7 AC6 — exit code for a schema this binary cannot serve.
+ *
+ * Its own code rather than `SCENARIO_EXIT_CODE`: "the script is broken" and
+ * "you asked for a document I do not know how to write" send the reader to
+ * different files, and a caller that had to read the prose to tell them apart
+ * would eventually stop.
+ */
+export const STRUCTURED_EXIT_CODE = 6;
 
 /**
  * KAR-05.5 — `--wire-log`: every complete line that arrived on stdin, appended
@@ -259,6 +278,69 @@ async function replay(selection: ReplaySelection, io: Io): Promise<number> {
   }
 }
 
+/**
+ * KAR-19.7 — the structured turn: one document on stdout, or a loud refusal and
+ * nothing at all.
+ *
+ * There is deliberately no third outcome. A nearest-match, an empty object or a
+ * paragraph of prose would each turn the whole chain green on a document nothing
+ * actually produced — this epic's own failure mode, reproduced inside the test
+ * double — and an empty object validates against a permissive schema, so the
+ * caller could not even tell. Every refusal therefore writes **zero bytes** on
+ * stdout, names the schema id it was asked for, and lists the ids it can serve,
+ * which is what turns "the smoke test failed" into a one-line diagnosis.
+ *
+ * No ACP transport is opened on this path: the flag selects an exec-shaped
+ * invocation, which is how a `structuredOutputFlag` provider is driven
+ * (`provider-registry.ts`'s shim spec) and what makes the process's own exit
+ * code the answer.
+ */
+function structured(
+  selection: StructuredSelection,
+  seed: number,
+  scenario: Scenario | null,
+  io: Io,
+): number {
+  const servable = `it can serve: ${SERVABLE_SCHEMA_IDS.join(', ')}`;
+
+  const refuse = (message: string): number => {
+    io.stderr.write(`${BIN_NAME}: ${message}\n${BIN_NAME}: ${servable}\n`);
+    return STRUCTURED_EXIT_CODE;
+  };
+
+  let text: string;
+  try {
+    text = readFileSync(selection.schemaPath, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'unknown error';
+    const named = schemaIdFromPath(selection.schemaPath);
+    return refuse(
+      `${selection.schemaPath}: cannot read the schema file (${code})` +
+        `${named === null ? '' : `, so ${named} was not served`}`,
+    );
+  }
+
+  const schemaId = schemaIdOf(text) ?? schemaIdFromPath(selection.schemaPath);
+  if (schemaId === null) {
+    return refuse(
+      `${selection.schemaPath}: names no schema id — a schema document carries it in "title" ` +
+        'or in "$id", and guessing one from the path is how a caller is served the wrong ' +
+        'document under the right filename',
+    );
+  }
+  if (!canServe(schemaId)) {
+    return refuse(
+      `no generator for ${schemaId} (${MOCK_STRUCTURED_OUTPUT_FLAG} ${selection.schemaPath})`,
+    );
+  }
+
+  const document = renderReturn(schemaId, seed, scenario?.returns ?? null);
+  if (document === null) return refuse(`no generator for ${schemaId}`);
+
+  io.stdout.write(document);
+  return 0;
+}
+
 export async function run(
   argv: readonly string[],
   io: Io = processIo(),
@@ -300,6 +382,14 @@ export async function run(
     // and a scenario problem is not an argv problem.
     io.stderr.write(`${BIN_NAME}: ${loaded.message}\n`);
     return SCENARIO_EXIT_CODE;
+  }
+
+  // KAR-19.7 — the schema is what selects this path, and only the schema. A
+  // turn invoked without the flag falls straight through to the ACP session
+  // this binary has always served, so EPIC-04's scenarios and recordings
+  // produce byte-identical output before and after this story.
+  if (parsed.options.structured !== null) {
+    return structured(parsed.options.structured, parsed.options.seed, loaded.scenario, io);
   }
 
   const loadedCapabilities = loadCapabilities(parsed.options.capabilities);

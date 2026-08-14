@@ -15,11 +15,15 @@
 import { DaemonAlreadyRunning } from '@DeFlow/ledger';
 import { type Booted, boot, EX_ALREADY_RUNNING } from './boot.ts';
 import { systemClock } from './clock.ts';
+import { resolveDataDir } from './data-dir.ts';
 import { NonLoopbackBindRefused } from './http/auth.ts';
 import { DEFAULT_PORT } from './http/server.ts';
 import { log } from './logging.ts';
 import { BOOT_ID, BUILD } from './meta.ts';
+import { createLiveRunChain } from './pipeline/live-chain.ts';
+import { createLiveRunExecution } from './pipeline/live-nodes.ts';
 import { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
+import { pathRoots } from './providers/detect.ts';
 
 const daemon = log.child({ mod: 'daemon' });
 
@@ -42,10 +46,36 @@ if (!schemas.ok) {
   process.exit(EX_CONFIG);
 }
 
+// KAR-19.3 — the chain, bound in the second composition root.
+//
+// `DeFlow up` is the production one and binds the same two ports; this is the
+// daemon `pnpm dev` runs under `node --watch`, and a dev daemon whose runs park
+// at the framing wake is a dev loop that cannot see the bug this epic exists to
+// remove. It runs in the developer's own terminal, so reading their `PATH` here
+// is correct for exactly the reason it is correct in `up.ts` — and nowhere
+// else.
+const dataDir = resolveDataDir();
+const chain = createLiveRunChain({
+  dataDir,
+  clock: systemClock,
+  providerRoots: pathRoots(process.env),
+  daemonEnv: process.env,
+});
+const execution = createLiveRunExecution({
+  dataDir,
+  clock: systemClock,
+  providerRoots: pathRoots(process.env),
+  daemonEnv: process.env,
+});
+
 let started: Booted;
 try {
   started = await boot({
+    dataDir,
     port: port(),
+    runFraming: chain.runFraming,
+    advanceRun: chain.advanceRun,
+    executeNodes: execution.executeNodes,
     ...(process.env.DeFlow_HOST === undefined ? {} : { hostname: process.env.DeFlow_HOST }),
     // KAR-15.2 AC12 — the explicit flag, and the only way past loopback.
     // `DeFlow_HOST` on its own is not enough on purpose: naming an address is

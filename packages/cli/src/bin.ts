@@ -26,6 +26,8 @@
  */
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { runAnswer } from './answer.ts';
+import { runCancel } from './cancel.ts';
 import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
@@ -74,6 +76,8 @@ Commands:
   init            Prepare .DeFlow/ in the current git repository
   up              Start the daemon and open the UI
   run             Start a run and watch it, with no browser at all
+  answer          Answer a human gate a run is waiting on, with no browser
+  cancel          Stop a run, whether or not it ever started
   doctor          Report what this machine can do, and what it cannot
   status          Report the running daemon, or say there is none
   ledger snapshot Copy the ledger to one file, for a bug report
@@ -100,6 +104,32 @@ Exit codes for "run": 0 completed with every gate passed, 1 a failed gate or a
 failed node, 2 the daemon refused to start, 3 paused on a budget ceiling, 4
 waiting on a human gate under --no-wait, 5 this machine cannot host a run, 130
 interrupted.
+
+Usage for "cancel":
+  DeFlow cancel <runId> [--force]
+                  Stop a run. Cooperative by default: the agent is given the
+                  chance to flush its transcript first. --force walks
+                  session/cancel, SIGTERM, a grace window and SIGKILL, and
+                  answers only once the kill is verified — the transcript may
+                  be truncated. A run that never started is ended outright, and
+                  a run that has already ended is reported and left alone.
+  --mode <mode>   cooperative | forceful; the long spelling of --force
+
+Exit codes for "cancel": 0 stopped, or already ended; 1 the daemon refused,
+including an unknown run id; 2 no daemon is running.
+
+Usage for "answer":
+  deflow answer <runId> --gate <node> --option <id> [--text <text>]
+                  Answer the human gate a run has stopped on. The gate and the
+                  option are named, never guessed: "deflow run" prints the
+                  exact line when the run stops, and "deflow status" names the
+                  gate of every run that is waiting.
+  --text <text>   A rejection's reason, an inject option's guidance, or a note
+                  on any option.
+
+Exit codes for "answer": 0 answered; 1 the daemon refused, including an option
+the gate does not offer and a gate that is not open; 2 no daemon is running;
+64 the argv was wrong.
 
 Options for "doctor":
   --json          Emit one machine-readable document instead of the report
@@ -242,6 +272,21 @@ function status(argv: readonly string[]): number {
   return result.exitCode;
 }
 
+/**
+ * `DeFlow answer <runId> --gate <node> --option <id>` (KAR-19.12) — the command
+ * the gate announcement tells the operator to run.
+ *
+ * No usage text on a bad argv beyond the parser's own sentence, for the reason
+ * `cancel` gives: printing the whole of `USAGE` for a missing `--option` buries
+ * the one line that says what to pass.
+ */
+async function answer(argv: readonly string[]): Promise<number> {
+  const result = await runAnswer({ argv, env: process.env, style: STYLE });
+  if (result.stdout !== '') process.stdout.write(result.stdout);
+  if (result.stderr !== '') process.stderr.write(result.stderr);
+  return result.exitCode;
+}
+
 /** `DeFlow ledger snapshot <runId> --out <path>` (KAR-18.7). */
 function ledger(argv: readonly string[]): number {
   const parsed = parseLedgerArgs(argv);
@@ -257,6 +302,21 @@ function ledger(argv: readonly string[]): number {
     out: parsed.args.out,
     style: STYLE,
   });
+  if (result.stdout !== '') process.stdout.write(result.stdout);
+  if (result.stderr !== '') process.stderr.write(result.stderr);
+  return result.exitCode;
+}
+
+/**
+ * `DeFlow cancel <runId>` (KAR-19.6) — the command `run`'s own detach sentence
+ * has always named.
+ *
+ * No usage text on a bad argv beyond the parser's own sentence: `cancel` takes
+ * one argument and one flag, and printing the whole of `USAGE` for a mistyped
+ * mode buries the one line that says which two modes exist.
+ */
+async function cancel(argv: readonly string[]): Promise<number> {
+  const result = await runCancel({ argv, env: process.env, style: STYLE });
   if (result.stdout !== '') process.stdout.write(result.stdout);
   if (result.stderr !== '') process.stderr.write(result.stderr);
   return result.exitCode;
@@ -282,6 +342,10 @@ async function main(argv: readonly string[]): Promise<number> {
   if (command === 'status') return status(argv.slice(1));
 
   if (command === 'ledger') return ledger(argv.slice(1));
+
+  if (command === 'cancel') return cancel(argv.slice(1));
+
+  if (command === 'answer') return answer(argv.slice(1));
 
   if (command === 'run') {
     return runRun({

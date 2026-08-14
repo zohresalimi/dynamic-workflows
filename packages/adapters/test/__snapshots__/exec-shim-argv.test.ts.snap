@@ -120,5 +120,18 @@ exports[`each vendor’s headless invocation (EPIC-05-S29, AC1) > is a snapshot 
       "summarise the failing test",
     ],
   },
+  {
+    "bin": "DeFlow-mock-agent",
+    "dialect": "document",
+    "formats": [
+      "json",
+    ],
+    "provider": "mock",
+    "read": [
+      "--prompt",
+      "summarise the failing test",
+    ],
+    "worktree": "refused: the vendor has no flag for this level",
+  },
 ]
 `;

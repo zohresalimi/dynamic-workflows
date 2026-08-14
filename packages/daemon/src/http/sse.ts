@@ -47,6 +47,16 @@ export const GLOBAL_TOPIC_KINDS: readonly string[] = [
   'human.requested',
 ];
 
+/**
+ * KAR-19.2 AC8 — the kinds after which a run says nothing else, ever.
+ *
+ * The two `endRun` folds, and no third. `run.stalled` is deliberately absent —
+ * F4.7 is *"surfaced, never auto-killed"*, and a stalled run is one somebody is
+ * about to interject on. `needs-human` likewise: it is a run waiting for a
+ * person, which is the one state a stream must stay open through.
+ */
+export const TERMINAL_KINDS: readonly string[] = ['run.completed', 'run.aborted'];
+
 /** The named frames, and the whole set of them (§3.2 rule 4). */
 export const CONTROL_EVENTS = ['hello', 'subscribed', 'caught_up', 'fatal'] as const;
 export type ControlEvent = (typeof CONTROL_EVENTS)[number];

@@ -58,6 +58,21 @@ suite('normaliseSnapshotText', () => {
     expect(normaliseSnapshotText(join(repoRoot, 'packages', 'core'))).toBe('<repo>/packages/core');
   });
 
+  /**
+   * KAR-19.12 — the e2e suites do not all use one `mkdtemp` prefix:
+   * `e2e/support/daemon.ts` asks for `DeFlow-` and `e2e/support/up.ts` asks for
+   * `DeFlow-up-`, so a real directory is `<tmp-root>/DeFlow-up-ualuXM`. The rule
+   * stopped at the first hyphen, which left the six random characters of the
+   * suffix in the text — invisible until KAR-19.10 put a resolved provider
+   * binary path into `deflow run`'s transcript, at which point `e2e/run.test.ts`
+   * had a snapshot that could never match twice.
+   */
+  it('replaces a tmp directory whose prefix itself contains a hyphen', () => {
+    expect(normaliseSnapshotText(join(tmpdir(), 'DeFlow-up-ualuXM', 'bin', 'claude'))).toBe(
+      '<tmp>/bin/claude',
+    );
+  });
+
   it('replaces a port in an address and in a URL', () => {
     expect(normaliseSnapshotText('listening on 127.0.0.1:54321')).toBe(
       'listening on 127.0.0.1:<port>',

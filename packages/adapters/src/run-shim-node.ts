@@ -75,6 +75,7 @@ import { dirname } from 'node:path';
 import process from 'node:process';
 import type { Readable } from 'node:stream';
 import { admit } from './admission.ts';
+import { argumentRefused, rejectedArgument } from './argument-refusal.ts';
 import { budgetConsumed } from './budget-consumed.ts';
 import type { CapabilityRow } from './capabilities.ts';
 import { compactionEnv } from './compaction.ts';
@@ -273,6 +274,18 @@ export interface ShimNodeRequest {
    * the manifest rather than assumed.
    */
   readonly schemaPath?: string;
+  /**
+   * KAR-19.11 AC1 — the schema document's own bytes, for a vendor whose entry
+   * declares its structured-output argument `inline-json`.
+   *
+   * Claude Code 2.1.220 parses the value of `--json-schema` as JSON and exits 1
+   * when it does not parse. The caller reads the file — this package performs
+   * no I/O — and the registry decides from the entry's declared form whether
+   * the path or the document reaches the command line. Omitting it for a vendor
+   * that wants the document is a construction-time refusal, never a fallback to
+   * the path: falling back is the defect.
+   */
+  readonly schemaDocument?: string;
   /**
    * KAR-14.2 AC9 — this node's own cost ceiling in USD, armed on the vendor's
    * own budget flag as defence in depth *below* DeFlow's admission check.
@@ -622,6 +635,7 @@ export async function runShimNode(
         permission: request.permission,
         ...(request.format === undefined ? {} : { format: request.format }),
         ...(request.schemaPath === undefined ? {} : { schemaPath: request.schemaPath }),
+        ...(request.schemaDocument === undefined ? {} : { schemaDocument: request.schemaDocument }),
         ...(request.costCeilingUsd === undefined ? {} : { costCeilingUsd: request.costCeilingUsd }),
       },
       request.sandbox,
@@ -1021,6 +1035,26 @@ export async function runShimNode(
         event('provider.rate_limited', { provider: request.provider, raw: blind.raw }),
       );
       return refuse(blind.thrown, common(exit));
+    }
+
+    // KAR-19.8 AC5, AC6 — the child refused an argument *DeFlow* chose. That
+    // is a different diagnosis from "the turn went wrong": it names the flag
+    // and the value in the failure, and it is `permanent`, because an argument
+    // this vendor refuses now is one it refuses on every attempt. The
+    // 2026-08-13 log — the same error at 11:07:13, 11:07:44, 11:08:14 — is what
+    // classifying it `transient` looks like from the outside.
+    const rejected = rejectedArgument({ argv: plan.argv, stderr: stderrTail(), spec });
+    if (rejected !== null) {
+      return refuse(
+        argumentRefused({
+          provider: request.provider,
+          rejected,
+          stderr: stderrTail(),
+          code: exit.code,
+          signal: exit.signal,
+        }),
+        common(exit),
+      );
     }
 
     // Exit without a result envelope, whatever the code. The worst outcome in

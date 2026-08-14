@@ -60,9 +60,40 @@ function assertBranchSafe(component: BranchIdComponent, value: string): void {
 }
 
 /**
+ * A `RunId` rendered so a ref can be named after it, and the **only**
+ * transformation this module performs on any id.
+ *
+ * Added by KAR-19.5, because binding `executeNodes` in the composition root
+ * made a latent cross-epic collision reachable for the first time: a `RunId` is
+ * `run_YYYYMMDDTHHMMSSZ_<hex>` (EPIC-03), whose `T` and `Z` are uppercase, and
+ * `BRANCH_SAFE` is lowercase-only (EPIC-07 AC5). So **no run at all** could
+ * have a node branch or a salvage ref composed for it — `nodeBranch` threw
+ * `UnsafeRefError` on every run in existence, and nothing had noticed because
+ * nothing shipped had ever called it. The first live agent node failed with
+ * `internal` and that message.
+ *
+ * Lowercasing is safe *here and only here*, and the distinction is the whole
+ * justification for making an exception to this module's no-transformation
+ * rule. AC5's concern is two ids that differ only in case colliding into one
+ * worktree path — which needs two ids whose case an operator or a planner
+ * chose. A `RunId`'s uppercase characters are DeFlow's own constant separators
+ * at fixed positions in a schema-validated shape, so lowercasing is injective
+ * over the entire set of run ids by construction. `nodeId` gets no such
+ * treatment: a plan may name a node anything, so `Implement` and `implement`
+ * stay two ids and `assertBranchSafe` still refuses both-cased ones outright.
+ */
+export function runRef(runId: string): string {
+  return runId.toLowerCase();
+}
+
+/**
  * D13: the one place a node's branch name is composed. `runId` and `nodeId`
  * are validated separately, so the thrown error always names the offending
  * component — before either value can reach git (AC1, AC2).
+ *
+ * Callers composing a ref for a live run pass `runRef(runId)` rather than the
+ * run id itself; see that function for why the transformation is theirs to
+ * apply and not this one's to assume.
  */
 export function nodeBranch(runId: string, nodeId: string): string {
   assertBranchSafe('runId', runId);

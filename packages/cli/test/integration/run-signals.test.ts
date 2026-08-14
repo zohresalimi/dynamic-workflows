@@ -25,6 +25,15 @@
  * > still there to be advanced after the CLI is gone, and a second
  * > `DeFlow run --attach` renders the transcript so far. The completed-plan
  * > half belongs to the orchestration wiring and is a follow-up on the story.
+ * >
+ * > **Narrowed 2026-08-13 by KAR-19.3 and KAR-19.4.** The orchestration wiring
+ * > exists: `compilePlanV1` and `executeRun` both have shipped callers and the
+ * > ticker runs, so a submitted run does now reach `run.completed`. The reason
+ * > these two scenarios still stop short is narrower and is not this epic's —
+ * > the run below is submitted on a machine whose only provider is the bundled
+ * > ACP-only mock agent, which `admitFraming` refuses for a schema-bearing turn,
+ * > so it parks at the F1.3 gate rather than being planned. EPIC-04's
+ * > structured-output path is the prerequisite; KAR-19.5 is where it is spent.
  *
  * Verifies: EPIC-18-S20, EPIC-18-S21 · AC3, AC4 · test plan #3, #4
  */
@@ -34,12 +43,15 @@ import { drainEvents } from '@DeFlow/ledger';
 import { it, makeRepo } from '@DeFlow/testkit';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, describe as suite } from 'vitest';
 import {
   alive,
   api,
   daemonFile,
+  HERMETIC_PATH,
+  MOCK_AGENT_BIN,
   type RunProcess,
   sleep,
   spawnRun,
@@ -64,6 +76,34 @@ afterEach(async () => {
 
 const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 
+/**
+ * KAR-19.2 — the bundled mock agent, linked on under the name it actually
+ * ships as. Needed only by S21, whose `DeFlow run` autostarts its own daemon
+ * and would otherwise be refused at submission before there is anything to
+ * signal; harmless for S20, whose daemon is already up and was admitted (or
+ * not) at its own boot, before this ever runs.
+ *
+ * > **Corrected 2026-08-13 by KAR-19.8.** It used to link the same binary as
+ * > `claude` and `claude-agent-acp`, which made the daemon build *Claude
+ * > Code's* argv and hand it to a binary that answers `unknown argument "-p"`.
+ * > That was survivable only while such an exit was classified `transient`: the
+ * > framing turn failed, a retry was scheduled ~30 s out, and the run stayed in
+ * > flight long enough for the second terminal below to attach to it. KAR-19.8
+ * > AC6 makes an argument the vendor refuses `permanent`, so that run now
+ * > aborts at once — correctly — and there is nothing left to Ctrl-C.
+ * >
+ * > The fix is to stop lying about which binary this is. Under its own name the
+ * > bundled agent is admitted, serves the framing turn (KAR-19.7) and the run
+ * > parks at the F1.3 spec gate waiting for a human, which is a run that is
+ * > genuinely still in flight — what these two scenarios were always about.
+ */
+async function usableProviderBinDir(dir: string): Promise<string> {
+  const binDir = join(dir, 'bin');
+  await mkdir(binDir, { recursive: true });
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'DeFlow-mock-agent'));
+  return binDir;
+}
+
 /** Starts `DeFlow run` and waits until it has created a run and is watching. */
 async function startWatching(
   tmp: string,
@@ -71,8 +111,14 @@ async function startWatching(
   const dataDir = join(tmp, 'data');
   mkdirSync(dataDir, { recursive: true });
   const repo = await makeRepo({ dir: join(tmp, 'repo') });
+  const binDir = await usableProviderBinDir(tmp);
 
-  const cli = spawnRun({ dataDir, cwd: repo.dir, args: ['add a health endpoint'] });
+  const cli = spawnRun({
+    dataDir,
+    cwd: repo.dir,
+    args: ['add a health endpoint'],
+    env: { PATH: [binDir, HERMETIC_PATH].join(':') },
+  });
   started.push({ dataDir, process: cli });
 
   const runId = await until('the CLI printed a run id', () => {

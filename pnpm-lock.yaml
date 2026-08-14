@@ -263,6 +263,9 @@ importers:
 
   e2e:
     devDependencies:
+      '@DeFlow/adapters':
+        specifier: workspace:*
+        version: link:../packages/adapters
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../packages/core
@@ -293,6 +296,9 @@ importers:
       '@DeFlow/core':
         specifier: workspace:*
         version: link:../core
+      '@DeFlow/mock-agent':
+        specifier: workspace:*
+        version: link:../mock-agent
       '@agentclientprotocol/sdk':
         specifier: 'catalog:'
         version: 1.3.0(zod@4.4.3)
@@ -303,9 +309,6 @@ importers:
       '@DeFlow/ledger':
         specifier: workspace:*
         version: link:../ledger
-      '@DeFlow/mock-agent':
-        specifier: workspace:*
-        version: link:../mock-agent
       '@DeFlow/testkit':
         specifier: workspace:*
         version: link:../testkit

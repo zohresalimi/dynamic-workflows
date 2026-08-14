@@ -85,6 +85,12 @@ export default defineConfig({
           name: 'e2e',
           environment: 'node',
           include: ['e2e/**/*.test.ts'],
+          // The smoke slice below owns `e2e/smoke/`. Without this exclusion it
+          // would be collected here *as well*, and the one thing KAR-19.5 AC5
+          // buys — a serialised slice with a stated budget — would be running
+          // twice, once under a 180 s timeout that asserts nothing about cold
+          // start.
+          exclude: [...configDefaults.exclude, 'e2e/smoke/**'],
           testTimeout: 180_000,
           hookTimeout: 180_000,
           pool: 'forks',
@@ -113,6 +119,34 @@ export default defineConfig({
           include: ['packages/*/test/crash-fuzz/**/*.test.ts'],
           testTimeout: 300_000,
           hookTimeout: 300_000,
+          pool: 'forks',
+          fileParallelism: false,
+          maxWorkers: 1,
+        },
+      },
+
+      {
+        extends: true,
+        test: {
+          // KAR-19.5 — the live smoke slice: the built binary, a daemon in its
+          // own process, a real ledger on disk, and `DeFlow-mock-agent` as the
+          // only provider. One scenario, plus the sabotage table that proves it
+          // can go red.
+          //
+          // Its own project rather than more e2e specs because it wants two
+          // things that slice must not have: a timeout that *is* the budget
+          // (KAR-19.5 AC6 — 90 s, so a regression in cold start is a red test
+          // rather than a slow afternoon), and a guarantee that it runs in
+          // `pnpm test` without a flag. A smoke test behind a flag reproduces
+          // the exact gap this epic exists to close.
+          //
+          // Serialised for the same reason e2e is: it binds a port and owns a
+          // data directory, so two files at once is a race by construction.
+          name: 'smoke',
+          environment: 'node',
+          include: ['e2e/smoke/**/*.test.ts'],
+          testTimeout: 90_000,
+          hookTimeout: 90_000,
           pool: 'forks',
           fileParallelism: false,
           maxWorkers: 1,

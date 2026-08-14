@@ -62,6 +62,7 @@ import {
   ledgerFrame,
   parseRuns,
   RETRY_FRAME,
+  TERMINAL_KINDS,
 } from './sse.ts';
 import { registerStream } from './streams.ts';
 
@@ -208,6 +209,8 @@ export function serveStream(c: Context): Response {
     // A cursor of its own, because the global topic is not a run: it advances
     // over the whole `event` table and must not be confused with any run's.
     let globalCursor = since;
+    /** The subscribed runs this connection has already delivered an ending for. */
+    const ended = new Set<RunId>();
     let lastWriteAt = clock.now();
 
     const write = async (frame: string): Promise<void> => {
@@ -241,6 +244,7 @@ export function serveStream(c: Context): Response {
           if (stopped(stream)) return;
           await write(ledgerFrame(event));
           cursors.set(runId, event.seq);
+          if (TERMINAL_KINDS.includes(event.kind)) ended.add(runId);
         }
       }
     };
@@ -270,6 +274,23 @@ export function serveStream(c: Context): Response {
         }
       }
     };
+
+    /**
+     * KAR-19.2 AC8 — whether this connection has nothing left to deliver, ever.
+     *
+     * True only for a per-run subscription every one of whose runs has reached
+     * a terminal kind. `runs=*` is never done: the global topic is about runs
+     * that do not exist yet, and closing it would make the run list stop
+     * updating the moment the run it was opened beside finished.
+     *
+     * A run that ends is the common case; a run that ends *at submission* is
+     * the case this exists for. `created — no nodes yet` was the string the
+     * operator stared at, and a socket that stays open on keepalives is the
+     * same defect one layer down — the UI's spinner has no way to tell "still
+     * working" from "will never speak again".
+     */
+    const nothingLeftToSay = (): boolean =>
+      !filter.global && cursors.size > 0 && ended.size === cursors.size;
 
     /** Parks until something commits, a subscription lands, or the tick. */
     const park = async (): Promise<void> => {
@@ -308,7 +329,7 @@ export function serveStream(c: Context): Response {
         await write(controlFrame('caught_up', { runId: GLOBAL_TOPIC, seq: globalCursor }));
       }
 
-      while (!stopped(stream)) {
+      while (!stopped(stream) && !nothingLeftToSay()) {
         await park();
         if (stopped(stream)) break;
 
@@ -339,7 +360,7 @@ export function serveStream(c: Context): Response {
 
         await drainRuns();
         await drainGlobal();
-        if (stopped(stream)) break;
+        if (stopped(stream) || nothingLeftToSay()) break;
 
         // §3.2 rule 3 — 13 bytes whose only job is that no socket-inactivity
         // timer anywhere in the path ever sees a silent connection.

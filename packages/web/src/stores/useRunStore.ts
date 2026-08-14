@@ -75,14 +75,17 @@ import {
   type CostProjection,
   contextProjection,
   costProjection,
+  type EscalationVM,
   type GatesProjection,
   gatesProjection,
   type PlanHistoryProjection,
   type PlanProjection,
   PROJECTIONS,
   type ProjectionModule,
+  type ProviderProjection,
   planHistoryProjection,
   planProjection,
+  providerProjection,
   type TimelineProjection,
   timelineProjection,
 } from '../ledger/projections/index.ts';
@@ -158,14 +161,16 @@ export const useRunStore = defineStore('run', () => {
   const gates = shallowRef<GatesProjection>(gatesProjection.create());
   const cost = shallowRef<CostProjection>(costProjection.create());
   const timeline = shallowRef<TimelineProjection>(timelineProjection.create());
+  // KAR-19.10 AC4 — which agent this run is on, for the run header.
+  const provider = shallowRef<ProviderProjection>(providerProjection.create());
 
   /**
-   * The same seven, keyed by name for the paths that treat them uniformly —
+   * The same eight, keyed by name for the paths that treat them uniformly —
    * `rebase()` and `close()`, which touch all of them and know none of them.
    *
    * The value types are erased for the same reason `PROJECTIONS`'s element type
    * is `ProjectionModule<never>`: the set is heterogeneous by construction —
-   * seven reducers over seven unrelated state types — and the concrete type is
+   * eight reducers over eight unrelated state types — and the concrete type is
    * recovered through the module object's own identity by `RunLedger.state()`,
    * never through this record. The refs above are the typed surface; these two
    * are the loop.
@@ -178,6 +183,7 @@ export const useRunStore = defineStore('run', () => {
     gates,
     cost,
     timeline,
+    provider,
   } as unknown as Record<ProjectionName, ShallowRef<unknown>>;
 
   const modules = {
@@ -188,6 +194,7 @@ export const useRunStore = defineStore('run', () => {
     gates: gatesProjection,
     cost: costProjection,
     timeline: timelineProjection,
+    provider: providerProjection,
   } as unknown as Record<ProjectionName, ProjectionModule<unknown>>;
 
   /** One integer per projection. The whole of this store's change detection. */
@@ -477,6 +484,22 @@ export const useRunStore = defineStore('run', () => {
     return last;
   });
 
+  /**
+   * KAR-19.12 AC6 — the gate this run has stopped on, or `null`.
+   *
+   * Read off the `gates` projection's `escalations`, which is this tab's
+   * **existing** fold of `human.requested`/`human.responded` — a ninth
+   * projection restating a fold the store already has would be exactly the
+   * second derivation this story exists to remove. Oldest first, matching
+   * `pendingGate`'s rule on the other three surfaces: a run can hold more than
+   * one open gate, and the one that has been waiting longest is blocking the
+   * most work.
+   */
+  const openGate = computed<EscalationVM | null>(() => {
+    void versions.gates.value;
+    return gates.value.escalations.find((one) => one.answeredWith === null) ?? null;
+  });
+
   /** `nodeId` → its four figures. Which one to show is the renderer's choice. */
   const nodeSpend = computed<ReadonlyMap<string, CostFigures>>(() => {
     void versions.cost.value;
@@ -541,6 +564,7 @@ export const useRunStore = defineStore('run', () => {
     gates,
     cost,
     timeline,
+    provider,
 
     // change detection
     version: (name: ProjectionName): number => versions[name].value,
@@ -555,6 +579,7 @@ export const useRunStore = defineStore('run', () => {
     nodeSpans,
     nodeVerdicts,
     nodeSpend,
+    openGate,
 
     // lifecycle
     open,

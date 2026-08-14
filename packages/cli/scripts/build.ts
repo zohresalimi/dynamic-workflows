@@ -20,7 +20,7 @@
  * the `packages/cli/dist` the `bin` map and `files` both name.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -69,9 +69,23 @@ mkdirSync(dirname(uiDir), { recursive: true });
 cpSync(webDist, uiDir, { recursive: true });
 process.stdout.write(`\n> copied ${webDist} -> ${uiDir}\n`);
 
-// 3. The bundle, on top of the UI rather than instead of it. `--out-dir` is
-//    forwarded so the config's `clean` globs apply to the same directory the
-//    copy just wrote into.
+// 3. The JavaScript of the previous build, and only it. `tsdown.config.ts`
+//    declares `clean: ['*.mjs', '*.d.mts', '*.map']` for this and the globs
+//    match nothing: they are resolved against the project root rather than
+//    against `--out-dir`, so `dist/` accumulated every content-hashed chunk of
+//    every build ever run — sixty files and 109 MB of them by the time anyone
+//    looked, with `files: ["dist"]` ready to publish the lot. The config keeps
+//    saying it because it is the statement of intent; this is where the intent
+//    is carried out, beside the `rmSync` above and for the same reason. `ui/`
+//    is a directory and survives, which is the whole point of not saying
+//    `clean: true`.
+for (const stale of readdirSync(outDir, { withFileTypes: true })) {
+  if (!stale.isFile()) continue;
+  if (/\.(?:mjs|d\.mts|map)$/.test(stale.name)) rmSync(join(outDir, stale.name));
+}
+
+// 4. The bundle, on top of the UI rather than instead of it. `--out-dir` is
+//    forwarded so everything lands in the directory the copy just wrote into.
 step('tsdown (DeFlow)', 'pnpm', ['exec', 'tsdown', '--out-dir', outDir], cliDir);
 
 // The exec bit. npm sets it on install from the `bin` map, so this is belt and

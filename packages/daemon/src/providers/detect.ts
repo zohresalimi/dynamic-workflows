@@ -18,7 +18,13 @@
  * `boot.ts`'s `probe-providers` slot — costs nothing extra.
  */
 import type { CapabilityStore, LedgerSink, ProviderSpec, ResolvedProvider } from '@DeFlow/adapters';
-import { PROVIDER_SPECS, probeProvider, spawnPlan } from '@DeFlow/adapters';
+import {
+  PROVIDER_SPECS,
+  probeProvider,
+  providerVerdict,
+  resolveProviderState,
+  spawnPlan,
+} from '@DeFlow/adapters';
 import type { Clock, ProviderId } from '@DeFlow/core';
 import { ProviderIdSchema } from '@DeFlow/core';
 import { createHash } from 'node:crypto';
@@ -44,6 +50,16 @@ export interface ProviderDetectionEntry {
   readonly version: string | null;
   /** One human-readable line: what was found, or what to run to install it. */
   readonly detail: string;
+  /**
+   * KAR-19.2 AC7 — for `probe-failed` only: what the child said on its own
+   * stderr while failing to answer `initialize`, trimmed and never paraphrased.
+   *
+   * Carried as its own field rather than left inside `detail` because
+   * admission forwards it into a refusal message built by a different
+   * renderer, and re-extracting it out of a sentence would be a parse of our
+   * own prose.
+   */
+  readonly stderr?: string;
 }
 
 export interface DetectProvidersPorts {
@@ -74,6 +90,19 @@ export interface DetectProvidersPorts {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/**
+ * The probed child's own stderr, off `probeProvider`'s failure tag, or `null`.
+ *
+ * Read structurally rather than through a type import: `FailureTag.detail` is
+ * `Record<string, unknown>` by construction, and what is honest to say about a
+ * value out of it is what was actually checked.
+ */
+function childStderr(error: unknown): string | null {
+  const detail = (error as { deflowFailure?: { detail?: unknown } } | null)?.deflowFailure?.detail;
+  const said = (detail as { stderr?: unknown } | undefined)?.stderr;
+  return typeof said === 'string' && said.trim() !== '' ? said.trim() : null;
+}
+
 /** `PATH`, split into the directories a binary is looked for in, in order. */
 export function pathRoots(env: NodeJS.ProcessEnv): string[] {
   return (env.PATH ?? '').split(delimiter).filter((entry) => entry !== '');
@@ -92,13 +121,20 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-/** What an operator can do about a provider nothing on `roots` resolved. */
-function installHint(spec: ProviderSpec): string {
-  return (
-    `${spec.id} is not installed here: no executable "${spec.bin}" was found on PATH — install ` +
-    `it with \`npm install -g ${spec.package}\` (or your platform's own installer for that ` +
-    "package) and run 'DeFlow init' again"
-  );
+/**
+ * What an operator can do about a provider nothing on `roots` resolved.
+ *
+ * Delegated to `providerVerdict` rather than written here, and that is
+ * KAR-19.2 AC3 applied to the module that produced the original complaint.
+ * This function used to say `<provider> is not installed here` while naming
+ * `spec.bin` — the *adapter* — which is precisely the sentence KAR-18.8 removed
+ * from `doctor`: true about `claude-agent-acp`, wrong about the `claude` the
+ * operator could see working in the same shell. Resolving both binaries here
+ * costs two `statSync` walks on a path that is already doing filesystem work,
+ * and buys the same three-state vocabulary every other surface uses.
+ */
+function installHint(spec: ProviderSpec, roots: readonly string[]): string {
+  return providerVerdict(resolveProviderState(spec, roots)).detail;
 }
 
 /** A fresh, empty directory for one provider's probe, under `root`. */
@@ -122,7 +158,7 @@ async function detectOne(
       status: 'not-installed',
       binaryPath: null,
       version: null,
-      detail: installHint(spec),
+      detail: installHint(spec, ports.roots),
     };
   }
 
@@ -181,12 +217,14 @@ async function detectOne(
         : `resolved to ${resolved.path}; unchanged since the last probe: ${probed.row.version}`,
     };
   } catch (error) {
+    const said = childStderr(error);
     return {
       provider: id,
       status: 'probe-failed',
       binaryPath: resolved.path,
       version: null,
       detail: `${resolved.path} resolved but did not answer initialize: ${messageOf(error)}`,
+      ...(said === null ? {} : { stderr: said }),
     };
   } finally {
     rmSync(home, { recursive: true, force: true });

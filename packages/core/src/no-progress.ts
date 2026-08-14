@@ -29,7 +29,7 @@
  * Verifies: EPIC-06-S26, EPIC-06-S27, EPIC-06-S28 · AC2–AC9
  */
 import type { NodeId } from './ids.ts';
-import type { NeedsHumanReason, RunState } from './run-state.ts';
+import type { NeedsHumanReason, RunState, RunStatus } from './run-state.ts';
 import { toSingleLine } from './text.ts';
 
 /**
@@ -198,15 +198,45 @@ const NOTHING: NoProgress = Object.freeze({ stall: null, churn: null, cap: null 
  * "look at this" into noise.
  */
 export function noProgress(state: RunState, now: number): NoProgress {
-  if (state.status !== 'running') return NOTHING;
   const policy = state.policy.noProgress;
 
+  // KAR-19.1 AC7 — the stall detector runs over every status in which **DeFlow
+  // owes the next move**, not only `running`. A run parked at `created` with
+  // nothing scheduling its framing is the exact shape of the 2026-08-12
+  // failure, and it is the one an operator cannot tell from a run that has
+  // simply not got there yet. The statuses left out are the ones where the run
+  // is quiet because somebody made it quiet — a spec awaiting approval, a
+  // budget pause, an open `needs-human` — and reporting those would turn the
+  // one signal that means "look at this" into the log people learn to ignore.
+  const stall =
+    policy.detectors && STALLABLE_RUN_STATUSES.has(state.status)
+      ? stallReport(state, now, policy)
+      : null;
+
+  // The churn breaker and the caps are about *execution*, so they stay where
+  // they were: a run with no plan cannot have churned and cannot have overrun
+  // an attempt budget.
+  if (state.status !== 'running') return { ...NOTHING, stall };
+
   return {
-    stall: policy.detectors ? stallReport(state, now, policy) : null,
+    stall,
     churn: policy.detectors ? churnTrip(state, policy) : null,
     cap: capBreach(state, now, policy),
   };
 }
+
+/**
+ * The statuses a stall can be reported in: the ones where the run is waiting on
+ * DeFlow rather than on a person (KAR-19.1 AC7).
+ *
+ * `created` is a framed-or-not run nothing has scheduled. `spec-approved` is an
+ * approved spec nothing has compiled. `running` is the original case.
+ */
+const STALLABLE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
+  'created',
+  'spec-approved',
+  'running',
+]);
 
 /**
  * The human the run needs, or `null` while it is fine. The detectors take
@@ -247,10 +277,35 @@ function stallReport(state: RunState, now: number, policy: NoProgressPolicy): St
   const idleMs = Math.max(0, Math.trunc(now - state.watermarkTs));
   if (idleMs <= policy.stallThresholdMs) return null;
 
+  // KAR-19.1 AC7 — two shapes are a stall and one is not.
+  //
+  // A node running while the ledger stays quiet is the original case. **Nothing
+  // in flight at all** is the case the 2026-08-12 run was in and the detector
+  // could not see, because it required a non-empty running set: the ledger has
+  // stopped and no node is running, retrying or suspended, so nobody is coming
+  // back to move it.
+  //
+  // What is deliberately *not* a stall is a run with a node waiting — a
+  // backoff, a thirty-day human gate. That run has a `node_wake` row with an
+  // instant on it, which is the system working exactly as designed, and
+  // KAR-06.6 ships that shape as supported.
   const runningNodes = runningIds(state);
-  if (runningNodes.length === 0) return null;
+  if (runningNodes.length === 0 && inFlight(state)) return null;
 
   return { watermarkSeq: state.watermarkSeq, idleMs, runningNodes };
+}
+
+/** Node statuses that mean somebody is still expected to come back: a running
+ * attempt, a scheduled retry, a suspension waiting on an answer. */
+const IN_FLIGHT_NODE_STATUSES: ReadonlySet<string> = new Set([
+  'running',
+  'awaiting-retry',
+  'suspended',
+]);
+
+/** Whether any node of this run is still expected to move on its own. */
+function inFlight(state: RunState): boolean {
+  return Object.values(state.nodes).some((node) => IN_FLIGHT_NODE_STATUSES.has(node.status));
 }
 
 /** Sorted, because the payload is snapshotted and object key order is not a

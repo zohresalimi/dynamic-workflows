@@ -60,6 +60,12 @@ suite('vitest.config.ts — the project slices (AC1)', () => {
       'e2e',
       // KAR-03.8 filled the slot §2 left for it.
       'crash-fuzz',
+      // KAR-19.5 — a sixth slice §2 did not anticipate, and the reason it is a
+      // slice rather than more e2e specs is the budget: it is the one test that
+      // starts at the operator's command and ends at an executed node, and its
+      // own `testTimeout` **is** the 90 s the epic wrote down, so a regression
+      // in cold start is a red test rather than a slow afternoon.
+      'smoke',
       'packages/web/vitest.config.ts',
     ]);
   });

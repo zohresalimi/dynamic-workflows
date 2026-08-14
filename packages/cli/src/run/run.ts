@@ -31,21 +31,38 @@
  * Returns an exit code rather than exiting: `bin.ts` owns the process, and a
  * function that called `process.exit` could not be tested without one.
  */
+import { PROVIDER_SPECS, resolveProviderStates, usableProviders } from '@DeFlow/adapters';
 import type { Clock, Event, RunId, RunState } from '@DeFlow/core';
-import { initialRunState, RunIdSchema, reduce } from '@DeFlow/core';
-import { checkGitVersion, EX_ALREADY_RUNNING, resolveDataDir, systemClock } from '@DeFlow/daemon';
+import {
+  announceProviderChoice,
+  initialRunState,
+  pendingGate,
+  RunIdSchema,
+  reduce,
+} from '@DeFlow/core';
+import {
+  checkGitVersion,
+  EX_ALREADY_RUNNING,
+  pathRoots,
+  resolveDataDir,
+  systemClock,
+} from '@DeFlow/daemon';
 import process from 'node:process';
 import { createRun, type FollowRunResult, followRun, RunTaskRejected } from '../index.ts';
 import type { Style } from '../render/style.ts';
-import type { RunArgs } from './args.ts';
+import type { ProviderChoice, RunArgs } from './args.ts';
 import { parseRunArgs } from './args.ts';
 import { cancelRun } from './cancel.ts';
 import { type DaemonEndpoint, ensureDaemon } from './daemon.ts';
-import { classifyRun, RUN_EXIT_CODES, type RunVerdict } from './exit-codes.ts';
+import {
+  classifyRun,
+  EX_USAGE,
+  RUN_EXIT_CODES,
+  type RunVerdict,
+  rejectionExitCode,
+} from './exit-codes.ts';
+import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
-
-/** sysexits(3) `EX_USAGE`, the same code a bad argv gets everywhere else here. */
-const EX_USAGE = 64;
 
 /** How long a second Ctrl-C has to arrive before the detach stands (AC3). */
 export const DETACH_WINDOW_MS = 3_000;
@@ -121,6 +138,26 @@ async function environmentUnusable(env: NodeJS.ProcessEnv, cwd: string): Promise
   return `DeFlow run: ${git.message} Run 'DeFlow doctor' for the whole picture.`;
 }
 
+/**
+ * KAR-19.10 AC1 — every registered provider, and whether this machine can serve
+ * it, for the message a mistyped `--provider` gets.
+ *
+ * Both halves in one place because they answer one question, and both derived:
+ * the ids come from `PROVIDER_SPECS` so a registry entry changes the message
+ * with no other edit, and "usable" is `usableProviders` over the operator's own
+ * `PATH` — the same reduction admission makes, not a second guess at it. This
+ * is a read of the filesystem and is why it lives here rather than in the
+ * parser, which stays a pure function of its arguments.
+ */
+function providerChoices(env: NodeJS.ProcessEnv): readonly ProviderChoice[] {
+  const usable = new Set(
+    usableProviders(resolveProviderStates(pathRoots(env))).map((entry) => entry.provider),
+  );
+  return Object.keys(PROVIDER_SPECS)
+    .toSorted((a, b) => a.localeCompare(b))
+    .map((id) => ({ id, usable: usable.has(id) }));
+}
+
 interface Watched {
   readonly verdict: RunVerdict;
   readonly state: RunState;
@@ -138,11 +175,19 @@ async function watch(options: {
   readonly endpoint: DaemonEndpoint;
   readonly renderer: RunRenderer;
   readonly stdout: (chunk: string) => void;
+  /** KAR-19.12 AC3 — where a `--json` gate announcement goes. @see `render.ts` */
+  readonly stderr: (chunk: string) => void;
   readonly noWait: boolean;
   readonly onFollowing: (following: FollowRunResult) => void;
+  /** KAR-19.4 AC3 — every control event is offered here too, so the agent's
+   * own bytes reach the terminal while its node is still running. */
+  readonly io: IoFollower;
 }): Promise<Watched> {
   let state = initialRunState();
   let rendered = 0;
+  /** The gate this view has already announced, so a re-delivered event does not
+   * announce it twice and a second gate still does. */
+  let announcedGate: string | null = null;
 
   return await new Promise<Watched>((resolve, reject) => {
     let settled = false;
@@ -151,6 +196,26 @@ async function watch(options: {
       rendered = event.seq;
       state = reduce(state, event);
       options.stdout(options.renderer.event(event));
+      options.io.onEvent(event);
+
+      // KAR-19.12 AC1, AC3 — a run that has stopped to ask says so, here, and
+      // **before** the verdict is asked for: under `--no-wait` the very next
+      // line settles the promise and the process exits, and a CI log that exits
+      // 4 saying nothing is the same silence one level up.
+      //
+      // Derived from the reduced state through `pendingGate` rather than by
+      // matching `human.requested` here, which is AC1's *one reader* clause as
+      // code: the answered case, the second-gate case and the re-delivery case
+      // are all already correct in the projection.
+      const gate = pendingGate(state);
+      if (gate !== null && gate.node !== announcedGate) {
+        announcedGate = gate.node;
+        const announcement = options.renderer.gate(gate);
+        if (announcement.stdout !== '') options.stdout(announcement.stdout);
+        if (announcement.stderr !== '') options.stderr(announcement.stderr);
+      } else if (gate === null) {
+        announcedGate = null;
+      }
 
       const verdict = classifyRun(state, { noWait: options.noWait });
       if (verdict.terminal) {
@@ -189,6 +254,8 @@ async function execute(
   const startedAt = clock.now();
 
   let runId: RunId;
+  /** KAR-19.10 AC4 — what the daemon said it chose, off the 201. */
+  let announced: NonNullable<Awaited<ReturnType<typeof createRun>>['provider']> | null = null;
   if (args.attach !== null) {
     runId = RunIdSchema.parse(args.attach);
   } else if (args.input !== null) {
@@ -198,12 +265,26 @@ async function execute(
         token: endpoint.token,
         cwd: options.cwd,
         permission: args.permission,
+        ...(args.provider === null ? {} : { provider: args.provider }),
       });
       runId = RunIdSchema.parse(created.runId);
+      announced = created.provider ?? null;
     } catch (error) {
       if (error instanceof RunTaskRejected) {
-        options.stderr(`DeFlow run: ${error.field}: ${error.message}\n`);
-        return EX_USAGE;
+        const exitCode = rejectionExitCode(error.code);
+        // KAR-19.2 AC5, AC8 — an admission refusal is printed as the daemon
+        // wrote it and nothing else: it is already several sentences of
+        // `doctor`'s own words, and prefixing it with a field name that does
+        // not exist would put a phantom request problem in front of a machine
+        // problem. The attached view never opens, because there is nothing
+        // left to watch — which is the whole of "the CLI's attached view stops
+        // rather than waiting".
+        options.stderr(
+          exitCode === EX_USAGE
+            ? `DeFlow run: ${error.field}: ${error.message}\n`
+            : `${error.message}\n`,
+        );
+        return exitCode;
       }
       throw error;
     }
@@ -217,9 +298,51 @@ async function execute(
     mode: args.json ? 'json' : 'human',
     isTty: options.isTty,
     runId,
+    // KAR-19.12 AC2 — the daemon this command actually reached, so the URL a
+    // gate block prints goes to the port `deflow up` bound rather than to 7777.
+    baseUrl: endpoint.baseUrl,
     ...(options.style === undefined ? {} : { style: options.style }),
   });
   if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
+
+  // KAR-19.10 AC4 — before the first turn, and before anything is watched: one
+  // line naming the provider, the resolved binary and the route. The sentence
+  // is `announceProviderChoice`'s in both modes — under `--json` it goes out as
+  // fields beside it, because nothing downstream should have to parse prose to
+  // learn which agent a run is on.
+  if (announced !== null) {
+    options.stdout(
+      args.json
+        ? `${JSON.stringify({
+            type: 'provider',
+            runId,
+            provider: announced.provider,
+            binaryPath: announced.binaryPath,
+            route: announced.route,
+            ...(announced.limitation === null ? {} : { limitation: announced.limitation }),
+          })}\n`
+        : `${announceProviderChoice(announced)}\n`,
+    );
+    // AC7 — and what this machine will not be able to do, said now rather than
+    // at the first agent node three minutes later.
+    if (announced.limitation !== null && !args.json) {
+      options.stdout(`${announced.limitation}\n`);
+    }
+  }
+
+  // KAR-19.4 AC3 — the data plane, followed alongside the control plane. The
+  // `io_chunk` table is deliberately not on the SSE stream (KAR-03.4), so a
+  // command that only subscribed would render a perfect transcript of a
+  // ten-minute node and show the operator nothing the agent said.
+  const io = followNodeOutput({
+    runId,
+    baseUrl: endpoint.baseUrl,
+    token: endpoint.token,
+    onChunk: (node, chunk) => {
+      options.stdout(renderer.io(node, chunk));
+    },
+    ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+  });
 
   let following: FollowRunResult | null = null;
   let presses = 0;
@@ -260,15 +383,21 @@ async function execute(
     endpoint,
     renderer,
     stdout: options.stdout,
+    stderr: options.stderr,
     noWait: args.noWait,
+    io,
     onFollowing: (opened) => {
       following = opened;
       // A Ctrl-C that landed before the stream was open still detaches: the
       // press already printed its sentence, and this closes what it could not.
       if (presses > 0) opened.close();
     },
-  }).then((result): number => {
+  }).then(async (result): Promise<number> => {
     following?.close();
+    // The tail is drained before the verdict is printed: the last bytes of a
+    // node are produced in the same instant as the event that ends it, and the
+    // end of the output is the part that says what happened.
+    await io.close();
     const totals = {
       costUsd: result.state.budget.run.costUsd,
       wallclockMs: clock.now() - startedAt,
@@ -279,7 +408,16 @@ async function execute(
     return result.verdict.exitCode;
   });
 
-  return await Promise.race([watched, interrupted]);
+  return await Promise.race([
+    watched,
+    // A detach or a cancel closes the tail too — the viewer is going, and a
+    // poll left running would keep the process alive after its exit code was
+    // decided.
+    interrupted.then(async (code) => {
+      await io.close();
+      return code;
+    }),
+  ]);
 }
 
 /**
@@ -292,7 +430,7 @@ async function execute(
  * behind.
  */
 export async function runRun(options: RunCommandOptions): Promise<number> {
-  const parsed = parseRunArgs(options.argv);
+  const parsed = parseRunArgs(options.argv, { providers: providerChoices(options.env) });
   if (!parsed.ok) {
     options.stderr(`${parsed.message}\n`);
     return EX_USAGE;

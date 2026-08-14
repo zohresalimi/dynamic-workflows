@@ -16,6 +16,7 @@ import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_pr
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -39,6 +40,33 @@ export function gitDir(): string {
   return dirname(
     execFileSync('/usr/bin/env', ['sh', '-c', 'command -v git'], { encoding: 'utf8' }).trim(),
   );
+}
+
+let nodeOnlyDirCache: string | undefined;
+
+/**
+ * A directory holding a `node` symlink and nothing else.
+ *
+ * The shebang problem, solved without the side effect. `npx`'s target is a
+ * `#!/usr/bin/env node` script, so `node` has to be findable — but putting
+ * *its own directory* on the clean room's `PATH` puts the real npm global bin
+ * directory there with it on every normal installation, which is exactly
+ * where a developer's own vendor CLIs and ACP adapters live. EPIC-18-S46's
+ * "clean room" then finds the author's own `claude-agent-acp`, doctor probes
+ * it successfully, and the "agent-free report" the scenario is named for
+ * reports one — a real package the spec never put there.
+ *
+ * Corrected 2026-08-12 while implementing KAR-19.2 — same correction as
+ * `e2e/support/up.ts`'s `nodeOnlyDir`, for the same reason, found the same
+ * way.
+ */
+function nodeOnlyDir(): string {
+  if (nodeOnlyDirCache !== undefined) return nodeOnlyDirCache;
+  const dir = mkdtempSync(join(tmpdir(), 'DeFlow-verify-node-'));
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  nodeOnlyDirCache = dir;
+  return dir;
 }
 
 let toolsDirCache: string | undefined;
@@ -309,12 +337,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export function spawnInstalled(options: SpawnInstalledOptions): CliProcess {
   const out: string[] = [];
   const err: string[] = [];
-  const path = [
-    ...(options.binDirs ?? []),
-    dirname(process.execPath),
-    gitDir(),
-    systemToolsDir(),
-  ].join(':');
+  const path = [...(options.binDirs ?? []), nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
 
   const child = spawn(
     join(dirname(process.execPath), 'npx'),
@@ -481,6 +504,13 @@ export async function assertUiShipped(baseUrl: string): Promise<{ assetPath: str
   return { assetPath };
 }
 
+/**
+ * The provider `shimMockAgent` puts on `PATH` under its adapter binary name,
+ * and therefore the only one whose battery result answers *"does the installed
+ * agent drive turns?"*.
+ */
+const SHIMMED_PROVIDER = 'claude';
+
 /** What the F3.4 battery got out of the installed agent, per AC2. */
 export interface InstalledAgentTurns {
   /** The absolute path doctor resolved and spawned — what DeFlowd would store. */
@@ -520,6 +550,15 @@ export interface InstalledAgentTurns {
  * battery rows fail against the workspace binary too — that is a property of
  * the scenario, not of the packaging, and pinning it here would make this
  * gate red for a reason it is not looking at.
+ *
+ * **It counts one provider's battery, and it is the shimmed one.** KAR-19.7 put
+ * a `mock` entry in `PROVIDER_SPECS`, and the bundled `DeFlow-mock-agent`
+ * resolves under its own name inside every installed tarball — so from this
+ * story on, doctor always has at least one agent that answers. Reading
+ * *whichever* conformance row carried a count would therefore make this gate
+ * pass on the strength of an agent the operator did not install, which is the
+ * precise failure `install-verification-broken` exists to catch: an agent on
+ * `PATH` that holds no turn must still be rejected.
  */
 export async function assertInstalledAgentDrivesTurns(options: {
   readonly tgz: string;
@@ -548,7 +587,10 @@ export async function assertInstalledAgentDrivesTurns(options: {
     report.sections.find((section) => section.id === id)?.checks ?? [];
 
   const binary = join(options.binDir, 'claude-agent-acp');
-  if (checks('capabilities').some((check) => check.id === 'capabilities.none')) {
+  // Keyed on the shimmed provider for the same reason the battery count below
+  // is: since KAR-19.7 the bundled agent always contributes a row, so
+  // `capabilities.none` alone can no longer mean "this agent said nothing".
+  if (!checks('capabilities').some((check) => check.id === `capabilities.${SHIMMED_PROVIDER}`)) {
     throw new Error(
       'no ACP turn was possible: the installed daemon got no initialize response out of the ' +
         `installed agent at ${binary}, so no capability matrix could be ` +
@@ -561,6 +603,7 @@ export async function assertInstalledAgentDrivesTurns(options: {
 
   const conformance = checks('conformance');
   const counted = conformance
+    .filter((check) => check.id === `conformance.${SHIMMED_PROVIDER}`)
     .map((check) => ({
       check,
       match: /(\d+) passed, (\d+) failed, (\d+) skipped/.exec(check.detail),
@@ -568,8 +611,10 @@ export async function assertInstalledAgentDrivesTurns(options: {
     .find((entry) => entry.match !== null);
   if (counted === undefined || counted.match === null) {
     throw new Error(
-      'no ACP turn was driven: the F3.4 conformance battery reported no result against the ' +
-        'installed agent. doctor prints that as a warning and exits 0, which is not a pass.\n' +
+      `no ACP turn was driven: the F3.4 conformance battery reported no result for ` +
+        `${SHIMMED_PROVIDER} — the agent installed at ${binary}. doctor prints that as a warning ` +
+        'and exits 0, which is not a pass, and a count from any other provider is not this one ' +
+        'answering.\n' +
         conformance.map((check) => `  [${check.status}] ${check.id}: ${check.detail}`).join('\n'),
     );
   }
@@ -598,17 +643,24 @@ export function assertNoNodeGyp(installLog: string): void {
   }
 }
 
-/** A `<binDir>/claude-agent-acp` shim onto the tarball's own installed mock agent. */
+/**
+ * `<binDir>/claude` and `<binDir>/claude-agent-acp`, both shimmed onto the
+ * tarball's own installed mock agent.
+ *
+ * KAR-19.2 — admission is a function of *both* binaries a `kind: 'adapter'`
+ * provider needs (`resolveProviderState`): a `claude-agent-acp` with no
+ * `claude` underneath it resolves as `not-installed`, same as nothing at all,
+ * and `POST /api/runs` refuses the run before this file's assertion that it
+ * was accepted. Two shims rather than one is what makes this machine the
+ * "usable" one admission is written to recognise.
+ */
 export async function shimMockAgent(binDir: string, mockAgentBin: string): Promise<string> {
   await mkdir(binDir, { recursive: true });
+  const source = `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentBin)} "$@"\n`;
+  writeFileSync(join(binDir, 'claude'), source, { mode: 0o755 });
+  chmodSync(join(binDir, 'claude'), 0o755);
   const path = join(binDir, 'claude-agent-acp');
-  writeFileSync(
-    path,
-    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentBin)} "$@"\n`,
-    {
-      mode: 0o755,
-    },
-  );
+  writeFileSync(path, source, { mode: 0o755 });
   chmodSync(path, 0o755);
   return path;
 }

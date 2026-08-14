@@ -15,7 +15,7 @@
  * AC9
  */
 import type { Db, RunId } from '@DeFlow/core';
-import { RunIdSchema } from '@DeFlow/core';
+import { invalidCancelModeMessage, RunIdSchema } from '@DeFlow/core';
 import { appendEvents, openLedger } from '@DeFlow/ledger';
 import { authorizedFetch, it, TEST_DAEMON_TOKEN } from '@DeFlow/testkit';
 import type { AddressInfo } from 'node:net';
@@ -191,6 +191,10 @@ suite('EPIC-15-S33 — the three control verbs (AC1)', () => {
     const body = (await response.json()) as ErrorBody;
     expect(body.error.code).toBe('invalid_request');
     expect(body.error.detail.field).toBe('mode');
+    // KAR-19.6 AC2 — one wording, shared with the CLI, which refuses the same
+    // mode without sending this request at all. Two refusals of one rule are
+    // two chances to disagree about it, so they are pinned to each other here.
+    expect(body.error.message).toBe(invalidCancelModeMessage());
     expect(countOf(served.db, RUN_A, 'run.cancel.requested')).toBe(0);
   });
 });
@@ -263,20 +267,25 @@ suite('EPIC-15-S33 — a run that genuinely cannot pause (AC2, AC9)', () => {
 });
 
 suite('EPIC-15-S37 — creating a run does not start it (AC6)', () => {
-  it('refuses every control verb with 422 spec_not_approved before approval', async ({ tmp }) => {
+  /**
+   * > **Amended 2026-08-12 by KAR-19.6 AC3.** `cancel` was the third verb in
+   * > this loop, and refusing it here is what made
+   * > `run_20260812T133401Z_318740` unstoppable: `spec/abandon` throws
+   * > `SpecGateNotOpen` for the same run, so an accepted-and-never-framed run
+   * > could be ended by neither route. The two verbs that admit work are
+   * > unchanged, and that is asserted here rather than assumed;
+   * > `cancel`'s new answer is in `./cancel-unstarted.test.ts`.
+   */
+  it('refuses pause and resume with 422 spec_not_approved before approval', async ({ tmp }) => {
     served = await serve(tmp);
 
-    for (const [path, body] of [
-      ['pause', {}],
-      ['resume', {}],
-      ['cancel', { mode: 'cooperative' }],
-    ] as const) {
-      const response = await post(served.origin, `/api/runs/${UNAPPROVED}/${path}`, body);
+    for (const path of ['pause', 'resume'] as const) {
+      const response = await post(served.origin, `/api/runs/${UNAPPROVED}/${path}`, {});
       expect(response.status).toBe(422);
       expect(((await response.json()) as ErrorBody).error.code).toBe('spec_not_approved');
     }
 
-    // Nothing was appended by any of the three.
+    // Nothing was appended by either of them.
     expect(kindsOf(served.db, UNAPPROVED)).toEqual(['task.submitted']);
   });
 

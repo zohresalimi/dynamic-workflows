@@ -8,28 +8,53 @@
  * about process groups and about what the kernel delivers to whom, and neither
  * is observable from inside one process.
  *
- * `PATH` holds only the directory `node` lives in plus whatever a spec asks
- * for, so a spec cannot find the developer's own agent CLI and pass for the
- * wrong reason.
+ * `PATH` holds only a directory holding nothing but `node` plus git's, and
+ * whatever a spec asks for — so a spec cannot find the developer's own agent
+ * CLI and pass for the wrong reason.
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 export const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url));
 export const CLI_BIN = join(repoRoot, 'packages/cli/src/bin.ts');
+export const MOCK_AGENT_BIN = join(repoRoot, 'packages/mock-agent/bin/mock-agent.ts');
 
 /**
- * Node's own directory plus git's, and nothing else.
+ * A directory holding a `node` and nothing else, one per test process.
+ *
+ * The shebang problem, solved without the side effect. Every fake here is a
+ * `#!/usr/bin/env node` script, so `node` has to be findable — but putting
+ * *its own directory* on `PATH` puts the npm global bin directory there with
+ * it on every normal installation, which is where a developer's real
+ * `claude-agent-acp` lives. A spec asserting "zero providers" then finds the
+ * author's own, and admission resolves it as `adapter-missing` for the wrong
+ * reason — a real package the spec never mentioned, rather than nothing at
+ * all.
+ *
+ * Corrected 2026-08-12 while implementing KAR-19.2 — same correction as
+ * `e2e/support/up.ts`'s `nodeOnlyDir`, for the same reason, found the same way.
+ */
+function nodeOnlyDir(): string {
+  const dir = join(tmpdir(), `DeFlow-cli-node-${String(process.pid)}`);
+  mkdirSync(dir, { recursive: true });
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  return dir;
+}
+
+/**
+ * A directory holding `node` and nothing else, plus git's, and nothing more.
  *
  * git is on it because `DeFlow run` refuses to start a run on a machine whose
  * git is below 2.38 (AC6's fifth code) — a hermetic PATH with no git at all
  * would make every spec here exit 5 for a reason none of them is about.
  */
 export const HERMETIC_PATH = [
-  dirname(process.execPath),
+  nodeOnlyDir(),
   dirname(
     execFileSync('/usr/bin/env', ['sh', '-c', 'command -v git'], { encoding: 'utf8' }).trim(),
   ),

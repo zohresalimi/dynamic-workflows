@@ -131,3 +131,42 @@ export function outputRendererFor(chunks: readonly IoChunkLine[]): OutputRendere
   if (chunks.length === 0) return 'none';
   return chunks.some((chunk) => chunk.stream === 'agent_json') ? 'structured' : 'terminal';
 }
+
+/**
+ * KAR-19.4 AC4 — what a surface holds after a page arrives, given what it held
+ * before.
+ *
+ * Two rules, and both of them are about a **reconnect**. A tab that drops its
+ * connection mid-node reopens with a cursor, asks for `seq > cursor`, and gets
+ * back a page that may legitimately overlap what is already on screen — a
+ * chunk can be delivered twice, by a retried request or by a tail and a follow
+ * racing. So:
+ *
+ *  - **No duplicate.** A chunk is identified by its `seq`, which is the ledger's
+ *    own `AUTOINCREMENT` and is unique per node attempt. Re-fetching from zero
+ *    is the easy implementation of a reconnect, and on a long node it repaints
+ *    every line already shown — worse than losing the connection, because the
+ *    operator cannot tell which copy is live.
+ *  - **No gap invented.** A missing `seq` is a *pruned* row, permanently: the
+ *    endpoint's contract is `seq > fromSeq`, never `cursor + 1`, precisely
+ *    because pruning leaves holes. A merge that waited for the hole to fill
+ *    would stall on output that is never coming; one that renumbered would be
+ *    inventing it. The hole stays.
+ *
+ * Sorted by `seq` rather than trusted in arrival order, because *produced*
+ * order is what an operator reads and two overlapping pages do not have it
+ * between them.
+ */
+export function mergeIoChunks(
+  held: readonly IoChunkLine[],
+  arrived: readonly IoChunkLine[],
+): readonly IoChunkLine[] {
+  if (arrived.length === 0) return held;
+  const bySeq = new Map<number, IoChunkLine>();
+  for (const chunk of held) bySeq.set(chunk.seq, chunk);
+  // The newer copy wins for an equal `seq`: a re-delivered chunk is the same
+  // bytes, and preferring one of two identical things needs no rule beyond
+  // "do not end up with both".
+  for (const chunk of arrived) bySeq.set(chunk.seq, chunk);
+  return [...bySeq.values()].toSorted((left, right) => left.seq - right.seq);
+}

@@ -15,9 +15,38 @@
       "type": "array",
       "description": "Executed in order. The first step that declares a stopReason ends the turn.",
       "items": { "$ref": "#/$defs/step" }
-    }
+    },
+    "returns": { "$ref": "#/$defs/scriptedReturn" }
   },
   "$defs": {
+    "scriptedReturn": {
+      "description": "KAR-19.7 AC7 — how a structured turn's return is scripted, so the caller's own refusal paths are reachable with no vendor CLI installed. Read only on the structured-output path: an ACP turn ignores it entirely, which is what keeps a returns block from changing a byte of any shipped scenario.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["invalid", "truncated"],
+              "description": "invalid: parseable JSON that fails validation. truncated: a prefix of the document, so the parse itself fails."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "document"],
+          "properties": {
+            "kind": { "type": "string", "const": "document" },
+            "document": {
+              "description": "Emitted verbatim, which is how a valid-but-unsatisfiable return is scripted."
+            }
+          }
+        }
+      ]
+    },
     "stopReason": {
       "type": "string",
       "enum": ["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"]

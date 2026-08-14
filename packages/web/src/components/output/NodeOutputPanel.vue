@@ -33,8 +33,8 @@
  * store is the live `Terminal` — through `adoptTerminal`, so EPIC-16's leak
  * assertion counts one accounting of live terminals rather than two.
  */
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
-import { readIoTail } from '../../api/io-tail.ts';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { readIoSince, readIoTail } from '../../api/io-tail.ts';
 import { useApiClient } from '../../api/provide.ts';
 import { readToken } from '../../api/token.ts';
 import { acpTranscript } from '../../lib/acp-stream.ts';
@@ -42,6 +42,7 @@ import { artifactArchive, type LogArchive } from '../../lib/log-archive.ts';
 import {
   ENDED_WITHOUT_RESULT,
   type IoChunkLine,
+  mergeIoChunks,
   NO_OUTPUT_AT_ALL,
   outputRendererFor,
 } from '../../lib/node-output.ts';
@@ -49,8 +50,25 @@ import type { TerminalSession } from '../../lib/terminal-session.ts';
 import { useRunStore } from '../../stores/useRunStore.ts';
 import { useUiStore } from '../../stores/useUiStore.ts';
 import AgentMessageList from './AgentMessageList.vue';
-import FullLogViewer from './FullLogViewer.vue';
-import NodeTerminal from './NodeTerminal.vue';
+
+/**
+ * The two surfaces that are only ever needed one at a time, split out of the
+ * route's chunk.
+ *
+ * `outputRendererFor` picks `terminal` or `structured` from the stream the
+ * chunks arrived as, and a node is one or the other — never both. Bundling both
+ * statically put xterm and its three addons into every load of this route,
+ * including the ACP nodes that will never construct a `Terminal`, and pushed
+ * the chunk past Rolldown's 500 kB warning (`test/integration/`
+ * `bundle-budget.test.ts`, which is what noticed). `FullLogViewer` is the same
+ * argument one step further: it is behind a button most operators never press.
+ *
+ * `defineAsyncComponent` rather than a manual `import()`, because the loading
+ * and error states belong to Vue rather than to a ref this file would have to
+ * maintain.
+ */
+const NodeTerminal = defineAsyncComponent(() => import('./NodeTerminal.vue'));
+const FullLogViewer = defineAsyncComponent(() => import('./FullLogViewer.vue'));
 
 const props = defineProps<{
   readonly runId: string;
@@ -125,17 +143,100 @@ function onTerminalClosed(): void {
   run.disposeTerminal(`${props.runId}/${props.nodeId}`);
 }
 
+/**
+ * KAR-19.4 AC4 — how often a live node is asked for what has arrived since the
+ * cursor, while it is producing.
+ *
+ * A poll rather than a subscription, deliberately: `io_chunk` is the data plane
+ * and is *not* on the control-plane SSE stream (KAR-03.4), because a chatty
+ * agent must not be able to drown the log every replay re-reads. Four times a
+ * second is below the threshold at which a person reads a terminal as
+ * "streaming", and each one is a single indexed seek.
+ */
+const IO_FOLLOW_MS = 250;
+
+/**
+ * …and how often once it has gone quiet.
+ *
+ * A panel is often left open on a node that finished yesterday, and 4 Hz
+ * forever for output that will never change is a cost with no reader. The
+ * panel does not ask the run store whether the node has ended — this route is
+ * linkable and may be opened without the store ever being hydrated for that
+ * run, and a follow that stopped on "the store says nothing" would stop on a
+ * *live* node. Quietness is the honest signal it has for itself.
+ */
+const IO_IDLE_MS = 2_000;
+
+/** Empty polls in a row before the slower cadence takes over. */
+const IO_IDLE_AFTER = 8;
+
+/** The highest `seq` this panel has applied — the cursor a reconnect resumes
+ * from. `seq > fromSeq`, never `+ 1`: pruning leaves permanent gaps. */
+const cursor = ref(0);
+let follow: ReturnType<typeof setTimeout> | null = null;
+let quiet = 0;
+
+/**
+ * One page of whatever has arrived since the cursor.
+ *
+ * A failed request is a **skipped poll**, not an error state: a dropped
+ * connection is the case the cursor exists for, and a panel that tore its own
+ * output down on one bad fetch would lose the transcript the operator is
+ * reading precisely because something went wrong. The cursor is unchanged, so
+ * the next poll asks for the same window and the backfill closes the hole with
+ * no gap and no duplicate (`mergeIoChunks`).
+ *
+ * A failure is deliberately **not** counted as quiet, either. A dropped
+ * connection is the moment the panel most needs to keep asking, and easing off
+ * because the socket is broken is how a reconnect takes two seconds longer than
+ * it has to.
+ */
+async function pullSince(): Promise<void> {
+  try {
+    const page = await readIoSince(client, props.runId, props.nodeId, cursor.value);
+    if (page.chunks.length === 0) {
+      quiet += 1;
+      return;
+    }
+    quiet = 0;
+    chunks.value = mergeIoChunks(chunks.value, page.chunks);
+    cursor.value = chunks.value.at(-1)?.seq ?? cursor.value;
+  } catch {
+    // See above: the connection, not the output, is what failed.
+  }
+}
+
+/** The follow loop: one pull, then the next one scheduled at the cadence the
+ * last few pulls earned. */
+function scheduleFollow(): void {
+  follow = setTimeout(
+    () => {
+      void pullSince().finally(() => {
+        if (follow !== null) scheduleFollow();
+      });
+    },
+    quiet >= IO_IDLE_AFTER ? IO_IDLE_MS : IO_FOLLOW_MS,
+  );
+}
+
 onMounted(async () => {
   try {
     // AC6. The tail, once, on open — never the whole log, and never a page
     // walk from zero to get to the end of one.
     const page = await readIoTail(client, props.runId, props.nodeId);
     chunks.value = page.chunks;
+    cursor.value = page.chunks.at(-1)?.seq ?? 0;
   } catch (error) {
     failure.value = error instanceof Error ? error.message : String(error);
   } finally {
     loaded.value = true;
   }
+
+  // KAR-19.4 AC4 — and then it keeps up. Before this, the panel painted
+  // whatever the node had said at the instant it was opened and never changed
+  // again, which on a node that runs for eleven minutes is indistinguishable
+  // from a node that produced nothing.
+  scheduleFollow();
 
   // Second, and after the output, because the output is what the panel was
   // opened for: this only decides whether one button is enabled.
@@ -156,6 +257,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (follow !== null) clearTimeout(follow);
+  follow = null;
   onTerminalClosed();
   // AC8's other half: the bytes go when the panel goes.
   chunks.value = [];

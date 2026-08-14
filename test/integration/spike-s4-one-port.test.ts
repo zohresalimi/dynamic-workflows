@@ -18,6 +18,7 @@
  * criterion says ("measured from the CSV, not by watching a terminal").
  */
 import { existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
@@ -521,4 +522,51 @@ suite('EPIC-00-S12 — the decision note records the guards', () => {
     expect(text).toContain('no compression middleware');
     expect(text).toContain('navigated away');
   });
+});
+
+suite('the harness refuses a port somebody else is already on', () => {
+  /**
+   * `startHarness` is given a fixed port — `AC1_PORT` is 7777, because AC1 is
+   * about that exact socket — and a fixed port is a shared resource on a
+   * developer's machine. Until this spec, the readiness loop asked only whether
+   * *something* answered `/api/health` at that origin, so a stranger already
+   * listening on 7777 was adopted as the harness: the spawned child died of
+   * `EADDRINUSE`, its output was never read, and every spec below ran against
+   * the stranger.
+   *
+   * That is not hypothetical. On the EPIC-19 gate this file failed twice with
+   * `2 events did not happen within 10000 ms (0 received)`, and the cause was a
+   * `server.ts` from a run six days earlier still holding 7777 — a server whose
+   * sequence had been climbing for six days, so the `last-event-id: 2` resume
+   * it answered was nothing like the one the spec describes. The routing and
+   * header specs all passed, because a stranger running the same code serves
+   * those identically. Only the one spec whose meaning depends on *this* run's
+   * history could tell, and what it said was that the stream was broken.
+   *
+   * The health payload has always carried the server's own pid. Comparing it to
+   * the pid that was spawned is the whole fix, and it turns a silent
+   * wrong-subject test run into a named failure.
+   */
+  it('names the foreign pid instead of testing a stranger', async () => {
+    const squatter = createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({ pid: 999_999, port: 0, mode: 'squatter', intervalMs: 0, headSeq: 0 }),
+      );
+    });
+    const port = await new Promise<number>((resolve) => {
+      squatter.listen(0, '127.0.0.1', () => {
+        const address = squatter.address();
+        resolve(typeof address === 'object' && address !== null ? address.port : 0);
+      });
+    });
+
+    try {
+      await expect(startHarness({ S4_PORT: String(port), S4_INTERVAL_MS: '250' })).rejects.toThrow(
+        /999999|already/i,
+      );
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  }, 60_000);
 });

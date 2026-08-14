@@ -130,6 +130,9 @@ export {
   resolveContextBudget,
   SegmentContentHashMismatch,
 } from './build-packet.ts';
+// KAR-19.6 AC2 — the one refusal the cancel route and `DeFlow cancel` both
+// speak when a mode is not one of the two ladders.
+export { cancelModeList, invalidCancelModeMessage } from './cancel-mode.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
 export { CanonicalJsonCycle, CanonicalJsonUnsupported, canonicalJson } from './canonical-json.ts';
 export type { Clock, TimerHandle } from './clock.ts';
@@ -798,6 +801,9 @@ export {
 // a write node's pathScope is not empty.
 export type { EmptyWriteScope } from './path-scope.ts';
 export { emptyWriteScopes, pathScopeMatches, relativeToWorktree } from './path-scope.ts';
+// KAR-19.12 — the one reader of "is this run waiting on a person, and on what".
+export type { PendingGate, PendingGateOption } from './pending-gate.ts';
+export { pendingGate, pendingGateSummary } from './pending-gate.ts';
 // KAR-08.1 — F5.4's four-level ladder as one pure function of
 // `(level, request, scope)`. No I/O, no vendor CLI, no clock.
 export type {
@@ -1016,6 +1022,17 @@ export {
   renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
+// KAR-19.10 — the one sentence a run says about the agent it chose, and the
+// closed set of routes it can take. Rendered by the CLI, the run API and the
+// UI's run header from one function, so three surfaces cannot disagree (AC4).
+export type { ProviderChoiceFacts, ProviderRoute, RouteState } from './provider-choice.ts';
+export {
+  announceProviderChoice,
+  isProviderRoute,
+  PROVIDER_ROUTES,
+  ROUTE_STATES,
+  routeLabel,
+} from './provider-choice.ts';
 export type { Random } from './random.ts';
 export { seededRandom } from './random.ts';
 // KAR-14.4 — a rate limit as a value: normalised with the vendor payload kept
@@ -1141,6 +1158,10 @@ export {
   RUN_STATUSES,
   RunStateSchema,
 } from './run-state.ts';
+// KAR-19.1 AC6 — the one producer of the status string the CLI, `DeFlow
+// status` and the UI's run list all print. `test/one-status-label.test.ts`
+// fails the day a second one appears.
+export { RUN_STATUS_LABELS, runStatusLabel } from './run-status-label.ts';
 // KAR-08.5 — the per-node sandbox policy, in each enforcement engine's own
 // dialect. Pure: this package generates the documents, `@DeFlow/adapters` puts
 // them on an argv (D12 — DeFlow owns policy, the vendor owns enforcement).

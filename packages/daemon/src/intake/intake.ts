@@ -14,6 +14,12 @@
  *    fails here, so a rejected submission leaves no half-born run (AC5).
  * 4. Normalise (`@DeFlow/core`'s `normaliseInput`) and append exactly one
  *    `task.submitted` event.
+ * 5. **Admit or refuse** (KAR-19.2 AC1). If nothing on this machine can serve
+ *    the run, the same transaction appends `provider.probed` per provider and
+ *    `run.aborted`, schedules no framing wake, and the caller answers 4xx. The
+ *    question — *"can anything here serve this run?"* — is answerable from the
+ *    boot probe before the 201, and asking it later means minutes of framing
+ *    spent and an operator who has already been told the run started.
  *
  * `run.created` is deliberately not appended here. Its payload's `spec:
  * TaskSpec` (docs/04-domain-model.md §9) cannot be produced without
@@ -25,15 +31,42 @@
  * is folded"*. `run.created` is KAR-10.2's to append, once the framing
  * interview has actually produced the spec it carries.
  */
-import type { Clock, Db, RunId } from '@DeFlow/core';
+import type {
+  ProviderResolution,
+  RunAdmission,
+  RunAdmissionRequest,
+  RunRefusalCode,
+} from '@DeFlow/adapters';
+import type { Clock, Db, ProviderChoiceFacts, RunId, WakeReason } from '@DeFlow/core';
 import { canonicalJson, mintRunId, normaliseInput, sha256Hex } from '@DeFlow/core';
-import { appendEvents, lookupIntakeKey, putBlob, readRange, recordIntakeKey } from '@DeFlow/ledger';
+import type { EventDraft } from '@DeFlow/ledger';
+import {
+  appendEvents,
+  lookupIntakeKey,
+  putBlob,
+  readRange,
+  recordIntakeKey,
+  scheduleWake,
+} from '@DeFlow/ledger';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { z } from 'zod';
+import { FRAMING_NODE } from '../spec/gate.ts';
 import { firstInvalidField, RunIntakeBodySchema } from './request-schema.ts';
 import { resolveIssue } from './resolve-issue.ts';
 import { resolveWithinRepo } from './resolve-path.ts';
+
+/**
+ * KAR-19.1 AC1 — why the framing hand-off is a `poll` and not a fifth reason.
+ *
+ * `WAKE_REASONS` is a closed vocabulary rendered verbatim in the timeline, and
+ * the four members answer *"why is this node asleep"*. This wait is none of the
+ * three specific ones — it is not a backoff, not a human gate, not a vendor
+ * quota — it is "look at this run again, now", which is exactly what `poll`
+ * means. Widening the set would be a `@DeFlow/core` vocabulary change made from
+ * the wrong file for a wait that already has a word.
+ */
+export const FRAMING_WAKE_REASON: WakeReason = 'poll';
 
 export interface RunIntakePorts {
   readonly db: Db;
@@ -48,6 +81,27 @@ export interface RunIntakePorts {
   /** The child environment `gh` is resolved and run in. Defaults to the
    * daemon's own; a spec overrides it to find a fake `gh` on a temp PATH. */
   readonly issueEnv?: Readonly<Record<string, string | undefined>>;
+  /**
+   * KAR-19.2 AC1 — can anything on this machine serve a run?
+   *
+   * A port and not a probe: the answer is a read of what boot already
+   * established, so a submission pays for no handshake of its own (AC6). It is
+   * called once per accepted submission and never for a repeated
+   * `Idempotency-Key`, whose answer is already written down.
+   *
+   * **Absent means admitted**, and that is the same claim `BootOptions`'
+   * `probeProviders` makes: a daemon that was never told which machine it is on
+   * — a spec constructing these ports directly, a fixture, a supervisor — has
+   * no honest basis on which to refuse anybody, and refusing on the strength of
+   * a `PATH` it happened to inherit would be worse than not asking. `boot()`
+   * supplies it whenever it was given `providerRoots`, which `DeFlow up` and
+   * `DeFlow run`'s autostart always do.
+   *
+   * KAR-19.10 — it takes the operator's `--provider`, because an explicitly
+   * named provider is honoured exactly or the run is refused (AC8), and that
+   * is a decision for the one function `doctor` and selection also read.
+   */
+  readonly admit?: (request: RunAdmissionRequest) => RunAdmission;
 }
 
 export type RunIntakeSubmitter = 'ui' | 'cli';
@@ -61,9 +115,51 @@ export interface RunIntakeRequest {
   readonly idempotencyKey?: string;
 }
 
+/**
+ * KAR-19.10 AC4 — what an accepted submission says about the agent it chose.
+ *
+ * The three facts and the limitation, carried on the 201 so the CLI can print
+ * the announcement **before the first turn** rather than discovering it from
+ * the stream after framing has started. `null` where nothing asked the question
+ * (a daemon booted without `providerRoots`).
+ */
+export interface AdmittedProviderChoice extends ProviderChoiceFacts {
+  /** AC7 — the turn this route will not reach, and how to fix it. */
+  readonly limitation: string | null;
+}
+
 export type RunIntakeResult =
-  | { readonly outcome: 'created'; readonly runId: RunId; readonly seq: number }
-  | { readonly outcome: 'rejected'; readonly field: string; readonly message: string };
+  | {
+      readonly outcome: 'created';
+      readonly runId: RunId;
+      readonly seq: number;
+      readonly provider?: AdmittedProviderChoice;
+    }
+  | { readonly outcome: 'rejected'; readonly field: string; readonly message: string }
+  /**
+   * KAR-19.2 — the machine cannot serve this run.
+   *
+   * A third outcome rather than a `rejected` with a special field, because the
+   * two are different facts with different next actions and different exit
+   * codes: `rejected` is *"your request is wrong"* (64), and this is *"this
+   * machine cannot host a run"* (5). It carries a `runId` because — unlike a
+   * rejection — the run **exists**: its refusal is in the ledger and is
+   * answerable six weeks later (AC1, NF8).
+   */
+  | {
+      readonly outcome: 'refused';
+      readonly runId: RunId;
+      /** The `seq` of the `run.aborted` that ended it. */
+      readonly seq: number;
+      readonly code: RunRefusalCode;
+      readonly message: string;
+      readonly providers: readonly {
+        readonly id: string;
+        readonly state: string;
+        readonly vendorPath: string | null;
+        readonly adapterPackage: string;
+      }[];
+    };
 
 /** `.md`/`.markdown` is `text/markdown` (a spec document is the `file` kind
  * with its own content type — AC1's last sentence); everything else is
@@ -178,21 +274,61 @@ export async function submitTask(
       ? null
       : `sha256-${await sha256Hex(canonicalJson(request.body))}`;
 
-  // The append and the journal row are **one** transaction (AC6): a crash
-  // between them would leave either a run no key can find — so a retry starts a
-  // second one — or a key naming a run the ledger does not hold.
+  // KAR-19.2 AC1 — asked *before* the response, and answered from what boot
+  // already found. A machine that cannot serve the run is a fact that is
+  // knowable now; discovering it at the first agent node instead is minutes of
+  // framing spent and an operator who has already been told the run started.
+  const admission = ports.admit?.({ provider: body.provider }) ?? (ADMITTED satisfies RunAdmission);
+
+  // The append, the framing wake and the journal row are **one** transaction
+  // (AC6, and KAR-19.1 AC1): a crash between the first two would leave either a
+  // run no key can find — so a retry starts a second one — or a key naming a run
+  // the ledger does not hold; a crash between the event and the row would leave
+  // a run nothing will ever pick up, which is the failure this story exists to
+  // remove and the one nobody notices, because it looks exactly like a run that
+  // has not got there yet.
+  //
+  // A refusal is in that same transaction, and for the same reason: a run whose
+  // `task.submitted` committed and whose `run.aborted` did not is exactly the
+  // silent, never-scheduled run this story exists to make impossible.
   const seq = ports.db.transaction(() => {
-    const [appended] = appendEvents(ports.db, [
+    const now = ports.clock.now();
+    const [appended, ...rest] = appendEvents(ports.db, [
       {
         runId,
-        ts: ports.clock.now(),
+        ts: now,
         kind: 'task.submitted',
         v: 1,
         epoch: ports.epoch,
         payload,
       },
+      ...refusalEvents(runId, now, ports.epoch, admission, body.provider),
+      ...choiceEvents(runId, now, ports.epoch, admission),
     ]);
     if (appended === undefined) throw new Error('appendEvents returned no seq for task.submitted');
+
+    if (admission.outcome === 'refused') {
+      // No framing wake, and no journal row. There is nothing to hand off to
+      // and nothing to make idempotent: a retry of a refused submission must be
+      // free to succeed, because the operator's next move is to fix the machine
+      // and try again — and a memoised refusal would answer them with this
+      // one for as long as the key lives.
+      const ended = rest.at(-1);
+      if (ended === undefined) throw new Error('a refusal appended no run.aborted');
+      return ended;
+    }
+
+    // KAR-19.1 AC1 — the hand-off to framing, as the one durable thing a wait
+    // is allowed to be. Due at `now`, because the operator is watching a prompt
+    // and the next tick is the whole of AC3's budget; keyed on `(runId,
+    // framing)`, so two submissions in the same millisecond are two rows and
+    // neither inherits the other's (AC8).
+    scheduleWake(ports.db, {
+      runId,
+      nodeId: FRAMING_NODE,
+      wakeAt: ports.clock.now(),
+      reason: FRAMING_WAKE_REASON,
+    });
 
     if (request.idempotencyKey !== undefined && requestHash !== null) {
       recordIntakeKey(ports.db, {
@@ -206,7 +342,143 @@ export async function submitTask(
     return appended;
   });
 
-  return { outcome: 'created', runId, seq };
+  if (admission.outcome === 'refused') {
+    return {
+      outcome: 'refused',
+      runId,
+      seq,
+      code: admission.code,
+      message: admission.message,
+      providers: admission.providers,
+    };
+  }
+
+  // The refused arm returned above, so `admission` is the admitted one here.
+  const chosen = admission.chosen;
+  return {
+    outcome: 'created',
+    runId,
+    seq,
+    ...(chosen === null
+      ? {}
+      : {
+          provider: {
+            provider: chosen.provider,
+            binaryPath: chosen.binaryPath,
+            route: chosen.route,
+            limitation: admission.limitation,
+          },
+        }),
+  };
+}
+
+/**
+ * KAR-19.10 AC4 — the choice, written into the run's own stream.
+ *
+ * One `provider.probed` on the admission arm, for the provider that was chosen
+ * and nothing else. It is the same event kind the refusal path writes and the
+ * same arm, so nothing new was invented to carry it — and it is what makes the
+ * announcement answerable six weeks later, and what `chooseProvider` obeys on a
+ * later tick instead of re-reducing the machine and possibly disagreeing (AC8).
+ */
+function choiceEvents(
+  runId: RunId,
+  ts: number,
+  epoch: number,
+  admission: RunAdmission,
+): EventDraft[] {
+  if (admission.outcome !== 'admitted' || admission.chosen === null) return [];
+  const chosen = admission.chosen;
+  return [
+    {
+      runId,
+      ts,
+      kind: 'provider.probed',
+      v: 1,
+      epoch,
+      payload: {
+        provider: chosen.provider,
+        admission: chosen.resolution.state,
+        vendorBin: chosen.resolution.vendorBin,
+        vendorPath: chosen.resolution.vendorPath,
+        adapterBin: chosen.resolution.adapterBin,
+        adapterPath: chosen.resolution.adapterPath,
+        package: chosen.resolution.package,
+        chosen: {
+          route: chosen.route,
+          binaryPath: chosen.binaryPath,
+          routes: chosen.routes,
+          unserved: [...chosen.unserved],
+          ...(admission.limitation === null ? {} : { limitation: admission.limitation }),
+        },
+      },
+    },
+  ];
+}
+
+const ADMITTED: RunAdmission = { outcome: 'admitted', chosen: null, limitation: null };
+
+/**
+ * KAR-19.2 AC1 — what a refusal writes down, after `task.submitted`.
+ *
+ * One `provider.probed` per registered provider — *"recording what was and was
+ * not found"* — and then `run.aborted` with `outcome: 'failed'`, which is what
+ * puts the run on the `runs=*` topic like any other ending and what makes
+ * `GET /api/runs/:id` report it as over rather than as waiting.
+ *
+ * The prose is **not** stored. `provider.probed` records the facts and
+ * `run-refusal.ts` re-renders the sentence from them through the same function
+ * that produced the one on the wire — a stored sentence is a sentence that can
+ * never be improved, and two stored copies of it are two that can disagree.
+ */
+function refusalEvents(
+  runId: RunId,
+  ts: number,
+  epoch: number,
+  admission: RunAdmission,
+  /**
+   * KAR-19.12 — the provider the operator named, when they named one.
+   *
+   * Recorded because `admitRun` answers differently for a named provider than
+   * for a machine's own best choice (KAR-19.10 AC8), and `run-refusal.ts`
+   * re-renders this refusal by calling it again. A row that did not say a
+   * provider had been named would be re-read as an admission, and the run's
+   * summary would lose the refusal block KAR-19.2 AC2 requires.
+   */
+  requested: string | undefined,
+): EventDraft[] {
+  if (admission.outcome !== 'refused') return [];
+
+  const probed: EventDraft[] = admission.resolutions.map((entry: ProviderResolution) => ({
+    runId,
+    ts,
+    kind: 'provider.probed',
+    v: 1,
+    epoch,
+    payload: {
+      provider: entry.provider,
+      admission: entry.state,
+      ...(requested === undefined ? {} : { requested }),
+      vendorBin: entry.vendorBin,
+      vendorPath: entry.vendorPath,
+      adapterBin: entry.adapterBin,
+      adapterPath: entry.adapterPath,
+      package: entry.package,
+      ...(entry.handshakeStderr === undefined ? {} : { stderr: entry.handshakeStderr }),
+    },
+  }));
+
+  return [
+    ...probed,
+    {
+      runId,
+      ts,
+      kind: 'run.aborted',
+      v: 1,
+      epoch,
+      payload: { outcome: 'failed', criteriaSatisfied: [] },
+    },
+  ];
 }
 
 /** A typed rejection with the `field` AC1's error names — never thrown past
@@ -227,10 +499,16 @@ async function resolveAndNormalise(
 ): ReturnType<typeof normaliseInput> {
   const now = ports.clock.now();
   const store = (bytes: Uint8Array, mediaType: string) => putBlob(ports.dataDir, bytes, mediaType);
+  // KAR-19.3 — the repository, recorded rather than validated and dropped.
+  // The framing turn happens on a later tick, possibly on a later daemon, and
+  // `run.created.cwd` is written *by* that turn: without this the caller that
+  // has to open the interview has no way of knowing which repository the run
+  // belongs to.
+  const cwd = body.cwd;
 
   switch (body.input.kind) {
     case 'text':
-      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store });
+      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store, cwd });
 
     case 'file': {
       const resolution = await resolveWithinRepo(body.cwd, body.input.path);
@@ -257,7 +535,7 @@ async function resolveAndNormalise(
           resolvedPath: resolution.path,
           mediaType: mediaTypeForPath(resolution.path),
         },
-        { now, by, store },
+        { now, by, store, cwd },
       );
     }
 
@@ -280,7 +558,7 @@ async function resolveAndNormalise(
           resolver: resolved.resolver,
           httpStatus: resolved.httpStatus,
         },
-        { now, by, store },
+        { now, by, store, cwd },
       );
     }
   }

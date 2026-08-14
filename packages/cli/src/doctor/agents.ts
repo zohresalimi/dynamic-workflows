@@ -30,17 +30,21 @@
  * Verifies: EPIC-18-S26, EPIC-18-S27, EPIC-18-S31, EPIC-18-S32 · AC2, AC6, AC7
  */
 import {
+  auditShimArgv,
   binaryDrift,
   CAPABILITY_PATHS,
   type CapabilityKey,
   type CapabilityRow,
   capability,
   PROVIDER_SPECS,
+  providerSpec,
   renderAuthMethods,
   selectResumeStrategy,
+  vendorSessionId,
 } from '@DeFlow/adapters';
 import type { Clock, Db, RunId } from '@DeFlow/core';
-import { ProviderIdSchema } from '@DeFlow/core';
+import { NodeIdSchema, ProviderIdSchema, RunIdSchema, toJsonSchemaDocument } from '@DeFlow/core';
+
 import {
   detectProviders,
   type ProviderDetectionEntry,
@@ -68,13 +72,32 @@ import {
   type AdapterInstallResult,
   type AgentInstallState,
   type InstallMode,
+  installCommand,
   offerAdapterInstalls,
   type ProviderResolution,
   type ProviderVerdict,
+  providerRoutes,
   providerVerdict,
+  renderRouteReport,
   resolveProviderStates,
 } from './agent-install.ts';
 import type { DoctorCheck } from './report.ts';
+
+/**
+ * KAR-19.11 AC6 — the turn kinds the argv battery covers, and the contract each
+ * one carries.
+ *
+ * The four that reach the exec shim: three pre-execution turns and an agent
+ * node. The schema id is real rather than a stand-in, because the argument that
+ * broke on 2026-08-13 *was* the schema — a battery that checked a made-up
+ * document would not have caught it.
+ */
+const DOCTOR_TURNS = [
+  { node: 'framing', schemaId: 'DeFlow.taskspecdraft.v1' },
+  { node: 'recon', schemaId: 'DeFlow.reconsurvey.v1' },
+  { node: 'planner', schemaId: 'DeFlow.plangraph.v1' },
+  { node: 'implement', schemaId: 'DeFlow.finding.v1' },
+] as const;
 
 /** Where the goldens are refreshed from, named in every drift warning (AC7). */
 export const RECORD_COMMAND = 'pnpm test:record';
@@ -144,22 +167,39 @@ const short = (sha: string): string => sha.slice(0, 12);
  * installed" for an operator who is *running* `claude` is the same wrong
  * instruction the story exists to delete, one line further down the report;
  * those providers get their own line naming what is actually missing instead.
+ *
+ * A **bundled** provider is excluded for the same reason one step further on
+ * (KAR-19.7 AC8): it came out of the same tarball as the `DeFlow` that is
+ * printing this, so there is no package for the operator to fetch and offering
+ * one is the words not fitting the machine.
  */
 function installHints(skip: ReadonlySet<string>): string {
-  return Object.values(PROVIDER_SPECS)
-    .filter((spec) => !skip.has(spec.id))
-    .map((spec) => `  ${spec.id}: npm install -g ${spec.package}`)
-    .join('\n');
+  return (
+    Object.values(PROVIDER_SPECS)
+      .filter((spec) => !skip.has(spec.id) && spec.bundled !== true)
+      // `installCommand` rather than a second template: KAR-19.2 AC3 keeps one
+      // spelling of the command, so the line offered here and the line the
+      // `--fix` path actually runs cannot drift apart.
+      .map((spec) => `  ${spec.id}: ${installCommand(spec.package)}`)
+      .join('\n')
+  );
 }
 
 const usable = (entry: ProviderDetectionEntry): boolean =>
   entry.status === 'detected' || entry.status === 'cached';
 
+/** The registry by id, for the one question a detection entry cannot answer:
+ * did this binary ship inside DeFlow's own tarball (KAR-19.7 AC8)? */
+const PROVIDER_SPECS_BY_ID: Readonly<Record<string, { readonly bundled?: boolean }>> =
+  PROVIDER_SPECS;
+
+/** The half of the fallback that holds however the agents resolved. */
+const REPLAY_FALLBACK =
+  '  "DeFlow replay <fixture>" also serves a recorded run over the same HTTP contract the UI ' +
+  'speaks to a live daemon, so replay works regardless.';
+
 /** What the bundled fallbacks give an operator with no vendor CLI at all. */
-const NO_VENDOR_FALLBACK =
-  '  The bundled mock agent runs a whole plan with no vendor CLI, and ' +
-  '"DeFlow replay <fixture>" serves a recorded run over the same HTTP contract the UI ' +
-  'speaks to a live daemon, so development and replay work regardless.';
+const NO_VENDOR_FALLBACK = `  The bundled mock agent runs a whole plan with no vendor CLI.\n${REPLAY_FALLBACK}`;
 
 /** The summary line, and — when nothing is installed — what to do about it. */
 function summaryCheck(
@@ -171,6 +211,31 @@ function summaryCheck(
   const named = adapterMissing.map((entry) => entry.provider).join(', ');
   const skip = new Set(adapterMissing.map((entry) => entry.provider));
   const data = { installed: installed.length, adapterMissing: adapterMissing.length };
+
+  // KAR-19.7 AC8 — a bundled agent is installed and is a real answer, but it is
+  // not a *vendor*, and an operator whose only agent shipped in the tarball
+  // still needs to be told what installing one would add. Before the bundled
+  // entry existed this branch could not fire without a vendor behind it, so the
+  // two are separated rather than left to coincide.
+  const vendors = installed.filter(
+    (entry) => PROVIDER_SPECS_BY_ID[entry.provider]?.bundled !== true,
+  );
+
+  if (installed.length > 0 && vendors.length === 0) {
+    return {
+      id: 'agents.summary',
+      status: 'ok',
+      detail: [
+        `${installed.length} installed: ${installed.map((entry) => entry.provider).join(', ')} — ` +
+          'the agent bundled with DeFlow. It runs a whole plan with no vendor CLI, no credential ' +
+          'and no network, so this machine can run DeFlow as it is. No vendor adapter is ' +
+          'installed here; install any one of these to run against a real model:',
+        installHints(skip),
+        REPLAY_FALLBACK,
+      ].join('\n'),
+      data,
+    };
+  }
 
   if (installed.length > 0) {
     return {
@@ -226,11 +291,16 @@ function resolutionCheck(resolution: ProviderResolution, verdict: ProviderVerdic
   return {
     id: `agents.${resolution.provider}`,
     status: verdict.status,
-    detail: verdict.detail,
+    // KAR-19.10 AC6 — the routes first, then what to do about the closed one.
+    // In that order deliberately: the sentence an operator on the 2026-08-13
+    // machine needed was *"the exec shim works, here is where"*, and putting it
+    // after four lines about a missing package is how it went unread.
+    detail: `${renderRouteReport(resolution)}\n${verdict.detail}`,
     ...(verdict.action === undefined ? {} : { action: verdict.action }),
     data: {
       provider: resolution.provider,
       state: verdict.state,
+      routes: providerRoutes(resolution),
       vendorBin: resolution.vendorBin,
       vendorPath: resolution.vendorPath,
       adapterBin: resolution.adapterBin,
@@ -245,6 +315,7 @@ function installedCheck(
   sha: string | null,
   row: CapabilityRow | undefined,
   verdict: ProviderVerdict | undefined,
+  resolution: ProviderResolution | undefined,
 ): DoctorCheck {
   // The leading sentence is the reducer's whenever the reducer agrees this is
   // installed. It can disagree — a cached probe whose binary has since been
@@ -260,10 +331,16 @@ function installedCheck(
     status: 'ok',
     detail:
       `${entry.provider} ${entry.version ?? '(no version reported)'}, sha256 ` +
-      `${sha === null ? 'unreadable' : short(sha)} — ${lead}`,
+      `${sha === null ? 'unreadable' : short(sha)} — ${lead}` +
+      // KAR-19.10 AC6 — both routes, on the working machine too. Reporting them
+      // only where something is missing would make the shape of the answer a
+      // property of the machine, and an operator comparing two machines would
+      // be comparing two different reports.
+      (resolution === undefined ? '' : `\n${renderRouteReport(resolution)}`),
     data: {
       provider: entry.provider,
       state: verdict?.state ?? 'not-installed',
+      ...(resolution === undefined ? {} : { routes: providerRoutes(resolution) }),
       binaryPath: entry.binaryPath,
       version: entry.version,
       sha256: sha,
@@ -478,6 +555,113 @@ async function capabilityCheck(
   };
 }
 
+/**
+ * KAR-19.8 AC7, generalised to the whole argv by KAR-19.11 AC6 — the F3.4 row
+ * that costs nothing to run, and the one that is opt-in.
+ *
+ * The battery below spawns a real turn per assertion, so it answers "does this
+ * adapter behave". It has never answered *"is the argv DeFlow builds one this
+ * vendor will accept"*, and on 2026-08-13 the answer was no twice in two
+ * minutes: Claude Code 2.1.220 exited 1 on the value DeFlow put on
+ * `--session-id`, and then on the value it put on `--json-schema`.
+ *
+ * What is checked here is **every argument's form**, against the registry's own
+ * declarations, for each turn kind and each permission level the entry can
+ * express — no process, no quota, and true on every machine. Handing that argv
+ * to the real, installed, authenticated CLI is the other half, and this check
+ * **says which rows ran and which need a vendor CLI on this machine** rather
+ * than leaving the difference to be inferred: a row that does not run must
+ * never read as a row that passed.
+ */
+function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
+  const runId = RunIdSchema.parse('run_20260101T000000Z_000000');
+
+  return providers.flatMap((provider): DoctorCheck[] => {
+    const spec = providerSpec(provider);
+    if (spec === undefined) return [];
+
+    const problems: string[] = [];
+    let rows = 0;
+
+    for (const turn of DOCTOR_TURNS) {
+      const document = JSON.stringify(toJsonSchemaDocument(turn.schemaId));
+      for (const permission of spec.shim.permissions) {
+        rows += 1;
+        let argv: readonly string[];
+        try {
+          // The entry's own builder, not `shimPlan` — `test/sandbox-boundaries.test.ts`
+          // reserves that one for `sandbox.ts`, because a plan with no policy on it
+          // must never be one line away from a spawn. Nothing is spawned here: this
+          // check reads the argv and never runs it, exactly as `live-agents.ts` builds
+          // its own invocation from the same entry.
+          argv = spec.shim.argv({
+            resolved: { provider: spec.id, path: spec.shim.bin },
+            worktree: '/tmp/DeFlow-doctor',
+            prompt: 'DeFlow doctor: a conformance invocation, never sent.',
+            sessionId: vendorSessionId({
+              runId,
+              nodeId: NodeIdSchema.parse(turn.node),
+              attempt: 0,
+            }),
+            permission,
+            ...(spec.shim.structuredOutputFlag === undefined
+              ? {}
+              : {
+                  schemaPath: `/tmp/DeFlow-doctor/.DeFlow/schemas/${turn.schemaId}.json`,
+                  schemaDocument: document,
+                }),
+          });
+        } catch (error) {
+          problems.push(`${turn.node}/${permission}: ${(error as Error).message}`);
+          continue;
+        }
+
+        for (const audited of auditShimArgv(spec, argv)) {
+          if (audited.argument === null || audited.problem !== null) {
+            problems.push(
+              `${turn.node}/${permission}: ${audited.problem ?? `${audited.token ?? ''} is undeclared`}`,
+            );
+          }
+        }
+      }
+    }
+
+    const manual =
+      `Handing that argv to the installed ${provider} is the other half of F3.4 and needs a ` +
+      'real, authenticated CLI, so it is **not run here**: ' +
+      'DeFlow_MANUAL_VENDOR_CLI=1 pnpm vitest run --project unit ' +
+      'packages/adapters/test/exec-shim-argv.manual.test.ts';
+
+    return [
+      {
+        id: `conformance.argv.${provider}`,
+        status: problems.length === 0 ? 'ok' : 'fail',
+        detail:
+          problems.length === 0
+            ? `${rows} invocations DeFlow can build for ${provider} — ${DOCTOR_TURNS.length} turn ` +
+              `kinds × ${spec.shim.permissions.length} permission levels — carry only arguments ` +
+              `whose values match the form that entry declares. ${manual}`
+            : `${provider} would send an argument its own entry says is the wrong shape, so this ` +
+              `invocation would be refused before the turn started: ${problems.join('; ')}`,
+        ...(problems.length === 0
+          ? {}
+          : { action: "report this as a DeFlow bug with 'DeFlow doctor --json' attached" }),
+        data: {
+          provider,
+          rows,
+          arguments: spec.shim.arguments.length,
+          // The three provenance claims, kept apart: the rows nobody has ever
+          // executed are exactly what the opt-in battery above is for, and
+          // printing the count is what stops "audited" reading as "run".
+          executed: spec.shim.arguments.filter((one) => one.provenance.how === 'executed').length,
+          spawned: false,
+          manualRows: DOCTOR_TURNS.length,
+        },
+      },
+    ];
+  });
+}
+
 /** The battery's report, per adapter, as a check apiece. */
 function conformanceChecks(report: ProviderDoctorReport): readonly DoctorCheck[] {
   return report.providers
@@ -612,8 +796,20 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
           : {
               id: `agents.${entry.provider}`,
               status: 'ok',
-              detail: entry.detail,
-              data: { provider: entry.provider, state, status: entry.status },
+              // KAR-19.10 AC6 — the routes go on this branch too. It is the one
+              // a bridge that resolves and then fails `initialize` lands on, and
+              // "which routes are open" is exactly the question that machine
+              // raises: the ACP one is not, and the exec-shim one may well be.
+              detail:
+                resolution === undefined
+                  ? entry.detail
+                  : `${renderRouteReport(resolution)}\n${entry.detail}`,
+              data: {
+                provider: entry.provider,
+                state,
+                ...(resolution === undefined ? {} : { routes: providerRoutes(resolution) }),
+                status: entry.status,
+              },
             },
       );
       if (attempted !== undefined) agents.push(attempted);
@@ -633,7 +829,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       .filter((row) => sha === null || row.binarySha256 === sha)
       .toSorted((a, b) => b.probedAt - a.probedAt)[0];
 
-    agents.push(installedCheck(entry, sha, probed, verdict));
+    agents.push(installedCheck(entry, sha, probed, verdict, resolution));
     if (attempted !== undefined) agents.push(attempted);
 
     const previously = recorded.get(entry.provider);
@@ -697,6 +893,11 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
     };
   }
 
+  // KAR-19.8 AC7 — the argument-form rows, for every installed exec-shim
+  // vendor. They spawn nothing, so they are computed once here and appended to
+  // whichever conformance list is returned below.
+  const argvForms = argvFormChecks(entries.filter(usable).map((entry) => entry.provider));
+
   if (!input.conformance) {
     return {
       loginCommands,
@@ -712,6 +913,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'assertion per adapter; nothing below was tested, which is not the same as passing.',
           action: "run 'DeFlow doctor' without --skip-conformance to actually test the adapters",
         },
+        ...argvForms,
       ],
     };
   }
@@ -724,7 +926,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
       epoch: input.epoch,
       runId: input.runId,
     });
-    const checks = conformanceChecks(report);
+    const checks = [...conformanceChecks(report), ...argvForms];
     return {
       loginCommands,
       agents,

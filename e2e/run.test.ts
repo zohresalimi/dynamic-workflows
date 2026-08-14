@@ -9,29 +9,31 @@
  * they exercise; what only a spawned binary can settle is that the autostart,
  * the health poll and the attach are wired to them at all.
  *
- * > **Amended 2026-08-11 while implementing KAR-18.3.** EPIC-18-S18 ends with a
- * > four-node mock plan completing and an exit code of 0. That is not reachable
- * > in this repository: **no shipped code path executes a submitted run.**
- * > Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
- * > and `POST /api/runs` deliberately stops at `task.submitted` (KAR-10.1:
- * > *"No interpretation happens here"*). Every run therefore parks after intake
- * > until the orchestration wiring exists, which is EPIC-06/EPIC-10/EPIC-11
- * > work and explicitly out of this epic's scope. What is asserted below is
- * > everything the scenario claims that *is* reachable — the detached
- * > autostart, the unauthenticated health poll, the run created, the
- * > subscription from seq 0, the rendered transcript through the normalising
- * > serializer, and a documented exit code — and the completion half is
- * > recorded as a follow-up on the story rather than faked here.
+ * **Where the completion half of EPIC-18-S18 lives.** The scenario ends with a
+ * plan completing and an exit code of 0, and that is now a real, shipped path:
+ * `DeFlow up` and `DeFlow run` bind `runFraming`, `advanceRun` and
+ * `executeNodes`, so a submitted run is framed, gated, pinned, surveyed,
+ * planned, executed and concluded by the daemon itself. It is asserted from the
+ * operator's own command in `e2e/smoke/live-run.test.ts` (KAR-19.5), which
+ * exists precisely so that this end-to-end property has one home rather than a
+ * partial copy in every client spec. What this file settles is the half only a
+ * spawned `DeFlow run` can settle and the smoke test does not repeat: the
+ * detached autostart, the unauthenticated health poll, the subscription from
+ * seq 0, the rendered transcript through the normalising serializer, and the
+ * documented exit code.
  *
  * Verifies: EPIC-18-S18, EPIC-18-S19 · AC1, AC2 · test plan #1, #2
  */
 
+import { PROVIDER_SPECS } from '@DeFlow/adapters';
 import { makeRepo } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
+import { mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   type CliProcess,
+  MOCK_AGENT_BIN,
   makeDataDir,
   removeDataDir,
   sleep,
@@ -39,6 +41,37 @@ import {
   spawnUp,
   waitForUrl,
 } from './support/up.ts';
+
+/**
+ * KAR-19.2 — the bundled mock agent, so this spec's machine is a usable one
+ * rather than the "nothing installed" machine `e2e/admission.test.ts` covers.
+ * Without this, `POST /api/runs` refuses every run here at submission and
+ * every scenario below exits 5 before it reaches anything this file is about.
+ *
+ * > **Corrected 2026-08-14 while finishing KAR-19.12.** This linked the mock
+ * > binary under the *vendor's* names — `claude` and its ACP bridge — which was
+ * > harmless only while `claude` was driven over ACP: the mock agent does speak
+ * > ACP, so the masquerade held. KAR-19.10 made the pre-execution turns take the
+ * > **exec-shim** route, and a shim invocation is built from the *registry entry
+ * > of the provider it claims to be* — so the mock binary was handed Claude
+ * > Code's argument table (`-p <prompt>`), could not parse it, and exited
+ * > non-zero. Framing failed, the run aborted ~900 ms in, and both scenarios
+ * > below then raced their Ctrl-C against an already-finished run: the second
+ * > lost, and `DeFlow run` was killed by the signal (`code: null`) rather than
+ * > exiting the documented 130.
+ * >
+ * > The fix is to stop pretending. The mock agent is a provider in its own
+ * > right, and a legitimate answer to admission (KAR-19.2 AC4), so it is linked
+ * > under its own bin name — read from the registry, never spelled here, per
+ * > KAR-19.10 AC9 — exactly as `e2e/live-chain.test.ts` and
+ * > `e2e/mock-only-run.test.ts` already do it.
+ */
+async function usableProviderBinDir(dir: string): Promise<string> {
+  const binDir = join(dir, 'bin');
+  await mkdir(binDir, { recursive: true });
+  await symlink(MOCK_AGENT_BIN, join(binDir, PROVIDER_SPECS.mock.bin));
+  return binDir;
+}
 
 let tmp = '';
 const running: CliProcess[] = [];
@@ -114,11 +147,13 @@ suite('EPIC-18-S18 — one command, one run, no browser (AC1)', () => {
   it('autostarts DeFlowd detached, polls health unauthenticated, and streams the run', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const binDir = await usableProviderBinDir(tmp);
 
     const cli = start({
       dataDir,
       cwd: repo.dir,
       argv: ['run', 'add a health endpoint'],
+      binDirs: [binDir],
     });
 
     const runId = await waitFor('the CLI printed a run id', () => {
@@ -163,8 +198,12 @@ suite('EPIC-18-S19 — attach, never launch a second (AC2)', () => {
   it('reuses a running daemon, leaves daemon_epoch alone and never trips the lease', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
+    const binDir = await usableProviderBinDir(tmp);
 
-    const up = start({ dataDir, argv: ['up', '--no-open'] });
+    // KAR-19.2 — admission is resolved once, at boot, from the PATH the daemon
+    // was started with (AC6). The mock agent has to be on `up`'s PATH; `run`
+    // below only attaches to the daemon `up` already started.
+    const up = start({ dataDir, argv: ['up', '--no-open'], binDirs: [binDir] });
     await waitForUrl(up);
 
     const before = daemonFile(dataDir);

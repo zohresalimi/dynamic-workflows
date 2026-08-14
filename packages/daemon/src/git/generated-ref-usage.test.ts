@@ -44,6 +44,27 @@ suite('findUnguardedGeneratedRefCalls', () => {
     expect(offenders[0]?.line).toBe(3);
   });
 
+  it('accepts a branch named as a workspace request field, never as argv', () => {
+    // KAR-19.5's call site: the value goes to `WorkspaceManager.provision`,
+    // whose argv builder puts it in `-b`'s value slot. See the module note for
+    // why a field name is a guard and not an exception.
+    const source = [
+      'await workspace.provision({',
+      '  mode: "write",',
+      '  branch: nodeBranch(runRef(runId), node),',
+      '});',
+      'await workspace.remove({ salvageBranch: nodeBranch(runRef(runId), node) });',
+    ].join('\n');
+    expect(findUnguardedGeneratedRefCalls(source)).toEqual([]);
+  });
+
+  it('still flags a branch built into argv even when a field of that name exists', () => {
+    // The guard is the *immediately preceding* field name, not the presence of
+    // one anywhere: an argv element is still an argv element.
+    const source = "git.run(['branch', nodeBranch(r, n)], { branch: 'x' });";
+    expect(findUnguardedGeneratedRefCalls(source)).toHaveLength(1);
+  });
+
   it('finds nothing in source with no such call at all', () => {
     expect(findUnguardedGeneratedRefCalls("git.run(['status']);")).toEqual([]);
   });

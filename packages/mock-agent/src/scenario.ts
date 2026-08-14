@@ -24,6 +24,7 @@ import {
   NO_NEWLINE_INTERVAL_MS,
   RAW_CHUNK_BYTES,
 } from './pathological.ts';
+import type { ScriptedReturn } from './structured.ts';
 
 /** Every `ToolCallStatus` the ACP schema defines, in lifecycle order. */
 export const TOOL_CALL_STATUSES = [
@@ -281,6 +282,15 @@ export interface Scenario {
   readonly description: string;
   readonly steps: readonly Step[];
   readonly stopReason: acp.StopReason;
+  /**
+   * KAR-19.7 AC7 — how a structured turn's return is scripted, or `null` for
+   * the generated document.
+   *
+   * Read only on the structured path, so a scenario carrying one is invisible
+   * to every ACP turn — which is what keeps a `returns` block from changing a
+   * single byte of EPIC-04's shipped scenarios and recordings.
+   */
+  readonly returns: ScriptedReturn | null;
 }
 
 export type ScenarioParseResult =
@@ -719,6 +729,32 @@ function oneLine(text: string): string {
   return text.replaceAll(/\s+/g, ' ').trim();
 }
 
+/** The three kinds of scripted return, in the order a caller meets them. */
+export const RETURN_KINDS = ['invalid', 'truncated', 'document'] as const;
+
+/**
+ * KAR-19.7 AC7 — `returns`, parsed by the same rules as everything else here:
+ * an unknown key is a rejection, and `document` without a document is one too.
+ * A script that silently produced the *generated* return would be a repair-loop
+ * spec that quietly stopped exercising the repair loop.
+ */
+function parseReturns(value: unknown): ScriptedReturn {
+  const object = asObject(value, 'returns', 'a scripted return');
+  rejectUnknownKeys(object, ['kind', 'document'], 'returns');
+  const kind = oneOf(object.kind, RETURN_KINDS, 'returns', 'return kind');
+
+  if (kind !== 'document') {
+    if (object.document !== undefined) {
+      fail('returns.document', `only means something when kind is "document", not "${kind}"`);
+    }
+    return { kind };
+  }
+
+  if (object.document === undefined)
+    fail('returns.document', 'is required when kind is "document"');
+  return { kind, document: object.document };
+}
+
 export function parseScenario(text: string, source?: string): ScenarioParseResult {
   const where = source === undefined ? '' : `${source}: `;
 
@@ -731,7 +767,7 @@ export function parseScenario(text: string, source?: string): ScenarioParseResul
 
   try {
     const object = asObject(value, '', 'a scenario');
-    rejectUnknownKeys(object, ['name', 'description', 'steps', 'stopReason'], '');
+    rejectUnknownKeys(object, ['name', 'description', 'steps', 'stopReason', 'returns'], '');
     const steps = asArray(object.steps, '', 'steps').map((step, index) =>
       parseStep(step, `steps[${index}]`),
     );
@@ -746,6 +782,7 @@ export function parseScenario(text: string, source?: string): ScenarioParseResul
           object.stopReason === undefined
             ? 'end_turn'
             : oneOf(object.stopReason, STOP_REASONS, '', 'stop reason'),
+        returns: object.returns === undefined ? null : parseReturns(object.returns),
       },
     };
   } catch (error) {

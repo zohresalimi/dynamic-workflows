@@ -59,6 +59,7 @@ import {
   PlanPatchSchema,
   ProposedBySchema,
 } from './plan-patch.ts';
+import { PROVIDER_ROUTES, ROUTE_STATES } from './provider-choice.ts';
 import { TaskSubmittedSchema } from './task-intake.ts';
 import { TaskSpecSchema } from './task-spec.ts';
 import { singleLine } from './text.ts';
@@ -688,6 +689,24 @@ export const NodeCompletedSchema = z.strictObject({
 export const NodeFailedSchema = z.strictObject({
   node: NodeIdSchema,
   attempt,
+  /**
+   * KAR-19.9 AC4 — the ceiling this attempt was measured against, when the
+   * appender knew it.
+   *
+   * Optional, and the optionality is a claim rather than convenience: the
+   * ceiling is the failing node's own `RetryPolicy.maxAttempts`, so only the
+   * scheduler that applied the policy can state it. An appender that recorded a
+   * failure without consulting a policy — the framing interview refusing an
+   * unprobed adapter before any scheduler is involved — leaves it out instead of
+   * inventing a default, and the surfaces then print *"attempt 1"* rather than
+   * *"attempt 1 of 3"*.
+   *
+   * On the event rather than re-derived by each reader, because the alternative
+   * is a copy of `maxAttempts` in the CLI, in the web run view and in
+   * `DeFlow status`, one process away from the daemon that actually applies it —
+   * three spellings that agree until somebody sets `maxAttempts: 5` in a plan.
+   */
+  maxAttempts: z.int().positive().optional(),
   failure: NodeFailureSchema,
 });
 
@@ -1961,12 +1980,93 @@ export const BudgetCeilingSetSchema = z
   });
 
 /** F3.4/F3.5 — capabilities are derived from a probe, never hardcoded. */
-export const ProviderProbedSchema = z.strictObject({
+export const ProviderHandshakeProbedSchema = z.strictObject({
   provider: ProviderIdSchema,
   version: z.string().min(1),
   capsJson: z.unknown(),
   binarySha256: BareSha256Schema,
 });
+
+/**
+ * KAR-19.2 AC1 — what admission found about one provider, including finding
+ * nothing.
+ *
+ * The second arm exists because `provider.probed` has to be able to record an
+ * *absence*. EPIC-19 rules out new event kinds — *"the refusal is recorded with
+ * `provider.probed` and `run.aborted`, both of which exist"* — and the arm
+ * above cannot say it: `version` and `binarySha256` describe a binary that
+ * answered, and there is none. Filling them with a placeholder would put a
+ * fiction into an append-only table to satisfy a schema, which is the one thing
+ * `event` may never hold.
+ *
+ * A union rather than a widened single object, so the probe arm is byte-for-byte
+ * the shape KAR-05.2 has always written and every existing row still validates
+ * against the same fields it was written against. The arms are unambiguous
+ * because both are strict: `admission` appears in exactly one of them.
+ */
+export const ProviderAdmissionProbedSchema = z.strictObject({
+  provider: ProviderIdSchema,
+  /** The three-state vocabulary KAR-18.8 settled, plus KAR-19.2's fourth. */
+  admission: z.enum(['installed', 'adapter-missing', 'not-installed', 'handshake-failed']),
+  /** The vendor CLI's name and its absolute resolved path, or `null`. */
+  vendorBin: singleLine(),
+  vendorPath: singleLine().nullable(),
+  /** The binary DeFlow spawns, and where it resolved. */
+  adapterBin: singleLine(),
+  adapterPath: singleLine().nullable(),
+  /** The npm package that provides `adapterBin`. */
+  package: singleLine(),
+  /** The child's own stderr from a handshake that failed. Never paraphrased. */
+  stderr: z.string().optional(),
+  /**
+   * KAR-19.12 — the provider the *operator named*, when they named one.
+   *
+   * Optional, and absent on every row written before this story and on every
+   * submission that named nothing — the same additive shape KAR-19.10's
+   * `chosen` uses, and for the same reason: an optional field leaves every
+   * existing row validating against exactly the fields it was written against.
+   *
+   * It is here because the refusal's prose is deliberately **not** stored
+   * (`packages/daemon/src/http/run-refusal.ts`): the sentence is re-rendered
+   * from these rows through `admitRun`, and after KAR-19.10 that function
+   * answers *differently* depending on whether a provider was named — a machine
+   * with a vendor CLI and no ACP bridge is admitted by default and refused when
+   * it is asked for by name. Without this field the read path re-derives
+   * "admitted" for a run the write path refused, and `GET /api/runs/:id` drops
+   * the `refusal` block KAR-19.2 AC2 requires.
+   */
+  requested: ProviderIdSchema.optional(),
+  /**
+   * KAR-19.10 AC4 — the choice admission made, on the row that recorded it.
+   *
+   * Optional, and absent on every row written before this story and on every
+   * row a *refusal* writes: a refusal chose nothing. Where it is present it is
+   * the whole announcement — the provider is the row's own `provider`, and
+   * these are the other two facts plus the route answers they came from.
+   */
+  chosen: z
+    .strictObject({
+      route: z.enum(PROVIDER_ROUTES),
+      /** Absolute — the path the child is spawned from, never a name. */
+      binaryPath: singleLine(),
+      routes: z.strictObject({
+        acp: z.enum(ROUTE_STATES),
+        shim: z.enum(ROUTE_STATES),
+      }),
+      /** The turns this route cannot serve. Empty is the ordinary case. */
+      unserved: z.array(singleLine()),
+      /** AC7's sentence, stored because it is what the operator was told at
+       * submission — and a run that was told something must be able to say
+       * what, six weeks later, without re-probing the machine (NF8). */
+      limitation: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const ProviderProbedSchema = z.union([
+  ProviderHandshakeProbedSchema,
+  ProviderAdmissionProbedSchema,
+]);
 
 /** Parsed from Claude Code's `rate_limit_event` frame; `raw` keeps the frame
  * verbatim because the vendor's shape is not ours to normalise. */

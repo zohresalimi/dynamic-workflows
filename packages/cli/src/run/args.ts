@@ -19,6 +19,7 @@
  * does nothing and the operator concludes the CLI is broken — the same rule
  * `parseUpArgs` follows, for the same reason.
  */
+import { PROVIDER_SPECS } from '@DeFlow/adapters';
 import type { PermissionLevel } from '@DeFlow/core';
 import { PERMISSION_LEVELS, RunIdSchema } from '@DeFlow/core';
 
@@ -43,11 +44,63 @@ export interface RunArgs {
   /** Exit 4 on an open human gate instead of waiting for it (AC6). */
   readonly noWait: boolean;
   readonly permission: PermissionLevel;
+  /**
+   * KAR-19.10 AC1 — the provider the operator named, or `null` for "choose".
+   *
+   * A registry id, already checked to be one. What it is *not* is a decision
+   * about whether this machine can serve it: that is an environment question
+   * with a different exit code (5) and a different next action, and it is
+   * answered by admission rather than by an argv parser.
+   */
+  readonly provider: string | null;
+}
+
+/**
+ * One registered provider, and whether this machine can serve it — the two
+ * facts an operator who mistyped `--provider` needs in the same line.
+ *
+ * Passed in rather than resolved here, so this module keeps its promise: no
+ * I/O, no `PATH`, no filesystem. `providerChoicesFor` in `./run.ts` builds it
+ * from the roots the command already split.
+ */
+export interface ProviderChoice {
+  readonly id: string;
+  readonly usable: boolean;
+}
+
+export interface ParseRunArgsOptions {
+  /** Defaults to every registered id, with usability unknown — which is the
+   * honest answer for a caller that did not look at the machine. */
+  readonly providers?: readonly ProviderChoice[];
 }
 
 export type ParsedRunArgs =
   | { readonly ok: true; readonly args: RunArgs }
   | { readonly ok: false; readonly message: string };
+
+/** Every registered provider, in id order, with nothing claimed about this
+ * machine. Derived from `PROVIDER_SPECS`, so an entry added there changes the
+ * refusal message with no other edit (AC1, AC9). */
+export function registeredProviderChoices(): readonly ProviderChoice[] {
+  return Object.keys(PROVIDER_SPECS)
+    .toSorted((a, b) => a.localeCompare(b))
+    .map((id) => ({ id, usable: false }));
+}
+
+/**
+ * AC1's refusal: the closed list, and which of it is worth typing here.
+ *
+ * Both halves in one line because they answer one question. Knowing that a
+ * provider is registered is not useful to an operator whose machine does not
+ * have it, and the two facts cost a clause together.
+ */
+function unknownProviderMessage(given: string, providers: readonly ProviderChoice[]): string {
+  const usable = providers.filter((choice) => choice.usable).map((choice) => choice.id);
+  return (
+    `DeFlow run: --provider takes one of ${providers.map((choice) => choice.id).join(', ')}; got ` +
+    `${JSON.stringify(given)}. Usable on this machine: ${usable.length === 0 ? 'none — run "DeFlow doctor"' : usable.join(', ')}.`
+  );
+}
 
 const USAGE_HINT =
   'DeFlow run: give it something to do — DeFlow run "<task>", or --file <path>, ' +
@@ -91,13 +144,18 @@ function valueOf(
 const isPermission = (value: string): value is PermissionLevel =>
   (PERMISSION_LEVELS as readonly string[]).includes(value);
 
-export function parseRunArgs(argv: readonly string[]): ParsedRunArgs {
+export function parseRunArgs(
+  argv: readonly string[],
+  options: ParseRunArgsOptions = {},
+): ParsedRunArgs {
+  const providers = options.providers ?? registeredProviderChoices();
   let input: RunInput | null = null;
   let source: RunSource | null = null;
   let attach: string | null = null;
   let json = false;
   let noWait = false;
   let permission: PermissionLevel = 'worktree';
+  let provider: string | null = null;
 
   const setSource = (next: RunSource, value: RunInput): string | null => {
     if (source !== null) return ONE_SOURCE;
@@ -141,6 +199,20 @@ export function parseRunArgs(argv: readonly string[]): ParsedRunArgs {
         );
       }
       permission = value;
+      index = next;
+      continue;
+    }
+
+    // KAR-19.10 AC1 — validated here, before anything is submitted, and against
+    // the registry rather than a literal. `EX_USAGE` and not exit 5: a
+    // misspelling is not an unusable machine, and the two lead to opposite next
+    // actions — edit the command, versus install a package.
+    if (argument === '--provider' || argument.startsWith('--provider=')) {
+      const { value, next } = valueOf(argv, index, '--provider');
+      if (value === undefined || !providers.some((choice) => choice.id === value)) {
+        return refuse(unknownProviderMessage(value ?? '', providers));
+      }
+      provider = value;
       index = next;
       continue;
     }
@@ -203,6 +275,6 @@ export function parseRunArgs(argv: readonly string[]): ParsedRunArgs {
       );
     }
     if (attach === null && input === null) return refuse(USAGE_HINT);
-    return { ok: true, args: { input, source, attach, json, noWait, permission } };
+    return { ok: true, args: { input, source, attach, json, noWait, permission, provider } };
   }
 }

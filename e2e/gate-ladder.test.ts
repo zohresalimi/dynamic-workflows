@@ -23,9 +23,9 @@
  */
 import { openLedger, readRange } from '@DeFlow/ledger';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import {
   asClient,
@@ -98,7 +98,24 @@ suite('EPIC-12-S2 — the ladder short-circuits, in a real run', () => {
     const fixture = await seedGateLadder(dataDir, worktree);
 
     // Before: a real DeFlowd over the seeded run, asked what it has spent.
-    const before = spawnDaemon({ dataDir, port: await freePort() });
+    //
+    // Over a **copy** of the data directory, and KAR-19.5 is why. Until the
+    // composition roots bound `executeNodes`, a booted daemon was inert next to
+    // a run with a plan; it is not any more — it adopts the newest proposed
+    // plan and drives it, which is the whole point of this epic. A daemon
+    // started here over `dataDir` therefore races `run-gates.ts` for the same
+    // run and usually wins, and this spec would be asserting about a run its
+    // own "before" reading had already executed (measured: `run.started` …
+    // `run.aborted` before the second process ever opened the ledger).
+    //
+    // The copy keeps the reading exactly what it was — a real daemon, over the
+    // wire, serving this seeded run's summary — while leaving the ledger the
+    // gates run against untouched. It is made before any daemon has opened
+    // either directory, so there is no WAL to tear.
+    const beforeDir = join(dataDir, '..', `${basename(dataDir)}-before`);
+    dirs.push(beforeDir);
+    cpSync(dataDir, beforeDir, { recursive: true });
+    const before = spawnDaemon({ dataDir: beforeDir, port: await freePort() });
     running.push(before);
     await waitForHealth(before);
     const costBefore = JSON.stringify((await summary(before)).budget ?? null);

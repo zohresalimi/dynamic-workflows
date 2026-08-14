@@ -258,7 +258,7 @@ suite('EPIC-17-S24 — from a red gate to a line of code', () => {
     expect(report.message).toContain("Type 'Date' is not assignable to type 'number'");
     expect(report.evidence).toContain('/api/artifacts/');
     // AC10 — the `gate.evaluated` this judgement was written at.
-    expect(report.seq).toBe('11');
+    expect(report.seq).toBe('12');
 
     // The line the daemon's own `git diff` produced, which is how this spec
     // knows the surface is showing a real patch and not a fixture.

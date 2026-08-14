@@ -2,6 +2,7 @@
 
 exports[`EPIC-18-S18 — one command, one run, no browser (AC1) > autostarts DeFlowd detached, polls health unauthenticated, and streams the run 1`] = `
 "run <runId> — watching; Ctrl-C detaches
+provider mock — <tmp>/bin/DeFlow-mock-agent — exec shim route
 · task                submitted  from text
 "
 `;

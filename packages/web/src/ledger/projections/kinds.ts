@@ -28,7 +28,14 @@
  */
 import type { Event, EventKind } from '@DeFlow/core';
 
-/** The seven modules of docs/12-frontend-architecture.md §3.2. */
+/**
+ * The seven modules of docs/12-frontend-architecture.md §3.2, and KAR-19.10's
+ * eighth.
+ *
+ * `provider` is the smallest of them and answers one question — which agent
+ * this run is on, and by which route — because AC4 requires the tab to say it
+ * beside the terminal and the run API, from the same recorded facts.
+ */
 export const PROJECTION_NAMES = [
   'plan',
   'planHistory',
@@ -37,6 +44,7 @@ export const PROJECTION_NAMES = [
   'gates',
   'cost',
   'timeline',
+  'provider',
 ] as const;
 
 export type ProjectionName = (typeof PROJECTION_NAMES)[number];
@@ -158,7 +166,10 @@ export const EVENT_KIND_OWNERS = {
   // a different fact from the ceiling detail `cost` keeps.
   'budget.exceeded': ['cost', 'timeline'],
   'budget.ceiling.set': ['cost'],
-  'provider.probed': [],
+  // KAR-19.10 AC4 — the admitted arm carries the choice a run was announced
+  // with. The refusal arm carries none and is folded by nothing, which is the
+  // honest answer: a refused run chose no provider.
+  'provider.probed': ['provider'],
   // A stall with an external cause, so it can be told apart from one the run
   // caused itself (KAR-17.8 AC6).
   'provider.rate_limited': ['cost', 'timeline'],

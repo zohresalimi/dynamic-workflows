@@ -78,6 +78,8 @@ suite('AC2 — the web suite is partitioned, not overlapped', () => {
       `${PROJECTIONS}memory-graph.test.ts`,
       `${PROJECTIONS}plan.test.ts`,
       `${PROJECTIONS}planHistory.test.ts`,
+      // KAR-19.10's eighth projection: which agent a run was admitted onto.
+      `${PROJECTIONS}provider.test.ts`,
       `${PROJECTIONS}purity.test.ts`,
       `${PROJECTIONS}snapshots.test.ts`,
       `${PROJECTIONS}timeline.test.ts`,

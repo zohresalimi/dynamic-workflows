@@ -22,12 +22,21 @@
  */
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router';
 import PlanGraphView from '../views/PlanGraphView.vue';
+import RunListView from '../views/RunListView.vue';
 
 export const routes = [
   {
+    // KAR-19.1 AC5 — the root route is a **list of runs**, not a plan graph
+    // with no run. It used to be the latter, which is why the operator of
+    // 2026-08-12 had to type a run id into the address bar to see the run they
+    // had just submitted: the landing page showed them nothing about it.
+    //
+    // Eager like the graph, and cheap: its whole dependency is the run-list
+    // store and one `RouterLink`. The transport it opens is behind a dynamic
+    // import in `../app/useRunList.ts`, for the reason the run feed's is.
     path: '/',
-    name: 'plan',
-    component: PlanGraphView,
+    name: 'runs',
+    component: RunListView,
   },
   {
     path: '/runs/:runId',

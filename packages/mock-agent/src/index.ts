@@ -164,3 +164,25 @@ export {
   SIDE_EFFECT_LOG_ENV,
   type SideEffectRecord,
 } from './side-effect-log.ts';
+// KAR-19.7 — the structured-output path. `MOCK_STRUCTURED_OUTPUT_FLAG` is
+// exported for `provider-registry.ts`, which declares it as this provider's
+// `structuredOutputFlag`: one constant, so a rename cannot leave the registry
+// claiming a capability the binary does not have.
+export {
+  BUNDLED_PROVIDER_ID,
+  canServe,
+  DRAFT_SCHEMA_ID,
+  type GeneratorInput,
+  MOCK_PROMPT_FLAG,
+  MOCK_STRUCTURED_OUTPUT_FLAG,
+  PLAN_SCHEMA_ID,
+  RECON_FACT_SCHEMA_ID,
+  RECON_SURVEY_SCHEMA_ID,
+  renderReturn,
+  SCHEMA_GENERATORS,
+  type ScriptedReturn,
+  SERVABLE_SCHEMA_IDS,
+  schemaIdFromPath,
+  schemaIdOf,
+  serveSchema,
+} from './structured.ts';

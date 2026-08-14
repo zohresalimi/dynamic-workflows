@@ -1,20 +1,21 @@
 /**
- * The second Ctrl-C (KAR-18.3 AC3) — "stop this run", whichever way the daemon
- * spells it for the state the run is in.
+ * The second Ctrl-C (KAR-18.3 AC3) — "stop this run", through the one route
+ * that answers for every state a run can be in.
  *
- * `POST /runs/:id/cancel` is the F5.7 route and the forceful ladder goes
- * straight to the process group, which is what AC3 asks for. But KAR-15.5 AC6
- * is explicit that *"a run whose spec is not approved cannot be controlled at
- * all"* — the control verbs are a state machine over an approved spec — and a
- * run parked at the F1.3 gate is exactly where a person is most likely to press
- * Ctrl-C twice. Refusing them with `spec_not_approved` and leaving the run
- * standing would be answering a question nobody asked.
+ * > **Amended 2026-08-12 by KAR-19.6.** This file used to notice a
+ * > `422 spec_not_approved` and fall back to `POST /runs/:id/spec/abandon`,
+ * > because KAR-15.5 AC6 refused every control verb on a run whose spec was not
+ * > approved and a person is most likely to press Ctrl-C twice at exactly that
+ * > point. The fallback proved the point rather than solving it: `abandonRun`
+ * > opens with `if (!gateIsOpen(events)) throw`, so it could not help a run that
+ * > was accepted and never framed — the state all three runs of 2026-08-12 were
+ * > in — and it put the daemon's state machine in the CLI, where the web UI and
+ * > any future client cannot reach it. `planRunControl` now plans a termination
+ * > for those two statuses, so there is one request here and no branch.
  *
- * So there are two routes and one meaning: cancel, and if the daemon says the
- * spec was never approved, abandon. Both are the daemon's own transaction, both
- * append a terminal event to the ledger, and neither is a second
- * implementation of anything — the CLI picks which sentence to speak, not what
- * it means.
+ * `mode: 'forceful'` rather than the route's `cooperative` default, because the
+ * operator pressing Ctrl-C twice inside three seconds is not asking the agent
+ * to finish its thought — that is what the first press already offered them.
  */
 import type { RunId } from '@DeFlow/core';
 import { createClient } from '@DeFlow/web';
@@ -26,7 +27,7 @@ export interface CancelTarget {
 
 export interface CancelOutcome {
   /** Which route answered — for the operator, and for a spec to assert on. */
-  readonly via: 'cancel' | 'abandon';
+  readonly via: 'cancel';
   readonly message: string;
 }
 
@@ -44,13 +45,7 @@ function errorCode(body: unknown): string | null {
   return typeof code === 'string' ? code : null;
 }
 
-/**
- * Stops `runId`, forcefully.
- *
- * `mode: 'forceful'` rather than the route's `cooperative` default, because the
- * operator pressing Ctrl-C twice inside three seconds is not asking the agent
- * to finish its thought — that is what the first press already offered them.
- */
+/** Stops `runId`, forcefully. */
 export async function cancelRun(runId: RunId, target: CancelTarget): Promise<CancelOutcome> {
   const client = clientFor(target);
 
@@ -71,20 +66,8 @@ export async function cancelRun(runId: RunId, target: CancelTarget): Promise<Can
   }
 
   const body: unknown = await cancelled.json();
-  if (errorCode(body) !== 'spec_not_approved') {
-    return {
-      via: 'cancel',
-      message: `could not cancel run ${runId}: ${cancelled.status} ${errorCode(body) ?? 'unknown'}`,
-    };
-  }
-
-  // Nothing has been scheduled yet, so there is no process group to kill; what
-  // ends the run is `run.aborted`, which is what abandon appends.
-  const abandoned = await client.runs[':id'].spec.abandon.$post(
-    { param: { id: runId } },
-    { headers: { 'X-DeFlow-Submitted-By': 'cli' } },
-  );
-  return abandoned.ok
-    ? { via: 'abandon', message: `abandoned run ${runId} before its spec was approved` }
-    : { via: 'abandon', message: `could not stop run ${runId}: ${abandoned.status}` };
+  return {
+    via: 'cancel',
+    message: `could not cancel run ${runId}: ${cancelled.status} ${errorCode(body) ?? 'unknown'}`,
+  };
 }

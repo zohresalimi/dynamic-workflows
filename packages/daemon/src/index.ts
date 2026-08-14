@@ -56,6 +56,20 @@ export {
   writeDaemonFile,
 } from './daemon-file.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
+// KAR-19.1 — the run driver the ticker calls, and the framing port `DeFlow up`
+// binds to a live ACP session (KAR-19.3).
+export type {
+  AdvanceInput,
+  DriverPorts,
+  ExecuteInput,
+  FramingRunner,
+  FramingWake,
+  RunAdvancer,
+  RunDriver,
+  RunNodeExecutor,
+  TickReport,
+} from './drive.ts';
+export { createRunDriver } from './drive.ts';
 // KAR-06.3 — the Effect Runner: intent, act, record. The four branches of
 // `durable()` are four genuinely different real situations.
 export type {
@@ -352,6 +366,10 @@ export {
   parsePtyPath,
 } from './http/pty-protocol.ts';
 export { installPtyUpgrade, ptyUpgradeHandler } from './http/pty-socket.ts';
+// KAR-19.1 AC4 — the list `GET /api/runs` answers with, including the runs
+// nothing has framed yet.
+export type { RunListEntry, RunListPage, RunListQuery } from './http/run-list.ts';
+export { RUN_LIST_DEFAULT_LIMIT, RUN_LIST_MAX_LIMIT, runList } from './http/run-list.ts';
 export type { RunSummary } from './http/run-summary.ts';
 export { runSummary } from './http/run-summary.ts';
 export type { StartedHttp, StartHttpOptions } from './http/server.ts';
@@ -483,6 +501,50 @@ export {
 export type { ShimOptions } from './mcp/shim.ts';
 export { EX_REFUSED, EX_UNAVAILABLE, EX_USAGE, runMcpShim, SHIM_NAME } from './mcp/shim.ts';
 export { API_VERSION, BOOT_ID, BUILD, uptimeMs } from './meta.ts';
+export type { LiveTurnOptions } from './pipeline/live-agents.ts';
+export {
+  liveFramingAgent,
+  livePlannerAgent,
+  liveReconAgent,
+  MAX_TURN_BYTES,
+  structuredTurn,
+} from './pipeline/live-agents.ts';
+// KAR-19.3 — and the resolver itself: the binding that turns a daemon with a
+// chain into a daemon that runs one. `DeFlow up` is its production caller.
+export type { LiveChainOptions } from './pipeline/live-chain.ts';
+export {
+  ASSUMED_CONTEXT_FLOOR,
+  createLiveRunChain,
+  PROVIDER_DEFAULT_MODEL,
+} from './pipeline/live-chain.ts';
+// KAR-19.4 AC1 — the performer behind it: agent nodes on a real process in
+// their own worktree, gate nodes through `gateNodePerformer`. The second half
+// of the composition-root binding whose absence was the 2026-08-12 failure.
+export type { LiveExecutionOptions } from './pipeline/live-nodes.ts';
+export { createLiveRunExecution } from './pipeline/live-nodes.ts';
+// KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
+// `runReconNode` and `compilePlanV1`, and the resolver `DeFlow up` binds it to.
+export type {
+  RunChain,
+  RunChainContext,
+  RunChainPorts,
+  RunChainResolver,
+} from './pipeline/run-chain.ts';
+export {
+  createRunChain,
+  PLANNER_NODE,
+  RECON_NODE,
+  reconWorktreePath,
+} from './pipeline/run-chain.ts';
+// KAR-19.4 — the live executor: the one shipped caller of `executeRun`, and the
+// resolver `DeFlow up` binds it to a performer over a real worktree.
+export type {
+  RunExecution,
+  RunExecutionContext,
+  RunExecutionPorts,
+  RunExecutionResolver,
+} from './pipeline/run-execution.ts';
+export { createRunExecution } from './pipeline/run-execution.ts';
 // KAR-11.2 — plan validation's one entry point on this side of the boundary:
 // git's verdict on every node id, and the gate a patched plan commits through.
 export type {

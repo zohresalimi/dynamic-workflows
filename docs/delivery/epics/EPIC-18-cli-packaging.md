@@ -121,15 +121,29 @@ observable from a clean temp directory.
   [16 §2](../../16-repo-layout.md) deleted the multi-package release problem. It needs no story.
 - **Driving a submitted run to completion** — and therefore the completion half of **KAR-18.6 AC2**
   (_"a scripted multi-node run completes … and exits 0"_) and of KAR-18.3's EPIC-18-S18. It lives in
-  [EPIC-06](./EPIC-06-orchestrator.md) KAR-06.9 — `RECOVERY_STEPS`' eighth step, `start-ticker`,
-  which `recovery.ts` leaves to its caller and `boot()` does not yet perform, because there is no run
-  driver to tick — over the intake→spec→plan path of [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
+  [EPIC-19](./EPIC-19-live-run-pipeline.md), over the intake→spec→plan path of
+  [EPIC-10](./EPIC-10-task-intake.md) KAR-10.2 and
   [EPIC-11](./EPIC-11-dynamic-planning.md). This epic is a _client_ of the daemon; it submits runs and
   reports what the daemon says about them, and every criterion here that assumed a run reaching a
   terminal state is amended in place rather than asserted away (see KAR-18.6 AC2's amendment, the
   epic's Definition of Done, and `test/run-completion-deferral.test.ts`, which fails the day a
-  shipped source starts a ticker, compiles a plan or executes a run — so the cut cannot outlive its
-  reason).
+  shipped source compiles a plan or executes a run — so the cut cannot outlive its reason).
+
+  **Narrowed 2026-08-12 by KAR-19.1**, and recorded here rather than absorbed
+  ([README §9](../README.md#9-changing-the-plan)). `RECOVERY_STEPS`' eighth step, `start-ticker`, is
+  now performed: `boot()` starts the ticker, intake writes a framing `node_wake` in the same
+  transaction as `task.submitted`, and the driver consumes it.
+
+  **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.3, KAR-19.4 and
+  KAR-19.5.** A shipped path now carries a submitted run all the way: `run-chain.ts` frames, gates,
+  pins, surveys and compiles; `run-execution.ts` and `live-nodes.ts` execute; and both composition
+  roots — `packages/cli/src/up.ts` and `packages/daemon/src/main.ts` — bind `runFraming`,
+  `advanceRun` and `executeNodes`. `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
+  `DeFlow run --file` against the **built binary** on a `PATH` holding only `DeFlow-mock-agent` and
+  asserts `task.submitted → run.created → plan.proposed → node.started → node.completed →
+  run.completed` with exit 0. `test/run-completion-deferral.test.ts` was deleted by KAR-19.4 when it
+  went red, exactly as its own instructions said it should be, and the deferral it guarded is
+  therefore spent rather than merely narrowed.
 
 ## Definition of Ready (epic level)
 
@@ -155,8 +169,13 @@ observable from a clean temp directory.
       and this is wired as a CI job — not a checklist item someone remembers.
       _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
       images, on every tag and on demand — and the clean room serves the UI and drives real ACP
-      turns against the installed mock agent. **"Completes a mock run" stays open**: no shipped code
-      path executes a submitted run past intake yet. See KAR-18.6 AC2's amendment.)_
+      turns against the installed mock agent. 2026-08-13, EPIC-19 KAR-19.5: **a run now completes**
+      — `executeNodes` is bound in both composition roots, and `DeFlow run --file` against the built
+      binary on a `PATH` holding only `DeFlow-mock-agent` reaches `run.completed` and exits 0
+      (`e2e/smoke/live-run.test.ts`, and performed by hand against the packed `dist/bin.mjs`). What
+      this item still asks for and does not yet have is that run **inside the clean room**: the
+      smoke test runs `packages/cli/dist`, not the installed tarball. See KAR-18.6 AC2's
+      amendment.)_
 - [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
 - [ ] `DeFlow doctor` never reports a provider as _not installed_ while that vendor's own CLI
@@ -394,23 +413,64 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 > executes, and this repository has no code path that executes one: nothing calls `compilePlanV1`
 > or `executeRun`, `boot()` starts no ticker, and `POST /api/runs` stops at `task.submitted` by
 > design (KAR-10.1: _"No interpretation happens here"_). Every submitted run therefore parks after
-> intake. What that changes here:
+> intake. (**Narrowed 2026-08-12 by KAR-19.1**, which started the ticker and scheduled framing, and
+> again **2026-08-13 by KAR-19.3**, whose run chain frames, pins, surveys and compiles a
+> `PlanGraph`. One call was still missing at that point — `executeRun` — and it was the whole of why
+> a run reached no terminal state. It is no longer missing; see the closure below.) What that
+> changes here:
 >
 > - **AC1's "streams node lifecycle … until a terminal state"** is implemented and asserted for
 >   every terminal state the ledger can currently reach (an open human gate under `--no-wait`, an
->   abort, a completion appended by a spec through the daemon's own functions). The four-node
->   plan running to `run.completed` is not reachable and is **not** faked; `e2e/run.test.ts`
->   carries the deferral and the epic's DoD keeps it open.
+>   abort, a completion appended by a spec through the daemon's own functions). This bullet then
+>   read, verbatim and until the closure below: _"The four-node plan running to `run.completed` is
+>   not reachable and is **not** faked; `e2e/run.test.ts` carries the deferral and the epic's DoD
+>   keeps it open."_
 > - **AC3's second Ctrl-C** cancels through the daemon's own routes — `POST /runs/:id/cancel`,
 >   falling back to `POST /runs/:id/spec/abandon` when the daemon answers `spec_not_approved`,
 >   because KAR-15.5 AC6 forbids controlling a run whose spec is not approved. A run that has not
 >   been framed at all can be stopped by **neither** route (the gate is not open either), which is a
 >   real hole in the daemon's write surface rather than in this command; it is recorded as a
->   follow-up on `MET-418` rather than patched from the CLI.
+>   follow-up on `MET-418` rather than patched from the CLI. **That follow-up is now
+>   [KAR-19.6](./EPIC-19-live-run-pipeline.md), added 2026-08-12** — which also builds
+>   `DeFlow cancel <runId>`, the command AC3's own detach sentence has printed since this story
+>   shipped and which has never existed.
 > - **AC8's `--spec`** produces the `file` wire kind, not a fourth one. KAR-10.1 settled that
 >   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
 >   `mediaType` in provenance — there is no fourth shape"_), and the locator — which is what makes
 >   the source inspectable six weeks later — is recorded either way.
+>
+> **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.3, KAR-19.4 and
+> KAR-19.5.** Both of AC1's clauses are spent. This closure is written here rather than left in a
+> commit message — `c128481`'s message claimed to close _"EPIC-18's two open amendments"_ and closed
+> only one of them, which is the same silent absorption
+> [README §9](../README.md#9-changing-the-plan) forbids, arriving from the other direction.
+>
+> - **The four-node plan is reachable.** `packages/daemon/src/pipeline/run-execution.ts` is the one
+>   shipped caller of `executeRun`, and both composition roots — `packages/daemon/src/main.ts` and
+>   `packages/cli/src/up.ts` — now bind `runFraming`, `advanceRun` and `executeNodes` into `boot()`.
+>   Until that binding existed `drive.ts` returned early and every submitted run parked at the
+>   framing wake on a real machine, which is the 2026-08-12 operator failure EPIC-19 exists to fix.
+> - **`e2e/run.test.ts` no longer carries the deferral.** KAR-19.4 rewrote its header to name where
+>   the completion half lives instead: `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
+>   `DeFlow run --file` against the **built binary**, on a `PATH` holding only `DeFlow-mock-agent`,
+>   and asserts `task.submitted → run.created → plan.proposed → node.started → node.completed` in
+>   order out of the ledger the run wrote for itself, `run.completed` last, at least two planned
+>   nodes with at least one executed, agent output on the CLI's own stdout _while the run was still
+>   in flight_, and exit 0. `test/run-completion-deferral.test.ts` — the guard that was to expire the
+>   day a shipped source executed a run — went red and was deleted, exactly as it instructed.
+>   `test/run-deferral-closure.test.ts` is its counterpart on the far side of that event: while a run
+>   can complete, no delivery doc may still assert, unclosed, that none can.
+> - **What the epic's DoD still keeps open is a different thing**, and folding it into this deferral
+>   would overstate the closure: the completed run is asserted against `packages/cli/dist`, not
+>   against an installed tarball in the `verify-install` clean room. That gap is stated in the
+>   Definition of Done above and in KAR-18.6 AC2's own closure, and shutting it is a real change to
+>   `packages/cli/scripts/verify-install/`.
+> - **Not closed by this note**, and named rather than absorbed: the terminal lines this story's
+>   scenario asks for — the gate verdict, the `DeFlow/<runId>__<nodeId>` branch name and the final
+>   cost/duration line — and a file snapshot of a _completed_ transcript are asserted nowhere yet,
+>   and the six `recordings/` replay fixtures are still not recorded from this command. The reason is
+>   no longer that a run cannot complete; it is that nobody has asserted those lines yet. Carried on
+>   EPIC-18-S18's note in [the flow file](../flows/EPIC-18-cli-packaging-flows.md).
 
 **Test plan (TDD)**
 
@@ -683,9 +743,13 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > repository and is not faked** — the same deferral [KAR-18.3](#kar-183--DeFlow-run-headless-execution)
 > already carries, recorded here rather than left in a commit message, because
 > [README §9](../README.md#9-changing-the-plan) is explicit that a cut is recorded and never
-> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker, and
+> silently absorbed. Nothing calls `compilePlanV1` or `executeRun`, and
 > `POST /api/runs` stops at `task.submitted` by design (KAR-10.1: _"No interpretation happens
-> here"_), so every submitted run parks after intake. That wiring is EPIC-06/EPIC-10/EPIC-11 and is
+> here"_), so every submitted run parks after intake. (**Narrowed 2026-08-12 by KAR-19.1**: `boot()`
+> now does start the ticker, and intake now does schedule framing. **Narrowed again 2026-08-13 by
+> KAR-19.3**: an approved spec is now pinned, surveyed and compiled into a validated `PlanGraph` by
+> `packages/daemon/src/pipeline/run-chain.ts`. The one call that remains missing — `executeRun` — is
+> what still makes the completion half unreachable.) That wiring is EPIC-06/EPIC-10/EPIC-11 and is
 > in this epic's **Out of scope**; this epic is a _client_ of the daemon.
 >
 > What ships instead is the criterion's own stated reason — _"this proves the inlined daemon, the
@@ -700,9 +764,17 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > - a run submitted through the installed `DeFlow run` reaches the installed daemon and is reported
 >   as `task.submitted`, never as a run that completed.
 >
-> **The completion half stays open**: it is the epic's Definition of Done item below, and the first
-> thing to re-assert here once an orchestrated run exists. Until then AC2 is met in reason and not
-> in letter, and this note is the record of that difference.
+> **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.5.** `executeRun`'s
+> missing call now exists in both composition roots, and a run submitted on a machine with only the
+> bundled agent reaches `run.completed` and exit 0 — asserted against the built binary by
+> `e2e/smoke/live-run.test.ts`, and performed by hand in a scratch repository against the packed
+> `dist/bin.mjs`. AC2 is now met in letter as well as in reason.
+>
+> **One thing this amendment promised and this closure does not deliver**, so it is left standing
+> rather than quietly dropped: the completion is asserted against `packages/cli/dist`, not against
+> an installed tarball in the `verify-install` clean room. Test plan #2 above is still the room's
+> own scripted run, and raising it to a completed run there is a real change to
+> `packages/cli/scripts/verify-install/`, not a line in this note.
 
 **Test plan (TDD)**
 
@@ -857,6 +929,26 @@ and asks before it spawns `npm`.
 other binary; DeFlow does not embed a package manager and does not choose one for the operator. If
 `npm` itself is absent the state is a `warn` naming that, not a crash. `--fix` is deliberately
 per-adapter and not a general repair flag: a flag that fixes everything is a flag nobody can predict.
+
+> **Amended 2026-08-13 by KAR-19.10** (`docs/delivery/epics/EPIC-19-live-run-pipeline.md`).
+> AC1's **three states per provider** are no longer the answer to *"can a run use this"*. They
+> remain exactly what they were — the vocabulary the **install sentence** is keyed on, and every
+> word of AC2's wording guard still holds — but a second answer now sits beside them: **one state
+> per route**, `{ acp, shim }`, each `available` or `missing`, produced by `providerRoutes` in
+> `packages/adapters/src/provider-install.ts` and read by `doctor`, admission and selection alike.
+>
+> The reason is that one word per provider cannot say *"usable on one route, not the other"*, and on
+> 2026-08-13 that gap became a wrong report: `doctor` called a machine `adapter-missing` — which
+> every reader takes to mean unusable — while a run on the same machine was, correctly, driving that
+> vendor's CLI through the exec shim. `adapter-missing` was a true sentence about the machine and a
+> false one about the run.
+>
+> So the Agents section now prints both routes per provider and where each one's binary is, **above**
+> the install sentence rather than instead of it. AC3 is unchanged (neither absence is a `fail`), and
+> AC1's states still decide what `--fix` offers and what AC4's prompt asks: the ACP bridge is still
+> what agent-node execution needs, and installing it is still the fix. What changed is that `doctor`
+> stops implying the machine can do nothing. The reasoning is recorded in KAR-19.10 and is not
+> restated here.
 
 ---
 

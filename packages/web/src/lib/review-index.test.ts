@@ -136,8 +136,8 @@ suite('KAR-17.6 — every finding carries the verdict that produced it (AC10)', 
   it('stamps each finding with the gate.evaluated seq, so it links back', () => {
     const finding = reviewIndex(repair()).files[0]?.lines[0]?.findings[0];
 
-    // seq 11 is the `gate.evaluated` the recording wrote the failure at.
-    expect(finding?.seq).toBe(11);
+    // seq 12 is the `gate.evaluated` the recording wrote the failure at.
+    expect(finding?.seq).toBe(12);
     expect(finding?.gate).toBe('typecheck');
   });
 
@@ -229,8 +229,8 @@ suite('KAR-17.6 test 6 — the repair loop, as a pair of states (AC6)', () => {
 
     expect(rest).toEqual([]);
     expect(loop?.gate).toBe('typecheck');
-    expect(loop?.failing.seq).toBe(11);
-    expect(loop?.repaired?.seq).toBe(28);
+    expect(loop?.failing.seq).toBe(12);
+    expect(loop?.repaired?.seq).toBe(29);
     expect(loop?.repaired?.outcome).toBe('pass');
   });
 
@@ -259,7 +259,7 @@ suite('KAR-17.6 test 6 — the repair loop, as a pair of states (AC6)', () => {
 
   it('marks a loop that spent its cap and never passed as escalated, not as a fix-agent failure', () => {
     const exhausted = fold([
-      ...gateFailureRepair().filter((event) => event.seq <= 11),
+      ...gateFailureRepair().filter((event) => event.seq <= 12),
       ...[2, 3].map((attempt) =>
         gateEvaluated({
           seq: 100 + attempt,

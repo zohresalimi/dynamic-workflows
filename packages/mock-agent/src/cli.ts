@@ -11,6 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { CAPABILITY_PROFILE_NAMES, type CapabilityProfileName } from './capability-profiles.ts';
 import { DEFAULT_REPLAY_SPEED, REPLAY_SPEEDS, type ReplaySpeed } from './replay.ts';
 import { IDEMPOTENCY_FLAGS } from './side-effect-log.ts';
+import {
+  MOCK_PROMPT_FLAG,
+  MOCK_STRUCTURED_OUTPUT_FLAG,
+  SERVABLE_SCHEMA_IDS,
+} from './structured.ts';
 
 export const BIN_NAME = 'DeFlow-mock-agent';
 
@@ -133,6 +138,24 @@ Options:
                       with $${VERSION_ENV} to stage a version bump.
   -h, --help          Print this text and exit 0.
 
+Structured output — a turn that carries a return contract, answered with one
+document and nothing else. This is what lets framing, recon and planning run
+with no vendor CLI installed at all.
+
+  ${MOCK_STRUCTURED_OUTPUT_FLAG} <path>
+                      Serve the schema named by <path> instead of opening an
+                      ACP session: one JSON document on stdout, no trailing
+                      newline, exit 0. A schema this binary has no generator
+                      for is refused loudly with nothing on stdout, never
+                      approximated. Servable ids:
+                      ${SERVABLE_SCHEMA_IDS.join(', ')}.
+  ${MOCK_PROMPT_FLAG} <text>     The turn's prompt. Only meaningful alongside
+                      ${MOCK_STRUCTURED_OUTPUT_FLAG}, and deliberately not read into the
+                      document: the returned document is a function of the
+                      schema id and the seed, so two machines plan the same
+                      plan. A --scenario given alongside may script an invalid,
+                      truncated or verbatim return instead.
+
 Pathological behaviours — one flag each, so a reported bug is one command.
 Each runs the shipped scenario of the same name; none may be combined with
 --scenario or with each other.
@@ -197,6 +220,23 @@ export interface MockAgentOptions {
    * agent had no handler for it".
    */
   readonly wireLog: string | null;
+  /**
+   * KAR-19.7 — the schema this turn returns against, and the prompt it was
+   * given, or `null` for the ACP turn this binary has always served.
+   *
+   * Non-null is what selects the structured path, and it is the *only* thing
+   * that selects it: a turn invoked without the flag behaves byte-for-byte as
+   * it did before this story existed, which is what keeps EPIC-04's several
+   * hundred fixtures from needing to be re-recorded.
+   */
+  readonly structured: StructuredSelection | null;
+}
+
+/** KAR-19.7 — the schema file to serve, and the prompt that asked for it. */
+export interface StructuredSelection {
+  readonly schemaPath: string;
+  /** `null` when the caller passed no prompt. Never read into the document. */
+  readonly prompt: string | null;
 }
 
 export type ParsedArgv =
@@ -215,6 +255,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   let replaySpeed: ReplaySpeed | null = null;
   let loadHistory = 0;
   let wireLog: string | null = null;
+  let schemaPath: string | null = null;
+  let prompt: string | null = null;
 
   /** Two scripts and one turn is a silent choice, so it is refused instead. */
   const conflict = (flag: string, other: string): ParsedArgv => ({
@@ -235,6 +277,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       if (behaviour !== null) return conflict(argument, behaviour);
       if (scenarioPath !== null) return conflict(argument, '--scenario');
       if (replayPath !== null) return conflict(argument, '--replay');
+      if (schemaPath !== null) return conflict(argument, MOCK_STRUCTURED_OUTPUT_FLAG);
       behaviour = argument;
       continue;
     }
@@ -246,6 +289,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       }
       if (scenarioPath !== null) return conflict('--replay', '--scenario');
       if (behaviour !== null) return conflict('--replay', behaviour);
+      if (schemaPath !== null) return conflict('--replay', MOCK_STRUCTURED_OUTPUT_FLAG);
       replayPath = raw;
       index += 1;
       continue;
@@ -293,6 +337,32 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         };
       }
       loadHistory = Number.parseInt(raw, 10);
+      index += 1;
+      continue;
+    }
+
+    if (argument === MOCK_STRUCTURED_OUTPUT_FLAG) {
+      const raw = argv[index + 1];
+      if (raw === undefined || raw.startsWith('--')) {
+        return {
+          kind: 'error',
+          message: `${MOCK_STRUCTURED_OUTPUT_FLAG} needs a path to a JSON Schema file`,
+        };
+      }
+      // A replay and a pathological flag each own the whole turn, so a schema
+      // beside one is two scripts for one invocation — the silent choice
+      // parseArgv refuses everywhere else.
+      if (replayPath !== null) return conflict(MOCK_STRUCTURED_OUTPUT_FLAG, '--replay');
+      if (behaviour !== null) return conflict(MOCK_STRUCTURED_OUTPUT_FLAG, behaviour);
+      schemaPath = raw;
+      index += 1;
+      continue;
+    }
+
+    if (argument === MOCK_PROMPT_FLAG) {
+      const raw = argv[index + 1];
+      if (raw === undefined) return { kind: 'error', message: `${MOCK_PROMPT_FLAG} needs a value` };
+      prompt = raw;
       index += 1;
       continue;
     }
@@ -393,6 +463,15 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   if (replayPath !== null && dishonestCapability !== null) {
     return conflict('--replay', '--dishonest-capabilities');
   }
+  // The same rule as --replay-speed: a prompt nobody answers is a turn the
+  // caller believes it asked for and never got, which is the silent choice
+  // this parser refuses everywhere else.
+  if (schemaPath === null && prompt !== null) {
+    return {
+      kind: 'error',
+      message: `${MOCK_PROMPT_FLAG} only means something alongside ${MOCK_STRUCTURED_OUTPUT_FLAG}`,
+    };
+  }
 
   return {
     kind: 'run',
@@ -410,6 +489,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
           : { path: replayPath, speed: replaySpeed ?? DEFAULT_REPLAY_SPEED },
       loadHistory,
       wireLog,
+      structured: schemaPath === null ? null : { schemaPath, prompt },
     },
   };
 }

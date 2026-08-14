@@ -55,6 +55,7 @@ export {
 export { authorizedFetch, TEST_DAEMON_TOKEN } from './daemon-http.ts';
 export { dbContract } from './db-contract.ts';
 export {
+  CLAUDE_INVALID_SESSION_ID,
   CLAUDE_VERBOSE_REQUIRED,
   type CliDecision,
   DIALECT_ENV,

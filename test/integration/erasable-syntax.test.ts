@@ -203,8 +203,9 @@ suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
   // bounded time instead of hanging the slice. The real "does the workspace
   // still typecheck" gate is `pnpm typecheck`, which runs unloaded.
   //
-  // The neighbouring `vue-tsc` spec keeps the default: it covers one package,
-  // measures 1.33 s idle, and has never been near the ceiling.
+  // The neighbouring `vue-tsc` spec used to keep the default, on the stated
+  // grounds that it covers one package, measured 1.33 s idle, and had never
+  // been near the ceiling. That justification expired; see the comment on it.
   it('"tsc -b" typechecks all nine packages in dependency order and exits 0', () => {
     const result = spawnSync(TSC, ['-b', join(repoRoot, 'tsconfig.json')], {
       cwd: repoRoot,
@@ -213,6 +214,30 @@ suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
     expect(result.status, `${result.stdout ?? ''}${result.stderr ?? ''}`).toBe(0);
   }, 600_000);
 
+  // This spec inherited the slice's 30 s default rather than choosing it, and
+  // the sentence above recorded why that was safe: one package, 1.33 s idle.
+  // Both halves of that have expired. `packages/web` was an EPIC-16 skeleton
+  // when it was measured and is now the whole P0 view set — EPIC-16, EPIC-17,
+  // EPIC-18 and EPIC-19 — and `vue-tsc` has to parse every SFC in it before it
+  // typechecks anything.
+  //
+  // Re-measured 2026-08-13 on the EPIC-19 gate, on the same 8-core machine and
+  // in the same way the ceiling above was measured: 9.8 s and 9.9 s idle (a
+  // third sample read 5.7 s off a cache still warm from `pnpm typecheck`, and
+  // is not representative of how the slice runs it), and 19.8 s and 21.4 s
+  // beside eight CPU hogs. The default was already inside the loaded range, and
+  // the full suite is heavier than eight hogs: on the run that produced this
+  // change it timed out at 30 s having never reached its assertion. Applying
+  // the neighbour's own measured idle→full-suite factor (16 s to 157.7 s, ~10x)
+  // puts this one near 100 s beside a live suite.
+  //
+  // So it takes the same ceiling as its neighbour, because it is the same kind
+  // of bound and now runs under the same load. It is not a budget and it
+  // weakens no assertion: what is asserted is exit 0 with the compiler's own
+  // output as the message, and nothing here claims `vue-tsc` is fast. The
+  // ceiling exists only so that a genuinely wedged compiler fails in bounded
+  // time instead of hanging the slice, and `pnpm typecheck` — which runs
+  // unloaded — remains the gate that says whether the workspace typechecks.
   it('"vue-tsc --noEmit" passes against packages/web on an empty workspace', () => {
     expect(existsSync(join(repoRoot, 'packages/web/node_modules/.bin/vue-tsc'))).toBe(true);
     const result = spawnSync('pnpm', ['--filter', '@DeFlow/web', 'exec', 'vue-tsc', '--noEmit'], {
@@ -220,5 +245,5 @@ suite('the real workspace solution build (EPIC-01-S6 happy path, AC3)', () => {
       encoding: 'utf8',
     });
     expect(result.status, `${result.stdout ?? ''}${result.stderr ?? ''}`).toBe(0);
-  });
+  }, 600_000);
 });

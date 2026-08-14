@@ -55,6 +55,9 @@ suite('DeFlow up generates and records the token (AC7, EPIC-15-S12 scenario 1)',
       'port',
       'processStartedAt',
       'startedAt',
+      // KAR-19.1 AC2 — the interval of the ticker this daemon life started, so
+      // `DeFlow status` can report the loop rather than assume it.
+      'tickIntervalMs',
       'token',
     ]);
     expect(file.pid).toBe(process.pid);

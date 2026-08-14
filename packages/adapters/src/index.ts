@@ -20,6 +20,30 @@ export {
   CAPABILITY_REQUIREMENTS,
   type CapabilityRequirement,
 } from './admission.ts';
+// KAR-19.11 — the closed vocabulary of argument shapes, and the audit that
+// checks a built argv against what its entry declared. Two arguments in two
+// days were found wrong by running the product; this is what answers how many
+// are left.
+export type {
+  ArgumentAuditRow,
+  ArgumentForm,
+  ArgumentFormCheck,
+  ArgumentProvenance,
+  ArgumentProvenanceKind,
+  ShimArgument,
+} from './argument-forms.ts';
+export {
+  ARGUMENT_FORMS,
+  ARGUMENT_PROVENANCE_KINDS,
+  auditArgv,
+  checkArgumentForm,
+  MAX_ARGV_ELEMENT_BYTES,
+  UUID_PATTERN,
+} from './argument-forms.ts';
+// KAR-19.8 — a vendor that refuses one of DeFlow's own arguments is reported
+// as an argument problem, permanently, with the flag and the value on it.
+export type { ArgumentRefusalInput, RejectedArgument } from './argument-refusal.ts';
+export { argumentRefused, excerptStderr, rejectedArgument } from './argument-refusal.ts';
 // KAR-05.3 — an absolute path or a failure that names what was looked for and
 // where. PATH is never consulted (§4.3).
 export type { ResolveContext, ResolvedProvider, SearchedPath } from './binary-resolver.ts';
@@ -207,6 +231,44 @@ export type {
   ProviderAvailability,
 } from './provider-availability.ts';
 export { renderAuthMethods, reportAvailability } from './provider-availability.ts';
+// KAR-18.8 and KAR-19.2 — what this machine has installed, in one sentence per
+// provider, and the admission decision `POST /api/runs` makes from it. One
+// renderer: `doctor`'s Agents section and the daemon's refusal are the same
+// string, byte for byte.
+export type {
+  AgentInstallState,
+  ChosenProvider,
+  ProviderResolution,
+  ProviderRoutes,
+  ProviderVerdict,
+  RefusedProvider,
+  RunAdmission,
+  RunAdmissionRequest,
+  RunRefusalCode,
+  RunTurn,
+} from './provider-install.ts';
+export {
+  admitRun,
+  binaryForRoute,
+  installCommand,
+  installPrompt,
+  isRunRefusalCode,
+  MOCK_AGENT_FLAG,
+  MOCK_AGENT_SENTENCE,
+  providerRoutes,
+  providerVerdict,
+  RUN_REFUSAL_CODES,
+  renderRefusal,
+  renderRouteLimitation,
+  renderRouteReport,
+  resolveProviderState,
+  resolveProviderStates,
+  routeForNextTurn,
+  TURN_ROUTES,
+  turnsServedBy,
+  unservedTurns,
+  usableProviders,
+} from './provider-install.ts';
 // KAR-05.3 — the verified provider table, encoded once. The only file in this
 // package that names a vendor, and it names no capability.
 export type {
@@ -223,12 +285,16 @@ export type {
   SpawnPlan,
 } from './provider-registry.ts';
 export {
+  auditShimArgv,
   DEFAULT_MODEL_FAMILY,
   PROVIDER_SPECS,
   providerFamily,
   providerSpec,
   providerTokenAccounting,
+  redactedInline,
+  redactedShimArgv,
   SHIM_FORMATS,
+  schemaIdOf,
   shimPlan,
   spawnPlan,
   UNMEASURED_TOKEN_ACCOUNTING,
@@ -399,3 +465,12 @@ export { agentTransport } from './transport.ts';
 export { TURN_COMPLETED_TYPE, turnCompletedReport } from './turn-frames.ts';
 export type { UpdateDescription } from './updates.ts';
 export { describeUpdate, toolCallContentText } from './updates.ts';
+// KAR-19.8 — the vendor-side session id, derived from DeFlow's own identifiers
+// rather than minted, so a run keeps its id and the vendor gets a uuid.
+export type { SessionIdSpec, VendorSessionKey } from './vendor-session.ts';
+export {
+  isUuid,
+  VENDOR_SESSION_NAMESPACE,
+  vendorSessionId,
+  vendorSessionIdFor,
+} from './vendor-session.ts';

@@ -58,6 +58,11 @@ export default defineConfig({
   // that is a workspace convenience, not a published API.
   dts: false,
   sourcemap: false,
+  // Kept as the statement of intent, and **not** relied on: tsdown resolves
+  // these globs against the project root rather than against `--out-dir`, so on
+  // their own they match nothing and `dist/` accumulates every content-hashed
+  // chunk of every build. `scripts/build.ts` removes exactly this set, in the
+  // out directory, immediately before invoking tsdown.
   clean: ['*.mjs', '*.d.mts', '*.map'],
   /**
    * The third name on both lists is `vite`, and AC7 is the reason.

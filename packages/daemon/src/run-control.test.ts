@@ -129,10 +129,20 @@ suite('EPIC-15-S33 — a run that genuinely cannot pause (AC2)', () => {
     });
   });
 
-  it('refuses to cancel a run that has already ended', () => {
+  /**
+   * > **Amended 2026-08-12 by KAR-19.6 AC6.** A cancel of a run that has
+   * > already ended is a *repeat*, not a conflict: the operator asked for a
+   * > state the run is already in, and KAR-15.5 AC2's own rule for that is
+   * > `200` with the seq already in the log. `pause` and `resume` keep the
+   * > `409` — neither is a state an ended run is in.
+   */
+  it('answers a cancel of a run that has already ended with the seq that ended it', () => {
     expect(
-      planRunControl({ verb: 'cancel', by: 'user', mode: 'forceful' }, at('completed')),
-    ).toMatchObject({ outcome: 'refused', http: 409, code: 'run_not_pausable' });
+      planRunControl({ verb: 'cancel', by: 'user', mode: 'forceful' }, at('completed', 8_113)),
+    ).toEqual({ outcome: 'unchanged', seq: 8_113 });
+    expect(
+      planRunControl({ verb: 'cancel', by: 'user', mode: 'cooperative' }, at('aborted', 8_114)),
+    ).toEqual({ outcome: 'unchanged', seq: 8_114 });
   });
 
   it('says which state refused, so the message is actionable', () => {
@@ -148,11 +158,19 @@ suite('EPIC-15-S33 — a run that genuinely cannot pause (AC2)', () => {
 });
 
 suite('EPIC-15-S37 — acting before the spec is approved (AC6)', () => {
-  it('refuses every verb with 422 spec_not_approved while the F1.3 gate is open', () => {
-    for (const verb of ['pause', 'resume', 'cancel'] as const) {
-      expect(
-        planRunControl({ verb, by: 'user', mode: 'cooperative' }, at('awaiting-spec-approval')),
-      ).toMatchObject({ outcome: 'refused', http: 422, code: 'spec_not_approved' });
+  /**
+   * > **Amended 2026-08-12 by KAR-19.6 AC3.** `cancel` left this loop. The
+   * > blanket rule was right for the two verbs that admit work and wrong for
+   * > the one that ends it: with `abandonRun` refusing when no gate is open, a
+   * > run accepted and never framed could be stopped by neither route.
+   */
+  it('refuses pause and resume with 422 spec_not_approved while the F1.3 gate is open', () => {
+    for (const verb of ['pause', 'resume'] as const) {
+      expect(planRunControl({ verb, by: 'user' }, at('awaiting-spec-approval'))).toMatchObject({
+        outcome: 'refused',
+        http: 422,
+        code: 'spec_not_approved',
+      });
     }
   });
 
@@ -168,6 +186,72 @@ suite('EPIC-15-S37 — acting before the spec is approved (AC6)', () => {
       outcome: 'append',
       kind: 'run.paused',
     });
+  });
+});
+
+/**
+ * KAR-19.6 test plan #1 — the whole `RunStatus` × verb table, because the
+ * change being made here is an **ordering** change and a table is the only way
+ * to say that nothing else moved with it.
+ *
+ * Verifies: EPIC-19-S39 (second scenario), EPIC-19-S41 · KAR-19.6 AC3, AC6
+ */
+suite('EPIC-19-S39 — cancel below the verb split (KAR-19.6 AC3)', () => {
+  const UNAPPROVED: readonly RunStatus[] = ['created', 'awaiting-spec-approval'];
+
+  it('plans a termination for a run that never started, rather than refusing it', () => {
+    for (const status of UNAPPROVED) {
+      expect(planRunControl({ verb: 'cancel', by: 'user' }, at(status))).toEqual({
+        outcome: 'terminate',
+        mode: 'cooperative',
+      });
+    }
+  });
+
+  it('carries the mode the operator asked for onto the termination', () => {
+    expect(planRunControl({ verb: 'cancel', by: 'user', mode: 'forceful' }, at('created'))).toEqual(
+      { outcome: 'terminate', mode: 'forceful' },
+    );
+  });
+
+  it('leaves pause and resume refusing exactly where they refused before', () => {
+    for (const status of UNAPPROVED) {
+      for (const verb of ['pause', 'resume'] as const) {
+        expect(planRunControl({ verb, by: 'user' }, at(status))).toMatchObject({
+          outcome: 'refused',
+          http: 422,
+          code: 'spec_not_approved',
+          runStatus: status,
+        });
+      }
+    }
+  });
+
+  it('keeps 404 run_not_found ahead of the verb split, for every verb', () => {
+    for (const verb of ['pause', 'resume', 'cancel'] as const) {
+      expect(
+        planRunControl({ verb, by: 'user' }, at('created', 0, { status: null })),
+      ).toMatchObject({ outcome: 'refused', http: 404, code: 'run_not_found' });
+    }
+  });
+
+  it('still refuses a cancel written against a cursor the run has moved past', () => {
+    // A widened `cancel` must not become a widened *anything*: a stale panel is
+    // told it is stale, on the verb that ends a run as much as on the two that
+    // do not.
+    expect(
+      planRunControl({ verb: 'cancel', by: 'user' }, at('created', 900, { movedAt: 10_920 })),
+    ).toMatchObject({ outcome: 'refused', http: 409, code: 'stale_cursor' });
+  });
+
+  it('plans an ordinary cancel append for every status that is admitting work', () => {
+    for (const status of ['spec-approved', 'running', 'paused', 'needs-human'] as const) {
+      expect(planRunControl({ verb: 'cancel', by: 'user' }, at(status))).toEqual({
+        outcome: 'append',
+        kind: 'run.cancel.requested',
+        payload: { mode: 'cooperative' },
+      });
+    }
   });
 });
 

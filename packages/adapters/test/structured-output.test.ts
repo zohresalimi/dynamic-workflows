@@ -86,10 +86,20 @@ suite('the native path puts the schema on the argv (test plan #3)', () => {
     expect(contract.schemaPath).toBe(`${SCHEMAS_DIR}/DeFlow.finding.v1.json`);
     expect(contract.promptInjection).toBeNull();
 
-    const plan = shimPlan(PROVIDER_SPECS.claude, shimContext({ schemaPath: contract.schemaPath }));
+    // KAR-19.11 — the contract still names the file, and what rides on the
+    // flag is now the entry's declared form. Claude Code 2.1.220 parses the
+    // value of `--json-schema` as JSON and exited 1 on the path on 2026-08-13,
+    // so this vendor gets the **document**; Codex, whose flag takes a `<FILE>`,
+    // still gets the path (`exec-shim-argument-forms.test.ts`).
+    const document = JSON.stringify({ title: SCHEMA, type: 'object' });
+    const plan = shimPlan(
+      PROVIDER_SPECS.claude,
+      shimContext({ schemaPath: contract.schemaPath, schemaDocument: document }),
+    );
     const at = plan.argv.indexOf('--json-schema');
     expect(at).toBeGreaterThanOrEqual(0);
-    expect(plan.argv[at + 1]).toBe(contract.schemaPath);
+    expect(JSON.parse(plan.argv[at + 1] ?? '')).toEqual(JSON.parse(document));
+    expect(plan.argv).not.toContain(contract.schemaPath);
   });
 
   it('leaves the argv alone when no contract asked for a schema', () => {

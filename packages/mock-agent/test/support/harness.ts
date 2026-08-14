@@ -54,6 +54,14 @@ export interface SpawnMockAgentOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** The binary to spawn. Defaults to `MOCK_AGENT_BIN`. */
   readonly bin?: string;
+  /**
+   * The child's working directory. Defaults to the runner's own.
+   *
+   * Only a determinism spec has any use for it: "the document is the same
+   * whatever machine it was generated on" is not answerable without moving the
+   * process somewhere else first.
+   */
+  readonly cwd?: string;
 }
 
 export interface SpawnedAgent {
@@ -77,6 +85,7 @@ export function spawnMockAgent(
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,
     ...(options.env === undefined ? {} : { env: options.env }),
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
   });
 
   const rawStdout: Buffer[] = [];

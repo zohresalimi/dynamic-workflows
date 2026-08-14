@@ -254,12 +254,26 @@ graph LR
   W10 --> W11[W11 P0 views]
   W9 --> W12[W12 CLI, doctor<br/>& packaging]
   W12 -.->|a headless run<br/>is a fixture| W11
+  W11 --> W13[W13 The live run<br/>pipeline, end to end]
+  W12 --> W13
+  W7 --> W13
+  W8 --> W13
 ```
 
 The shape that matters: **W1 before everything, because everything is a projection of the ledger**;
 **W2 before W3, because the mock binary is what makes the ACP client testable without spending
 credits**; and **W9 before any UI work**, because a view built against a hand-rolled fixture will
 be rebuilt against the real stream.
+
+**W13 was added on 2026-08-12 and the reason it did not exist before is the reason it is needed.**
+This graph partitions the system by component, and every component was buildable and verifiable
+alone — which is what made the plan tractable for one person. Nothing in it owns the *edges*. On
+2026-08-12 an operator ran `DeFlow run --file <path>` against a real repository and the run did
+nothing: `runFramingInterview` was exported with no caller, so `task.submitted` was the only event
+the ledger ever received. `compilePlanV1` and `executeRun` had no shipped caller either. Every
+workstream had met its own definition of done. W13
+([EPIC-19](./delivery/epics/EPIC-19-live-run-pipeline.md)) is the workstream whose subject is the
+joins, and it ends in the test that keeps them joined.
 
 ### 2.2 The workstreams
 
@@ -278,6 +292,7 @@ be rebuilt against the real stream.
 | W10 | **UI shell and the ledger-projection store.** Hand-rolled projection store on Pinia 4 (D11). `shallowRef`/`shallowReactive` for collections, `markRaw` for anything handed to Vue Flow, xterm or ELK. Apply-and-drop events; keep a bounded ~2,000-event debug ring, never the raw array. Server-side snapshots for scrubber replay, never client-side replay from seq 0.                                                  | NF3                    | [12](./12-frontend-architecture.md)                                  | W9         |
 | W11 | **The P0 views**, in the priority order argued in §3.                                                                                                                                                                                                                                                                                                                                                                      | F10.1–F10.9            | [12](./12-frontend-architecture.md)                                  | W10        |
 | W12 | **CLI, `doctor`, packaging.** `npx DeFlow init / up / run`. `doctor` regenerates the capability matrix, checks the AppArmor/bubblewrap and Seatbelt paths, and warns on auth shadowing. Tarball tested with `pnpm pack` + `npx ./DeFlow-x.y.z.tgz up` in a clean tmpdir, plus `publint` and `@arethetypeswrong/cli`.                                                                                                       | F3.8, NF6              | [03](./03-local-development.md), [16](./16-repo-layout.md)           | W9         |
+| W13 | **The live run pipeline, end to end** _(added 2026-08-12)_. Intake schedules framing and the ticker actually starts; admission refuses a machine with no usable provider at submission, in `doctor`'s own words, with exit 5; framing → spec → pin → recon → `PlanGraph` v1 runs on the live path through the existing functions; nodes execute and their output streams to terminal and browser; and one fixture-free smoke test drives the real binary to an executed node, inside `pnpm test`, with a sabotage table proving it can go red.                | F1.1–F1.3, F2.2, F4.1–F4.7, F10.1, NF3, NF7 | [05](./05-durable-execution.md), [06](./06-planning-and-replanning.md), [14](./14-testing-strategy.md) | W7, W8, W11, W12 |
 
 ### 2.3 Sequencing notes
 
@@ -292,6 +307,12 @@ be rebuilt against the real stream.
   **Unverified.** Build a 400-node stress fixture and measure. That number decides §3.
 - **Wrap Vue Flow behind a `GraphCanvas` facade on day one of W10.** One day of work against the
   largest single third-party risk in the frontend (§5, row F-1).
+- **W13 is last, and it is not a buffer.** Every workstream before it can be finished, tested and
+  believed while the product does nothing, because the e2e level runs against **recorded fixtures
+  through the replay harness** — the right design for view work, and the reason ~10,000 green tests
+  coexisted with a run that appended one event. W13 is the only workstream that fails when two
+  workstreams do not meet. Scheduling pressure will suggest trimming it because everything it
+  touches is "already done"; that sentence is exactly the thing that was wrong on 2026-08-12.
 
 ---
 

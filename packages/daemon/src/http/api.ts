@@ -53,6 +53,7 @@ import {
   mintRunId,
   NodeIdSchema,
   parseDeFlowConfig,
+  pendingGate,
   SpecEditRefused,
   sealTaskSpec,
   VerdictV2Schema,
@@ -100,6 +101,10 @@ import { IO_NDJSON_MEDIA_TYPE, IO_NDJSON_UNVERSIONED, ioChunkLine } from './io-n
 import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
+import { runFailure } from './run-failure.ts';
+import { runList } from './run-list.ts';
+import { runProvider } from './run-provider.ts';
+import { runRefusal } from './run-refusal.ts';
 import { runSummary } from './run-summary.ts';
 import { serveStream } from './stream.ts';
 import { subscribeStream } from './streams.ts';
@@ -935,8 +940,78 @@ export const api = new Hono()
         ...apiError('invalid_request', result.message, { detail: { field: result.field } }),
       );
     }
-    return c.json({ runId: result.runId, seq: result.seq, status: 'awaiting-spec-approval' }, 201);
+
+    // KAR-19.2 AC1, AC2 — admission refused, and the run exists anyway.
+    //
+    // `seq` is the `run.aborted` that ended it, which is what the envelope's
+    // optional `seq` is for (docs/11 §10: *"present when the failure also
+    // produced a ledger event"*) — so the 4xx and the ledger row a UI would
+    // show are joined rather than merely consistent.
+    if (result.outcome === 'refused') {
+      return c.json(
+        ...apiError(result.code, result.message, {
+          detail: { runId: result.runId, providers: result.providers },
+          seq: result.seq,
+        }),
+      );
+    }
+
+    // KAR-19.10 AC4 — the choice, on the 201 itself. A client that had to wait
+    // for the stream to learn which agent it was on would learn it *after* the
+    // first turn had started, which is the half of the defect that cost the
+    // afternoon: the announcement has to precede the thing it describes.
+    return c.json(
+      {
+        runId: result.runId,
+        seq: result.seq,
+        status: 'awaiting-spec-approval',
+        ...(result.provider === undefined ? {} : { provider: result.provider }),
+      },
+      201,
+    );
   })
+
+  /**
+   * KAR-19.1 AC4 — `GET /api/runs?status=&limit=&cursor=`, the list
+   * docs/11-api-and-realtime.md §6 has always documented and nothing has ever
+   * served.
+   *
+   * Its whole point is the run it must **not** hide: one whose ledger holds a
+   * single `task.submitted`. A list assembled from runs that have a `RunState`
+   * omits exactly the runs an operator goes looking for when nothing appears to
+   * be happening, which is how 2026-08-12's afternoon was spent in the address
+   * bar. `./run-list.ts` iterates the `event` table's own answer to "which runs
+   * exist" for that reason.
+   *
+   * The three query parameters are declared rather than read off
+   * `c.req.query()`, so they are part of this chain's *type* and therefore part
+   * of `hc<ApiType>`: the run list in @DeFlow/web is the caller, and a page it
+   * asks for with a parameter this route stopped accepting should be a compile
+   * error rather than a silently unfiltered list.
+   */
+  .get(
+    '/runs',
+    validator('query', (value) => ({
+      status: typeof value.status === 'string' ? value.status : undefined,
+      limit: typeof value.limit === 'string' ? value.limit : undefined,
+      cursor: typeof value.cursor === 'string' ? value.cursor : undefined,
+    })),
+    (c) => {
+      const view = ledgerView();
+      if (view === null) return notReady(c);
+
+      const query = c.req.valid('query');
+      const limit = query.limit === undefined ? undefined : Number.parseInt(query.limit, 10);
+      return c.json(
+        runList(view, {
+          ...(query.status === undefined ? {} : { status: query.status }),
+          ...(limit === undefined || Number.isNaN(limit) ? {} : { limit }),
+          ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+        }),
+        200,
+      );
+    },
+  )
 
   /**
    * KAR-10.3 AC4 — the F1.3 gate's four operator actions, as four routes.
@@ -1094,8 +1169,41 @@ export const api = new Hono()
     // The accounting fidelity comes from the provider registry, which is where
     // the capability manifest lands (KAR-05.2): a summary that assumed `'exact'`
     // for an unknown vendor would report an enforceable ceiling that never fires.
+    //
+    // KAR-19.2 AC2, AC8 — and, for a run admission refused at submission, why.
+    // Attached here rather than folded into `RunState` because it is not run
+    // state: it is a fact about the machine on the day the run was submitted,
+    // re-rendered from the `provider.probed` rows the refusal wrote (NF8).
+    const refusal = runRefusal(view, runId);
+    // KAR-19.9 AC6 — and, for a run that *ended* on a failure, why. The
+    // sibling of `refusal` above and for the same reason: a refusal is why a
+    // run never started, this is why one stopped, and neither is run state.
+    const failure = runFailure(state);
+    // KAR-19.10 AC4 — and, for a run that *started*, on what. The third sibling
+    // of the two above: which agent and which route, from the same recorded
+    // facts the CLI printed at submission, so a UI and a terminal cannot say
+    // different things about one run.
+    const provider = runProvider(view, runId);
+    // KAR-19.12 AC6 — and, for a run that has stopped to *ask*, what it is
+    // waiting on. The fourth sibling of the three above and for the same
+    // reason: which gate is open is a fact the run view has to render, and
+    // `pendingGate` is the one reader of it — the terminal, `deflow status` and
+    // the run list all ask the same function.
+    const gate = pendingGate(state);
     return c.json(
-      runSummary(runId, state, view.headSeq(), providerTokenAccounting, preflightEstimator(view)),
+      {
+        ...runSummary(
+          runId,
+          state,
+          view.headSeq(),
+          providerTokenAccounting,
+          preflightEstimator(view),
+        ),
+        ...(refusal === null ? {} : { refusal }),
+        ...(failure === null ? {} : { failure }),
+        ...(provider === null ? {} : { provider }),
+        ...(gate === null ? {} : { gate }),
+      },
       200,
     );
   })

@@ -2,7 +2,6 @@
 
 exports[`the fixed build order (AC1, EPIC-18-S37) > emits the three bins and the UI as plain files 1`] = `
 [
-  "acp-<hash>.mjs",
   "bin.mjs",
   "index.mjs",
   "mcp.mjs",

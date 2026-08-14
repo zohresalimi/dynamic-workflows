@@ -270,6 +270,43 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
       expect(readFileSync(join(distDir, file), 'utf8')).not.toContain('tsx/cjs/api');
     }
   });
+
+  it('leaves behind no chunk that no entry point reaches', () => {
+    // Every other assertion in this suite is quantified over `emitted()`, so
+    // they are only claims about *this* build if `emitted()` is this build's
+    // output. Nothing had ever checked that, and it was not: the chunk names
+    // are content-hashed, so a rebuild writes new ones beside the old, and
+    // `dist/` grew to sixty files and 109 MB of chunks from builds going back
+    // days. Two things follow, and the second is the worse one. A `files`
+    // entry pointing at `dist` ships all of it. And a rule enforced by reading
+    // every file at the root of `dist/` is then being enforced against dead
+    // code — an orphan that still imports `@DeFlow/core` fails a build that
+    // fixed it, and a rule a live chunk breaks passes as long as some older
+    // copy of it does not.
+    //
+    // Reachability rather than a file list, because the list is hashes: the
+    // four entry points are named by the `bin` map and `exports`, and a chunk
+    // is legitimate exactly when one of them can reach it.
+    const entries = ['bin.mjs', 'mcp.mjs', 'mock-agent.mjs', 'index.mjs'];
+    const reachable = new Set<string>();
+    const queue = [...entries];
+    while (queue.length > 0) {
+      const file = queue.shift() as string;
+      if (reachable.has(file)) continue;
+      reachable.add(file);
+      for (const specifier of specifiers(file)) {
+        if (!specifier.startsWith('./')) continue;
+        const chunk = specifier.slice(2);
+        if (!reachable.has(chunk)) queue.push(chunk);
+      }
+    }
+
+    expect(
+      emitted().filter((file) => !reachable.has(file)),
+      'chunks in dist/ that no entry point imports — a stale build the bundler did not clean, ' +
+        'which every other assertion in this suite is then quantified over',
+    ).toEqual([]);
+  });
 });
 
 suite('the bins are executable (AC6)', () => {

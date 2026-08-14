@@ -27,7 +27,7 @@ It is a tool, not a contract. Nobody is holding you to it. See §8.
 
 ### Identifiers
 
-- **Epics** — `EPIC-00` … `EPIC-18`, one file each in [`epics/`](./epics), mapped onto a roadmap
+- **Epics** — `EPIC-00` … `EPIC-19`, one file each in [`epics/`](./epics), mapped onto a roadmap
   workstream.
 - **Stories** — `KAR-<epic>.<n>`, e.g. `KAR-03.4` is the fourth story of EPIC-03. They live inside
   the epic file.
@@ -239,6 +239,7 @@ P0 because it is interesting.
 | EPIC-16 | [Web UI foundation and projection store](./epics/EPIC-16-ui-foundation.md)          | W10           | [flows](./flows/EPIC-16-ui-foundation-flows.md)       |
 | EPIC-17 | [P0 visualisation views](./epics/EPIC-17-p0-views.md)                               | W11           | [flows](./flows/EPIC-17-p0-views-flows.md)            |
 | EPIC-18 | [CLI, doctor and packaging](./epics/EPIC-18-cli-packaging.md)                       | W12           | [flows](./flows/EPIC-18-cli-packaging-flows.md)       |
+| EPIC-19 | [The live run pipeline, end to end](./epics/EPIC-19-live-run-pipeline.md)           | W13           | [flows](./flows/EPIC-19-live-run-pipeline-flows.md)   |
 
 Live status, sizing rollups and requirement coverage are on the [board](./board.md). This table is
 the index; the board is the state.

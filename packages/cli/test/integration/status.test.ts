@@ -125,8 +125,10 @@ suite('EPIC-18-S48 — a live daemon (AC3)', () => {
     seedRun(result.daemon.db, first, result.epoch, IN_FLIGHT_EVENTS);
     seedRun(result.daemon.db, second, result.epoch, IN_FLIGHT_EVENTS);
     // A finished run, which must not appear: `status` answers "what is
-    // running?", not "what has ever run here".
-    seedRun(result.daemon.db, FIXTURE_RUN, result.epoch, 30);
+    // running?", not "what has ever run here". The fixture's whole ledger —
+    // 31 events, `run.completed` last — rather than its old length of 30, so
+    // this copy actually ends on the terminal event and not one short of it.
+    seedRun(result.daemon.db, FIXTURE_RUN, result.epoch, 31);
 
     const file = readDaemonFile(dataDir);
     const env = upEnv({ dataDir });

@@ -9,11 +9,12 @@
  * from and the one `npx` runs.
  *
  * The environment is hermetic by construction: `PATH` holds only what a spec
- * asks for plus the directory `node` lives in, so a spec asserting "no agent
- * CLI is installed" cannot find the developer's own and pass for the wrong
- * reason.
+ * asks for, plus a directory holding nothing but a `node` symlink and git's
+ * own — never the directory `node` itself lives in, which on a normal
+ * installation is also the npm global bin directory. See `nodeOnlyDir` below.
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,6 +37,34 @@ export const MOCK_AGENT_BIN = join(repoRoot, 'packages/mock-agent/bin/mock-agent
 export const GIT_DIR = dirname(
   execFileSync('/usr/bin/env', ['sh', '-c', 'command -v git'], { encoding: 'utf8' }).trim(),
 );
+
+/**
+ * A directory holding a `node` and nothing else, one per test process.
+ *
+ * The shebang problem, solved without the side effect. The fakes these specs
+ * put on `PATH` are `#!/usr/bin/env node` scripts, so `node` has to be
+ * findable — but putting *its own directory* there brings the npm global bin
+ * directory with it on every normal installation, and that is where a
+ * developer's real `claude-agent-acp` lives. A spec asserting "no agent CLI
+ * installed at all" then resolves the author's own adapter, the boot probe
+ * succeeds against it, and `DeFlow up` reports a provider the spec was written
+ * to prove absent — green or red depending on whose laptop is running it.
+ *
+ * Same correction, and for the same reason, as the one KAR-19.2 made in
+ * `packages/cli/test/integration/support/{up,doctor}-fixture.ts`; this is the
+ * third harness with the same `dirname(process.execPath)` in it, missed
+ * because its specs live in `e2e/` rather than beside the other two.
+ */
+function nodeOnlyDir(): string {
+  const dir = join(tmpdir(), `DeFlow-e2e-node-${String(process.pid)}`);
+  mkdirSync(dir, { recursive: true });
+  const link = join(dir, 'node');
+  if (!existsSync(link)) symlinkSync(process.execPath, link);
+  return dir;
+}
+
+/** Resolved once per test process — the symlink is stable for its lifetime. */
+export const NODE_DIR = nodeOnlyDir();
 
 export const makeDataDir = (): Promise<string> => mkdtemp(join(tmpdir(), 'DeFlow-up-'));
 
@@ -91,7 +120,7 @@ export function spawnCli(options: SpawnCliOptions): CliProcess {
   const child = spawn(process.execPath, [CLI_BIN, ...options.argv], {
     cwd: options.cwd ?? repoRoot,
     env: {
-      PATH: [...(options.binDirs ?? []), dirname(process.execPath), GIT_DIR].join(':'),
+      PATH: [...(options.binDirs ?? []), NODE_DIR, GIT_DIR].join(':'),
       HOME: options.dataDir,
       DeFlow_DATA_DIR: options.dataDir,
       DeFlow_LOG_LEVEL: 'silent',

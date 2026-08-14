@@ -28,13 +28,24 @@
  * operator cannot write to is the common one — and a `doctor` that reported
  * that as fixed would be worse than the report this story replaced.
  *
+ * **The sentences themselves moved.** KAR-19.2 gave them a second reader — the
+ * daemon, refusing a submission it cannot serve — and a daemon cannot import
+ * the CLI. Rather than write a second wording, the pure half (the two
+ * resolutions, the states and `providerVerdict`) now lives in
+ * `@DeFlow/adapters`' `provider-install.ts` beside `PROVIDER_SPECS`, and is
+ * re-exported from here so that this module's own callers, and every spec
+ * written against them, still read `./agent-install.ts`. What stayed is what
+ * needs a subprocess and a human: the `npm install -g`, the prompt, and the
+ * re-resolution afterwards.
+ *
  * Verifies: EPIC-18-S50 … EPIC-18-S56 · AC1, AC4-AC11
  */
 import {
-  PROVIDER_SPECS,
-  type ProviderSpec,
+  installCommand,
+  installPrompt,
+  type ProviderResolution,
   providerSpec,
-  resolveExecutable,
+  resolveProviderState,
 } from '@DeFlow/adapters';
 import type { Clock } from '@DeFlow/core';
 import { spawn } from 'node:child_process';
@@ -42,166 +53,25 @@ import { accessSync, constants, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DoctorCheck } from './report.ts';
 
-/**
- * What the machine has, per provider (AC1).
- *
- * `adapter-missing` is the state that did not exist before this story and the
- * whole reason it does now. `not-installed` covers a vendor CLI that is absent
- * *and* the degenerate case of a bridge with nothing to bridge — a
- * `claude-agent-acp` with no `claude` underneath it is not an installation, and
- * calling it one would move the same confusion along by one binary.
- */
-export type AgentInstallState = 'installed' | 'adapter-missing' | 'not-installed';
-
-export interface ProviderResolution {
-  readonly provider: string;
-  readonly state: AgentInstallState;
-  /** `'native'` providers have one executable under one name; `'adapter'` ones
-   * have a vendor CLI and a separate ACP bridge, and that is the whole seam. */
-  readonly kind: ProviderSpec['kind'];
-  /** The vendor CLI the operator installed: `spec.shim.bin`. */
-  readonly vendorBin: string;
-  /** Absolute, or `null` when nothing on `roots` resolved it. */
-  readonly vendorPath: string | null;
-  /** The binary DeFlow spawns: `spec.bin`. The same file for a native vendor. */
-  readonly adapterBin: string;
-  readonly adapterPath: string | null;
-  /** The npm package that provides `adapterBin`. */
-  readonly package: string;
-}
-
-/** The first root holding an executable called `bin`, or `null`. */
-function tryResolve(spec: ProviderSpec, bin: string, roots: readonly string[]): string | null {
-  try {
-    // The registry's own resolver rather than a second `statSync` loop: it
-    // follows symlinks, checks X_OK and distinguishes EISDIR from ENOENT, and
-    // "does it resolve?" has to mean exactly what it means at spawn time.
-    return resolveExecutable(spec.id, bin, { roots });
-  } catch {
-    return null;
-  }
-}
-
-/** One provider's state, from resolving both of its binaries. */
-export function resolveProviderState(
-  spec: ProviderSpec,
-  roots: readonly string[],
-): ProviderResolution {
-  const vendorPath = tryResolve(spec, spec.shim.bin, roots);
-  const adapterPath = tryResolve(spec, spec.bin, roots);
-
-  // For a `kind: 'native'` provider the two names are the same executable, so
-  // the third branch is unreachable there — and it is written as a condition on
-  // `kind` rather than left to the coincidence, because a native provider has
-  // no adapter package to offer and claiming one would name something that does
-  // not exist (AC1).
-  const state: AgentInstallState =
-    vendorPath === null
-      ? 'not-installed'
-      : adapterPath !== null
-        ? 'installed'
-        : spec.kind === 'adapter'
-          ? 'adapter-missing'
-          : 'not-installed';
-
-  return {
-    provider: spec.id,
-    state,
-    kind: spec.kind,
-    vendorBin: spec.shim.bin,
-    vendorPath,
-    adapterBin: spec.bin,
-    adapterPath,
-    package: spec.package,
-  };
-}
-
-/** The state, the check status and the sentence — from the resolutions alone. */
-export interface ProviderVerdict {
-  readonly state: AgentInstallState;
-  readonly status: 'ok' | 'warn';
-  readonly detail: string;
-  /** KAR-18.9 AC5 — the one command to run when this provider is the worst
-   * thing in the report. Absent for `installed`, which needs nothing. */
-  readonly action?: string;
-}
-
-/**
- * What the operator is told about one provider (AC1, AC2).
- *
- * One function so that the three sentences cannot drift apart, and a pure one
- * so the invariant that this whole story is about — *"is not installed" never
- * co-occurs with a resolved vendor-CLI path* — is a table-driven unit test over
- * the registry rather than a sentence someone remembered to re-read.
- *
- * Neither of the two absences is a `fail`: DeFlow not being able to route
- * through one provider is not DeFlow being unable to run here, so this never
- * moves the exit code (AC3).
- */
-export function providerVerdict(resolution: ProviderResolution): ProviderVerdict {
-  if (resolution.state === 'installed') {
-    return {
-      state: 'installed',
-      status: 'ok',
-      detail:
-        `"${resolution.adapterBin}" — the binary DeFlow spawns — resolves at ` +
-        `${resolution.adapterPath}, the absolute path DeFlowd would use rather than one looked ` +
-        "up on the daemon's own PATH later.",
-    };
-  }
-
-  if (resolution.state === 'adapter-missing') {
-    // The one sentence this must never contain is "<provider> is not
-    // installed", because the operator can see that it is. It names the
-    // resolved path of the binary they have, the package that provides the one
-    // they do not, and the command — so the fix is a copy of one line rather
-    // than a package name reconstructed out of a paragraph.
-    return {
-      state: 'adapter-missing',
-      status: 'warn',
-      detail:
-        `"${resolution.vendorBin}" is installed at ${resolution.vendorPath}, so this vendor CLI ` +
-        'is present and working. What is missing is its ACP adapter: DeFlow spawns ' +
-        `"${resolution.adapterBin}", which comes from ${resolution.package}, and nothing on PATH ` +
-        `resolves it. Install it with "${installCommand(resolution.package)}", or re-run ` +
-        '"DeFlow doctor --fix" and answer yes.',
-      action: `${installCommand(resolution.package)} (or run 'DeFlow doctor --fix')`,
-    };
-  }
-
-  // A native provider's vendor CLI *is* the ACP agent, so there is one package
-  // to name. An adapter-kind one needs the vendor CLI first and the bridge
-  // second, and saying only the second is how an operator ends up with a bridge
-  // to nothing.
-  const next =
-    resolution.kind === 'native'
-      ? `install it with "${installCommand(resolution.package)}".`
-      : `DeFlow spawns "${resolution.adapterBin}" from ${resolution.package}, so this machine ` +
-        `needs that vendor CLI and then its ACP adapter — "${installCommand(resolution.package)}" ` +
-        `once "${resolution.vendorBin}" is on PATH.`;
-
-  return {
-    state: 'not-installed',
-    status: 'warn',
-    detail:
-      `${resolution.provider} is not installed here: no executable "${resolution.vendorBin}" was ` +
-      `found on PATH — ${next}`,
-    action:
-      resolution.kind === 'native'
-        ? installCommand(resolution.package)
-        : `install "${resolution.vendorBin}", then ${installCommand(resolution.package)}`,
-  };
-}
-
-/** Every registered provider, in id order — the order the report prints. */
-export function resolveProviderStates(roots: readonly string[]): readonly ProviderResolution[] {
-  return Object.values(PROVIDER_SPECS)
-    .toSorted((a, b) => a.id.localeCompare(b.id))
-    .map((spec) => resolveProviderState(spec, roots));
-}
-
-/** The command that is offered, and — verbatim — the command that is run. */
-export const installCommand = (pkg: string): string => `npm install -g ${pkg}`;
+export type {
+  AgentInstallState,
+  ProviderResolution,
+  ProviderRoutes,
+  ProviderVerdict,
+} from '@DeFlow/adapters';
+export {
+  installCommand,
+  installPrompt,
+  // KAR-19.10 AC6 — the route reducer and its sentence, re-exported through the
+  // same seam as the install sentence rather than imported straight from
+  // `@DeFlow/adapters` by `agents.ts`. `doctor` has one door onto this package
+  // and `test/one-provider-route-reducer.test.ts` is what keeps it that way.
+  providerRoutes,
+  providerVerdict,
+  renderRouteReport,
+  resolveProviderState,
+  resolveProviderStates,
+} from '@DeFlow/adapters';
 
 /** Exactly what `doctor` may do about an `adapter-missing` provider. */
 export type InstallMode = 'fix' | 'prompt' | 'none';
@@ -335,15 +205,6 @@ function resolveNpm(roots: readonly string[]): string | null {
     }
   }
   return null;
-}
-
-/** The sentence the operator answers, with the command in it before the yes. */
-export function installPrompt(resolution: ProviderResolution): string {
-  return (
-    `${resolution.provider}: "${resolution.vendorBin}" is installed at ${resolution.vendorPath}, ` +
-    `but the ACP adapter DeFlow spawns ("${resolution.adapterBin}", from ` +
-    `${resolution.package}) is not. Run "${installCommand(resolution.package)}" now? [y/N] `
-  );
 }
 
 export interface AdapterInstallInput {

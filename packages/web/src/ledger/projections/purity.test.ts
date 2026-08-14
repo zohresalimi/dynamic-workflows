@@ -65,6 +65,9 @@ suite('EPIC-16-S15 — the purity rule is enforced, not documented (AC1)', () =>
       'memory-graph.ts',
       'plan.ts',
       'planHistory.ts',
+      // KAR-19.10's eighth: which agent a run was admitted onto, and by which
+      // route — one event kind, one object, the same purity rule.
+      'provider.ts',
       'timeline.ts',
     ]);
   });

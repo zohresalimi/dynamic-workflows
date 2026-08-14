@@ -58,7 +58,12 @@ const rules: [RegExp, string][] = [
   // The flat worktree branch/directory scheme, DeFlow/<runId>__<nodeId> (D13).
   [/DeFlow\/[A-Za-z0-9._-]+__[A-Za-z0-9._-]+/g, 'DeFlow/<worktree>'],
   // A tmp directory this testkit made: <tmp-root>/DeFlow-<random> -> <tmp>.
-  [/<tmp-root>\/DeFlow-[A-Za-z0-9]+/g, '<tmp>'],
+  // Hyphens are part of the name because the prefix is not one string across
+  // the suites — `e2e/support/daemon.ts` asks `mkdtemp` for `DeFlow-` and
+  // `e2e/support/up.ts` for `DeFlow-up-` — so stopping at the first hyphen left
+  // the random suffix of the second shape behind. `/` still ends the match, so
+  // this reaches no further than the directory it names.
+  [/<tmp-root>\/DeFlow-[A-Za-z0-9-]+/g, '<tmp>'],
   [/DeFlow-[A-Za-z0-9]{6,}/g, '<tmp-name>'],
   [/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})/g, '<ts>'],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<uuid>'],

@@ -64,6 +64,26 @@ function alive(pid: number): boolean {
   }
 }
 
+/**
+ * The values in an installed agent's row that are properties of *this* build
+ * and *this* run rather than of the report: the bundle's digest (whole and
+ * abbreviated), the npx cache directory npm names after the tarball's contents,
+ * and the instant the binary was probed.
+ *
+ * Replaced before snapshotting rather than left in, because a committed
+ * snapshot that changes on every commit — and again on every re-run — stops
+ * being read, at which point `-u` becomes a reflex and the snapshot happily
+ * records a regression (docs/14-testing-strategy.md §9). Each is asserted for
+ * shape at the call site, so removing them here costs no coverage.
+ */
+function stable<T>(value: T): T {
+  const text = JSON.stringify(value)
+    .replaceAll(/\b[0-9a-f]{64}\b/g, '<sha256>')
+    .replaceAll(/sha256 [0-9a-f]{12}\b/g, 'sha256 <sha256>')
+    .replaceAll(/_npx\\?\/[0-9a-f]{8,}/g, '_npx/<cache>');
+  return JSON.parse(text, (key, entry: unknown) => (key === 'probedAt' ? '<ts>' : entry)) as T;
+}
+
 async function room(): Promise<CliInstall> {
   const install = await makeCleanRoom();
   rooms.push(install.room);
@@ -280,16 +300,16 @@ suite('EPIC-18-S45 — no compiler on the box: nothing invokes node-gyp', () => 
   }, 60_000);
 });
 
-suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, agent-free report', () => {
-  it('exits 0, renders every section and reports zero agents with install hints', async () => {
+suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-free report', () => {
+  it('exits 0, renders every section and reports only the bundled agent', async () => {
     const install = await room();
     const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     // No --skip-conformance: the scenario is "npx <tarball> doctor" as a
-    // colleague would actually type it. With zero agents on PATH the
-    // conformance battery has nothing to run against and reports its own
-    // "skipped" check rather than this flag skipping the section outright.
+    // colleague would actually type it. With no *vendor* CLI on PATH the
+    // battery has only the bundled agent to run against, which since
+    // KAR-19.7 is a real answer rather than a "skipped" check.
     const doctor = await runInstalled({
       tgz: good.tgz,
       bin: 'DeFlow',
@@ -312,12 +332,30 @@ suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, agent-free
     const agents = report.sections.find((section) => section.id === 'agents');
     const summary = agents?.checks.find((check) => check.id === 'agents.summary');
     expect(summary?.status).toBe('ok');
-    expect(summary?.detail).toContain('0 installed');
+    // KAR-19.7 AC8, and this line is the acceptance of it: a clean room is no
+    // longer agent-free, because `DeFlow-mock-agent` came out of the same
+    // tarball as the `DeFlow` the operator just ran. Reporting "0 installed"
+    // here would be the words not fitting the machine — the operator can see
+    // the binary, and a run against it needs no vendor CLI at all.
+    expect(summary?.detail).toContain('1 installed: mock');
     expect(summary?.detail).toContain('install');
 
-    // The whole report, through the normalising serializer — deterministic
-    // because a clean room with no agent CLI on PATH has nothing
-    // machine-specific left to say about them.
-    expect(agents).toMatchSnapshot();
+    // …and nothing offers to fetch it from npm. Every other line may.
+    const bundled = agents?.checks.find((check) => check.id === 'agents.mock');
+    expect(bundled?.detail ?? '', 'the bundled agent must not be sold from npm').not.toContain(
+      'npm install -g',
+    );
+    // Asserted rather than snapshotted, because these two are what `stable`
+    // below removes: the digest changes with every commit that touches the
+    // bundle, and the probe time changes with every run.
+    expect((bundled?.data as { sha256?: string })?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect((bundled?.data as { probedAt?: number })?.probedAt).toBeGreaterThan(0);
+
+    // The whole section, through the normalising serializer. The clean room
+    // used to have nothing machine-specific to say about agents because it had
+    // none; since KAR-19.7 it has the bundled one, whose row carries a digest
+    // and a probe time — so those are replaced here rather than committed,
+    // which is what keeps this snapshot from producing a diff on every run.
+    expect(stable(agents)).toMatchSnapshot();
   }, 60_000);
 });
