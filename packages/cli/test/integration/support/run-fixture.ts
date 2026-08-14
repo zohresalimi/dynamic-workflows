@@ -28,9 +28,10 @@
  * daemon does not produce.
  */
 import type { Db, NodeId, RunId, TaskSpecDraft } from '@DeFlow/core';
-import { RunIdSchema } from '@DeFlow/core';
-import { openSpecApprovalGate } from '@DeFlow/daemon';
+import { NodeIdSchema, RunIdSchema, seededRandom } from '@DeFlow/core';
+import { createEffectRunner, executeRun, openSpecApprovalGate } from '@DeFlow/daemon';
 import { appendEvents, listRunIds, readRange } from '@DeFlow/ledger';
+import { TestClock } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -136,6 +137,123 @@ export function plannedRun(
   ]);
 
   return runId;
+}
+
+/* -------------------------------------------------------------------------- *
+ * a plan-level `human` node, suspended
+ * -------------------------------------------------------------------------- */
+
+/** The gate EPIC-19-S80's second scenario describes: a `human` node the *plan*
+ * declared, which is not the F1.3 spec gate and is answered by a different
+ * route. */
+export const HUMAN_NODE: NodeId = NodeIdSchema.parse('confirm-scope');
+
+export const HUMAN_NODE_PROMPT = 'Recon found two more packages. Keep going?';
+
+/** Exactly the two the scenario names. `effect` is DeFlow's vocabulary about
+ * what happens to the node; `continue` completes it and `stop` fails it. */
+export const HUMAN_NODE_OPTIONS = [
+  { id: 'continue', label: 'Keep going', effect: 'approve' },
+  { id: 'stop', label: 'Stop here', effect: 'reject' },
+] as const;
+
+/**
+ * KAR-19.12 AC4 — a run suspended on a plan `human` node, gate open.
+ *
+ * Driven to the gate by the **real scheduler** rather than by writing
+ * `human.requested` and `node.suspended` by hand: which attempt a suspended
+ * node is on is the fact the scenario's second Then clause is about, and a
+ * hand-written pair would let the fixture choose the number the assertion then
+ * checks. `decide()` returns the `SuspendNode` and `executeRun` commits the two
+ * events and the `node_wake` row together, which is the state a real gate
+ * leaves behind.
+ *
+ * `perform` throws because it must never be called: the plan has one node and
+ * that node is the gate, so a performer that ran would mean the scheduler had
+ * admitted a `human` node as work.
+ */
+export async function suspendedOnHumanNode(
+  at: LedgerAt & { readonly cwd: string; readonly runId: RunId },
+): Promise<void> {
+  const planHash = `sha256-${'e'.repeat(64)}`;
+  const specHash = `sha256-${'c'.repeat(64)}`;
+  const { db, epoch, runId } = at;
+
+  appendEvents(db, [
+    {
+      runId,
+      ts: at.ts,
+      kind: 'run.created',
+      v: 1,
+      epoch,
+      payload: { spec: taskSpec(), cwd: at.cwd, repo: { head: 'e83c516', branch: 'main' } },
+    },
+    { runId, ts: at.ts, kind: 'run.spec.approved', v: 1, epoch, payload: { specHash, by: 'cli' } },
+    {
+      runId,
+      ts: at.ts,
+      kind: 'plan.proposed',
+      v: 2,
+      epoch,
+      payload: {
+        version: 1,
+        planHash,
+        graph: oneHumanNode(runId, planHash, specHash),
+        by: 'planner',
+      },
+    },
+    // The event that promotes a proposed plan to the executing one. Without it
+    // the scheduler has nothing to decide about.
+    { runId, ts: at.ts, kind: 'run.started', v: 1, epoch, payload: { planHash } },
+  ]);
+
+  await executeRun({
+    db,
+    runId,
+    clock: new TestClock(at.ts),
+    epoch,
+    daemonStartedAt: at.ts,
+    random: seededRandom(19),
+    tickStepMs: 0,
+    tickMs: 1,
+    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    effects: createEffectRunner({ db, clock: new TestClock(at.ts), daemonStartedAt: at.ts, epoch }),
+    perform: () => {
+      throw new Error('the human-gate fixture plans one node, and it is the gate');
+    },
+  });
+}
+
+function oneHumanNode(runId: RunId, planHash: string, specHash: string): Record<string, unknown> {
+  return {
+    schemaId: 'DeFlow.plangraph.v1',
+    runId,
+    version: 1,
+    planHash,
+    parent: null,
+    taskSpecHash: specHash,
+    createdBy: 'planner',
+    createdAt: '2026-08-14T10:15:00.000Z',
+    nodes: [
+      {
+        id: HUMAN_NODE,
+        title: 'Confirm the widened scope',
+        type: 'human',
+        deps: [],
+        lifecycle: 'active',
+        reads: [],
+        writes: [],
+        permission: 'read',
+        pathScopes: { write: [] },
+        returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+        retry: { maxAttempts: 1, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+        budget: {},
+        prompt: HUMAN_NODE_PROMPT,
+        options: HUMAN_NODE_OPTIONS.map((option) => ({ ...option })),
+      },
+    ],
+    edges: [],
+  };
 }
 
 /**

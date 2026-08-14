@@ -2579,7 +2579,7 @@ run being silent, and it would be a poor trade to make a scripted `--no-wait` wa
 
 ## EPIC-19-S82 — Every surface names the gate, including a run whose status is still `running`
 
-**Verifies:** KAR-19.12 · **Type:** Failure · **Automated at:** unit, web
+**Verifies:** KAR-19.12 · **Type:** Failure · **Automated at:** unit, integration, web
 
 ```gherkin
 Feature: "running" is not an answer to "why is nothing happening"
@@ -2605,6 +2605,13 @@ wholly invisible is a plan-level `human` node, whose gate opens while `state.sta
 `running`. That is why the Given is written that way rather than around the F1.3 gate — a scenario
 that only covered the spec gate would pass today on the status word alone and would not have caught
 the general defect.
+
+The third scenario is automated at **integration** as well as at unit and web, and the reason is
+worth recording: the web specs hand their store a fabricated JSON body, so a `GET /api/runs/:id`
+that computed the right gate and then dropped it out of the response — or spelled its key
+differently — would be green in `packages/web` and green in `@DeFlow/core`. The CLI cannot cover it
+either, because `deflow run` and `deflow status` compute `pendingGate` locally off the reduced
+`RunState` and never read this field off an HTTP response.
 
 ---
 
