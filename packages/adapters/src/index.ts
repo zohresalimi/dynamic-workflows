@@ -20,6 +20,26 @@ export {
   CAPABILITY_REQUIREMENTS,
   type CapabilityRequirement,
 } from './admission.ts';
+// KAR-19.11 — the closed vocabulary of argument shapes, and the audit that
+// checks a built argv against what its entry declared. Two arguments in two
+// days were found wrong by running the product; this is what answers how many
+// are left.
+export type {
+  ArgumentAuditRow,
+  ArgumentForm,
+  ArgumentFormCheck,
+  ArgumentProvenance,
+  ArgumentProvenanceKind,
+  ShimArgument,
+} from './argument-forms.ts';
+export {
+  ARGUMENT_FORMS,
+  ARGUMENT_PROVENANCE_KINDS,
+  auditArgv,
+  checkArgumentForm,
+  MAX_ARGV_ELEMENT_BYTES,
+  UUID_PATTERN,
+} from './argument-forms.ts';
 // KAR-19.8 — a vendor that refuses one of DeFlow's own arguments is reported
 // as an argument problem, permanently, with the flag and the value on it.
 export type { ArgumentRefusalInput, RejectedArgument } from './argument-refusal.ts';
@@ -273,32 +293,12 @@ export {
   providerTokenAccounting,
   redactedInline,
   redactedShimArgv,
-  schemaIdOf,
   SHIM_FORMATS,
+  schemaIdOf,
   shimPlan,
   spawnPlan,
   UNMEASURED_TOKEN_ACCOUNTING,
 } from './provider-registry.ts';
-// KAR-19.11 — the closed vocabulary of argument shapes, and the audit that
-// checks a built argv against what its entry declared. Two arguments in two
-// days were found wrong by running the product; this is what answers how many
-// are left.
-export type {
-  ArgumentAuditRow,
-  ArgumentForm,
-  ArgumentFormCheck,
-  ArgumentProvenance,
-  ArgumentProvenanceKind,
-  ShimArgument,
-} from './argument-forms.ts';
-export {
-  ARGUMENT_FORMS,
-  ARGUMENT_PROVENANCE_KINDS,
-  auditArgv,
-  checkArgumentForm,
-  MAX_ARGV_ELEMENT_BYTES,
-  UUID_PATTERN,
-} from './argument-forms.ts';
 // KAR-11.6 — where a rate-limited node goes next, decided from the probed rows
 // and the recorded limits, or nowhere at all (F3.9, NF7).
 export type {
