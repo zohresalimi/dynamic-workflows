@@ -1,6 +1,6 @@
 /**
  * KAR-17.1 AC1 — **Playwright smoke #1**: a completed run, opened in a real
- * browser against a real `DeFlow replay` daemon, with every node at its correct
+ * browser against a real `deflow replay` daemon, with every node at its correct
  * state and every edge with its direction.
  *
  * Verifies: EPIC-17-S1 (scenario 1), EPIC-16-S1 (both rendering clauses) ·
@@ -109,7 +109,7 @@ let runId: string;
 let page: Page;
 let drawn: DrawnNode[];
 
-/** Opens the run's own route with the token in the fragment, as `DeFlow up` prints it. */
+/** Opens the run's own route with the token in the fragment, as `deflow up` prints it. */
 async function openTheRun(): Promise<Page> {
   const opened = await browser.newPage();
   await opened.goto(`${harness.origin}/runs/${runId}#token=${harness.token}`);

@@ -1,5 +1,5 @@
 /**
- * KAR-09.4 AC4 — the constraint section of `DeFlow doctor`.
+ * KAR-09.4 AC4 — the constraint section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy ahead
  * of it existing, the same split `../tokens/doctor.ts` already uses for the
@@ -37,7 +37,7 @@ const formatRatio = (ratio: number): string =>
     ? '0'
     : ratio.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 
-/** The whole section, as `DeFlow doctor` will print it. */
+/** The whole section, as `deflow doctor` will print it. */
 export function renderConstraintReport(constraints: readonly Constraint[]): string {
   if (constraints.length === 0) {
     return 'pinned constraints: no constraints are declared for this spec.';

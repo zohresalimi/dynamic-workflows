@@ -23,7 +23,7 @@
  * > are *about* — the run outliving its viewer — is asserted here in the form
  * > that is reachable: the daemon survives in its own process group, the run is
  * > still there to be advanced after the CLI is gone, and a second
- * > `DeFlow run --attach` renders the transcript so far. The completed-plan
+ * > `deflow run --attach` renders the transcript so far. The completed-plan
  * > half belongs to the orchestration wiring and is a follow-up on the story.
  * >
  * > **Narrowed 2026-08-13 by KAR-19.3 and KAR-19.4.** The orchestration wiring
@@ -78,7 +78,7 @@ const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 
 /**
  * KAR-19.2 — the bundled mock agent, linked on under the name it actually
- * ships as. Needed only by S21, whose `DeFlow run` autostarts its own daemon
+ * ships as. Needed only by S21, whose `deflow run` autostarts its own daemon
  * and would otherwise be refused at submission before there is anything to
  * signal; harmless for S20, whose daemon is already up and was admitted (or
  * not) at its own boot, before this ever runs.
@@ -100,11 +100,11 @@ const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 async function usableProviderBinDir(dir: string): Promise<string> {
   const binDir = join(dir, 'bin');
   await mkdir(binDir, { recursive: true });
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'DeFlow-mock-agent'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'deflow-mock-agent'));
   return binDir;
 }
 
-/** Starts `DeFlow run` and waits until it has created a run and is watching. */
+/** Starts `deflow run` and waits until it has created a run and is watching. */
 async function startWatching(
   tmp: string,
 ): Promise<{ cli: RunProcess; dataDir: string; runId: string }> {
@@ -123,7 +123,7 @@ async function startWatching(
 
   const runId = await until('the CLI printed a run id', () => {
     if (cli.child.exitCode !== null) {
-      throw new Error(`DeFlow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
+      throw new Error(`deflow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
     }
     return RUN_ID.exec(cli.stdout())?.[0] ?? null;
   });
@@ -165,8 +165,8 @@ suite('EPIC-18-S20 — the first Ctrl-C detaches, the second cancels (AC3)', () 
 
     expect(exit.code).toBe(130);
     expect(cli.stdout()).toContain(
-      `detached — run ${runId} continues; 'DeFlow run --attach ${runId}' to watch, ` +
-        `'DeFlow cancel ${runId}' to stop`,
+      `detached — run ${runId} continues; 'deflow run --attach ${runId}' to watch, ` +
+        `'deflow cancel ${runId}' to stop`,
     );
 
     // The run outlived its viewer: nothing was appended to end it.
@@ -187,7 +187,7 @@ suite('EPIC-18-S20 — the first Ctrl-C detaches, the second cancels (AC3)', () 
     const exit = await cli.exited;
     expect(exit.code).toBe(130);
 
-    // It ended in the **ledger**, not in the CLI: a `DeFlow run` that
+    // It ended in the **ledger**, not in the CLI: a `deflow run` that
     // "cancelled" by exiting would leave this run standing.
     const kinds = drainEvents(booted?.db as never, RunIdSchema.parse(runId)).map(
       (event) => event.kind,

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "DeFlow-mock-agent": "./bin/mock-agent.ts"
+    "deflow-mock-agent": "./bin/mock-agent.ts"
   },
   "files": [
     "bin",

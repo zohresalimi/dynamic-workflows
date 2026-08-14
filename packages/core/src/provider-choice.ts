@@ -3,7 +3,7 @@
  *
  * ## Why it is in `@DeFlow/core`
  *
- * Three surfaces have to say it: `DeFlow run`'s terminal, `GET /api/runs/:id`,
+ * Three surfaces have to say it: `deflow run`'s terminal, `GET /api/runs/:id`,
  * and the UI's run header. `@DeFlow/core` is the only package all three already
  * depend on — the browser bundle takes no dependency on `@DeFlow/adapters`, and
  * a second wording written for the UI would be the drift AC4 exists to stop.

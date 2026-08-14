@@ -16,7 +16,7 @@
  *    selected the api_key path) and what belongs in the ledger either way —
  *    a `provider.auth_mode` record always, a `provider.auth_shadow_stripped`
  *    record when subscription auth silently dropped one.
- *  - `checkAuthShadowing()` is the `DeFlow doctor` check (EPIC-18, KAR-18.4
+ *  - `checkAuthShadowing()` is the `deflow doctor` check (EPIC-18, KAR-18.4
  *    — this module holds the policy ahead of that command existing, the same
  *    split `../git/version.ts` uses for the git version floor): every
  *    provider whose environment carries a shadowing variable, the auth mode
@@ -155,7 +155,7 @@ export function resolveProviderAuth(input: ResolveProviderAuthInput): ResolvedPr
   };
 }
 
-/** One row of `DeFlow doctor`'s auth-shadowing report. */
+/** One row of `deflow doctor`'s auth-shadowing report. */
 export interface AuthShadowDoctorRow {
   readonly provider: ProviderId;
   readonly variable: string;
@@ -168,7 +168,7 @@ export interface AuthShadowDoctorRow {
 }
 
 /**
- * `DeFlow doctor`'s auth-shadowing check (AC4): every provider whose
+ * `deflow doctor`'s auth-shadowing check (AC4): every provider whose
  * environment carries a shadowing variable, the auth mode that will actually
  * be used, and how to change it — reported before a run ever starts, from
  * `base` alone, never a value.

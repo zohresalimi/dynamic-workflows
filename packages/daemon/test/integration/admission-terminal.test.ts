@@ -89,7 +89,7 @@ suite('EPIC-19-S15 — a refused run is terminal', () => {
       );
 
       // AC8 — the stream. Attached after the refusal, which is when a human's
-      // tools attach: `DeFlow run` submits and *then* follows, and the UI opens
+      // tools attach: `deflow run` submits and *then* follows, and the UI opens
       // the run it was just told about. The claim is not that the frame arrives
       // — a backfill would deliver it either way — it is that the socket then
       // *ends*, rather than sitting on keepalives for a run that will never

@@ -1,5 +1,5 @@
 /**
- * KAR-19.10 — `DeFlow run --provider`, and the sentence a run says about what
+ * KAR-19.10 — `deflow run --provider`, and the sentence a run says about what
  * it picked.
  *
  * Test plan #2 and #4, and EPIC-19-S67 and EPIC-19-S68. A real booted daemon, a
@@ -53,13 +53,13 @@ afterEach(async () => {
  */
 function agentRoot(dir: string): string {
   mkdirSync(dir, { recursive: true });
-  const target = join(dir, 'DeFlow-mock-agent');
+  const target = join(dir, 'deflow-mock-agent');
   copyFileSync(MOCK_AGENT_BIN, target);
   chmodSync(target, 0o755);
   return dir;
 }
 
-/** `git` has to stay reachable — `DeFlow run` checks its version before it
+/** `git` has to stay reachable — `deflow run` checks its version before it
  * submits anything — so the staged root is prepended rather than substituted. */
 const withAgent = (root: string): readonly string[] => [root, ...pathRoots(process.env)];
 
@@ -139,7 +139,7 @@ suite('EPIC-19-S67 — one line, three facts, three surfaces (AC4)', () => {
 
     const expected = announceProviderChoice({
       provider: 'mock',
-      binaryPath: join(root, 'DeFlow-mock-agent'),
+      binaryPath: join(root, 'deflow-mock-agent'),
       route: 'shim',
     });
 
@@ -150,7 +150,7 @@ suite('EPIC-19-S67 — one line, three facts, three surfaces (AC4)', () => {
     const chosen = recordedChoice(runId);
     expect(chosen).toMatchObject({
       route: 'shim',
-      binaryPath: join(root, 'DeFlow-mock-agent'),
+      binaryPath: join(root, 'deflow-mock-agent'),
       routes: { acp: 'available', shim: 'available' },
       unserved: [],
     });
@@ -159,7 +159,7 @@ suite('EPIC-19-S67 — one line, three facts, three surfaces (AC4)', () => {
     const body = await summary(runId);
     expect(body.provider).toMatchObject({
       provider: 'mock',
-      binaryPath: join(root, 'DeFlow-mock-agent'),
+      binaryPath: join(root, 'deflow-mock-agent'),
       route: 'shim',
       announcement: expected,
     });
@@ -193,7 +193,7 @@ suite('EPIC-19-S67 — one line, three facts, three surfaces (AC4)', () => {
     expect(announced).toMatchObject({
       type: 'provider',
       provider: 'mock',
-      binaryPath: join(root, 'DeFlow-mock-agent'),
+      binaryPath: join(root, 'deflow-mock-agent'),
       route: 'shim',
     });
     // Fields, not a sentence: nothing downstream should have to parse prose to
@@ -253,6 +253,6 @@ suite('EPIC-19-S68 — two kinds of wrong, two exit codes (AC1, AC2)', () => {
     // `doctor`'s own sentence, from the same renderer, ending with the way to
     // proceed with nothing installed.
     expect(ran.stderr).toContain('codex is not installed here');
-    expect(ran.stderr).toContain('DeFlow-mock-agent');
+    expect(ran.stderr).toContain('deflow-mock-agent');
   });
 });

@@ -1,6 +1,6 @@
 /**
  * KAR-19.3 — the composition root's half of the live chain: the resolver
- * `DeFlow up` hands `createRunChain`.
+ * `deflow up` hands `createRunChain`.
  *
  * This is the single most consequential file in this epic, and it is worth
  * being precise about why. Every step of the chain existed, was exported and
@@ -12,7 +12,7 @@
  *
  * The seam is a port for a real reason rather than for symmetry: resolving a
  * provider means spawning binaries found on **the operator's own `PATH`**, and
- * DeFlowd's `PATH` at daemon start is not theirs (docs/03 §4.3). `DeFlow up`
+ * DeFlowd's `PATH` at daemon start is not theirs (docs/03 §4.3). `deflow up`
  * runs in their terminal, splits their `PATH`, and passes the roots down. A
  * daemon that was never told which machine it is on resolves nothing, and that
  * is the honest answer rather than a guess.
@@ -137,7 +137,7 @@ export interface LiveChainOptions {
   /** Time enters here and nowhere else (NF9). */
   readonly clock: Clock;
   /**
-   * The operator's `PATH`, split — `DeFlow up` passes theirs, for exactly the
+   * The operator's `PATH`, split — `deflow up` passes theirs, for exactly the
    * reason `BootOptions.providerRoots` exists. Empty means nothing resolves,
    * which is the honest answer for a daemon that was never told.
    */
@@ -251,7 +251,7 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
         wiring.warn(
           { runId },
           `no adapter on this machine both resolves on the operator's PATH and has a probed ` +
-            `capability row, so run ${runId} cannot be served; run 'DeFlow doctor' to see what ` +
+            `capability row, so run ${runId} cannot be served; run 'deflow doctor' to see what ` +
             'this daemon found when it started',
         );
         return null;

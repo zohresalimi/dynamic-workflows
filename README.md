@@ -39,33 +39,33 @@ pnpm install
 pnpm build
 ```
 
-That produces the `DeFlow` command at `packages/cli/dist/bin.mjs`. To type `DeFlow` instead of that
+That produces the `deflow` command at `packages/cli/dist/bin.mjs`. To type `deflow` instead of that
 path, link it once:
 
 ```bash
 cd packages/cli && npm link
 ```
 
-Then `DeFlow --version` should answer from any directory. If it does not, your npm global bin folder
+Then `deflow --version` should answer from any directory. If it does not, your npm global bin folder
 is not on your `PATH` — `npm prefix -g` tells you where it is.
 
 Two alternatives, if you would rather not link anything globally:
 
 ```bash
 node packages/cli/dist/bin.mjs doctor        # call it directly
-alias DeFlow='node /full/path/to/packages/cli/dist/bin.mjs'
+alias deflow='node /full/path/to/packages/cli/dist/bin.mjs'
 ```
 
-Whichever you pick, the commands below are written as `DeFlow <command>`.
+Whichever you pick, the commands below are written as `deflow <command>`.
 
 ## Your first run
 
 Three commands, in your own repository.
 
 ```bash
-DeFlow doctor     # can this machine do the work?
-DeFlow init       # set this repository up
-DeFlow up         # start the daemon and open the UI
+deflow doctor     # can this machine do the work?
+deflow init       # set this repository up
+deflow up         # start the daemon and open the UI
 ```
 
 **`doctor`** is the one to run first, and the one to come back to when something is odd. It checks
@@ -90,10 +90,10 @@ From there, describe your task in the UI and watch it go.
 If you would rather not open a browser at all:
 
 ```bash
-DeFlow run "add rate limiting to the public API"
-DeFlow run --file docs/tasks/rate-limit.md
-DeFlow run --issue owner/repo#42
-DeFlow run --attach r_01JXQ          # watch a run that is already going
+deflow run "add rate limiting to the public API"
+deflow run --file docs/tasks/rate-limit.md
+deflow run --issue owner/repo#42
+deflow run --attach r_01JXQ          # watch a run that is already going
 ```
 
 `run` streams the run to your terminal and exits with a code that means something:
@@ -125,7 +125,7 @@ Every run has a permission level, and `worktree` is the default:
 | `system` | The machine |
 
 ```bash
-DeFlow run "refactor the auth module" --permission read
+deflow run "refactor the auth module" --permission read
 ```
 
 The default matters: work happens in a separate git worktree, so a run that goes wrong cannot
@@ -135,8 +135,8 @@ working tree.
 ## The other two commands
 
 ```bash
-DeFlow status                              # is a daemon running, and where?
-DeFlow ledger snapshot r_01JXQ --out bug.db
+deflow status                              # is a daemon running, and where?
+deflow ledger snapshot r_01JXQ --out bug.db
 ```
 
 `status` is a question, not an assertion — "nothing is running" is a normal answer and it always
@@ -160,7 +160,7 @@ and the same settings.
 
 ## When something looks wrong
 
-Run `DeFlow doctor` first — most problems are a missing CLI, an expired login, or two agent CLIs
+Run `deflow doctor` first — most problems are a missing CLI, an expired login, or two agent CLIs
 whose credentials are shadowing each other, and `doctor` names all three specifically.
 
 If a run itself misbehaved, open it in the UI and drag the scrubber. Every view is rebuilt from the

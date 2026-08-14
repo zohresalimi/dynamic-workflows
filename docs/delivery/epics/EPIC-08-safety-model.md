@@ -99,7 +99,7 @@ accident.
   [EPIC-13](./EPIC-13-human-in-the-loop.md). This epic emits the escalation; EPIC-13 surfaces it.
 - Adapter capability probing and the persisted manifest that carries `mediatedExecution` —
   [EPIC-05](./EPIC-05-provider-adapters.md) KAR-05.2. This epic reads the bit.
-- `DeFlow doctor`'s command surface — [EPIC-18](./EPIC-18-cli-packaging.md). The _checks_ (git
+- `deflow doctor`'s command surface — [EPIC-18](./EPIC-18-cli-packaging.md). The _checks_ (git
   version, `bwrap`, `socat`, `kernel.apparmor_restrict_unprivileged_userns`, vendor CLI version
   gating) are specified here and implemented as library functions that `doctor` calls.
 - The artifact redactor and export-path redaction (F5.9) — M2, specified in
@@ -116,7 +116,7 @@ accident.
 - [ ] **EPIC-05 Done through KAR-05.1 and KAR-05.2.** The ACP client dispatches inbound
       `CLIENT_METHODS` to handlers this epic fills in, and the capability manifest carries
       `mediatedExecution`.
-- [ ] **EPIC-04 Done.** `DeFlow-mock-agent` can call back into the client with `fs/read_text_file`,
+- [ ] **EPIC-04 Done.** `deflow-mock-agent` can call back into the client with `fs/read_text_file`,
       `fs/write_text_file` and the full `terminal/*` lifecycle, and can request permission with
       per-option behaviour including `cancelled`.
 - [ ] **EPIC-07 Done through KAR-07.2.** A real worktree path exists to be the scope root, so path
@@ -627,7 +627,7 @@ work I thought my subscription covered.
 
 `ANTHROPIC_API_KEY` present in the environment **silently shadows subscription auth** in Claude
 Code. [Security model §2.3](../../15-security-model.md) makes this a detectable condition with three
-surfaces: at `DeFlow doctor`, report every provider whose environment contains an auth-shadowing
+surfaces: at `deflow doctor`, report every provider whose environment contains an auth-shadowing
 variable, naming the variable and stating which credential will actually be used; at run start, if a
 node's provider config selects subscription auth but a shadowing variable is present in DeFlowd's
 own environment, **strip it from the child environment** and record

@@ -10,7 +10,7 @@
     "@DeFlow/ledger": "workspace:*",
     "@DeFlow/testkit": "workspace:*",
     "@types/node": "catalog:",
-    "DeFlow": "workspace:*",
+    "deflow": "workspace:*",
     "playwright": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

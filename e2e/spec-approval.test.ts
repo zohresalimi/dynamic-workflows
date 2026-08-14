@@ -16,7 +16,7 @@
  */
 
 import { openLedger, readRange } from '@DeFlow/ledger';
-import { approveSpec } from 'DeFlow';
+import { approveSpec } from 'deflow';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   asClient,
@@ -105,7 +105,7 @@ suite('EPIC-10-S18 — two surfaces, one code path', () => {
     expect(apiResponse.status).toBe(200);
     expect((await apiResponse.json()) as { by: string }).toMatchObject({ by: 'ui' });
 
-    // The second terminal: `DeFlow approve`, which is an HTTP client of the
+    // The second terminal: `deflow approve`, which is an HTTP client of the
     // daemon and not a second implementation of the gate. It authenticates the
     // way a real terminal does (KAR-15.2) — `daemon.token()` is a genuine read
     // of that daemon's own `.DeFlow/daemon.json`, not a value handed to it.

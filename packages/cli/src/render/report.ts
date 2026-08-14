@@ -182,7 +182,7 @@ function renderSummary(report: Report, style: Style): string[] {
 /**
  * One report, as the bytes a terminal receives. Always ends in a newline.
  *
- * The title wraps like everything else: `DeFlow init: workspace ready at
+ * The title wraps like everything else: `deflow init: workspace ready at
  * <an absolute path>` is routinely wider than a terminal, and a first line that
  * runs off the edge is the first thing an operator sees.
  */

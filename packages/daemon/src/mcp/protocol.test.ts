@@ -1,5 +1,5 @@
 /**
- * KAR-05.6 — the DeFlowd ⇄ `DeFlow-mcp` bridge frames.
+ * KAR-05.6 — the DeFlowd ⇄ `deflow-mcp` bridge frames.
  *
  * The shim is thin because the bridge is small: a hello that presents a token,
  * a tool call, a result, and a pushed tool list. Parsing is strict in both

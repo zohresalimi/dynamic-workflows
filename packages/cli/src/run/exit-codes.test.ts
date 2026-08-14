@@ -170,7 +170,7 @@ suite('EPIC-18-S23 — the exit code is a closed contract (AC6)', () => {
  * Exit `5` and not `1`: `1` is "the run failed", and a client — or a CI job —
  * that saw one would go looking at the task. Nothing about the task was wrong.
  * `5` is already documented as *"this machine cannot host a run"* and is
- * already what `DeFlow run` exits when git is too old, which is the same class
+ * already what `deflow run` exits when git is too old, which is the same class
  * of fact discovered one step earlier.
  */
 suite('EPIC-19-S10 — a machine that cannot host a run exits 5 (KAR-19.2 AC5)', () => {
@@ -204,7 +204,7 @@ suite('EPIC-19-S10 — a machine that cannot host a run exits 5 (KAR-19.2 AC5)',
  * The discriminator is the projection's own, and it is deliberately not a new
  * field: a run that ended with a failed node or a failed gate **failed**, and a
  * run that ended with neither was stopped by a person — an abandon at the F1.3
- * gate, or `DeFlow cancel`. Nothing about the exit code is derived anywhere but
+ * gate, or `deflow cancel`. Nothing about the exit code is derived anywhere but
  * here, which `test/one-run-verdict.test.ts` is the standing guard for.
  */
 suite('EPIC-19-S58 — a run that gave up exits 1, not 130 (KAR-19.9 AC5)', () => {

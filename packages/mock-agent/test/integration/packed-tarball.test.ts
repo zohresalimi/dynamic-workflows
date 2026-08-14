@@ -1,5 +1,5 @@
 /**
- * KAR-04.1 AC1 — `DeFlow-mock-agent` is a shipped bin, not a test helper.
+ * KAR-04.1 AC1 — `deflow-mock-agent` is a shipped bin, not a test helper.
  *
  * The classic "works locally, broken on npm" failure is a `files` array that
  * omits the executable, or a `bin` entry pointing at a path that only exists in
@@ -16,7 +16,7 @@
  * under test is the tarball's contents and the bin's ability to run with no
  * build step, not npm's ability to download.
  *
- * The **aggregate** `DeFlow` tarball — the one that carries this bin as its
+ * The **aggregate** `deflow` tarball — the one that carries this bin as its
  * second bin alongside the bundled daemon — is KAR-18.6's clean-room job. It
  * cannot be packed here: `packages/cli` depends on `@DeFlow/daemon` through the
  * `workspace:` protocol, which resolves to nothing until those packages are
@@ -65,11 +65,11 @@ beforeAll(async () => {
   const manifest = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8')) as {
     bin?: Record<string, string>;
   };
-  const declared = manifest.bin?.['DeFlow-mock-agent'];
-  expect(declared, 'package.json must declare a DeFlow-mock-agent bin').toBeTypeOf('string');
+  const declared = manifest.bin?.['deflow-mock-agent'];
+  expect(declared, 'package.json must declare a deflow-mock-agent bin').toBeTypeOf('string');
 
   await mkdir(join(tmp, 'node_modules', '.bin'), { recursive: true });
-  installedBin = join(tmp, 'node_modules', '.bin', 'DeFlow-mock-agent');
+  installedBin = join(tmp, 'node_modules', '.bin', 'deflow-mock-agent');
   await symlink(join(packageDir, declared ?? ''), installedBin);
 }, 120_000);
 
@@ -99,7 +99,7 @@ suite('AC1 — the bin survives a pnpm pack', () => {
     const agent = spawnMockAgent(['--help'], { bin: installedBin });
     const exit = await agent.exited();
     expect(exit).toEqual({ code: 0, signal: null });
-    expect(agent.stdout().toString('utf8')).toContain('DeFlow-mock-agent');
+    expect(agent.stdout().toString('utf8')).toContain('deflow-mock-agent');
     expect(agent.stderr()).toBe('');
   });
 });

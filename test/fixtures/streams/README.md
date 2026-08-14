@@ -21,7 +21,7 @@ What keeps it honest is that nothing downstream is allowed to trust it alone:
 - `packages/testkit/src/exec-shim/frames.test.ts` holds the fake vendor's frames against the
   recorded shape, so the fake cannot drift into a frame no real CLI emits;
 - the `compact_boundary` and `modelUsage` shapes are re-asserted against the installed CLI by the
-  conformance battery, which is where a vendor change is supposed to be caught — by `DeFlow doctor`,
+  conformance battery, which is where a vendor change is supposed to be caught — by `deflow doctor`,
   not by a failed three-hour run.
 
 The `system` / `status` line before the boundary is deliberate: it drives a spinner and must **not**

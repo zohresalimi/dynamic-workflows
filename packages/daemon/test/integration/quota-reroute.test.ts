@@ -165,7 +165,7 @@ async function planFor(nodes: readonly Record<string, unknown>[]): Promise<PlanG
 const draft = (kind: string, payload: unknown, extra: Partial<EventDraft> = {}): EventDraft =>
   ({ runId: RUN, ts: T0, kind, v: 1, epoch: EPOCH, payload, ...extra }) as EventDraft;
 
-/** A probed row, as `DeFlow doctor` would have written it on this machine. */
+/** A probed row, as `deflow doctor` would have written it on this machine. */
 function probe(db: Db, profile: CapabilityProfileName, dir: string): void {
   recordProviderCapabilities(db, {
     provider: profile,

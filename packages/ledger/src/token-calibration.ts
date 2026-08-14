@@ -129,7 +129,7 @@ export function readTokenCalibration(
 }
 
 /** Every calibration this installation has learned, oldest key first. What
- * `DeFlow doctor` prints (AC10). */
+ * `deflow doctor` prints (AC10). */
 export function readTokenCalibrations(db: Db): readonly TokenCalibrationRow[] {
   const statement: DbStatement<CalibrationDbRow> = db.prepare(READ_ALL_SQL);
   return statement.all().map(toRow);

@@ -6,7 +6,7 @@
  * SIGTERM tests the shutdown handler; SIGKILL (EPIC-18-S13) tests durability.
  * They are different code paths and both have to work — this is the first one.
  * The process-level half of the scenario (the signal, the removed
- * `daemon.json`, the released lease, a clean `DeFlow up` afterwards) is
+ * `daemon.json`, the released lease, a clean `deflow up` afterwards) is
  * `e2e/up.test.ts`; what is here is what that spec cannot see from outside:
  * whether the group is genuinely empty, and whether the interrupted node was
  * concluded rather than left `running` for the next boot to reconcile.

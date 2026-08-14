@@ -12,7 +12,7 @@
  * working daemon restarted:
  *
  * - not a spinner — no `progressbar`, no `aria-busy`;
- * - not a blank page — the instruction naming `DeFlow up` is on screen;
+ * - not a blank page — the instruction naming `deflow up` is on screen;
  * - not a 401 loop — **no request is made at all**, which is the only version
  *   of "no loop" that cannot be satisfied by retrying slowly.
  */
@@ -47,7 +47,7 @@ suite('AC3 — a tokenless tab says what to do about it', () => {
   it('names the command that prints the URL', () => {
     const text = shell.container.textContent ?? '';
 
-    expect(text).toContain('DeFlow up');
+    expect(text).toContain('deflow up');
     expect(text).toMatch(/paste/i);
     expect(text).toContain('#token=');
   });

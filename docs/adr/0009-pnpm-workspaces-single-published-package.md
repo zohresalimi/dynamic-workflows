@@ -7,7 +7,7 @@
 DeFlow is eight packages and an estimated ~15k LOC, built by one person. It has a clean
 internal boundary structure that is worth enforcing — a pure core with zero I/O, a ledger, an
 adapter layer, a daemon, a CLI, a web app, a testkit — but it has exactly one artefact anyone
-outside the repo will ever install: `npx DeFlow up` (NF6).
+outside the repo will ever install: `npx deflow up` (NF6).
 
 Those two facts pull in opposite directions if you are not careful. Monorepo tooling is designed
 around the assumption that packages are published independently, which brings version coordination,
@@ -20,7 +20,7 @@ only with a package manager whose linking model supports it.
 
 ## Decision
 
-**pnpm 11 workspaces with a `catalog:` block. Exactly one published package (`DeFlow`). No task
+**pnpm 11 workspaces with a `catalog:` block. Exactly one published package (`deflow`). No task
 runner at M1.**
 
 - Root `package.json` sets `"packageManager": "pnpm@11.18.0"`, `"type": "module"`,
@@ -29,7 +29,7 @@ runner at M1.**
   versions (typescript, vitest, vite, zod, `@types/node`) in **one** place. Packages consume them as
   `"typescript": "catalog:"`, so no package can drift.
 - **`@DeFlow/*` are all `private: true`** — `core`, `ledger`, `adapters`, `daemon`, `web`,
-  `testkit`, `mock-agent`. Only `packages/cli` publishes, as `DeFlow`, and tsdown inlines the
+  `testkit`, `mock-agent`. Only `packages/cli` publishes, as `deflow`, and tsdown inlines the
   workspace packages into its bundle with `noExternal: [/^@DeFlow\//]`.
 - **Cross-package dev resolution uses pnpm's `publishConfig` override**: `exports` points at
   `./src/index.ts` in the workspace and at `./dist/index.js` in the published tarball. Node, Vite,
@@ -76,7 +76,7 @@ Layout, package boundaries and the dependency direction rules are in
 ### Neutral
 
 - Not Bun. `node-pty` compatibility is unverified there, and AR-1 already forces us onto the user's
-  Node install for `npx DeFlow up`.
+  Node install for `npx deflow up`.
 
 ## Alternatives considered
 
@@ -91,7 +91,7 @@ Layout, package boundaries and the dependency direction rules are in
   the pure core and the I/O shell is what makes `reduce()`/`decide()` testable with no I/O
   ([ADR 0006](./0006-journaled-dag-state-machine-not-deterministic-replay.md)), and a directory
   convention does not enforce it.
-- **Publishing `@DeFlow/*` alongside `DeFlow`.** Rejected: buys nothing today and costs a release
+- **Publishing `@DeFlow/*` alongside `deflow`.** Rejected: buys nothing today and costs a release
   process. If it ever becomes necessary, note that **pnpm 11.13+ has native release management**
   (`pnpm change`, `pnpm version -r`, `pnpm lane`, configured under `versioning:` in
   `pnpm-workspace.yaml`) — strictly less machinery than changesets and one fewer dependency.

@@ -48,7 +48,7 @@ if (!schemas.ok) {
 
 // KAR-19.3 — the chain, bound in the second composition root.
 //
-// `DeFlow up` is the production one and binds the same two ports; this is the
+// `deflow up` is the production one and binds the same two ports; this is the
 // daemon `pnpm dev` runs under `node --watch`, and a dev daemon whose runs park
 // at the framing wake is a dev loop that cannot see the bug this epic exists to
 // remove. It runs in the developer's own terminal, so reading their `PATH` here
@@ -89,7 +89,7 @@ try {
     process.exit(EX_CONFIG);
   }
   if (error instanceof DaemonAlreadyRunning) {
-    // One sentence on stderr, and nothing else: this is the "I ran `DeFlow up`
+    // One sentence on stderr, and nothing else: this is the "I ran `deflow up`
     // in two terminals" case (KAR-03.7 AC2), and a stack trace here is the
     // failure. It is written directly rather than logged because a JSON log
     // line is not what a user reads in a terminal.

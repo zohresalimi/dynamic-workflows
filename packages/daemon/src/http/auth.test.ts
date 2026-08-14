@@ -124,7 +124,7 @@ suite('the Origin allowlist (AC3, AC6, test plan #4)', () => {
   });
 
   it('accepts an absent Origin, because the CLI and curl send none (AC6)', () => {
-    // Getting this backwards locks out `curl`, `DeFlow run` and every script,
+    // Getting this backwards locks out `curl`, `deflow run` and every script,
     // and the pressure to relax it usually removes the check rather than
     // fixing the condition. Origin validation rejects a *present and wrong*
     // origin, never an absent one.

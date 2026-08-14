@@ -1,8 +1,8 @@
 /**
- * KAR-19.6 test plan #6 / EPIC-19-S37 — `DeFlow cancel <runId>`, as an
+ * KAR-19.6 test plan #6 / EPIC-19-S37 — `deflow cancel <runId>`, as an
  * operator meets it: one command, one line, no token.
  *
- * `'DeFlow cancel <runId>' to stop` has been printed by `DeFlow run`'s detach
+ * `'deflow cancel <runId>' to stop` has been printed by `deflow run`'s detach
  * sentence since 2026-08-11 and has never resolved to a command. So this is
  * asserted from outside the process, because that is all the operator had:
  * stdout, an exit code, and the ledger the daemon wrote. The in-process halves
@@ -121,7 +121,7 @@ async function submitRun(dataDir: string, repoDir: string): Promise<string> {
   });
   return waitFor('the CLI printed a run id', () => {
     if (cli.child.exitCode !== null) {
-      throw new Error(`DeFlow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
+      throw new Error(`deflow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
     }
     return RUN_ID.exec(cli.stdout())?.[0] ?? null;
   });

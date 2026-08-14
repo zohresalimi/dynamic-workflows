@@ -18,7 +18,7 @@
  *
  * **The status string is the daemon's**, carried on the row as `label`. It is
  * produced by `runStatusLabel` in `@DeFlow/core`, which is the same function
- * `DeFlow status` and `DeFlow run` print through (AC6) — so a row this list
+ * `deflow status` and `deflow run` print through (AC6) — so a row this list
  * draws and a line that command prints cannot disagree about one run at one
  * head sequence. A frame that arrives for a run already on screen updates it
  * **in place**, and its label is recomputed from the same table rather than

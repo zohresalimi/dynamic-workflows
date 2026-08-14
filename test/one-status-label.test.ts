@@ -2,7 +2,7 @@
  * KAR-19.1 AC6 — *"the status string is produced by one function in
  * `@DeFlow/core` and rendered by three callers, not derived three times."*
  *
- * On 2026-08-12 `DeFlow run` said `task submitted`, `DeFlow status` said
+ * On 2026-08-12 `deflow run` said `task submitted`, `deflow status` said
  * `created — no nodes yet` and the web UI said `No plan yet` about the same run
  * at the same head sequence. Each was written by somebody with a defensible
  * local reason, and the operator's conclusion — reasonably — was that the

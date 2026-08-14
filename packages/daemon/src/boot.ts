@@ -119,7 +119,7 @@ export type BootStep = (typeof BOOT_STEPS)[number];
  *
  * 2 rather than a sysexits number, because it is the code
  * [EPIC-18](../../../docs/delivery/epics/EPIC-18-cli-packaging.md) specifies
- * for `DeFlow up` when the daemon is already running, and the CLI's contract
+ * for `deflow up` when the daemon is already running, and the CLI's contract
  * is what a user and a script actually see.
  */
 export const EX_ALREADY_RUNNING = 2;
@@ -146,7 +146,7 @@ export interface BootOptions {
    *
    * A port rather than a call into `./providers/boot-probe.ts`, because a probe
    * *spawns vendor binaries found on `PATH`*, and DeFlowd's own `PATH` at
-   * daemon start is not the operator's login-shell one (§4.3). `DeFlow up`
+   * daemon start is not the operator's login-shell one (§4.3). `deflow up`
    * runs in their terminal and knows the right environment; a daemon booted by
    * a spec, a fixture or a supervisor has no business searching whatever
    * `PATH` it inherited. Omitted means the step is a no-op and the report is
@@ -162,7 +162,7 @@ export interface BootOptions {
    * The same argument as `probeProviders`, one step further: DeFlowd's own
    * `PATH` at daemon start is not the operator's login-shell one, so a daemon
    * that read its own would refuse or admit on the strength of the wrong
-   * machine. `DeFlow up` runs in their terminal and passes theirs. **Omitted
+   * machine. `deflow up` runs in their terminal and passes theirs. **Omitted
    * means no admission**, and therefore no refusal — a daemon that was never
    * told which machine it is on has no honest basis for one.
    */
@@ -196,7 +196,7 @@ export interface BootOptions {
    * operator's own `PATH` and writes into the run's own worktree.
    */
   readonly executeNodes?: RunNodeExecutor | undefined;
-  /** AC7 — called for every `run.stalled` the driver appends, so `DeFlow up`
+  /** AC7 — called for every `run.stalled` the driver appends, so `deflow up`
    * can print the one line the operator reads. */
   readonly onStalled?: ((runId: RunId, report: StallReport) => void) | undefined;
   /**
@@ -245,7 +245,7 @@ export interface Booted {
    * What step 4 found: one entry per registered provider, `detected`,
    * `cached`, `not-installed` or `probe-failed`. Empty when no probe port was
    * supplied — which is not the same claim as "nothing is installed", and is
-   * why `DeFlow up` is the caller that passes one.
+   * why `deflow up` is the caller that passes one.
    */
   readonly providers: readonly ProviderDetectionEntry[];
   readonly http: StartedHttp;
@@ -263,7 +263,7 @@ export interface Booted {
   /** This life's bearer token (KAR-15.2 AC7). */
   readonly token: string;
   /**
-   * The first-run handoff URL `DeFlow up` prints, token in the **fragment**.
+   * The first-run handoff URL `deflow up` prints, token in the **fragment**.
    * Fragments are never sent to the server, so it cannot land in an access log.
    */
   readonly url: string;
@@ -449,7 +449,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     // append behind it (docs/11-api-and-realtime.md §5.1).
     view = openLedgerView(dataDir);
     setLedgerView(view);
-    // KAR-10.1 — the write-side ports `POST /api/runs` and `DeFlow run` submit
+    // KAR-10.1 — the write-side ports `POST /api/runs` and `deflow run` submit
     // a task through. Registered on the same write connection `boot` already
     // holds, not a second one: intake appends through the daemon's one writer,
     // the same as every other command.
@@ -493,7 +493,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     });
 
     // After the bind, because the port it records has to be the one that was
-    // actually bound: `DeFlow status`, `DeFlow run` and the printed URL all
+    // actually bound: `deflow status`, `deflow run` and the printed URL all
     // read this file, and a file naming the port the daemon *asked* for would
     // send all three somewhere nothing is listening.
     writeDaemonFile(dataDir, {
@@ -506,7 +506,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // pid may belong to something else entirely.
       processStartedAt: ownProcessStartTime(),
       // KAR-19.1 AC2 — the interval the ticker this daemon life started is
-      // running at, so `DeFlow status` can report it. Written *after* the
+      // running at, so `deflow status` can report it. Written *after* the
       // ticker exists and removed with the file on shutdown, so it is a record
       // of something that happened rather than an intention.
       tickIntervalMs,

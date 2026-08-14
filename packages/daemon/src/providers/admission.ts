@@ -30,7 +30,7 @@ import { type ProviderResolution, resolveProviderStates } from '@DeFlow/adapters
 import type { ProviderDetectionEntry } from './detect.ts';
 
 export interface AdmissionInput {
-  /** `PATH`, split — the operator's own, as `DeFlow up` passed it down. */
+  /** `PATH`, split — the operator's own, as `deflow up` passed it down. */
   readonly roots: readonly string[];
   /** What the boot probe found. Empty when no probe ran this daemon life. */
   readonly probe: readonly ProviderDetectionEntry[];

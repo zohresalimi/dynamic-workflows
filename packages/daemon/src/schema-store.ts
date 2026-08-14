@@ -79,7 +79,7 @@ export class SchemaCompilationFailed extends Error {
 }
 
 /**
- * `<cwd>/.DeFlow/schemas` — where `DeFlow init` puts a copy of the repository's
+ * `<cwd>/.DeFlow/schemas` — where `deflow init` puts a copy of the repository's
  * `schemas/` directory, and what an `agent` node hands a vendor CLI as
  * `--json-schema`/`--output-schema`.
  */

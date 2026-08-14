@@ -104,7 +104,7 @@ suite('boot performs RECOVERY_STEPS in full (AC2)', () => {
     }
   });
 
-  it('records the ticker interval in daemon.json, so DeFlow status can report it', async ({
+  it('records the ticker interval in daemon.json, so deflow status can report it', async ({
     tmp,
   }) => {
     const dataDir = join(tmp, 'data');

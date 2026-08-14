@@ -62,7 +62,7 @@ import { loadSchemaDirectory } from '../../src/schema-store.ts';
 import { approveSpec, FRAMING_NODE, rejectSpec } from '../../src/spec/gate.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
 
-/** The repository's own emitted documents — the bytes `DeFlow init` copies. */
+/** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
 const T0 = 1_754_470_000_000;
@@ -279,7 +279,7 @@ function uiFiles(): Record<string, string> {
 }
 
 /** The one seam the chain takes: everything a run's chain needs that cannot be
- * read out of the ledger. `DeFlow up` is the production caller. */
+ * read out of the ledger. `deflow up` is the production caller. */
 function resolverFor(input: {
   readonly db: Db;
   readonly dataDir: string;

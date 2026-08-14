@@ -7,7 +7,7 @@
  * the transport, and then held to the same two standards. It is the spec that
  * says the tee produces a recording the rest of the machinery can actually
  * read — that the format it writes and the format Layer A and
- * `DeFlow-mock-agent --replay` expect are one format and not three.
+ * `deflow-mock-agent --replay` expect are one format and not three.
  *
  * It is also test plan row 2: the mock agent's own emitted frames must
  * validate against `schema.json`. A mock that could emit a frame no real agent

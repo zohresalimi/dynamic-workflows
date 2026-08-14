@@ -12,7 +12,7 @@
  * So: say what happened, say exactly what to do about it, and make no request
  * at all until there is a token to send. There is deliberately no "retry"
  * button — there is nothing to retry; the missing thing is a credential that
- * only `DeFlow up` can print.
+ * only `deflow up` can print.
  */
 import { KeyRound } from 'lucide-vue-next';
 import { ref } from 'vue';
@@ -41,7 +41,7 @@ function useUrl(): void {
     </h1>
 
     <p>
-      Paste the URL printed by <code>DeFlow up</code>. It looks like
+      Paste the URL printed by <code>deflow up</code>. It looks like
       <code>http://127.0.0.1:7777/#token=&lt;token&gt;</code>.
     </p>
     <p class="token-required__why">
@@ -50,7 +50,7 @@ function useUrl(): void {
     </p>
 
     <form class="token-required__form" @submit.prevent="useUrl">
-      <label class="token-required__label" for="token-required-url">URL from DeFlow up</label>
+      <label class="token-required__label" for="token-required-url">URL from deflow up</label>
       <input
         id="token-required-url"
         v-model="pasted"

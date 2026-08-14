@@ -5,7 +5,7 @@
  * This is the regression test for the second defect of the 2026-08-13 by-hand
  * run, and every clause below is a sentence from that afternoon inverted. The
  * framing turn failed; DeFlow retried the identical failure every ~31 s
- * indefinitely; `DeFlow run` printed **nothing** about any of it; the command
+ * indefinitely; `deflow run` printed **nothing** about any of it; the command
  * was still hanging after seven minutes and had to be killed.
  *
  * The clause with the most teeth is *"the process is no longer running"*, and it
@@ -14,7 +14,7 @@
  * daemon it starts for itself, and what is asserted is the **exit**, from
  * outside.
  *
- * **The provider is scripted rather than mocked.** `DeFlow-mock-agent` on the
+ * **The provider is scripted rather than mocked.** `deflow-mock-agent` on the
  * hermetic `PATH` is a real executable that serves the capability probe by
  * delegating to the bundled agent and refuses every *turn* with a non-zero exit
  * and a sentence on stderr — a fake binary, not a mocked module
@@ -70,7 +70,7 @@ function daemonFile(): DaemonFile | null {
   }
 }
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else here will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   const file = daemonFile();
@@ -91,7 +91,7 @@ async function stopAutostartedDaemon(): Promise<void> {
 }
 
 /**
- * A bin directory holding a `DeFlow-mock-agent` that **fails every turn**.
+ * A bin directory holding a `deflow-mock-agent` that **fails every turn**.
  *
  * It is a provider, not a broken `PATH` entry: the capability probe's ACP
  * handshake is served by delegating to the bundled agent beside it, so the run
@@ -170,7 +170,7 @@ function failingAgentSource(realAgent: string, liveLog: string): string {
     // could show itself.
     '  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_500);',
     `  appendFileSync(${JSON.stringify(liveLog)}, '-' + Date.now() + '\\n');`,
-    "  process.stderr.write('DeFlow-mock-agent: scripted to fail every turn\\n');",
+    "  process.stderr.write('deflow-mock-agent: scripted to fail every turn\\n');",
     '  process.exit(1);',
     '}',
     '',
@@ -269,7 +269,7 @@ suite('EPIC-19-S58 — a run that keeps failing gives up, says why, and exits', 
     const runId = await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${String(cli.child.exitCode)} instead of admitting the run:\n` +
+          `deflow run exited ${String(cli.child.exitCode)} instead of admitting the run:\n` +
             `stderr:\n${cli.stderr()}\nstdout:\n${cli.stdout()}`,
         );
       }
@@ -283,7 +283,7 @@ suite('EPIC-19-S58 — a run that keeps failing gives up, says why, and exits', 
       cli.exited,
       sleep(120_000).then(() => {
         throw new Error(
-          `DeFlow run never exited; its transcript was:\n${cli.stdout()}\n${cli.stderr()}`,
+          `deflow run never exited; its transcript was:\n${cli.stdout()}\n${cli.stderr()}`,
         );
       }),
     ]);
@@ -322,11 +322,11 @@ suite('EPIC-19-S58 — a run that keeps failing gives up, says why, and exits', 
     expect(children.started).toBe(DEFAULT_RETRY_POLICY.maxAttempts);
     expect(children.peak, `peak concurrent agent children: ${String(children.peak)}`).toBe(1);
 
-    // …and `DeFlow status` no longer reports it as active.
+    // …and `deflow status` no longer reports it as active.
     //
     // *Dropped from the active-run summary* rather than *printed as `aborted`*,
     // because that is the authored contract for this surface: KAR-19.6 AC7
-    // spells out that when a run stops, "`DeFlow status` drops it from its
+    // spells out that when a run stops, "`deflow status` drops it from its
     // active-run summary, `GET /api/runs?status=active` excludes it while plain
     // `GET /api/runs` still lists it with a terminal status". `status`'s Runs
     // section is the *active* runs by definition (`activeRuns` in

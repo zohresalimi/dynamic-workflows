@@ -5,7 +5,7 @@
 
 **Status:** Draft v1.0 · **Last reviewed:** 2 August 2026
 
-This is the contract between `DeFlowd` and every client: the browser UI, the `DeFlow` CLI, and
+This is the contract between `DeFlowd` and every client: the browser UI, the `deflow` CLI, and
 later the Tauri shell and a Slack notifier. There is exactly one API and exactly one event stream.
 The CLI is not a second-class consumer with its own path — it imports the same client module and
 reads the same frames as the browser.
@@ -451,7 +451,7 @@ The run still exists: its ledger holds `task.submitted`, one `provider.probed` p
 provider recording what was and was not found, and `run.aborted` with `outcome: "failed"` — so the
 refusal reaches the `runs=*` topic like any other ending, and is answerable six weeks later (NF8).
 `GET /api/runs/:id` carries the same `{ code, message, providers }` under `refusal`. `message` is
-rendered by the function `DeFlow doctor` prints from, never a second wording, and `DeFlow run`
+rendered by the function `deflow doctor` prints from, never a second wording, and `deflow run`
 exits `5` (`environmentUnusable`) on it.
 
 Admission is a read of what the daemon probed at boot: it spawns no child of its own, so a machine
@@ -587,13 +587,13 @@ DNS rebinding.
 
 **Three mechanisms, all required:**
 
-1. **Bearer token.** 32 random bytes generated on first `DeFlow up`, written to
+1. **Bearer token.** 32 random bytes generated on first `deflow up`, written to
    `.DeFlow/daemon.json` alongside `{ pid, port, startedAt }`. Every request except `GET /api/health`
    requires `Authorization: Bearer <token>`. Compare in constant time.
 2. **`Origin` validation.** Reject any request whose `Origin` header is present and is not the
    daemon's own origin. Send `Vary: Origin` on every response. This is the specific defence against
    DNS rebinding, because a rebound page cannot forge `Origin`.
-3. **Bootstrap handoff.** `DeFlow up` prints a URL carrying the token in the **fragment**:
+3. **Bootstrap handoff.** `deflow up` prints a URL carrying the token in the **fragment**:
    `http://127.0.0.1:7777/#token=<token>`. Fragments are never sent to the server, so the token
    cannot land in an access log. The UI reads it once, stores it in `sessionStorage`, strips it
    from the address bar via `history.replaceState`, and sends it as an `Authorization` header
@@ -679,7 +679,7 @@ export function openStream(opts: {
 }
 ```
 
-`eventsource-client` runs in Node, so `DeFlow run "…"` consumes the identical stream through the
+`eventsource-client` runs in Node, so `deflow run "…"` consumes the identical stream through the
 identical code path — it just renders to a terminal instead of to Vue Flow. There is no second
 protocol implementation to keep in sync, which is the usual place a CLI and a UI diverge.
 
@@ -790,7 +790,7 @@ The API is versioned on three independent axes, and only one of them ever needs 
 
 `GET /api/health` is the unauthenticated discovery endpoint and returns
 `{ apiVersion, build, daemonEpoch, headSeq, uptimeMs }`. It is unauthenticated deliberately so that
-`DeFlow up` can poll for readiness before it has read the token file, and it exposes nothing a local
+`deflow up` can poll for readiness before it has read the token file, and it exposes nothing a local
 process could not already learn from `.DeFlow/daemon.json`.
 
 Two things are explicitly **not** part of the versioned contract: the `io_chunk` NDJSON framing

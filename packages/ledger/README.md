@@ -397,7 +397,7 @@ preview and a sentence rather than an empty box.
 
 ## Two daemons: the lease and the epoch
 
-The failure is common rather than exotic — **a user runs `npx DeFlow up` in two terminals**, and it
+The failure is common rather than exotic — **a user runs `npx deflow up` in two terminals**, and it
 happens the first week. SQLite protects the *database* (a second connection's `BEGIN IMMEDIATE`
 returns `SQLITE_BUSY`) but nothing about it stops two schedulers interleaving *effect execution*:
 both reduce the same ledger, both derive the same ready set, both spawn the same agent, both burn

@@ -95,7 +95,7 @@ export interface FramingWake {
  * `BootOptions.probeProviders` is one: the interview needs a live ACP session on
  * a provider chosen from the probed manifest, and *which* provider — and whether
  * this machine can host one at all — is knowledge the daemon's own environment
- * does not have. `DeFlow up` is the caller that supplies it.
+ * does not have. `deflow up` is the caller that supplies it.
  */
 export type FramingRunner = (wake: FramingWake) => Promise<void> | void;
 
@@ -185,7 +185,7 @@ export interface DriverPorts {
    * Called once per appended `run.stalled`, with the run and the report.
    *
    * The driver appends; the caller is what turns that into the line an operator
-   * reads (AC7). Keeping the two apart is what lets `DeFlow run` print one
+   * reads (AC7). Keeping the two apart is what lets `deflow run` print one
    * sentence and the daemon log print another without either of them deciding
    * *whether* the run is stalled.
    */
@@ -209,7 +209,7 @@ export interface DriverPorts {
    * ticking, and this run has not moved". A run that was already quiet when the
    * daemon started was not being driven by anybody — the daemon was down — and
    * calling that a stall would put a `run.stalled` on every abandoned run in the
-   * directory at every boot, including on the fixture ledgers `DeFlow replay`
+   * directory at every boot, including on the fixture ledgers `deflow replay`
    * serves. So such a run gets its window measured from the start instead, and
    * is reported once the daemon has genuinely watched it go nowhere.
    *

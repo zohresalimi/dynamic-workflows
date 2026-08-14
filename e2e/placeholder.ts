@@ -1,7 +1,7 @@
 /**
  * @DeFlow/e2e — cross-process specs that boot a real DeFlowd on an ephemeral
  * port with fake agents on PATH and drive a real browser. It depends on the
- * published `DeFlow` package, not on @DeFlow/daemon, so the specs exercise
+ * published `deflow` package, not on @DeFlow/daemon, so the specs exercise
  * the artefact users actually install.
  *
  * e2e is not a library — it has no "exports" and ships nothing. KAR-01.4

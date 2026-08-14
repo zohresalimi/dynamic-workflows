@@ -88,7 +88,7 @@ function kindsOf(runId: RunId): readonly string[] {
 
 /**
  * A daemon whose framing turn fails every time, a real submission on it, and a
- * spawned `DeFlow run --attach` watching.
+ * spawned `deflow run --attach` watching.
  *
  * The last attempt blocks on a gate this spec holds; `release()` lets it throw
  * and the run then ends.

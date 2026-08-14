@@ -11,7 +11,7 @@
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operator**                | The engineer driving DeFlow — approves queued patches, receives the run when the policy engine or the circuit breaker hands it back, and is the only proposer the breaker does not block |
 | **DeFlowd**                 | The local daemon: orchestrator tick loop, Planner, policy engine, MCP host, Workspace Manager                                                                                            |
-| **Planner agent**           | A `DeFlow-mock-agent` subprocess receiving exactly three inputs — the pinned `TaskSpec`, the recon facts, the probed capability list — and returning a `PlanGraph` as structured output  |
+| **Planner agent**           | A `deflow-mock-agent` subprocess receiving exactly three inputs — the pinned `TaskSpec`, the recon facts, the probed capability list — and returning a `PlanGraph` as structured output  |
 | **Proposing node**          | Any node in the run. `agent` nodes propose through the `DeFlow.propose_plan_patch` MCP tool; `scheduler` proposes reroutes; `human` proposes rescues                                     |
 | **Policy engine**           | `decidePatch(patch, state)` — a **pure function** in `@DeFlow/core` over the patch's `policy` block and the reduced `RunState`                                                           |
 | **Validator**               | `validatePlan(plan, spec, caps)` — pure, returns a `Diagnostic[]`, never throws past `PlanCycleError`                                                                                    |
@@ -28,7 +28,7 @@ Background:
   And an approved TaskSpec exists at specHash H with acceptance criteria AC-1 … AC-n
   And the ledger is a FILE-BACKED SQLite database — ":memory:" only where "Automated at: unit"
       names a pure function or a pure projection
-  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
+  And deflow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
       invocation passes --seed
   And provider_capabilities is seeded from the committed 2026-08-02 probe fixture:
       | adapter            | version | session.resume | session.fork | session.list |

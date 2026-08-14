@@ -3,8 +3,8 @@
  * human reads.
  *
  * On 2026-08-12 three surfaces described one run at one instant three different
- * ways — `task submitted` from `DeFlow run`, `created — no nodes yet` from
- * `DeFlow status`, `No plan yet` from the web UI — and each was locally
+ * ways — `task submitted` from `deflow run`, `created — no nodes yet` from
+ * `deflow status`, `No plan yet` from the web UI — and each was locally
  * defensible. Three defensible descriptions of one state is not a cosmetic
  * problem: it is how an operator concludes the fault must be somewhere they
  * have not looked, and it cost an afternoon.

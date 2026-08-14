@@ -61,11 +61,11 @@ const bundled = resolution({
   provider: 'mock',
   state: 'installed',
   kind: 'native',
-  vendorBin: 'DeFlow-mock-agent',
-  vendorPath: '/tmp/bin/DeFlow-mock-agent',
-  adapterBin: 'DeFlow-mock-agent',
-  adapterPath: '/tmp/bin/DeFlow-mock-agent',
-  package: 'DeFlow',
+  vendorBin: 'deflow-mock-agent',
+  vendorPath: '/tmp/bin/deflow-mock-agent',
+  adapterBin: 'deflow-mock-agent',
+  adapterPath: '/tmp/bin/deflow-mock-agent',
+  package: 'deflow',
   bundled: true,
 });
 

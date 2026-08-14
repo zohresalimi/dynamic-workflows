@@ -11,7 +11,7 @@
  * than burying, because [EPIC-16 KAR-16.5](../../../docs/delivery/epics/EPIC-16-ui-foundation.md)
  * is explicit that the six-fixture corpus must be *recorded from mock-agent
  * runs, never hand-written* — and it is equally explicit about why that story
- * cannot start yet: it depends on `DeFlow run` (EPIC-18 KAR-18.3), which does
+ * cannot start yet: it depends on `deflow run` (EPIC-18 KAR-18.3), which does
  * not exist. Its own note names the interim this file implements:
  *
  * > If EPIC-18 slips, the honest interim is to record fixtures from the mock
@@ -2932,7 +2932,7 @@ node packages/core/scripts/build-ui-run-fixtures.ts
 **This fixture is assembled, not recorded**, and the two are not the same thing.
 \`compaction/\` and \`gate-failure-repair/\` are recordings of real runs;
 [KAR-16.5](../../../docs/delivery/epics/EPIC-16-ui-foundation.md) owns replacing
-this one with a recording too, and cannot start until \`DeFlow run\` (EPIC-18
+this one with a recording too, and cannot start until \`deflow run\` (EPIC-18
 KAR-18.3) exists. Until then the payload *shapes* here are the production ones —
 \`buildPacket\`, \`planHash\`, \`FactSchema\`, \`parseEvent\` — and only the
 scenario is authored.

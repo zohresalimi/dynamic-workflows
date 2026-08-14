@@ -165,7 +165,7 @@ suite('the refusal message (AC3, AC4)', () => {
     expect(verdict.outcome).toBe('refused');
     if (verdict.outcome !== 'refused') return;
 
-    // `providerVerdict` is what `DeFlow doctor`'s Agents section prints for
+    // `providerVerdict` is what `deflow doctor`'s Agents section prints for
     // this machine state (`packages/cli/src/doctor/agents.ts`), and the
     // refusal contains that string rather than a friendlier restatement.
     expect(verdict.message).toContain(providerVerdict(absent).detail);
@@ -187,7 +187,7 @@ suite('the refusal message (AC3, AC4)', () => {
     expect(verdict.outcome).toBe('refused');
     if (verdict.outcome !== 'refused') return;
 
-    expect(verdict.message).toContain('DeFlow-mock-agent');
+    expect(verdict.message).toContain('deflow-mock-agent');
     expect(verdict.message).toContain('ships in this package');
     expect(verdict.message).toContain('no vendor CLI, no credential and no network');
     expect(verdict.message).toContain(MOCK_AGENT_FLAG);

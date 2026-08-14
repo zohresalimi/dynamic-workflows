@@ -32,7 +32,7 @@ exclude `Z`-state processes, or it reports a false negative. That test needs a r
 
 ## Decision
 
-**`@DeFlow/mock-agent` is a first-class package exposing a real binary (`DeFlow-mock-agent`),
+**`@DeFlow/mock-agent` is a first-class package exposing a real binary (`deflow-mock-agent`),
 implemented with the _agent_ side of `@agentclientprotocol/sdk` and driven by a declarative script
 file. It ships; it is not a test helper.**
 
@@ -52,7 +52,7 @@ It must reproduce, deterministically and on demand:
    everything-on profile can be simulated without installing either.
 10. `--seed`, so all ids and timestamps are byte-reproducible.
 
-Plus `DeFlow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
+Plus `deflow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
 session becomes a mock provider for free.
 
 **Item 9 is the one people skip and regret.** It turns the uneven capability matrix from
@@ -63,11 +63,11 @@ session becomes a mock provider for free.
 
 - **F3.7 makes a mock provider a product requirement**, not a testing convenience. ODW ships one and
   the PRD names it as a strength worth adopting outright.
-- **`DeFlow doctor` and the F3.4 conformance suite run on the user's machine**, not just in CI. The
+- **`deflow doctor` and the F3.4 conformance suite run on the user's machine**, not just in CI. The
   battery — structured output, streaming, permission refusal, timeout, cancellation, non-zero exit,
   malformed output, token accounting — needs a known-good reference implementation present at
   runtime to have something to compare a real adapter against.
-- **The replay harness is the demo tool.** `DeFlow replay <fixture.jsonl>` lets all nine P0 views be
+- **The replay harness is the demo tool.** `deflow replay <fixture.jsonl>` lets all nine P0 views be
   developed, demonstrated and regression-tested with no credentials, no cost and no waiting — and it
   is the answer to PRD §15.4's "how do you present this internally". A tool that only exists in
   `devDependencies` cannot do that.

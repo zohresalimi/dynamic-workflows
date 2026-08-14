@@ -14,7 +14,7 @@
  * wrong number and a compaction that happens somewhere else than the operator
  * configured. So the shape is asserted against a stream: the boundary frame
  * still exists and still carries `pre_tokens`, and `modelUsage` still reports
- * the window fields the threshold is derived from. `DeFlow doctor` runs it
+ * the window fields the threshold is derived from. `deflow doctor` runs it
  * against whatever is installed; the specs run it against the committed
  * fixture. A change fails there rather than three hours into a run.
  *

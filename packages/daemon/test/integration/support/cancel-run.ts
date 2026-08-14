@@ -30,7 +30,7 @@ export const REPO_LOCK = `repo:${REPO}`;
 /** `node.started` records what was spawned; the schema requires all three
  * fields, and an event that fails to parse is one `replayAll` silently skips —
  * which would leave a "running" node looking `scheduled` to the scheduler. */
-const BINARY = { path: '/usr/bin/DeFlow-mock-agent', version: '0.0.0', sha256: 'd'.repeat(64) };
+const BINARY = { path: '/usr/bin/deflow-mock-agent', version: '0.0.0', sha256: 'd'.repeat(64) };
 
 const PLAN_HASH = `sha256-${'a'.repeat(64)}`;
 const SPEC_HASH = `sha256-${'c'.repeat(64)}`;

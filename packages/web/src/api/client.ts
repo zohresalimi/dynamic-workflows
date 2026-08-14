@@ -12,7 +12,7 @@
  * The import of `ApiType` is `import type`, and with `verbatimModuleSyntax` on
  * that is erased entirely: no daemon code reaches the browser bundle. `hono/client`
  * is the only runtime dependency this module adds, and it runs in both a
- * browser and Node — which is what lets `DeFlow run` be a caller of this exact
+ * browser and Node — which is what lets `deflow run` be a caller of this exact
  * module rather than a second implementation of the same protocol.
  *
  * **The token is never in the URL.** It is attached as an `Authorization`
@@ -37,7 +37,7 @@ export interface ApiClientOptions {
   /**
    * The API's base URL, `/api` included. Defaults to the page's own origin in a
    * browser and to the daemon's default port outside one — so a tab needs no
-   * configuration at all, and `DeFlow run` needs only `--daemon` when the port
+   * configuration at all, and `deflow run` needs only `--daemon` when the port
    * is not the default.
    */
   readonly baseUrl?: string;

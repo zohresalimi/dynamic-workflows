@@ -7,7 +7,7 @@
  *
  * Not covered here, deliberately: EPIC-01-S10 (effects left pending) and the
  * first and third scenarios of EPIC-01-S11 (the reducer refusing an unknown
- * event kind, `DeFlow ledger snapshot`). There is no ledger and no orchestrator
+ * event kind, `deflow ledger snapshot`). There is no ledger and no orchestrator
  * at this point in the backlog; those land with KAR-03.8 and KAR-06.9. This
  * story delivers the process shape and the restart, which is what those
  * scenarios will hang from.

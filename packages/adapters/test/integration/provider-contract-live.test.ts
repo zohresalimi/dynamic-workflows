@@ -11,7 +11,7 @@
  * automatically would be red for reasons nobody could act on, which is how a
  * suite stops being read.
  *
- * `DeFlow doctor` (EPIC-18, KAR-18.4) is the natural home for this against the
+ * `deflow doctor` (EPIC-18, KAR-18.4) is the natural home for this against the
  * versions a *user* has installed. Until it exists, this is how a maintainer
  * asks the question by hand:
  *

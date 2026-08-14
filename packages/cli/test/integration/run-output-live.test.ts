@@ -15,7 +15,7 @@
  * than pass.
  *
  * Integration, and through a **real process over a real socket**: the daemon is
- * booted in this process so the spec can hold the gate, and `DeFlow run
+ * booted in this process so the spec can hold the gate, and `deflow run
  * --attach` is a spawned binary whose stdout is a real file descriptor on a
  * real file — the same thing a shell's `> out.log` produces. Nothing between
  * the renderer and that descriptor is faked, which is the only way to settle
@@ -150,7 +150,7 @@ interface Watched {
 }
 
 /**
- * A daemon with a planned run on it, and a spawned `DeFlow run --attach`
+ * A daemon with a planned run on it, and a spawned `deflow run --attach`
  * watching it.
  *
  * The plan is seeded through the shipped `plannedRun` helper rather than framed:

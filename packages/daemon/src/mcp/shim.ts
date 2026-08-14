@@ -1,5 +1,5 @@
 /**
- * KAR-05.6 — `DeFlow-mcp`: `StdioServerTransport` on one side, a Unix domain
+ * KAR-05.6 — `deflow-mcp`: `StdioServerTransport` on one side, a Unix domain
  * socket back to DeFlowd on the other, and as little as possible in between.
  *
  * It is a shim and not a server. No tool does any work here: every call is
@@ -11,7 +11,7 @@
  * **Two SDK imports, both deep subpaths.** `server/mcp.js` and
  * `server/stdio.js` and nothing else, enforced repo-wide by
  * `checkMcpSdkImports`. The package root pulls express, hono, cors, jose and
- * eventsource into a process that speaks over a pipe, and `npx DeFlow up` pays
+ * eventsource into a process that speaks over a pipe, and `npx deflow up` pays
  * for that on every start (NF6, docs/07-provider-adapter-layer.md §7.3).
  *
  * **It exits when its stdin closes** (AC7). An agent's death closes the pipe,
@@ -41,7 +41,7 @@ import {
 } from './protocol.ts';
 import { RUN_TOKEN_ENV } from './server-entry.ts';
 
-export const SHIM_NAME = 'DeFlow-mcp';
+export const SHIM_NAME = 'deflow-mcp';
 export const SHIM_VERSION = '0.0.0';
 
 /** Exit codes, so a spec and an operator read the same failures. */

@@ -11,8 +11,8 @@
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operator**      | The engineer driving DeFlow. In this epic they are a first-class participant, not an observer: they submit the task, answer the framing agent's questions, edit the draft spec, and hold the approval that unblocks execution |
 | **DeFlowd**       | The local daemon: HTTP + SSE API, orchestrator tick loop, Context Builder, Blackboard, Workspace Manager                                                                                                                      |
-| **`DeFlow` CLI**  | `DeFlow run "…"` and the approval commands. A **client of the HTTP API**, never a second engine                                                                                                                               |
-| **Framing agent** | A `DeFlow-mock-agent` subprocess at `read` permission in a fresh ACP session, returning a `DeFlow.taskspec.v1` document as structured output                                                                                  |
+| **`deflow` CLI**  | `deflow run "…"` and the approval commands. A **client of the HTTP API**, never a second engine                                                                                                                               |
+| **Framing agent** | A `deflow-mock-agent` subprocess at `read` permission in a fresh ACP session, returning a `DeFlow.taskspec.v1` document as structured output                                                                                  |
 | **Recon node**    | One or more `read`-permission agent nodes in a `--detach --lock` worktree, writing `finding/*` and `scope/*` facts                                                                                                            |
 | **Approval gate** | A blocking `human` node suspended on one `node_wake` row with `reason = 'human_gate'`                                                                                                                                         |
 | **Ledger**        | The file-backed SQLite database from [EPIC-03](../epics/EPIC-03-event-ledger.md) — `event`, `run`, `node_wake`, `fact`, `plan`                                                                                                |
@@ -28,7 +28,7 @@ Background:
   Given a DeFlow workspace initialised in a git repository on branch "main"
   And the ledger is a FILE-BACKED SQLite database — ":memory:" only where "Automated at: unit"
       names a pure function or a pure projection
-  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
+  And deflow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and every
       invocation passes --seed so the run is byte-reproducible
   And the mock agent's advertised agentCapabilities are set explicitly per scenario, never assumed
   And time enters through the injected Clock port — never Date.now() or setTimeout
@@ -110,7 +110,7 @@ Feature: Task intake
     And the ledger contains NO "plan.proposed" event
 
   Scenario: the CLI is a client, not a second engine
-    When the Operator runs: DeFlow run "Migrate the design system across packages/ui"
+    When the Operator runs: deflow run "Migrate the design system across packages/ui"
     Then the ledger is byte-identical to the HTTP case modulo runId, seq and timestamps
     And task.submitted provenance records by: 'cli'
 ```
@@ -285,7 +285,7 @@ Feature: The framing interview (F1.2)
   Background:
     Given a task was submitted as free text
     And the probed provider_capabilities row for the resolved adapter advertises structuredOutput: true
-    And DeFlow-mock-agent is scripted to return a valid DeFlow.taskspec.v1 document
+    And deflow-mock-agent is scripted to return a valid DeFlow.taskspec.v1 document
 
   Scenario: a complete spec lands in the ledger
     When the framing node runs
@@ -323,7 +323,7 @@ Feature: The interview is an interview
 
   Background:
     Given the task text is "Migrate the design system" and names no packages
-    And DeFlow-mock-agent is scripted to emit a clarifying question before returning a spec
+    And deflow-mock-agent is scripted to emit a clarifying question before returning a spec
 
   Scenario: the run suspends on the question and resumes on the answer
     When the framing node runs
@@ -366,7 +366,7 @@ rather than showing a delivered guidance bubble that never arrived."_
 Feature: The framing agent runs at read permission (F5.4)
 
   Background:
-    Given DeFlow-mock-agent is scripted with testkit scenario 4 (call back into the client)
+    Given deflow-mock-agent is scripted with testkit scenario 4 (call back into the client)
 
   Scenario: a write is rejected at the ACP boundary
     When the agent calls fs/write_text_file with a path inside the repository
@@ -775,7 +775,7 @@ Feature: Approval is reachable without the UI
 
 **Notes:** M1's UI arrives in W10–W11, well after W7a, so the CLI approval path is not a convenience
 — it is the only way this epic is testable end to end when it is built. The `flock` scenario is
-cheap insurance against the _"user runs `npx DeFlow up` in two terminals"_ case
+cheap insurance against the _"user runs `npx deflow up` in two terminals"_ case
 [05 §12](../../05-durable-execution.md) says _"happens the first week"_.
 
 ---

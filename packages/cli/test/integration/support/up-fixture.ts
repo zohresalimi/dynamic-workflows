@@ -1,5 +1,5 @@
 /**
- * Fixtures for the `DeFlow up` specs: a fake agent binary, a fake browser, and
+ * Fixtures for the `deflow up` specs: a fake agent binary, a fake browser, and
  * the hermetic environment both are reached through.
  *
  * Real executables on a temp `PATH`, never a mocked module (docs/14 §3.3). The
@@ -115,7 +115,7 @@ export interface UpEnvOptions {
  * on every normal installation, which is where a developer's real
  * `claude-agent-acp` lives. A spec asserting "zero providers" then finds the
  * author's own, the boot probe succeeds, and the probe's synthetic run turns up
- * in a `DeFlow status` listing that expected two.
+ * in a `deflow status` listing that expected two.
  *
  * Corrected 2026-08-12 while implementing KAR-19.2 — same correction as
  * `doctor-fixture.ts`'s `doctorEnv`, for the same reason, found the same way.
@@ -129,7 +129,7 @@ function nodeOnlyDir(): string {
 }
 
 /**
- * The environment a `DeFlow up` spec runs the command under.
+ * The environment a `deflow up` spec runs the command under.
  *
  * `PATH` holds only what is passed in, plus a directory holding nothing but a
  * `node` — never the developer's own `PATH`, or a spec asserting "no agent CLI

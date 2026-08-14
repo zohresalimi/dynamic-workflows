@@ -220,7 +220,7 @@ watch(
     <p v-if="nodes.length === 0" class="plan-graph__empty">
       <template v-if="runId === null">
         No run open. Open one at <code>/runs/&lt;runId&gt;</code>, or start one with
-        <code>DeFlow run</code>.
+        <code>deflow run</code>.
       </template>
       <template v-else-if="status === 'hydrating'">Reading the run's ledger…</template>
       <template v-else-if="status === 'reconnecting'">

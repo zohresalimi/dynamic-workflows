@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * The `DeFlow` executable — the first of the published package's three bins.
+ * The `deflow` executable — the first of the published package's three bins.
  *
  * The shebang is not decoration: it is the first line tsdown copies to
  * `dist/bin.mjs`, and `packages/cli/scripts/build.ts` sets the exec bit on the
- * emitted file. Lose either and `npx DeFlow` fails with a shell syntax error
+ * emitted file. Lose either and `npx deflow` fails with a shell syntax error
  * that names none of this (AC6).
  *
  * Nothing here has behaviour. Argv in, exit code out, and every command body
  * lives behind `./index.ts` so it can be tested without a process — the same
- * split `packages/daemon/bin/DeFlow-mcp.ts` and `packages/mock-agent/bin/
+ * split `packages/daemon/bin/mcp.ts` and `packages/mock-agent/bin/
  * mock-agent.ts` already use.
  *
  * `up` (KAR-18.2) is the one command here that does not return: it starts a
@@ -27,6 +27,7 @@
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { runCancel } from './cancel.ts';
+import { deprecationNotice } from './command-name.ts';
 import { runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
@@ -69,7 +70,7 @@ function version(): string {
 
 const USAGE = `DeFlow — dynamic multi-agent workflows
 
-Usage: DeFlow <command> [options]
+Usage: deflow <command> [options]
 
 Commands:
   init            Prepare .DeFlow/ in the current git repository
@@ -104,7 +105,7 @@ waiting on a human gate under --no-wait, 5 this machine cannot host a run, 130
 interrupted.
 
 Usage for "cancel":
-  DeFlow cancel <runId> [--force]
+  deflow cancel <runId> [--force]
                   Stop a run. Cooperative by default: the agent is given the
                   chance to flush its transcript first. --force walks
                   session/cancel, SIGTERM, a grace window and SIGKILL, and
@@ -145,7 +146,7 @@ Options for "status":
 running" is the ordinary answer.
 
 Usage for "ledger":
-  DeFlow ledger snapshot <runId> --out <path>
+  deflow ledger snapshot <runId> --out <path>
                   One consistent SQLite file, WAL included and no sidecar,
                   inspectable with plain sqlite3 on a machine with no DeFlow.
 `;
@@ -169,7 +170,7 @@ function runUntilSignalled(started: StartedUp): Promise<number> {
         () => resolve(0),
         (error: unknown) => {
           process.stderr.write(
-            `DeFlow up: shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
+            `deflow up: shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
           );
           resolve(1);
         },
@@ -205,7 +206,7 @@ async function up(argv: readonly string[]): Promise<number> {
 }
 
 /**
- * `DeFlow doctor` (KAR-18.4).
+ * `deflow doctor` (KAR-18.4).
  *
  * The exit code comes straight off the report — `runDoctor` reduced it, and
  * this function does not get to have an opinion. That is the whole of AC10:
@@ -216,7 +217,7 @@ async function doctor(argv: readonly string[]): Promise<number> {
   const known = new Set(['--json', '--fix', '--skip-conformance', '--no-color']);
   const unknown = argv.filter((flag) => !known.has(flag));
   if (unknown.length > 0) {
-    process.stderr.write(`DeFlow doctor: unknown option "${unknown[0]}"\n\n${USAGE}`);
+    process.stderr.write(`deflow doctor: unknown option "${unknown[0]}"\n\n${USAGE}`);
     return EX_USAGE;
   }
 
@@ -239,7 +240,7 @@ async function doctor(argv: readonly string[]): Promise<number> {
 }
 
 /**
- * `DeFlow status` (KAR-18.7) — and it does not get to fail.
+ * `deflow status` (KAR-18.7) — and it does not get to fail.
  *
  * The exit code is the command's own, which is always 0: a bad *flag* is a
  * usage error and exits 64, but every answer about the daemon — running, stale,
@@ -257,7 +258,7 @@ function status(argv: readonly string[]): number {
   return result.exitCode;
 }
 
-/** `DeFlow ledger snapshot <runId> --out <path>` (KAR-18.7). */
+/** `deflow ledger snapshot <runId> --out <path>` (KAR-18.7). */
 function ledger(argv: readonly string[]): number {
   const parsed = parseLedgerArgs(argv);
   if (!parsed.ok) {
@@ -278,7 +279,7 @@ function ledger(argv: readonly string[]): number {
 }
 
 /**
- * `DeFlow cancel <runId>` (KAR-19.6) — the command `run`'s own detach sentence
+ * `deflow cancel <runId>` (KAR-19.6) — the command `run`'s own detach sentence
  * has always named.
  *
  * No usage text on a bad argv beyond the parser's own sentence: `cancel` takes
@@ -341,6 +342,17 @@ async function main(argv: readonly string[]): Promise<number> {
   process.stderr.write(`DeFlow: unknown command "${command}"\n\n${USAGE}`);
   return EX_USAGE;
 }
+
+// KAR-20.1 AC4 — the deprecated spelling, answered once, on **stderr**.
+//
+// Before `main` rather than inside it, so the notice is the same for every
+// subcommand and no future command can forget it; and on stderr rather than
+// stdout, because `--json` and `run --json`'s NDJSON are contracts and a
+// notice on stdout breaks every consumer's parse on the first line (AC5).
+// `./command-name.ts` decides whether there is anything to say, from the
+// spelling in `argv[1]`.
+const notice = deprecationNotice(process.argv[1]);
+if (notice !== undefined) process.stderr.write(notice);
 
 // Set rather than forced with `process.exit`, so stdout drains before the
 // process ends — the same rule the mock agent's bin follows, and for the same

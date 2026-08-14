@@ -1,5 +1,5 @@
 /**
- * KAR-05.6 — the frames DeFlowd and `DeFlow-mcp` exchange over the UDS.
+ * KAR-05.6 — the frames DeFlowd and `deflow-mcp` exchange over the UDS.
  *
  * Newline-delimited JSON, five frames each way, and every one of them parsed
  * strictly. Strictness is not tidiness here: the process on the other end of

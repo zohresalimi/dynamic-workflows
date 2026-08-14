@@ -32,7 +32,7 @@ if (dataDir === undefined || readyFile === undefined) {
 const eventVersionOf = (kind: string): number =>
   (EVENT_CURRENT_VERSIONS as Readonly<Record<string, number>>)[kind] ?? 1;
 
-const BINARY = { path: '/usr/bin/DeFlow-mock-agent', version: '0.0.0', sha256: 'd'.repeat(64) };
+const BINARY = { path: '/usr/bin/deflow-mock-agent', version: '0.0.0', sha256: 'd'.repeat(64) };
 
 const RESULT = {
   status: 'completed',

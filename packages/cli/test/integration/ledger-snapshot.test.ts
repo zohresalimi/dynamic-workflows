@@ -1,5 +1,5 @@
 /**
- * KAR-18.7 — `DeFlow ledger snapshot` against a live daemon with a **non-empty
+ * KAR-18.7 — `deflow ledger snapshot` against a live daemon with a **non-empty
  * WAL**.
  *
  * The named red is precise: an implementation that copies `ledger.db` passes a
@@ -84,7 +84,7 @@ async function bootWithRuns(): Promise<Booted> {
   const dataDir = join(tmp, 'data');
   const result = await runUp({ env: upEnv({ dataDir }), port: 0, open: false, timings: false });
   started.push(result);
-  if (result.kind !== 'started') throw new Error(`DeFlow up refused: ${result.stderr}`);
+  if (result.kind !== 'started') throw new Error(`deflow up refused: ${result.stderr}`);
 
   seedRun(result.daemon.db, RUN_UNDER_TEST, result.epoch, SEEDED_EVENTS);
   seedRun(result.daemon.db, OTHER_RUN, result.epoch, SEEDED_EVENTS);

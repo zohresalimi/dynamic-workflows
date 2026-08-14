@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The `DeFlow-mcp` executable — the second bin of the published `DeFlow`
+ * The `deflow-mcp` executable — the second bin of the published `DeFlow`
  * package (docs/07-provider-adapter-layer.md §7.2).
  *
  * It is never run by a person. DeFlowd names it in the `mcpServers` entry of

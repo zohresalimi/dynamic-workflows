@@ -5,7 +5,7 @@
  *
  * On 2026-08-12 the only route to `POST /api/runs/:id/cancel` was `curl` with
  * the token read out of `daemon.json` by hand, because the CLI had no `cancel`
- * command. The fix is `DeFlow cancel`; this is what stops the workaround being
+ * command. The fix is `deflow cancel`; this is what stops the workaround being
  * written down as the answer the next time a control verb ships without a
  * command in front of it. A capability an operator can only reach with a shell
  * one-liner and a copied secret is not a capability.

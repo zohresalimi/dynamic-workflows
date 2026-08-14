@@ -320,7 +320,7 @@ suite(
         );
         expect(body.error.message).not.toContain('claude is not installed');
         // AC4 — and the way to proceed with nothing installed.
-        expect(body.error.message).toContain('DeFlow-mock-agent');
+        expect(body.error.message).toContain('deflow-mock-agent');
       } finally {
         await daemon.stop();
       }

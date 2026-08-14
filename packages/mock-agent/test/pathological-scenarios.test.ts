@@ -4,7 +4,7 @@
  *
  * The second half is not a convenience. When someone reports "the daemon wedged
  * on a huge frame", the first thing anyone needs is a command that reproduces
- * it — `DeFlow-mock-agent --huge-line` — without first learning the scenario
+ * it — `deflow-mock-agent --huge-line` — without first learning the scenario
  * format. The flag resolves to the *same shipped scenario file* the suite uses
  * rather than to a second, in-memory definition, because two definitions of one
  * behaviour drift and the drift is invisible until the reproduction stops

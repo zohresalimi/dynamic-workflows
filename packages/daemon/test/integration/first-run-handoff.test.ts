@@ -45,7 +45,7 @@ async function readDaemonJson(): Promise<DaemonFile> {
   return JSON.parse(await readFile(join(dir, DAEMON_FILE_NAME), 'utf8')) as DaemonFile;
 }
 
-suite('DeFlow up generates and records the token (AC7, EPIC-15-S12 scenario 1)', () => {
+suite('deflow up generates and records the token (AC7, EPIC-15-S12 scenario 1)', () => {
   it('writes { pid, port, token, startedAt, processStartedAt } at mode 0600', async () => {
     booted = await boot({ dataDir: dir, port: 0, dev: false });
     const file = await readDaemonJson();
@@ -56,7 +56,7 @@ suite('DeFlow up generates and records the token (AC7, EPIC-15-S12 scenario 1)',
       'processStartedAt',
       'startedAt',
       // KAR-19.1 AC2 — the interval of the ticker this daemon life started, so
-      // `DeFlow status` can report the loop rather than assume it.
+      // `deflow status` can report the loop rather than assume it.
       'tickIntervalMs',
       'token',
     ]);
@@ -208,7 +208,7 @@ async function spawnDaemon(dataDir: string) {
     });
 
   return {
-    /** The line `DeFlow up` shows the operator, once the daemon has printed it. */
+    /** The line `deflow up` shows the operator, once the daemon has printed it. */
     async handoffUrl(): Promise<string> {
       const deadline = Date.now() + 30_000;
       while (Date.now() < deadline) {

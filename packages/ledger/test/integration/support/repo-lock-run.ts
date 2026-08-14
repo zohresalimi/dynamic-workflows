@@ -99,7 +99,7 @@ export function heldLockRun(): EventDraft[] {
         node: HOLDER,
         attempt: 0,
         ikey: `${LOCK_RUN}/${HOLDER}/0/0`,
-        binary: { path: '/usr/bin/DeFlow-mock-agent', version: '1.0.0', sha256: 'd'.repeat(64) },
+        binary: { path: '/usr/bin/deflow-mock-agent', version: '1.0.0', sha256: 'd'.repeat(64) },
       },
       { nodeId: HOLDER, attempt: 0, ikey: `${LOCK_RUN}/${HOLDER}/0/0` },
     ),

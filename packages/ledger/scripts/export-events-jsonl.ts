@@ -7,7 +7,7 @@
  * that slice deliberately never pays for `better-sqlite3`'s native binding —
  * `test/setup.ts` says so in as many words. So the recorded ledgers need a form
  * a pure reducer can read, and NDJSON is the form the daemon already serves on
- * the wire and the form `DeFlow replay` will read back (KAR-16.5).
+ * the wire and the form `deflow replay` will read back (KAR-16.5).
  *
  * It is an **export, never an authoring step**. Every line is a row out of the
  * fixture's own `event` table, read through `readRange` — the same bounded read

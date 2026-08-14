@@ -12,7 +12,7 @@
  * the real feed, so the shipped application injects nothing and gets the real
  * thing; `packages/web/test/shell.ts` is the one caller that overrides it, and
  * the whole stack from socket to node body is asserted end to end in
- * `e2e/plan-graph.test.ts` against a real `DeFlow replay` daemon instead.
+ * `e2e/plan-graph.test.ts` against a real `deflow replay` daemon instead.
  */
 import { type InjectionKey, inject, onScopeDispose, type Ref, ref, watch } from 'vue';
 import { useApiClient } from '../api/provide.ts';

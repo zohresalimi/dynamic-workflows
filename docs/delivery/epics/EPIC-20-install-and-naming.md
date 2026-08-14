@@ -258,6 +258,27 @@ alias cannot outlive its argument by inertia. The 468-file sweep is mechanical a
 the sweep — it is the two or three strings that are *constructed* rather than literal, which the AC2
 guard is aimed at and which a find-and-replace will miss.
 
+**The alias expiry, recorded (AC4).** `DeFlow` is removed in **0.2.0**. The package is at `0.0.0`
+and the alias ships in the first release after it, so 0.2.0 is the release after the one that
+introduces it. The version lives in `ALIAS_REMOVED_IN`
+(`packages/cli/src/command-name.ts`), is printed in the notice, and is pinned by
+*"expires by going red rather than by being remembered"* in
+`packages/cli/test/command-name.test.ts` — that test fails the moment
+`packages/cli/package.json`'s version reaches 0.2.0, which is the only mechanism for removing a
+deprecation that has ever worked.
+
+**How it was implemented.** There is **one entry script** and no second file: on a case-insensitive
+volume `deflow` and `DeFlow` are one directory entry, so an alias-as-a-copy cannot exist there. The
+notice is decided at runtime from `basename(process.argv[1])` — exact on ext4, best-effort on APFS,
+where the shell still passes through whichever spelling was typed. `packages/daemon/bin/DeFlow-mcp.ts`
+was renamed to `packages/daemon/bin/mcp.ts` rather than to `deflow-mcp.ts`, deliberately: a
+`DeFlow-mcp` → `deflow-mcp` rename is case-only, which `core.ignorecase = true` turns into a no-op
+that reports success, and the sibling `packages/mock-agent/bin/mock-agent.ts` already names the file
+after its role rather than after its bin. Two exemptions are recorded in the AC2 guard:
+`packages/ledger/src/migrations/` (append-only and content-hashed — editing a shipped migration to
+correct a comment breaks a stronger invariant than the one this story adds) and this epic's own two
+files, which quote the old name because they are the record of the rename.
+
 ---
 
 ### KAR-20.2 — One command installs `deflow` and gets the machine ready

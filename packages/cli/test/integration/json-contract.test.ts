@@ -169,7 +169,7 @@ suite('the failure this golden exists to catch (EPIC-18-S62, scenario 2)', () =>
     // A golden nobody has watched go red is a golden nobody can trust. This is
     // the exact regression AC6 is written against: the presentation layer's
     // summary appended to *every* rendered output, `--json` included.
-    const leaked = `${golden('doctor.golden.json')}\nnext: run 'DeFlow doctor --fix'\noverall: fail — 4 ok, 3 warn, 1 fail, 0 skipped\n`;
+    const leaked = `${golden('doctor.golden.json')}\nnext: run 'deflow doctor --fix'\noverall: fail — 4 ok, 3 warn, 1 fail, 0 skipped\n`;
 
     expect(leaked).not.toBe(golden('doctor.golden.json'));
 
@@ -177,7 +177,7 @@ suite('the failure this golden exists to catch (EPIC-18-S62, scenario 2)', () =>
     // it reports is the two lines somebody added, not "the files differ".
     const before = new Set(golden('doctor.golden.json').split('\n'));
     const added = leaked.split('\n').filter((line) => line !== '' && !before.has(line));
-    expect(added).toContain("next: run 'DeFlow doctor --fix'");
+    expect(added).toContain("next: run 'deflow doctor --fix'");
     expect(added.some((line) => line.startsWith('overall:'))).toBe(true);
 
     // The second half of the same regression: the document stops parsing.

@@ -62,7 +62,7 @@ export function browserCommand(url: string, context: BrowserContext): BrowserLau
  * when it spawned nothing.
  *
  * Detached, with every stream ignored, and unreferenced: the browser outlives
- * `DeFlow up` by design, and a daemon whose event loop is held open by a
+ * `deflow up` by design, and a daemon whose event loop is held open by a
  * browser it launched is a daemon that will not exit when the browser does not.
  * A failure to spawn is swallowed by the caller's `onError` rather than thrown
  * — a machine with no `xdg-open` is a machine where the operator clicks the URL

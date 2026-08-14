@@ -1,5 +1,5 @@
 /**
- * `DeFlow run`'s argv (KAR-18.3 AC7, AC8).
+ * `deflow run`'s argv (KAR-18.3 AC7, AC8).
  *
  * Parsing only: no I/O, no defaults that reach for the environment, and no
  * process. The command body next door takes the result and does the work, which
@@ -97,17 +97,17 @@ export function registeredProviderChoices(): readonly ProviderChoice[] {
 function unknownProviderMessage(given: string, providers: readonly ProviderChoice[]): string {
   const usable = providers.filter((choice) => choice.usable).map((choice) => choice.id);
   return (
-    `DeFlow run: --provider takes one of ${providers.map((choice) => choice.id).join(', ')}; got ` +
-    `${JSON.stringify(given)}. Usable on this machine: ${usable.length === 0 ? 'none — run "DeFlow doctor"' : usable.join(', ')}.`
+    `deflow run: --provider takes one of ${providers.map((choice) => choice.id).join(', ')}; got ` +
+    `${JSON.stringify(given)}. Usable on this machine: ${usable.length === 0 ? 'none — run "deflow doctor"' : usable.join(', ')}.`
   );
 }
 
 const USAGE_HINT =
-  'DeFlow run: give it something to do — DeFlow run "<task>", or --file <path>, ' +
+  'deflow run: give it something to do — deflow run "<task>", or --file <path>, ' +
   '--issue <ref>, --spec <path>, or --attach <runId>';
 
 const ONE_SOURCE =
-  'DeFlow run: exactly one source — free text, --file, --issue or --spec — and one is all it takes';
+  'deflow run: exactly one source — free text, --file, --issue or --spec — and one is all it takes';
 
 const refuse = (message: string): ParsedRunArgs => ({ ok: false, message });
 
@@ -194,7 +194,7 @@ export function parseRunArgs(
       const { value, next } = valueOf(argv, index, '--permission');
       if (value === undefined || !isPermission(value)) {
         return refuse(
-          `DeFlow run: --permission takes one of ${PERMISSION_LEVELS.join(', ')}; got ` +
+          `deflow run: --permission takes one of ${PERMISSION_LEVELS.join(', ')}; got ` +
             JSON.stringify(value ?? ''),
         );
       }
@@ -219,10 +219,10 @@ export function parseRunArgs(
 
     if (argument === '--attach' || argument.startsWith('--attach=')) {
       const { value, next } = valueOf(argv, index, '--attach');
-      if (value === undefined) return refuse('DeFlow run: --attach needs a run id');
+      if (value === undefined) return refuse('deflow run: --attach needs a run id');
       if (!RunIdSchema.safeParse(value).success) {
         return refuse(
-          `DeFlow run: --attach needs a run id like run_20260810T101500Z_c4a5b1; got ${JSON.stringify(value)}`,
+          `deflow run: --attach needs a run id like run_20260810T101500Z_c4a5b1; got ${JSON.stringify(value)}`,
         );
       }
       attach = value;
@@ -232,7 +232,7 @@ export function parseRunArgs(
 
     if (argument === '--file' || argument.startsWith('--file=')) {
       const { value, next } = valueOf(argv, index, '--file');
-      if (value === undefined || value === '') return refuse('DeFlow run: --file needs a path');
+      if (value === undefined || value === '') return refuse('deflow run: --file needs a path');
       const clash = setSource('file', { kind: 'file', path: value });
       if (clash !== null) return refuse(clash);
       index = next;
@@ -241,7 +241,7 @@ export function parseRunArgs(
 
     if (argument === '--spec' || argument.startsWith('--spec=')) {
       const { value, next } = valueOf(argv, index, '--spec');
-      if (value === undefined || value === '') return refuse('DeFlow run: --spec needs a path');
+      if (value === undefined || value === '') return refuse('deflow run: --spec needs a path');
       const clash = setSource('spec', { kind: 'file', path: value });
       if (clash !== null) return refuse(clash);
       index = next;
@@ -251,7 +251,7 @@ export function parseRunArgs(
     if (argument === '--issue' || argument.startsWith('--issue=')) {
       const { value, next } = valueOf(argv, index, '--issue');
       if (value === undefined || value === '')
-        return refuse('DeFlow run: --issue needs an issue reference');
+        return refuse('deflow run: --issue needs an issue reference');
       const clash = setSource('issue', { kind: 'issue', url: issueUrl(value) });
       if (clash !== null) return refuse(clash);
       index = next;
@@ -259,7 +259,7 @@ export function parseRunArgs(
     }
 
     if (argument.startsWith('-')) {
-      return refuse(`DeFlow run: unknown option ${JSON.stringify(argument)}`);
+      return refuse(`deflow run: unknown option ${JSON.stringify(argument)}`);
     }
 
     const clash = setSource('text', { kind: 'text', text: argument });
@@ -271,7 +271,7 @@ export function parseRunArgs(
   function finish(): ParsedRunArgs {
     if (attach !== null && input !== null) {
       return refuse(
-        'DeFlow run: --attach watches a run that already exists, so it takes no task of its own',
+        'deflow run: --attach watches a run that already exists, so it takes no task of its own',
       );
     }
     if (attach === null && input === null) return refuse(USAGE_HINT);

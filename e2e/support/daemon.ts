@@ -55,7 +55,7 @@ export interface DaemonProcess {
    *
    * Read from the file the daemon actually wrote rather than injected, because
    * that file *is* the handoff: a spec that could not find the token here is a
-   * spec telling you `DeFlow status` and `DeFlow run` could not either.
+   * spec telling you `deflow status` and `deflow run` could not either.
    */
   readonly token: () => string;
   readonly stdout: () => string;

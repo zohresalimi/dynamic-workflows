@@ -5,13 +5,13 @@
  * `packages/daemon/src/pipeline/run-chain.ts` has taken `FramingAgent`,
  * `ReconAgent` and `PlannerAgent` since the chain shipped, and every spec that
  * drove it scripted them. Nothing in `src/` implemented one, which is why
- * `DeFlow up` had nothing to bind and an operator's run parked at the framing
+ * `deflow up` had nothing to bind and an operator's run parked at the framing
  * wake. This file is about the implementations: what they put on a child's
  * argv, what they do with what comes back, and how they fail.
  *
  * Integration, and against real binaries rather than a mocked `spawn`:
  *
- *  - the **bundled agent** (`DeFlow-mock-agent`), which is what a machine with
+ *  - the **bundled agent** (`deflow-mock-agent`), which is what a machine with
  *    no vendor CLI actually has, and whose `document` dialect is one JSON
  *    document on stdout;
  *  - the **fake vendor CLI** (`@DeFlow/testkit`'s exec-shim agent, linked as

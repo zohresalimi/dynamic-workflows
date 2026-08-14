@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * The `DeFlow-mock-agent` executable — the published package's third bin.
+ * The `deflow-mock-agent` executable — the published package's third bin.
  *
  * D17 calls `@DeFlow/mock-agent` a first-class shipped package, and "shipped"
  * means *inside this tarball as a second bin*, not published separately
- * (docs/16-repo-layout.md §2). Users need it for `DeFlow doctor`, offline demos
+ * (docs/16-repo-layout.md §2). Users need it for `deflow doctor`, offline demos
  * and reproducing a bug report, and none of that requires its own npm entry.
  *
  * The exit code is set rather than forced with `process.exit`: the mock agent

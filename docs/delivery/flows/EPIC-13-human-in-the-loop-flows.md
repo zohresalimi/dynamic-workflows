@@ -13,7 +13,7 @@
 | **DeFlowd**           | The local daemon: scheduler, ledger, 1 Hz ticker                                                                                                                      |
 | **Scheduler**         | `decide(state, now)` plus the ticker that reads `node_wake` — the component that suspends and resumes                                                                 |
 | **Approval queue**    | The `GET /api/approvals` projection: everything waiting on the Operator, across all runs                                                                              |
-| **Provider agent**    | A `DeFlow-mock-agent` subprocess. Scenario 3 of its script — `session/request_permission` per chosen option, including `cancelled` — is what makes this epic testable |
+| **Provider agent**    | A `deflow-mock-agent` subprocess. Scenario 3 of its script — `session/request_permission` per chosen option, including `cancelled` — is what makes this epic testable |
 | **Permission policy** | The pure policy function from [EPIC-08](../epics/EPIC-08-safety-model.md). Auto-answers routine requests; escalates the gated categories                              |
 | **Browser tab**       | One `EventSource`-shaped connection per tab, opened once at app start, filtered server-side                                                                           |
 
@@ -29,7 +29,7 @@ Background:
   And time enters the engine through an injected Clock port; tests advance it with clock.advance()
   And the scheduler's only use of setTimeout is the ticker's own sleep hint,
       setTimeout(min(nextWakeAt - now, 1000))
-  And "DeFlow-mock-agent" is on a temp PATH, with --capabilities used to shape the adapter profile
+  And "deflow-mock-agent" is on a temp PATH, with --capabilities used to shape the adapter profile
   And no test in this file calls vi.useFakeTimers() while a child process is alive
 ```
 

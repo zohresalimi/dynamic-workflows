@@ -3,7 +3,7 @@
  * call site per adapter.
  *
  * Deliberately a thin registrar over `runProviderConformance`. The engine has
- * no idea vitest exists, because the other caller is `DeFlow doctor` (EPIC-18,
+ * no idea vitest exists, because the other caller is `deflow doctor` (EPIC-18,
  * KAR-18.4) running the same eight assertions against whatever versions are
  * installed on a user's machine — and an assertion that only exists as a test
  * body cannot be run there.

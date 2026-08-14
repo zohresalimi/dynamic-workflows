@@ -5,14 +5,14 @@
  *
  * ## What this is, exactly
  *
- * EPIC-16-S27's full soak is *"`DeFlow replay fixtures/stress-400.jsonl --speed
+ * EPIC-16-S27's full soak is *"`deflow replay fixtures/stress-400.jsonl --speed
  * max` looping for six hours"*, and the scenario itself says it **runs on a
  * schedule, not on every push, because it costs six hours** — and that *"a
  * per-push proxy for it is a ten-minute run at `--speed max` with the same
  * assertions"*. This file is that proxy, with two honest differences recorded
  * rather than glossed:
  *
- * - **It drives the store directly, not through `DeFlow replay`.** The replay
+ * - **It drives the store directly, not through `deflow replay`.** The replay
  *   harness and the `stress-400` fixture are KAR-16.5's and do not exist in
  *   this build. Driving the store is strictly the *harder* case for the
  *   assertions below, because nothing throttles the event rate: six hundred

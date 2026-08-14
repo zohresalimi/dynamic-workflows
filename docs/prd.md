@@ -249,7 +249,7 @@ When this goes to Voyado, **runs still execute on each engineer's machine with t
 | Option                                             | Verdict                                                                                                                                                                                         |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **VS Code / JetBrains extension**                  | Rejected. Ties us to one IDE — directly against the brief. Extension host is a bad place for hours-long processes. Constrained visualization surface.                                           |
-| **TUI**                                            | Rejected as primary. Fails I3 and I4 hard. Worth a thin `DeFlow` CLI for scripting and CI (I5), not as the main surface.                                                                        |
+| **TUI**                                            | Rejected as primary. Fails I3 and I4 hard. Worth a thin `deflow` CLI for scripting and CI (I5), not as the main surface.                                                                        |
 | **Native desktop app (Electron/Tauri) as primary** | Rejected _for v1_. Packaging, signing, notarization, and auto-update cost weeks that buy nothing during solo use. Also naturally tempts you to put the engine in the app process, violating I2. |
 | **Cloud web app**                                  | Rejected. Violates AR-1 and I1 outright.                                                                                                                                                        |
 | **Headless local daemon + localhost web UI**       | **Selected.**                                                                                                                                                                                   |
@@ -259,9 +259,9 @@ When this goes to Voyado, **runs still execute on each engineer's machine with t
 > **Ship a headless local daemon (`DeFlowd`) that serves a web UI on localhost. Add a desktop shell in M3, not before.**
 
 ```
-npx DeFlow init          # detect providers, create .DeFlow/
-npx DeFlow up            # start daemon → http://localhost:7777
-npx DeFlow run "…"       # CLI entry, same engine
+npx deflow init          # detect providers, create .DeFlow/
+npx deflow up            # start daemon → http://localhost:7777
+npx deflow run "…"       # CLI entry, same engine
 ```
 
 **Why this wins:**
@@ -269,7 +269,7 @@ npx DeFlow run "…"       # CLI entry, same engine
 - The daemon owns execution. Close the browser, close the laptop lid, reboot — the run resumes (§7.4). This is the property most tools lack.
 - The UI is a client, so _many_ clients are possible: browser tab, phone on the same Wi-Fi, later a desktop shell, later a Slack notifier. All the same event stream.
 - Zero packaging cost in the phase where you're the only user.
-- Team rollout is `npx DeFlow up` per engineer plus an optional shared hub. No app store, no MDM, no signing.
+- Team rollout is `npx deflow up` per engineer plus an optional shared hub. No app store, no MDM, no signing.
 - Vibe Kanban's CLI-plus-web-UI shape is the closest existing precedent and it is cross-platform and self-hostable — evidence the shape works.
 
 **Desktop shell (M3, optional):** wrap the same localhost UI. Buys native notifications ("gate failed, needs approval"), a menu-bar/tray run indicator, deep links, OS file dialogs, and a login item so the daemon starts automatically. **Tauri 2** over Electron — a smaller binary, and since all the Node work lives in the daemon sidecar, the Rust surface stays thin. Frontend stays Vue 3 either way.
@@ -316,7 +316,7 @@ Priority: **P0** = required for personal use (M1). **P1** = required before show
 - **F3.1 (P0)** **ACP-first.** DeFlow is an ACP _client_. Any ACP-speaking agent works through one integration path with sessions, streaming updates, and permission negotiation.
 - **F3.2 (P0)** **CLI shim fallback** for non-ACP agents, in ODW's style (`claude -p`, `codex exec`, `gemini -p`, `copilot -p`, `opencode run`, `aider --message`, `goose run`, `cursor-agent`, `qwen -p`).
 - **F3.3 (P0)** **Direct API adapter** when the user supplies their own key (Anthropic, OpenAI, Google, OpenRouter, Bedrock, Vertex, and local Ollama/vLLM for offline work).
-- **F3.4 (P0)** **Adapter conformance suite.** Every adapter must pass a fixed battery: structured output, streaming, permission refusal, timeout, cancellation, non-zero exit, malformed output, token accounting. Run against installed CLI versions on `DeFlow doctor`. This is the antidote to G7 — flag churn is detected by us, not by a user's failed 3-hour run.
+- **F3.4 (P0)** **Adapter conformance suite.** Every adapter must pass a fixed battery: structured output, streaming, permission refusal, timeout, cancellation, non-zero exit, malformed output, token accounting. Run against installed CLI versions on `deflow doctor`. This is the antidote to G7 — flag churn is detected by us, not by a user's failed 3-hour run.
 - **F3.5 (P0)** **Capability manifest per adapter**, declaring what it does and does not support: structured output, streaming, image input, MCP, resumable sessions, permission granularity, max context. Planner must not schedule a node onto an adapter that can't honour its requirements.
 - **F3.6 (P0)** Pin and record the exact CLI version per run in the manifest. Warn on drift between runs.
 - **F3.7 (P0)** **Mock provider** — deterministic, free, for structural testing and CI.
@@ -435,7 +435,7 @@ This is the layer that makes long-horizon work possible, and — because you wan
 | NF3  | **Cold start < 3s** for the daemon; UI interactive < 1s on localhost.                                                      |
 | NF4  | **Run state survives** daemon restart, OS restart, and laptop sleep.                                                       |
 | NF5  | **Cross-platform**: macOS and Linux at M1; Windows (incl. WSL) by M3. Not Mac-only — that is Conductor's main limitation.  |
-| NF6  | **Single-binary-ish install**: `npx DeFlow up`. No database server, no Docker requirement for the core.                    |
+| NF6  | **Single-binary-ish install**: `npx deflow up`. No database server, no Docker requirement for the core.                    |
 | NF7  | **Graceful provider degradation.** One provider unavailable degrades the plan; it does not kill the run.                   |
 | NF8  | **Every artifact inspectable on disk** in an open format. No lock-in; ODW's artifact discipline as a floor, not a ceiling. |
 | NF9  | **Deterministic core.** Engine logic contains no nondeterminism outside adapter boundaries — required for replay.          |

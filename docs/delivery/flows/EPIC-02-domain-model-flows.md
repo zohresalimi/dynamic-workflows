@@ -219,7 +219,7 @@ Feature: RunId is a directory name and a sort key
     And both match /^run_\d{8}T\d{6}Z_[0-9a-f]{6}$/
 ```
 
-**Notes:** Sorting matters because `.DeFlow/runs/` is browsed by a human and listed by `DeFlow run
+**Notes:** Sorting matters because `.DeFlow/runs/` is browsed by a human and listed by `deflow run
 --list`; the format puts the timestamp before the random suffix precisely so `ls` is chronological.
 
 ---

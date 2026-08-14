@@ -53,7 +53,7 @@ suite('AC6 — the directory is keyed on the exact version', () => {
     expect(recordingDirName('other-agent-cli', '0.53.1-rc.2')).toBe('other-agent-cli@0.53.1-rc.2');
   });
 
-  it.each(['latest', 'v0.64.1', '0.64', '', 'DeFlow-mock-agent 0.0.0'])(
+  it.each(['latest', 'v0.64.1', '0.64', '', 'deflow-mock-agent 0.0.0'])(
     'refuses the moving or unparsed version %o',
     (version) => {
       // The failure this rule prevents is silent: a vendor release under

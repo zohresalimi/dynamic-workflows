@@ -15,8 +15,8 @@
  *
  * **The status string comes from `@DeFlow/core` and is carried on the wire.**
  * `status` is the machine value a client branches on and `label` is the sentence
- * a human reads, produced by `runStatusLabel` — the same function `DeFlow run`
- * and `DeFlow status` print through (AC6). Sending the rendered string rather
+ * a human reads, produced by `runStatusLabel` — the same function `deflow run`
+ * and `deflow status` print through (AC6). Sending the rendered string rather
  * than letting each surface derive one is what makes "three surfaces, one
  * answer" a property of the system rather than a convention three codebases
  * have to keep.

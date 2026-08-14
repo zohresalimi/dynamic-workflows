@@ -51,7 +51,7 @@ suite('the Tier-2 tokenizer counts and says how (AC1, test plan #1)', () => {
   });
 });
 
-suite('DeFlow doctor prints the factor and the sample count (AC10)', () => {
+suite('deflow doctor prints the factor and the sample count (AC10)', () => {
   const rows: readonly TokenCalibrationRow[] = [
     {
       provider: 'claude',

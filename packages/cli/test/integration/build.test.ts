@@ -250,7 +250,7 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
    * **Amended 2026-08-11 while implementing KAR-18.2.** This test used to
    * assert that the string `vite` appeared in no specifier of any kind. That
    * held only for as long as nothing in the entry graph reached
-   * `startHttp` — `DeFlow init` does not — and `DeFlow up` does, so the
+   * `startHttp` — `deflow init` does not — and `deflow up` does, so the
    * unreachable `import('vite')` inside its `DeFlow_DEV` branch now survives
    * into a chunk.
    *
@@ -260,7 +260,7 @@ suite('what survives into the bundle (AC2, AC7, EPIC-18-S38)', () => {
    * MODULE_NOT_FOUND for anyone who sets `DeFlow_DEV=1` against an installed
    * package, where there is no source tree for Vite to serve anyway. What must
    * never happen is the two things below: Vite on the **static** graph, where
-   * it would be loaded on every `DeFlow up`, and Vite's bytes inlined.
+   * it would be loaded on every `deflow up`, and Vite's bytes inlined.
    */
   it('never drags vite in', () => {
     for (const file of emitted()) {
@@ -342,7 +342,7 @@ suite('the release gate (AC4, EPIC-18-S39)', () => {
     // its place the moment anything is exported *with* types: attw is the only
     // half of this gate that resolves an entry point the way each of the six
     // module modes does, which is where a masked one hides.
-    expect(child.stdout).toContain('DeFlow');
+    expect(child.stdout).toContain('deflow');
   }, 120_000);
 
   it('exits non-zero on a deliberately broken exports map', () => {

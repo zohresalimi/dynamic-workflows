@@ -118,7 +118,7 @@ function attempt(node: string, index: number, requestHash: string): EventDraft[]
         node,
         attempt: index,
         ikey: key,
-        binary: { path: '/usr/bin/DeFlow-mock-agent', version: '1.0.0', sha256: BINARY_SHA },
+        binary: { path: '/usr/bin/deflow-mock-agent', version: '1.0.0', sha256: BINARY_SHA },
       },
       node,
       index,

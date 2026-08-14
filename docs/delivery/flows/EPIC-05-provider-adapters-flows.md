@@ -12,9 +12,9 @@
 | **Operator**       | The engineer driving DeFlow — cancels a run, approves a version-change override, reads the failure               |
 | **DeFlowd**        | The local daemon. Here specifically: the ACP client, the provider registry, the transport guard and the MCP host |
 | **Provider agent** | A vendor binary or ACP adapter reached as a detached child process over ndjson on stdin/stdout                   |
-| **Mock agent**     | `DeFlow-mock-agent` standing in for any provider, with a selectable capability profile (EPIC-04)                 |
+| **Mock agent**     | `deflow-mock-agent` standing in for any provider, with a selectable capability profile (EPIC-04)                 |
 | **Ledger**         | The file-backed SQLite `event`, `io_chunk`, `effect` and `provider_capabilities` tables                          |
-| **DeFlow-mcp**     | The stdio MCP shim the agent spawns, talking back to DeFlowd over a Unix domain socket                           |
+| **deflow-mcp**     | The stdio MCP shim the agent spawns, talking back to DeFlowd over a Unix domain socket                           |
 
 ## Preconditions common to all flows
 
@@ -872,7 +872,7 @@ Feature: Workflow tools without mutating the user's environment
     Then params.mcpServers[0] has name "DeFlow"
     And it has NO "type" discriminant — it is the untagged stdio variant
     And command === process.execPath
-    And args contain the DeFlow-mcp entry, "--socket <path>" and "--run <runId>"
+    And args contain the deflow-mcp entry, "--socket <path>" and "--run <runId>"
     And env contains a DeFlow_RUN_TOKEN valid only for this run
 
   Scenario: The user's global MCP configuration is never written
@@ -898,7 +898,7 @@ capability flag**, so all five agents accept it. The elegant "tunnel MCP over th
 true by a single agent, and codex-acp explicitly returned `acp: false`. Legacy HTTP+SSE is officially
 deprecated as of the 2026-07-28 MCP spec with a 12-month offramp, so it must not be built on even though it
 still ships in SDK 1.30.0. The root-import ban is about weight: the SDK pulls `express`, `hono`, `cors`,
-`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx DeFlow up`.
+`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx deflow up`.
 
 ---
 
@@ -907,11 +907,11 @@ still ships in SDK 1.30.0. The root-import ban is about weight: the SDK pulls `e
 **Verifies:** KAR-05.6 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: DeFlow-mcp as a thin shim
+Feature: deflow-mcp as a thin shim
 
   Scenario: A tool round-trips
-    Given the agent has spawned DeFlow-mcp from the session/new mcpServers entry
-    And DeFlow-mcp has connected to DeFlowd over a Unix domain socket
+    Given the agent has spawned deflow-mcp from the session/new mcpServers entry
+    And deflow-mcp has connected to DeFlowd over a Unix domain socket
     When the agent calls the "DeFlow.readFact" tool with a key
     Then the request crosses the UDS to DeFlowd
     And a "fact.read" event is appended naming the calling node
@@ -922,7 +922,7 @@ Feature: DeFlow-mcp as a thin shim
     And no TCP port was bound for MCP
 
   Scenario: A bad token is refused
-    Given DeFlow-mcp presents a token from a different run
+    Given deflow-mcp presents a token from a different run
     When it connects
     Then the connection is refused
     And DeFlowd logs the refusal with the presented run id
@@ -930,7 +930,7 @@ Feature: DeFlow-mcp as a thin shim
 
   Scenario: The shim dies with its agent
     When the agent process is killed
-    Then DeFlow-mcp observes stdin close and exits within 2 seconds
+    Then deflow-mcp observes stdin close and exits within 2 seconds
     And the socket file is released
 ```
 
@@ -990,7 +990,7 @@ Feature: Schema conformance, every commit
     And the message names the file, the line number and the failing JSON pointer
 
   Scenario: The mock agent's own frames validate
-    Given a run against DeFlow-mock-agent with DeFlow_RECORD=1
+    Given a run against deflow-mock-agent with DeFlow_RECORD=1
     When Layer A validates the produced recording
     Then every frame validates
     And the mock therefore cannot emit a frame no real agent could
@@ -1396,7 +1396,7 @@ Feature: Direct API adapter opt-in
   Scenario: A key in the environment does not enable a provider
     Given the environment contains ANTHROPIC_API_KEY with a valid-looking value
     And ".DeFlow/config.yaml" contains no "providers.anthropic.directApi" key
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the direct API adapter is reported as "unconfigured"
     And the provider registry offers no anthropic provider
     And planning a run fails validation with "no adapter satisfies node requirements"
@@ -1411,7 +1411,7 @@ Feature: Direct API adapter opt-in
             keyEnv: ANTHROPIC_API_KEY
       """
     And the environment contains ANTHROPIC_API_KEY
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the direct API adapter is reported as "configured and reachable"
     And the capability manifest has a row for it with "mediatedExecution: false"
     And that row declares "tokenAccounting: 'exact'"
@@ -1420,7 +1420,7 @@ Feature: Direct API adapter opt-in
   Scenario: Opted in but the key is absent
     Given the opt-in is present in ".DeFlow/config.yaml"
     And ANTHROPIC_API_KEY is not set in the environment
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the adapter is reported as "configured but failing"
     And the reason names the missing environment variable
     And the run is not started

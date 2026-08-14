@@ -2,7 +2,7 @@
  * KAR-10.1 AC1 — the wire shape `POST /api/runs` accepts, and the one place it
  * is validated.
  *
- * `DeFlow run "…"` builds the same shape in-process (../../../cli/src/index.ts)
+ * `deflow run "…"` builds the same shape in-process (../../../cli/src/index.ts)
  * and validates through this schema too, so the CLI and the HTTP route can
  * never drift into accepting different requests (AC7 — "the CLI is a client of
  * the HTTP API, not a second implementation").

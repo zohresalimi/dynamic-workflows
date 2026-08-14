@@ -150,7 +150,7 @@ export type RunControlPlan =
  * > has `POST /runs/:id/spec/abandon` for the thing they actually mean"* — and
  * > that route begins `if (!gateIsOpen(events)) throw new SpecGateNotOpen(…)`.
  * > A run accepted and never framed was therefore refused by both, and three of
- * > them accumulated in one operator's `DeFlow status` with no way out at all.
+ * > them accumulated in one operator's `deflow status` with no way out at all.
  * > `cancel` now takes the verb split first and plans a termination for these
  * > two statuses; `pause` and `resume` are unchanged.
  */

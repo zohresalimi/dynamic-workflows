@@ -15,7 +15,7 @@
 | **Reducer**        | `reduce(state, event) -> RunState` in `@DeFlow/core` — the only thing that produces state                                                                                            |
 | **EffectRunner**   | `@DeFlow/orchestrator`'s imperative shell — the only place effects happen                                                                                                            |
 | **Ticker**         | The ~1 Hz loop draining `node_wake` and calling `decide()`                                                                                                                           |
-| **Provider agent** | A `DeFlow-mock-agent` subprocess on a temp `PATH`, spawned `{ detached: true }`, appending `{runId, nodeId, attempt, idempotencyKey}` to its own side-effect log on every invocation |
+| **Provider agent** | A `deflow-mock-agent` subprocess on a temp `PATH`, spawned `{ detached: true }`, appending `{runId, nodeId, attempt, idempotencyKey}` to its own side-effect log on every invocation |
 | **Repository**     | A real `git` working copy in a tmpdir, with `GIT_CONFIG_GLOBAL=/dev/null` and forced identity env                                                                                    |
 | **Ledger**         | The file-backed SQLite database from [EPIC-03](../epics/EPIC-03-event-ledger.md) — `event`, `effect`, `node_wake`, `run`                                                             |
 | **CI**             | The `integration`, `e2e` and `crash-fuzz` projects on `ubuntu-26.04` and `macos-26`, Node 24 and 26                                                                                  |
@@ -29,7 +29,7 @@ Background:
   And all six tables exist from migration 0001 and are declared STRICT
   And "seq" is INTEGER PRIMARY KEY AUTOINCREMENT, so sequence numbers have gaps and every
       consumer resumes from "strictly greater than my cursor"
-  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn
+  And deflow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn
   And every mock agent runs with --seed so the pre-crash side of any run is deterministic
   And time enters the engine through the injected Clock port — never Date.now() or setTimeout
   And the run's scheduling policy is: globalAgentSlots 3, repo write lock 1, worktree lock 1

@@ -2,7 +2,7 @@
  * KAR-19.5 AC1, AC2, AC3, AC6 / EPIC-19-S33 — **the test whose absence is this
  * epic.**
  *
- * On 2026-08-12 ten thousand tests were green and `DeFlow run` did nothing at
+ * On 2026-08-12 ten thousand tests were green and `deflow run` did nothing at
  * all. The reason was structural rather than careless: every e2e in this
  * repository ran against a recorded fixture through the replay harness, and a
  * fixture is a ledger that already contains everything the missing code was
@@ -16,7 +16,7 @@
  * built binary rather than the source tree, a daemon in its own process rather
  * than a `boot()` in this one, a SQLite file the run itself wrote rather than a
  * fixture, real event frames over a real socket. The only substitution is the
- * agent, and it is `DeFlow-mock-agent`: a real executable on `PATH` speaking
+ * agent, and it is `deflow-mock-agent`: a real executable on `PATH` speaking
  * real ACP over a real subprocess, needing no vendor CLI, no credential and no
  * network.
  *
@@ -60,7 +60,7 @@ const CHAIN = [
 const COMPLETED_EXIT = 0;
 
 suite('EPIC-19-S33 — an operator command, all the way to an executed node', () => {
-  it('runs DeFlow init and DeFlow run --file against the built binary and the bundled agent', {
+  it('runs deflow init and deflow run --file against the built binary and the bundled agent', {
     timeout: SMOKE_BUDGET_MS,
   }, async () => {
     const smoke = await runSmokeScenario();

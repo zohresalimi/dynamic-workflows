@@ -134,7 +134,7 @@ Two checkable triggers:
 
 1. **`git merge-tree --write-tree` output format changes**, or the minimum git version we require
    moves. We require **git ≥ 2.38** for `merge-tree --write-tree` and prefer **≥ 2.45** for stable
-   `worktree list --porcelain -z`; `DeFlow doctor` asserts both. A parser change should be caught by
+   `worktree list --porcelain -z`; `deflow doctor` asserts both. A parser change should be caught by
    the git-fixture tests, which run against the real binary, not a mock.
 2. **Concurrent in-flight write branches routinely exceed roughly 20.** The pairwise matrix is
    O(n²); at that point it needs to become incremental (only recompute pairs involving the branch

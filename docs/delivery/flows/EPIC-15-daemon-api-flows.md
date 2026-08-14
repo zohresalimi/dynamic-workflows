@@ -9,14 +9,14 @@
 
 | Actor              | Description                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Operator**       | The engineer driving DeFlow through a browser tab or the `DeFlow` CLI                                                                      |
+| **Operator**       | The engineer driving DeFlow through a browser tab or the `deflow` CLI                                                                      |
 | **DeFlowd**        | The local daemon: one `node:http` server on 127.0.0.1:7777 carrying `/api/*`, the SSE stream and (in dev) Vite's middleware and HMR socket |
 | **Browser tab**    | A client holding exactly one multiplexed SSE connection for its lifetime, plus ordinary `fetch` calls                                      |
 | **CLI client**     | `packages/cli`, importing the identical `hc<ApiType>` client and the identical stream module. Has no `Last-Event-ID` mechanism at all      |
 | **Ledger**         | The single global SQLite database; `event.seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` and is the total order of the system                 |
-| **Provider agent** | A `DeFlow-mock-agent` subprocess on a temp `PATH`. Relevant here as a _threat actor_: it can reach 127.0.0.1:7777                          |
+| **Provider agent** | A `deflow-mock-agent` subprocess on a temp `PATH`. Relevant here as a _threat actor_: it can reach 127.0.0.1:7777                          |
 | **Hostile page**   | A page on `attacker.example` whose DNS resolves to 127.0.0.1 — the rebinding case                                                          |
-| **Replay harness** | `DeFlow replay <fixture>` serving a recorded ledger over the same HTTP + SSE contract as a live run                                        |
+| **Replay harness** | `deflow replay <fixture>` serving a recorded ledger over the same HTTP + SSE contract as a live run                                        |
 
 ## Preconditions common to all flows
 
@@ -51,7 +51,7 @@ Background:
 | ----------- | ----------------------------------------------------------------------------------- | -------- | ----------- |
 | EPIC-15-S1  | Happy path: a typed round trip from the daemon's own route types                    | KAR-15.1 | Happy path  |
 | EPIC-15-S2  | Renaming a daemon field breaks the UI build in the same commit                      | KAR-15.1 | Edge case   |
-| EPIC-15-S3  | `/api/health` is the only unauthenticated route, and `DeFlow up` polls it           | KAR-15.1 | Happy path  |
+| EPIC-15-S3  | `/api/health` is the only unauthenticated route, and `deflow up` polls it           | KAR-15.1 | Happy path  |
 | EPIC-15-S4  | Domain failures are envelopes, not exceptions                                       | KAR-15.1 | Failure     |
 | EPIC-15-S5  | Compression never touches `/api/stream`                                             | KAR-15.1 | Failure     |
 | EPIC-15-S6  | One process, one port: API, HMR and SSE coexist                                     | KAR-15.1 | Happy path  |
@@ -143,7 +143,7 @@ Feature: The type system is the schema-drift defence
 
 ---
 
-## EPIC-15-S3 — `/api/health` is the only unauthenticated route, and `DeFlow up` polls it
+## EPIC-15-S3 — `/api/health` is the only unauthenticated route, and `deflow up` polls it
 
 **Verifies:** KAR-15.1 · **Type:** Happy path · **Automated at:** integration
 
@@ -162,7 +162,7 @@ Feature: One unauthenticated discovery endpoint, deliberately
     And that route is "GET /api/health"
 ```
 
-**Notes:** health is unauthenticated _deliberately_ so `DeFlow up` can poll for readiness before it
+**Notes:** health is unauthenticated _deliberately_ so `deflow up` can poll for readiness before it
 has read the token file. The enumeration in the second scenario is the guard: the natural way a
 second unauthenticated route appears is somebody adding a `/api/version` for convenience.
 
@@ -398,9 +398,9 @@ check entirely rather than fixing the condition.
 ```gherkin
 Feature: Getting the token into the browser without leaking it
 
-  Scenario: DeFlow up generates and prints the token
+  Scenario: deflow up generates and prints the token
     Given a fresh workspace with no ".DeFlow/daemon.json"
-    When "DeFlow up" runs
+    When "deflow up" runs
     Then 32 bytes from crypto.randomBytes are base64url-encoded as the token
     And ".DeFlow/daemon.json" is written as { pid, port, token, startedAt } at mode 0600
     And the file is inside a gitignored directory
@@ -468,7 +468,7 @@ query-parameter handoff — that contradicts this scenario and is corrected as p
 Feature: The agent is inside the network boundary and outside the trust boundary
 
   Scenario: a prompt-injected agent tries to drive the control plane
-    Given a run in progress with "DeFlow-mock-agent" scripted to call
+    Given a run in progress with "deflow-mock-agent" scripted to call
           "terminal/create" with a command that issues an HTTP request to
           "http://127.0.0.1:<port>/api/runs"
     And the node's permission level allows that command through the allowlist
@@ -1344,7 +1344,7 @@ EPIC-16) — **fully automated as of KAR-16.1**
 Feature: The reason this endpoint exists is browser memory
 
   Scenario: dragging the plan-evolution scrubber
-    Given the "three-patches" fixture served by "DeFlow replay"
+    Given the "three-patches" fixture served by "deflow replay"
     When the operator drags the scrubber back to plan v1 and forward through each patch
     Then each position is hydrated from "…/snapshot?seq=<N>"
     And the client replays forward only from the nearest snapshot

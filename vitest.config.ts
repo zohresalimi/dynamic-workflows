@@ -129,7 +129,7 @@ export default defineConfig({
         extends: true,
         test: {
           // KAR-19.5 — the live smoke slice: the built binary, a daemon in its
-          // own process, a real ledger on disk, and `DeFlow-mock-agent` as the
+          // own process, a real ledger on disk, and `deflow-mock-agent` as the
           // only provider. One scenario, plus the sabotage table that proves it
           // can go red.
           //

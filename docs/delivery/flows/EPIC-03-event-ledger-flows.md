@@ -9,7 +9,7 @@
 
 | Actor              | Description                                                                                              |
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Operator**       | The engineer driving DeFlow — runs `npx DeFlow up`, and occasionally runs it twice                       |
+| **Operator**       | The engineer driving DeFlow — runs `npx deflow up`, and occasionally runs it twice                       |
 | **DeFlowd**        | The local daemon. In several scenarios there are two of them, or an older and a newer build              |
 | **Ledger**         | `@DeFlow/ledger` — the write connection, the read connections, the migration runner, the blob store      |
 | **Reducer**        | `reduce(state, event)` in `@DeFlow/core` — pure, total, no I/O                                           |
@@ -59,7 +59,7 @@ Background:
 | EPIC-03-S18 | The checkpoint is committed with the events it covers                  | KAR-03.6                     | Happy path  |
 | EPIC-03-S19 | A `checkpoint_version` bump forces a full replay to the same state     | KAR-03.6                     | Recovery    |
 | EPIC-03-S20 | A corrupted checkpoint cannot corrupt state                            | KAR-03.6                     | Failure     |
-| EPIC-03-S21 | The operator runs `DeFlow up` in two terminals                         | KAR-03.7                     | Failure     |
+| EPIC-03-S21 | The operator runs `deflow up` in two terminals                         | KAR-03.7                     | Failure     |
 | EPIC-03-S22 | A daemon that bypassed the flock is fenced by `daemon_epoch`           | KAR-03.7                     | Concurrency |
 | EPIC-03-S23 | The epoch is bumped on start and stamped on every write                | KAR-03.7                     | Happy path  |
 | EPIC-03-S24 | `kill -9` mid-append, reopen, integrity intact                         | KAR-03.8                     | Recovery    |
@@ -788,7 +788,7 @@ prevent, but belt and braces are cheap here.
 
 ---
 
-## EPIC-03-S21 — The operator runs `DeFlow up` in two terminals
+## EPIC-03-S21 — The operator runs `deflow up` in two terminals
 
 **Verifies:** KAR-03.7 · **Type:** Failure · **Automated at:** e2e
 
@@ -798,7 +798,7 @@ Feature: Single-instance lease
   Scenario: the second daemon fails fast and says why
     Given DeFlowd is running with pid 4711 against data directory <dataDir>
     And it holds an exclusive flock on <dataDir>/DeFlow.lock
-    When the operator runs "npx DeFlow up" in a second terminal against the same data directory
+    When the operator runs "npx deflow up" in a second terminal against the same data directory
     Then the second process exits non-zero within 1 second
     And stderr reads "DeFlowd is already running (pid 4711) — data dir <dataDir>"
     And there is no stack trace and no raw EWOULDBLOCK
@@ -818,7 +818,7 @@ Feature: Single-instance lease
 ```
 
 **Notes:** This is the mandated two-daemons scenario. "It's a single-user local daemon, so locking is
-unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx DeFlow up`
+unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx deflow up`
 in two terminals, and it happens the first week.** SQLite protects the _database_ (a second
 connection's `BEGIN IMMEDIATE` returns `SQLITE_BUSY`, verified) but does absolutely nothing to stop
 two schedulers interleaving _effect execution_: both reduce the same ledger, both derive the same
@@ -987,7 +987,7 @@ from numbers measured on the machine that will run it.
 Feature: The test that proves the thesis
 
   Background:
-    Given DeFlow-mock-agent and the fake exec-shim agent are symlinked onto a temp PATH
+    Given deflow-mock-agent and the fake exec-shim agent are symlinked onto a temp PATH
     And each fake binary appends {runId, nodeId, attempt, idempotencyKey} to a side-effect log file on every invocation
     And the mock agents run with --seed so the pre-crash side is deterministic
     And the kill point is seeded from $GITHUB_RUN_ID so a CI failure reproduces from the log
@@ -1057,7 +1057,7 @@ Feature: Two paths, one answer
 
 **Notes:** These six fixtures are the same corpus the UI's entire test and dev story runs on
 ([testing strategy §12](../../14-testing-strategy.md)) — a recorded ledger is simultaneously a test
-fixture, a dev-mode data source and a demo, and `DeFlow replay <fixture>` serves one over the same
+fixture, a dev-mode data source and a demo, and `deflow replay <fixture>` serves one over the same
 HTTP + SSE contract as a live run. Asserting both computation paths against them here means the UI's
 fixtures are validated by the ledger's own suite before a single view is built.
 

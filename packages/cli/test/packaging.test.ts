@@ -18,6 +18,7 @@ import {
   describe as render,
 } from '../../../test/support/guards.ts';
 import {
+  exists,
   packageProductionSources,
   readJson,
   readText,
@@ -70,10 +71,52 @@ suite('the published manifest (AC3)', () => {
 
   it('declares the three bins, all under dist/', () => {
     expect(cli.bin).toEqual({
-      DeFlow: './dist/bin.mjs',
-      'DeFlow-mcp': './dist/mcp.mjs',
-      'DeFlow-mock-agent': './dist/mock-agent.mjs',
+      deflow: './dist/bin.mjs',
+      'deflow-mcp': './dist/mcp.mjs',
+      'deflow-mock-agent': './dist/mock-agent.mjs',
     });
+  });
+
+  /**
+   * KAR-20.1 AC1, EPIC-20-S1 — `name` is not cosmetic.
+   *
+   * npm has refused new package names containing capital letters since 2017, so
+   * `DeFlow` was never publishable and `npm publish` would have failed the day
+   * it was first tried. `npx deflow …` resolves a **package** name, not a bin
+   * name, so this field is also what the install story depends on.
+   */
+  it('is named something npm will accept, and every bin key with it', () => {
+    expect(cli.name).toBe('deflow');
+    const keys = Object.keys(cli.bin ?? {});
+    expect(keys).toEqual(keys.map((key) => key.toLowerCase()));
+    expect(cli.name).toBe(cli.name?.toLowerCase());
+  });
+
+  it('points every bin at a file the build produces', () => {
+    // `scripts/build.ts` chmods exactly these three, and `tsdown` emits them
+    // from the three entry sources. A bin key renamed without its target
+    // shipping is invisible from inside the monorepo — that is EPIC-20-S2's
+    // whole argument, and this is the half of it that can be read off disk.
+    const emitted = readText('packages/cli/scripts/build.ts');
+    for (const [name, target] of Object.entries(cli.bin ?? {})) {
+      const file = target.replace('./dist/', '');
+      expect([name, emitted.includes(`'${file}'`)]).toEqual([name, true]);
+      expect([name, exists(`packages/cli/src/${file.replace('.mjs', '.ts')}`)]).toEqual([
+        name,
+        true,
+      ]);
+    }
+  });
+
+  it('is selected by its new name wherever the workspace selects it by name', () => {
+    // A filter naming the old package name still exits 0 and selects
+    // *nothing*, which is the quiet half of a rename that looks finished.
+    const packCheck = root.scripts?.['pack:check'] ?? '';
+    expect(packCheck).toContain(`--filter ${String(cli.name)} `);
+    expect(packCheck.match(/--filter (\S+)/g)).toEqual([
+      `--filter ${String(cli.name)}`,
+      `--filter ${String(cli.name)}`,
+    ]);
   });
 });
 

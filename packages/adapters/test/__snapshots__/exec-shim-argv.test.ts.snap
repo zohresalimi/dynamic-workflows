@@ -121,7 +121,7 @@ exports[`each vendor’s headless invocation (EPIC-05-S29, AC1) > is a snapshot 
     ],
   },
   {
-    "bin": "DeFlow-mock-agent",
+    "bin": "deflow-mock-agent",
     "dialect": "document",
     "formats": [
       "json",

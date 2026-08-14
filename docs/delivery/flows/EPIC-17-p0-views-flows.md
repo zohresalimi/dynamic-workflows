@@ -17,7 +17,7 @@ and is a gate on the epic.
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Operator**       | The engineer driving DeFlow. The subject of every scenario in this file. They have a bad diff, a red gate or a run that has been quiet for eleven minutes, and they want to know why |
 | **DeFlowd**        | The daemon serving `/api/*`, the SSE stream and the diff patches. Here, mostly a source of shapes                                                                                    |
-| **Replay harness** | `DeFlow replay <fixture> --speed <n>x`. Every scenario below is developable and testable against a recorded fixture — no provider, no credentials, no cost                           |
+| **Replay harness** | `deflow replay <fixture> --speed <n>x`. Every scenario below is developable and testable against a recorded fixture — no provider, no credentials, no cost                           |
 | **Projections**    | The seven pure modules from [EPIC-16](../epics/EPIC-16-ui-foundation.md). Every view reads a projection; no view reduces events itself                                               |
 | **GraphCanvas**    | The facade over `@vue-flow/core`. The plan graph and the memory graph both go through it                                                                                             |
 | **Gate**           | A deterministic or adversarial verification node whose `Verdict` and `Finding[]` are what the review surface renders                                                                 |
@@ -209,7 +209,7 @@ gets filed and permanently makes the tool feel cheap.
 Feature: The render budget is a number, not a hope
 
   Scenario: The stress fixture
-    Given "DeFlow replay fixtures/stress-400.jsonl --speed max"
+    Given "deflow replay fixtures/stress-400.jsonl --speed max"
     When the graph renders all 400 nodes
     Then p95 frame time during a scripted pan is within the budget recorded in
          docs/measurements/vue-flow-400.md
@@ -1357,7 +1357,7 @@ walk, not a person, and the measurement document says so.
 Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
 
   Background:
-    Given a recorded failure fixture served by "DeFlow replay"
+    Given a recorded failure fixture served by "deflow replay"
     And a stopwatch started the moment the Operator opens the run
     And the Operator has not seen this fixture before
 
@@ -1431,7 +1431,7 @@ Feature: Median time-to-diagnose a failed run under five minutes (PRD §12)
 ```
 
 **What the automation does and does not settle.** The committed measurement times a *scripted*
-walk: seven navigations in a real Chromium against a real `DeFlow replay` daemon, clocked from
+walk: seven navigations in a real Chromium against a real `deflow replay` daemon, clocked from
 opening the run to the last checkpoint having its evidence on screen. That is the part of the five
 minutes this codebase controls — daemon response, projection fold, render, navigation — and it is a
 lower bound on nothing else. **A person reading a chart and forming a hypothesis is not in the

@@ -11,7 +11,7 @@
  * typed into an array proves no window.
  *
  * This story specifies the projection and its threshold; EPIC-18 mounts the
- * `DeFlow doctor` command that prints it.
+ * `deflow doctor` command that prints it.
  *
  * Verifies: EPIC-12-S38 · AC6, AC7
  */

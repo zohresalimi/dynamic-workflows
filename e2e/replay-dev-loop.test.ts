@@ -125,7 +125,7 @@ suite('EPIC-16-S33 — pnpm dev:replay', () => {
     // `DeFlow_DATA_DIR` is where a *daemon* keeps a real ledger. A replay
     // restores a recording with its recorded `seq`, which may only be done into
     // a ledger of its own, so it takes a fresh directory and leaves this one
-    // untouched — pointing `DeFlow replay` at a real `.DeFlow/` must never be
+    // untouched — pointing `deflow replay` at a real `.DeFlow/` must never be
     // able to graft a fixture onto somebody's run.
     expect(existsSync(join(dataDir, 'ledger.db'))).toBe(false);
     expect(existsSync(join(dataDir, 'daemon.json'))).toBe(false);

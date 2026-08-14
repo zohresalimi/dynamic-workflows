@@ -1,5 +1,5 @@
 /**
- * A minimal MCP client over a real `DeFlow-mcp` child process.
+ * A minimal MCP client over a real `deflow-mcp` child process.
  *
  * Hand-written rather than `@modelcontextprotocol/sdk/client/index.js` for two
  * reasons, and both are the point of the story. First, AC4 bounds the whole

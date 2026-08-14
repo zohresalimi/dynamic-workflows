@@ -12,7 +12,7 @@
 | **Operator**       | The engineer driving DeFlow. In this epic they mostly _open a tab and leave it open for six hours_ — the scenarios are about what happens underneath while they do   |
 | **Browser tab**    | One `@DeFlow/web` SPA instance. **One SSE connection, opened once at app start, never a second**                                                                     |
 | **DeFlowd**        | The local daemon on `127.0.0.1:7777`, serving the API, the SSE stream and — via Vite middleware mode (D10) — the UI itself. One process, one port, no proxy, no CORS |
-| **Replay harness** | `DeFlow replay <fixture> --speed <n>x`. A daemon mode that serves the _normal_ `/api/*` and `/api/stream` from a recorded ledger. The UI cannot tell the difference  |
+| **Replay harness** | `deflow replay <fixture> --speed <n>x`. A daemon mode that serves the _normal_ `/api/*` and `/api/stream` from a recorded ledger. The UI cannot tell the difference  |
 | **Stream client**  | `src/ledger/stream.ts` on `eventsource-client@^1.2.0` — sends the bearer token as a header, which native `EventSource` cannot do                                     |
 | **Dispatcher**     | `src/ledger/apply.ts`. Switches on `e.kind`, calls the seven projections, routes by `e.runId`                                                                        |
 | **Projections**    | The seven pure modules in `src/ledger/projections/`. **Zero Vue imports.** Where the risky logic lives                                                               |
@@ -153,11 +153,11 @@ a harness; the first thing EPIC-17 does is render into them"*,
 It would be easy to make these two clauses green here by composing the pieces inside a test page, and
 that is exactly what must not happen: it would assert that the parts *can* be wired while the shipped
 app still renders nothing, which is the plausible-but-wrong picture NF10 is about. **EPIC-17 closes
-them, at the e2e level this scenario names, against `DeFlow replay`.**
+them, at the e2e level this scenario names, against `deflow replay`.**
 
 **Automated (KAR-16.2, the browser half).** The e2e halves of EPIC-16-S7 and EPIC-16-S8 are closed —
 they needed no view, only a real browser — in [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts),
-which boots `DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin and
+which boots `deflow replay stress-400` with the UI served through Vite on the daemon's own origin and
 drives the **shipped** `openLedgerStream` from a real Chromium. See those two scenarios below.
 
 **Notes:** the hydrate-then-stream order is not an optimisation, it is the correctness requirement of
@@ -174,8 +174,8 @@ the difference between a slow start and a start that looks broken.
 ```gherkin
 Feature: Bootstrap handoff (11 §8)
 
-  Scenario: The URL DeFlow up prints
-    Given "DeFlow up" printed http://127.0.0.1:7777/#token=<t>
+  Scenario: The URL deflow up prints
+    Given "deflow up" printed http://127.0.0.1:7777/#token=<t>
     When the Operator opens it
     Then sessionStorage holds the token
     And history.replaceState has removed the fragment from the address bar
@@ -190,7 +190,7 @@ Feature: Bootstrap handoff (11 §8)
   Scenario: A second tab opened without the fragment
     Given sessionStorage is per-tab and the new tab has none
     When the Operator opens http://127.0.0.1:7777/ directly
-    Then the app renders an explicit "paste the URL printed by DeFlow up" state
+    Then the app renders an explicit "paste the URL printed by deflow up" state
     And it does not render a spinner, a blank page, or a 401 retry loop
 
   Scenario: The token is not sent to third parties
@@ -353,7 +353,7 @@ Feature: Bundle budget for NF3 (12 §10)
 
 **Notes:** serving is local, so transfer time is near zero — **the budget is really about parse and
 execute time** ([12 §10](../../12-frontend-architecture.md)). Measure with the 400-node stress fixture
-through `DeFlow replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
+through `deflow replay`, not with an empty run, or the number flatters you. Vite 8's `cssMinify`
 defaults to Oxc; diff the built CSS once on the first upgrade.
 
 **Automated (KAR-16.1):** `packages/web/test/integration/bundle-budget.test.ts` runs a real `vite
@@ -475,7 +475,7 @@ no `Last-Event-ID` to fall back on because the connection had never opened befor
 The specs above drive `openLedgerStream` in **Node**, where `Last-Event-ID` is not a mechanism that
 exists — undici will never send one, so *"the client does not rely on it"* is unfalsifiable there. It
 is only a claim once a real browser is on the other end. So this spec boots
-`DeFlow replay stress-400` with the UI served through Vite on the daemon's own origin, opens it in a
+`deflow replay stress-400` with the UI served through Vite on the daemon's own origin, opens it in a
 real Chromium at the handoff URL, and reloads the page for real: scenario 1 asserts the stream
 reopens at exactly the `sessionStorage` cursor and that **no request the browser sent** — including
 the ones nobody wrote — carried a `Last-Event-ID`; scenario 2 appends across the outage and asserts
@@ -535,7 +535,7 @@ as `?since=` already was.
 
 **Automated at e2e (KAR-16.2):** [`e2e/replay-stream.test.ts`](../../../e2e/replay-stream.test.ts) —
 smoke #4 itself. A real Chromium runs the shipped `openLedgerStream` against
-`DeFlow replay stress-400 --speed 50x`, `ReplayHarness.sever()` destroys every socket mid-burst
+`deflow replay stress-400 --speed 50x`, `ReplayHarness.sever()` destroys every socket mid-burst
 while playback keeps running, and the tab is asserted to come back on its own policy with the applied
 `seq` sequence strictly increasing, nothing twice and nothing missing below the head it reached — on
 one connection, not one per attempt. Where the browser *does* supply a `Last-Event-ID` on that
@@ -1380,7 +1380,7 @@ capping xterm achieves nothing. `io_chunk` is the data plane and never rides the
 Feature: The soak that proves the memory rules
 
   Scenario: A six-hour replay of the stress fixture
-    Given "DeFlow replay fixtures/stress-400.jsonl --speed max" looping for six hours
+    Given "deflow replay fixtures/stress-400.jsonl --speed max" looping for six hours
     And the tab open with the plan graph, timeline and inspector mounted
     When the soak completes
     Then JS heap growth across the final four measured hours is within the recorded ceiling
@@ -1424,7 +1424,7 @@ allocate, and asserts all four of this scenario's `Then` lines:
   disposes anything left.
 
 The two lines it does **not** yet cover are the ones that need a running application:
-`DeFlow replay --speed max` over `fixtures/stress-400.jsonl` (KAR-16.5's harness and corpus) with the
+`deflow replay --speed max` over `fixtures/stress-400.jsonl` (KAR-16.5's harness and corpus) with the
 plan graph, timeline and inspector mounted, and _"a node click still opens the inspector within the
 NF3 budget"_ (KAR-16.6's canvas, KAR-17.4's inspector). Both are recorded in
 [the epic](../epics/EPIC-16-ui-foundation.md) as owed once those stories land.
@@ -1545,10 +1545,10 @@ pressure at hour four.
 **Verifies:** KAR-16.5 · **Type:** Happy path · **Automated at:** integration
 
 ```gherkin
-Feature: DeFlow replay serves the normal contract (03 §6.2)
+Feature: deflow replay serves the normal contract (03 §6.2)
 
   Scenario: Booting the harness
-    When the Operator runs "DeFlow replay fixtures/three-patches.jsonl --speed 20x --port 7777"
+    When the Operator runs "deflow replay fixtures/three-patches.jsonl --speed 20x --port 7777"
     Then GET /api/stream, /api/runs/:id/events, /api/runs/:id/snapshot, /api/runs/:id/plans,
          /api/runs/:id/plans/diff, /api/runs/:id/nodes/:nodeId, /api/runs/:id/gates,
          /api/runs/:id/criteria and /api/runs/:id/diff all respond
@@ -1589,7 +1589,7 @@ different kinds of claim:
 - **"Their response shapes are byte-identical to a live daemon's"** —
   `packages/daemon/test/integration/replay-contract-equality.test.ts` asks the **same ten routes of
   two daemons**: one served the recorded `ledger.db` that `gate-failure-repair` was produced into,
-  the other `DeFlow replay` over that run's own `events.jsonl`. Status, `X-DeFlow-Api` and body are
+  the other `deflow replay` over that run's own `events.jsonl`. Status, `X-DeFlow-Api` and body are
   compared value for value, not shape for shape, and the sweep fails if fewer than six routes
   answered `200` — a daemon that 404ed everything would otherwise "match" perfectly. Verified to
   have teeth: dropping the plan document from the restore fails it on `…/plans/1` with 404 ≠ 200.
@@ -1704,7 +1704,7 @@ Feature: Playback control
   Scenario: The dev loop
     Then "pnpm dev:replay" runs the happy path under node --watch
     And a source edit reloads without restarting the browser session
-    And "DeFlow replay fixtures/gate-fail-repair.jsonl --speed 50x" jumps straight to a failed gate
+    And "deflow replay fixtures/gate-fail-repair.jsonl --speed 50x" jumps straight to a failed gate
 ```
 
 **Notes:** _"do not wait for a run to reach the state you want to style"_
@@ -1753,7 +1753,7 @@ Feature: Fixture provenance
 
   Scenario: The dependency this creates, stated honestly
     Given fixtures must come from real runs
-    Then at least one full run must complete headlessly through "DeFlow run" first
+    Then at least one full run must complete headlessly through "deflow run" first
     And this epic's KAR-16.5 depends on EPIC-18 KAR-18.3 for that reason
     And the acceptable interim is recording from the orchestrator's own test harness
          driving the mock agent — never hand-writing
@@ -1770,7 +1770,7 @@ many words that it was never hand-written. `gate-failure-repair` — the one fix
 really is a mock-agent recording — must also record the `--seed`, and the seed in its README is
 compared against `MOCK_AGENT_SEED` in the script that passes it, so the two cannot drift.
 
-**The dependency, stated honestly, as this scenario's third block requires.** `DeFlow run`
+**The dependency, stated honestly, as this scenario's third block requires.** `deflow run`
 (EPIC-18 KAR-18.3) still does not exist, so three of the six are **assembled** rather than recorded
 — `happy-path-12`, `three-patches` and `stress-400`, all by
 `packages/core/scripts/build-ui-run-fixtures.ts`, which authors no payload shape (every packet from
@@ -1852,7 +1852,7 @@ claim:
 Feature: Replacing an extrapolation with a measurement (A3-2)
 
   Scenario: The measurement run
-    Given "DeFlow replay fixtures/stress-400.jsonl --speed max"
+    Given "deflow replay fixtures/stress-400.jsonl --speed max"
     And headless Chromium
     When "pnpm measure:graph" runs
     Then it records: ELK layout time off the main thread, time to first paint of the full graph,
@@ -1890,7 +1890,7 @@ rewrite could shift it either way, and Vue Flow's store leans hard on the intern
 `e2e/measure-graph.test.ts` re-takes it on every run and asserts the p95s against that budget.
 
 The measured loop is real end to end: a `vite build` of the harness page, served by plain
-`node:http` with no dev server anywhere in it; a real `DeFlow replay stress-400 --speed max` daemon,
+`node:http` with no dev server anywhere in it; a real `deflow replay stress-400 --speed max` daemon,
 whose API the events are read from; the real `plan.ts` projection and the real `GraphCanvas`; and a
 real headless Chromium driven through a 40-step pointer drag and 40 wheel steps, sampling every
 animation frame. Both passes — culling off and on — record all four numbers.

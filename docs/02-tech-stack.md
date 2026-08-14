@@ -15,7 +15,7 @@ The stack exists to serve three hard constraints:
 
 1. **AR-1** — DeFlow never holds a model credential, so execution is local and the runtime is
    whatever Node the user already has.
-2. **NF6** — `npx DeFlow up`, no database server, no Docker, no build step at install time.
+2. **NF6** — `npx deflow up`, no database server, no Docker, no build step at install time.
 3. **One engineer.** Every dependency has to earn its maintenance cost. Where the answer is "less
    tooling", that is the answer.
 
@@ -54,7 +54,7 @@ can drift (D5). The lockfile is committed and CI installs with `--frozen-lockfil
 | `@arethetypeswrong/cli` | `0.18.5`  | exact             | Release gate: catches type-resolution breakage in the tarball                                        |
 | `turbo`                 | `2.10.8`  | **not installed** | Add only when `pnpm -r typecheck` exceeds ~20 s locally. Drop-in `turbo.json`, no code changes       |
 
-No Nx, no moon, no changesets. With exactly one published package (`DeFlow`), release is
+No Nx, no moon, no changesets. With exactly one published package (`deflow`), release is
 `npm version patch && pnpm publish` (D5).
 
 ## 3. Daemon core
@@ -99,7 +99,7 @@ No migration library. Migrations are ~40 lines over `PRAGMA user_version` — se
 | `@modelcontextprotocol/sdk` | `1.30.0` | **exact** | DeFlow hosts an MCP stdio server injected via ACP `session/new` (D9)                               |
 
 These are **spawned, not depended on** — they are the user's own installs and DeFlow probes them at
-runtime (F3.6). Versions below are what `DeFlow doctor` saw on 2026-08-02; record them per run, warn
+runtime (F3.6). Versions below are what `deflow doctor` saw on 2026-08-02; record them per run, warn
 on drift.
 
 | Binary      | Package probed                      | How DeFlow speaks to it                                                                    |
@@ -305,7 +305,7 @@ Two research areas reached opposite conclusions here, so the resolution is worth
 (D6). Area 2 recommended `node:sqlite`; area 1 recommended `better-sqlite3@13.0.2`. **Area 1 wins,
 because area 2's entire rationale was disproved by measurement.**
 
-Area 2's argument was install ergonomics: zero native compilation means `npx DeFlow up` never runs
+Area 2's argument was install ergonomics: zero native compilation means `npx deflow up` never runs
 node-gyp, which is the number-one install-failure class for a solo-maintained tool. That was true of
 better-sqlite3 v12 and is no longer true of v13.
 
@@ -596,7 +596,7 @@ For that, `node-pty@1.1.0` is the wrong package:
 | Binary delivery  | download-then-compile fallback                                                                          | npm-native per-platform `optionalDependencies`: `@lydell/node-pty-{darwin,linux,win32}-{arm64,x64}`            |
 | Runtime check    | —                                                                                                       | spawned bash in a real pty; `tty` returned `/dev/pts/0`, `$COLUMNS` was 80, clean `{ exitCode: 0, signal: 0 }` |
 
-A silent fallback to `node-gyp rebuild` is a direct threat to `npx DeFlow up` (NF6) on any user
+A silent fallback to `node-gyp rebuild` is a direct threat to `npx deflow up` (NF6) on any user
 machine without build tools, which is most of them.
 
 The caveat is real and the mitigation is three rules:
@@ -606,7 +606,7 @@ The caveat is real and the mitigation is three rules:
    installation.
 3. **Degrade to a no-TTY spawn if absent.** Wrap the import; if it throws, `terminal/*` runs the
    command through plain `spawn` with no pty, sets `TERM=dumb`, and the capability manifest reports
-   `terminal.pty: false`. `DeFlow doctor` says so out loud.
+   `terminal.pty: false`. `deflow doctor` says so out loud.
 
 ```ts
 // packages/daemon/src/terminal/pty.ts
@@ -675,7 +675,7 @@ moved.
 | 8   | **`pnpm/action-setup@v6`** and **`actions/setup-node@v6`** — newest tags?            | Reported from search summaries, **Unverified** against GitHub                                                                                                     | A newer combined `pnpm/setup` action may exist; evaluate                                |
 | 9   | **Biome / oxlint / Vitest / tsdown / pnpm official docs**                            | Their sites returned 403 to the research proxy; versions came from the registry and unpacked tarballs, but _feature and status claims_ came from search summaries | Re-read the official docs before committing config                                      |
 | 10  | **pnpm native release management** (`pnpm change`, `pnpm lane`, `versioning:` key)   | Shipped 11.13, July 2026, verified only from release notes                                                                                                        | Irrelevant while there is one published package. Check only if that changes             |
-| 11  | **Vendor CLI versions** (§5 table)                                                   | Adapters break on flag churn (G7). Codex went 0.107 → 0.146 in roughly a year                                                                                     | `DeFlow doctor` runs the conformance suite (F3.4) and tells you                         |
+| 11  | **Vendor CLI versions** (§5 table)                                                   | Adapters break on flag churn (G7). Codex went 0.107 → 0.146 in roughly a year                                                                                     | `deflow doctor` runs the conformance suite (F3.4) and tells you                         |
 
 ---
 

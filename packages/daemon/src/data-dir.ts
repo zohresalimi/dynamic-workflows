@@ -4,7 +4,7 @@
  * `$XDG_DATA_HOME/DeFlow`, else `~/.DeFlow`: the lease file, `ledger.db` and
  * its WAL, the blob store, the provider probe cache and the pre-migration
  * backups. Global rather than per-repo because the thing the lease protects
- * against is global — one user running `npx DeFlow up` in two terminals — and
+ * against is global — one user running `npx deflow up` in two terminals — and
  * because the ledger is a single cross-run database.
  *
  * Pure, and takes the environment as an argument: the answer decides which
@@ -14,7 +14,7 @@
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
-/** Overrides everything. How a test — and `DeFlow up --data-dir` — gets its own. */
+/** Overrides everything. How a test — and `deflow up --data-dir` — gets its own. */
 export const DATA_DIR_ENV = 'DeFlow_DATA_DIR';
 
 /** The directory name under `$XDG_DATA_HOME`, and the dotted one under `$HOME`. */

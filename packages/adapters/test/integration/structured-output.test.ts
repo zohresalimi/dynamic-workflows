@@ -128,7 +128,7 @@ async function harness(tmp: string, binary: string, script: string): Promise<Har
   return { ledger, run: (overrides = {}) => runShimNode({ ...request, ...overrides }, ports) };
 }
 
-/** The emitted document, where `DeFlow init` would have put it. */
+/** The emitted document, where `deflow init` would have put it. */
 function writeSchema(tmp: string): string {
   const dir = join(tmp, '.DeFlow', 'schemas');
   const contract = structuredOutputContract({
@@ -151,7 +151,7 @@ suite('the schema reaches the CLI on its own flag (test plan #3)', () => {
     const schemaPath = writeSchema(tmp);
     const test = await harness(tmp, agent.binary, scenario(FINDING));
 
-    // KAR-19.11 — the file is still written where `DeFlow init` puts it, and
+    // KAR-19.11 — the file is still written where `deflow init` puts it, and
     // what rides on `--json-schema` is the **document**: Claude Code 2.1.220
     // parses the value as JSON and exited 1 on the path on 2026-08-13.
     const schemaDocument = readFileSync(schemaPath, 'utf8');

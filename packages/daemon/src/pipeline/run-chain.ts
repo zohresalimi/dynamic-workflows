@@ -53,7 +53,7 @@
  * schemas directory, and the three agent ports. It is a port for the same
  * reason `BootOptions.probeProviders` is one — it needs to spawn vendor
  * binaries resolved against the operator's own `PATH`, which DeFlowd's
- * environment is not (docs/03-local-development.md §4.3). `DeFlow up` is the
+ * environment is not (docs/03-local-development.md §4.3). `deflow up` is the
  * production caller that supplies it.
  *
  * Verifies: EPIC-19-S16, EPIC-19-S18, EPIC-19-S19, EPIC-19-S20, EPIC-19-S21,

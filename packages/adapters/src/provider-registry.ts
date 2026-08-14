@@ -508,7 +508,7 @@ function declaredArgument(entry: ShimEntry, flag: string): ShimArgument | undefi
  * The schema id a document names itself by, for a message and for a log line.
  *
  * Read from the document's own `title` — which is what
- * `@DeFlow/core`'s emitter writes and what `DeFlow-mock-agent` reads back — and
+ * `@DeFlow/core`'s emitter writes and what `deflow-mock-agent` reads back — and
  * falling back to the file name the contract chose. Never invented: a refusal
  * that named the wrong schema would be worse than one that named none.
  */
@@ -619,7 +619,7 @@ function schemaArgument(id: string, entry: ShimEntry, ctx: ShimContext): readonl
  *
  * Only the vendor's copy is changed. The file under the run's `.DeFlow/schemas/`
  * is written whole and named by schema id, so what an operator reads afterwards
- * is exactly what `DeFlow init` emitted (NF8).
+ * is exactly what `deflow init` emitted (NF8).
  */
 function strippedForVendor(id: string, declared: ShimArgument, document: string): string {
   const strip = declared.stripKeys ?? [];
@@ -1269,7 +1269,7 @@ export const PROVIDER_SPECS = {
    * declares a `structuredOutputFlag` (`structured-output.ts`, read by
    * `admitFraming`), and before this entry existed the only two that declared
    * one were vendor exec-shim paths. So a machine with no vendor CLI could not
-   * get past framing at all, and *"`DeFlow run` works end to end with only the
+   * get past framing at all, and *"`deflow run` works end to end with only the
    * bundled agent"* — this epic's Definition of Done — was not testable.
    *
    * **The declaration is true, and that is the whole point.** The flag below is
@@ -1289,15 +1289,15 @@ export const PROVIDER_SPECS = {
     id: 'mock',
     kind: 'native',
     bundled: true,
-    bin: 'DeFlow-mock-agent',
+    bin: 'deflow-mock-agent',
     // The published CLI, which carries this bin. Named honestly even though
     // nothing will ever print an install command for it: a package field that
     // said "@DeFlow/mock-agent" would name something npm cannot resolve.
-    package: 'DeFlow',
+    package: 'deflow',
     // It speaks ACP with no flag at all, which is what it has always done.
     variants: [(): readonly string[] => []],
     shim: {
-      bin: 'DeFlow-mock-agent',
+      bin: 'deflow-mock-agent',
       // One format, because there is one: the structured turn writes a single
       // JSON document for the whole invocation and nothing else. Declaring a
       // streaming format it does not have is the class of lie this table is

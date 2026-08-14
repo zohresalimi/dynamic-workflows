@@ -1,7 +1,7 @@
 /**
- * KAR-14.2 AC8 — the ceiling section of `DeFlow doctor`.
+ * KAR-14.2 AC8 — the ceiling section of `deflow doctor`.
  *
- * EPIC-14-S13's last clause is *"`DeFlow doctor` lists `gemini` under providers
+ * EPIC-14-S13's last clause is *"`deflow doctor` lists `gemini` under providers
  * with no cost accounting"*, and it is not a duplicate of the run summary: the
  * summary answers "will this run's ceiling fire", and the doctor answers "which
  * of the providers on this machine can be held to one at all" — before a run

@@ -130,7 +130,7 @@ export {
   resolveContextBudget,
   SegmentContentHashMismatch,
 } from './build-packet.ts';
-// KAR-19.6 AC2 — the one refusal the cancel route and `DeFlow cancel` both
+// KAR-19.6 AC2 — the one refusal the cancel route and `deflow cancel` both
 // speak when a mode is not one of the two ladders.
 export { cancelModeList, invalidCancelModeMessage } from './cancel-mode.ts';
 // KAR-02.9 — the canonical JSON encoder and the content hashes built on it.
@@ -191,7 +191,7 @@ export {
 export type { CompiledPinnedSegment, PinnedQuote } from './compile-pinned.ts';
 export { canonicalSpecText, compilePinnedSegments } from './compile-pinned.ts';
 // KAR-09.3, KAR-09.4 — the Constraint union, §4.2's build-time restatement and
-// the forbid ratio DeFlow doctor reports.
+// the forbid ratio deflow doctor reports.
 export type {
   AllowOnlyConstraint,
   AllowOnlySubject,

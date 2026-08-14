@@ -14,7 +14,7 @@ exports[`EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-f
   opencode: npm install -g opencode-ai
   claude: npm install -g @agentclientprotocol/claude-agent-acp
   codex: npm install -g @agentclientprotocol/codex-acp
-  "DeFlow replay <fixture>" also serves a recorded run over the same HTTP contract the UI speaks to a live daemon, so replay works regardless.",
+  "deflow replay <fixture>" also serves a recorded run over the same HTTP contract the UI speaks to a live daemon, so replay works regardless.",
       "id": "agents.summary",
       "status": "ok",
     },
@@ -72,14 +72,14 @@ exports[`EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-f
     },
     {
       "data": {
-        "binaryPath": "<tmp>/npm-cache/_npx/<cache>/node_modules/.bin/DeFlow-mock-agent",
+        "binaryPath": "<tmp>/npm-cache/_npx/<cache>/node_modules/.bin/deflow-mock-agent",
         "probedAt": "<ts>",
         "provider": "mock",
         "sha256": "<sha256>",
         "state": "installed",
-        "version": "DeFlow-mock-agent 0.0.0",
+        "version": "deflow-mock-agent 0.0.0",
       },
-      "detail": "mock DeFlow-mock-agent 0.0.0, sha256 <sha256> — "DeFlow-mock-agent" — the binary DeFlow spawns — resolves at <tmp>/npm-cache/_npx/<cache>/node_modules/.bin/DeFlow-mock-agent, the absolute path DeFlowd would use rather than one looked up on the daemon's own PATH later.",
+      "detail": "mock deflow-mock-agent 0.0.0, sha256 <sha256> — "deflow-mock-agent" — the binary DeFlow spawns — resolves at <tmp>/npm-cache/_npx/<cache>/node_modules/.bin/deflow-mock-agent, the absolute path DeFlowd would use rather than one looked up on the daemon's own PATH later.",
       "id": "agents.mock",
       "status": "ok",
     },
@@ -87,7 +87,7 @@ exports[`EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-f
       "data": {
         "drift": [],
       },
-      "detail": "mock matches the recorded manifest: DeFlow-mock-agent 0.0.0 (sha256 <sha256>), so the goldens recorded against it still describe the binary that is installed.",
+      "detail": "mock matches the recorded manifest: deflow-mock-agent 0.0.0 (sha256 <sha256>), so the goldens recorded against it still describe the binary that is installed.",
       "id": "agents.mock.drift",
       "status": "ok",
     },

@@ -4,7 +4,7 @@
  * since KAR-03.7.
  *
  * This is `detectProviders` with the cache turned on and the ledger wired up.
- * The difference between this and `DeFlow init`'s pass is one flag and it is
+ * The difference between this and `deflow init`'s pass is one flag and it is
  * the whole point: `init` is run *because* something about the installation
  * changed, so it handshakes every binary it finds; `up` runs on every start and
  * is on the NF3 budget, so it answers from the recorded manifest for any binary
@@ -56,7 +56,7 @@ export interface BootProbePorts {
   /**
    * The environment whose `PATH` is searched.
    *
-   * The operator's own, passed down from `DeFlow up` — which is the one context
+   * The operator's own, passed down from `deflow up` — which is the one context
    * where reading `PATH` is correct rather than a machine-specific bug, because
    * the command runs in their terminal. DeFlowd's own environment later on is
    * not the login shell's, which is why every resolved path is *persisted* and
@@ -106,7 +106,7 @@ export async function probeProvidersOnBoot(
   }
 }
 
-/** How many of these are usable right now — the number `DeFlow up` prints. */
+/** How many of these are usable right now — the number `deflow up` prints. */
 export function availableCount(entries: readonly ProviderDetectionEntry[]): number {
   return entries.filter((entry) => entry.status === 'detected' || entry.status === 'cached').length;
 }

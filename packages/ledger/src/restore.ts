@@ -2,7 +2,7 @@
  * KAR-16.5 — restoring a recorded run into a ledger of its own
  * (docs/03-local-development.md §6.2).
  *
- * `DeFlow replay` serves the **normal** `/api/*` routes, and every one of them
+ * `deflow replay` serves the **normal** `/api/*` routes, and every one of them
  * reads SQLite. So a fixture is made servable by being restored into a real
  * `ledger.db` rather than by teaching the HTTP layer to read NDJSON: the UI
  * cannot tell a replay from a live run *because there is no difference* — the

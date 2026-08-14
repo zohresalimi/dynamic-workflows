@@ -52,7 +52,7 @@ export interface PlayerOptions {
   readonly events: readonly StoredEvent[];
   readonly speed: Speed;
   readonly clock: Clock;
-  /** Starts held at position 0 — what `DeFlow replay --paused` would want. */
+  /** Starts held at position 0 — what `deflow replay --paused` would want. */
   readonly startPaused?: boolean;
 }
 

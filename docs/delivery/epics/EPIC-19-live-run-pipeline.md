@@ -18,7 +18,7 @@
 
 ## Goal
 
-At the end of this epic, `DeFlow run --file <path>` against a real repository produces a run that
+At the end of this epic, `deflow run --file <path>` against a real repository produces a run that
 frames itself, compiles a plan, executes its nodes and reaches a terminal state — with the operator
 watching it happen in the terminal and in the browser, and with a refusal in plain words when the
 machine cannot host it. Nothing in this epic is a new capability. Every mechanism it needs already
@@ -28,7 +28,7 @@ between them, and a test that would notice.**
 ## Why this matters
 
 **This epic exists because of a specific failure, on 2026-08-12.** An operator ran
-`DeFlow run --file <path>` against a real repository and the run did nothing. The ledger for
+`deflow run --file <path>` against a real repository and the run did nothing. The ledger for
 `run_20260812T133934Z_468702` contains exactly one event — `task.submitted` — and nothing after it.
 Two other runs from the same day contain only `provider.probed`. The CLI sat at _"task submitted"_
 until the operator gave up; the web UI, once they had navigated to `/runs/<id>` by hand because the
@@ -58,7 +58,7 @@ satisfied. The integration between them belonged to nobody, so it was nobody's r
 
 Three things follow, and they shape the first five stories. A sixth was added later the same day,
 after the operator's attempt to clean up after the failure hit a second dead end: there is no
-`DeFlow cancel` command at all, and a run that never started cannot be got rid of by any route.
+`deflow cancel` command at all, and a run that never started cannot be got rid of by any route.
 KAR-19.6 is that story, and it is the same defect wearing different clothes — a capability that
 exists in the daemon and reaches no operator.
 
@@ -102,7 +102,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
   [11 §6](../../11-api-and-realtime.md) and never implemented — and the web root route rendering
   that list, updated live from the global topic rather than on refresh.
 - Admission at submission time: no usable provider is a typed, ledger-recorded refusal with
-  `doctor`'s own wording, `DeFlow run` exit `5`, and the mock agent named as the zero-install path.
+  `doctor`'s own wording, `deflow run` exit `5`, and the mock agent named as the zero-install path.
 - Driving framing → spec gate → spec pinning → recon → `compilePlanV1` on the live path, through
   the existing functions, with each step's events appended as it happens.
 - Driving `executeRun` over the compiled plan, with `io_chunk` output reaching both the terminal
@@ -112,7 +112,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
   (F4.7's existing event) rather than sitting silent.
 - `pnpm test:smoke` — one live, fixture-free path from the real CLI binary through a real daemon and
   a real on-disk ledger to an executed node, against the bundled mock agent — wired into `pnpm test`.
-- `DeFlow cancel <runId>` over the control endpoint that already exists, and a way out for a run
+- `deflow cancel <runId>` over the control endpoint that already exists, and a way out for a run
   that never started — the hole [KAR-18.3](./EPIC-18-cli-packaging.md#kar-183--DeFlow-run-headless-execution)'s
   amendment recorded and left open. Every surface that lists runs stops showing a stopped run as
   live (KAR-19.6).
@@ -128,7 +128,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
 - **The three defects the 2026-08-13 by-hand run found** (added that day): the exec-shim session-id
   argument the vendor rejects and the conformance row that would have caught it (KAR-19.8); a
   bounded, journalled, terminating failure path for a run that cannot get past a turn, using
-  EPIC-06's own classified retry rather than a second policy (KAR-19.9); and `DeFlow run
+  EPIC-06's own classified retry rather than a second policy (KAR-19.9); and `deflow run
   --provider`, the statement of which provider and which route a run chose, and the reconciliation of
   `doctor`'s view with admission's (KAR-19.10).
 - **The fourth, found that evening once the third was fixed** (KAR-19.11): an audit of every argument
@@ -172,9 +172,9 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
 - [ ] EPIC-06 KAR-06.1, KAR-06.6 and KAR-06.9 are Done: `decide()`, `node_wake` + the ticker, and
       `recover()` with `RECOVERY_STEPS`.
 - [ ] EPIC-15 KAR-15.3 is Done: the multiplexed stream and the `runs=*` global topic.
-- [ ] EPIC-18 KAR-18.2 and KAR-18.3 are Done: `DeFlow up` boots a daemon and `DeFlow run` submits
+- [ ] EPIC-18 KAR-18.2 and KAR-18.3 are Done: `deflow up` boots a daemon and `deflow run` submits
       and attaches.
-- [ ] EPIC-04 is Done: `DeFlow-mock-agent` is a real bin, so every scenario here runs with no vendor
+- [ ] EPIC-04 is Done: `deflow-mock-agent` is a real bin, so every scenario here runs with no vendor
       CLI, no credential and no network.
 - [ ] The three deferrals this epic closes are re-read first, so nothing is re-litigated:
       [KAR-18.3](./EPIC-18-cli-packaging.md#kar-183--DeFlow-run-headless-execution)'s amendment,
@@ -185,7 +185,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
 
 - [ ] All eleven stories are Done.
 - [ ] **On a machine with no vendor agent CLI installed at all, a run can be framed, planned and
-      executed using only `DeFlow-mock-agent`** — with no credential, no network and no read of
+      executed using only `deflow-mock-agent`** — with no credential, no network and no read of
       `~/.DeFlow`. This is the epic's manual acceptance test and the property KAR-19.5's smoke test
       automates; KAR-19.7 is what makes it reachable, and until it is, the two amendments in
       KAR-19.3 and KAR-19.4 stand open.
@@ -204,16 +204,16 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
       failure mode [README §9](../README.md#9-changing-the-plan) exists to prevent.
 - [ ] A run submitted while the web UI is open at `/` appears in the list without a refresh, and a
       run that cannot proceed states why in all three of the ledger, the terminal and the UI.
-- [ ] `DeFlow run` on a machine with a vendor CLI and no ACP adapter exits `5` with `doctor`'s own
+- [ ] `deflow run` on a machine with a vendor CLI and no ACP adapter exits `5` with `doctor`'s own
       sentence, and the same sentence appears in `GET /api/runs/:id` and in the UI.
-- [ ] `DeFlow cancel <runId>` exists, is the only documented way to stop a run, and stops one in
+- [ ] `deflow cancel <runId>` exists, is the only documented way to stop a run, and stops one in
       **any** state — including a run that never started. The three runs from 2026-08-12
       (`run_20260812T133401Z_318740`, `run_20260812T133514Z_ed4f12`,
       `run_20260812T133934Z_468702`) are each cleared by one command, and afterwards
-      `DeFlow status`, `GET /api/runs?status=active` and the web run list show none of them as live.
+      `deflow status`, `GET /api/runs?status=active` and the web run list show none of them as live.
       No documented path to stopping a run involves `curl` or a hand-extracted bearer token.
 - [ ] **A run that cannot get past a turn ends.** With a provider that fails every attempt,
-      `DeFlow run --file <task>` prints each failure as it happens, stops after the node's own
+      `deflow run --file <task>` prints each failure as it happens, stops after the node's own
       `RetryPolicy` ceiling, exits `1`, and the ledger and the UI both show a failed run carrying the
       typed reason. No path retries without a bound, and no attached CLI is left holding the terminal
       (KAR-19.9).
@@ -232,7 +232,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
       in two days were found this way and by no test, so a green suite does not close this epic on
       its own.
 - [ ] **A run states which provider it chose and by which route**, in the terminal, the ledger and
-      the UI; `DeFlow run --provider <id>` selects one and is validated against the registry; and
+      the UI; `deflow run --provider <id>` selects one and is validated against the registry; and
       `doctor` and admission answer the provider question through one function, so no route `doctor`
       calls unusable is one a run silently takes (KAR-19.10).
 - [ ] No `Unverified` claim is introduced. Where this epic discovers that an architecture doc
@@ -283,7 +283,7 @@ and which has nothing in flight starts appending it.
    `task.submitted`, before the 201 is returned. A `SIGKILL` between the response and the next tick
    loses neither: on restart the row is still there and framing still runs.
 2. `boot()` performs `start-ticker` — the eighth of `RECOVERY_STEPS` — so the wake written by AC1 is
-   consumed. `DeFlow status` reports the ticker as running, and `recovery.ts` no longer has a step
+   consumed. `deflow status` reports the ticker as running, and `recovery.ts` no longer has a step
    its only caller declines to perform.
 3. On a machine with a usable provider, `run.created` is appended within **2 s** of `task.submitted`
    for a task that needs no clarifying question, and the elapsed milliseconds between the two are
@@ -295,12 +295,12 @@ and which has nothing in flight starts appending it.
 5. A `run.created` frame arrives on the `?runs=*` stream, and the web application's root route
    renders a run list fed from it: a run created while the page is open appears **without a
    refresh** and without a poll, and clicking it navigates to `/runs/<id>`.
-6. `DeFlow run`'s attached view, `DeFlow status` and the UI's run list report the same status for
+6. `deflow run`'s attached view, `deflow status` and the UI's run list report the same status for
    the same run at the same head sequence. The status string is produced by one function in
    `@DeFlow/core` and rendered by three callers, not derived three times.
 7. A run whose head sequence has not advanced for the configured stall window with nothing in
    flight appends `run.stalled` once — not once per tick — and the CLI prints one line naming the
-   run, how long it has been idle, and `DeFlow status` as the next command. The run is not killed.
+   run, how long it has been idle, and `deflow status` as the next command. The run is not killed.
 8. Two tasks submitted within the same millisecond each get their own `node_wake` row and each
    reaches `run.created`; neither wake is coalesced into the other and neither is dropped.
 
@@ -353,7 +353,7 @@ printed when `claude` resolves on `PATH`, and produced the three-state vocabular
 sentence naming `@agentclientprotocol/claude-agent-acp`. This story renders **the same sentence from
 the same function** — a second wording is a second thing to keep true.
 
-**And the mock agent is a legitimate answer.** `DeFlow-mock-agent` ships in the same tarball and needs
+**And the mock agent is a legitimate answer.** `deflow-mock-agent` ships in the same tarball and needs
 no vendor CLI, no credential and no network; it is how a person evaluates DeFlow before installing
 anything, and how every test in this repository runs. A refusal that does not mention it sends an
 evaluator away at the first step.
@@ -374,9 +374,9 @@ evaluator away at the first step.
    installs it, and the string `claude is not installed` appears in no stream — stdout, stderr,
    `--json` or the HTTP body. A source guard asserts there is one renderer and this story added no
    second one.
-4. The message ends with the mock-agent sentence: that `DeFlow-mock-agent` ships in this package and
+4. The message ends with the mock-agent sentence: that `deflow-mock-agent` ships in this package and
    a run against it needs no vendor CLI, no credential and no network — with the exact flag to use.
-5. `DeFlow run` exits **5** on this refusal — `environmentUnusable`, already in `RUN_EXIT_CODES` and
+5. `deflow run` exits **5** on this refusal — `environmentUnusable`, already in `RUN_EXIT_CODES` and
    already documented as _"this machine cannot host a run"_. Not 1, not 2. The exit-code table gains
    no eighth member.
 6. A machine with at least one usable provider is **never** refused: the admission check is a
@@ -400,7 +400,7 @@ evaluator away at the first step.
 | 2   | integration | `POST /api/runs` with a fake `claude` shim on a temp `PATH` and no `claude-agent-acp`; assert the three-event ledger and the 4xx body's typed code            | The run is accepted, one event lands, and the request looks successful                                             |
 | 3   | unit        | A wording guard: the refusal string and `doctor`'s Agents string for the same machine state are produced by one function and are byte-identical               | Someone writes a second, friendlier sentence here and the two drift within a month                                 |
 | 4   | unit        | Assert the rendered message contains the mock-agent sentence and the exact flag, for every refusal code                                                        | The hint is attached only to the zero-providers case, so the common `adapter-missing` operator is sent to npm      |
-| 5   | e2e         | Real daemon, empty temp `PATH`, `DeFlow run "…"`; assert exit **5**, the sentence on stderr, and `run.aborted` in the on-disk ledger                          | The CLI exits 1 because it classified a failed run rather than an unusable machine                                 |
+| 5   | e2e         | Real daemon, empty temp `PATH`, `deflow run "…"`; assert exit **5**, the sentence on stderr, and `run.aborted` in the on-disk ledger                          | The CLI exits 1 because it classified a failed run rather than an unusable machine                                 |
 | 6   | integration | The same, with the mock agent linked onto the `PATH`; assert no `run.aborted`, and assert the submission spawned no additional handshake child                | Admission re-probes on every submission and every run pays a second's provider handshake                           |
 | 7   | integration | A shim that resolves and exits non-zero on `initialize`; assert `provider_handshake_failed`, the child's stderr present, and that `not installed` is absent   | A broken bridge reduces to the absent case and the operator uninstalls a working CLI                               |
 | 8   | integration | Refuse a run with an SSE client attached; assert the client receives the ending frame and the connection closes, with no keepalive-only tail                  | The stream stays open on a run that will never emit again, so the UI spins forever                                 |
@@ -504,13 +504,13 @@ resumes when the answer arrives.
 >   dropped.** Both changes follow from what shipped rather than from convenience. The framing,
 >   recon and planner turns all carry a `returns` contract, so `admitFraming` (KAR-10.2 AC3) refuses
 >   every adapter without a `structuredOutputFlag` — today that is every adapter except `claude`'s
->   **exec-shim** path, and the bundled `DeFlow-mock-agent` speaks ACP only. There is therefore no
+>   **exec-shim** path, and the bundled `deflow-mock-agent` speaks ACP only. There is therefore no
 >   agent on this machine that can serve a framing turn, so an e2e against a real binary cannot yet
 >   exist, and a fake vendor binary at e2e would assert nothing the integration spec does not. And
 >   `provider.probed` is written by intake **only on a refusal** (KAR-19.2's shipped shape), so an
 >   admitted run's ledger does not contain one; the sequence asserted is
 >   `task.submitted → run.created → run.spec.approved → spec.pinned → plan.proposed`, by `seq`.
-> - **The chain is not yet bound in `DeFlow up`.** `boot()` takes `runFraming` and `advanceRun` as
+> - **The chain is not yet bound in `deflow up`.** `boot()` takes `runFraming` and `advanceRun` as
 >   ports and `@DeFlow/daemon` exports `createRunChain`; what is missing between them is a
 >   `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real vendor process, which for the reason above
 >   cannot be exercised against anything installable today. Building it unexercised would be the
@@ -520,7 +520,7 @@ resumes when the answer arrives.
 > (an exec-shim mode, or an ACP-native return), which is [EPIC-04](./EPIC-04-mock-agent.md)'s
 > mechanism and this epic's Out-of-scope rule sends there. It blocks the e2e half of this story,
 > KAR-19.4's binding, KAR-19.5's `pnpm test:smoke` and the epic's own manual acceptance test —
-> *"in a scratch repository, with only the bundled mock agent, `DeFlow run --file <path>` produces
+> *"in a scratch repository, with only the bundled mock agent, `deflow run --file <path>` produces
 > a plan and executes nodes"* — so it is the next thing to build, before KAR-19.4.
 >
 > **Resolved as a plan change on 2026-08-13:** that prerequisite is now
@@ -528,13 +528,13 @@ resumes when the answer arrives.
 > authored in this epic rather than in EPIC-04, with the Out-of-scope override recorded in the Scope
 > section. This departure closes when KAR-19.7 is Done and test plan #1 is re-automated at `e2e`.
 >
-> **Narrowed on 2026-08-13:** KAR-19.7 shipped. `DeFlow-mock-agent` takes a schema and returns a
+> **Narrowed on 2026-08-13:** KAR-19.7 shipped. `deflow-mock-agent` takes a schema and returns a
 > document that validates against it, `PROVIDER_SPECS` has a `mock` entry whose declaration is true,
 > and `admitFraming` admits a framing node routed there — so *"no agent on this machine can serve a
 > framing turn"* is no longer the case, and the reason this departure gave for existing is spent.
 > What is left of it is the second bullet alone, and it is now **unbuilt** rather than
 > **unexercisable**: the `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real process, and the
-> `DeFlow up` binding that hands them to `createRunChain`. Test plan #1 moves to `e2e` in the same
+> `deflow up` binding that hands them to `createRunChain`. Test plan #1 moves to `e2e` in the same
 > change.
 >
 > **Closed on 2026-08-13.** Both departures are spent, and the binding they were about now ships:
@@ -550,8 +550,8 @@ resumes when the answer arrives.
 >   `usableProviders` already chose, its capability row is read from the probed table and nowhere
 >   else, the run's contracts are written with `writeRunSchemas` (which had no production caller
 >   either), and the child's environment is `buildChildEnv()`'s.
-> - **Test plan #1 is automated at `e2e`** — `e2e/live-chain.test.ts`, a real `DeFlow run --file` on
->   a `PATH` holding only `DeFlow-mock-agent`, approved over the daemon's own HTTP route, asserting
+> - **Test plan #1 is automated at `e2e`** — `e2e/live-chain.test.ts`, a real `deflow run --file` on
+>   a `PATH` holding only `deflow-mock-agent`, approved over the daemon's own HTTP route, asserting
 >   `task.submitted → run.created → run.spec.approved → spec.pinned → plan.proposed` by `seq`. The
 >   `provider.probed` clause stays dropped, for the reason recorded above: intake writes that row
 >   only on a refusal. EPIC-19-S16's flow line already declared `e2e` and is now true.
@@ -568,11 +568,11 @@ resumes when the answer arrives.
 > `packages/daemon/src/pipeline/live-nodes.ts` to both composition roots, so a run no longer stops
 > at `plan.proposed`. What follows is the record of the state this story left behind. Performed by hand on 2026-08-13 against the
 > packed `packages/cli/dist/bin.mjs`, in a scratch git repository with only the bundled agent on
-> `PATH`: `DeFlow run --file task.md` printed `task submitted`, `run created` and the spec at the
+> `PATH`: `deflow run --file task.md` printed `task submitted`, `run created` and the spec at the
 > F1.3 gate, and after the approval the ledger held
 > `run.spec.approved → spec.pinned → workspace.worktree_created → 4 × fact.written →
 > workspace.worktree_removed → plan.proposed` with a three-node plan. Two gaps that run exposed and
-> that belong to the stories after this one: the attached `DeFlow run` renderer has no case for
+> that belong to the stories after this one: the attached `deflow run` renderer has no case for
 > `plan.proposed`, so a compiled plan is silent on the terminal (KAR-18.3's renderer, KAR-19.4's
 > DoD), and the bundled agent still serves no `DeFlow.finding.v1`, so a node run against it would
 > fail its handoff.
@@ -623,7 +623,7 @@ removes.
 2. The run reaches exactly one terminal state and appends it: `run.completed`, `run.aborted`, or a
    halt at `paused` / `needs-human` with the reason. Every path out of the executor ends in a
    statement; there is no path that stops and appends nothing.
-3. Agent output reaches the terminal **while the node runs**: `DeFlow run` prints chunks as they
+3. Agent output reaches the terminal **while the node runs**: `deflow run` prints chunks as they
    arrive, and a test that scripts the mock agent to emit, pause, then emit again observes the first
    chunk before the second is produced. `--json` emits the same content as NDJSON with no ANSI.
 4. The same output reaches the web UI: `io_chunk` rows are tailable through
@@ -634,12 +634,12 @@ removes.
    frame that carries a number.
 6. A failing deterministic gate appends its verdict as it resolves, the verdict is visible in both
    surfaces before the run ends, and the run reaches a terminal state whose classification maps to
-   `DeFlow run` exit **1** through the single `classifyRun` — with no second derivation of the code.
+   `deflow run` exit **1** through the single `classifyRun` — with no second derivation of the code.
 7. A node that fails permanently ends the run with the failure's own typed reason from the closed
    taxonomy (KAR-02.10), named in the terminal line and in the UI. A run never ends with an empty
    reason string.
 8. A budget ceiling breach pauses the run (F4.6) rather than failing it: `run.needs_human` with
-   reason `budget`, `DeFlow run` exits **3**, and the run is resumable — the ceiling is a decision,
+   reason `budget`, `deflow run` exits **3**, and the run is resumable — the ceiling is a decision,
    not an outcome.
 9. A `SIGKILL` mid-node is resumable: on restart, completed nodes are not re-executed, the
    interrupted attempt is reconciled through the effect journal, and the run reaches the same
@@ -662,7 +662,7 @@ removes.
 
 > **Amended 2026-08-13 while implementing KAR-19.4.** The executor shipped:
 > `packages/daemon/src/pipeline/run-execution.ts` is the one production caller of
-> `executeRun`, the driver dispatches it off the ticker, and `DeFlow run` follows the `io_chunk`
+> `executeRun`, the driver dispatches it off the ticker, and `deflow run` follows the `io_chunk`
 > data plane alongside the control stream so the agent's own bytes reach the terminal while its
 > node is still running. AC1–AC8 are asserted at the levels below — with **three departures
 > recorded here rather than absorbed** ([README §9](../README.md#9-changing-the-plan)):
@@ -670,9 +670,9 @@ removes.
 > - **Test plan #1 and #8 were automated at `integration`, not `e2e`.** The same prerequisite
 >   KAR-19.3 recorded: the framing, recon and planner turns all carry a `returns` contract, so
 >   `admitFraming` refuses every adapter without a `structuredOutputFlag`, and the bundled
->   `DeFlow-mock-agent` speaks ACP only. There is therefore no agent on this machine that can
+>   `deflow-mock-agent` speaks ACP only. There is therefore no agent on this machine that can
 >   carry a run as far as a compiled plan through a real binary, so an e2e that started at
->   `DeFlow run` and ended at an executed node cannot yet exist. What shipped instead:
+>   `deflow run` and ended at an executed node cannot yet exist. What shipped instead:
 >   `packages/daemon/test/integration/live-execution.test.ts` drives the **whole** chain —
 >   `submitTask` → framing → the F1.3 gate → recon → `compilePlanV1` → `executeRun` — over a real
 >   file-backed ledger with scripted agent *ports*, and `packages/cli/test/integration/`
@@ -688,7 +688,7 @@ removes.
 >   reopened at a higher epoch, a driver that inherited nothing picks the run up, no completed node
 >   is executed a second time, and the run reaches the terminal state it would have reached
 >   uninterrupted.
-> - **`executeNodes` is not yet bound in `DeFlow up`,** for the same reason `runFraming` and
+> - **`executeNodes` is not yet bound in `deflow up`,** for the same reason `runFraming` and
 >   `advanceRun` are not (KAR-19.3's amendment): a daemon whose chain cannot reach a plan has
 >   nothing for an executor to execute, so binding one alone would be unexercised wiring — the
 >   defect this epic exists to remove, one level up. The prerequisite is
@@ -698,7 +698,7 @@ removes.
 >   **Narrowed on 2026-08-13:** KAR-19.7 shipped, so the bundled agent can serve every
 >   schema-bearing turn the chain needs and a run on a `PATH` with no vendor CLI is admitted. The
 >   binding is now merely unbuilt: `executeNodes`, `runFraming` and `advanceRun` are still
->   unsupplied in `DeFlow up`, and #1 and #8's `e2e` halves move up when they are supplied.
+>   unsupplied in `deflow up`, and #1 and #8's `e2e` halves move up when they are supplied.
 >
 >   **Closed 2026-08-13 by [KAR-19.5](#kar-195--a-live-smoke-test-that-would-have-caught-this),
 >   with one of the two rows re-levelled and the other left where it is** — re-verified honestly
@@ -706,7 +706,7 @@ removes.
 >
 >   - **Test plan #1 is now at `e2e`.** `packages/daemon/src/pipeline/live-nodes.ts` is the missing
 >     `NodePerformer`, both composition roots bind `executeNodes`, and
->     `e2e/smoke/live-run.test.ts` drives a real `DeFlow run --file` against the built binary
+>     `e2e/smoke/live-run.test.ts` drives a real `deflow run --file` against the built binary
 >     through `node.started`, `node.completed` and `run.completed` with exit 0. AC1 and AC8's
 >     binding clause are satisfied by a shipped path rather than by a spec's own wiring. Three of
 >     this story's own claims turned out to be false in production and are listed in KAR-19.5's
@@ -769,7 +769,7 @@ The missing property has a name: **no test started at the operator's command and
 executed node, through processes rather than function calls.** So the smoke test is defined by what
 it refuses to substitute — the real CLI binary, a real daemon in its own process, a real SQLite file
 on disk, real event frames over a real socket. The only substitution is the agent, and it is
-`DeFlow-mock-agent`, which is a real executable on `PATH` speaking real ACP over a real subprocess
+`deflow-mock-agent`, which is a real executable on `PATH` speaking real ACP over a real subprocess
 ([14 §3](../../14-testing-strategy.md): fake binaries, not mocked modules) and needs no vendor CLI,
 no credential and no network.
 
@@ -784,8 +784,8 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 **Acceptance criteria**
 
 1. `pnpm test:smoke` runs one scenario end to end with no fixture, no recording and no replay: it
-   builds or resolves the real `DeFlow` binary, runs `init` and then `run --file <spec>` in an
-   `fs.mkdtemp` git repository, against a daemon the CLI itself starts, with `DeFlow-mock-agent`
+   builds or resolves the real `deflow` binary, runs `init` and then `run --file <spec>` in an
+   `fs.mkdtemp` git repository, against a daemon the CLI itself starts, with `deflow-mock-agent`
    symlinked onto a temp `PATH` as the only provider.
 2. It asserts the whole chain from the on-disk ledger and from the command's own output, not from
    internal state: the event kinds appear in order (`task.submitted` → `run.created` →
@@ -828,8 +828,8 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 
 > **Implemented 2026-08-13.** `pnpm test:smoke` exists, is the `smoke` vitest project over
 > `e2e/smoke/`, is collected by a bare `pnpm test`, and runs the built `packages/cli/dist/bin.mjs` —
-> `DeFlow init` then `DeFlow run --file spec.md` — in an `fs.mkdtemp` git repository against a
-> `PATH` holding `DeFlow-mock-agent` and nothing else. It reaches `run.completed` and exit 0 in
+> `deflow init` then `deflow run --file spec.md` — in an `fs.mkdtemp` git repository against a
+> `PATH` holding `deflow-mock-agent` and nothing else. It reaches `run.completed` and exit 0 in
 > **≈8 s** against the 90 s budget. All six AC4 rows are red when their link is cut, and each names
 > it. The three AC8 markers are gone and a guard holds them gone.
 >
@@ -848,7 +848,7 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 >
 > - **`node.started` with an empty `binary.sha256`.** `NodeStartedSchema` requires a bare sha256 and
 >   `appendEvents` does not validate payloads on **write** — so the event landed in the ledger and
->   `parseEvent` refused it on **read**. The SSE stream dropped it, `DeFlow run` never learned the
+>   `parseEvent` refused it on **read**. The SSE stream dropped it, `deflow run` never learned the
 >   node had started, and it therefore never followed the node's `io_chunk` tail: a run that
 >   completed with **no agent output on the terminal at all**, which is the exact 2026-08-12
 >   symptom. This is also a standing hazard worth naming: an invalid payload is accepted on write
@@ -887,8 +887,8 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 > fails for the original defect and names it, rather than only for the six rewired calls beneath it.
 >
 > **Performed by hand, as the Definition of Done requires**, on 2026-08-13 in a scratch git
-> repository with only `DeFlow-mock-agent` on `PATH` and the packed `packages/cli/dist/bin.mjs`:
-> `DeFlow init` reported `mock ✓ ok` and every vendor `– skipped`; `DeFlow run --file task.md`
+> repository with only `deflow-mock-agent` on `PATH` and the packed `packages/cli/dist/bin.mjs`:
+> `deflow init` reported `mock ✓ ok` and every vendor `– skipped`; `deflow run --file task.md`
 > printed `task submitted`, `run created` and the spec at the F1.3 gate; approving it over the
 > daemon's own route produced `implement → verify → review` with the agent's own bytes on the
 > terminal, `typecheck gate pass`, and `run … completed — every gate passed`. `GET /` served the
@@ -897,7 +897,7 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 >
 > **Three follow-ups the walkthrough exposed**, none in this story's scope and all operator-facing:
 >
-> - `DeFlow run --attach <a run that is already terminal>` renders the whole transcript and the
+> - `deflow run --attach <a run that is already terminal>` renders the whole transcript and the
 >   verdict and then **does not exit**. `run.ts`'s `watch()` resolves from inside the hydrate, so its
 >   `.then` runs `following?.close()` before `onFollowing` has assigned the handle — the SSE
 >   connection is never closed and holds the process open. `--file` is unaffected, because there the
@@ -923,7 +923,7 @@ smoke test nobody runs, and this failure mode is precisely the one that survives
 | **Status**      | Not started                                                                                                                                                                                                                                                                            |
 | **Priority**    | P0                                                                                                                                                                                                                                                                                     |
 | **Size**        | M                                                                                                                                                                                                                                                                                      |
-| **Depends on**  | KAR-19.1 (`GET /api/runs`, the live run list and the one status string every surface prints), EPIC-06 KAR-06.7 (pause/resume/cancel as events and the three-stage ladder), EPIC-08 KAR-08.6 (the kill switch's process-group mechanics), EPIC-15 KAR-15.5 (the control routes, their idempotency rules and the `spec_not_approved` refusal this story amends), EPIC-10 KAR-10.3 (the F1.3 gate's four options, of which `abandon` is one), EPIC-18 KAR-18.3 (the exit-code table and the detach sentence that already names this command), KAR-18.7 (`DeFlow status`) and KAR-18.9 (the shared terminal renderer) |
+| **Depends on**  | KAR-19.1 (`GET /api/runs`, the live run list and the one status string every surface prints), EPIC-06 KAR-06.7 (pause/resume/cancel as events and the three-stage ladder), EPIC-08 KAR-08.6 (the kill switch's process-group mechanics), EPIC-15 KAR-15.5 (the control routes, their idempotency rules and the `spec_not_approved` refusal this story amends), EPIC-10 KAR-10.3 (the F1.3 gate's four options, of which `abandon` is one), EPIC-18 KAR-18.3 (the exit-code table and the detach sentence that already names this command), KAR-18.7 (`deflow status`) and KAR-18.9 (the shared terminal renderer) |
 | **PRD**         | F1.3, F4.1, F4.4, F5.7, F10.1, NF8, NF10                                                                                                                                                                                                                                               |
 | **Verified by** | EPIC-19-S37, EPIC-19-S38, EPIC-19-S39, EPIC-19-S40, EPIC-19-S41, EPIC-19-S42, EPIC-19-S43                                                                                                                                                                                              |
 
@@ -933,9 +933,9 @@ costs me one line rather than a hand-extracted bearer token and a `curl` invocat
 up.
 
 **This is the second half of the same 2026-08-12 afternoon.** Having watched three runs do nothing,
-the operator typed `DeFlow cancel <runId>` — the command KAR-18.3 AC3's own detach sentence prints,
-verbatim: _"detached — run `<runId>` continues; `'DeFlow run --attach <runId>'` to watch,
-`'DeFlow cancel <runId>'` to stop"_. There is no such command. The daemon has had the capability
+the operator typed `deflow cancel <runId>` — the command KAR-18.3 AC3's own detach sentence prints,
+verbatim: _"detached — run `<runId>` continues; `'deflow run --attach <runId>'` to watch,
+`'deflow cancel <runId>'` to stop"_. There is no such command. The daemon has had the capability
 since KAR-15.5: `POST /api/runs/:id/cancel` takes `{ mode: 'cooperative' | 'forceful' }`, `forceful`
 walks F5.7's ladder and answers only once the kill is verified. Nothing in the CLI is wired to it, so
 the only route to it is `curl` with the bearer token read out of the token file by hand. A capability
@@ -948,7 +948,7 @@ applies until `POST /api/runs/:id/spec/approve` has been answered"_. The gate's 
 `POST /runs/:id/spec/abandon`, calls `abandonRun`, which begins `if (!gateIsOpen(events)) throw new
 SpecGateNotOpen(...)`. A run stuck at `created` — no approval, and no gate open either, which is
 exactly the state KAR-19.1 exists to fix and exactly the state all three reported runs are in — can
-therefore be stopped by **neither** route, and accumulates in `DeFlow status` forever. KAR-18.3's
+therefore be stopped by **neither** route, and accumulates in `deflow status` forever. KAR-18.3's
 amendment already named this _"a real hole in the daemon's write surface rather than in this
 command"_ and deferred it. This story is where the deferral is paid.
 
@@ -983,7 +983,7 @@ for a run with nothing in flight, so no surface has to render a kill ladder that
 
 **Acceptance criteria**
 
-1. `DeFlow cancel <runId>` exists as a first-class command and posts to the existing
+1. `deflow cancel <runId>` exists as a first-class command and posts to the existing
    `POST /api/runs/:id/cancel`, authenticating through the same token-file path every other CLI
    command uses. It is `cooperative` by default — the mode that lets the agent flush its transcript
    — and `--force` sends `{ mode: 'forceful' }`, F5.7's ladder. No documented way to stop a run
@@ -1015,7 +1015,7 @@ for a run with nothing in flight, so no surface has to render a kill ladder that
    CLI exits `0` saying the run had already ended and how it ended. An unknown run id is
    `404 run_not_found` with a non-zero exit and no partial write. Cancelling twice produces exactly
    one `run.aborted`.
-7. Every surface stops showing a stopped run as live, at the same head sequence: `DeFlow status`
+7. Every surface stops showing a stopped run as live, at the same head sequence: `deflow status`
    drops it from its active-run summary, `GET /api/runs?status=active` excludes it while plain
    `GET /api/runs` still lists it with a terminal status, and the web run list updates the row in
    place from the `run.aborted` frame on the `runs=*` topic **without a refresh**. The status string
@@ -1029,7 +1029,7 @@ for a run with nothing in flight, so no surface has to render a kill ladder that
 9. The three reported runs are the acceptance case. `run_20260812T133401Z_318740` (`task.submitted`
    then `provider.probed`), `run_20260812T133514Z_ed4f12` (the same) and
    `run_20260812T133934Z_468702` (`task.submitted` alone) are each cleared by a single
-   `DeFlow cancel <runId>` taking the same code path, and afterwards `DeFlow status` lists none of
+   `deflow cancel <runId>` taking the same code path, and afterwards `deflow status` lists none of
    them. Kill verification, where a ladder ran at all, excludes `Z`-state processes.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
@@ -1042,10 +1042,10 @@ implementation.
 | 3   | integration | File-backed ledger holding only `task.submitted`; cancel it and assert `run.cancel.requested` and `run.aborted` at consecutive `seq`, written in one transaction, with no observable `cancelling`   | The two are appended separately, so a crash between them parks the run in `cancelling` forever — the reported defect under a new name              |
 | 4   | integration | Cancel with the F1.3 gate open; assert `human.responded { optionId: 'abandon' }`, the gate's `node_wake` row consumed in the same transaction, and one shipped module appending `run.aborted`      | A second abandon path is written for the CLI, and the record of which gate option the operator chose is lost                                       |
 | 5   | integration | Cancel twice, then cancel a `completed` run; assert `200` with the existing `seq`, exactly one `run.aborted` in the ledger, and exit `0` both times; then an unknown id → `404` and a non-zero exit | The repeat appends a second `run.aborted`, so the run list renders the same run ending twice and the timeline disagrees with itself                |
-| 6   | e2e         | Built binary + real daemon + a live mock-agent child; `DeFlow cancel <runId> --force`; assert the mode named on stdout, `run.aborted` on disk, the documented exit code, and no non-`Z` process left in the agent's group | The command does not exist, so the operator is back to `curl` with a token they extracted by hand — the reported defect                            |
+| 6   | e2e         | Built binary + real daemon + a live mock-agent child; `deflow cancel <runId> --force`; assert the mode named on stdout, `run.aborted` on disk, the documented exit code, and no non-`Z` process left in the agent's group | The command does not exist, so the operator is back to `curl` with a token they extracted by hand — the reported defect                            |
 | 7   | web         | Run list open on the `runs=*` topic; push `run.aborted` for a listed run; assert the row updates in place with no refetch, and that a subsequent `?status=active` fetch omits it                   | The list keeps the run as live until a reload, so stopped runs accumulate on screen exactly as the operator's three did                            |
-| 8   | integration | `SIGKILL` the daemon after `run.cancel.requested` with a child in flight; reboot over the same data dir; assert the cancel completes, nothing further is admitted, and `run.aborted` appears once  | The ladder was held in memory, so the restart resumes a run the operator stopped and the second `DeFlow cancel` is the operator's job again        |
-| 9   | integration | A `Scenario Outline` over the three reported runs' exact ledger shapes; assert one command clears each and that `DeFlow status` afterwards lists none of them                                       | The `task.submitted`-only shape and the `provider.probed` shape take different paths, so one command clears one run and the operator has to guess |
+| 8   | integration | `SIGKILL` the daemon after `run.cancel.requested` with a child in flight; reboot over the same data dir; assert the cancel completes, nothing further is admitted, and `run.aborted` appears once  | The ladder was held in memory, so the restart resumes a run the operator stopped and the second `deflow cancel` is the operator's job again        |
+| 9   | integration | A `Scenario Outline` over the three reported runs' exact ledger shapes; assert one command clears each and that `deflow status` afterwards lists none of them                                       | The `task.submitted`-only shape and the `provider.probed` shape take different paths, so one command clears one run and the operator has to guess |
 
 **Notes / risks** — the temptation here is a client-side special case: let the CLI notice a `422` and
 fall back to `POST /runs/:id/spec/abandon`, which is what `packages/cli/src/run/cancel.ts` already
@@ -1071,7 +1071,7 @@ deleted once one route answers for every state.
 > that the emitted schemas do not support.
 >
 > - **The structured path is exec-shaped, not ACP-native.** EPIC-19-S44 says the framing turn is
->   *"served by `DeFlow-mock-agent` over a real ACP session"*, and the story's own prose leaves the
+>   *"served by `deflow-mock-agent` over a real ACP session"*, and the story's own prose leaves the
 >   choice open — _"an exec-shim mode, or an ACP-native return"_. It is the exec-shim mode, because
 >   the criteria decide it: AC2 puts the flag on `shim.structuredOutputFlag`, which is the field
 >   `providerStructuredOutput` reads and therefore the only field that can make admission answer
@@ -1096,11 +1096,11 @@ deleted once one route answers for every state.
 >   only when a schema is supplied, a `returns` block is invisible to an ACP turn (byte-compared),
 >   and no shipped scenario declares one.
 > - **AC9 and test plan #9 are not automated here, and the reason is one level below this story.**
->   Everything AC9 needs *from this story* is in place: a `PATH` holding only `DeFlow-mock-agent` now
+>   Everything AC9 needs *from this story* is in place: a `PATH` holding only `deflow-mock-agent` now
 >   passes admission (`PROVIDER_SPECS` has a `mock` entry that resolves), `providerStructuredOutput`
 >   reports `native` because the binary honours the flag, and `admitFraming` admits a framing node
 >   routed there. What is still missing is the wiring KAR-19.3 and KAR-19.4 recorded as their own
->   departure: `DeFlow up` binds no `runFraming`, `advanceRun` or `executeNodes` port, because no
+>   departure: `deflow up` binds no `runFraming`, `advanceRun` or `executeNodes` port, because no
 >   `FramingAgent`/`ReconAgent`/`PlannerAgent` over a real process exists yet. That was **blocked**
 >   before this story and is merely **unbuilt** after it, which is the whole of what KAR-19.7 was
 >   for. AC9 closes with that binding, and the acceptance case is automated at `e2e` then — together
@@ -1110,13 +1110,13 @@ deleted once one route answers for every state.
 > `EPIC-19-S44` was left declared *"Automated at: e2e"* in the flows file and listed unqualified in
 > the `Verified by` row, so the plan claimed an e2e that did not exist, and
 > `packages/mock-agent/test/integration/structured-returns.test.ts` carried a `Verifies:
-> EPIC-19-S44` line for a spec that never runs `DeFlow run` or reads a ledger. Three things changed.
+> EPIC-19-S44` line for a spec that never runs `deflow run` or reads a ledger. Three things changed.
 > **The half AC9 does deliver is now automated at `e2e`**, in `e2e/mock-only-run.test.ts`: a `PATH`
-> holding only `DeFlow-mock-agent` — asserted against the binary names `PROVIDER_SPECS` declares,
+> holding only `deflow-mock-agent` — asserted against the binary names `PROVIDER_SPECS` declares,
 > not a list kept by hand — admits the run rather than refusing it, the one probe row is `mock`
 > carrying a real ACP `initialize` answer, no `run.aborted` is appended, and the run parks on the
 > durable framing wake. It goes red on the pre-story machine: with bundled entries dropped from
-> `usableProviders`, `DeFlow run` exits 5 with `no_usable_provider`. **The completion half is
+> `usableProviders`, `deflow run` exits 5 with `no_usable_provider`. **The completion half is
 > recorded as deferred** in both the flows file and the `Verified by` row rather than only here.
 > **And one blocker below the binding is now written down**, because it would otherwise be found the
 > morning the binding lands: the default plan's agent nodes return `DeFlow.finding.v1`, and
@@ -1142,15 +1142,15 @@ written at all.
 recon and planner turns each carry a `returns` contract, and `admitFraming`
 (`packages/adapters/src/framing-admission.ts`) refuses any provider without a `structuredOutputFlag`.
 In `packages/adapters/src/provider-registry.ts` only `claude` (`--json-schema`) and `codex`
-(`--output-schema`) have one, and both on the **exec-shim** path; `DeFlow-mock-agent` speaks ACP
+(`--output-schema`) have one, and both on the **exec-shim** path; `deflow-mock-agent` speaks ACP
 only. So on a machine with no vendor CLI nothing can get past framing — which is why KAR-19.3's
 amendment could not write its `e2e`, why KAR-19.4's amendment could not bind the chain in
-`DeFlow up`, and why KAR-19.5's smoke test — **the whole point of which is to need no vendor CLI, no
+`deflow up`, and why KAR-19.5's smoke test — **the whole point of which is to need no vendor CLI, no
 credential and no network** — cannot be written.
 
 **The epic's Out-of-scope rule sends mock-agent work to [EPIC-04](./EPIC-04-mock-agent.md), and that
 rule is being overridden here deliberately.** The reason belongs in the story rather than in a commit
-message: EPIC-19's Definition of Done is behavioural — `DeFlow run` must work end to end with only
+message: EPIC-19's Definition of Done is behavioural — `deflow run` must work end to end with only
 the bundled mock agent — and **a capability that acceptance test depends on cannot be out of scope
 for the epic that declares it.** The override is recorded in this epic's Out-of-scope section too, so
 the exception is visible from the rule rather than only from here.
@@ -1174,7 +1174,7 @@ every fixture EPIC-04 owns.
 
 **Acceptance criteria**
 
-1. `DeFlow-mock-agent` gains a structured-output path: given the schema flag its registry entry
+1. `deflow-mock-agent` gains a structured-output path: given the schema flag its registry entry
    declares and a schema file naming a schema it can serve, the turn returns **one** document that
    validates against that schema and nothing else on the return channel. It serves at least
    `DeFlow.taskspecdraft.v1` (framing), `DeFlow.reconsurvey.v1` with `DeFlow.reconfact.v1` (recon) and
@@ -1220,7 +1220,7 @@ every fixture EPIC-04 owns.
    resolves — and never prints an `npm install -g` action for a package that ships in the same
    tarball (KAR-18.8's rule that the words must fit the machine).
 9. **The acceptance case.** In an `fs.mkdtemp` git repository, on a `PATH` holding no vendor agent CLI
-   at all and only `DeFlow-mock-agent`, `DeFlow run --file <spec>` reaches `plan.proposed` and at
+   at all and only `deflow-mock-agent`, `deflow run --file <spec>` reaches `plan.proposed` and at
    least one `node.completed`, with no credential variable in any child environment, no outbound
    socket and no read of `~/.DeFlow`. This is precisely the run KAR-19.3's amendment recorded as
    impossible today.
@@ -1230,7 +1230,7 @@ implementation.
 
 | #   | Level       | Test                                                                                                                                                                                          | Red when                                                                                                                                    |
 | --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | integration | Spawn the built `DeFlow-mock-agent` with the registry entry's own flag for each of the three schema ids; validate each returned document against `schemas/<id>.json` with ajv, and assert the plan document has ≥ 2 nodes | The binary ignores the flag and answers in prose, so the framing turn returns "valid-ish" and everything downstream is judged against it   |
+| 1   | integration | Spawn the built `deflow-mock-agent` with the registry entry's own flag for each of the three schema ids; validate each returned document against `schemas/<id>.json` with ajv, and assert the plan document has ≥ 2 nodes | The binary ignores the flag and answers in prose, so the framing turn returns "valid-ish" and everything downstream is judged against it   |
 | 2   | unit        | `providerSpec('mock')` and `providerStructuredOutput('mock')`; assert `native`, and assert the declared flag is the same exported constant the binary's argument parser reads                 | The entry declares a flag the binary does not implement, and the registry becomes the lie admission trusts                                  |
 | 3   | unit        | `admitFraming({ provider: 'mock' }, row)` → `null` with a probed row, `NodeFailureError` with `row === null`; plus a source guard that `framing-admission.ts`, `admission.ts` and `structured-output.ts` name no provider | Admission was special-cased for the mock agent, so the guard that stops a real provider taking a contract it cannot honour now has a hole  |
 | 4   | integration | The same turn spawned twenty times with the same seed, under changed `cwd`, `TMPDIR`, `TZ` and locale; assert byte-identical documents every time                                             | A timestamp, a `Math.random()` or a readdir order reaches the document, and the smoke test's snapshot flakes about once a week             |
@@ -1238,7 +1238,7 @@ implementation.
 | 6   | integration | An unknown schema id, an absent schema file and a schema with no generator; assert non-zero exit, the id named, the servable list printed, and zero bytes on the return channel                | It returns its nearest guess or an empty object, and the whole chain goes green on a document nothing actually produced                    |
 | 7   | integration | A scenario scripting an invalid draft and one scripting a truncated document; assert the caller's own refusal path fires for each, with no vendor CLI on `PATH`                               | Only the happy return is scriptable, so EPIC-19-S20's validation failure still needs an installed vendor to reach                          |
 | 8   | unit        | Provider selection over a resolved table holding a real vendor and `mock`; assert `mock` is never preferred, and assert `doctor`'s verdict for the bundled binary carries no `npm install -g` | Adding the entry quietly makes every machine's default provider a fake agent, and a run "succeeds" against a mock nobody chose             |
-| 9   | e2e         | A `PATH` with no vendor CLI and only `DeFlow-mock-agent`; `DeFlow run --file spec.md`; assert `plan.proposed`, ≥ 1 `node.completed` and a terminal `run.*` in the on-disk ledger              | The chain still cannot be framed on a clean machine, so this epic's Definition of Done and KAR-19.5 both remain unreachable                |
+| 9   | e2e         | A `PATH` with no vendor CLI and only `deflow-mock-agent`; `deflow run --file spec.md`; assert `plan.proposed`, ≥ 1 `node.completed` and a terminal `run.*` in the on-disk ledger              | The chain still cannot be framed on a clean machine, so this epic's Definition of Done and KAR-19.5 both remain unreachable                |
 
 **Notes / risks** — two things constrain the implementation and are cheaper to write down than to
 rediscover. **`@DeFlow/mock-agent` ships with exactly one dependency**
@@ -1268,7 +1268,7 @@ DeFlow spawns to be one `claude` will actually accept, **so that** a run that re
 the work instead of dying on an argument DeFlow chose.
 
 **Observed by hand on 2026-08-13**, on this branch at commit `1a17d31`, in a scratch git repository
-with `DeFlow_DATA_DIR` pointed at a fresh directory. `DeFlow run --file task.md` reached framing —
+with `DeFlow_DATA_DIR` pointed at a fresh directory. `deflow run --file task.md` reached framing —
 which is the good news, and the whole of KAR-19.3 working — and then failed on every attempt with:
 
 ```
@@ -1315,7 +1315,7 @@ that every value DeFlow puts on a validated flag matches the form that vendor do
    tuples never collide. A UUID minted per attempt is a failing implementation of this criterion,
    and the test that says so is not a snapshot.
 3. DeFlow's own identifier remains what is recorded and displayed. `node.started`, the run's events,
-   `DeFlow status`, the CLI's attached view and the UI all still name the DeFlow run and node ids;
+   `deflow status`, the CLI's attached view and the UI all still name the deflow run and node ids;
    the vendor-side id is carried **beside** it — in the session field the adapter already records
    (`session: { id, origin }`) — so a transcript under `~/.claude/projects/` can be found from the
    ledger without a second lookup table.
@@ -1350,7 +1350,7 @@ implementation.
 | 1   | unit        | `shimPlan` for `claude` over the four turn kinds; assert the `--session-id` value parses as a UUID and that the builder is the only producer of it                                | The value is `` `${runId}-framing` ``, which is what the vendor rejected — this is the reported defect at the smallest level          |
 | 2   | unit        | The mapping function over a table of `(runId, nodeId, attempt)`; assert stability across calls and no collision across 10 000 tuples                                              | A `randomUUID()` per attempt passes "is a UUID" and silently breaks resume, which no other assertion here would notice                |
 | 3   | integration | Drive a framing turn against the testkit's fake vendor CLI configured to refuse a non-UUID session id, exactly as Claude Code 2.1.220 does; assert the turn completes             | The fake accepts anything, so the suite is green on the machine where the product is not — the reason this bug shipped               |
-| 4   | integration | The same turn's ledger: assert `node.started` and the run's events name the DeFlow run and node ids, and that the vendor-side id appears only in the session field                | The fix renames the run in the ledger to keep the vendor happy, and every id in the operator's logs changes meaning                  |
+| 4   | integration | The same turn's ledger: assert `node.started` and the run's events name the deflow run and node ids, and that the vendor-side id appears only in the session field                | The fix renames the run in the ledger to keep the vendor happy, and every id in the operator's logs changes meaning                  |
 | 5   | integration | A second attempt on the same node; assert the vendor received the same session id and that resume took the `native` strategy                                                      | The id is derived from a clock or a counter, so attempt 2 opens a session attempt 1's transcript is not in                           |
 | 6   | integration | A shim child that exits non-zero with `Invalid session ID` on stderr; assert the typed failure carries the flag and the value, and that the class is `permanent`                  | It is classified `transient` and retried forever — which is precisely what the 2026-08-13 log shows, and KAR-19.9's other half       |
 | 7   | unit        | A `Scenario Outline` over `PROVIDER_SPECS`: every entry that passes a session id, asserted against the form that entry declares                                                   | Only `claude` is fixed and `gemini`'s next validated flag repeats this afternoon                                                     |
@@ -1383,10 +1383,10 @@ rather than an afternoon and a `kill`.
 **This is the second defect from the 2026-08-13 by-hand run, and it is the more serious one.** After
 the framing turn failed (KAR-19.8), DeFlow retried it every ~31 s indefinitely — the identical
 `NodeFailureError` at 11:07:13, 11:07:44, 11:08:14, 11:08:45, 11:09:15, and on. The operator's
-`DeFlow run` printed **nothing** about any of it and never exited; it was still hanging after seven
+`deflow run` printed **nothing** about any of it and never exited; it was still hanging after seven
 minutes and had to be killed. And the ledger for that run contains `provider.probed`,
 `provider.probed`, `task.submitted` — **not one of those failures was recorded as an event**, so
-neither the UI nor `DeFlow status` could have shown them either.
+neither the UI nor `deflow status` could have shown them either.
 
 Three things are wrong and all three are in scope. They are one defect wearing three coats: **a
 failure that nothing bounds, nothing records and nothing says out loud.**
@@ -1431,7 +1431,7 @@ subscription.
    naming the node, the attempt number out of the ceiling, and the typed reason; the line appears
    **while the run is still retrying**, not at the end. `--json` emits the same content as NDJSON
    with no ANSI.
-5. The command exits, and with the documented code. `DeFlow run --file <task>` against a provider
+5. The command exits, and with the documented code. `deflow run --file <task>` against a provider
    that fails every attempt exits **1** through `classifyRun` — not 0, not a hang — and the process
    is gone within the documented shutdown budget of the terminal event. A test asserts the process
    exited rather than asserting on a promise.
@@ -1481,7 +1481,7 @@ product. The exit is caused by the run reaching a terminal state, and nothing el
 | **Status**      | Not started                                                                                                                                                                                                                                                                                              |
 | **Priority**    | P0                                                                                                                                                                                                                                                                                                       |
 | **Size**        | M                                                                                                                                                                                                                                                                                                        |
-| **Depends on**  | KAR-19.2 (admission, the refusal shape and the wording this amends), KAR-19.3 (`chooseProvider` in `live-chain.ts`, the selection this makes explicit), KAR-19.7 (`usableProviders` and the bundled ordering), EPIC-05 KAR-05.2 (the probed capability manifest) and KAR-05.3 (`PROVIDER_SPECS`, the one file allowed to name a vendor), KAR-05.8 (the exec-shim route this reconciles), EPIC-18 KAR-18.3 (`DeFlow run`'s argument parser and exit codes), KAR-18.4 and KAR-18.8 (`doctor`'s provider report and its state vocabulary) |
+| **Depends on**  | KAR-19.2 (admission, the refusal shape and the wording this amends), KAR-19.3 (`chooseProvider` in `live-chain.ts`, the selection this makes explicit), KAR-19.7 (`usableProviders` and the bundled ordering), EPIC-05 KAR-05.2 (the probed capability manifest) and KAR-05.3 (`PROVIDER_SPECS`, the one file allowed to name a vendor), KAR-05.8 (the exec-shim route this reconciles), EPIC-18 KAR-18.3 (`deflow run`'s argument parser and exit codes), KAR-18.4 and KAR-18.8 (`doctor`'s provider report and its state vocabulary) |
 | **PRD**         | F3.1, F3.2, F3.5, NF7, NF8, NF10                                                                                                                                                                                                                                                                         |
 | **Verified by** | EPIC-19-S65, EPIC-19-S66, EPIC-19-S67, EPIC-19-S68, EPIC-19-S69, EPIC-19-S70                                                                                                                                                                                                                             |
 
@@ -1495,7 +1495,7 @@ and the run selected `claude` anyway, through the exec-shim path, and spawned th
 Two problems, plus the mismatch underneath them:
 
 1. **There is no way to say which provider to use.** The operator tried `--provider mock` and got
-   `DeFlow run: unknown option "--provider"`. The flag does not exist, on a command whose entire job
+   `deflow run: unknown option "--provider"`. The flag does not exist, on a command whose entire job
    is to start a run on an agent.
 2. **Nothing told the operator which provider was chosen, or by which route.** `chooseProvider`
    reduces `usableProviders(resolveProviderStates(roots))` and takes the first survivor, silently.
@@ -1533,7 +1533,7 @@ its amendment to KAR-15.5.
 
 **Acceptance criteria**
 
-1. `DeFlow run --provider <id>` exists and routes the run onto that provider. It is validated
+1. `deflow run --provider <id>` exists and routes the run onto that provider. It is validated
    against the registry **before** anything is submitted: an id `PROVIDER_SPECS` does not contain is
    refused with a message naming the ids that are registered and, of those, which are usable on this
    machine, and the command exits `EX_USAGE` with no run created. The list is derived from the
@@ -1575,7 +1575,7 @@ implementation.
 | --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | unit        | `parseRunArgs` over `--provider mock`, `--provider=mock`, a missing value and an unregistered id; assert the accepted shape, `EX_USAGE`, and a message listing registry ids          | The option does not exist and the parser answers `unknown option "--provider"` — the reported defect, at the level it is cheapest at |
 | 2   | integration | `--provider <registered but not installed>`; assert exit **5**, `doctor`'s own sentence and the typed refusal code, not an argument error                                            | A real provider that is missing is reported as a bad argument, and the operator edits their command line instead of their machine   |
-| 3   | e2e         | Real binary, a `PATH` holding the bundled agent; `DeFlow run --provider mock --file spec.md`; assert the run executes on `mock` and the child spawned was the bundled binary         | The flag is accepted and ignored, which is worse than not having it                                                                 |
+| 3   | e2e         | Real binary, a `PATH` holding the bundled agent; `deflow run --provider mock --file spec.md`; assert the run executes on `mock` and the child spawned was the bundled binary         | The flag is accepted and ignored, which is worse than not having it                                                                 |
 | 4   | integration | Assert the announcement's three facts (provider, absolute binary path, route) appear on stdout, on the `provider.probed` payload and on `GET /api/runs/:id`, from one producer       | Two surfaces say different things about the same run, which is how `doctor` and the run came to disagree in the first place         |
 | 5   | integration | Compare the announced route against the binary the first child was actually spawned from                                                                                            | The announcement is computed from the registry's preference rather than from what was taken, and it lies on exactly the machine that matters |
 | 6   | unit        | The route reducer over a table of resolutions — both routes, ACP only, shim only, neither — asserted to be the single input to `doctor`'s report and to `admitRun`                   | `doctor` folds the probe and selection does not, so one calls a provider unusable while the other spawns it                          |

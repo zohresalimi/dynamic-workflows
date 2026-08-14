@@ -10,7 +10,7 @@
 | Actor                    | Description                                                                                                                                                                                  |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Test harness**         | A vitest spec in the `unit` or `integration` project slice. It plays the role DeFlowd plays in production: it spawns the binary, writes frames to its stdin and reads frames from its stdout |
-| **Mock agent**           | The `DeFlow-mock-agent` executable — a real child process speaking ACP over ndjson                                                                                                           |
+| **Mock agent**           | The `deflow-mock-agent` executable — a real child process speaking ACP over ndjson                                                                                                           |
 | **Fake exec-shim agent** | `packages/testkit/bin/fake-agent.ts`, symlinked onto a tmp `PATH` under a vendor name, speaking a vendor's own headless wire format                                                          |
 | **Scenario file**        | The declarative script that tells either binary what to do                                                                                                                                   |
 | **Recording**            | A captured real session at `recordings/<provider>@<version>/<case>.ndjson`                                                                                                                   |
@@ -69,7 +69,7 @@ Background:
 Feature: The mock agent completes an ACP turn as a real child process
 
   Scenario: initialize, session/new, prompt, stop
-    Given the harness spawns "DeFlow-mock-agent --scenario fixtures/scenarios/hello.json --seed 42"
+    Given the harness spawns "deflow-mock-agent --scenario fixtures/scenarios/hello.json --seed 42"
     And the child's stdin and stdout are wrapped with acp.ndJsonStream
     When the harness sends "initialize" with protocolVersion 1 and clientCapabilities
          { fs: { readTextFile: true, writeTextFile: true }, terminal: true }
@@ -104,7 +104,7 @@ Feature: Seeded determinism
   Scenario: The same seed produces the same bytes
     Given the scenario "fixtures/scenarios/tool-call-walk.json" which generates
           a sessionId, three toolCallIds and eight timestamps
-    When the harness runs "DeFlow-mock-agent --scenario tool-call-walk.json --seed 42" twice,
+    When the harness runs "deflow-mock-agent --scenario tool-call-walk.json --seed 42" twice,
          capturing raw stdout into buffers A and B
     Then Buffer.compare(A, B) returns 0 with no normalisation applied
     And A contains no value matching the UUID v4 pattern produced by crypto.randomUUID
@@ -562,7 +562,7 @@ has to be, because **two of five providers cannot resume**, so `ResumeByReplay` 
 The three shape variants matter individually. Absent-key (Gemini), empty-object (Copilot) and explicit-
 `false` (Codex) are three different things that naive optional chaining flattens into one, and flattening
 them is how a router concludes an agent can do something it cannot. The examples table is generated from
-the fixture, so when `DeFlow doctor` re-probes and a vendor's capabilities change, this table changes with
+the fixture, so when `deflow doctor` re-probes and a vendor's capabilities change, this table changes with
 it and the diff is the alert.
 
 ---
@@ -616,7 +616,7 @@ Feature: A captured real session becomes a free provider
     Given a recording at recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
     And each line has the shape {"t": <msOffset>, "dir": "in"|"out", "msg": { ... }}
     When the harness spawns
-        "DeFlow-mock-agent --replay recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
+        "deflow-mock-agent --replay recordings/claude-agent-acp@0.64.1/simple-edit.ndjson
          --replay-speed max"
     Then every "out" frame in the file is emitted to stdout in file order
     And the harness observes the recorded chunk texts in the recorded order

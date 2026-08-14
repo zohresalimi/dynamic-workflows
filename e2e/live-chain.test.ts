@@ -12,12 +12,12 @@
  * What is under test here is **the composition root**, and nothing else in this
  * repository can test it. `packages/daemon/test/integration/live-chain.test.ts`
  * drives `createRunChain` end to end against scripted agent ports and is green;
- * it was green on 2026-08-12 too, while an operator's `DeFlow run` parked at the
- * framing wake and never moved, because `DeFlow up` bound no `runFraming` and no
+ * it was green on 2026-08-12 too, while an operator's `deflow run` parked at the
+ * framing wake and never moved, because `deflow up` bound no `runFraming` and no
  * `advanceRun` port. A spec that constructs the chain itself cannot see that.
- * So this one constructs nothing: it spawns the real `DeFlow` binary, which
+ * So this one constructs nothing: it spawns the real `deflow` binary, which
  * starts a real daemon for itself, against a `PATH` holding one agent — the
- * bundled `DeFlow-mock-agent` — and reads the ledger those two processes left.
+ * bundled `deflow-mock-agent` — and reads the ledger those two processes left.
  *
  * **The `PATH` clause is asserted rather than arranged**, exactly as
  * `./mock-only-run.test.ts` asserts it: a machine where a vendor CLI resolves
@@ -72,7 +72,7 @@ function daemonFile(): DaemonFile | null {
   }
 }
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else here will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   const file = daemonFile();
@@ -113,7 +113,7 @@ function vendorCliOnPath(path: string): readonly string[] {
   return found;
 }
 
-/** A bin directory holding `DeFlow-mock-agent` and nothing else. */
+/** A bin directory holding `deflow-mock-agent` and nothing else. */
 function bundledAgentOnly(): string {
   const dir = join(tmp, 'bin');
   mkdirSync(dir, { recursive: true });
@@ -160,7 +160,7 @@ const CHAIN_KINDS = [
 ] as const;
 
 suite('EPIC-19-S16 — framing → the F1.3 gate → the pin → recon → a plan', () => {
-  it('carries a real DeFlow run from a markdown file to plan.proposed', async () => {
+  it('carries a real deflow run from a markdown file to plan.proposed', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
     writeFileSync(
@@ -184,7 +184,7 @@ suite('EPIC-19-S16 — framing → the F1.3 gate → the pin → recon → a pla
     const runId = await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${String(cli.child.exitCode)} instead of admitting the run:\n` +
+          `deflow run exited ${String(cli.child.exitCode)} instead of admitting the run:\n` +
             `stderr:\n${cli.stderr()}\nstdout:\n${cli.stdout()}`,
         );
       }
@@ -193,7 +193,7 @@ suite('EPIC-19-S16 — framing → the F1.3 gate → the pin → recon → a pla
 
     // AC1 — the framing wake was consumed by the ticker, the interview ran
     // against the bundled agent, and `run.created` is in the log. Nothing in
-    // this file made that happen: the daemon `DeFlow run` autostarted did.
+    // this file made that happen: the daemon `deflow run` autostarted did.
     await waitFor('the framing turn produced run.created', () =>
       kindsOf(dataDir, runId)?.includes('run.created') === true ? true : null,
     );

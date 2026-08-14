@@ -29,7 +29,7 @@ __screenshots__/
 # link cut. They live under the repository root rather than in `os.tmpdir()`
 # because the bundle's external dependencies (better-sqlite3, node-pty) are
 # resolved by walking up to `node_modules`, and a copy in `/tmp` has none above
-# it: `DeFlow init` exits 1 on a module it cannot find, and every row would then
+# it: `deflow init` exits 1 on a module it cannot find, and every row would then
 # fail for that reason instead of its own.
 .smoke-sabotage-*/
 

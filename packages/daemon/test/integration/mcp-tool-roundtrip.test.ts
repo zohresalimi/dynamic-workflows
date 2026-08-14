@@ -1,7 +1,7 @@
 /**
  * EPIC-05-S23 — a workflow tool call reaches DeFlowd over the UDS.
  *
- * Integration, and every boundary in it is real: a real `DeFlow-mcp` child
+ * Integration, and every boundary in it is real: a real `deflow-mcp` child
  * process spawned exactly as an agent would spawn it (same `command`, same
  * `args`, same `env` as the `mcpServers` entry `session/new` carried), real
  * MCP frames over its stdio, a real Unix domain socket back to a real host,

@@ -1,5 +1,5 @@
 /**
- * KAR-18.1 AC6, test plan #6 — the provider detection pass `DeFlow init`
+ * KAR-18.1 AC6, test plan #6 — the provider detection pass `deflow init`
  * runs: PATH is searched for real, a found binary is probed for real (a real
  * ACP `initialize`, over a real pipe), and the result lands only in the
  * global probe cache — never anywhere `init` writes into the repository.

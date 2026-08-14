@@ -1,5 +1,5 @@
 /**
- * KAR-19.1 AC6, AC7 — what `DeFlow run`'s attached view says when a run stops
+ * KAR-19.1 AC6, AC7 — what `deflow run`'s attached view says when a run stops
  * moving.
  *
  * The operator of 2026-08-12 watched a prompt that said `task submitted` and
@@ -13,7 +13,7 @@
  * people learn to scroll past.
  *
  * The run-level statuses come from `RUN_STATUS_LABELS` in `@DeFlow/core` — the
- * same table `DeFlow status` and the UI's run list render — so this view cannot
+ * same table `deflow status` and the UI's run list render — so this view cannot
  * acquire a fourth word for a state the other two already have three.
  *
  * Verifies: EPIC-19-S4 (its CLI clause), EPIC-19-S7 · KAR-19.1 AC6, AC7
@@ -48,12 +48,12 @@ const stalled = (idleMs: number) =>
   event('run.stalled', { watermarkSeq: 4, idleMs, runningNodes: [] });
 
 suite('the stall line (AC7)', () => {
-  it('names the run, the idle time and DeFlow status as the next command', () => {
+  it('names the run, the idle time and deflow status as the next command', () => {
     const line = renderer().event(stalled(11 * 60_000));
 
     expect(line).toContain(RUN);
     expect(line).toContain('11m');
-    expect(line).toContain('DeFlow status');
+    expect(line).toContain('deflow status');
     // One line, wrapped or not — never a paragraph and never a stack trace.
     expect(line.trimEnd().split('\n').length).toBeLessThanOrEqual(3);
   });

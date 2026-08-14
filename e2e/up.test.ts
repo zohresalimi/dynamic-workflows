@@ -1,5 +1,5 @@
 /**
- * KAR-18.2 — `DeFlow up` as a user meets it: a real `DeFlow` process, a real
+ * KAR-18.2 — `deflow up` as a user meets it: a real `DeFlow` process, a real
  * socket, a real signal.
  *
  * Everything here is asserted from *outside* the process — stdout, stderr, exit
@@ -73,14 +73,14 @@ interface DaemonFile {
   readonly token: string;
   readonly startedAt: number;
   /** KAR-18.7 — the OS's own start time for `pid`, opaque and compared for
-   * equality by `DeFlow status`. */
+   * equality by `deflow status`. */
   readonly processStartedAt: string | null;
 }
 
 const daemonFile = (dataDir: string): DaemonFile =>
   JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8')) as DaemonFile;
 
-suite('DeFlow up, first boot (EPIC-18-S7)', () => {
+suite('deflow up, first boot (EPIC-18-S7)', () => {
   it('binds loopback, hands over a token in the fragment, and says how long it took', async () => {
     const dataDir = join(tmp, 'data');
     const bin = withMockAgent(join(tmp, 'bin'));
@@ -106,14 +106,14 @@ suite('DeFlow up, first boot (EPIC-18-S7)', () => {
 
     // AC1 — the daemon file, its fields and its mode. `processStartedAt` is
     // KAR-18.7's: the OS's own start time for that pid, which is what makes
-    // `DeFlow status` able to tell this daemon from a recycled pid.
+    // `deflow status` able to tell this daemon from a recycled pid.
     const file = daemonFile(dataDir);
     expect(Object.keys(file).sort()).toEqual([
       'pid',
       'port',
       'processStartedAt',
       'startedAt',
-      // KAR-19.1 AC2 — the ticker this daemon life started, so `DeFlow status`
+      // KAR-19.1 AC2 — the ticker this daemon life started, so `deflow status`
       // reports the loop rather than assuming it.
       'tickIntervalMs',
       'token',
@@ -164,7 +164,7 @@ suite('DeFlow up, first boot (EPIC-18-S7)', () => {
   });
 });
 
-suite('a second DeFlow up (EPIC-18-S8, AC3)', () => {
+suite('a second deflow up (EPIC-18-S8, AC3)', () => {
   it('exits 2 with the pid and port of the one that is running, and changes nothing', async () => {
     const dataDir = join(tmp, 'data');
     const first = start({ dataDir, args: ['--no-open'] });
@@ -183,8 +183,8 @@ suite('a second DeFlow up (EPIC-18-S8, AC3)', () => {
 
     expect(exit.code).toBe(2);
     expect(second.stderr().trim()).toBe(
-      `DeFlow up: another DeFlowd is already running (pid ${file.pid}, port ${file.port}) — ` +
-        `open http://127.0.0.1:${file.port} or run 'DeFlow status'`,
+      `deflow up: another DeFlowd is already running (pid ${file.pid}, port ${file.port}) — ` +
+        `open http://127.0.0.1:${file.port} or run 'deflow status'`,
     );
     // No stack trace, no SQLITE_BUSY, and no token anywhere in it.
     expect(second.stderr()).not.toMatch(/\bat .*:\d+:\d+/);
@@ -287,8 +287,8 @@ suite('a machine with no agent CLI installed at all (EPIC-18-S15, AC8, AC9)', ()
     const stdout = cli.stdout();
     expect(stdout).toContain('0 providers available');
     expect(stdout).toMatch(/npm install -g/);
-    expect(stdout).toContain('DeFlow-mock-agent');
-    expect(stdout).toContain('DeFlow replay');
+    expect(stdout).toContain('deflow-mock-agent');
+    expect(stdout).toContain('deflow replay');
     // No stack trace, and the sentinel key appears nowhere at all.
     expect(cli.stderr()).not.toMatch(/\bat .*:\d+:\d+/);
     expect(stdout).not.toContain('sk-ant-synthetic-sentinel');

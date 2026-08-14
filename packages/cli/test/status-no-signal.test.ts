@@ -1,5 +1,5 @@
 /**
- * KAR-18.7 AC4 / EPIC-18-S49 — `DeFlow status` signals nothing, ever.
+ * KAR-18.7 AC4 / EPIC-18-S49 — `deflow status` signals nothing, ever.
  *
  * *"And no signal is sent to the recorded pid"* is a clause about something
  * that does **not** happen, and the integration spec can only observe it for

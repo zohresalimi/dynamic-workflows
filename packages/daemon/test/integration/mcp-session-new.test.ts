@@ -2,7 +2,7 @@
  * EPIC-05-S22 — the MCP server is injected through `session/new`, and the
  * user's own configuration is never touched.
  *
- * A real turn against the real `DeFlow-mock-agent` over a real pipe, with the
+ * A real turn against the real `deflow-mock-agent` over a real pipe, with the
  * transport tee on: the assertion is about **what arrived at the agent**, and
  * the only honest source for that is the bytes on the wire. The tee lives in
  * the transport (KAR-05.7 AC1), so what it records is the frame as sent, not
@@ -208,7 +208,7 @@ suite('the stdio variant is chosen (AC1)', () => {
     expect(Object.keys(sentEntry)).not.toContain('type');
 
     const args = entry.args as string[];
-    expect(args[0]).toMatch(/DeFlow-mcp/);
+    expect(args[0]).toMatch(/deflow-mcp/);
     expect(args).toContain('--socket');
     expect(args[args.indexOf('--run') + 1]).toBe(RUN_ID);
 

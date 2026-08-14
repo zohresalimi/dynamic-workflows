@@ -58,7 +58,7 @@ already emits a single 16,024-byte line.
 - The 8 MiB frame guard, `for await` backpressure, 256 KiB blob spilling and the 1 MiB `terminal/*` ring
   buffer.
 - `ResumeNative` and `ResumeByReplay` behind one `ResumeStrategy` interface, selected from the probed row.
-- The `DeFlow-mcp` stdio bin and the MCP host over a Unix domain socket.
+- The `deflow-mcp` stdio bin and the MCP host over a Unix domain socket.
 - The two-layer conformance suite: `ajv` schema conformance over recorded frames, and
   `providerContract(adapterFactory)` parameterised over adapters. Plus the `DeFlow_RECORD=1` transport tee.
 - `detached: true` spawn, three-stage cancellation, `killTree()` and orphan reaping with a PID-reuse guard.
@@ -72,7 +72,7 @@ already emits a single 16,024-byte line.
 - A _matrix_ of direct API providers (Anthropic, OpenAI, Google, OpenRouter, Bedrock, Vertex, Ollama/vLLM)
   — M2. KAR-05.10 delivers exactly one, `read`-level, as the minimum that satisfies F3.3 and proves the
   adapter abstraction is not merely ACP-shaped. Breadth is a later problem.
-- Auth-shadowing detection (F3.8) — EPIC-08 (KAR-08.8) and `DeFlow doctor` (EPIC-18, KAR-18.4).
+- Auth-shadowing detection (F3.8) — EPIC-08 (KAR-08.8) and `deflow doctor` (EPIC-18, KAR-18.4).
 - Provider re-routing on exhaustion recorded as a `PlanPatch` (F3.9) — EPIC-11 (KAR-11.6) and EPIC-14.
 - The planner's provider-selection logic (F2.7) — EPIC-11. This epic supplies the capability row it reads.
 - ACP v2. All five agents negotiate v1; v2 ships as `schema.unstable.json` with no announced timeline. The
@@ -165,7 +165,7 @@ inside a flowing-mode handler buffers the rest of the stream in RAM.
 
 | #   | Level       | Test                                                                                                                                     | Red when                                                        |
 | --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 1   | integration | Client against `DeFlow-mock-agent`: assert `initialize` result's `protocolVersion === 1` and `typeof === 'number'`                       | No client exists                                                |
+| 1   | integration | Client against `deflow-mock-agent`: assert `initialize` result's `protocolVersion === 1` and `typeof === 'number'`                       | No client exists                                                |
 | 2   | integration | Mock configured to answer `protocolVersion: 2`; assert `NodeFailure.reason === 'adapter.handshake-failed'` and no session is opened      | The client accepts any version                                  |
 | 3   | integration | Full turn against a file-backed SQLite ledger; assert `event` rows for every `agent_message_chunk` in `seq` order matching arrival order | Events are batched or reordered                                 |
 | 4   | integration | Instrument the append with a 5 ms delay; assert `nextUpdate()` is not called until the append resolves                                   | The loop reads ahead                                            |
@@ -237,7 +237,7 @@ within a month.
 
 | #   | Level       | Test                                                                                                                                   | Red when                                                              |
 | --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| 1   | integration | Probe `DeFlow-mock-agent --capabilities claude` against file-backed SQLite; assert `caps_json` parses to the exact initialize response | The probe normalises the response                                     |
+| 1   | integration | Probe `deflow-mock-agent --capabilities claude` against file-backed SQLite; assert `caps_json` parses to the exact initialize response | The probe normalises the response                                     |
 | 2   | integration | Probe each of the five profiles; assert five rows with distinct PKs and the expected `resume`/`fork`/`list` answers                    | Profiles are collapsed                                                |
 | 3   | unit        | `canResume(geminiRow) === false` where the row has no `sessionCapabilities` key; `canResume(codexRow) === true`                        | Optional chaining returns `undefined` and is coerced truthy somewhere |
 | 4   | unit        | `mcpAcp(codexRow) === false` distinguishable from `mcpAcp(claudeRow) === undefined`                                                    | The two are flattened                                                 |
@@ -248,7 +248,7 @@ within a month.
 
 **Notes / risks** — A0-9. This is the highest-value _silent_ risk in the layer: a stale matrix does not
 produce an error, it produces a wrong routing decision hours into a run. Regenerating the fixture on every
-`DeFlow doctor` run (EPIC-18) and weekly in CI is what closes it.
+`deflow doctor` run (EPIC-18) and weekly in CI is what closes it.
 
 ---
 
@@ -510,7 +510,7 @@ mcpServers: [
 ];
 ```
 
-Ship `DeFlow-mcp` as a **second bin in the same published `DeFlow` package**: a thin shim with
+Ship `deflow-mcp` as a **second bin in the same published `deflow` package**: a thin shim with
 `StdioServerTransport` on one side and a **Unix domain socket** back to DeFlowd on the other. Use a UDS, not
 a TCP port — DeFlowd is already local and a UDS gets filesystem permissions for free instead of needing a
 loopback auth scheme. Injecting via `session/new` is the ACP-native way to give an agent DeFlow-specific
@@ -521,7 +521,7 @@ tools **without touching the user's global MCP config**, which DeFlow must never
 1. Every `session/new` carries an `mcpServers` entry of the untagged stdio shape with `command` equal to
    `process.execPath`, and a one-time `DeFlow_RUN_TOKEN` scoped to that run.
 2. A test asserts the user's vendor CLI configuration files are byte-identical before and after a run.
-3. `DeFlow-mcp` connects to DeFlowd over a UDS whose parent directory is mode `0700`; a connection presenting
+3. `deflow-mcp` connects to DeFlowd over a UDS whose parent directory is mode `0700`; a connection presenting
    a wrong or expired token is refused and the refusal is logged.
 4. `@modelcontextprotocol/sdk` is imported **only** through the deep subpaths
    `@modelcontextprotocol/sdk/server/mcp.js` and `@modelcontextprotocol/sdk/server/stdio.js`; a test asserts
@@ -530,7 +530,7 @@ tools **without touching the user's global MCP config**, which DeFlow must never
    tool round-trips to DeFlowd and back with the result visible in the ledger.
 6. When the plan advances and a new phase unlocks tools, `sendToolListChanged()` is emitted rather than
    requiring a new session.
-7. `DeFlow-mcp` exits when its stdin closes, so an agent's death does not leave a shim holding a socket.
+7. `deflow-mcp` exits when its stdin closes, so an agent's death does not leave a shim holding a socket.
 
 **Test plan (TDD)**
 
@@ -538,16 +538,16 @@ tools **without touching the user's global MCP config**, which DeFlow must never
 | --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 1   | integration | Capture the mock's received `session/new` params; assert the `mcpServers[0]` shape has no `type` discriminant and `command === process.execPath` | An `http` or `acp` variant was chosen               |
 | 2   | integration | Snapshot `~/.claude.json` (or the fixture's stand-in) before and after a run; assert byte equality                                               | DeFlow writes to the user's MCP config              |
-| 3   | integration | Spawn `DeFlow-mcp` with a bad token; assert the socket connection is refused and DeFlowd logs it                                                 | The token is not checked                            |
+| 3   | integration | Spawn `deflow-mcp` with a bad token; assert the socket connection is refused and DeFlowd logs it                                                 | The token is not checked                            |
 | 4   | unit        | Repo grep: no import of `'@modelcontextprotocol/sdk'` at package root                                                                            | Root import pulls express and hono into the runtime |
 | 5   | integration | Mock agent calls a registered workflow tool through the shim; assert the corresponding ledger event and the tool result reaching the agent       | The shim does not relay                             |
 | 6   | integration | Advance the plan phase; assert a `notifications/tools/list_changed` frame reaches the agent                                                      | Tools are static per session                        |
-| 7   | integration | Kill the mock agent; assert the `DeFlow-mcp` process exits within 2 s and the socket is released                                                 | The shim leaks                                      |
+| 7   | integration | Kill the mock agent; assert the `deflow-mcp` process exits within 2 s and the socket is released                                                 | The shim leaks                                      |
 
 **Notes / risks** — the MCP SDK is **not lightweight**: its dependencies include `express@^5.2.1`,
 `hono@^4.11.4`, `cors`, `jose`, `ajv`, `eventsource`, `pkce-challenge`, `express-rate-limit` and more. For a
 stdio-only server nearly all of it is dead weight that still lands in `node_modules` and slows
-`npx DeFlow up` (NF6). Deep subpath imports keep it from _loading_; if install size becomes a real problem,
+`npx deflow up` (NF6). Deep subpath imports keep it from _loading_; if install size becomes a real problem,
 vendoring a ~200-line stdio-only MCP server is a viable later move. Silver lining: `ajv` arrives
 transitively, so KAR-05.7's schema validator is free.
 
@@ -630,7 +630,7 @@ nightly behind an `@live` tag, asserting:
 
 **Notes / risks** — the normalising snapshot serializer must be registered in `test/setup.ts` **before the
 first snapshot is written**, or every snapshot is churn and the mechanism becomes noise you learn to `-u`
-past. `DeFlow doctor` (EPIC-18, KAR-18.4) is the natural home for running Layer B against the user's
+past. `deflow doctor` (EPIC-18, KAR-18.4) is the natural home for running Layer B against the user's
 actually-installed CLI versions.
 
 ---
@@ -861,7 +861,7 @@ must be visible in the product, not just in this paragraph.
    distinguishes it from the `'estimated'` ACP path (F9.1).
 6. Using this adapter emits a `provider.direct_api.used` event carrying the provider and the config key
    that authorised it, so a run's own ledger records that a credential path was taken.
-7. `DeFlow doctor` reports the adapter as configured-and-reachable, unconfigured, or configured-but-failing,
+7. `deflow doctor` reports the adapter as configured-and-reachable, unconfigured, or configured-but-failing,
    and never prints the key.
 
 **Test plan (TDD)** — write these first and observe each fail.
@@ -874,7 +874,7 @@ must be visible in the product, not just in this paragraph.
 | 4   | contract    | The KAR-05.7 battery runs green against the direct adapter with no per-adapter branches                                                      | Battery asserts on subprocess-shaped behaviour              |
 | 5   | integration | Against a local HTTP stub: a full turn completes, usage is recorded exactly, and `provider.direct_api.used` is in the ledger                 | No event; or usage recorded as estimated                    |
 | 6   | integration | Redaction sweep — run a full turn against the stub with a sentinel key, then grep the ledger, blobs, logs, spans and report for the sentinel | Key appears anywhere on disk                                |
-| 7   | e2e         | `DeFlow doctor` reports the adapter's three states and never echoes the key                                                                  | Doctor prints the key or crashes when unconfigured          |
+| 7   | e2e         | `deflow doctor` reports the adapter's three states and never echoes the key                                                                  | Doctor prints the key or crashes when unconfigured          |
 
 **Notes / risks** — the package choice is deliberately left open; select it during the story and record it
 in [02-tech-stack.md](../../02-tech-stack.md) with the pin policy, since nothing here was verified on
@@ -892,13 +892,13 @@ matching its product definition. Whichever way it goes, record the decision.
 | **~28 days across 9 stories — far over the ~15-day guidance for one epic.** This is the largest epic in M1 and it sits on the critical path (W3 gates W4, which gates everything else).                                                | **Critical (schedule)** | Two named reductions: defer KAR-05.8 per [§8.5](../../07-provider-adapter-layer.md) (−4 to 5 days, and F3.2 goes knowingly unmet at M1), and land KAR-05.6 after KAR-05.7 so the MCP host is not blocking the conformance suite. The remaining ~19 days are irreducible: they _are_ the provider-neutrality thesis. Do not attempt to compress KAR-05.4 — it is the availability story. |
 | **A0-1: the full ACP prompt cycle has never been executed against any agent.** Streaming, permission prompts and cancellation are spec-read, not observed.                                                                             | **Critical**            | M0-S1 is a hard Definition-of-Ready gate on this epic, and the project's kill criterion attaches to it. Do not start KAR-05.1 with S1 open.                                                                                                                                                                                                                                             |
 | **A0-2: the Claude Code and Codex ACP adapters are community-maintained bridges, not first-party.** Their fidelity to the underlying CLI is unproven, and they are the two most important providers.                                   | High                    | KAR-05.7's battery targets the **adapters**, not just the natively-ACP agents. Golden recordings keyed on the exact adapter version make a fidelity regression a visible diff.                                                                                                                                                                                                          |
-| **A0-9: the capability matrix is a snapshot of 2026-08-02 and two of five versions were published that day.** A stale matrix produces a wrong routing decision, not an error.                                                          | High (silent)           | KAR-05.2 makes it a probed row with a three-part PK; `DeFlow doctor` regenerates it; CI re-probes weekly.                                                                                                                                                                                                                                                                               |
+| **A0-9: the capability matrix is a snapshot of 2026-08-02 and two of five versions were published that day.** A stale matrix produces a wrong routing decision, not an error.                                                          | High (silent)           | KAR-05.2 makes it a probed row with a three-part PK; `deflow doctor` regenerates it; CI re-probes weekly.                                                                                                                                                                                                                                                                               |
 | **A0-3: whether ACP surfaces token usage or compaction at all is unverified.** If it does not, the ACP-first path silently costs F9.1 and F10.5.                                                                                       | High                    | Answered explicitly in M0-S1. Fallback is `tokenAccounting: 'estimated'` on the ACP path with the UI degrading honestly rather than fabricating a number.                                                                                                                                                                                                                               |
 | **Vendor flag churn.** Three breakages were already visible on 2026-08-02 (`--permission-prompt-tool`, `codex exec --full-auto`, Gemini's `--experimental-acp` and `--allowed-tools`). Assume every vendor flag moves within 6 months. | High                    | Monthly `--help` capture diffed against the recorded baseline; conformance suite on `doctor`; KAR-05.3's argv snapshots turn a change into a review diff.                                                                                                                                                                                                                               |
 | **A0-4: ACP v2 removes `fs/*` and `terminal/*` from the client**, with no announced timeline.                                                                                                                                          | Medium                  | The two-fronts split in KAR-05.1: transport-neutral services with ~15-line ACP fronts and ~15-line MCP fronts. About an hour of work now; avoids rewriting the most security-sensitive code in the daemon.                                                                                                                                                                              |
 | **A0-6: `@lydell/node-pty` is `1.2.0-beta.14`,** a beta of a community fork and the only native dependency.                                                                                                                            | Medium                  | Only DeFlow's own `terminal/*` needs a pty; no agent does. Pin exactly, keep it an `optionalDependency`, ship a plain-`spawn` no-TTY fallback so a platform without a prebuild degrades rather than failing installation.                                                                                                                                                               |
 | **A0-10: Windows process-tree termination untested.** POSIX `detached: true` + `process.kill(-pid)` does not transfer.                                                                                                                 | Medium (M3)             | `killTree()` abstraction from day one with an explicit Win32 not-implemented throw. Windows is NF5/M3.                                                                                                                                                                                                                                                                                  |
-| **MCP SDK weight slows `npx DeFlow up` (NF6).**                                                                                                                                                                                        | Medium                  | Deep-subpath imports only, asserted by a repo grep. Vendoring a ~200-line stdio-only server is the escape hatch.                                                                                                                                                                                                                                                                        |
+| **MCP SDK weight slows `npx deflow up` (NF6).**                                                                                                                                                                                        | Medium                  | Deep-subpath imports only, asserted by a repo grep. Vendoring a ~200-line stdio-only server is the escape hatch.                                                                                                                                                                                                                                                                        |
 
 **Requirement coverage notes.** F3.3 (direct API adapter) is covered by **KAR-05.10**, added after the
 reconciled board found it was the only P0 requirement in PRD §11's M1 line with no story delivering it.

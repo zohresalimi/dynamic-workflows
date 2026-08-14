@@ -30,15 +30,15 @@ export const MCP_SERVER_NAME = 'DeFlow';
 export const RUN_TOKEN_ENV = 'DeFlow_RUN_TOKEN';
 
 /**
- * The `DeFlow-mcp` entry point, absolute.
+ * The `deflow-mcp` entry point, absolute.
  *
- * A second bin of the published `DeFlow` package (docs/07-provider-adapter-layer.md
+ * A second bin of the published `deflow` package (docs/07-provider-adapter-layer.md
  * §7.2); it lives here because the MCP SDK is @DeFlow/daemon's dependency and
  * nobody else's. EPIC-18's bundler is what turns this path into the published
  * `dist/` one — resolved from `import.meta.url` rather than from `cwd` so it
  * survives that move without a lookup.
  */
-export const DEFLOW_MCP_ENTRY = fileURLToPath(new URL('../../bin/DeFlow-mcp.ts', import.meta.url));
+export const DEFLOW_MCP_ENTRY = fileURLToPath(new URL('../../bin/mcp.ts', import.meta.url));
 
 export interface McpServerEntryOptions {
   /** The shim's entry point. Defaults to `DEFLOW_MCP_ENTRY`. */

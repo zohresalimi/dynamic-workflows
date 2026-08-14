@@ -1,5 +1,5 @@
 /**
- * KAR-14.2 AC8 — the ceiling section of `DeFlow doctor`.
+ * KAR-14.2 AC8 — the ceiling section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy ahead
  * of it existing, the same split `../tokens/doctor.ts` uses for the calibration
@@ -81,7 +81,7 @@ export function budgetCeilingLines(input: BudgetCeilingReportInput): readonly st
   return lines;
 }
 
-/** The whole section, as `DeFlow doctor` will print it. */
+/** The whole section, as `deflow doctor` will print it. */
 export function renderBudgetCeilingReport(input: BudgetCeilingReportInput): string {
   return ['budget ceilings:', ...budgetCeilingLines(input).map((line) => `  ${line}`)].join('\n');
 }

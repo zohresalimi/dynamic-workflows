@@ -1,5 +1,5 @@
 /**
- * KAR-18.2 — `DeFlow up` and the port: one answer, reported identically
+ * KAR-18.2 — `deflow up` and the port: one answer, reported identically
  * everywhere, and a pinned port that is a contract rather than a preference.
  *
  * The failure EPIC-18-S9 exists to catch is not "the daemon did not start". It

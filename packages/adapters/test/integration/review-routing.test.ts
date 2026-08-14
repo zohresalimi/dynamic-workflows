@@ -3,7 +3,7 @@
  * produced.
  *
  * `test/pick-reviewer.test.ts` proves the rule over synthetic rows. This file
- * proves the input is real: two `DeFlow-mock-agent` binaries are spawned under
+ * proves the input is real: two `deflow-mock-agent` binaries are spawned under
  * different names with different `--capabilities` profiles, their `initialize`
  * responses are persisted by the real probe into a real file-backed table, and
  * the routing decision is read back out of those rows.

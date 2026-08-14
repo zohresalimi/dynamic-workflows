@@ -1,6 +1,6 @@
 /**
  * KAR-10.1 — `submitTask`: the one function behind both entry points named in
- * the epic, `POST /api/runs` (../http/api.ts) and `DeFlow run "…"`
+ * the epic, `POST /api/runs` (../http/api.ts) and `deflow run "…"`
  * (@DeFlow/cli). Both call this; neither re-implements it (AC7).
  *
  * What it does, in order, matches AC1-AC6 exactly:
@@ -94,8 +94,8 @@ export interface RunIntakePorts {
    * — a spec constructing these ports directly, a fixture, a supervisor — has
    * no honest basis on which to refuse anybody, and refusing on the strength of
    * a `PATH` it happened to inherit would be worse than not asking. `boot()`
-   * supplies it whenever it was given `providerRoots`, which `DeFlow up` and
-   * `DeFlow run`'s autostart always do.
+   * supplies it whenever it was given `providerRoots`, which `deflow up` and
+   * `deflow run`'s autostart always do.
    *
    * KAR-19.10 — it takes the operator's `--provider`, because an explicitly
    * named provider is honoured exactly or the run is refused (AC8), and that
@@ -109,7 +109,7 @@ export type RunIntakeSubmitter = 'ui' | 'cli';
 export interface RunIntakeRequest {
   /** The parsed JSON body — validated here, so a caller need not pre-validate. */
   readonly body: unknown;
-  /** `'ui'` for `POST /api/runs`, `'cli'` for `DeFlow run` (AC7). */
+  /** `'ui'` for `POST /api/runs`, `'cli'` for `deflow run` (AC7). */
   readonly by: RunIntakeSubmitter;
   /** The `Idempotency-Key` header, if the caller sent one (AC6). */
   readonly idempotencyKey?: string;
@@ -217,7 +217,7 @@ function memoisedSeq(response: string | null): number | null {
 }
 
 /**
- * Handles one `POST /api/runs` (or `DeFlow run`) request end to end.
+ * Handles one `POST /api/runs` (or `deflow run`) request end to end.
  *
  * Never throws for an ordinary rejection — a bad request, a missing file, an
  * unreachable issue all come back as `{ outcome: 'rejected' }`. It throws only

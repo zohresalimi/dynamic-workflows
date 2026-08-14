@@ -1,5 +1,5 @@
 /**
- * What a run does *after* `DeFlow run` has submitted it, for the CLI specs that
+ * What a run does *after* `deflow run` has submitted it, for the CLI specs that
  * have to watch one.
  *
  * ## Why this file exists at all
@@ -8,7 +8,7 @@
  * the ticker (KAR-19.1), `packages/daemon/src/pipeline/run-chain.ts` is
  * `compilePlanV1`'s one shipped caller (KAR-19.3), `.../run-execution.ts` is
  * `executeRun`'s (KAR-19.4), and both composition roots bind all three ports
- * (KAR-19.5). A `DeFlow run` on a machine with only the bundled agent goes all
+ * (KAR-19.5). A `deflow run` on a machine with only the bundled agent goes all
  * the way to `run.completed`, and `e2e/smoke/live-run.test.ts` asserts exactly
  * that, end to end, against the built binary.
  *

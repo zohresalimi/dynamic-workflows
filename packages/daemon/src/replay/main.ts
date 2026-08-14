@@ -1,5 +1,5 @@
 /**
- * KAR-16.5 AC8 — `pnpm dev:replay`, and the entry point `DeFlow replay` will
+ * KAR-16.5 AC8 — `pnpm dev:replay`, and the entry point `deflow replay` will
  * call once EPIC-18 owns the binary.
  *
  * Run directly, as TypeScript, by `node` — the same way `../main.ts` is, and
@@ -71,7 +71,7 @@ let stopping = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (stopping) return;
   stopping = true;
-  replay.info({ signal }, 'DeFlow replay stopping');
+  replay.info({ signal }, 'deflow replay stopping');
 
   // `node --watch` spawns the replacement as soon as this process is gone, so
   // the port has to be released promptly or the next life fails with

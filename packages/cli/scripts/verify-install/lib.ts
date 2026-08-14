@@ -157,8 +157,8 @@ export function packGoodTarball(options: PackOptions = {}): PackedTarball {
     must('pnpm build', run('node', ['packages/cli/scripts/build.ts'], repoRoot));
   }
   if (options.skipPackCheck !== true) {
-    must('pnpm pack:check', run('pnpm', ['--filter', 'DeFlow', 'exec', 'publint'], repoRoot));
-    must('attw --pack', run('pnpm', ['--filter', 'DeFlow', 'exec', 'attw', '--pack'], repoRoot));
+    must('pnpm pack:check', run('pnpm', ['--filter', 'deflow', 'exec', 'publint'], repoRoot));
+    must('attw --pack', run('pnpm', ['--filter', 'deflow', 'exec', 'attw', '--pack'], repoRoot));
   }
   const destDir = options.destDir ?? mkdtempSync(join(tmpdir(), 'DeFlow-pack-'));
   const packed = must(
@@ -313,7 +313,7 @@ export interface CliProcess {
 
 export interface SpawnInstalledOptions {
   readonly tgz: string;
-  readonly bin: 'DeFlow' | 'DeFlow-mock-agent' | 'DeFlow-mcp';
+  readonly bin: 'deflow' | 'deflow-mock-agent' | 'deflow-mcp';
   readonly argv: readonly string[];
   readonly install: CliInstall;
   /** Directories prepended to PATH, before node's own and git's. */
@@ -393,12 +393,12 @@ export type DaemonOutcome = 'absent' | 'stopped' | 'killed' | 'refused';
 /**
  * Stops the daemon recorded in `<dataDir>/daemon.json`, by pid.
  *
- * Killing the npx child is not enough and is not the same thing. `DeFlow up`
+ * Killing the npx child is not enough and is not the same thing. `deflow up`
  * is reached through npx — on Linux through an `sh -c` wrapper — and the
  * signal does not always arrive at the process that holds the port, the
  * `flock` and the ledger. What always identifies it is the pid the daemon
  * itself wrote down, which is exactly how `e2e/run.test.ts` stops the daemon
- * `DeFlow run` autostarts.
+ * `deflow run` autostarts.
  *
  * A release gate that leaves a listening daemon and a held lock on the machine
  * has not finished, whatever its exit code says — so this escalates: SIGTERM,
@@ -464,12 +464,12 @@ export async function waitForUrl(cli: CliProcess, timeoutMs = 30_000): Promise<s
     if (match !== null) return match[0];
     if (cli.child.exitCode !== null) {
       throw new Error(
-        `DeFlow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
+        `deflow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
       );
     }
     await sleep(50);
   }
-  throw new Error(`DeFlow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
+  throw new Error(`deflow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
 }
 
 /**
@@ -525,7 +525,7 @@ export interface InstalledAgentTurns {
  * criterion gives as its reason: *"the inlined daemon, the inlined mock agent
  * and the shipped UI are all present in one artefact"*.
  *
- * `npx <tgz> doctor` with the tarball's own `DeFlow-mock-agent` shimmed onto
+ * `npx <tgz> doctor` with the tarball's own `deflow-mock-agent` shimmed onto
  * `PATH` makes the **installed daemon spawn the installed agent** and hold
  * real ACP conversations with it: an `initialize` whose response is what the
  * capability matrix is regenerated from (AR-5 — the matrix is never a
@@ -552,7 +552,7 @@ export interface InstalledAgentTurns {
  * gate red for a reason it is not looking at.
  *
  * **It counts one provider's battery, and it is the shimmed one.** KAR-19.7 put
- * a `mock` entry in `PROVIDER_SPECS`, and the bundled `DeFlow-mock-agent`
+ * a `mock` entry in `PROVIDER_SPECS`, and the bundled `deflow-mock-agent`
  * resolves under its own name inside every installed tarball — so from this
  * story on, doctor always has at least one agent that answers. Reading
  * *whichever* conformance row carried a count would therefore make this gate
@@ -568,7 +568,7 @@ export async function assertInstalledAgentDrivesTurns(options: {
 }): Promise<InstalledAgentTurns> {
   const doctor = await runInstalled({
     tgz: options.tgz,
-    bin: 'DeFlow',
+    bin: 'deflow',
     argv: ['doctor', '--json'],
     install: options.install,
     binDirs: [options.binDir],
@@ -665,13 +665,13 @@ export async function shimMockAgent(binDir: string, mockAgentBin: string): Promi
   return path;
 }
 
-/** The installed tarball's own `DeFlow-mock-agent`, resolved off the npx cache
+/** The installed tarball's own `deflow-mock-agent`, resolved off the npx cache
  * this process just populated by running a `DeFlow` subcommand once. */
 export async function findInstalledMockAgent(npmCacheDir: string): Promise<string> {
   const npxRoot = join(npmCacheDir, '_npx');
   const entries = await readdir(npxRoot);
   for (const entry of entries) {
-    const candidate = join(npxRoot, entry, 'node_modules/.bin/DeFlow-mock-agent');
+    const candidate = join(npxRoot, entry, 'node_modules/.bin/deflow-mock-agent');
     try {
       statSync(candidate);
       return candidate;
@@ -680,6 +680,6 @@ export async function findInstalledMockAgent(npmCacheDir: string): Promise<strin
     }
   }
   throw new Error(
-    `no DeFlow-mock-agent found under ${npxRoot} — did a DeFlow subcommand run first?`,
+    `no deflow-mock-agent found under ${npxRoot} — did a DeFlow subcommand run first?`,
   );
 }

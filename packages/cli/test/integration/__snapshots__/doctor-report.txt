@@ -1,4 +1,4 @@
-DeFlow doctor
+deflow doctor
 
 Runtime
   runtime.node           ✓ ok  Node 24.3.0 meets the >= 24 floor

@@ -1,5 +1,5 @@
 /**
- * `DeFlow run` as an operator meets it: a real process, a real signal, a real
+ * `deflow run` as an operator meets it: a real process, a real signal, a real
  * exit code.
  *
  * The in-process specs next door drive `runRun` directly, which is right for
@@ -49,7 +49,7 @@ function nodeOnlyDir(): string {
 /**
  * A directory holding `node` and nothing else, plus git's, and nothing more.
  *
- * git is on it because `DeFlow run` refuses to start a run on a machine whose
+ * git is on it because `deflow run` refuses to start a run on a machine whose
  * git is below 2.38 (AC6's fifth code) — a hermetic PATH with no git at all
  * would make every spec here exit 5 for a reason none of them is about.
  */
@@ -129,7 +129,7 @@ export function daemonFile(dataDir: string): DaemonFile | null {
  * Not `authorizedFetch()` from the testkit: that one carries
  * `TEST_DAEMON_TOKEN`, which is right for a daemon a spec booted with it and
  * wrong here — this daemon minted its own 32 random bytes, and reading them out
- * of the file it wrote is the same handoff `DeFlow run` itself performs.
+ * of the file it wrote is the same handoff `deflow run` itself performs.
  */
 export async function api(
   dataDir: string,

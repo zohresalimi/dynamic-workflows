@@ -368,7 +368,7 @@ export {
   type StoredRateLimit,
 } from './rate-limits.ts';
 // KAR-16.5 — restoring a recorded run into an *empty* ledger, `seq` gaps and
-// all, so `DeFlow replay` serves a fixture through the normal routes rather
+// all, so `deflow replay` serves a fixture through the normal routes rather
 // than through a second read path the UI would have to know about.
 export {
   InvalidRecordedEvent,

@@ -1,5 +1,5 @@
 /**
- * `DeFlow status` (KAR-18.7) — what is running, answered from evidence.
+ * `deflow status` (KAR-18.7) — what is running, answered from evidence.
  *
  * The troubleshooting table in
  * [docs/03-local-development.md §13](../../../docs/03-local-development.md)
@@ -46,7 +46,7 @@ import process from 'node:process';
 import { type Report, type ReportSection, renderReport } from './render/report.ts';
 import { plainStyle, type Style } from './render/style.ts';
 
-/** What `DeFlow status`'s flags mean, once parsed. */
+/** What `deflow status`'s flags mean, once parsed. */
 export interface StatusArgs {
   readonly json: boolean;
 }
@@ -57,7 +57,7 @@ export type ParsedStatusArgs =
 
 /**
  * `status`'s argv. One flag, and an unknown one is a refusal rather than
- * noise — the same rule `DeFlow up` follows, for the same reason.
+ * noise — the same rule `deflow up` follows, for the same reason.
  */
 export function parseStatusArgs(argv: readonly string[]): ParsedStatusArgs {
   let json = false;
@@ -72,7 +72,7 @@ export function parseStatusArgs(argv: readonly string[]): ParsedStatusArgs {
       json = true;
       continue;
     }
-    return { ok: false, message: `DeFlow status: unknown option ${JSON.stringify(argument)}` };
+    return { ok: false, message: `deflow status: unknown option ${JSON.stringify(argument)}` };
   }
   return { ok: true, args: { json } };
 }
@@ -354,7 +354,7 @@ function runsSection(status: RunningStatus): ReportSection {
           id: 'ledger',
           state: 'warn',
           detail: `the ledger could not be read: ${status.ledgerError}`,
-          action: `run 'DeFlow doctor' — it reports why ${status.dataDir} cannot be read`,
+          action: `run 'deflow doctor' — it reports why ${status.dataDir} cannot be read`,
         },
       ],
     };
@@ -378,7 +378,7 @@ function runsSection(status: RunningStatus): ReportSection {
 export function toReport(status: DaemonStatus): Report {
   if (status.kind === 'none') {
     return {
-      title: 'DeFlow status',
+      title: 'deflow status',
       sections: [
         {
           title: 'Daemon',
@@ -387,7 +387,7 @@ export function toReport(status: DaemonStatus): Report {
               id: 'daemon',
               state: 'skipped',
               detail: `no daemon is running: there is no ${status.daemonFile}`,
-              action: "run 'DeFlow up' to start one",
+              action: "run 'deflow up' to start one",
             },
           ],
         },
@@ -397,7 +397,7 @@ export function toReport(status: DaemonStatus): Report {
 
   if (status.kind === 'stale') {
     return {
-      title: 'DeFlow status',
+      title: 'deflow status',
       sections: [
         {
           title: 'Daemon',
@@ -406,7 +406,7 @@ export function toReport(status: DaemonStatus): Report {
               id: 'daemon',
               state: 'warn',
               detail: `stale — ${staleDetail(status)}`,
-              action: "run 'DeFlow up' — it will take over cleanly",
+              action: "run 'deflow up' — it will take over cleanly",
             },
             {
               id: 'signal',
@@ -420,7 +420,7 @@ export function toReport(status: DaemonStatus): Report {
   }
 
   return {
-    title: 'DeFlow status',
+    title: 'deflow status',
     sections: [
       {
         title: 'Daemon',
@@ -500,7 +500,7 @@ export interface StatusResult {
   readonly stderr: '';
 }
 
-/** `DeFlow status` — the whole command, minus the process it runs in. */
+/** `deflow status` — the whole command, minus the process it runs in. */
 export function runStatus(
   options: StatusOptions & { readonly json?: boolean; readonly style?: Style } = {},
 ): StatusResult {

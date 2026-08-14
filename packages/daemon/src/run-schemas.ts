@@ -29,7 +29,7 @@ import { runSchemaFileName, serializeSchemaDocument, toJsonSchemaDocuments } fro
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** `<runRoot>/.DeFlow/schemas` — where `DeFlow init` puts the contracts. */
+/** `<runRoot>/.DeFlow/schemas` — where `deflow init` puts the contracts. */
 export function runSchemasDir(runRoot: string): string {
   return join(runRoot, '.DeFlow', 'schemas');
 }

@@ -1,6 +1,6 @@
 /**
  * KAR-19.4 AC1 / KAR-19.5 — the composition root's half of node execution: the
- * `RunExecutionResolver` `DeFlow up` hands `createRunExecution`.
+ * `RunExecutionResolver` `deflow up` hands `createRunExecution`.
  *
  * This is the second and last unbound port of the 2026-08-12 failure.
  * `run-execution.ts` gave `executeRun` a shipped caller and `boot()` has taken
@@ -93,7 +93,7 @@ const digests = new Map<string, string>();
  * payload requires a bare sha256 (`NodeStartedSchema`), and `appendEvents` does
  * not validate payloads on write — so a performer that passed `''` writes an
  * event the ledger stores happily and `parseEvent` then refuses on **read**.
- * The row is in the file, the SSE stream drops it, and `DeFlow run` never
+ * The row is in the file, the SSE stream drops it, and `deflow run` never
  * learns the node started, so it never follows the node's `io_chunk` tail and
  * the operator sees a run with no agent output at all. That is precisely the
  * 2026-08-12 symptom, reproduced by a two-character shortcut, and it is what
@@ -197,7 +197,7 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
     if (chosen === null) {
       throw new NodeFailureError(
         `no adapter on this machine both resolves on the operator's PATH and has a probed ` +
-          `capability row, so ${command.node} cannot be run; 'DeFlow doctor' reports what this ` +
+          `capability row, so ${command.node} cannot be run; 'deflow doctor' reports what this ` +
           'daemon found when it started',
         {
           reason: 'adapter.capability-missing',

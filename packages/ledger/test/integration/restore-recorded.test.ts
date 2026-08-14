@@ -3,7 +3,7 @@
  *
  * Verifies: EPIC-16-S31, EPIC-16-S32, EPIC-16-S34 · AC1, AC6, AC9
  *
- * `DeFlow replay` serves the **normal** routes, and every one of them reads
+ * `deflow replay` serves the **normal** routes, and every one of them reads
  * SQLite. So a fixture becomes servable by being restored into a real
  * `ledger.db`, which is the whole reason the harness needs no second read path
  * and the UI needs no branch: the daemon it talks to is a daemon.
@@ -153,7 +153,7 @@ suite('what restoring refuses to be used for', () => {
   }) => {
     const db = openLedger(tmp);
     try {
-      // `DeFlow replay` commits a recording in the slices its speed schedule
+      // `deflow replay` commits a recording in the slices its speed schedule
       // makes due, so the stream delivers a run over time exactly as the live
       // daemon's writer would. Each slice is ahead of the last.
       await restoreRecordedEvents(db, [event({ seq: 4 }), event({ seq: 5 })]);

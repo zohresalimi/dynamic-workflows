@@ -7,7 +7,7 @@
  * is not guaranteed stable before 2.45, so that band is a warning only.
  *
  * This module holds the policy and the pure parsing/classification.
- * `DeFlow doctor` (EPIC-18, KAR-18.4) is the CLI surface that will call
+ * `deflow doctor` (EPIC-18, KAR-18.4) is the CLI surface that will call
  * `checkGitVersion`; `assertGitVersionSupported` is what a run-start path
  * throws through ahead of that command existing (AC6).
  */

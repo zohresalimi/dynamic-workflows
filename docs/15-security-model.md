@@ -79,7 +79,7 @@ they belong in CI ([testing strategy](./14-testing-strategy.md)):
    `**/.claude/**`, `**/.codex/**`, `**/.config/gh/**`, `**/.aws/credentials`, `**/.ssh/**`,
    `**/Library/Keychains/**`. Run the full mock-agent run suite (D17) against the recording double
    and the whole daemon is covered, not just the code someone remembered to test.
-4. **A no-provider-SDK test.** Assert that the production dependency closure of the `DeFlow` package
+4. **A no-provider-SDK test.** Assert that the production dependency closure of the `deflow` package
    contains no model-provider SDK (`@anthropic-ai/sdk`, `openai`, `@google/generative-ai`, …). The
    direct-API adapter (F3.3) is the deliberate exception in §2.3 and is a separate, optional entry
    point — if it is ever inlined into the core bundle, this test fails.
@@ -133,7 +133,7 @@ The failure mode is the silent one:
 
 DeFlow treats this as a detectable condition and surfaces it loudly (F3.8):
 
-- **At `DeFlow doctor`:** report every provider whose environment contains an auth-shadowing variable,
+- **At `deflow doctor`:** report every provider whose environment contains an auth-shadowing variable,
   naming the variable and stating which credential will actually be used.
 - **At run start:** if a node's provider config selects subscription auth but a shadowing variable is
   present in DeFlowd's own environment, **strip it from the child environment** (§4) so subscription
@@ -175,7 +175,7 @@ network position. Same-origin policy does not save you: the browser believes the
 | **Host validation**        | Reject requests whose `Host` header is not a loopback name or the configured bind address — the second half of the rebinding defence.                                                                                                                                               |
 | **No credentials in URLs** | The token never appears in a query string, so it never lands in a proxy log, a shell history or a browser history entry.                                                                                                                                                            |
 
-**Getting the token into the browser without leaking it.** `DeFlow up` prints a URL with the token in
+**Getting the token into the browser without leaking it.** `deflow up` prints a URL with the token in
 the **fragment**: `http://127.0.0.1:7777/#token=<token>`. Fragments are never sent to the server, so
 the token cannot appear in any access log. The UI reads it once, stores it in `sessionStorage`, strips
 it from the address bar, and sends it as an `Authorization` header thereafter.

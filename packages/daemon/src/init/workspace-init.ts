@@ -1,5 +1,5 @@
 /**
- * KAR-18.1 — `DeFlow init`'s workspace bootstrap.
+ * KAR-18.1 — `deflow init`'s workspace bootstrap.
  *
  * Two halves of `.DeFlow/` are not interchangeable (docs/16-repo-layout.md
  * §7.1). `config.yaml`, `gates/`, `templates/`, `memory/` and
@@ -44,7 +44,7 @@ export class NotAGitWorkingTree extends Error {
   readonly cwd: string;
 
   constructor(cwd: string) {
-    super("DeFlow init: not inside a git working tree (run 'git init' first)");
+    super("deflow init: not inside a git working tree (run 'git init' first)");
     this.name = 'NotAGitWorkingTree';
     this.cwd = cwd;
   }
@@ -56,7 +56,7 @@ export class DataDirUnwritable extends Error {
 
   constructor(path: string, code: string, cause: unknown) {
     super(
-      `DeFlow init: could not create the global state directory at ${path} (${code}) — set ` +
+      `deflow init: could not create the global state directory at ${path} (${code}) — set ` +
         'XDG_DATA_HOME to a writable location, or fix the permissions on this one, and try again',
       { cause },
     );
@@ -208,7 +208,7 @@ export async function initWorkspace(cwd: string, ports: InitPorts): Promise<Init
     const validation = validateAgainstConfigSchema(configJsonSchema(), {});
     if (!validation.valid) {
       throw new Error(
-        `DeFlow init: the config.yaml it just generated does not validate against ` +
+        `deflow init: the config.yaml it just generated does not validate against ` +
           `.DeFlow/schemas/${CONFIG_SCHEMA_FILE}: ${JSON.stringify(validation.errors)}`,
       );
     }

@@ -1,5 +1,5 @@
 /**
- * KAR-09.4 AC4 — the forbid-to-allow-only line in `DeFlow doctor`.
+ * KAR-09.4 AC4 — the forbid-to-allow-only line in `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy ahead
  * of it existing, the same split `../src/tokens/doctor.ts` already uses for the

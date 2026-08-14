@@ -10,7 +10,7 @@
  *
  * So this asks the **same question of two daemons** and diffs the answers. One
  * is served the recorded `ledger.db` `gate-failure-repair` was produced into by
- * a real repair loop; the other is `DeFlow replay` over that same run's
+ * a real repair loop; the other is `deflow replay` over that same run's
  * `events.jsonl` export. Every route AC1 names is fetched from both, and the
  * JSON must match — not merely in shape, but value for value, because a shape
  * comparison would pass a harness that served an empty list where the daemon

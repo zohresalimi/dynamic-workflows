@@ -222,7 +222,7 @@ suite('compilePinnedSegments is the only composer of the pinned bytes (AC2)', ()
   });
 
   /**
-   * AC6's last clause. `DeFlow doctor` reports forbid-over-allow-only and a
+   * AC6's last clause. `deflow doctor` reports forbid-over-allow-only and a
    * rising ratio is the leading indicator of the §4.2 decay, so the number has
    * to be a count of what the prompt *says* — not of what the caller passed in
    * before the restatement pass ran on it.

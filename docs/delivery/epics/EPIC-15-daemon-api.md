@@ -19,7 +19,7 @@
 ## Goal
 
 At the end of this epic there is exactly one API and exactly one event stream, and both the browser
-UI and the `DeFlow` CLI are clients of them through the same typed module. A tab opens **one**
+UI and the `deflow` CLI are clients of them through the same typed module. A tab opens **one**
 multiplexed SSE connection for its whole lifetime, subscribes and unsubscribes runs on it without
 reconnecting, and can rejoin the log at an exact sequence after a reconnect, a page reload or a
 daemon restart without losing or duplicating a single event. Every request except `GET /api/health`
@@ -106,7 +106,7 @@ retrofit:
 - The ledger schema, the `event_run_seq` covering index, the read-only connection pool and
   `daemon_epoch` — [EPIC-03](./EPIC-03-event-ledger.md). This epic consumes them and asserts the
   properties it depends on.
-- `DeFlow up` / `init` / `doctor` themselves — [EPIC-18](./EPIC-18-cli-packaging.md). This epic
+- `deflow up` / `init` / `doctor` themselves — [EPIC-18](./EPIC-18-cli-packaging.md). This epic
   defines the token file the bootstrap writes and the `/health` endpoint the bootstrap polls.
 - The `SharedWorker` + `BroadcastChannel` hardening that would reduce N tabs to one connection
   total — explicitly deferred in [11 §2](../../11-api-and-realtime.md); roughly half a day, and not
@@ -142,7 +142,7 @@ retrofit:
       entry).
 - [ ] Every scenario in [the flow file](../flows/EPIC-15-daemon-api-flows.md) exists as an automated
       test at the level its `Automated at:` line names, and passes.
-- [ ] `DeFlow replay <fixture>` serves a recorded ledger over **the same HTTP + SSE contract as a
+- [ ] `deflow replay <fixture>` serves a recorded ledger over **the same HTTP + SSE contract as a
       live run**, at configurable speed — proven by running the same client test suite against both.
 - [ ] The Playwright smoke _"live SSE: replay at speed, kill the connection, assert the UI reconnects
       and backfills without a gap or a duplicate"_ passes.
@@ -273,7 +273,7 @@ native `EventSource` cannot send custom headers, and a design built on it forces
 query string, where it lands in shell history, terminal scrollback, browser history, the `Referer`
 header of any outbound link, and any access log anyone ever adds. For a long-lived token that
 authorises spawning processes on the user's machine, that is unacceptable. The first-run handoff is
-therefore a **fragment**: `DeFlow up` prints `http://127.0.0.1:7777/#token=<token>`, fragments are
+therefore a **fragment**: `deflow up` prints `http://127.0.0.1:7777/#token=<token>`, fragments are
 never sent to the server, and the UI reads it once, stores it in `sessionStorage`, strips it from the
 address bar with `history.replaceState`, and sends it as an `Authorization` header thereafter.
 
@@ -293,7 +293,7 @@ address bar with `history.replaceState`, and sends it as an `Authorization` head
    rejected.
 6. A request with no `Origin` header at all (the CLI, `curl`) is **accepted** when the token is valid
    — origin validation rejects a _present and wrong_ origin, not an absent one.
-7. **First-run handoff.** `DeFlow up` generates 32 bytes from `crypto.randomBytes`, base64url-encodes
+7. **First-run handoff.** `deflow up` generates 32 bytes from `crypto.randomBytes`, base64url-encodes
    them, writes `.DeFlow/daemon.json` as `{ pid, port, token, startedAt }` at mode `0600` in a
    gitignored directory, and prints `http://127.0.0.1:7777/#token=<token>`. The token appears in the
    fragment only; a test asserts the daemon's own request log for that navigation contains no token
@@ -323,7 +323,7 @@ address bar with `history.replaceState`, and sends it as an `Authorization` head
 | 4   | unit        | Allowlisted origins (`http://127.0.0.1:7777`, `http://localhost:7777`) pass; absent `Origin` passes                                       | The allowlist is over-strict and breaks the CLI  |
 | 5   | unit        | `Vary: Origin` present on 200, 401, 403 and the stream response                                                                           | The header is set on success only                |
 | 6   | unit        | `Host: attacker.example` → rejected                                                                                                       | Host validation is missing                       |
-| 7   | integration | `DeFlow up` in a tmpdir: `.DeFlow/daemon.json` mode is `0600`, token is 32 bytes base64url, and the printed URL matches `#token=`         | The token is a query parameter                   |
+| 7   | integration | `deflow up` in a tmpdir: `.DeFlow/daemon.json` mode is `0600`, token is 32 bytes base64url, and the printed URL matches `#token=`         | The token is a query parameter                   |
 | 8   | integration | Request-log assertion: navigating the printed URL sends no token to the server                                                            | Fragments are misunderstood                      |
 | 9   | browser     | The UI stores the token in `sessionStorage`, `location.hash` is empty after load, and the next request carries the `Authorization` header | The token stays in the address bar               |
 | 10  | integration | Mock agent scripted to `terminal/create` a request to `127.0.0.1:<port>/api/runs` → `401`                                                 | The daemon trusts local callers                  |
@@ -441,7 +441,7 @@ no-transform`, `X-Accel-Buffering: no`, `Connection: keep-alive`, plus `X-DeFlow
 | 10  | integration | Write 20k rows while a stream is open; assert bounded `-wal` size and that no `iterate()` cursor is held        | The drain uses a lazy cursor                           |
 | 11  | integration | `io_chunk` inserts during an open stream produce no frames                                                      | The drain query is not restricted to the control plane |
 | 12  | browser     | Three run panels in one tab → one connection; then six single-run connections → a subsequent `fetch` times out  | The cap is treated as a tuning detail                  |
-| 13  | e2e         | `DeFlow replay <fixture>` at 20× drives a 400-node run over the same contract without buffering                 | Replay uses a different code path                      |
+| 13  | e2e         | `deflow replay <fixture>` at 20× drives a 400-node run over the same contract without buffering                 | Replay uses a different code path                      |
 
 **Notes / risks** — this is the largest story in the epic and the one most likely to be "finished"
 before it is correct, because every defect in it is invisible on a fast local machine with one tab
@@ -515,7 +515,7 @@ point at a different event than the one it was written for.
    `hello.build` mismatch causes the UI to prompt for a reload rather than continuing silently.
 8. Resume is correct across a real `kill -9`: the client's persisted cursor plus `?since=` recovers
    every event committed before the crash, and the crash-produced gap is not reported as loss.
-9. The `DeFlow` CLI resumes through the identical code path with no `Last-Event-ID` mechanism at all,
+9. The `deflow` CLI resumes through the identical code path with no `Last-Event-ID` mechanism at all,
    using `?since=` exclusively.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
@@ -606,7 +606,7 @@ effect journal, which is precisely the invariant that makes crash recovery sound
 > and it is right for two of them and wrong for the third. A run in `created` or
 > `awaiting-spec-approval` has nothing admitting work, so `pause` and `resume` are unchanged — but
 > `abandonRun` refuses when no F1.3 gate is open, so a run that was accepted and never framed could
-> be ended by **neither** route and accumulated in `DeFlow status` indefinitely. That is what the
+> be ended by **neither** route and accumulated in `deflow status` indefinitely. That is what the
 > three runs of 2026-08-12 did. From KAR-19.6, `planRunControl` applies the `UNAPPROVED` check
 > **below** the verb split: `cancel` on an unapproved run appends `run.cancel.requested` and
 > `run.aborted` in one transaction, and `pause` / `resume` still answer `422`.

@@ -7,7 +7,7 @@
  * real recorded events, the real `GraphCanvas`, the real ELK worker — because a
  * measurement of a simplified page is a measurement of a page nobody runs.
  *
- * The events arrive from a real `DeFlow replay stress-400 --speed max` daemon.
+ * The events arrive from a real `deflow replay stress-400 --speed max` daemon.
  * They are fetched by the script rather than by this page and handed over
  * through `window.__deflowMeasure.render`, for one boring reason: the harness is
  * served from a static origin of its own, the daemon validates `Origin`, and a

@@ -39,7 +39,7 @@ import { type ReconAgent, type ReconOutcome, runReconNode } from '../../src/reco
 import { loadSchemaDirectory } from '../../src/schema-store.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
 
-/** The repository's own emitted documents — the bytes `DeFlow init` copies. */
+/** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
 const RUN: RunId = RunIdSchema.parse('run_20260807T101500Z_ac1005');

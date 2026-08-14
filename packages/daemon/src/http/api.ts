@@ -904,14 +904,14 @@ export const api = new Hono()
    * for it yet (no event moves `RunState` until `run.created`, which is
    * KAR-10.2's to append).
    * All this route does is normalise the input into one `task.submitted` event;
-   * `submitTask` (../intake/intake.ts) owns everything else, so `DeFlow run` can
+   * `submitTask` (../intake/intake.ts) owns everything else, so `deflow run` can
    * call the exact same function rather than re-implementing this route (AC7).
    *
    * AC7 also asks for `provenance.by: 'cli'` from the CLI and `'ui'` from
    * anything else — a distinction the *documented* request body carries no field
    * for (docs/11-api-and-realtime.md §7.1's example is `input`/`cwd`/`budget`/
    * `permission` only). `X-DeFlow-Submitted-By` is that one bit, sent only by
-   * `DeFlow run` (@DeFlow/cli): a header rather than a body field, so the wire
+   * `deflow run` (@DeFlow/cli): a header rather than a body field, so the wire
    * shape AC1 documents stays exactly what it documents.
    */
   .post('/runs', async (c) => {
@@ -1023,7 +1023,7 @@ export const api = new Hono()
    * and an abandon carries nothing at all.
    *
    * All four go through `@DeFlow/daemon`'s `spec/gate.ts` — the same functions
-   * `DeFlow approve` reaches over this very route (EPIC-10-S18: two surfaces, one
+   * `deflow approve` reaches over this very route (EPIC-10-S18: two surfaces, one
    * code path). `by` comes off `X-DeFlow-Submitted-By`, the same one-bit header
    * `POST /runs` uses, so the wire shape §7.1 documents stays what it documents.
    */

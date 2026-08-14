@@ -15,7 +15,7 @@
  * with it, and a stamp that no longer matches earns `409 epoch_mismatch` — the
  * same code the stream's own `fatal` frame carries, which is one of exactly two
  * a client stops retrying on. The header is an assertion a caller *may* make,
- * never one it must: `DeFlow run` from a fresh shell has never seen a `hello`
+ * never one it must: `deflow run` from a fresh shell has never seen a `hello`
  * frame and has no epoch to name, and holding it to one it could not know would
  * make the CLI unusable to enforce a check it cannot fail.
  *

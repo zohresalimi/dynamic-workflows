@@ -9,7 +9,7 @@
  * `structuredOutputFlag` (`admitFraming`, KAR-10.2 AC3). Until this module
  * existed, the only entries that declared one were two vendor **exec-shim**
  * paths, and the bundled agent spoke ACP only. So on a machine with no vendor
- * CLI nothing could get past framing, and *"`DeFlow run` works end to end with
+ * CLI nothing could get past framing, and *"`deflow run` works end to end with
  * only the bundled mock agent"* was not a claim anybody could test.
  *
  * **The guard was not the thing to change.** A special case for the test double

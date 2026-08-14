@@ -1,10 +1,10 @@
 /**
- * KAR-16.5 AC1, AC4, AC8 — the argv `DeFlow replay` is invoked with.
+ * KAR-16.5 AC1, AC4, AC8 — the argv `deflow replay` is invoked with.
  *
  * Verifies: EPIC-16-S31, EPIC-16-S33 (the dev-loop scenario) · AC1, AC4, AC8
  *
- * `DeFlow replay fixtures/three-patches.jsonl --speed 20x --port 7777` is the
- * command the epic writes out in full, and `DeFlow replay gate-failure-repair
+ * `deflow replay fixtures/three-patches.jsonl --speed 20x --port 7777` is the
+ * command the epic writes out in full, and `deflow replay gate-failure-repair
  * --speed 50x` is the one anybody actually types — *"jumps straight to a failed
  * gate"*. Both resolve here, and a name that is neither is refused with the
  * corpus listed, because the failure mode this prevents is a harness that boots

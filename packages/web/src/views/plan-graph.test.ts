@@ -10,7 +10,7 @@
  * `happy-path-12` recording through `applyEvent` and then assert on the DOM.
  * What that leaves out is the socket, deliberately: the wire from
  * `openLedgerStream` through the store to this view is the thing
- * `e2e/plan-graph.test.ts` exists for, against a real `DeFlow replay` daemon,
+ * `e2e/plan-graph.test.ts` exists for, against a real `deflow replay` daemon,
  * because a browser spec that stubbed the transport could not tell a wired
  * application from an unwired one — which is exactly the state EPIC-16 shipped
  * in.

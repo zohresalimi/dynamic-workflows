@@ -63,7 +63,7 @@ export {
   repoRelativePosix,
   toPosix,
 } from './finding.ts';
-// KAR-12.6 AC6, AC7 — the gate-hygiene projection `DeFlow doctor` prints
+// KAR-12.6 AC6, AC7 — the gate-hygiene projection `deflow doctor` prints
 // (EPIC-18 mounts the command; this story owns the projection).
 export type { GateEvaluationSample, GateHygieneInput, GateHygieneReport } from './hygiene.ts';
 export { GATE_HYGIENE_LOW_THRESHOLD, gateHygiene } from './hygiene.ts';

@@ -54,7 +54,7 @@ function code(source: Source): Source {
  * Every shipped CLI module that turns a run's **status** into an **exit code**.
  *
  * Both halves are required, and that is the whole of the rule. Reading
- * `state.status` is not the offence — `DeFlow status` reads it to list runs,
+ * `state.status` is not the offence — `deflow status` reads it to list runs,
  * which is what a status command is — and neither is naming a code:
  * `RUN_EXIT_CODES.daemonRefused` is a fact about the machine. What AC6 forbids
  * is the *mapping*, the line that looks at how a run went and answers with a

@@ -67,7 +67,7 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
 - Assembling a `ContextPacket` and `render(segments)` — [EPIC-09](./EPIC-09-context-memory.md).
   This epic ships the shape, not the builder.
 - Persisting anything. `@DeFlow/core` has no dependency capable of I/O; the schema _files_ are
-  written by a build script in this epic, and by `DeFlow init` in
+  written by a build script in this epic, and by `deflow init` in
   [EPIC-18](./EPIC-18-cli-packaging.md), KAR-18.1.
 - The blob spill for oversized payloads — the rule is stated in the envelope's docs here, the
   mechanism is [EPIC-03](./EPIC-03-event-ledger.md), KAR-03.9.

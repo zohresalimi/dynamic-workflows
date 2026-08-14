@@ -1,6 +1,6 @@
 /**
  * KAR-16.2's e2e half — the ledger client in a **real browser**, against a real
- * `DeFlow replay` daemon.
+ * `deflow replay` daemon.
  *
  * Verifies: EPIC-16-S7 (all four scenarios), EPIC-16-S8 (scenarios 1 and 2)
  *

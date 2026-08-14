@@ -23,7 +23,7 @@ ledger the daemon reduces** — not a REST client that renders view models someo
 SSE connection per tab feeds a dispatcher; the dispatcher feeds seven pure projection modules with
 zero Vue imports; a thin Pinia shell owns reactivity and nothing else; and the whole thing survives
 a multi-hour run without the tab dying, because raw events are applied and dropped rather than
-retained. Alongside it there is `DeFlow replay`, which serves the _normal_ API and SSE contract from
+retained. Alongside it there is `deflow replay`, which serves the _normal_ API and SSE contract from
 a recorded ledger, so every view in EPIC-17 is developable offline with no credentials, no child
 processes, no quota and no three-hour wait. And there is a number — a real measurement of the graph
 renderer against a 400-node stress fixture — where the architecture currently has an estimate.
@@ -84,7 +84,7 @@ Three things break concretely if this epic is skipped or done casually:
   layout, selection, theme — explicitly **not** derived from the ledger).
 - Browser memory discipline: apply-and-drop, a bounded ~2,000-event debug ring, capped per-node
   collections, snapshot-based scrubbing, and the dev-only 60-second projection-count assertion.
-- `DeFlow replay <fixture> --speed <n>x --port <p>` and the six-fixture corpus, recorded from
+- `deflow replay <fixture> --speed <n>x --port <p>` and the six-fixture corpus, recorded from
   mock-agent runs.
 - `GraphCanvas.vue` — the facade over `@vue-flow/core` — the ELK worker, the dagre fast path, and a
   recorded, re-runnable performance measurement against `stress-400`.
@@ -125,7 +125,7 @@ Three things break concretely if this epic is skipped or done casually:
 - [ ] **M0-S3 green, or its fallback chosen.** elkjs builds in a Vite 8 worker with the ~1.6 MB
       absent from the initial chunk — or `@dagrejs/dagre@3.0.0` is confirmed as the live-graph
       layout engine with ELK on the main thread for cached scrubber layouts.
-- [ ] **At least one full run completes headlessly** through `DeFlow run`
+- [ ] **At least one full run completes headlessly** through `deflow run`
       ([EPIC-18](./EPIC-18-cli-packaging.md) KAR-18.3), so KAR-16.5's fixtures can be _recorded_
       rather than hand-written.
 - [ ] The `Event` union, `PlanGraph`, `ContextPacket`, `Verdict` and `NodeFailure` types are landed
@@ -146,12 +146,12 @@ Three things break concretely if this epic is skipped or done casually:
 - [ ] A lint rule fails the build if any file under `src/ledger/projections/` imports from `vue`.
 - [ ] A lint rule fails the build if any file outside `src/components/graph/` imports `VueFlow` or
       `@vue-flow/core`.
-- [ ] A six-hour `DeFlow replay --speed max` soak against `stress-400` ends with heap and projection
+- [ ] A six-hour `deflow replay --speed max` soak against `stress-400` ends with heap and projection
       object counts within the bounds asserted in KAR-16.4, and the debug ring at exactly its cap.
 - [ ] **The 400-node measurement exists as a committed artifact** — `docs/measurements/vue-flow-400.md`
       with the numbers, the machine, the browser build and the command to re-run it. A3-2 is no
       longer `Unverified` for this project.
-- [ ] `DeFlow replay fixtures/three-patches.jsonl --speed 20x` serves the identical `/api/*` and
+- [ ] `deflow replay fixtures/three-patches.jsonl --speed 20x` serves the identical `/api/*` and
       `/api/stream` contract a live daemon serves, and the UI code contains **no** branch on whether
       it is talking to a replay.
 - [ ] The production build's initial chunk is ≤ 200 KB gzip, asserted in CI, with elkjs, the bundled
@@ -194,7 +194,7 @@ bars, context-budget segments, gate chips, criteria rows and the version rail al
 variable, so seven views stay consistent by construction and both themes work because you only
 redefine seven values. Retrofitting hardcoded colours across nine views is the expensive path.
 
-The token handoff is the security-relevant part. `DeFlow up` prints
+The token handoff is the security-relevant part. `deflow up` prints
 `http://127.0.0.1:7777/#token=<token>`. Fragments are never sent to the server, so the token cannot
 land in an access log; the UI reads it once, puts it in `sessionStorage`, strips it from the address
 bar with `history.replaceState`, and sends it as a header thereafter
@@ -210,7 +210,7 @@ bar with `history.replaceState`, and sends it as a header thereafter
    address bar showing no fragment, at least one subsequent authenticated request carrying
    `Authorization: Bearer <t>`, and the token appearing in **no** URL the browser ever sends.
 3. Opening the app with no token and no stored token renders an explicit "paste the URL from
-   `DeFlow up`" state — not a spinner, not a blank page, and not a 401 loop.
+   `deflow up`" state — not a spinner, not a blank page, and not a 401 loop.
 4. All seven state tokens are defined for both themes; a test enumerates the seven and asserts every
    one resolves to a non-empty computed value under `:root` and under `.dark`.
 5. No state anywhere in the app is encoded by colour alone: every state chip renders a colour, a
@@ -241,7 +241,7 @@ bar with `history.replaceState`, and sends it as a header thereafter
 | 6   | web (browser) | Keyboard map: dispatch `j`, `k`, `Enter`, `/`, `Escape` and assert focus and overlay state                                                            | Handlers are bound to a component that is not always mounted |
 | 7   | web (browser) | With `prefers-reduced-motion: reduce` emulated, the node transition computed style is `none`                                                          | The media query wraps the wrong rule                         |
 | 8   | integration   | `vite build`, then assert initial-chunk gzip ≤ 200 KB and that four named modules are absent from it                                                  | A lazy route was imported eagerly                            |
-| 9   | e2e           | Boot `DeFlow replay`, open the printed URL with the fragment, assert an authenticated `/api/runs` call succeeds and no request URL contains the token | The token was put in the query string                        |
+| 9   | e2e           | Boot `deflow replay`, open the printed URL with the fragment, assert an authenticated `/api/runs` call succeeds and no request URL contains the token | The token was put in the query string                        |
 
 **Notes / risks** — do **not** ship on `vue@3.6`. It is a reactivity-core rewrite (alien-signals) plus
 Vapor Mode; Vapor buys this app nothing because every rendering-heavy dependency here is vDOM-based,
@@ -344,7 +344,7 @@ Three behaviours carry most of the risk and each has a verified footgun behind i
 | 3   | unit        | Applying a synthetic gap `4, 5, 7` leaves no error state and no refetch scheduled                                  | Gap detection was written                                         |
 | 4   | unit        | Unknown `kind` returns without mutating any projection, and still advances the cursor                              | The dispatcher throws on the default branch                       |
 | 5   | unit        | `fatal` code table — `bad_token` and `epoch_mismatch` stop retrying, others do not                                 | The stop set is inverted or missing                               |
-| 6   | integration | Against a real `DeFlow replay` daemon: cold hydrate loop until `more: false`, then stream from `cursor`            | Hydrate is a single call and drops the tail                       |
+| 6   | integration | Against a real `deflow replay` daemon: cold hydrate loop until `more: false`, then stream from `cursor`            | Hydrate is a single call and drops the tail                       |
 | 7   | integration | Reload simulation — drop the client, construct a fresh one with the persisted cursor, assert identical applied set | The client relies on `Last-Event-ID`                              |
 | 8   | integration | Server-side connection count stays at 1 while three run panels are added via `subscribe`                           | A panel opens its own `EventSource`                               |
 | 9   | integration | Backfill-on-subscribe overlap: force an overlapping range and assert projections are unchanged by the duplicates   | Projections are not seq-guarded                                   |
@@ -534,7 +534,7 @@ miserable to retrofit:
 7. Scrubbing to plan version N issues `GET /api/runs/:id/snapshot?seq=<planVersionSeq[N]>` and
    replays forward from the returned state only. A test asserts **zero** events with
    `seq < snapshot.seq` are applied during a scrub, on a fixture with 10,000 events.
-8. A **six-hour** `DeFlow replay --speed max` soak over `stress-400` ends with: JS heap growth under
+8. A **six-hour** `deflow replay --speed max` soak over `stress-400` ends with: JS heap growth under
    the agreed ceiling across the last four measured hours, projection object counts bounded by node
    and fact count, the debug ring at exactly its cap, and zero undisposed `Terminal` instances.
 9. The dev-only 60-second counter assertion is present under `import.meta.env.DEV` and is
@@ -608,7 +608,7 @@ to be one command away from being on screen, **so that** I never wait three hour
 of provider quota to style a compaction marker.
 
 **This is the single biggest DX lever in the project and it is a first-class deliverable, not
-tooling.** `DeFlow replay fixtures/three-patches.jsonl --speed 20x --port 7777` is a daemon mode that
+tooling.** `deflow replay fixtures/three-patches.jsonl --speed 20x --port 7777` is a daemon mode that
 serves the **normal** `/api/*` and `/api/stream` endpoints from a recorded ledger instead of a live
 run. The UI cannot tell the difference, because there is no difference — the browser is a projection
 of an event stream either way ([03 §6.2](../../03-local-development.md)).
@@ -624,11 +624,11 @@ What that buys, concretely:
 - **It is also the E2E driver** — the roughly five Playwright smokes run against it on an ephemeral
   port ([14 §13](../../14-testing-strategy.md)) — **and the demo tool.** The PRD's strongest internal
   demo (§15.4) is a real Voyado task shown through the plan-evolution scrubber; that is
-  `DeFlow replay` pointed at a recorded real run.
+  `deflow replay` pointed at a recorded real run.
 
 This is also precisely why there is no Storybook. DeFlow's UI is not a component library — it is
 several stateful views over one event stream, and every interesting state is _"a particular ledger at
-a particular offset"_, which `DeFlow replay` already expresses better, with real data, through the
+a particular offset"_, which `deflow replay` already expresses better, with real data, through the
 real store and the real components. Storybook would mean a second build pipeline plus a second set of
 fake props that drift from the real event shapes, to get worse fidelity
 ([14 §13](../../14-testing-strategy.md)).
@@ -647,7 +647,7 @@ encode your assumptions about the event stream rather than its actual shape, and
 
 **Acceptance criteria**
 
-1. `DeFlow replay <fixture> --speed <n>x --port <p>` boots and serves `GET /api/stream`,
+1. `deflow replay <fixture> --speed <n>x --port <p>` boots and serves `GET /api/stream`,
    `GET /api/runs/:id/events`, `GET /api/runs/:id/snapshot`, `GET /api/runs/:id/plans*`,
    `GET /api/runs/:id/nodes/*`, `GET /api/runs/:id/gates`, `GET /api/runs/:id/criteria` and
    `GET /api/runs/:id/diff` with byte-identical response shapes to a live daemon.
@@ -687,14 +687,14 @@ daemonEpoch, headSeq }`, `retry: 2000` is written once, and `: keepalive` arrive
 
 **Notes / risks** — this story **depends on something outside the frontend**: the fixtures must be
 recorded from real runs, and [roadmap §2.1](../../17-roadmap.md) is explicit that _"do not start W11
-until at least one full run completes headlessly through W12's CLI."_ That makes `DeFlow run`
+until at least one full run completes headlessly through W12's CLI."_ That makes `deflow run`
 (KAR-18.3) a genuine predecessor, and it is stated in `Depends on` even though it makes the plan look
 slower. If EPIC-18 slips, the honest interim is to record fixtures from the mock agent driven by the
 orchestrator's own test harness rather than to hand-write them — never the latter.
 
 **What shipped, and the one criterion that is only half met.**
 
-`DeFlow replay` is a *daemon mode*, not a replay server: `startReplay`
+`deflow replay` is a *daemon mode*, not a replay server: `startReplay`
 (`packages/daemon/src/replay/harness.ts`) calls the same `boot()` `DeFlowd` calls — same lease, same
 epoch, same ledger view, same `startHttp`, same auth, same `/api/*` chain, same SSE loop — and the
 only difference is the writer. `packages/daemon/src/replay/player.ts` commits the recording into the
@@ -725,7 +725,7 @@ unchanged. See the flow file's notes under EPIC-16-S32.
 `pnpm dev:replay` runs `packages/daemon/src/replay/main.ts` under `node --watch`, not
 `packages/cli/src/bin.ts replay` as [03 §5](../../03-local-development.md)'s illustrative
 `package.json` has it: there is no `bin.ts` until EPIC-18 builds the argv table. `parseReplayArgv`
-and `resolveFixture` are exported for that table to call, so wiring `DeFlow replay` to them is a
+and `resolveFixture` are exported for that table to call, so wiring `deflow replay` to them is a
 subcommand registration and not a second implementation.
 
 The five Playwright smokes of test plan row 8 are **not** here: four of them render the nine views,
@@ -837,7 +837,7 @@ relative ordering stable across plan versions with no per-node constraints at al
 | 5   | web (browser) | Keyboard traversal moves selection; `disableKeyboardA11y` is absent from the rendered options                           | A11y was disabled to stop key handlers conflicting                        |
 | 6   | web (browser) | Computed style of `.vue-flow__node` has the 200 ms transition; drag sets the disabling class; reduced-motion removes it | A bespoke `translate3d` animation was authored and Vue Flow overwrites it |
 | 7   | integration   | `vite build`, then assert the worker chunk exists, is hashed, and elkjs is absent from the initial chunk                | Worker wiring works in dev only                                           |
-| 8   | e2e           | `pnpm measure:graph` against `stress-400` through `DeFlow replay`, emitting the measurement file                        | The measurement was done by hand once and never again                     |
+| 8   | e2e           | `pnpm measure:graph` against `stress-400` through `deflow replay`, emitting the measurement file                        | The measurement was done by hand once and never again                     |
 | 9   | e2e           | Replace the facade internals with a stub renderer; every view still compiles and renders                                | Something reached past the facade                                         |
 
 **What building it settled** (KAR-16.6, 2026-08-11)

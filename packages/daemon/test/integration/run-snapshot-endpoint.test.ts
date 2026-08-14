@@ -13,7 +13,7 @@
  *
  * Verifies: EPIC-15-S45, EPIC-15-S46 · AC1, AC2, AC3, AC7, AC8 ·
  * test plan #5 (as a golden-snapshot stand-in for the not-yet-built
- * `DeFlow replay`/`three-patches` fixture — see the epic's own out-of-scope
+ * `deflow replay`/`three-patches` fixture — see the epic's own out-of-scope
  * note that EPIC-16/17/18 are downstream of this one)
  */
 import type { RunId } from '@DeFlow/core';

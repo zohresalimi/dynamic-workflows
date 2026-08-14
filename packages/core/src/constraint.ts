@@ -17,7 +17,7 @@
  * the digest was taken would make every re-injection a pin-integrity violation.
  *
  * `forbid` survives as the last resort and is *counted*: `countConstraintForms`
- * and `forbidRatio` are what `DeFlow doctor` reports, because a rising forbid
+ * and `forbidRatio` are what `deflow doctor` reports, because a rising forbid
  * ratio is a leading indicator of exactly the decay this module exists to
  * prevent.
  *
@@ -164,7 +164,7 @@ export function forbidRatio(counts: ConstraintCounts): number | null {
  * The prohibitions that *do* have a closed positive form — a review smell, not
  * an error (EPIC-09-S22 fourth scenario).
  *
- * The build succeeds either way. What this buys is `DeFlow doctor` being able
+ * The build succeeds either way. What this buys is `deflow doctor` being able
  * to name the constraint rather than only report a number, because "your forbid
  * ratio is 3" is not actionable and "`forbid write-path` has an `allow-only`
  * form" is.

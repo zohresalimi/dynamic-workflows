@@ -13,7 +13,7 @@
  * exclusion — is `packages/daemon/test/integration/reaper.test.ts`
  * (EPIC-05-S32 scenario 1), against the same `reapOrphans` this boot calls. It
  * is not repeated here; what is new at this level is that it happens over a
- * stale `daemon.json`, on `DeFlow up`, with no manual cleanup.
+ * stale `daemon.json`, on `deflow up`, with no manual cleanup.
  *
  * Verifies: EPIC-18-S13 (the stale-file half), EPIC-18-S14 (scenario 1) · AC6 ·
  * test plan #5
