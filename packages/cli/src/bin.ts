@@ -165,7 +165,7 @@ function runUntilSignalled(started: StartedUp): Promise<number> {
     const shutdown = (signal: NodeJS.Signals): void => {
       if (stopping) return;
       stopping = true;
-      process.stderr.write(`\nDeFlow up: ${signal} received, stopping\n`);
+      process.stderr.write(`\ndeflow up: ${signal} received, stopping\n`);
       void started.stop().then(
         () => resolve(0),
         (error: unknown) => {

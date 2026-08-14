@@ -242,7 +242,7 @@ tracked files contain a `DeFlow `-prefixed command literal, and the epic and flo
 | #   | Level       | Test                                                                                                                                                                    | Red when                                                                                                                          |
 | --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | unit        | Read `packages/cli/package.json` and assert the three `bin` keys and the `name` field are lowercase and map to existing entry files                                     | The `bin` map is renamed and `name` is left as `DeFlow`, so the package is still unpublishable and `npx deflow` resolves nothing   |
-| 2   | integration | Clean-room install of the packed tarball (KAR-18.6's verifier), then resolve all three bins by their lowercase names and run `deflow --version`                         | A bin key was renamed but its target path was not shipped, which only a clean room sees                                           |
+| 2   | e2e         | Clean-room install of the packed tarball (KAR-18.6's verifier), then resolve all three bins by their lowercase names and spawn each one — `deflow --version`, `deflow-mcp --help`, `deflow-mock-agent --version` | A bin key was renamed but its target path was not shipped, which only a clean room sees                                           |
 | 3   | unit        | A source guard over `packages/*/src` and `docs/`: no shipped string matches the capitalised command as a whole word, outside the alias module and this story's own tests | One error string in a rarely-hit branch still says `DeFlow status`, and the report contradicts the command the reader just typed   |
 | 4   | integration | Invoke the program through the `DeFlow` name; assert identical stdout, identical exit code, and exactly one notice line on stderr naming both names and the expiry      | The alias re-implements argument parsing and drifts, or prints its notice on stdout                                               |
 | 5   | integration | `DeFlow doctor --json` with stdout piped and stderr captured separately; assert the stdout document parses and contains no notice                                       | The notice is written with `console.log`, so every `--json` consumer's parse breaks on the first line                             |
@@ -278,6 +278,26 @@ after its role rather than after its bin. Two exemptions are recorded in the AC2
 `packages/ledger/src/migrations/` (append-only and content-hashed — editing a shipped migration to
 correct a comment breaks a stronger invariant than the one this story adds) and this epic's own two
 files, which quote the old name because they are the record of the rename.
+
+**Two corrections, 2026-08-14.**
+
+- **`deflow-mcp` had never been spawned from a tarball by anything.** `deflow` is exercised by the
+  clean room's `init`/`up`/`doctor` and `deflow-mock-agent` by KAR-18.6 AC2's `--version`, but the
+  second bin's only argv was `--socket <path> --run <runId>`, which needs a running DeFlowd — so
+  every argv a clean room could offer it, `--help` included, exited `EX_USAGE`, which is what a
+  *correct* build does too. A tarball shipping a broken or missing `dist/mcp.mjs` was green. The
+  shim now answers `--help` on stdout with exit 0 before it parses anything else
+  (`packages/daemon/src/mcp/shim.ts`, unit spec beside it), and EPIC-20-S2 is automated end to end
+  in `e2e/install-verification.test.ts`: all three bins spawned from the packed tarball, `deflow
+  --version` compared against `packages/cli/package.json`, and every resolved path checked to be
+  inside the clean room's own prefix — with the "nothing of this name was on `PATH` beforehand"
+  precondition measured rather than assumed. The scenario's declared level moved from `integration`
+  to `e2e` for the reason recorded in the flow file: the clean room *is* an e2e fixture.
+- **One command literal survived the AC2 sweep**, in `packages/cli/src/bin.ts`'s Ctrl-C line for
+  `up`. The source guard could not see it: the name was preceded by `\n` inside a template literal,
+  and `n` is a word character, so the `\b` every pattern starts with failed. The guard now
+  normalises `\n`, `\r` and `\t` to a space before matching — narrower than loosening `\b`, which
+  would have started matching `MyDeFlow doctor` — and carries that exact line as its own red case.
 
 ---
 

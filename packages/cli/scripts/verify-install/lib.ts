@@ -311,9 +311,23 @@ export interface CliProcess {
   readonly stop: () => Promise<void>;
 }
 
+/** The three names the published `bin` map declares (KAR-20.1 AC1). */
+export type InstalledBin = 'deflow' | 'deflow-mcp' | 'deflow-mock-agent';
+
+/**
+ * All three, in `package.json`'s own order — so a spec can iterate the bins
+ * rather than naming two of them and forgetting the third, which is how
+ * `deflow-mcp` went unspawned by anything for a whole story.
+ */
+export const INSTALLED_BINS: readonly InstalledBin[] = [
+  'deflow',
+  'deflow-mcp',
+  'deflow-mock-agent',
+];
+
 export interface SpawnInstalledOptions {
   readonly tgz: string;
-  readonly bin: 'deflow' | 'deflow-mock-agent' | 'deflow-mcp';
+  readonly bin: InstalledBin;
   readonly argv: readonly string[];
   readonly install: CliInstall;
   /** Directories prepended to PATH, before node's own and git's. */
@@ -323,6 +337,37 @@ export interface SpawnInstalledOptions {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The clean room's whole `PATH`: whatever the caller asked for, then node's
+ * own directory, git's and `sh`'s — and nothing else, which is the property
+ * every "clean room" claim in this file rests on.
+ *
+ * One definition rather than one per spawn helper, because a second copy that
+ * quietly gained the machine's real `PATH` would make every one of those
+ * claims false without failing anything.
+ */
+export function cleanRoomPath(binDirs: readonly string[] = []): string {
+  return [...binDirs, nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
+}
+
+/** The environment a clean-room child gets: the room's own directories, and no inheritance. */
+export function cleanRoomEnv(
+  install: CliInstall,
+  extra?: NodeJS.ProcessEnv,
+  binDirs?: readonly string[],
+): NodeJS.ProcessEnv {
+  return {
+    PATH: cleanRoomPath(binDirs),
+    HOME: install.dataDir,
+    DeFlow_DATA_DIR: install.dataDir,
+    DeFlow_LOG_LEVEL: 'silent',
+    DeFlow_DEV: '0',
+    BROWSER: 'none',
+    npm_config_cache: install.npmCacheDir,
+    ...extra,
+  };
+}
 
 /**
  * The real bytes, run the way a user runs them: `npm exec --package=<tgz> --
@@ -337,23 +382,13 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export function spawnInstalled(options: SpawnInstalledOptions): CliProcess {
   const out: string[] = [];
   const err: string[] = [];
-  const path = [...(options.binDirs ?? []), nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
 
   const child = spawn(
     join(dirname(process.execPath), 'npx'),
     ['--yes', `--package=${options.tgz}`, '--', options.bin, ...options.argv],
     {
       cwd: options.cwd ?? options.install.repoDir,
-      env: {
-        PATH: path,
-        HOME: options.install.dataDir,
-        DeFlow_DATA_DIR: options.install.dataDir,
-        DeFlow_LOG_LEVEL: 'silent',
-        DeFlow_DEV: '0',
-        BROWSER: 'none',
-        npm_config_cache: options.install.npmCacheDir,
-        ...options.env,
-      },
+      env: cleanRoomEnv(options.install, options.env, options.binDirs),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
@@ -448,7 +483,58 @@ export async function stopRecordedDaemon(
   return (await waitFor(Date.now() + timeoutMs)) ? 'killed' : 'refused';
 }
 
-/** Runs a `DeFlow` subcommand to completion and returns its result. */
+/**
+ * Where `<bin>` resolves **from inside the clean-room install** — the path a
+ * shell handed the augmented `PATH` would run, asked with `command -v` rather
+ * than assembled here from what npm's cache layout is believed to be.
+ *
+ * `''` when the name resolves to nothing, which is an answer rather than a
+ * failure: EPIC-20-S2's "and no DeFlow on PATH beforehand" needs a resolver
+ * that can say "nothing", and one that threw would have to be trusted instead
+ * of read.
+ *
+ * The command is `sh` rather than one of the package's own bins on purpose.
+ * `npm exec --package=<tgz> -- <cmd>` prepends the installed package's
+ * `node_modules/.bin` to `PATH` and then runs `<cmd>` from that `PATH`,
+ * whatever `<cmd>` is — so this asks the *same* resolution step that resolves
+ * `deflow` itself, instead of asking a different question and hoping the two
+ * agree.
+ */
+export function resolveInstalledBin(options: {
+  readonly tgz: string;
+  readonly bin: InstalledBin;
+  readonly install: CliInstall;
+}): string {
+  const child = spawnSync(
+    join(dirname(process.execPath), 'npx'),
+    ['--yes', `--package=${options.tgz}`, '--', 'sh', '-c', `command -v ${options.bin}`],
+    {
+      cwd: options.install.repoDir,
+      encoding: 'utf8',
+      env: cleanRoomEnv(options.install),
+    },
+  );
+  return child.status === 0 ? child.stdout.trim() : '';
+}
+
+/**
+ * What `<name>` resolves to on the clean room's `PATH` with **no package
+ * installed** — the precondition, measured rather than assumed.
+ *
+ * Without this, "the tarball's bins resolved" is compatible with "the author
+ * had `deflow` installed globally and the clean room found that one", which is
+ * precisely the failure KAR-18.6's `nodeOnlyDir` was written to stop and which
+ * no assertion had ever observed.
+ */
+export function resolveOnCleanRoomPath(name: string): string {
+  const child = spawnSync(join(systemToolsDir(), 'sh'), ['-c', `command -v ${name}`], {
+    encoding: 'utf8',
+    env: { PATH: cleanRoomPath() },
+  });
+  return child.status === 0 ? child.stdout.trim() : '';
+}
+
+/** Runs a `deflow` subcommand to completion and returns its result. */
 export async function runInstalled(
   options: Omit<SpawnInstalledOptions, 'argv'> & { readonly argv: readonly string[] },
 ): Promise<Ran> {

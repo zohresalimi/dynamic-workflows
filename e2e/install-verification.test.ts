@@ -14,10 +14,20 @@
  * wall-clock time.
  *
  * Verifies: EPIC-18-S42 (happy path), EPIC-18-S45 (no compiler),
- * EPIC-18-S46 (honest doctor report) · AC1, AC2, AC3, AC4, AC7
+ * EPIC-18-S46 (honest doctor report), EPIC-20-S2 (the three lowercase bins) ·
+ * KAR-18.6 AC1, AC2, AC3, AC4, AC7 · KAR-20.1 AC1
+ *
+ * EPIC-20-S2 lives here rather than in the integration slice its flow file
+ * first declared, and the reason is the same one KAR-18.6 records: the clean
+ * room *is* an e2e fixture. It costs a `pnpm build` and a `pnpm pack`, and
+ * KAR-18.6's own scenarios (EPIC-18-S42, S45, S46) are declared `e2e` for
+ * exactly that. Standing a second one up in the integration project to run
+ * three `--version` calls would add minutes to every save and prove nothing
+ * the tarball in this file's `beforeAll` does not already carry. The flow file
+ * was corrected to say `e2e`.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { DOCTOR_SECTION_IDS, type DoctorReport } from 'deflow';
@@ -30,11 +40,15 @@ import {
   type CliProcess,
   cleanupPackedTarball,
   cleanupSystemToolsDir,
+  cliDir,
   findInstalledMockAgent,
+  INSTALLED_BINS,
   makeCleanRoom,
   type PackedTarball,
   packGoodTarball,
   removeCleanRoom,
+  resolveInstalledBin,
+  resolveOnCleanRoomPath,
   runInstalled,
   shimMockAgent,
   spawnInstalled,
@@ -360,3 +374,88 @@ suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-fre
     expect(stable(agents)).toMatchSnapshot();
   }, 60_000);
 });
+
+suite(
+  'EPIC-20-S2 — all three bins are lowercase, and all three resolve from a clean-room install',
+  () => {
+    it('resolves and runs deflow, deflow-mcp and deflow-mock-agent, each from inside the room', async () => {
+      // KAR-20.1's own red condition, which nothing else in the repository can
+      // see: a `bin` key renamed without its target shipping. Inside the
+      // monorepo every one of these names is a workspace path that resolves
+      // whatever the manifest says; only an install of the packed bytes asks the
+      // question npm will ask.
+      //
+      // `deflow-mcp` is why this spec exists. It is the one bin no other spec
+      // ever spawned from a tarball — `deflow` is exercised by init/up/doctor
+      // above and `deflow-mock-agent` by AC2's `--version` — so a build that
+      // dropped `mcp.mjs` from tsdown's entry array, or a `bin` key still
+      // pointing at the pre-rename path, shipped green.
+      const install = await room();
+
+      const manifest = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8')) as {
+        readonly name: string;
+        readonly version: string;
+        readonly bin: Readonly<Record<string, string>>;
+      };
+      // The three the scenario names are the three the package declares — not a
+      // list this spec keeps in its own head and forgets to extend.
+      expect(Object.keys(manifest.bin)).toEqual([...INSTALLED_BINS]);
+
+      // Given "no DeFlow on PATH beforehand", observed rather than assumed. If
+      // the room's PATH already offered one of these names, every resolution
+      // below could find the author's own install and the spec would pass on a
+      // machine where the tarball ships nothing at all.
+      for (const bin of INSTALLED_BINS) {
+        expect([bin, resolveOnCleanRoomPath(bin)]).toEqual([bin, '']);
+      }
+
+      // When "deflow --version", "deflow-mcp --help" and "deflow-mock-agent
+      // --version" are each spawned — then each exits 0.
+      const version = await runInstalled({
+        tgz: good.tgz,
+        bin: 'deflow',
+        argv: ['--version'],
+        install,
+      });
+      expect(version.status, version.stderr).toBe(0);
+      // And prints the version in packages/cli/package.json — read from the
+      // manifest this tarball was packed from, so a `dist/bin.mjs` that resolved
+      // some *other* package.json (the workspace root's, say) is a failure here
+      // rather than a plausible-looking number.
+      expect(version.stdout.trim()).toBe(manifest.version);
+
+      const help = await runInstalled({
+        tgz: good.tgz,
+        bin: 'deflow-mcp',
+        argv: ['--help'],
+        install,
+      });
+      expect(help.status, help.stderr).toBe(0);
+      expect(help.stdout).toContain('deflow-mcp');
+      // It really is the shim, and not some other binary that happened to
+      // answer: the two arguments DeFlowd spawns it with are in its usage.
+      expect(help.stdout).toContain('--socket');
+      expect(help.stdout).toContain('--run');
+
+      const agent = await runInstalled({
+        tgz: good.tgz,
+        bin: 'deflow-mock-agent',
+        argv: ['--version'],
+        install,
+      });
+      expect(agent.status, agent.stderr).toBe(0);
+      expect(agent.stdout.trim()).not.toBe('');
+
+      // And each resolved path is inside the clean room's own install prefix.
+      // Through `realpath` on both sides because macOS's tmpdir is a symlink
+      // (/var → /private/var) and npm prints the resolved side of it, so a plain
+      // prefix comparison is red on one platform and green on the other.
+      const roomPrefix = realpathSync(install.room);
+      for (const bin of INSTALLED_BINS) {
+        const resolved = resolveInstalledBin({ tgz: good.tgz, bin, install });
+        expect([bin, resolved]).not.toEqual([bin, '']);
+        expect([bin, realpathSync(resolved).startsWith(roomPrefix)]).toEqual([bin, true]);
+      }
+    }, 180_000);
+  },
+);

@@ -13,7 +13,9 @@
  * Every link here is a symlink to `src/bin.ts` rather than to a built
  * `dist/bin.mjs`: this is an integration spec, not a release gate, and what it
  * is about — argv, streams and exit codes — is identical either way. The
- * tarball's own bin names are KAR-18.6's clean room (EPIC-20-S2).
+ * tarball's own bin names are KAR-18.6's clean room — EPIC-20-S2, automated in
+ * `e2e/install-verification.test.ts`, which spawns all three of them from the
+ * packed bytes.
  *
  * Verifies: EPIC-20-S3 · EPIC-20-S4 · EPIC-20-S5 · AC4, AC5, AC7
  */

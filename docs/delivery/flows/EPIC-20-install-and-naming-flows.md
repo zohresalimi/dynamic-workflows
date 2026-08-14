@@ -118,7 +118,7 @@ name, not a bin name — cannot work until this changes.
 
 ## EPIC-20-S2 — All three bins are lowercase, and all three resolve from a clean-room install
 
-**Verifies:** KAR-20.1 · **Type:** Happy path · **Automated at:** integration
+**Verifies:** KAR-20.1 · **Type:** Happy path · **Automated at:** e2e
 
 ```gherkin
 Feature: the published names are the names that resolve
@@ -134,6 +134,19 @@ Feature: the published names are the names that resolve
 
 **Notes:** a bin key renamed without its target shipping is invisible from inside the monorepo —
 that is the whole argument of KAR-18.6, applied to a rename.
+
+**Level corrected (2026-08-14), from `integration` to `e2e`.** The clean room this scenario names is
+KAR-18.6's, and KAR-18.6's own three scenarios (EPIC-18-S42, S45, S46) are declared `e2e` because it
+costs a real `pnpm build` and a real `pnpm pack`. Standing a second one up in the integration project
+to spawn three binaries would add minutes to every save and assert nothing the tarball already packed
+in `e2e/install-verification.test.ts`'s `beforeAll` cannot answer. Automated there, in the suite named
+for this scenario id.
+
+**`deflow-mcp --help` is a behaviour this scenario created.** Before it, every argv the shim did not
+recognise was `EX_USAGE` — `--help` included — so the only question a clean room could ask the second
+bin was one a *correct* build also answered 64. There is nothing else to ask it: every other argv
+needs a running DeFlowd, a socket it opened and a run token it minted. The usage text goes to stdout
+and returns before any MCP transport exists, so it contaminates nothing.
 
 ---
 
