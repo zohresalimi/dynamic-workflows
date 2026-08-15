@@ -10,11 +10,11 @@
  * because `dist/` does not exist until `pnpm build` runs — expected, and
  * documented in docs/03-local-development.md §13.
  *
- * KAR-10.1 adds `runTask`, the body of `DeFlow run "…"` (docs/11 §7.1) — ahead
+ * KAR-10.1 adds `runTask`, the body of `deflow run "…"` (docs/11 §7.1) — ahead
  * of the argv parser and the `bin` entry EPIC-18 wires up, because the ACs it
  * has to satisfy are about what the command *does*: post the same wire shape
  * `POST /api/runs` accepts, over the daemon's own HTTP API. *"Both entry
- * points — POST /api/runs and DeFlow run '…' — go through the same daemon
+ * points — POST /api/runs and deflow run '…' — go through the same daemon
  * code path; the CLI is a client of the HTTP API, not a second
  * implementation."*
  *
@@ -35,7 +35,7 @@ import {
   type StreamConnection,
 } from '@DeFlow/web';
 
-// KAR-18.4 — `DeFlow doctor`. Like `init`, it is not a client of the daemon's
+// KAR-18.4 — `deflow doctor`. Like `init`, it is not a client of the daemon's
 // HTTP API: it answers questions about the machine the daemon would run on,
 // and most of them have to be answerable when no daemon can start at all.
 export type {
@@ -55,7 +55,7 @@ export {
 } from './doctor/report.ts';
 export type { DoctorOptions, DoctorResult } from './doctor/run.ts';
 export { runDoctor } from './doctor/run.ts';
-// KAR-18.1 — `DeFlow init`. Unlike `runTask`/`approveSpec` below, it is not a
+// KAR-18.1 — `deflow init`. Unlike `runTask`/`approveSpec` below, it is not a
 // client of the daemon's HTTP API: there is nothing running yet to be a
 // client of. It calls straight into `@DeFlow/daemon`'s `initWorkspace`.
 export type { InitCommandOptions, InitCommandResult } from './init.ts';
@@ -210,7 +210,7 @@ function isEnvelope(body: unknown): body is Envelope {
 }
 
 /**
- * `DeFlow run "<text>"` — posts free text to `POST /api/runs` on the daemon at
+ * `deflow run "<text>"` — posts free text to `POST /api/runs` on the daemon at
  * `options.baseUrl`, and returns the same `{ runId, seq, status }` the HTTP
  * route does.
  *
@@ -225,7 +225,7 @@ export async function runTask(text: string, options: RunTaskOptions): Promise<Ru
  * KAR-18.3 AC8 — the same submission, over all three of F1.1's wire shapes.
  *
  * `runTask` above is this function with the `text` shape spelled out, kept
- * because it is what KAR-10.1's specs and `DeFlow run "…"` read like. Adding a
+ * because it is what KAR-10.1's specs and `deflow run "…"` read like. Adding a
  * second poster for `--file` and `--issue` would have been the drift AC7 exists
  * to prevent, so there is one, and the four operator-facing sources collapse
  * onto the three wire kinds in `./run/args.ts` where the argv is parsed.
@@ -307,7 +307,7 @@ export class SpecApprovalRejected extends Error {
 }
 
 /**
- * KAR-10.3 AC4 — `DeFlow approve <runId>`: the F1.3 gate, answered from a
+ * KAR-10.3 AC4 — `deflow approve <runId>`: the F1.3 gate, answered from a
  * second terminal.
  *
  * A client of `POST /api/runs/:id/spec/approve` and nothing more, exactly as

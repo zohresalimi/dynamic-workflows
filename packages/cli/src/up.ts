@@ -1,5 +1,5 @@
 /**
- * `DeFlow up` (KAR-18.2) — the eight numbered steps of
+ * `deflow up` (KAR-18.2) — the eight numbered steps of
  * [docs/03-local-development.md §9](../../../docs/03-local-development.md) as
  * one sequenced boot, and the operator-facing behaviour of each refusal.
  *
@@ -16,7 +16,7 @@
  * - `pick-port` runs **first**, because a pinned `--port` that is occupied must
  *   fail before anything has been leased, migrated or written (EPIC-18-S10),
  *   and because the port the daemon binds has to be chosen exactly once — the
- *   printed URL, `daemon.json` and `DeFlow status` all read that one answer
+ *   printed URL, `daemon.json` and `deflow status` all read that one answer
  *   rather than re-deriving 7777 (EPIC-18-S9).
  * - `open-browser` runs **last**, after the URL has been printed, so a machine
  *   with no `xdg-open` still hands the operator a URL they can click.
@@ -74,7 +74,7 @@ export interface UpStepTiming {
   readonly ms: number;
 }
 
-/** What `DeFlow up`'s flags mean, once parsed. */
+/** What `deflow up`'s flags mean, once parsed. */
 export interface UpArgs {
   /** The operator's `--port`, or `null` for "7777, or the next free one". */
   readonly port: number | null;
@@ -97,7 +97,7 @@ function parsePort(raw: string | undefined): number | null {
 }
 
 /**
- * `DeFlow up`'s argv, with an unknown flag treated as a refusal rather than as
+ * `deflow up`'s argv, with an unknown flag treated as a refusal rather than as
  * noise.
  *
  * Ignoring an unrecognised flag is how `--detach` silently does nothing and the
@@ -132,7 +132,7 @@ export function parseUpArgs(argv: readonly string[]): ParsedUpArgs {
         return {
           ok: false,
           message:
-            `DeFlow up: --port needs a port number between 1 and ${MAX_PORT}; got ` +
+            `deflow up: --port needs a port number between 1 and ${MAX_PORT}; got ` +
             JSON.stringify(raw ?? ''),
         };
       }
@@ -142,7 +142,7 @@ export function parseUpArgs(argv: readonly string[]): ParsedUpArgs {
 
     return {
       ok: false,
-      message: `DeFlow up: unknown option ${JSON.stringify(argument)}`,
+      message: `deflow up: unknown option ${JSON.stringify(argument)}`,
     };
   }
 
@@ -166,7 +166,7 @@ export function renderTimings(timings: readonly UpStepTiming[], totalMs: number)
     (timing) => `  ${timing.step.padEnd(STEP_COLUMN)}${String(timing.ms).padStart(5)} ms`,
   );
   return [
-    'DeFlow up: timings',
+    'deflow up: timings',
     ...lines,
     `  ${'total'.padEnd(STEP_COLUMN)}${String(totalMs).padStart(5)} ms`,
     '',
@@ -174,7 +174,7 @@ export function renderTimings(timings: readonly UpStepTiming[], totalMs: number)
 }
 
 /**
- * The sentence a second `DeFlow up` prints (AC3, EPIC-18-S8).
+ * The sentence a second `deflow up` prints (AC3, EPIC-18-S8).
  *
  * The pid comes from the lease's own holder file and the port from
  * `daemon.json`, so both name the *live* daemon rather than anything this
@@ -192,11 +192,11 @@ export function alreadyRunningMessage(live: {
 }): string {
   const who = `pid ${live.pid ?? 'unknown'}`;
   if (live.port === null) {
-    return `DeFlow up: another DeFlowd is already running (${who}) — run 'DeFlow status'`;
+    return `deflow up: another DeFlowd is already running (${who}) — run 'deflow status'`;
   }
   return (
-    `DeFlow up: another DeFlowd is already running (${who}, port ${live.port}) — open ` +
-    `http://127.0.0.1:${live.port} or run 'DeFlow status'`
+    `deflow up: another DeFlowd is already running (${who}, port ${live.port}) — open ` +
+    `http://127.0.0.1:${live.port} or run 'deflow status'`
   );
 }
 
@@ -282,13 +282,13 @@ const randomHex = (): string => randomBytes(3).toString('hex');
  * opaque one — a crash inside a provider probe saying `ENOENT: spawn claude`,
  * which tells the operator nothing about what to do. So: how many are usable,
  * what to run to install each one that is not, and the fact that the bundled
- * mock agent and `DeFlow replay` need no provider at all.
+ * mock agent and `deflow replay` need no provider at all.
  */
 function renderProviders(entries: readonly ProviderDetectionEntry[]): string {
   const usable = entries.filter(
     (entry) => entry.status === 'detected' || entry.status === 'cached',
   );
-  const lines = [`DeFlow up: ${usable.length} providers available`];
+  const lines = [`deflow up: ${usable.length} providers available`];
 
   for (const entry of entries) {
     lines.push(
@@ -300,8 +300,8 @@ function renderProviders(entries: readonly ProviderDetectionEntry[]): string {
 
   if (usable.length === 0) {
     lines.push(
-      '  nothing above is installed, which is not a failure: the bundled DeFlow-mock-agent runs',
-      "  a whole plan with no vendor CLI, and 'DeFlow replay <fixture>' serves a recorded run over",
+      '  nothing above is installed, which is not a failure: the bundled deflow-mock-agent runs',
+      "  a whole plan with no vendor CLI, and 'deflow replay <fixture>' serves a recorded run over",
       '  the same HTTP contract the UI speaks to a live one.',
     );
   }
@@ -310,7 +310,7 @@ function renderProviders(entries: readonly ProviderDetectionEntry[]): string {
 }
 
 /**
- * `DeFlow up` — the whole command, minus the process it runs in.
+ * `deflow up` — the whole command, minus the process it runs in.
  *
  * Returns rather than exits, and never writes to a stream itself: `bin.ts`
  * owns the process, and a function that called `process.exit` could not be
@@ -415,7 +415,7 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
       kind: 'refused',
       exitCode: EX_BOOT_FAILED,
       stdout: '',
-      stderr: `DeFlow up: ${error instanceof Error ? error.message : String(error)}\n`,
+      stderr: `deflow up: ${error instanceof Error ? error.message : String(error)}\n`,
     };
   }
 
@@ -427,7 +427,7 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
 
   if (options.open === true) {
     openBrowser(daemon.url, { platform: process.platform, env }, (error) => {
-      stdout += `DeFlow up: could not open a browser (${error.message}); open the URL above\n`;
+      stdout += `deflow up: could not open a browser (${error.message}); open the URL above\n`;
     });
   }
   took('open-browser');

@@ -145,8 +145,8 @@ suite('a machine with no agent CLI at all (EPIC-18-S15, AC8)', () => {
     }
     expect(result.stdout).toMatch(/npm install -g/);
     // …and what still works with nothing installed at all.
-    expect(result.stdout).toContain('DeFlow-mock-agent');
-    expect(result.stdout).toContain('DeFlow replay');
+    expect(result.stdout).toContain('deflow-mock-agent');
+    expect(result.stdout).toContain('deflow replay');
     expect(result.stderr).toBe('');
   });
 });

@@ -85,7 +85,7 @@ costs the least and buys the most.
   disabled, asserting zero violations with pinning enabled.
 - The `Constraint` union (`allow-only` | `require` | `forbid`), the mechanical prohibition →
   positive-requirement restatement applied at packet-build time, `forbid` rendered last among
-  pinned constraints and counted, and the `forbid`-to-`allow-only` ratio in `DeFlow doctor`.
+  pinned constraints and counted, and the `forbid`-to-`allow-only` ratio in `deflow doctor`.
 - Interval re-injection at `pinReinjectTurns` (default **8**), delivered as an appended turn where
   the adapter supports mid-session steering, and a packet-builder warning where it does not.
 - Artifact offloading: bodies to the content-addressed store under
@@ -104,7 +104,7 @@ costs the least and buys the most.
   Tier 3 (`POST /v1/messages/count_tokens`) available **only** on the explicit API-key adapter path.
 - The self-calibrating `tokenEstimateFactor`: EWMA with `ALPHA = 0.2`, seeds
   `{ anthropic: 1.2, openai: 1.0, default: 1.05 }` used until `n >= 5`, persisted per
-  (provider, model) and surfaced in `DeFlow doctor`.
+  (provider, model) and surfaced in `deflow doctor`.
 - The blackboard as a projection: `fact` and `fact_edges` tables rebuildable from `fact.written` /
   `fact.read` / `fact.invalidated`, the six-kind fixed core plus the `ext:` namespace with
   registered `schemaId`, provenance on every fact, and invalidation that marks downstream readers
@@ -187,7 +187,7 @@ costs the least and buys the most.
 - [ ] `test/fixtures/runs/compaction/ledger.db` contains a `DeFlow.packet` compaction with exact
       before/after and a `vendor.session` compaction with `after: null`, and both render correctly
       in the replay harness.
-- [ ] `DeFlow doctor` reports, for the loaded workspace: the calibration factor and sample count per
+- [ ] `deflow doctor` reports, for the loaded workspace: the calibration factor and sample count per
       (provider, model), FTS5 availability _and the tokenizer string actually set on
       `artifact_fts`_, whether `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is in effect and at what value, and
       the current `forbid`-to-`allow-only` ratio in the loaded spec.
@@ -493,7 +493,7 @@ because a rising `forbid` ratio is a leading indicator of exactly the decay this
    escalate to a human"_.
 3. A `forbid` constraint renders after every `allow-only` and `require` constraint within the pinned
    block, in every archetype.
-4. The packet builder records the `forbid` count and the `allow-only` count per build; `DeFlow
+4. The packet builder records the `forbid` count and the `allow-only` count per build; `deflow
 doctor` reports the ratio for the loaded spec.
 5. `pinReinjectTurns` is read per provider from `.DeFlow/config.yaml`, defaults to `8`, and where
    the adapter advertises mid-session steering the re-injection is an appended turn whose text is
@@ -516,7 +516,7 @@ doctor` reports the ratio for the loaded spec.
 | 2   | unit        | A `forbid` constraint with two `allow-only` siblings renders third                                                                             | Ordering is authoring order                  |
 | 3   | unit        | `render()` refuses a `pinned.constraints` segment built from a raw string                                                                      | A prose escape hatch exists                  |
 | 4   | unit        | Build counts `{ forbid: 1, allowOnly: 3 }` and exposes them on the build result                                                                | Counting is absent                           |
-| 5   | integration | `DeFlow doctor` output contains the forbid ratio for a fixture spec                                                                            | Doctor does not report it                    |
+| 5   | integration | `deflow doctor` output contains the forbid ratio for a fixture spec                                                                            | Doctor does not report it                    |
 | 6   | integration | Mock agent advertising steering, node scripted for 20 turns → re-injection turns appear at turns 8 and 16, each byte-identical to the original | The interval is not implemented              |
 | 7   | integration | Mock agent with steering **not** advertised, 20-turn node → zero injection turns and exactly one planning warning                              | The client attempts an unsupported call      |
 | 8   | unit        | Compaction re-injection at turn 7 then interval tick at turn 8 → one injection, counter reset                                                  | The two paths double-inject                  |
@@ -680,7 +680,7 @@ so a missing file is `originalHandle: null`, not an error.
 they are private implementation details with no compatibility guarantee, and they **will** change.
 Nothing in the implementation may hardcode a window size: read `modelUsage[m].contextWindow` and
 `maxOutputTokens` from the envelope at runtime and assert the rest in the F3.4 conformance suite so
-drift is caught by `DeFlow doctor` and not by a failed three-hour run. The `~/.claude/projects/…`
+drift is caught by `deflow doctor` and not by a failed three-hour run. The `~/.claude/projects/…`
 path in AC 6 is explicitly **Unverified** — confirm it in the M0 spike and treat absence as normal.
 
 ---
@@ -747,7 +747,7 @@ estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0
 9. `tokenAccounting: 'none'` in a capability manifest produces a **blank** cost cell in the
    projected payload, not a zero — the honest degradation from
    [§7](../../08-context-and-memory.md).
-10. `DeFlow doctor` prints the current factor and sample count per (provider, model).
+10. `deflow doctor` prints the current factor and sample count per (provider, model).
 
 **Test plan (TDD)**
 
@@ -762,13 +762,13 @@ estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0
 | 7   | integration | Restart the daemon; the factor for `(claude, <model>)` is unchanged                                                                                           | The factor lives in memory              |
 | 8   | integration | Full mock-agent run on the subscription path with an HTTP spy → zero requests to any Anthropic endpoint                                                       | Tier 3 leaks onto the subscription path |
 | 9   | unit        | A manifest with `tokenAccounting: 'none'` projects a `null` cost, and the projection type forbids `0`                                                         | Zero is used as "unknown"               |
-| 10  | integration | `DeFlow doctor` output contains the factor and sample count                                                                                                   | Doctor does not report it               |
+| 10  | integration | `deflow doctor` output contains the factor and sample count                                                                                                   | Doctor does not report it               |
 
 **Notes / risks** — the dead ends are worth restating because two of them look authoritative:
 `@anthropic-ai/tokenizer` is still **0.0.4** and implements only the Claude 1/2-era BPE — the package
 name is a trap; `js-tiktoken@1.0.21` works but is slower with no accuracy gain; `tiktoken` /
 `@dqbd/tiktoken@1.0.22` add a wasm binary for no accuracy gain; shelling out to Python adds a Python
-dependency to `npx DeFlow up` and _still_ is not exact for Claude. There is no public exact tokenizer
+dependency to `npx deflowai up` and _still_ is not exact for Claude. There is no public exact tokenizer
 for Claude 3+. Accept it and calibrate.
 
 Token accounting for Copilot, Gemini/Antigravity, Cursor and OpenCode is **Unverified** (roadmap
@@ -983,7 +983,7 @@ exact-match territory, BM25's strongest suit and dense retrieval's weakest, wher
 6. A migration that needs to change the tokenizer **drops and rebuilds** `artifact_fts` from the
    artifact store rather than issuing an `ALTER` — and the migration test asserts the rebuild path,
    because the setting genuinely cannot be changed in place.
-7. `DeFlow doctor` reports FTS5 availability **and the tokenizer string currently set on
+7. `deflow doctor` reports FTS5 availability **and the tokenizer string currently set on
    `artifact_fts`**, so a table created before this rule was enforced is visible rather than merely
    underperforming.
 
@@ -998,7 +998,7 @@ exact-match territory, BM25's strongest suit and dense retrieval's weakest, wher
 | 5   | integration | Title match outranks an equal body match, given `bm25(…, 2.0, 1.0)`                                             | Weights not applied                             |
 | 6   | integration | A node with no retrieval declaration produces zero `retrieved` segments and zero queries (spy on the `Db` port) | Retrieval runs unconditionally                  |
 | 7   | integration | Migration changing the tokenizer drops and rebuilds the table; row count and search results match afterwards    | An in-place `ALTER` was attempted               |
-| 8   | integration | `DeFlow doctor` prints the live tokenize string                                                                 | Doctor reports availability only                |
+| 8   | integration | `deflow doctor` prints the live tokenize string                                                                 | Doctor reports availability only                |
 
 **Notes / risks** — F6.7 is **P1**, so this is the first story to cut if the epic runs long; the
 `retrieved` fill-order slot in KAR-09.2 simply stays empty and nothing else changes. Do not add
@@ -1018,7 +1018,7 @@ measured."_
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **The epic totals ~21 days, well over the ~15-day solo-builder guidance.** KAR-09.2 alone is L and KAR-09.3's regression suite is a day of scenario authoring on its own.                                                                                                                                                          | High     | Explicit cut order, in this sequence: **KAR-09.10** (F6.7 is P1; the `retrieved` slot stays empty), the **F6.9 schema-gating half of KAR-09.9** (keep the token budget and the no-truncation rule, downgrade validation to log-only), **KAR-09.6's §6.3 transcript snapshot** (it is Unverified anyway; `originalHandle: null` is the documented degradation), and **KAR-09.4's interval re-injection on non-steering adapters** (the AC 6 warning alone is a legitimate M1 posture). That reclaims ~5 days. **KAR-09.1 and KAR-09.3 are never cut** — they are the two cheapest and the two highest-value stories here. |
 | **The arXiv figures behind the whole epic are search-indexed, not read.** `arxiv.org` and `export.arxiv.org` are unreachable from the verification environment (403 via the agent proxy). The paper's existence, ID, title, authors and abstract were confirmed consistently; the specific percentages were not read from the PDF. | Medium   | The mechanism costs fifteen lines and is sound independent of the exact numbers, and KAR-09.3's ConstraintRot suite measures **DeFlow's own** violation rate rather than trusting the paper's. Do not quote 30% / 59% / 73% / 33% publicly without re-verifying against the PDFs.                                                                                                                                                                                                                                                                                                                                        |
-| **The decoded Claude Code constants (2.1.220) are private implementation details with no compatibility guarantee and will change.** `effectiveWindow`, the 13k auto-compact offset, the 20k/3k buffers, the 10k–40k summariser bounds.                                                                                             | Medium   | Nothing hardcodes a window: read `modelUsage[m].contextWindow` and `maxOutputTokens` from the envelope at runtime. Assert the rest in the F3.4 conformance suite so `DeFlow doctor` catches drift instead of a failed three-hour run.                                                                                                                                                                                                                                                                                                                                                                                    |
+| **The decoded Claude Code constants (2.1.220) are private implementation details with no compatibility guarantee and will change.** `effectiveWindow`, the 13k auto-compact offset, the 20k/3k buffers, the 10k–40k summariser bounds.                                                                                             | Medium   | Nothing hardcodes a window: read `modelUsage[m].contextWindow` and `maxOutputTokens` from the envelope at runtime. Assert the rest in the F3.4 conformance suite so `deflow doctor` catches drift instead of a failed three-hour run.                                                                                                                                                                                                                                                                                                                                                                                    |
 | **The gating fixture (`stream-json` with a real `compact_boundary` and a populated `modelUsage`) costs real quota and cannot be recorded in CI.** KAR-09.6 and KAR-09.7 are both blocked on it.                                                                                                                                    | Medium   | Record it during **W3**, while adapter work is already spending credits, and commit it under `test/fixtures/streams/`. `pnpm test:record` is manual, never CI. Treat "the fixture exists" as a Definition-of-Ready item, which it is.                                                                                                                                                                                                                                                                                                                                                                                    |
 | **Whether ACP surfaces token usage or compaction state at all is Unverified** (roadmap A0-3, rated High). If it does not, ACP-first silently costs F9.1 and F10.5 for every ACP-path provider.                                                                                                                                     | High     | Answer it explicitly in the M0 spike. The fallback is data, not code: `tokenAccounting: 'estimated'` in the capability manifest and honest UI degradation (blank cells, not zeros). KAR-09.7 AC 9 makes that degradation a tested behaviour rather than an aspiration.                                                                                                                                                                                                                                                                                                                                                   |
 | **The architecture doc sketches `packages/context/src/…`, which is not one of the eight packages in the repo layout.**                                                                                                                                                                                                             | Low      | Reconcile at implementation time, not by inventing a package: the pure parts (`render`, `assertPinIntegrity`, `restate`, the calibration EWMA, `validateDeclaredReads`) belong in **`@DeFlow/core`**, whose only runtime dependency is `zod`; the Context Builder, the blackboard projection and the FTS5 queries belong in **`@DeFlow/daemon`**. Tokenisation therefore enters `core` through a **`Tokenizer` port** in the same style as `Clock` and `Db`, because `gpt-tokenizer` cannot be a `core` dependency under repo-layout R1.                                                                                 |

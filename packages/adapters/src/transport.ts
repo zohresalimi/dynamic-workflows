@@ -94,7 +94,7 @@ export interface TransportOptions {
  * `"in"` because the recording is written from the **agent's** perspective:
  * what the client writes is what the agent receives. Flipping the label once,
  * here, is what makes the capture directly replayable by
- * `DeFlow-mock-agent --replay` instead of needing a conversion step every
+ * `deflow-mock-agent --replay` instead of needing a conversion step every
  * reader has to remember.
  */
 function teedStdin(

@@ -424,7 +424,7 @@ suite('EPIC-10-S5 — Idempotency-Key makes a retried submission free', () => {
   });
 });
 
-suite('AC7 — DeFlow run records by: "cli"', () => {
+suite('AC7 — deflow run records by: "cli"', () => {
   it('provenance.by is "cli" when submitted by the CLI', async ({ tmp }) => {
     const p = await ports(tmp);
     try {

@@ -237,7 +237,7 @@ function declinedCheck(resolution: ProviderResolution): DoctorCheck {
     detail:
       `declined — nothing was installed and no process was spawned. Run ` +
       `"${installCommand(resolution.package)}" yourself when you want it, or re-run ` +
-      '"DeFlow doctor --fix".',
+      '"deflow doctor --fix".',
     data: { provider: resolution.provider, package: resolution.package, installed: false },
   };
 }

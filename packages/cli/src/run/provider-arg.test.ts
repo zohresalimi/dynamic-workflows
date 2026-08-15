@@ -1,11 +1,11 @@
 /**
- * KAR-19.10 AC1 — `DeFlow run --provider <id>`, validated against the registry
+ * KAR-19.10 AC1 — `deflow run --provider <id>`, validated against the registry
  * before anything is submitted.
  *
  * Test plan #1, and EPIC-19-S66's outline verbatim. The red is the reported
  * defect at the level it is cheapest at: on 2026-08-13 the operator typed
  * `--provider mock` on the one command whose job is to start a run on an agent
- * and got `DeFlow run: unknown option "--provider"`.
+ * and got `deflow run: unknown option "--provider"`.
  *
  * Two things are asserted beyond "the flag exists". First, an unknown id is
  * `EX_USAGE` and **not** exit 5 — a misspelling is not an unusable machine, and

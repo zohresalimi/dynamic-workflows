@@ -9,7 +9,7 @@
  * pushed the wake forward by a flat 30 s — for ever. The reported run's ledger
  * held `provider.probed`, `provider.probed`, `task.submitted` and nothing else
  * after eight minutes of identical failures, so neither the UI nor
- * `DeFlow status` could have shown what was wrong.
+ * `deflow status` could have shown what was wrong.
  *
  * **This module invents no policy.** The ceiling, the jittered backoff, the cap
  * and the classification are `planRetry`'s, applied through
@@ -117,7 +117,7 @@ export function attemptsSpent(db: Db, runId: RunId, nodeId: NodeId): number {
 export function noProviderFailure(runId: RunId): NodeFailureError {
   return new NodeFailureError(
     `no adapter on this machine both resolves on the operator's PATH and has a probed ` +
-      `capability row, so run ${runId} cannot be served; run 'DeFlow doctor' to see what this ` +
+      `capability row, so run ${runId} cannot be served; run 'deflow doctor' to see what this ` +
       'daemon found when it started',
     { reason: 'provider.unavailable', class: 'transient' },
   );

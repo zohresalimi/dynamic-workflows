@@ -83,7 +83,7 @@ suite('pinReinjectTurns per provider (AC5)', () => {
   });
 });
 
-suite('DeFlow doctor over a real workspace (EPIC-09-S22 third scenario)', () => {
+suite('deflow doctor over a real workspace (EPIC-09-S22 third scenario)', () => {
   it('reports the forbid-to-allow-only ratio for the loaded spec', async () => {
     // Six prohibitions with no closed positive form, two positive scopes.
     await writeConfig(

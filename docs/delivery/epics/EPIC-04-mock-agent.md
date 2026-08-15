@@ -18,7 +18,7 @@
 
 ## Goal
 
-At the end of this epic DeFlow owns two **real executables** — `DeFlow-mock-agent` (an ACP agent) and
+At the end of this epic DeFlow owns two **real executables** — `deflow-mock-agent` (an ACP agent) and
 `packages/testkit/bin/fake-agent.ts` (a CLI exec-shim agent) — that can be dropped onto a temporary
 `PATH` and driven by a declarative script to reproduce, deterministically and in milliseconds, every
 behaviour a vendor agent can exhibit: streaming at a scripted cadence, tool-call status transitions,
@@ -48,8 +48,8 @@ which is precisely the surface where the bugs live.
 
 **In scope:**
 
-- `@DeFlow/mock-agent` as a real package with a `DeFlow-mock-agent` bin, built on the _agent_ side of
-  `@agentclientprotocol/sdk@1.3.0` (`acp.agent({…})`), shipping inside the `DeFlow` tarball as a second
+- `@DeFlow/mock-agent` as a real package with a `deflow-mock-agent` bin, built on the _agent_ side of
+  `@agentclientprotocol/sdk@1.3.0` (`acp.agent({…})`), shipping inside the `deflow` tarball as a second
   bin (see [repo layout §D17 note](../../16-repo-layout.md)).
 - A declarative scenario file format covering all ten required behaviours of
   [adapter layer §13](../../07-provider-adapter-layer.md).
@@ -92,7 +92,7 @@ which is precisely the surface where the bugs live.
 - [ ] All six stories are Done.
 - [ ] Every scenario in [EPIC-04 flows](../flows/EPIC-04-mock-agent-flows.md) passes as an automated
       test in the project slice its `Automated at:` line names.
-- [ ] `DeFlow-mock-agent --help` runs from a `pnpm pack`ed tarball installed into a clean tmpdir — it is
+- [ ] `deflow-mock-agent --help` runs from a `pnpm pack`ed tarball installed into a clean tmpdir — it is
       a shipped bin, not a test helper.
 - [ ] Two invocations of the same scenario at the same `--seed` produce byte-identical ndjson on stdout.
 - [ ] A purity test asserts `packages/mock-agent/src/**` imports nothing from `@DeFlow/*`
@@ -115,7 +115,7 @@ which is precisely the surface where the bugs live.
 | **PRD**         | F3.7, NF9                                       |
 | **Verified by** | EPIC-04-S1, EPIC-04-S2, EPIC-04-S3, EPIC-04-S21 |
 
-**As** the engineer building DeFlow, **I want** a real `DeFlow-mock-agent` executable that completes a
+**As** the engineer building DeFlow, **I want** a real `deflow-mock-agent` executable that completes a
 full ACP prompt cycle over stdin/stdout, **so that** every layer above it — spawn, argv, ndjson framing,
 the `nextUpdate()` pull loop, teardown — is exercised for real without a vendor CLI, credentials or
 network.
@@ -132,7 +132,7 @@ mirrored on both sides of the wire and cancel itself out.
 
 **Acceptance criteria**
 
-1. `DeFlow-mock-agent` is a resolvable bin with a `#!/usr/bin/env node` shebang and an executable mode
+1. `deflow-mock-agent` is a resolvable bin with a `#!/usr/bin/env node` shebang and an executable mode
    bit, and runs from a `pnpm pack`ed tarball in a clean tmpdir with no build step.
 2. Given a client sending `initialize`, the response carries `protocolVersion: 1` (integer) and an
    `agentCapabilities` object; sending `protocolVersion: 2` gets a version-mismatch error rather than a
@@ -155,7 +155,7 @@ implementation.
 | 3   | integration | `session/prompt` → collect frames until `stopReason`; assert ≥1 `agent_message_chunk` precedes `stopReason: 'end_turn'`                                     | No updates emitted                                  |
 | 4   | integration | Run the same scenario twice with `--seed 42`, `Buffer.compare` the two stdout captures → 0                                                                  | Ids come from `crypto.randomUUID()`                 |
 | 5   | unit        | Glob `packages/mock-agent/src/**/*.ts`, assert no source contains `from '@DeFlow/`                                                                          | The package imports `@DeFlow/core` for its id types |
-| 6   | integration | `pnpm pack` the `DeFlow` package into a tmpdir, `npx ./DeFlow-*.tgz` exposes `DeFlow-mock-agent --help` with exit 0                                         | The bin is missing from `files` / `bin`             |
+| 6   | integration | `pnpm pack` the `deflow` package into a tmpdir, `npx ./deflow-*.tgz` exposes `deflow-mock-agent --help` with exit 0                                         | The bin is missing from `files` / `bin`             |
 
 **Notes / risks** — resolve and store the **absolute** path to the binary in the fixture rather than
 relying on `PATH` lookup at spawn time. DeFlowd's `PATH` at daemon start differs from the user's login
@@ -322,7 +322,7 @@ Gemini-shaped profile?" requires an installed and authenticated Gemini CLI and a
 it, that question is a **40 ms unit test that runs on every commit** — which matters because
 `ResumeByReplay` is the durability path for 40% of the supported providers and must never rot.
 
-The profiles are **generated from the §5 matrix fixture, not typed by hand**, so a `DeFlow doctor`
+The profiles are **generated from the §5 matrix fixture, not typed by hand**, so a `deflow doctor`
 re-probe that finds a changed capability set automatically changes what the tests exercise.
 
 **Acceptance criteria**
@@ -370,7 +370,7 @@ vendor changed what it can do, and the routing layer's assumptions changed with 
 | **Verified by** | EPIC-04-S15, EPIC-04-S16 |
 
 **As** the engineer maintaining five adapters against vendor CLIs that churn monthly, **I want**
-`DeFlow-mock-agent --replay <file>` to serve a captured real session, **so that** a recorded conversation
+`deflow-mock-agent --replay <file>` to serve a captured real session, **so that** a recorded conversation
 with a real, authenticated agent becomes a free CI provider and a flag-churn detector.
 
 The recording format is fixed by [adapter layer §11.4](../../07-provider-adapter-layer.md):
@@ -496,7 +496,7 @@ Do not cut it entirely: the kill-path fixtures have no other home.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **~11 days of tooling before a single real agent runs.** For a solo builder alongside a job and a degree, that is a long time without user-visible progress. | High (morale, schedule) | The roadmap explicitly sequences W2 before W3 and notes W1/W2 can be worked in the same week as a break from reducer work. KAR-04.1 + KAR-04.3 + KAR-04.4 (≈5 days) unblock EPIC-05 on their own; 04.5 and 04.6 can trail.                     |
 | **The mock agent drifts from real agent behaviour**, so a green suite means nothing.                                                                         | High (silent)           | KAR-04.5 is the antidote: golden recordings from real CLIs replay through the same binary. Layer A schema conformance (KAR-05.7) validates the mock's own frames against `schema.json`, so the mock cannot emit something no real agent could. |
-| **Capability profiles rot.** The §5 matrix is a snapshot; two of five versions were published the day they were probed.                                      | High                    | KAR-04.4 generates profiles from the fixture rather than hand-writing them, and `DeFlow doctor` regenerates the fixture. A profile diff in a PR is the intended signal.                                                                        |
+| **Capability profiles rot.** The §5 matrix is a snapshot; two of five versions were published the day they were probed.                                      | High                    | KAR-04.4 generates profiles from the fixture rather than hand-writing them, and `deflow doctor` regenerates the fixture. A profile diff in a PR is the intended signal.                                                                        |
 | **Real sleeps make the suite slow.**                                                                                                                         | Medium                  | Cap scripted delays at tens of milliseconds. `pool: 'forks'` isolates leaked children so one slow scenario cannot poison neighbours.                                                                                                           |
 | Recordings could leak repository content or secrets from the developer's real sessions.                                                                      | Medium                  | Review before committing; `pnpm test:record` is manual and never runs in CI. Redaction proper is M2 (F5.9).                                                                                                                                    |
 

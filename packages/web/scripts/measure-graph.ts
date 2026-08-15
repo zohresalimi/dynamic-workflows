@@ -16,7 +16,7 @@
  *    `GraphCanvas` over the **real** `plan.ts` projection;
  * 2. serves the build over plain `node:http`, so nothing in the loop is a dev
  *    server;
- * 3. boots a real `DeFlow replay stress-400 --speed max` daemon and reads the
+ * 3. boots a real `deflow replay stress-400 --speed max` daemon and reads the
  *    recorded run's events off its API — the fixture is a recording of a real
  *    ledger, not a hand-written array;
  * 4. drives a real headless Chromium through a **scripted pan** and a
@@ -197,7 +197,7 @@ interface Replay {
   readonly stop: () => Promise<void>;
 }
 
-/** Boots `DeFlow replay <fixture> --speed max` and waits for it to be up. */
+/** Boots `deflow replay <fixture> --speed max` and waits for it to be up. */
 async function startReplay(fixture: string, dataDir: string): Promise<Replay> {
   const port = await freePort();
   const child = spawn(
@@ -228,7 +228,7 @@ async function startReplay(fixture: string, dataDir: string): Promise<Replay> {
   let token: string | undefined;
   for (;;) {
     // The handoff URL carries the token in the fragment and is the first line
-    // the harness prints — the same line `DeFlow up` prints, read the same way.
+    // the harness prints — the same line `deflow up` prints, read the same way.
     token ??= /#token=([A-Za-z0-9_-]+)/.exec(out)?.[1];
     if (token !== undefined) {
       try {
@@ -238,8 +238,8 @@ async function startReplay(fixture: string, dataDir: string): Promise<Replay> {
         // still coming up
       }
     }
-    if (child.exitCode !== null) throw new Error(`DeFlow replay exited early:\n${out}`);
-    if (Date.now() > deadline) throw new Error(`DeFlow replay never came up:\n${out}`);
+    if (child.exitCode !== null) throw new Error(`deflow replay exited early:\n${out}`);
+    if (Date.now() > deadline) throw new Error(`deflow replay never came up:\n${out}`);
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
@@ -532,7 +532,7 @@ file, this project has its own number.
 \`${REPRODUCE}\` builds \`packages/web/measure/\` — a harness page that renders the **real**
 \`GraphCanvas\` over the **real** \`plan.ts\` projection — serves it over plain \`node:http\` with no
 dev server anywhere in the loop, boots
-\`DeFlow replay ${measurement.fixture} --speed max\` as a real daemon, reads that run's events off its
+\`deflow replay ${measurement.fixture} --speed max\` as a real daemon, reads that run's events off its
 API, and drives a real headless Chromium through a scripted pan (a 40-step pointer drag) and a
 scripted zoom (20 wheel steps out, 20 back in), sampling every animation frame. Each figure is taken
 twice: with \`onlyRenderVisibleElements\` off and on.

@@ -92,7 +92,7 @@ worse than no ceiling, because it is a ceiling the operator trusts.
 - Recognising the vendors' _own_ ceilings — Claude Code's `--max-budget-usd` and its
   `error_max_budget_usd` result subtype, Copilot's `--max-ai-credits` — as budget events rather than
   as transient failures to retry.
-- `DeFlow doctor` reporting the current ceiling configuration, per-provider accounting fidelity and
+- `deflow doctor` reporting the current ceiling configuration, per-provider accounting fidelity and
   any provider for which a cost ceiling is unenforceable.
 
 **Out of scope:**
@@ -148,7 +148,7 @@ worse than no ceiling, because it is a ceiling the operator trusts.
       proves subscription-quota spend and API-key currency spend are never summed.
 - [ ] A run that hits its cost ceiling, is raised and resumed completes, and the crash-fuzz harness
       shows zero effects executed twice across the pause.
-- [ ] `DeFlow doctor` reports, per installed provider: `tokenAccounting`, the current
+- [ ] `deflow doctor` reports, per installed provider: `tokenAccounting`, the current
       `tokenEstimateFactor` and sample count, and whether a cost ceiling is enforceable.
 - [ ] The two `Unverified` claims this area depends on are resolved or explicitly re-flagged with a
       degradation path: **whether ACP surfaces token usage at all** (roadmap A0-3, High — if it does
@@ -502,7 +502,7 @@ it does not kill the run._ If no healthy provider satisfies the node, **suspend 
 9. A rate limit is classified `transient` — retryable, optionally on a different provider — and is
    never conflated with a budget `gate` or a `permanent` auth failure. A table-driven classifier test
    covers all three.
-10. `DeFlow doctor` reports, per provider, the most recent `provider.rate_limited` event and its
+10. `deflow doctor` reports, per provider, the most recent `provider.rate_limited` event and its
     `resetsAt`, so an operator can see why a provider is currently unusable without opening a run.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
@@ -519,7 +519,7 @@ it does not kill the run._ If no healthy provider satisfies the node, **suspend 
 | 8   | integration | `kill -9` during the suspension, restart, advance the clock: the node still wakes at `resetsAt`                                                                                                                      | The wake lived in memory                                               |
 | 9   | integration | Reroute path: a capable alternate provider on `PATH` → `plan.patched` with `cause: 'quota'`, `decision: 'auto'`, and the node runs on the new provider                                                               | Rerouting bypasses the policy engine and never appears in the scrubber |
 | 10  | integration | No capable alternate: the node suspends, a sibling branch still reaches `node.completed`                                                                                                                             | One provider outage kills the run                                      |
-| 11  | e2e         | A run whose only provider is rate-limited for 6 hours: `DeFlow doctor` reports the `resetsAt`, the daemon idles, and after `clock.advance(hours(6))` the run completes                                               | Long suspension is not exercised end to end                            |
+| 11  | e2e         | A run whose only provider is rate-limited for 6 hours: `deflow doctor` reports the `resetsAt`, the daemon idles, and after `clock.advance(hours(6))` the run completes                                               | Long suspension is not exercised end to end                            |
 | 12  | integration | **The ACP half of criterion 1** (added): a real ACP child answers `session/prompt` with a declared rate-limit code → the same `provider.rate_limited` payload, the same `transient` class, the same `quota` wake row; an undeclared code stays what it was; an ACP-assigned code is refused before the spawn | Only the shim path normalises, and the ACP path fails as a bare error |
 
 **Notes / risks** — only Claude Code's rate-limit frame is verified. Whether the ACP path surfaces
@@ -542,7 +542,7 @@ guess presented as a fact.
 
 - **Total size is ~11 days, which fits, but it is 11 days of work with no visible screen at the end.**
   Every story here produces events and projections that only become legible in
-  [EPIC-17](./EPIC-17-p0-views.md) KAR-17.8. Mitigation: `DeFlow doctor` and the `GET /api/runs/:id`
+  [EPIC-17](./EPIC-17-p0-views.md) KAR-17.8. Mitigation: `deflow doctor` and the `GET /api/runs/:id`
   payload are the deliverable surfaces named in each story's criteria, so the epic is observable from
   the terminal without waiting for the UI.
 - **The estimator's accuracy is bounded by someone else's tokenizer.** There is no public exact

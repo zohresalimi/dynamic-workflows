@@ -9,12 +9,12 @@
 
 | Actor                 | Description                                                                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Operator**          | The engineer at a terminal who typed `DeFlow run --file <path>` and watched nothing happen. Every scenario here is written from what they can observe                    |
-| **`DeFlow` CLI**      | `packages/cli` — `run`, `status`, `doctor`. In the smoke scenarios it is the **built binary**, not `src/`                                                                |
+| **Operator**          | The engineer at a terminal who typed `deflow run --file <path>` and watched nothing happen. Every scenario here is written from what they can observe                    |
+| **`deflow` CLI**      | `packages/cli` — `run`, `status`, `doctor`. In the smoke scenarios it is the **built binary**, not `src/`                                                                |
 | **DeFlowd**           | The local daemon: the HTTP API, the SSE stream, the ticker, and the run driver this epic gives it                                                                        |
 | **The ticker**        | `packages/daemon/src/ticker.ts` at ~1 Hz. It owns no policy and no waits — every wait is a `node_wake` row. `boot()` must actually start it                              |
 | **The ledger**        | A file-backed SQLite database. `event` is the control plane; `io_chunk` is the data plane; `node_wake` is every wait in the system                                       |
-| **Framing agent**     | An ACP session over `DeFlow-mock-agent`, scripted per scenario to return a valid draft, an invalid one, or a clarifying question                                         |
+| **Framing agent**     | An ACP session over `deflow-mock-agent`, scripted per scenario to return a valid draft, an invalid one, or a clarifying question                                         |
 | **Provider registry** | EPIC-05's spec table. `spec.bin` is what DeFlow spawns; `spec.shim.bin` is the vendor CLI. The 2026-08-12 machine had the second and not the first                       |
 | **Web application**   | `packages/web`, subscribed to `?runs=*` at the root route and to `?runs=<id>` on a run route                                                                             |
 | **The smoke harness** | KAR-19.5's fixture-free path: real binary, real daemon, real ledger, real socket, mock agent. The only thing it fakes is the vendor                                      |
@@ -26,8 +26,8 @@ Background:
   Given a real git repository created with "git init -b main" in an fs.mkdtemp directory
   And GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null and forced author/committer identity
   And XDG_DATA_HOME points at a directory inside that same tmpdir, so no scenario touches ~/.DeFlow
-  And "DeFlow init" has already run in that repository
-  And DeFlow-mock-agent is symlinked onto a temp PATH as the only provider, unless a scenario says
+  And "deflow init" has already run in that repository
+  And deflow-mock-agent is symlinked onto a temp PATH as the only provider, unless a scenario says
       the PATH holds a vendor CLI without its adapter, or is empty
   And no credential variable — no *_API_KEY, no *_TOKEN — is present in any child environment (AR-1)
   And the ledger is a file-backed SQLite database, never ":memory:", because every resume and
@@ -67,7 +67,7 @@ Background:
 | EPIC-19-S7  | Three surfaces, one status string, at the same head sequence                       | KAR-19.1 | Edge case   |
 | EPIC-19-S8  | A run submitted while no ticker is running starts when one does                    | KAR-19.1 | Recovery    |
 | EPIC-19-S9  | **Happy path: a vendor CLI with no ACP adapter is refused at submission**          | KAR-19.2 | Happy path  |
-| EPIC-19-S10 | **`DeFlow run` exits 5, and the refusal is in the ledger**                         | KAR-19.2 | Failure     |
+| EPIC-19-S10 | **`deflow run` exits 5, and the refusal is in the ledger**                         | KAR-19.2 | Failure     |
 | EPIC-19-S11 | The refusal names the mock agent as the way to proceed with nothing installed      | KAR-19.2 | Edge case   |
 | EPIC-19-S12 | A usable machine is never refused, and pays no extra handshake                     | KAR-19.2 | Edge case   |
 | EPIC-19-S13 | **One sentence, three surfaces: `doctor`'s words and no second wording**           | KAR-19.2 | Edge case   |
@@ -94,7 +94,7 @@ Background:
 | EPIC-19-S34 | **Every link cut in turn, and the smoke test goes red for each**                   | KAR-19.5 | Failure     |
 | EPIC-19-S35 | No vendor CLI, no credential, no network, no home directory touched                | KAR-19.5 | Edge case   |
 | EPIC-19-S36 | It is in `pnpm test`, it is serialised, and it fits its budget                     | KAR-19.5 | Edge case   |
-| EPIC-19-S37 | **Happy path: `DeFlow cancel <runId>` stops a live run and says how**              | KAR-19.6 | Happy path  |
+| EPIC-19-S37 | **Happy path: `deflow cancel <runId>` stops a live run and says how**              | KAR-19.6 | Happy path  |
 | EPIC-19-S38 | The mode is stated, never guessed, and never escalated behind you                  | KAR-19.6 | Edge case   |
 | EPIC-19-S39 | **A run that never started can finally be got rid of**                             | KAR-19.6 | Happy path  |
 | EPIC-19-S40 | **The three stuck runs of 2026-08-12, cleared by one command each**                | KAR-19.6 | Edge case   |
@@ -149,14 +149,14 @@ Feature: intake hands off to framing
   Scenario: a submitted task actually starts
     Given a running DeFlowd with the mock agent as the only provider
     And the mock agent is scripted to return a valid "DeFlow.taskspecdraft.v1" document
-    When the operator runs "DeFlow run --file spec.md"
+    When the operator runs "deflow run --file spec.md"
     Then a "task.submitted" event is appended
     And a node_wake row for the framing step exists in the same transaction as that event
     And the ticker consumes that row within two tick intervals
     And a "run.created" event is appended within 2000 ms of "task.submitted"
     And the ledger for the run contains, in seq order, "task.submitted", "provider.probed",
         "run.created"
-    And "DeFlow status" reports the run with a status that is not "task submitted"
+    And "deflow status" reports the run with a status that is not "task submitted"
     And the CLI's attached view has printed at least one line naming the framing step
 ```
 
@@ -233,7 +233,7 @@ Feature: silence is the defect
     Then exactly one "run.stalled" event is appended, carrying watermarkSeq, idleMs and the empty
          running-node list
     And the run is not killed and no process is signalled
-    And the CLI prints one line naming the run, how long it has been idle, and "DeFlow status"
+    And the CLI prints one line naming the run, how long it has been idle, and "deflow status"
     And the UI shows the run as stalled rather than as running
     When the TestClock advances ten further stall windows
     Then still exactly one "run.stalled" event exists for that run
@@ -303,7 +303,7 @@ Feature: the run becomes visible
 
   Scenario Outline: the CLI, status and the API agree
     Given a run whose ledger has been advanced to <state>
-    When "DeFlow run --attach", "DeFlow status" and "GET /api/runs" each report that run at the
+    When "deflow run --attach", "deflow status" and "GET /api/runs" each report that run at the
          same head sequence
     Then all three print the same status string
     And that string was produced by one function in @DeFlow/core
@@ -336,7 +336,7 @@ Feature: intake hands off to framing
   Scenario: a submission the daemon was not around to drive
     Given a data directory containing a run with "task.submitted" and a due framing wake
     And no daemon is running
-    When "DeFlow up" boots a daemon over that data directory
+    When "deflow up" boots a daemon over that data directory
     Then recovery loads the wake and the ticker consumes it
     And "run.created" is appended without the operator resubmitting anything
     And the run's provenance still names the original submission's source and locator
@@ -379,7 +379,7 @@ makes it answerable six weeks later (NF8) and what puts it on the topic the UI a
 
 ---
 
-## EPIC-19-S10 — `DeFlow run` exits 5, and the refusal is in the ledger
+## EPIC-19-S10 — `deflow run` exits 5, and the refusal is in the ledger
 
 **Verifies:** KAR-19.2 · **Type:** Failure · **Automated at:** e2e
 
@@ -388,7 +388,7 @@ Feature: admission at submission time
 
   Scenario: the machine cannot host a run
     Given a running DeFlowd with an empty temp PATH
-    When the operator runs "DeFlow run --file spec.md"
+    When the operator runs "deflow run --file spec.md"
     Then the process exits 5
     And stderr carries the refusal sentence, wrapped and without a stack trace
     And the on-disk ledger contains the run and its "run.aborted"
@@ -413,7 +413,7 @@ Feature: admission at submission time
   Scenario Outline: every refusal offers the zero-install path
     Given a probed manifest in state <state>
     When the refusal message is rendered
-    Then it names DeFlow-mock-agent as shipping in this package
+    Then it names deflow-mock-agent as shipping in this package
     And it states that a run against it needs no vendor CLI, no credential and no network
     And it names the exact flag to use
 
@@ -741,7 +741,7 @@ Feature: nodes execute
     And no node is started twice, including across a tick before its own "node.started" landed
     And the concurrency ceiling is never exceeded
     And "run.completed" is appended exactly once
-    And "DeFlow run" exits 0
+    And "deflow run" exits 0
     And the rendered transcript matches a file snapshot through the normalising serializer
 ```
 
@@ -762,7 +762,7 @@ Feature: output streams to both surfaces
   Scenario: live, not buffered
     Given the mock agent is scripted to emit chunk A, wait on a signal the test controls, then
           emit chunk B
-    When the node runs under "DeFlow run"
+    When the node runs under "deflow run"
     Then chunk A is observed on the CLI's stdout before the test releases the signal
     And chunk B is observed after
     And the node has not yet appended "node.completed" when chunk A is observed
@@ -880,8 +880,8 @@ Feature: nodes execute
     When execution reaches that node
     Then the run halts at "needs-human" rather than concluding
     And the open gate appears in the cross-run approval queue
-    And "DeFlow run --no-wait" exits 4, naming the gate and the command that answers it
-    And "DeFlow run" without "--no-wait" keeps watching and resumes when the gate is answered
+    And "deflow run --no-wait" exits 4, naming the gate and the command that answers it
+    And "deflow run" without "--no-wait" keeps watching and resumes when the gate is answered
     And the downstream agent node runs only after the answer
 ```
 
@@ -903,7 +903,7 @@ Feature: nodes execute
     When the accumulated cost crosses the ceiling mid-run
     Then "run.needs_human" is appended with reason "budget"
     And no node is killed and no work already done is discarded
-    And "DeFlow run" exits 3
+    And "deflow run" exits 3
     When the operator raises the ceiling and resumes
     Then the run continues from where it stopped rather than restarting
     And no completed node is executed a second time
@@ -958,10 +958,10 @@ Feature: the smoke test that would have caught this
 
   Scenario: an operator's command, all the way through
     Given the built DeFlow binary, not the source tree
-    And an fs.mkdtemp git repository with "DeFlow init" already run
-    And DeFlow-mock-agent symlinked onto a temp PATH as the only provider
+    And an fs.mkdtemp git repository with "deflow init" already run
+    And deflow-mock-agent symlinked onto a temp PATH as the only provider
     And no recorded fixture and no replay harness anywhere in the scenario
-    When the operator command "DeFlow run --file spec.md" is executed as a child process
+    When the operator command "deflow run --file spec.md" is executed as a child process
     Then the on-disk ledger contains, in seq order, "task.submitted", "run.created",
          "plan.proposed", "node.started", "node.completed" and a terminal "run.*"
     And the compiled plan has at least two nodes
@@ -1021,7 +1021,7 @@ Feature: the smoke test that would have caught this
     Then no variable matching "*_API_KEY" or "*_TOKEN" is present
     And XDG_DATA_HOME resolves inside the scenario's tmpdir
     And GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM are "/dev/null" with a forced identity
-    And the temp PATH contains DeFlow-mock-agent and no vendor CLI
+    And the temp PATH contains deflow-mock-agent and no vendor CLI
     And no outbound socket is opened for the duration of the run
     And nothing under the developer's home directory is read or written
 ```
@@ -1058,7 +1058,7 @@ than a slow afternoon that someone eventually raises the number for.
 
 ---
 
-## EPIC-19-S37 — Happy path: `DeFlow cancel <runId>` stops a live run and says how
+## EPIC-19-S37 — Happy path: `deflow cancel <runId>` stops a live run and says how
 
 **Verifies:** KAR-19.6 · **Type:** Happy path · **Automated at:** e2e
 
@@ -1068,7 +1068,7 @@ Feature: one command stops a run
   Scenario: the command the detach sentence has always named
     Given a running DeFlowd driving a plan with one mock-agent node in flight
     And the operator has never opened the token file
-    When the operator runs "DeFlow cancel <runId>"
+    When the operator runs "deflow cancel <runId>"
     Then the command posts to "POST /api/runs/<runId>/cancel" with mode "cooperative"
     And it prints which mode it used and that the agent is being allowed to flush its transcript
     And "run.cancel.requested" with mode "cooperative" is appended
@@ -1077,7 +1077,7 @@ Feature: one command stops a run
     And the process exit code is the one classifyRun prescribes for that terminal state
 
   Scenario: the same command, forcefully
-    When the operator runs "DeFlow cancel <runId> --force"
+    When the operator runs "deflow cancel <runId> --force"
     Then the request carries mode "forceful"
     And the output names the session/cancel → SIGTERM → grace → SIGKILL ladder and that the
         transcript may be truncated
@@ -1085,7 +1085,7 @@ Feature: one command stops a run
     And no process remains in the agent's process group, excluding entries in state "Z"
 ```
 
-**Notes:** `'DeFlow cancel <runId>' to stop` has been printed by KAR-18.3 AC3's detach sentence since
+**Notes:** `'deflow cancel <runId>' to stop` has been printed by KAR-18.3 AC3's detach sentence since
 2026-08-11 and has never resolved to a command. The Z-state exclusion is the verified false-negative
 trap from [09 §11.1](../../09-workspace-and-safety.md), and it belongs here rather than only in
 EPIC-06 because this is the first scenario in which an **operator's own command** claims a kill
@@ -1108,11 +1108,11 @@ Feature: one command stops a run
 
     Examples:
       | invocation                   | mode        |
-      | DeFlow cancel r1             | cooperative |
-      | DeFlow cancel r1 --force     | forceful    |
+      | deflow cancel r1             | cooperative |
+      | deflow cancel r1 --force     | forceful    |
 
   Scenario: a mode the daemon does not have
-    When the operator runs "DeFlow cancel r1 --mode aggressive"
+    When the operator runs "deflow cancel r1 --mode aggressive"
     Then the command refuses before any HTTP request is made
     And the refusal lists exactly the members of CANCEL_MODES
     And the wording is the daemon's own invalid_request sentence, not a second one
@@ -1182,10 +1182,10 @@ Feature: a way out for a run that never started
 
   Scenario Outline: the reported runs, by their exact ledger shapes
     Given a run whose ledger is exactly <shape>
-    When the operator runs "DeFlow cancel <runId>" once
+    When the operator runs "deflow cancel <runId>" once
     Then the run reaches "aborted"
     And the same code path handled it as every other row of this table
-    And "DeFlow status" afterwards does not list it among active runs
+    And "deflow status" afterwards does not list it among active runs
     And "GET /api/runs?status=active" does not include it
     And every artifact the run produced is still readable under .DeFlow/runs/<runId>/
 
@@ -1225,7 +1225,7 @@ Feature: one command stops a run
     And the response names the terminal status the run already had
 
   Scenario: a run id that does not exist
-    When "DeFlow cancel run_does_not_exist" is run
+    When "deflow cancel run_does_not_exist" is run
     Then the response is 404 "run_not_found"
     And the CLI exits non-zero with that sentence and no stack trace
     And no event was appended to any run
@@ -1301,12 +1301,12 @@ in `e2e/mock-only-run.test.ts`; the completion clauses are carried by
 Feature: the bundled agent can answer a turn that carries a schema
 
   Scenario: a run framed on a machine with nothing installed
-    Given a temp PATH holding DeFlow-mock-agent and no vendor agent CLI of any kind
+    Given a temp PATH holding deflow-mock-agent and no vendor agent CLI of any kind
     And no "claude", "codex", "gemini" or ACP adapter resolves anywhere on that PATH
-    When the operator runs "DeFlow run --file spec.md"
+    When the operator runs "deflow run --file spec.md"
     Then admission does not refuse the run and no "run.aborted" with code "no_usable_provider" is
          appended
-    And the framing turn is served by DeFlow-mock-agent over a real ACP session
+    And the framing turn is served by deflow-mock-agent over a real ACP session
     And the document it returns validates against "DeFlow.taskspecdraft.v1"
     And the ledger contains, in seq order, "task.submitted", "run.created", "plan.proposed",
         "node.started" and "node.completed", ending in a terminal "run.*"
@@ -1336,11 +1336,11 @@ further facts are asserted because without them that line could be true for the 
 one `provider.probed` row is `mock` and its `capsJson` is a real ACP `initialize` answer from the
 binary on that PATH, and the run is parked on the durable `node_wake` row KAR-19.1 AC1 requires
 rather than dropped. It is red on the pre-story machine: with bundled entries dropped from
-`usableProviders`, `DeFlow run` exits 5 with `no_usable_provider`, which is the state this story
+`usableProviders`, `deflow run` exits 5 with `no_usable_provider`, which is the state this story
 exists to end.
 
 **The remaining lines are blocked one level below this story**, exactly as
-[KAR-19.7](../epics/EPIC-19-live-run-pipeline.md)'s amendment records. `DeFlow up` binds no
+[KAR-19.7](../epics/EPIC-19-live-run-pipeline.md)'s amendment records. `deflow up` binds no
 `runFraming`, `advanceRun` or `executeNodes` port, because no `FramingAgent`, `ReconAgent`,
 `PlannerAgent` or agent-node `NodePerformer` over a real process exists in `src/` yet — the chain is
 driven end to end only against scripted ports, in
@@ -1362,7 +1362,7 @@ These close together with KAR-19.3's test plan #1 and KAR-19.4's #1 and #8.
 Feature: the bundled agent can answer a turn that carries a schema
 
   Scenario Outline: every schema the live chain needs
-    Given the built DeFlow-mock-agent binary
+    Given the built deflow-mock-agent binary
     And the schema flag its own registry entry declares
     When it is spawned for schema id <schema> with that flag and a schema file
     Then exactly one document is written on the return channel and nothing else
@@ -1467,7 +1467,7 @@ host locale is the realistic version of this bug and it passes on the author's m
 Feature: the bundled agent can answer a turn that carries a schema
 
   Scenario Outline: a turn it cannot honour ends loudly and empty
-    Given the built DeFlow-mock-agent binary
+    Given the built deflow-mock-agent binary
     When it is spawned with the schema flag and <input>
     Then it exits non-zero
     And its stderr names the schema id it was asked for
@@ -1499,7 +1499,7 @@ ids on stderr is what turns "the smoke test failed" into a one-line diagnosis.
 Feature: the failure returns are scriptable too
 
   Scenario Outline: the caller's own refusal path fires with nothing installed
-    Given a temp PATH holding DeFlow-mock-agent and no vendor agent CLI
+    Given a temp PATH holding deflow-mock-agent and no vendor agent CLI
     And a scenario file scripting the turn to return <return>
     When the live chain reaches that turn
     Then <caller refusal> fires
@@ -1570,7 +1570,7 @@ Feature: the new entry is not a routing hazard
     And the selection order is asserted at source rather than described in a comment
 
   Scenario: doctor tells the truth about a binary that ships in the tarball
-    Given the bundled DeFlow-mock-agent resolves
+    Given the bundled deflow-mock-agent resolves
     When "doctor" renders its Agents section
     Then the entry is reported as "installed"
     And no "npm install -g" action is printed for it
@@ -1675,7 +1675,7 @@ Feature: the vendor's id is carried beside DeFlow's, never instead of it
     And the run id is nowhere rewritten into a UUID
 
   Scenario: the surfaces are unchanged
-    When "DeFlow status" and "GET /api/runs/:id" are read for that run
+    When "deflow status" and "GET /api/runs/:id" are read for that run
     Then both name "run_<ts>_<hex>"
     And the UI's run header shows the same string
     And the vendor session id appears only where a transcript lookup needs it
@@ -1794,19 +1794,19 @@ Feature: a failing run reaches a terminal state
 
   Scenario: the operator gets an answer and their terminal back
     Given a running DeFlowd and a provider scripted to fail every turn
-    When the operator runs "DeFlow run --file task.md"
+    When the operator runs "deflow run --file task.md"
     Then a failure line is printed for each attempt, naming the node, the attempt number out of the
         ceiling, and the typed reason
     And the number of attempts equals the node's own RetryPolicy maxAttempts
     And a "run.aborted" event with outcome "failed" is appended, carrying the reason
     And the command exits with code 1
     And the process is no longer running
-    And "DeFlow status" reports the run as failed rather than active
+    And "deflow status" reports the run as failed rather than active
 ```
 
 **Notes:** this is the regression test for the second defect of 2026-08-13, and every clause is a
 sentence from that afternoon inverted. The run retried the identical failure every ~31 s
-indefinitely; `DeFlow run` printed nothing about any of it; it was still hanging after seven minutes
+indefinitely; `deflow run` printed nothing about any of it; it was still hanging after seven minutes
 and had to be killed. The clause with the most teeth is the last-but-one — **"the process is no
 longer running"** — because it is the one an assertion on a promise cannot make, and it is the reason
 this scenario is `e2e` rather than `integration`.
@@ -1838,7 +1838,7 @@ Feature: silence in the ledger is the defect
 
 **Notes:** the ledger for the reported run held `provider.probed`, `provider.probed` and
 `task.submitted` — nothing else — while the daemon threw the same error fifteen times. Because
-nothing was appended, neither the UI nor `DeFlow status` nor a `sqlite3` session six weeks later
+nothing was appended, neither the UI nor `deflow status` nor a `sqlite3` session six weeks later
 could have shown it: the only evidence anywhere was a daemon log the operator had no reason to open.
 The ordering clause matters too — journal first, then settle the wake — because a crash between the
 two must lose the retry, not the record.
@@ -2000,8 +2000,8 @@ commit rather than within one afternoon.
 Feature: the operator can say which agent to run on
 
   Scenario: the flag is honoured, not merely accepted
-    Given a temp PATH holding DeFlow-mock-agent
-    When the operator runs "DeFlow run --provider mock --file spec.md"
+    Given a temp PATH holding deflow-mock-agent
+    When the operator runs "deflow run --provider mock --file spec.md"
     Then the run is created
     And every agent child spawned for it was the bundled mock binary
     And the run reaches a terminal state
@@ -2014,7 +2014,7 @@ Feature: the operator can say which agent to run on
 ```
 
 **Notes:** the operator typed `--provider mock` on 2026-08-13 and got
-`DeFlow run: unknown option "--provider"`. The second clause of the first scenario is what makes this
+`deflow run: unknown option "--provider"`. The second clause of the first scenario is what makes this
 worth an `e2e`: a flag that is parsed and then dropped is worse than an absent one, because the
 operator now believes something about the run that is not true, and the only way to catch that is to
 look at which binary actually ran.
@@ -2029,7 +2029,7 @@ look at which binary actually ran.
 Feature: a closed list, and a message that closes the question
 
   Scenario Outline: the argument is validated against the registry
-    When "DeFlow run <argv>" is parsed
+    When "deflow run <argv>" is parsed
     Then it is refused with EX_USAGE
     And no run is created
     And the message lists the registered provider ids, and which of them are usable here
@@ -2098,7 +2098,7 @@ Feature: two kinds of wrong, two exit codes
 
   Scenario: asking for something real that is not here
     Given a temp PATH with no vendor agent CLI
-    When the operator runs "DeFlow run --provider codex --file spec.md"
+    When the operator runs "deflow run --provider codex --file spec.md"
     Then the refusal is KAR-19.2's, rendered by the same function doctor uses
     And it carries the typed refusal code
     And the command exits 5

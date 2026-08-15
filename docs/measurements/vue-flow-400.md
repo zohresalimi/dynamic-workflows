@@ -28,7 +28,7 @@ file, this project has its own number.
 `pnpm measure:graph` builds `packages/web/measure/` — a harness page that renders the **real**
 `GraphCanvas` over the **real** `plan.ts` projection — serves it over plain `node:http` with no
 dev server anywhere in the loop, boots
-`DeFlow replay stress-400 --speed max` as a real daemon, reads that run's events off its
+`deflow replay stress-400 --speed max` as a real daemon, reads that run's events off its
 API, and drives a real headless Chromium through a scripted pan (a 40-step pointer drag) and a
 scripted zoom (20 wheel steps out, 20 back in), sampling every animation frame. Each figure is taken
 twice: with `onlyRenderVisibleElements` off and on.

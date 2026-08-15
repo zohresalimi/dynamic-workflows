@@ -113,7 +113,7 @@ put them on a tmp `PATH`.
 
 ### 3.1 `@DeFlow/mock-agent` — the mock ACP agent (D17)
 
-A first-class shipped package, not a test helper. Bin: `DeFlow-mock-agent`, implemented with the
+A first-class shipped package, not a test helper. Bin: `deflow-mock-agent`, implemented with the
 _agent_ side of `@agentclientprotocol/sdk@1.3.0` (`acp.agent({...})` mirrors `acp.client({...})`),
 driven by a declarative script file. No network, no credentials, no tokens.
 
@@ -205,7 +205,7 @@ recordings/<provider>@<exact-version>/<case>.ndjson
 
 - **`pnpm test:record` is manual, never CI.** It runs against the developer's installed, authenticated
   CLIs and costs real quota.
-- **CI replays.** `DeFlow-mock-agent --replay <file>` serves the recording; assertions compare
+- **CI replays.** `deflow-mock-agent --replay <file>` serves the recording; assertions compare
   outgoing frames modulo JSON-RPC `id` and `_meta`.
 - **Key the directory on the exact agent version.** `claude-agent-acp@0.64.1` and `@0.65.0` get
   separate directories, so a version bump produces a visible new directory in a PR rather than
@@ -537,7 +537,7 @@ The corpus to record:
 | **crash + resume with a seq gap** | A ledger whose sequence numbers jump, as a real SIGKILL produces                                                     | SSE `Last-Event-ID` resume, the `?since=<seq>` hydrate path, "did the UI notice?"                 |
 | **400-node stress**               | A wide `map` fan-out                                                                                                 | Vue Flow render budget, elk layout time, scrubber responsiveness                                  |
 
-A `DeFlow replay <fixture>` command serves a fixture over the same HTTP + SSE contract as a live run,
+A `deflow replay <fixture>` command serves a fixture over the same HTTP + SSE contract as a live run,
 at configurable speed. That is the UI's development loop: no daemon orchestration, no agents, no
 quota, and a 400-node graph on demand. It is also what the Playwright E2E smokes drive (§13).
 
@@ -590,12 +590,12 @@ composables, the ledger-projection store, formatters, and anything with no geome
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Playwright component testing** | Still officially experimental in 2026, and 1.59 (April 2026) deleted `@playwright/experimental-ct-svelte` with no deprecation period. Not a foundation.                                                                                                                                                                                                                                                                                                                                              |
 | **Cypress** (15.19.0)            | Maintained and fine, but it is a second runner, a second assertion library and a second browser download for zero incremental signal over browser mode.                                                                                                                                                                                                                                                                                                                                              |
-| **Storybook**                    | It is a component _catalogue_, and DeFlow's UI is not a component library — it is six stateful views over one event stream. Every interesting state is "a particular ledger at a particular offset", which `DeFlow replay` already expresses better, with real data, in the real app. Storybook would mean maintaining a second set of fake props that drift from the real event shapes, plus a second build pipeline, to get a worse fidelity. If a design-system extraction ever happens, revisit. |
+| **Storybook**                    | It is a component _catalogue_, and DeFlow's UI is not a component library — it is six stateful views over one event stream. Every interesting state is "a particular ledger at a particular offset", which `deflow replay` already expresses better, with real data, in the real app. Storybook would mean maintaining a second set of fake props that drift from the real event shapes, plus a second build pipeline, to get a worse fidelity. If a design-system extraction ever happens, revisit. |
 
 ### Real Playwright E2E, sparingly
 
 Keep `@playwright/test@1.62.1` for roughly **five** full-stack smokes, driven against
-`DeFlow replay` on an ephemeral port with fake agents on PATH:
+`deflow replay` on an ephemeral port with fake agents on PATH:
 
 1. Load a completed run; the plan graph renders every node with the right state colour.
 2. Drag the plan-evolution scrubber back to v1 and forward through each patch; the diff renders.

@@ -31,7 +31,7 @@ This is not a preference. Every JS option fails at the one thing the Workspace M
 | ---------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `isomorphic-git` | 1.40.0                                       | **No worktree support at all.** The full runtime export list was enumerated: `branch`, `checkout`, `merge`, `stash`, … and no `worktree*` function of any kind. **Verified 2026-08-02.**                                                                      |
 | `simple-git`     | 3.36.0                                       | **No worktree API.** Grepping `node_modules/simple-git/dist/typings/*.d.ts` for `worktree` returns zero hits. You would call `.raw(['worktree', …])` and parse the strings yourself — paying a dependency for nothing. **Verified 2026-08-02.**               |
-| `nodegit`        | 0.27.0 stable / 0.28.0-alpha.38 (2026-04-23) | Needs `node-gyp` native compilation, declares `engines.node >= 6`, and has been in alpha for three years. Breaks `npx DeFlow up` (NF6) on every Node ABI bump. It is libgit2-based, and **libgit2 still does not support relative worktrees** (libgit2#7210). |
+| `nodegit`        | 0.27.0 stable / 0.28.0-alpha.38 (2026-04-23) | Needs `node-gyp` native compilation, declares `engines.node >= 6`, and has been in alpha for three years. Breaks `npx deflowai up` (NF6) on every Node ABI bump. It is libgit2-based, and **libgit2 still does not support relative worktrees** (libgit2#7210). |
 | `dugite`         | 3.2.2                                        | The one defensible alternative — GitHub Desktop's wrapper, ships a known-good git binary so you do not depend on the user's version. Cost: ~40 MB download against NF6. **Hold in reserve**; adopt only if version-drift support burden becomes real.         |
 
 Worktree management is about eight git subcommands with stable, machine-readable porcelain output.
@@ -82,14 +82,14 @@ output-capturing and never need a process group. Agent processes are long-lived,
 (§11.4). The two use different tools deliberately. See
 [the provider adapter layer](./07-provider-adapter-layer.md) for the agent side.
 
-### 1.2 Minimum git version, enforced in `DeFlow doctor`
+### 1.2 Minimum git version, enforced in `deflow doctor`
 
 | Requirement | Version         | Why                                                                                                  |
 | ----------- | --------------- | ---------------------------------------------------------------------------------------------------- |
 | Hard floor  | **git >= 2.38** | `git merge-tree --write-tree` — the entire conflict-detection design (§6) does not exist below this. |
 | Preferred   | **git >= 2.45** | Stable `--porcelain -z` on `worktree list`, which is how DeFlow reads worktree state (§4.2).         |
 
-Below 2.38, `DeFlow doctor` fails hard and the daemon refuses to start a run. Between 2.38 and 2.45
+Below 2.38, `deflow doctor` fails hard and the daemon refuses to start a run. Between 2.38 and 2.45
 it warns. `doctor` also checks, on Linux, for `bwrap` and `socat` (§9.2) and for the Ubuntu 24.04+
 AppArmor restriction on unprivileged user namespaces (§13).
 
@@ -960,7 +960,7 @@ it suffices.
 | Enable `worktree.useRelativePaths`                              | Implies `extensions.relativeWorktrees`, unsupported by libgit2 — silently breaks the user's other tools.                                            |
 | Depend on `@zed-industries/claude-code-acp`                     | Renamed. Stale at 0.16.2 (2026-03-26); the live package is `@agentclientprotocol/claude-agent-acp` at 0.64.1.                                       |
 
-### 13.1 Environment checks that belong in `DeFlow doctor`
+### 13.1 Environment checks that belong in `deflow doctor`
 
 - `git --version` >= 2.38 (fail) / >= 2.45 (warn)
 - Linux: `bwrap` and `socat` present

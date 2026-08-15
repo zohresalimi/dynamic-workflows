@@ -23,7 +23,7 @@ export const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 
 /**
  * The committed emission target. `.DeFlow/schemas/` in a run directory is a
- * copy of this made at `DeFlow init` time: the daemon must be able to hand a
+ * copy of this made at `deflow init` time: the daemon must be able to hand a
  * vendor CLI an absolute path inside the run's own directory, and the run
  * directory must stay self-describing after the fact.
  */

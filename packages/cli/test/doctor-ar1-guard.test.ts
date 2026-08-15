@@ -1,5 +1,5 @@
 /**
- * KAR-18.4 AC5 — the AR-1 guard over `DeFlow doctor`'s own source tree.
+ * KAR-18.4 AC5 — the AR-1 guard over `deflow doctor`'s own source tree.
  *
  * EPIC-18-S30's second scenario is the reason this is a mechanical check
  * rather than a review note. *"'Never possesses a model credential' has to be

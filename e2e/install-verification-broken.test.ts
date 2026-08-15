@@ -74,12 +74,12 @@ afterAll(() => {
 suite('EPIC-18-S43 — a missing files entry drops dist/ui/ and serves a blank page', () => {
   it('health and / still answer, but the referenced asset 404s — and the verifier names it', async () => {
     const install = await room();
-    const init = await runInstalled({ tgz: broken.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: broken.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     const up = spawnInstalled({
       tgz: broken.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['up', '--no-open'],
       install,
     });
@@ -128,7 +128,7 @@ suite('AC2 — an agent that is on PATH but holds no turn does not pass the veri
     // speaking a word of ACP — the observable behaviour of a `mock-agent.mjs`
     // that reached the tarball but throws on import.
     const install = await room();
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     const binDir = join(install.room, 'silent-agent-bin');

@@ -45,7 +45,7 @@ const row = (): CapabilityRow =>
   shimCapabilityRow({
     provider: PROVIDER,
     version: '0.0.0',
-    binaryPath: '/opt/DeFlow/DeFlow-mock-agent',
+    binaryPath: '/opt/DeFlow/deflow-mock-agent',
     binarySha256: 'c'.repeat(64),
     probedAt: 1_754_470_000_000,
   });

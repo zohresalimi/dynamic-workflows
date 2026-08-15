@@ -1,5 +1,5 @@
 /**
- * KAR-14.4 AC10 — `DeFlow doctor`, per provider: the most recent
+ * KAR-14.4 AC10 — `deflow doctor`, per provider: the most recent
  * `provider.rate_limited` and its `resetsAt`.
  *
  * The question this answers is *"why is this provider unusable right now?"*,

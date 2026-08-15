@@ -68,7 +68,7 @@ When a restart fails, the instinct is to clear state. Resist it —
 Snapshot it first:
 
 ```bash
-DeFlow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db
+deflow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db
 ```
 
 `VACUUM INTO` is measured at about 1 second for a 193 MB database, so there is no excuse.

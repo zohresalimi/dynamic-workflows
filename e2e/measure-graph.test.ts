@@ -8,7 +8,7 @@
  * measurement (`pnpm measure:graph`, `docs/measurements/vue-flow-400.md`) — and
  * a measurement nobody re-takes is a comment. So this spec re-runs the whole
  * thing: a real `vite build` of the harness, a real static server, a real
- * `DeFlow replay stress-400 --speed max` daemon, a real headless Chromium, a
+ * `deflow replay stress-400 --speed max` daemon, a real headless Chromium, a
  * scripted pan and a scripted zoom, with culling off and on.
  *
  * **What it asserts, and why it is not flaky.** The committed budget is the p95

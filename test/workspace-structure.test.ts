@@ -34,7 +34,7 @@ const EXPECTED_PACKAGES: Readonly<Record<string, string>> = {
   'packages/adapters': '@DeFlow/adapters',
   'packages/gates': '@DeFlow/gates',
   'packages/daemon': '@DeFlow/daemon',
-  'packages/cli': 'DeFlow',
+  'packages/cli': 'deflowai',
   'packages/web': '@DeFlow/web',
   'packages/testkit': '@DeFlow/testkit',
   'packages/mock-agent': '@DeFlow/mock-agent',

@@ -1,5 +1,5 @@
 /**
- * KAR-18.3 AC6 — `DeFlow run`'s exit codes, derived in exactly one place.
+ * KAR-18.3 AC6 — `deflow run`'s exit codes, derived in exactly one place.
  *
  * *"Exit codes are the CLI's API for CI"* (EPIC-18-S23), which makes this the
  * smallest file in the command and the one with the most callers. The test
@@ -64,7 +64,7 @@ export type RunExitCode = (typeof RUN_EXIT_CODES)[keyof typeof RUN_EXIT_CODES];
 export const EX_USAGE = 64;
 
 /**
- * KAR-19.2 AC5 — what `DeFlow run` exits when `POST /api/runs` refused it.
+ * KAR-19.2 AC5 — what `deflow run` exits when `POST /api/runs` refused it.
  *
  * Two of the refusal codes are facts about the *machine* rather than about the
  * request: no provider on it can serve a run, or the one bridge it has does not
@@ -179,7 +179,7 @@ function classifyEnded(state: RunState): RunVerdict {
 }
 
 /**
- * The one derivation of `DeFlow run`'s exit code.
+ * The one derivation of `deflow run`'s exit code.
  *
  * `terminal: false` is not an error state — it is the answer for every run that
  * is still going, and it is what keeps the watcher watching rather than
@@ -201,7 +201,7 @@ export function classifyRun(state: RunState, options: ClassifyOptions): RunVerdi
       // whether the node was a framing turn that spent its `RetryPolicy` or a
       // plan node the executor could not finish. A run that ended holding
       // neither was stopped by a person: an abandon at the F1.3 gate, or
-      // `DeFlow cancel`, neither of which leaves a failure behind.
+      // `deflow cancel`, neither of which leaves a failure behind.
       const failure = endedInFailure(state, 'aborted');
       if (failure !== null) {
         return { terminal: true, exitCode: RUN_EXIT_CODES.failed, reason: failure };

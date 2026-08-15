@@ -463,7 +463,7 @@ Five mechanisms, in order of how much they actually help:
    but it is never invisible.
 3. **Gate definitions are hashed into the run manifest** (§2), so weakening a gate mid-run is a
    visible divergence rather than a quiet edit.
-4. **`DeFlow doctor` reports gates that are defined but were never evaluated** in the last N runs.
+4. **`deflow doctor` reports gates that are defined but were never evaluated** in the last N runs.
    A gate nothing schedules is decoration.
 5. **Track gate first-pass rate as a first-class metric** (PRD §12 target: > 40%). Both tails are
    informative. Below 40% and the plan or the spec is wrong. At 100%, the gate is either testing

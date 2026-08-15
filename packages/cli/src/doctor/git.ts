@@ -42,9 +42,9 @@ function scratchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     PATH: env.PATH ?? '',
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_SYSTEM: '/dev/null',
-    GIT_AUTHOR_NAME: 'DeFlow doctor',
+    GIT_AUTHOR_NAME: 'deflow doctor',
     GIT_AUTHOR_EMAIL: 'doctor@deflow.invalid',
-    GIT_COMMITTER_NAME: 'DeFlow doctor',
+    GIT_COMMITTER_NAME: 'deflow doctor',
     GIT_COMMITTER_EMAIL: 'doctor@deflow.invalid',
     GIT_TERMINAL_PROMPT: '0',
     LC_ALL: 'C',
@@ -59,7 +59,7 @@ function scratchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
  */
 const GIT_UPGRADE =
   "install git 2.45 or later (macOS: 'brew upgrade git'; Debian/Ubuntu: 'sudo apt install " +
-  "git'), then run 'DeFlow doctor' again";
+  "git'), then run 'deflow doctor' again";
 
 /** The version band, with the consequence spelled out in DeFlow's terms. */
 function versionCheck(check: GitVersionCheck): DoctorCheck {

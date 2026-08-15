@@ -47,11 +47,11 @@ DeFlow/
 | `@DeFlow/adapters`   | ACP client, per-vendor CLI exec shims, capability probing and persistence, golden-recording tee                                                                                                          | `@DeFlow/core`                                       | `@agentclientprotocol/sdk@1.3.0`                                                    |
 | `@DeFlow/gates`      | Gate definitions (`.DeFlow/gates/*.yaml`), the seven findings parsers, the severity floor, the deterministic gate runner and the milestone rule. The ladder itself lives in `@DeFlow/core`, because `decide()` is what withholds a tier                                                            | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters` | `yaml`, `zod`                                                                       |
 | `@DeFlow/daemon`     | DeFlowd itself: hono HTTP+SSE, orchestrator tick loop, Effect Runner, Planner, Context Builder, Blackboard, Workspace Manager, MCP host                                                     | `@DeFlow/core`, `@DeFlow/ledger`, `@DeFlow/adapters`, `@DeFlow/gates` | `hono`, `@modelcontextprotocol/sdk`, `execa`, `pino`, `@lydell/node-pty` (optional) |
-| `DeFlow`             | The npm package. `DeFlow init/up/run/doctor`, plus the `DeFlow-mcp` and `DeFlow-mock-agent` bins. Bundles the daemon and ships the built UI as files                                                     | `@DeFlow/daemon`, `@DeFlow/mock-agent`               | `@lydell/node-pty` (external), everything else inlined                              |
+| `deflow`             | The npm package. `deflow init/up/run/doctor`, plus the `deflow-mcp` and `deflow-mock-agent` bins. Bundles the daemon and ships the built UI as files                                                     | `@DeFlow/daemon`, `@DeFlow/mock-agent`               | `@lydell/node-pty` (external), everything else inlined                              |
 | `@DeFlow/web`        | Vue 3 SPA, ledger-projection Pinia store, the nine P0 views, and the one `hc<ApiType>` client module `packages/cli` imports too                                                                          | `@DeFlow/core` (**types only**), `@DeFlow/daemon` (**types only**, dev) | `vue`, `pinia`, `@vue-flow/core`, `d3`, `xterm.js`, `shiki`                         |
 | `@DeFlow/testkit`    | Fake agent binaries, hermetic git fixtures, tmpdir fixtures, `TestClock`, `FakeEffectRunner`, crash-fuzz harness                                                                                         | `@DeFlow/core`                                       | dev-only                                                                            |
 | `@DeFlow/mock-agent` | A real ACP **agent** binary, seeded and deterministic: scripted chunks, permission requests, fs/terminal callbacks, hang, mid-turn crash, malformed frames, 10 MB line, configurable `agentCapabilities` | **nothing** (deliberately)                           | `@agentclientprotocol/sdk@1.3.0`                                                    |
-| `e2e`                | ~5 full-stack specs that boot a real DeFlowd on an ephemeral port with fake agents on `PATH` and drive a real browser                                                                                    | `DeFlow`, `@DeFlow/testkit`                          | `@playwright/test`                                                                  |
+| `e2e`                | ~5 full-stack specs that boot a real DeFlowd on an ephemeral port with fake agents on `PATH` and drive a real browser                                                                                    | `deflow`, `@DeFlow/testkit`                          | `@playwright/test`                                                                  |
 
 `@DeFlow/mock-agent` deliberately does **not** depend on `@DeFlow/core`. If it did, a bug in the domain model could be mirrored on both sides of the wire and cancel itself out. It is an independent implementation of the _agent_ side of the same published schema, which is what makes it a useful oracle.
 
@@ -59,7 +59,7 @@ DeFlow/
 
 ## 2. Why exactly one package is published
 
-`packages/cli` is `"name": "DeFlow"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `deps.alwaysBundle: [/^@DeFlow\//]`.
+`packages/cli` is `"name": "deflowai"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `deps.alwaysBundle: [/^@DeFlow\//]`.
 
 ```ts
 // packages/cli/tsdown.config.ts
@@ -99,7 +99,7 @@ Three notes on that config, each of which cost a build to find (KAR-18.5):
 
 This deletes the entire multi-package versioning problem. There are no changesets, no release orchestration, no inter-package semver ranges to keep honest: the release is `npm version patch && pnpm publish`. `@changesets/cli@2.31.1` is alive and fine, but it solves coordination you deliberately do not have. (pnpm 11.13+ also ships native release management — `pnpm change`, `pnpm version -r`, `pnpm lane`, configured under a `versioning:` key — which would be the thing to reach for if `@DeFlow/*` ever do get published separately. **Unverified**: confirm the exact command surface against pnpm's docs before adopting.)
 
-D17 calls `@DeFlow/mock-agent` a first-class shipped package. "Shipped" means it ships **inside the `DeFlow` tarball as a second bin** (`DeFlow-mock-agent`), not that it is published separately. Users need it for `DeFlow doctor`, offline demos and reproducing bug reports; that does not require its own npm entry.
+D17 calls `@DeFlow/mock-agent` a first-class shipped package. "Shipped" means it ships **inside the `deflow` tarball as a second bin** (`deflow-mock-agent`), not that it is published separately. Users need it for `deflow doctor`, offline demos and reproducing bug reports; that does not require its own npm entry.
 
 **Bundler: `tsdown@0.22.14`** (Rolldown-based, from the Vite/VoidZero org; peer-supports TypeScript ^5/^6/^7; engines `^22.18 || >=24.11`). Pin it exactly — it is still 0.x. `tsup@8.5.1` last published 2025-11-12 and its maintainers now direct new projects to tsdown; treat it as end-of-life. Plain `tsc` cannot inline `@DeFlow/*` into one file, which is the whole point.
 
@@ -110,7 +110,7 @@ Build order and the UI:
 ```
 pnpm --filter @DeFlow/web build        # -> packages/web/dist
 copy packages/web/dist -> packages/cli/dist/ui/
-pnpm --filter DeFlow build             # tsdown, @DeFlow/* inlined
+pnpm --filter deflowai build             # tsdown, @DeFlow/* inlined
 ```
 
 The three steps live in `packages/cli/scripts/build.ts`, which is the whole of `pnpm build`. One
@@ -118,7 +118,7 @@ script rather than three `&&`-joined commands, because the order is the load-bea
 `--out-dir` flag lets `packages/cli/test/integration/build.test.ts` run the real thing rather than a
 re-implementation of it.
 
-UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/DeFlow-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
+UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/deflowai-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
 
 ---
 
@@ -221,9 +221,9 @@ it("core imports no node: builtins", async () => {
 });
 ```
 
-R2 keeps the daemon a leaf. If `@DeFlow/adapters` ever needs something from `daemon`, that something belongs in `core` (if pure) or is a port that `daemon` implements and injects (if not). The one place this is tested is `e2e`, which depends on the built `DeFlow` package rather than on `daemon` directly — so the specs exercise the same artefact users install.
+R2 keeps the daemon a leaf. If `@DeFlow/adapters` ever needs something from `daemon`, that something belongs in `core` (if pure) or is a port that `daemon` implements and injects (if not). The one place this is tested is `e2e`, which depends on the built `deflow` package rather than on `daemon` directly — so the specs exercise the same artefact users install.
 
-**The UI's exception, added by KAR-15.1, is narrower than it sounds.** `packages/web/src/api/client.ts` does `import type { ApiType } from "@DeFlow/daemon"` — that import *is* the client contract ([API and realtime §9](./11-api-and-realtime.md#9-the-typed-client)), and it is what makes renaming a daemon field break the UI build in the same commit rather than a view at runtime three weeks later. It sits in `devDependencies` and is erased at compile time, so no daemon code can reach the browser bundle, which is the coupling R2 exists to prevent. Two guards hold that line: `checkDaemonIsLeaf` still rejects a *runtime* dependency from the UI, and `checkWebImportsDaemonTypesOnly` fails the build the day one of those imports loses its `type` keyword. `packages/cli` then depends on `@DeFlow/web` for that same client module, so `DeFlow run` and the browser are two callers of one typed surface rather than two implementations of one protocol.
+**The UI's exception, added by KAR-15.1, is narrower than it sounds.** `packages/web/src/api/client.ts` does `import type { ApiType } from "@DeFlow/daemon"` — that import *is* the client contract ([API and realtime §9](./11-api-and-realtime.md#9-the-typed-client)), and it is what makes renaming a daemon field break the UI build in the same commit rather than a view at runtime three weeks later. It sits in `devDependencies` and is erased at compile time, so no daemon code can reach the browser bundle, which is the coupling R2 exists to prevent. Two guards hold that line: `checkDaemonIsLeaf` still rejects a *runtime* dependency from the UI, and `checkWebImportsDaemonTypesOnly` fails the build the day one of those imports loses its `type` keyword. `packages/cli` then depends on `@DeFlow/web` for that same client module, so `deflow run` and the browser are two callers of one typed surface rather than two implementations of one protocol.
 
 ---
 
@@ -343,7 +343,7 @@ Lives inside the target repository being worked on (not inside the DeFlow source
     report.html
 ```
 
-Everything in the committed half is a **team artefact**: it is reviewed in pull requests, it travels with the repo, and it is how a colleague's DeFlow behaves the same as yours. Everything in the gitignored half is **per-machine**. `DeFlow init` writes both halves and appends the gitignored paths to `.gitignore`.
+Everything in the committed half is a **team artefact**: it is reviewed in pull requests, it travels with the repo, and it is how a colleague's DeFlow behaves the same as yours. Everything in the gitignored half is **per-machine**. `deflow init` writes both halves and appends the gitignored paths to `.gitignore`.
 
 Worktrees live here rather than in a global directory for two reasons: they must sit on the **same filesystem** as the repo (atomic `rename` is only atomic within one filesystem, and the file-write effect depends on it), and a user who wants to `cd` into an agent's worktree and look around should be able to find it next to their code.
 
@@ -368,9 +368,9 @@ The **ledger is a single global database**, not one per run. Three reasons: the 
 
 Blobs are global for the same reason content-addressing exists: the identical failing test log across three retry attempts, or across two runs of the same task, deduplicates to one object.
 
-`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx DeFlow up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected. The `daemon_epoch` counter lives in `ledger.db`, not in `DeFlow.lock`: nothing is ever written into the lock file, because committing is precisely the moment SQLite releases the file lock, and an acquisition that lets go of the lock halfway through is not exclusive against a second daemon started microseconds rather than seconds later (see `packages/ledger/README.md` §single-instance lease). The lock file is therefore always 0 bytes, and the holder's pid — needed only for the sentence a *refused* daemon prints, never for a liveness check — goes in `DeFlow.lock.pid` beside it.
+`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx deflowai up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected. The `daemon_epoch` counter lives in `ledger.db`, not in `DeFlow.lock`: nothing is ever written into the lock file, because committing is precisely the moment SQLite releases the file lock, and an acquisition that lets go of the lock halfway through is not exclusive against a second daemon started microseconds rather than seconds later (see `packages/ledger/README.md` §single-instance lease). The lock file is therefore always 0 bytes, and the holder's pid — needed only for the sentence a *refused* daemon prints, never for a liveness check — goes in `DeFlow.lock.pid` beside it.
 
-On first run, `DeFlow up` resolves the data dir, runs migrations, probes for installed agent CLIs and records their versions (F3.6), binds port 7777 or the next free one, writes `.DeFlow/daemon.json` with a freshly generated 32-byte bearer token, and prints the URL.
+On first run, `deflow up` resolves the data dir, runs migrations, probes for installed agent CLIs and records their versions (F3.6), binds port 7777 or the next free one, writes `.DeFlow/daemon.json` with a freshly generated 32-byte bearer token, and prints the URL.
 
 ---
 
@@ -397,7 +397,7 @@ Root scripts:
 ```jsonc
 "scripts": {
   "dev": "DeFlow_DEV=1 node --watch --watch-path=packages --env-file-if-exists=.env packages/daemon/src/main.ts",
-  "build": "pnpm --filter @DeFlow/web build && pnpm --filter DeFlow build",
+  "build": "pnpm --filter @DeFlow/web build && pnpm --filter deflowai build",
   "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
   "test": "vitest run",
   "lint": "oxlint --type-aware && biome check .",

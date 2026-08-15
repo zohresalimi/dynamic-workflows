@@ -49,7 +49,7 @@
  * the retry ladder's jitter source. It is a port for the same reason
  * `RunChainResolver` is one — a performer spawns vendor binaries resolved
  * against the operator's own `PATH`, which DeFlowd's environment is not
- * (docs/03-local-development.md §4.3) — and `DeFlow up` is the production
+ * (docs/03-local-development.md §4.3) — and `deflow up` is the production
  * caller that supplies it.
  *
  * Verifies: EPIC-19-S24, EPIC-19-S27, EPIC-19-S29, EPIC-19-S30, EPIC-19-S31,

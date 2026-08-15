@@ -7,7 +7,7 @@
  * covers — the *loud* half: a `provider.auth_shadow_stripped` event that
  * names the variable and the provider when subscription auth was selected
  * and a shadowing variable was present, a `provider.auth_mode` record for
- * both paths, and the `DeFlow doctor` check (EPIC-18, KAR-18.4 — this module
+ * both paths, and the `deflow doctor` check (EPIC-18, KAR-18.4 — this module
  * holds the policy ahead of that command existing, the same split
  * `../git/version.ts` uses for the git version floor).
  *

@@ -86,7 +86,7 @@ suite('KAR-19.8 AC1 — every claude turn carries a session id the vendor accept
 
   it('is the value the 2026-08-13 run died on that the form now refuses', () => {
     // The regression, stated as the assertion it should always have been: the
-    // id DeFlow used to build is a well-formed DeFlow run id and is not a uuid,
+    // id DeFlow used to build is a well-formed deflow run id and is not a uuid,
     // so the vendor refused it on every attempt.
     expect(checkArgumentForm({ form: 'uuid' }, `${RUN}-framing`)).toMatch(/uuid/i);
   });

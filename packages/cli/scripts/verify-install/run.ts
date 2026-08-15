@@ -30,7 +30,7 @@
  * one: the installed daemon **spawns the installed mock agent and drives real
  * ACP turns against it** (`initialize` into a regenerated capability matrix,
  * then the F3.4 battery, a turn per assertion), and a run submitted through
- * the installed `DeFlow run` reaches the installed daemon. Both are stated as
+ * the installed `deflow run` reaches the installed daemon. Both are stated as
  * what they are, never folded into a "run completed" that did not happen.
  */
 import process from 'node:process';
@@ -98,7 +98,7 @@ async function main(): Promise<number> {
     await step('npx <tgz> init, with no node-gyp in the install log (AC4)', async () => {
       const initResult = await runInstalled({
         tgz: good.tgz,
-        bin: 'DeFlow',
+        bin: 'deflow',
         argv: ['init'],
         install,
       });
@@ -109,7 +109,7 @@ async function main(): Promise<number> {
 
     const started = spawnInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['up', '--no-open'],
       install,
     });
@@ -139,7 +139,7 @@ async function main(): Promise<number> {
       await step('AC2 — task.submitted reaches the installed daemon', async () => {
         const run = spawnInstalled({
           tgz: good.tgz,
-          bin: 'DeFlow',
+          bin: 'deflow',
           argv: ['run', 'add a health endpoint'],
           install,
           binDirs: [binDir],
@@ -159,7 +159,7 @@ async function main(): Promise<number> {
     await step('npx <tgz> doctor (AC3)', async () => {
       const doctor = await runInstalled({
         tgz: good.tgz,
-        bin: 'DeFlow',
+        bin: 'deflow',
         argv: ['doctor', '--skip-conformance'],
         install,
       });

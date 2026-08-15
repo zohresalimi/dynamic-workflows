@@ -703,7 +703,7 @@ export const NodeFailedSchema = z.strictObject({
    *
    * On the event rather than re-derived by each reader, because the alternative
    * is a copy of `maxAttempts` in the CLI, in the web run view and in
-   * `DeFlow status`, one process away from the daemon that actually applies it —
+   * `deflow status`, one process away from the daemon that actually applies it —
    * three spellings that agree until somebody sets `maxAttempts: 5` in a plan.
    */
   maxAttempts: z.int().positive().optional(),

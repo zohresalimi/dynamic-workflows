@@ -1,5 +1,5 @@
 /**
- * `DeFlow ledger snapshot <runId> --out <path>` (KAR-18.7) — "attach my ledger
+ * `deflow ledger snapshot <runId> --out <path>` (KAR-18.7) — "attach my ledger
  * to this bug report", as one command.
  *
  * [docs/03-local-development.md §11](../../../docs/03-local-development.md)
@@ -64,8 +64,8 @@ export function parseLedgerArgs(argv: readonly string[]): ParsedLedgerArgs {
       ok: false,
       message:
         subcommand === undefined
-          ? "DeFlow ledger: expected a subcommand — the only one is 'snapshot'"
-          : `DeFlow ledger: unknown subcommand ${JSON.stringify(subcommand)}; the only one is ` +
+          ? "deflow ledger: expected a subcommand — the only one is 'snapshot'"
+          : `deflow ledger: unknown subcommand ${JSON.stringify(subcommand)}; the only one is ` +
             "'snapshot'",
     };
   }
@@ -84,7 +84,7 @@ export function parseLedgerArgs(argv: readonly string[]): ParsedLedgerArgs {
     if (argument === '--out' || argument.startsWith('--out=')) {
       const value = argument.startsWith('--out=') ? argument.slice('--out='.length) : rest[++index];
       if (value === undefined || value === '') {
-        return { ok: false, message: 'DeFlow ledger snapshot: --out needs a path' };
+        return { ok: false, message: 'deflow ledger snapshot: --out needs a path' };
       }
       out = value;
       continue;
@@ -92,13 +92,13 @@ export function parseLedgerArgs(argv: readonly string[]): ParsedLedgerArgs {
     if (argument.startsWith('-')) {
       return {
         ok: false,
-        message: `DeFlow ledger snapshot: unknown option ${JSON.stringify(argument)}`,
+        message: `deflow ledger snapshot: unknown option ${JSON.stringify(argument)}`,
       };
     }
     if (runId !== null) {
       return {
         ok: false,
-        message: `DeFlow ledger snapshot: unexpected argument ${JSON.stringify(argument)}`,
+        message: `deflow ledger snapshot: unexpected argument ${JSON.stringify(argument)}`,
       };
     }
     runId = argument;
@@ -107,14 +107,14 @@ export function parseLedgerArgs(argv: readonly string[]): ParsedLedgerArgs {
   if (runId === null) {
     return {
       ok: false,
-      message: 'DeFlow ledger snapshot: needs a run id — try `DeFlow status` for the live ones',
+      message: 'deflow ledger snapshot: needs a run id — try `deflow status` for the live ones',
     };
   }
   if (out === null) {
     return {
       ok: false,
       message:
-        'DeFlow ledger snapshot: needs --out <path>; it will not choose a path for a copy of ' +
+        'deflow ledger snapshot: needs --out <path>; it will not choose a path for a copy of ' +
         'your whole ledger',
     };
   }
@@ -150,7 +150,7 @@ function formatBytes(bytes: number): string {
  */
 export function toReport(report: SnapshotReport): Report {
   return {
-    title: `DeFlow ledger snapshot: wrote ${report.out}`,
+    title: `deflow ledger snapshot: wrote ${report.out}`,
     sections: [
       {
         title: 'Snapshot',
@@ -220,7 +220,7 @@ const refuse = (exitCode: number, message: string): CommandResult => ({
 });
 
 /**
- * `DeFlow ledger snapshot` — the whole command, minus the process.
+ * `deflow ledger snapshot` — the whole command, minus the process.
  *
  * Synchronous, because better-sqlite3 is (decision D6) and because pretending
  * otherwise would put an await boundary in the middle of a `VACUUM INTO` that
@@ -236,7 +236,7 @@ export function runLedgerSnapshot(options: LedgerSnapshotOptions): CommandResult
   if (!existsSync(ledger)) {
     return refuse(
       EX_NOINPUT,
-      `DeFlow ledger snapshot: there is no ledger at ${ledger} — nothing has run on this machine yet`,
+      `deflow ledger snapshot: there is no ledger at ${ledger} — nothing has run on this machine yet`,
     );
   }
   // Checked before the read rather than left to SQLite, which refuses an
@@ -246,7 +246,7 @@ export function runLedgerSnapshot(options: LedgerSnapshotOptions): CommandResult
   if (existsSync(out)) {
     return refuse(
       EX_CANTCREAT,
-      `DeFlow ledger snapshot: ${out} already exists; it was left alone — choose another --out`,
+      `deflow ledger snapshot: ${out} already exists; it was left alone — choose another --out`,
     );
   }
 
@@ -260,8 +260,8 @@ export function runLedgerSnapshot(options: LedgerSnapshotOptions): CommandResult
     if (runEvents === 0) {
       return refuse(
         EX_NOINPUT,
-        `DeFlow ledger snapshot: ${ledger} holds no events for run ${options.runId} — ` +
-          "run 'DeFlow status' for the runs it does hold",
+        `deflow ledger snapshot: ${ledger} holds no events for run ${options.runId} — ` +
+          "run 'deflow status' for the runs it does hold",
       );
     }
 
@@ -295,7 +295,7 @@ export function runLedgerSnapshot(options: LedgerSnapshotOptions): CommandResult
   } catch (error) {
     return refuse(
       EX_CANTCREAT,
-      `DeFlow ledger snapshot: could not write ${out}: ` +
+      `deflow ledger snapshot: could not write ${out}: ` +
         (error instanceof Error ? error.message : String(error)),
     );
   } finally {

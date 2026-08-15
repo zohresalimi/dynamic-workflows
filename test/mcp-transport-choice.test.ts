@@ -12,7 +12,7 @@
  *
  * The weight half is `checkMcpSdkImports`: the SDK drags in express, hono,
  * cors, jose and eventsource, so a root import turns a stdio-only server into
- * an HTTP stack that `npx DeFlow up` loads on every start (NF6).
+ * an HTTP stack that `npx deflowai up` loads on every start (NF6).
  *
  * Verifies: EPIC-05-S22 (scenarios 3 and 4) · AC4
  */

@@ -6,7 +6,7 @@
  * xterm.js and shiki arrive with EPIC-16.
  *
  * The one thing it exports today is the API client (KAR-15.1): `packages/cli`
- * imports this module rather than writing a second client, so `DeFlow run` and
+ * imports this module rather than writing a second client, so `deflow run` and
  * the browser reach the daemon through the identical typed surface
  * (docs/11-api-and-realtime.md §9). The daemon is imported **type-only** there,
  * so nothing of it enters either bundle.
@@ -57,7 +57,7 @@ export type {
 export { openLedgerStream, RECONNECT_INTERVAL_MS } from './ledger/stream.ts';
 // KAR-17.5 / KAR-19.4 — the `io_chunk` tail's client half: how a surface asks
 // for the tail or for what has arrived since a cursor, and how it parses the
-// answer. Exported for `DeFlow run`, which follows a live node's output over
+// answer. Exported for `deflow run`, which follows a live node's output over
 // the same endpoint the panel does — `packages/cli/src/run/run.ts`'s rule is
 // that there is **no second protocol implementation**, and the tail is a
 // protocol like the stream is.

@@ -16,7 +16,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { MCP_SERVER_NAME, mcpServerEntry, RUN_TOKEN_ENV } from './server-entry.ts';
 
 const entry = mcpServerEntry({
-  entry: '/opt/DeFlow/bin/DeFlow-mcp.js',
+  entry: '/opt/DeFlow/bin/deflow-mcp.js',
   socketPath: '/tmp/DeFlow-abc/mcp/host.sock',
   runId: 'run_20260805T101500Z_ac0506',
   token: 'a'.repeat(64),
@@ -37,7 +37,7 @@ suite('the untagged stdio variant (AC1)', () => {
 
   it('passes the shim entry, the socket and the run id as argv', () => {
     expect(entry.args).toEqual([
-      '/opt/DeFlow/bin/DeFlow-mcp.js',
+      '/opt/DeFlow/bin/deflow-mcp.js',
       '--socket',
       '/tmp/DeFlow-abc/mcp/host.sock',
       '--run',

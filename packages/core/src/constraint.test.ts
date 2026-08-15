@@ -3,7 +3,7 @@
  * more.
  *
  * KAR-09.4 owns the full transformation: the four documented rows applied at
- * build time, the `forbid`/`allow-only` ratio in `DeFlow doctor`, and interval
+ * build time, the `forbid`/`allow-only` ratio in `deflow doctor`, and interval
  * re-injection. What lands here is what AC9 requires — three of the
  * ConstraintRot scenarios exercise the `forbid` → `allow-only` restatement, so
  * the restatement has to exist to be exercised.

@@ -1,5 +1,5 @@
 /**
- * The `DeFlow` binary, spawned the way `npx DeFlow up` spawns it: one argv, one
+ * The `deflow` binary, spawned the way `npx deflowai up` spawns it: one argv, one
  * process, one exit code.
  *
  * `daemon.ts` next door starts `packages/daemon/src/main.ts` directly, because
@@ -28,7 +28,7 @@ export const MOCK_AGENT_BIN = join(repoRoot, 'packages/mock-agent/bin/mock-agent
 /**
  * git's own directory, which is on the hermetic PATH and nothing else is.
  *
- * `DeFlow up` never shells out to git; `DeFlow run` refuses to start a run on a
+ * `deflow up` never shells out to git; `deflow run` refuses to start a run on a
  * machine whose git is below 2.38 (KAR-18.3 AC6's fifth code), so a PATH with
  * no git at all would make every `run` spec here exit 5 for a reason none of
  * them is about. git is not an agent CLI, so the "nothing is installed" specs
@@ -47,7 +47,7 @@ export const GIT_DIR = dirname(
  * directory with it on every normal installation, and that is where a
  * developer's real `claude-agent-acp` lives. A spec asserting "no agent CLI
  * installed at all" then resolves the author's own adapter, the boot probe
- * succeeds against it, and `DeFlow up` reports a provider the spec was written
+ * succeeds against it, and `deflow up` reports a provider the spec was written
  * to prove absent — green or red depending on whose laptop is running it.
  *
  * Same correction, and for the same reason, as the one KAR-19.2 made in
@@ -107,7 +107,7 @@ export function spawnUp(options: SpawnUpOptions): CliProcess {
 }
 
 /**
- * Any `DeFlow` subcommand, spawned the way `npx DeFlow …` spawns it.
+ * Any `DeFlow` subcommand, spawned the way `npx deflowai …` spawns it.
  *
  * `spawnUp` above is this with `up` in front of the argv, kept because every
  * KAR-18.2 spec reads that way. KAR-18.3's specs need `run` and `--attach`, and
@@ -158,10 +158,10 @@ export async function waitForUrl(cli: CliProcess, timeoutMs = 30_000): Promise<s
     if (match !== null) return match[0];
     if (cli.child.exitCode !== null) {
       throw new Error(
-        `DeFlow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
+        `deflow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
       );
     }
     await sleep(50);
   }
-  throw new Error(`DeFlow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
+  throw new Error(`deflow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
 }

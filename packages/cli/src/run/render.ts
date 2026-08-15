@@ -218,7 +218,7 @@ function humanLine(event: Event): Line | null {
      * stall is the one line an operator is likely to read out of context — in a
      * scrollback beside three other runs, or pasted into a message — and
      * *which* run has gone quiet is the first thing they need. The detail names
-     * `DeFlow status` because a line that says something is wrong and not what
+     * `deflow status` because a line that says something is wrong and not what
      * to do next is the line people learn to ignore.
      *
      * Nothing here says failed, and nothing here says killed: F4.7 is
@@ -234,7 +234,7 @@ function humanLine(event: Event): Line | null {
         detail:
           `no progress for ${formatDuration(event.payload.idleMs)}` +
           `${event.payload.runningNodes.length === 0 ? ', nothing in flight' : ''}` +
-          " — run 'DeFlow status' to see where it is",
+          " — run 'deflow status' to see where it is",
       };
 
     case 'node.scheduled':
@@ -347,7 +347,7 @@ function humanLine(event: Event): Line | null {
         subject: 'run',
         // KAR-19.1 AC6 — every run-level status this view prints comes from
         // `@DeFlow/core`'s table, so this surface cannot acquire a fourth word
-        // for a state `DeFlow status` and the UI already describe.
+        // for a state `deflow status` and the UI already describe.
         status: RUN_STATUS_LABELS.paused,
         detail: event.payload.reason ?? `by ${event.payload.by}`,
       };

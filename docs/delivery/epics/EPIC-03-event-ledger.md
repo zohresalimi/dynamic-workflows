@@ -24,7 +24,7 @@ in the middle of and reopen without losing a committed event or reusing a sequen
 plane (`io_chunk`) are physically separate tables so replay stays in milliseconds while agent
 transcripts grow to hundreds of megabytes; a pure `reduce()` folds the log into `RunState` and
 ignores what it does not understand; a version-guarded checkpoint makes startup fast without ever
-being able to make it wrong; and `flock` plus a `daemon_epoch` mean a user who runs `npx DeFlow up`
+being able to make it wrong; and `flock` plus a `daemon_epoch` mean a user who runs `npx deflowai up`
 in two terminals gets a clear error rather than two schedulers spawning the same agent.
 
 ## Why this matters
@@ -504,7 +504,7 @@ the decoded object against the `RunState` schema, not just `JSON.parse`.
 | **PRD**         | F4.1, NF4, NF6                        |
 | **Verified by** | EPIC-03-S21, EPIC-03-S22, EPIC-03-S23 |
 
-**As** a user who runs `npx DeFlow up` in two terminals in their first week, **I want** the second
+**As** a user who runs `npx deflowai up` in two terminals in their first week, **I want** the second
 one to fail immediately with a clear message, **so that** two schedulers never spawn the same agent,
 burn double tokens and commit to the same branch.
 

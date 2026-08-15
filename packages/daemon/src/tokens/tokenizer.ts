@@ -23,7 +23,7 @@
  * 1/2-era BPE — the package name is a trap; `js-tiktoken` works but is slower
  * with no accuracy gain; `tiktoken` / `@dqbd/tiktoken` add a wasm binary for no
  * accuracy gain, and NF6 says nothing in this workspace compiles at install
- * time; shelling out to Python adds a Python dependency to `npx DeFlow up` and
+ * time; shelling out to Python adds a Python dependency to `npx deflowai up` and
  * still is not exact for Claude.
  *
  * Verifies: EPIC-09-S37 · KAR-09.7 AC1, AC3

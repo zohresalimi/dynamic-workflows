@@ -449,9 +449,9 @@ Injecting via `session/new` is the ACP-native way to give an agent DeFlow-specif
 touching the user's global MCP config**. That matters: DeFlow must never mutate the user's vendor CLI
 configuration.
 
-### 7.2 The `DeFlow-mcp` bin
+### 7.2 The `deflow-mcp` bin
 
-Ship `DeFlow-mcp` as a **second bin in the same published `DeFlow` package** (see
+Ship `deflow-mcp` as a **second bin in the same published `deflow` package** (see
 [repo layout](./16-repo-layout.md)). It is a thin shim: `StdioServerTransport` on one side, a **Unix
 domain socket** (named pipe on Windows) back to DeFlowd on the other.
 
@@ -474,7 +474,7 @@ workflow tools, push the change rather than requiring a new session.
 `pkce-challenge`, `zod-to-json-schema`, `cross-spawn`, `raw-body`, `express-rate-limit`.
 
 For a stdio-only server nearly all of that is dead weight that still lands in `node_modules` and slows
-`npx DeFlow up` (NF6).
+`npx deflowai up` (NF6).
 
 > **Mitigation: import only the deep subpaths** — `@modelcontextprotocol/sdk/server/mcp.js` and
 > `@modelcontextprotocol/sdk/server/stdio.js` — so nothing HTTP-related is _loaded_ at runtime. If
@@ -642,7 +642,7 @@ Use **`@lydell/node-pty`**, not `node-pty`. **Verified empirically:**
 - `node-pty@1.1.0` (2026-07-16) has `scripts.install: "node scripts/prebuild.js || node-gyp rebuild"`
   — it downloads a prebuild and **falls back to compiling**. In a toolchain-less environment the
   prebuild fetch failed, `node-gyp rebuild` failed outright, and the package was left uninstallable.
-  That directly breaks `npx DeFlow up` (NF6).
+  That directly breaks `npx deflowai up` (NF6).
 - `@lydell/node-pty@1.2.0-beta.14` (2026-07-26) installed in **514 ms with zero compilation**, using
   npm-native per-platform `optionalDependencies`
   (`@lydell/node-pty-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-arm64,win32-x64}`). Runtime
@@ -831,7 +831,7 @@ Do both layers of assertion: raw frames for conformance, plus a snapshot of the 
 event vocabulary for regression. Snapshotting only the normalised form is less brittle but also less
 sensitive — it will not catch an upstream change your normaliser happens to swallow.
 
-`DeFlow doctor` is the natural home for running Layer B against the user's actually-installed CLI
+`deflow doctor` is the natural home for running Layer B against the user's actually-installed CLI
 versions (F3.4, F3.6).
 
 ---
@@ -845,7 +845,7 @@ from AR-1 §5.3:
    key source. Detection of an ambient key is _not_ consent to use it.
 2. **Auth-shadowing must be surfaced loudly** (F3.8). `ANTHROPIC_API_KEY` present in the environment
    silently shadows subscription auth in Claude Code. The failure mode is "you thought you were on
-   your subscription and you were being billed". `DeFlow doctor` must detect and report this, and the
+   your subscription and you were being billed". `deflow doctor` must detect and report this, and the
    run header in the UI must show which auth mode each node used.
 3. **Runs on this path are labelled in the ledger**, because their cost accounting (F9.1) is real
    currency rather than subscription quota, and the two must not be summed into one number.
@@ -858,7 +858,7 @@ Scoped to M2. See [roadmap](./17-roadmap.md).
 ## 13. The mock agent (F3.7, D17)
 
 `@DeFlow/mock-agent` is a **first-class shipped package**, not a test helper. It exposes a bin
-`DeFlow-mock-agent`, implemented with the _agent_ side of the same SDK (`acp.agent({…})` mirrors
+`deflow-mock-agent`, implemented with the _agent_ side of the same SDK (`acp.agent({…})` mirrors
 `acp.client({…})`), driven by a declarative script file. No network, no credentials, no tokens.
 
 It deliberately does **not** depend on `@DeFlow/core` — if it did, a bug in the domain model could be
@@ -880,7 +880,7 @@ Ten required behaviours:
 | 10  | Honour `--seed` for all ids and timestamps, so runs are byte-reproducible                                                                                                     |
 | 11  | **Serve a schema-bearing turn** — `--return-schema <file>` writes one document that validates against it, and nothing else (KAR-19.7)                                         |
 
-Also ship `DeFlow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
+Also ship `deflow-mock-agent --replay recordings/<provider>@<ver>/<case>.ndjson`, so a real captured
 session becomes a mock provider for free.
 
 > **Item 11 is what makes items 1–10 reachable from a real run.** Every schema-bearing turn — framing,

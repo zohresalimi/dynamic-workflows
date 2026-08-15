@@ -189,7 +189,7 @@ design — does not exist; between 2.38 and 2.45 it warns about `worktree list -
    allowed.
 5. The default branch is resolved from `origin/HEAD` when present and from the `HEAD` symref when
    there is no remote, and the resolution runs at most once per repository per run.
-6. With `git --version` reporting 2.37.x, `DeFlow doctor` fails hard and the daemon refuses to
+6. With `git --version` reporting 2.37.x, `deflow doctor` fails hard and the daemon refuses to
    start a run, naming `merge-tree --write-tree` as the missing capability. At 2.43 it warns and
    proceeds.
 7. `gitChildEnv()` keeps `SSH_AUTH_SOCK` — the `Git` wrapper is the only thing in DeFlow that

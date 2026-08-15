@@ -1,5 +1,5 @@
 /**
- * KAR-18.1 — `DeFlow init`: workspace bootstrap.
+ * KAR-18.1 — `deflow init`: workspace bootstrap.
  *
  * Verifies: EPIC-18-S1, EPIC-18-S2, EPIC-18-S3, EPIC-18-S4, EPIC-18-S5,
  * EPIC-18-S6 · AC1-AC6, test plan #2-6
@@ -38,7 +38,7 @@ function baseEnv(dataDir: string, extraPathDir?: string): NodeJS.ProcessEnv {
   return { ...process.env, PATH: path, DeFlow_DATA_DIR: dataDir };
 }
 
-suite('DeFlow init — happy path (EPIC-18-S1)', () => {
+suite('deflow init — happy path (EPIC-18-S1)', () => {
   it('bootstraps a clean repository and leaves it otherwise clean', async () => {
     const repo = await makeRepo({
       dir: join(tmp, 'repo'),
@@ -89,7 +89,7 @@ suite('DeFlow init — happy path (EPIC-18-S1)', () => {
   });
 });
 
-suite('DeFlow init — idempotent (EPIC-18-S2)', () => {
+suite('deflow init — idempotent (EPIC-18-S2)', () => {
   it('never clobbers an edited config.yaml, and reports it as kept (edited)', async () => {
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
     const dataDir = join(tmp, 'data');
@@ -122,7 +122,7 @@ suite('DeFlow init — idempotent (EPIC-18-S2)', () => {
   });
 });
 
-suite('DeFlow init — outside a git working tree (EPIC-18-S3)', () => {
+suite('deflow init — outside a git working tree (EPIC-18-S3)', () => {
   it('refuses with exit 5 and writes nothing', async () => {
     const plain = join(tmp, 'not-a-repo');
     await mkdir(plain, { recursive: true });
@@ -132,13 +132,13 @@ suite('DeFlow init — outside a git working tree (EPIC-18-S3)', () => {
 
     expect(result.exitCode).toBe(5);
     expect(result.stderr).toContain(
-      "DeFlow init: not inside a git working tree (run 'git init' first)",
+      "deflow init: not inside a git working tree (run 'git init' first)",
     );
     await expect(readdir(plain)).resolves.toEqual([]);
   });
 });
 
-suite('DeFlow init — .gitignore is a fixpoint (EPIC-18-S4)', () => {
+suite('deflow init — .gitignore is a fixpoint (EPIC-18-S4)', () => {
   it('appends the three entries exactly once, and git actually ignores the token file', async () => {
     const repo = await makeRepo({
       dir: join(tmp, 'repo'),
@@ -160,7 +160,7 @@ suite('DeFlow init — .gitignore is a fixpoint (EPIC-18-S4)', () => {
   });
 });
 
-suite('DeFlow init — unwritable global state directory (EPIC-18-S5)', () => {
+suite('deflow init — unwritable global state directory (EPIC-18-S5)', () => {
   it.skipIf(process.getuid?.() === 0)(
     'names the path and the errno, and leaves no partial directory',
     async () => {
@@ -188,7 +188,7 @@ suite('DeFlow init — unwritable global state directory (EPIC-18-S5)', () => {
   );
 });
 
-suite('DeFlow init — provider detection writes only to the global cache (EPIC-18-S6)', () => {
+suite('deflow init — provider detection writes only to the global cache (EPIC-18-S6)', () => {
   it('detects an installed agent, probes it, and never writes it into the committed config', async () => {
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
     const dataDir = join(tmp, 'data');

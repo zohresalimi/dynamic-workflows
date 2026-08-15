@@ -140,7 +140,7 @@ cannot drift, the published-package story is correct from the first commit, and
 
 This creates the layout in [16-repo-layout.md §1](../../16-repo-layout.md): `packages/{core,
 ledger, adapters, daemon, cli, web, testkit, mock-agent}` plus `e2e`, of which exactly one —
-`packages/cli`, named `DeFlow` — is ever published. Every `@DeFlow/*` package is `"private": true`
+`packages/cli`, named `deflow` — is ever published. Every `@DeFlow/*` package is `"private": true`
 and is inlined into the CLI bundle by tsdown via `noExternal: [/^@DeFlow\//]`, which deletes the
 entire multi-package versioning problem: no changesets, no release orchestration, no inter-package
 semver ranges. Each package's `exports` map exposes `.` and nothing else, and carries the

@@ -1,9 +1,9 @@
 /**
- * KAR-19.1 AC2, AC6 — what `DeFlow status` says about a run, and about the
+ * KAR-19.1 AC2, AC6 — what `deflow status` says about a run, and about the
  * ticker.
  *
  * Two clauses of one story meet in this command. The status string it prints
- * has to be **the same string** the UI's run list and `DeFlow run`'s attached
+ * has to be **the same string** the UI's run list and `deflow run`'s attached
  * view print, produced by `runStatusLabel` in `@DeFlow/core` — on 2026-08-12
  * this surface said `created — no nodes yet` while the other two said
  * `task submitted` and `No plan yet`, about one run at one instant. And the
@@ -43,7 +43,7 @@ const running: DaemonStatus = {
   ledgerError: null,
 };
 
-suite('DeFlow status prints the shared label (AC6)', () => {
+suite('deflow status prints the shared label (AC6)', () => {
   it('renders the run with @DeFlow/core’s string and not a second one', () => {
     const text = renderStatusText(running);
 
@@ -62,7 +62,7 @@ suite('DeFlow status prints the shared label (AC6)', () => {
   });
 });
 
-suite('DeFlow status reports the ticker (AC2)', () => {
+suite('deflow status reports the ticker (AC2)', () => {
   it('names the loop and how often it looks', () => {
     const text = renderStatusText(running);
 

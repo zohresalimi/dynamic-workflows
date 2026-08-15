@@ -123,7 +123,7 @@ no board at all.
   serve.
 - Rendering: inline verdicts on the diff, stale-finding margins, the criteria board —
   [EPIC-17](./EPIC-17-p0-views.md) KAR-17.6 and KAR-17.7.
-- `DeFlow doctor`'s gate-hygiene report is _specified_ in KAR-12.6 and _shipped_ by
+- `deflow doctor`'s gate-hygiene report is _specified_ in KAR-12.6 and _shipped_ by
   [EPIC-18](./EPIC-18-cli-packaging.md) KAR-18.4, which owns the `doctor` command.
 - OTel `execute_tool <gateId>` spans and the `DeFlow.gate.verdict` attribute — F10.12 is P1/M2.
   The attribute name is fixed here so M2 does not have to rename it.
@@ -368,7 +368,7 @@ primed to accept it.
 | 2   | unit        | Table over `resume: {kind:'fork'}`, `{of: producerId}`, `{kind:'native-if-available'}` → refuse, refuse, admit                                                                                                    | Only the session-id half is checked                           |
 | 3   | unit        | `pickReviewer()` over a synthetic capability table: two providers → other provider, no `weakened`; one → same provider + `weakened:'same-provider'`; zero → `needs-human`                                         | The routing rule is a preference expressed in prose           |
 | 4   | unit        | `pickReviewer()` with a capable-but-unhealthy second provider excludes it and takes the fallback branch                                                                                                           | Health is not part of the candidate set                       |
-| 5   | integration | Two `DeFlow-mock-agent` binaries on PATH under different names, `--capabilities` differing: reviewer's `node.scheduled.provider` differs from producer's                                                          | Provider preference is not applied                            |
+| 5   | integration | Two `deflow-mock-agent` binaries on PATH under different names, `--capabilities` differing: reviewer's `node.scheduled.provider` differs from producer's                                                          | Provider preference is not applied                            |
 | 6   | integration | One mock agent on PATH: the run completes, the verdict carries `weakened: 'same-provider'`, and the two `node.started` events carry different session ids                                                         | The fallback silently drops the marker, or reuses the session |
 | 7   | integration | A plan hand-patched to give the reviewer the producer's session id: the ledger contains `node.failed` with the `SchedulingRefused` code and the transport log contains zero `session/prompt` frames for that node | The refusal happens after the prompt is sent                  |
 | 8   | integration | Mock agent scripted to emit a _different_ `--session-id` than the one supplied → node fails with a typed error                                                                                                    | DeFlow trusts the frames                                      |
@@ -714,7 +714,7 @@ mechanism rather than two.
    producer's output and produces the same `Finding` shape as a built-in parser, including a
    computed stable `id`.
 6. A gate that is defined but was never evaluated in the last N runs is reported by
-   `DeFlow doctor` — a gate nothing schedules is decoration. This story specifies the projection and
+   `deflow doctor` — a gate nothing schedules is decoration. This story specifies the projection and
    its threshold; EPIC-18 mounts the command.
 7. Gate first-pass rate is exposed per gate id as a projection over `gate.evaluated`, so both tails
    are visible: below 40% the plan or the spec is wrong; at 100% the gate is either testing nothing

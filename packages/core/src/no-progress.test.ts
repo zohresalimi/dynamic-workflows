@@ -168,7 +168,7 @@ const startNode = (node: string, attempt = 0, at?: number): Row => ({
     node,
     attempt,
     ikey: `${RUN_ID}/${node}/${attempt}/0`,
-    binary: { path: '/usr/bin/DeFlow-mock-agent', version: '1.0.0', sha256: 'd'.repeat(64) },
+    binary: { path: '/usr/bin/deflow-mock-agent', version: '1.0.0', sha256: 'd'.repeat(64) },
   },
 });
 

@@ -1,5 +1,5 @@
 /**
- * KAR-09.7 AC10 — the calibration section of `DeFlow doctor`.
+ * KAR-09.7 AC10 — the calibration section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy ahead
  * of it existing, the same split `../git/version.ts` and `../proc/auth-shadow.ts`
@@ -35,7 +35,7 @@ export function tokenCalibrationLines(rows: readonly TokenCalibrationRow[]): rea
   });
 }
 
-/** The whole section, as `DeFlow doctor` will print it. */
+/** The whole section, as `deflow doctor` will print it. */
 export function renderTokenCalibrationReport(rows: readonly TokenCalibrationRow[]): string {
   const lines = tokenCalibrationLines(rows);
   if (lines.length === 0) {

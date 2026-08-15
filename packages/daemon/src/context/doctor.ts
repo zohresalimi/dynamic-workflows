@@ -1,5 +1,5 @@
 /**
- * KAR-09.10 AC7 — the FTS5 retrieval section of `DeFlow doctor`.
+ * KAR-09.10 AC7 — the FTS5 retrieval section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy
  * ahead of it existing, the same split `../tokens/doctor.ts` (calibration)
@@ -21,7 +21,7 @@ import {
   artifactFtsAvailability,
 } from '@DeFlow/ledger';
 
-/** AC7: the whole section, as `DeFlow doctor` will print it. */
+/** AC7: the whole section, as `deflow doctor` will print it. */
 export function renderArtifactFtsReport(availability: ArtifactFtsAvailability): string {
   if (!availability.fts5Compiled) {
     return (

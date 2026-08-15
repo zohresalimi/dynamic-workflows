@@ -58,7 +58,7 @@ import {
 const stateOf = (db: Db): RunState => replayAll(db).runs.get(HUMAN_RUN) ?? initialRunState();
 
 /**
- * The repository's own `schemas/` directory, which is what `DeFlow init` copies
+ * The repository's own `schemas/` directory, which is what `deflow init` copies
  * into a run as `.DeFlow/schemas`. Passed explicitly so an `edit` is validated
  * against the real emitted document rather than against a stub.
  */

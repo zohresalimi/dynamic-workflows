@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The `DeFlow-mock-agent` executable.
+ * The `deflow-mock-agent` executable.
  *
  * A real bin with a real shebang and a real mode bit, shipped in the tarball
  * (docs/16-repo-layout.md §2, D17) rather than kept as a test helper — a mock

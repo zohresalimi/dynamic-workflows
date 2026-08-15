@@ -2,7 +2,7 @@
  * KAR-19.10 AC4 — the tab folds the choice a run was admitted onto.
  *
  * The red: the UI had no way at all to say which agent a run was on, so an
- * operator comparing `DeFlow doctor`'s report with what a run actually did had
+ * operator comparing `deflow doctor`'s report with what a run actually did had
  * only the terminal to go on — and on 2026-08-13 the terminal did not say
  * either. Three surfaces have to answer it now, and this is the fold behind the
  * third.
@@ -33,14 +33,14 @@ const probed = (seq: number, payload: Record<string, unknown>): Event =>
 const ADMITTED = {
   provider: 'mock',
   admission: 'installed',
-  vendorBin: 'DeFlow-mock-agent',
-  vendorPath: '/tmp/deflow-bin/DeFlow-mock-agent',
-  adapterBin: 'DeFlow-mock-agent',
-  adapterPath: '/tmp/deflow-bin/DeFlow-mock-agent',
-  package: 'DeFlow',
+  vendorBin: 'deflow-mock-agent',
+  vendorPath: '/tmp/deflow-bin/deflow-mock-agent',
+  adapterBin: 'deflow-mock-agent',
+  adapterPath: '/tmp/deflow-bin/deflow-mock-agent',
+  package: 'deflow',
   chosen: {
     route: 'shim',
-    binaryPath: '/tmp/deflow-bin/DeFlow-mock-agent',
+    binaryPath: '/tmp/deflow-bin/deflow-mock-agent',
     routes: { acp: 'available', shim: 'available' },
     unserved: [],
   },
@@ -53,7 +53,7 @@ suite('applyProvider — the choice, folded once (AC4)', () => {
 
     expect(state.chosen).toEqual({
       provider: 'mock',
-      binaryPath: '/tmp/deflow-bin/DeFlow-mock-agent',
+      binaryPath: '/tmp/deflow-bin/deflow-mock-agent',
       route: 'shim',
       routes: { acp: 'available', shim: 'available' },
       limitation: null,

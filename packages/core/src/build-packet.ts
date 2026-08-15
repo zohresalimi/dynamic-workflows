@@ -319,7 +319,7 @@ export interface PacketBuild {
    * KAR-09.4 AC4 — how many constraints of each form this build pinned.
    *
    * Recorded per build rather than derived later because the ratio is a leading
-   * indicator: `DeFlow doctor` reports forbid-over-allow-only, and a rising one
+   * indicator: `deflow doctor` reports forbid-over-allow-only, and a rising one
    * is the early warning for exactly the decay §4.2 describes.
    */
   readonly constraints: ConstraintCounts;

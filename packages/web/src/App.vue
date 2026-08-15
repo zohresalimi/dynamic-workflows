@@ -12,7 +12,7 @@
  *    component that is not always mounted works on the landing route and stops
  *    everywhere else, which is the failure AC7's spec is written against.
  * 3. **The session gate** (AC3). A tab with no token renders an explicit
- *    "paste the URL from `DeFlow up`" state — never a spinner, a blank page or
+ *    "paste the URL from `deflow up`" state — never a spinner, a blank page or
  *    a 401 loop — and, importantly, mounts no view that would issue a request.
  * 4. **The overlay hosts.** The jumper and the inspector are rendered once,
  *    here, so `Cmd-K` works from every route and `Esc` has one stack to pop.
@@ -122,7 +122,7 @@ onUnmounted(() => {
       <!--
         KAR-19.10 AC4 — which agent the open run is on, and by which route.
         In the shell rather than in a view because it is true of the run and not
-        of one panel of it, and because an operator comparing what `DeFlow
+        of one panel of it, and because an operator comparing what `deflow
         doctor` said with what the run did should not have to find the right tab
         first. It renders nothing when no run is open.
       -->

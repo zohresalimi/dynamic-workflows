@@ -20,7 +20,7 @@ Three properties make it work, and they are architectural rather than tooling co
   (D10).
 - **A deterministic mock agent binary** that speaks real ACP over a real subprocess (D17), so the
   adapter layer, the scheduler and the crash paths are all exercisable offline.
-- **`DeFlow replay`**, which serves the normal API from a recorded run, so all nine P0 views are
+- **`deflow replay`**, which serves the normal API from a recorded run, so all nine P0 views are
   developable against real data with zero agents running.
 
 ---
@@ -45,7 +45,7 @@ demoted to a plan-time prediction precisely because agents violate them, so merg
 `>= 2.45` is preferred because `git worktree list --porcelain -z` output stabilised there; below it,
 worktree enumeration needs string parsing that breaks on paths with spaces or newlines.
 
-`DeFlow doctor` checks both and refuses to schedule write nodes below 2.38.
+`deflow doctor` checks both and refuses to schedule write nodes below 2.38.
 
 ### Optional, per platform
 
@@ -67,7 +67,7 @@ sysctl kernel.apparmor_restrict_unprivileged_userns    # 1 means bwrap is blocke
 ```
 
 If it returns `1`, install the `/etc/apparmor.d/bwrap` profile documented by Claude Code. This is a
-`DeFlow doctor` check, not a footnote: Claude Code's sandbox **silently falls back to running
+`deflow doctor` check, not a footnote: Claude Code's sandbox **silently falls back to running
 unsandboxed** when its dependencies are missing, which would make the permission ladder (F5.4)
 decorative.
 
@@ -145,7 +145,7 @@ package boundaries. No watch-build chain, no stale `dist`, and goto-definition l
     "format": "biome check --write .",
 
     "doctor": "node packages/cli/src/bin.ts doctor",
-    "pack:check": "pnpm build && pnpm --filter DeFlow exec publint && pnpm --filter DeFlow exec attw --pack",
+    "pack:check": "pnpm build && pnpm --filter deflowai exec publint && pnpm --filter deflowai exec attw --pack",
 
     "prepare": "lefthook install",
   },
@@ -319,7 +319,7 @@ does not, because of two mechanisms.
 
 ### 6.1 The mock agent binary
 
-`@DeFlow/mock-agent` is a **shipped package with a real bin** (`DeFlow-mock-agent`), not a test
+`@DeFlow/mock-agent` is a **shipped package with a real bin** (`deflow-mock-agent`), not a test
 helper (D17). It implements the _agent_ side of `@agentclientprotocol/sdk@1.3.0` and is driven by a
 declarative script file.
 
@@ -356,7 +356,7 @@ integration-test problem into a unit-test problem.
 It also replays real captured sessions:
 
 ```bash
-DeFlow-mock-agent --replay recordings/claude-code@2.1.220/permission-refusal.ndjson
+deflow-mock-agent --replay recordings/claude-code@2.1.220/permission-refusal.ndjson
 ```
 
 Because ACP is NDJSON, a recording is just the byte stream plus direction. The recorder is a tee at
@@ -364,10 +364,10 @@ the transport level (`DeFlow_RECORD=1`), keyed on the exact agent version so a v
 a visible new directory rather than silently invalidating old goldens. That same recorder is how
 F4.9 (deterministic replay with providers stubbed) is implemented — one mechanism, two uses.
 
-### 6.2 `DeFlow replay` — develop all nine views offline
+### 6.2 `deflow replay` — develop all nine views offline
 
 ```bash
-DeFlow replay fixtures/happy-path-12.jsonl --speed 20x --port 7777
+deflow replay fixtures/happy-path-12.jsonl --speed 20x --port 7777
 ```
 
 This is a daemon mode that serves the **normal** `/api/*` and `/api/stream` endpoints from a
@@ -385,7 +385,7 @@ What it buys:
 - **The fixture format is the production format.** There is no fixture-maintenance tax, no mock API
   layer to keep in sync, and no drift between "what dev shows" and "what production emits".
 - **It is also the demo tool.** The PRD's strongest internal demo (§15.4) is a real task shown
-  through the plan-evolution scrubber. That is `DeFlow replay` pointed at a recorded real run.
+  through the plan-evolution scrubber. That is `deflow replay` pointed at a recorded real run.
 
 The fixture set to maintain, at minimum:
 
@@ -459,7 +459,7 @@ absolute paths, ports and worktree names.
 
 ---
 
-## 8. `DeFlow doctor`
+## 8. `deflow doctor`
 
 ```bash
 pnpm doctor
@@ -485,12 +485,12 @@ a vendor CLI reports a login command, DeFlow prints it for the user to run thems
 
 ---
 
-## 9. `npx DeFlow up` — first run, step by step
+## 9. `npx deflowai up` — first run, step by step
 
 This is what a colleague experiences at M2, and what you should re-verify every milestone.
 
 ```bash
-npx DeFlow up
+npx deflowai up
 ```
 
 1. **Resolve directories.** Global state at `$XDG_DATA_HOME/DeFlow` (or `~/.DeFlow`); per-repo state
@@ -501,7 +501,7 @@ npx DeFlow up
    1007 ms for a 193 MB database**, an acceptable safety net. SQLite DDL is transactional, so a
    failed migration rolls back cleanly.
 3. **Take the lock.** `flock` on `~/.DeFlow/DeFlow.lock`, bump `daemon_epoch`. This is what stops a
-   double-launched daemon — very common, since people run `npx DeFlow up` in two terminals — from
+   double-launched daemon — very common, since people run `npx deflowai up` in two terminals — from
    driving the same run twice.
 4. **Probe providers.** The `doctor` path (§8): which binaries exist, their versions, their
    capabilities. DeFlow plans only against what is actually available (PRD §5.3, F5.4).
@@ -514,7 +514,7 @@ npx DeFlow up
    > for that pid, as an opaque platform-specific string (`/proc/<pid>/stat` field 22 on Linux,
    > `ps -o lstart=` on macOS), `null` where the platform cannot answer. `startedAt` is wall-clock
    > milliseconds and cannot answer "is pid 4242 still _this_ daemon?"; pids are recycled within
-   > hours, so `DeFlow status` compares this string for equality before it will report a running
+   > hours, so `deflow status` compares this string for equality before it will report a running
    > daemon — the same `(pid, process_start_time)` discipline orphan reaping uses (§13), applied
    > to a read-only command.
 7. **Bind `127.0.0.1` only — and still authenticate.** A localhost bind is _not_ a security
@@ -550,10 +550,10 @@ artefact:
 pnpm build
 pnpm pack:check                       # publint + attw against the built package
 
-cd packages/cli && pnpm pack          # -> DeFlow-0.1.0.tgz
+cd packages/cli && pnpm pack          # -> deflowai-0.1.0.tgz
 cd "$(mktemp -d)"
 git init -b main demo && cd demo
-npx /path/to/DeFlow-0.1.0.tgz up      # the exact bytes a user would get
+npx /path/to/deflowai-0.1.0.tgz up      # the exact bytes a user would get
 ```
 
 What this catches that `pnpm dev` cannot:
@@ -576,7 +576,7 @@ You do not type the block above by hand: **`pnpm verify:install`** is the whole 
 — build, `pack:check`, `pnpm pack`, `mktemp -d`, `git init -b main`, `init`, `up`, then the
 assertions a person would forget (a referenced `/assets/*.js` that answers JavaScript rather than
 merely a 200 on `/`; the installed daemon holding real ACP turns against the installed
-`DeFlow-mock-agent`; nothing in the install transcript naming `node-gyp`). It removes the clean room
+`deflow-mock-agent`; nothing in the install transcript naming `node-gyp`). It removes the clean room
 on success and, under `DeFlow_KEEP_TMP=1`, keeps it when it failed so there is something to look at.
 
 In CI it is the **`verify-install`** job in `.github/workflows/ci.yml`, on `ubuntu-26.04` and
@@ -612,7 +612,7 @@ VACUUM INTO '/tmp/DeFlow-bug-1234.db';
 Or from the CLI:
 
 ```bash
-DeFlow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db
+deflow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db
 ```
 
 **Measured at 1007 ms for a 193 MB database.** It produces a single consistent file with no WAL
@@ -677,8 +677,8 @@ Do not wait for a run to reach the state you want to style. Find the fixture, or
 
 ```bash
 pnpm dev:replay                                             # the default happy path
-DeFlow replay fixtures/gate-fail-repair.jsonl --speed 50x   # jump straight to a failed gate
-DeFlow replay fixtures/stress-400.jsonl --speed max         # graph performance
+deflow replay fixtures/gate-fail-repair.jsonl --speed 50x   # jump straight to a failed gate
+deflow replay fixtures/stress-400.jsonl --speed max         # graph performance
 ```
 
 ### Watch for a client-side leak
@@ -735,7 +735,7 @@ the worst possible combination.
 | Duplicate lint errors, or autofixes that undo each other      | Biome's linter and oxlint are both enabled over the same globs                                                     | `"linter": { "enabled": false }` in `biome.json`. Biome formats, oxlint lints                                                                                                |
 | SSE events arrive in bursts, or the stream dies after minutes | Something is proxying or compressing the stream                                                                    | Do not proxy in dev (§4.3). In production, no compression middleware on the stream route; send `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`           |
 | UI shows nothing after a reload following a daemon restart    | Browsers do **not** send `Last-Event-ID` when the initial connection never opened successfully                     | Hydrate explicitly via `GET /api/runs/:id/events?since=<seq>` first, then open the stream. This path is mandatory, not an optimisation                                       |
-| Port 7777 is in use / two daemons                             | A second `DeFlow up` in another terminal                                                                           | The `flock` + `daemon_epoch` fence rejects stale-epoch writes. Check `.DeFlow/daemon.json` for the live pid                                                                  |
+| Port 7777 is in use / two daemons                             | A second `deflow up` in another terminal                                                                           | The `flock` + `daemon_epoch` fence rejects stale-epoch writes. Check `.DeFlow/daemon.json` for the live pid                                                                  |
 | Tests pass locally, fail in CI (or vice versa)                | Git fixtures inheriting your `~/.gitconfig`                                                                        | Set `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null` plus explicit author/committer env in every fixture                                                            |
 | An integration test hangs forever                             | `vi.useFakeTimers()` with a live child process                                                                     | Never fake timers around a subprocess. Use the injected `Clock` port                                                                                                         |
 | Snapshots change on every run                                 | No normalising serializer                                                                                          | Register `expect.addSnapshotSerializer` for `ts`, ids, durations, paths and ports before writing the first snapshot                                                          |

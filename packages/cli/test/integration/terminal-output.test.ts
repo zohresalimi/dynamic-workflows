@@ -110,7 +110,7 @@ function assertReadable(text: string): void {
 }
 
 suite('EPIC-18-S60 — five commands, one tool, redirected to a file', () => {
-  it('DeFlow init writes clean text and exits 0', async () => {
+  it('deflow init writes clean text and exits 0', async () => {
     const repo = await makeRepo({ dir: join(tmp, 'init-repo') });
     const dataDir = join(tmp, 'init-data');
     await mkdir(dataDir, { recursive: true });
@@ -123,7 +123,7 @@ suite('EPIC-18-S60 — five commands, one tool, redirected to a file', () => {
     expect(piped.text).toContain('created');
   }, 60_000);
 
-  it('DeFlow doctor writes clean text and exits with its own two-valued code', async () => {
+  it('deflow doctor writes clean text and exits with its own two-valued code', async () => {
     const repo = await makeRepo({ dir: join(tmp, 'doctor-repo') });
     await mkdir(join(repo.dir, '.DeFlow'), { recursive: true });
     const dataDir = join(tmp, 'doctor-data');
@@ -142,7 +142,7 @@ suite('EPIC-18-S60 — five commands, one tool, redirected to a file', () => {
     }
   }, 90_000);
 
-  it('DeFlow status writes clean text and exits 0 even with no daemon', async () => {
+  it('deflow status writes clean text and exits 0 even with no daemon', async () => {
     const dataDir = join(tmp, 'status-data');
     await mkdir(dataDir, { recursive: true });
 
@@ -151,10 +151,10 @@ suite('EPIC-18-S60 — five commands, one tool, redirected to a file', () => {
     // KAR-18.7 AC5 — a query, not an assertion.
     expect(piped.code).toBe(0);
     assertReadable(piped.text);
-    expect(piped.text).toContain('DeFlow up');
+    expect(piped.text).toContain('deflow up');
   }, 60_000);
 
-  it('DeFlow run --no-wait and DeFlow ledger snapshot write clean text', async () => {
+  it('deflow run --no-wait and deflow ledger snapshot write clean text', async () => {
     const dataDir = join(tmp, 'run-data');
     mkdirSync(dataDir, { recursive: true });
     booted = await boot({ dataDir, port: 0, dev: false });

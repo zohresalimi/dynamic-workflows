@@ -8,7 +8,7 @@
  * the CLI starts for itself, not a `boot()` call in this process. The ledger is
  * a SQLite file on disk that the run itself wrote, not a fixture. The events
  * are read back out of that file, not off a projection this process holds. The
- * only substitution is the agent, and it is `DeFlow-mock-agent` — a real
+ * only substitution is the agent, and it is `deflow-mock-agent` — a real
  * executable on a real `PATH` speaking real ACP over a real subprocess
  * (docs/14-testing-strategy.md §3: fake binaries, not mocked modules).
  *
@@ -57,7 +57,7 @@ export const SMOKE_BUDGET_MS = 90_000;
  * git's own directory, and the only thing on the hermetic `PATH` that is not
  * `node` or the bundled agent.
  *
- * `DeFlow run` refuses to start a run on a machine whose git is below 2.38, so
+ * `deflow run` refuses to start a run on a machine whose git is below 2.38, so
  * a `PATH` with no git at all would make this scenario exit 5 for a reason it
  * is not about. git is not an agent CLI, so "no vendor CLI" is unaffected.
  */
@@ -141,7 +141,7 @@ dns.lookup = function (hostname, ...rest) {
 `;
 
 /**
- * AC1's *"builds or resolves the real `DeFlow` binary"* — and **builds** is the
+ * AC1's *"builds or resolves the real `deflow` binary"* — and **builds** is the
  * half that matters.
  *
  * A stale `dist/` is the one way this scenario can lie: it would run yesterday's
@@ -189,7 +189,7 @@ export const smokePath = (binDir: string): string => [binDir, NODE_DIR, GIT_DIR]
 export interface SmokeEnvInput {
   /** The scenario's own `fs.mkdtemp` root. Everything writable is under it. */
   readonly tmp: string;
-  /** The directory holding the `DeFlow-mock-agent` symlink. */
+  /** The directory holding the `deflow-mock-agent` symlink. */
   readonly binDir: string;
   /** Where the network guard appends refused attempts. */
   readonly netLog?: string;
@@ -296,7 +296,7 @@ export interface SmokeResult {
   readonly planNodes: readonly string[];
   /** The node ids that reached `node.completed`. */
   readonly completedNodes: readonly string[];
-  /** `DeFlow run`'s own stdout, whole. */
+  /** `deflow run`'s own stdout, whole. */
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number | null;
@@ -330,7 +330,7 @@ const TASK = [
  * The one gate definition the scratch repository carries.
  *
  * The default plan the bundled agent proposes ends in a deterministic
- * `typecheck` gate, and `.DeFlow/gates/` is the directory `DeFlow init` creates
+ * `typecheck` gate, and `.DeFlow/gates/` is the directory `deflow init` creates
  * for exactly this — a gate is repository configuration, so writing one here is
  * arranging the scenario rather than faking it. The command is `node --version`
  * because `node` is on the hermetic `PATH` and the gate under test is the
@@ -600,7 +600,7 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
 
   const binDir = join(tmp, 'bin');
   mkdirSync(binDir, { recursive: true });
-  symlinkSync(join(distDir, 'mock-agent.mjs'), join(binDir, 'DeFlow-mock-agent'));
+  symlinkSync(join(distDir, 'mock-agent.mjs'), join(binDir, 'deflow-mock-agent'));
 
   const env = smokeChildEnv({ tmp, binDir, netLog, netGuard });
   const repo = await makeRepo({ dir: join(tmp, 'repo') });
@@ -608,18 +608,18 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
 
   let cli: Spawned | null = null;
   try {
-    // ── `DeFlow init`, exactly as the operator runs it ──────────────────────
+    // ── `deflow init`, exactly as the operator runs it ──────────────────────
     const init = spawnCli({ distDir, argv: ['init'], cwd: repo.dir, env });
     const initCode = await init.exited;
     if (initCode !== 0) {
-      throw new Error(`DeFlow init exited ${String(initCode)}:\n${init.stderr()}${init.stdout()}`);
+      throw new Error(`deflow init exited ${String(initCode)}:\n${init.stderr()}${init.stdout()}`);
     }
     mkdirSync(join(repo.dir, '.DeFlow', 'gates'), { recursive: true });
     writeFileSync(join(repo.dir, '.DeFlow', 'gates', 'typecheck.yaml'), TYPECHECK_GATE, 'utf8');
     await repo.git('add', '-A');
     await repo.git('commit', '-m', 'DeFlow smoke: initialise the workspace');
 
-    // ── `DeFlow run --file spec.md` ─────────────────────────────────────────
+    // ── `deflow run --file spec.md` ─────────────────────────────────────────
     cli = spawnCli({ distDir, argv: ['run', '--file', 'spec.md'], cwd: repo.dir, env });
     const process_ = cli;
 
@@ -666,7 +666,7 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
           if (value2 !== null) return value2;
           throw new SmokeStageMissing(
             link,
-            `DeFlow run exited ${String(process_.child.exitCode)} first\n` +
+            `deflow run exited ${String(process_.child.exitCode)} first\n` +
               `stdout:\n${process_.stdout()}\nstderr:\n${process_.stderr()}`,
           );
         }
@@ -694,7 +694,7 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
 
     // The F1.3 gate, answered the way the web UI answers it — over the daemon's
     // own route, with the token the daemon wrote for itself. There is no
-    // `--yes` on `DeFlow run` and there should not be: the gate exists to be
+    // `--yes` on `deflow run` and there should not be: the gate exists to be
     // answered by a person.
     const file = daemonFile(dataDir);
     if (file === null)
@@ -755,7 +755,7 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
       sleep(stageMs).then(() => {
         throw new SmokeStageMissing(
           LINKS.terminal,
-          `DeFlow run did not exit within ${String(stageMs)} ms of the terminal event`,
+          `deflow run did not exit within ${String(stageMs)} ms of the terminal event`,
         );
       }),
     ]);

@@ -1,7 +1,7 @@
 /**
  * KAR-15.2 AC8 — the browser end of the first-run handoff.
  *
- * `DeFlow up` prints `http://127.0.0.1:7777/#token=<token>`. Fragments are
+ * `deflow up` prints `http://127.0.0.1:7777/#token=<token>`. Fragments are
  * **never sent to the server**, which is the entire reason the token travels
  * there rather than in a query string: it cannot land in the daemon's access
  * log, in a proxy's, in browser history, or in the `Referer` header of any

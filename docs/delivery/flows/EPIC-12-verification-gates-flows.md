@@ -14,7 +14,7 @@
 | **Gate Runner**         | `packages/gates` — loads definitions, orders the ladder, spawns deterministic gates, constructs `Verdict`s                     |
 | **Producer node**       | The `agent` node whose work is under test. Owns a worktree and the branch `DeFlow/<runId>__<nodeId>`                           |
 | **Reviewer node**       | The `gate` node of kind `adversarial`. A different session, and where possible a different provider                            |
-| **Provider agent**      | A `DeFlow-mock-agent` subprocess on a temp `PATH`, or the `packages/testkit` fake exec-shim agent for the CLI path             |
+| **Provider agent**      | A `deflow-mock-agent` subprocess on a temp `PATH`, or the `packages/testkit` fake exec-shim agent for the CLI path             |
 | **Plan validator**      | `validate(plan, spec)` from [EPIC-11](../epics/EPIC-11-dynamic-planning.md) — this epic contributes the criteria-coverage rule |
 | **Patch policy engine** | Decides `auto` / `approve` / `reject` on the repair loop's `PlanPatch`es                                                       |
 | **Blob store**          | `runs/<runId>/artifacts/<sha>/`, content-addressed                                                                             |
@@ -28,7 +28,7 @@ Background:
       GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null and forced identity env
   And the ledger is a file-backed SQLite database opened with
       "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000"
-  And "DeFlow-mock-agent" is symlinked onto a temp PATH under the vendor binary names the run uses
+  And "deflow-mock-agent" is symlinked onto a temp PATH under the vendor binary names the run uses
   And time enters the engine through an injected Clock port, never Date.now()
   And no test in this file calls vi.useFakeTimers() while a child process is alive
   And the normalising snapshot serializer is registered before the first snapshot is written

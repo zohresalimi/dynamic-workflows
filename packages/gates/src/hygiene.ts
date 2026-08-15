@@ -9,7 +9,7 @@
  * gate and a 10% gate sitting side by side reads nothing like a 55% gate).
  *
  * This story specifies the projection and its threshold; EPIC-18's
- * `DeFlow doctor` (KAR-18.4) is what prints it.
+ * `deflow doctor` (KAR-18.4) is what prints it.
  *
  * **Where the sample comes from is not this file's business, and is not
  * nobody's.** "The last N runs" is a window over the ledger, and it is

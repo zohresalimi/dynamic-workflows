@@ -132,7 +132,7 @@ export function allowedOrigins(port: number, hostname: string): readonly string[
  * Origin validation rejects a **present and wrong** origin, never an absent one.
  *
  * Getting this backwards is a real risk: a strict "Origin must be present and
- * allowlisted" rule locks out `curl`, `DeFlow run` and every script, and the
+ * allowlisted" rule locks out `curl`, `deflow run` and every script, and the
  * pressure to relax it usually removes the check entirely rather than fixing
  * the condition.
  */
@@ -309,7 +309,7 @@ export const varyOrigin: MiddlewareHandler = async (c, next) => {
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const auth = daemonAuth();
   if (auth === null) {
-    // The one exemption still applies: `GET /health` is what `DeFlow up` polls
+    // The one exemption still applies: `GET /health` is what `deflow up` polls
     // to learn whether the daemon it started is up, and refusing the readiness
     // probe until readiness has completed is a deadlock rather than a control.
     // Every other route is refused — not passed through.

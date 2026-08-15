@@ -1,5 +1,5 @@
 /**
- * KAR-09.10 AC7 — the FTS5 retrieval section of `DeFlow doctor`.
+ * KAR-09.10 AC7 — the FTS5 retrieval section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy
  * ahead of it existing, the same split `../src/tokens/doctor.ts` and

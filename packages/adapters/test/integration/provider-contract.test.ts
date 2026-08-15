@@ -6,7 +6,7 @@
  * five real adapters plus a synthetic one cost six lines rather than six
  * bespoke test files that drift apart within a month. What each of the eight
  * assertions actually means lives in `src/conformance.ts`, and it lives there
- * rather than here so that `DeFlow doctor` (EPIC-18) can run the same battery
+ * rather than here so that `deflow doctor` (EPIC-18) can run the same battery
  * against a user's installed CLIs.
  *
  * There is no `@live` parameterisation in this file, and its absence is the

@@ -1,11 +1,11 @@
 /**
  * KAR-19.7 AC9 / EPIC-19-S44 — a run submitted on a machine with **no vendor
- * agent CLI of any kind**, and only the bundled `DeFlow-mock-agent`.
+ * agent CLI of any kind**, and only the bundled `deflow-mock-agent`.
  *
  * This is the acceptance case's admission half, and it is the half this story
  * actually delivered. Before the `mock` entry in `PROVIDER_SPECS` existed, this
  * machine was `e2e/admission.test.ts`'s machine: `admitRun` found nothing
- * usable, `DeFlow run` exited 5 with `no_usable_provider`, and `run.aborted` was
+ * usable, `deflow run` exited 5 with `no_usable_provider`, and `run.aborted` was
  * the last event of every run. What is asserted below is that it no longer is —
  * the bundled agent completes a real ACP handshake with the boot probe, the run
  * is admitted and submitted, and the framing turn it is waiting for is a durable
@@ -26,7 +26,7 @@
  * > cheaper to write down than to rediscover:
  * >
  * > - **`run.created` and `plan.proposed` are no longer among them.** KAR-19.3
- * >   bound the chain in `DeFlow up`, so this spec now carries the run through
+ * >   bound the chain in `deflow up`, so this spec now carries the run through
  * >   its framing turn and asserts the F1.3 gate it parks on; the whole
  * >   sequence to `plan.proposed` is `e2e/live-chain.test.ts`, which approves
  * >   the gate. What is still unbound is `executeNodes`, which is KAR-19.4's
@@ -87,7 +87,7 @@ interface DaemonFile {
   readonly pid: number;
 }
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else here will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   let file: DaemonFile;
@@ -129,7 +129,7 @@ function vendorBinaries(): readonly string[] {
   return [...names].toSorted();
 }
 
-/** A bin directory holding `DeFlow-mock-agent` and nothing else. */
+/** A bin directory holding `deflow-mock-agent` and nothing else. */
 function bundledAgentOnly(): string {
   const dir = join(tmp, 'bin');
   mkdirSync(dir, { recursive: true });
@@ -231,7 +231,7 @@ async function waitFor<T>(what: string, read: () => T | null, timeoutMs = 60_000
 const RUN_ID = /run_\d{8}T\d{6}Z_[0-9a-f]{6}/;
 
 suite('EPIC-19-S44 — a run framed on a machine with nothing installed', () => {
-  it('admits DeFlow run --file on a PATH holding only DeFlow-mock-agent', async () => {
+  it('admits deflow run --file on a PATH holding only deflow-mock-agent', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
     writeFileSync(
@@ -258,7 +258,7 @@ suite('EPIC-19-S44 — a run framed on a machine with nothing installed', () => 
     const runId = await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${cli.child.exitCode} instead of admitting the run:\n` +
+          `deflow run exited ${cli.child.exitCode} instead of admitting the run:\n` +
             `stderr:\n${cli.stderr()}\nstdout:\n${cli.stdout()}`,
         );
       }
@@ -300,7 +300,7 @@ suite('EPIC-19-S44 — a run framed on a machine with nothing installed', () => 
     expect(chosen[0]?.chosen?.route).toBe('shim');
 
     // The wait is a durable row rather than a promise (KAR-19.1 AC1), and
-    // KAR-19.3 changed *which* row it is: `DeFlow up` now binds the chain, so
+    // KAR-19.3 changed *which* row it is: `deflow up` now binds the chain, so
     // the framing wake is consumed by the ticker within a second and what the
     // run is waiting on afterwards is the F1.3 gate. Asserting the framing row
     // itself would now be a race against the tick that does the work.

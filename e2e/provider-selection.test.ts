@@ -1,10 +1,10 @@
 /**
- * KAR-19.10 AC1, AC4 / EPIC-19-S65 — `DeFlow run --provider` is honoured, not
+ * KAR-19.10 AC1, AC4 / EPIC-19-S65 — `deflow run --provider` is honoured, not
  * merely accepted.
  *
  * The built binary, a temp `PATH`, and the one assertion that cannot be faked:
  * **which binary actually ran**. On 2026-08-13 the operator typed
- * `--provider mock` and got `DeFlow run: unknown option "--provider"`; the
+ * `--provider mock` and got `deflow run: unknown option "--provider"`; the
  * failure mode this spec is written against is the fix for that going in
  * halfway — a flag that parses and is then dropped, which is worse than an
  * absent one, because the operator now believes something about the run that is
@@ -58,7 +58,7 @@ interface DaemonFile {
   readonly pid: number;
 }
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else here will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   let file: DaemonFile;
@@ -90,7 +90,7 @@ const witness = (): string => join(tmp, 'vendor-was-spawned');
  *
  * Three binaries, and each is there for a reason:
  *
- *  * `DeFlow-mock-agent` — the bundled agent, which the registry orders **last**
+ *  * `deflow-mock-agent` — the bundled agent, which the registry orders **last**
  *    (KAR-19.7 AC8). It is what `--provider mock` has to reach past the vendor.
  *  * `claude` — the vendor CLI, as a shim that touches `witness()` the instant
  *    it starts and then refuses. This spec is about *whether* it was spawned; a
@@ -156,7 +156,7 @@ suite('EPIC-19-S65 — the flag is honoured, not merely accepted', () => {
     const runId = await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${cli.child.exitCode} instead of admitting the run:\n` +
+          `deflow run exited ${cli.child.exitCode} instead of admitting the run:\n` +
             `stderr:\n${cli.stderr()}\nstdout:\n${cli.stdout()}`,
         );
       }
@@ -204,7 +204,7 @@ suite('EPIC-19-S65 — the flag is honoured, not merely accepted', () => {
     const announced = await waitFor('the run announced its provider', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${cli.child.exitCode}:\nstderr:\n${cli.stderr()}\n` +
+          `deflow run exited ${cli.child.exitCode}:\nstderr:\n${cli.stderr()}\n` +
             `stdout:\n${cli.stdout()}`,
         );
       }

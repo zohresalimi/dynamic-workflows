@@ -49,7 +49,7 @@ suite('a client that sends no Origin at all (AC6, EPIC-15-S11)', () => {
     const response = await fetch(`${origin}/api/runs`, { headers: bearer });
 
     // `undici` sends no `Origin` for a plain `fetch` from Node, which is
-    // exactly what `DeFlow run` and `curl` look like on the wire.
+    // exactly what `deflow run` and `curl` look like on the wire.
     expect(response.status).not.toBe(401);
     expect(response.status).not.toBe(403);
   });

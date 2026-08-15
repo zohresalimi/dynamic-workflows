@@ -195,7 +195,7 @@ const PROVIDER_SPECS_BY_ID: Readonly<Record<string, { readonly bundled?: boolean
 
 /** The half of the fallback that holds however the agents resolved. */
 const REPLAY_FALLBACK =
-  '  "DeFlow replay <fixture>" also serves a recorded run over the same HTTP contract the UI ' +
+  '  "deflow replay <fixture>" also serves a recorded run over the same HTTP contract the UI ' +
   'speaks to a live daemon, so replay works regardless.';
 
 /** What the bundled fallbacks give an operator with no vendor CLI at all. */
@@ -597,7 +597,7 @@ function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
           argv = spec.shim.argv({
             resolved: { provider: spec.id, path: spec.shim.bin },
             worktree: '/tmp/DeFlow-doctor',
-            prompt: 'DeFlow doctor: a conformance invocation, never sent.',
+            prompt: 'deflow doctor: a conformance invocation, never sent.',
             sessionId: vendorSessionId({
               runId,
               nodeId: NodeIdSchema.parse(turn.node),
@@ -645,7 +645,7 @@ function argvFormChecks(providers: readonly string[]): readonly DoctorCheck[] {
               `invocation would be refused before the turn started: ${problems.join('; ')}`,
         ...(problems.length === 0
           ? {}
-          : { action: "report this as a DeFlow bug with 'DeFlow doctor --json' attached" }),
+          : { action: "report this as a DeFlow bug with 'deflow doctor --json' attached" }),
         data: {
           provider,
           rows,
@@ -692,7 +692,7 @@ function conformanceChecks(report: ProviderDoctorReport): readonly DoctorCheck[]
           ? {}
           : {
               action:
-                `re-run 'DeFlow doctor' after updating ${entry.provider}, and route around it ` +
+                `re-run 'deflow doctor' after updating ${entry.provider}, and route around it ` +
                 "with 'provider:' in .DeFlow/config.yaml until the assertions pass",
             }),
         data: { passed, failed: failed.length, skipped: skipped.length },
@@ -709,7 +709,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         'not checked: the global state directory could not be opened, and the capability ' +
         'manifest lives in it — see the Runtime section.',
       action:
-        "fix the global state directory named in the Runtime section, then run 'DeFlow doctor' " +
+        "fix the global state directory named in the Runtime section, then run 'deflow doctor' " +
         'again',
     });
     return {
@@ -862,7 +862,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
         'and the matrix is derived from live responses rather than read from a constant (AR-5). ' +
         'Install a vendor CLI and run doctor again.',
       action:
-        "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
+        "install one of the vendor CLIs named in the Agents section, then run 'deflow doctor'",
     });
   }
 
@@ -887,7 +887,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'CLI actually does, and there is nothing here to assert it against. This is not a ' +
             'pass.',
           action:
-            "install one of the vendor CLIs named in the Agents section, then run 'DeFlow doctor'",
+            "install one of the vendor CLIs named in the Agents section, then run 'deflow doctor'",
         },
       ],
     };
@@ -911,7 +911,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
           detail:
             'skipped — --skip-conformance was passed. The battery spawns a real turn per ' +
             'assertion per adapter; nothing below was tested, which is not the same as passing.',
-          action: "run 'DeFlow doctor' without --skip-conformance to actually test the adapters",
+          action: "run 'deflow doctor' without --skip-conformance to actually test the adapters",
         },
         ...argvForms,
       ],
@@ -941,7 +941,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
                 detail:
                   'the battery produced no adapter report: every installed binary failed to ' +
                   're-probe. See the Agents section for which one and why.',
-                action: "fix the adapter named in the Agents section, then run 'DeFlow doctor'",
+                action: "fix the adapter named in the Agents section, then run 'deflow doctor'",
               },
             ],
     };
@@ -958,7 +958,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
             'the F3.4 battery could not be run: ' +
             `${error instanceof Error ? error.message : String(error)}. Nothing below was ` +
             'tested, which is not the same as passing.',
-          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
+          action: "run 'deflow doctor --json' and attach its output to a bug report",
         },
       ],
     };

@@ -29,7 +29,7 @@ import { createProcessPorts, type MockAgentPorts } from './ports.ts';
 import type { Scenario } from './scenario.ts';
 import { realSleep, runScenario } from './scripted.ts';
 
-export const AGENT_NAME = 'DeFlow-mock-agent';
+export const AGENT_NAME = 'deflow-mock-agent';
 export const AGENT_VERSION = '0.0.0';
 
 /**

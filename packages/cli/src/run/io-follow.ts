@@ -1,11 +1,11 @@
 /**
  * KAR-19.4 AC3 — the agent's own bytes, on the terminal, while the node runs.
  *
- * `DeFlow run` watches the **control plane**: `node.started`, `gate.evaluated`,
+ * `deflow run` watches the **control plane**: `node.started`, `gate.evaluated`,
  * `run.completed`. Agent stdout is deliberately not there — it lives in
  * `io_chunk`, a separate table with a separate endpoint, precisely so a chatty
  * agent cannot drown the ledger every replay re-reads (KAR-03.4). Which means
- * that until this file existed, `DeFlow run` could render a perfect transcript
+ * that until this file existed, `deflow run` could render a perfect transcript
  * of a ten-minute node and show the operator nothing the agent said.
  *
  * Three rules, and each of them is the difference between output and the

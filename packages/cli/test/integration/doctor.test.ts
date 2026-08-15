@@ -1,5 +1,5 @@
 /**
- * KAR-18.4 — `DeFlow doctor`: the environment and capability probe.
+ * KAR-18.4 — `deflow doctor`: the environment and capability probe.
  *
  * Integration rather than unit for almost everything here, because almost
  * every one of these checks is a claim about a *machine*: a git that actually
@@ -60,7 +60,7 @@ const detailsOf = (report: DoctorReport, id: DoctorSectionId): string =>
     .checks.map((check) => check.detail)
     .join('\n');
 
-/** A repository with a `.DeFlow/` already in it, as `DeFlow init` leaves one. */
+/** A repository with a `.DeFlow/` already in it, as `deflow init` leaves one. */
 async function workspace(name = 'repo'): Promise<string> {
   const repo = await makeRepo({ dir: join(tmp, name) });
   await mkdir(join(repo.dir, '.DeFlow'), { recursive: true });
@@ -153,7 +153,7 @@ suite('doctor with no agent CLI at all (EPIC-18-S27)', () => {
     ]) {
       expect(agents).toContain(`npm install -g ${pkg}`);
     }
-    expect(agents).toContain('DeFlow replay');
+    expect(agents).toContain('deflow replay');
     expect(agents).toContain('mock agent');
 
     expect(detailsOf(result.report, 'capabilities')).toContain('no matrix');

@@ -112,7 +112,7 @@ const defaultSleep = (ms: number): Promise<void> =>
 /**
  * Attaches to the running daemon, or starts one detached and waits for it.
  *
- * The spawned command is `DeFlow up --no-open`: there is no second way to boot
+ * The spawned command is `deflow up --no-open`: there is no second way to boot
  * a daemon, which is what keeps the eight-step sequence, the lease and the
  * token file identical whether an operator typed `up` or `run`.
  */
@@ -124,8 +124,8 @@ export async function ensureDaemon(options: EnsureDaemonOptions): Promise<Daemon
   const logPath = join(options.dataDir, DAEMON_LOG_NAME);
   let log: number;
   try {
-    // The very first `DeFlow run` on a machine is the first thing to touch the
-    // data directory at all — `DeFlow up` creates it during boot, and here the
+    // The very first `deflow run` on a machine is the first thing to touch the
+    // data directory at all — `deflow up` creates it during boot, and here the
     // log is opened *before* that boot has started.
     mkdirSync(options.dataDir, { recursive: true });
     log = openSync(logPath, 'a');
@@ -133,8 +133,8 @@ export async function ensureDaemon(options: EnsureDaemonOptions): Promise<Daemon
     return {
       kind: 'refused',
       message:
-        `DeFlow run: cannot write ${logPath} (${error instanceof Error ? error.message : String(error)}) — ` +
-        "run 'DeFlow doctor' to see which state directories are usable",
+        `deflow run: cannot write ${logPath} (${error instanceof Error ? error.message : String(error)}) — ` +
+        "run 'deflow doctor' to see which state directories are usable",
     };
   }
 
@@ -167,13 +167,13 @@ export async function ensureDaemon(options: EnsureDaemonOptions): Promise<Daemon
     if (endpoint !== null)
       return { kind: 'attached', endpoint: { ...endpoint, autostarted: true } };
 
-    // A refusal we can name: `DeFlow up` exits 2 for a lease it could not take
+    // A refusal we can name: `deflow up` exits 2 for a lease it could not take
     // or a port it could not have, and its own sentence is already in the log.
     if (departed.happened) {
       return {
         kind: 'refused',
         message:
-          `DeFlow run: the daemon exited with ${departed.code ?? 'a signal'} before it was ready — ` +
+          `deflow run: the daemon exited with ${departed.code ?? 'a signal'} before it was ready — ` +
           `see ${logPath}`,
       };
     }
@@ -183,7 +183,7 @@ export async function ensureDaemon(options: EnsureDaemonOptions): Promise<Daemon
   return {
     kind: 'refused',
     message:
-      `DeFlow run: no daemon answered /api/health within ${options.timeoutMs ?? 30_000} ms — ` +
+      `deflow run: no daemon answered /api/health within ${options.timeoutMs ?? 30_000} ms — ` +
       `see ${logPath}`,
   };
 }

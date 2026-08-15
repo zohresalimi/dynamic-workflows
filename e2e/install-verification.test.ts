@@ -14,12 +14,23 @@
  * wall-clock time.
  *
  * Verifies: EPIC-18-S42 (happy path), EPIC-18-S45 (no compiler),
- * EPIC-18-S46 (honest doctor report) · AC1, AC2, AC3, AC4, AC7
+ * EPIC-18-S46 (honest doctor report), EPIC-20-S2 (the three lowercase bins) ·
+ * KAR-18.6 AC1, AC2, AC3, AC4, AC7 · KAR-20.1 AC1
+ *
+ * EPIC-20-S2 lives here rather than in the integration slice its flow file
+ * first declared, and the reason is the same one KAR-18.6 records: the clean
+ * room *is* an e2e fixture. It costs a `pnpm build` and a `pnpm pack`, and
+ * KAR-18.6's own scenarios (EPIC-18-S42, S45, S46) are declared `e2e` for
+ * exactly that. Standing a second one up in the integration project to run
+ * three `--version` calls would add minutes to every save and prove nothing
+ * the tarball in this file's `beforeAll` does not already carry. The flow file
+ * was corrected to say `e2e`.
  */
-import { DOCTOR_SECTION_IDS, type DoctorReport } from 'DeFlow';
-import { readFileSync } from 'node:fs';
+
+import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
+import { DOCTOR_SECTION_IDS, type DoctorReport } from 'deflowai';
 import { afterAll, afterEach, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
   assertInstalledAgentDrivesTurns,
@@ -29,11 +40,15 @@ import {
   type CliProcess,
   cleanupPackedTarball,
   cleanupSystemToolsDir,
+  cliDir,
   findInstalledMockAgent,
+  INSTALLED_BINS,
   makeCleanRoom,
   type PackedTarball,
   packGoodTarball,
   removeCleanRoom,
+  resolveInstalledBin,
+  resolveOnCleanRoomPath,
   runInstalled,
   shimMockAgent,
   spawnInstalled,
@@ -105,13 +120,13 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
   it('GET /api/health answers, GET / serves the real UI, and the install spawns no node-gyp', async () => {
     const install = await room();
 
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
     assertNoNodeGyp(init.stdout + init.stderr);
 
     const up = spawnInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['up', '--no-open'],
       install,
     });
@@ -129,7 +144,7 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     await up.stop();
   }, 120_000);
 
-  it('AC2 — with the tarball\'s own DeFlow-mock-agent on PATH, "DeFlow run" reaches the installed daemon', async () => {
+  it('AC2 — with the tarball\'s own deflow-mock-agent on PATH, "deflow run" reaches the installed daemon', async () => {
     // This closes test plan row 2's red condition — mock-agent.mjs missing
     // from the tsdown entry array, so the tarball's second bin does not
     // exist — by resolving and executing the *installed* bin, not the
@@ -143,7 +158,7 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // epic does not own; asserting "exits 0" here would be the fake pass
     // the working agreement forbids.
     const install = await room();
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     // "Present in one artefact" means functional, not merely on disk: the
@@ -155,7 +170,7 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // `fixtures/` directory the tarball never ships (`files: ["dist"]`).
     const version = await runInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow-mock-agent',
+      bin: 'deflow-mock-agent',
       argv: ['--version'],
       install,
     });
@@ -167,7 +182,7 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
 
     const run = spawnInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['run', 'add a health endpoint'],
       install,
       binDirs: [binDir],
@@ -207,10 +222,10 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // daemon named in `daemon.json` is gone, and the pipes are released
     // whatever happened to it.
     const install = await room();
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
-    const up = spawnInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['up', '--no-open'], install });
+    const up = spawnInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['up', '--no-open'], install });
     await waitForUrl(up);
 
     const daemon = JSON.parse(
@@ -243,7 +258,7 @@ suite('EPIC-18-S42 — the real tarball, installed into a clean temp directory a
     // exists in the workspace and not in the tarball, so the installed binary
     // threw before it could answer anything.
     const install = await room();
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     const mockAgent = await findInstalledMockAgent(install.npmCacheDir);
@@ -275,7 +290,7 @@ suite('EPIC-18-S45 — no compiler on the box: nothing invokes node-gyp', () => 
     // toolchain-less environment.
     const install = await room();
 
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
     assertNoNodeGyp(init.stdout + init.stderr);
     // better-sqlite3 must have resolved without a compiler: no gyp/rebuild
@@ -284,7 +299,7 @@ suite('EPIC-18-S45 — no compiler on the box: nothing invokes node-gyp', () => 
 
     const doctor = await runInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['doctor', '--skip-conformance', '--json'],
       install,
     });
@@ -303,7 +318,7 @@ suite('EPIC-18-S45 — no compiler on the box: nothing invokes node-gyp', () => 
 suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-free report', () => {
   it('exits 0, renders every section and reports only the bundled agent', async () => {
     const install = await room();
-    const init = await runInstalled({ tgz: good.tgz, bin: 'DeFlow', argv: ['init'], install });
+    const init = await runInstalled({ tgz: good.tgz, bin: 'deflow', argv: ['init'], install });
     expect(init.status, init.stderr).toBe(0);
 
     // No --skip-conformance: the scenario is "npx <tarball> doctor" as a
@@ -312,7 +327,7 @@ suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-fre
     // KAR-19.7 is a real answer rather than a "skipped" check.
     const doctor = await runInstalled({
       tgz: good.tgz,
-      bin: 'DeFlow',
+      bin: 'deflow',
       argv: ['doctor', '--json'],
       install,
     });
@@ -333,7 +348,7 @@ suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-fre
     const summary = agents?.checks.find((check) => check.id === 'agents.summary');
     expect(summary?.status).toBe('ok');
     // KAR-19.7 AC8, and this line is the acceptance of it: a clean room is no
-    // longer agent-free, because `DeFlow-mock-agent` came out of the same
+    // longer agent-free, because `deflow-mock-agent` came out of the same
     // tarball as the `DeFlow` the operator just ran. Reporting "0 installed"
     // here would be the words not fitting the machine — the operator can see
     // the binary, and a run against it needs no vendor CLI at all.
@@ -358,4 +373,100 @@ suite('EPIC-18-S46 — the clean room runs doctor and gets an honest, vendor-fre
     // which is what keeps this snapshot from producing a diff on every run.
     expect(stable(agents)).toMatchSnapshot();
   }, 60_000);
+});
+
+suite('EPIC-20-S2 — every published bin resolves from a clean-room install', () => {
+  it('resolves and runs deflow, dfl, deflow-mcp and deflow-mock-agent, each from inside the room', async () => {
+    // KAR-20.1's own red condition, which nothing else in the repository can
+    // see: a `bin` key renamed without its target shipping. Inside the
+    // monorepo every one of these names is a workspace path that resolves
+    // whatever the manifest says; only an install of the packed bytes asks the
+    // question npm will ask.
+    //
+    // `deflow-mcp` is why this spec exists. It is the one bin no other spec
+    // ever spawned from a tarball — `deflow` is exercised by init/up/doctor
+    // above and `deflow-mock-agent` by AC2's `--version` — so a build that
+    // dropped `mcp.mjs` from tsdown's entry array, or a `bin` key still
+    // pointing at the pre-rename path, shipped green.
+    const install = await room();
+
+    const manifest = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf8')) as {
+      readonly name: string;
+      readonly version: string;
+      readonly bin: Readonly<Record<string, string>>;
+    };
+    // The three the scenario names are the three the package declares — not a
+    // list this spec keeps in its own head and forgets to extend.
+    expect(Object.keys(manifest.bin)).toEqual([...INSTALLED_BINS]);
+
+    // Given "no DeFlow on PATH beforehand", observed rather than assumed. If
+    // the room's PATH already offered one of these names, every resolution
+    // below could find the author's own install and the spec would pass on a
+    // machine where the tarball ships nothing at all.
+    for (const bin of INSTALLED_BINS) {
+      expect([bin, resolveOnCleanRoomPath(bin)]).toEqual([bin, '']);
+    }
+
+    // When "deflow --version", "deflow-mcp --help" and "deflow-mock-agent
+    // --version" are each spawned — then each exits 0.
+    const version = await runInstalled({
+      tgz: good.tgz,
+      bin: 'deflow',
+      argv: ['--version'],
+      install,
+    });
+    expect(version.status, version.stderr).toBe(0);
+    // And prints the version in packages/cli/package.json — read from the
+    // manifest this tarball was packed from, so a `dist/bin.mjs` that resolved
+    // some *other* package.json (the workspace root's, say) is a failure here
+    // rather than a plausible-looking number.
+    expect(version.stdout.trim()).toBe(manifest.version);
+
+    const help = await runInstalled({
+      tgz: good.tgz,
+      bin: 'deflow-mcp',
+      argv: ['--help'],
+      install,
+    });
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('deflow-mcp');
+    // It really is the shim, and not some other binary that happened to
+    // answer: the two arguments DeFlowd spawns it with are in its usage.
+    expect(help.stdout).toContain('--socket');
+    expect(help.stdout).toContain('--run');
+
+    const agent = await runInstalled({
+      tgz: good.tgz,
+      bin: 'deflow-mock-agent',
+      argv: ['--version'],
+      install,
+    });
+    expect(agent.status, agent.stderr).toBe(0);
+    expect(agent.stdout.trim()).not.toBe('');
+
+    // EPIC-20-S34 — and the short alias, which npm links from the same
+    // manifest and which nothing inside the monorepo can prove: `dfl` is a
+    // `bin` key, not a file in the repository, so a key dropped from the map
+    // is invisible until an install puts it on a PATH. It is the same
+    // program, so it answers the same version.
+    const alias = await runInstalled({
+      tgz: good.tgz,
+      bin: 'dfl',
+      argv: ['--version'],
+      install,
+    });
+    expect(alias.status, alias.stderr).toBe(0);
+    expect(alias.stdout.trim()).toBe(version.stdout.trim());
+
+    // And each resolved path is inside the clean room's own install prefix.
+    // Through `realpath` on both sides because macOS's tmpdir is a symlink
+    // (/var → /private/var) and npm prints the resolved side of it, so a plain
+    // prefix comparison is red on one platform and green on the other.
+    const roomPrefix = realpathSync(install.room);
+    for (const bin of INSTALLED_BINS) {
+      const resolved = resolveInstalledBin({ tgz: good.tgz, bin, install });
+      expect([bin, resolved]).not.toEqual([bin, '']);
+      expect([bin, realpathSync(resolved).startsWith(roomPrefix)]).toEqual([bin, true]);
+    }
+  }, 180_000);
 });

@@ -15,7 +15,7 @@
  *   pinned port is a refusal (EPIC-18-S10).
  *
  * The port chosen here is chosen **once**, and every later mention of it —
- * the printed URL, `daemon.json`, `DeFlow status`, `/api/health` — reads the
+ * the printed URL, `daemon.json`, `deflow status`, `/api/health` — reads the
  * port that was actually bound rather than re-deriving it from the constant.
  * That re-derivation is the failure EPIC-18-S9 exists to catch: the URL says
  * one thing, the daemon file says another, and the UI cannot authenticate.
@@ -47,7 +47,7 @@ export class PortInUse extends Error {
 
   constructor(port: number) {
     super(
-      `DeFlow up: port ${port} is already in use — stop what is listening on it, or omit ` +
+      `deflow up: port ${port} is already in use — stop what is listening on it, or omit ` +
         '--port and DeFlow will take the next free one',
     );
     this.name = 'PortInUse';

@@ -1,5 +1,5 @@
 /**
- * KAR-19.3 AC1, AC2 — the **production** resolver: the one `DeFlow up` binds.
+ * KAR-19.3 AC1, AC2 — the **production** resolver: the one `deflow up` binds.
  *
  * `./live-chain.test.ts` drives `createRunChain` against scripted agent ports
  * and a resolver written in that file. It is green, and it was green on
@@ -82,7 +82,7 @@ async function scene(tmp: string): Promise<Scene> {
   await mkdir(dataDir, { recursive: true });
   const binDir = join(tmp, 'bin');
   await mkdir(binDir, { recursive: true });
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'DeFlow-mock-agent'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, 'deflow-mock-agent'));
   const nodeDir = await nodeOnlyDir(tmp);
 
   const db = openLedger(dataDir);
@@ -90,7 +90,7 @@ async function scene(tmp: string): Promise<Scene> {
     provider: 'mock',
     version: '0.0.0',
     binarySha256: 'c'.repeat(64),
-    binaryPath: join(binDir, 'DeFlow-mock-agent'),
+    binaryPath: join(binDir, 'deflow-mock-agent'),
     capsJson: JSON.stringify({ agentCapabilities: {} }),
     probedAt: T0,
   });
@@ -196,7 +196,7 @@ suite('KAR-19.3 — the shipped resolver carries a run from intake to a plan', (
     // constant wearing a capability's clothes (KAR-05.2).
     const binDir = join(tmp, 'bin');
     await mkdir(binDir, { recursive: true });
-    await symlink(MOCK_AGENT_BIN, join(binDir, 'DeFlow-mock-agent'));
+    await symlink(MOCK_AGENT_BIN, join(binDir, 'deflow-mock-agent'));
 
     const chain = createLiveRunChain({
       dataDir,

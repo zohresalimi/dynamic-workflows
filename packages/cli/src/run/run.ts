@@ -1,5 +1,5 @@
 /**
- * `DeFlow run` (KAR-18.3) — the whole command, minus the process it runs in.
+ * `deflow run` (KAR-18.3) — the whole command, minus the process it runs in.
  *
  * The design constraint the epic states is that there is **no second protocol
  * implementation**: `hydrateRun`, `connectStream` and `createDispatcher` are
@@ -119,15 +119,15 @@ const defaultOnInterrupt = (handler: () => void): (() => void) => {
  * guessing about the other. */
 export function detachSentence(runId: string): string {
   return (
-    `detached — run ${runId} continues; 'DeFlow run --attach ${runId}' to watch, ` +
-    `'DeFlow cancel ${runId}' to stop\n`
+    `detached — run ${runId} continues; 'deflow run --attach ${runId}' to watch, ` +
+    `'deflow cancel ${runId}' to stop\n`
   );
 }
 
 /**
  * AC6's fifth code, and the only check this command makes about the machine.
  *
- * `DeFlow doctor` is the command that reports on an environment in full; what
+ * `deflow doctor` is the command that reports on an environment in full; what
  * belongs here is the one prerequisite a run cannot start without, because
  * every worktree it will create needs it. Anything more would be a second
  * doctor that drifts from the first.
@@ -135,7 +135,7 @@ export function detachSentence(runId: string): string {
 async function environmentUnusable(env: NodeJS.ProcessEnv, cwd: string): Promise<string | null> {
   const git = await checkGitVersion(env, cwd);
   if (git.status !== 'fail') return null;
-  return `DeFlow run: ${git.message} Run 'DeFlow doctor' for the whole picture.`;
+  return `deflow run: ${git.message} Run 'deflow doctor' for the whole picture.`;
 }
 
 /**
@@ -281,7 +281,7 @@ async function execute(
         // rather than waiting".
         options.stderr(
           exitCode === EX_USAGE
-            ? `DeFlow run: ${error.field}: ${error.message}\n`
+            ? `deflow run: ${error.field}: ${error.message}\n`
             : `${error.message}\n`,
         );
         return exitCode;
@@ -290,7 +290,7 @@ async function execute(
     }
   } else {
     // `parseRunArgs` cannot produce this; the type can.
-    options.stderr('DeFlow run: nothing to run\n');
+    options.stderr('deflow run: nothing to run\n');
     return EX_USAGE;
   }
 
@@ -368,7 +368,7 @@ async function execute(
       if (presses === 2) {
         void cancelRun(runId, endpoint)
           .then((outcome) => {
-            options.stderr(`DeFlow run: ${outcome.message}\n`);
+            options.stderr(`deflow run: ${outcome.message}\n`);
           })
           .finally(() => {
             remove();
@@ -421,7 +421,7 @@ async function execute(
 }
 
 /**
- * `DeFlow run` — argv in, exit code out.
+ * `deflow run` — argv in, exit code out.
  *
  * The order of the three gates before any run exists is deliberate: the argv is
  * checked without touching the machine, the machine is checked without touching
@@ -453,7 +453,7 @@ export async function runRun(options: RunCommandOptions): Promise<number> {
 
   if (lookup.kind === 'refused') {
     options.stderr(`${lookup.message}\n`);
-    // The same code a second `DeFlow up` exits with, and for the same reason:
+    // The same code a second `deflow up` exits with, and for the same reason:
     // this is your machine's state, and a script may reasonably retry it.
     return EX_ALREADY_RUNNING;
   }

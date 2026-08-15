@@ -21,7 +21,7 @@
 
 A scripted walk through the seven views EPIC-17-S35 names, in the order it names them — plan graph,
 acceptance-criteria board, diff line, node inspector, context budget, plan scrubber, timeline —
-driven by a real headless Chromium against a real `DeFlow replay` daemon serving the shipped
+driven by a real headless Chromium against a real `deflow replay` daemon serving the shipped
 source through Vite, exactly as `pnpm dev:replay` does. Nothing is stubbed: the plan comes from
 `GET /api/runs/:id/plans`, the verdict from `gate.evaluated` over SSE, and the patch at stop 3
 from the daemon shelling out to a real `git diff` in a repository this measurement builds and

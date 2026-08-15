@@ -436,7 +436,7 @@ measurement, not this one, that decides whether the memory/data-flow view (F10.4
 
 **As** the author, **I want** both native dependencies proven to install and load with **zero
 compilation** on the machines DeFlow will actually run on, and the ledger's fsync cost measured on
-APFS, **so that** `npx DeFlow up` (NF6) does not fail on a toolchain-less laptop and the
+APFS, **so that** `npx deflowai up` (NF6) does not fail on a toolchain-less laptop and the
 `synchronous=` setting is picked from a number measured on the machine that will run it.
 
 **Timebox: 1 day** — roadmap S5 (2 hours) plus S6 (half a day), combined because they answer the
@@ -448,7 +448,7 @@ script; `npm i` completed in **1 second** with zero compilation — **verified 2
 linux-x64 only** (A1-2). The darwin binaries are demonstrably in the tarball but were never
 executed. `@lydell/node-pty` installed in **514 ms** with zero compilation, but it is at
 `1.2.0-beta.14`, a beta of a community fork, and it is the single remaining native-install risk for
-`npx DeFlow up` (A0-6).
+`npx deflowai up` (A0-6).
 
 Every fsync-sensitive number in [05-durable-execution.md](../../05-durable-execution.md) —
 **979 ev/s at `synchronous=FULL` versus 22,982 ev/s at `NORMAL`** — was measured on Linux, likely
@@ -737,7 +737,7 @@ stops meaning anything.
 | **The author proceeds past a NO-GO** because the architecture documents are already written and the sunk cost feels large.                    | The three-way decision table exists so the outcome is chosen from a fixed menu, and the board is updated mechanically. PRD §13 already names scope explosion as a **High** risk.                                                        |
 | **Spike code leaks into production.** Throwaway harnesses have a way of becoming `packages/`.                                                 | `spikes/` is deliberately outside `pnpm-workspace.yaml`'s `packages:` globs, so it never enters `pnpm -r`, `tsc -b` or the vitest projects. The only artefact that graduates is `fixtures/capabilities/`.                               |
 | **KAR-00.6 has no clean PRD requirement id.** It is a toolchain decision, and the traceability rule wants an F- or NF-number.                 | Stated here rather than dropped silently, per the brief. It anchors to NF6 (the install/toolchain floor) and to roadmap risk A2-3; its real justification is that it de-risks KAR-01.5 and KAR-01.6, both of which do carry NF-numbers. |
-| **Vendor versions move between spike and build.** Two of the five agent versions probed on 2026-08-02 were published the same day.            | The capability matrix is a generated fixture regenerated on every `DeFlow doctor` run, never a constant (A0-9). The spike's job is to prove the _probe_ works, not to freeze its output.                                                |
+| **Vendor versions move between spike and build.** Two of the five agent versions probed on 2026-08-02 were published the same day.            | The capability matrix is a generated fixture regenerated on every `deflow doctor` run, never a constant (A0-9). The spike's job is to prove the _probe_ works, not to freeze its output.                                                |
 
 Total size (~7.5 days) sits inside the roadmap's 8–10 day M0 budget and well under this backlog's
 15-day epic warning line. The dependency shape is a fan: KAR-00.2 first and alone, then

@@ -47,7 +47,7 @@ import { Git } from '../../src/git/git.ts';
 import { loadSchemaDirectory } from '../../src/schema-store.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
 
-/** The repository's own emitted documents — the same bytes `DeFlow init`
+/** The repository's own emitted documents — the same bytes `deflow init`
  * copies into a run's `.DeFlow/schemas/`. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 

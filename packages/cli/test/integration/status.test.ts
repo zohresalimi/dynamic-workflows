@@ -1,5 +1,5 @@
 /**
- * KAR-18.7 — `DeFlow status` against a real daemon, a `SIGKILL`ed one, a
+ * KAR-18.7 — `deflow status` against a real daemon, a `SIGKILL`ed one, a
  * recycled pid, and nothing at all.
  *
  * The named red for the middle two is the one the flow file spells out: a
@@ -176,7 +176,7 @@ suite('EPIC-18-S48 — no daemon at all (AC5)', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/no daemon is running/i);
-    expect(result.stdout).toContain('DeFlow up');
+    expect(result.stdout).toContain('deflow up');
     expect(result.stderr).toBe('');
   });
 });
@@ -208,9 +208,9 @@ suite('EPIC-18-S49 — the daemon.json outlived its daemon (AC4)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('stale');
     expect(result.stdout).toContain(daemonFilePath(dataDir));
-    expect(result.stdout).toMatch(/DeFlow up/);
+    expect(result.stdout).toMatch(/deflow up/);
     expect(result.stdout).toMatch(/take over/i);
-    expect(result.stdout).not.toMatch(/^DeFlow status: running/m);
+    expect(result.stdout).not.toMatch(/^deflow status: running/m);
   });
 
   it('reports a recycled pid as stale, and leaves that process alone', async () => {
@@ -242,7 +242,7 @@ suite('EPIC-18-S49 — the daemon.json outlived its daemon (AC4)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('stale');
     expect(result.stdout).toMatch(/no signal/i);
-    expect(result.stdout).not.toMatch(/^DeFlow status: running/m);
+    expect(result.stdout).not.toMatch(/^deflow status: running/m);
 
     // The whole point: it is still there, and nothing touched it.
     await sleep(50);

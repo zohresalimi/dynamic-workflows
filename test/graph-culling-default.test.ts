@@ -8,7 +8,7 @@
  * > per that measurement**.
  *
  * The first half of that sentence is `e2e/measure-graph.test.ts`: it re-runs
- * the whole 400-node measurement against a real `DeFlow replay stress-400`
+ * the whole 400-node measurement against a real `deflow replay stress-400`
  * daemon and fails if the p95 frame time regresses. This file is the second
  * half, and it is a different claim — that the **default the application ships
  * with** is the one the measurement's numbers actually argue for.

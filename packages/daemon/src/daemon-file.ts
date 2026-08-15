@@ -1,9 +1,9 @@
 /**
- * KAR-15.2 AC7 — `.DeFlow/daemon.json`, and the URL `DeFlow up` prints.
+ * KAR-15.2 AC7 — `.DeFlow/daemon.json`, and the URL `deflow up` prints.
  *
  * The file is how everything else on this machine finds the running daemon:
- * `DeFlow status` reads the pid, `DeFlow run` reads the port and the token, and
- * a second `DeFlow up` reads the pid to decide whether it is a stale file or a
+ * `deflow status` reads the pid, `deflow run` reads the port and the token, and
+ * a second `deflow up` reads the pid to decide whether it is a stale file or a
  * live daemon (EPIC-18). It is written at mode `0600` in the gitignored data
  * directory, because the first person to commit a `daemon.json` commits a
  * bearer token.
@@ -46,7 +46,7 @@ export interface DaemonFile {
    * pid is its own start time in its own units — `/proc/<pid>/stat` field 22 in
    * ticks since boot on Linux, `ps -o lstart=` to the second on macOS. Compared
    * for equality and never parsed, exactly as the boot reaper compares it
-   * (../reaper.ts): pids are recycled within hours, and a `DeFlow status` that
+   * (../reaper.ts): pids are recycled within hours, and a `deflow status` that
    * trusted a bare pid would report an unrelated process as a live daemon and
    * invite the operator to kill it.
    *
@@ -60,7 +60,7 @@ export interface DaemonFile {
    * life started.
    *
    * A number rather than a boolean, because "running" on its own is a claim and
-   * this is a measurement: `DeFlow status` reports the loop *and* how often it
+   * this is a measurement: `deflow status` reports the loop *and* how often it
    * looks, which is the difference between "the daemon says it is fine" and
    * "the daemon will notice a due wake within a second". `null` for a file
    * written by a build older than this story, which is reported as unknown

@@ -34,7 +34,7 @@ suite('EPIC-18-S58 — every state survives having its colour removed (AC2)', ()
   for (const state of REPORT_STATES) {
     it(`renders "${state}" as glyph, label and colour`, () => {
       const report: Report = {
-        title: 'DeFlow doctor',
+        title: 'deflow doctor',
         sections: [{ title: 'Runtime', rows: [{ id: 'runtime.node', state, detail: 'a reason' }] }],
       };
 
@@ -59,7 +59,7 @@ suite('EPIC-18-S58 — every state survives having its colour removed (AC2)', ()
 
   it('distinguishes warn from fail without reading a single escape', () => {
     const report: Report = {
-      title: 'DeFlow doctor',
+      title: 'deflow doctor',
       sections: [
         {
           title: 'Runtime',
@@ -80,7 +80,7 @@ suite('EPIC-18-S58 — every state survives having its colour removed (AC2)', ()
 
 suite('sections are visually distinct from their contents (AC3)', () => {
   const report: Report = {
-    title: 'DeFlow doctor',
+    title: 'deflow doctor',
     sections: [
       {
         title: 'Runtime',
@@ -119,7 +119,7 @@ suite('sections are visually distinct from their contents (AC3)', () => {
 
 suite('EPIC-18-S57 — the summary block (AC5)', () => {
   const failing: Report = {
-    title: 'DeFlow doctor',
+    title: 'deflow doctor',
     exitCode: 5,
     sections: [
       {
@@ -130,7 +130,7 @@ suite('EPIC-18-S57 — the summary block (AC5)', () => {
             id: 'runtime.state-dir',
             state: 'fail',
             detail: 'not writable',
-            action: "chmod u+w ~/.local/share/DeFlow, then run 'DeFlow doctor' again",
+            action: "chmod u+w ~/.local/share/DeFlow, then run 'deflow doctor' again",
           },
           { id: 'runtime.pnpm', state: 'warn', detail: 'absent', action: 'npm install -g pnpm' },
         ],
@@ -147,7 +147,7 @@ suite('EPIC-18-S57 — the summary block (AC5)', () => {
     // Last in the report, first within the block — KAR-18.9 AC5's settlement of
     // "at the end, ahead of the detail".
     expect(block[0]).toContain('next:');
-    expect(block[0]).toContain("chmod u+w ~/.local/share/DeFlow, then run 'DeFlow doctor' again");
+    expect(block[0]).toContain("chmod u+w ~/.local/share/DeFlow, then run 'deflow doctor' again");
     expect(block.join('\n')).toContain('overall');
   });
 
@@ -172,7 +172,7 @@ suite('EPIC-18-S57 — the summary block (AC5)', () => {
 
   it('names no next action when there is nothing to do', () => {
     const healthy: Report = {
-      title: 'DeFlow doctor',
+      title: 'deflow doctor',
       exitCode: 0,
       sections: [{ title: 'Runtime', rows: [{ id: 'runtime.node', state: 'ok', detail: 'ok' }] }],
     };
@@ -186,12 +186,12 @@ suite('EPIC-18-S57 — the summary block (AC5)', () => {
 
   it('still names an action when the worst check carries none of its own', () => {
     const report: Report = {
-      title: 'DeFlow status',
-      fallbackAction: "run 'DeFlow doctor' for what this machine can do",
+      title: 'deflow status',
+      fallbackAction: "run 'deflow doctor' for what this machine can do",
       sections: [{ title: 'Daemon', rows: [{ id: 'daemon', state: 'warn', detail: 'none' }] }],
     };
     expect(renderReport(report, plain)).toContain(
-      "next: run 'DeFlow doctor' for what this machine can do",
+      "next: run 'deflow doctor' for what this machine can do",
     );
   });
 });
@@ -200,7 +200,7 @@ suite('no line exceeds the width, whatever the detail is (AC4)', () => {
   it('keeps a 400-character detail inside a 60-column terminal', () => {
     const narrow = createStyle({ isTty: false, env: { LANG: 'en_US.UTF-8' }, columns: 60 });
     const report: Report = {
-      title: 'DeFlow doctor',
+      title: 'deflow doctor',
       sections: [
         {
           title: 'Sandboxing',

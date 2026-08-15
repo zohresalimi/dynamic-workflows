@@ -75,7 +75,7 @@ function recordChoice(
         vendorPath: choice.binaryPath,
         adapterBin: choice.provider,
         adapterPath: choice.binaryPath,
-        package: 'DeFlow',
+        package: 'deflow',
         chosen: {
           route: choice.route,
           binaryPath: choice.binaryPath,
@@ -94,7 +94,7 @@ suite('the run obeys the provider it was admitted onto (AC8)', () => {
     // real choice to make, and would not make this one.
     await executable(bin, 'claude');
     await executable(bin, 'claude-agent-acp');
-    const mockPath = await executable(bin, 'DeFlow-mock-agent');
+    const mockPath = await executable(bin, 'deflow-mock-agent');
 
     await mkdir(join(tmp, 'data'), { recursive: true });
     const db = openLedger(join(tmp, 'data'));

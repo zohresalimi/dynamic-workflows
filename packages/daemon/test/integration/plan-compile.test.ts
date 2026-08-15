@@ -36,7 +36,7 @@ import { RefFormatChecker } from '../../src/git/ref-format.ts';
 import { compilePlanV1, type PlannerAgent, type PlannerTurn } from '../../src/plan/compile.ts';
 import { loadSchemaDirectory } from '../../src/schema-store.ts';
 
-/** The repository's own emitted documents — the bytes `DeFlow init` copies. */
+/** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
 const RUN: RunId = RunIdSchema.parse('run_20260807T101500Z_ac1101');

@@ -6,7 +6,7 @@
  *
  * *"A grep of `packages/web/src` for any replay-related identifier returns
  * nothing, and there is no `if (isReplay)` anywhere in the frontend."* This is
- * the assertion that keeps the harness honest: `DeFlow replay` boots the same
+ * the assertion that keeps the harness honest: `deflow replay` boots the same
  * `boot()`, serves the same routes and enforces the same auth, so there is
  * nothing for a client to detect — and the day the UI needs to know, the
  * harness has drifted and *that* is the bug (EPIC-16 risk register).
@@ -20,7 +20,7 @@
  * - **`replay` on its own is not a forbidden word.** `api/scrub.ts` replays
  *   events forward from a snapshot — `replayWindow`, `replayedFrom`, *"replaying
  *   r_1 from 9 failed"* — and that is the client's own vocabulary for folding,
- *   with nothing to do with `DeFlow replay`. What is forbidden is an identifier
+ *   with nothing to do with `deflow replay`. What is forbidden is an identifier
  *   naming the *mode*: a boolean, a mode string, a build flag, a second server.
  *
  * The control at the bottom is what stops this passing because the scan is

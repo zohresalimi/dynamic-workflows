@@ -8,7 +8,7 @@
  *
  * - *"meets the budget recorded in `docs/measurements/vue-flow-400.md`"* —
  *   `./measure-graph.test.ts`, which re-takes the whole measurement against a
- *   real `DeFlow replay stress-400` daemon and fails on a regression;
+ *   real `deflow replay stress-400` daemon and fails on a regression;
  * - *"with `onlyRenderVisibleElements` set per that measurement"* —
  *   `../test/graph-culling-default.test.ts`, which derives the default from the
  *   committed numbers rather than restating it.

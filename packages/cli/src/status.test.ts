@@ -1,5 +1,5 @@
 /**
- * KAR-18.7 — what `DeFlow status` *says*, as pure functions.
+ * KAR-18.7 — what `deflow status` *says*, as pure functions.
  *
  * The three integration specs next door produce the three real situations —
  * a live daemon, one that was `SIGKILL`ed, none at all — and they are where the
@@ -8,7 +8,7 @@
  * operator actually reads and which no amount of process fixture asserts.
  *
  * The wording is not cosmetic here. EPIC-18-S49 requires the stale report to
- * *name the file* and to say that `DeFlow up` takes over cleanly, because the
+ * *name the file* and to say that `deflow up` takes over cleanly, because the
  * failure it exists to prevent is an operator hunting a process that is not
  * DeFlow — or killing one that is not theirs.
  *
@@ -166,16 +166,16 @@ suite('a live daemon (AC3)', () => {
 });
 
 suite('a daemon.json that outlived its daemon (AC4)', () => {
-  it('says stale, names the file, and points at DeFlow up', () => {
+  it('says stale, names the file, and points at deflow up', () => {
     const text = renderStatusText(stale);
 
     expect(text).toContain('stale');
     expect(text).toContain(DAEMON_FILE);
     expect(text).toContain('4242');
-    expect(text).toMatch(/DeFlow up/);
+    expect(text).toMatch(/deflow up/);
     expect(text).toMatch(/take over/i);
     // The one thing it must never say.
-    expect(text).not.toMatch(/^DeFlow status: running/m);
+    expect(text).not.toMatch(/^deflow status: running/m);
   });
 
   it('explains a recycled pid with both start times, and says nothing was signalled', () => {
@@ -208,7 +208,7 @@ suite('no daemon.json at all (AC5)', () => {
 
     expect(text).toMatch(/no daemon is running/i);
     expect(text).toContain(DAEMON_FILE);
-    expect(text).toMatch(/DeFlow up/);
+    expect(text).toMatch(/deflow up/);
   });
 
   it('--json is a document rather than an empty string', () => {

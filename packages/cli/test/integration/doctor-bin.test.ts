@@ -1,5 +1,5 @@
 /**
- * KAR-18.4 — `DeFlow doctor` through the real binary.
+ * KAR-18.4 — `deflow doctor` through the real binary.
  *
  * `doctor.test.ts` next door drives `runDoctor` directly, because that is
  * where the checks live. What only a spawned process can settle is the half
@@ -11,7 +11,7 @@
  * computed.
  *
  * A real subprocess, so `process.exitCode` (set rather than forced, so stdout
- * drains) is exercised exactly as `npx DeFlow doctor` exercises it.
+ * drains) is exercised exactly as `npx deflowai doctor` exercises it.
  *
  * Verifies: EPIC-18-S36 · AC10, AC11
  */
@@ -72,7 +72,7 @@ async function workspace(name: string): Promise<string> {
   return repo.dir;
 }
 
-suite('DeFlow doctor through the binary', () => {
+suite('deflow doctor through the binary', () => {
   it('prints the report and exits 0 on a healthy machine', async () => {
     const cwd = await workspace('bin-ok');
     const env = doctorEnv({ dataDir: join(tmp, 'bin-ok-data'), realGit: true });
@@ -80,7 +80,7 @@ suite('DeFlow doctor through the binary', () => {
     const ran = await runBin(['doctor', '--skip-conformance'], { cwd, env });
 
     expect(ran.code).toBe(0);
-    expect(ran.stdout).toContain('DeFlow doctor');
+    expect(ran.stdout).toContain('deflow doctor');
     for (const title of ['Runtime', 'git', 'Sandboxing', 'Agents', 'Capabilities']) {
       expect(ran.stdout).toContain(title);
     }

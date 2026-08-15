@@ -19,9 +19,9 @@
 ## Goal
 
 At the end of this epic DeFlow is a thing a person installs and runs, rather than a repository they
-clone. `npx DeFlow init` bootstraps a target repo, `npx DeFlow up` brings the daemon to a browser in
-under three seconds, `npx DeFlow run "…"` drives a complete run to a terminal without a browser at
-all, and `npx DeFlow doctor` tells the truth about what this specific machine can and cannot do
+clone. `npx deflowai init` bootstraps a target repo, `npx deflowai up` brings the daemon to a browser in
+under three seconds, `npx deflowai run "…"` drives a complete run to a terminal without a browser at
+all, and `npx deflowai doctor` tells the truth about what this specific machine can and cannot do
 before any quota is spent on finding out. The published artefact is **one** npm tarball with one
 native dependency, and its correctness is proved by installing the real bytes into an empty
 directory and running them — not by a green `pnpm dev`.
@@ -30,7 +30,7 @@ directory and running them — not by a green `pnpm dev`.
 
 Three separate things converge here, and each one fails silently if it is skipped.
 
-**NF6 is the adoption argument.** "Single-binary-ish install: `npx DeFlow up`. No database server,
+**NF6 is the adoption argument.** "Single-binary-ish install: `npx deflowai up`. No database server,
 no Docker requirement for the core." M2's definition of done is _a colleague installs it unaided and
 finishes a real task_ — and the author is the first test subject. Everything in the repo layout that
 looks like fussiness (exactly one published package, `noExternal: [/^@DeFlow\//]`, UI assets as
@@ -58,21 +58,21 @@ observable from a clean temp directory.
 
 **In scope:**
 
-- `DeFlow init`: the committed half of `.DeFlow/` (`config.yaml`, `gates/`, `templates/`, `memory/`,
+- `deflow init`: the committed half of `.DeFlow/` (`config.yaml`, `gates/`, `templates/`, `memory/`,
   `.worktreeinclude`), the gitignored half (`daemon.json`, `wt/`, `runs/`), the `.gitignore` append,
   and a first provider detection pass whose result lands in the **global** probe cache, never in the
   committed config.
-- `DeFlow up`: the eight-step boot sequence of [03 §9](../../03-local-development.md) — resolve
+- `deflow up`: the eight-step boot sequence of [03 §9](../../03-local-development.md) — resolve
   directories, open and migrate the ledger behind a `VACUUM INTO` backup, take the `flock` on
   `<dataDir>/DeFlow.lock` and bump `daemon_epoch`, probe providers from cache, pick port 7777 or the
   next free one, generate the 32-byte token, write `.DeFlow/daemon.json` at mode `0600`, bind
   `127.0.0.1` and print `http://127.0.0.1:<port>/#token=<token>` — plus graceful shutdown, orphan
   reaping and the NF3 cold-start budget.
-- `DeFlow run`: headless execution against the same daemon, consuming `hc<ApiType>` and
+- `deflow run`: headless execution against the same daemon, consuming `hc<ApiType>` and
   `eventsource-client` through the **identical** modules the browser imports; detached daemon
   autostart; detach-vs-cancel on Ctrl-C; `?since=<seq>` resume, because a Node client has no
   `Last-Event-ID` mechanism at all; a documented exit-code table; `--json` NDJSON for CI.
-- `DeFlow doctor`: runtime, git, sandbox prerequisites, installed agents and versions, the
+- `deflow doctor`: runtime, git, sandbox prerequisites, installed agents and versions, the
   regenerated capability matrix, the F3.4 conformance battery, auth shadowing, PTY availability,
   writable state directories and the memory-layer report. `--json` and a stable exit-code contract.
 - Packaging: the fixed build order, `tsdown@0.22.14` with `@DeFlow/*` inlined and
@@ -80,9 +80,9 @@ observable from a clean temp directory.
   `fileURLToPath(new URL('./ui', import.meta.url))`, `files: ["dist"]`, and `publint@0.3.22` +
   `@arethetypeswrong/cli@0.18.5` as `pnpm pack:check`.
 - Clean-room install verification: `pnpm pack`, `mktemp -d`, `git init -b main`,
-  `npx /path/DeFlow-0.1.0.tgz up`, a real mock-agent run through the installed bytes, on macOS and
+  `npx /path/deflowai-0.1.0.tgz up`, a real mock-agent run through the installed bytes, on macOS and
   Linux.
-- `DeFlow ledger snapshot` and `DeFlow status` — the two diagnostics that make a solo builder's
+- `deflow ledger snapshot` and `deflow status` — the two diagnostics that make a solo builder's
   post-mortems possible (added story, see KAR-18.7).
 - Distinguishing an absent **vendor CLI** from an absent **ACP adapter** in `doctor`'s Agents
   section, and offering — on confirmation, or under `--fix` — to install the adapter for a vendor CLI
@@ -93,7 +93,7 @@ observable from a clean temp directory.
 
 **Out of scope:**
 
-- **`DeFlow replay`.** The replay daemon mode is [EPIC-16](./EPIC-16-ui-foundation.md) KAR-16.5; this
+- **`deflow replay`.** The replay daemon mode is [EPIC-16](./EPIC-16-ui-foundation.md) KAR-16.5; this
   epic only registers the subcommand and its argv, and asserts it reaches the same HTTP contract.
 - **The HTTP surface itself** — routes, the SSE frame contract, bearer auth and origin validation are
   [EPIC-15](./EPIC-15-daemon-api.md). This epic is a _client_ of them, and the producer of the token
@@ -103,7 +103,7 @@ observable from a clean temp directory.
   their output; it does not define them.
 - **The lease, `daemon_epoch` and migrations** — [EPIC-03](./EPIC-03-event-ledger.md) KAR-03.2 and
   KAR-03.7. This epic drives them from a CLI and owns the operator-facing behaviour when they refuse.
-- **Windows.** NF5 puts it at M3. `DeFlow doctor` must _say so_ rather than fail obscurely, and
+- **Windows.** NF5 puts it at M3. `deflow doctor` must _say so_ rather than fail obscurely, and
   `killTree()` stays behind a port (roadmap A0-10), but no Windows code path is built here.
 - **Secret redaction on exports** (F5.9) — M2. `doctor` reports the secretlint rule count, which is
   legitimately `0` at M1, and no command in this epic exports anything shareable.
@@ -138,8 +138,8 @@ observable from a clean temp directory.
   KAR-19.5.** A shipped path now carries a submitted run all the way: `run-chain.ts` frames, gates,
   pins, surveys and compiles; `run-execution.ts` and `live-nodes.ts` execute; and both composition
   roots — `packages/cli/src/up.ts` and `packages/daemon/src/main.ts` — bind `runFraming`,
-  `advanceRun` and `executeNodes`. `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
-  `DeFlow run --file` against the **built binary** on a `PATH` holding only `DeFlow-mock-agent` and
+  `advanceRun` and `executeNodes`. `e2e/smoke/live-run.test.ts` drives `deflow init` then
+  `deflow run --file` against the **built binary** on a `PATH` holding only `deflow-mock-agent` and
   asserts `task.submitted → run.created → plan.proposed → node.started → node.completed →
   run.completed` with exit 0. `test/run-completion-deferral.test.ts` was deleted by KAR-19.4 when it
   went red, exactly as its own instructions said it should be, and the deferral it guarded is
@@ -153,7 +153,7 @@ observable from a clean temp directory.
       pre-migration backup, and the `flock` + `daemon_epoch` lease.
 - [ ] EPIC-05 KAR-05.2 and KAR-05.7 are Done: the capability probe writes a manifest, and the
       conformance battery is invocable as a function rather than only as a test.
-- [ ] EPIC-04 is Done: `DeFlow-mock-agent` is a real bin, so every scenario in the flow file can run
+- [ ] EPIC-04 is Done: `deflow-mock-agent` is a real bin, so every scenario in the flow file can run
       with no vendor CLI installed.
 - [ ] M0-S6 has produced a `@lydell/node-pty` install matrix, so KAR-18.4's PTY check and KAR-18.6's
       no-compiler assertion have a known-good baseline to assert against.
@@ -170,15 +170,15 @@ observable from a clean temp directory.
       _(2026-08-12: the CI job exists — `verify-install` in `.github/workflows/ci.yml`, both runner
       images, on every tag and on demand — and the clean room serves the UI and drives real ACP
       turns against the installed mock agent. 2026-08-13, EPIC-19 KAR-19.5: **a run now completes**
-      — `executeNodes` is bound in both composition roots, and `DeFlow run --file` against the built
-      binary on a `PATH` holding only `DeFlow-mock-agent` reaches `run.completed` and exits 0
+      — `executeNodes` is bound in both composition roots, and `deflow run --file` against the built
+      binary on a `PATH` holding only `deflow-mock-agent` reaches `run.completed` and exits 0
       (`e2e/smoke/live-run.test.ts`, and performed by hand against the packed `dist/bin.mjs`). What
       this item still asks for and does not yet have is that run **inside the clean room**: the
       smoke test runs `packages/cli/dist`, not the installed tarball. See KAR-18.6 AC2's
       amendment.)_
-- [ ] `DeFlow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
+- [ ] `deflow doctor` on a machine with **no agent CLI installed** exits 0, names what to install,
       and reports which permission levels are honourable — with no stack trace and no empty section.
-- [ ] `DeFlow doctor` never reports a provider as _not installed_ while that vendor's own CLI
+- [ ] `deflow doctor` never reports a provider as _not installed_ while that vendor's own CLI
       resolves on `PATH`: the three states of KAR-18.8 AC1 are what the Agents section reports, and
       an operator with `claude` installed and no bridge is told the bridge is what is missing.
 - [ ] Every command that prints a report prints it through the one presentation layer (KAR-18.9
@@ -186,7 +186,7 @@ observable from a clean temp directory.
       to the golden captured before that story.
 - [ ] The capability matrix is a generated fixture file in the repository with a probe timestamp;
       `grep` finds no hardcoded capability constant in `packages/cli` or `packages/adapters`.
-- [ ] Cold start measured on the author's own laptop is under 3 s (NF3), reported by `DeFlow up
+- [ ] Cold start measured on the author's own laptop is under 3 s (NF3), reported by `deflow up
     --timings`, and the number is written into the epic's Notes rather than assumed.
 - [ ] No `Unverified` claim in [03 §9–§10](../../03-local-development.md) or
       [16 §2](../../16-repo-layout.md) that this area depends on is still unverified — specifically
@@ -195,7 +195,7 @@ observable from a clean temp directory.
 
 ## User stories
 
-### KAR-18.1 — `DeFlow init` workspace bootstrap
+### KAR-18.1 — `deflow init` workspace bootstrap
 
 |                 |                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -221,7 +221,7 @@ capability list is exactly the hardcoded matrix AR-5 forbids.
 
 **Acceptance criteria**
 
-1. In a git repository with no `.DeFlow/`, `DeFlow init` creates `config.yaml`, `gates/`,
+1. In a git repository with no `.DeFlow/`, `deflow init` creates `config.yaml`, `gates/`,
    `templates/`, `memory/` and `.worktreeinclude`, and appends `.DeFlow/daemon.json`,
    `.DeFlow/wt/` and `.DeFlow/runs/` to the repository's `.gitignore`.
 2. The generated `config.yaml` validates against the emitted JSON Schema in `.DeFlow/schemas/`
@@ -231,7 +231,7 @@ capability list is exactly the hardcoded matrix AR-5 forbids.
    entries are never duplicated, and the command reports per-path `created` / `unchanged` /
    `kept (edited)` and exits 0.
 4. Outside a git working tree the command refuses with
-   `DeFlow init: not inside a git working tree (run 'git init' first)` and exits 5. It does not
+   `deflow init: not inside a git working tree (run 'git init' first)` and exits 5. It does not
    create a partial `.DeFlow/`.
 5. `init` resolves and creates the global state directory (`$XDG_DATA_HOME/DeFlow`, else
    `~/.DeFlow`) and reports its absolute path. If it is not writable, the failure names the exact
@@ -254,7 +254,7 @@ implementation.
 
 ---
 
-### KAR-18.2 — `DeFlow up` daemon lifecycle
+### KAR-18.2 — `deflow up` daemon lifecycle
 
 |                 |                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -265,13 +265,13 @@ implementation.
 | **PRD**         | NF3, NF6, F4.4, AR-1                                                                                                                       |
 | **Verified by** | EPIC-18-S7, EPIC-18-S8, EPIC-18-S9, EPIC-18-S10, EPIC-18-S11, EPIC-18-S12, EPIC-18-S13, EPIC-18-S14, EPIC-18-S15, EPIC-18-S16, EPIC-18-S17 |
 
-**As** an engineer, **I want** `DeFlow up` to bring the daemon to a browser tab in one step and to
+**As** an engineer, **I want** `deflow up` to bring the daemon to a browser tab in one step and to
 refuse clearly when it cannot, **so that** the two things people actually do wrong — launching twice
 and colliding on a port — produce a sentence rather than a corrupted run.
 
 This story implements the eight numbered steps in [03 §9](../../03-local-development.md) as one
 sequenced boot, and owns the operator-facing behaviour of each refusal. The lease is the interesting
-one: a second `npx DeFlow up` in another terminal is described in the architecture as _"very
+one: a second `npx deflowai up` in another terminal is described in the architecture as _"very
 common"_, and two schedulers over one SQLite file will interleave effect execution even though
 SQLite itself enforces one writer. The `flock` on `<dataDir>/DeFlow.lock` plus the `daemon_epoch`
 bump is what stops it, and this story is where a human first meets that mechanism. The migration
@@ -281,18 +281,18 @@ behaviour on migration failure is to refuse to serve rather than to serve a half
 
 **Acceptance criteria**
 
-1. `DeFlow up` in an initialised repo binds `127.0.0.1`, prints
+1. `deflow up` in an initialised repo binds `127.0.0.1`, prints
    `http://127.0.0.1:<port>/#token=<token>`, writes `.DeFlow/daemon.json` as
    `{ pid, port, token, startedAt }` at mode `0600`, and opens the browser. The token is 32 bytes
    from `crypto.randomBytes`, base64url.
 2. Cold start is under 3 s (NF3) on the author's machine with a warm probe cache;
-   `DeFlow up --timings` prints per-step milliseconds for the eight steps so the budget is
+   `deflow up --timings` prints per-step milliseconds for the eight steps so the budget is
    measurable rather than asserted.
-3. A second `DeFlow up` while a live daemon holds the lease exits 2 with
-   `DeFlow up: another DeFlowd is already running (pid <pid>, port <port>) — open <url> or run 'DeFlow status'`.
+3. A second `deflow up` while a live daemon holds the lease exits 2 with
+   `deflow up: another DeFlowd is already running (pid <pid>, port <port>) — open <url> or run 'deflow status'`.
    It does not bump `daemon_epoch` and it does not touch `daemon.json`.
 4. If port 7777 is occupied, the daemon binds the next free port via `get-port`, and the printed
-   URL, `daemon.json` and `DeFlow status` all agree on it. With an explicit `--port` that is
+   URL, `daemon.json` and `deflow status` all agree on it. With an explicit `--port` that is
    occupied, the command exits 2 and names the port rather than silently choosing another.
 5. Before any migration runs, a `pre-migrate-<user_version>.db` backup exists in the global state
    directory. If a migration fails, the ledger is left at the old `user_version`, the daemon exits
@@ -301,11 +301,11 @@ behaviour on migration failure is to refuse to serve rather than to serve a half
    orphaned children are reaped by matching `(pid, process_start_time)` — never a bare pid, because
    pids are recycled — and `git worktree unlock` runs for any worktree whose owning process is gone.
 7. On SIGINT/SIGTERM the daemon releases the `flock`, removes `.DeFlow/daemon.json`, and terminates
-   its child process group; a subsequent `DeFlow up` starts cleanly with no manual intervention.
-8. On a machine with no agent CLI installed, `DeFlow up` still starts, reports zero available
+   its child process group; a subsequent `deflow up` starts cleanly with no manual intervention.
+8. On a machine with no agent CLI installed, `deflow up` still starts, reports zero available
    providers with install hints, and the daemon refuses to _schedule_ agent nodes rather than
    failing at boot (NF7).
-9. `DeFlow up` reads no credential file and captures no auth-command output (AR-1); the assertion is
+9. `deflow up` reads no credential file and captures no auth-command output (AR-1); the assertion is
    a test, not a promise.
 
 **Test plan (TDD)**
@@ -326,7 +326,7 @@ probe cache is refreshed on a version change, not on every start. `--timings` ex
 first time cold start regresses, the cause is one line of output rather than an afternoon.
 
 > **Cold start measured 2026-08-11 while implementing this story** (author's machine, macOS 26,
-> Node 26, one agent binary on `PATH`, empty data directory, `DeFlow up --timings --no-open`),
+> Node 26, one agent binary on `PATH`, empty data directory, `deflow up --timings --no-open`),
 > in milliseconds:
 >
 > | step             | first start (cold probe cache) | second start (warm) |
@@ -351,12 +351,12 @@ first time cold start regresses, the cause is one line of output rather than an 
 > `migrate()` now removes an existing `pre-migrate-<v>.db` before `VACUUM INTO` (SQLite refuses an
 > existing output file, which made the "fix the migration and boot again" half of EPIC-18-S12
 > impossible), and `packages/cli/test/integration/build.test.ts` now distinguishes static from
-> dynamic specifiers, because `DeFlow up` reaches `startHttp` and its unevaluated
+> dynamic specifiers, because `deflow up` reaches `startHttp` and its unevaluated
 > `import('vite')` — the shape `tsdown.config.ts` deliberately produces — now survives into a chunk.
 
 ---
 
-### KAR-18.3 — `DeFlow run` headless execution
+### KAR-18.3 — `deflow run` headless execution
 
 |                 |                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -373,7 +373,7 @@ in CI without a browser.
 
 The design constraint is that there is **no second protocol implementation**.
 [11 §9](../../11-api-and-realtime.md) is explicit: `eventsource-client` runs in Node, so
-`DeFlow run "…"` consumes the identical stream through the identical
+`deflow run "…"` consumes the identical stream through the identical
 `packages/web/src/api/stream.ts` module, rendering to a terminal instead of to Vue Flow. That also
 means the CLI has **no `Last-Event-ID` mechanism at all** — a Node client's reconnect is its own
 code — so `?since=<seq>` is its only resume path, which is the same mandatory path the browser needs
@@ -383,13 +383,13 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 
 **Acceptance criteria**
 
-1. `DeFlow run "<task>"` with no daemon running autostarts `DeFlowd` detached, waits on
+1. `deflow run "<task>"` with no daemon running autostarts `DeFlowd` detached, waits on
    `GET /api/health`, creates the run, and streams node lifecycle to the terminal until a terminal
    state.
-2. With a daemon already up, `DeFlow run` attaches to it — it never starts a second daemon and never
+2. With a daemon already up, `deflow run` attaches to it — it never starts a second daemon and never
    trips the lease.
 3. The first Ctrl-C **detaches**: it prints
-   `detached — run <runId> continues; 'DeFlow run --attach <runId>' to watch, 'DeFlow cancel <runId>' to stop`
+   `detached — run <runId> continues; 'deflow run --attach <runId>' to watch, 'deflow cancel <runId>' to stop`
    and exits 130. A second Ctrl-C within 3 s cancels the run, which appends `run.aborted` and
    triggers the F5.7 kill switch.
 4. Killing the CLI does not kill the daemon or any agent child, because the daemon was spawned
@@ -432,7 +432,7 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 >   real hole in the daemon's write surface rather than in this command; it is recorded as a
 >   follow-up on `MET-418` rather than patched from the CLI. **That follow-up is now
 >   [KAR-19.6](./EPIC-19-live-run-pipeline.md), added 2026-08-12** — which also builds
->   `DeFlow cancel <runId>`, the command AC3's own detach sentence has printed since this story
+>   `deflow cancel <runId>`, the command AC3's own detach sentence has printed since this story
 >   shipped and which has never existed.
 > - **AC8's `--spec`** produces the `file` wire kind, not a fourth one. KAR-10.1 settled that
 >   (`@DeFlow/core`'s `task-intake.ts`: _"a spec document is the `file` kind with its own
@@ -451,8 +451,8 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 >   Until that binding existed `drive.ts` returned early and every submitted run parked at the
 >   framing wake on a real machine, which is the 2026-08-12 operator failure EPIC-19 exists to fix.
 > - **`e2e/run.test.ts` no longer carries the deferral.** KAR-19.4 rewrote its header to name where
->   the completion half lives instead: `e2e/smoke/live-run.test.ts` drives `DeFlow init` then
->   `DeFlow run --file` against the **built binary**, on a `PATH` holding only `DeFlow-mock-agent`,
+>   the completion half lives instead: `e2e/smoke/live-run.test.ts` drives `deflow init` then
+>   `deflow run --file` against the **built binary**, on a `PATH` holding only `deflow-mock-agent`,
 >   and asserts `task.submitted → run.created → plan.proposed → node.started → node.completed` in
 >   order out of the ledger the run wrote for itself, `run.completed` last, at least two planned
 >   nodes with at least one executed, agent output on the CLI's own stdout _while the run was still
@@ -476,13 +476,13 @@ that is surprising, the first Ctrl-C must say what it did and how to cancel.
 
 | #   | Level       | Test                                                                                                                                                                                     | Red when                                                                                        |
 | --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | e2e         | With no daemon, run a scripted 4-node mock plan to completion through `DeFlow run`; assert exit 0 and the rendered transcript against a file snapshot through the normalising serializer | The CLI polls `/api/health` with the bearer header before the token file exists and 401s itself |
-| 2   | e2e         | Start a daemon, then `DeFlow run`; assert `daemon_epoch` did not change and only one pid holds the lease                                                                                 | Autostart is unconditional                                                                      |
+| 1   | e2e         | With no daemon, run a scripted 4-node mock plan to completion through `deflow run`; assert exit 0 and the rendered transcript against a file snapshot through the normalising serializer | The CLI polls `/api/health` with the bearer header before the token file exists and 401s itself |
+| 2   | e2e         | Start a daemon, then `deflow run`; assert `daemon_epoch` did not change and only one pid holds the lease                                                                                 | Autostart is unconditional                                                                      |
 | 3   | integration | Send SIGINT to the CLI child while the mock agent is mid-turn; assert exit 130, the detach sentence on stdout, and that the run reaches `run.completed` afterwards                       | The daemon was spawned in the CLI's process group and dies with it                              |
 | 4   | integration | Send SIGINT twice within 3 s; assert `run.aborted` in the ledger and no non-`Z` process left in the agent's process group                                                                | The kill check counts zombie grandchildren and reports failure                                  |
 | 5   | integration | Drop the SSE socket at a scripted point using the `crash-resume-seq-gap` fixture; assert the reconnect used `?since=` and the event set is exactly equal, gap included                   | The client assumes `seq + 1` and reports data loss on a healthy gap                             |
 | 6   | unit        | `Scenario Outline` over terminal states → exit codes, driven by a table of reduced `RunState` values                                                                                     | Exit code is derived at three call sites and they disagree on `paused`                          |
-| 7   | integration | `DeFlow run --json` with stdout piped to a file; assert every line parses and no line contains `[`                                                                                       | The renderer detects TTY once at import and colours the JSON path                               |
+| 7   | integration | `deflow run --json` with stdout piped to a file; assert every line parses and no line contains `[`                                                                                       | The renderer detects TTY once at import and colours the JSON path                               |
 | 8   | integration | Intake outline over text / `--file` / `--issue` / `--spec`; assert the `task.submitted` payload's provenance records source kind and locator                                             | `--file` inlines the content and loses which file it came from                                  |
 
 **Notes / risks** — [roadmap §2.3](../../17-roadmap.md) makes this story a prerequisite for the view
@@ -493,7 +493,7 @@ work: _"Do not start W11 until at least one full run completes headlessly."_ The
 
 ---
 
-### KAR-18.4 — `DeFlow doctor` environment and capability probe
+### KAR-18.4 — `deflow doctor` environment and capability probe
 
 |                 |                                                                                                                                                                                         |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -541,7 +541,7 @@ covers eight categories, taken from [03 §8](../../03-local-development.md):
    reports one of `ok` / `warn` / `fail` with a reason; there is no silent or empty section.
 2. On a machine with **no agent CLI installed at all**, `doctor` exits 0, reports zero agents, and
    prints the concrete install hint per supported vendor plus the sentence that mock-agent
-   development and `DeFlow replay` work regardless. It never throws and never prints a stack trace.
+   development and `deflow replay` work regardless. It never throws and never prints a stack trace.
 3. git `< 2.38` is a `fail`: the report states that write nodes cannot be scheduled because
    `merge-tree --write-tree` is unavailable, and `doctor` exits 5. git `>= 2.38` but `< 2.45` is a
    `warn` naming `worktree list --porcelain -z`.
@@ -578,7 +578,7 @@ covers eight categories, taken from [03 §8](../../03-local-development.md):
 | 4   | integration | Linux only: a temp `PATH` without `bwrap`; and a stubbed sysctl reader returning `1`; assert honourable levels collapse to `read` and `/etc/apparmor.d/bwrap` is named                                    | The sandbox section reports "ok" from platform alone                                                               |
 | 5   | integration | `doctor` with `ANTHROPIC_API_KEY=sk-test` in the child env; assert the warning text names the variable and the provider                                                                                   | Detection matches an exact list and misses `ANTHROPIC_AUTH_TOKEN`                                                  |
 | 6   | unit        | An AR-1 guard over the `doctor` source tree: no read of `~/.claude`, `~/.codex`, `~/.config/gcloud`, and no capture of a login subcommand's stdout                                                        | Someone adds an "is it authenticated?" check that shells out to a login command                                    |
-| 7   | integration | `DeFlow-mock-agent --agent-capabilities <gemini-profile>` on the temp `PATH`; assert the regenerated matrix records `session.resume: false` and the report says resume is unavailable for that adapter    | The matrix is read from a constant, so the mock's profile has no effect — the exact failure AR-5 exists to prevent |
+| 7   | integration | `deflow-mock-agent --agent-capabilities <gemini-profile>` on the temp `PATH`; assert the regenerated matrix records `session.resume: false` and the report says resume is unavailable for that adapter    | The matrix is read from a constant, so the mock's profile has no effect — the exact failure AR-5 exists to prevent |
 | 8   | integration | Record a manifest with a stale sha256, then re-run; assert a `warn` naming both hashes                                                                                                                    | Drift detection compares versions only, and misses a rebuilt binary at the same version                            |
 | 9   | integration | `chmod 0500` the resolved data dir; assert `fail`, the absolute path in the message, and exit 5                                                                                                           | The writability check tests `existsSync` rather than attempting a write                                            |
 | 10  | integration | File-backed SQLite with `artifact_fts` created; assert the reported tokenizer string is exactly `unicode61 remove_diacritics 2 tokenchars '_-.'`                                                          | The value is re-derived from a default instead of read from the table definition                                   |
@@ -634,11 +634,11 @@ taken.
 **so that** releasing is `npm version patch && pnpm publish` and there is no inter-package semver to
 keep honest.
 
-[16 §2](../../16-repo-layout.md) settles the mechanism. `packages/cli` is `"name": "DeFlow"`; every
+[16 §2](../../16-repo-layout.md) settles the mechanism. `packages/cli` is `"name": "deflowai"`; every
 `@DeFlow/*` package is private and inlined by `tsdown@0.22.14` through `noExternal: [/^@DeFlow\//]`,
 with `external: ['@lydell/node-pty']` because it is native and must stay a real runtime dependency.
 The build order is fixed and load-bearing: `pnpm --filter @DeFlow/web build` → `packages/web/dist` →
-copied to `packages/cli/dist/ui/` → `pnpm --filter DeFlow build`. UI assets ship as **plain files**,
+copied to `packages/cli/dist/ui/` → `pnpm --filter deflowai build`. UI assets ship as **plain files**,
 never bundled into JavaScript, and are resolved at runtime with
 `fileURLToPath(new URL('./ui', import.meta.url))`. Two failure modes are invisible in development and
 fatal in the tarball, and both get a regression test here rather than a paragraph: a `paths` alias
@@ -664,7 +664,7 @@ source→dist swap).
    > second with zero compilation. The criterion the build now enforces (through tsdown's
    > `deps.onlyImport`) is the stronger one: those two and *nothing else*.
 3. `packages/cli/package.json` declares `"files": ["dist"]`, `"type": "module"`,
-   `engines.node >= 24`, and bins for `DeFlow`, `DeFlow-mcp` and `DeFlow-mock-agent`. There is no
+   `engines.node >= 24`, and bins for `DeFlow`, `deflow-mcp` and `deflow-mock-agent`. There is no
    dual CJS build.
 4. `pnpm pack:check` runs `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5 --pack` and both pass
    clean; a failure fails CI.
@@ -706,8 +706,8 @@ by a job rather than by the first colleague who tries.
 This story exists because `pnpm build` producing a green local run **proves nothing about the
 tarball** — the exact words of [03 §10](../../03-local-development.md). The procedure is fixed:
 `pnpm build`, `pnpm pack:check`, then `cd packages/cli && pnpm pack` to produce
-`DeFlow-0.1.0.tgz`, then `cd "$(mktemp -d)"`, `git init -b main demo && cd demo`, and
-`npx /path/to/DeFlow-0.1.0.tgz up` — _the exact bytes a user would get_. What it catches that
+`deflowai-0.1.0.tgz`, then `cd "$(mktemp -d)"`, `git init -b main demo && cd demo`, and
+`npx /path/to/deflowai-0.1.0.tgz up` — _the exact bytes a user would get_. What it catches that
 `pnpm dev` cannot: a missing or wrong `files` array; a lost shebang or exec bit; an `@DeFlow/*`
 package that failed to inline and is now an unresolvable runtime import; a native dependency bundled
 instead of externalised; and UI assets resolved from the wrong path. The clean room must be a real
@@ -719,7 +719,7 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
    `pnpm pack`, `mktemp -d`, `git init -b main`, `npx <tgz> init`, `npx <tgz> up`, poll
    `GET /api/health`, fetch `/` and assert the served HTML references a real asset under `/assets/`
    that returns 200 — not merely that the daemon answered.
-2. In the same clean room, with `DeFlow-mock-agent` from the installed tarball on `PATH`, a scripted
+2. In the same clean room, with `deflow-mock-agent` from the installed tarball on `PATH`, a scripted
    multi-node run completes through `npx <tgz> run` and exits 0. This proves the inlined daemon, the
    inlined mock agent and the shipped UI are all present in one artefact.
 3. `npx <tgz> doctor` in the clean room exits 0 with zero agents and honest warnings — the same
@@ -756,12 +756,12 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 > inlined mock agent and the shipped UI are all present in one artefact"_ — asserted directly, and
 > more strongly than a green exit code would have:
 >
-> - the installed daemon **spawns the installed `DeFlow-mock-agent` and drives real ACP turns
+> - the installed daemon **spawns the installed `deflow-mock-agent` and drives real ACP turns
 >   against it**: an `initialize` whose response is what the capability matrix is regenerated from,
 >   then the F3.4 conformance battery, which is a turn per assertion. Both processes are tarball
 >   bytes, and the assertion refuses an agent that is on `PATH` but holds no turn
 >   (`e2e/install-verification-broken.test.ts` proves it goes red);
-> - a run submitted through the installed `DeFlow run` reaches the installed daemon and is reported
+> - a run submitted through the installed `deflow run` reaches the installed daemon and is reported
 >   as `task.submitted`, never as a run that completed.
 >
 > **Closed 2026-08-13 by [EPIC-19](./EPIC-19-live-run-pipeline.md) KAR-19.5.** `executeRun`'s
@@ -781,7 +781,7 @@ temp directory with no `node_modules` above it and no compiler assumed on the bo
 | #   | Level       | Test                                                                                                                                                              | Red when                                                                                                      |
 | --- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | 1   | e2e         | The full sequence against a real `mktemp -d` clean room; assert `/` returns HTML **and** the referenced `/assets/*.js` returns 200 with a JavaScript content type | The assertion stops at HTTP 200 on `/` and passes against the blank page the SPA fallback happily serves      |
-| 2   | e2e         | A scripted mock run through the installed `npx <tgz> run`, with the tarball's own `DeFlow-mock-agent` symlinked onto the temp `PATH`                              | `mock-agent.mjs` was never added to the tsdown `entry` array, so the second bin does not exist in the tarball |
+| 2   | e2e         | A scripted mock run through the installed `npx <tgz> run`, with the tarball's own `deflow-mock-agent` symlinked onto the temp `PATH`                              | `mock-agent.mjs` was never added to the tsdown `entry` array, so the second bin does not exist in the tarball |
 | 3   | e2e         | Build a variant tarball with `files: ["dist/bin.mjs"]`; assert the verification job fails with the asset assertion                                                | The test asserts only that the command exits 0, so the classic failure passes                                 |
 | 4   | integration | Spawn the install with a `PATH` containing no `cc`/`make`/`python3`, and assert no `node-gyp` string appears in the install log                                   | A transitive dependency acquires an install script and nobody notices until a colleague's machine             |
 | 5   | e2e         | `npx <tgz> doctor` in the clean room; snapshot the report through the normalising serializer                                                                      | `doctor` resolves a fixture path relative to the workspace root, which does not exist in the tarball          |
@@ -792,7 +792,7 @@ re-verified on the same cadence as this job.
 
 ---
 
-### KAR-18.7 — Diagnostics: `DeFlow status` and `DeFlow ledger snapshot` _(added)_
+### KAR-18.7 — Diagnostics: `deflow status` and `deflow ledger snapshot` _(added)_
 
 |                 |                                       |
 | --------------- | ------------------------------------- |
@@ -808,20 +808,20 @@ re-verified on the same cadence as this job.
 reconstruction.
 
 Added because [03 §11](../../03-local-development.md) specifies both and neither has a home in the
-skeleton's six stories. `DeFlow ledger snapshot <runId> --out <path>` is `VACUUM INTO` behind a
+skeleton's six stories. `deflow ledger snapshot <runId> --out <path>` is `VACUUM INTO` behind a
 flag — **measured at 1007 ms for a 193 MB database** — producing one consistent file with no WAL
 sidecar, safe to attach to an issue or hand to a future self, and inspectable with plain `sqlite3`.
-That is NF8 made operational. `DeFlow status` answers the question the troubleshooting table in
+That is NF8 made operational. `deflow status` answers the question the troubleshooting table in
 [03 §13](../../03-local-development.md) sends people to `.DeFlow/daemon.json` for, and it is the
 command the lease-refusal message in KAR-18.2 points at.
 
 **Acceptance criteria**
 
-1. `DeFlow ledger snapshot <runId> --out <path>` writes a single SQLite file; `PRAGMA
+1. `deflow ledger snapshot <runId> --out <path>` writes a single SQLite file; `PRAGMA
 integrity_check` on the copy returns `ok`, and the copy has no `-wal` or `-shm` sidecar.
 2. The snapshot is queryable with the documented one-liners — `SELECT seq, kind, node_id, attempt
 FROM event WHERE run_id='<id>' ORDER BY seq LIMIT 50` returns rows — without DeFlow installed.
-3. `DeFlow status` reports the live daemon's pid, port, `daemon_epoch`, uptime, and a one-line
+3. `deflow status` reports the live daemon's pid, port, `daemon_epoch`, uptime, and a one-line
    summary per active run. `--json` emits the same.
 4. When `daemon.json` exists but its pid is dead or its start time does not match, `status` says
    `stale` and names the file, rather than reporting a running daemon.
@@ -832,8 +832,8 @@ FROM event WHERE run_id='<id>' ORDER BY seq LIMIT 50` returns rows — without D
 | #   | Level       | Test                                                                                                                                         | Red when                                                                                          |
 | --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | 1   | integration | Snapshot a file-backed ledger with an open WAL and pending writes; assert `integrity_check = 'ok'`, no sidecars, and the event count matches | The implementation copies the `.db` file, so WAL contents are lost                                |
-| 2   | integration | `SIGKILL` a booted daemon, then `DeFlow status`; assert `stale` and the path, and that no process was signalled                              | `status` trusts the pid and reports a live daemon that is gone — or worse, matches a recycled pid |
-| 3   | integration | `DeFlow status` in a repo with no `daemon.json`; assert exit 0 and the message                                                               | It exits non-zero, so a shell script wrapping it breaks on the normal case                        |
+| 2   | integration | `SIGKILL` a booted daemon, then `deflow status`; assert `stale` and the path, and that no process was signalled                              | `status` trusts the pid and reports a live daemon that is gone — or worse, matches a recycled pid |
+| 3   | integration | `deflow status` in a repo with no `daemon.json`; assert exit 0 and the message                                                               | It exits non-zero, so a shell script wrapping it breaks on the normal case                        |
 
 ---
 
@@ -963,7 +963,7 @@ per-adapter and not a general repair flag: a flag that fixes everything is a fla
 | **PRD**         | NF6, NF8, and the never-colour-alone accessibility floor of [12 §9.2](../../12-frontend-architecture.md), applied to the terminal rather than the UI |
 | **Verified by** | EPIC-18-S57, EPIC-18-S58, EPIC-18-S59, EPIC-18-S60, EPIC-18-S61, EPIC-18-S62, EPIC-18-S63, EPIC-18-S64                                              |
 
-**As** an operator reading `DeFlow doctor` or `DeFlow init` for the first time, **I want** output
+**As** an operator reading `deflow doctor` or `deflow init` for the first time, **I want** output
 structured the way the vendor CLIs structure theirs, **so that** the answer to "what is wrong and
 what do I do" is visible without reading every line.
 
@@ -1051,7 +1051,7 @@ per check is most of the work here, and it is the half that actually shortens a 
 | R3  | **A5-2 / A5-3: sandbox prerequisites are platform-specific and fail open.** macOS 26 Tahoe broke Seatbelt profiles in practice and whether Claude Code 2.1.220 fixes it is unverified; Ubuntu 24.04+ AppArmor blocks bubblewrap silently. | `doctor` reports _honourable levels_, not "sandbox: ok". EPIC-08 sets `failIfUnavailable: true` and `allowUnsandboxedCommands: false` for every non-`full` level so the ladder fails closed; this epic's job is to say so before a run starts.                                                                                                                                                            |
 | R4  | **A0-9: the capability matrix is a snapshot against five specific versions**, two published the day they were probed.                                                                                                                     | The matrix is a generated fixture with a probe timestamp, regenerated on every `doctor` run and diffed in CI weekly ([roadmap §5](../../17-roadmap.md)). The DoD forbids a hardcoded capability constant in this epic's packages.                                                                                                                                                                         |
 | R5  | **The tarball can regress between releases in ways only a clean room sees.**                                                                                                                                                              | KAR-18.6 is a CI job on every release tag plus a per-milestone manual run, and criterion 5 asserts the _verifier itself fails_ on a deliberately broken tarball — a green verifier that cannot go red is worse than none.                                                                                                                                                                                 |
-| R6  | **`npx DeFlow up` in two terminals is described in the architecture as "very common"**, and the refusal path is the first thing an operator meets when something is wrong.                                                                | KAR-18.2 criterion 3 fixes the exact sentence, including the live pid and port, and points at `DeFlow status`. The lease is EPIC-03's; the sentence is this epic's.                                                                                                                                                                                                                                       |
+| R6  | **`npx deflowai up` in two terminals is described in the architecture as "very common"**, and the refusal path is the first thing an operator meets when something is wrong.                                                                | KAR-18.2 criterion 3 fixes the exact sentence, including the live pid and port, and points at `deflow status`. The lease is EPIC-03's; the sentence is this epic's.                                                                                                                                                                                                                                       |
 | R7  | **Windows users will try this** despite NF5 putting it at M3.                                                                                                                                                                             | `doctor` names the platform as unsupported with the WSL2 instruction from [03 §1](../../03-local-development.md), rather than failing at the first `process.kill(-pid)`.                                                                                                                                                                                                                                  |
 | R8  | **A command that installs software onto someone's machine is a new kind of thing for DeFlow to be**, and the failure modes (no egress, a proxy, a read-only global prefix, a half-written package) are worse than the message it replaces. | KAR-18.8 is detect-then-offer: nothing is installed without a confirmation or an explicit `--fix`, only the ACP adapter of a vendor CLI that is already present, one attempt, and the result re-resolved rather than inferred. AC10 and EPIC-18-S56 make the no-egress path a first-class scenario rather than a surprise.                                                                                |
 | R9  | **A presentation rewrite silently changing a contract.** The `--json` documents are what CI branches on, and they are produced by the same code paths KAR-18.9 touches.                                                                   | KAR-18.9 AC6 pins every `--json` document to a golden captured before the change, AC8 forbids modifying the other stories' behavioural tests, and EPIC-18-S62 is the scenario that goes red the day a summary block leaks into a document.                                                                                                                                                                |

@@ -2,7 +2,7 @@
  * EPIC-05-S22 — the MCP server is injected through `session/new`, and the
  * user's own configuration is never touched.
  *
- * A real turn against the real `DeFlow-mock-agent` over a real pipe, with the
+ * A real turn against the real `deflow-mock-agent` over a real pipe, with the
  * transport tee on: the assertion is about **what arrived at the agent**, and
  * the only honest source for that is the bytes on the wire. The tee lives in
  * the transport (KAR-05.7 AC1), so what it records is the frame as sent, not
@@ -40,7 +40,13 @@ import { join, relative } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
-import { MCP_SERVER_NAME, type McpHost, RUN_TOKEN_ENV, startMcpHost } from '../../src/index.ts';
+import {
+  DEFLOW_MCP_ENTRY,
+  MCP_SERVER_NAME,
+  type McpHost,
+  RUN_TOKEN_ENV,
+  startMcpHost,
+} from '../../src/index.ts';
 import { openTestLedger, type TestLedger } from './support/ledger.ts';
 
 const MOCK_AGENT_BIN = fileURLToPath(
@@ -207,8 +213,22 @@ suite('the stdio variant is chosen (AC1)', () => {
     expect(sentEntry.command).toBe(process.execPath);
     expect(Object.keys(sentEntry)).not.toContain('type');
 
+    // The shim's entry point, checked against the constant the daemon spawns
+    // rather than against a regex over its filename. KAR-20.1 renamed the
+    // entry file to `bin/mcp.ts` — deliberately, because renaming it to the
+    // bin's own name would have been a case-only rename, which
+    // `core.ignorecase = true` turns into a no-op that reports success — and a
+    // regex over the old filename then went red on a spawn that was entirely
+    // correct. What the bin is *called* is `packages/cli/package.json`'s
+    // business and is asserted there; what this spec is about is that the
+    // daemon spawns *the* shim.
+    const sentArgs = sentEntry.args as string[];
+    expect(sentArgs[0]).toBe(DEFLOW_MCP_ENTRY);
+
     const args = entry.args as string[];
-    expect(args[0]).toMatch(/DeFlow-mcp/);
+    // The scrubbed copy keeps the basename, so the recording still shows a
+    // reader which file was spawned.
+    expect(args[0]).toMatch(/\bmcp\.ts$/);
     expect(args).toContain('--socket');
     expect(args[args.indexOf('--run') + 1]).toBe(RUN_ID);
 

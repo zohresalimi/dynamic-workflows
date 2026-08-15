@@ -12,7 +12,7 @@
 | **Operator**           | The engineer driving DeFlow. Answers gates, opts in to `full`, and is the person the frequency argument in §10.5 is about                                             |
 | **DeFlowd**            | The local daemon. Here specifically: the ACP **client**, the policy function, `buildChildEnv()` and `killTree()`                                                      |
 | **Policy function**    | `decidePermission(level, request, scope)` in `@DeFlow/core` — pure, no I/O, no vendor CLI                                                                             |
-| **Provider agent**     | `DeFlow-mock-agent` or the fake exec-shim agent, spawned detached with `cwd` set to a worktree. It calls back into the client for every file access and every command |
+| **Provider agent**     | `deflow-mock-agent` or the fake exec-shim agent, spawned detached with `cwd` set to a worktree. It calls back into the client for every file access and every command |
 | **Vendor CLI sandbox** | Claude Code's Seatbelt/bubblewrap or Codex's Landlock+seccomp — enforcement DeFlow configures and does not reimplement                                                |
 | **Process tree**       | A real `bash -c 'sleep 300 & sleep 300 & sleep 300; wait'` and its grandchildren                                                                                      |
 
@@ -1313,7 +1313,7 @@ Feature: You should never learn your auth mode from a bill
       | GEMINI_API_KEY    | gemini      |
       | GOOGLE_API_KEY    | gemini      |
 
-  Scenario: DeFlow doctor reports it before a run is ever started
+  Scenario: deflow doctor reports it before a run is ever started
     When doctor runs with ANTHROPIC_API_KEY set
     Then it reports the provider, the variable name, the auth mode that will actually be used,
          and how to change it
@@ -1397,7 +1397,7 @@ Feature: An architectural rule that cannot be checked in five minutes decays
          "**/.aws/credentials", "**/.ssh/**" or "**/Library/Keychains/**"
 
   Scenario: The no-provider-SDK test
-    When the production dependency closure of the "DeFlow" package is enumerated
+    When the production dependency closure of the "deflow" package is enumerated
     Then it contains no "@anthropic-ai/sdk", no "openai" and no "@google/generative-ai"
     And the direct-API adapter is a separate optional entry point, so inlining it fails this test
 

@@ -2,7 +2,7 @@
  * KAR-16.1 AC2/AC3 — whether this tab holds the daemon token, and what it does
  * when it does not.
  *
- * `DeFlow up` prints `http://127.0.0.1:7777/#token=<token>`. Fragments are
+ * `deflow up` prints `http://127.0.0.1:7777/#token=<token>`. Fragments are
  * never sent to the server, so the token cannot land in an access log; the tab
  * reads it once, puts it in `sessionStorage`, strips it out of the address bar
  * with `history.replaceState`, and sends it as a header thereafter
@@ -20,7 +20,7 @@ import { computed, ref } from 'vue';
 import { acquireToken, clearToken, readToken, TOKEN_STORAGE_KEY } from '../api/token.ts';
 
 /**
- * The handoff URL `DeFlow up` prints. Anchored on the fragment, and matching
+ * The handoff URL `deflow up` prints. Anchored on the fragment, and matching
  * exactly the character class `mintDaemonToken()` produces, so a URL with a
  * query string that happens to contain the word `token` is rejected rather than
  * half-read.

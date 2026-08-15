@@ -1,9 +1,9 @@
 /**
- * KAR-16.5 AC1 — `DeFlow replay <fixture> --speed <n>x --port <p>`.
+ * KAR-16.5 AC1 — `deflow replay <fixture> --speed <n>x --port <p>`.
  *
  * The argv layer only, kept apart from `./harness.ts` so the harness stays a
  * function a spec can call and this stays a parser a spec can call. EPIC-18
- * owns the `DeFlow` binary and its subcommand table; this is the body that
+ * owns the `deflow` binary and its subcommand table; this is the body that
  * table will point `replay` at, and `pnpm dev:replay` runs it directly through
  * `./main.ts` in the meantime (AC8).
  *
@@ -41,7 +41,7 @@ export class BadReplayArgv extends Error {
   constructor(message: string) {
     super(
       `${message}\n\n` +
-        'usage: DeFlow replay <fixture> [--speed 1x|20x|50x|max] [--port <p>] [--paused] [--dev]\n' +
+        'usage: deflow replay <fixture> [--speed 1x|20x|50x|max] [--port <p>] [--paused] [--dev]\n' +
         '       <fixture> is a name from test/fixtures/runs/ or a path to an events.jsonl',
     );
     this.name = 'BadReplayArgv';
@@ -117,7 +117,7 @@ export function parseReplayArgv(argv: readonly string[]): ReplayCommand {
         dev = true;
         break;
       default:
-        throw new BadReplayArgv(`${flag} is not a flag DeFlow replay knows`);
+        throw new BadReplayArgv(`${flag} is not a flag deflow replay knows`);
     }
   }
 

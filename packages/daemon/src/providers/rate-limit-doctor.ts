@@ -1,5 +1,5 @@
 /**
- * KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor`.
+ * KAR-14.4 AC10 — the rate-limit section of `deflow doctor`.
  *
  * The command itself is EPIC-18 (KAR-18.4); this module holds the policy ahead
  * of it existing, the same split `../budget/doctor.ts` uses for the ceiling
@@ -63,7 +63,7 @@ export function rateLimitLines(input: RateLimitReportInput): readonly string[] {
   return input.limits.map((limit) => limitLine(limit, input.now));
 }
 
-/** The whole section, as `DeFlow doctor` will print it. */
+/** The whole section, as `deflow doctor` will print it. */
 export function renderRateLimitReport(input: RateLimitReportInput): string {
   return ['provider rate limits:', ...rateLimitLines(input).map((line) => `  ${line}`)].join('\n');
 }

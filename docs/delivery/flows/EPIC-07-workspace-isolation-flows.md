@@ -14,7 +14,7 @@
 | **Workspace Manager** | The `packages/workspace` component — the `Git` wrapper, worktree lifecycle, conflict probes, the integration loop |
 | **`Git` wrapper**     | `packages/workspace/src/git.ts`. The single chokepoint over `execa`; the only place `git` is invoked              |
 | **Repository**        | A real git repository in a temp directory, created by the `makeRepo()` fixture                                    |
-| **Provider agent**    | A `DeFlow-mock-agent` subprocess whose `cwd` is a worktree. It commits, leaves files dirty, or hangs, on script   |
+| **Provider agent**    | A `deflow-mock-agent` subprocess whose `cwd` is a worktree. It commits, leaves files dirty, or hangs, on script   |
 | **Reaper**            | The daemon-boot routine that reaps orphaned processes, releases stale locks and prunes worktrees                  |
 
 ## Preconditions common to all flows
@@ -98,7 +98,7 @@ Feature: One git chokepoint whose exit codes are values
 
   Scenario Outline: The git version floor
     Given a stub "git" on PATH whose "--version" prints "git version <version>"
-    When DeFlow doctor runs the workspace checks
+    When deflow doctor runs the workspace checks
     Then the outcome is "<outcome>"
     And the message contains "<mentions>"
 

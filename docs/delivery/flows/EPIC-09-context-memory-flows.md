@@ -16,7 +16,7 @@
 | **`assertPinIntegrity`**  | The ~15-line post-render check in `@DeFlow/core` that throws `PinIntegrityViolation`                                                              |
 | **Blackboard**            | The `fact` / `fact_edges` materialised view over `fact.written` / `fact.read` / `fact.invalidated` — droppable and rebuildable at any time        |
 | **Tokenizer port**        | The `Tokenizer` interface in `core`, implemented in `daemon` over `gpt-tokenizer@3.4.0`'s `o200k_base` encoding-specific entrypoint               |
-| **Provider agent**        | A `DeFlow-mock-agent` subprocess on a temp `PATH`, spawned with `--seed`, optionally `--replay`ing a committed `stream-json` recording            |
+| **Provider agent**        | A `deflow-mock-agent` subprocess on a temp `PATH`, spawned with `--seed`, optionally `--replay`ing a committed `stream-json` recording            |
 | **MCP host**              | DeFlow's stdio MCP server, injected via `mcpServers` in `session/new`, exposing `DeFlow_read_artifact`                                            |
 | **Ledger**                | The file-backed SQLite database from [EPIC-03](../epics/EPIC-03-event-ledger.md) — `event`, `fact`, `fact_edges`, `artifact_fts`                  |
 | **CAS**                   | The content-addressed artifact store at `runs/<runId>/artifacts/<sha256>/`                                                                        |
@@ -29,7 +29,7 @@ Background:
   Given a DeFlow workspace initialised in a git repository on branch "main"
   And the ledger is a FILE-BACKED SQLite database — ":memory:" only where "Automated at: unit"
       names a pure projection or a pure function
-  And DeFlow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and
+  And deflow-mock-agent is on a temp PATH, resolved to an ABSOLUTE path before spawn, and
       every invocation passes --seed so the run is byte-reproducible
   And the approved TaskSpec for the run has goal, nonGoals, constraints and acceptanceCriteria,
       and its specHash excludes approvedBy
@@ -784,7 +784,7 @@ Feature: The ConstraintRot regression suite
   Background:
     Given the suite defines ~20 scenarios, each a node carrying one pinned prohibition and a
           plausible in-scenario reason to violate it
-    And each scenario runs against DeFlow-mock-agent with --seed, offline, with no credentials
+    And each scenario runs against deflow-mock-agent with --seed, offline, with no credentials
     And violations are graded deterministically on the agent's TOOL CALLS, never on its prose
     And at least three scenarios exercise the forbid → allow-only restatement
 
@@ -880,8 +880,8 @@ Feature: The forbid escape hatch, measured
   Scenario: the ratio is counted per build
     Then the build result exposes { allowOnly: 2, require: 1, forbid: 1 }
 
-  Scenario: DeFlow doctor surfaces the ratio for the loaded spec
-    When `DeFlow doctor` runs against a workspace whose spec has 6 forbid and 2 allow-only
+  Scenario: deflow doctor surfaces the ratio for the loaded spec
+    When `deflow doctor` runs against a workspace whose spec has 6 forbid and 2 allow-only
         constraints
     Then the output reports the forbid-to-allow-only ratio
     And it flags the ratio as a leading indicator of constraint decay
@@ -895,7 +895,7 @@ Feature: The forbid escape hatch, measured
 **Notes:** `forbid` exists because some constraints genuinely have no closed positive form ("do not
 exfiltrate credentials"). Counting it is the cheap early-warning system: _"a rising `forbid` ratio in
 a run's spec is a leading indicator of the decay this section exists to prevent, and it is worth a
-line in `DeFlow doctor`."_
+line in `deflow doctor`."_
 
 ---
 
@@ -1352,7 +1352,7 @@ Feature: The compaction threshold lever, as it actually behaves
   Scenario: the conformance suite catches drift in the constants
     When the adapter conformance battery runs against the installed CLI
     Then it asserts the compact_boundary shape and the modelUsage fields
-    And a change in either fails `DeFlow doctor`, not a three-hour run
+    And a change in either fails `deflow doctor`, not a three-hour run
 ```
 
 **Notes:** The gotcha, verified in the code: the override is applied as
@@ -1468,7 +1468,7 @@ Feature: Self-calibrating token estimation
   Scenario: the factor is persisted and surfaced
     Then it is stored per (provider, model) as tokenEstimateFactor in the capability manifest
     And it survives a daemon restart
-    And `DeFlow doctor` prints the factor and the sample count
+    And `deflow doctor` prints the factor and the sample count
 ```
 
 **Notes:** The reason this exists: tiktoken-family tokenizers **undercount Claude tokens by roughly
@@ -1929,9 +1929,9 @@ Feature: The tokenize setting is fixed at table creation
     Then the row count matches the artifact store's indexable entry count
     And the three identifier queries from EPIC-09-S51 all return their documents
 
-  Scenario: DeFlow doctor makes a wrong setting visible rather than merely slow
+  Scenario: deflow doctor makes a wrong setting visible rather than merely slow
     Given a workspace whose artifact_fts was created before this rule was enforced
-    When `DeFlow doctor` runs
+    When `deflow doctor` runs
     Then it reports the tokenizer string currently set on artifact_fts
     And it flags that recall on code identifiers will be degraded until the table is rebuilt
 ```

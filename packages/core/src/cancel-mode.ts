@@ -4,7 +4,7 @@
  *
  * The wording lives here rather than at either end because both ends refuse:
  * the daemon's `POST /api/runs/:id/cancel` refuses an unknown `mode` with
- * `invalid_request`, and `DeFlow cancel --mode <x>` refuses it **before any
+ * `invalid_request`, and `deflow cancel --mode <x>` refuses it **before any
  * request is sent**, so the operator is not made to wait on a round trip to
  * learn they mistyped a word. Two refusals of one thing are two chances to
  * disagree about it — which is the failure this whole epic is about, one layer

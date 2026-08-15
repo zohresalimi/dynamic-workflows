@@ -180,7 +180,7 @@ suite('EPIC-19-S58 — a run that spent its attempts is failed on every surface 
       );
       expect(kinds.at(-1)).toBe('run.aborted');
 
-      // AC6 — the summary the web run view and `DeFlow status` read.
+      // AC6 — the summary the web run view and `deflow status` read.
       const summary = (await (await fetch(`${origin}/api/runs/${RUN}`)).json()) as SummaryBody;
       expect(summary.status).toBe('aborted');
       expect(summary.outcome).toBe('failed');

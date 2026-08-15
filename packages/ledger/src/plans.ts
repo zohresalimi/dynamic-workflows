@@ -180,7 +180,7 @@ function insertPlanDoc(db: Db, hash: string, runId: string, createdAt: number, d
  * KAR-16.5 — one recorded `plan.proposed`'s document, re-filed under the
  * address it already carries.
  *
- * `DeFlow replay` restores a recording into an empty ledger, and the plan
+ * `deflow replay` restores a recording into an empty ledger, and the plan
  * document is the one thing an `event` export cannot reconstruct by itself: it
  * travels inline on `plan.proposed`, and `GET /api/runs/:id/plans/:version`
  * resolves through this table. Restoring it is a re-file of the same bytes

@@ -1,5 +1,5 @@
 /**
- * KAR-18.4 — `DeFlow doctor`'s status model: one reducer, two printers.
+ * KAR-18.4 — `deflow doctor`'s status model: one reducer, two printers.
  *
  * Every category in the command produces `DoctorCheck`s and nothing else.
  * `reduceReport` is the only place a section status, an overall status or an
@@ -26,7 +26,7 @@ import { plainStyle, type Style } from '../render/style.ts';
 /** The only three verdicts a check may carry. `warn` does not fail the run. */
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 
-/** sysexits(3)-adjacent, and the same code `DeFlow init` uses for a refusal. */
+/** sysexits(3)-adjacent, and the same code `deflow init` uses for a refusal. */
 export const DOCTOR_EX_FAIL = 5;
 
 /** The eight categories of docs/03-local-development.md §8, in report order. */
@@ -128,7 +128,7 @@ function emptySectionCheck(id: DoctorSectionId): DoctorCheck {
       `the ${DOCTOR_SECTION_TITLES[id]} section produced no checks — a category that reports ` +
       'nothing has not passed, it has not run, and this is a bug in doctor itself rather than a ' +
       'fact about this machine',
-    action: "run 'DeFlow doctor --json' and attach its output to a bug report",
+    action: "run 'deflow doctor --json' and attach its output to a bug report",
   };
 }
 
@@ -166,13 +166,13 @@ export function reduceReport(inputs: readonly DoctorSectionInput[]): DoctorRepor
  * found something none of its own checks knows how to fix.
  */
 const DOCTOR_FALLBACK_ACTION =
-  "run 'DeFlow doctor --json' and attach its output — the checks above name what is wrong, and " +
+  "run 'deflow doctor --json' and attach its output — the checks above name what is wrong, and " +
   'the document names it in a form a bug report can carry';
 
 /** The doctor's status model as the presentation layer's model (AC1). */
 export function toReport(report: DoctorReport): Report {
   return {
-    title: 'DeFlow doctor',
+    title: 'deflow doctor',
     state: report.status,
     exitCode: report.exitCode,
     fallbackAction: DOCTOR_FALLBACK_ACTION,

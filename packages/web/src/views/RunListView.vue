@@ -15,8 +15,8 @@
  *   created while this page is open arrives on the subscription the composable
  *   opened, and the row appears because the store changed.
  * - **It invents no status word.** `row.label` is `runStatusLabel`'s string,
- *   produced in `@DeFlow/core` and rendered here, in `DeFlow status` and in
- *   `DeFlow run` (AC6).
+ *   produced in `@DeFlow/core` and rendered here, in `deflow status` and in
+ *   `deflow run` (AC6).
  */
 import { RouterLink } from 'vue-router';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
@@ -32,7 +32,7 @@ useRunList();
     <h1 class="run-list__title">Runs</h1>
 
     <p v-if="runs.list.length === 0" class="run-list__empty" data-run-list-empty>
-      No runs yet. Submit one with <code>DeFlow run --file &lt;path&gt;</code>, and it will appear
+      No runs yet. Submit one with <code>deflow run --file &lt;path&gt;</code>, and it will appear
       here as soon as it is accepted — you do not need to reload this page.
     </p>
 

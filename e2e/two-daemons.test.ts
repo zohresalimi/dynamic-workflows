@@ -3,7 +3,7 @@
  * processes on one data directory.
  *
  * "It's a single-user local daemon, so locking is unnecessary" is wrong, and
- * the failure is common rather than exotic: a user runs `npx DeFlow up` in two
+ * the failure is common rather than exotic: a user runs `npx deflowai up` in two
  * terminals, and it happens the first week. Everything below is asserted from
  * outside the processes — exit codes, stderr, listening sockets, the epoch
  * over HTTP — because that is all the user has.

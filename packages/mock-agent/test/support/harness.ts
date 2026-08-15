@@ -1,6 +1,6 @@
 /**
  * The harness plays the part DeFlowd plays in production: it spawns the real
- * `DeFlow-mock-agent` binary as a child process and talks ACP to it over the
+ * `deflow-mock-agent` binary as a child process and talks ACP to it over the
  * child's own stdin and stdout.
  *
  * Two things here are deliberate rather than incidental.

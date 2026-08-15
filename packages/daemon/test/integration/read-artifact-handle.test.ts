@@ -1,5 +1,5 @@
 /**
- * KAR-09.5 AC4, AC5 — `DeFlow_read_artifact` end to end: a real `DeFlow-mcp`
+ * KAR-09.5 AC4, AC5 — `DeFlow_read_artifact` end to end: a real `deflow-mcp`
  * child process, real MCP frames over its stdio, a real Unix domain socket, a
  * real file-backed ledger, a real content-addressed store and a real worktree
  * on disk.

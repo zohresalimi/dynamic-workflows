@@ -4,7 +4,7 @@
  * reported as an argument.
  *
  * This is the regression test for the defect observed by hand on 2026-08-13.
- * `DeFlow run --file task.md` reached framing — the whole of KAR-19.3 working —
+ * `deflow run --file task.md` reached framing — the whole of KAR-19.3 working —
  * and then failed on every attempt with `claude exited 1 without completing the
  * turn: Error: Invalid session ID. Must be a valid UUID.`, because
  * `live-chain.ts` filled the shim's session id with `` `${runId}-framing` ``.

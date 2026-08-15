@@ -2363,7 +2363,7 @@ function decodedFrames(text: string): string {
  * `cors`, `jose`, `eventsource`, `pkce-challenge` and `express-rate-limit`.
  * For a stdio-only server that is all dead weight, and a root import *loads*
  * it — which is the difference between an install cost and a startup cost that
- * `npx DeFlow up` pays every time (NF6).
+ * `npx deflowai up` pays every time (NF6).
  */
 export const ALLOWED_MCP_SDK_SUBPATHS = ['server/mcp.js', 'server/stdio.js'] as const;
 
@@ -3263,7 +3263,7 @@ export const CREDENTIAL_READ_MESSAGE =
   'reads a provider credential. AR-1 is that DeFlow never touches a vendor credential and never ' +
   'captures the output of an auth command: the vendor CLI is already logged in, its own ' +
   'credential store is its business, and every key DeFlow can see is a key DeFlow can leak into ' +
-  'a log line, an event payload or a bug report. "DeFlow up" is where the shortcut gets taken — ' +
+  'a log line, an event payload or a bug report. "deflow up" is where the shortcut gets taken — ' +
   'forwarding ANTHROPIC_API_KEY into the daemon environment "so agents inherit it", or reading ' +
   '~/.claude/.credentials.json to print a nicer status line — and every runtime test in this ' +
   'repository would still pass afterwards. Where a provider needs a login, print the command ' +
@@ -3294,7 +3294,7 @@ const CREDENTIAL_PROPERTY_READ =
   /\b(?:ANTHROPIC|OPENAI|GEMINI|GOOGLE|COPILOT|GITHUB|CURSOR|OPENCODE|XAI|MISTRAL)_(?:API_KEY|TOKEN)\b/;
 
 /**
- * AR-1 (KAR-18.2 AC9) — no module `DeFlow up` is assembled from may read a
+ * AR-1 (KAR-18.2 AC9) — no module `deflow up` is assembled from may read a
  * vendor credential, from the environment or from disk.
  *
  * Comments are stripped first: this rule's own explanation, and every doc

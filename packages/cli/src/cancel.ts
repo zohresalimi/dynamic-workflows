@@ -1,8 +1,8 @@
 /**
- * `DeFlow cancel <runId>` (KAR-19.6) — the command the detach sentence has
+ * `deflow cancel <runId>` (KAR-19.6) — the command the detach sentence has
  * been printing since 2026-08-11 and that has never resolved to anything.
  *
- * `'DeFlow cancel <runId>' to stop` is what `DeFlow run` prints when an
+ * `'deflow cancel <runId>' to stop` is what `deflow run` prints when an
  * operator detaches (KAR-18.3 AC3). The daemon has had the capability since
  * KAR-15.5 — `POST /api/runs/:id/cancel`, two ladders, verified kills — and
  * nothing in the CLI was wired to it, so the only route to it was `curl` with
@@ -83,18 +83,18 @@ export function parseCancelArgs(argv: readonly string[]): ParsedCancelArgs {
       const asked = argv[index + 1];
       index += 1;
       if (asked === undefined || !isCancelMode(asked)) {
-        return { ok: false, message: `DeFlow cancel: ${invalidCancelModeMessage()}` };
+        return { ok: false, message: `deflow cancel: ${invalidCancelModeMessage()}` };
       }
       mode = asked;
       continue;
     }
 
     if (argument.startsWith('-')) {
-      return { ok: false, message: `DeFlow cancel: unknown option ${JSON.stringify(argument)}` };
+      return { ok: false, message: `deflow cancel: unknown option ${JSON.stringify(argument)}` };
     }
 
     if (runId !== null) {
-      return { ok: false, message: `DeFlow cancel: one run id, not two (${runId}, ${argument})` };
+      return { ok: false, message: `deflow cancel: one run id, not two (${runId}, ${argument})` };
     }
     runId = argument;
   }
@@ -103,7 +103,7 @@ export function parseCancelArgs(argv: readonly string[]): ParsedCancelArgs {
     return {
       ok: false,
       message:
-        "DeFlow cancel: which run? Usage: DeFlow cancel <runId> [--force]. 'DeFlow status' lists the runs this machine is working on.",
+        "deflow cancel: which run? Usage: deflow cancel <runId> [--force]. 'deflow status' lists the runs this machine is working on.",
     };
   }
 
@@ -168,7 +168,7 @@ export function toCancelReport(answer: CancelAnswer): Report {
         : `${answer.runId} — ${RUN_STATUS_LABELS[answer.status]} (seq ${answer.seq})`,
       ...(waiting
         ? {
-            action: `DeFlow cancel ${answer.runId} --force`,
+            action: `deflow cancel ${answer.runId} --force`,
           }
         : {}),
     },
@@ -186,7 +186,7 @@ export function toCancelReport(answer: CancelAnswer): Report {
     });
   }
 
-  return { title: `DeFlow cancel: ${answer.runId}`, sections: [{ title: 'Cancel', rows }] };
+  return { title: `deflow cancel: ${answer.runId}`, sections: [{ title: 'Cancel', rows }] };
 }
 
 export function renderCancel(answer: CancelAnswer, style: Style = plainStyle()): string {
@@ -242,7 +242,7 @@ async function refusalOf(response: Response): Promise<string> {
 }
 
 /**
- * `DeFlow cancel` — the whole command, minus the process (AC1).
+ * `deflow cancel` — the whole command, minus the process (AC1).
  *
  * The token comes from the same `daemon.json` every other command reads, which
  * is the whole of *"no documented way to stop a run involves a hand-extracted
@@ -258,8 +258,8 @@ export async function runCancel(options: CancelCommandOptions): Promise<CommandR
   if (endpoint === null) {
     return refuse(
       RUN_EXIT_CODES.daemonRefused,
-      'DeFlow cancel: no daemon is running on this machine, so nothing is driving that run — ' +
-        "'DeFlow status' says what this machine thinks is happening",
+      'deflow cancel: no daemon is running on this machine, so nothing is driving that run — ' +
+        "'deflow status' says what this machine thinks is happening",
     );
   }
 
@@ -275,7 +275,7 @@ export async function runCancel(options: CancelCommandOptions): Promise<CommandR
   });
 
   if (!response.ok) {
-    return refuse(RUN_EXIT_CODES.failed, `DeFlow cancel: ${await refusalOf(response)}`);
+    return refuse(RUN_EXIT_CODES.failed, `deflow cancel: ${await refusalOf(response)}`);
   }
 
   const body = (await response.json()) as ControlBody;

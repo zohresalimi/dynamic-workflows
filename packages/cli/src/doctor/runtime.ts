@@ -44,7 +44,7 @@ function nodeCheck(version: string): DoctorCheck {
       id: 'runtime.node',
       status: 'fail',
       detail: `could not read a major version out of "${version}"; DeFlow needs Node >= ${MIN_NODE_MAJOR}`,
-      action: `install Node ${MIN_NODE_MAJOR} or later, then run 'DeFlow doctor' again`,
+      action: `install Node ${MIN_NODE_MAJOR} or later, then run 'deflow doctor' again`,
     };
   }
   return major >= MIN_NODE_MAJOR
@@ -62,7 +62,7 @@ function nodeCheck(version: string): DoctorCheck {
           'TypeScript that earlier runtimes cannot load at all. Upgrade Node and run doctor again.',
         action:
           `install Node ${MIN_NODE_MAJOR} or later (nvm: 'nvm install ${MIN_NODE_MAJOR}'), then ` +
-          "run 'DeFlow doctor' again",
+          "run 'deflow doctor' again",
         data: { version, major },
       };
 }
@@ -72,7 +72,7 @@ function nodeCheck(version: string): DoctorCheck {
  *
  * A `warn` rather than a `fail` when it is absent, because pnpm is the
  * *development* workflow's package manager (docs/03 §2): an installed
- * `npx DeFlow` tarball runs without it, and reporting a fail here would make
+ * `npx deflowai` tarball runs without it, and reporting a fail here would make
  * `doctor` red on the machines it was written to reassure.
  */
 async function pnpmCheck(roots: readonly string[]): Promise<DoctorCheck> {
@@ -154,15 +154,15 @@ export async function runtimeChecks(input: RuntimeInput): Promise<readonly Docto
           `chmod u+w ${input.workspaceDir}`,
         )
       : {
-          // Not created here on purpose: making `.DeFlow/` is `DeFlow init`'s
+          // Not created here on purpose: making `.DeFlow/` is `deflow init`'s
           // job (KAR-18.1), and a health check that quietly initialises the
           // workspace would answer a question the operator did not ask.
           id: 'runtime.workspace-dir',
           status: 'warn',
           detail:
             `no .DeFlow/ directory at ${input.workspaceDir} — this repository has not been ` +
-            'initialised yet. Run "DeFlow init" from its root.',
-          action: "run 'DeFlow init' from the root of this repository",
+            'initialised yet. Run "deflow init" from its root.',
+          action: "run 'deflow init' from the root of this repository",
           data: { path: input.workspaceDir },
         },
   ];

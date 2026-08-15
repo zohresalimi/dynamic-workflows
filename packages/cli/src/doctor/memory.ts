@@ -99,7 +99,7 @@ function ftsCheck(db: Db): DoctorCheck {
       detail:
         'FTS5 is available, but artifact_fts does not exist yet — run the ledger migrations ' +
         '(KAR-09.10, migration 0012) before relying on retrieval.',
-      action: "run 'DeFlow up' once — it runs the pending ledger migrations at boot",
+      action: "run 'deflow up' once — it runs the pending ledger migrations at boot",
       data: { fts5: true, table: false },
     };
   }
@@ -115,7 +115,7 @@ function ftsCheck(db: Db): DoctorCheck {
         'dotted identifiers is degraded until the table is dropped and rebuilt. The tokenizer ' +
         'cannot be changed in place.',
       action:
-        "run 'DeFlow ledger snapshot <runId> --out <path>' to keep a copy, then drop and rebuild " +
+        "run 'deflow ledger snapshot <runId> --out <path>' to keep a copy, then drop and rebuild " +
         'artifact_fts — the tokenizer cannot be changed in place',
       data: { fts5: true, table: true, tokenize },
     };
@@ -205,7 +205,7 @@ export function memoryChecks(input: MemoryInput): readonly DoctorCheck[] {
         'directory is unusable.',
       action:
         'fix the global state directory named in the Runtime section, then run ' +
-        "'DeFlow doctor' again",
+        "'deflow doctor' again",
     });
   } else {
     checks.push(ftsCheck(input.db), calibrationCheck(input.db));

@@ -7,7 +7,7 @@
  * to observe "the append completed" is to read the `seq` a real SQLite
  * transaction assigned (docs/14-testing-strategy.md §7).
  *
- * The agent is the real `DeFlow-mock-agent` binary, spawned from its absolute
+ * The agent is the real `deflow-mock-agent` binary, spawned from its absolute
  * path: DeFlowd's `PATH` is not the user's login-shell `PATH`, so production
  * resolves and stores a path rather than looking a bare name up again at spawn
  * time (docs/07-provider-adapter-layer.md §4.3).

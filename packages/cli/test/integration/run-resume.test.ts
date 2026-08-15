@@ -76,8 +76,8 @@ suite('EPIC-18-S22 — resume by explicit cursor, gap and all (AC5)', () => {
     copyFileSync(FIXTURE_DB, join(tmp, 'ledger.db'));
     served = await serveDaemon(tmp);
     const port = Number(new URL(served.baseUrl).port);
-    // `DeFlow run` finds a daemon the way every other client does: the file
-    // `DeFlow up` writes. `serveDaemon` is only the HTTP half, so the spec
+    // `deflow run` finds a daemon the way every other client does: the file
+    // `deflow up` writes. `serveDaemon` is only the HTTP half, so the spec
     // writes the handoff the CLI reads.
     writeDaemonFile(tmp, {
       pid: process.pid,

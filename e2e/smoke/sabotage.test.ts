@@ -113,7 +113,7 @@ interface Sabotage {
    * and that is the stronger of the two rather than the cheaper. `stage()` has
    * exactly one arm that gives up on the clock and it says so in words, so its
    * absence is the fact this clause is about, stated exactly. A bound on
-   * elapsed time would be measuring a scenario that also runs `DeFlow init`,
+   * elapsed time would be measuring a scenario that also runs `deflow init`,
    * two `git` invocations and a cold daemon start, and would read a loaded
    * machine as a reintroduced infinite retry.
    */
@@ -250,7 +250,7 @@ async function sabotagedDist(row: Sabotage): Promise<string> {
   // (better-sqlite3, node-pty), and Node resolves those by walking up to a
   // `node_modules` that has them — which in a pnpm workspace is
   // `packages/cli/node_modules`, not the repository root's. A copy anywhere
-  // else exits 1 on `ERR_MODULE_NOT_FOUND` at `DeFlow init`, and every row
+  // else exits 1 on `ERR_MODULE_NOT_FOUND` at `deflow init`, and every row
   // below would then fail for that reason instead of for the link it cut.
   // `.gitignore` covers the prefix.
   const dir = await mkdtemp(join(repoRoot, 'packages', 'cli', '.smoke-sabotage-'));

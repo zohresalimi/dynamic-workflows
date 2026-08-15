@@ -2,7 +2,7 @@
  * Conformance assertion 7 — a line that is not JSON at all.
  *
  * Found by the battery itself: before this spec existed, DeFlow read
- * `DeFlow-mock-agent --malformed-line` and reported a **completed** turn. The
+ * `deflow-mock-agent --malformed-line` and reported a **completed** turn. The
  * SDK's line reader drops a line it cannot parse and carries on, which is a
  * reasonable thing for a transport library to do and the wrong thing for
  * DeFlow — `adapter.malformed-output` and `adapter.protocol-error` are separate

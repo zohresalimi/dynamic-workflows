@@ -17,7 +17,7 @@ import {
   SERVABLE_SCHEMA_IDS,
 } from './structured.ts';
 
-export const BIN_NAME = 'DeFlow-mock-agent';
+export const BIN_NAME = 'deflow-mock-agent';
 
 /**
  * What `--version` prints when nothing overrides it.
@@ -56,7 +56,7 @@ export const BUILTIN_SCENARIO_DIR = fileURLToPath(new URL('../scenarios/', impor
  * Each resolves to the *same shipped scenario file* the suite runs, never to a
  * second in-memory definition: two definitions of one behaviour drift, and the
  * drift is invisible until the day someone's reproduction stops reproducing.
- * `DeFlow-mock-agent --huge-line` is meant to be the whole bug report.
+ * `deflow-mock-agent --huge-line` is meant to be the whole bug report.
  */
 export const PATHOLOGICAL_FLAGS: Readonly<Record<string, string>> = {
   '--hang-forever': 'hang-forever.jsonc',

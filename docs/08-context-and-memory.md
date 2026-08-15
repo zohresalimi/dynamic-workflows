@@ -316,7 +316,7 @@ type Constraint =
 `forbid` exists because some constraints genuinely have no closed positive form ("do not exfiltrate
 credentials"). Render those _last_ among the pinned constraints and count them: a rising `forbid`
 ratio in a run's spec is a leading indicator of the decay this section exists to prevent, and it is
-worth a line in `DeFlow doctor`.
+worth a line in `deflow doctor`.
 
 ### 4.3 Gates evaluate against the pinned spec, not against context
 
@@ -374,7 +374,7 @@ floor is your packet plus up to 40k — plan the fill fraction accordingly.
 
 **These constants are private implementation details of one version with no compatibility
 guarantee, and they will change.** Assert them in the adapter conformance suite (F3.4) so drift is
-caught by `DeFlow doctor` and not by a failed three-hour run. Prefer reading
+caught by `deflow doctor` and not by a failed three-hour run. Prefer reading
 `modelUsage[m].contextWindow` and `maxOutputTokens` from the result envelope at runtime over
 hardcoding anything.
 
@@ -549,7 +549,7 @@ import { countTokens } from "gpt-tokenizer/encoding/o200k_base";
 ```
 
 Fastest pure-JS tokenizer on npm, no native or wasm build step — which matters for
-`npx DeFlow up` (NF6).
+`npx deflowai up` (NF6).
 
 **The error bar, stated honestly.** Anthropic's own documentation warns that tiktoken-family
 tokenizers **undercount Claude tokens by roughly 15–20% on prose, and considerably more on code and
@@ -587,7 +587,7 @@ const SEED: Record<string, number> = {
 
 Store it in the adapter capability manifest as `tokenEstimateFactor` and persist per
 (provider, model). After roughly 20 nodes the estimates land within a few percent. Surface the
-current factor in `DeFlow doctor`. This turns an unfixable systematic bias into a solved problem at
+current factor in `deflow doctor`. This turns an unfixable systematic bias into a solved problem at
 zero cost, and nobody else in the category does it.
 
 ### Tier 3 — exact, opt-in, API-key path only
@@ -604,7 +604,7 @@ in `DeFlowd` that reads a token file or sets an auth env var to make this call w
 | `@anthropic-ai/tokenizer`                        | Still **0.0.4**, implements only the Claude 1/2-era BPE. Wrong for every current model. The package name makes it look authoritative — it is a trap. |
 | `js-tiktoken@1.0.21`                             | Works, slower than `gpt-tokenizer`, no accuracy gain.                                                                                                |
 | `tiktoken` / `@dqbd/tiktoken@1.0.22`             | wasm; adds a binary artifact for no accuracy gain.                                                                                                   |
-| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx DeFlow up`, and _still_ isn't exact for Claude.                                                                     |
+| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx deflowai up`, and _still_ isn't exact for Claude.                                                                     |
 
 There is no public exact tokenizer for Claude 3+. Accept it and calibrate.
 
@@ -781,7 +781,7 @@ F6.7 is P1, and P1 is the right place for it.
    transformers.js; v4 rewrote the WebGPU runtime in C++ and reports BERT-family embedding models up
    to 4× faster, running server-side in Node) with a 768-dim model. Prefer it over `fastembed@2.1.0`,
    which pulls native `@anush008/tokenizers` bindings — a cross-platform install hazard for
-   `npx DeFlow up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
+   `npx deflowai up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
    optional accelerator when the user already runs Ollama; never as a required dependency.
 
 Bottom line: the cheapest thing that works is FTS5 with correct `tokenchars`, and there is a decent
@@ -846,7 +846,7 @@ finding into a standing guard rather than a one-time implementation, and it is t
 protects the highest-severity risk in PRD §13. Include at least three scenarios that exercise the
 `forbid` → `allow-only` restatement from §4.2.
 
-**`DeFlow doctor` reports the memory layer too**: current tokenizer calibration factor per
+**`deflow doctor` reports the memory layer too**: current tokenizer calibration factor per
 (provider, model) with sample count, FTS5 availability and the tokenizer setting on
 `artifact_fts`, whether `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is in effect and at what value, and the
 current `forbid`-to-`allow-only` ratio in the loaded spec. Cheap, and it makes the invisible parts

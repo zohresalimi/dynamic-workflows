@@ -1,5 +1,5 @@
 /**
- * KAR-18.2 — the parts of `DeFlow up` that are argv, wording and a `PATH`
+ * KAR-18.2 — the parts of `deflow up` that are argv, wording and a `PATH`
  * lookup, and therefore have no business booting a daemon to be tested.
  *
  * The three suites are the three things an operator meets before anything is
@@ -22,7 +22,7 @@ import {
   type UpStepTiming,
 } from '../src/up.ts';
 
-suite('DeFlow up argv (AC1, AC2, AC4)', () => {
+suite('deflow up argv (AC1, AC2, AC4)', () => {
   it('defaults to the runbook behaviour: pick a port, open a browser, print no timings', () => {
     const parsed = parseUpArgs([]);
 
@@ -80,11 +80,11 @@ suite('the eight boot steps --timings reports (AC2)', () => {
   });
 });
 
-suite('the second DeFlow up refusal (AC3, EPIC-18-S8)', () => {
+suite('the second deflow up refusal (AC3, EPIC-18-S8)', () => {
   it('names the live pid and port, the URL to open, and the command to run', () => {
     expect(alreadyRunningMessage({ pid: 4711, port: 7777 })).toBe(
-      'DeFlow up: another DeFlowd is already running (pid 4711, port 7777) — open ' +
-        "http://127.0.0.1:7777 or run 'DeFlow status'",
+      'deflow up: another DeFlowd is already running (pid 4711, port 7777) — open ' +
+        "http://127.0.0.1:7777 or run 'deflow status'",
     );
   });
 
@@ -96,7 +96,7 @@ suite('the second DeFlow up refusal (AC3, EPIC-18-S8)', () => {
     const message = alreadyRunningMessage({ pid: 4711, port: null });
 
     expect(message).toContain('pid 4711');
-    expect(message).toContain("run 'DeFlow status'");
+    expect(message).toContain("run 'deflow status'");
     // No invented URL: a port nobody read is not a port anyone can open.
     expect(message).not.toContain('http://127.0.0.1:null');
   });
@@ -143,13 +143,13 @@ suite('which program gets the URL (AC1)', () => {
  * *detect* a shadowing credential without reading it (KAR-08.8's
  * `proc/auth-shadow.ts`) live down there; a transitive scan would either flag
  * them or be softened until it flagged nothing. These are the modules
- * `DeFlow up` is assembled from — the ones this story wrote or changed — and
+ * `deflow up` is assembled from — the ones this story wrote or changed — and
  * they are the ones where the shortcut would be taken.
  *
  * The runtime half is in `e2e/up.test.ts`: a credentials file at mode 000 that
  * a booting daemon must not trip over.
  */
-suite('DeFlow up reads no credential (AC9, test plan #8)', () => {
+suite('deflow up reads no credential (AC9, test plan #8)', () => {
   const BOOT_MODULES = [
     'packages/cli/src/up.ts',
     'packages/cli/src/open-browser.ts',

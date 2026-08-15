@@ -310,7 +310,7 @@ async function handshake(
  * Probes one provider and records the row.
  *
  * Throws a tagged `NodeFailureError` when the binary cannot be probed at all.
- * A probe happens outside any node — at daemon start, or under `DeFlow doctor`
+ * A probe happens outside any node — at daemon start, or under `deflow doctor`
  * — so there is no ledger position to hang a `NodeFailure` on; the caller,
  * which has one, maps it through `toAdapterFailure`.
  */

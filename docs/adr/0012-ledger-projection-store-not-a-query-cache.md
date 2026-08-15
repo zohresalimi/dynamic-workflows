@@ -67,7 +67,7 @@ Store shape, the nine views and the browser-memory rules are in
 - **The highest-risk logic is testable as pure functions** — feed a recorded `events.jsonl` fixture,
   assert the final state. Milliseconds per test, no DOM. This should be around 80% of the frontend
   test count ([14-testing-strategy.md](../14-testing-strategy.md)).
-- The fixture format _is_ the production format, which is what makes `DeFlow replay <fixture.jsonl>`
+- The fixture format _is_ the production format, which is what makes `deflow replay <fixture.jsonl>`
   a real development and demo tool rather than a mock.
 - No cache-invalidation reasoning anywhere in run state.
 

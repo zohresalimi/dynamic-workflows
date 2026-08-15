@@ -28,7 +28,7 @@
  * along, so the same relative path in the tarball points at
  * `packages/cli/dist/fixtures/capability-matrix.json`, which `files:
  * ["dist"]` never ships. The result was not a graceful degradation: every
- * invocation of the installed `DeFlow-mock-agent` binary, including `--version`,
+ * invocation of the installed `deflow-mock-agent` binary, including `--version`,
  * threw `ENOENT` at import time, before a single line of argv parsing ran —
  * caught by `e2e/install-verification.test.ts`'s EPIC-18-S42 spec, which runs
  * the real packed tarball rather than the workspace source. The `import …

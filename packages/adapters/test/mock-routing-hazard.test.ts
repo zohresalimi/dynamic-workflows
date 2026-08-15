@@ -98,11 +98,11 @@ suite('EPIC-19-S51 — doctor tells the truth about a bundled binary', () => {
         state: 'not-installed',
         vendorPath: null,
         adapterPath: null,
-        package: 'DeFlow',
+        package: 'deflow',
       }),
     );
 
-    expect(missing.action ?? '').not.toContain(installCommand('DeFlow'));
+    expect(missing.action ?? '').not.toContain(installCommand('deflow'));
     expect(missing.detail).not.toContain('npm install -g');
   });
 });

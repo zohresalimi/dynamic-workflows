@@ -21,7 +21,7 @@ export {
   boot,
   EX_ALREADY_RUNNING,
 } from './boot.ts';
-// KAR-14.2 AC8 — the ceiling section of `DeFlow doctor` (the command is
+// KAR-14.2 AC8 — the ceiling section of `deflow doctor` (the command is
 // EPIC-18, KAR-18.4).
 export type { BudgetCeilingReportInput } from './budget/doctor.ts';
 export { budgetCeilingLines, renderBudgetCeilingReport } from './budget/doctor.ts';
@@ -39,7 +39,7 @@ export { systemClock } from './clock.ts';
 // of core's `Tokenizer` port, and `exact-count.ts` is the tier-3 call site that
 // nothing on the subscription path can reach.
 // KAR-09.4 — `.DeFlow/config.yaml` off disk, and the constraint section of
-// `DeFlow doctor` (the command itself is EPIC-18, KAR-18.4).
+// `deflow doctor` (the command itself is EPIC-18, KAR-18.4).
 export { CONFIG_RELATIVE_PATH, loadWorkspaceConfig } from './config/workspace-config.ts';
 export { renderConstraintReport, workspaceConstraintReport } from './constraints/doctor.ts';
 // KAR-15.2 AC7 / KAR-18.2 AC1 — `.DeFlow/daemon.json` and the handoff URL that
@@ -56,7 +56,7 @@ export {
   writeDaemonFile,
 } from './daemon-file.ts';
 export { DATA_DIR_ENV, type DataDirEnv, resolveDataDir } from './data-dir.ts';
-// KAR-19.1 — the run driver the ticker calls, and the framing port `DeFlow up`
+// KAR-19.1 — the run driver the ticker calls, and the framing port `deflow up`
 // binds to a live ACP session (KAR-19.3).
 export type {
   AdvanceInput,
@@ -159,7 +159,7 @@ export { porcelainHash, reconcileShell } from './effects/reconcile/shell.ts';
 export type { ShellEffectInput, ShellEffectPorts, ShellResult } from './effects/shell-effect.ts';
 export { shellEffect } from './effects/shell-effect.ts';
 // The `LedgerSink` @DeFlow/adapters writes through, over a real SQLite
-// connection. Exported because `DeFlow doctor` (KAR-18.4) probes providers
+// connection. Exported because `deflow doctor` (KAR-18.4) probes providers
 // from the CLI process, and an adapter that was handed a sink inventing
 // sequence numbers would be told its events were committed when they were not.
 export type { LedgerSinkOptions } from './exec/ledger-sink.ts';
@@ -246,7 +246,7 @@ export { GIT_TIMEOUT_MS, gitChildEnv, runGit } from './git/run-git.ts';
 // KAR-07.4 — the one way DeFlow reads a worktree's dirtiness (§4.4).
 export type { StatusEntry, StatusEntryKind } from './git/status-porcelain.ts';
 export { isDirty, parseStatusPorcelainV2, STATUS_ARGS } from './git/status-porcelain.ts';
-// KAR-07.1 — the git version floor (§1.2): DeFlow doctor's git check
+// KAR-07.1 — the git version floor (§1.2): deflow doctor's git check
 // (EPIC-18, KAR-18.4) and, ahead of that command existing, the run-start
 // gate a below-floor git throws through.
 export {
@@ -434,7 +434,7 @@ export {
   steeringFor,
 } from './human/interject.ts';
 export type { ConfigValidation } from './init/config-schema.ts';
-// KAR-18.1 — `DeFlow init`'s workspace bootstrap: the committed half of
+// KAR-18.1 — `deflow init`'s workspace bootstrap: the committed half of
 // `.DeFlow/`, the `.gitignore` merge for the per-machine half, the global
 // state directory, and the provider detection pass that writes only there.
 export {
@@ -468,7 +468,7 @@ export {
   WORKFLOW_PHASES,
 } from './mcp/catalog.ts';
 // KAR-05.6 — the MCP host: the untagged stdio entry `session/new` carries,
-// the UDS DeFlowd serves workflow tools on, and the `DeFlow-mcp` shim that
+// the UDS DeFlowd serves workflow tools on, and the `deflow-mcp` shim that
 // bridges the two. The MCP SDK is reached through two deep subpaths only
 // (`checkMcpSdkImports`); nothing here loads express or hono.
 export type {
@@ -510,7 +510,7 @@ export {
   structuredTurn,
 } from './pipeline/live-agents.ts';
 // KAR-19.3 — and the resolver itself: the binding that turns a daemon with a
-// chain into a daemon that runs one. `DeFlow up` is its production caller.
+// chain into a daemon that runs one. `deflow up` is its production caller.
 export type { LiveChainOptions } from './pipeline/live-chain.ts';
 export {
   ASSUMED_CONTEXT_FLOOR,
@@ -523,7 +523,7 @@ export {
 export type { LiveExecutionOptions } from './pipeline/live-nodes.ts';
 export { createLiveRunExecution } from './pipeline/live-nodes.ts';
 // KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
-// `runReconNode` and `compilePlanV1`, and the resolver `DeFlow up` binds it to.
+// `runReconNode` and `compilePlanV1`, and the resolver `deflow up` binds it to.
 export type {
   RunChain,
   RunChainContext,
@@ -537,7 +537,7 @@ export {
   reconWorktreePath,
 } from './pipeline/run-chain.ts';
 // KAR-19.4 — the live executor: the one shipped caller of `executeRun`, and the
-// resolver `DeFlow up` binds it to a performer over a real worktree.
+// resolver `deflow up` binds it to a performer over a real worktree.
 export type {
   RunExecution,
   RunExecutionContext,
@@ -594,7 +594,7 @@ export {
   resolveLoginShellPathOnce,
   VENDOR_CONFIG_DIR_VARS,
 } from './proc/env.ts';
-// KAR-18.2 — step 4 of `DeFlow up`'s boot: the same detection with the probe
+// KAR-18.2 — step 4 of `deflow up`'s boot: the same detection with the probe
 // cache turned on, so an unchanged binary costs no handshake (EPIC-18-S17).
 export type { BootProbePorts } from './providers/boot-probe.ts';
 export { availableCount, probeProvidersOnBoot } from './providers/boot-probe.ts';
@@ -605,7 +605,7 @@ export type {
 } from './providers/detect.ts';
 export { detectProviders, pathRoots } from './providers/detect.ts';
 // KAR-15.6 AC8 / KAR-18.4 — re-probe every recorded adapter and run the F3.4
-// battery against it. `GET /api/providers/doctor` and `DeFlow doctor`'s
+// battery against it. `GET /api/providers/doctor` and `deflow doctor`'s
 // Conformance section are the two callers, and they share one implementation
 // so a CI exit code and an operator's terminal describe the same run.
 export type {
@@ -620,7 +620,7 @@ export {
   UNSTAGEABLE_CASES,
   UNSTAGEABLE_REASON,
 } from './providers/doctor.ts';
-// KAR-14.4 AC10 — the rate-limit section of `DeFlow doctor` (the command is
+// KAR-14.4 AC10 — the rate-limit section of `deflow doctor` (the command is
 // EPIC-18, KAR-18.4): per provider, the most recent `provider.rate_limited`
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.
 export type { RateLimitReportInput } from './providers/rate-limit-doctor.ts';
@@ -659,7 +659,7 @@ export type {
   RecoveryStep,
 } from './recovery.ts';
 export { RECOVERED_STEPS, RECOVERY_STEPS, recover } from './recovery.ts';
-// KAR-16.5 — `DeFlow replay <fixture> --speed <n>x --port <p>`: the daemon
+// KAR-16.5 — `deflow replay <fixture> --speed <n>x --port <p>`: the daemon
 // mode that serves a recorded run through the normal routes, so nine views can
 // be developed offline and no frontend anywhere has to know it is a replay.
 export {

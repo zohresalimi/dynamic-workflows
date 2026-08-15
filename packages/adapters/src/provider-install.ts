@@ -2,7 +2,7 @@
  * The one place a sentence about *what this machine has installed* is written,
  * and the admission decision that reads it.
  *
- * ## Why it lives here rather than in `DeFlow doctor`
+ * ## Why it lives here rather than in `deflow doctor`
  *
  * KAR-18.8 wrote these sentences and put them in `@DeFlow/cli`, which was right
  * while `doctor` was their only reader. KAR-19.2 gave them a second one — the
@@ -389,8 +389,8 @@ export function providerVerdict(resolution: ProviderResolution): ProviderVerdict
         'is present and working. What is missing is its ACP adapter: DeFlow spawns ' +
         `"${resolution.adapterBin}", which comes from ${resolution.package}, and nothing on PATH ` +
         `resolves it. Install it with "${installCommand(resolution.package)}", or re-run ` +
-        '"DeFlow doctor --fix" and answer yes.',
-      action: `${installCommand(resolution.package)} (or run 'DeFlow doctor --fix')`,
+        '"deflow doctor --fix" and answer yes.',
+      action: `${installCommand(resolution.package)} (or run 'deflow doctor --fix')`,
     };
   }
 
@@ -449,10 +449,10 @@ export function installPrompt(resolution: ProviderResolution): string {
 /**
  * KAR-19.2 AC4 — the flag the mock agent takes, named in every refusal.
  *
- * It is `DeFlow-mock-agent`'s own flag rather than a `DeFlow run` one, and it
+ * It is `deflow-mock-agent`'s own flag rather than a `deflow run` one, and it
  * still is after KAR-19.7 gave the binary a `mock` entry in `PROVIDER_SPECS`.
  * The entry means a run *can* now be served by the bundled agent under its own
- * name; what has deliberately not been invented is a `DeFlow run --mock-agent`
+ * name; what has deliberately not been invented is a `deflow run --mock-agent`
  * switch, because a run reaches the bundled agent only where the operator's own
  * `PATH` or configuration puts it (AC8) rather than where a flag overrides the
  * machine. What works, and what every test in this repository does, is to put
@@ -472,9 +472,9 @@ export const MOCK_AGENT_FLAG = '--capabilities <vendor>';
  * worth it. So it is appended to every refusal, whatever the code.
  */
 export const MOCK_AGENT_SENTENCE =
-  'Nothing needs installing to try this: DeFlow-mock-agent ships in this package, and a run ' +
+  'Nothing needs installing to try this: deflow-mock-agent ships in this package, and a run ' +
   'against it needs no vendor CLI, no credential and no network. Put it on PATH under the ' +
-  'adapter binary name printed above — ln -s "$(command -v DeFlow-mock-agent)" ' +
+  'adapter binary name printed above — ln -s "$(command -v deflow-mock-agent)" ' +
   '"$(npm prefix -g)/bin/<that name>" — and use its "--capabilities <vendor>" flag to choose ' +
   'which vendor profile it answers as.';
 
@@ -587,7 +587,7 @@ export function renderRefusal(resolutions: readonly ProviderResolution[]): strin
     // to run the same command again and be refused again.
     'DeFlow cannot start this run: no agent adapter on this machine can serve it. ' +
       '(This is what DeFlowd found when it started — if you have installed one since, restart it ' +
-      'with "DeFlow up".)',
+      'with "deflow up".)',
     ...lines,
     MOCK_AGENT_SENTENCE,
   ].join('\n\n');

@@ -1,5 +1,5 @@
 /**
- * KAR-05.6 — `DeFlow-mcp`: `StdioServerTransport` on one side, a Unix domain
+ * KAR-05.6 — `deflow-mcp`: `StdioServerTransport` on one side, a Unix domain
  * socket back to DeFlowd on the other, and as little as possible in between.
  *
  * It is a shim and not a server. No tool does any work here: every call is
@@ -11,8 +11,15 @@
  * **Two SDK imports, both deep subpaths.** `server/mcp.js` and
  * `server/stdio.js` and nothing else, enforced repo-wide by
  * `checkMcpSdkImports`. The package root pulls express, hono, cors, jose and
- * eventsource into a process that speaks over a pipe, and `npx DeFlow up` pays
+ * eventsource into a process that speaks over a pipe, and `npx deflowai up` pays
  * for that on every start (NF6, docs/07-provider-adapter-layer.md §7.3).
+ *
+ * **`--help` is the one argv a person types**, and it exists so the published
+ * bin can be *checked* (KAR-20.1, EPIC-20-S2). Everything else this shim
+ * understands needs a running DeFlowd, a socket it opened and a token it
+ * minted, so before `--help` a clean-room install had no question to ask the
+ * second bin whose answer distinguished a working build from a missing
+ * `dist/mcp.mjs` — both exited `EX_USAGE`.
  *
  * **It exits when its stdin closes** (AC7). An agent's death closes the pipe,
  * and a shim that survived it would sit holding a socket nobody will speak on
@@ -41,8 +48,41 @@ import {
 } from './protocol.ts';
 import { RUN_TOKEN_ENV } from './server-entry.ts';
 
-export const SHIM_NAME = 'DeFlow-mcp';
+export const SHIM_NAME = 'deflow-mcp';
 export const SHIM_VERSION = '0.0.0';
+
+/**
+ * What `deflow-mcp --help` prints, on **stdout**.
+ *
+ * Stdout is MCP's for the whole of the rest of this file, and this is the one
+ * exception rather than a contradiction: `--help` returns before any transport
+ * is constructed, so there is no MCP session for it to contaminate, and a
+ * usage message on stderr is one a pipe never sees.
+ *
+ * It exists so the bin is *checkable*. Every other argv this shim understands
+ * needs a running DeFlowd, a socket it opened and a token it minted, so
+ * without `--help` there is no way to ask the published binary whether it
+ * resolves and executes — which is exactly what a clean-room install has to
+ * establish (EPIC-20-S2), and exactly what a `bin` key pointing at a file the
+ * build never emitted would fail.
+ */
+export const SHIM_USAGE = `${SHIM_NAME} — the MCP shim DeFlowd spawns for a run
+
+Usage: ${SHIM_NAME} --socket <path> --run <runId>
+
+Not a command you run: DeFlowd names it in the "mcpServers" entry of every
+session/new, and the agent spawns it as part of setting up its own tool loop.
+It relays every tool call over the socket below and owns no state of its own.
+
+Options:
+  --socket <path>  The Unix domain socket DeFlowd is listening on
+  --run <runId>    The run whose tools this shim may serve
+  -h, --help       Print this message
+
+Environment:
+  ${RUN_TOKEN_ENV}  The run's token, minted by DeFlowd. Without it the
+                        daemon refuses the connection.
+`;
 
 /** Exit codes, so a spec and an operator read the same failures. */
 export const EX_USAGE = 64;
@@ -96,6 +136,14 @@ export function runMcpShim(options: ShimOptions): Promise<number> {
       options.stderr.write(`${SHIM_NAME}: ${message}\n`);
       resolve(code);
     };
+
+    // Before the token check and before the socket, because the environment a
+    // person asking for help has is the empty one.
+    if (options.argv.includes('--help') || options.argv.includes('-h')) {
+      options.stdout.write(SHIM_USAGE);
+      resolve(0);
+      return;
+    }
 
     let parsed: ParsedArgv;
     try {

@@ -60,7 +60,7 @@ suite('EPIC-04-S3 — spawned by resolved absolute path', () => {
 
   it('starts from the stored absolute path under a daemon-shaped PATH', async () => {
     const { stdout } = await run(linked, ['--help'], { env: { PATH: DAEMON_PATH } });
-    expect(stdout).toContain('DeFlow-mock-agent');
+    expect(stdout).toContain('deflow-mock-agent');
   });
 
   it('fails with ENOENT when the bare vendor name is spawned instead', async () => {

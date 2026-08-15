@@ -1,5 +1,5 @@
 /**
- * KAR-18.3 AC7, AC8 — `DeFlow run`'s argv: the four F1.1 sources, and the
+ * KAR-18.3 AC7, AC8 — `deflow run`'s argv: the four F1.1 sources, and the
  * flags that change what the command *is* rather than what it says.
  *
  * The four sources are the interesting half. F1.1 is "free text, a file, a git
@@ -88,7 +88,7 @@ suite('the four F1.1 sources (AC8)', () => {
   it('refuses no source at all, and says what one looks like', () => {
     const parsed = parseRunArgs([]);
     expect(parsed.ok).toBe(false);
-    expect(!parsed.ok && parsed.message).toContain('DeFlow run "<task>"');
+    expect(!parsed.ok && parsed.message).toContain('deflow run "<task>"');
   });
 });
 

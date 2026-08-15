@@ -13,11 +13,11 @@
 /**
  * The one route that answers without a bearer token, as `"<METHOD> <path>"`.
  *
- * Unauthenticated *deliberately*: `DeFlow up` polls it for readiness before it
+ * Unauthenticated *deliberately*: `deflow up` polls it for readiness before it
  * has read the token file, and it exposes nothing a local process could not
  * already learn from `.DeFlow/daemon.json`. It is exempt from the **token**
  * only — `Host` and `Origin` validation still apply, because a rebound page is
- * not `DeFlow up`.
+ * not `deflow up`.
  */
 export const PUBLIC_ROUTES: readonly string[] = ['GET /health'];
 

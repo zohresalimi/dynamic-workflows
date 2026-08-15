@@ -1,5 +1,5 @@
 /**
- * KAR-16.5 test plan #3, #5, #6 — `DeFlow replay`, on a real socket.
+ * KAR-16.5 test plan #3, #5, #6 — `deflow replay`, on a real socket.
  *
  * Verifies: EPIC-16-S31, EPIC-16-S33 · AC1, AC3, AC4, AC5, AC9
  *

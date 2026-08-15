@@ -64,7 +64,7 @@ been achieved?"_ becomes _"the agent said so."_
 - Intake of all four F1.1 sources — free text, a file path, a git issue reference, a spec document —
   normalised into a single `task.submitted` event carrying the **raw source plus its provenance**
   and nothing interpreted. `POST /api/runs` with `input: { kind: 'text' | 'file' | 'issue' }` and
-  the `DeFlow run "…"` CLI entry over the identical daemon path, honouring `Idempotency-Key`.
+  the `deflow run "…"` CLI entry over the identical daemon path, honouring `Idempotency-Key`.
 - The raw text pinned and surviving every later transformation, so _"what did I actually ask for?"_
   is answerable from the ledger at any point in a multi-hour run.
 - The framing interview: a fresh-session framing agent at **`read` permission** producing a
@@ -152,7 +152,7 @@ been achieved?"_ becomes _"the agent said so."_
 - [ ] **A test proves the anti-drift claim:** a gate verdict produced against `specHash` A is voided
       and the gate re-run after the operator edits the spec to `specHash` B — and the gate's packet
       contains the spec bytes from the ledger, not from the worktree's code.
-- [ ] An e2e spec drives `DeFlow run "…"` end to end: intake → framing → clarifying question →
+- [ ] An e2e spec drives `deflow run "…"` end to end: intake → framing → clarifying question →
       operator edit → approval → recon facts on the blackboard → the run becomes schedulable, with
       the daemon killed with `SIGKILL` while suspended at the approval gate and restarted.
 - [ ] `test/fixtures/runs/spec-approval/ledger.db` is committed, containing `task.submitted`, a
@@ -185,7 +185,7 @@ _"Intake does exactly one thing: normalise the input into a `task.submitted` eve
 source plus its provenance. **No interpretation happens here.**"_ The raw text is pinned and
 survives every later transformation, which is what makes _"what did I actually ask for?"_ answerable
 from the ledger three hours in, after two replans and a compaction. Both entry points —
-`POST /api/runs` ([11 §7.1](../../11-api-and-realtime.md)) and `DeFlow run "…"` — go through the
+`POST /api/runs` ([11 §7.1](../../11-api-and-realtime.md)) and `deflow run "…"` — go through the
 same daemon code path; the CLI is a client of the HTTP API, not a second implementation. Creating a
 run explicitly **does not start execution**: the 201 response carries
 `status: "awaiting-spec-approval"`.
@@ -209,7 +209,7 @@ run explicitly **does not start execution**: the 201 response carries
    — so a failed intake never leaves a half-born run in the list.
 6. `POST /api/runs` honours an `Idempotency-Key` header: a repeat with the same key returns the
    original `runId` and creates no second run.
-7. `DeFlow run "…"` produces a ledger byte-identical (modulo ids and timestamps) to the same task
+7. `deflow run "…"` produces a ledger byte-identical (modulo ids and timestamps) to the same task
    submitted over HTTP, and records `by: 'cli'` in provenance.
 
 **Test plan (TDD)** — write these first, in this order, and watch each fail.
@@ -221,7 +221,7 @@ run explicitly **does not start execution**: the 201 response carries
 | 3   | integration | `{kind:'file', path:'../../../etc/passwd'}` → typed rejection, and `SELECT count(*) FROM run` is 0                                                 | Path resolution happens after run creation                       |
 | 4   | integration | A 200 KiB spec file → the payload holds an `artifact://<sha256>` handle and the CAS holds the bytes                                                | The payload inlines an arbitrarily large blob into the event row |
 | 5   | integration | Two `POST /api/runs` with the same `Idempotency-Key` → same `runId`, and the whole ledger holds exactly one `task.submitted` and no `run.created`  | The key is accepted and ignored                                  |
-| 6   | e2e         | `DeFlow run "…"` against a booted daemon → `status: "awaiting-spec-approval"` and **zero** `node.scheduled` events                                 | The CLI starts execution itself                                  |
+| 6   | e2e         | `deflow run "…"` against a booted daemon → `status: "awaiting-spec-approval"` and **zero** `node.scheduled` events                                 | The CLI starts execution itself                                  |
 | 7   | integration | An `issue` URL whose resolver returns 404 → typed failure, no run row, and the error names the URL                                                 | Failure is swallowed and an empty task is framed                 |
 
 **Notes / risks** — **`run.created` moved to `KAR-10.2` (recorded 7 August 2026).** This story
@@ -321,7 +321,7 @@ approval gate uses. The answers are recorded and land in the spec's `priorDecisi
 | --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | 1   | unit        | Ajv validates a hand-written good `DeFlow.taskspec.v1`; a copy with `nonGoals: []` fails with a pointer to `/nonGoals`                                                            | The schema does not require `nonGoals`                         |
 | 2   | unit        | Criteria contract: `{ verifiedBy: [] }` with no `unverifiable` → one error naming the criterion id; `{ unverifiable: true, reason: '' }` → one error                              | Only `verifiedBy` is checked                                   |
-| 3   | integration | `DeFlow-mock-agent --seed` scripted to return a valid spec over ACP → `TaskSpec` in the ledger, `structured_output` read from the result envelope, not from stdout text           | The adapter parses prose                                       |
+| 3   | integration | `deflow-mock-agent --seed` scripted to return a valid spec over ACP → `TaskSpec` in the ledger, `structured_output` read from the result envelope, not from stdout text           | The adapter parses prose                                       |
 | 4   | integration | Mock agent returns a schema-invalid document → exactly one repair prompt is sent, then `node.failed` with `reason: 'contract.schema-invalid'`                                     | The repair loop is unbounded, or the partial spec is persisted |
 | 5   | integration | Mock agent scripted (testkit scenario 4) to call `fs/write_text_file` mid-interview → the call is rejected, a policy event is recorded, the turn continues                        | `read` is decorative on the framing path                       |
 | 6   | integration | Mock agent emits `session/request_permission` then a clarifying question → `human.requested`, a `node_wake` row with `reason = 'human_gate'`, and **zero CPU** between tick polls | The question blocks a thread                                   |
@@ -452,7 +452,7 @@ failure appends `run.needs_human` at a fourth reason, `spec-revalidation`, which
 | 6   | integration | Edit → `spec.amended` with an rfc6902 patch; the pre-edit spec is still readable at its old hash                                                                       | The spec row is mutated in place                                                 |
 | 7   | integration | Reject with reason "acceptance criteria are untestable" → a second framing attempt is scheduled whose packet contains the rejected spec and the reason                 | Rejection discards the run                                                       |
 | 8   | integration | Mid-run edit → `spec.pinned` v2, plan revalidation runs, and a deliberately-broken edit drives `run.needs_human`                                                       | Revalidation is skipped for edits after start                                    |
-| 9   | e2e         | `DeFlow run` → suspend → `DeFlow` approve from a second terminal → the run advances, with `by: 'cli'`                                                                  | Approval only exists in the UI                                                   |
+| 9   | e2e         | `deflow run` → suspend → `DeFlow` approve from a second terminal → the run advances, with `by: 'cli'`                                                                  | Approval only exists in the UI                                                   |
 
 **Notes / risks** — the temptation here is to make approval a fast path that skips the human node
 and just flips a status. Do not: the suspension mechanics are the same ones every later gate uses,
@@ -624,7 +624,7 @@ read-only cataloguing; F7.6's full custom-gate execution is P1 and belongs to EP
 | **Voiding verdicts on a mid-run spec edit can discard an hour of gate work** (KAR-10.4 AC 5).                                                                                                                                                                                                                                                                                                                            | Medium            | Correct behaviour, but it must be visible: the acceptance board shows "re-running against the amended spec" and the ledger shows the void. Consider surfacing the cost of an edit _before_ it is committed — a count of verdicts that will be voided — in EPIC-17. Do not soften the rule.                                                                                     |
 | **Intake is the only place DeFlowd itself touches the network** (`{kind: 'issue'}`), which sits awkwardly against NF1.                                                                                                                                                                                                                                                                                                   | Low               | Default to shelling out to the user's already-authenticated `gh` — the vendor's own tool, the user's own credentials, exactly AR-1's shape. Plain HTTPS is the fallback for other hosts, and both are recorded in provenance including the HTTP status. Offline, the failure is typed and the operator pastes the text.                                                        |
 | **`priorDecisions` sourced from `.DeFlow/memory/` (F6.8) is M3**, so the spec's "prior decisions" field will be thin in M1 and may look like dead weight.                                                                                                                                                                                                                                                                | Low               | Keep the field and populate it from the operator's clarifying answers, which is the highest-value source anyway. The M3 curator writes into the same shape rather than a new one.                                                                                                                                                                                              |
-| **This epic's e2e coverage needs a booted daemon and a real approval round trip**, which is the slowest test shape DeFlow owns.                                                                                                                                                                                                                                                                                          | Low               | Exactly one e2e spec (the DoD's intake-to-schedulable walk). Everything else is integration against a file-backed ledger with `DeFlow-mock-agent` on a temp `PATH` — [14 §13](../../14-testing-strategy.md) is explicit that five e2e specs is a ceiling, not a target.                                                                                                        |
+| **This epic's e2e coverage needs a booted daemon and a real approval round trip**, which is the slowest test shape DeFlow owns.                                                                                                                                                                                                                                                                                          | Low               | Exactly one e2e spec (the DoD's intake-to-schedulable walk). Everything else is integration against a file-backed ledger with `deflow-mock-agent` on a temp `PATH` — [14 §13](../../14-testing-strategy.md) is explicit that five e2e specs is a ceiling, not a target.                                                                                                        |
 
 ---
 

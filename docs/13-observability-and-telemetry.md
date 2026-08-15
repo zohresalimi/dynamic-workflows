@@ -9,7 +9,7 @@
 
 ## 1. Three surfaces, three jobs
 
-A DeFlow run has to be legible to three different audiences, and the fastest way to ruin all three
+A deflow run has to be legible to three different audiences, and the fastest way to ruin all three
 is to let them share a substrate. Keep them separate and each one stays honest.
 
 | Surface                   | Audience                                      | Substrate                                                     | Guarantee                                                           | PRD        |
@@ -265,7 +265,7 @@ imposes no event caps. Point the OTLP exporter at it and the gen_ai spans render
 **Langfuse is rejected for local dev on NF6 grounds, not feature grounds.** Its self-hosted shape
 needs Postgres + ClickHouse + Redis/Valkey + object storage + a web app + an async worker: **six
 services and a hard Docker dependency**. NF6 says "no database server, no Docker requirement for the
-core", and the whole install pitch is `npx DeFlow up`. A local observability backend that requires a
+core", and the whole install pitch is `npx deflowai up`. A local observability backend that requires a
 six-service compose file directly contradicts that.
 
 |                 | Phoenix            | Langfuse (self-hosted)                         |
@@ -281,7 +281,7 @@ OTLP endpoint is `POST /api/public/otel` with HTTP Basic auth carrying base64 `p
 Nothing about the emitter changes — same spans, different `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 **One honest caveat:** Phoenix is a Python package. It is a _developer-machine_ dependency for
-inspecting traces, never a runtime dependency of `DeFlowd`, and `npx DeFlow up` must work with no
+inspecting traces, never a runtime dependency of `DeFlowd`, and `npx deflowai up` must work with no
 collector configured at all. When `OTEL_EXPORTER_OTLP_ENDPOINT` is unset, the telemetry subscriber
 does not start.
 
@@ -570,7 +570,7 @@ on the span tree, no network, no collector, no vendor CLI.
   the `compact_boundary` shape and the `modelUsage` fields were read from the shipping bundle of
   **one** version (2.1.220). They are private implementation details with no compatibility guarantee
   and they will change — this is exactly PRD risk G7. Assert on them in the adapter conformance suite
-  (F3.4) so drift is caught by `DeFlow doctor`, not by a failed three-hour run.
+  (F3.4) so drift is caught by `deflow doctor`, not by a failed three-hour run.
 
 ---
 

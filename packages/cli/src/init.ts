@@ -1,5 +1,5 @@
 /**
- * `DeFlow init` (KAR-18.1) — the argv-facing wrapper over `@DeFlow/daemon`'s
+ * `deflow init` (KAR-18.1) — the argv-facing wrapper over `@DeFlow/daemon`'s
  * `initWorkspace`.
  *
  * The `bin` entry and the argv parser that gets an operator's real terminal
@@ -20,7 +20,7 @@ import { type Report, type ReportState, renderReport } from './render/report.ts'
 import { plainStyle, type Style } from './render/style.ts';
 
 export interface InitCommandOptions {
-  /** The directory the operator ran `DeFlow init` from. */
+  /** The directory the operator ran `deflow init` from. */
   readonly cwd: string;
   /** Defaults to `process.env` — `PATH` and `XDG_DATA_HOME`/`DeFlow_DATA_DIR`
    * both come from here. */
@@ -62,8 +62,8 @@ const PROVIDER_STATES: Readonly<Record<string, ReportState>> = {
 /** `init`'s own report, as the presentation layer's model (KAR-18.9 AC1). */
 export function toReport(report: InitReport): Report {
   return {
-    title: `DeFlow init: workspace ready at ${report.repoRoot}`,
-    fallbackAction: "run 'DeFlow doctor' for what this machine can and cannot do",
+    title: `deflow init: workspace ready at ${report.repoRoot}`,
+    fallbackAction: "run 'deflow doctor' for what this machine can and cannot do",
     sections: [
       {
         title: 'Workspace',

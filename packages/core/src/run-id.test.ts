@@ -1,7 +1,7 @@
 /**
  * KAR-02.1 — `RunId` is a legal path segment and sorts by creation order.
  *
- * `.DeFlow/runs/` is browsed by a human and listed by `DeFlow run --list`; the
+ * `.DeFlow/runs/` is browsed by a human and listed by `deflow run --list`; the
  * format puts the timestamp before the random suffix precisely so `ls` is
  * chronological (docs/delivery/flows/EPIC-02-domain-model-flows.md).
  *

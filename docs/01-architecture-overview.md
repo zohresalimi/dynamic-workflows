@@ -103,11 +103,11 @@ Expanded from [PRD §9.1](./prd.md#91-shape) with the components the research ac
         │ VENDOR AGENT PROCESSES — user's OS account, own auth      │
         │   claude-agent-acp -> claude      codex-acp -> codex      │
         │   gemini --acp     copilot --acp     opencode acp         │
-        │   DeFlow-mock-agent (deterministic, offline, free)        │
+        │   deflow-mock-agent (deterministic, offline, free)        │
         └───────────────────────────────────────────────────────────┘
 ```
 
-Two arrows are missing from the picture because they run the other way. First, the MCP host: each ACP `session/new` injects `mcpServers: [{ name: "DeFlow", command: process.execPath, args: [DeFlowMcpEntry, "--socket", …] }]`, so the agent spawns a `DeFlow-mcp` shim that talks back to DeFlowd over a Unix domain socket (D9). Second, `fs/*` and `terminal/*`: the agent calls _DeFlow_ for file and command access, which is exactly why Rule 5 works.
+Two arrows are missing from the picture because they run the other way. First, the MCP host: each ACP `session/new` injects `mcpServers: [{ name: "DeFlow", command: process.execPath, args: [DeFlowMcpEntry, "--socket", …] }]`, so the agent spawns a `deflow-mcp` shim that talks back to DeFlowd over a Unix domain socket (D9). Second, `fs/*` and `terminal/*`: the agent calls _DeFlow_ for file and command access, which is exactly why Rule 5 works.
 
 ---
 
@@ -134,10 +134,10 @@ Two arrows are missing from the picture because they run the other way. First, t
 | Blackboard                  | `@DeFlow/daemon`                                     | Typed facts with provenance; a projection over `fact.written` / `fact.read` events (F6.3)                                           |
 | Gate Runner                 | `@DeFlow/daemon`                                     | Deterministic gates, adversarial review on a different session/provider, typed verdicts (F7.1–F7.5)                                 |
 | Workspace Manager           | `@DeFlow/daemon`                                     | Worktrees, branch naming, `.worktreeinclude` copy, dependency setup, `merge-tree` conflict matrix                                   |
-| MCP host                    | `@DeFlow/daemon`                                     | Workflow-level tools over `@modelcontextprotocol/sdk@1.30.0`, exposed via the `DeFlow-mcp` stdio shim                               |
+| MCP host                    | `@DeFlow/daemon`                                     | Workflow-level tools over `@modelcontextprotocol/sdk@1.30.0`, exposed via the `deflow-mcp` stdio shim                               |
 | HTTP + SSE API              | `@DeFlow/daemon`                                     | `hono` routes, resumable SSE from ledger offsets, bearer auth, Vite middleware in dev                                               |
 | Web UI                      | `@DeFlow/web`                                        | Vue 3 SPA; a ledger-projection Pinia store feeding the nine P0 views (D11)                                                          |
-| CLI + bins                  | `DeFlow` (`packages/cli`)                            | `DeFlow init/up/run/doctor`; ships `DeFlow`, `DeFlow-mcp`, `DeFlow-mock-agent`                                                      |
+| CLI + bins                  | `deflow` (`packages/cli`)                            | `deflow init/up/run/doctor`; ships `deflow`, `deflow-mcp`, `deflow-mock-agent`                                                      |
 | Mock ACP agent              | `@DeFlow/mock-agent`                                 | Deterministic, seeded, offline agent that can hang, crash, emit malformed frames and fake any capability profile (D17)              |
 | Testkit                     | `@DeFlow/testkit`                                    | Fake binaries, hermetic git fixtures, tmpdir fixtures, `TestClock`, crash-fuzz harness                                              |
 
@@ -145,7 +145,7 @@ Two arrows are missing from the picture because they run the other way. First, t
 
 ## 5. Runtime flow A — intake to approved TaskSpec to PlanGraph v1
 
-1. **Intake.** `DeFlow run "…"` or `POST /api/runs` accepts free text, a file, a git issue reference or a spec document (F1.1). The daemon appends `run.created` and allocates a run id.
+1. **Intake.** `deflow run "…"` or `POST /api/runs` accepts free text, a file, a git issue reference or a spec document (F1.1). The daemon appends `run.created` and allocates a run id.
 2. **Capability probe.** Before anything is planned, DeFlowd resolves the **absolute** path of each vendor binary (DeFlowd's `PATH` at daemon-start differs from the user's login shell), runs `initialize`, and persists the full response plus `--version` and a sha256 of the entry file (F3.6). Planning happens against what is actually installed and authenticated — AR-1 consequence (b).
 3. **Framing.** A framing agent node runs at `read` permission against a detached worktree and interrogates the task and the repo, producing a `TaskSpec`: goal, scope boundaries, non-goals, constraints, prior decisions, **acceptance criteria** and **known failure modes** (F1.2). The result is Zod-validated; a schema violation is a node failure with one repair attempt, never silent propagation.
 4. **Human approval.** The run suspends on a blocking `human` node (F1.3, F8.1). Suspension costs one `node_wake` row and zero CPU, so a six-hour gate and a six-second one are the same code path. Edits append `spec.amended`; approval appends `spec.approved`. This is a real gate — shallow specs are the primary documented failure mode of spec-driven development ([PRD §4.5](./prd.md#45-category-e--spec-driven-development)).
@@ -180,7 +180,7 @@ Cancellation at any point is three-stage: protocol-level `session/cancel` first 
 ## 7. Runtime flow C — crash and resume
 
 1. **The crash.** SIGKILL, an OS update, a closed lid, a panic. Because agents are spawned `detached: true`, **they survive DeFlowd's death** — reparented to init, still running, still burning tokens. That is a consequence you must handle, not a bug: `detached` is mandatory, since with `detached: false` the grandchildren's process group is _DeFlowd's own_, so there is no group you can safely signal.
-2. **Single-instance lease.** On boot, DeFlowd takes an `flock` on `<dataDir>/DeFlow.lock` and bumps a `daemon_epoch` counter. Every write carries the epoch; stale-epoch writes are rejected. This stops the very common "user ran `npx DeFlow up` in two terminals" case from driving one run twice.
+2. **Single-instance lease.** On boot, DeFlowd takes an `flock` on `<dataDir>/DeFlow.lock` and bumps a `daemon_epoch` counter. Every write carries the epoch; stale-epoch writes are rejected. This stops the very common "user ran `npx deflowai up` in two terminals" case from driving one run twice.
 3. **Orphan reaping.** For each non-terminal spawn row, compare **both** the pid and the recorded process start time (`/proc/<pid>/stat` field 22 on Linux, `ps -o lstart= -p <pid>` on macOS) before killing the group. Never kill by bare pid after a restart — pids are recycled and you will eventually kill the user's editor. When verifying a kill worked, exclude `Z`-state processes: a successfully group-killed subtree still appears in `ps` as zombies awaiting reaping, which reads as a false negative.
 4. **Replay.** `state = checkpointValid ? decode(run.state_json) : initial`, then `reduce()` over `event WHERE run_id = ? AND seq > last_seq`. **Verified 2026-08-02:** a control-plane-only replay of 10,000 rows takes **29 ms**, and a full scan of 500,000 rows takes **416 ms**. That is why the control plane and the agent I/O stream live in **separate tables** and why there is **no snapshotting subsystem** — the perceived need for one comes entirely from mixing agent stdout into the ledger. The checkpoint carries a `checkpoint_version`; a mismatch means "ignore the cache, full replay", so checkpoints are a pure optimisation that can never cause a correctness bug.
 5. **Effect reconciliation.** Rows still `pending` whose `started_at` precedes this daemon's start were in flight when the process died. Each effect type ships a `reconcile()` probe. _Agent invocation:_ if a `session_id` was journaled from the first init frame, and the adapter advertises `session.resume`, resume; otherwise replay from DeFlow's own log into a fresh `session/new`. _Pure shell_ (test, lint, build): just re-run. _Mutating shell:_ compare hashed `git status --porcelain` against the before/after journal. _Git:_ grep the effect-id trailer. _File write:_ an orphaned `<path>.DeFlow-<ikey>.tmp` means the crash preceded the atomic rename.

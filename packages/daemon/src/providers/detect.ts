@@ -1,5 +1,5 @@
 /**
- * KAR-18.1 AC6 — the provider detection pass `DeFlow init` runs.
+ * KAR-18.1 AC6 — the provider detection pass `deflow init` runs.
  *
  * `doctor.ts`'s re-probe deliberately never touches `PATH`: DeFlowd's own
  * environment at daemon start is not the user's login-shell one, so the
@@ -79,9 +79,9 @@ export interface DetectProvidersPorts {
    * KAR-18.2 — answer from the recorded manifest when the binary's bytes are
    * unchanged, instead of handshaking it again (EPIC-18-S17).
    *
-   * Off by default, and deliberately so: `DeFlow init` is the command an
+   * Off by default, and deliberately so: `deflow init` is the command an
    * operator runs *because* something about their installation changed, and a
-   * cached answer there would be the wrong one. `DeFlow up` runs on every
+   * cached answer there would be the wrong one. `deflow up` runs on every
    * start, is on the NF3 budget, and turns it on.
    */
   readonly reuseCache?: boolean;

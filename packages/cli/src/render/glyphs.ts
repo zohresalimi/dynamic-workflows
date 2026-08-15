@@ -73,7 +73,7 @@ export const PART_SEPARATORS: Readonly<Record<Charset, string>> = {
   ascii: ' | ',
 };
 
-/** What `DeFlow run`'s transcript marks each event kind with. */
+/** What `deflow run`'s transcript marks each event kind with. */
 export type TranscriptGlyph = 'note' | 'pending' | 'active' | 'asking' | 'paused' | 'done' | 'gone';
 
 export const TRANSCRIPT_GLYPHS: Readonly<

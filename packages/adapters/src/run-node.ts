@@ -1049,7 +1049,7 @@ export async function runAcpNode(
     if (limited !== null) {
       // Appended before `node.failed`, so a reader walking the timeline meets
       // the limit before the failure it caused — the order the shim path
-      // writes them in, and the row `DeFlow doctor` reads per provider (AC10).
+      // writes them in, and the row `deflow doctor` reads per provider (AC10).
       lastSeq = await ledger.append(
         event('provider.rate_limited', {
           provider: request.provider,

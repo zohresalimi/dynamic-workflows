@@ -1,5 +1,5 @@
 /**
- * KAR-16.5 — `DeFlow replay <fixture> --speed <n>x --port <p>`: a daemon mode
+ * KAR-16.5 — `deflow replay <fixture> --speed <n>x --port <p>`: a daemon mode
  * that serves a recorded run (docs/03-local-development.md §6.2).
  *
  * > *"The UI cannot tell the difference, because there is no difference — the
@@ -68,7 +68,7 @@ export interface ReplayHarness {
   readonly port: number;
   readonly token: string;
   readonly dataDir: string;
-  /** The first-run handoff URL, token in the fragment, as `DeFlow up` prints. */
+  /** The first-run handoff URL, token in the fragment, as `deflow up` prints. */
   readonly url: string;
   /** Every run the recording holds, in first-seen order. */
   readonly runIds: readonly RunId[];

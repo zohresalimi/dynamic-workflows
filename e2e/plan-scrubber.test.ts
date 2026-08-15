@@ -9,7 +9,7 @@
  * budgets for, and the one the roadmap calls the demo: *"why is there a step
  * here that I didn't ask for?"*, answered in four keystrokes.
  *
- * Nothing here is injected. A real `DeFlow replay` daemon serves the
+ * Nothing here is injected. A real `deflow replay` daemon serves the
  * `three-patches` recording out of a real ledger; the version rail comes from
  * `GET /api/runs/:id/plans`, the refusal from `GET …/patches`, each plan
  * document from `GET …/plans/:version` and each diff from `…/plans/diff` —

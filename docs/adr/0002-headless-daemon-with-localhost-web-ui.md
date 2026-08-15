@@ -33,9 +33,9 @@ is the natural consequence.
 `127.0.0.1:7777`. One process, one port. Add a desktop shell in M3, not before.** (PRD §6.3)
 
 ```
-npx DeFlow init          # detect providers, create .DeFlow/
-npx DeFlow up            # start daemon → http://localhost:7777
-npx DeFlow run "…"       # CLI entry, same engine
+npx deflowai init          # detect providers, create .DeFlow/
+npx deflowai up            # start daemon → http://localhost:7777
+npx deflowai run "…"       # CLI entry, same engine
 ```
 
 The daemon owns execution, the ledger, the worktrees and every child process. The browser UI is a
@@ -57,10 +57,10 @@ web page via DNS rebinding can otherwise reach port 7777. See [15-security-model
 
 - Close the browser, close the laptop lid, reboot — the run resumes (F4.2, NF4). This is the
   property most tools in the category lack.
-- Many clients from one stream: browser tab, phone on the same Wi-Fi, `DeFlow run` in a terminal,
+- Many clients from one stream: browser tab, phone on the same Wi-Fi, `deflow run` in a terminal,
   later a Tauri shell, later a Slack notifier. All are SSE consumers.
 - Zero packaging cost during the phase where there is one user (I6). Team rollout is
-  `npx DeFlow up` per engineer (I5, NF6).
+  `npx deflowai up` per engineer (I5, NF6).
 - Vibe Kanban's CLI-plus-web-UI shape is the closest existing precedent and is cross-platform and
   self-hostable — evidence the shape works.
 
@@ -82,7 +82,7 @@ web page via DNS rebinding can otherwise reach port 7777. See [15-security-model
 
 - **VS Code / JetBrains extension.** Rejected: ties us to one IDE, against the brief; the extension
   host is a bad place for hours-long processes (I2); constrained visualisation surface (I3).
-- **TUI as the primary surface.** Rejected: fails I3 and I4 outright. A thin `DeFlow` CLI for
+- **TUI as the primary surface.** Rejected: fails I3 and I4 outright. A thin `deflow` CLI for
   scripting and CI is retained, as a client.
 - **Native desktop app (Electron/Tauri) as primary for v1.** Rejected: packaging, signing,
   notarisation and auto-update cost weeks that buy nothing during solo use (I6), and it tempts you

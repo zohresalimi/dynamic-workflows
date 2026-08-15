@@ -114,7 +114,7 @@ a process tax here; it is the cheapest way to build this at all.
       against a `FakeEffectRunner`, but KAR-06.4's agent reconciliation needs the real
       `supportsResume` manifest and the real detached-spawn path, and KAR-06.9's orphan reaping
       needs `(pid, process_start_time)` to actually be journaled.
-- [ ] **EPIC-04 Done.** `DeFlow-mock-agent` is on a temp `PATH`, honours `--seed`, and can
+- [ ] **EPIC-04 Done.** `deflow-mock-agent` is on a temp `PATH`, honours `--seed`, and can
       `process.exit(1)` mid-turn and hang forever on demand. Assertion (a) of the crash-fuzz test —
       "no effect executed twice" — is a duplicate-key check over the fake binaries' own side-effect
       log, so the fakes must append `{runId, nodeId, attempt, idempotencyKey}` on every invocation.
@@ -842,7 +842,7 @@ suite runs under it.
 | **PRD**         | F4.2, NF4                                                                   |
 | **Verified by** | EPIC-06-S6, EPIC-06-S11, EPIC-06-S16, EPIC-06-S25, EPIC-06-S29, EPIC-06-S30 |
 
-**As** an operator whose laptop rebooted at hour four of a six-hour run, **I want** `DeFlow up` to
+**As** an operator whose laptop rebooted at hour four of a six-hour run, **I want** `deflow up` to
 pick the run back up from the last completed boundary, **so that** the durability thesis is a
 property the suite proves rather than a claim the README makes.
 

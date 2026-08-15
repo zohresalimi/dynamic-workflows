@@ -1,8 +1,8 @@
 /**
- * KAR-19.2 AC5, AC8 — `DeFlow run` on a machine that cannot host a run.
+ * KAR-19.2 AC5, AC8 — `deflow run` on a machine that cannot host a run.
  *
  * The whole value of refusing at submission is in how quickly it happens, so
- * this is asserted the only way it can be settled: a real `DeFlow` binary, a
+ * this is asserted the only way it can be settled: a real `deflow` binary, a
  * real autostarted daemon, a real on-disk ledger, and a `PATH` with no agent
  * CLI anywhere on it. What the operator got on 2026-08-12 was a prompt that
  * returned and a system that never moved; what they get here is a sentence and
@@ -50,7 +50,7 @@ interface DaemonFile {
   readonly pid: number;
 }
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else in this file will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   let file: DaemonFile;
@@ -93,7 +93,7 @@ function ledger(dataDir: string): { runId: string; kinds: string[] }[] {
   }
 }
 
-suite('EPIC-19-S10 — DeFlow run exits 5, and the refusal is in the ledger', () => {
+suite('EPIC-19-S10 — deflow run exits 5, and the refusal is in the ledger', () => {
   it('refuses in seconds with doctor’s own sentence, and records run.aborted', async () => {
     const dataDir = join(tmp, 'data');
     const repo = await makeRepo({ dir: join(tmp, 'repo') });
@@ -116,7 +116,7 @@ suite('EPIC-19-S10 — DeFlow run exits 5, and the refusal is in the ledger', ()
 
     // The sentence, on stderr, with no stack trace in front of it.
     const stderr = cli.stderr();
-    expect(stderr).toContain('DeFlow-mock-agent');
+    expect(stderr).toContain('deflow-mock-agent');
     expect(stderr).toContain('npm install -g');
     expect(stderr).not.toContain('    at ');
     // Nothing is installed here, so *"is not installed"* is the true sentence —
@@ -194,7 +194,7 @@ suite('EPIC-19-S9 — the reported machine, through the real binary', () => {
     const said = await waitFor('the limitation reached the terminal', () => {
       if (cli.child.exitCode !== null) {
         throw new Error(
-          `DeFlow run exited ${cli.child.exitCode}:\nstderr:\n${cli.stderr()}\n` +
+          `deflow run exited ${cli.child.exitCode}:\nstderr:\n${cli.stderr()}\n` +
             `stdout:\n${cli.stdout()}`,
         );
       }

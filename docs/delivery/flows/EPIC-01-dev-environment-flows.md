@@ -491,7 +491,7 @@ Feature: A failed restart is a real bug, not a dev-loop annoyance
     And it states that deleting ledger.db to "get moving again" destroys the evidence
 
   Scenario: the ledger can be snapshotted for a bug report before anything is changed
-    When the developer runs "DeFlow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db"
+    When the developer runs "deflow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db"
     Then a single consistent file is produced with no WAL sidecar
     And "PRAGMA integrity_check" on it returns "ok"
     And the events can be read with plain sqlite3

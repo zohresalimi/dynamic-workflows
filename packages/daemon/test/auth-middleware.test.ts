@@ -163,8 +163,8 @@ suite('GET /health (AC1)', () => {
       headers: { Origin: 'http://attacker.example' },
     });
 
-    // The token exemption exists so `DeFlow up` can poll for readiness before
-    // it has read the token file. A rebound page is not `DeFlow up`.
+    // The token exemption exists so `deflow up` can poll for readiness before
+    // it has read the token file. A rebound page is not `deflow up`.
     expect(response.status).toBe(403);
     expect(((await response.json()) as Envelope).error.code).toBe('bad_origin');
   });
@@ -289,7 +289,7 @@ suite('before boot has registered a token', () => {
     const response = await api.request(`${ORIGIN}/health`);
 
     // Not a fallback and not a hole: it is the same one route the exemption
-    // list names, and it is what `DeFlow up` polls to find out whether the
+    // list names, and it is what `deflow up` polls to find out whether the
     // daemon it just started is up. Refusing the readiness probe until
     // readiness has completed is a deadlock, not a control.
     expect(response.status).toBe(200);

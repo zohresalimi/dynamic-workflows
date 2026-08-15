@@ -52,7 +52,7 @@ import {
 /**
  * The exact tokenizer configuration docs/08-context-and-memory.md §10
  * specifies, single-sourced so the AC1 assertion, the migration's frozen DDL
- * and `DeFlow doctor`'s comparison all read the same literal.
+ * and `deflow doctor`'s comparison all read the same literal.
  */
 export const ARTIFACT_FTS_TOKENIZE = "unicode61 remove_diacritics 2 tokenchars '_-.'";
 
@@ -283,7 +283,7 @@ export function rebuildArtifactFts(
   });
 }
 
-/** `DeFlow doctor`'s whole input for AC7: whether the driver has FTS5 at all,
+/** `deflow doctor`'s whole input for AC7: whether the driver has FTS5 at all,
  * whether `artifact_fts` exists yet, and the exact tokenizer string it was
  * created with — so a table built before this rule was enforced is visible
  * rather than merely underperforming. */
@@ -303,7 +303,7 @@ function tokenizeOf(sql: string): string | null {
   return TOKENIZE_PATTERN.exec(sql)?.[1] ?? null;
 }
 
-/** AC7: `DeFlow doctor`'s FTS5 section reads this directly. */
+/** AC7: `deflow doctor`'s FTS5 section reads this directly. */
 export function artifactFtsAvailability(db: Db): ArtifactFtsAvailability {
   const fts5Compiled =
     db

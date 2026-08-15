@@ -1,5 +1,5 @@
 /**
- * KAR-10.1 AC7 / test plan #6 — `DeFlow run "…"` against a real booted
+ * KAR-10.1 AC7 / test plan #6 — `deflow run "…"` against a real booted
  * daemon: the CLI is a client of the HTTP API, never a second implementation.
  *
  * Verifies: KAR-10.1 AC7 · EPIC-10-S1 (CLI scenario) · test plan #6
@@ -14,7 +14,7 @@ import { runTask } from '../../src/index.ts';
 
 /**
  * Every request this spec makes carries the daemon's bearer token (KAR-15.2) —
- * the `fetch` below, and the `token` option `DeFlow run` forwards to the same
+ * the `fetch` below, and the `token` option `deflow run` forwards to the same
  * `Authorization` header through the shared client.
  */
 const fetch = authorizedFetch();
@@ -44,7 +44,7 @@ function normalised(event: StoredEvent | undefined): unknown {
   };
 }
 
-suite('DeFlow run — a client of the HTTP API, not a second engine (AC7)', () => {
+suite('deflow run — a client of the HTTP API, not a second engine (AC7)', () => {
   it('returns status "awaiting-spec-approval" and schedules nothing', async ({ tmp }) => {
     const repo = await makeRepo({ dir: `${tmp}/repo` });
     const { booted, origin } = await bootAt(`${tmp}/data`);

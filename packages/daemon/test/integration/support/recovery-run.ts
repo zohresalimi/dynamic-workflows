@@ -120,7 +120,7 @@ const started = (id: string, attempt = 0): EventDraft =>
       node: id,
       attempt,
       ikey: `${RECOVERY_RUN}/${id}/${attempt}/0`,
-      binary: { path: '/usr/bin/DeFlow-mock-agent', version: '1.0.0', sha256: BINARY_SHA },
+      binary: { path: '/usr/bin/deflow-mock-agent', version: '1.0.0', sha256: BINARY_SHA },
     },
     { nodeId: id, attempt, ikey: `${RECOVERY_RUN}/${id}/${attempt}/0` },
   );

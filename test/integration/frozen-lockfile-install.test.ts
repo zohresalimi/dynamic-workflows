@@ -155,7 +155,7 @@ suite('every workspace dependency is linked, never downloaded', () => {
   );
 
   // @DeFlow/web gained its consumer with KAR-15.1: packages/cli imports the one
-  // `hc<ApiType>` client module out of packages/web/src/api, so `DeFlow run` and
+  // `hc<ApiType>` client module out of packages/web/src/api, so `deflow run` and
   // the browser are two callers of one typed surface rather than two
   // implementations of one protocol (docs/11-api-and-realtime.md §9). Updating
   // this list is the visible diff that says the dependency graph of
@@ -176,7 +176,7 @@ suite('every workspace dependency is linked, never downloaded', () => {
       '@DeFlow/mock-agent',
       '@DeFlow/testkit',
       '@DeFlow/web',
-      'DeFlow',
+      'deflowai',
     ]);
   });
 });

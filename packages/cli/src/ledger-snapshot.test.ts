@@ -1,5 +1,5 @@
 /**
- * KAR-18.7 — `DeFlow ledger snapshot`'s argv, and the sentence it writes.
+ * KAR-18.7 — `deflow ledger snapshot`'s argv, and the sentence it writes.
  *
  * The file it produces is an integration concern and is asserted next door
  * against a real WAL. What is here is the part that has to be right before any

@@ -1,5 +1,5 @@
 /**
- * KAR-18.3 AC1, AC2 — `DeFlow run` as a user meets it: one command, one run, no
+ * KAR-18.3 AC1, AC2 — `deflow run` as a user meets it: one command, one run, no
  * browser.
  *
  * Asserted from outside the process, because that is all an operator has:
@@ -11,13 +11,13 @@
  *
  * **Where the completion half of EPIC-18-S18 lives.** The scenario ends with a
  * plan completing and an exit code of 0, and that is now a real, shipped path:
- * `DeFlow up` and `DeFlow run` bind `runFraming`, `advanceRun` and
+ * `deflow up` and `deflow run` bind `runFraming`, `advanceRun` and
  * `executeNodes`, so a submitted run is framed, gated, pinned, surveyed,
  * planned, executed and concluded by the daemon itself. It is asserted from the
  * operator's own command in `e2e/smoke/live-run.test.ts` (KAR-19.5), which
  * exists precisely so that this end-to-end property has one home rather than a
  * partial copy in every client spec. What this file settles is the half only a
- * spawned `DeFlow run` can settle and the smoke test does not repeat: the
+ * spawned `deflow run` can settle and the smoke test does not repeat: the
  * detached autostart, the unauthenticated health poll, the subscription from
  * seq 0, the rendered transcript through the normalising serializer, and the
  * documented exit code.
@@ -57,7 +57,7 @@ import {
  * > Code's argument table (`-p <prompt>`), could not parse it, and exited
  * > non-zero. Framing failed, the run aborted ~900 ms in, and both scenarios
  * > below then raced their Ctrl-C against an already-finished run: the second
- * > lost, and `DeFlow run` was killed by the signal (`code: null`) rather than
+ * > lost, and `deflow run` was killed by the signal (`code: null`) rather than
  * > exiting the documented 130.
  * >
  * > The fix is to stop pretending. The mock agent is a provider in its own
@@ -100,7 +100,7 @@ const daemonFile = (dataDir: string): DaemonFile | null => {
   }
 };
 
-/** The daemon `DeFlow run` started for itself, stopped — it is detached, so
+/** The daemon `deflow run` started for itself, stopped — it is detached, so
  * nothing else in this file will take it down. */
 async function stopAutostartedDaemon(): Promise<void> {
   const file = daemonFile(join(tmp, 'data'));
@@ -158,7 +158,7 @@ suite('EPIC-18-S18 — one command, one run, no browser (AC1)', () => {
 
     const runId = await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
-        throw new Error(`DeFlow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
+        throw new Error(`deflow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
       }
       return RUN_ID.exec(cli.stdout())?.[0] ?? null;
     });
@@ -213,7 +213,7 @@ suite('EPIC-18-S19 — attach, never launch a second (AC2)', () => {
     const cli = start({ dataDir, cwd: repo.dir, argv: ['run', 'add a health endpoint'] });
     await waitFor('the CLI printed a run id', () => {
       if (cli.child.exitCode !== null) {
-        throw new Error(`DeFlow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
+        throw new Error(`deflow run exited ${cli.child.exitCode}:\n${cli.stderr()}`);
       }
       return RUN_ID.exec(cli.stdout())?.[0] ?? null;
     });

@@ -11,7 +11,7 @@
  * perfectly healthy daemon.
  *
  * This module is the assembly. The pieces below it each own one thing and are
- * shared with `DeFlow run` (docs/11 §7.2), which is why they live in `../api/`:
+ * shared with `deflow run` (docs/11 §7.2), which is why they live in `../api/`:
  *
  * - `../api/hydrate.ts` — the cold-start loop, paged on the server's cursor.
  * - `../api/multiplex.ts` — the connection, the filter mutation, the fan-out.

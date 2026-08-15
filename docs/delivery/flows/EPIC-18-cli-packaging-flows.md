@@ -10,13 +10,13 @@
 | Actor                | Description                                                                                                                                                 |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operator**         | The engineer at a terminal. At M1 this is the author; at M2 it is a colleague on a machine nobody has ever debugged                                         |
-| **`DeFlow` CLI**     | `packages/cli`, the one published package. Bins: `DeFlow`, `DeFlow-mcp`, `DeFlow-mock-agent`                                                                |
+| **`deflow` CLI**     | `packages/cli`, the one published package. Bins: `DeFlow`, `deflow-mcp`, `deflow-mock-agent`                                                                |
 | **DeFlowd**          | The local daemon the CLI starts, attaches to, or refuses to start twice. Spawned **detached**, so it outlives its launcher                                  |
 | **Repository**       | A real git working copy created by `git init -b main` in an `fs.mkdtemp` directory with `GIT_CONFIG_GLOBAL=/dev/null`                                       |
 | **Global state dir** | `$XDG_DATA_HOME/DeFlow`, else `~/.DeFlow`: `DeFlow.lock`, `ledger.db` (+ `-wal`, `-shm`), `blobs/`, `recordings/`, `pre-migrate-<user_version>.db`, `logs/` |
-| **Provider agent**   | A vendor CLI. In every scenario here it is `DeFlow-mock-agent` symlinked onto a temp `PATH` under a vendor name, or deliberately absent                     |
+| **Provider agent**   | A vendor CLI. In every scenario here it is `deflow-mock-agent` symlinked onto a temp `PATH` under a vendor name, or deliberately absent                     |
 | **Platform**         | macOS (Seatbelt, built in) or Linux (bubblewrap + socat, plus the AppArmor namespace restriction). Windows is out of scope until M3                         |
-| **The tarball**      | `DeFlow-0.1.0.tgz` produced by `pnpm pack` — the exact bytes a user would get, and a different program from the workspace                                   |
+| **The tarball**      | `deflowai-0.1.0.tgz` produced by `pnpm pack` — the exact bytes a user would get, and a different program from the workspace                                   |
 
 ## Preconditions common to all flows
 
@@ -50,14 +50,14 @@ Background:
 
 | Scenario    | Title                                                                                  | Verifies           | Type        |
 | ----------- | -------------------------------------------------------------------------------------- | ------------------ | ----------- |
-| EPIC-18-S1  | Happy path: `DeFlow init` bootstraps a repository                                      | KAR-18.1           | Happy path  |
+| EPIC-18-S1  | Happy path: `deflow init` bootstraps a repository                                      | KAR-18.1           | Happy path  |
 | EPIC-18-S2  | Re-running `init` never clobbers an edited config                                      | KAR-18.1           | Edge case   |
 | EPIC-18-S3  | `init` outside a git working tree refuses and writes nothing                           | KAR-18.1           | Failure     |
 | EPIC-18-S4  | `.gitignore` entries are appended once, and the token file is never committable        | KAR-18.1           | Edge case   |
 | EPIC-18-S5  | `init` when the global state directory is not writable                                 | KAR-18.1           | Failure     |
 | EPIC-18-S6  | Provider detection at `init` writes to the global cache, never to the committed config | KAR-18.1           | Edge case   |
-| EPIC-18-S7  | Happy path: `DeFlow up` to a browser in under three seconds                            | KAR-18.2           | Happy path  |
-| EPIC-18-S8  | **A second `DeFlow up` is refused by the single-instance lease**                       | KAR-18.2           | Concurrency |
+| EPIC-18-S7  | Happy path: `deflow up` to a browser in under three seconds                            | KAR-18.2           | Happy path  |
+| EPIC-18-S8  | **A second `deflow up` is refused by the single-instance lease**                       | KAR-18.2           | Concurrency |
 | EPIC-18-S9  | **Port 7777 is occupied: the next free port, reported consistently everywhere**        | KAR-18.2           | Edge case   |
 | EPIC-18-S10 | An explicitly pinned `--port` that is occupied fails instead of drifting               | KAR-18.2           | Failure     |
 | EPIC-18-S11 | A pre-migration backup exists before `user_version` moves                              | KAR-18.2           | Happy path  |
@@ -67,8 +67,8 @@ Background:
 | EPIC-18-S15 | **First run on a machine with no agent CLI installed at all**                          | KAR-18.2, KAR-18.4 | Edge case   |
 | EPIC-18-S16 | Graceful shutdown releases the lease and leaves nothing behind                         | KAR-18.2           | Happy path  |
 | EPIC-18-S17 | The probe cache is what keeps the second cold start inside NF3                         | KAR-18.2           | Edge case   |
-| EPIC-18-S18 | Happy path: `DeFlow run` with no daemon running                                        | KAR-18.3           | Happy path  |
-| EPIC-18-S19 | `DeFlow run` attaches to a daemon that is already up                                   | KAR-18.3           | Happy path  |
+| EPIC-18-S18 | Happy path: `deflow run` with no daemon running                                        | KAR-18.3           | Happy path  |
+| EPIC-18-S19 | `deflow run` attaches to a daemon that is already up                                   | KAR-18.3           | Happy path  |
 | EPIC-18-S20 | The first Ctrl-C detaches; the second cancels                                          | KAR-18.3           | Edge case   |
 | EPIC-18-S21 | Killing the CLI does not kill the run                                                  | KAR-18.3           | Failure     |
 | EPIC-18-S22 | The stream drops mid-run: a Node client has no `Last-Event-ID`                         | KAR-18.3           | Recovery    |
@@ -96,9 +96,9 @@ Background:
 | EPIC-18-S44 | The shebang or the exec bit is lost on `dist/bin.mjs`                                  | KAR-18.6           | Failure     |
 | EPIC-18-S45 | No compiler on the box: nothing invokes `node-gyp`                                     | KAR-18.6           | Edge case   |
 | EPIC-18-S46 | The clean room runs `doctor` and gets an honest, agent-free report                     | KAR-18.6           | Edge case   |
-| EPIC-18-S47 | `DeFlow ledger snapshot` produces one consistent, sidecar-free file                    | KAR-18.7           | Happy path  |
-| EPIC-18-S48 | `DeFlow status` with a live daemon, and with none at all                               | KAR-18.7           | Happy path  |
-| EPIC-18-S49 | `DeFlow status` after a SIGKILL reports `stale`, and signals nothing                   | KAR-18.7           | Recovery    |
+| EPIC-18-S47 | `deflow ledger snapshot` produces one consistent, sidecar-free file                    | KAR-18.7           | Happy path  |
+| EPIC-18-S48 | `deflow status` with a live daemon, and with none at all                               | KAR-18.7           | Happy path  |
+| EPIC-18-S49 | `deflow status` after a SIGKILL reports `stale`, and signals nothing                   | KAR-18.7           | Recovery    |
 | EPIC-18-S50 | **Happy path: the vendor CLI is installed, its ACP adapter is not**                    | KAR-18.8           | Happy path  |
 | EPIC-18-S51 | Three states per provider, and `adapter-missing` is unreachable for a native one       | KAR-18.8           | Edge case   |
 | EPIC-18-S52 | **`claude is not installed` is never printed when `claude` is on PATH**                | KAR-18.8           | Failure     |
@@ -117,7 +117,7 @@ Background:
 
 ---
 
-## EPIC-18-S1 — Happy path: `DeFlow init` bootstraps a repository
+## EPIC-18-S1 — Happy path: `deflow init` bootstraps a repository
 
 **Verifies:** KAR-18.1 · **Type:** Happy path · **Automated at:** integration
 
@@ -127,7 +127,7 @@ Feature: workspace bootstrap
   Scenario: init in a clean repository
     Given a git repository on branch "main" with no ".DeFlow" directory
     And a ".gitignore" containing only "node_modules/"
-    When the operator runs "DeFlow init"
+    When the operator runs "deflow init"
     Then ".DeFlow/config.yaml" exists and validates against ".DeFlow/schemas/config.schema.json"
     And ".DeFlow/gates/", ".DeFlow/templates/" and ".DeFlow/memory/" exist
     And ".DeFlow/.worktreeinclude" exists
@@ -153,10 +153,10 @@ must not leave the repository dirty in any other way, because the first thing an
 Feature: workspace bootstrap
 
   Scenario: init is idempotent and non-destructive
-    Given "DeFlow init" has already run
+    Given "deflow init" has already run
     And the operator has edited ".DeFlow/config.yaml" to set a run budget ceiling of 25.00
     And the operator has added ".DeFlow/gates/typecheck.yaml"
-    When the operator runs "DeFlow init" a second time
+    When the operator runs "deflow init" a second time
     Then ".DeFlow/config.yaml" still contains the budget ceiling of 25.00
     And ".DeFlow/gates/typecheck.yaml" is untouched
     And stdout reports "config.yaml  kept (edited)" and the other paths as "unchanged"
@@ -179,9 +179,9 @@ Feature: workspace bootstrap
 
   Scenario: not a repository
     Given an empty temp directory with no ".git" anywhere above it
-    When the operator runs "DeFlow init"
+    When the operator runs "deflow init"
     Then stderr contains
-        "DeFlow init: not inside a git working tree (run 'git init' first)"
+        "deflow init: not inside a git working tree (run 'git init' first)"
     And the exit code is 5
     And no ".DeFlow" directory was created
     And no ".gitignore" was created
@@ -203,7 +203,7 @@ Feature: workspace bootstrap
 
   Scenario Outline: gitignore merge is a fixpoint
     Given a ".gitignore" in state "<state>"
-    When the operator runs "DeFlow init" twice
+    When the operator runs "deflow init" twice
     Then ".DeFlow/daemon.json" appears exactly once in ".gitignore"
     And ".DeFlow/wt/" appears exactly once
     And ".DeFlow/runs/" appears exactly once
@@ -233,7 +233,7 @@ Feature: workspace bootstrap
 
   Scenario: unwritable data dir
     Given XDG_DATA_HOME points at a directory with mode 0500
-    When the operator runs "DeFlow init"
+    When the operator runs "deflow init"
     Then stderr names the absolute path it tried to create
     And stderr names the errno "EACCES"
     And stderr suggests setting XDG_DATA_HOME or fixing the permissions
@@ -257,7 +257,7 @@ Feature: workspace bootstrap
 
   Scenario: detection result is machine-local
     Given the mock agent is symlinked onto the temp PATH as "claude"
-    When the operator runs "DeFlow init"
+    When the operator runs "deflow init"
     Then stdout reports one detected agent with its absolute resolved path
     And a probe cache file exists under the global state directory
     And ".DeFlow/config.yaml" contains no capability field for any provider
@@ -271,7 +271,7 @@ reason: the committed half travels between machines.
 
 ---
 
-## EPIC-18-S7 — Happy path: `DeFlow up` to a browser in under three seconds
+## EPIC-18-S7 — Happy path: `deflow up` to a browser in under three seconds
 
 **Verifies:** KAR-18.2 · **Type:** Happy path · **Automated at:** e2e
 
@@ -280,7 +280,7 @@ Feature: daemon lifecycle
 
   Scenario: first boot
     Given an initialised repository and a warm provider probe cache
-    When the operator runs "DeFlow up --timings --no-open"
+    When the operator runs "deflow up --timings --no-open"
     Then the daemon binds 127.0.0.1 and no other interface
     And ".DeFlow/daemon.json" exists with { pid, port, token, startedAt } at mode 0600
     And the token is 32 bytes of crypto.randomBytes encoded base64url
@@ -300,7 +300,7 @@ browser history, `Referer` headers and any access log anyone ever adds.
 
 ---
 
-## EPIC-18-S8 — A second `DeFlow up` is refused by the single-instance lease
+## EPIC-18-S8 — A second `deflow up` is refused by the single-instance lease
 
 **Verifies:** KAR-18.2 · **Type:** Concurrency · **Automated at:** e2e
 
@@ -310,10 +310,10 @@ Feature: daemon lifecycle
   Scenario: two terminals, one daemon
     Given DeFlowd is running with pid 4711 on port 7777 holding the flock on
           "<dataDir>/DeFlow.lock" with daemon_epoch = 3
-    When the operator runs "DeFlow up" in a second terminal against the same data directory
+    When the operator runs "deflow up" in a second terminal against the same data directory
     Then stderr contains
-        "DeFlow up: another DeFlowd is already running (pid 4711, port 7777) — open
-         http://127.0.0.1:7777 or run 'DeFlow status'"
+        "deflow up: another DeFlowd is already running (pid 4711, port 7777) — open
+         http://127.0.0.1:7777 or run 'deflow status'"
     And the exit code is 2
     And daemon_epoch is still 3
     And ".DeFlow/daemon.json" still holds pid 4711
@@ -338,11 +338,11 @@ Feature: daemon lifecycle
   Scenario: port collision with an unrelated process
     Given an unrelated process is listening on 127.0.0.1:7777
     And no DeFlowd holds the lease
-    When the operator runs "DeFlow up --no-open"
+    When the operator runs "deflow up --no-open"
     Then the daemon binds the next free port reported by get-port
     And the printed URL carries that port
     And ".DeFlow/daemon.json".port equals that port
-    And "DeFlow status" reports that port
+    And "deflow status" reports that port
     And "GET /api/health" on that port returns 200
     And the process on 7777 is untouched
 ```
@@ -363,7 +363,7 @@ Feature: daemon lifecycle
 
   Scenario: pinned port is a contract
     Given an unrelated process is listening on 127.0.0.1:8080
-    When the operator runs "DeFlow up --port 8080"
+    When the operator runs "deflow up --port 8080"
     Then stderr names port 8080 and states that it is in use
     And the exit code is 2
     And no daemon was started on any other port
@@ -437,7 +437,7 @@ Feature: daemon lifecycle
     Given DeFlowd was running with a mock agent child mid-turn
     And the daemon was killed with SIGKILL, leaving ".DeFlow/daemon.json" behind
     And the flock was released by the kernel when the process died
-    When the operator runs "DeFlow up --no-open"
+    When the operator runs "deflow up --no-open"
     Then the lease is acquired and daemon_epoch is bumped by exactly 1
     And ".DeFlow/daemon.json" is rewritten with the new pid, port and token
     And the ledger is replayed and RunState is rebuilt from the event log
@@ -496,21 +496,21 @@ Feature: graceful degradation
   Scenario: a fresh laptop with nothing but node, pnpm, git and a browser
     Given a temp PATH containing node, pnpm and git and no agent binary of any kind
     And no ANTHROPIC_API_KEY, OPENAI_API_KEY or any other provider credential in the environment
-    When the operator runs "DeFlow up --no-open"
+    When the operator runs "deflow up --no-open"
     Then the daemon starts and binds a port
     And stdout contains "0 providers available"
     And stdout names each supported vendor with the command that installs it
-    And stdout states that "DeFlow replay" and the bundled mock agent work with no provider
+    And stdout states that "deflow replay" and the bundled mock agent work with no provider
     And the exit code is 0
     And no stack trace appears on stderr
 
   Scenario: what the daemon refuses, and what it still allows
     Given the daemon from the previous scenario is running
-    When the operator submits a task through "DeFlow run"
+    When the operator submits a task through "deflow run"
     Then the run is created and "task.submitted" is appended to the ledger
     And planning refuses to schedule any agent node with a typed failure naming the missing
         provider, rather than failing the whole run at boot
-    And "DeFlow replay fixtures/happy-path-12.jsonl" serves a full run over the same HTTP contract
+    And "deflow replay fixtures/happy-path-12.jsonl" serves a full run over the same HTTP contract
 ```
 
 **Notes:** this is the first-contact experience for every colleague at M2, and the failure it guards
@@ -518,7 +518,7 @@ against is the opaque one — a crash inside a provider probe that says `ENOENT:
 tells the operator nothing about what to do. NF7 is explicit that one provider being unavailable
 degrades the plan rather than killing the run; _zero_ providers is the same rule taken to its limit.
 The second scenario matters because it is what makes the whole UI developable on a train: the mock
-agent binary and `DeFlow replay` ship inside the tarball.
+agent binary and `deflow replay` ship inside the tarball.
 
 ---
 
@@ -537,7 +537,7 @@ Feature: daemon lifecycle
     And the flock on "<dataDir>/DeFlow.lock" is released
     And ".DeFlow/daemon.json" no longer exists
     And the interrupted node is recorded in the ledger with a typed failure, not left "running"
-    And a subsequent "DeFlow up" starts cleanly with no manual intervention
+    And a subsequent "deflow up" starts cleanly with no manual intervention
 ```
 
 **Notes:** SIGTERM tests the shutdown handler; SIGKILL (S13) tests durability. Both must work, and
@@ -576,7 +576,7 @@ locally-linked or nightly agent builds.
 
 ---
 
-## EPIC-18-S18 — Happy path: `DeFlow run` with no daemon running
+## EPIC-18-S18 — Happy path: `deflow run` with no daemon running
 
 **Verifies:** KAR-18.3 · **Type:** Happy path · **Automated at:** e2e
 
@@ -586,7 +586,7 @@ Feature: headless execution
   Scenario: one command, one completed run, no browser
     Given an initialised repository and no daemon running
     And the mock agent on the temp PATH scripted with a four-node plan that passes its gate
-    When the operator runs: DeFlow run "add a health endpoint"
+    When the operator runs: deflow run "add a health endpoint"
     Then DeFlowd is spawned detached and "GET /api/health" is polled until it answers
     And the run is created and the CLI subscribes to the stream from seq 0
     And the terminal shows each node transitioning through scheduled → started → completed
@@ -617,7 +617,7 @@ fixtures encode assumptions about the event stream rather than its actual shape.
 > and both composition roots bind `runFraming`, `advanceRun` and `executeNodes`, so a submitted run
 > is framed, gated, pinned, surveyed, planned, executed and concluded. `e2e/smoke/live-run.test.ts`
 > asserts it from the operator's own command against the **built binary**, on a `PATH` holding only
-> `DeFlow-mock-agent`: the kinds in order to `run.completed`, at least two planned nodes with at
+> `deflow-mock-agent`: the kinds in order to `run.completed`, at least two planned nodes with at
 > least one executed, agent output on stdout while the run was still in flight, and exit 0.
 >
 > Two halves of _this scenario_ are still not asserted anywhere, and they are recorded here rather
@@ -628,7 +628,7 @@ fixtures encode assumptions about the event stream rather than its actual shape.
 
 ---
 
-## EPIC-18-S19 — `DeFlow run` attaches to a daemon that is already up
+## EPIC-18-S19 — `deflow run` attaches to a daemon that is already up
 
 **Verifies:** KAR-18.3 · **Type:** Happy path · **Automated at:** e2e
 
@@ -637,7 +637,7 @@ Feature: headless execution
 
   Scenario: attach, never launch a second
     Given DeFlowd is already running and ".DeFlow/daemon.json" is current
-    When the operator runs: DeFlow run "…"
+    When the operator runs: deflow run "…"
     Then no second DeFlowd process is spawned
     And daemon_epoch is unchanged
     And the CLI authenticates with the bearer token read from ".DeFlow/daemon.json"
@@ -658,16 +658,16 @@ would exit 2 and look like a CLI bug rather than a design bug.
 Feature: headless execution
 
   Scenario: detach
-    Given "DeFlow run" is streaming a run with a mock agent mid-turn
+    Given "deflow run" is streaming a run with a mock agent mid-turn
     When the operator presses Ctrl-C once
     Then stdout contains
-        "detached — run <runId> continues; 'DeFlow run --attach <runId>' to watch,
-         'DeFlow cancel <runId>' to stop"
+        "detached — run <runId> continues; 'deflow run --attach <runId>' to watch,
+         'deflow cancel <runId>' to stop"
     And the CLI exits 130
     And the run reaches "run.completed" afterwards without the CLI attached
 
   Scenario: cancel
-    Given "DeFlow run" is streaming a run with a mock agent mid-turn
+    Given "deflow run" is streaming a run with a mock agent mid-turn
     When the operator presses Ctrl-C twice within 3 seconds
     Then "run.aborted" is appended to the ledger
     And every child process in the run's process groups is terminated
@@ -709,13 +709,13 @@ polite shutdown.
 Feature: headless execution
 
   Scenario: SIGKILL the launcher
-    Given "DeFlow run" autostarted DeFlowd and is streaming a run
+    Given "deflow run" autostarted DeFlowd and is streaming a run
     When the CLI process is killed with SIGKILL
     Then DeFlowd is still alive
     And DeFlowd is not a member of the CLI's process group
     And the agent child process is still alive
     And the run reaches a terminal state
-    And "DeFlow run --attach <runId>" from a new terminal shows the completed transcript
+    And "deflow run --attach <runId>" from a new terminal shows the completed transcript
 ```
 
 **Notes:** the daemon owns execution — _"close the browser, close the laptop lid, reboot, the run
@@ -727,11 +727,11 @@ hours-long run, which is precisely the failure mode this whole architecture exis
 > unreachable for the reason given on EPIC-18-S18: no node is ever scheduled, so no agent is ever
 > spawned. Everything else is asserted — DeFlowd survives the `SIGKILL`, its process group id
 > differs from the CLI's, `/api/health` still answers, and a second terminal's
-> `DeFlow run --attach` renders the transcript.
+> `deflow run --attach` renders the transcript.
 >
 > **Closed 2026-08-13 by [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) KAR-19.4** as to its
 > reason: nodes are scheduled and agents are spawned now, so _"the agent child process is still
-> alive"_ is **reachable** — S21's daemon is the one `DeFlow run` autostarts, which is the real
+> alive"_ is **reachable** — S21's daemon is the one `deflow run` autostarts, which is the real
 > binary and does bind `executeNodes`. It is still not asserted in
 > `packages/cli/test/integration/run-signals.test.ts`, which stops at the daemon surviving in its own
 > process group, and that gap is left standing here rather than declared closed: asserting a live
@@ -748,7 +748,7 @@ hours-long run, which is precisely the failure mode this whole architecture exis
 Feature: headless execution
 
   Scenario: resume by explicit cursor
-    Given "DeFlow run" has rendered events up to seq 41
+    Given "deflow run" has rendered events up to seq 41
     When the SSE connection is dropped
     Then the CLI reconnects with "?since=41"
     And it sends no Last-Event-ID header, because it has no browser reconnection logic to set one
@@ -780,7 +780,7 @@ Feature: headless execution
 
   Scenario Outline: the exit code is a closed contract
     Given a run whose reduced state reaches "<terminal state>"
-    When "DeFlow run" observes it with flags "<flags>"
+    When "deflow run" observes it with flags "<flags>"
     Then the process exits with code <code>
     And the final line names the reason in one sentence
 
@@ -813,7 +813,7 @@ Feature: headless execution
 
   Scenario Outline: F1.1 sources
     Given an initialised repository and a running daemon
-    When the operator runs "DeFlow run <argument>"
+    When the operator runs "deflow run <argument>"
     Then "task.submitted" provenance records source kind "<kind>" and the locator "<locator>"
     And the framing interview receives the resolved content, not the locator
     And ".DeFlow/runs/<runId>/" records the source on disk in an open format
@@ -847,7 +847,7 @@ Feature: headless execution
 
   Scenario: machine-readable output
     Given stdout is a pipe rather than a TTY
-    When the operator runs "DeFlow run --json '…'"
+    When the operator runs "deflow run --json '…'"
     Then every line of stdout parses as a single JSON object
     And no line contains an ANSI escape sequence
     And each line carries "seq", "kind" and "runId"
@@ -872,7 +872,7 @@ Feature: environment probe
     Given node >= 24, pnpm 11.18.0, git 2.45 or later
     And a writable global state dir and a writable repo-local ".DeFlow/"
     And the mock agent on the temp PATH advertising a full capability profile
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the report contains the sections
         Runtime, git, Sandboxing, Agents, Capabilities, Conformance, Auth shadowing,
         PTY and Memory layer
@@ -899,13 +899,13 @@ Feature: environment probe
 
   Scenario: nothing installed
     Given a temp PATH with node, pnpm and git and no agent binary
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Agents section reports "0 installed"
     And for each supported vendor the report names the install command
     And the Capabilities section reports that no matrix could be generated, and why
     And the Conformance section is reported as "skipped — no adapter installed", not as passing
     And the Sandboxing section still reports which permission levels the platform could honour
-    And the report states that the bundled mock agent and "DeFlow replay" need no provider
+    And the report states that the bundled mock agent and "deflow replay" need no provider
     And the exit code is 0
     And stderr is empty
 ```
@@ -927,7 +927,7 @@ Feature: environment probe
 
   Scenario Outline: the git gate
     Given a "git" shim on the temp PATH reporting "<version>"
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the git check reports "<status>"
     And the reason mentions "<mechanism>"
     And the process exits <code>
@@ -941,7 +941,7 @@ Feature: environment probe
 
   Scenario: the version string is not trusted on its own
     Given a real git 2.45 or later on PATH
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then "git merge-tree --write-tree" is actually executed against a scratch repository
     And a clean merge returns exit 0 and a conflicting merge returns exit 1
     And the report says the command was executed, not that the version implies support
@@ -967,7 +967,7 @@ Feature: environment probe
     Given the platform is Linux
     And bubblewrap is "<bwrap>" and socat is "<socat>" on PATH
     And "sysctl kernel.apparmor_restrict_unprivileged_userns" returns "<userns>"
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the honourable permission levels are "<levels>"
     And the report status is "<status>"
 
@@ -980,7 +980,7 @@ Feature: environment probe
 
   Scenario: the fix is named, and the fail-closed policy is stated
     Given bubblewrap is absent
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the report names "sudo apt install bubblewrap socat"
     And where the AppArmor restriction is in effect it names "/etc/apparmor.d/bwrap"
     And the report states that DeFlow sets "sandbox.failIfUnavailable: true" and
@@ -1007,7 +1007,7 @@ Feature: environment probe
   Scenario: the silent billing failure, made loud
     Given "ANTHROPIC_API_KEY" is present in the environment
     And the repository config selects subscription auth for the Claude provider
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Auth shadowing section names the variable "ANTHROPIC_API_KEY"
     And it names the provider whose subscription auth it shadows
     And it states which credential will actually be used
@@ -1016,7 +1016,7 @@ Feature: environment probe
     And the status is "warn", not "ok"
 
   Scenario: AR-1 holds even while reporting on auth
-    When the operator runs "DeFlow doctor" under a syscall or fs-access assertion
+    When the operator runs "deflow doctor" under a syscall or fs-access assertion
     Then no file under "~/.claude", "~/.codex" or "~/.config/gcloud" is opened
     And no auth or login subcommand's stdout is captured
     And where a vendor CLI reports a login command, doctor prints it for the operator to run
@@ -1038,8 +1038,8 @@ helpfully checks whether you are logged in by reading a token file would break i
 Feature: environment probe
 
   Scenario Outline: a mock agent wearing each vendor's capability profile
-    Given "DeFlow-mock-agent --agent-capabilities <profile>" is on the temp PATH as "<name>"
-    When the operator runs "DeFlow doctor"
+    Given "deflow-mock-agent --agent-capabilities <profile>" is on the temp PATH as "<name>"
+    When the operator runs "deflow doctor"
     Then the regenerated matrix records session.resume = <resume>
     And it records fork = <fork> and list = <list>
     And the report states the resume strategy DeFlow would use for that adapter
@@ -1079,7 +1079,7 @@ Feature: environment probe
   Scenario Outline: drift is a warning with both values
     Given a recorded manifest for "claude" at version "<recorded ver>" and sha256 "<recorded sha>"
     And the installed binary reports "<installed ver>" with sha256 "<installed sha>"
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Agents check reports "<status>"
     And where it warns, both the recorded and the installed values appear in the message
     And where it warns, the message points at "pnpm test:record" for refreshing the goldens
@@ -1108,7 +1108,7 @@ Feature: environment probe
 
   Scenario Outline: writability is tested by writing
     Given "<dir>" has mode 0500
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Runtime check reports "fail"
     And the message contains the absolute path and the errno "EACCES"
     And the exit code is 5
@@ -1134,7 +1134,7 @@ Feature: environment probe
 
   Scenario: what the memory section reports
     Given a file-backed ledger whose "artifact_fts" table exists
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Memory layer section reports FTS5 as available
     And it reports the tokenizer exactly as
         unicode61 remove_diacritics 2 tokenchars '_-.'
@@ -1143,7 +1143,7 @@ Feature: environment probe
 
   Scenario Outline: the calibration factor before and after convergence
     Given <n> recorded samples for ("<provider>", "<model>")
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the reported factor is "<reported>"
 
     Examples:
@@ -1173,7 +1173,7 @@ Feature: environment probe
 
   Scenario: an unsupported platform for the only native optional dependency
     Given the optional dependency "@lydell/node-pty" fails to load
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the PTY check reports "warn"
     And the message states that "terminal/*" degrades to a no-TTY spawn
     And the message states that the terminal capability is not advertised to agents
@@ -1186,7 +1186,7 @@ Feature: environment probe
 across all five agents probed — so a pty is needed only for DeFlow's own ACP `terminal/*`
 implementation. That makes the fallback survivable rather than fatal, which is why the dependency is
 an `optionalDependency` with a plain-`spawn` fallback and why this is a `warn` and not a `fail`. It
-is also the only native install risk left in `npx DeFlow up`.
+is also the only native install risk left in `npx deflowai up`.
 
 ---
 
@@ -1199,7 +1199,7 @@ Feature: environment probe
 
   Scenario Outline: one status model, two renderings
     Given a fixture of raw probe results containing "<mix>"
-    When "DeFlow doctor" and "DeFlow doctor --json" are both run against it
+    When "deflow doctor" and "deflow doctor --json" are both run against it
     Then both renderings report the same status for every check
     And both exit with code <code>
 
@@ -1363,19 +1363,19 @@ Feature: install verification
 
   Scenario: the exact bytes a user would get
     Given "pnpm build" and "pnpm pack:check" have passed
-    And "pnpm pack" has produced "DeFlow-0.1.0.tgz"
+    And "pnpm pack" has produced "deflowai-0.1.0.tgz"
     And a clean directory from "mktemp -d" with no node_modules above it
     When the following runs in that directory:
       | git init -b main demo                 |
       | cd demo                               |
-      | npx /path/to/DeFlow-0.1.0.tgz init    |
-      | npx /path/to/DeFlow-0.1.0.tgz up      |
+      | npx /path/to/deflowai-0.1.0.tgz init    |
+      | npx /path/to/deflowai-0.1.0.tgz up      |
     Then "GET /api/health" answers 200
     And "GET /" returns HTML
     And an asset referenced by that HTML under "/assets/" returns 200 with a JavaScript
         content type
-    And with the tarball's own "DeFlow-mock-agent" on PATH, a scripted multi-node run driven by
-        "npx /path/to/DeFlow-0.1.0.tgz run" completes and exits 0
+    And with the tarball's own "deflow-mock-agent" on PATH, a scripted multi-node run driven by
+        "npx /path/to/deflowai-0.1.0.tgz run" completes and exits 0
     And no node-gyp process was spawned during the install
     And the clean directory is removed on success, and preserved under DeFlow_KEEP_TMP=1
 ```
@@ -1386,15 +1386,15 @@ answers 200 on `/` perfectly happily, because the SPA fallback serves `index.htm
 following through to a referenced asset distinguishes "the UI shipped" from "the blank page shipped".
 
 > **Amended 2026-08-12 while implementing KAR-18.6.** The line _"a scripted multi-node run driven by
-> `npx …/DeFlow-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
+> `npx …/deflowai-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
 > shipped code path executes a submitted run** — the same limit this file already records for
 > EPIC-18-S18 (KAR-18.3): nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
 > and `POST /api/runs` stops at `task.submitted` by design (KAR-10.1). What that line is _for_ —
 > "the inlined daemon, the inlined mock agent and the shipped UI are all present in one artefact" —
 > is automated in its place, and by a stronger route than an exit code: the installed daemon spawns
-> the installed `DeFlow-mock-agent` and drives **real ACP turns** against it (an `initialize` that
+> the installed `deflow-mock-agent` and drives **real ACP turns** against it (an `initialize` that
 > regenerates the capability matrix, then the F3.4 battery, a turn per assertion), and the run
-> submitted through the installed `DeFlow run` is asserted as `task.submitted` and reported as
+> submitted through the installed `deflow run` is asserted as `task.submitted` and reported as
 > exactly that. `e2e/install-verification-broken.test.ts` proves the new assertion goes red against
 > an agent that is on `PATH` but holds no turn. The completion half stays open against the
 > orchestration wiring (EPIC-06/EPIC-10/EPIC-11) rather than being faked; the epic's Definition of
@@ -1408,7 +1408,7 @@ following through to a referenced asset distinguishes "the UI shipped" from "the
 >
 > **What that closure does not deliver**, and this scenario is where it matters most: the completed
 > run is driven against `packages/cli/dist`, not against the installed tarball **inside this
-> scenario's clean room**. This line's own `npx /path/to/DeFlow-0.1.0.tgz run` still asserts
+> scenario's clean room**. This line's own `npx /path/to/deflowai-0.1.0.tgz run` still asserts
 > `task.submitted` and reports it as exactly that. Raising it to a completed run is a change to
 > `packages/cli/scripts/verify-install/`, and it is the one thing the epic's Definition of Done still
 > keeps open here.
@@ -1517,7 +1517,7 @@ workspace it resolves; inside the tarball it does not exist.
 
 ---
 
-## EPIC-18-S47 — `DeFlow ledger snapshot` produces one consistent, sidecar-free file
+## EPIC-18-S47 — `deflow ledger snapshot` produces one consistent, sidecar-free file
 
 **Verifies:** KAR-18.7 · **Type:** Happy path · **Automated at:** integration
 
@@ -1526,7 +1526,7 @@ Feature: diagnostics
 
   Scenario: attach my ledger to this bug report
     Given a running daemon with an active run and a non-empty WAL
-    When the operator runs "DeFlow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db"
+    When the operator runs "deflow ledger snapshot <runId> --out /tmp/DeFlow-bug-1234.db"
     Then a single file exists at that path
     And no "-wal" or "-shm" sidecar exists beside it
     And "PRAGMA integrity_check" on the copy returns "ok"
@@ -1543,7 +1543,7 @@ relevant part of a bug report.
 
 ---
 
-## EPIC-18-S48 — `DeFlow status` with a live daemon, and with none at all
+## EPIC-18-S48 — `deflow status` with a live daemon, and with none at all
 
 **Verifies:** KAR-18.7 · **Type:** Happy path · **Automated at:** integration
 
@@ -1552,15 +1552,15 @@ Feature: diagnostics
 
   Scenario: a live daemon
     Given DeFlowd is running with two active runs
-    When the operator runs "DeFlow status"
+    When the operator runs "deflow status"
     Then stdout reports the pid, port, daemon_epoch and uptime
     And it reports one summary line per active run with its id, state and node counts
-    And "DeFlow status --json" reports the same values in one JSON document
+    And "deflow status --json" reports the same values in one JSON document
     And the exit code is 0
 
   Scenario: no daemon at all
     Given no ".DeFlow/daemon.json" exists
-    When the operator runs "DeFlow status"
+    When the operator runs "deflow status"
     Then stdout says no daemon is running
     And it names the command to start one
     And the exit code is 0
@@ -1572,7 +1572,7 @@ command the lease-refusal message in EPIC-18-S8 points at.
 
 ---
 
-## EPIC-18-S49 — `DeFlow status` after a SIGKILL reports `stale`, and signals nothing
+## EPIC-18-S49 — `deflow status` after a SIGKILL reports `stale`, and signals nothing
 
 **Verifies:** KAR-18.7 · **Type:** Recovery · **Automated at:** integration
 
@@ -1581,16 +1581,16 @@ Feature: diagnostics
 
   Scenario: the daemon.json outlived its daemon
     Given DeFlowd was killed with SIGKILL, leaving ".DeFlow/daemon.json" behind
-    When the operator runs "DeFlow status"
+    When the operator runs "deflow status"
     Then stdout reports the daemon as "stale" and names ".DeFlow/daemon.json"
-    And it states that "DeFlow up" will take over cleanly
+    And it states that "deflow up" will take over cleanly
     And no signal is sent to the recorded pid
     And the exit code is 0
 
   Scenario: the recorded pid has been recycled
     Given ".DeFlow/daemon.json" records a pid now held by an unrelated process
     And the recorded start time does not match that process
-    When the operator runs "DeFlow status"
+    When the operator runs "deflow status"
     Then the daemon is reported as "stale", not as running
     And the unrelated process is untouched
 ```
@@ -1614,7 +1614,7 @@ Feature: agent adapters
     And an "npm" shim on the temp PATH that records its argv and exits 0, creating
         "<tmp>/bin/claude-agent-acp"
     And stdout is a TTY
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the Agents section reports claude as "adapter-missing" with status "warn"
     And the check names "<tmp>/bin/claude" as the resolved vendor CLI
     And it names "@agentclientprotocol/claude-agent-acp" as the missing ACP adapter
@@ -1685,8 +1685,8 @@ Feature: agent adapters
   Scenario: the sentence that reads as a bug
     Given a "claude" executable on the temp PATH
     And no "claude-agent-acp" on that PATH
-    When the operator runs "DeFlow doctor --json"
-    And the operator runs "DeFlow doctor" with stdout piped to a file
+    When the operator runs "deflow doctor --json"
+    And the operator runs "deflow doctor" with stdout piped to a file
     Then the string "claude is not installed" appears in neither stdout, nor stderr, nor the
         JSON document
     And each rendering names the resolved vendor CLI path and the missing adapter package
@@ -1694,7 +1694,7 @@ Feature: agent adapters
 
   Scenario: the sentence is still correct when it is true
     Given a temp PATH with neither "claude" nor "claude-agent-acp"
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the claude check does say the vendor CLI is not installed
     And it names "npm install -g @agentclientprotocol/claude-agent-acp" as the install command
     And the exit code is 0
@@ -1718,7 +1718,7 @@ Feature: agent adapters
     Given "claude" and "codex" on the temp PATH and neither bridge installed
     And an npm shim that records its argv and exits 0
     And stdout is not a TTY
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then no prompt is written to stdout
     And the npm shim was invoked once per missing adapter and no more
     And each install result carries the command, the exit code and the elapsed milliseconds
@@ -1726,7 +1726,7 @@ Feature: agent adapters
 
   Scenario: --json is machine output and must never block
     Given the same machine, with stdin closed
-    When the operator runs "DeFlow doctor --json --fix"
+    When the operator runs "deflow doctor --json --fix"
     Then the process does not read from stdin and does not block
     And stdout parses as exactly one JSON document
     And the document carries a per-provider install result
@@ -1735,7 +1735,7 @@ Feature: agent adapters
 
   Scenario: no TTY and no --fix installs nothing
     Given the same machine with stdout piped
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then no npm process is spawned
     And each adapter-missing provider is reported as "warn" with the command to run
     And the exit code is 0
@@ -1759,7 +1759,7 @@ Feature: agent adapters
   Scenario Outline: an install that does not work says so
     Given "claude" on the temp PATH and no "claude-agent-acp"
     And an npm shim that exits <code> printing "<stderr>" on stderr
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then the Agents section reports claude as "adapter-missing" after the attempt
     And the check status is "warn"
     And the report contains "<stderr>" verbatim, not a paraphrase of it
@@ -1775,7 +1775,7 @@ Feature: agent adapters
 
   Scenario: the state after a failed install is resolved, not assumed
     Given an npm shim that exits 0 but installs nothing
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then claude is still reported as "adapter-missing"
     And the report states that the command reported success and the adapter is still not resolvable
 ```
@@ -1798,7 +1798,7 @@ Feature: agent adapters
   Scenario Outline: the answer that must be safe by default
     Given "claude" on the temp PATH and no "claude-agent-acp"
     And stdout is a TTY
-    When the operator runs "DeFlow doctor" and answers "<answer>"
+    When the operator runs "deflow doctor" and answers "<answer>"
     Then no child process is spawned for the install
     And claude is reported as "adapter-missing" with status "warn"
     And the report prints "npm install -g @agentclientprotocol/claude-agent-acp" for the
@@ -1814,7 +1814,7 @@ Feature: agent adapters
   Scenario: the exit-code contract is untouched by any of this
     Given a machine whose git is older than 2.38, so one check is a "fail"
     And "claude" on the temp PATH and no "claude-agent-acp"
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then the exit code is 5 because of the git check and for no other reason
     And an adapter-missing provider, a declined offer and a failed install each contribute "warn"
 ```
@@ -1837,7 +1837,7 @@ Feature: agent adapters
     Given "claude" on the temp PATH and no "claude-agent-acp"
     And an npm shim that exits 1 printing "npm error network request to
         https://registry.npmjs.org/... failed, reason: getaddrinfo ENOTFOUND"
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then the offer was still made and the attempt was still reported
     And the failure names the network error as npm reported it
     And the report states that the adapter can be installed later from a machine with egress
@@ -1846,7 +1846,7 @@ Feature: agent adapters
 
   Scenario: nothing is installed for a vendor that is not on the machine
     Given a temp PATH with no "gemini", no "copilot", no "opencode", no "codex" and no "claude"
-    When the operator runs "DeFlow doctor --fix"
+    When the operator runs "deflow doctor --fix"
     Then no npm process is spawned at all
     And every provider is reported as "not-installed" with its own install hint
     And the exit code is 0
@@ -1870,7 +1870,7 @@ Feature: terminal presentation
   Scenario: doctor on a machine with one thing wrong
     Given a TTY 100 columns wide
     And a machine whose sandbox section warns and whose other checks are "ok"
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then each section heading is preceded by a blank line and its checks are indented under it
     And within a section every check's status begins at the same column
     And the last block of the report is the summary
@@ -1881,7 +1881,7 @@ Feature: terminal presentation
 
   Scenario: nothing is wrong, so there is nothing to do next
     Given a fully provisioned machine
-    When the operator runs "DeFlow doctor"
+    When the operator runs "deflow doctor"
     Then the summary reports the overall status "ok" and the per-state counts
     And it names no next action
     And the exit code is 0
@@ -1983,11 +1983,11 @@ Feature: terminal presentation
 
     Examples:
       | command                                     |
-      | DeFlow init                                 |
-      | DeFlow doctor                               |
-      | DeFlow status                               |
-      | DeFlow run "task" --no-wait                 |
-      | DeFlow ledger snapshot <runId> --out <path> |
+      | deflow init                                 |
+      | deflow doctor                               |
+      | deflow status                               |
+      | deflow run "task" --no-wait                 |
+      | deflow ledger snapshot <runId> --out <path> |
 ```
 
 **Notes:** the exit-code clause is not padding. This story rewrites output for five commands whose
@@ -2049,9 +2049,9 @@ Feature: terminal presentation
 
     Examples:
       | command             | golden                   |
-      | DeFlow doctor --json| doctor.golden.json       |
-      | DeFlow status --json| status.golden.json       |
-      | DeFlow run --json   | run.golden.ndjson        |
+      | deflow doctor --json| doctor.golden.json       |
+      | deflow status --json| status.golden.json       |
+      | deflow run --json   | run.golden.ndjson        |
 
   Scenario: the failure this scenario exists to catch
     Given the summary block is appended to every rendered output including --json

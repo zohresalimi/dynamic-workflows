@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
  *
  * A capture (`{"t":…,"dir":…,"b64":…}`) is what a tee in the client's transport
  * writes: base64 chunks, labelled from the client's side. A replay recording
- * (`{"t":…,"dir":…,"msg":…}`) is what `DeFlow-mock-agent --replay` reads:
+ * (`{"t":…,"dir":…,"msg":…}`) is what `deflow-mock-agent --replay` reads:
  * whole frames, labelled from the agent's side. This is the one-way door
  * between them, kept in the repo so the goldens under `recordings/` are
  * reproducible rather than hand-edited — and so a reviewer can read the frames

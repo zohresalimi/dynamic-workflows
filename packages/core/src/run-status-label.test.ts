@@ -1,7 +1,7 @@
 /**
  * KAR-19.1 AC6 — one status string, three surfaces.
  *
- * On 2026-08-12 the CLI said `task submitted`, `DeFlow status` said
+ * On 2026-08-12 the CLI said `task submitted`, `deflow status` said
  * `created — no nodes yet` and the UI said `No plan yet`, about the same run at
  * the same instant, and each was locally defensible. Three independently
  * defensible descriptions of one state is how an operator concludes the problem

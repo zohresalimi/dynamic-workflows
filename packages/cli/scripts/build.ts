@@ -89,7 +89,7 @@ for (const stale of readdirSync(outDir, { withFileTypes: true })) {
 step('tsdown (DeFlow)', 'pnpm', ['exec', 'tsdown', '--out-dir', outDir], cliDir);
 
 // The exec bit. npm sets it on install from the `bin` map, so this is belt and
-// braces — but `npx ./DeFlow-0.1.0.tgz` and a plain `./dist/bin.mjs` both read
+// braces — but `npx ./deflow-0.1.0.tgz` and a plain `./dist/bin.mjs` both read
 // the mode off the file, and a bin that is not executable is a bug report about
 // permissions rather than about DeFlow.
 for (const bin of BINS) {

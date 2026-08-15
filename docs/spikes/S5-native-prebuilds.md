@@ -28,7 +28,7 @@ Two questions with one harness.
    a tarball is not a binary that has run.
 2. **Does `@lydell/node-pty@1.2.0-beta.14` cover the platform matrix?** It is a beta of a community
    fork and the only native dependency in the published package, which makes it the last remaining
-   install risk for `npx DeFlow up` (NF6, A0-6).
+   install risk for `npx deflowai up` (NF6, A0-6).
 
 And one number that decides a product trade-off: every fsync-sensitive figure in
 [05-durable-execution.md](../05-durable-execution.md) — **979 ev/s** at `synchronous = FULL` against
@@ -168,7 +168,7 @@ the distribution, not the runtime. `node:24-slim` is Debian **bookworm** (glibc 
 **Fallback taken — a documented prerequisite, not a workaround.** DeFlow's Linux support statement
 is **glibc ≥ 2.38**: Debian 13 (trixie), Ubuntu 24.04 and later, or any musl distribution. Debian 12
 and Ubuntu 22.04 (glibc 2.35) are **not** supported by `better-sqlite3@13.0.2` as pinned, and
-`npx DeFlow up` will fail there at first ledger open, **not** at install — which makes the error
+`npx deflowai up` will fail there at first ledger open, **not** at install — which makes the error
 arrive late and read as a DeFlow bug. This is a real NF6 exposure, and it is the one finding here
 that costs someone work later:
 
@@ -250,7 +250,7 @@ in any workspace manifest or in the catalog.
   `fullfsync = 1` correction on macOS (new EPIC-03 work, not a fallback).
 - **`linux-glibc-node24` (Debian bookworm, glibc 2.36): fallback taken — a documented prerequisite,
   not a workaround.** DeFlow's Linux support statement becomes **glibc ≥ 2.38** (Debian 13/Ubuntu
-  24.04+, or any musl distribution). Affected downstream stories: **KAR-18.4** (`DeFlow doctor`'s
+  24.04+, or any musl distribution). Affected downstream stories: **KAR-18.4** (`deflow doctor`'s
   runtime-prerequisite checks must name the glibc floor so the raw `dlopen` failure reads as a
   sentence, not a stack trace) and **KAR-18.6** (install verification / the published README must
   state the floor explicitly — "no toolchain required" and "runs anywhere" are different claims).

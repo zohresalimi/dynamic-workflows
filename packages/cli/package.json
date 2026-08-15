@@ -1,5 +1,5 @@
 {
-  "name": "DeFlow",
+  "name": "deflowai",
   "version": "0.0.0",
   "type": "module",
   "description": "The one published package: DeFlow's bins, the inlined daemon and the built UI.",
@@ -7,9 +7,10 @@
     "node": ">=24"
   },
   "bin": {
-    "DeFlow": "./dist/bin.mjs",
-    "DeFlow-mcp": "./dist/mcp.mjs",
-    "DeFlow-mock-agent": "./dist/mock-agent.mjs"
+    "deflow": "./dist/bin.mjs",
+    "dfl": "./dist/bin.mjs",
+    "deflow-mcp": "./dist/mcp.mjs",
+    "deflow-mock-agent": "./dist/mock-agent.mjs"
   },
   "files": [
     "dist"

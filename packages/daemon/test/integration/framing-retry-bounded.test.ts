@@ -9,7 +9,7 @@
  * ever. The ledger of `run_20260813T110608Z_379fc8` therefore held
  * `provider.probed`, `provider.probed`, `task.submitted` and **nothing else**
  * after eight minutes of identical failing turns, so neither the UI nor
- * `DeFlow status` nor a `sqlite3` session six weeks later could have shown what
+ * `deflow status` nor a `sqlite3` session six weeks later could have shown what
  * was wrong.
  *
  * The three properties under test are the three coats of that one defect:

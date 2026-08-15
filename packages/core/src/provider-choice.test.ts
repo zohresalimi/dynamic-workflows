@@ -20,7 +20,7 @@ import {
 
 const choice = (over: Partial<ProviderChoiceFacts> = {}): ProviderChoiceFacts => ({
   provider: 'mock',
-  binaryPath: '/tmp/deflow-bin/DeFlow-mock-agent',
+  binaryPath: '/tmp/deflow-bin/deflow-mock-agent',
   route: 'shim',
   ...over,
 });
@@ -29,7 +29,7 @@ suite('announceProviderChoice — the three facts, in one line', () => {
   it('names the provider, the absolute binary path and the route', () => {
     const line = announceProviderChoice(choice());
     expect(line).toContain('mock');
-    expect(line).toContain('/tmp/deflow-bin/DeFlow-mock-agent');
+    expect(line).toContain('/tmp/deflow-bin/deflow-mock-agent');
     expect(line).toContain('exec shim');
   });
 

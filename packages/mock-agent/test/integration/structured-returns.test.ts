@@ -12,7 +12,7 @@
  * property of a generator written to be obviously correct.
  *
  * **This file does not verify EPIC-19-S44**, though it claimed to until the gate
- * read it. S44 is the acceptance case — `DeFlow run --file spec.md` on a machine
+ * read it. S44 is the acceptance case — `deflow run --file spec.md` on a machine
  * with no vendor CLI, asserted against the on-disk ledger — and nothing here
  * runs the command or opens a ledger. What it settles is the capability S44
  * *depends on*: that the binary honours the flag its registry entry declares.
@@ -34,7 +34,7 @@ import {
 } from '../../src/structured.ts';
 import { spawnMockAgent } from '../support/harness.ts';
 
-/** The repository's own emitted documents — the bytes `DeFlow init` copies. */
+/** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
 const schemaFile = (schemaId: string): string => join(SCHEMAS_DIR, `${schemaId}.json`);

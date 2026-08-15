@@ -1,5 +1,5 @@
 /**
- * Fixtures for the `DeFlow doctor` specs (KAR-18.4).
+ * Fixtures for the `deflow doctor` specs (KAR-18.4).
  *
  * Real executables on a temp `PATH`, never a mocked module (docs/14 §3.3).
  * Three of them, and each exists because the check it drives must not be

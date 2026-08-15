@@ -1,6 +1,6 @@
 /**
  * KAR-16.1 AC2 — the bootstrap token, end to end: a real DeFlowd serving a real
- * built SPA, opened by a real Chromium at the URL `DeFlow up` prints.
+ * built SPA, opened by a real Chromium at the URL `deflow up` prints.
  *
  * Verifies: EPIC-16-S2 (scenarios 1, 2 and 4) · AC2, AC3
  *
@@ -111,7 +111,7 @@ afterAll(async () => {
   await rm(UI_DIR, { recursive: true, force: true });
 });
 
-suite('EPIC-16-S2 — the URL DeFlow up prints', () => {
+suite('EPIC-16-S2 — the URL deflow up prints', () => {
   it('stores the token, strips the fragment, and sends it as a header', async () => {
     const { page, sent } = await watchedPage();
     try {
@@ -181,7 +181,7 @@ suite('EPIC-16-S2 — a second tab opened without the fragment (AC3)', () => {
       await page.waitForLoadState('networkidle');
 
       const text = await page.textContent('body');
-      expect(text).toContain('DeFlow up');
+      expect(text).toContain('deflow up');
       expect(text).toMatch(/paste/i);
 
       // Not a spinner, not a blank page, and — the one that matters — not a

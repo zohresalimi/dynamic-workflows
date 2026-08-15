@@ -157,8 +157,8 @@ export function packGoodTarball(options: PackOptions = {}): PackedTarball {
     must('pnpm build', run('node', ['packages/cli/scripts/build.ts'], repoRoot));
   }
   if (options.skipPackCheck !== true) {
-    must('pnpm pack:check', run('pnpm', ['--filter', 'DeFlow', 'exec', 'publint'], repoRoot));
-    must('attw --pack', run('pnpm', ['--filter', 'DeFlow', 'exec', 'attw', '--pack'], repoRoot));
+    must('pnpm pack:check', run('pnpm', ['--filter', 'deflow', 'exec', 'publint'], repoRoot));
+    must('attw --pack', run('pnpm', ['--filter', 'deflow', 'exec', 'attw', '--pack'], repoRoot));
   }
   const destDir = options.destDir ?? mkdtempSync(join(tmpdir(), 'DeFlow-pack-'));
   const packed = must(
@@ -311,9 +311,24 @@ export interface CliProcess {
   readonly stop: () => Promise<void>;
 }
 
+/** The names the published `bin` map declares (KAR-20.1 AC1). */
+export type InstalledBin = 'deflow' | 'dfl' | 'deflow-mcp' | 'deflow-mock-agent';
+
+/**
+ * All of them, in `package.json`'s own order — so a spec can iterate the bins
+ * rather than naming three of them and forgetting the fourth, which is how
+ * `deflow-mcp` went unspawned by anything for a whole story.
+ */
+export const INSTALLED_BINS: readonly InstalledBin[] = [
+  'deflow',
+  'dfl',
+  'deflow-mcp',
+  'deflow-mock-agent',
+];
+
 export interface SpawnInstalledOptions {
   readonly tgz: string;
-  readonly bin: 'DeFlow' | 'DeFlow-mock-agent' | 'DeFlow-mcp';
+  readonly bin: InstalledBin;
   readonly argv: readonly string[];
   readonly install: CliInstall;
   /** Directories prepended to PATH, before node's own and git's. */
@@ -323,6 +338,37 @@ export interface SpawnInstalledOptions {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The clean room's whole `PATH`: whatever the caller asked for, then node's
+ * own directory, git's and `sh`'s — and nothing else, which is the property
+ * every "clean room" claim in this file rests on.
+ *
+ * One definition rather than one per spawn helper, because a second copy that
+ * quietly gained the machine's real `PATH` would make every one of those
+ * claims false without failing anything.
+ */
+export function cleanRoomPath(binDirs: readonly string[] = []): string {
+  return [...binDirs, nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
+}
+
+/** The environment a clean-room child gets: the room's own directories, and no inheritance. */
+export function cleanRoomEnv(
+  install: CliInstall,
+  extra?: NodeJS.ProcessEnv,
+  binDirs?: readonly string[],
+): NodeJS.ProcessEnv {
+  return {
+    PATH: cleanRoomPath(binDirs),
+    HOME: install.dataDir,
+    DeFlow_DATA_DIR: install.dataDir,
+    DeFlow_LOG_LEVEL: 'silent',
+    DeFlow_DEV: '0',
+    BROWSER: 'none',
+    npm_config_cache: install.npmCacheDir,
+    ...extra,
+  };
+}
 
 /**
  * The real bytes, run the way a user runs them: `npm exec --package=<tgz> --
@@ -337,23 +383,13 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export function spawnInstalled(options: SpawnInstalledOptions): CliProcess {
   const out: string[] = [];
   const err: string[] = [];
-  const path = [...(options.binDirs ?? []), nodeOnlyDir(), gitDir(), systemToolsDir()].join(':');
 
   const child = spawn(
     join(dirname(process.execPath), 'npx'),
     ['--yes', `--package=${options.tgz}`, '--', options.bin, ...options.argv],
     {
       cwd: options.cwd ?? options.install.repoDir,
-      env: {
-        PATH: path,
-        HOME: options.install.dataDir,
-        DeFlow_DATA_DIR: options.install.dataDir,
-        DeFlow_LOG_LEVEL: 'silent',
-        DeFlow_DEV: '0',
-        BROWSER: 'none',
-        npm_config_cache: options.install.npmCacheDir,
-        ...options.env,
-      },
+      env: cleanRoomEnv(options.install, options.env, options.binDirs),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
@@ -393,12 +429,12 @@ export type DaemonOutcome = 'absent' | 'stopped' | 'killed' | 'refused';
 /**
  * Stops the daemon recorded in `<dataDir>/daemon.json`, by pid.
  *
- * Killing the npx child is not enough and is not the same thing. `DeFlow up`
+ * Killing the npx child is not enough and is not the same thing. `deflow up`
  * is reached through npx — on Linux through an `sh -c` wrapper — and the
  * signal does not always arrive at the process that holds the port, the
  * `flock` and the ledger. What always identifies it is the pid the daemon
  * itself wrote down, which is exactly how `e2e/run.test.ts` stops the daemon
- * `DeFlow run` autostarts.
+ * `deflow run` autostarts.
  *
  * A release gate that leaves a listening daemon and a held lock on the machine
  * has not finished, whatever its exit code says — so this escalates: SIGTERM,
@@ -448,7 +484,58 @@ export async function stopRecordedDaemon(
   return (await waitFor(Date.now() + timeoutMs)) ? 'killed' : 'refused';
 }
 
-/** Runs a `DeFlow` subcommand to completion and returns its result. */
+/**
+ * Where `<bin>` resolves **from inside the clean-room install** — the path a
+ * shell handed the augmented `PATH` would run, asked with `command -v` rather
+ * than assembled here from what npm's cache layout is believed to be.
+ *
+ * `''` when the name resolves to nothing, which is an answer rather than a
+ * failure: EPIC-20-S2's "and no DeFlow on PATH beforehand" needs a resolver
+ * that can say "nothing", and one that threw would have to be trusted instead
+ * of read.
+ *
+ * The command is `sh` rather than one of the package's own bins on purpose.
+ * `npm exec --package=<tgz> -- <cmd>` prepends the installed package's
+ * `node_modules/.bin` to `PATH` and then runs `<cmd>` from that `PATH`,
+ * whatever `<cmd>` is — so this asks the *same* resolution step that resolves
+ * `deflow` itself, instead of asking a different question and hoping the two
+ * agree.
+ */
+export function resolveInstalledBin(options: {
+  readonly tgz: string;
+  readonly bin: InstalledBin;
+  readonly install: CliInstall;
+}): string {
+  const child = spawnSync(
+    join(dirname(process.execPath), 'npx'),
+    ['--yes', `--package=${options.tgz}`, '--', 'sh', '-c', `command -v ${options.bin}`],
+    {
+      cwd: options.install.repoDir,
+      encoding: 'utf8',
+      env: cleanRoomEnv(options.install),
+    },
+  );
+  return child.status === 0 ? child.stdout.trim() : '';
+}
+
+/**
+ * What `<name>` resolves to on the clean room's `PATH` with **no package
+ * installed** — the precondition, measured rather than assumed.
+ *
+ * Without this, "the tarball's bins resolved" is compatible with "the author
+ * had `deflow` installed globally and the clean room found that one", which is
+ * precisely the failure KAR-18.6's `nodeOnlyDir` was written to stop and which
+ * no assertion had ever observed.
+ */
+export function resolveOnCleanRoomPath(name: string): string {
+  const child = spawnSync(join(systemToolsDir(), 'sh'), ['-c', `command -v ${name}`], {
+    encoding: 'utf8',
+    env: { PATH: cleanRoomPath() },
+  });
+  return child.status === 0 ? child.stdout.trim() : '';
+}
+
+/** Runs a `deflow` subcommand to completion and returns its result. */
 export async function runInstalled(
   options: Omit<SpawnInstalledOptions, 'argv'> & { readonly argv: readonly string[] },
 ): Promise<Ran> {
@@ -464,12 +551,12 @@ export async function waitForUrl(cli: CliProcess, timeoutMs = 30_000): Promise<s
     if (match !== null) return match[0];
     if (cli.child.exitCode !== null) {
       throw new Error(
-        `DeFlow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
+        `deflow up exited with ${cli.child.exitCode} before printing a URL:\n${cli.stderr()}`,
       );
     }
     await sleep(50);
   }
-  throw new Error(`DeFlow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
+  throw new Error(`deflow up printed no URL within ${timeoutMs} ms:\n${cli.stderr()}`);
 }
 
 /**
@@ -525,7 +612,7 @@ export interface InstalledAgentTurns {
  * criterion gives as its reason: *"the inlined daemon, the inlined mock agent
  * and the shipped UI are all present in one artefact"*.
  *
- * `npx <tgz> doctor` with the tarball's own `DeFlow-mock-agent` shimmed onto
+ * `npx <tgz> doctor` with the tarball's own `deflow-mock-agent` shimmed onto
  * `PATH` makes the **installed daemon spawn the installed agent** and hold
  * real ACP conversations with it: an `initialize` whose response is what the
  * capability matrix is regenerated from (AR-5 — the matrix is never a
@@ -552,7 +639,7 @@ export interface InstalledAgentTurns {
  * gate red for a reason it is not looking at.
  *
  * **It counts one provider's battery, and it is the shimmed one.** KAR-19.7 put
- * a `mock` entry in `PROVIDER_SPECS`, and the bundled `DeFlow-mock-agent`
+ * a `mock` entry in `PROVIDER_SPECS`, and the bundled `deflow-mock-agent`
  * resolves under its own name inside every installed tarball — so from this
  * story on, doctor always has at least one agent that answers. Reading
  * *whichever* conformance row carried a count would therefore make this gate
@@ -568,7 +655,7 @@ export async function assertInstalledAgentDrivesTurns(options: {
 }): Promise<InstalledAgentTurns> {
   const doctor = await runInstalled({
     tgz: options.tgz,
-    bin: 'DeFlow',
+    bin: 'deflow',
     argv: ['doctor', '--json'],
     install: options.install,
     binDirs: [options.binDir],
@@ -665,13 +752,13 @@ export async function shimMockAgent(binDir: string, mockAgentBin: string): Promi
   return path;
 }
 
-/** The installed tarball's own `DeFlow-mock-agent`, resolved off the npx cache
+/** The installed tarball's own `deflow-mock-agent`, resolved off the npx cache
  * this process just populated by running a `DeFlow` subcommand once. */
 export async function findInstalledMockAgent(npmCacheDir: string): Promise<string> {
   const npxRoot = join(npmCacheDir, '_npx');
   const entries = await readdir(npxRoot);
   for (const entry of entries) {
-    const candidate = join(npxRoot, entry, 'node_modules/.bin/DeFlow-mock-agent');
+    const candidate = join(npxRoot, entry, 'node_modules/.bin/deflow-mock-agent');
     try {
       statSync(candidate);
       return candidate;
@@ -680,6 +767,6 @@ export async function findInstalledMockAgent(npmCacheDir: string): Promise<strin
     }
   }
   throw new Error(
-    `no DeFlow-mock-agent found under ${npxRoot} — did a DeFlow subcommand run first?`,
+    `no deflow-mock-agent found under ${npxRoot} — did a DeFlow subcommand run first?`,
   );
 }

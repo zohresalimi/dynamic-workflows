@@ -3,7 +3,7 @@
  *
  * `run-chain.ts` has taken a `FramingAgent`, a `ReconAgent` and a
  * `PlannerAgent` since it shipped, and every spec that drove it supplied
- * scripted ones. **Nothing in `src/` implemented one**, so `DeFlow up` had
+ * scripted ones. **Nothing in `src/` implemented one**, so `deflow up` had
  * nothing to hand `createRunChain` and an operator's run parked on its framing
  * wake — the 2026-08-12 failure this epic exists to remove. This file is the
  * missing implementation and nothing else: it spawns one child, hands it a
@@ -20,7 +20,7 @@
  * here rather than passing by construction.
  *
  * **Two dialects, both real.** `document` is one JSON document on stdout — what
- * the bundled `DeFlow-mock-agent` writes, and what a machine with no vendor CLI
+ * the bundled `deflow-mock-agent` writes, and what a machine with no vendor CLI
  * has. `stream-json` / `jsonl` carry the return inside a result line, which is
  * `@DeFlow/adapters`' own `parseShimLine` + `shimStructuredOutput` and is not
  * re-implemented here. Both branches are exercised against real binaries in

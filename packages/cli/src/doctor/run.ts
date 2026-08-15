@@ -1,5 +1,5 @@
 /**
- * `DeFlow doctor` (KAR-18.4) — the whole command, minus the process it runs in.
+ * `deflow doctor` (KAR-18.4) — the whole command, minus the process it runs in.
  *
  * Returns rather than exits, and never writes to a stream itself: `bin.ts`
  * owns the process, and a function that called `process.exit` could not be
@@ -171,7 +171,7 @@ async function collect(
               error instanceof Error ? error.message : String(error)
             }. That is a bug in doctor rather than a fact about this machine, and it is reported ` +
             'here rather than thrown so the other categories still answer.',
-          action: "run 'DeFlow doctor --json' and attach its output to a bug report",
+          action: "run 'deflow doctor --json' and attach its output to a bug report",
         },
       ],
     };
@@ -311,7 +311,7 @@ async function agentPass(input: AgentsInput): Promise<AgentsResult> {
     const detail = `the provider pass could not be completed: ${
       error instanceof Error ? error.message : String(error)
     }. Every section it feeds is reported as failed rather than left empty.`;
-    const action = "run 'DeFlow doctor --json' and attach its output to a bug report";
+    const action = "run 'deflow doctor --json' and attach its output to a bug report";
     return {
       agents: [{ id: 'agents.error', status: 'fail', detail, action }],
       capabilities: [{ id: 'capabilities.error', status: 'fail', detail, action }],

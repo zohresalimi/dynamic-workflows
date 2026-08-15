@@ -84,7 +84,7 @@ export {
   vendorTranscriptPath,
 } from './compaction.ts';
 // KAR-05.7 — Layer B: the eight-assertion behavioural contract, as data rather
-// than as test bodies, so `DeFlow doctor` can run it against installed CLIs.
+// than as test bodies, so `deflow doctor` can run it against installed CLIs.
 export type {
   AdapterFactory,
   ConformanceAdapter,

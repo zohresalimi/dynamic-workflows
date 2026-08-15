@@ -403,7 +403,7 @@ suite('the tokenizer cannot be changed in place — a migration rebuilds (AC6, E
   });
 });
 
-suite('DeFlow doctor: FTS5 availability and the live tokenizer string (AC7)', () => {
+suite('deflow doctor: FTS5 availability and the live tokenizer string (AC7)', () => {
   it('reports the table present and the exact tokenize string in force', ({ tmp }) => {
     const db = openLedger(tmp);
     try {

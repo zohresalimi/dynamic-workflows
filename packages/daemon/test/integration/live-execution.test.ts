@@ -86,7 +86,7 @@ import { loadSchemaDirectory } from '../../src/schema-store.ts';
 import { approveSpec } from '../../src/spec/gate.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
 
-/** The repository's own emitted documents — the bytes `DeFlow init` copies. */
+/** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
 const T0 = 1_754_470_000_000;

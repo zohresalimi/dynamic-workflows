@@ -32,7 +32,7 @@ Two P0/P1 features fall out of this for free, and would otherwise each be a besp
 - **Plan-evolution scrubber (F10.2)** — "show me version N" is `replayTo(planVersionSeq[N])`.
 - **Run replay (F10.10)** — "watch it unfold" is feeding the same reducers at a chosen rate.
 
-The same property is also the test harness: `DeFlow replay fixtures/three-patches.jsonl --speed 20x`
+The same property is also the test harness: `deflow replay fixtures/three-patches.jsonl --speed 20x`
 serves the normal `/api/stream` endpoint from a recorded run, so all nine views are developable with
 no credentials, no child processes, no cost and no three-hour wait. See
 [local development](./03-local-development.md) and [testing strategy](./14-testing-strategy.md).
@@ -742,7 +742,7 @@ what lands in the initial chunk.
 | `echarts`          | ~150 KB with explicit registration | P1 only, lazy, cross-run dashboard route                                                  |
 
 Serving is local, so transfer time is near zero and the budget is really about **parse and execute**
-time. Measure with the 400-node stress fixture through `DeFlow replay`, not with an empty run.
+time. Measure with the 400-node stress fixture through `deflow replay`, not with an empty run.
 
 Nothing in this stack is Chrome-only, which keeps the M3 Tauri shell open: Tauri's WebView is
 WKWebView on macOS and WebKitGTK on Linux, and SSE, WebGL, Web Workers and WebStreams are all
@@ -776,7 +776,7 @@ available on both.
 - **Do not import the bundled `shiki` entry.**
 - **Do not encode the seven node states by colour alone.**
 - **Do not set up Storybook or Histoire.** Histoire is stalled at `1.0.0-beta.1` (2026-01-07), and
-  Storybook is a second build pipeline plus a second set of fixtures. The `DeFlow replay` harness is
+  Storybook is a second build pipeline plus a second set of fixtures. The `deflow replay` harness is
   strictly better: it exercises real data through the real store through the real components, and it
   doubles as the internal demo tool.
 - **Do not upgrade to Vue 3.6** until Vue Flow publishes a release naming it.
