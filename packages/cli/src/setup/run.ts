@@ -35,7 +35,7 @@ import { installCommand, providerVerdict } from '@DeFlow/adapters';
 import type { Clock } from '@DeFlow/core';
 import { pathRoots, resolveDataDir, systemClock } from '@DeFlow/daemon';
 import { spawn } from 'node:child_process';
-import { accessSync, constants, mkdirSync, rmSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import process from 'node:process';
 import { COMMAND } from '../command-name.ts';
@@ -407,6 +407,24 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
         '"npm prefix -g" did not answer with a directory, so where the command was installed is ' +
         'unknown and nothing could be put on PATH. Run "npm prefix -g" yourself to see what it says.',
       action: 'npm prefix -g',
+    });
+  } else if (!existsSync(binDir)) {
+    // The directory npm named is an observation too, not a string to be
+    // trusted. Found by performing AC15: under a path with a UUID-shaped
+    // segment, npm 11 redacts its *own* output, so "npm prefix -g" answered
+    // with a directory that had never existed. Appending a PATH line pointing
+    // at it would leave the operator's next shell exactly where 2026-08-12
+    // left them, having edited a dotfile to get there.
+    record({
+      id: 'link',
+      state: 'fail',
+      detail:
+        `"npm prefix -g" named ${binDir}, but that directory does not exist, so adding it to ` +
+        'your PATH would achieve nothing and nothing was written to a shell profile. Run ' +
+        '"npm prefix -g" yourself: if it answers with a path you do not recognise, npm is ' +
+        'misreporting its own prefix and the install went somewhere else.',
+      action: 'npm prefix -g',
+      data: { binDir, exists: false, wrote: false },
     });
   } else if (onPath) {
     record({

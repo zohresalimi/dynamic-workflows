@@ -73,11 +73,20 @@ interface MachineOptions {
   /** Put the installed binary in the prefix before the run, so that the run is
    * a fixpoint and two runs of it produce byte-identical reports. */
   readonly preinstalled?: boolean;
+  /**
+   * Make `npm prefix -g` answer with a directory that does not exist, while
+   * the install itself still succeeds — observed on 2026-08-15, see the suite
+   * at the bottom of this file.
+   */
+  readonly prefixDoesNotExist?: boolean;
 }
 
 interface Machine {
   readonly home: string;
   readonly binDir: string;
+  /** The bin directory `npm prefix -g` *claims*, which is `binDir` unless a
+   * spec staged them apart. */
+  readonly reportedBinDir: string;
   readonly toolsDir: string;
   readonly dataDir: string;
   readonly cwd: string;
@@ -123,7 +132,10 @@ async function machine(name: string, options: MachineOptions = {}): Promise<Mach
 
   await writeFakeNpmForSetup(toolsDir, {
     log: npmLog,
-    prefix,
+    // The reported prefix and the real one are separate inputs on purpose: npm
+    // answering with a directory nobody created is a staged fact here rather
+    // than a thing that happens on somebody else's laptop.
+    prefix: options.prefixDoesNotExist === true ? join(tmp, `${name}-ghost-prefix`) : prefix,
     installs: options.installsNothing === true ? {} : { [join(binDir, 'deflow')]: installed },
     failure: options.npmFailure,
   });
@@ -142,6 +154,8 @@ async function machine(name: string, options: MachineOptions = {}): Promise<Mach
   return {
     home,
     binDir,
+    reportedBinDir:
+      options.prefixDoesNotExist === true ? join(tmp, `${name}-ghost-prefix`, 'bin') : binDir,
     toolsDir,
     dataDir,
     cwd,
@@ -323,6 +337,41 @@ suite('the global bin directory is not on PATH (EPIC-20-S15, AC4)', () => {
 
     expect(stepOf(result, 'link').detail).toContain(pnpmBin);
     expect(stepOf(result, 'link').detail).toContain(host.binDir);
+  });
+});
+
+suite('the directory npm named is not there (AC4, AC5)', () => {
+  /**
+   * Found by performing AC15 rather than by reading the code.
+   *
+   * The clean room sat under a path with a UUID-shaped segment in it, and
+   * `npm prefix -g` **redacted it** — npm 11 scrubs anything token-shaped out
+   * of its own output, so it answered with `…/***\/scratchpad/…`, a directory
+   * that does not exist. `setup` believed the string, wrote a `PATH` line
+   * pointing nowhere into `.zshrc`, and the operator's next shell was left
+   * exactly where 2026-08-12 left them.
+   *
+   * `verify` did catch it and the command exited 1, which is the story's
+   * central claim holding up. But a profile file had already been edited to
+   * add a directory that was never there, and AC5's promise is about what gets
+   * written, not only about what gets reported. So the resolved directory is
+   * an observation too: if it is not there, nothing is appended.
+   */
+  it('writes no profile line when the resolved bin directory does not exist', async () => {
+    const host = await machine('ghost', { prefixDoesNotExist: true });
+
+    const result = await runSetup(base(host, { yes: true }));
+    const link = stepOf(result, 'link');
+
+    // Nothing may be appended on the strength of a string npm printed.
+    expect(existsSync(host.profileFile)).toBe(false);
+    // It says which directory, and that it is the *existence* that is wrong —
+    // otherwise this is indistinguishable from "not on PATH", which has a
+    // different fix.
+    expect(link.state).toBe('fail');
+    expect(link.detail).toContain(host.reportedBinDir);
+    expect(link.detail).toMatch(/does not exist/i);
+    expect(result.exitCode).not.toBe(0);
   });
 });
 

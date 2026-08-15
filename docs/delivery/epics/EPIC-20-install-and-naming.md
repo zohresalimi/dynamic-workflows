@@ -125,6 +125,18 @@ why they are one epic rather than three tickets in three places.
       KAR-20.2's `npx deflow setup` resolves a **package name**, not a bin name. If it is taken, the
       fallback (`npx @scope/deflow setup`, with `deflow` still the bin) is written into KAR-20.2
       before it starts.
+      **Answered 2026-08-15, and the answer is that it is taken.** `deflow` on npm is
+      [`Deflow`](https://www.npmjs.com/package/deflow) 0.6.4, an unrelated Redis-backed job-flow
+      library published by `fabiencdp`. So `npx deflow setup` as AC1 spells it today fetches a
+      stranger's package, and `packages/cli/package.json` — whose `name` is `deflow` — cannot be
+      published as it stands. This blocks nothing that is built (every automated spec and the
+      performed acceptance install from a packed tarball, which is also what the release gate
+      does), but it blocks *publishing*, and it must be decided before KAR-20.3 documents an
+      install command a reader will type. Both `@deflow/*` and `@metune/*` were unclaimed when
+      this was checked; picking between them is the owner's call, not this story's, because it is
+      a decision about which npm organisation the project publishes under. The bin stays `deflow`
+      either way — only the package specifier moves — so `setup`'s `PACKAGE` constant and
+      `scripts/install.sh`'s `DEFLOW_PACKAGE` default are the two lines that change.
 - [ ] The CI matrix has at least one case-sensitive runner (`ubuntu-26.04`), which it does, so
       KAR-20.1 AC6 can be asserted rather than reasoned about.
 

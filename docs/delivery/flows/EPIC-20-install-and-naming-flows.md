@@ -499,6 +499,27 @@ Feature: say the thing that was not said
 its argument. The owner's install failed here, silently, with a success message; the difference
 between the old behaviour and the new one is entirely in what is printed.
 
+**Amended 2026-08-15 while performing AC15.** A third scenario is automated at `integration`
+(`packages/cli/test/integration/setup.test.ts`, "the directory npm named is not there"):
+
+```gherkin
+  Scenario: npm names a directory that is not there
+    Given a machine where "npm prefix -g" answers with a directory that does not exist
+    When "deflow setup" runs
+    Then no line is appended to any shell profile
+    And the link step is "fail", naming that directory and saying it does not exist
+    And the command exits non-zero
+```
+
+It is here because the performed acceptance found it rather than because anyone predicted it. The
+clean room sat under a path with a UUID-shaped segment, and **npm 11 redacts token-shaped strings
+out of its own output** — so `npm prefix -g` answered with `…/***/…`, a directory that had never
+existed. `setup` believed the string and appended a `PATH` line pointing nowhere. `verify` did catch
+it and the command exited 1, which is this story's central claim holding up under a failure nobody
+designed for; but a dotfile had already been edited to add a directory that was not there, and AC5
+is a promise about what gets **written**, not only about what gets reported. So the resolved
+directory is now an observation like every other step: if it is not there, nothing is appended.
+
 ---
 
 ## EPIC-20-S16 — A shell profile is never edited without naming the file and printing the line
