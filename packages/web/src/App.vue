@@ -24,13 +24,15 @@ import { BellRing, Moon, Search, Sun } from 'lucide-vue-next';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { RouterView } from 'vue-router';
 import { useApiClient } from './api/provide.ts';
-import { MAIN_CONTENT_ID, SEARCH_INPUT_ID } from './app/ids.ts';
+import { COMPOSER_OVERLAY, MAIN_CONTENT_ID, SEARCH_INPUT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import CommandJumper from './components/CommandJumper.vue';
 import NodeInspector from './components/NodeInspector.vue';
+import RunComposer from './components/RunComposer.vue';
 import RunGateBanner from './components/RunGateBanner.vue';
 import RunProviderBanner from './components/RunProviderBanner.vue';
+import RunTaskBanner from './components/RunTaskBanner.vue';
 import { useRunStore } from './stores/useRunStore.ts';
 import { useSessionStore } from './stores/useSessionStore.ts';
 import { useUiStore } from './stores/useUiStore.ts';
@@ -108,6 +110,21 @@ onUnmounted(() => {
         {{ awaitingOperator }}
       </span>
 
+      <!--
+        KAR-22.2 AC7 — the composer, for the operator who reached for a mouse.
+        The keyboard route (`c`, from anywhere) is the one the story is written
+        against; this is the same overlay, opened the other way, so there is one
+        composer rather than a button that builds a second one.
+      -->
+      <button
+        class="shell__compose"
+        type="button"
+        data-composer-open
+        @click="ui.openOverlay(COMPOSER_OVERLAY)"
+      >
+        Start a run
+      </button>
+
       <label class="shell__search">
         <Search class="shell__search-icon" :size="15" aria-hidden="true" />
         <span class="shell__search-label">Search</span>
@@ -136,6 +153,14 @@ onUnmounted(() => {
         to learn which decision. It renders nothing when no gate is open.
       -->
       <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
+
+      <!--
+        KAR-22.2 AC6 — and what the run was asked to do, beside the other two
+        for the same reason: it is true of the run rather than of one panel, and
+        "what did I ask for?" is a question an operator asks from wherever they
+        happen to be. It renders nothing until the run's first event is folded.
+      -->
+      <RunTaskBanner :task="run.submittedTask" />
     </header>
 
     <!--
@@ -151,6 +176,7 @@ onUnmounted(() => {
 
   <CommandJumper />
   <NodeInspector />
+  <RunComposer />
 </template>
 
 <style scoped>
@@ -172,6 +198,15 @@ onUnmounted(() => {
 .shell__brand {
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.shell__compose {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.8125rem;
 }
 
 .shell__theme {

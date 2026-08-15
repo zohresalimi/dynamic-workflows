@@ -103,6 +103,25 @@ export interface RunIntakePorts {
    * is a decision for the one function `doctor` and selection also read.
    */
   readonly admit?: (request: RunAdmissionRequest) => RunAdmission;
+  /**
+   * KAR-22.2 AC2 — the very resolutions `admit` above reduces, so that a fourth
+   * reader can be given the *same answer* rather than a second reduction of the
+   * same machine.
+   *
+   * `GET /api/providers` is that fourth reader, and it exists because a
+   * composer has to show which agents this machine can use before the operator
+   * picks one. A picker that resolved `PATH` for itself would be exactly the
+   * disagreement KAR-19.10 shipped to end: two reductions written months apart,
+   * both defensible, differing on the one machine that matters.
+   *
+   * Carried **beside** `admit` and set from the same `const` in `../boot.ts`,
+   * rather than derived from it, because `admit` answers *"may this particular
+   * request run"* and a picker needs the row for every provider including the
+   * ones that cannot. Absent for the same daemon lives `admit` is absent for —
+   * one that was never told which machine it is on — and the route says so
+   * rather than reporting an empty machine.
+   */
+  readonly providerResolutions?: readonly ProviderResolution[];
 }
 
 export type RunIntakeSubmitter = 'ui' | 'cli';

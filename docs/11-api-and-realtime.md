@@ -399,9 +399,24 @@ different things about one directory.
 | Method | Path                          | Purpose                                                                                      | Req        |
 | ------ | ----------------------------- | -------------------------------------------------------------------------------------------- | ---------- |
 | `GET`  | `/providers`                  | Installed adapters, versions, capability manifests                                           | F3.5, F3.6 |
+| `GET`  | `/providers/routes`           | Which providers can serve a run here, and by which route — the composer's picker             | F3.2, F3.7 |
 | `POST` | `/providers/doctor`           | Re-probe binaries and run the conformance battery                                            | F3.4       |
 | `GET`  | `/config` / `PATCH` `/config` | `.DeFlow/config.yaml` as JSON                                                                |            |
 | `GET`  | `/health`                     | `{ apiVersion, build, daemonEpoch, headSeq, uptimeMs }` — **the only unauthenticated route** |            |
+
+The first two rows look like one endpoint split in half and are deliberately not. `GET /providers`
+answers *"what has been probed on this machine"* out of the ledger's capability rows — versions,
+digests, advertised capabilities. `GET /providers/routes` answers *"can a run start on it here, and
+on which route"*, from the resolutions `boot()` established and handed to admission in the same
+expression, so the composer's picker, `deflow doctor` and admission are three renderings of one
+answer (KAR-19.10, KAR-22.2 AC2). Merging them would put two producers behind one path, and the
+failure mode is the one EPIC-19 shipped to end: a client reading `installed: true` off a probed row
+and concluding a run could use it.
+
+`GET /providers/routes` answers `{ providers, known }`. **`known: false` is a real answer**: a
+daemon booted without provider roots has no honest basis on which to call anything missing, and an
+empty array read as "nothing is installed" would send an operator to npm to fix a machine that is
+fine.
 
 ### PTY
 

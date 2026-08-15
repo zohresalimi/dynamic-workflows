@@ -1,5 +1,5 @@
 /**
- * KAR-16.3 — the seven projections, as the seam `../apply.ts` plugs into.
+ * KAR-16.3 — the projections, as the seam `../apply.ts` plugs into.
  *
  * KAR-16.2 built the dispatcher against a `Projection<S>` interface and shipped
  * with nothing implementing it. This is what implements it, and the list is
@@ -23,6 +23,7 @@ import type { ProjectionName } from './kinds.ts';
 import { applyPlan, emptyPlan, type PlanProjection } from './plan.ts';
 import { applyPlanHistory, emptyPlanHistory, type PlanHistoryProjection } from './planHistory.ts';
 import { applyProvider, emptyProvider, type ProviderProjection } from './provider.ts';
+import { applySubmission, emptySubmission, type SubmissionProjection } from './submission.ts';
 import { applyTimeline, emptyTimeline, type TimelineProjection } from './timeline.ts';
 
 /** A `Projection` whose `name` is one of the seven, rather than any string. */
@@ -83,10 +84,16 @@ export const providerProjection: ProjectionModule<ProviderProjection> = projecti
  *
  * The element type is `ProjectionModule<never>` for the same reason
  * `LedgerApplyOptions.projections` is a `Projection<unknown>[]`: the set is
- * heterogeneous by construction — eight reducers over eight unrelated state
+ * heterogeneous by construction — nine reducers over nine unrelated state
  * types — and the concrete type is recovered through the module object's own
  * identity by `RunLedger.state()`.
  */
+export const submissionProjection: ProjectionModule<SubmissionProjection> = projection(
+  'submission',
+  emptySubmission,
+  applySubmission,
+);
+
 export const PROJECTIONS = [
   planProjection,
   planHistoryProjection,
@@ -96,6 +103,7 @@ export const PROJECTIONS = [
   costProjection,
   timelineProjection,
   providerProjection,
+  submissionProjection,
   // eslint-disable-next-line — the cast is the heterogeneity note above.
 ] as unknown as readonly ProjectionModule<never>[];
 
@@ -106,4 +114,5 @@ export type { EscalationVM, GatesProjection } from './gates.ts';
 export type { PlanProjection } from './plan.ts';
 export type { PlanHistoryProjection } from './planHistory.ts';
 export type { ProviderChoiceState, ProviderProjection } from './provider.ts';
+export type { SubmissionProjection, SubmittedTask } from './submission.ts';
 export type { TimelineProjection } from './timeline.ts';

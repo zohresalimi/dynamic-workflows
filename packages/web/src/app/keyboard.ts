@@ -7,6 +7,7 @@
  * | `Enter`   | Open the node inspector for the selected node |
  * | `←` / `→` | Step the plan-version scrubber                |
  * | `/`       | Search                                        |
+ * | `c`       | Start a run — the composer (KAR-22.2 AC7)     |
  * | `Cmd-K`   | Run / node jumper                             |
  * | `Esc`     | Close the topmost overlay                     |
  *
@@ -26,7 +27,7 @@
  *    `Escape` and `Cmd-K` reach past it.
  */
 import type { UiStore } from '../stores/useUiStore.ts';
-import { INSPECTOR_OVERLAY, JUMPER_OVERLAY, SEARCH_INPUT_ID } from './ids.ts';
+import { COMPOSER_OVERLAY, INSPECTOR_OVERLAY, JUMPER_OVERLAY, SEARCH_INPUT_ID } from './ids.ts';
 
 /** Text-entry contexts, where the map must keep its hands off. */
 function isTyping(target: EventTarget | null): boolean {
@@ -94,6 +95,14 @@ export function installKeyboardMap(target: Document, ui: UiStore): () => void {
       case 'ArrowRight':
         event.preventDefault();
         ui.stepPlanVersion(1);
+        return;
+      // KAR-22.2 AC7 — the composer, from any route. Unmodified, like `/`, and
+      // guarded by the same `isTyping` check above: a `c` typed into the search
+      // box is a `c`, and a `c` typed into the composer's own prompt reaches
+      // the prompt rather than reopening the composer on top of itself.
+      case 'c':
+        event.preventDefault();
+        ui.openOverlay(COMPOSER_OVERLAY);
         return;
       case '/': {
         event.preventDefault();

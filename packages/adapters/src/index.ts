@@ -238,6 +238,7 @@ export { renderAuthMethods, reportAvailability } from './provider-availability.t
 export type {
   AgentInstallState,
   ChosenProvider,
+  ProviderOption,
   ProviderResolution,
   ProviderRoutes,
   ProviderVerdict,
@@ -255,6 +256,7 @@ export {
   isRunRefusalCode,
   MOCK_AGENT_FLAG,
   MOCK_AGENT_SENTENCE,
+  providerOptions,
   providerRoutes,
   providerVerdict,
   RUN_REFUSAL_CODES,

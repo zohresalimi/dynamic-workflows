@@ -1,5 +1,5 @@
 /**
- * KAR-16.4 — `useRunStore`: a **thin reactive shell** over the seven
+ * KAR-16.4 — `useRunStore`: a **thin reactive shell** over the
  * projections (docs/12-frontend-architecture.md §3.3, §4, §5).
  *
  * There is no domain logic in this file and there must never be any. Every fold
@@ -86,6 +86,9 @@ import {
   planHistoryProjection,
   planProjection,
   providerProjection,
+  type SubmissionProjection,
+  type SubmittedTask,
+  submissionProjection,
   type TimelineProjection,
   timelineProjection,
 } from '../ledger/projections/index.ts';
@@ -163,14 +166,16 @@ export const useRunStore = defineStore('run', () => {
   const timeline = shallowRef<TimelineProjection>(timelineProjection.create());
   // KAR-19.10 AC4 — which agent this run is on, for the run header.
   const provider = shallowRef<ProviderProjection>(providerProjection.create());
+  // KAR-22.2 AC6 — what this run was asked to do, for the run header.
+  const submission = shallowRef<SubmissionProjection>(submissionProjection.create());
 
   /**
-   * The same eight, keyed by name for the paths that treat them uniformly —
+   * The same nine, keyed by name for the paths that treat them uniformly —
    * `rebase()` and `close()`, which touch all of them and know none of them.
    *
    * The value types are erased for the same reason `PROJECTIONS`'s element type
    * is `ProjectionModule<never>`: the set is heterogeneous by construction —
-   * eight reducers over eight unrelated state types — and the concrete type is
+   * nine reducers over nine unrelated state types — and the concrete type is
    * recovered through the module object's own identity by `RunLedger.state()`,
    * never through this record. The refs above are the typed surface; these two
    * are the loop.
@@ -184,6 +189,7 @@ export const useRunStore = defineStore('run', () => {
     cost,
     timeline,
     provider,
+    submission,
   } as unknown as Record<ProjectionName, ShallowRef<unknown>>;
 
   const modules = {
@@ -195,6 +201,7 @@ export const useRunStore = defineStore('run', () => {
     cost: costProjection,
     timeline: timelineProjection,
     provider: providerProjection,
+    submission: submissionProjection,
   } as unknown as Record<ProjectionName, ProjectionModule<unknown>>;
 
   /** One integer per projection. The whole of this store's change detection. */
@@ -500,6 +507,19 @@ export const useRunStore = defineStore('run', () => {
     return gates.value.escalations.find((one) => one.answeredWith === null) ?? null;
   });
 
+  /**
+   * KAR-22.2 AC6 — what this run was asked to do, off its own `task.submitted`.
+   *
+   * A `computed` on the projection's counter rather than a read of the
+   * container, for the reason every selector here is one: the projection
+   * mutates in place and the integer beside it is this store's whole change
+   * detection.
+   */
+  const submittedTask = computed<SubmittedTask | null>(() => {
+    void versions.submission.value;
+    return submission.value.task;
+  });
+
   /** `nodeId` → its four figures. Which one to show is the renderer's choice. */
   const nodeSpend = computed<ReadonlyMap<string, CostFigures>>(() => {
     void versions.cost.value;
@@ -565,6 +585,7 @@ export const useRunStore = defineStore('run', () => {
     cost,
     timeline,
     provider,
+    submission,
 
     // change detection
     version: (name: ProjectionName): number => versions[name].value,
@@ -580,6 +601,7 @@ export const useRunStore = defineStore('run', () => {
     nodeVerdicts,
     nodeSpend,
     openGate,
+    submittedTask,
 
     // lifecycle
     open,

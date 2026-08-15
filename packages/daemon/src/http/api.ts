@@ -32,7 +32,12 @@
  * ever reaches a client — it becomes `500 internal`, and its stack goes to a
  * content-addressed artifact behind a handle.
  */
-import { PROVIDER_SPECS, providerFamily, providerTokenAccounting } from '@DeFlow/adapters';
+import {
+  PROVIDER_SPECS,
+  providerFamily,
+  providerOptions,
+  providerTokenAccounting,
+} from '@DeFlow/adapters';
 import type {
   CancelMode,
   Db,
@@ -1939,6 +1944,51 @@ export const api = new Hono()
     const ports = projectPorts();
     if (ports === null) return notReady(c);
     return c.json({ projects: await projectViews(ports, ledgerView()) }, 200);
+  })
+
+  /**
+   * KAR-22.2 AC2, AC3 — `GET /api/providers/routes`: which agents this machine
+   * can serve a run with, and by which route. The composer's adapter picker.
+   *
+   * **It probes nothing.** Every row is `providerOptions` over the resolutions
+   * `boot()` established and handed to admission in the same spread
+   * (`../boot.ts`), so the picker, `doctor` and admission are three renderings
+   * of one answer rather than three answers. That is the whole reason this
+   * route exists rather than the browser resolving `PATH` through some new
+   * endpoint of its own: EPIC-19 shipped because two reductions of this machine
+   * could disagree, and a picker with a probe would be a third.
+   *
+   * ## Why it is not `GET /providers`
+   *
+   * That path is taken, and by a route that answers a *different question from
+   * a different producer*: KAR-15.6's capability manifest — what has been
+   * probed, at which version, with which advertised capabilities, read out of
+   * the ledger's `provider_capabilities` rows. This answers "can a run start on
+   * it here, and on which route", from this boot's filesystem resolutions
+   * folded with the boot probe.
+   *
+   * Merging them would have been one endpoint with two producers behind it, and
+   * the failure mode is the one this whole family of stories is about: a
+   * consumer reading `installed: true` off a probed row and concluding a run
+   * could use it. They stay two routes because they are two facts.
+   *
+   * `known: false` is a real answer and not an empty list. A daemon booted
+   * without `providerRoots` — a spec, a fixture, a supervisor that did not pass
+   * one down — has no honest basis on which to say a provider is missing, and
+   * an empty `providers` array read as "nothing is installed" would send an
+   * operator to npm to fix a machine that is fine. It is the same claim
+   * `RunIntakePorts.admit` makes by being absent, said out loud.
+   */
+  .get('/providers/routes', (c) => {
+    const ports = intakePorts();
+    if (ports === null) return notReady(c);
+    const resolutions = ports.providerResolutions;
+    return c.json(
+      resolutions === undefined
+        ? { providers: [], known: false }
+        : { providers: providerOptions(resolutions), known: true },
+      200,
+    );
   })
 
   .post('/projects', async (c) => {
