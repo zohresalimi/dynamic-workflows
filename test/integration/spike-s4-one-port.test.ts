@@ -23,12 +23,14 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import {
   AC1_PORT,
+  freePort,
   type Harness,
   health,
   type ListeningSocket,
   listeningSockets,
   MEASUREMENTS_DIR,
   observations,
+  preferredPort,
   sleep,
   startHarness,
   startProxy,
@@ -46,7 +48,19 @@ beforeAll(async () => {
   // 250 ms rather than the 1 s of AC2: the cadence itself is measured by the
   // ten-minute recording at the bottom of this file, and every spec up here is
   // about routing, headers and resume rather than about the clock.
-  main = await startHarness({ S4_PORT: String(AC1_PORT), S4_INTERVAL_MS: '250', S4_GAP_AT: '3' });
+  //
+  // KAR-00.10: `preferredPort` rather than `AC1_PORT` flat. 7777 is the
+  // daemon's own default, so on a developer's machine the thing most likely to
+  // be holding it is a `deflow up` from an hour ago — twelve of them were
+  // cleared off this machine on 2026-08-15, one of which was on 7777. When that
+  // happened this whole file died in `beforeAll` and reported 25 skipped tests
+  // and a confusing "pid N is already listening there", none of which is about
+  // SSE, HMR or mount order. Not one spec below actually needs *that* number:
+  // AC1's claim is "one socket", and the claim about 7777 in particular is
+  // carried by the committed ten-minute recording at the bottom of this file,
+  // which really did bind it.
+  const port = await preferredPort(AC1_PORT);
+  main = await startHarness({ S4_PORT: String(port), S4_INTERVAL_MS: '250', S4_GAP_AT: '3' });
 }, 60_000);
 
 afterAll(async () => {
@@ -54,16 +68,27 @@ afterAll(async () => {
 });
 
 suite('EPIC-00-S11 — one process, one port (AC1, AC6)', () => {
-  it('listens on exactly one socket, and it is 127.0.0.1:7777', async () => {
+  it('listens on exactly one socket, and it is the one it was asked for', async () => {
     const current = await health(main.origin);
-    expect(current.port).toBe(AC1_PORT);
+    expect(current.pid, 'this run must be looking at the server this run spawned').toBe(main.pid);
+    expect(current.port).toBe(main.port);
     const sockets = listeningSockets(current.pid);
     expect(
       sockets,
       `expected one socket, got ${JSON.stringify(sockets)} — a second one means Vite opened its own HMR server and D10's premise is false`,
     ).toHaveLength(1);
-    expect(sockets[0]?.port).toBe(AC1_PORT);
+    expect(sockets[0]?.port).toBe(main.port);
     expect(sockets[0]?.address).toBe('127.0.0.1');
+  });
+
+  /**
+   * The one thing that really is about the number 7777: it is what the harness
+   * asks for. Whether this machine had it free today is a fact about this
+   * machine, and the recorded ten-minute run at the bottom of this file is the
+   * evidence that the socket AC1 names was really bound.
+   */
+  it('asks for 7777, whatever it ends up on', () => {
+    expect(AC1_PORT).toBe(7777);
   });
 
   it('serves the Vue app and the API from that same socket', async () => {
@@ -522,6 +547,46 @@ suite('EPIC-00-S12 — the decision note records the guards', () => {
     expect(text).toContain('no compression middleware');
     expect(text).toContain('navigated away');
   });
+});
+
+suite('KAR-00.10 — no spec here depends on one fixed port being free', () => {
+  /**
+   * The failure this replaces: anything already holding 7777 took the whole
+   * file down in `beforeAll`. Twenty-five tests skipped, and a message about a
+   * foreign pid rather than about SSE. 7777 is the daemon's own default
+   * (docs/03-local-development.md §9), so the likeliest squatter is a `deflow
+   * up` somebody forgot — twelve were cleared off this machine on 2026-08-15.
+   *
+   * `preferredPort` is the whole fix, and it is deliberately *not* the same
+   * thing as `freePort`: it prefers the port AC1 names, so the ordinary run
+   * still binds 7777 and the spike still demonstrates what it says it does. It
+   * only steps aside when it has to.
+   */
+  it('takes the port it prefers when that port is free', async () => {
+    const free = await freePort();
+    expect(await preferredPort(free)).toBe(free);
+  });
+
+  it('steps aside to a free port when the preferred one is held', async () => {
+    // `main` is on `main.port` right now — a real listener, held by a real
+    // process, which is exactly the situation a leaked `deflow up` creates.
+    const chosen = await preferredPort(main.port);
+    expect(chosen).not.toBe(main.port);
+    expect(chosen).toBeGreaterThan(0);
+  });
+
+  it('and a harness really boots on the port it stepped aside to', async () => {
+    const chosen = await preferredPort(main.port);
+    const spare = await startHarness({ S4_PORT: String(chosen), S4_INTERVAL_MS: '250' });
+    try {
+      const current = await health(spare.origin);
+      expect(current.pid).toBe(spare.pid);
+      expect(current.port).toBe(chosen);
+      expect(listeningSockets(spare.pid)).toEqual([{ address: '127.0.0.1', port: chosen }]);
+    } finally {
+      await spare.stop();
+    }
+  }, 60_000);
 });
 
 suite('the harness refuses a port somebody else is already on', () => {

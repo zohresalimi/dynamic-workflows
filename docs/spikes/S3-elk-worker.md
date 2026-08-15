@@ -41,8 +41,12 @@ feature) hold node positions still across plan versions, and is the `layerChoice
 - `src/graph.ts` — a 60-node DAG and a synthetic 5-version plan (v2 inserts a node, v3 splits a
   node, v4 replaces a node's provider, v5 abandons a branch), plus the union arithmetic. Import-free,
   so the unit slice can pin the fixture's shape without a browser.
-- `check.mjs` — builds both variants, asserts on the built `dist/`, and writes
-  `measurements/build-sizes.json`, which is where the byte counts below come from.
+- `src/engine/main-thread.ts` — the **regression, built on purpose** (KAR-00.10), aliased in by
+  `S3_VARIANT=main-thread`: ELK as a plain `elkjs/lib/elk.bundled.js` import instead of a `?worker`
+  entry, so there is no chunk to split out and 1.6 MB is statically reachable from `main.ts`. It is
+  never served and never shipped; it exists so the budget below can be watched going red.
+- `check.mjs` — builds all three variants, asserts on the built `dist/`, and measures
+  `build-sizes.json`, which is where the byte counts below come from.
 
 Everything browser-side runs against `vite build` output served by a plain `node:http` static
 server. There is no Vite in that loop at all — deliberately, because the dev server resolves worker
@@ -50,6 +54,36 @@ URLs differently from the hashed assets the daemon will serve, so a `vite dev` p
 proved nothing about the thing at risk.
 
 ## Measurement
+
+> **What is asserted, and what is only recorded** (KAR-00.10, 2026-08-15). The table below is a
+> **record of one build** on the toolchain named in the header — the numbers with byte counts in
+> them were taken on 2026-08-04 and are **not** asserted for equality against anything. Rollup's
+> content hash and the minified byte count move on their own: on 2026-08-15 the same unchanged
+> elkjs, vite and rollup produced `elk-worker.min-ujbWAvpR.js` at 1425190 B, 51 bytes and a
+> different hash away from row 2, and the equality that used to be asserted here turned master red
+> for it. Re-recording the number would have bought a green until the next minifier release and
+> nothing else, and it could never have told that apart from the regression the measurement exists
+> to catch.
+>
+> What is asserted, on a build taken fresh on every run, is the **property** and three
+> **relationships**:
+>
+> | Claim                                             | Budget    | Why this shape                                                                     |
+> | ------------------------------------------------- | --------- | ---------------------------------------------------------------------------------- |
+> | No ELK fingerprint in the entry chunk             | absent    | The property. `elk.alg.layered` in the entry is the regression, at any byte count.  |
+> | Entry chunk size                                  | `65536`   | Absolute, NF3 territory, ~5× what this app emits. Drift cannot reach it; 1.4 MB cannot avoid it. |
+> | What ELK adds to the entry, against the same build without it | `102400` | AC2's own cap, unchanged.                                            |
+> | Share of ELK's shipped weight that is in the worker chunk | `0.99` | A ratio: bytes moving *inside* the worker cannot move it, bytes moving *between chunks* are the only thing that can. Measured 99.612%. |
+>
+> The budgets live in one place — `BUDGET` in `spikes/s3-elk-worker/src/harness.ts` — and both
+> `check.mjs` and the integration slice judge against that one object, so the script and the suite
+> cannot drift.
+>
+> **The budget is proved able to fail.** `S3_VARIANT=main-thread` builds the same app with ELK
+> imported as a plain module, which is exactly "ELK was bundled back into the entry chunk", and
+> every one of those four dimensions is asserted to fire on it — separately, so an instrument with
+> three dead dimensions cannot pass by way of the fourth. A budget nobody has watched go red is a
+> budget nobody knows is connected to anything.
 
 | #   | Check                                                                | Result                                                                                                                     |
 | --- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -69,17 +103,26 @@ proved nothing about the thing at risk.
 | 14  | The same, plus `layering.strategy: INTERACTIVE`                      | drawing changes and the node lands in the requested layer — **but the control says the constraint had nothing to do with it** |
 | 15  | `org.eclipse.elk.position` + `crossingMinimization.semiInteractive`  | **ignored**: identical to the baseline                                                                                     |
 | 16  | `@dagrejs/dagre@3.0.0` on the same 60 nodes                          | lays them out, 60 distinct positions — the fallback is executable, not just documented                                      |
+| 17  | The same app with ELK imported as a plain module (`S3_VARIANT=main-thread`) | **all four budget dimensions violated**: `elk-in-entry`, `entry-bytes`, `entry-cost-bytes`, `worker-share` |
 
-Rows 1–6 are asserted by `test/integration/spike-s3-elk-worker.test.ts` and re-derivable in one
-command with `node spikes/s3-elk-worker/check.mjs`; rows 7–16 by `e2e/spike-s3-elk-worker.test.ts`
-against a real Chromium.
+Rows 1–6 and 17 are asserted by `test/integration/spike-s3-elk-worker.test.ts` and re-derivable in
+one command with `node spikes/s3-elk-worker/check.mjs`; rows 7–16 by
+`e2e/spike-s3-elk-worker.test.ts` against a real Chromium.
 
 Every one of those numbers is measured again on every run — a measurement nobody re-takes is a
-comment — but a test run writes what it measured to a temporary directory and compares it with the
-copy committed under `spikes/s3-elk-worker/measurements/`, which is what the table quotes. Only
+comment — and a test run writes what it measured to a temporary directory, leaving the record
+committed under `spikes/s3-elk-worker/measurements/` exactly as it found it. Only
 `pnpm spike:s3:record` rewrites the committed copy, so `pnpm test` leaves the working tree clean
-instead of restamping a tracked file with a new duration, a new tick count and whichever ephemeral
-port the static server bound this time.
+instead of restamping a tracked file with a new duration, a new tick count, a fresh content hash and
+whichever ephemeral port the static server bound this time.
+
+Until KAR-00.10 that last paragraph was true of the browser measurements and false of
+`build-sizes.json`, which `check.mjs` rewrote on every run including every run made by `pnpm test`.
+That is worth naming, because of what it cost: the spec comparing the recorded byte counts against
+the measured ones ran *after* the run that had just overwritten them, so it could not fail, while
+the identical numbers quoted in this table — which nothing rewrites — could and did. The half of
+the instrument that was checkable was silently disarmed and the half that was left broke for a
+reason that had nothing to do with ELK.
 
 ### Rows 3–5: ELK is not "kept out of" the entry chunk, it is never in it
 
@@ -152,7 +195,9 @@ main thread for the scrubber — is **not needed** and is not being taken.
 - **KAR-16.6** owns the facade: `elkjs` behind it, `@dagrejs/dagre` still buildable, no ELK type or
   option id leaking into view code.
 - Whoever wires the worker must keep the `?worker` import. `workerUrl` cannot work under Vite's
-  asset hashing, and `?worker&inline` would undo row 5 by putting 1.4 MB back into the entry.
+  asset hashing, and `?worker&inline` would undo row 5 by putting 1.4 MB back into the entry. Row 17
+  is that failure mode built rather than described — `S3_VARIANT=main-thread` — so the guard is
+  known to be connected to the thing it guards.
 - A note for anyone copying example code: **the Vue Flow docs' repl pins `@dagrejs/dagre@1.1.2`,
   two majors behind the `3.0.0` a fresh install gets**, so the API surface in copied snippets is
   older than the version you will have. This spike's dagre code is written against 3.0.0 and

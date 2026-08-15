@@ -163,14 +163,23 @@ suite('EPIC-00-S14 — the built worker loads from its hashed URL (AC1, AC3)', (
     };
     writeMeasurement('browser-layout.json', measured);
 
-    // The committed copy is a golden. A duration and a tick count are different
-    // numbers on every machine and cannot be asserted equal — the assertions
-    // that matter are above, on this run's own numbers — but what the recording
-    // claims has to stay recognisable as the same measurement, and the recorded
-    // run has to be one that would pass AC3 today.
+    // The committed copy is a record of one run on one stated toolchain. A
+    // duration and a tick count are different numbers on every machine and
+    // cannot be asserted equal — the assertions that matter are above, on this
+    // run's own numbers — but what the recording claims has to stay
+    // recognisable as the same measurement, and the recorded run has to be one
+    // that would pass AC3 today.
+    //
+    // KAR-00.10: `workerAsset` carries rollup's content hash, and that hash
+    // moved by itself once already — 51 bytes out of 1.4 MB under an unchanged
+    // elkjs, vite and rollup. Asserting the recorded filename against this
+    // machine's is an assertion about the minifier, not about ELK, so what is
+    // asserted is the *shape* the spike is actually about: a hashed asset under
+    // assets/, whose name says "elk worker".
     const golden = readMeasurement<BrowserLayoutMeasurement>('browser-layout.json');
     expect(measured.nodes).toBe(golden.nodes);
-    expect(measured.workerAsset).toBe(golden.workerAsset);
+    expect(measured.workerAsset).toMatch(/^\/assets\/elk-worker.*-[A-Za-z0-9_-]{8}\.js$/);
+    expect(golden.workerAsset).toMatch(/^\/assets\/elk-worker.*-[A-Za-z0-9_-]{8}\.js$/);
     expect(golden.heartbeatTicks).toBeGreaterThanOrEqual(5);
     expect(golden.durationMs).toBeGreaterThan(0);
   });

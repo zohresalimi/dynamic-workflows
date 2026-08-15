@@ -699,6 +699,15 @@ in the real ledger.
 > risk assumed, because what the app imports is the ~10 KB `elk-api.js` wrapper and a worker URL.
 > A 60-node layout returned coordinates for all 60 in ~95 ms while a 10 ms main-thread heartbeat
 > ticked 9 times. The reading is [docs/spikes/S3-elk-worker.md](../../spikes/S3-elk-worker.md).
+>
+> **Amended 2026-08-15 by KAR-00.10.** Every byte count above is a **record of that build on that
+> machine**, not an assertion. Asserting them was the defect: on 2026-08-15 the same unchanged
+> elkjs, vite and rollup emitted `elk-worker.min-ujbWAvpR.js` at 1425190 B — 51 bytes and a
+> different content hash — and master went red for it. What is asserted now is the property (no ELK
+> fingerprint in the entry chunk) plus three relationships (entry chunk under 65536 B; ELK's entry
+> cost under AC2's 100 KB; over 99% of ELK's shipped weight in the worker chunk), all re-measured
+> from a fresh build on every run. The `main-thread` variant in the second scenario below is how
+> that budget is known to be able to fail.
 
 ```gherkin
 Feature: elkjs lays out a graph off the main thread in a production build
@@ -717,7 +726,15 @@ Feature: elkjs lays out a graph off the main thread in a production build
   Scenario: ELK is absent from the initial chunk
     When the developer compares the entry chunk size against a build with ELK removed
     Then the two sizes differ by less than 100 KB
-    And the decision note records both byte counts
+    And the entry chunk is under its own 65536 B budget
+    And over 99% of ELK's shipped weight is in the worker chunk rather than the entry
+    And the decision note records both byte counts, as a record of the build they came from
+
+  Scenario: the same app with ELK bundled back into the entry chunk fails every one of those
+    Given the engine module imports "elkjs/lib/elk.bundled.js" as a plain module
+    When the same budget is applied to that build
+    Then it reports elk-in-entry, entry-bytes, entry-cost-bytes and worker-share
+    And each dimension is asserted separately, so none can be dead and unnoticed
 
   Scenario: a 60-node layout runs without blocking the main thread
     Given a main-thread interval counter is ticking every 10 ms

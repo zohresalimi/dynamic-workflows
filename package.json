@@ -31,7 +31,7 @@
     "test:record": "node packages/adapters/scripts/record-goldens.ts",
     "measure:graph": "node packages/web/scripts/measure-graph.ts",
     "measure:diagnosis": "node e2e/support/diagnosis-walk.ts",
-    "spike:s3:record": "DeFlow_RECORD_MEASUREMENTS=1 vitest run --project e2e e2e/spike-s3-elk-worker.test.ts"
+    "spike:s3:record": "DeFlow_RECORD_MEASUREMENTS=1 vitest run --project e2e e2e/spike-s3-elk-worker.test.ts && DeFlow_RECORD_MEASUREMENTS=1 node spikes/s3-elk-worker/check.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
