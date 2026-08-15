@@ -82,8 +82,13 @@ export function readMeasurement<T>(name: string): T {
  * the engine module aliased to a stub that throws — same routes, same fixtures,
  * same dagre, same everything else — which is what makes AC2's entry-chunk
  * comparison a comparison of one variable.
+ *
+ * `main-thread` is KAR-00.10's sabotage: the same app again, with the engine
+ * aliased to one that imports `elkjs/lib/elk.bundled.js` as a plain module. It
+ * is never shipped and never served; it exists so the budget below can be shown
+ * going red against the exact regression it claims to catch.
  */
-export type Variant = 'elk' | 'no-elk';
+export type Variant = 'elk' | 'no-elk' | 'main-thread';
 
 export interface ChunkInfo {
   readonly file: string;
@@ -107,7 +112,125 @@ export interface CommandResult {
   readonly output: string;
 }
 
-const OUT_DIR: Record<Variant, string> = { elk: 'dist', 'no-elk': 'dist-no-elk' };
+const OUT_DIR: Record<Variant, string> = {
+  elk: 'dist',
+  'no-elk': 'dist-no-elk',
+  'main-thread': 'dist-main-thread',
+};
+
+// --- the instrument ----------------------------------------------------------
+
+/**
+ * Strings only a real GWT-transpiled ELK bundle contains. Deliberately *not*
+ * the bare "org.eclipse.elk" prefix: the app's own constraint probe writes
+ * option ids like "org.eclipse.elk.layered.layering.layerChoiceConstraint" into
+ * the entry chunk, and a fingerprint a caller can trip is not a fingerprint.
+ */
+export const ELK_FINGERPRINTS = ['org.eclipse.elk.alg', 'elk.alg.layered', 'ELK Layered'] as const;
+
+/**
+ * What KAR-00.4 actually protects, expressed so that a toolchain bump cannot
+ * pretend to be a regression and a regression cannot pretend to be a toolchain
+ * bump.
+ *
+ * The story this replaces asserted `workerChunkBytes === 1425139`, recorded on
+ * one machine on 2026-08-04. It went red for 51 bytes and a different content
+ * hash under an unchanged elkjs, vite and rollup — and re-recording the number
+ * would only have bought a green until the next minifier release. Meanwhile it
+ * could not have told that apart from ELK sliding into the first paint's
+ * critical path, which is the only thing anybody cares about here.
+ *
+ * So:
+ *
+ * - `entryBytes` is an **absolute** budget, in NF3 territory ("UI interactive
+ *   < 1 s"). 64 KB is roughly five times the 13 KB this app actually emits, so
+ *   ordinary drift never reaches it and 1.4 MB cannot avoid it.
+ * - `entryCostBytes` is AC2's own cap, unchanged: what ELK adds to the entry
+ *   against the identical build without it.
+ * - `workerShare` is the relationship that carries the real claim. Of the ELK
+ *   weight this app ships, the fraction that sits in the worker chunk rather
+ *   than in the entry. Bytes moving *within* the worker chunk cannot move it;
+ *   bytes moving *between* chunks are the only thing that can.
+ */
+export const BUDGET = {
+  entryBytes: 64 * 1024,
+  entryCostBytes: 100 * 1024,
+  workerShare: 0.99,
+} as const;
+
+export interface ElkWeight {
+  /** The whole entry chunk, which is what the browser parses before first paint. */
+  readonly entryBytes: number;
+  /** What ELK adds to it, against the identical build with ELK aliased away. */
+  readonly entryCostBytes: number;
+  /** Every worker chunk emitted, added up. */
+  readonly workerBytes: number;
+  /** Of ELK's shipped weight, the share that is in a worker chunk. */
+  readonly workerShare: number;
+  /** Whether a real ELK bundle's fingerprints appear in the entry chunk. */
+  readonly elkInEntry: boolean;
+}
+
+/** The measurement, taken off the bytes two real builds wrote. */
+export function elkWeight(withElk: BuildResult, baseline: BuildResult): ElkWeight {
+  const workerBytes = withElk.workers.reduce((total, chunk) => total + chunk.bytes, 0);
+  const entryCostBytes = withElk.entry.bytes - baseline.entry.bytes;
+  const shipped = workerBytes + Math.max(entryCostBytes, 0);
+  const entryText = readAsset(withElk, withElk.entry.file);
+  return {
+    entryBytes: withElk.entry.bytes,
+    entryCostBytes,
+    workerBytes,
+    // An app that ships no ELK at all has no share to speak of; calling that 0
+    // is what makes the `main-thread` sabotage trip this dimension rather than
+    // divide by zero and be quietly excused.
+    workerShare: shipped === 0 ? 0 : workerBytes / shipped,
+    elkInEntry: ELK_FINGERPRINTS.some((fingerprint) => entryText.includes(fingerprint)),
+  };
+}
+
+/**
+ * The budget, as names rather than as a boolean, so a failing run says which
+ * dimension moved — and so the sabotage build can assert that *every* dimension
+ * is alive rather than that "something failed".
+ */
+export function budgetViolations(weight: ElkWeight): string[] {
+  const violations: string[] = [];
+  if (weight.elkInEntry) violations.push('elk-in-entry');
+  if (weight.entryBytes >= BUDGET.entryBytes) violations.push('entry-bytes');
+  if (Math.abs(weight.entryCostBytes) >= BUDGET.entryCostBytes) violations.push('entry-cost-bytes');
+  if (weight.workerShare <= BUDGET.workerShare) violations.push('worker-share');
+  return violations;
+}
+
+/**
+ * The committed `measurements/build-sizes.json`.
+ *
+ * It is a **record**: what one build on one stated toolchain weighed, kept
+ * because "1.4 MB of ELK against 5.5 KB of entry cost" is the finding and
+ * because the note quotes it. Nothing asserts equality against `measured` —
+ * that is the loop KAR-00.10 broke.
+ */
+export interface BuildSizesRecord {
+  readonly $comment: string;
+  readonly recordedOn: {
+    readonly date: string;
+    readonly os: string;
+    readonly node: string;
+    readonly vite: string;
+    readonly elkjs: string;
+  };
+  readonly budgets: typeof BUDGET;
+  readonly measured: {
+    readonly entryChunk: string;
+    readonly entryWithElkBytes: number;
+    readonly entryWithoutElkBytes: number;
+    readonly entryDeltaBytes: number;
+    readonly workerChunk: string;
+    readonly workerChunkBytes: number;
+    readonly assets: string[];
+  };
+}
 
 function listFiles(root: string): string[] {
   const out: string[] = [];
@@ -200,10 +323,17 @@ export function readAsset(result: BuildResult, file: string): string {
   return readFileSync(join(result.outDir, file), 'utf8');
 }
 
-/** The `check.mjs` the epic asks this spike to leave behind, run as a subprocess. */
-export function runCheckScript(): CommandResult {
+/**
+ * The `check.mjs` the epic asks this spike to leave behind, run as a subprocess.
+ *
+ * `DeFlow_RECORD_MEASUREMENTS` is cleared rather than inherited: a spec that
+ * asserts what the script does by default must not have that answer changed by
+ * whichever environment happened to invoke `vitest`.
+ */
+export function runCheckScript(env: NodeJS.ProcessEnv = {}): CommandResult {
   const run = spawnSync(process.execPath, ['check.mjs'], {
     cwd: SPIKE_ROOT,
+    env: { ...process.env, [RECORD_MEASUREMENTS_ENV]: '', ...env },
     encoding: 'utf8',
     timeout: 300_000,
   });

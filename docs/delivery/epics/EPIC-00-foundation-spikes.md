@@ -657,6 +657,77 @@ experimentation into a plan.
 
 ---
 
+### KAR-00.10 — The S3 build-size measurement must be an instrument that can fail correctly
+
+|                 |                                            |
+| --------------- | ------------------------------------------ |
+| **Status**      | Done                                       |
+| **Priority**    | P0                                         |
+| **Size**        | S                                          |
+| **Depends on**  | KAR-00.4                                   |
+| **PRD**         | F10.1, F10.2, NF3                          |
+| **Verified by** | EPIC-00-S14 (scenario 2, rewritten)        |
+
+**As** the author, **I want** S3's build-size check to assert the property the spike protects rather
+than a byte count recorded on one machine, **so that** it goes red when ELK regresses into the entry
+chunk and stays green when a minifier emits different bytes.
+
+`test/integration/spike-s3-elk-worker.test.ts` asserted the artefact KAR-00.4 built —
+`elk-worker.min-COjlAv4s.js`, 1425139 B — against whatever the machine running the suite had just
+built. On 2026-08-15 that turned master red: the same unchanged elkjs, vite and rollup produced
+`elk-worker.min-ujbWAvpR.js` at 1425190 B. Fifty-one bytes and a different content hash.
+
+An exact byte count of a build artefact, recorded on one machine and asserted on another, cannot
+tell "the worker chunk regressed into the main bundle" — the thing KAR-00.4 cared about — from "a
+minifier emitted 51 different bytes". Both readings are "the number moved". Re-recording it makes it
+green today and red again at the next toolchain bump, which is the loop this story exists to break.
+This is the same species as the load-sensitive timing budgets EPIC-05 and EPIC-19 already replaced
+with control-relative measurements.
+
+Two aggravating details, both fixed here. `check.mjs` rewrote the committed
+`measurements/build-sizes.json` on every run, including every `pnpm test` — so the spec comparing
+the recorded numbers against the measured ones ran *after* the overwrite and could not fail, while
+the same numbers quoted in the note, which nothing rewrites, could and did. And nobody had ever
+watched the budget go red, so there was no evidence it was connected to anything.
+
+**Also in scope, same species:** `test/integration/spike-s4-one-port.test.ts` died at suite level
+whenever anything already held port 7777 — 25 tests skipped and a message about a foreign pid.
+7777 is DeFlow's own default, so the usual squatter is a forgotten `deflow up`; twelve leaked
+daemons were cleared off one machine on 2026-08-15, one of them on 7777.
+
+**Acceptance criteria**
+
+1. The spec asserts the property: ELK is in a separate worker chunk and absent from the entry chunk,
+   the worker chunk is fetched at runtime with a 200, and layout happens off the main thread.
+2. Sizes are asserted as relationships that survive a toolchain bump — an absolute entry-chunk
+   budget, AC2's 100 KB cap on what ELK adds to the entry, and the worker chunk's *share* of ELK's
+   shipped weight — never as equality against a byte count recorded elsewhere.
+3. The recorded numbers survive as a **record**, stating the toolchain they were taken on, and
+   nothing asserts equality against them.
+4. The replacement is proved able to fail: a `main-thread` build variant puts ELK back in the entry
+   chunk, and every dimension of the budget is asserted to fire on it.
+5. `check.mjs` no longer rewrites a tracked file as a side effect of a test run.
+6. Both `test/integration/spike-s3-elk-worker.test.ts` and `e2e/spike-s3-elk-worker.test.ts` pass on
+   a clean checkout, and `test/integration/spike-s4-one-port.test.ts` passes with 7777 already held.
+7. `docs/spikes/S3-elk-worker.md` agrees with what the code now does.
+
+**Test plan (TDD)**
+
+| #   | Level               | Test                                                                                                  | Red when                                                                                                    |
+| --- | ------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 1   | integration (spike) | Build `S3_VARIANT=main-thread` and assert `budgetViolations` reports all four dimensions             | A dimension is silent → that part of the budget is decoration and cannot catch the regression it claims to |
+| 2   | integration (spike) | Snapshot `measurements/build-sizes.json`, run `check.mjs`, assert the file is byte-identical after   | The script restamps its own golden → the comparison against it can never fail                              |
+| 3   | integration (spike) | Assert the entry chunk is under its budget and the worker chunk's share of ELK's weight is over 0.99 | ELK moved between chunks — the only thing that can move a ratio                                            |
+| 4   | integration (spike) | With a listener already on 7777, run the S4 suite                                                    | The file dies in `beforeAll` → a shared machine resource is a precondition of 29 specs about SSE and HMR   |
+
+**Notes / risks** — The budget is deliberately not tight. 64 KB is roughly five times the entry
+chunk this app emits, and the 0.99 share leaves the entry cost room to grow from 5.5 KB to about
+14 KB before it trips. A budget tuned to the current measurement is the same mistake in a slower
+form: it turns every ordinary change into a re-recording exercise, and re-recording is how a budget
+stops meaning anything.
+
+---
+
 ## Risks
 
 | Risk                                                                                                                                          | Mitigation                                                                                                                                                                                                                              |
