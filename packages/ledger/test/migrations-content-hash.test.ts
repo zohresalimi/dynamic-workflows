@@ -67,6 +67,9 @@ const SHIPPED: Record<string, string> = {
   // journal (docs/11 §11.3) and `intake_key` is dropped.
   '0015-intake-keys-into-effects.ts':
     '95efcf117b0ffad3e941aa0455c908fa1dbd317c6b04c69f9da8354ae39ec48d',
+  // Shipped 2026-08-15, KAR-22.1 — `project`, the map from a name to a
+  // repository, with the realpath unique.
+  '0016-projects.ts': 'b7f30e2075036f9adb22bc7d4403f9ea3ca5433659393824ae01f898ada75d34',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

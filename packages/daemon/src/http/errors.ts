@@ -64,6 +64,11 @@ export const API_ERROR_STATUS = {
   artifact_not_found: 404,
   plan_version_not_found: 404,
   patch_not_found: 404,
+  // KAR-22.1 — its own code rather than `not_found`, for the reason
+  // EPIC-15-S44 gives about runs and nodes: a 404 has to answer *which* thing
+  // was missing, or a UI cannot tell a project that was removed from a route
+  // this API does not serve.
+  project_not_found: 404,
 
   // 409 — well formed, and in conflict with what the ledger already records.
   stale_cursor: 409,
@@ -73,6 +78,11 @@ export const API_ERROR_STATUS = {
   already_answered: 409,
   node_not_running: 409,
   use_respond: 409,
+  // KAR-22.1 — this directory already belongs to a project. A conflict rather
+  // than a bad request: the request was well formed and the caller is not
+  // confused about the shape of anything, which is exactly what 409 is for and
+  // what lets the page say "you already have this one, here it is".
+  project_exists: 409,
 
   // 413
   payload_too_large: 413,

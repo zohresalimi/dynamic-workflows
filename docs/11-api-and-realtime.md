@@ -310,12 +310,34 @@ clever part of the system.
 All paths are relative to `/api`. All responses are JSON unless stated. All require
 `Authorization: Bearer <token>` (§8).
 
+### Projects
+
+Added by KAR-22.1. A project is a name and a resolved local path that is a git working tree, held
+as a row in the global ledger database — not in browser storage, because a project is not a UI
+preference.
+
+| Method   | Path            | Purpose                                                                | Req  |
+| -------- | --------------- | ---------------------------------------------------------------------- | ---- |
+| `GET`    | `/projects`     | List projects with `health` and `lastRun`. Never filters an unhealthy row | NF10 |
+| `POST`   | `/projects`     | `{ name, path }` — bootstraps `.DeFlow/` if absent and reports what it wrote | F1.1 |
+| `PATCH`  | `/projects/:id` | `{ name }` — renames. The id, the path and the history do not move     |      |
+| `DELETE` | `/projects/:id` | Forgets the project. **Deletes no files**, and says so on the response | NF8  |
+
+Two properties of this group are contracts rather than implementation details. **`health` is
+derived per request**, by asking the filesystem and `git` — a stored column would be a cache of a
+world that changes while nobody is looking, and a list that is confidently wrong is worse than a
+slow one. And **`POST /projects` refuses a non-repository with `deflow init`'s own sentence**, from
+the one exported constant both surfaces read, so the CLI and the browser cannot tell an operator two
+different things about one directory.
+
+`project_exists` (409) and `project_not_found` (404) join the closed error union in §10.
+
 ### Runs
 
 | Method | Path                           | Purpose                                                   | Req  |
 | ------ | ------------------------------ | --------------------------------------------------------- | ---- |
 | `GET`  | `/runs?status=&limit=&cursor=` | List runs, newest first                                   |      |
-| `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc  | F1.1 |
+| `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc. Takes an optional `projectId` (KAR-22.1) | F1.1 |
 | `GET`  | `/runs/:id`                    | Run summary: status, plan version, counts, cost, head seq |      |
 | `POST` | `/runs/:id/spec/approve`       | Approve the `TaskSpec` — the real gate before execution   | F1.3 |
 | `POST` | `/runs/:id/spec/edit`          | Replace the framed document; appends `spec.amended`       | F1.3 |

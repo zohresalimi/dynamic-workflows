@@ -68,6 +68,26 @@ const BareSha256Schema = z.string().regex(/^[0-9a-f]{64}$/, 'must be a 64-charac
  */
 const submittedCwd = z.string().min(1).optional();
 
+/**
+ * KAR-22.1 AC7 — the project the run belongs to.
+ *
+ * Optional for **exactly** the reason `cwd` above is optional, and the argument
+ * is worth repeating rather than referring to: payloads already on disk do not
+ * carry it, and a required field would make every run submitted before projects
+ * existed unparseable — the one thing a ledger may never do to its own history.
+ *
+ * `.min(1)` rather than a plain string, so "absent" has one spelling. A
+ * `projectId: ''` would be a project id that names nothing while looking like a
+ * value, and the reader downstream would have to know that.
+ *
+ * Unparsed as a `ProjectId` here on purpose: this is a *record of what was
+ * submitted*, and re-validating it on read would turn a run whose project id
+ * this build cannot parse into an unreadable run. The daemon validates it at
+ * the door (`POST /api/runs`), which is where an unknown project is still a
+ * refusable request rather than a fact already written down.
+ */
+const submittedProjectId = z.string().min(1).optional();
+
 export const TaskProvenanceSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('text'),
@@ -75,12 +95,14 @@ export const TaskProvenanceSchema = z.discriminatedUnion('kind', [
     /** ms epoch, from the injected `Clock` — never read internally. */
     submittedAt: z.number().int().nonnegative(),
     cwd: submittedCwd,
+    projectId: submittedProjectId,
   }),
   z.strictObject({
     kind: z.literal('file'),
     by: z.enum(INTAKE_SUBMITTERS),
     submittedAt: z.number().int().nonnegative(),
     cwd: submittedCwd,
+    projectId: submittedProjectId,
     /** Absolute, post-`realpath` — AC4's resolution, never the agent's own string. */
     resolvedPath: z.string().min(1),
     /** The size of the source, in bytes — independent of whether it was inlined. */
@@ -92,6 +114,7 @@ export const TaskProvenanceSchema = z.discriminatedUnion('kind', [
     by: z.enum(INTAKE_SUBMITTERS),
     submittedAt: z.number().int().nonnegative(),
     cwd: submittedCwd,
+    projectId: submittedProjectId,
     url: z.string().min(1),
     /** Which resolver answered — `'gh'` today; a name, never a claim about
      * HTTPS being used, so a future non-GitHub fallback has somewhere to say so. */
@@ -178,6 +201,13 @@ export interface NormaliseInputPorts {
    * the payload entirely rather than writing an empty string.
    */
   readonly cwd?: string;
+  /**
+   * KAR-22.1 AC7 — the project the run belongs to, recorded so a project's own
+   * history is a query over the runs' own events rather than over a table a
+   * deleted project could orphan. Absent leaves the field off the payload
+   * entirely rather than writing an empty string.
+   */
+  readonly projectId?: string;
 }
 
 const utf8Encoder = new TextEncoder();
@@ -199,7 +229,16 @@ function bytesAndProvenanceOf(
   ports: NormaliseInputPorts,
 ): { bytes: Uint8Array; provenance: TaskProvenance } {
   const { now, by } = ports;
-  const where = ports.cwd === undefined ? {} : { cwd: ports.cwd };
+  // Both spread as "present or absent" rather than as "value or undefined": a
+  // `strictObject` accepts an explicit `undefined` for an optional key, and the
+  // payload would then serialise with a key whose value is `undefined` —
+  // dropped by `JSON.stringify` on the way in and impossible to distinguish
+  // from "never set" on the way out, but visible to every `in` check in
+  // between. One spelling for absent.
+  const where = {
+    ...(ports.cwd === undefined ? {} : { cwd: ports.cwd }),
+    ...(ports.projectId === undefined ? {} : { projectId: ports.projectId }),
+  };
   switch (input.kind) {
     case 'text':
       return {

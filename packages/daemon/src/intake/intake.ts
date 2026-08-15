@@ -51,6 +51,7 @@ import {
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { z } from 'zod';
+import { projectExists } from '../projects/projects.ts';
 import { FRAMING_NODE } from '../spec/gate.ts';
 import { firstInvalidField, RunIntakeBodySchema } from './request-schema.ts';
 import { resolveIssue } from './resolve-issue.ts';
@@ -252,6 +253,22 @@ export async function submitTask(
         seq: memoisedSeq(existing.response) ?? firstEventSeq(ports.db, existing.runId),
       };
     }
+  }
+
+  // KAR-22.1 AC7 — a project id that names no project on this machine.
+  //
+  // Refused **here**: after the idempotency lookup, so a repeat of a key minted
+  // while the project still existed is still answered out of the journal rather
+  // than re-refused; and before the source is resolved, so a submission naming a
+  // project that is gone costs no file read, no `gh` call and — crucially — no
+  // `task.submitted`. A run created against a project nobody holds is exactly
+  // the floating-loose run this story exists to end.
+  if (body.projectId !== undefined && !projectExists(ports.db, body.projectId)) {
+    return {
+      outcome: 'rejected',
+      field: 'projectId',
+      message: `no project '${body.projectId}' on this machine`,
+    };
   }
 
   // Resolve the source, entirely before anything is written (AC5).
@@ -505,10 +522,17 @@ async function resolveAndNormalise(
   // has to open the interview has no way of knowing which repository the run
   // belongs to.
   const cwd = body.cwd;
+  // KAR-22.1 AC7 — the project, recorded for the same reason and in the same
+  // way. Spread as present-or-absent rather than passed as `string | undefined`,
+  // so a run submitted from a terminal writes no `projectId` key at all.
+  const project = body.projectId === undefined ? {} : { projectId: body.projectId };
 
   switch (body.input.kind) {
     case 'text':
-      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store, cwd });
+      return normaliseInput(
+        { kind: 'text', text: body.input.text },
+        { now, by, store, cwd, ...project },
+      );
 
     case 'file': {
       const resolution = await resolveWithinRepo(body.cwd, body.input.path);
@@ -535,7 +559,7 @@ async function resolveAndNormalise(
           resolvedPath: resolution.path,
           mediaType: mediaTypeForPath(resolution.path),
         },
-        { now, by, store, cwd },
+        { now, by, store, cwd, ...project },
       );
     }
 
@@ -558,7 +582,7 @@ async function resolveAndNormalise(
           resolver: resolved.resolver,
           httpStatus: resolved.httpStatus,
         },
-        { now, by, store, cwd },
+        { now, by, store, cwd, ...project },
       );
     }
   }

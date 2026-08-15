@@ -40,11 +40,27 @@ import { GITIGNORE_ENTRIES, mergeGitignore } from './gitignore-merge.ts';
 /** AC4 — the exit code `runInit` (packages/cli) maps both refusals to. */
 export const INIT_EX_REFUSED = 5;
 
+/**
+ * KAR-22.1 AC1 — the refusal for a path that is not a git working tree, as
+ * **one exported string**.
+ *
+ * `deflow init` throws it and `POST /api/projects` returns it. Two copies would
+ * agree on the day they were written and disagree on the day one of them was
+ * improved, and nothing would fail — each surface's own spec asserts its own
+ * copy. `packages/daemon/src/init/not-a-git-working-tree.test.ts` is what says
+ * they are the same string.
+ *
+ * One line, because it is rendered under a form field as well as printed to a
+ * terminal.
+ */
+export const NOT_A_GIT_WORKING_TREE =
+  "deflow init: not inside a git working tree (run 'git init' first)";
+
 export class NotAGitWorkingTree extends Error {
   readonly cwd: string;
 
   constructor(cwd: string) {
-    super("deflow init: not inside a git working tree (run 'git init' first)");
+    super(NOT_A_GIT_WORKING_TREE);
     this.name = 'NotAGitWorkingTree';
     this.cwd = cwd;
   }
@@ -168,16 +184,32 @@ function randomRunIdSuffix(): string {
   return randomBytes(3).toString('hex');
 }
 
+/** What `bootstrapWorkspace` writes: everything `initWorkspace` does except
+ * the provider detection pass. */
+export type WorkspaceBootstrap = Omit<InitReport, 'providers'>;
+
 /**
- * Bootstraps `cwd`'s repository: the committed half of `.DeFlow/`, the
- * `.gitignore` entries for the per-machine half, the global state directory,
- * and a provider detection pass whose result is written only there.
+ * The files half of `deflow init`: the committed half of `.DeFlow/`, the
+ * `.gitignore` entries for the per-machine half, and the global state
+ * directory.
+ *
+ * Split out of `initWorkspace` for KAR-22.1, which needs exactly this and
+ * deliberately **not** the provider detection pass below it. A daemon is told
+ * which machine it is on by its caller — `boot`'s `providerRoots`, omitted
+ * meaning "do not search" — and a route that probed whatever `PATH` DeFlowd
+ * inherited would be a second producer of provider state beside KAR-19.10's.
+ * Three surfaces disagreeing about which providers work is the defect EPIC-19
+ * shipped to end, and the cheapest way not to reintroduce it is not to write
+ * the second producer.
  *
  * Throws `NotAGitWorkingTree` when `cwd` is not inside a git working tree —
- * before anything is written — and `DataDirUnwritable` when the global state
- * directory cannot be created.
+ * **before anything is written** — and `DataDirUnwritable` when the global
+ * state directory cannot be created.
  */
-export async function initWorkspace(cwd: string, ports: InitPorts): Promise<InitReport> {
+export async function bootstrapWorkspace(
+  cwd: string,
+  ports: InitPorts,
+): Promise<WorkspaceBootstrap> {
   const check = await runGit(cwd, ['rev-parse', '--show-toplevel'], {
     env: definedEnv(ports.env),
   });
@@ -239,6 +271,22 @@ export async function initWorkspace(cwd: string, ports: InitPorts): Promise<Init
     const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN';
     throw new DataDirUnwritable(dataDir, code, error);
   }
+
+  return { repoRoot, dataDir, paths };
+}
+
+/**
+ * Bootstraps `cwd`'s repository — `bootstrapWorkspace` above — and then runs a
+ * provider detection pass whose result is written only into the global state
+ * directory (PRD §6.3; a committed capability list is the hardcoded matrix AR-5
+ * forbids).
+ *
+ * This is `deflow init`'s entry point and the only caller that wants the probe:
+ * it runs in the operator's own terminal, so the `PATH` it searches is the
+ * operator's own.
+ */
+export async function initWorkspace(cwd: string, ports: InitPorts): Promise<InitReport> {
+  const { repoRoot, dataDir, paths } = await bootstrapWorkspace(cwd, ports);
 
   // AC6 — provider detection, written only into `dataDir`.
   const db = openLedger(dataDir);

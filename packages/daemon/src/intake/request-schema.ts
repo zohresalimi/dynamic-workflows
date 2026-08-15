@@ -8,7 +8,7 @@
  * the HTTP API, not a second implementation").
  */
 import { PROVIDER_SPECS } from '@DeFlow/adapters';
-import { PERMISSION_LEVELS } from '@DeFlow/core';
+import { PERMISSION_LEVELS, ProjectIdSchema } from '@DeFlow/core';
 import { z } from 'zod';
 
 /**
@@ -43,6 +43,18 @@ export type RunIntakeBudget = z.infer<typeof RunIntakeBudgetSchema>;
 export const RunIntakeBodySchema = z.strictObject({
   input: RunIntakeInputSchema,
   cwd: z.string().min(1),
+  /**
+   * KAR-22.1 AC7 — the project this run belongs to, or omitted for a run
+   * submitted from a terminal that has no project.
+   *
+   * Shape-checked here and **existence-checked in `submitTask`**, and the split
+   * is the same one `provider` above draws: an id that is not a `ProjectId` is a
+   * *request* problem, and an id that is well formed and names no project on
+   * this machine is a *state* problem. Both are refused before anything is
+   * appended (KAR-10.1 AC5), and both name the same field, because from a form's
+   * side they are one box that is wrong.
+   */
+  projectId: ProjectIdSchema.optional(),
   budget: RunIntakeBudgetSchema.optional(),
   permission: z.enum(PERMISSION_LEVELS),
   /**

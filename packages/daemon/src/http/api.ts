@@ -77,6 +77,15 @@ import { log } from '../logging.ts';
 import { API_VERSION, BOOT_ID, BUILD, uptimeMs } from '../meta.ts';
 import { diffPlanGraphs } from '../plan/diff.ts';
 import { unionLayoutKey } from '../plan/plan-history.ts';
+import {
+  asProjectId,
+  createProject,
+  type ProjectPorts,
+  projectView,
+  projectViews,
+  remove as removeProject,
+  rename as renameProject,
+} from '../projects/projects.ts';
 import { runProviderDoctor } from '../providers/doctor.ts';
 import { controlRun, type RunControlVerb } from '../run-control.ts';
 import { daemonEpoch, headSeq } from '../runtime.ts';
@@ -200,6 +209,44 @@ function notReady(c: Context) {
 
 function gateBy(header: string | undefined): 'ui' | 'cli' {
   return header === 'cli' ? 'cli' : 'ui';
+}
+
+/**
+ * KAR-22.1 — the ports the projects routes need, taken from the ones boot
+ * already registered.
+ *
+ * Deliberately **not** a second registry beside `./intake-ports.ts`. Everything
+ * `../projects/projects.ts` wants — the write connection, the data directory,
+ * the clock and the hex source — is already there because `POST /api/runs`
+ * needs the same four, and a second `setProjectPorts()` at boot would be a
+ * second thing to remember to clear on shutdown and a second way for a route to
+ * write through a closed connection.
+ */
+function projectPorts(): ProjectPorts | null {
+  const ports = intakePorts();
+  if (ports === null) return null;
+  return {
+    db: ports.db,
+    dataDir: ports.dataDir,
+    clock: ports.clock,
+    randomHex: ports.randomHex,
+  };
+}
+
+/**
+ * KAR-22.1 — a project this daemon does not hold, and an id that is not a
+ * `ProjectId` at all, answered the same way.
+ *
+ * The same reasoning `resolveRun` gives for runs: `/api/projects/nonsense` is a
+ * request for a project that does not exist, and answering it with a 400 out of
+ * a schema tells the caller nothing they can act on. Its own code rather than
+ * `not_found`, so a client can tell it from a path this API does not serve.
+ */
+function projectNotFound(c: Context) {
+  const raw = c.req.param('id') ?? '';
+  return c.json(
+    ...apiError('project_not_found', `no project '${raw}'`, { detail: { projectId: raw } }),
+  );
 }
 
 /**
@@ -413,6 +460,22 @@ const asFactId = (factId: string): FactId => factId as FactId;
 function probedVersion(view: LedgerView, provider: string | null): string | null {
   if (provider === null) return null;
   return view.providerCapabilities(provider).at(-1)?.version ?? null;
+}
+
+/**
+ * KAR-22.1 AC7 — the project this run belongs to, or `null`.
+ *
+ * Read from the run's **first** event, which is always its `task.submitted`:
+ * that is where the fact was recorded, and reading it from the `project` table
+ * instead would make a removed project silently detach every run it ever held.
+ * A run submitted before this story carries no `projectId` and answers `null`,
+ * which is the honest answer rather than a guess from its `cwd`.
+ */
+function runProjectId(view: LedgerView, runId: RunId): string | null {
+  const first = view.tail(runId, 0, 1)[0];
+  if (first?.kind !== 'task.submitted') return null;
+  const provenance = (first.payload as { provenance?: { projectId?: unknown } }).provenance;
+  return typeof provenance?.projectId === 'string' ? provenance.projectId : null;
 }
 
 /**
@@ -1190,6 +1253,11 @@ export const api = new Hono()
     // `pendingGate` is the one reader of it — the terminal, `deflow status` and
     // the run list all ask the same function.
     const gate = pendingGate(state);
+    // KAR-22.1 AC7 — and which project it belongs to, read off the run's own
+    // `task.submitted` rather than from the `project` table: a project that has
+    // been removed cannot make a run forget where it came from, and a run from
+    // before projects existed honestly answers `null`.
+    const projectId = runProjectId(view, runId);
     return c.json(
       {
         ...runSummary(
@@ -1199,6 +1267,7 @@ export const api = new Hono()
           providerTokenAccounting,
           preflightEstimator(view),
         ),
+        ...(projectId === null ? {} : { projectId }),
         ...(refusal === null ? {} : { refusal }),
         ...(failure === null ? {} : { failure }),
         ...(provider === null ? {} : { provider }),
@@ -1850,6 +1919,124 @@ export const api = new Hono()
    * A provider nothing has probed is reported as `installed: false` rather than
    * omitted — *"gemini is not installed"* is the answer the operator needs.
    */
+  /**
+   * KAR-22.1 — projects: the four routes the control center's first screen is
+   * built from (AC1–AC6).
+   *
+   * `../projects/projects.ts` owns all four; what is here is the wire. They stay
+   * **on this chain** for the reason the file header gives: `hc<ApiType>` infers
+   * the client from the type of the chained expression, and a route registered
+   * on its own statement is invisible to it — the projects page in @DeFlow/web is
+   * the caller, and a field it reads that this route stopped sending should be a
+   * compile error rather than an empty column.
+   *
+   * `health` is derived per request rather than stored, and every project is
+   * listed whatever its health says. AC5's *"is not silently dropped"* is a
+   * property of this route: a list that hid an unhealthy row would answer
+   * "where did my project go?" with silence.
+   */
+  .get('/projects', async (c) => {
+    const ports = projectPorts();
+    if (ports === null) return notReady(c);
+    return c.json({ projects: await projectViews(ports, ledgerView()) }, 200);
+  })
+
+  .post('/projects', async (c) => {
+    const ports = projectPorts();
+    if (ports === null) return notReady(c);
+
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: unknown;
+      path?: unknown;
+    } | null;
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const path = typeof body?.path === 'string' ? body.path.trim() : '';
+    if (name === '') {
+      return c.json(
+        ...apiError('invalid_request', 'a project needs a name', { detail: { field: 'name' } }),
+      );
+    }
+    if (path === '') {
+      return c.json(
+        ...apiError(
+          'invalid_request',
+          'a project needs the path of a git working tree on this machine',
+          { detail: { field: 'path' } },
+        ),
+      );
+    }
+
+    const result = await createProject(ports, { name, path });
+    switch (result.outcome) {
+      case 'not-a-git-working-tree':
+      case 'no-such-path':
+        // The refusal is `deflow init`'s own sentence, not a second one written
+        // here (KAR-22.1 AC1) — see `NOT_A_GIT_WORKING_TREE`.
+        return c.json(
+          ...apiError('invalid_request', result.message, { detail: { field: 'path' } }),
+        );
+      case 'unwritable':
+        return c.json(...apiError('internal', result.message, { detail: { field: 'path' } }));
+      case 'exists':
+        return c.json(
+          ...apiError(
+            'project_exists',
+            'this directory already belongs to a project on this machine',
+            { detail: { projectId: result.existing } },
+          ),
+        );
+      case 'created': {
+        const view = await projectView(ports, ledgerView(), result.project.id);
+        return c.json({ project: view, init: result.init }, 201);
+      }
+    }
+  })
+
+  .patch('/projects/:id', async (c) => {
+    const ports = projectPorts();
+    if (ports === null) return notReady(c);
+
+    const id = asProjectId(c.req.param('id'));
+    if (id === null) return projectNotFound(c);
+
+    const body = (await c.req.json().catch(() => null)) as { name?: unknown } | null;
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (name === '') {
+      return c.json(
+        ...apiError(
+          'invalid_request',
+          'a project needs a name: an empty one makes a list unreadable, and a blank string is ' +
+            'a name a TEXT NOT NULL column accepts quite happily',
+          { detail: { field: 'name' } },
+        ),
+      );
+    }
+
+    const renamed = await renameProject(ports, ledgerView(), id, name);
+    return renamed === null ? projectNotFound(c) : c.json({ project: renamed }, 200);
+  })
+
+  /**
+   * KAR-22.1 AC6 — removing a project removes a row, and says so.
+   *
+   * `filesDeleted: false` is on the response as a **fact rather than as
+   * reassurance**: it is the same claim `REMOVAL_KEEPS_FILES` makes in words,
+   * in a form a client can assert on, and the browser's confirmation dialog
+   * makes the promise on this route's behalf before the request is sent.
+   */
+  .delete('/projects/:id', (c) => {
+    const ports = projectPorts();
+    if (ports === null) return notReady(c);
+
+    const id = asProjectId(c.req.param('id'));
+    if (id === null) return projectNotFound(c);
+
+    const result = removeProject(ports, id);
+    return result.removed
+      ? c.json({ id, removed: true, filesDeleted: false, message: result.message }, 200)
+      : projectNotFound(c);
+  })
+
   .get('/providers', (c) => {
     const view = ledgerView();
     if (view === null) return notReady(c);
