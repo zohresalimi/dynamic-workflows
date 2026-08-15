@@ -63,7 +63,7 @@ import {
   sealTaskSpec,
   VerdictV2Schema,
 } from '@DeFlow/core';
-import { putBlob, type SnapshotSeq } from '@DeFlow/ledger';
+import { putBlob, runIdsForProject, type SnapshotSeq } from '@DeFlow/ledger';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -86,6 +86,7 @@ import {
   asProjectId,
   createProject,
   type ProjectPorts,
+  projectExists,
   projectView,
   projectViews,
   remove as removeProject,
@@ -116,7 +117,7 @@ import { asRunId, type LedgerView, ledgerView } from './ledger-view.ts';
 import { boundedLimit, LIMIT_HEADER, READ_LIMITS } from './read-limits.ts';
 import { hydrateLimit, resumeFrom } from './resume.ts';
 import { runFailure } from './run-failure.ts';
-import { runList } from './run-list.ts';
+import { projectRunList, RUN_LIST_DEFAULT_LIMIT, RUN_LIST_MAX_LIMIT, runList } from './run-list.ts';
 import { runProvider } from './run-provider.ts';
 import { runRefusal } from './run-refusal.ts';
 import { runSummary } from './run-summary.ts';
@@ -2074,6 +2075,37 @@ export const api = new Hono()
    * in a form a client can assert on, and the browser's confirmation dialog
    * makes the promise on this route's behalf before the request is sent.
    */
+  /**
+   * KAR-22.3 AC4, AC5 — `GET /api/projects/:id/runs`: what has run here.
+   *
+   * **The filter is the server's**, and that is the whole reason this route
+   * exists beside `GET /api/runs`: `runIdsForProject` is a `WHERE` over the
+   * `event` table's own record of which project a `task.submitted` named, so a
+   * project with three runs among three hundred is three rows rather than a
+   * page's worth of client-side sieving (test plan #6). It is also why the
+   * history survives a restart without any further arrangement — it was never
+   * anywhere but the ledger (AC5).
+   *
+   * A 404 for a project this daemon does not hold, rather than an empty list: a
+   * page that renders "no runs yet" for a project that is not there sends an
+   * operator looking for their runs instead of for their project.
+   */
+  .get('/projects/:id/runs', (c) => {
+    const ports = projectPorts();
+    const view = ledgerView();
+    if (ports === null || view === null) return notReady(c);
+
+    const id = asProjectId(c.req.param('id'));
+    if (id === null || !projectExists(ports.db, id)) return projectNotFound(c);
+
+    const asked = Number.parseInt(c.req.query('limit') ?? '', 10);
+    const limit = Number.isNaN(asked)
+      ? RUN_LIST_DEFAULT_LIMIT
+      : Math.min(Math.max(1, asked), RUN_LIST_MAX_LIMIT);
+
+    return c.json(projectRunList(view, runIdsForProject(ports.db, id, limit)), 200);
+  })
+
   .delete('/projects/:id', (c) => {
     const ports = projectPorts();
     if (ports === null) return notReady(c);

@@ -338,3 +338,22 @@ export function asProjectId(raw: string): ProjectId | null {
 export function projectExists(db: Db, id: ProjectId): boolean {
   return readProject(db, id) !== null;
 }
+
+/**
+ * KAR-22.3 AC4 — why a run cannot be started in this project right now, or
+ * `null` when it can.
+ *
+ * The sentence is `healthOf`'s, unmodified, and that is the point: the projects
+ * list, the workspace header and this refusal all say the same thing about the
+ * same directory because there is one place that describes it. A refusal that
+ * wrote its own words would be a second description of one fact, and the two
+ * would drift the first time either was edited.
+ *
+ * `null` for a project this daemon does not hold: that is a *different*
+ * refusal, and intake already makes it (`no project '…' on this machine`).
+ */
+export async function projectPathProblem(db: Db, id: ProjectId): Promise<string | null> {
+  const record = readProject(db, id);
+  if (record === null) return null;
+  return (await healthOf(record.path)).message;
+}
