@@ -322,13 +322,24 @@ suite('EPIC-20-S27 — a reader follows the README in a clean room', () => {
       // base64url (`packages/daemon/src/daemon-file.ts`), so the character
       // class is `[\w-]` and not hex: a narrower one passes on a token that
       // happens to contain no `-` and fails on the next daemon boot.
-      expect(`${out}${err}`).toMatch(/http:\/\/127\.0\.0\.1:7777\/#token=[\w-]+/);
+      //
+      // The **port is not asserted to be 7777**, and that is the whole finding
+      // of the first full-suite run of this spec: `up` is documented as "7777,
+      // or the next free one" (`packages/daemon/src/http/pick-port.ts`), the
+      // `smoke` project runs beside `e2e` and had 7777, and this room got 7808.
+      // Pinning the number here would have made a green suite depend on which
+      // other spec happened to be running — and it would have gone on asserting
+      // a sentence the README had no business making. The number itself is a
+      // claim about the *default*, so it is checked against `DEFAULT_PORT` in
+      // `test/integration/readme-contract.test.ts`, where it cannot flake, and
+      // the README now says what happens when the default is taken.
+      expect(`${out}${err}`).toMatch(/http:\/\/127\.0\.0\.1:\d+\/#token=[\w-]+/);
       record(line, 0, out);
     } finally {
       // In a `finally` because a failed assertion above must not leave a daemon
-      // listening on 7777: the next run of this spec would then be measuring a
-      // port that is already taken, and would fail for a reason that is not
-      // about the README at all. Learned here, on the second run.
+      // listening: the next run of this spec would then be measuring a machine
+      // this one dirtied, and would fail for a reason that is not about the
+      // README at all. Learned here, on the second run.
       child.kill('SIGTERM');
       await new Promise<void>((resolve) => child.once('exit', () => resolve()));
       child.stdout.destroy();

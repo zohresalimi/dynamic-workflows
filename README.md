@@ -107,7 +107,10 @@ gates, your templates and your project memory, and adds the machine-specific bit
 you do not accidentally commit them. Safe to re-run: it leaves anything you have edited alone.
 
 **`up`** starts the background service and prints the URL it is serving, then opens it:
-`http://127.0.0.1:7777/#token=<token>`. The access token rides in the URL **fragment**, which
+`http://127.0.0.1:7777/#token=<token>`. 7777 is the default rather than a promise — if something
+else already holds that port, `up` takes the next free one and the URL it prints is the one it
+bound, so read the URL rather than assuming the number. `--port <n>` pins it instead, and fails
+outright if that port is taken. The access token rides in the URL **fragment**, which
 browsers never send to a server and which the page strips from the address bar as soon as it has
 read it — so it does not end up in your shell history, in a server log or in a bookmark. The URL is
 printed whether or not a browser opens, so a machine with no browser still has something to click.

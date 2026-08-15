@@ -28,6 +28,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { PROVIDER_SPECS } from '../../packages/adapters/src/provider-registry.ts';
 import { RUN_EXIT_CODES } from '../../packages/cli/src/run/exit-codes.ts';
 import { PERMISSION_LEVELS } from '../../packages/core/src/plan-graph.ts';
+import { DEFAULT_PORT } from '../../packages/daemon/src/http/server.ts';
 import {
   agentPackageMismatches,
   exitCodeMismatches,
@@ -194,7 +195,17 @@ suite("AC7 — the first-run section's claims match the program", () => {
     // `packages/daemon/src/daemon-file.ts` builds
     // `http://127.0.0.1:<port>/#token=<token>`, and the README's claim about
     // the address bar is a claim about that fragment.
-    expect(README).toContain('http://127.0.0.1:7777');
+    expect(README).toContain(`http://127.0.0.1:${String(DEFAULT_PORT)}`);
     expect(README).toContain('#token=');
+  });
+
+  it('says the port is the default rather than a promise', () => {
+    // Found by running the README, not by reading it: the first full-suite run
+    // of `e2e/readme-first-run.test.ts` had the `smoke` project holding 7777,
+    // and `up` bound 7808 and printed that instead. `up` is "7777, or the next
+    // free one" (`packages/daemon/src/http/pick-port.ts`) and the README said
+    // only 7777, which is a sentence that is true on an idle laptop and false
+    // on a busy one — the exact shape of claim this story exists to delete.
+    expect(README).toMatch(/next free|already holds that port|if that port is taken/i);
   });
 });
