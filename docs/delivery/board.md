@@ -14,9 +14,9 @@
 |                                 |                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | **Epics**                       | 22 (EPIC-00 … EPIC-20, EPIC-22 — see the note below on EPIC-21)                               |
-| **Stories**                     | 157                                                                                          |
-| **Scenarios**                   | 819                                                                                          |
-| **Estimated size**              | **~374 working days** (sum of the epics' own declared totals)                                |
+| **Stories**                     | 158                                                                                          |
+| **Scenarios**                   | 829                                                                                          |
+| **Estimated size**              | **~377 working days** (sum of the epics' own declared totals)                                |
 | **Longest dependency chain**    | **~263 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22 |
 | **P0 requirements in M1 scope** | 55 functional + NF1–NF10 + AR-1 — F3.3 moved to M2 on 2026-08-06                             |
 | **Uncovered P0 requirements**   | **0** — F3.3 was the one gap and is now out of the M1 line (see [§7.1](#71-the-one-uncovered-requirement)) |
@@ -31,7 +31,7 @@
 
 **Size distribution** — `XS` 2 · `S` 42 · `M` 87 · `L` 26 · `XL` **0** (no story is sized `XL`, which is the rule holding).
 
-**Priority distribution** — `P0` 147 · `P1` 10 · `P2` 0. The ten `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. EPIC-20's three are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
+**Priority distribution** — `P0` 148 · `P1` 10 · `P2` 0. The ten `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. EPIC-20's three are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three and KAR-22.5 are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
 
 > **EPIC-21 is planned in Linear and is deliberately not in this reconciliation.**
 > `MET-795` — _"Interactive CLI: a real terminal app, not a background command"_ — exists as an epic
@@ -129,9 +129,9 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 | **▸** | [EPIC-17](./epics/EPIC-17-p0-views.md)            | P0 visualisation views                       | Not started | P0  | M1  | W11                     | 9       | 35   | ~28d  | EPIC-16, EPIC-15, EPIC-13, EPIC-12, EPIC-11, EPIC-10, EPIC-09 | "Why did this run do that?" becomes a screen rather than a transcript, and the median time to that answer is measured, not asserted.                                             |
 | **▸** | [EPIC-19](./epics/EPIC-19-live-run-pipeline.md)   | The live run pipeline, end to end            | Not started | P0  | M1  | W13                     | 11      | 78   | ~33d  | EPIC-10, EPIC-11, EPIC-06, EPIC-09, EPIC-05, EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-13, EPIC-12, EPIC-14 | The pieces stop being individually correct and start being connected: a submitted task frames, plans, executes and reaches a terminal state — with a fixture-free test that goes red when a link is cut. |
 | **▸** | [EPIC-20](./epics/EPIC-20-install-and-naming.md)  | One-command install and a lowercase command  | Not started | P0  | M1  | W14                     | 3       | 34   | ~10d  | EPIC-18, EPIC-19, EPIC-01                                     | Somebody who has never seen this repository runs one command and ends with a working `deflow` on their `PATH`, a `doctor` report they can read, and a README whose every command has been executed.      |
-| **▸** | [EPIC-22](./epics/EPIC-22-web-control-center.md)  | Web control center                           | Not started | P0  | M1  | W15                     | 4       | 57   | ~18d  | EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-19                   | An operator creates a project against a repository, starts a run from a chat-style composer choosing the adapter, and watches the graph, the task board and the history — without opening a terminal.    |
+| **▸** | [EPIC-22](./epics/EPIC-22-web-control-center.md)  | Web control center                           | Not started | P0  | M1  | W15                     | 5       | 67   | ~21d  | EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-19                   | An operator creates a project against a repository, starts a run from a chat-style composer choosing the adapter, and watches the graph, the task board and the history — without opening a terminal.    |
 
-**Totals:** 22 epics · 157 stories · 819 scenarios · ~374 days.
+**Totals:** 22 epics · 158 stories · 829 scenarios · ~377 days.
 
 Two workstream labels are not W-numbers: EPIC-00 is the M0 spike set and EPIC-01 is pre-W0 toolchain work, neither of which the roadmap's W0–W12 table covers. EPIC-14 is explicitly cross-cutting — its accounting half belongs to W6 and its ceiling half to W4. **W13 is new** — added to [roadmap §2.2](../17-roadmap.md) on 2026-08-12 for EPIC-19, because integrating the workstreams was never itself a workstream, and that is precisely why it did not happen. **W14 is newer still** — added on 2026-08-14 for EPIC-20, because installing the product was never a workstream either, and the first person it failed for was the person who built it. **W15 is newest** — added on 2026-08-13 for EPIC-22: W10 and W11 built the views and nothing built the way *into* them, so using the product was not a workstream any more than installing it was.
 
@@ -258,7 +258,7 @@ graph TD
   classDef cp stroke-width:3px;
 ```
 
-**The chain that sets the schedule:** EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22, ≈ **263 days** of the ≈ 374 total. Everything else is slack against it.
+**The chain that sets the schedule:** EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22, ≈ **263 days** of the ≈ 377 total. Everything else is slack against it.
 
 **EPIC-22 took the end of the chain from EPIC-20 on 2026-08-13.** Both hang off EPIC-19 and neither depends on the other — `deflow` can be installed by somebody who never opens the control center, and the control center works for somebody who installed from a clone — so they are parallel branches of ~10 and ~18 days, and the longer one now sets the date. That is worth stating rather than absorbing, because it means EPIC-20 slipping costs nothing on the critical path and EPIC-22 slipping costs a day for a day.
 
@@ -287,7 +287,7 @@ Four divergences from the W0–W12 graph in [roadmap §2.1 and §2.2](../17-road
 
 ## 4. The full story index
 
-All 157 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan). EPIC-19's first five are a whole epic added the same way, on 2026-08-12; KAR-19.6 was added to it later the same day, and KAR-19.7 on 2026-08-13, when implementing KAR-19.3 found the epic's own acceptance test unreachable without a structured-output path for the bundled mock agent. KAR-19.8, KAR-19.9 and KAR-19.10 were added later on 2026-08-13, after a second by-hand run reached framing and then failed on an argument DeFlow itself had chosen — retrying it silently and indefinitely, on a provider nobody had asked for. KAR-19.11 was added that evening, when the run that followed KAR-19.8's fix failed on the very next argument — the second DeFlow-chosen argument in two days to be found wrong by a person rather than by a test. EPIC-20's three were added on 2026-08-14, after the owner installed the product by hand and found that the documented steps did not produce a usable command. EPIC-22's four were created in Linear on 2026-08-13 and their markdown was authored on 2026-08-15, before the first of them was implemented.
+All 158 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan). EPIC-19's first five are a whole epic added the same way, on 2026-08-12; KAR-19.6 was added to it later the same day, and KAR-19.7 on 2026-08-13, when implementing KAR-19.3 found the epic's own acceptance test unreachable without a structured-output path for the bundled mock agent. KAR-19.8, KAR-19.9 and KAR-19.10 were added later on 2026-08-13, after a second by-hand run reached framing and then failed on an argument DeFlow itself had chosen — retrying it silently and indefinitely, on a provider nobody had asked for. KAR-19.11 was added that evening, when the run that followed KAR-19.8's fix failed on the very next argument — the second DeFlow-chosen argument in two days to be found wrong by a person rather than by a test. EPIC-20's three were added on 2026-08-14, after the owner installed the product by hand and found that the documented steps did not produce a usable command. EPIC-22's four were created in Linear on 2026-08-13 and their markdown was authored on 2026-08-15, before the first of them was implemented. KAR-22.5 was added on 2026-08-15, when KAR-22.3's by-hand acceptance stopped at a spec-approval gate the browser had no control to answer.
 
 | Story                                              | Title                                                                           | Epic    | Status      | Pri | Size | PRD refs                                                                                      | Verified by                                                                                                                                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ----------- | --- | ---- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -448,12 +448,13 @@ All 157 stories, in epic order. `Verified by` is the story's own declaration; §
 | [KAR-22.2](./epics/EPIC-22-web-control-center.md)  | Start a run from a chat-style composer, choosing the adapter _(added)_          | EPIC-22 | Not started | P0  | L    | F1.1, F1.3, F3.2, F3.5, F3.7, NF7, NF10                                                       | EPIC-22-S18, EPIC-22-S19, EPIC-22-S20, EPIC-22-S21, EPIC-22-S22, EPIC-22-S23, EPIC-22-S24, EPIC-22-S25, EPIC-22-S26, EPIC-22-S27, EPIC-22-S28, EPIC-22-S29, EPIC-22-S30, EPIC-22-S31, EPIC-22-S32, EPIC-22-S33 |
 | [KAR-22.3](./epics/EPIC-22-web-control-center.md)  | The project workspace: live graph, task board and run history _(added)_         | EPIC-22 | Not started | P0  | L    | F10.1, F10.3, F10.9, NF4, NF10                                                                | EPIC-22-S34, EPIC-22-S35, EPIC-22-S36, EPIC-22-S37, EPIC-22-S38, EPIC-22-S39, EPIC-22-S40, EPIC-22-S41, EPIC-22-S42, EPIC-22-S43, EPIC-22-S44, EPIC-22-S45, EPIC-22-S46, EPIC-22-S47 |
 | [KAR-22.4](./epics/EPIC-22-web-control-center.md)  | Connectors: GitHub, Linear and Jira, added from the UI _(added, deferred)_      | EPIC-22 | Not started | P1  | L    | F1.1, NF1, NF2, AR-1                                                                          | EPIC-22-S48, EPIC-22-S49, EPIC-22-S50, EPIC-22-S51, EPIC-22-S52, EPIC-22-S53, EPIC-22-S54, EPIC-22-S55, EPIC-22-S56, EPIC-22-S57 |
+| [KAR-22.5](./epics/EPIC-22-web-control-center.md)  | Answer a run's human gates from the web UI _(added)_                           | EPIC-22 | Not started | P0  | M    | F1.3, F8.3, F10.1, F10.3, NF4, NF10                                                           | EPIC-22-S58, EPIC-22-S59, EPIC-22-S60, EPIC-22-S61, EPIC-22-S62, EPIC-22-S63, EPIC-22-S64, EPIC-22-S65, EPIC-22-S66, EPIC-22-S67 |
 
 ---
 
 ## 5. PRD requirement coverage matrix
 
-**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 157 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
+**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 158 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
 
 ### 5.1 M1 (P0) functional requirements
 
@@ -568,12 +569,12 @@ Mechanical, both directions, across all 22 epic files and all 22 flow files. EPI
 
 | Check                                                           | Result                                                               |
 | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Every story cites ≥ 1 PRD requirement id                        | **157 / 157 pass**                                                   |
-| Every story declares ≥ 1 `Verified by` scenario                 | **157 / 157 pass**                                                   |
+| Every story cites ≥ 1 PRD requirement id                        | **158 / 158 pass**                                                   |
+| Every story declares ≥ 1 `Verified by` scenario                 | **158 / 158 pass**                                                   |
 | Every `Verified by` scenario id exists in that epic's flow file | **867 / 867 references resolve**                                     |
-| Every scenario declares ≥ 1 `Verifies` story                    | **819 / 819 pass**                                                   |
-| Every `Verifies` story id exists in that epic's file            | **867 / 867 references resolve across 819 scenarios**                |
-| Every story is named by ≥ 1 scenario                            | **157 / 157 pass** — no orphan stories                               |
+| Every scenario declares ≥ 1 `Verifies` story                    | **829 / 829 pass**                                                   |
+| Every `Verifies` story id exists in that epic's file            | **877 / 877 references resolve across 829 scenarios**                |
+| Every story is named by ≥ 1 scenario                            | **158 / 158 pass** — no orphan stories                               |
 | Flow index table matches the scenario bodies in that file       | **21 / 21 files agree on scenario ids and on every `Verifies` cell** |
 | Story `Verified by` ⇄ scenario `Verifies` reciprocity           | **0 breaks** — the three found on the first pass are fixed, below    |
 
@@ -640,7 +641,7 @@ comes from an env var **named from** `.DeFlow/config.yaml`, never stored by DeFl
 
 ### 7.3 Sizing
 
-**No story is sized `XL`.** The split-it rule is holding, and 131 of 157 stories are `M` or smaller.
+**No story is sized `XL`.** The split-it rule is holding, and 132 of 158 stories are `M` or smaller.
 
 Four `L` stories are nonetheless disguised `XL`s on the evidence of their own breadth, and all four are
 on or adjacent to the critical path:
@@ -746,8 +747,8 @@ Stated because an audit that only lists problems is not a useful instrument:
   every reference resolved while the product did nothing, because no row in the chain was ever about
   two epics at once. Traceability tells you nothing was dropped; it cannot tell you nothing was
   connected. See [§3](#3-the-critical-path).
-- **Every story cites a PRD requirement.** 157 of 157. No ceremony stories survived.
-- **The scenario density is real.** 819 scenarios for 157 stories — 5.2 per story — and the flow files
+- **Every story cites a PRD requirement.** 158 of 158. No ceremony stories survived.
+- **The scenario density is real.** 829 scenarios for 158 stories — 5.2 per story — and the flow files
   hold to the two-to-four-non-happy-paths-per-happy-path rule rather than padding with happy paths.
 - **Every over-budget epic says it is over budget**, and names specific reduction levers rather than
   hoping. The only budget nobody owns is the total, which is what §7.4 is for.

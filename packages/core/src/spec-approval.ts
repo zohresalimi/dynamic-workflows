@@ -54,6 +54,7 @@ import { authoredSpecFields } from './hash.ts';
 import { type CriterionId, type NodeId, NodeIdSchema } from './ids.ts';
 import type { JsonPatchOperation } from './json-patch.ts';
 import type { PlanGraph } from './plan-graph.ts';
+import { SPEC_GATE_NODE_ID } from './spec-gate-node.ts';
 import type { AcceptanceCriterion, TaskSpec } from './task-spec.ts';
 
 /**
@@ -64,8 +65,13 @@ import type { AcceptanceCriterion, TaskSpec } from './task-spec.ts';
  * see the `human.requested` case in ./reduce.ts. It is not a plan node: the plan
  * does not exist yet, and cannot, because the planner's first input is the
  * approved spec.
+ *
+ * Parsed from `SPEC_GATE_NODE_ID` rather than from a literal written here, so
+ * the zero-dependency copy `./spec-gate-node.ts` publishes for the browser's
+ * initial chunk and this branded one cannot drift. The parse stays: a typo in
+ * the id should be a startup failure, not a gate nobody can answer.
  */
-export const SPEC_GATE_NODE: NodeId = NodeIdSchema.parse('spec-approval');
+export const SPEC_GATE_NODE: NodeId = NodeIdSchema.parse(SPEC_GATE_NODE_ID);
 
 /** What the operator can do with a draft `TaskSpec` (§1.3). */
 export const SPEC_DECISIONS = ['approve', 'edit', 'reject', 'abandon'] as const;

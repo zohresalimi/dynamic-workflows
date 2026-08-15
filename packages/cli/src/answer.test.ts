@@ -9,9 +9,9 @@
  *
  * Verifies: EPIC-19-S80 · KAR-19.12 AC4 · test plan #3
  */
-import { SPEC_GATE_NODE } from '@DeFlow/core';
+import { gateAnswerRequest, SPEC_GATE_NODE } from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
-import { parseAnswerArgs } from './answer.ts';
+import { parseAnswerArgs, runAnswer } from './answer.ts';
 
 const RUN = 'run_20260814T013434Z_c984dd';
 
@@ -98,5 +98,76 @@ suite('AC4 — edit is refused honestly, and a rejection costs a reason', () => 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
     expect(parsed.message).toContain('--text');
+  });
+});
+
+/**
+ * KAR-22.5 AC2 — this command and the browser's gate panel build their request
+ * with the same function, so there is one answer path rather than two.
+ *
+ * Asserted on the wire rather than on an internal call: what has to be true is
+ * that the bytes `deflow answer` puts on the socket are `gateAnswerRequest`'s
+ * path and body, and a spec that asserted the helper was *called* would still
+ * pass if the result were then rebuilt by hand.
+ *
+ * Verifies: EPIC-22-S60 · KAR-22.5 AC2 · test plan #1
+ */
+suite('EPIC-22-S60 — one answer path, shared with the browser', () => {
+  const sent = async (argv: readonly string[]): Promise<{ url: string; body: unknown }> => {
+    const seen: { url: string; body: unknown }[] = [];
+    const result = await runAnswer({
+      argv,
+      findDaemon: () =>
+        Promise.resolve({
+          baseUrl: 'http://127.0.0.1:7777',
+          token: 'tkn',
+          pid: 4242,
+          autostarted: false,
+        }),
+      fetch: ((url: string, init: { body: string }) => {
+        seen.push({ url, body: JSON.parse(init.body) as unknown });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      }) as never,
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    return seen[0] as { url: string; body: unknown };
+  };
+
+  it('sends the spec gate to the endpoint the shared builder names', async () => {
+    const request = gateAnswerRequest({ runId: RUN, gate: SPEC_GATE_NODE, optionId: 'approve' });
+    const wire = await sent([RUN, '--gate', SPEC_GATE_NODE, '--option', 'approve']);
+
+    expect(wire.url).toBe(`http://127.0.0.1:7777${request?.path ?? ''}`);
+    expect(wire.body).toEqual(request?.body);
+  });
+
+  it('sends a rejection’s reason in the field the shared builder puts it in', async () => {
+    const request = gateAnswerRequest({
+      runId: RUN,
+      gate: SPEC_GATE_NODE,
+      optionId: 'reject',
+      text: 'the scope is wrong',
+    });
+    const wire = await sent([
+      RUN,
+      '--gate',
+      SPEC_GATE_NODE,
+      '--option',
+      'reject',
+      '--text',
+      'the scope is wrong',
+    ]);
+
+    expect(wire.url).toBe(`http://127.0.0.1:7777${request?.path ?? ''}`);
+    expect(wire.body).toEqual(request?.body);
+  });
+
+  it('sends every other gate to nodes/:nodeId/respond, as the builder does', async () => {
+    const request = gateAnswerRequest({ runId: RUN, gate: 'review-changes', optionId: 'approve' });
+    const wire = await sent([RUN, '--gate', 'review-changes', '--option', 'approve']);
+
+    expect(wire.url).toBe(`http://127.0.0.1:7777${request?.path ?? ''}`);
+    expect(wire.body).toEqual(request?.body);
   });
 });

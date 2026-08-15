@@ -41,7 +41,12 @@
  *
  * Verifies: EPIC-19-S80 · KAR-19.12 AC4
  */
-import { SPEC_DECISIONS, SPEC_GATE_NODE } from '@DeFlow/core';
+import {
+  gateAnswerRequest,
+  SPEC_DECISIONS,
+  SPEC_EDIT_NEEDS_A_DOCUMENT,
+  SPEC_GATE_NODE,
+} from '@DeFlow/core';
 import { resolveDataDir } from '@DeFlow/daemon';
 import process from 'node:process';
 import type { CommandResult } from './cancel.ts';
@@ -63,12 +68,18 @@ export type ParsedAnswerArgs =
   | { readonly ok: true; readonly args: AnswerArgs }
   | { readonly ok: false; readonly message: string };
 
-/** The one F1.3 option no flag can carry. @see the module note. */
+/**
+ * The one F1.3 option no flag can carry. @see the module note.
+ *
+ * The sentence itself is `@DeFlow/core`'s `SPEC_EDIT_NEEDS_A_DOCUMENT` — the
+ * same one KAR-22.5's gate panel shows beside the option it will not submit,
+ * because it is one limitation and an operator should not have to discover it
+ * twice. This adds the command's own name and the surface that *could* take a
+ * whole replacement document, both of which are facts about this caller.
+ */
 const EDIT_REFUSAL =
-  "deflow answer: 'edit' replaces the whole amended framed document " +
-  '(DeFlow.taskspecdraft.v1), not one field — the gate computes the RFC 6902 patch itself, so ' +
-  'there is nothing a flag could carry that the ledger could record honestly. Edit the spec in ' +
-  'the run view at /runs/<runId>, or answer with approve, reject or abandon.';
+  `deflow answer: ${SPEC_EDIT_NEEDS_A_DOCUMENT} ` +
+  'A whole amended document goes to POST /api/runs/<runId>/spec/edit.';
 
 /** AC4's argv. Nothing is defaulted. @see the module note. */
 export function parseAnswerArgs(argv: readonly string[]): ParsedAnswerArgs {
@@ -200,18 +211,22 @@ async function refusalOf(response: Response): Promise<string> {
  * transactions are written against — approving pins the spec, rejecting mints a
  * reframing attempt, abandoning ends the run. Routing them through `respond`
  * would need a second implementation of all three.
+ *
+ * That choice used to be made here, privately, when this was the only surface
+ * that had to make it. KAR-22.5 added a second — the browser's gate panel — so
+ * it moved to `gateAnswerRequest` in `@DeFlow/core`, beside the `SPEC_DECISIONS`
+ * vocabulary it branches on. `null` is unreachable from here: `parseAnswerArgs`
+ * has already refused the one pair that has no route.
  */
 function route(args: AnswerArgs): { path: string; body: unknown } {
-  if (args.gate !== SPEC_GATE_NODE) {
-    return {
-      path: `/api/runs/${args.runId}/nodes/${args.gate}/respond`,
-      body: { optionId: args.option, ...(args.text === null ? {} : { text: args.text }) },
-    };
-  }
-  if (args.option === 'reject') {
-    return { path: `/api/runs/${args.runId}/spec/reject`, body: { reason: args.text ?? '' } };
-  }
-  return { path: `/api/runs/${args.runId}/spec/${args.option}`, body: {} };
+  const request = gateAnswerRequest({
+    runId: args.runId,
+    gate: args.gate,
+    optionId: args.option,
+    text: args.text,
+  });
+  if (request === null) throw new Error(EDIT_REFUSAL);
+  return request;
 }
 
 /** What the command prints when the daemon accepted the answer (AC4). */
