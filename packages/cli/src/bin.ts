@@ -99,7 +99,10 @@ Options for "run":
   --json          One JSON object per line, for a pipe
   --no-wait       Exit 4 on an open human gate instead of waiting for it
   --permission <level>
-                  read | worktree | repo | system; worktree by default
+                  read | worktree | worktree+net | full; worktree by default
+  --provider <id> Send every node to one agent: gemini, copilot, opencode,
+                  claude, codex or mock. Refused with the list this machine
+                  actually has if the id is not one of them.
 
 Ctrl-C once detaches — the run keeps going and the daemon keeps serving it.
 Ctrl-C twice within three seconds cancels the run.

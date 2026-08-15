@@ -601,6 +601,19 @@ somebody maintains by memory and becomes an artefact with a build. The risk is t
 until it covers everything interesting, which AC4's "short and named, with a reason" is aimed at and
 which is worth re-reading whenever a line is added to it.
 
+**The read-through (EPIC-20-S33), performed 2026-08-15.** A clean room with no `deflow` on `PATH`,
+a fake `HOME`, an npm prefix of its own, and the README followed from the top with nothing else
+open. `npx deflowai setup` reported five ok steps and exited 0; a **new** interactive zsh, given a
+`PATH` without the prefix on it, answered `deflow --version` and `dfl --version` from the line
+`setup` wrote into `~/.zshrc`; `doctor` exited 0 with 15 ok and 9 warn; `init`, `doctor --fix` and
+`status` exited 0; `up` printed `http://127.0.0.1:7777/#token=<token>` and served it. Nowhere did the
+reader have to stop and think, and nothing was consulted outside this file — which is the whole of
+the scenario. Three claims that could only be found this way were found and are now fixed rather
+than noted: `--permission repo` from the old table is refused by the parser with
+`read, worktree, worktree+net, full`; the old agent block's `@agentclientprotocol/claude-agent-acp`
+line leaves a machine with no `claude`, which `doctor` then says in words the README had just
+contradicted; and `--provider` was documented in neither the usage block nor the README.
+
 ---
 
 ## Risks
