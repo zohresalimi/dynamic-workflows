@@ -78,6 +78,40 @@ export async function freePort(): Promise<number> {
   });
 }
 
+/**
+ * `port` if this machine will let us have it, and a free one if it will not.
+ *
+ * KAR-00.10. `AC1_PORT` is 7777 because AC1 is a claim about that socket, and
+ * for a long time every spec in `test/integration/spike-s4-one-port.test.ts`
+ * was handed it flat. A fixed port is a shared resource on a developer's
+ * machine, and 7777 is not just any fixed port: it is DeFlow's own default
+ * (docs/03-local-development.md §9), so the thing most likely to be sitting on
+ * it is a `deflow up` from earlier in the day. Twelve leaked daemons were
+ * cleared off this machine on 2026-08-15 and one of them held it. The result
+ * was that the whole file died in `beforeAll` with twenty-five skipped tests
+ * and a message about a foreign pid — a suite-level failure that says nothing
+ * about SSE, HMR, mount order or resume, which is all those specs are about.
+ *
+ * Deliberately not `freePort()`: preferring 7777 keeps the ordinary run binding
+ * the port the spike is written about, so the demonstration is the real one.
+ * This only steps aside when it has to, and the caller that genuinely means
+ * "this exact port or nothing" — `startHarness` with an explicit `S4_PORT` —
+ * still gets the named refusal below.
+ *
+ * There is a race between letting the probe go and the child binding: something
+ * else can take the port in between. That is what the pid comparison in
+ * `spawnAndWait` is for, and it turns the race into a named failure rather than
+ * a silently wrong subject.
+ */
+export async function preferredPort(port: number): Promise<number> {
+  const available = await new Promise<boolean>((resolve) => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+  });
+  return available ? port : await freePort();
+}
+
 const started: Harness[] = [];
 
 export async function stopAll(): Promise<void> {
@@ -174,9 +208,17 @@ async function spawnAndWait(
           await stop();
           throw new Error(
             `${what} was asked for 127.0.0.1:${port}, but pid ${String(reported)} is already ` +
-              `listening there — this run spawned pid ${String(child.pid)}. Stop the stray ` +
-              `process (kill ${String(reported)}) and run again; adopting it would test ` +
-              `somebody else's server.\n${output()}`,
+              `listening there — this run spawned pid ${String(child.pid)}. Adopting it would ` +
+              `test somebody else's server.\n` +
+              // The fix, spelled out. 7777 is DeFlow's own default port, so the
+              // usual squatter is a `deflow up` somebody forgot, and "it is
+              // already in use" is not an actionable sentence at 6pm.
+              `  Find it:  lsof -nP -iTCP:${port} -sTCP:LISTEN\n` +
+              `  Free it:  kill ${String(reported)}\n` +
+              (port === AC1_PORT
+                ? `  Or leave it: the specs no longer need ${String(AC1_PORT)} in particular — see preferredPort() in this file.\n`
+                : '') +
+              output(),
           );
         }
         return harness;
