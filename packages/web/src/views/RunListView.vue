@@ -41,6 +41,16 @@ useRunList();
         <RouterLink class="run-list__link" :to="`/runs/${row.runId}`" :data-run-link="row.runId">
           <span class="run-list__row-title">{{ row.title }}</span>
           <span class="run-list__row-status" :data-run-status="row.runId">{{ row.label }}</span>
+          <!--
+            KAR-19.12 AC6 — which gate, beside the status word rather than
+            instead of it. `needs a decision` is true and says nothing about
+            *what* is being decided, which is the fact an operator scanning this
+            list is looking for.
+          -->
+          <span v-if="row.gate" class="run-list__row-gate" :data-run-gate="row.runId"
+            >waiting on {{ row.gate.node }} —
+            {{ row.gate.options.map((o) => o.id).join(', ') }}</span
+          >
           <span class="run-list__row-id">{{ row.runId }}</span>
         </RouterLink>
       </li>
@@ -80,6 +90,12 @@ useRunList();
 .run-list__row-status {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
+}
+
+.run-list__row-gate {
+  grid-column: 1 / -1;
+  font-size: 0.8em;
+  color: var(--ink-warn, var(--ink-muted));
 }
 
 .run-list__row-id {

@@ -2472,6 +2472,173 @@ the command, the exit code and the events — and it is pasted rather than descr
 
 ---
 
+## EPIC-19-S79 — Happy path: the run stops to ask, and the terminal says so and how to answer
+
+**Verifies:** KAR-19.12 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: a healthy run that is waiting is never mistaken for a hung one
+
+  Scenario: the announcement arrives with the gate, not minutes later
+    Given a run whose framing has completed and whose F1.3 spec-approval gate is open
+    And an attached "deflow run" following it
+    Then the terminal prints a block naming the gate node "spec-approval"
+    And the block says the run is waiting for a person
+    And the block lists all four options by id and by label
+    And the block appears at the same head sequence the gate opened at
+
+  Scenario: it says how to answer, both ways
+    Then the block carries the exact command "deflow answer <runId> --gate spec-approval --option approve"
+    And the block carries the run's URL on this daemon
+    And neither instruction requires reading the ledger or extracting a token
+
+  Scenario: one reader, not two
+    Then the gate the block names came from "pendingGate" over the reduced RunState
+    And no surface derives "which gate is open" a second way
+```
+
+**Notes:** the by-hand run of 2026-08-14 is the regression case, and it is worth being precise about
+what was wrong: the `human.requested` line *was* rendered, with the entire rendered spec in its
+detail. Several hundred words arrived and not one of them said *this has stopped and is waiting for
+you*, and the four options the gate offered were not among them. So the Then clauses are about the
+sentence and the option ids, not about whether an event reached the terminal — a scenario that only
+asserted the latter would have been green on the afternoon the operator killed the process.
+
+---
+
+## EPIC-19-S80 — The gate is answered from a terminal, with no browser and no token
+
+**Verifies:** KAR-19.12 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: deflow answer
+
+  Scenario: approving the F1.3 gate
+    Given a real daemon holding a run at an open spec-approval gate
+    When "deflow answer <runId> --gate spec-approval --option approve" runs
+    Then the daemon appends "human.responded" and "run.spec.approved" in one transaction
+    And the command exits 0 having read the bearer token from daemon.json itself
+
+  Scenario: a gate on a plan node
+    Given a run suspended on a "human" plan node offering "continue" and "stop"
+    When "deflow answer <runId> --gate <node> --option continue" runs
+    Then the answer is posted to "POST /api/runs/:id/nodes/:nodeId/respond"
+    And the node resumes on the attempt it was suspended on
+
+  Scenario: an option the gate does not offer
+    When the same command names an option the gate never listed
+    Then the refusal is the daemon's own sentence, naming what the gate does offer
+    And the command exits non-zero having appended nothing
+
+  Scenario: edit is refused honestly
+    When the option "edit" is chosen
+    Then the command refuses, saying an edit carries the whole amended framed document
+    And it names the surface that can supply one, rather than pretending a flag could
+```
+
+**Notes:** `approveSpec` has been a client of the approve route since KAR-10.3, and its own doc
+comment describes it as *"`deflow approve <runId>`"* — a command that was never registered. That is
+the same shape as the `cancel` gap KAR-19.6 closed: a capability the daemon has had for weeks whose
+only operator-facing route was `curl` with a hand-extracted token. The refusal wording is asserted to
+be the daemon's rather than the CLI's for the reason KAR-19.6 states about `--mode`: two wordings of
+one rule is how they come to disagree.
+
+---
+
+## EPIC-19-S81 — `--no-wait` and `--json` are unchanged by the announcement
+
+**Verifies:** KAR-19.12 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: the announcement does not move the contracts CI depends on
+
+  Scenario: --no-wait still exits 4
+    Given a run at an open human gate
+    When "deflow run --attach <runId> --no-wait" runs
+    Then the process exits 4
+    And the code came from classifyRun, which remains the only derivation
+    And the announcement block was printed before the process exited
+
+  Scenario: --json keeps stdout a pure event stream
+    When the same run is followed with "--json"
+    Then no line of stdout is the announcement, and every line of it still parses
+    And the announcement is exactly one NDJSON object on stderr, beside the verdict
+    And it carries the gate node, the option ids, the answer command and the URL
+    And no ANSI escape appears anywhere in either stream
+```
+
+**Notes:** a CI job that pipes `--json` into `jq` is the reader this scenario protects, and there are
+two ways this fix breaks it: a multi-line human block escaping into the machine stream, and — the one
+found while implementing — an announcement *object* on stdout, which parses fine and still breaks the
+stream, because every line there carries a strictly increasing unique `seq` and an announcement has
+none. It goes where the verdict goes. The `--no-wait`
+clause is the counterweight in the other direction: the point of the story is to stop a *waiting*
+run being silent, and it would be a poor trade to make a scripted `--no-wait` wait.
+
+---
+
+## EPIC-19-S82 — Every surface names the gate, including a run whose status is still `running`
+
+**Verifies:** KAR-19.12 · **Type:** Failure · **Automated at:** unit, integration, web
+
+```gherkin
+Feature: "running" is not an answer to "why is nothing happening"
+
+  Scenario: deflow status names the gate
+    Given a ledger holding a run whose status is "running" and which has an open human node gate
+    When "deflow status" runs
+    Then the run's row names the gate's node id and the options it offers
+    And the run status label itself is still runStatusLabel's, with no fourth spelling
+
+  Scenario: the run list row
+    Given the same run in the web run list
+    Then the row names the gate beside the status label
+
+  Scenario: the run's own view
+    Then the pending gate is rendered with its options and how to answer it
+    And it is fed by the tab's existing "gates" projection, not a ninth one
+    And "GET /api/runs/:id" carries the same gate beside refusal, failure and provider
+```
+
+**Notes:** the spec gate has its own run status and so is half-visible already; the case that is
+wholly invisible is a plan-level `human` node, whose gate opens while `state.status` is still
+`running`. That is why the Given is written that way rather than around the F1.3 gate — a scenario
+that only covered the spec gate would pass today on the status word alone and would not have caught
+the general defect.
+
+The third scenario is automated at **integration** as well as at unit and web, and the reason is
+worth recording: the web specs hand their store a fabricated JSON body, so a `GET /api/runs/:id`
+that computed the right gate and then dropped it out of the response — or spelled its key
+differently — would be green in `packages/web` and green in `@DeFlow/core`. The CLI cannot cover it
+either, because `deflow run` and `deflow status` compute `pendingGate` locally off the reduced
+`RunState` and never read this field off an HTTP response.
+
+---
+
+## EPIC-19-S83 — A gate answered elsewhere resolves in the attached session
+
+**Verifies:** KAR-19.12 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: two surfaces, one run
+
+  Scenario: answered in the UI while a terminal is watching
+    Given a real daemon, a run at an open gate, and an attached follower
+    When the gate is answered over HTTP by something that is not the follower
+    Then the follower prints a line naming the node, the chosen option and who chose it
+    And the run proceeds in the same attached process
+    And no reconnect, restart or re-attach happened
+```
+
+**Notes:** this is the clause that stops the fix being written as a local dialogue. If the terminal
+only learned about answers it submitted itself, then a run approved in the browser would leave the
+attached session sitting exactly as silently as before — the same defect, one step further along.
+The assertion that nothing reconnected is deliberate: the stream is already open and already
+carries `human.responded`, so a fix that re-opened it would be inventing a mechanism to replace one
+that works.
+
+---
+
 **Related:** [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) · [Board](../board.md) ·
 [Delivery plan](../README.md) · [05-durable-execution.md](../../05-durable-execution.md) ·
 [06-planning-and-replanning.md](../../06-planning-and-replanning.md) ·

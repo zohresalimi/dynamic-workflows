@@ -53,6 +53,7 @@ import {
   mintRunId,
   NodeIdSchema,
   parseDeFlowConfig,
+  pendingGate,
   SpecEditRefused,
   sealTaskSpec,
   VerdictV2Schema,
@@ -1183,6 +1184,12 @@ export const api = new Hono()
     // facts the CLI printed at submission, so a UI and a terminal cannot say
     // different things about one run.
     const provider = runProvider(view, runId);
+    // KAR-19.12 AC6 — and, for a run that has stopped to *ask*, what it is
+    // waiting on. The fourth sibling of the three above and for the same
+    // reason: which gate is open is a fact the run view has to render, and
+    // `pendingGate` is the one reader of it — the terminal, `deflow status` and
+    // the run list all ask the same function.
+    const gate = pendingGate(state);
     return c.json(
       {
         ...runSummary(
@@ -1195,6 +1202,7 @@ export const api = new Hono()
         ...(refusal === null ? {} : { refusal }),
         ...(failure === null ? {} : { failure }),
         ...(provider === null ? {} : { provider }),
+        ...(gate === null ? {} : { gate }),
       },
       200,
     );

@@ -801,6 +801,9 @@ export {
 // a write node's pathScope is not empty.
 export type { EmptyWriteScope } from './path-scope.ts';
 export { emptyWriteScopes, pathScopeMatches, relativeToWorktree } from './path-scope.ts';
+// KAR-19.12 — the one reader of "is this run waiting on a person, and on what".
+export type { PendingGate, PendingGateOption } from './pending-gate.ts';
+export { pendingGate, pendingGateSummary } from './pending-gate.ts';
 // KAR-08.1 — F5.4's four-level ladder as one pure function of
 // `(level, request, scope)`. No I/O, no vendor CLI, no clock.
 export type {

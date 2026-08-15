@@ -2019,6 +2019,24 @@ export const ProviderAdmissionProbedSchema = z.strictObject({
   /** The child's own stderr from a handshake that failed. Never paraphrased. */
   stderr: z.string().optional(),
   /**
+   * KAR-19.12 — the provider the *operator named*, when they named one.
+   *
+   * Optional, and absent on every row written before this story and on every
+   * submission that named nothing — the same additive shape KAR-19.10's
+   * `chosen` uses, and for the same reason: an optional field leaves every
+   * existing row validating against exactly the fields it was written against.
+   *
+   * It is here because the refusal's prose is deliberately **not** stored
+   * (`packages/daemon/src/http/run-refusal.ts`): the sentence is re-rendered
+   * from these rows through `admitRun`, and after KAR-19.10 that function
+   * answers *differently* depending on whether a provider was named — a machine
+   * with a vendor CLI and no ACP bridge is admitted by default and refused when
+   * it is asked for by name. Without this field the read path re-derives
+   * "admitted" for a run the write path refused, and `GET /api/runs/:id` drops
+   * the `refusal` block KAR-19.2 AC2 requires.
+   */
+  requested: ProviderIdSchema.optional(),
+  /**
    * KAR-19.10 AC4 — the choice admission made, on the row that recorded it.
    *
    * Optional, and absent on every row written before this story and on every

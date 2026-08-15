@@ -1737,6 +1737,203 @@ registry** — every argument gets a declared form and a provenance note, and an
 row in AC6's list rather than an omission. The third is scope creep into KAR-19.10's territory: this
 story changes what is on the command line and how it is checked, not which provider is chosen.
 
+**What the audit found (2026-08-14).** The declared-form table was written first and then *run*, and
+running it produced two arguments nobody had reported:
+
+- **OpenCode's `--format`.** The flag is `default|json`; DeFlow's own `ShimFormat` vocabulary spells
+  the first of those `text`, and the builder passed DeFlow's spelling straight through. `--format
+  text` would have been refused by the real binary the first time anyone asked for a non-streaming
+  turn on OpenCode. Caught by the guard's format axis, not by an operator.
+- **Claude Code's `$schema`.** With the schema finally inline, the real `claude` 2.1.220 got past its
+  `JSON.parse` and refused the layer below: `Error: --json-schema is not a valid JSON Schema: no
+  schema with key or ref "https://json-schema.org/draft/2020-12/schema"`. Its bundled validator has
+  no 2020-12 meta-schema registered. The same document without that one key completes the turn, so
+  the key is declared as `stripKeys` on the entry and only the vendor's copy changes — the file under
+  the run's `.DeFlow/schemas/` is still written whole (NF8). **This one was found by executing the
+  audit, which is the entire argument for AC3's provenance column.**
+
+**Acceptance (AC9, performed 2026-08-14, pasted rather than asserted).** CLI built from this branch,
+a scratch git repository outside any DeFlow checkout, `deflow init`, and the real
+`claude 2.1.220` on `PATH`.
+
+Before the fix, from the same built CLI — the defect, reproduced live, and KAR-19.8's reporting
+doing its job on the *second* flag:
+
+```
+$ deflow run --file task.md --permission read
+run run_20260813T224034Z_187800 — watching; Ctrl-C detaches
+provider claude — /opt/homebrew/bin/claude — exec shim route
+· task                submitted  from file
+✗ framing             failed  attempt 1 of 3 · agent.nonzero-exit ·
+                              --json-schema
+                              /Users/…/.DeFlow/runs/run_20260813T224034Z_187800/.…
+✗ run                 aborted  failed
+run run_20260813T224034Z_187800 aborted — node framing failed (agent.nonzero-exit)
+  (no cost recorded, 2.2s)
+exit 1
+```
+
+The flag is named, the value is named, and the run stopped after **one** attempt of three rather than
+retrying — AC7, on a flag nobody wrote that reporting for.
+
+After the fix, the same command on the same machine:
+
+```
+$ deflow run --file task.md --permission read
+run run_20260813T231641Z_080ab6 — watching; Ctrl-C detaches
+provider claude — /opt/homebrew/bin/claude — exec shim route
+· task                submitted  from file
+· run                 created
+? spec-approval       asking  Goal
+                              Add an HTTP GET /health endpoint to the scratch service …
+                              [full TaskSpec draft: in scope, declared paths, non-goals,
+                               constraints, 9 acceptance criteria, failure modes,
+                               prior decisions]
+… spec approved …
+? confirm-probe-contract  asking  Acceptance criterion ac-probe-contract-match
+◦ discover-runtime    scheduled  claude · read
+```
+
+The framing turn completed and the run produced a plan:
+
+```
+planHash     sha256-2f36cfa93a6014f9659738da42e50617ee7b19f9a5ad72ff0ed5816f9c7ec0ea
+planVersion  1
+nodeCounts   { running: 1, suspended: 1, scheduled: 1 }
+plan nodes   discover-runtime, implement-endpoint, implement-test, repair-round,
+             gate-acceptance
+```
+
+The run was cancelled once the plan existed, because what this story is accepted on is the framing
+turn completing and a plan being produced, not a feature being built. `deflow doctor` on the same
+machine reports the argv rows and says which half did not run:
+
+```
+Conformance
+  conformance.argv.claude  ✓ ok  16 invocations DeFlow can build for claude — 4 turn kinds
+                                 × 4 permission levels — carry only arguments whose values
+                                 match the form that entry declares. Handing that argv to the
+                                 installed claude is the other half of F3.4 and needs a real,
+                                 authenticated CLI, so it is **not run here**: …
+```
+
+---
+
+### KAR-19.12 — A run waiting on a human says so, and can be answered _(added)_
+
+|                 |                                                                                                                                                                                                                                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                                                                                                                                                              |
+| **Priority**    | P0                                                                                                                                                                                                                                                                                                       |
+| **Size**        | M                                                                                                                                                                                                                                                                                                        |
+| **Depends on**  | KAR-19.9 (the attached view, its streaming and `classifyRun`), KAR-19.1 (`runStatusLabel` and the run list), EPIC-13 KAR-13.1 (`humanGates`, `openHumanGates` and `planHumanResponse` — the gate machinery this reuses rather than reimplements), EPIC-10 KAR-10.3 (`SPEC_APPROVAL_OPTIONS` and the four spec routes), EPIC-18 KAR-18.3 (the exit-code table and the attached view), KAR-18.7 (`deflow status`'s report) |
+| **PRD**         | F1.3, F4.4, F10.1, F10.3, NF8, NF10                                                                                                                                                                                                                                                                      |
+| **Verified by** | EPIC-19-S79, EPIC-19-S80, EPIC-19-S81, EPIC-19-S82, EPIC-19-S83                                                                                                                                                                                                                                          |
+
+**As** an operator whose run has stopped to ask me something, **I want** the terminal to tell me that
+it is waiting, what it is waiting for and how to answer it, **so that** a healthy run is never
+indistinguishable from a hung one.
+
+**Found by hand on 2026-08-14**, running the built binary at `da41a82` in a scratch git repo with
+`--provider mock`. The pipeline works end to end now: `provider.probed → task.submitted →
+run.created → policy.patch.loaded → human.requested(spec-approval)`. Framing produced a real
+`TaskSpec`, and the run correctly suspended at an F1.3 spec-approval gate offering all four options.
+The attached `deflow run` then sat there. It was killed after nine minutes.
+
+**Nothing is broken underneath.** That is what makes this the story it is: the ledger is right, the
+gate is right, the four options are right, and the operator still cannot get past it. Three separate
+gaps produce one experience:
+
+1. **The terminal never says what it is waiting for.** `human.requested` renders as one `asking`
+   line with the whole rendered spec in its detail — several hundred words of document, with no
+   sentence saying *this run has stopped and is waiting for you*, and **no mention of the four
+   options at all**. The one fact the operator needs is the one fact the line omits.
+2. **There is no way to answer it from a terminal.** `approveSpec` has been a client of
+   `POST /api/runs/:id/spec/approve` since KAR-10.3, whose own doc comment calls it
+   *"`deflow approve <runId>`"* — and no such command was ever registered in `bin.ts`. The only
+   route to the gate is the browser, or `curl` with a bearer token read out of `daemon.json` by
+   hand, which is the same "capability no operator can reach" KAR-19.6 removed for `cancel`.
+3. **No surface names the gate.** `deflow status` prints the run's status label, and a plan-level
+   `human` node opens a gate while the run's status is still `running` — so the command an operator
+   runs to find out *why nothing is happening* answers `running`.
+
+**No new event kinds, and no second gate machinery.** `human.requested`, `human.responded` and the
+`humanGates` projection all exist and all reduce correctly; `planHumanResponse` already owns what an
+answer means, and the four spec routes already own the F1.3 decisions. This story is a **read** of
+that projection on three surfaces plus one command that posts to routes that already exist.
+
+**Acceptance criteria**
+
+1. A run that suspends on a human gate says so in the attached `deflow run`, immediately and in its
+   own block: the gate's node id, that the run is waiting for a person, and **every option it
+   offers, by id and label**. Derived from the reduced `RunState` through one exported reader
+   (`pendingGate` in `@DeFlow/core`), never by pattern-matching the event stream a second time — the
+   surfaces must not be able to disagree about which gate is open.
+2. The same block says how to answer it: the exact `deflow answer …` command line, **and** the run's
+   URL on this daemon. Both, not either — the operator at a terminal and the operator with a browser
+   are the same person on different days, and an instruction that names only one leaves half of them
+   reading the ledger.
+3. `--no-wait` is unchanged: an open gate is still a terminal exit **4** through `classifyRun`, with
+   no second derivation, and the announcement is printed before the process exits so a CI log
+   records what it was waiting for. Under `--json` the announcement is exactly **one** NDJSON object
+   and it goes to **stderr**, beside the verdict — `--json`'s stdout is a `seq`-ordered stream of
+   *events*, every line carrying a `runId`, a numeric `seq` and a `kind`, strictly increasing and
+   unique, and an announcement has no `seq` of its own. Borrowing the one from the
+   `human.requested` that opened the gate would put a duplicate into the stream whose uniqueness is
+   the contract. No ANSI is emitted on any non-TTY stream, and the human block wraps to the
+   terminal's width like every other detail (KAR-18.9 AC4).
+4. `deflow answer <runId> --gate <node> --option <id> [--text <text>]` answers a gate with no
+   browser. It routes the F1.3 gate to the four spec endpoints and every other gate to
+   `POST /api/runs/:id/nodes/:nodeId/respond`, and refuses `edit` with the sentence that says why an
+   edit needs the whole amended document rather than pretending a flag could carry one. An option a
+   *plan* gate does not offer is refused **in the daemon's own words** — `planHumanResponse`'s,
+   naming what that gate does offer. The F1.3 gate is the one exception, and for a routing reason
+   rather than a policy one: its four decisions are four endpoints, so an option outside them is a
+   route that does not exist, and it is refused against `SPEC_DECISIONS` — the same constant those
+   routes and `SPEC_APPROVAL_OPTIONS` are built from, so it is not a second vocabulary. It reads the
+   token from `daemon.json` like every other command; no operator ever sees a bearer token.
+5. `deflow status` names the gate. A run with an open gate reports the gate's node id and its option
+   ids beside the run, whatever the run's own status is — a `running` run with a blocking `human`
+   node is exactly the case this criterion exists for, and it is the case the status word alone
+   cannot express. The run status label itself is still `runStatusLabel`'s and gains no fourth
+   spelling (KAR-19.1 AC6).
+6. Both web surfaces show it. `GET /api/runs/:id` carries the pending gate beside `refusal`,
+   `failure` and `provider` — the fourth sibling, and for the same reason as the other three — and
+   `GET /api/runs`' rows carry it too, both from `pendingGate` and from nothing else. The run list
+   row names the gate, from that row and from the `human.requested` frame already on the `runs=*`
+   topic; the run's own view renders the pending gate with its options, from the `gates`
+   projection's `escalations`, which is the tab's **existing** fold of
+   `human.requested`/`human.responded`. A ninth projection restating a fold the tab already has
+   would be the drift this story exists to remove.
+7. A gate answered anywhere resolves in the attached session with no restart. `human.responded`
+   renders as its own line naming the node, the chosen option and who chose it, and the run then
+   proceeds in the same attached process — asserted against a real daemon by answering over HTTP
+   while a follower is attached.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
+implementation.
+
+| #   | Level       | Test                                                                                                                                                            | Red when                                                                                                                        |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | `pendingGate` over a `RunState` holding an open spec gate and over one holding an answered gate; assert the node, the four option ids, and `null` after an answer | The gate is read by scanning events on each surface, and the CLI and the UI disagree about an answered gate                     |
+| 2   | unit        | The renderer's gate block: the node, the four options with labels, the `deflow answer` line and the run URL; `--json` emits exactly one object and no ANSI      | The block is prose assembled at the call site, so `--json` grows a second shape and the pipe contract breaks                    |
+| 3   | unit        | `parseAnswerArgs` over the missing run id, the missing `--gate`, the missing `--option`, `edit` without a document, and `reject` without a reason               | The command guesses a default gate or a default option, and an operator answers a question they did not read                    |
+| 4   | integration | A real daemon at an open spec gate; `deflow answer <run> --gate spec-approval --option approve` and assert `human.responded` and `run.spec.approved` in the ledger | The command posts to the wrong route, or invents its own approval semantics beside the daemon's transaction                     |
+| 5   | integration | The same, with an option the gate does not offer; assert the daemon's own refusal text and a non-zero exit                                                       | The CLI validates the option itself and its wording drifts from `planHumanResponse`'s                                           |
+| 6   | integration | A real daemon and a real attached follower: answer the gate over HTTP, assert the follower prints the `answered` line and the run proceeds, with no reconnect    | The attached session only learns about answers it made itself, so the UI and the terminal are two half-views of one run         |
+| 7   | unit        | `deflow status` over a ledger holding a `running` run with an open `human` node gate; assert the gate id and its options on the row                              | Status says `running`, which is the sentence that sent the operator to read the ledger                                          |
+| 8   | web         | The run list row and the run view for a run with an open gate; assert the gate id on both                                                                       | The UI shows `needs a decision` with nothing to decide on, which is the same silence in a different font                        |
+| 9   | integration | A real daemon holding a run suspended on a plan-level `human` node; `deflow answer <run> --gate <node> --option continue` and assert the post went to `nodes/:nodeId/respond` and that the node completed on the attempt it was suspended on | Only the F1.3 route is wired, so every gate the *plan* declared is answered against an endpoint that does not exist — and the spec-gate specs above are all green while it is |
+| 10  | integration | The same daemon's `GET /api/runs/:id` and `GET /api/runs`; assert both carry the gate, that they agree field for field, and that both drop it once it is answered | The gate is computed and then dropped on the way to the wire. #1 and #8 are both green for that bug: the unit spec never serialises, and the web specs feed their store a hand-written body |
+| 11  | unit        | `normaliseSnapshotText` over a tmp directory whose own prefix contains a hyphen (`DeFlow-up-<random>`); assert the whole directory reduces to `<tmp>`             | The rule stops at the first hyphen, so the six random characters survive and any snapshot carrying an absolute tmp path can never match twice — invisible until KAR-19.10 put a resolved binary path into `deflow run`'s transcript |
+
+**Notes / risks** — the shortcut is a `console.log` in the run command's event loop: it would satisfy
+a demo and would be a second derivation of "which gate is open" living beside `classifyRun`'s, which
+is exactly how the three status wordings of 2026-08-12 came about. The second trap is scope: full
+inline interaction — arrow keys, an editor for the amended document — is **EPIC-21's**, and this
+story deliberately stops at a non-interactive command. What it guarantees is that the operator is
+never *stuck*, not that answering is pleasant.
+
 ---
 
 ## Risks

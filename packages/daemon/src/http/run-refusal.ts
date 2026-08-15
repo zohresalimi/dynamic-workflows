@@ -83,15 +83,37 @@ function asResolution(payload: unknown): ProviderResolution | null {
  * not, which is nearly all of them.
  */
 export function runRefusal(view: LedgerView, runId: RunId): RunRefusal | null {
-  const resolutions = view
+  const probed = view
     .tail(runId, 0, REFUSAL_WINDOW)
-    .filter((event) => event.kind === 'provider.probed')
+    .filter((event) => event.kind === 'provider.probed');
+  const resolutions = probed
     .map((event) => asResolution(event.payload))
     .filter((entry): entry is ProviderResolution => entry !== null);
 
   if (resolutions.length === 0) return null;
 
-  const admission: RunAdmission = admitRun(resolutions);
+  /**
+   * KAR-19.12 — the provider the operator named at submission, if they named
+   * one.
+   *
+   * `admitRun` has answered differently for a named provider than for a
+   * machine's own best choice since KAR-19.10 AC8: a machine with the vendor
+   * CLI and no ACP bridge is *admitted* by default and *refused* when it is
+   * asked for by name. Re-rendering without it therefore re-derives "admitted"
+   * for a run the write path refused, and this function answers `null` for a
+   * run whose whole ledger is a refusal — which is what
+   * `packages/daemon/test/integration/admission-terminal.test.ts` caught. The
+   * field is on the row rather than inferred from how many rows there are: a
+   * registry with one provider records one row either way.
+   */
+  const requested = probed
+    .map((event) => (event.payload as { requested?: unknown }).requested)
+    .find((value): value is string => typeof value === 'string');
+
+  const admission: RunAdmission = admitRun(
+    resolutions,
+    requested === undefined ? {} : { provider: requested },
+  );
   if (admission.outcome !== 'refused') return null;
 
   return {

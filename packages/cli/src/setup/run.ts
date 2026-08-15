@@ -6,7 +6,8 @@
  * view while reading every branch below: `pnpm link --global` **exited 0**,
  * printed a success, and produced no usable command, because pnpm's global bin
  * directory was not on `PATH` and nothing said so. The operator followed the
- * README and got `DeFlow doctor: not recognized`.
+ * README and got a `not recognized` back from the shell for the command it
+ * named.
  *
  * So the design rule is that **every step is verified by observation**. The
  * install is confirmed by spawning `deflow --version` through a shell resolving

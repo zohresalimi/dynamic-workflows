@@ -25,6 +25,7 @@
  * Verifies: EPIC-18-S18, EPIC-18-S19 · AC1, AC2 · test plan #1, #2
  */
 
+import { PROVIDER_SPECS } from '@DeFlow/adapters';
 import { makeRepo } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
 import { mkdir, symlink } from 'node:fs/promises';
@@ -42,17 +43,33 @@ import {
 } from './support/up.ts';
 
 /**
- * KAR-19.2 — the bundled mock agent, linked on under both names admission
- * resolves (`claude`, its ACP bridge), so this spec's machine is a usable one
+ * KAR-19.2 — the bundled mock agent, so this spec's machine is a usable one
  * rather than the "nothing installed" machine `e2e/admission.test.ts` covers.
  * Without this, `POST /api/runs` refuses every run here at submission and
  * every scenario below exits 5 before it reaches anything this file is about.
+ *
+ * > **Corrected 2026-08-14 while finishing KAR-19.12.** This linked the mock
+ * > binary under the *vendor's* names — `claude` and its ACP bridge — which was
+ * > harmless only while `claude` was driven over ACP: the mock agent does speak
+ * > ACP, so the masquerade held. KAR-19.10 made the pre-execution turns take the
+ * > **exec-shim** route, and a shim invocation is built from the *registry entry
+ * > of the provider it claims to be* — so the mock binary was handed Claude
+ * > Code's argument table (`-p <prompt>`), could not parse it, and exited
+ * > non-zero. Framing failed, the run aborted ~900 ms in, and both scenarios
+ * > below then raced their Ctrl-C against an already-finished run: the second
+ * > lost, and `deflow run` was killed by the signal (`code: null`) rather than
+ * > exiting the documented 130.
+ * >
+ * > The fix is to stop pretending. The mock agent is a provider in its own
+ * > right, and a legitimate answer to admission (KAR-19.2 AC4), so it is linked
+ * > under its own bin name — read from the registry, never spelled here, per
+ * > KAR-19.10 AC9 — exactly as `e2e/live-chain.test.ts` and
+ * > `e2e/mock-only-run.test.ts` already do it.
  */
 async function usableProviderBinDir(dir: string): Promise<string> {
   const binDir = join(dir, 'bin');
   await mkdir(binDir, { recursive: true });
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude'));
-  await symlink(MOCK_AGENT_BIN, join(binDir, 'claude-agent-acp'));
+  await symlink(MOCK_AGENT_BIN, join(binDir, PROVIDER_SPECS.mock.bin));
   return binDir;
 }
 

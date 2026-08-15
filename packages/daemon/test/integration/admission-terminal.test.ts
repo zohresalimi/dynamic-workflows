@@ -8,6 +8,24 @@
  * and does the stream ever stop — against a real daemon that has just refused a
  * real submission.
  *
+ * > **Amended 2026-08-14 while implementing KAR-19.12.** The submission below
+ * > now names `provider: 'claude'`, and it has to. KAR-19.10 amended admission
+ * > so that a machine with the vendor CLI and no ACP bridge is *admitted* for
+ * > the turns the exec shim serves — it can frame, survey and plan — and is
+ * > told at submission which turn it cannot reach. This file kept submitting
+ * > the pre-KAR-19.10 way, so the route it was asserting a refusal against had
+ * > been answering `201 awaiting-spec-approval` since 2026-08-13 and the whole
+ * > spec failed on `refusal.error.code` being undefined. KAR-19.10 carried the
+ * > amendment into `./admission-refusal.test.ts` and three e2e suites and
+ * > missed this one.
+ * >
+ * > `--provider` is the right way to write it rather than a machine with no
+ * > `claude` at all: AC8's clause is *"an explicitly named provider is honoured
+ * > exactly or refused"*, and that refusal — this machine, this provider, this
+ * > turn — is the one whose terminal-ness this file exists to assert. The
+ * > sibling assertion, that the same machine is *admitted* when nothing is
+ * > named, lives next door in `./admission-refusal.test.ts`.
+ *
  * Verifies: EPIC-19-S15 · AC2, AC8 · test plan #8
  */
 import { RUN_REFUSAL_CODES } from '@DeFlow/adapters';
@@ -71,6 +89,9 @@ suite('EPIC-19-S15 — a refused run is terminal', () => {
             input: { kind: 'text', text: 'Migrate the checkout module' },
             cwd: process.cwd(),
             permission: 'read',
+            // KAR-19.10 AC8 — named, so the answer is about *this* provider on
+            // *this* machine rather than about whatever else could be found.
+            provider: 'claude',
           }),
         })
       ).json()) as RefusalBody;
