@@ -176,7 +176,7 @@ suite('every workspace dependency is linked, never downloaded', () => {
       '@DeFlow/mock-agent',
       '@DeFlow/testkit',
       '@DeFlow/web',
-      'deflow',
+      'deflowai',
     ]);
   });
 });

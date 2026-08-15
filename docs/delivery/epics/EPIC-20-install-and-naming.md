@@ -73,7 +73,7 @@ why they are one epic rather than three tickets in three places.
 - The case-sensitivity discipline the rename requires: a repository check that no two tracked paths
   differ only by case, and a CI assertion of the rename on a **case-sensitive** runner as well as on
   macOS, because a rename that only works on a Mac is not done.
-- `npx deflow setup` — one command, no clone, works anywhere npm does — and a macOS install script in
+- `npx deflowai setup` — one command, no clone, works anywhere npm does — and a macOS install script in
   the curl-to-shell shape, since that is the owner's platform.
 - What `setup` does, in order, reported through KAR-18.9's presentation layer: install or build the
   CLI; put `deflow` on the `PATH` for **this** shell in a way that actually works; verify by invoking
@@ -122,12 +122,13 @@ why they are one epic rather than three tickets in three places.
 - [ ] EPIC-19 KAR-19.10 is Done: `--provider` exists, so KAR-20.3 documents a flag rather than
       inventing one.
 - [ ] A decision is recorded on whether `deflow` is available on the npm registry, because
-      KAR-20.2's `npx deflow setup` resolves a **package name**, not a bin name. If it is taken, the
+      KAR-20.2's `npx deflowai setup` resolves a **package name**, not a bin name. If it is taken, the
       fallback (`npx @scope/deflow setup`, with `deflow` still the bin) is written into KAR-20.2
       before it starts.
-      **Answered 2026-08-15, and the answer is that it is taken.** `deflow` on npm is
+      **Answered 2026-08-15, and the answer is that it is taken. Decided the same day: the package
+      is `deflowai` — see *The package name and the short alias* below.** `deflow` on npm is
       [`Deflow`](https://www.npmjs.com/package/deflow) 0.6.4, an unrelated Redis-backed job-flow
-      library published by `fabiencdp`. So `npx deflow setup` as AC1 spells it today fetches a
+      library published by `fabiencdp`. So `npx deflowai setup` as AC1 spells it today fetches a
       stranger's package, and `packages/cli/package.json` — whose `name` is `deflow` — cannot be
       published as it stands. This blocks nothing that is built (every automated spec and the
       performed acceptance install from a packed tarball, which is also what the release gate
@@ -175,7 +176,7 @@ why they are one epic rather than three tickets in three places.
 | **Size**        | M                                                                                                          |
 | **Depends on**  | EPIC-18 KAR-18.5 (the `bin` map and the build this renames), KAR-18.6 (the clean room that proves the published names resolve) |
 | **PRD**         | NF5, NF6, NF8; PRD §15.6                                                                                   |
-| **Verified by** | EPIC-20-S1, EPIC-20-S2, EPIC-20-S3, EPIC-20-S4, EPIC-20-S5, EPIC-20-S6, EPIC-20-S7, EPIC-20-S8, EPIC-20-S9, EPIC-20-S10 |
+| **Verified by** | EPIC-20-S1, EPIC-20-S2, EPIC-20-S3, EPIC-20-S4, EPIC-20-S5, EPIC-20-S6, EPIC-20-S7, EPIC-20-S8, EPIC-20-S9, EPIC-20-S10, EPIC-20-S34 |
 
 **As** an engineer with a shell, **I want** the command to be `deflow`, **so that** it types like
 every other tool I use and nothing in my toolchain has to care which letters are capitals.
@@ -196,11 +197,14 @@ tracked files contain a `DeFlow `-prefixed command literal, and the epic and flo
 
 **Acceptance criteria**
 
-1. `packages/cli/package.json` declares `bin` as `{ "deflow": "./dist/bin.mjs", "deflow-mcp":
-   "./dist/mcp.mjs", "deflow-mock-agent": "./dist/mock-agent.mjs" }`, and its `name` field is
-   `deflow`. Every workspace reference that selected the package by name — including the root
-   `pack:check` script's `pnpm --filter DeFlow` — selects it by the new name and the scripts still
-   run.
+1. `packages/cli/package.json` declares `bin` as `{ "deflow": "./dist/bin.mjs", "dfl":
+   "./dist/bin.mjs", "deflow-mcp": "./dist/mcp.mjs", "deflow-mock-agent": "./dist/mock-agent.mjs" }`,
+   and its `name` field is `deflowai`. Every workspace reference that selected the package by name —
+   including the root `pack:check` script's `pnpm --filter DeFlow` — selects it by the new name and
+   the scripts still run. **Amended 2026-08-15** (see *The package name and the short alias* below):
+   the package name and the command are two different strings, because `deflow` on npm belongs to
+   somebody else; and `dfl` is a second `bin` key pointing at the same entry script, so the command
+   has a short spelling that shadows nothing the machine already has.
 2. Every user-visible string that names the command names the lowercase one: the usage block in
    `packages/cli/src/bin.ts`, every refusal and report string across `packages/*/src`, the exit-code
    tables, and the sentences other stories pinned by hand (KAR-18.2 AC3's lease refusal, KAR-18.3
@@ -253,7 +257,7 @@ tracked files contain a `DeFlow `-prefixed command literal, and the epic and flo
 
 | #   | Level       | Test                                                                                                                                                                    | Red when                                                                                                                          |
 | --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | unit        | Read `packages/cli/package.json` and assert the three `bin` keys and the `name` field are lowercase and map to existing entry files                                     | The `bin` map is renamed and `name` is left as `DeFlow`, so the package is still unpublishable and `npx deflow` resolves nothing   |
+| 1   | unit        | Read `packages/cli/package.json` and assert the three `bin` keys and the `name` field are lowercase and map to existing entry files                                     | The `bin` map is renamed and `name` is left as `DeFlow`, so the package is still unpublishable and `npx deflowai` resolves nothing   |
 | 2   | e2e         | Clean-room install of the packed tarball (KAR-18.6's verifier), then resolve all three bins by their lowercase names and spawn each one — `deflow --version`, `deflow-mcp --help`, `deflow-mock-agent --version` | A bin key was renamed but its target path was not shipped, which only a clean room sees                                           |
 | 3   | unit        | A source guard over `packages/*/src` and `docs/`: no shipped string matches the capitalised command as a whole word, outside the alias module and this story's own tests | One error string in a rarely-hit branch still says `DeFlow status`, and the report contradicts the command the reader just typed   |
 | 4   | integration | Invoke the program through the `DeFlow` name; assert identical stdout, identical exit code, and exactly one notice line on stderr naming both names and the expiry      | The alias re-implements argument parsing and drifts, or prints its notice on stdout                                               |
@@ -290,6 +294,41 @@ after its role rather than after its bin. Two exemptions are recorded in the AC2
 `packages/ledger/src/migrations/` (append-only and content-hashed — editing a shipped migration to
 correct a comment breaks a stronger invariant than the one this story adds) and this epic's own two
 files, which quote the old name because they are the record of the rename.
+
+**The package name and the short alias — owner's decision, 2026-08-15.**
+
+Two names were decided on 2026-08-15, after the registry was checked rather than assumed, and both
+amend criteria that were written before anyone had looked.
+
+**The npm package is `deflowai`; the command stays `deflow`.** The Definition of Ready above asked
+whether `deflow` was free on npm, and it is not: it is
+[an unrelated Redis-backed job-flow library](https://www.npmjs.com/package/deflow) at 0.6.4,
+published by `fabiencdp`. So KAR-20.2 AC1's literal `npx deflow setup` was not a thing that could be
+made to work — `npx <name>` resolves a **package**, and that line fetches and executes somebody
+else's code. `deflowai` was verified free on the registry on 2026-08-15 and is what
+`packages/cli/package.json` is named. A `bin` key does not have to match the package that declares
+it, so *nothing a user types changed*: the install route is `npx deflowai setup`, and the command it
+installs is `deflow`. Everything that names the npx route — the PRD's NF6, the architecture set, the
+roadmap, `scripts/install.sh`'s `DEFLOW_PACKAGE` default and `setup`'s own `PACKAGE` constant — was
+moved with it, and `test/command-name.test.ts` fails on any bare npx route that names the command
+instead of the package.
+
+**The short alias is `dfl`, and deliberately not `df`.** `deflow` is six characters typed many times
+a day, so the package declares a second `bin` key beside it. It is `dfl` because **`df` is POSIX.1's
+disk-free utility and is on every Unix machine this project supports** — npm's global bin directory
+usually sits *ahead* of `/bin` on `PATH`, so a `df` of ours would shadow it and `df -h` would
+silently stop being `df -h` for every shell on that machine. A tool that breaks an unrelated command
+is a tool people uninstall. `dfl` was checked on 2026-08-15: it resolves to nothing on the owner's
+machine and is free on npm.
+
+Because `dfl` collides with nothing, there is **no collision detection, no confirmation prompt and
+no shadowing default** in this epic — it installs plainly, like any other bin. That is a smaller
+design than the one an earlier draft of this decision implied, and the smaller design is the correct
+one: a prompt about a collision that cannot happen is a question with one answer. What is kept is
+the discipline rather than the ceremony — `SYSTEM_UTILITIES` in `packages/cli/src/command-name.ts`
+names `df` and its neighbours with the reason each is off limits, and a guard in
+`test/command-name.test.ts` fails if any published `bin` key is ever one of them. `dfl` is not
+deprecated and prints no notice; the notice mechanism keys off `DEPRECATED_COMMAND` alone.
 
 **Two corrections, 2026-08-14.**
 
@@ -328,7 +367,7 @@ files, which quote the old name because they are the record of the rename.
 working `deflow`, **so that** I am not asked to understand npm global prefixes before I have seen the
 tool do anything.
 
-Two entry points, because they fail in different places. **`npx deflow setup`** works anywhere npm
+Two entry points, because they fail in different places. **`npx deflowai setup`** works anywhere npm
 does and needs no clone; it is the honest reading of NF6's _"single-binary-ish install"_. **A macOS
 install script**, in the curl-to-shell shape a `brew`-less tool uses, exists because that is the
 owner's platform and because `npx` presumes a Node the user may not have yet.
@@ -348,9 +387,12 @@ mode this whole epic came from.
 
 **Acceptance criteria**
 
-1. `npx deflow setup` on a machine with no `deflow` installed and no clone of this repository
-   completes with `deflow` resolvable on `PATH` in a **new** shell, and exits 0. The macOS install
-   script, run by `curl … | sh`, reaches the same end state through the same reported steps.
+1. `npx deflowai setup` on a machine with no `deflow` installed and no clone of this repository
+   completes with `deflow` **and** its short alias `dfl` resolvable on `PATH` in a **new** shell, and
+   exits 0. The macOS install script, run by `curl … | sh`, reaches the same end state through the
+   same reported steps. **Amended 2026-08-15**: this criterion said `npx deflow setup`, which was
+   unsatisfiable — `deflow` on npm is an unrelated package — so the route names `deflowai`, the
+   package, while `deflow` stays the command. `verify` observes both names (see AC3).
 2. The steps are performed in this order and each is reported as a line through KAR-18.9's layer with
    its own `ok` / `warn` / `fail` / `skipped` state: **install** (or build) the CLI → **link** it onto
    `PATH` → **verify** → **doctor** → **adapters**. A step that fails does not silently continue into
@@ -359,7 +401,9 @@ mode this whole epic came from.
 3. **Verification is a subprocess, never an inference.** The `verify` step spawns `deflow --version`
    in a shell resolving the same `PATH` a fresh login shell would, and asserts on its stdout and exit
    code. If the spawn fails or the version does not parse, the step is `fail` regardless of what the
-   install and link steps reported.
+   install and link steps reported. **Amended 2026-08-15**: it spawns `dfl --version` the same way and
+   compares the two. A missing or disagreeing alias is a `warn`, not a `fail` — the tool is installed
+   and works — and `doctor` and `adapters` still run.
 4. When the global bin directory is not on `PATH` — the owner's actual failure — the report names
    **which** directory (`npm prefix -g`/`pnpm bin -g` resolved, absolute), says it is not on `PATH`,
    and offers the fix. It never reports success on the strength of the link command's exit code.
@@ -437,7 +481,7 @@ behind is written by `setup` under `setup`'s consent rules. `test/install-script
 the way a suspicious operator would and fails if it ever grows a second capability.
 
 The one idea the whole story rests on is `freshShellPath` (`plan.ts`): **the `PATH` this process can
-see is not the `PATH` the operator's next terminal will have.** `npx deflow setup` runs with the npx
+see is not the `PATH` the operator's next terminal will have.** `npx deflowai setup` runs with the npx
 cache's `node_modules/.bin` prepended, so `deflow` resolves inside the running process no matter what
 the install did — verifying against that would print a green tick over the exact 2026-08-12 failure.
 So the ephemeral entries are dropped, the directories the *profile* now provides are added, and every
@@ -566,8 +610,8 @@ which is worth re-reading whenever a line is added to it.
 | R1  | **A half-rename.** 468 tracked files carry a command literal and `core.ignorecase = true` hides case-only changes from the author's own checkout.                                        | KAR-20.1 AC2's source guard, AC6's case-only-path check asserted on a case-sensitive runner, and AC8's explicit non-rename list. The sweep is mechanical; the guards are what make a missed string red rather than a bug report.                                                                                |
 | R2  | **`PATH` belongs to the operator.** `nvm`, `asdf`, `mise` and Homebrew each place npm's global prefix somewhere different, and it can differ between the running shell and the next one. | KAR-20.2 AC3 verifies by spawning `deflow --version` in a fresh-shell `PATH` rather than trusting a link command, and AC8 makes "I could not do it, here is the line" a first-class, non-zero-exit outcome. The installer is allowed to fail; it is not allowed to be wrong.                                     |
 | R3  | **An installer that edits dotfiles is a new kind of thing for DeFlow to be**, and it can annoy people permanently.                                                                       | AC5 (name the file, print the line, ask, default no), AC6 (fixpoint on re-run), AC11 (nothing global without consent except the tool itself). The rules are KAR-18.8's, applied to a wider blast radius rather than reinvented.                                                                                 |
-| R4  | **`deflow` may be taken on npm**, and `npx deflow setup` resolves a package name.                                                                                                        | A Definition-of-Ready item: settle it before KAR-20.2 starts, and if taken, `npx @scope/deflow setup` with `deflow` still the bin. The bin name — the thing users type — is unaffected either way.                                                                                                             |
-| R5  | **A curl-to-shell installer is a supply-chain surface** and a reasonable person will refuse to pipe it into a shell.                                                                     | `npx deflow setup` is the first-class path and the script is the alternative; the script does nothing the npx path does not, is readable in one screen, and the README shows the download-then-read form beside the piped one.                                                                                 |
+| R4  | **`deflow` may be taken on npm**, and `npx deflowai setup` resolves a package name.                                                                                                        | A Definition-of-Ready item: settle it before KAR-20.2 starts, and if taken, `npx @scope/deflow setup` with `deflow` still the bin. The bin name — the thing users type — is unaffected either way.                                                                                                             |
+| R5  | **A curl-to-shell installer is a supply-chain surface** and a reasonable person will refuse to pipe it into a shell.                                                                     | `npx deflowai setup` is the first-class path and the script is the alternative; the script does nothing the npx path does not, is readable in one screen, and the README shows the download-then-read form beside the piped one.                                                                                 |
 | R6  | **The deprecated alias outlives its argument.** Aliases are removed by nobody.                                                                                                           | KAR-20.1 AC4 puts the removal release in the notice string **and** in a test that fails once the package version passes it. The alias expires by going red, not by being remembered.                                                                                                                           |
 | R7  | **An executed README is a slow test**, and slow tests get skipped.                                                                                                                       | KAR-20.3's clean-room execution rides KAR-18.6's existing `verify-install` job — tags and manual dispatch, not every push — and the fast half (flag cross-check, package-name cross-check, wording guard) is `unit`/`integration` and runs always.                                                              |
 | R8  | **This epic is P0 and is not on M1's critical path**, so schedule pressure will suggest it slips whole.                                                                                  | It is ~10 days, it is the cheapest epic in the plan, and it is the only one that changes whether anybody else can run the product. The reason it was never planned is the reason it must not slip again: nobody had walked the path a new user walks.                                                          |

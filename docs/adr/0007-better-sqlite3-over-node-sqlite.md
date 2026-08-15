@@ -10,7 +10,7 @@ produced two contradictory recommendations, and resolving the conflict is the su
 record.**
 
 - **Area 2 (tooling) recommended `node:sqlite`.** Its entire rationale was install ergonomics: zero
-  native compilation means `npx deflow up` never runs node-gyp, which is the number-one install
+  native compilation means `npx deflowai up` never runs node-gyp, which is the number-one install
   failure class for a solo-maintained tool (NF6).
 - **Area 1 (durability) recommended `better-sqlite3@13.0.2`** and **disproved area 2's premise by
   measurement**.
@@ -109,7 +109,7 @@ Connection setup, migrations on `PRAGMA user_version`, and the measured schema d
   `@libsql/hrana-client` network machinery for a Turso sync story DeFlow does not need.
 - **`@tursodatabase/database@0.7.2`** (the Rust rewrite, ex-Limbo). Rejected: 0.x with six releases
   in eight days. Far too volatile for the component that holds the durability guarantee.
-- **`bun:sqlite`.** Rejected: requires the Bun runtime, incompatible with `npx deflow up` on Node,
+- **`bun:sqlite`.** Rejected: requires the Bun runtime, incompatible with `npx deflowai up` on Node,
   and AR-1 already forces us onto the user's Node install.
 - **`node-sqlite3-wasm@0.8.60`.** Documented as a pure-JS escape hatch for exotic platforms only.
   WAL over a WASM VFS is not something to bet durability on.

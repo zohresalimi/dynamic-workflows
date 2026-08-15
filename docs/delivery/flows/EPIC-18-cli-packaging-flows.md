@@ -16,7 +16,7 @@
 | **Global state dir** | `$XDG_DATA_HOME/DeFlow`, else `~/.DeFlow`: `DeFlow.lock`, `ledger.db` (+ `-wal`, `-shm`), `blobs/`, `recordings/`, `pre-migrate-<user_version>.db`, `logs/` |
 | **Provider agent**   | A vendor CLI. In every scenario here it is `deflow-mock-agent` symlinked onto a temp `PATH` under a vendor name, or deliberately absent                     |
 | **Platform**         | macOS (Seatbelt, built in) or Linux (bubblewrap + socat, plus the AppArmor namespace restriction). Windows is out of scope until M3                         |
-| **The tarball**      | `deflow-0.1.0.tgz` produced by `pnpm pack` — the exact bytes a user would get, and a different program from the workspace                                   |
+| **The tarball**      | `deflowai-0.1.0.tgz` produced by `pnpm pack` — the exact bytes a user would get, and a different program from the workspace                                   |
 
 ## Preconditions common to all flows
 
@@ -1186,7 +1186,7 @@ Feature: environment probe
 across all five agents probed — so a pty is needed only for DeFlow's own ACP `terminal/*`
 implementation. That makes the fallback survivable rather than fatal, which is why the dependency is
 an `optionalDependency` with a plain-`spawn` fallback and why this is a `warn` and not a `fail`. It
-is also the only native install risk left in `npx deflow up`.
+is also the only native install risk left in `npx deflowai up`.
 
 ---
 
@@ -1363,19 +1363,19 @@ Feature: install verification
 
   Scenario: the exact bytes a user would get
     Given "pnpm build" and "pnpm pack:check" have passed
-    And "pnpm pack" has produced "deflow-0.1.0.tgz"
+    And "pnpm pack" has produced "deflowai-0.1.0.tgz"
     And a clean directory from "mktemp -d" with no node_modules above it
     When the following runs in that directory:
       | git init -b main demo                 |
       | cd demo                               |
-      | npx /path/to/deflow-0.1.0.tgz init    |
-      | npx /path/to/deflow-0.1.0.tgz up      |
+      | npx /path/to/deflowai-0.1.0.tgz init    |
+      | npx /path/to/deflowai-0.1.0.tgz up      |
     Then "GET /api/health" answers 200
     And "GET /" returns HTML
     And an asset referenced by that HTML under "/assets/" returns 200 with a JavaScript
         content type
     And with the tarball's own "deflow-mock-agent" on PATH, a scripted multi-node run driven by
-        "npx /path/to/deflow-0.1.0.tgz run" completes and exits 0
+        "npx /path/to/deflowai-0.1.0.tgz run" completes and exits 0
     And no node-gyp process was spawned during the install
     And the clean directory is removed on success, and preserved under DeFlow_KEEP_TMP=1
 ```
@@ -1386,7 +1386,7 @@ answers 200 on `/` perfectly happily, because the SPA fallback serves `index.htm
 following through to a referenced asset distinguishes "the UI shipped" from "the blank page shipped".
 
 > **Amended 2026-08-12 while implementing KAR-18.6.** The line _"a scripted multi-node run driven by
-> `npx …/deflow-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
+> `npx …/deflowai-0.1.0.tgz run` completes and exits 0"_ describes a run that executes, and **no
 > shipped code path executes a submitted run** — the same limit this file already records for
 > EPIC-18-S18 (KAR-18.3): nothing calls `compilePlanV1` or `executeRun`, `boot()` starts no ticker,
 > and `POST /api/runs` stops at `task.submitted` by design (KAR-10.1). What that line is _for_ —
@@ -1408,7 +1408,7 @@ following through to a referenced asset distinguishes "the UI shipped" from "the
 >
 > **What that closure does not deliver**, and this scenario is where it matters most: the completed
 > run is driven against `packages/cli/dist`, not against the installed tarball **inside this
-> scenario's clean room**. This line's own `npx /path/to/deflow-0.1.0.tgz run` still asserts
+> scenario's clean room**. This line's own `npx /path/to/deflowai-0.1.0.tgz run` still asserts
 > `task.submitted` and reports it as exactly that. Raising it to a completed run is a change to
 > `packages/cli/scripts/verify-install/`, and it is the one thing the epic's Definition of Done still
 > keeps open here.

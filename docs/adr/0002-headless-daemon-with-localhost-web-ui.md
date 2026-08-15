@@ -33,9 +33,9 @@ is the natural consequence.
 `127.0.0.1:7777`. One process, one port. Add a desktop shell in M3, not before.** (PRD §6.3)
 
 ```
-npx deflow init          # detect providers, create .DeFlow/
-npx deflow up            # start daemon → http://localhost:7777
-npx deflow run "…"       # CLI entry, same engine
+npx deflowai init          # detect providers, create .DeFlow/
+npx deflowai up            # start daemon → http://localhost:7777
+npx deflowai run "…"       # CLI entry, same engine
 ```
 
 The daemon owns execution, the ledger, the worktrees and every child process. The browser UI is a
@@ -60,7 +60,7 @@ web page via DNS rebinding can otherwise reach port 7777. See [15-security-model
 - Many clients from one stream: browser tab, phone on the same Wi-Fi, `deflow run` in a terminal,
   later a Tauri shell, later a Slack notifier. All are SSE consumers.
 - Zero packaging cost during the phase where there is one user (I6). Team rollout is
-  `npx deflow up` per engineer (I5, NF6).
+  `npx deflowai up` per engineer (I5, NF6).
 - Vibe Kanban's CLI-plus-web-UI shape is the closest existing precedent and is cross-platform and
   self-hostable — evidence the shape works.
 

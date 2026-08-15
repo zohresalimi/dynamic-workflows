@@ -145,7 +145,7 @@ package boundaries. No watch-build chain, no stale `dist`, and goto-definition l
     "format": "biome check --write .",
 
     "doctor": "node packages/cli/src/bin.ts doctor",
-    "pack:check": "pnpm build && pnpm --filter deflow exec publint && pnpm --filter deflow exec attw --pack",
+    "pack:check": "pnpm build && pnpm --filter deflowai exec publint && pnpm --filter deflowai exec attw --pack",
 
     "prepare": "lefthook install",
   },
@@ -485,12 +485,12 @@ a vendor CLI reports a login command, DeFlow prints it for the user to run thems
 
 ---
 
-## 9. `npx deflow up` — first run, step by step
+## 9. `npx deflowai up` — first run, step by step
 
 This is what a colleague experiences at M2, and what you should re-verify every milestone.
 
 ```bash
-npx deflow up
+npx deflowai up
 ```
 
 1. **Resolve directories.** Global state at `$XDG_DATA_HOME/DeFlow` (or `~/.DeFlow`); per-repo state
@@ -501,7 +501,7 @@ npx deflow up
    1007 ms for a 193 MB database**, an acceptable safety net. SQLite DDL is transactional, so a
    failed migration rolls back cleanly.
 3. **Take the lock.** `flock` on `~/.DeFlow/DeFlow.lock`, bump `daemon_epoch`. This is what stops a
-   double-launched daemon — very common, since people run `npx deflow up` in two terminals — from
+   double-launched daemon — very common, since people run `npx deflowai up` in two terminals — from
    driving the same run twice.
 4. **Probe providers.** The `doctor` path (§8): which binaries exist, their versions, their
    capabilities. DeFlow plans only against what is actually available (PRD §5.3, F5.4).
@@ -550,10 +550,10 @@ artefact:
 pnpm build
 pnpm pack:check                       # publint + attw against the built package
 
-cd packages/cli && pnpm pack          # -> deflow-0.1.0.tgz
+cd packages/cli && pnpm pack          # -> deflowai-0.1.0.tgz
 cd "$(mktemp -d)"
 git init -b main demo && cd demo
-npx /path/to/deflow-0.1.0.tgz up      # the exact bytes a user would get
+npx /path/to/deflowai-0.1.0.tgz up      # the exact bytes a user would get
 ```
 
 What this catches that `pnpm dev` cannot:

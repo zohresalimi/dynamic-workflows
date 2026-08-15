@@ -1,5 +1,5 @@
 /**
- * The `deflow` binary, spawned the way `npx deflow up` spawns it: one argv, one
+ * The `deflow` binary, spawned the way `npx deflowai up` spawns it: one argv, one
  * process, one exit code.
  *
  * `daemon.ts` next door starts `packages/daemon/src/main.ts` directly, because
@@ -107,7 +107,7 @@ export function spawnUp(options: SpawnUpOptions): CliProcess {
 }
 
 /**
- * Any `DeFlow` subcommand, spawned the way `npx deflow …` spawns it.
+ * Any `DeFlow` subcommand, spawned the way `npx deflowai …` spawns it.
  *
  * `spawnUp` above is this with `up` in front of the argv, kept because every
  * KAR-18.2 spec reads that way. KAR-18.3's specs need `run` and `--attach`, and

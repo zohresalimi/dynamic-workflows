@@ -768,7 +768,7 @@ estimated`, first sample seeds the ratio, subsequent samples blend at `ALPHA = 0
 `@anthropic-ai/tokenizer` is still **0.0.4** and implements only the Claude 1/2-era BPE — the package
 name is a trap; `js-tiktoken@1.0.21` works but is slower with no accuracy gain; `tiktoken` /
 `@dqbd/tiktoken@1.0.22` add a wasm binary for no accuracy gain; shelling out to Python adds a Python
-dependency to `npx deflow up` and _still_ is not exact for Claude. There is no public exact tokenizer
+dependency to `npx deflowai up` and _still_ is not exact for Claude. There is no public exact tokenizer
 for Claude 3+. Accept it and calibrate.
 
 Token accounting for Copilot, Gemini/Antigravity, Cursor and OpenCode is **Unverified** (roadmap

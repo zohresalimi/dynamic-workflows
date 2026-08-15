@@ -31,6 +31,7 @@ import {
   COMMAND,
   DEPRECATED_COMMAND,
   deprecationNotice,
+  SHORT_ALIAS,
 } from '../../src/command-name.ts';
 import { doctorEnv } from './support/doctor-fixture.ts';
 
@@ -222,6 +223,58 @@ suite('one entry on APFS, two on ext4 (AC7, EPIC-20-S5)', () => {
     // And the notice follows the *spelling*, not the file.
     expect(modern.stderr).toBe('');
     expect(legacy.stderr).toContain(ALIAS_REMOVED_IN);
+  });
+});
+
+/**
+ * EPIC-20-S34 — the short alias, which is an ordinary second name and nothing
+ * more.
+ *
+ * It is worth a spec for two reasons and neither of them is the linking. The
+ * first is that an alias nobody is told about is an alias nobody uses, so the
+ * usage block has to name it. The second is the negative: `dfl` is **not**
+ * deprecated, and the notice mechanism keys off `basename(argv[1])` — a
+ * regression that fired it for every spelling that is not `COMMAND` would put
+ * a deprecation line on the shorthand's every invocation.
+ */
+suite('the short alias runs the same program, silently (EPIC-20-S34)', () => {
+  it('is named in the usage block, so somebody can find out it exists', async () => {
+    const links = await linkBothNames('alias-usage');
+    const cwd = await workspace('alias-usage-repo');
+    const env = doctorEnv({ dataDir: join(tmp, 'alias-usage-data'), realGit: true });
+
+    const help = await runAs(links.newName, ['--help'], env, cwd);
+
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain(SHORT_ALIAS);
+  });
+
+  it('produces identical stdout and no notice at all', async () => {
+    const links = await linkBothNames('alias-run');
+    const alias = join(links.dir, SHORT_ALIAS);
+    await symlink(CLI_BIN, alias);
+    const cwd = await workspace('alias-run-repo');
+    const env = doctorEnv({ dataDir: join(tmp, 'alias-run-data'), realGit: true });
+
+    for (const args of [['--version'], ['--help'], ['status', '--json']]) {
+      const modern = await runAs(links.newName, args, env, cwd);
+      const short = await runAs(alias, args, env, cwd);
+
+      expect({ args, stdout: short.stdout }).toEqual({ args, stdout: modern.stdout });
+      expect({ args, code: short.code }).toEqual({ args, code: modern.code });
+      // Not deprecated, so not noticed: the shorthand is the point.
+      expect({ args, stderr: short.stderr }).toEqual({ args, stderr: '' });
+    }
+  });
+
+  it('shadows nothing the machine already has', async () => {
+    // `dfl` and not `df`, which is POSIX.1's disk-free utility and is on this
+    // machine. A `bin` key of `df` would be linked into a directory ahead of
+    // /bin on PATH and would break `df -h` for every shell on it.
+    const links = await linkBothNames('alias-shadow');
+    const entries = await readdir(links.dir);
+    expect(entries).not.toContain('df');
+    expect(SHORT_ALIAS).not.toBe('df');
   });
 });
 

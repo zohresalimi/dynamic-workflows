@@ -26,7 +26,15 @@
 import { execFileSync } from 'node:child_process';
 import { expect, it, describe as suite } from 'vitest';
 import { PROVIDER_SPECS } from '../packages/adapters/src/provider-registry.ts';
-import { COMMAND, DEPRECATED_COMMAND, NOT_RENAMED } from '../packages/cli/src/command-name.ts';
+import {
+  COMMAND,
+  DEPRECATED_COMMAND,
+  NOT_RENAMED,
+  PACKAGE_NAME,
+  SHORT_ALIAS,
+  SYSTEM_UTILITIES,
+  shadowedUtility,
+} from '../packages/cli/src/command-name.ts';
 import { DATA_DIR_ENV, resolveDataDir } from '../packages/daemon/src/data-dir.ts';
 import { nodeBranch } from '../packages/daemon/src/git/branch-name.ts';
 import { readText, repoRoot } from './support/workspace.ts';
@@ -357,8 +365,12 @@ suite('the bundled agent is deflow-mock-agent (AC3, EPIC-20-S10)', () => {
     expect(PROVIDER_SPECS.mock.shim.bin).toBe('deflow-mock-agent');
   });
 
-  it('names the published package by its publishable name', () => {
-    expect(PROVIDER_SPECS.mock.package).toBe(COMMAND);
+  it('names the published package by the name npm will resolve', () => {
+    // The bin and the package are two different names now (the owner's
+    // decision of 2026-08-15), and this field is the *package* — it is printed
+    // inside an install command. `deflow` there would tell an operator to
+    // install a stranger's Redis library.
+    expect(PROVIDER_SPECS.mock.package).toBe(PACKAGE_NAME);
   });
 });
 
@@ -367,5 +379,116 @@ suite('the names themselves', () => {
     expect(COMMAND).toBe('deflow');
     expect(DEPRECATED_COMMAND).toBe('DeFlow');
     expect(COMMAND).toBe(DEPRECATED_COMMAND.toLowerCase());
+  });
+});
+
+/**
+ * The owner's decision of 2026-08-15, and the two guards that keep it true.
+ *
+ * The npm registry decides package names and this project does not: `deflow`
+ * is [an unrelated Redis-backed job-flow library](https://www.npmjs.com/package/deflow)
+ * at 0.6.4, so the npx route as it was first written fetches a stranger's
+ * package and `packages/cli/package.json` cannot be published there. The package
+ * is therefore `deflowai`. A `bin` key does not have to match the package that
+ * declares it, so the command an operator types is unaffected — but every
+ * **npx** line is a package specifier and had to move.
+ */
+suite('the package is deflowai, and the npx route names the package (2026-08-15)', () => {
+  it('publishes under a name npm has not already given to somebody else', () => {
+    expect(PACKAGE_NAME).toBe('deflowai');
+    expect(PACKAGE_NAME).not.toBe(COMMAND);
+    expect(JSON.parse(readText('packages/cli/package.json')) as { name?: string }).toMatchObject({
+      name: PACKAGE_NAME,
+    });
+  });
+
+  it('still declares the command itself as a bin, whatever the package is called', () => {
+    const manifest = JSON.parse(readText('packages/cli/package.json')) as {
+      readonly bin?: Readonly<Record<string, string>>;
+    };
+    expect(Object.keys(manifest.bin ?? {})).toContain(COMMAND);
+  });
+
+  it('names no bare npx route on the old package anywhere it tracks', () => {
+    // `npx <name>` resolves a **package**, not a bin, so this is not a spelling
+    // preference: a line naming the old package runs a program this project did
+    // not write. The `deflowai` form is not matched — the `\b` after the name
+    // fails against the `a` — and neither is `npx … -- deflow setup`, where
+    // `deflow` is the *bin* the fetched package declares.
+    //
+    // `GUARD_FILES` are skipped for the same reason they are skipped above:
+    // this file and the alias module have to spell the thing they forbid, and
+    // EPIC-20's own two documents are the record of the decision.
+    const npxRoute = /\bnpx\s+deflow\b/;
+    const scanned = trackedPaths().filter(
+      (path) =>
+        !GUARD_FILES.has(path) &&
+        !EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+        TEXT_EXTENSIONS.some((extension) => path.endsWith(extension)),
+    );
+    const offences = scanned.flatMap((path) =>
+      unescaped(readText(path))
+        .split('\n')
+        .flatMap((line, index) =>
+          npxRoute.test(line) ? [`${path}:${String(index + 1)} ${line.trim()}`] : [],
+        ),
+    );
+    expect(offences).toEqual([]);
+  });
+
+  it('would catch one if it appeared, and leaves the two lookalikes alone', () => {
+    // Assembled rather than written out, so that the next sweep over this
+    // repository cannot rewrite the guard's own red case into a green one —
+    // which is exactly what happened to it the first time.
+    const npxRoute = /\bnpx\s+deflow\b/;
+    const old = `npx ${COMMAND}`;
+    expect(npxRoute.test(`${old} setup`)).toBe(true);
+    expect(npxRoute.test(`${old}@0.2.0 setup`)).toBe(true);
+    expect(npxRoute.test(`npx ${PACKAGE_NAME} setup`)).toBe(false);
+    expect(npxRoute.test(`exec npx --yes --package="\${PACKAGE}" -- ${COMMAND} setup`)).toBe(false);
+  });
+});
+
+/**
+ * EPIC-20-S34 — the short alias, and the name it is deliberately not.
+ *
+ * `df` is POSIX.1's disk-free utility and is on every Unix machine this project
+ * supports. A `bin` key of `df` would be linked into a directory that is
+ * usually *ahead* of `/bin` on `PATH`, so installing DeFlow would silently
+ * break `df -h` for every shell on that machine — a tool that breaks an
+ * unrelated command is a tool people uninstall. `dfl` is the owner's choice for
+ * exactly that reason, and this guard is what stops the next person shortening
+ * it by one more character.
+ */
+suite('the short alias is dfl, and shadows nothing (EPIC-20-S34)', () => {
+  it('is dfl, and is a bin the package declares', () => {
+    expect(SHORT_ALIAS).toBe('dfl');
+    const manifest = JSON.parse(readText('packages/cli/package.json')) as {
+      readonly bin?: Readonly<Record<string, string>>;
+    };
+    expect(manifest.bin?.[SHORT_ALIAS]).toBe(manifest.bin?.[COMMAND]);
+  });
+
+  it('names a system utility it must not become, with the reason', () => {
+    const df = SYSTEM_UTILITIES.find((utility) => utility.name === 'df');
+    expect(df).toBeDefined();
+    expect(df?.what.length).toBeGreaterThan(20);
+  });
+
+  it('refuses df, and passes dfl', () => {
+    expect(shadowedUtility('df')?.name).toBe('df');
+    expect(shadowedUtility(SHORT_ALIAS)).toBeUndefined();
+    expect(shadowedUtility(COMMAND)).toBeUndefined();
+  });
+
+  it('lets no bin key in the published manifest shadow a system utility', () => {
+    const manifest = JSON.parse(readText('packages/cli/package.json')) as {
+      readonly bin?: Readonly<Record<string, string>>;
+    };
+    const shadowing = Object.keys(manifest.bin ?? {}).flatMap((name) => {
+      const utility = shadowedUtility(name);
+      return utility === undefined ? [] : [`${name} — ${utility.what}`];
+    });
+    expect(shadowing).toEqual([]);
   });
 });

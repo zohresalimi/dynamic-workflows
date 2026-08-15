@@ -60,6 +60,12 @@ interface MachineOptions {
   readonly doctor?: 'healthy' | 'degraded' | 'crash';
   /** Install nothing: an `npm` that exits 0 and leaves the prefix empty. */
   readonly installsNothing?: boolean;
+  /**
+   * Install the command but not its short alias — what an older release, whose
+   * `bin` map had no `dfl` in it, leaves behind on a machine that then re-runs
+   * `setup`.
+   */
+  readonly withoutAlias?: boolean;
   /** Fail the install with this stderr instead — the no-egress case. */
   readonly npmFailure?: { readonly exitCode: number; readonly stderr: string };
   /** Vendor CLIs to put on PATH, for the adapters step. */
@@ -136,13 +142,23 @@ async function machine(name: string, options: MachineOptions = {}): Promise<Mach
     // answering with a directory nobody created is a staged fact here rather
     // than a thing that happens on somebody else's laptop.
     prefix: options.prefixDoesNotExist === true ? join(tmp, `${name}-ghost-prefix`) : prefix,
-    installs: options.installsNothing === true ? {} : { [join(binDir, 'deflow')]: installed },
+    // Both `bin` keys, because npm links every key the manifest declares —
+    // modelling only `deflow` would make the alias untestable by construction.
+    installs:
+      options.installsNothing === true
+        ? {}
+        : {
+            [join(binDir, 'deflow')]: installed,
+            ...(options.withoutAlias === true ? {} : { [join(binDir, 'dfl')]: installed }),
+          },
     failure: options.npmFailure,
   });
 
   if (options.preinstalled === true) {
-    copyFileSync(installed, join(binDir, 'deflow'));
-    chmodSync(join(binDir, 'deflow'), 0o755);
+    for (const name of options.withoutAlias === true ? ['deflow'] : ['deflow', 'dfl']) {
+      copyFileSync(installed, join(binDir, name));
+      chmodSync(join(binDir, name), 0o755);
+    }
   }
 
   for (const vendor of options.vendors ?? []) await fakeBin(toolsDir, vendor);
@@ -181,7 +197,9 @@ const base = (host: Machine, overrides: Partial<SetupOptions> = {}): SetupOption
   cwd: host.cwd,
   env: host.env,
   platform: 'linux',
-  from: 'deflow',
+  // `from` is deliberately *not* set: the specifier `setup` installs when
+  // nobody overrides it is part of what these specs are for, and an override
+  // here would have hidden a default that fetches a stranger's package.
   clock: new TestClock(1_755_000_000_000),
   style: plainStyle(),
   isTty: () => false,
@@ -282,7 +300,7 @@ suite('a link that lied is caught (EPIC-20-S14, AC3)', () => {
 
     const result = await runSetup(base(host));
 
-    expect(await host.npm()).toContainEqual(['install', '-g', 'deflow']);
+    expect(await host.npm()).toContainEqual(['install', '-g', 'deflowai']);
     expect(stepOf(result, 'install').state).not.toBe('fail');
     expect(stepOf(result, 'verify').state).toBe('fail');
     // It names what it ran and what happened, rather than "verification failed".
@@ -479,7 +497,7 @@ suite('--json is safe to run from a script (EPIC-20-S21)', () => {
     // A real process with a real closed stdin: "it never blocked on a read" is
     // not expressible in-process, because the thing that would block is the
     // event loop this assertion runs on.
-    const child = spawn(process.execPath, [CLI_BIN, 'setup', '--json', '--from', 'deflow'], {
+    const child = spawn(process.execPath, [CLI_BIN, 'setup', '--json', '--from', 'deflowai'], {
       cwd: host.cwd,
       env: host.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -513,7 +531,7 @@ suite(
       const result = await runSetup(base(host));
 
       const mutating = (await host.npm()).filter((argv) => argv[0] === 'install');
-      expect(mutating).toEqual([['install', '-g', 'deflow']]);
+      expect(mutating).toEqual([['install', '-g', 'deflowai']]);
       for (const argv of await host.npm()) {
         expect(argv.join(' ')).not.toMatch(/\b(update|upgrade|audit|sudo)\b/);
       }
@@ -566,5 +584,50 @@ suite('no network egress (EPIC-20-S24, AC12)', () => {
     expect(await host.npm()).toEqual([]);
     expect(existsSync(host.profileFile)).toBe(false);
     expect(existsSync(join(host.binDir, 'deflow'))).toBe(false);
+  });
+});
+
+/**
+ * EPIC-20-S34 — the short alias is a second `bin` key, and `verify` looks at it.
+ *
+ * The owner's decision of 2026-08-15 adds `dfl` beside `deflow`. There is no
+ * prompt and no collision check in it: `dfl` is not the name of anything on a
+ * POSIX machine, which is exactly why it was chosen over `df`, POSIX.1's
+ * disk-free utility. What *is* here is the same rule the whole story is built
+ * on — **verify by observation** — applied to the second name: npm links every
+ * key in a `bin` map, so if the alias is not there afterwards, something about
+ * the install is not what the manifest said, and saying so is cheaper than an
+ * operator discovering it a week later.
+ */
+suite('the short alias is installed and observed, not assumed (EPIC-20-S34)', () => {
+  it('reports both names and the one version they agree on', async () => {
+    const host = await machine('s34', { binDirOnPath: true });
+
+    const result = await runSetup(base(host));
+    const verify = stepOf(result, 'verify');
+
+    expect(verify.state).toBe('ok');
+    // Both spawned, both read: the detail carries what each one answered.
+    expect(verify.detail).toContain('deflow --version');
+    expect(verify.detail).toContain('dfl --version');
+    expect(verify.data).toMatchObject({ version: VERSION, aliasVersion: VERSION });
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('warns rather than fails when only the alias is missing', async () => {
+    // An install from a release whose `bin` map predates the alias. The command
+    // works, so this is not a failed install — but the report says the short
+    // name is absent instead of leaving the operator to find out at a prompt.
+    const host = await machine('s34-old', { binDirOnPath: true, withoutAlias: true });
+
+    const result = await runSetup(base(host));
+    const verify = stepOf(result, 'verify');
+
+    expect(verify.state).toBe('warn');
+    expect(verify.detail).toContain('dfl');
+    expect(verify.data).toMatchObject({ version: VERSION, aliasVersion: null });
+    // The steps after it still run: the tool is installed and works.
+    expect(states(result)).toMatchObject({ doctor: 'ok', adapters: 'ok' });
+    expect(result.exitCode).toBe(0);
   });
 });

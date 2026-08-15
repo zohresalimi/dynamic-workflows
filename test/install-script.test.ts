@@ -5,14 +5,14 @@
  * and the honest answer to *"why would I pipe your script into my shell"* is
  * not a paragraph in a README — it is that the script is short enough to read
  * and provably does one thing: check that this machine has a new enough Node,
- * then hand over to `deflow setup`, which is the same code path `npx deflow
+ * then hand over to `deflow setup`, which is the same code path `npx deflowai
  * setup` runs.
  *
  * So this file reads the script the way a suspicious operator would, and fails
  * if it ever grows a second capability: another package, a `sudo`, a file of
  * its own, a `PATH` edit that bypasses the consent rules `setup` carries.
  *
- * The end-state half of the scenario — that the script and `npx deflow setup`
+ * The end-state half of the scenario — that the script and `npx deflowai setup`
  * leave the same machine behind — is `e2e/setup-install.test.ts`, because only
  * a real install can answer it.
  *
@@ -50,7 +50,11 @@ suite('the install script is a bootstrap, not a second installer (EPIC-20-S12)',
     // The one package name it may carry is the one the npx path installs, and
     // it arrives through a variable so a pinned version or a packed tarball is
     // the same code path rather than a second one.
-    expect(code).toContain('PACKAGE="${DEFLOW_PACKAGE:-deflow}"');
+    // `deflowai`, not `deflow`: npm gave `deflow` to an unrelated Redis-backed
+    // job-flow library in 2021, so a default of `deflow` here would make this
+    // script fetch and execute a stranger's package on the operator's machine —
+    // which is the one thing a curl-to-shell script must never do.
+    expect(code).toContain('PACKAGE="${DEFLOW_PACKAGE:-deflowai}"');
     for (const pattern of [
       /\bnpm\s+install\b/,
       /\bnpm\s+i\b/,

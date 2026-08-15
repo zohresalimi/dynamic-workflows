@@ -7,7 +7,7 @@
 DeFlow is eight packages and an estimated ~15k LOC, built by one person. It has a clean
 internal boundary structure that is worth enforcing — a pure core with zero I/O, a ledger, an
 adapter layer, a daemon, a CLI, a web app, a testkit — but it has exactly one artefact anyone
-outside the repo will ever install: `npx deflow up` (NF6).
+outside the repo will ever install: `npx deflowai up` (NF6).
 
 Those two facts pull in opposite directions if you are not careful. Monorepo tooling is designed
 around the assumption that packages are published independently, which brings version coordination,
@@ -76,7 +76,7 @@ Layout, package boundaries and the dependency direction rules are in
 ### Neutral
 
 - Not Bun. `node-pty` compatibility is unverified there, and AR-1 already forces us onto the user's
-  Node install for `npx deflow up`.
+  Node install for `npx deflowai up`.
 
 ## Alternatives considered
 

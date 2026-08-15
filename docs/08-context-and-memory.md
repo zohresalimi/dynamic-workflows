@@ -549,7 +549,7 @@ import { countTokens } from "gpt-tokenizer/encoding/o200k_base";
 ```
 
 Fastest pure-JS tokenizer on npm, no native or wasm build step — which matters for
-`npx deflow up` (NF6).
+`npx deflowai up` (NF6).
 
 **The error bar, stated honestly.** Anthropic's own documentation warns that tiktoken-family
 tokenizers **undercount Claude tokens by roughly 15–20% on prose, and considerably more on code and
@@ -604,7 +604,7 @@ in `DeFlowd` that reads a token file or sets an auth env var to make this call w
 | `@anthropic-ai/tokenizer`                        | Still **0.0.4**, implements only the Claude 1/2-era BPE. Wrong for every current model. The package name makes it look authoritative — it is a trap. |
 | `js-tiktoken@1.0.21`                             | Works, slower than `gpt-tokenizer`, no accuracy gain.                                                                                                |
 | `tiktoken` / `@dqbd/tiktoken@1.0.22`             | wasm; adds a binary artifact for no accuracy gain.                                                                                                   |
-| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx deflow up`, and _still_ isn't exact for Claude.                                                                     |
+| Shelling out to Python `tiktoken`/`transformers` | Adds a Python dependency to `npx deflowai up`, and _still_ isn't exact for Claude.                                                                     |
 
 There is no public exact tokenizer for Claude 3+. Accept it and calibrate.
 
@@ -781,7 +781,7 @@ F6.7 is P1, and P1 is the right place for it.
    transformers.js; v4 rewrote the WebGPU runtime in C++ and reports BERT-family embedding models up
    to 4× faster, running server-side in Node) with a 768-dim model. Prefer it over `fastembed@2.1.0`,
    which pulls native `@anush008/tokenizers` bindings — a cross-platform install hazard for
-   `npx deflow up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
+   `npx deflowai up`. Ollama embeddings (`nomic-embed-text`, `embeddinggemma`, both 768-dim) only as an
    optional accelerator when the user already runs Ollama; never as a required dependency.
 
 Bottom line: the cheapest thing that works is FTS5 with correct `tokenchars`, and there is a decent

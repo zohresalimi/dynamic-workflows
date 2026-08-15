@@ -436,7 +436,7 @@ measurement, not this one, that decides whether the memory/data-flow view (F10.4
 
 **As** the author, **I want** both native dependencies proven to install and load with **zero
 compilation** on the machines DeFlow will actually run on, and the ledger's fsync cost measured on
-APFS, **so that** `npx deflow up` (NF6) does not fail on a toolchain-less laptop and the
+APFS, **so that** `npx deflowai up` (NF6) does not fail on a toolchain-less laptop and the
 `synchronous=` setting is picked from a number measured on the machine that will run it.
 
 **Timebox: 1 day** — roadmap S5 (2 hours) plus S6 (half a day), combined because they answer the
@@ -448,7 +448,7 @@ script; `npm i` completed in **1 second** with zero compilation — **verified 2
 linux-x64 only** (A1-2). The darwin binaries are demonstrably in the tarball but were never
 executed. `@lydell/node-pty` installed in **514 ms** with zero compilation, but it is at
 `1.2.0-beta.14`, a beta of a community fork, and it is the single remaining native-install risk for
-`npx deflow up` (A0-6).
+`npx deflowai up` (A0-6).
 
 Every fsync-sensitive number in [05-durable-execution.md](../../05-durable-execution.md) —
 **979 ev/s at `synchronous=FULL` versus 22,982 ev/s at `NORMAL`** — was measured on Linux, likely

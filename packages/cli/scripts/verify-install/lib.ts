@@ -311,16 +311,17 @@ export interface CliProcess {
   readonly stop: () => Promise<void>;
 }
 
-/** The three names the published `bin` map declares (KAR-20.1 AC1). */
-export type InstalledBin = 'deflow' | 'deflow-mcp' | 'deflow-mock-agent';
+/** The names the published `bin` map declares (KAR-20.1 AC1). */
+export type InstalledBin = 'deflow' | 'dfl' | 'deflow-mcp' | 'deflow-mock-agent';
 
 /**
- * All three, in `package.json`'s own order — so a spec can iterate the bins
- * rather than naming two of them and forgetting the third, which is how
+ * All of them, in `package.json`'s own order — so a spec can iterate the bins
+ * rather than naming three of them and forgetting the fourth, which is how
  * `deflow-mcp` went unspawned by anything for a whole story.
  */
 export const INSTALLED_BINS: readonly InstalledBin[] = [
   'deflow',
+  'dfl',
   'deflow-mcp',
   'deflow-mock-agent',
 ];

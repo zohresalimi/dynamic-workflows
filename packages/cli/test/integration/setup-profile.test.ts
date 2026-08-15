@@ -76,7 +76,10 @@ async function machine(
   await writeFakeNpmForSetup(toolsDir, {
     log: join(tmp, `${name}-npm.jsonl`),
     prefix,
-    installs: { [join(binDir, 'deflow')]: installed },
+    // Both `bin` keys the manifest declares, because npm links both — a fixture
+    // that installed only the command would make `verify` warn about a missing
+    // `dfl` in every scenario in this file, for a reason none of them are about.
+    installs: { [join(binDir, 'deflow')]: installed, [join(binDir, 'dfl')]: installed },
   });
 
   if (options.seed !== undefined) {

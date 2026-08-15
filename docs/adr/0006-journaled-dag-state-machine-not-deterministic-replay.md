@@ -63,7 +63,7 @@ Nine primitives, all load-bearing, nothing else needed:
 8. Two-layer versioning: an event envelope carrying `kind` + `v:int` with a read-time upcaster
    chain; plan versioning is free because plans are immutable documents referenced by hash.
 9. Fencing: `flock` on `~/.DeFlow/DeFlow.lock` plus a `daemon_epoch` bumped on every start, with
-   stale-epoch writes rejected — because running `npx deflow up` in two terminals is very common.
+   stale-epoch writes rejected — because running `npx deflowai up` in two terminals is very common.
 
 The schema splits the small control-plane `event` table from the high-volume `io_chunk` table. That
 split is what makes snapshotting unnecessary: a 40-node multi-hour run produces on the order of 2k

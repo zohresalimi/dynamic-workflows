@@ -16,7 +16,7 @@
  */
 
 import { openLedger, readRange } from '@DeFlow/ledger';
-import { approveSpec } from 'deflow';
+import { approveSpec } from 'deflowai';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import {
   asClient,

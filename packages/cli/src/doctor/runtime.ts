@@ -72,7 +72,7 @@ function nodeCheck(version: string): DoctorCheck {
  *
  * A `warn` rather than a `fail` when it is absent, because pnpm is the
  * *development* workflow's package manager (docs/03 §2): an installed
- * `npx deflow` tarball runs without it, and reporting a fail here would make
+ * `npx deflowai` tarball runs without it, and reporting a fail here would make
  * `doctor` red on the machines it was written to reassure.
  */
 async function pnpmCheck(roots: readonly string[]): Promise<DoctorCheck> {

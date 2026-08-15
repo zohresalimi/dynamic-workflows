@@ -9,7 +9,7 @@
 
 | Actor              | Description                                                                                              |
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Operator**       | The engineer driving DeFlow — runs `npx deflow up`, and occasionally runs it twice                       |
+| **Operator**       | The engineer driving DeFlow — runs `npx deflowai up`, and occasionally runs it twice                       |
 | **DeFlowd**        | The local daemon. In several scenarios there are two of them, or an older and a newer build              |
 | **Ledger**         | `@DeFlow/ledger` — the write connection, the read connections, the migration runner, the blob store      |
 | **Reducer**        | `reduce(state, event)` in `@DeFlow/core` — pure, total, no I/O                                           |
@@ -798,7 +798,7 @@ Feature: Single-instance lease
   Scenario: the second daemon fails fast and says why
     Given DeFlowd is running with pid 4711 against data directory <dataDir>
     And it holds an exclusive flock on <dataDir>/DeFlow.lock
-    When the operator runs "npx deflow up" in a second terminal against the same data directory
+    When the operator runs "npx deflowai up" in a second terminal against the same data directory
     Then the second process exits non-zero within 1 second
     And stderr reads "DeFlowd is already running (pid 4711) — data dir <dataDir>"
     And there is no stack trace and no raw EWOULDBLOCK
@@ -818,7 +818,7 @@ Feature: Single-instance lease
 ```
 
 **Notes:** This is the mandated two-daemons scenario. "It's a single-user local daemon, so locking is
-unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx deflow up`
+unnecessary" is wrong, and the failure is common rather than exotic — **a user runs `npx deflowai up`
 in two terminals, and it happens the first week.** SQLite protects the _database_ (a second
 connection's `BEGIN IMMEDIATE` returns `SQLITE_BUSY`, verified) but does absolutely nothing to stop
 two schedulers interleaving _effect execution_: both reduce the same ledger, both derive the same

@@ -113,7 +113,7 @@ F10.12 is **M2**, which is the right milestone for something this unstable. Deta
   but Arize-specific — it would lose the Datadog and Langfuse portability F10.12 exists for. Emit
   `gen_ai.*` and let Phoenix map it.
 - **Langfuse as the local backend.** Rejected on NF6: six services and a hard Docker dependency for
-  a tool whose install story is `npx deflow up`. Kept for the M3 hub.
+  a tool whose install story is `npx deflowai up`. Kept for the M3 hub.
 - **Skip OTel entirely and rely on DeFlow's own UI.** Tempting given the instability, and it is why
   this is M2 rather than M1. Rejected long-term because interoperability is cheap once the emission
   module exists, and a colleague's existing Datadog is a real adoption argument.

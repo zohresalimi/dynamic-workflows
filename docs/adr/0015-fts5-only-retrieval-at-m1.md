@@ -18,7 +18,7 @@ they are will hand an agent the wrong context with high confidence.
 DeFlow also already has git, ripgrep and the file tree, and the vendor CLIs ship excellent repo
 search of their own. Retrieval here is over _DeFlow's_ artifacts, not over the user's codebase.
 
-And the infrastructure argument is decisive under NF6 (`npx deflow up`, no database server, no
+And the infrastructure argument is decisive under NF6 (`npx deflowai up`, no database server, no
 Docker for the core). **Verified 2026-08-02** on Node 22.22.2: `better-sqlite3@13.0.2` bundles
 **SQLite 3.53.4 compiled with `ENABLE_FTS5`**; `CREATE VIRTUAL TABLE ... USING fts5(...)` works, and
 `bm25()` ranking with `ORDER BY rank` returns sensible results. Zero extra dependencies, zero build
@@ -90,7 +90,7 @@ target adapter's declared `maxContext` — default 50%, never above 60%. Full de
   [ADR 0007](./0007-better-sqlite3-over-node-sqlite.md) rejected libSQL, and vectors are not a
   reason to reopen it.
 - **`fastembed`.** Rejected as the future embedding path: last published December 2025 and it pulls
-  native `@anush008/tokenizers` bindings, a cross-platform install hazard for `npx deflow up`.
+  native `@anush008/tokenizers` bindings, a cross-platform install hazard for `npx deflowai up`.
 
 ## Revisit when
 

@@ -278,7 +278,7 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
-      deflow:
+      deflowai:
         specifier: workspace:*
         version: link:../packages/cli
       playwright:

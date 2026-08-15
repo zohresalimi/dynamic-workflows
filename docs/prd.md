@@ -259,9 +259,9 @@ When this goes to Voyado, **runs still execute on each engineer's machine with t
 > **Ship a headless local daemon (`DeFlowd`) that serves a web UI on localhost. Add a desktop shell in M3, not before.**
 
 ```
-npx deflow init          # detect providers, create .DeFlow/
-npx deflow up            # start daemon → http://localhost:7777
-npx deflow run "…"       # CLI entry, same engine
+npx deflowai init          # detect providers, create .DeFlow/
+npx deflowai up            # start daemon → http://localhost:7777
+npx deflowai run "…"       # CLI entry, same engine
 ```
 
 **Why this wins:**
@@ -269,7 +269,7 @@ npx deflow run "…"       # CLI entry, same engine
 - The daemon owns execution. Close the browser, close the laptop lid, reboot — the run resumes (§7.4). This is the property most tools lack.
 - The UI is a client, so _many_ clients are possible: browser tab, phone on the same Wi-Fi, later a desktop shell, later a Slack notifier. All the same event stream.
 - Zero packaging cost in the phase where you're the only user.
-- Team rollout is `npx deflow up` per engineer plus an optional shared hub. No app store, no MDM, no signing.
+- Team rollout is `npx deflowai up` per engineer plus an optional shared hub. No app store, no MDM, no signing.
 - Vibe Kanban's CLI-plus-web-UI shape is the closest existing precedent and it is cross-platform and self-hostable — evidence the shape works.
 
 **Desktop shell (M3, optional):** wrap the same localhost UI. Buys native notifications ("gate failed, needs approval"), a menu-bar/tray run indicator, deep links, OS file dialogs, and a login item so the daemon starts automatically. **Tauri 2** over Electron — a smaller binary, and since all the Node work lives in the daemon sidecar, the Rust surface stays thin. Frontend stays Vue 3 either way.
@@ -435,7 +435,7 @@ This is the layer that makes long-horizon work possible, and — because you wan
 | NF3  | **Cold start < 3s** for the daemon; UI interactive < 1s on localhost.                                                      |
 | NF4  | **Run state survives** daemon restart, OS restart, and laptop sleep.                                                       |
 | NF5  | **Cross-platform**: macOS and Linux at M1; Windows (incl. WSL) by M3. Not Mac-only — that is Conductor's main limitation.  |
-| NF6  | **Single-binary-ish install**: `npx deflow up`. No database server, no Docker requirement for the core.                    |
+| NF6  | **Single-binary-ish install**: `npx deflowai up`. No database server, no Docker requirement for the core.                    |
 | NF7  | **Graceful provider degradation.** One provider unavailable degrades the plan; it does not kill the run.                   |
 | NF8  | **Every artifact inspectable on disk** in an open format. No lock-in; ODW's artifact discipline as a floor, not a ceiling. |
 | NF9  | **Deterministic core.** Engine logic contains no nondeterminism outside adapter boundaries — required for replay.          |

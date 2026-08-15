@@ -15,7 +15,7 @@
  * or in the wrong file, this spec fails, and nothing else in the repository
  * can tell.
  *
- * Both entry points are here because they fail in different places: `npx deflow
+ * Both entry points are here because they fail in different places: `npx deflowai
  * setup` needs a Node already, and the macOS script is what a machine without
  * one reaches for. The second scenario of EPIC-20-S12 — that the script is a
  * bootstrap rather than a second, more powerful installer — is asserted over

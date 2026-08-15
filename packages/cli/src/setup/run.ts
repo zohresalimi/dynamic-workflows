@@ -12,7 +12,7 @@
  * So the design rule is that **every step is verified by observation**. The
  * install is confirmed by spawning `deflow --version` through a shell resolving
  * the `PATH` a *new* terminal will have — never this process's own, which under
- * `npx deflow setup` contains an npx cache directory that resolves `deflow` no
+ * `npx deflowai setup` contains an npx cache directory that resolves `deflow` no
  * matter what happened — and the version is read out of its stdout rather than
  * inferred from a zero.
  *
@@ -38,7 +38,7 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import process from 'node:process';
-import { COMMAND } from '../command-name.ts';
+import { COMMAND, PACKAGE_NAME, SHORT_ALIAS } from '../command-name.ts';
 import {
   installMode,
   isAffirmative,
@@ -98,9 +98,16 @@ export interface SetupResult {
   readonly steps: readonly SetupStep[];
 }
 
-/** The package this command installs, and the only thing it may install
- * without being asked (AC11). */
-const PACKAGE = COMMAND;
+/**
+ * The package this command installs, and the only thing it may install without
+ * being asked (AC11).
+ *
+ * `PACKAGE_NAME` rather than `COMMAND`: `npm install -g <spec>` takes a
+ * **package**, and `deflow` on the registry belongs to somebody else's Redis
+ * library. The two were the same string until 2026-08-15 and are not any more,
+ * which is the sort of coincidence that becomes a defect the moment it ends.
+ */
+const PACKAGE = PACKAGE_NAME;
 
 /** Enough of npm's output to diagnose it, without pasting a whole install log. */
 const STDERR_CAP = 4000;
@@ -190,10 +197,13 @@ async function probeVersion(input: {
   readonly path: string;
   readonly env: NodeJS.ProcessEnv;
   readonly cwd: string;
+  /** Which name to ask. `COMMAND` unless the alias is the subject. */
+  readonly command?: string;
 }): Promise<{ readonly ran: Ran; readonly version: string | null; readonly resolved: string }> {
+  const command = input.command ?? COMMAND;
   const ran = await run(
     input.sh,
-    ['-c', `command -v ${COMMAND} || exit 127\n${COMMAND} --version`],
+    ['-c', `command -v ${command} || exit 127\n${command} --version`],
     { cwd: input.cwd, env: { ...input.env, PATH: input.path } },
   );
   const lines = ran.stdout
@@ -528,18 +538,61 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const path = freshPath(provided);
   const probed = await probeVersion({ sh, path, env, cwd: options.cwd });
   const command = `${COMMAND} --version`;
+  const aliasCommand = `${SHORT_ALIAS} --version`;
+  // The second name, asked the same way and for the same reason. npm links
+  // every key in a `bin` map, so an alias that is not there afterwards means
+  // the install is not what the manifest said — and finding that out here is
+  // cheaper than an operator finding it out at a prompt next week. It is not a
+  // failed install, though: the command works, so this can only lower the step
+  // to `warn`.
+  const aliasProbed =
+    probed.version === null
+      ? null
+      : await probeVersion({ sh, path, env, cwd: options.cwd, command: SHORT_ALIAS });
+  const aliasAgrees = aliasProbed !== null && aliasProbed.version === probed.version;
 
   const verify = record(
     probed.version !== null
-      ? {
-          id: 'verify',
-          state: 'ok',
-          detail:
-            `ran "${command}" in a shell resolving the PATH a new terminal will have: it answered ` +
-            `${probed.version}, from ${probed.resolved}. This is an observation, not an ` +
-            "inference from the install's exit code.",
-          data: { command, version: probed.version, path: probed.resolved },
-        }
+      ? aliasAgrees
+        ? {
+            id: 'verify',
+            state: 'ok',
+            detail:
+              `ran "${command}" in a shell resolving the PATH a new terminal will have: it ` +
+              `answered ${probed.version}, from ${probed.resolved}. "${aliasCommand}" — the ` +
+              `short alias, the same program under a second name — answered the same from ` +
+              `${aliasProbed.resolved}. These are observations, not inferences from the ` +
+              "install's exit code.",
+            data: {
+              command,
+              version: probed.version,
+              path: probed.resolved,
+              aliasCommand,
+              aliasVersion: aliasProbed.version,
+              aliasPath: aliasProbed.resolved,
+            },
+          }
+        : {
+            id: 'verify',
+            state: 'warn',
+            detail:
+              `ran "${command}" in a shell resolving the PATH a new terminal will have: it ` +
+              `answered ${probed.version}, from ${probed.resolved}, so the command works. The ` +
+              `short alias "${SHORT_ALIAS}" did not: "${aliasCommand}" ` +
+              (aliasProbed?.version === null || aliasProbed === null
+                ? 'did not resolve there. '
+                : `answered ${String(aliasProbed.version)} instead. `) +
+              `Every other step is unaffected — "${COMMAND}" is what everything else uses — but ` +
+              `"${SHORT_ALIAS}" will not work until this package is reinstalled.`,
+            action: `${installCommand(`${spec}@latest`)}    # to pick up the "${SHORT_ALIAS}" alias`,
+            data: {
+              command,
+              version: probed.version,
+              path: probed.resolved,
+              aliasCommand,
+              aliasVersion: aliasProbed?.version ?? null,
+            },
+          }
       : {
           id: 'verify',
           state: 'fail',
@@ -556,7 +609,10 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
         },
   );
 
-  if (verify.state !== 'ok') {
+  // `fail`, not `!== 'ok'`: a `warn` here means the command answered and only
+  // its second name did not, and stopping a working install short of `doctor`
+  // over a missing shorthand would be the wrong trade in both directions.
+  if (verify.state === 'fail') {
     for (const id of ['doctor', 'adapters'] as const) {
       record(
         skipped(

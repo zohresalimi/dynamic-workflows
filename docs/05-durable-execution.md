@@ -110,7 +110,7 @@ And even if TypeScript SQLite support lands in 2027, it would still be the wrong
 workflows as decorated imperative functions with `DBOS.runStep`, owns its own `dbos` schema, runs
 its own recovery executor, and uses a Postgres `LISTEN`/`NOTIFY` loop for notifications. All of
 that fights the data-driven DAG above, and a Postgres requirement contradicts NF6 outright — the
-promise is `npx deflow up` with no database server.
+promise is `npx deflowai up` with no database server.
 
 The rest of the field is no better. `reflow-ts@0.5.0` (2026-06-10, four published versions total)
 is the only SQLite-backed TypeScript durable-execution package found, and four releases is not a
@@ -422,7 +422,7 @@ package; `drizzle-kit@0.31.10` drags in a whole ORM, and `drizzle-orm` is mid-ma
 (`latest` is 0.45.2 while the 1.0 line has sat in `rc.4` since 2026-06-27) so adopting it during
 this window is a bad trade; `sqlite@5.1.1` has not shipped since 2023. `dbmate@2.34.1` is a decent
 standalone binary that does support SQLite, but it adds a non-npm install step, which conflicts
-with `npx deflow up` (NF6).
+with `npx deflowai up` (NF6).
 
 ```ts
 type Migration = { id: number; name: string; up: (db: Db) => void };
@@ -829,7 +829,7 @@ bug, not as the primary mechanism.
 ## 12. Fencing: flock plus daemon epoch
 
 "It's a single-user local daemon, so locking is unnecessary" is wrong, and the failure is common
-rather than exotic: **a user runs `npx deflow up` in two terminals.** It happens the first week.
+rather than exotic: **a user runs `npx deflowai up` in two terminals.** It happens the first week.
 
 SQLite protects the _database_ — verified, a second connection's `BEGIN IMMEDIATE` returns
 `SQLITE_BUSY` — but it does absolutely nothing to stop two schedulers from interleaving _effect

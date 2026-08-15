@@ -111,7 +111,7 @@ suite('the profile file is chosen by name, never by assumption (EPIC-20-S23, AC7
 suite('the PATH a fresh login shell would have (AC3)', () => {
   it('drops the npx directory this process is running from', () => {
     // The whole reason verification is a subprocess with a computed PATH: a
-    // `setup` started by `npx deflow setup` has the npx cache's `.bin` on its
+    // `setup` started by `npx deflowai setup` has the npx cache's `.bin` on its
     // own PATH, so `deflow` resolves inside this very process — and asserting
     // on that would be the 2026-08-12 failure with a green tick over it.
     const envPath = [

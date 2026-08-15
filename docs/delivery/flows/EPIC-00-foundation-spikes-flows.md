@@ -989,7 +989,7 @@ Node majors on the host, three containers)
 > tested here**; every container is `linux/arm64` because the docker host is Apple Silicon.
 
 ```gherkin
-Feature: The last native-install risk for "npx deflow up" is bounded
+Feature: The last native-install risk for "npx deflowai up" is bounded
 
   Scenario Outline: install and allocate a pty with no compiler present
     Given a box running <platform> with Node <node> and no compiler on PATH
@@ -1020,7 +1020,7 @@ Feature: The last native-install risk for "npx deflow up" is bounded
     And the note records that its install script is "node scripts/prebuild.js || node-gyp rebuild" and silently falls back to compiling
 ```
 
-**Notes:** This is the single remaining native-install risk for `npx deflow up` (NF6, A0-6), and
+**Notes:** This is the single remaining native-install risk for `npx deflowai up` (NF6, A0-6), and
 the fallback is genuinely survivable rather than face-saving — the capability is optional by design
 because no agent needs a TTY. The dependency stays an `optionalDependency` with a plain-`spawn`
 fallback so an unsupported platform degrades to no-TTY rather than failing installation. It is at

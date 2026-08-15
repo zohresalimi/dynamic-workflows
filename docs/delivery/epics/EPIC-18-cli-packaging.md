@@ -19,9 +19,9 @@
 ## Goal
 
 At the end of this epic DeFlow is a thing a person installs and runs, rather than a repository they
-clone. `npx deflow init` bootstraps a target repo, `npx deflow up` brings the daemon to a browser in
-under three seconds, `npx deflow run "…"` drives a complete run to a terminal without a browser at
-all, and `npx deflow doctor` tells the truth about what this specific machine can and cannot do
+clone. `npx deflowai init` bootstraps a target repo, `npx deflowai up` brings the daemon to a browser in
+under three seconds, `npx deflowai run "…"` drives a complete run to a terminal without a browser at
+all, and `npx deflowai doctor` tells the truth about what this specific machine can and cannot do
 before any quota is spent on finding out. The published artefact is **one** npm tarball with one
 native dependency, and its correctness is proved by installing the real bytes into an empty
 directory and running them — not by a green `pnpm dev`.
@@ -30,7 +30,7 @@ directory and running them — not by a green `pnpm dev`.
 
 Three separate things converge here, and each one fails silently if it is skipped.
 
-**NF6 is the adoption argument.** "Single-binary-ish install: `npx deflow up`. No database server,
+**NF6 is the adoption argument.** "Single-binary-ish install: `npx deflowai up`. No database server,
 no Docker requirement for the core." M2's definition of done is _a colleague installs it unaided and
 finishes a real task_ — and the author is the first test subject. Everything in the repo layout that
 looks like fussiness (exactly one published package, `noExternal: [/^@DeFlow\//]`, UI assets as
@@ -80,7 +80,7 @@ observable from a clean temp directory.
   `fileURLToPath(new URL('./ui', import.meta.url))`, `files: ["dist"]`, and `publint@0.3.22` +
   `@arethetypeswrong/cli@0.18.5` as `pnpm pack:check`.
 - Clean-room install verification: `pnpm pack`, `mktemp -d`, `git init -b main`,
-  `npx /path/deflow-0.1.0.tgz up`, a real mock-agent run through the installed bytes, on macOS and
+  `npx /path/deflowai-0.1.0.tgz up`, a real mock-agent run through the installed bytes, on macOS and
   Linux.
 - `deflow ledger snapshot` and `deflow status` — the two diagnostics that make a solo builder's
   post-mortems possible (added story, see KAR-18.7).
@@ -271,7 +271,7 @@ and colliding on a port — produce a sentence rather than a corrupted run.
 
 This story implements the eight numbered steps in [03 §9](../../03-local-development.md) as one
 sequenced boot, and owns the operator-facing behaviour of each refusal. The lease is the interesting
-one: a second `npx deflow up` in another terminal is described in the architecture as _"very
+one: a second `npx deflowai up` in another terminal is described in the architecture as _"very
 common"_, and two schedulers over one SQLite file will interleave effect execution even though
 SQLite itself enforces one writer. The `flock` on `<dataDir>/DeFlow.lock` plus the `daemon_epoch`
 bump is what stops it, and this story is where a human first meets that mechanism. The migration
@@ -634,11 +634,11 @@ taken.
 **so that** releasing is `npm version patch && pnpm publish` and there is no inter-package semver to
 keep honest.
 
-[16 §2](../../16-repo-layout.md) settles the mechanism. `packages/cli` is `"name": "deflow"`; every
+[16 §2](../../16-repo-layout.md) settles the mechanism. `packages/cli` is `"name": "deflowai"`; every
 `@DeFlow/*` package is private and inlined by `tsdown@0.22.14` through `noExternal: [/^@DeFlow\//]`,
 with `external: ['@lydell/node-pty']` because it is native and must stay a real runtime dependency.
 The build order is fixed and load-bearing: `pnpm --filter @DeFlow/web build` → `packages/web/dist` →
-copied to `packages/cli/dist/ui/` → `pnpm --filter deflow build`. UI assets ship as **plain files**,
+copied to `packages/cli/dist/ui/` → `pnpm --filter deflowai build`. UI assets ship as **plain files**,
 never bundled into JavaScript, and are resolved at runtime with
 `fileURLToPath(new URL('./ui', import.meta.url))`. Two failure modes are invisible in development and
 fatal in the tarball, and both get a regression test here rather than a paragraph: a `paths` alias
@@ -706,8 +706,8 @@ by a job rather than by the first colleague who tries.
 This story exists because `pnpm build` producing a green local run **proves nothing about the
 tarball** — the exact words of [03 §10](../../03-local-development.md). The procedure is fixed:
 `pnpm build`, `pnpm pack:check`, then `cd packages/cli && pnpm pack` to produce
-`deflow-0.1.0.tgz`, then `cd "$(mktemp -d)"`, `git init -b main demo && cd demo`, and
-`npx /path/to/deflow-0.1.0.tgz up` — _the exact bytes a user would get_. What it catches that
+`deflowai-0.1.0.tgz`, then `cd "$(mktemp -d)"`, `git init -b main demo && cd demo`, and
+`npx /path/to/deflowai-0.1.0.tgz up` — _the exact bytes a user would get_. What it catches that
 `pnpm dev` cannot: a missing or wrong `files` array; a lost shebang or exec bit; an `@DeFlow/*`
 package that failed to inline and is now an unresolvable runtime import; a native dependency bundled
 instead of externalised; and UI assets resolved from the wrong path. The clean room must be a real
@@ -1051,7 +1051,7 @@ per check is most of the work here, and it is the half that actually shortens a 
 | R3  | **A5-2 / A5-3: sandbox prerequisites are platform-specific and fail open.** macOS 26 Tahoe broke Seatbelt profiles in practice and whether Claude Code 2.1.220 fixes it is unverified; Ubuntu 24.04+ AppArmor blocks bubblewrap silently. | `doctor` reports _honourable levels_, not "sandbox: ok". EPIC-08 sets `failIfUnavailable: true` and `allowUnsandboxedCommands: false` for every non-`full` level so the ladder fails closed; this epic's job is to say so before a run starts.                                                                                                                                                            |
 | R4  | **A0-9: the capability matrix is a snapshot against five specific versions**, two published the day they were probed.                                                                                                                     | The matrix is a generated fixture with a probe timestamp, regenerated on every `doctor` run and diffed in CI weekly ([roadmap §5](../../17-roadmap.md)). The DoD forbids a hardcoded capability constant in this epic's packages.                                                                                                                                                                         |
 | R5  | **The tarball can regress between releases in ways only a clean room sees.**                                                                                                                                                              | KAR-18.6 is a CI job on every release tag plus a per-milestone manual run, and criterion 5 asserts the _verifier itself fails_ on a deliberately broken tarball — a green verifier that cannot go red is worse than none.                                                                                                                                                                                 |
-| R6  | **`npx deflow up` in two terminals is described in the architecture as "very common"**, and the refusal path is the first thing an operator meets when something is wrong.                                                                | KAR-18.2 criterion 3 fixes the exact sentence, including the live pid and port, and points at `deflow status`. The lease is EPIC-03's; the sentence is this epic's.                                                                                                                                                                                                                                       |
+| R6  | **`npx deflowai up` in two terminals is described in the architecture as "very common"**, and the refusal path is the first thing an operator meets when something is wrong.                                                                | KAR-18.2 criterion 3 fixes the exact sentence, including the live pid and port, and points at `deflow status`. The lease is EPIC-03's; the sentence is this epic's.                                                                                                                                                                                                                                       |
 | R7  | **Windows users will try this** despite NF5 putting it at M3.                                                                                                                                                                             | `doctor` names the platform as unsupported with the WSL2 instruction from [03 §1](../../03-local-development.md), rather than failing at the first `process.kill(-pid)`.                                                                                                                                                                                                                                  |
 | R8  | **A command that installs software onto someone's machine is a new kind of thing for DeFlow to be**, and the failure modes (no egress, a proxy, a read-only global prefix, a half-written package) are worse than the message it replaces. | KAR-18.8 is detect-then-offer: nothing is installed without a confirmation or an explicit `--fix`, only the ACP adapter of a vendor CLI that is already present, one attempt, and the result re-resolved rather than inferred. AC10 and EPIC-18-S56 make the no-egress path a first-class scenario rather than a surprise.                                                                                |
 | R9  | **A presentation rewrite silently changing a contract.** The `--json` documents are what CI branches on, and they are produced by the same code paths KAR-18.9 touches.                                                                   | KAR-18.9 AC6 pins every `--json` document to a golden captured before the change, AC8 forbids modifying the other stories' behavioural tests, and EPIC-18-S62 is the scenario that goes red the day a summary block leaks into a document.                                                                                                                                                                |

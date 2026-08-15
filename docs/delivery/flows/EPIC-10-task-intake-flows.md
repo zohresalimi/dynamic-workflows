@@ -775,7 +775,7 @@ Feature: Approval is reachable without the UI
 
 **Notes:** M1's UI arrives in W10–W11, well after W7a, so the CLI approval path is not a convenience
 — it is the only way this epic is testable end to end when it is built. The `flock` scenario is
-cheap insurance against the _"user runs `npx deflow up` in two terminals"_ case
+cheap insurance against the _"user runs `npx deflowai up` in two terminals"_ case
 [05 §12](../../05-durable-execution.md) says _"happens the first week"_.
 
 ---

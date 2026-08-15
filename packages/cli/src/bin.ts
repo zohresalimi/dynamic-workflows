@@ -4,7 +4,7 @@
  *
  * The shebang is not decoration: it is the first line tsdown copies to
  * `dist/bin.mjs`, and `packages/cli/scripts/build.ts` sets the exec bit on the
- * emitted file. Lose either and `npx deflow` fails with a shell syntax error
+ * emitted file. Lose either and `npx deflowai` fails with a shell syntax error
  * that names none of this (AC6).
  *
  * Nothing here has behaviour. Argv in, exit code out, and every command body
@@ -73,6 +73,7 @@ function version(): string {
 const USAGE = `DeFlow — dynamic multi-agent workflows
 
 Usage: deflow <command> [options]
+       dfl <command> [options]     — the same program, shorter to type
 
 Commands:
   setup           Install deflow, put it on PATH and check the machine

@@ -65,7 +65,7 @@ The mechanism this decision commits us to writing is documented in
 ### Positive
 
 - **Zero new infrastructure, genuinely.** One SQLite file, no server, no Postgres, no Docker.
-  NF6 (`npx deflow up`, no database server) is preserved as stated rather than approximately.
+  NF6 (`npx deflowai up`, no database server) is preserved as stated rather than approximately.
 - The engine is shaped around DeFlow's actual effects — agent invocation, shell command, git
   operation, file write — each of which needs a different `reconcile()` story. A generic engine
   would give us a generic idempotency key and leave the four hard cases to us anyway.
@@ -93,7 +93,7 @@ The mechanism this decision commits us to writing is documented in
 - **DBOS Transact for TypeScript.** Rejected on the source-level finding above: `pg`-only, with a
   dead `sqlite3?` placeholder. Would require Postgres, violating NF6.
 - **DBOS on Postgres anyway.** Rejected: adding a database server to a local-first laptop tool is a
-  direct NF6 violation and would make `npx deflow up` a multi-step install.
+  direct NF6 violation and would make `npx deflowai up` a multi-step install.
 - **Temporal / Restate.** Rejected in the PRD (§4.4) and again here: server-dependent, replay
   constraints, and reconsidered only if execution moves server-side — which AR-1 argues against.
 - **Inngest.** Rejected: SaaS-oriented, and its step-hash machinery exists to solve the code-changed-

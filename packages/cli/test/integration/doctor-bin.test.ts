@@ -11,7 +11,7 @@
  * computed.
  *
  * A real subprocess, so `process.exitCode` (set rather than forced, so stdout
- * drains) is exercised exactly as `npx deflow doctor` exercises it.
+ * drains) is exercised exactly as `npx deflowai doctor` exercises it.
  *
  * Verifies: EPIC-18-S36 · AC10, AC11
  */

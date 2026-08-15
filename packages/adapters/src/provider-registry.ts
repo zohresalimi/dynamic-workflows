@@ -1293,7 +1293,7 @@ export const PROVIDER_SPECS = {
     // The published CLI, which carries this bin. Named honestly even though
     // nothing will ever print an install command for it: a package field that
     // said "@DeFlow/mock-agent" would name something npm cannot resolve.
-    package: 'deflow',
+    package: 'deflowai',
     // It speaks ACP with no flag at all, which is what it has always done.
     variants: [(): readonly string[] => []],
     shim: {

@@ -474,7 +474,7 @@ workflow tools, push the change rather than requiring a new session.
 `pkce-challenge`, `zod-to-json-schema`, `cross-spawn`, `raw-body`, `express-rate-limit`.
 
 For a stdio-only server nearly all of that is dead weight that still lands in `node_modules` and slows
-`npx deflow up` (NF6).
+`npx deflowai up` (NF6).
 
 > **Mitigation: import only the deep subpaths** — `@modelcontextprotocol/sdk/server/mcp.js` and
 > `@modelcontextprotocol/sdk/server/stdio.js` — so nothing HTTP-related is _loaded_ at runtime. If
@@ -642,7 +642,7 @@ Use **`@lydell/node-pty`**, not `node-pty`. **Verified empirically:**
 - `node-pty@1.1.0` (2026-07-16) has `scripts.install: "node scripts/prebuild.js || node-gyp rebuild"`
   — it downloads a prebuild and **falls back to compiling**. In a toolchain-less environment the
   prebuild fetch failed, `node-gyp rebuild` failed outright, and the package was left uninstallable.
-  That directly breaks `npx deflow up` (NF6).
+  That directly breaks `npx deflowai up` (NF6).
 - `@lydell/node-pty@1.2.0-beta.14` (2026-07-26) installed in **514 ms with zero compilation**, using
   npm-native per-platform `optionalDependencies`
   (`@lydell/node-pty-{darwin-arm64,darwin-x64,linux-arm64,linux-x64,win32-arm64,win32-x64}`). Runtime

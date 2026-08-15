@@ -1,13 +1,13 @@
 #!/bin/sh
 # DeFlow's install script — the curl-to-shell entry point (KAR-20.2 AC1).
 #
-# It exists for one reason: `npx deflow setup` presumes a Node, and a macOS
+# It exists for one reason: `npx deflowai setup` presumes a Node, and a macOS
 # machine with no Node cannot run the thing that would tell it so. This script
 # can, and it says exactly what to install and stops.
 #
 # It is deliberately *not* a second, more powerful installer. Everything below
 # either checks something or hands over to `deflow setup`, which is the same
-# code path `npx deflow setup` runs — the same five steps, the same consent
+# code path `npx deflowai setup` runs — the same five steps, the same consent
 # rules, the same profile edit. It installs no package of its own, writes no
 # file, and never uses sudo. That is the answer to "why would I pipe your
 # script into my shell", and `test/install-script.test.ts` is what keeps it
@@ -18,13 +18,13 @@
 #     less install.sh
 #     sh install.sh
 #
-# DEFLOW_PACKAGE pins what is installed — a version (`deflow@0.2.0`) or a
+# DEFLOW_PACKAGE pins what is installed — a version (`deflowai@0.2.0`) or a
 # packed tarball, which is what the release gate points it at. Everything else
 # is passed straight through to `deflow setup`, so `sh install.sh --yes` works.
 
 set -eu
 
-PACKAGE="${DEFLOW_PACKAGE:-deflow}"
+PACKAGE="${DEFLOW_PACKAGE:-deflowai}"
 MIN_NODE_MAJOR=24
 
 case "$(uname -s)" in

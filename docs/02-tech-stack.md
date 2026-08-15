@@ -15,7 +15,7 @@ The stack exists to serve three hard constraints:
 
 1. **AR-1** — DeFlow never holds a model credential, so execution is local and the runtime is
    whatever Node the user already has.
-2. **NF6** — `npx deflow up`, no database server, no Docker, no build step at install time.
+2. **NF6** — `npx deflowai up`, no database server, no Docker, no build step at install time.
 3. **One engineer.** Every dependency has to earn its maintenance cost. Where the answer is "less
    tooling", that is the answer.
 
@@ -305,7 +305,7 @@ Two research areas reached opposite conclusions here, so the resolution is worth
 (D6). Area 2 recommended `node:sqlite`; area 1 recommended `better-sqlite3@13.0.2`. **Area 1 wins,
 because area 2's entire rationale was disproved by measurement.**
 
-Area 2's argument was install ergonomics: zero native compilation means `npx deflow up` never runs
+Area 2's argument was install ergonomics: zero native compilation means `npx deflowai up` never runs
 node-gyp, which is the number-one install-failure class for a solo-maintained tool. That was true of
 better-sqlite3 v12 and is no longer true of v13.
 
@@ -596,7 +596,7 @@ For that, `node-pty@1.1.0` is the wrong package:
 | Binary delivery  | download-then-compile fallback                                                                          | npm-native per-platform `optionalDependencies`: `@lydell/node-pty-{darwin,linux,win32}-{arm64,x64}`            |
 | Runtime check    | —                                                                                                       | spawned bash in a real pty; `tty` returned `/dev/pts/0`, `$COLUMNS` was 80, clean `{ exitCode: 0, signal: 0 }` |
 
-A silent fallback to `node-gyp rebuild` is a direct threat to `npx deflow up` (NF6) on any user
+A silent fallback to `node-gyp rebuild` is a direct threat to `npx deflowai up` (NF6) on any user
 machine without build tools, which is most of them.
 
 The caveat is real and the mitigation is three rules:

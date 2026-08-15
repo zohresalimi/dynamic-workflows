@@ -57,7 +57,7 @@ exports[`the argv table is a golden snapshot (AC2) > spawns each vendor exactly 
     "command": "/opt/DeFlow/bin/deflow-mock-agent",
     "env": {},
     "kind": "native",
-    "package": "deflow",
+    "package": "deflowai",
     "provider": "mock",
   },
 ]

@@ -13,7 +13,7 @@
 | **Owner**                | The engineer who built it and could not install it on 2026-08-12. Every install scenario here is written from what they could observe that day                         |
 | **`deflow` CLI**         | `packages/cli`, the one published package. Bins after this epic: `deflow`, `deflow-mcp`, `deflow-mock-agent`. Before it: the same three, capitalised                    |
 | **The alias**            | `DeFlow` — the old name, kept working for one release, printing one notice line on **stderr** and nothing on stdout                                                    |
-| **`setup`**              | `npx deflow setup`, and the macOS `curl … \| sh` script that reaches the same end state. Five steps: install, link, verify, doctor, adapters                            |
+| **`setup`**              | `npx deflowai setup`, and the macOS `curl … \| sh` script that reaches the same end state. Five steps: install, link, verify, doctor, adapters                            |
 | **The clean room**       | KAR-18.6's `mktemp -d` + `git init -b main` + a fake `HOME` + a minimal `PATH`, installing the packed tarball — the exact bytes a user would get                        |
 | **A fresh shell**        | A **new** login shell spawned after `setup` returned, resolving `PATH` from the profile files as a real terminal would. The distinction is the whole point of the epic  |
 | **The global bin dir**   | Wherever `npm prefix -g`/`pnpm bin -g` resolves on this machine. On the owner's it was not on `PATH`, and nothing said so                                              |
@@ -68,7 +68,7 @@ Background:
 | EPIC-20-S9  | A repository initialised before the rename keeps working, unmigrated                       | KAR-20.1 | Recovery    |
 | EPIC-20-S10 | The bundled agent is `deflow-mock-agent` everywhere that spawns it                         | KAR-20.1 | Edge case   |
 | EPIC-20-S11 | **Happy path: one command, and `deflow` works in a shell opened afterwards**               | KAR-20.2 | Happy path  |
-| EPIC-20-S12 | The macOS script reaches the same end state as `npx deflow setup`                          | KAR-20.2 | Happy path  |
+| EPIC-20-S12 | The macOS script reaches the same end state as `npx deflowai setup`                          | KAR-20.2 | Happy path  |
 | EPIC-20-S13 | Five steps, in order, each with a state and a summary block that says what to do next      | KAR-20.2 | Happy path  |
 | EPIC-20-S14 | **Verification is a subprocess: a link that lied is caught**                               | KAR-20.2 | Failure     |
 | EPIC-20-S15 | **The global bin directory is not on `PATH` — the 2026-08-12 failure, named**              | KAR-20.2 | Failure     |
@@ -90,6 +90,7 @@ Background:
 | EPIC-20-S31 | No capitalised command line survives in the README                                         | KAR-20.3 | Failure     |
 | EPIC-20-S32 | Sabotage: a README claim that stops being true turns a test red                            | KAR-20.3 | Failure     |
 | EPIC-20-S33 | **Performed: a person follows the README top to bottom**                                   | KAR-20.3 | Edge case   |
+| EPIC-20-S34 | The short alias `dfl` installs beside `deflow` and shadows nothing                         | KAR-20.1 | Edge case   |
 
 ---
 
@@ -103,16 +104,24 @@ Feature: the command has the name a shell user expects
   Scenario: the package declares a lowercase command
     Given "packages/cli/package.json"
     When its "bin" map and "name" field are read
-    Then "bin" has exactly the keys "deflow", "deflow-mcp" and "deflow-mock-agent"
+    Then "bin" has exactly the keys "deflow", "dfl", "deflow-mcp" and "deflow-mock-agent"
+    And "dfl" and "deflow" point at the same entry script
+    And no key in "bin" is the name of a POSIX utility this machine already has
     And every value in "bin" points at a file the build produces
-    And "name" is "deflow"
+    And "name" is "deflowai"
     And no key in "bin" and no character of "name" is an upper-case letter
-    And the root "pack:check" script selects the package by "deflow" and still resolves it
+    And the root "pack:check" script selects the package by "deflowai" and still resolves it
 ```
 
 **Notes:** `name` is not cosmetic. npm has refused new package names containing capital letters
-since 2017, so `DeFlow` is not a publishable name and `npx deflow setup` — which resolves a package
+since 2017, so `DeFlow` is not a publishable name and the npx route — which resolves a package
 name, not a bin name — cannot work until this changes.
+
+**Amended 2026-08-15 (owner's decision).** `name` is `deflowai`, not `deflow`: the registry was
+checked and `deflow` is an unrelated package at 0.6.4. The **command** is unaffected, because a
+`bin` key need not match its package. The same decision adds `dfl` as a short alias — `dfl` and not
+`df`, which is POSIX.1's disk-free utility and would be shadowed on every machine that installed
+us.
 
 ---
 
@@ -123,11 +132,13 @@ name, not a bin name — cannot work until this changes.
 ```gherkin
 Feature: the published names are the names that resolve
 
-  Scenario: the tarball's three commands resolve by their lowercase names
+  Scenario: the tarball's commands resolve by their lowercase names
     Given a clean room with the packed tarball installed and no DeFlow on PATH beforehand
-    When "deflow --version", "deflow-mcp --help" and "deflow-mock-agent --version" are each spawned
+    When "deflow --version", "dfl --version", "deflow-mcp --help" and
+        "deflow-mock-agent --version" are each spawned
     Then each exits 0
     And "deflow --version" prints the version in "packages/cli/package.json"
+    And "dfl --version" prints the same version, because it is the same program
     And each resolved path is inside the clean room's own install prefix
     And this holds on both "macos-26" and "ubuntu-26.04"
 ```
@@ -368,7 +379,7 @@ Feature: install in one command
   Scenario: a machine with no deflow, and no clone
     Given a clean room with a fake HOME, a minimal PATH and no "deflow" anywhere on it
     And no clone of this repository
-    When the new user runs "npx deflow setup"
+    When the new user runs "npx deflowai setup"
     Then the report lists the steps install, link, verify, doctor and adapters, in that order
     And every step reports "ok"
     And the command exits 0
@@ -376,6 +387,7 @@ Feature: install in one command
     And "deflow --version" is run inside it
     Then it exits 0 and prints the installed version
     And the resolved path of "deflow" is inside the clean room's install prefix
+    And "dfl --version" in the same shell prints the same version
 ```
 
 **Notes:** the second `When` is the scenario. Asserting `PATH` inside the process that just edited a
@@ -384,7 +396,7 @@ would have said on 2026-08-12, while the operator's next terminal said `command 
 
 ---
 
-## EPIC-20-S12 — The macOS script reaches the same end state as `npx deflow setup`
+## EPIC-20-S12 — The macOS script reaches the same end state as `npx deflowai setup`
 
 **Verifies:** KAR-20.2 · **Type:** Happy path · **Automated at:** e2e
 
@@ -397,7 +409,7 @@ Feature: two entry points, one outcome
     Then it reports the same five steps in the same order through the same layer
     And a shell spawned afterwards resolves "deflow" and prints the installed version
     And the end state — binary location, profile line, doctor verdict — matches what
-        "npx deflow setup" produced in EPIC-20-S11 on the same machine
+        "npx deflowai setup" produced in EPIC-20-S11 on the same machine
 
   Scenario: the script does nothing the npx path does not
     Then the script installs no package beyond the one the npx path installs
@@ -1016,6 +1028,61 @@ Feature: instructions are judged by somebody following them
 that actually went wrong on 2026-08-12: each individual sentence was true and the sequence did not
 add up to an install. The person does not have to be somebody new — the owner following their own
 README without using what they know is enough, and is the cheapest version of this that exists.
+
+---
+
+## EPIC-20-S34 — The short alias `dfl` installs beside `deflow` and shadows nothing
+
+**Verifies:** KAR-20.1 · **Type:** Edge case · **Automated at:** unit, integration, e2e
+
+_Added 2026-08-15 by the owner's decision recorded in
+[the epic file](../epics/EPIC-20-install-and-naming.md#kar-201--the-command-is-deflow)._
+
+```gherkin
+Feature: a shorter name for a command people type all day
+
+  Scenario: the manifest declares it, and it shadows nothing
+    Given "packages/cli/package.json"
+    Then "bin" has a key "dfl" pointing at the same entry script as "deflow"
+    And no key in "bin" is the name of a POSIX utility every Unix machine already has
+    And "df" is named in the code as a name this project will not take, with the reason
+
+  Scenario: it runs the same program and says nothing extra
+    Given a directory holding links named "deflow" and "dfl", both to the entry script
+    When each is invoked with "--version", with "--help", and with "status --json"
+    Then their stdout and their exit codes are identical
+    And "dfl" writes nothing at all to stderr
+    And the usage block names "dfl", so a reader can discover it exists
+
+  Scenario: setup observes it rather than assuming it
+    Given a machine where the install put both names on PATH
+    When "setup" runs
+    Then the verify step reports both names and the one version they agree on
+
+  Scenario: an install that shipped only the command
+    Given a machine where the install put "deflow" on PATH and not "dfl"
+    When "setup" runs
+    Then the verify step is "warn" and names "dfl"
+    And the doctor and adapters steps still run
+    And the command exits 0
+
+  Scenario: from a clean-room install of the packed tarball
+    Given a clean room with the packed tarball installed and no DeFlow on PATH beforehand
+    When "dfl --version" is spawned
+    Then it exits 0 and prints what "deflow --version" prints
+```
+
+**Notes:** the whole scenario turns on one fact about POSIX: **`df` is the disk-free utility**, and
+npm's global bin directory usually sits ahead of `/bin` on `PATH`. Shipping a `df` of our own would
+mean installing DeFlow silently broke `df -h` on that machine, which is the kind of damage a tool
+does not get to do to a shell it was invited into. `dfl` is not the name of anything — verified on
+2026-08-15 — so there is nothing to detect, nothing to prompt about and no shadowing default: it is
+an ordinary second `bin` key. The fourth scenario is the only one with any judgement in it, and the
+judgement is that a missing shorthand is a warning rather than a failed install, because the command
+itself works.
+
+The last scenario exists for the reason EPIC-20-S2 exists: a `bin` key is not a file in this
+repository, so a key dropped from the map is invisible everywhere except an install.
 
 ---
 

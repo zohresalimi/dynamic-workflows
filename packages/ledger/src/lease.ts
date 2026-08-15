@@ -3,7 +3,7 @@
  * (docs/05-durable-execution.md §12, docs/16-repo-layout.md §7.2).
  *
  * "It's a single-user local daemon, so locking is unnecessary" is wrong, and
- * the failure is common rather than exotic: **a user runs `npx deflow up` in
+ * the failure is common rather than exotic: **a user runs `npx deflowai up` in
  * two terminals**, and it happens the first week. SQLite protects the
  * *database* — a second connection's `BEGIN IMMEDIATE` returns `SQLITE_BUSY` —
  * but it does nothing to stop two schedulers interleaving *effect execution*:

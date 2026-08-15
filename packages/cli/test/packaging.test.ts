@@ -69,27 +69,38 @@ suite('the published manifest (AC3)', () => {
     expect(cli.engines?.node).toBe('>=24');
   });
 
-  it('declares the three bins, all under dist/', () => {
+  it('declares the four bins, all under dist/', () => {
     expect(cli.bin).toEqual({
       deflow: './dist/bin.mjs',
+      dfl: './dist/bin.mjs',
       'deflow-mcp': './dist/mcp.mjs',
       'deflow-mock-agent': './dist/mock-agent.mjs',
     });
   });
 
   /**
-   * KAR-20.1 AC1, EPIC-20-S1 — `name` is not cosmetic.
+   * KAR-20.1 AC1, EPIC-20-S1 — `name` is not cosmetic, and as of 2026-08-15 it
+   * is not the command either.
    *
    * npm has refused new package names containing capital letters since 2017, so
-   * `DeFlow` was never publishable and `npm publish` would have failed the day
-   * it was first tried. `npx deflow …` resolves a **package** name, not a bin
-   * name, so this field is also what the install story depends on.
+   * `DeFlow` was never publishable. `deflow` is publishable and *taken* — an
+   * unrelated Redis-backed job-flow library at 0.6.4 — and `npx <name>`
+   * resolves a **package**, so the install route had to move to a name the
+   * registry will actually give us. A `bin` key does not have to match its
+   * package, which is why the command a person types did not have to move with
+   * it.
    */
-  it('is named something npm will accept, and every bin key with it', () => {
-    expect(cli.name).toBe('deflow');
+  it('is named something npm will give us, and every bin key is lowercase', () => {
+    expect(cli.name).toBe('deflowai');
     const keys = Object.keys(cli.bin ?? {});
     expect(keys).toEqual(keys.map((key) => key.toLowerCase()));
     expect(cli.name).toBe(cli.name?.toLowerCase());
+  });
+
+  it('keeps the command and its short alias pointing at one entry script', () => {
+    // Two `bin` keys, one file: `dfl` is a second name for the same program,
+    // not a second program, so there is nothing that can drift between them.
+    expect(cli.bin?.['dfl']).toBe(cli.bin?.['deflow']);
   });
 
   it('points every bin at a file the build produces', () => {

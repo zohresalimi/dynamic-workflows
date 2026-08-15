@@ -11,7 +11,7 @@
  * **Two SDK imports, both deep subpaths.** `server/mcp.js` and
  * `server/stdio.js` and nothing else, enforced repo-wide by
  * `checkMcpSdkImports`. The package root pulls express, hono, cors, jose and
- * eventsource into a process that speaks over a pipe, and `npx deflow up` pays
+ * eventsource into a process that speaks over a pipe, and `npx deflowai up` pays
  * for that on every start (NF6, docs/07-provider-adapter-layer.md §7.3).
  *
  * **`--help` is the one argv a person types**, and it exists so the published

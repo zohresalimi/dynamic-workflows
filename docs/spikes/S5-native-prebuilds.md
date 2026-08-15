@@ -28,7 +28,7 @@ Two questions with one harness.
    a tarball is not a binary that has run.
 2. **Does `@lydell/node-pty@1.2.0-beta.14` cover the platform matrix?** It is a beta of a community
    fork and the only native dependency in the published package, which makes it the last remaining
-   install risk for `npx deflow up` (NF6, A0-6).
+   install risk for `npx deflowai up` (NF6, A0-6).
 
 And one number that decides a product trade-off: every fsync-sensitive figure in
 [05-durable-execution.md](../05-durable-execution.md) — **979 ev/s** at `synchronous = FULL` against
@@ -168,7 +168,7 @@ the distribution, not the runtime. `node:24-slim` is Debian **bookworm** (glibc 
 **Fallback taken — a documented prerequisite, not a workaround.** DeFlow's Linux support statement
 is **glibc ≥ 2.38**: Debian 13 (trixie), Ubuntu 24.04 and later, or any musl distribution. Debian 12
 and Ubuntu 22.04 (glibc 2.35) are **not** supported by `better-sqlite3@13.0.2` as pinned, and
-`npx deflow up` will fail there at first ledger open, **not** at install — which makes the error
+`npx deflowai up` will fail there at first ledger open, **not** at install — which makes the error
 arrive late and read as a DeFlow bug. This is a real NF6 exposure, and it is the one finding here
 that costs someone work later:
 

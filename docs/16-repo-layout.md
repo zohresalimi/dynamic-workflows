@@ -59,7 +59,7 @@ DeFlow/
 
 ## 2. Why exactly one package is published
 
-`packages/cli` is `"name": "deflow"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `deps.alwaysBundle: [/^@DeFlow\//]`.
+`packages/cli` is `"name": "deflowai"`. Every `@DeFlow/*` package is `"private": true` and is **inlined into the CLI bundle by tsdown** via `deps.alwaysBundle: [/^@DeFlow\//]`.
 
 ```ts
 // packages/cli/tsdown.config.ts
@@ -110,7 +110,7 @@ Build order and the UI:
 ```
 pnpm --filter @DeFlow/web build        # -> packages/web/dist
 copy packages/web/dist -> packages/cli/dist/ui/
-pnpm --filter deflow build             # tsdown, @DeFlow/* inlined
+pnpm --filter deflowai build             # tsdown, @DeFlow/* inlined
 ```
 
 The three steps live in `packages/cli/scripts/build.ts`, which is the whole of `pnpm build`. One
@@ -118,7 +118,7 @@ script rather than three `&&`-joined commands, because the order is the load-bea
 `--out-dir` flag lets `packages/cli/test/integration/build.test.ts` run the real thing rather than a
 re-implementation of it.
 
-UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/deflow-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
+UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/deflowai-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
 
 ---
 
@@ -368,7 +368,7 @@ The **ledger is a single global database**, not one per run. Three reasons: the 
 
 Blobs are global for the same reason content-addressing exists: the identical failing test log across three retry attempts, or across two runs of the same task, deduplicates to one object.
 
-`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx deflow up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected. The `daemon_epoch` counter lives in `ledger.db`, not in `DeFlow.lock`: nothing is ever written into the lock file, because committing is precisely the moment SQLite releases the file lock, and an acquisition that lets go of the lock halfway through is not exclusive against a second daemon started microseconds rather than seconds later (see `packages/ledger/README.md` §single-instance lease). The lock file is therefore always 0 bytes, and the holder's pid — needed only for the sentence a *refused* daemon prints, never for a liveness check — goes in `DeFlow.lock.pid` beside it.
+`DeFlow.lock` and the `daemon_epoch` counter are global because the thing they protect against is global — a user running `npx deflowai up` in two terminals. Every ledger write carries the epoch and stale-epoch writes are rejected. The `daemon_epoch` counter lives in `ledger.db`, not in `DeFlow.lock`: nothing is ever written into the lock file, because committing is precisely the moment SQLite releases the file lock, and an acquisition that lets go of the lock halfway through is not exclusive against a second daemon started microseconds rather than seconds later (see `packages/ledger/README.md` §single-instance lease). The lock file is therefore always 0 bytes, and the holder's pid — needed only for the sentence a *refused* daemon prints, never for a liveness check — goes in `DeFlow.lock.pid` beside it.
 
 On first run, `deflow up` resolves the data dir, runs migrations, probes for installed agent CLIs and records their versions (F3.6), binds port 7777 or the next free one, writes `.DeFlow/daemon.json` with a freshly generated 32-byte bearer token, and prints the URL.
 
@@ -397,7 +397,7 @@ Root scripts:
 ```jsonc
 "scripts": {
   "dev": "DeFlow_DEV=1 node --watch --watch-path=packages --env-file-if-exists=.env packages/daemon/src/main.ts",
-  "build": "pnpm --filter @DeFlow/web build && pnpm --filter deflow build",
+  "build": "pnpm --filter @DeFlow/web build && pnpm --filter deflowai build",
   "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
   "test": "vitest run",
   "lint": "oxlint --type-aware && biome check .",

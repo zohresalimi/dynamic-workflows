@@ -12,7 +12,7 @@
  *
  * The one design rule the whole story is built around lives here in
  * `freshShellPath`: **the PATH this process can see is not the PATH the
- * operator's next terminal will have.** `npx deflow setup` runs with the npx
+ * operator's next terminal will have.** `npx deflowai setup` runs with the npx
  * cache's `node_modules/.bin` prepended, so `deflow` resolves inside this very
  * process no matter what the install did. Verifying against that would print a
  * green tick over the exact failure of 2026-08-12 — a link command that exited

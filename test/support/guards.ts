@@ -2363,7 +2363,7 @@ function decodedFrames(text: string): string {
  * `cors`, `jose`, `eventsource`, `pkce-challenge` and `express-rate-limit`.
  * For a stdio-only server that is all dead weight, and a root import *loads*
  * it — which is the difference between an install cost and a startup cost that
- * `npx deflow up` pays every time (NF6).
+ * `npx deflowai up` pays every time (NF6).
  */
 export const ALLOWED_MCP_SDK_SUBPATHS = ['server/mcp.js', 'server/stdio.js'] as const;
 

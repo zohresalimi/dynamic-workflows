@@ -56,7 +56,7 @@ import {
   workspaceDependencyEdges,
 } from './support/guards.ts';
 
-const NAMES = ['@DeFlow/core', '@DeFlow/daemon', '@DeFlow/mock-agent', 'deflow'];
+const NAMES = ['@DeFlow/core', '@DeFlow/daemon', '@DeFlow/mock-agent', 'deflowai'];
 
 suite('checkDependencyValues', () => {
   it('rejects a literal semver on a third-party dependency', () => {

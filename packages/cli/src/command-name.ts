@@ -75,8 +75,78 @@ export const NOT_RENAMED: readonly { readonly name: string; readonly why: string
   },
 ];
 
-/** What users type, what npm publishes, and what the `bin` map declares. */
+/** What users type, and what the `bin` map declares. */
 export const COMMAND = 'deflow';
+
+/**
+ * What npm publishes — which is **not** the command (owner's decision,
+ * 2026-08-15).
+ *
+ * `deflow` on npm is [an unrelated Redis-backed job-flow
+ * library](https://www.npmjs.com/package/deflow) at 0.6.4, published in 2021 by
+ * somebody else. Nothing about that is negotiable from here: npm gives names
+ * away first-come, and the name was gone before this project existed. So the
+ * package is `deflowai`, verified free on the registry on 2026-08-15.
+ *
+ * A `bin` key does not have to match the package that declares it, so the
+ * command an operator types did not have to move with it. What did move is
+ * every **npx** line, because `npx <name>` resolves a *package*: the old form
+ * fetches and executes a stranger's code, which is a good deal worse than a
+ * command that does not exist. `test/command-name.test.ts` fails on any bare
+ * npx route naming the command rather than the package, for that reason.
+ */
+export const PACKAGE_NAME = 'deflowai';
+
+/**
+ * The short alias, installed plainly beside `COMMAND` (owner's decision,
+ * 2026-08-15).
+ *
+ * `dfl`, and not `df`, and the difference is the whole point: `df` is POSIX.1's
+ * disk-free utility, present on every Unix machine this project supports.
+ * npm's global bin directory is usually *ahead* of `/bin` on `PATH`, so a `df`
+ * of ours would shadow it and `df -h` would silently start printing something
+ * else — a tool that breaks an unrelated command is a tool people uninstall.
+ *
+ * Because `dfl` is not the name of anything, there is no collision to detect,
+ * nothing to prompt about and no shadowing default to choose: it is a second
+ * `bin` key pointing at the same entry script, and it installs like any other.
+ * It is also not deprecated, so it prints no notice — `deprecationNotice` fires
+ * for `DEPRECATED_COMMAND` and nothing else.
+ */
+export const SHORT_ALIAS = 'dfl';
+
+/**
+ * Names this project will not take, because the machine already has them.
+ *
+ * Deliberately short and deliberately not "every POSIX utility": the list is
+ * the set a plausible abbreviation of `deflow` could land on, plus the one that
+ * actually came up. A guard over the published `bin` map reads it
+ * (`test/command-name.test.ts`), so an addition here is a real constraint
+ * rather than documentation.
+ */
+export const SYSTEM_UTILITIES: readonly { readonly name: string; readonly what: string }[] = [
+  {
+    name: 'df',
+    what: "POSIX.1's disk-free utility, on every Unix machine — shadowing it breaks `df -h` for every shell on the machine, which is why the short alias is `dfl`",
+  },
+  {
+    name: 'du',
+    what: "POSIX.1's disk-usage utility, and the neighbour anyone reaching for a two-letter name lands on next",
+  },
+  {
+    name: 'dd',
+    what: "POSIX.1's block copier: shadowing it turns a mistyped command into a plausible-looking one",
+  },
+  {
+    name: 'fd',
+    what: "the widely installed `find` replacement — not POSIX, but on enough developer machines that taking the name would be taking somebody else's",
+  },
+];
+
+/** The system utility `name` would shadow, or `undefined` if it shadows none. */
+export function shadowedUtility(name: string): (typeof SYSTEM_UTILITIES)[number] | undefined {
+  return SYSTEM_UTILITIES.find((utility) => utility.name === name);
+}
 
 /** The pre-rename spelling, kept working for one release. */
 export const DEPRECATED_COMMAND = 'DeFlow';

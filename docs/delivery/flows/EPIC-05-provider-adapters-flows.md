@@ -898,7 +898,7 @@ capability flag**, so all five agents accept it. The elegant "tunnel MCP over th
 true by a single agent, and codex-acp explicitly returned `acp: false`. Legacy HTTP+SSE is officially
 deprecated as of the 2026-07-28 MCP spec with a 12-month offramp, so it must not be built on even though it
 still ships in SDK 1.30.0. The root-import ban is about weight: the SDK pulls `express`, `hono`, `cors`,
-`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx deflow up`.
+`jose`, `eventsource` and more, nearly all dead weight for a stdio server that still slows `npx deflowai up`.
 
 ---
 
