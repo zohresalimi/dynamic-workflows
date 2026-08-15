@@ -523,6 +523,10 @@ export {
   fullEscalationRuling,
   fullPermissionIssues,
 } from './full-permission.ts';
+// KAR-22.5 — which endpoint answers a human gate, decided once and read by two
+// surfaces: `deflow answer` and the browser's gate panel.
+export type { GateAnswer, GateAnswerRequest, GateAnswerTarget } from './gate-answer.ts';
+export { gateAnswerRequest, SPEC_EDIT_NEEDS_A_DOCUMENT } from './gate-answer.ts';
 // KAR-12.4 AC4 — the GATE_UNKNOWN_CRITERION rule a discovered gate file's
 // `satisfies:` list is checked against (KAR-12.6 wires the file walk).
 export type { GateFileCriterionIssue } from './gate-file-criteria.ts';

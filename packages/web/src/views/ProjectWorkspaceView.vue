@@ -63,6 +63,15 @@ interface HistoryRow {
   readonly title: string;
   readonly createdAt: string;
   readonly cost: { readonly run?: { readonly costUsd?: number | null } } | null;
+  /**
+   * KAR-22.5 AC7 — the gate this run has stopped on, or `null`.
+   *
+   * `pendingGate`'s own answer, arriving on the row because `runEntry` already
+   * carries it for the global run list (KAR-19.12 AC6). No second query and no
+   * second vocabulary: a run that wants you is findable here without being
+   * opened.
+   */
+  readonly gate: { readonly node: string } | null;
 }
 
 /**
@@ -260,6 +269,15 @@ function spent(row: HistoryRow): string {
           <span class="workspace__history-outcome" :data-history-outcome="row.runId">
             {{ row.label }}
           </span>
+          <!--
+            AC7 — and which gate it is waiting on, when it is waiting on one.
+            The row already says `needs a decision`; this says *which* decision,
+            which is the difference between a list you can act on and one you
+            have to open row by row.
+          -->
+          <span v-if="row.gate" class="workspace__history-gate" :data-history-gate="row.runId"
+            >waiting on {{ row.gate.node }}</span
+          >
           <span class="workspace__history-when">{{ when(row.createdAt) }}</span>
           <span class="workspace__history-cost">{{ spent(row) }}</span>
           <!--
@@ -357,7 +375,7 @@ function spent(row: HistoryRow): string {
 
 .workspace__history-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto auto;
   gap: 0.75rem;
   align-items: baseline;
   padding: 0.3rem 0.25rem;
@@ -389,5 +407,11 @@ function spent(row: HistoryRow): string {
 .workspace__history-cost {
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* A sentence, not a dot: the state is carried by the words (docs/12 §9.2). */
+.workspace__history-gate {
+  color: var(--ink-warn, inherit);
+  white-space: nowrap;
 }
 </style>

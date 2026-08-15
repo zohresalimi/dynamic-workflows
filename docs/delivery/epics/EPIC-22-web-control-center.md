@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                 |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                 |
 | **Workstream**       | W15 — added 2026-08-13, after the owner asked for "a whole web UI for the solution, a control center" and restated it on 2026-08-14                                                                                                                                 |
-| **Size**             | ~18 days across 4 stories                                                                                                                                                                                                                                          |
+| **Size**             | ~21 days across 5 stories                                                                                                                                                                                                                                          |
 | **Depends on**       | EPIC-16 (app shell, projections, bounded run store, typed API client), EPIC-17 (the P0 views this reuses — the plan graph above all), EPIC-15 (the HTTP API and the multiplexed SSE stream), EPIC-19 (a run that actually executes), EPIC-18 KAR-18.1 (`init`'s workspace bootstrap) |
 | **Blocks**           | Nothing in M1's formal definition of done. It blocks the *use* of everything in it, which is the distinction this epic exists to close                                                                                                                              |
 | **PRD requirements** | F1.1, F1.3, F3.2, F3.5, F3.7, F10.1, F10.3, F10.6, F10.9, NF2, NF4, NF7, NF8, NF10, AR-1                                                                                                                                                                            |
@@ -63,6 +63,9 @@ control center is not polish; it is the difference between a finished project an
   verbatim rather than reinvented.
 - **The project workspace**: the active run's graph on EPIC-17's canvas, a task/step board that is
   the same projection in a different shape, and run history browsable without knowing a run id.
+- **Answering the run's human gates from the page** (KAR-22.5): the gate EPIC-13 opened, the option
+  set KAR-19.12 already publishes, and the endpoints `deflow answer` already calls — with one
+  request builder shared between the two surfaces rather than a second answer path.
 - **Connectors** (GitHub, Linear, Jira) — planned in KAR-22.4, deliberately last, and explicitly not
   required by anything above it.
 
@@ -102,12 +105,13 @@ control center is not polish; it is the difference between a finished project an
 
 ## Definition of Done (epic level)
 
-- [ ] All four stories are Done, or KAR-22.4 is explicitly deferred with the deferral recorded here.
+- [ ] All five stories are Done, or KAR-22.4 is explicitly deferred with the deferral recorded here.
 - [ ] Every scenario in [the flow file](../flows/EPIC-22-web-control-center-flows.md) is automated at
       the level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] **Performed, not asserted:** a daemon is started, a browser is opened, a project is created
       against a scratch git repository, a run is started from the composer with the bundled agent,
-      and the run appears and streams — with no terminal used after `deflow up`. The transcript goes
+      the run appears and streams, **and its first human gate is answered from the page** — with no
+      terminal used after `deflow up`. The transcript goes
       onto the epic's Linear issue. A green suite is not evidence for this item; EPIC-19 exists
       because a green suite coexisted with a pipeline that did nothing.
 - [ ] There is exactly one graph canvas, one run store, one projection set and one API client in
@@ -393,6 +397,97 @@ tokens" and be right to.
 
 ---
 
+### KAR-22.5 — Answer a run's human gates from the web UI
+
+|                 |                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                            |
+| **Priority**    | P0                                                                                                                                                     |
+| **Size**        | M                                                                                                                                                      |
+| **Depends on**  | KAR-22.3 (the workspace this appears in), KAR-19.12 (the announcement, the option set and `deflow answer`'s endpoints), KAR-13.1 (the gate machinery and its `409`), KAR-10.3 (the F1.3 spec gate's four routes) |
+| **PRD**         | F1.3, F8.3, F10.1, F10.3, NF4, NF10                                                                                                                    |
+| **Verified by** | EPIC-22-S58, EPIC-22-S59, EPIC-22-S60, EPIC-22-S61, EPIC-22-S62, EPIC-22-S63, EPIC-22-S64, EPIC-22-S65, EPIC-22-S66, EPIC-22-S67                        |
+
+**Found while performing KAR-22.3's by-hand acceptance on 2026-08-15.** The operator created a
+project, started a run from the composer, and then could not proceed: the run suspended at its
+spec-approval gate and **there was no UI control to answer it**. The acceptance run had to approve
+the gate over the raw API route to continue.
+
+**As** an operator, **I want** to answer a run's human gates from the browser, **so that** a run I
+started in a tab can be finished in that tab.
+
+This is a hole in the control center's own story rather than a new capability. KAR-22.2 lets an
+operator start a run from the browser and KAR-22.3 lets them watch it — and then the run stops at
+its first human gate and the only way through is `deflow answer` in a terminal, which defeats the
+sentence the whole epic is written against. Everything underneath already exists: EPIC-13 owns the
+gate, its `node_wake` row and the transaction that closes it; KAR-10.3 owns the F1.3 gate's four
+routes; KAR-19.12 owns the option set, the announcement and `deflow answer`. What is missing is a
+**button**.
+
+Two constraints on it, and both are the epic's own rules restated.
+
+**There is one answer path.** `deflow answer` already decides which route answers which gate — the
+four spec endpoints for the F1.3 gate and `POST /runs/:id/nodes/:nodeId/respond` for every other —
+and that decision moves into one exported function both surfaces call. A page that chose its own
+route would be a second answer path, and the day a fifth spec decision is added one of the two would
+keep answering the old way.
+
+**A refusal is the daemon's own sentence.** `already_answered` is `planHumanResponse`'s `409` with
+the original decision echoed; the page renders it rather than writing its own version of *"somebody
+beat you to it"*. This is R4 again, and the reason AC6 is a test rather than a convention.
+
+**Acceptance criteria**
+
+1. A run awaiting a human shows its gate prominently in the workspace and on the run view: which
+   gate, why it is waiting, and the full option set the daemon offered (for spec approval: approve /
+   edit / reject / abandon).
+2. Each option is answerable with one click, using the same endpoint `deflow answer` uses. No second
+   answer path.
+3. The spec being approved is readable in the UI before answering — goal, scope, non-goals,
+   constraints, acceptance criteria, known failure modes — not just an option list.
+4. The "edit" option lets the operator amend the spec before approving, through the amend path that
+   already exists, or is hidden with a stated reason if that path is not reachable yet.
+5. Answering resolves the gate live: the run continues and the graph and board update with no
+   reload.
+6. A gate answered elsewhere — the CLI, another tab — resolves in this UI without a reload, and a
+   gate that is already answered never offers a stale button.
+7. The project's run list and the workspace both mark a run that is awaiting a human as such, so it
+   is findable without opening it.
+8. Permission-escalation and approval gates use the same surface as spec approval, rather than a
+   bespoke one per gate kind.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail.
+
+| #   | Level       | Test                                                                                                                                                              | Red when                                                                                                                       |
+| --- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | A table over every gate/option pair: the request the browser sends and the request `deflow answer` sends are produced by one exported function, path and body both  | The page picks its own route, and the F1.3 gate acquires a second answer path that drifts the day a fifth decision is added     |
+| 2   | browser     | Mount the workspace with an open spec gate; assert the node, the prompt and **every** option the daemon offered are on screen                                       | The gate is a status word, and an operator is told a decision is needed without being told what it is                          |
+| 3   | browser     | Assert the rendered spec is readable before answering: goal, in scope, non-goals, constraints, acceptance criteria and known failure modes                          | The panel is an option list, and approving is a click on a document nobody read                                                |
+| 4   | browser     | Press `approve`; assert exactly one request went out, to `POST /api/runs/:id/spec/approve`, with the same body `deflow answer` sends                                | The click posts to `respond` with `optionId: 'approve'`, which the F1.3 gate does not implement                                 |
+| 5   | browser     | `edit`: assert it is **not** submittable, that the stated reason is on screen, and that pressing it issues no request                                               | A button offers an amendment this surface cannot carry, and the operator's edit is silently dropped                            |
+| 6   | browser     | Push the `human.responded` frame the answer produces; assert the panel is gone, with no reload and no second fetch of the run                                       | The gate stays on screen after it is answered, and the only way to clear it is F5                                              |
+| 7   | integration | Two feeds over one real daemon and one run; answer once over the API; assert **both** receive `human.responded` and both folds report no open gate                  | The answering tab updates and the other one keeps showing a button for a gate that is closed                                   |
+| 8   | integration | Answer the same gate twice against a real daemon; assert the second is `409 already_answered` and carries the **first** decision                                    | The second answer wins, or appends a second `human.responded`, and the ledger records two decisions for one question           |
+| 9   | browser     | A `409` from the daemon; assert its own sentence is rendered, that the option buttons are gone, and that no retry is issued                                         | The page paraphrases the conflict, or leaves a stale button that answers an answered gate                                      |
+| 10  | browser     | A project whose run is waiting: assert the workspace and the project's history row both mark it, without the run being opened                                       | The only way to find out that a run is waiting on you is to open it, which is the state KAR-22.3 shipped                       |
+| 11  | browser     | A **permission-escalation** gate, not a spec gate: assert the same panel renders it and that answering posts to `nodes/:nodeId/respond`                             | A second panel is written per gate kind, and the third kind gets none                                                          |
+
+**Notes / risks** — the hazard is a **second answer path**, and it is the same hazard R2 names for
+the canvas. The F1.3 gate answers on four endpoints and every other gate answers on one, so a
+surface that answers gates has to make that choice — and there are now three surfaces that do
+(`deflow answer`, this panel, and whatever KAR-22.4 adds). The choice therefore lives in
+`@DeFlow/core` beside `SPEC_DECISIONS` and `SPEC_APPROVAL_OPTIONS`, as a function of the gate and
+the option, and test 1 drives it from both callers.
+
+The second hazard is **`edit`**. An edit replaces the whole amended framed document
+(`DeFlow.taskspecdraft.v1`) and the gate computes the RFC 6902 patch itself, so there is nothing a
+button could carry — which is exactly why `deflow answer` refuses it too. AC4's second half is the
+honest answer for this story: the option is shown, not submittable, and the reason is the *same*
+exported sentence the CLI prints, so the two surfaces cannot come to explain one limitation two
+ways.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                       | Mitigation                                                                                                                                                                                                                                                                                 |
@@ -405,6 +500,7 @@ tokens" and be right to.
 | R6  | **Path identity.** Trailing slashes, symlinks and `realpath` make one directory into four strings, and a projects table keyed on the raw string holds four rows for it.    | Stored post-`realpath`, uniqueness asserted on the resolved form, and KAR-22.1 test 12 is written against a second create rather than a string comparison.                                                                                                                                   |
 | R7  | **`projectId` becomes required** in a later refactor, and every run already on disk becomes unreadable.                                                                     | KAR-22.1 AC7 and test 15: a payload with no `projectId` is folded in a unit spec, exactly as `cwd`'s own optionality is pinned. A ledger may never make its own history unreadable.                                                                                                          |
 | R8  | **Connectors pull credentials into a system built not to hold them** (ADR-0003, AR-1).                                                                                     | KAR-22.4 AC2 requires the design to state where a token lives and why that is consistent with the ADR — or to amend the ADR deliberately. Test 2 is a source guard over the import graph, and test 3 asserts no token reaches an event or a log.                                              |
+| R9  | **A second answer path.** The F1.3 gate answers on four endpoints and every other gate on one, and a page that answered gates would naturally re-make that choice locally.                | KAR-22.5 AC2 and its test 1: the choice is one exported function in `@DeFlow/core`, driven from both `deflow answer` and the panel by a table over every gate/option pair.                                                                                                                    |
 
 ---
 

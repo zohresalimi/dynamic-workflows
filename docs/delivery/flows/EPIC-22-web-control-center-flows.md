@@ -115,6 +115,16 @@ Background:
 | EPIC-22-S55  | Connectors are per project                                                                 | KAR-22.4 | Edge case  |
 | EPIC-22-S56  | **Everything in this epic works with no connector at all**                                  | KAR-22.4 | Happy path |
 | EPIC-22-S57  | ADR-0003 is satisfied or amended, in writing                                                | KAR-22.4 | Edge case  |
+| EPIC-22-S58  | **Happy path: the run's open gate is answered from the browser**                            | KAR-22.5 | Happy path |
+| EPIC-22-S59  | **The spec is readable before it is approved**                                               | KAR-22.5 | Happy path |
+| EPIC-22-S60  | There is one answer path, and both surfaces build their request with it                     | KAR-22.5 | Happy path |
+| EPIC-22-S61  | `edit` is offered honestly or not at all                                                     | KAR-22.5 | Failure    |
+| EPIC-22-S62  | **Answering resolves the gate live, with no reload**                                         | KAR-22.5 | Happy path |
+| EPIC-22-S63  | **Two tabs watching one run both see the answer**                                            | KAR-22.5 | Edge case  |
+| EPIC-22-S64  | **A gate answered twice records one decision**                                               | KAR-22.5 | Failure    |
+| EPIC-22-S65  | The conflict is rendered in the daemon's words, and the stale buttons go                    | KAR-22.5 | Failure    |
+| EPIC-22-S66  | A run that is waiting on a person is findable without opening it                            | KAR-22.5 | Happy path |
+| EPIC-22-S67  | A permission escalation uses the same surface as a spec approval                            | KAR-22.5 | Edge case  |
 
 ---
 
@@ -1274,6 +1284,224 @@ Feature: a constraint is not quietly outgrown
 **Notes:** an issue-tracker token is not a model credential, and that distinction is defensible — but
 it has to be written down, because the next person to read ADR-0003 will read it as "no tokens" and
 will be right to.
+
+---
+
+## EPIC-22-S58 — Happy path: the run's open gate is answered from the browser
+
+**Verifies:** KAR-22.5 · **Type:** Happy path · **Automated at:** browser
+
+```gherkin
+Feature: a run started in a tab can be finished in that tab
+
+  Scenario: the spec-approval gate, approved with one click
+    Given a project whose newest run has stopped on its "spec-approval" gate
+    When the workspace for that project is opened
+    Then the gate panel names the node "spec-approval"
+    And it renders every option the daemon offered — approve, edit, reject and abandon —
+        each with the label the gate itself carries
+    When "approve" is pressed
+    Then exactly one request is made
+    And it is "POST /api/runs/<runId>/spec/approve"
+    And its body is the one "deflow answer" sends for the same gate and option
+```
+
+**Notes:** the option **labels** are the gate's, not the page's. `SPEC_APPROVAL_OPTIONS` is where
+§1.3's four sentences live; a panel that wrote its own would be the fifth place this project has
+described one decision.
+
+---
+
+## EPIC-22-S59 — The spec is readable before it is approved
+
+**Verifies:** KAR-22.5 · **Type:** Happy path · **Automated at:** browser
+
+```gherkin
+Feature: approving is not a click on a document nobody read
+
+  Scenario: the rendered spec on the panel
+    Given a run stopped on its "spec-approval" gate
+    And the gate's prompt is "renderSpecForReview"'s own rendering of the draft
+    When the workspace is opened
+    Then the panel shows the prompt verbatim, including its Goal, In scope, Non-goals,
+        Constraints, Acceptance criteria and Known failure modes sections
+    And the text is present before any option is pressed
+```
+
+**Notes:** verbatim, and that is the point — the bytes on the page are the bytes in
+`human.requested.prompt`, which are the bytes the terminal printed. A panel that re-rendered the spec
+from `run.created.spec` would be a second renderer of one document, and the two would disagree the
+first time a run was amended.
+
+---
+
+## EPIC-22-S60 — There is one answer path, and both surfaces build their request with it
+
+**Verifies:** KAR-22.5 · **Type:** Happy path · **Automated at:** unit
+
+```gherkin
+Feature: the routing decision is made once
+
+  Scenario Outline: every gate and option a surface can answer
+    Given the gate <gate> and the option <option>
+    When the browser builds its request and "deflow answer" builds its own
+    Then both are the same path and the same body
+    And that path is <path>
+
+    Examples:
+      | gate           | option  | path                                      |
+      | spec-approval  | approve | /api/runs/<runId>/spec/approve            |
+      | spec-approval  | reject  | /api/runs/<runId>/spec/reject             |
+      | spec-approval  | abandon | /api/runs/<runId>/spec/abandon            |
+      | review-changes | approve | /api/runs/<runId>/nodes/review-changes/respond |
+```
+
+**Notes:** the F1.3 gate's four decisions are four endpoints because that is what KAR-10.3 built —
+approving pins the spec, rejecting mints a reframing attempt, abandoning ends the run. Every other
+gate is one endpoint and an option id. That is a routing fact with two readers, so it is one
+function.
+
+---
+
+## EPIC-22-S61 — `edit` is offered honestly or not at all
+
+**Verifies:** KAR-22.5 · **Type:** Failure · **Automated at:** browser
+
+```gherkin
+Feature: no button promises something the surface cannot carry
+
+  Scenario: the edit option
+    Given a run stopped on its "spec-approval" gate
+    When the workspace is opened
+    Then "edit" is listed among the options
+    And it is not submittable
+    And the reason on screen is the same exported sentence "deflow answer" prints for it
+    When "edit" is pressed anyway
+    Then no request is made
+```
+
+**Notes:** an edit replaces the whole amended framed document (`DeFlow.taskspecdraft.v1`) and the
+gate computes the RFC 6902 patch itself, so there is nothing a button could carry. Hiding the option
+entirely was the alternative and is worse: the daemon offered four and an operator who read the
+terminal block would go looking for the fourth.
+
+---
+
+## EPIC-22-S62 — Answering resolves the gate live, with no reload
+
+**Verifies:** KAR-22.5 · **Type:** Happy path · **Automated at:** browser
+
+```gherkin
+Feature: the gate clears itself the way everything else on this page does
+
+  Scenario: the answer comes back over the stream
+    Given the workspace of a run stopped on a gate, with the panel on screen
+    When the "human.responded" frame the answer produced arrives on the run's feed
+    Then the panel is gone
+    And no reload happened and no second fetch of the run was made
+    And the graph and the board are still the same two views of one projection
+```
+
+**Notes:** the panel is cleared by the **event**, never by the response to the POST. That is what
+makes EPIC-22-S63 work at all: the answering tab and the watching tab are cleared by the same frame,
+so there is one code path and no "did my own request succeed" special case.
+
+---
+
+## EPIC-22-S63 — Two tabs watching one run both see the answer
+
+**Verifies:** KAR-22.5 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: the gate is in the ledger, not in a tab
+
+  Scenario: two feeds, one answer
+    Given a real daemon over a file-backed ledger with a run stopped on a gate
+    And two run feeds open on that run, as two tabs would open them
+    When the gate is answered once over the API
+    Then both feeds receive the "human.responded" event
+    And the gates projection each fold reports no open gate
+```
+
+**Notes:** two feeds rather than two mounted shells, because the claim is about **the wire**: a
+second tab is a second subscription, and what has to be true is that the daemon fans the answer out
+to both. A browser spec with a shared pushable feed would assert the fan-out it had itself
+performed.
+
+---
+
+## EPIC-22-S64 — A gate answered twice records one decision
+
+**Verifies:** KAR-22.5 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the second answer never wins
+
+  Scenario: the same gate, answered twice
+    Given a real daemon and a run stopped on a "human" node's gate
+    When the gate is answered with one option
+    And it is answered again with a different one
+    Then the second response is 409 with the code "already_answered"
+    And it carries the first decision
+    And the ledger holds exactly one "human.responded" for that node
+```
+
+---
+
+## EPIC-22-S65 — The conflict is rendered in the daemon's words, and the stale buttons go
+
+**Verifies:** KAR-22.5 · **Type:** Failure · **Automated at:** browser
+
+```gherkin
+Feature: "somebody beat you to it" is the daemon's sentence, not the page's
+
+  Scenario: a 409 answering an already-answered gate
+    Given the panel on screen for a gate the CLI answered a moment ago
+    When an option is pressed and the daemon answers 409 "already_answered"
+    Then the daemon's own message is rendered
+    And no option remains pressable
+    And no retry is issued
+```
+
+---
+
+## EPIC-22-S66 — A run that is waiting on a person is findable without opening it
+
+**Verifies:** KAR-22.5 · **Type:** Happy path · **Automated at:** browser
+
+```gherkin
+Feature: you should not have to open a run to learn that it wants you
+
+  Scenario: the project's history rows
+    Given a project with two runs, one of which is stopped on a gate
+    When the workspace is opened
+    Then the history row for the waiting run says which gate it is waiting on
+    And the row for the other run says nothing of the kind
+```
+
+**Notes:** the fact is `pendingGate`'s, arriving on `GET /api/projects/:id/runs`'s rows because
+`runEntry` already carries it — the same field the global run list renders (EPIC-19-S82). No second
+query and no second vocabulary.
+
+---
+
+## EPIC-22-S67 — A permission escalation uses the same surface as a spec approval
+
+**Verifies:** KAR-22.5 · **Type:** Edge case · **Automated at:** browser
+
+```gherkin
+Feature: one panel, every gate kind
+
+  Scenario: a permission escalation
+    Given a run whose safety layer escalated a permission decision, not a spec approval
+    When the workspace is opened
+    Then the same panel renders it, with that gate's own prompt and its own options
+    When an option is pressed
+    Then the request is "POST /api/runs/<runId>/nodes/<node>/respond" carrying that option id
+```
+
+**Notes:** the panel branches on nothing but the gate's node id, and it branches there only to choose
+a route — `pendingGate.specApproval` carries that answer so the comparison is not written twice.
 
 ---
 

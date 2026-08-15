@@ -146,22 +146,33 @@ onUnmounted(() => {
       <RunProviderBanner />
 
       <!--
-        KAR-19.12 AC6 — and what the run is waiting for, if it is waiting for
-        anybody. Beside the provider line for the same reason it is: it is true
-        of the run rather than of one panel, and an operator who has just been
-        told the run is `needs a decision` should not have to find the right tab
-        to learn which decision. It renders nothing when no gate is open.
-      -->
-      <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
-
-      <!--
-        KAR-22.2 AC6 — and what the run was asked to do, beside the other two
-        for the same reason: it is true of the run rather than of one panel, and
-        "what did I ask for?" is a question an operator asks from wherever they
-        happen to be. It renders nothing until the run's first event is folded.
+        KAR-22.2 AC6 — and what the run was asked to do, beside the provider
+        line for the same reason: it is true of the run rather than of one
+        panel, and "what did I ask for?" is a question an operator asks from
+        wherever they happen to be. It renders nothing until the run's first
+        event is folded.
       -->
       <RunTaskBanner :task="run.submittedTask" />
     </header>
+
+    <!--
+      KAR-19.12 AC6, KAR-22.5 AC1 — what the run is waiting for, and the buttons
+      that answer it.
+
+      Its own band between the bar and the view, rather than an item in the
+      toolbar where KAR-19.12 first put it. Two reasons, and neither is taste:
+      the F1.3 gate's prompt is a whole rendered spec that has to be *read*
+      before it is approved (AC3), which a toolbar cannot hold; and AC1 asks for
+      it in the workspace **and** on the run view, which one band above the
+      router outlet answers once rather than twice.
+
+      The wrapper is always in the DOM — never `v-if`d — so the shell's three
+      grid rows are always three; the panel inside it renders nothing when no
+      gate is open, and a tab with no token has no run and therefore no gate.
+    -->
+    <div class="shell__gate">
+      <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
+    </div>
 
     <!--
       `tabindex="-1"` so the skip-link above can actually move focus here: an
@@ -180,9 +191,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Three rows, always: the bar, the gate band (empty until a run stops to ask)
+   and the view. Stated rather than left implicit so an opening gate takes its
+   own height from the band and never from the view underneath it. */
 .shell {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   height: 100%;
 }
 
@@ -253,6 +267,12 @@ onUnmounted(() => {
   border-radius: 0.5rem;
   background: var(--surface);
   color: inherit;
+}
+
+/* No padding of its own when it is empty, so a shell with no open gate looks
+   exactly as it did before this band existed. */
+.shell__gate:not(:empty) {
+  padding: 0.5rem 0.75rem 0;
 }
 
 .shell__main {
