@@ -39,6 +39,14 @@ export const routes = [
     component: RunListView,
   },
   {
+    // KAR-22.1 — projects. Lazy, because it is not the landing view and
+    // nothing on it is shared with the graph: its whole dependency is the typed
+    // client the shell already has.
+    path: '/projects',
+    name: 'projects',
+    component: () => import('../views/ProjectsView.vue'),
+  },
+  {
     path: '/runs/:runId',
     name: 'run-plan',
     component: PlanGraphView,

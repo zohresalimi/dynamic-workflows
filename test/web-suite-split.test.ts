@@ -82,6 +82,9 @@ suite('AC2 — the web suite is partitioned, not overlapped', () => {
       `${PROJECTIONS}provider.test.ts`,
       `${PROJECTIONS}purity.test.ts`,
       `${PROJECTIONS}snapshots.test.ts`,
+      // KAR-22.2's ninth: what the run was asked to do, off its own
+      // `task.submitted`.
+      `${PROJECTIONS}submission.test.ts`,
       `${PROJECTIONS}timeline.test.ts`,
     ]);
   });

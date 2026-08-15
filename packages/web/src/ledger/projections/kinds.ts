@@ -29,12 +29,15 @@
 import type { Event, EventKind } from '@DeFlow/core';
 
 /**
- * The seven modules of docs/12-frontend-architecture.md §3.2, and KAR-19.10's
- * eighth.
+ * The seven modules of docs/12-frontend-architecture.md §3.2, KAR-19.10's
+ * eighth and KAR-22.2's ninth.
  *
  * `provider` is the smallest of them and answers one question — which agent
  * this run is on, and by which route — because AC4 requires the tab to say it
  * beside the terminal and the run API, from the same recorded facts.
+ * `submission` is the next smallest and answers the question that comes before
+ * it: what this run was asked to do, off the run's own `task.submitted` rather
+ * than off a copy the page that submitted it happened to keep.
  */
 export const PROJECTION_NAMES = [
   'plan',
@@ -45,6 +48,7 @@ export const PROJECTION_NAMES = [
   'cost',
   'timeline',
   'provider',
+  'submission',
 ] as const;
 
 export type ProjectionName = (typeof PROJECTION_NAMES)[number];
@@ -59,7 +63,10 @@ export type ProjectionName = (typeof PROJECTION_NAMES)[number];
  */
 export const EVENT_KIND_OWNERS = {
   // ── intake and run lifecycle ───────────────────────────────────────────────
-  'task.submitted': [],
+  // KAR-22.2 AC6 — what the operator asked for. Owned by exactly one
+  // projection, because "what did I ask this run to do" is one question and a
+  // second fold of it is a second answer.
+  'task.submitted': ['submission'],
   // Seeds the criteria board: F7.4 requires every acceptance criterion to map
   // to at least one gate, so a criterion no gate ever speaks to has to be
   // *visible* as `unverifiable` rather than absent (EPIC-16-S19).

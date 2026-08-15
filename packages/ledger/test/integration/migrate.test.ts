@@ -80,7 +80,8 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // `_content`, `_data`, `_docsize` and `_idx` are the shadow tables FTS5
       // itself creates and are not this migration's own DDL, and
       // `artifact_fts_provenance` is the companion table that maps a search
-      // hit back to its handle and sourceEvent.
+      // hit back to its handle and sourceEvent; `project` is migration 0016's
+      // map from a name to a repository, with the realpath unique (KAR-22.1).
       expect(tables).toEqual([
         'artifact_fts',
         'artifact_fts_config',
@@ -99,6 +100,7 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         'node_wake',
         'plan',
         'process',
+        'project',
         'provider_capabilities',
         'run',
         'token_calibration',
@@ -160,6 +162,11 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         // terminal row per node attempt for ever, and the reaper reads none of
         // them (KAR-05.9).
         'process_live',
+        // Migration 0016's most-recently-touched order (KAR-22.1). The primary
+        // key already sorts projects by creation — `prj_<timestamp>_<hex>` —
+        // so this index buys the *other* order, which is the one a machine
+        // with more projects than fit on a screen actually wants.
+        'project_updated',
       ]);
     } finally {
       db.close();

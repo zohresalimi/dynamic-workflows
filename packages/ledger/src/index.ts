@@ -351,6 +351,18 @@ export {
   readProcesses,
   recordProcess,
 } from './processes.ts';
+// KAR-22.1 — the `project` table: a name, a resolved repository path, and the
+// query that finds a project's runs in the runs' own events.
+export {
+  forgetProject,
+  insertProject,
+  listProjects,
+  type ProjectRecord,
+  readProject,
+  readProjectByPath,
+  renameProject,
+  runIdsForProject,
+} from './projects.ts';
 // KAR-05.2 — the probed capability manifest: a history keyed on
 // (provider, version, binary_sha256), never a table that is updated in place.
 export {

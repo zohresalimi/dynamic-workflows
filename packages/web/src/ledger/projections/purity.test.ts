@@ -68,6 +68,10 @@ suite('EPIC-16-S15 — the purity rule is enforced, not documented (AC1)', () =>
       // KAR-19.10's eighth: which agent a run was admitted onto, and by which
       // route — one event kind, one object, the same purity rule.
       'provider.ts',
+      // KAR-22.2's ninth: what the run was asked to do, off its own
+      // `task.submitted`. The purity rule is what stops it fetching the blob a
+      // source too large to inline was spilled into.
+      'submission.ts',
       'timeline.ts',
     ]);
   });

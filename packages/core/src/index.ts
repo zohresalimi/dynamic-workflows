@@ -609,6 +609,7 @@ export type {
   NodeId,
   NodeLifecycle,
   PlanHash,
+  ProjectId,
   ProviderId,
   RunId,
   SchemaId,
@@ -624,6 +625,7 @@ export {
   NodeIdSchema,
   NodeLifecycleSchema,
   PlanHashSchema,
+  ProjectIdSchema,
   ProviderIdSchema,
   RunIdSchema,
   SchemaIdSchema,
@@ -1022,6 +1024,8 @@ export {
   renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
+// KAR-22.1 — the project a run belongs to.
+export { mintProjectId } from './project-id.ts';
 // KAR-19.10 — the one sentence a run says about the agent it chose, and the
 // closed set of routes it can take. Rendered by the CLI, the run API and the
 // UI's run header from one function, so three surfaces cannot disagree (AC4).

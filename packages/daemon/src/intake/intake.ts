@@ -51,6 +51,7 @@ import {
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { z } from 'zod';
+import { projectExists } from '../projects/projects.ts';
 import { FRAMING_NODE } from '../spec/gate.ts';
 import { firstInvalidField, RunIntakeBodySchema } from './request-schema.ts';
 import { resolveIssue } from './resolve-issue.ts';
@@ -102,6 +103,25 @@ export interface RunIntakePorts {
    * is a decision for the one function `doctor` and selection also read.
    */
   readonly admit?: (request: RunAdmissionRequest) => RunAdmission;
+  /**
+   * KAR-22.2 AC2 — the very resolutions `admit` above reduces, so that a fourth
+   * reader can be given the *same answer* rather than a second reduction of the
+   * same machine.
+   *
+   * `GET /api/providers` is that fourth reader, and it exists because a
+   * composer has to show which agents this machine can use before the operator
+   * picks one. A picker that resolved `PATH` for itself would be exactly the
+   * disagreement KAR-19.10 shipped to end: two reductions written months apart,
+   * both defensible, differing on the one machine that matters.
+   *
+   * Carried **beside** `admit` and set from the same `const` in `../boot.ts`,
+   * rather than derived from it, because `admit` answers *"may this particular
+   * request run"* and a picker needs the row for every provider including the
+   * ones that cannot. Absent for the same daemon lives `admit` is absent for —
+   * one that was never told which machine it is on — and the route says so
+   * rather than reporting an empty machine.
+   */
+  readonly providerResolutions?: readonly ProviderResolution[];
 }
 
 export type RunIntakeSubmitter = 'ui' | 'cli';
@@ -252,6 +272,22 @@ export async function submitTask(
         seq: memoisedSeq(existing.response) ?? firstEventSeq(ports.db, existing.runId),
       };
     }
+  }
+
+  // KAR-22.1 AC7 — a project id that names no project on this machine.
+  //
+  // Refused **here**: after the idempotency lookup, so a repeat of a key minted
+  // while the project still existed is still answered out of the journal rather
+  // than re-refused; and before the source is resolved, so a submission naming a
+  // project that is gone costs no file read, no `gh` call and — crucially — no
+  // `task.submitted`. A run created against a project nobody holds is exactly
+  // the floating-loose run this story exists to end.
+  if (body.projectId !== undefined && !projectExists(ports.db, body.projectId)) {
+    return {
+      outcome: 'rejected',
+      field: 'projectId',
+      message: `no project '${body.projectId}' on this machine`,
+    };
   }
 
   // Resolve the source, entirely before anything is written (AC5).
@@ -505,10 +541,17 @@ async function resolveAndNormalise(
   // has to open the interview has no way of knowing which repository the run
   // belongs to.
   const cwd = body.cwd;
+  // KAR-22.1 AC7 — the project, recorded for the same reason and in the same
+  // way. Spread as present-or-absent rather than passed as `string | undefined`,
+  // so a run submitted from a terminal writes no `projectId` key at all.
+  const project = body.projectId === undefined ? {} : { projectId: body.projectId };
 
   switch (body.input.kind) {
     case 'text':
-      return normaliseInput({ kind: 'text', text: body.input.text }, { now, by, store, cwd });
+      return normaliseInput(
+        { kind: 'text', text: body.input.text },
+        { now, by, store, cwd, ...project },
+      );
 
     case 'file': {
       const resolution = await resolveWithinRepo(body.cwd, body.input.path);
@@ -535,7 +578,7 @@ async function resolveAndNormalise(
           resolvedPath: resolution.path,
           mediaType: mediaTypeForPath(resolution.path),
         },
-        { now, by, store, cwd },
+        { now, by, store, cwd, ...project },
       );
     }
 
@@ -558,7 +601,7 @@ async function resolveAndNormalise(
           resolver: resolved.resolver,
           httpStatus: resolved.httpStatus,
         },
-        { now, by, store, cwd },
+        { now, by, store, cwd, ...project },
       );
     }
   }

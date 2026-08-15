@@ -310,12 +310,34 @@ clever part of the system.
 All paths are relative to `/api`. All responses are JSON unless stated. All require
 `Authorization: Bearer <token>` (§8).
 
+### Projects
+
+Added by KAR-22.1. A project is a name and a resolved local path that is a git working tree, held
+as a row in the global ledger database — not in browser storage, because a project is not a UI
+preference.
+
+| Method   | Path            | Purpose                                                                | Req  |
+| -------- | --------------- | ---------------------------------------------------------------------- | ---- |
+| `GET`    | `/projects`     | List projects with `health` and `lastRun`. Never filters an unhealthy row | NF10 |
+| `POST`   | `/projects`     | `{ name, path }` — bootstraps `.DeFlow/` if absent and reports what it wrote | F1.1 |
+| `PATCH`  | `/projects/:id` | `{ name }` — renames. The id, the path and the history do not move     |      |
+| `DELETE` | `/projects/:id` | Forgets the project. **Deletes no files**, and says so on the response | NF8  |
+
+Two properties of this group are contracts rather than implementation details. **`health` is
+derived per request**, by asking the filesystem and `git` — a stored column would be a cache of a
+world that changes while nobody is looking, and a list that is confidently wrong is worse than a
+slow one. And **`POST /projects` refuses a non-repository with `deflow init`'s own sentence**, from
+the one exported constant both surfaces read, so the CLI and the browser cannot tell an operator two
+different things about one directory.
+
+`project_exists` (409) and `project_not_found` (404) join the closed error union in §10.
+
 ### Runs
 
 | Method | Path                           | Purpose                                                   | Req  |
 | ------ | ------------------------------ | --------------------------------------------------------- | ---- |
 | `GET`  | `/runs?status=&limit=&cursor=` | List runs, newest first                                   |      |
-| `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc  | F1.1 |
+| `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc. Takes an optional `projectId` (KAR-22.1) | F1.1 |
 | `GET`  | `/runs/:id`                    | Run summary: status, plan version, counts, cost, head seq |      |
 | `POST` | `/runs/:id/spec/approve`       | Approve the `TaskSpec` — the real gate before execution   | F1.3 |
 | `POST` | `/runs/:id/spec/edit`          | Replace the framed document; appends `spec.amended`       | F1.3 |
@@ -377,9 +399,24 @@ All paths are relative to `/api`. All responses are JSON unless stated. All requ
 | Method | Path                          | Purpose                                                                                      | Req        |
 | ------ | ----------------------------- | -------------------------------------------------------------------------------------------- | ---------- |
 | `GET`  | `/providers`                  | Installed adapters, versions, capability manifests                                           | F3.5, F3.6 |
+| `GET`  | `/providers/routes`           | Which providers can serve a run here, and by which route — the composer's picker             | F3.2, F3.7 |
 | `POST` | `/providers/doctor`           | Re-probe binaries and run the conformance battery                                            | F3.4       |
 | `GET`  | `/config` / `PATCH` `/config` | `.DeFlow/config.yaml` as JSON                                                                |            |
 | `GET`  | `/health`                     | `{ apiVersion, build, daemonEpoch, headSeq, uptimeMs }` — **the only unauthenticated route** |            |
+
+The first two rows look like one endpoint split in half and are deliberately not. `GET /providers`
+answers *"what has been probed on this machine"* out of the ledger's capability rows — versions,
+digests, advertised capabilities. `GET /providers/routes` answers *"can a run start on it here, and
+on which route"*, from the resolutions `boot()` established and handed to admission in the same
+expression, so the composer's picker, `deflow doctor` and admission are three renderings of one
+answer (KAR-19.10, KAR-22.2 AC2). Merging them would put two producers behind one path, and the
+failure mode is the one EPIC-19 shipped to end: a client reading `installed: true` off a probed row
+and concluding a run could use it.
+
+`GET /providers/routes` answers `{ providers, known }`. **`known: false` is a real answer**: a
+daemon booted without provider roots has no honest basis on which to call anything missing, and an
+empty array read as "nothing is installed" would send an operator to npm to fix a machine that is
+fine.
 
 ### PTY
 

@@ -28,6 +28,8 @@ import { z } from 'zod';
 export type Brand<T, B extends string> = T & { readonly __brand: B };
 
 export type RunId = Brand<string, 'RunId'>;
+/** KAR-22.1 — a project: a name and a resolved local path that is a git working tree. */
+export type ProjectId = Brand<string, 'ProjectId'>;
 export type NodeId = Brand<string, 'NodeId'>;
 export type PlanHash = Brand<string, 'PlanHash'>;
 export type FactId = Brand<string, 'FactId'>;
@@ -99,6 +101,24 @@ export const RunIdSchema: z.ZodType<RunId, string> = z
   .string()
   .regex(RUN_ID_PATTERN, `RunId must match ${RUN_ID_PATTERN}`)
   .transform((value): RunId => value as RunId);
+
+/**
+ * KAR-22.1 — `prj_20260815T101112Z_a1b2c3`, the same shape as a `RunId` and for
+ * the same reason: timestamp before the random suffix, so plain string
+ * comparison sorts projects in creation order. See ./project-id.ts for the
+ * minter.
+ *
+ * A distinct prefix rather than a shared one, because the two ids meet on the
+ * wire — `POST /api/runs` carries both — and `run_`/`prj_` makes a swapped
+ * argument a refusal rather than a lookup that finds nothing for reasons nobody
+ * can see.
+ */
+const PROJECT_ID_PATTERN = /^prj_\d{8}T\d{6}Z_[0-9a-f]{6}$/;
+
+export const ProjectIdSchema: z.ZodType<ProjectId, string> = z
+  .string()
+  .regex(PROJECT_ID_PATTERN, `ProjectId must match ${PROJECT_ID_PATTERN}`)
+  .transform((value): ProjectId => value as ProjectId);
 
 const PLAN_HASH_PATTERN = /^sha256-[0-9a-f]{64}$/;
 

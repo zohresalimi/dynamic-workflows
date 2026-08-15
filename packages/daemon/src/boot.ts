@@ -475,7 +475,16 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // this boot's; what the request adds is which of them it is allowed to
       // answer with, and refusing it here is what stops a fallback nobody
       // announced.
-      ...(resolutions === null ? {} : { admit: (request) => admitRun(resolutions, request) }),
+      // KAR-22.2 AC2 — and the picker, from the same `const` in the same
+      // spread. Two keys and one source: there is no arrangement of this file
+      // in which the composer's list and the admission decision come from
+      // different reductions of this machine.
+      ...(resolutions === null
+        ? {}
+        : {
+            admit: (request) => admitRun(resolutions, request),
+            providerResolutions: resolutions,
+          }),
     });
 
     // KAR-15.8 — the one WebSocket route, registered before the port binds so

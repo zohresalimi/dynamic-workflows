@@ -621,6 +621,68 @@ export function usableProviders(
 }
 
 /**
+ * KAR-22.2 AC2, AC3 — one row of the composer's adapter picker.
+ *
+ * Everything on it is read off the reduction above rather than decided here.
+ * The picker is the **fourth** reader of this producer, after `doctor`,
+ * admission and the chain's selection, and it is the one that arrived last and
+ * with a probe of its own most readily to hand: a browser asking "which agents
+ * can I use" looks exactly like a browser that should go and find out. It must
+ * not, and this shape is what makes not doing so the easy path — there is
+ * nothing here a caller could compute that it could not also read.
+ */
+export interface ProviderOption {
+  readonly id: string;
+  readonly state: AgentInstallState;
+  /** Whether a run may be started on it — `usableProviders`' own answer. */
+  readonly available: boolean;
+  /** The route the run's next turn would take, or `null` for a dead end. */
+  readonly route: ProviderRoute | null;
+  readonly routes: ProviderRoutes;
+  /** `providerVerdict`'s sentence — the one `doctor` prints (KAR-19.2 AC3). */
+  readonly reason: string;
+  /** The command that would fix it, or `null` where nothing needs fixing. */
+  readonly action: string | null;
+  /** KAR-19.10 AC7's sentence for a provider that is usable but partial. */
+  readonly limitation: string | null;
+}
+
+/**
+ * KAR-22.2 AC2 — every registered provider, as the picker shows it.
+ *
+ * **Ordered the way admission would choose**, usable first and in
+ * `usableProviders`' own order, then everything else in the order it arrived.
+ * That is not cosmetic: the first row is what the composer preselects, and a
+ * preselection that differed from what a submission with no `provider` field
+ * would land on is a picker that quietly disagrees with admission about the
+ * default — the same class of mismatch as 2026-08-13, one field along.
+ *
+ * Nothing is filtered out. A provider this machine cannot serve is a row that
+ * says so, with the reason and the command, because "why is it not in the list"
+ * is the question AC3 exists to answer and an absent row answers it with
+ * silence.
+ */
+export function providerOptions(
+  resolutions: readonly ProviderResolution[],
+): readonly ProviderOption[] {
+  const usable = usableProviders(resolutions);
+  const rest = resolutions.filter((entry) => !usable.includes(entry));
+  return [...usable, ...rest].map((resolution) => {
+    const verdict = providerVerdict(resolution);
+    return {
+      id: resolution.provider,
+      state: verdict.state,
+      available: usable.includes(resolution),
+      route: routeForNextTurn(resolution),
+      routes: providerRoutes(resolution),
+      reason: verdict.detail,
+      action: verdict.action ?? null,
+      limitation: renderRouteLimitation(resolution),
+    };
+  });
+}
+
+/**
  * KAR-19.10 AC7 — what a partially-capable machine is told, at admission.
  *
  * The install sentence is KAR-18.8's and is unchanged; what this adds is *which

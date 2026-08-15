@@ -21,3 +21,12 @@ export const JUMPER_OVERLAY = 'jumper';
 
 /** The node inspector `Enter` opens for the selected node. */
 export const INSPECTOR_OVERLAY = 'inspector';
+
+/**
+ * KAR-22.2 AC7 — the run composer `c` opens.
+ *
+ * An overlay in the shell rather than a panel in a view, for the same reason
+ * the jumper is one: *"reachable from anywhere in the project"* is not a
+ * property a component mounted by one route can have.
+ */
+export const COMPOSER_OVERLAY = 'composer';
