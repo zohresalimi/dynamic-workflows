@@ -24,6 +24,7 @@
  * When KAR-22.3 gives the workspace a subscription, the store arrives with it.
  */
 import { onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
 
@@ -158,7 +159,18 @@ onMounted(() => {
         data-project-row
         :data-project-health="project.health.state"
       >
-        <span class="projects__row-name">{{ project.name }}</span>
+        <!--
+          KAR-22.3 — the way into the project's workspace, and the reason the
+          operator never types a run id: from here to the graph, the board and
+          everything this project has ever run is one press.
+        -->
+        <RouterLink
+          class="projects__row-name"
+          :to="`/projects/${project.id}`"
+          :data-project-open="project.id"
+        >
+          {{ project.name }}
+        </RouterLink>
         <span class="projects__row-path">{{ project.path }}</span>
         <span v-if="project.lastRun" class="projects__row-run" :data-project-last-run="project.id">
           last run: {{ project.lastRun.label }}

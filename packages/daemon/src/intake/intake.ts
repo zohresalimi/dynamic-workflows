@@ -51,7 +51,7 @@ import {
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { z } from 'zod';
-import { projectExists } from '../projects/projects.ts';
+import { projectExists, projectPathProblem } from '../projects/projects.ts';
 import { FRAMING_NODE } from '../spec/gate.ts';
 import { firstInvalidField, RunIntakeBodySchema } from './request-schema.ts';
 import { resolveIssue } from './resolve-issue.ts';
@@ -288,6 +288,22 @@ export async function submitTask(
       field: 'projectId',
       message: `no project '${body.projectId}' on this machine`,
     };
+  }
+
+  // KAR-22.3 AC4 — and a project whose directory has gone.
+  //
+  // Asked here for the same three reasons the check above is: after the
+  // idempotency lookup, before the source is resolved, and before anything at
+  // all is appended. The sentence is `healthOf`'s own, so the refusal, the
+  // projects list and the workspace header describe the missing directory in
+  // one voice rather than three. A run submitted against a path that is not
+  // there would otherwise be admitted, framed, and fail at its first node with
+  // an errno — minutes later, and about a different subject.
+  if (body.projectId !== undefined) {
+    const problem = await projectPathProblem(ports.db, body.projectId);
+    if (problem !== null) {
+      return { outcome: 'rejected', field: 'projectId', message: problem };
+    }
   }
 
   // Resolve the source, entirely before anything is written (AC5).

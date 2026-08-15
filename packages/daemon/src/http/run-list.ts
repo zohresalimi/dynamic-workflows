@@ -121,6 +121,53 @@ function matches(status: RunStatus, filter: string | undefined): boolean {
 }
 
 /**
+ * One run, as a list row.
+ *
+ * Extracted from `runList` below rather than copied into KAR-22.3's project
+ * history, and that is the whole design of that endpoint: a project's history
+ * and the global list are the **same row from the same fold**, so a field added
+ * to one cannot go missing from the other and `title` cannot mean the spec's
+ * goal in one place and the operator's own words in the other.
+ */
+export function runEntry(
+  view: LedgerView,
+  runId: RunId,
+  // A run whose events have all been pruned folds to the initial state, which
+  // is a truer answer than pretending it was never there. Passed in by the
+  // caller that has already folded it, so a filtered list does not fold twice —
+  // and so a filter can be applied *before* the three extra reads a row costs.
+  state: RunState = view.runState(runId) ?? initialRunState(),
+): RunListEntry {
+  return {
+    runId,
+    status: state.status,
+    label: runStatusLabel(state),
+    title: titleOf(view, runId, state),
+    createdAt: createdAtOf(view, runId),
+    headSeq: view.runHeadSeq(runId),
+    planVersion: state.planVersion,
+    cost: state.budget,
+    gate: pendingGate(state),
+  };
+}
+
+/**
+ * KAR-22.3 AC4 — the runs of one project, in the order they were given.
+ *
+ * The ids arrive already ordered and already filtered, from
+ * `runIdsForProject` — a `WHERE json_extract(payload, '$.provenance.projectId')`
+ * over the `event` table. That is the point of this function existing at all:
+ * the alternative is a page fetching the global list and sieving it, which
+ * cannot work for a project with three runs among three hundred (test plan #6).
+ */
+export function projectRunList(
+  view: LedgerView,
+  runIds: readonly string[],
+): { readonly runs: readonly RunListEntry[] } {
+  return { runs: runIds.map((runId) => runEntry(view, runId as RunId)) };
+}
+
+/**
  * One page of the run list, newest first.
  *
  * "Newest" is the reverse of `listRunIds`, which orders by each run's **first
@@ -149,8 +196,6 @@ export function runList(view: LedgerView, query: RunListQuery = {}): RunListPage
   for (let index = after; index < newestFirst.length; index += 1) {
     const runId = newestFirst[index];
     if (runId === undefined) continue;
-    // A run whose events have all been pruned folds to the initial state, which
-    // is a truer answer than pretending it was never there.
     const state = view.runState(runId) ?? initialRunState();
     if (!matches(state.status, query.status)) continue;
 
@@ -159,17 +204,7 @@ export function runList(view: LedgerView, query: RunListQuery = {}): RunListPage
       break;
     }
 
-    runs.push({
-      runId,
-      status: state.status,
-      label: runStatusLabel(state),
-      title: titleOf(view, runId, state),
-      createdAt: createdAtOf(view, runId),
-      headSeq: view.runHeadSeq(runId),
-      planVersion: state.planVersion,
-      cost: state.budget,
-      gate: pendingGate(state),
-    });
+    runs.push(runEntry(view, runId, state));
   }
 
   return { runs, cursor: runs.at(-1)?.runId ?? null, more };

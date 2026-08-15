@@ -36,25 +36,23 @@
  *
  * ## The two performance rules this view has to keep
  *
- * 1. **Body objects are memoised by content.** `useNow` ticks once a second so
- *    a running node's elapsed time moves; without memoisation that would hand
- *    four hundred child components a new prop object every second, and the
- *    graph would re-render itself for the life of the run. `memoise` reuses the
- *    previous body for every node whose rendered values did not change, so a
- *    tick patches exactly the nodes that are actually running.
+ * 1. **Body objects are memoised by content**, and the memoisation is
+ *    `../app/useNodeBodies.ts`'s rather than this file's — because KAR-22.3's
+ *    task board renders the *same* join in a different shape, and two copies
+ *    of it would be two caches, two tickers and two chances to diverge. The
+ *    board and this view hold one array, which is what makes "the board and the
+ *    graph cannot disagree" a property rather than an intention (KAR-22.3 AC3).
  * 2. **Nothing here writes a transform or triggers a layout.** Both belong to
  *    the facade, which relays out on the graph's *shape* and not on its
  *    contents (KAR-17.1 AC3).
  */
-import { useNow } from '@vueuse/core';
 import { computed, watch } from 'vue';
 import { type LocationQueryRaw, useRoute, useRouter } from 'vue-router';
+import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { useRunFeed } from '../app/useRunFeed.ts';
 import GraphCanvas from '../components/graph/GraphCanvas.vue';
-import { type NodeBodyVM, toNodeBody } from '../components/graph/node-body.ts';
+import type { NodeBodyVM } from '../components/graph/node-body.ts';
 import PlanNode from '../components/graph/PlanNode.vue';
-import { diffPointers } from '../lib/review-index.ts';
-import { copy, memoise, shallowUnchanged } from '../stores/memoise.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
 
@@ -71,62 +69,15 @@ const router = useRouter();
 const runId = computed<string | null>(() => props.runId ?? null);
 const { status } = useRunFeed(runId);
 
-/**
- * The tab's clock, at one tick a second.
- *
- * A running node's elapsed time has to move, and the only honest source for
- * "how long has this been going" on an *open* span is now. One shared ticker
- * for the whole view rather than a timer per node — four hundred intervals is
- * four hundred wakeups a second — and the arithmetic itself is
- * `./node-body.ts`'s, which takes `now` as a parameter and reads no clock.
- */
-const now = useNow({ interval: 1000 });
-
 const nodes = computed(() => run.planNodes);
 const edges = computed(() => run.planEdges);
 
 /**
- * Where each node's verdict points into the diff (KAR-17.6 AC1).
+ * The bodies — the shared join, not one of this view's own.
  *
- * The graph is where a failing gate is announced, so it is where the journey to
- * the offending line starts. `diffPointers` is pure and lives beside the review
- * index rather than here; the view's job is to recompute it when — and only
- * when — a verdict arrives, which is what the projection's own counter is for.
- *
- * Cheap enough to be a plain `computed`: it walks the verdict list, which is
- * bounded by the number of gate evaluations in the run, not by the tick.
+ * @see ../app/useNodeBodies.ts for why there is exactly one of these per store.
  */
-const pointers = computed(() => {
-  void run.version('gates');
-  return diffPointers(run.gates);
-});
-
-/**
- * The bodies, memoised by content.
- *
- * See rule 1 in the module note: the cache is what keeps a one-second tick from
- * re-rendering a four-hundred-node graph. `shallowUnchanged` is exactly right
- * here because every field of a `NodeBodyVM` is a primitive.
- */
-const bodyCache = new Map<string, NodeBodyVM>();
-
-const bodies = computed<ReadonlyMap<string, NodeBodyVM>>(() => {
-  const at = now.value.getTime();
-  const live = new Map<string, NodeBodyVM>(
-    nodes.value.map((node) => [
-      node.id,
-      toNodeBody({
-        node,
-        span: run.nodeSpans.get(node.id) ?? null,
-        verdict: run.nodeVerdicts.get(node.id) ?? null,
-        spend: run.nodeSpend.get(node.id) ?? null,
-        now: at,
-        pointer: pointers.value.get(node.id) ?? null,
-      }),
-    ]),
-  );
-  return new Map(memoise(bodyCache, live, shallowUnchanged, copy).map((body) => [body.id, body]));
-});
+const bodies = useNodeBodies();
 
 /** The two already-formatted columns the data-table twin renders (AC10). */
 const costs = computed(

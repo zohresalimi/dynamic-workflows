@@ -47,6 +47,29 @@ export const routes = [
     component: () => import('../views/ProjectsView.vue'),
   },
   {
+    // KAR-22.3 — the project workspace: this project's live graph, its task
+    // board and its history. Lazy like the projects list it is reached from,
+    // and cheap to defer despite mounting the plan graph: `PlanGraphView` and
+    // the canvas behind it are in the *initial* chunk already, because the run
+    // route below is eager, so this route's own chunk is the workspace shell
+    // and nothing else.
+    path: '/projects/:projectId',
+    name: 'project-workspace',
+    component: () => import('../views/ProjectWorkspaceView.vue'),
+    props: true,
+  },
+  {
+    // The same workspace, on a run from this project's history (AC4, AC5). A
+    // *route* rather than a query parameter or a piece of component state,
+    // because "send me what you are looking at" has to survive being pasted
+    // into a message — and because the address bar is then somewhere a run id
+    // is *read from*, never somewhere one has to be typed.
+    path: '/projects/:projectId/runs/:runId',
+    name: 'project-run',
+    component: () => import('../views/ProjectWorkspaceView.vue'),
+    props: true,
+  },
+  {
     path: '/runs/:runId',
     name: 'run-plan',
     component: PlanGraphView,
