@@ -3,7 +3,7 @@
 > The state of the backlog: every epic, every story, every scenario, and the audit that says whether
 > the plan actually delivers the product the [PRD](../prd.md) describes.
 
-**Status:** Draft v1.0 · **Last reviewed:** 15 August 2026 · **Reconciled from:** 22 epic files, 22 flow files
+**Status:** Draft v1.0 · **Last reviewed:** 16 August 2026 · **Reconciled from:** 23 epic files, 23 flow files
 
 [Delivery plan](./README.md) · [Architecture index](../README.md) · [Roadmap](../17-roadmap.md)
 
@@ -13,11 +13,11 @@
 
 |                                 |                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Epics**                       | 22 (EPIC-00 … EPIC-20, EPIC-22 — see the note below on EPIC-21)                               |
-| **Stories**                     | 161                                                                                          |
-| **Scenarios**                   | 859                                                                                          |
-| **Estimated size**              | **~377 working days** (sum of the epics' own declared totals)                                |
-| **Longest dependency chain**    | **~263 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22 |
+| **Epics**                       | 23 (EPIC-00 … EPIC-22)                                                                       |
+| **Stories**                     | 166                                                                                          |
+| **Scenarios**                   | 904                                                                                          |
+| **Estimated size**              | **~386 working days** (sum of the epics' own declared totals)                                |
+| **Longest dependency chain**    | **~272 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22 → 21 |
 | **P0 requirements in M1 scope** | 55 functional + NF1–NF10 + AR-1 — F3.3 moved to M2 on 2026-08-06                             |
 | **Uncovered P0 requirements**   | **0** — F3.3 was the one gap and is now out of the M1 line (see [§7.1](#71-the-one-uncovered-requirement)) |
 | **Traceability breaks**         | **0** — the three the first reconciliation found are fixed (see [§6](#6-traceability-check)) |
@@ -26,20 +26,22 @@
 
 | Level   | `Not started` | `Ready` | `In progress` | `Blocked` | `In review` | `Done` |
 | ------- | ------------- | ------- | ------------- | --------- | ----------- | ------ |
-| Epics   | 22            | 0       | 0             | 0         | 0           | 0      |
-| Stories | 141           | 15      | 0             | 1         | 0           | 0      |
+| Epics   | 23            | 0       | 0             | 0         | 0           | 0      |
+| Stories | 146           | 15      | 0             | 1         | 0           | 0      |
 
-**Size distribution** — `XS` 2 · `S` 42 · `M` 87 · `L` 26 · `XL` **0** (no story is sized `XL`, which is the rule holding).
+**Size distribution** — `XS` 2 · `S` 44 · `M` 90 · `L` 26 · `XL` **0** (no story is sized `XL`, which is the rule holding). EPIC-21 added two `S` and three `M` on 2026-08-16 and no `L`, deliberately: its epic file states that every story in it must be mergeable on its own branch.
 
-**Priority distribution** — `P0` 148 · `P1` 10 · `P2` 0. The ten `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. EPIC-20's five are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three and KAR-22.5 are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
+**Priority distribution** — `P0` 148 · `P1` 15 · `P2` 0. Ten of the fifteen `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. The other five are **all of EPIC-21**, and the reason is stated in its epic file rather than assumed: every capability the interactive CLI fronts is already reachable today — by `deflow answer` in a second terminal, by `deflow cancel`, or by the browser — so nothing in it is in M1's definition of done. It changes the cost of reaching them, not whether they can be reached. `MET-795` carries Linear priority Medium, which is the owner's own signal and this mapping's `P1`. EPIC-20's five are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three and KAR-22.5 are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
 
-> **EPIC-21 is planned in Linear and is deliberately not in this reconciliation.**
-> `MET-795` — _"Interactive CLI: a real terminal app, not a background command"_ — exists as an epic
-> issue with no `docs/delivery/epics/EPIC-21-*.md` and no flow file. Its markdown is authored when
-> its first story is picked up, under [README §9](./README.md#9-changing-the-plan), and until then it
-> contributes no stories, no scenarios and no days to any total on this page. The gap is recorded
-> here rather than papered over: a number on this board that counted an epic nobody has specified
-> would be worse than a number that is honestly short by one.
+> **EPIC-21 is authored, and is in this reconciliation as of 2026-08-16.**
+> `MET-795` — _"Interactive CLI: a real terminal app, not a background command"_ — was an epic issue
+> with no markdown for three days, and the note that used to stand here said so and said the totals
+> were honestly short by one epic. That is now closed:
+> [`EPIC-21-interactive-cli.md`](./epics/EPIC-21-interactive-cli.md) and
+> [its flow file](./flows/EPIC-21-interactive-cli-flows.md) were authored under
+> [README §9](./README.md#9-changing-the-plan) **before** its first story was picked up, because the
+> flow file is what tests are written from and cannot follow them. Its five stories and 45 scenarios
+> are counted above, and its own reciprocity was checked mechanically — see [§6](#6-traceability-check).
 
 Nothing has started. Fifteen stories are `Ready` — their Definition of Ready is already satisfied by the architecture documents — and one, KAR-17.9, is `Blocked` pending the KAR-16.6 performance measurement.
 
@@ -100,6 +102,28 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 > authored on 2026-08-15, ahead of KAR-22.1's first line of code — the flow file is what tests are
 > written from, so it cannot follow them.
 
+> **Created 2026-08-13, authored 2026-08-16: [EPIC-21 — Interactive CLI](./epics/EPIC-21-interactive-cli.md).**
+> Asked for by the owner on 2026-08-12, alongside the request that produced EPIC-22 and in the same
+> words: they expected _"a rendered [interface], similar to CLI apps like codex, claude, gemini, so
+> that user can interact with it, and see the output, rather than just a command that runs something
+> in the background."_ The 2026-08-13 by-hand run is the evidence — `deflow run` printed one line and
+> then nothing for seven minutes while the daemon retried a failing turn every 31 seconds.
+>
+> KAR-19.9 and KAR-19.12 fixed the silence and the invisible gate, so the command is no longer mute.
+> What did not change is the **interaction model**: answering a gate means a second terminal and a
+> 29-character run id, and interjection — F8.2's _"interject at any time"_ — has no CLI path at all,
+> though `POST /api/runs/:id/interject` has existed since KAR-13.3.
+>
+> This epic is the terminal's half of EPIC-22's finding, and it is deliberately the **smaller** half.
+> EPIC-22 is `P0` because a product whose only entry point is a five-flag command line fails the one
+> M1 metric that matters; EPIC-21 is `P1` because every capability it fronts is already reachable by
+> another route. It builds **no new mechanism** — the routes, the gate model, the stream and the
+> answer path all exist — which is why it is ~9 days against EPIC-22's ~23. Its two stated risks are
+> written into the epic file as design constraints rather than as warnings: a second presentation
+> layer beside KAR-18.9's, guarded by extending `packages/cli/test/render-guard.test.ts`; and a TUI
+> unusable over ssh, answered by making the live region a **pinned footer** rather than an alternate
+> screen, tested under a real pty at three terminal sizes.
+
 ---
 
 ## 2. The epic board
@@ -130,10 +154,13 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 | **▸** | [EPIC-19](./epics/EPIC-19-live-run-pipeline.md)   | The live run pipeline, end to end            | Not started | P0  | M1  | W13                     | 11      | 78   | ~33d  | EPIC-10, EPIC-11, EPIC-06, EPIC-09, EPIC-05, EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-13, EPIC-12, EPIC-14 | The pieces stop being individually correct and start being connected: a submitted task frames, plans, executes and reaches a terminal state — with a fixture-free test that goes red when a link is cut. |
 | **▸** | [EPIC-20](./epics/EPIC-20-install-and-naming.md)  | One-command install and a lowercase command  | Not started | P0  | M1  | W14                     | 5       | 46   | ~11d  | EPIC-18, EPIC-19, EPIC-01                                     | Somebody who has never seen this repository runs one command and ends with a working `deflow` on their `PATH`, a `doctor` report they can read, and a README whose every command has been executed.      |
 | **▸** | [EPIC-22](./epics/EPIC-22-web-control-center.md)  | Web control center                           | Done | P0  | M1  | W15                     | 6       | 76   | ~23d  | EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-19                   | An operator creates a project against a repository, starts a run from a chat-style composer choosing the adapter, and watches the graph, the task board and the history — without opening a terminal.    |
+| **▸** | [EPIC-21](./epics/EPIC-21-interactive-cli.md)     | Interactive CLI                              | Not started | P1  | M1  | W16                     | 5       | 45   | ~9d   | EPIC-13, EPIC-15, EPIC-18, EPIC-19, EPIC-20, EPIC-22          | `deflow run` becomes something an operator sits in front of: the plan forming, node states, agent output and cost in a region that stays put — with gates answered, runs steered and runs cancelled by a keypress, and none of it when stdout is not a terminal. |
 
-**Totals:** 22 epics · 161 stories · 859 scenarios · ~377 days.
+**Totals:** 23 epics · 166 stories · 904 scenarios · ~386 days.
 
-Two workstream labels are not W-numbers: EPIC-00 is the M0 spike set and EPIC-01 is pre-W0 toolchain work, neither of which the roadmap's W0–W12 table covers. EPIC-14 is explicitly cross-cutting — its accounting half belongs to W6 and its ceiling half to W4. **W13 is new** — added to [roadmap §2.2](../17-roadmap.md) on 2026-08-12 for EPIC-19, because integrating the workstreams was never itself a workstream, and that is precisely why it did not happen. **W14 is newer still** — added on 2026-08-14 for EPIC-20, because installing the product was never a workstream either, and the first person it failed for was the person who built it. **W15 is newest** — added on 2026-08-13 for EPIC-22: W10 and W11 built the views and nothing built the way *into* them, so using the product was not a workstream any more than installing it was.
+**EPIC-21 sits below EPIC-22 rather than above it**, which is the one place this table's ordering rule and its id order disagree by more than one position. It depends on EPIC-22 — specifically on KAR-22.5's `gateAnswerRequest`, the single function that decides which request answers which gate — so under longest-path scheduling it cannot start earlier, and it is the epic that makes the declared critical path ~272 days rather than ~263. In practice EPIC-22 is `Done`, so nothing about that number is currently blocking anything; it is recorded because the *declared* chain is what this section computes, and quietly leaving it at ~263 would make the sum disagree with the graph below it.
+
+Two workstream labels are not W-numbers: EPIC-00 is the M0 spike set and EPIC-01 is pre-W0 toolchain work, neither of which the roadmap's W0–W12 table covers. EPIC-14 is explicitly cross-cutting — its accounting half belongs to W6 and its ceiling half to W4. **W13 is new** — added to [roadmap §2.2](../17-roadmap.md) on 2026-08-12 for EPIC-19, because integrating the workstreams was never itself a workstream, and that is precisely why it did not happen. **W14 is newer still** — added on 2026-08-14 for EPIC-20, because installing the product was never a workstream either, and the first person it failed for was the person who built it. **W15 is newer again** — added on 2026-08-13 for EPIC-22: W10 and W11 built the views and nothing built the way *into* them, so using the product was not a workstream any more than installing it was. **W16 is newest** — added on 2026-08-16 for EPIC-21, and it is W15's other half: W15 is the way in through a browser, W16 is the way in through the terminal the operator already has open.
 
 ---
 
@@ -165,6 +192,7 @@ graph TD
   EPIC19["EPIC-19<br/>The live run pipeline,<br/>end to end"]:::cp
   EPIC20["EPIC-20<br/>One-command install<br/>and a lowercase command"]
   EPIC22["EPIC-22<br/>Web control center:<br/>projects and composer"]:::cp
+  EPIC21["EPIC-21<br/>Interactive CLI:<br/>a real terminal app"]:::cp
 
   EPIC00 --> EPIC01
   EPIC01 --> EPIC02
@@ -254,11 +282,19 @@ graph TD
   EPIC17 --> EPIC22
   EPIC18 --> EPIC22
   EPIC19 --> EPIC22
+  EPIC13 --> EPIC21
+  EPIC15 --> EPIC21
+  EPIC18 --> EPIC21
+  EPIC19 --> EPIC21
+  EPIC20 --> EPIC21
+  EPIC22 --> EPIC21
 
   classDef cp stroke-width:3px;
 ```
 
-**The chain that sets the schedule:** EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22, ≈ **263 days** of the ≈ 377 total. Everything else is slack against it.
+**The chain that sets the schedule:** EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22 → 21, ≈ **272 days** of the ≈ 386 total. Everything else is slack against it.
+
+**EPIC-21 extended that chain by ~9 days on 2026-08-16, and it is the only epic that has ever been added to its end.** Its six edges all point backwards and none is new mechanism: EPIC-13 for the gate and interjection routes, EPIC-15 for the stream, EPIC-18 for the presentation layer and the `run` command, EPIC-19 for the transcript it extends, EPIC-20 for the command's name, and EPIC-22 for `gateAnswerRequest` — the one function it must not reimplement. The EPIC-22 edge is the one that moves the number: without it EPIC-21 would branch off EPIC-19 beside EPIC-20 and cost nothing on the path. It is a real build dependency and not a scheduling preference, so it is drawn solid. Since EPIC-22 is `Done`, the ~272 is a property of the declared plan rather than a date anybody is currently waiting on.
 
 **EPIC-22 took the end of the chain from EPIC-20 on 2026-08-13.** Both hang off EPIC-19 and neither depends on the other — `deflow` can be installed by somebody who never opens the control center, and the control center works for somebody who installed from a clone — so they are parallel branches of ~10 and ~18 days, and the longer one now sets the date. That is worth stating rather than absorbing, because it means EPIC-20 slipping costs nothing on the critical path and EPIC-22 slipping costs a day for a day.
 
@@ -275,7 +311,7 @@ Four divergences from the W0–W12 graph in [roadmap §2.1 and §2.2](../17-road
 | 3   | **EPIC-08 (W5b) does not depend on EPIC-06 (W4).**                          | W5 depends on W4.                                                                                                                                                                                   | **Looser than the roadmap**, but only nominally: EPIC-08 depends on EPIC-07, which depends on EPIC-06, so the ordering survives transitively. Worth noting because it means the permission ladder could in principle be built against EPIC-05 alone if EPIC-07 slips.                                                                                    |
 | 4   | **EPIC-18 (W12) gates EPIC-17 (W11)** — stated in EPIC-18's `Blocks` field. | The roadmap's mermaid graph has W9 → W12 and W10 → W11 with **no** W12 → W11 edge. Its §2.3 prose _does_ say "do not start W11 until at least one full run completes headlessly through W12's CLI". | **The epic files follow the roadmap's prose over its own diagram.** That is the right call, but the roadmap's diagram is now wrong and should be corrected rather than the backlog bent to match it.                                                                                                                                                     |
 
-**No dependency cycles exist.** Every declared epic dependency points to a lower-numbered epic, and the one back-edge in the system (EPIC-18 → EPIC-17) is a soft scheduling constraint, not a build dependency. EPIC-19 adds twelve edges and no back-edge: it points at every epic it integrates and nothing points back at it. EPIC-20 adds three, all backwards, for the same reason: it renames what EPIC-18 published and documents what EPIC-19 made work, so it cannot precede either. EPIC-22 adds five, also all backwards: it is built out of EPIC-15's API, EPIC-16's shell and store, EPIC-17's canvas, EPIC-18's `init` and EPIC-19's live pipeline, and it invents none of them.
+**No dependency cycles exist.** Every declared epic dependency points to a lower-numbered epic, and the one back-edge in the system (EPIC-18 → EPIC-17) is a soft scheduling constraint, not a build dependency. EPIC-19 adds twelve edges and no back-edge: it points at every epic it integrates and nothing points back at it. EPIC-20 adds three, all backwards, for the same reason: it renames what EPIC-18 published and documents what EPIC-19 made work, so it cannot precede either. EPIC-22 adds five, also all backwards: it is built out of EPIC-15's API, EPIC-16's shell and store, EPIC-17's canvas, EPIC-18's `init` and EPIC-19's live pipeline, and it invents none of them. EPIC-21 adds six, all backwards and all to lower-numbered epics except the one to EPIC-22 — which is still backwards in the dependency sense, since EPIC-22 is upstream of it in every ordering this section computes. Nothing points at EPIC-21.
 
 **EPIC-20 is the shortest epic in the plan and it is no longer last on the chain.** ~10 days sit at the end of ~245, and they are the ten that decide whether anybody other than the author can run any of it. It is on a branch off EPIC-19 because it depends on EPIC-19, not because it is large — and since 2026-08-13 that branch is the shorter of two.
 
@@ -287,7 +323,7 @@ Four divergences from the W0–W12 graph in [roadmap §2.1 and §2.2](../17-road
 
 ## 4. The full story index
 
-All 161 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan). EPIC-19's first five are a whole epic added the same way, on 2026-08-12; KAR-19.6 was added to it later the same day, and KAR-19.7 on 2026-08-13, when implementing KAR-19.3 found the epic's own acceptance test unreachable without a structured-output path for the bundled mock agent. KAR-19.8, KAR-19.9 and KAR-19.10 were added later on 2026-08-13, after a second by-hand run reached framing and then failed on an argument DeFlow itself had chosen — retrying it silently and indefinitely, on a provider nobody had asked for. KAR-19.11 was added that evening, when the run that followed KAR-19.8's fix failed on the very next argument — the second DeFlow-chosen argument in two days to be found wrong by a person rather than by a test. EPIC-20's first three were added on 2026-08-14, after the owner installed the product by hand and found that the documented steps did not produce a usable command. KAR-20.4 was added on 2026-08-16, when the release that was supposed to make the README true did not; KAR-20.5 the same day, when the reason it did not turned out to be that nothing in the suite had ever installed the artefact npm publishes. EPIC-22's four were created in Linear on 2026-08-13 and their markdown was authored on 2026-08-15, before the first of them was implemented. KAR-22.5 was added on 2026-08-15, when KAR-22.3's by-hand acceptance stopped at a spec-approval gate the browser had no control to answer. KAR-22.6 was created on 2026-08-16 by splitting KAR-22.4 — one Size L covering three issue trackers became a Size M for the connector framework and GitHub, and a Size M for Linear and Jira on top of it; six new scenarios (EPIC-22-S68–S73) were authored with the split, and EPIC-22-S48 and EPIC-22-S54 were rewritten to match the credential decision KAR-22.4 settled. Implementing KAR-22.6 later that day added EPIC-22-S74–S76 and rewrote EPIC-22-S71, because the research the split existed to force found that Atlassian publishes a credential-holding CLI and Linear does not — so Jira ships as a connector and Linear ships as a row that says it cannot be connected without DeFlow holding a credential.
+All 166 stories, in epic order. `Verified by` is the story's own declaration; §6 checks it against the flow files. Stories marked _(added)_ were not in the authoritative skeleton and were added under the [change rules](./README.md#9-changing-the-plan). EPIC-19's first five are a whole epic added the same way, on 2026-08-12; KAR-19.6 was added to it later the same day, and KAR-19.7 on 2026-08-13, when implementing KAR-19.3 found the epic's own acceptance test unreachable without a structured-output path for the bundled mock agent. KAR-19.8, KAR-19.9 and KAR-19.10 were added later on 2026-08-13, after a second by-hand run reached framing and then failed on an argument DeFlow itself had chosen — retrying it silently and indefinitely, on a provider nobody had asked for. KAR-19.11 was added that evening, when the run that followed KAR-19.8's fix failed on the very next argument — the second DeFlow-chosen argument in two days to be found wrong by a person rather than by a test. EPIC-20's first three were added on 2026-08-14, after the owner installed the product by hand and found that the documented steps did not produce a usable command. KAR-20.4 was added on 2026-08-16, when the release that was supposed to make the README true did not; KAR-20.5 the same day, when the reason it did not turned out to be that nothing in the suite had ever installed the artefact npm publishes. EPIC-22's four were created in Linear on 2026-08-13 and their markdown was authored on 2026-08-15, before the first of them was implemented. KAR-22.5 was added on 2026-08-15, when KAR-22.3's by-hand acceptance stopped at a spec-approval gate the browser had no control to answer. KAR-22.6 was created on 2026-08-16 by splitting KAR-22.4 — one Size L covering three issue trackers became a Size M for the connector framework and GitHub, and a Size M for Linear and Jira on top of it; six new scenarios (EPIC-22-S68–S73) were authored with the split, and EPIC-22-S48 and EPIC-22-S54 were rewritten to match the credential decision KAR-22.4 settled. Implementing KAR-22.6 later that day added EPIC-22-S74–S76 and rewrote EPIC-22-S71, because the research the split existed to force found that Atlassian publishes a credential-holding CLI and Linear does not — so Jira ships as a connector and Linear ships as a row that says it cannot be connected without DeFlow holding a credential. EPIC-21's five were authored on 2026-08-16 against an epic issue created on 2026-08-13, before any of them was implemented and before the board counted them — the note in §1 that used to say the totals were short by one epic is what they close.
 
 | Story                                              | Title                                                                           | Epic    | Status      | Pri | Size | PRD refs                                                                                      | Verified by                                                                                                                                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ----------- | --- | ---- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -452,12 +488,17 @@ All 161 stories, in epic order. `Verified by` is the story's own declaration; §
 | [KAR-22.4](./epics/EPIC-22-web-control-center.md)  | Connectors: the framework, and GitHub _(added, deferred, split)_                | EPIC-22 | Done | P1  | M    | F1.1, NF1, NF2, AR-1                                                                          | EPIC-22-S48, EPIC-22-S49, EPIC-22-S50, EPIC-22-S51, EPIC-22-S52, EPIC-22-S53, EPIC-22-S54, EPIC-22-S55, EPIC-22-S56, EPIC-22-S57, EPIC-22-S68, EPIC-22-S69 |
 | [KAR-22.5](./epics/EPIC-22-web-control-center.md)  | Answer a run's human gates from the web UI _(added)_                           | EPIC-22 | Done | P0  | M    | F1.3, F8.3, F10.1, F10.3, NF4, NF10                                                           | EPIC-22-S58, EPIC-22-S59, EPIC-22-S60, EPIC-22-S61, EPIC-22-S62, EPIC-22-S63, EPIC-22-S64, EPIC-22-S65, EPIC-22-S66, EPIC-22-S67 |
 | [KAR-22.6](./epics/EPIC-22-web-control-center.md)  | Connectors: Linear and Jira on the same framework _(added, split)_              | EPIC-22 | Done | P1  | M    | F1.1, NF1, NF2, AR-1                                                                          | EPIC-22-S70, EPIC-22-S71, EPIC-22-S72, EPIC-22-S73, EPIC-22-S74, EPIC-22-S75, EPIC-22-S76 |
+| [KAR-21.1](./epics/EPIC-21-interactive-cli.md)     | A live session frame, redrawn in place _(added)_                               | EPIC-21 | Not started | P1  | M    | F9.1, F10.1, F10.3, NF8, NF9, NF10                                                            | EPIC-21-S01, EPIC-21-S02, EPIC-21-S03, EPIC-21-S04, EPIC-21-S05, EPIC-21-S06, EPIC-21-S07, EPIC-21-S08, EPIC-21-S09 |
+| [KAR-21.2](./epics/EPIC-21-interactive-cli.md)     | The session reads the keyboard, and always gives the terminal back _(added)_   | EPIC-21 | Not started | P1  | S    | F8.1, NF5, NF8                                                                                | EPIC-21-S10, EPIC-21-S11, EPIC-21-S12, EPIC-21-S13, EPIC-21-S14, EPIC-21-S15, EPIC-21-S16, EPIC-21-S17 |
+| [KAR-21.3](./epics/EPIC-21-interactive-cli.md)     | Answer a gate without leaving the session _(added)_                            | EPIC-21 | Not started | P1  | M    | F8.1, F8.3, F10.3, NF10                                                                       | EPIC-21-S18, EPIC-21-S19, EPIC-21-S20, EPIC-21-S21, EPIC-21-S22, EPIC-21-S23, EPIC-21-S24, EPIC-21-S25, EPIC-21-S26, EPIC-21-S27 |
+| [KAR-21.4](./epics/EPIC-21-interactive-cli.md)     | Interject into the running node, and cancel, from the session _(added)_        | EPIC-21 | Not started | P1  | M    | F8.1, F8.2, F8.5, NF7, NF10                                                                   | EPIC-21-S28, EPIC-21-S29, EPIC-21-S30, EPIC-21-S31, EPIC-21-S32, EPIC-21-S33, EPIC-21-S34, EPIC-21-S35, EPIC-21-S36 |
+| [KAR-21.5](./epics/EPIC-21-interactive-cli.md)     | It degrades honestly: not a TTY, narrow, short, resized, over ssh _(added)_    | EPIC-21 | Not started | P1  | S    | F10.1, NF5, NF8                                                                               | EPIC-21-S37, EPIC-21-S38, EPIC-21-S39, EPIC-21-S40, EPIC-21-S41, EPIC-21-S42, EPIC-21-S43, EPIC-21-S44, EPIC-21-S45 |
 
 ---
 
 ## 5. PRD requirement coverage matrix
 
-**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 159 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
+**This is the section the board exists for.** The requirement list below was enumerated directly from [prd.md §7 and §8](../prd.md) — the M1 scope is PRD §11's own line, _F1.1–F1.3, F2.1–F2.6, F3.1–F3.7, F4.1–F4.7, F5.1–F5.7, F6.1–F6.6, F7.1–F7.5, F8.1–F8.3, F9.1–F9.3, F10.1–F10.9_ — and each row was resolved by scanning the `PRD` field of all 166 stories. The epic files' own self-reported requirement lists were **not** trusted as input.
 
 ### 5.1 M1 (P0) functional requirements
 
@@ -504,15 +545,15 @@ All 161 stories, in epic order. `Verified by` is the story's own declaration; §
 | F7.3     | Typed verdicts with evidence: `pass` / `fail` / `needs-human` plus structured findings     | KAR-02.10, KAR-12.3, KAR-15.6, KAR-17.6, KAR-17.7                                                                                                              | Covered                                                                                                                                                                                                                                                                             |
 | F7.4     | Acceptance-criteria traceability — every criterion maps to at least one gate               | KAR-02.2, KAR-10.2, KAR-10.4, KAR-11.2, KAR-12.4, KAR-15.6, KAR-17.7                                                                                           | Covered                                                                                                                                                                                                                                                                             |
 | F7.5     | Surgical repair loop: one issue, regression test first, capped at 3, then escalate         | KAR-12.5, KAR-17.6                                                                                                                                             | Covered                                                                                                                                                                                                                                                                             |
-| F8.1     | Blocking `human` nodes — approve, reject, edit, inject guidance                            | KAR-10.3, KAR-13.1, KAR-13.4, KAR-15.5                                                                                                                         | Covered                                                                                                                                                                                                                                                                             |
-| F8.2     | Interject at any time into a running node without discarding the run                       | KAR-13.3, KAR-15.5                                                                                                                                             | Covered                                                                                                                                                                                                                                                                             |
-| F8.3     | Approval queue — one surface across all runs                                               | KAR-13.2, KAR-13.4, KAR-15.5                                                                                                                                   | Covered                                                                                                                                                                                                                                                                             |
-| F9.1     | Per-node, per-provider, per-run token and cost accounting, live                            | KAR-00.1, KAR-02.7, KAR-02.10, KAR-09.7, KAR-14.1, KAR-17.4, KAR-17.8, KAR-19.4 | Covered                                                                                                                                                                                                                                                                             |
+| F8.1     | Blocking `human` nodes — approve, reject, edit, inject guidance                            | KAR-10.3, KAR-13.1, KAR-13.4, KAR-15.5, KAR-21.2, KAR-21.3, KAR-21.4                                                                                                                         | Covered                                                                                                                                                                                                                                                                             |
+| F8.2     | Interject at any time into a running node without discarding the run                       | KAR-13.3, KAR-15.5, KAR-21.4                                                                                                                                             | Covered                                                                                                                                                                                                                                                                             |
+| F8.3     | Approval queue — one surface across all runs                                               | KAR-13.2, KAR-13.4, KAR-15.5, KAR-21.3                                                                                                                                   | Covered                                                                                                                                                                                                                                                                             |
+| F9.1     | Per-node, per-provider, per-run token and cost accounting, live                            | KAR-00.1, KAR-02.7, KAR-02.10, KAR-09.7, KAR-14.1, KAR-17.4, KAR-17.8, KAR-19.4, KAR-21.1 | Covered                                                                                                                                                                                                                                                                             |
 | F9.2     | Hard ceilings that pause rather than fail                                                  | KAR-06.5, KAR-14.2, KAR-19.4 | Covered                                                                                                                                                                                                                                                                             |
 | F9.3     | Pre-flight estimate before a run, and before an expensive `PlanPatch`                      | KAR-09.7, KAR-11.2, KAR-11.4, KAR-14.3                                                                                                                         | Covered                                                                                                                                                                                                                                                                             |
-| F10.1    | Live plan graph — interactive DAG with node states and labelled edges                      | KAR-00.3, KAR-00.4, KAR-01.3, KAR-16.1, KAR-16.3, KAR-16.5, KAR-16.6, KAR-17.1, KAR-19.1, KAR-19.3, KAR-19.4, KAR-19.6, KAR-19.9 | Covered                                                                                                                                                                                                                                                                             |
+| F10.1    | Live plan graph — interactive DAG with node states and labelled edges                      | KAR-00.3, KAR-00.4, KAR-01.3, KAR-16.1, KAR-16.3, KAR-16.5, KAR-16.6, KAR-17.1, KAR-19.1, KAR-19.3, KAR-19.4, KAR-19.6, KAR-19.9, KAR-21.1, KAR-21.5 | Covered                                                                                                                                                                                                                                                                             |
 | F10.2    | Plan evolution scrubber — the marquee feature                                              | KAR-00.4, KAR-11.5, KAR-15.6, KAR-15.7, KAR-17.2                                                                                                               | Covered                                                                                                                                                                                                                                                                             |
-| F10.3    | Node inspector — packet, prompt, raw output, provider, permission, cost, worktree          | KAR-02.6, KAR-09.2, KAR-15.6, KAR-17.3                                                                                                                         | Covered                                                                                                                                                                                                                                                                             |
+| F10.3    | Node inspector — packet, prompt, raw output, provider, permission, cost, worktree          | KAR-02.6, KAR-09.2, KAR-15.6, KAR-17.3, KAR-21.1, KAR-21.3                                                                                                                         | Covered                                                                                                                                                                                                                                                                             |
 | F10.4    | Memory & data-flow view — facts as nodes, reads and writes as edges                        | KAR-02.5, KAR-09.8, KAR-15.6, KAR-17.9                                                                                                                         | **At risk** — KAR-17.9 is `Blocked` and `P1` against a **P0** requirement. EPIC-17 records this deliberately and nominates KAR-17.3's provenance table as F10.4's M1 substitute. The data layer (KAR-09.8, KAR-15.6) is P0 and unaffected; the _graph view_ is not delivered at P0. |
 | F10.5    | Context budget visualisation with compaction events inline                                 | KAR-00.1, KAR-02.6, KAR-09.2, KAR-09.6, KAR-09.7, KAR-15.6, KAR-17.4                                                                                           | Covered                                                                                                                                                                                                                                                                             |
 | F10.6    | Live agent streams, tailable per node                                                      | KAR-00.3, KAR-01.3, KAR-03.4, KAR-15.6, KAR-15.8, KAR-17.5, KAR-19.4 | Covered                                                                                                                                                                                                                                                                             |
@@ -532,12 +573,12 @@ the PRD defines it.
 | NF2  | Zero credential handling (AR-1), verifiable by inspection                      | KAR-08.4, KAR-15.2                                                                                                                                                                                                                                                  | Covered |
 | NF3  | Cold start < 3 s for the daemon; UI interactive < 1 s on localhost             | KAR-00.3, KAR-01.3, KAR-03.4, KAR-03.6, KAR-05.4, KAR-15.1, KAR-15.3, KAR-15.7, KAR-16.1, KAR-16.2, KAR-16.4, KAR-16.6, KAR-17.1, KAR-18.2, KAR-19.1 | Covered |
 | NF4  | Run state survives daemon restart, OS restart and laptop sleep                 | KAR-00.5, KAR-01.6, KAR-03.7, KAR-03.8, KAR-05.5, KAR-06.6, KAR-06.9, KAR-07.8, KAR-10.3, KAR-13.1, KAR-14.2, KAR-15.4, KAR-16.4, KAR-19.3 | Covered |
-| NF5  | Cross-platform: macOS and Linux at M1                                          | KAR-00.2, KAR-00.5, KAR-01.1, KAR-01.6, KAR-18.4, KAR-18.5, KAR-18.6, KAR-20.1, KAR-20.2                                                                                                                                                                                                | Covered |
+| NF5  | Cross-platform: macOS and Linux at M1                                          | KAR-00.2, KAR-00.5, KAR-01.1, KAR-01.6, KAR-18.4, KAR-18.5, KAR-18.6, KAR-20.1, KAR-20.2, KAR-21.2, KAR-21.5                                                                                                                                                                                                | Covered |
 | NF6  | Single-binary-ish install — `npx deflowai up`, no DB server, no Docker           | KAR-00.2, KAR-00.5, KAR-00.6, KAR-01.1, KAR-01.2, KAR-03.1, KAR-03.2, KAR-03.7, KAR-05.4, KAR-05.6, KAR-07.1, KAR-07.5, KAR-09.7, KAR-15.1, KAR-18.1, KAR-18.2, KAR-18.3, KAR-18.5, KAR-18.6, KAR-18.8, KAR-18.9, KAR-19.2, KAR-19.5, KAR-19.7, KAR-20.1, KAR-20.2, KAR-20.3, KAR-20.4, KAR-20.5 | Covered |
-| NF7  | Graceful provider degradation                                                  | KAR-05.3, KAR-11.6, KAR-12.2, KAR-14.4, KAR-18.8, KAR-19.2, KAR-19.10, KAR-20.2 | Covered |
-| NF8  | Every artifact inspectable on disk in an open format                           | KAR-02.8, KAR-03.2, KAR-03.9, KAR-07.4, KAR-09.2, KAR-09.5, KAR-10.1, KAR-11.1, KAR-11.5, KAR-12.1, KAR-15.1, KAR-15.6, KAR-16.5, KAR-17.5, KAR-18.1, KAR-18.7, KAR-18.9, KAR-19.6, KAR-19.9, KAR-19.10, KAR-20.1, KAR-20.3, KAR-20.4, KAR-20.5                                                                             | Covered |
-| NF9  | Deterministic core — no nondeterminism outside adapter boundaries              | KAR-01.2, KAR-01.4, KAR-01.5, KAR-02.7, KAR-02.9, KAR-03.1, KAR-03.5, KAR-03.8, KAR-04.1, KAR-05.1, KAR-06.1, KAR-09.2, KAR-09.8, KAR-11.3, KAR-16.3, KAR-19.5, KAR-19.7, KAR-19.8, KAR-19.11 | Covered |
-| NF10 | Auditable — any state in the UI traceable to specific ledger events            | KAR-00.3, KAR-01.3, KAR-02.1, KAR-02.7, KAR-02.9, KAR-02.10, KAR-03.3, KAR-03.5, KAR-09.6, KAR-09.8, KAR-10.1, KAR-10.3, KAR-10.4, KAR-11.3, KAR-11.4, KAR-11.5, KAR-13.2, KAR-14.1, KAR-14.2, KAR-15.3, KAR-15.4, KAR-16.2, KAR-16.3, KAR-16.4, KAR-17.3, KAR-18.7, KAR-19.1, KAR-19.3, KAR-19.4, KAR-19.6, KAR-19.8, KAR-19.9, KAR-19.10, KAR-19.11 | Covered |
+| NF7  | Graceful provider degradation                                                  | KAR-05.3, KAR-11.6, KAR-12.2, KAR-14.4, KAR-18.8, KAR-19.2, KAR-19.10, KAR-20.2, KAR-21.4 | Covered |
+| NF8  | Every artifact inspectable on disk in an open format                           | KAR-02.8, KAR-03.2, KAR-03.9, KAR-07.4, KAR-09.2, KAR-09.5, KAR-10.1, KAR-11.1, KAR-11.5, KAR-12.1, KAR-15.1, KAR-15.6, KAR-16.5, KAR-17.5, KAR-18.1, KAR-18.7, KAR-18.9, KAR-19.6, KAR-19.9, KAR-19.10, KAR-20.1, KAR-20.3, KAR-20.4, KAR-20.5, KAR-21.1, KAR-21.2, KAR-21.5                                               | Covered |
+| NF9  | Deterministic core — no nondeterminism outside adapter boundaries              | KAR-01.2, KAR-01.4, KAR-01.5, KAR-02.7, KAR-02.9, KAR-03.1, KAR-03.5, KAR-03.8, KAR-04.1, KAR-05.1, KAR-06.1, KAR-09.2, KAR-09.8, KAR-11.3, KAR-16.3, KAR-19.5, KAR-19.7, KAR-19.8, KAR-19.11, KAR-21.1 | Covered |
+| NF10 | Auditable — any state in the UI traceable to specific ledger events            | KAR-00.3, KAR-01.3, KAR-02.1, KAR-02.7, KAR-02.9, KAR-02.10, KAR-03.3, KAR-03.5, KAR-09.6, KAR-09.8, KAR-10.1, KAR-10.3, KAR-10.4, KAR-11.3, KAR-11.4, KAR-11.5, KAR-13.2, KAR-14.1, KAR-14.2, KAR-15.3, KAR-15.4, KAR-16.2, KAR-16.3, KAR-16.4, KAR-17.3, KAR-18.7, KAR-19.1, KAR-19.3, KAR-19.4, KAR-19.6, KAR-19.8, KAR-19.9, KAR-19.10, KAR-19.11, KAR-21.1, KAR-21.3, KAR-21.4 | Covered |
 | AR-1 | DeFlow never possesses a model credential                                      | KAR-00.1, KAR-00.7, KAR-08.4, KAR-08.8, KAR-18.2, KAR-18.4, KAR-19.2, KAR-20.2 | Covered |
 
 **All ten non-functional requirements and AR-1 are covered.** NF5 (cross-platform) and NF6 (single-binary-ish install) are the two carried by the widest set of stories, which is correct — they are properties of everything, not features of anything. NF6 is also the one requirement whose *own text* quotes a command (`npx deflowai up`); EPIC-20 changes the command it names, and KAR-20.1 AC9 updates the quotation rather than leaving the requirement citing a command that no longer exists.
@@ -559,7 +600,7 @@ Not part of M1's definition of done; listed so a reader does not mistake inciden
 | F6.9   | P1                | KAR-00.1, KAR-02.8, KAR-09.9, KAR-12.3           |
 | F7.6   | P1                | KAR-12.6                                         |
 | F7.7   | P1                | KAR-12.3, KAR-15.6, KAR-17.6                     |
-| F8.5   | P1                | KAR-09.4, KAR-13.3, KAR-15.8                     |
+| F8.5   | P1                | KAR-09.4, KAR-13.3, KAR-15.8, KAR-21.4           |
 | F9.4   | P1                | KAR-14.4                                         |
 
 The notable one is **F1.5** (anti-drift spec re-injection). It is `P1` in the PRD but EPIC-10 pulls it into M1 deliberately, and KAR-09.3, KAR-09.4, KAR-10.4 and KAR-12.4 all depend on it. That is scope _added_ to M1, and it is recorded rather than silent — but it is ~4 days that PRD §11 does not ask for.
@@ -568,7 +609,7 @@ The notable one is **F1.5** (anti-drift spec re-injection). It is `P1` in the PR
 
 ## 6. Traceability check
 
-Mechanical, both directions, across all 22 epic files and all 22 flow files. EPIC-21 is excluded because no epic file and no flow file exist for it yet — see the note in §1.
+Mechanical, both directions. The table below is the reconciliation run across the 22 epic files and 22 flow files that existed on 15 August 2026; EPIC-21 was authored on 16 August and **its own reciprocity was checked separately**, by the same rules, rather than being folded into counts that were not re-derived. Both results are below, and they are kept apart deliberately: a total nobody recomputed is worse than two totals that say when each was taken.
 
 | Check                                                           | Result                                                               |
 | --------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -590,6 +631,28 @@ Mechanical, both directions, across all 22 epic files and all 22 flow files. EPI
 | 3   | `EPIC-17-S35`'s **flow index row** said it verifies _"all nine stories"_ in prose, while the scenario body enumerates seven: KAR-17.1, 17.2, 17.3, 17.4, 17.6, 17.7, 17.8. KAR-17.5 and KAR-17.9 are excluded. | [EPIC-17 flows](./flows/EPIC-17-p0-views-flows.md)                                                             | **Fixed:** the index cell now carries the seven explicit ids. The body was right — S35 is the five-minute-diagnosis measurement and the two excluded stories are the two reduced/deferred views. |
 
 None of the three was a missing scenario or a missing story. All three were one-directional link rot in the _epic_ file — the cheap direction to fix.
+
+### EPIC-21, checked on its own (16 August 2026)
+
+Run over [`EPIC-21-interactive-cli.md`](./epics/EPIC-21-interactive-cli.md) and
+[its flow file](./flows/EPIC-21-interactive-cli-flows.md) alone, by the same eight rules.
+
+| Check                                                           | Result                                                      |
+| --------------------------------------------------------------- | ----------------------------------------------------------- |
+| Every story cites ≥ 1 PRD requirement id                        | **5 / 5 pass**                                              |
+| Every story declares ≥ 1 `Verified by` scenario                 | **5 / 5 pass**                                              |
+| Every `Verified by` scenario id exists in the flow file         | **45 / 45 references resolve**                              |
+| Every scenario declares ≥ 1 `Verifies` story                    | **45 / 45 pass**                                            |
+| Every `Verifies` story id exists in the epic file               | **45 / 45 references resolve**                              |
+| Every story is named by ≥ 1 scenario                            | **5 / 5 pass** — no orphan stories                          |
+| Flow index table matches the scenario bodies                    | **agree on all 45 ids and on every `Verifies` cell**        |
+| Story `Verified by` ⇄ scenario `Verifies` reciprocity           | **0 breaks**                                                |
+
+Each of EPIC-21's 45 scenarios is one acceptance criterion or one criterion's failure mode, which is
+why the ratio of scenarios to stories is high for an epic of ~9 days: the surface is a terminal, and
+the epic's own design constraint is that nothing in it may be verified by a person looking at one.
+Of the 45, **29 are declared `unit` and 16 `integration`** — seven of the sixteen are a real pty,
+which is the only vantage point that can answer whether the terminal was handed back.
 
 ---
 
