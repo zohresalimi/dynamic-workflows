@@ -74,6 +74,19 @@ interface IssueRow {
 }
 
 /**
+ * One entry of the picker: an issue, and which connector it came from
+ * (KAR-22.6 AC3).
+ *
+ * The service travels with the row rather than being inferred from the key,
+ * because two trackers' keys can look alike and a picker that leaves an
+ * operator guessing where a row came from is one they have to double-check.
+ */
+interface PickerRow extends IssueRow {
+  readonly service: string;
+  readonly serviceLabel: string;
+}
+
+/**
  * The two calls this component makes, named.
  *
  * `hc<ApiType>` types them off the daemon's own chained routes; this interface
@@ -128,17 +141,22 @@ const projectId = ref('');
 const providers = ref<readonly ProviderRow[]>([]);
 const providerId = ref('');
 /**
- * KAR-22.4 AC3 — the connected service for the selected project, and its
- * issues.
+ * KAR-22.4 AC3, KAR-22.6 AC3 — the connected services for the selected project,
+ * and their issues.
  *
- * `null` means "no connector", and that is the state most machines are in: the
+ * Empty means "no connector", and that is the state most machines are in: the
  * picker simply does not appear and the box below it is what it always was.
  * The list **adds** to the paste path and never replaces it (AC6), because an
  * operator with a URL in their clipboard may well be pointing at a repository
  * this connector cannot see at all.
+ *
+ * A *list* rather than the first connected service, which is what KAR-22.4
+ * shipped when there was only one that could be connected. With two, taking the
+ * first would silently hide half of what the operator connected — and the
+ * failure is invisible, because the list still looks full.
  */
-const connectedService = ref<string | null>(null);
-const issues = ref<readonly IssueRow[]>([]);
+const connectedServices = ref<readonly { readonly id: string; readonly label: string }[]>([]);
+const issues = ref<readonly PickerRow[]>([]);
 const error = ref<string | null>(null);
 /**
  * The run a refusal named (AC5).
@@ -206,7 +224,7 @@ async function load(): Promise<void> {
  * longer uses.
  */
 async function loadConnector(): Promise<void> {
-  connectedService.value = null;
+  connectedServices.value = [];
   issues.value = [];
   const target = project.value;
   if (target === null) return;
@@ -214,10 +232,12 @@ async function loadConnector(): Promise<void> {
   const response = await api.projects[':id'].connectors.$get({ param: { id: target.id } });
   if (!response.ok) return;
   const body = (await response.json()) as {
-    services: readonly { id: string; connected: boolean }[];
+    services: readonly { id: string; label: string; connected: boolean }[];
   };
-  connectedService.value = body.services.find((service) => service.connected)?.id ?? null;
-  if (connectedService.value !== null) await loadIssues();
+  connectedServices.value = body.services
+    .filter((service) => service.connected)
+    .map((service) => ({ id: service.id, label: service.label }));
+  if (connectedServices.value.length > 0) await loadIssues();
 }
 
 /**
@@ -229,18 +249,31 @@ async function loadConnector(): Promise<void> {
  */
 async function loadIssues(): Promise<void> {
   const target = project.value;
-  const service = connectedService.value;
-  if (target === null || service === null) return;
+  const services = connectedServices.value;
+  if (target === null || services.length === 0) return;
 
   const typed = url.value.trim();
   // A pasted reference is not a search term: an operator who has a URL in the
   // box has already answered the question the list exists to ask.
   const q = typed.startsWith('http') ? '' : typed;
-  const response = await api.projects[':id'].connectors[':service'].issues.$get({
-    param: { id: target.id, service },
-    query: { q },
-  });
-  issues.value = response.ok ? ((await response.json()) as { issues: IssueRow[] }).issues : [];
+
+  // One request per connected service, in parallel and in the daemon's order.
+  // A service that fails contributes nothing rather than emptying the list:
+  // an unreachable Jira must not take a working GitHub down with it.
+  const answers = await Promise.all(
+    services.map(async (service) => {
+      const response = await api.projects[':id'].connectors[':service'].issues.$get({
+        param: { id: target.id, service: service.id },
+        query: { q },
+      });
+      if (!response.ok) return [];
+      const body = (await response.json()) as { issues: IssueRow[] };
+      return body.issues.map(
+        (issue): PickerRow => ({ ...issue, service: service.id, serviceLabel: service.label }),
+      );
+    }),
+  );
+  issues.value = answers.flat();
 }
 
 watch(shape, (kind) => {
@@ -250,7 +283,7 @@ watch(projectId, () => {
   if (shape.value === 'issue') void loadConnector();
 });
 watch(url, () => {
-  if (shape.value === 'issue' && connectedService.value !== null) void loadIssues();
+  if (shape.value === 'issue' && connectedServices.value.length > 0) void loadIssues();
 });
 
 watch(open, (isOpen) => {
@@ -436,7 +469,7 @@ function onKeydown(event: KeyboardEvent): void {
       -->
       <label v-else class="composer__field">
         <span
-          >{{ connectedService === null ? 'An issue reference' : 'Search issues, or paste a reference' }}</span
+          >{{ connectedServices.length === 0 ? 'An issue reference' : 'Search issues, or paste a reference' }}</span
         >
         <input v-model="url" data-composer-url type="text" autocomplete="off" spellcheck="false">
       </label>
@@ -446,17 +479,26 @@ function onKeydown(event: KeyboardEvent): void {
         class="composer__issues"
         data-composer-issues
       >
-        <li v-for="issue in issues" :key="issue.key">
+        <li v-for="issue in issues" :key="`${issue.service}:${issue.key}`">
           <button
             type="button"
             class="composer__issue"
             data-composer-issue
             :data-composer-issue-key="issue.key"
+            :data-composer-issue-service="issue.service"
             @click="url = issue.url"
           >
             <span class="composer__issue-key">{{ issue.key }}</span>
             <span class="composer__issue-title">{{ issue.title }}</span>
             <span class="composer__issue-state">{{ issue.state }}</span>
+            <!--
+              KAR-22.6 AC3 — which tracker this came from. Rendered whenever
+              there is more than one, because with one it is noise and with two
+              it is the difference between picking and guessing.
+            -->
+            <span v-if="connectedServices.length > 1" class="composer__issue-service">
+              {{ issue.serviceLabel }}
+            </span>
           </button>
         </li>
       </ul>
@@ -625,8 +667,10 @@ function onKeydown(event: KeyboardEvent): void {
   white-space: nowrap;
 }
 
-.composer__issue-state {
+.composer__issue-state,
+.composer__issue-service {
   opacity: 0.75;
+  white-space: nowrap;
 }
 
 .composer__providers {

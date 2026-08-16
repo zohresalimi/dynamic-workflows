@@ -96,6 +96,33 @@ AC1 was amended to say so, and the connectors screen says so to the operator rat
 **What it would take to change this:** a superseding ADR. "The button would be nicer" is not an
 argument this amendment accepts, for the reason the Revisit-when section gives about convenience.
 
+## Amendment — 16 August 2026 (second): what happens when no first-party binary exists
+
+The amendment above was written with one connector built and two planned, and it left a question
+open that KAR-22.6 then had to answer: **the rule says "launch the service's own first-party binary"
+— what does DeFlow do when the service does not publish one?**
+
+The two services KAR-22.6 added answered it from both sides.
+
+- **Jira has one.** Atlassian publishes `acli`. It authorises against Atlassian's own application,
+  holds the credential in its own store, and has a machine-readable search. DeFlow spawns it and
+  holds a row. Identical to GitHub in every respect that matters here.
+- **Linear does not.** Reaching Linear's API needs a personal API key — which DeFlow would then hold
+  — or an OAuth application DeFlow has not registered. The Linear-authored `@linear/cli` was last
+  published in 2021, keeps an API key in a config file of its own, and has no search or list
+  command, so it is not a credential holder DeFlow could delegate to even if it wanted to.
+
+**The answer, which is now the rule:** where no first-party binary holds the credential, DeFlow does
+not connect the service. It does not register an OAuth application to fill the gap, it does not add
+a field to paste an API key into, and it does not ship a button that goes nowhere. It ships a row
+that says it cannot connect this service without holding a credential, says what would have to
+change, and refuses the connect route outright — so "not supported yet" is a state of the product
+rather than an omission from it.
+
+This is the cost of the ADR being stated, rather than the ADR being weakened until the cost
+disappears. If Linear later publishes a credential-holding CLI, or DeFlow registers an application
+of its own under a superseding ADR, the row becomes a connector without any of this changing.
+
 ## Consequences
 
 ### Positive

@@ -20,7 +20,24 @@
  * Everything else follows `ProjectsView.vue`'s discipline: the view decides
  * nothing, hides nothing, and renders the sentence it was given.
  *
- * Verifies: EPIC-22-S48, EPIC-22-S54, EPIC-22-S68 · AC1, AC2, AC5
+ * ## KAR-22.6 — the row that has nothing to offer
+ *
+ * A third service arrived that DeFlow **cannot connect at all**: Linear
+ * publishes no first-party tool that would hold the credential, so connecting
+ * it would mean DeFlow holding one. The rendering failure that would undo the
+ * daemon's honest refusal is a button on that row — the page can offer the
+ * click even when the route refuses it, and an operator who clicks and gets a
+ * 422 reads a bug rather than a decision. So `authorisation.kind` decides what
+ * a row shows: a service with no route gets its paragraph and **no button and
+ * no link**, and `connectors.test.ts` asserts both absences.
+ *
+ * The authorisation link is likewise conditional on there being a URL. `acli`'s
+ * `--web` login opens Atlassian's own page and DeFlow is not in that
+ * conversation, so it does not know the address — and a link it guessed would
+ * be a 404 rendered as a promise.
+ *
+ * Verifies: EPIC-22-S48, EPIC-22-S54, EPIC-22-S68, EPIC-22-S70 · KAR-22.4 AC1,
+ * AC2, AC5 · KAR-22.6 AC1, AC2
  */
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
@@ -49,13 +66,17 @@ interface ConnectorRow {
     readonly holder: string;
     readonly livesIn: string;
     readonly deflowStores: string;
-    readonly revoke: { readonly command: string; readonly affects: string };
+    readonly revoke: { readonly command: string | null; readonly affects: string };
   };
-  readonly authorisation: {
-    readonly command: string;
-    readonly url: string;
-    readonly whyNotOneClick: string;
-  };
+  readonly authorisation:
+    | {
+        readonly kind: 'command';
+        readonly command: string;
+        /** `null` when DeFlow does not know the address of the page the command opens. */
+        readonly url: string | null;
+        readonly whyNotOneClick: string;
+      }
+    | { readonly kind: 'unavailable'; readonly whyNotConnectable: string };
 }
 
 interface Answer {
@@ -87,7 +108,7 @@ const api = useApiClient() as never as ConnectorsApi;
 
 const services = ref<readonly ConnectorRow[]>([]);
 /** What a removal said it did — and did not do. Cleared by the next action. */
-const removed = ref<{ readonly command: string; readonly affects: string } | null>(null);
+const removed = ref<{ readonly command: string | null; readonly affects: string } | null>(null);
 const error = ref<string | null>(null);
 
 async function load(): Promise<void> {
@@ -119,7 +140,7 @@ async function remove(service: string): Promise<void> {
   });
   if (response.ok) {
     const body = (await response.json()) as {
-      revoke: { command: string; affects: string };
+      revoke: { command: string | null; affects: string };
     };
     // AC5 — the operator's own revocation command, in the daemon's words. This
     // page never runs it: that credential is shared with every other tool on
@@ -150,7 +171,11 @@ onMounted(() => void load());
 
     <p v-if="removed" class="connectors__removed" data-connector-removed>
       DeFlow will no longer use this service for this project. Your credential was not touched — it
-      is yours. To revoke it, run <code>{{ removed.command }}</code>. {{ removed.affects }}
+      is yours.
+      <template v-if="removed.command">
+        To revoke it, run <code>{{ removed.command }}</code>.
+      </template>
+      {{ removed.affects }}
     </p>
 
     <ul class="connectors__rows">
@@ -180,14 +205,23 @@ onMounted(() => void load());
         </p>
 
         <!--
-          AC1's amendment, on the screen rather than only in the epic file: the
-          command, the service's own authorisation page, and the reason there is
-          no single button.
+          KAR-22.4 AC1's amendment, on the screen rather than only in the epic
+          file: the command, the service's own authorisation page, and the
+          reason there is no single button.
+
+          KAR-22.6 AC2's other half sits in the `v-else`: a service DeFlow
+          cannot connect says so here, in the place the command would have
+          been, and offers nothing to press.
         -->
-        <section class="connector__authorise">
+        <section
+          v-if="service.authorisation.kind === 'command'"
+          class="connector__authorise"
+          data-connector-authorisation="command"
+        >
           <p class="connector__why">{{ service.authorisation.whyNotOneClick }}</p>
           <p class="connector__command"><code>{{ service.authorisation.command }}</code></p>
           <a
+            v-if="service.authorisation.url"
             class="connector__link"
             data-connector-authorise
             :href="service.authorisation.url"
@@ -196,6 +230,9 @@ onMounted(() => void load());
           >
             Open {{ service.label }}’s own authorisation page
           </a>
+        </section>
+        <section v-else class="connector__authorise" data-connector-authorisation="unavailable">
+          <p class="connector__why">{{ service.authorisation.whyNotConnectable }}</p>
         </section>
 
         <!-- AC1, AC2 — where the token lives and who holds it, in the daemon's words. -->
@@ -211,15 +248,25 @@ onMounted(() => void load());
         </dl>
 
         <div class="connector__actions">
+          <!--
+            KAR-22.6 AC2 — no button on a service that cannot be connected. The
+            daemon refuses the route too; this is the half that stops an
+            operator ever reaching that refusal and reading it as a defect.
+          -->
           <button
-            v-if="!service.connected"
+            v-if="!service.connected && service.authorisation.kind === 'command'"
             type="button"
             data-connector-connect
             @click="connect(service.id)"
           >
             Use {{ service.label }} for this project
           </button>
-          <button v-else type="button" data-connector-remove @click="remove(service.id)">
+          <button
+            v-else-if="service.connected"
+            type="button"
+            data-connector-remove
+            @click="remove(service.id)"
+          >
             Stop using {{ service.label }} here
           </button>
           <span v-if="service.connectedAt" class="connector__since">

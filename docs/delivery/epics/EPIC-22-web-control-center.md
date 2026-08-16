@@ -477,13 +477,68 @@ in test 2 reads its import graph rather than a convention.
 | **Size**        | M                                                                                                      |
 | **Depends on**  | KAR-22.4 (the framework, the screen and the ADR-0003 answer it settles)                                |
 | **PRD**         | F1.1, NF1, NF2, AR-1                                                                                   |
-| **Verified by** | EPIC-22-S70, EPIC-22-S71, EPIC-22-S72, EPIC-22-S73                                                     |
+| **Verified by** | EPIC-22-S70, EPIC-22-S71, EPIC-22-S72, EPIC-22-S73, EPIC-22-S74, EPIC-22-S75, EPIC-22-S76               |
 
 **Created 2026-08-16 by the split of KAR-22.4**, which is recorded in that story above. All three
 services were and are wanted; this is the other two.
 
 **As** an operator, **I want** Linear and Jira on the same connectors screen as GitHub, **so that**
 a project tracked outside GitHub gets the same searchable issue list rather than a paste box.
+
+#### The credential decision for two more services, settled by research before any code (AC2)
+
+KAR-22.4's answer for GitHub was *"the vendor's own first-party CLI holds the credential; DeFlow
+spawns it"*. The split existed because that answer might not generalise. **It generalises to one of
+these two services and not to the other**, and the two halves of this section are what was actually
+checked rather than what was assumed.
+
+**Jira: the same answer, with a different binary.** Atlassian publishes its own CLI, `acli`, and it
+has exactly the shape `gh` has — a login that authorises against Atlassian's own application, a
+status command, a logout, and a machine-readable search:
+
+| Question                          | Answer                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Whose application authorises?** | Atlassian's own — `acli`'s. Not DeFlow's; DeFlow has no registered Atlassian application.                                                |
+| **Where does the credential live?** | In `acli`'s own credential store on the operator's machine. DeFlow does not know where that is and never looks.                        |
+| **Who put it there?**             | `acli jira auth login --site <your-site>.atlassian.net --email <your-atlassian-email> --web`, in the operator's own browser.             |
+| **Who holds it?**                 | `acli`. DeFlow never reads it, never copies it, never transmits it, and has no field anywhere to paste it into.                          |
+| **What does DeFlow hold?**        | One row: `(projectId, 'jira')` and a timestamp.                                                                                          |
+| **How does DeFlow reach Jira?**   | By spawning `acli` as a child process, on the operator's machine, under their own OS account — the same relationship it has with `gh`.   |
+
+The commands are Atlassian's own published reference and nothing here was invented:
+`acli jira auth login`, `acli jira auth status`, `acli jira auth logout`,
+`acli jira workitem search --jql … --json` and `acli jira workitem view <KEY> --json`.
+
+**Linear: no honest answer exists yet, and the screen says so.** Linear publishes no first-party
+command-line tool that holds a credential. What it publishes is a GraphQL API reached with either a
+**personal API key** — which DeFlow would have to hold, and ADR-0003 forbids — or an **OAuth
+application**, which DeFlow does not have and will not fabricate a client id for. The one
+Linear-authored npm package with a binary, `@linear/cli` (`lin`), was last published in 2021, keeps
+an API key in its own config file, and has two commands, `lin new` and `lin checkout` — no search
+and no list, so it could not serve an issue picker even if holding the key were acceptable.
+
+So Linear ships as a row that says, in the daemon's own sentence, that **DeFlow cannot connect it
+without holding a credential and therefore does not**, what would have to change for that to stop
+being true, and nothing else. There is no connect button on that row, and the connect route refuses
+it — `422 connector_unavailable` — rather than writing a consent row for a service that can never
+work. AC2 named this as a permitted outcome before the research was done; this is that outcome,
+reached rather than chosen.
+
+**AC5 is added, because a picker that cannot submit is not a picker.** KAR-22.4's composer fills the
+issue box from the list, and intake resolves only `https://github.com/…/issues/<n>` — so a Jira
+entry would have offered an operator a run that intake then refused. Jira work-item URLs are
+resolved by the same `acli`, through `acli jira workitem view <KEY> --json`, at the one spawn
+chokepoint. Without this the story would have shipped a list whose every entry was a dead end.
+
+**What Jira does not get, said out loud.** `gh` infers *which repository* from the directory it runs
+in, which is what makes GitHub's issue list this project's own. `acli` has no equivalent inference —
+nothing ties a directory on disk to a Jira project — and DeFlow stores no Jira project key, because
+inventing a second configuration surface was not this story's job. So a connected project's Jira
+list is every work item **that operator's own account can see**, most recently updated first,
+narrowed by what they type. The row says exactly that. The per-project isolation AC4 asks for is
+unmodified where it is asserted — a connector on project A is not one on project B, and B's search
+is refused — and the narrower scoping is recorded here as the follow-up it is rather than as a
+property this story delivered.
 
 **Acceptance criteria**
 
@@ -495,25 +550,40 @@ a project tracked outside GitHub gets the same searchable issue list rather than
    a service has no first-party CLI that holds a credential the way `gh` does, the honest answer —
    including "DeFlow cannot connect this service without holding a credential, and therefore does
    not yet" — is written into the design and onto the screen rather than papered over with a button.
-3. A connected Linear or Jira project's composer offers that service's issues with key, title and
-   state, from the same component GitHub's list uses.
+   A service in that position offers no connect button and its connect route refuses.
+3. A connected Jira project's composer offers that service's issues with key, title and state, from
+   the same component GitHub's list uses, and a project connected to two services says which service
+   each entry came from. Linear satisfies this criterion by AC2's escape: it offers no list because
+   it cannot be connected, and says why in the same place the list would have been.
 4. The six states, the missing-scope naming, the per-project isolation and the removal semantics
    are KAR-22.4's, unmodified, for both services.
+5. An issue picked from the Jira list submits a run. The reference the picker writes into the box is
+   resolved by intake through the same `acli`, at the same one spawn chokepoint `gh` uses, and a
+   failure is intake's own refusal naming `acli`'s words — never a silent dead end.
 
 **Test plan (TDD)**
 
-| #   | Level       | Test                                                                                                          | Red when                                                                                            |
-| --- | ----------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 1   | browser     | All three services render from one registry and one row component; the screen is asserted to have one issue-list component | A second connectors screen grows beside the first                                                   |
-| 2   | integration | A Linear connector: connect, search, expire, remove — the same table KAR-22.4 runs for GitHub, over the registry rather than over GitHub | The framework fits exactly one service and the second one forks it                                  |
-| 3   | integration | The same table for Jira                                                                                       | Jira is "supported" in a README and nowhere else                                                     |
-| 4   | unit        | The credential-holder statement is required by the registry's own type, so a service cannot be registered without one | A service ships with no answer to "who holds the token", which is the question KAR-22.4 exists to answer |
+| #   | Level       | Test                                                                                                                                          | Red when                                                                                            |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | browser     | All three services render from one registry and one row component; the screen is asserted to have one issue-list component, and the unconnectable row is asserted to have **no** connect button | A second connectors screen grows beside the first, or a button appears on a row that goes nowhere   |
+| 2   | unit        | A source guard: exactly one connectors screen component, one `connector` table, one issue-search route and one issue-list rendering exist in the repository | The framework fits exactly one service and the second one forks it                                  |
+| 3   | integration | A Jira connector against a fake `acli`: connect, search, expire, remove — the same table KAR-22.4 runs for GitHub, over the registry rather than over GitHub | Jira is "supported" in a README and nowhere else                                                     |
+| 4   | integration | Linear: the connect route refuses with `connector_unavailable`, no row is written, its issue search is refused, and no child process is spawned for it at all | An unconnectable service is papered over with a button, or quietly records consent it can never use |
+| 5   | unit        | The credential-holder statement is required by the registry's own type, so a service cannot be registered without one — asserted over every registered service and by a `@ts-expect-error` the typechecker enforces | A service ships with no answer to "who holds the token", which is the question KAR-22.4 exists to answer |
+| 6   | unit        | `acli`'s state parse and issue parse as tables: exit codes, "not logged in", a 401, an absent binary, and both plausible shapes of `--json`     | An unrecognised `acli` message is diagnosed confidently and wrongly, and an operator runs a command for nothing |
+| 7   | integration | Two services connected to one project; assert the list says which service each entry came from, and that removing one leaves the other connected | Connectors stop composing the moment there are two                                                   |
+| 8   | integration | A Jira work-item URL submitted to intake against a fake `acli`, and the same URL with `acli` absent                                            | The picker offers entries that intake then refuses, and the list is a dead end                       |
+| 9   | unit        | The credential guard of KAR-22.4 test plan #2, extended to `acli`: nothing in the graph reads `acli`'s own store or captures `acli jira auth`'s output | The second service is the one that quietly holds a credential                                       |
 
-**Notes / risks** — the risk here is the one KAR-22.4's split was made to avoid: **assuming the
-GitHub answer generalises**. It may not. Neither Linear nor Jira has a first-party CLI that holds a
-credential the way `gh` does, so AC2 explicitly permits "not yet, and here is why" as a shipped
-answer — a screen that says a service is not connectable is honest; a button that goes nowhere is
-not.
+**Notes / risks** — the risk KAR-22.4's split was made to avoid was **assuming the GitHub answer
+generalises**, and half of it did not: Linear ships as "not yet, and here is why". The risk that
+replaces it is `acli`'s output format. `acli jira auth status` has no documented machine-readable
+output, so the state parse is exit-code-first and substring-second, and **anything it does not
+recognise is `unreachable` carrying `acli`'s own sentence** rather than a confident guess — the same
+rule `readGithubState` follows for the same reason. `--json` is documented for `workitem search` and
+`workitem view`; its exact shape is not, so the parser accepts either a bare array or `{ issues: [] }`
+and drops any row it cannot key, because an entry with no reference is an entry that submits a run
+against nothing.
 
 ---
 

@@ -34,7 +34,8 @@ import type {
   ConnectorServiceId,
   ConnectorState,
 } from './registry.ts';
-import { SERVICES, serviceById } from './registry.ts';
+import { isConnectable } from './registry.ts';
+import { SERVICES, serviceById } from './services.ts';
 
 export interface ConnectorPorts {
   readonly db: Db;
@@ -101,23 +102,46 @@ export function connectorViews(
   return Promise.all(SERVICES.map((service) => viewOf(ports, service, projectId, repoPath)));
 }
 
+export type ConnectResult =
+  | { readonly outcome: 'connected'; readonly view: ConnectorView }
+  | { readonly outcome: 'unavailable'; readonly message: string };
+
 /**
  * Records that this project may use `id`, and reports the state that follows.
  *
  * Note what does **not** happen here: no browser is opened, no authorisation
  * server is called, no token is requested and none is received. Authorising is
- * the operator's own `gh auth login`, against GitHub's own application; this
- * route records consent and then tells them, honestly, whether that command has
- * been run yet. AC1's amendment is this function's whole shape.
+ * the operator's own `gh auth login` or `acli jira auth login`, against the
+ * vendor's own application; this route records consent and then tells them,
+ * honestly, whether that command has been run yet. KAR-22.4 AC1's amendment is
+ * this function's whole shape.
+ *
+ * **A service with no authorisation route is refused rather than recorded**
+ * (KAR-22.6 AC2). Writing a consent row for Linear would create a connector
+ * that can never work and a screen that has to render it as connected-and-
+ * broken; refusing says the same thing once, in a sentence, at the moment the
+ * operator asks. The decision of *which* services those are belongs to the
+ * registry, so this refusal and the screen's missing button cannot disagree.
  */
 export async function connect(
   ports: ConnectorPorts,
   projectId: ProjectId,
   id: ConnectorServiceId,
   repoPath: string,
-): Promise<ConnectorView> {
+): Promise<ConnectResult> {
+  const service = serviceById(id);
+  if (!isConnectable(service)) {
+    return {
+      outcome: 'unavailable',
+      message:
+        service.authorisation.kind === 'unavailable'
+          ? service.authorisation.whyNotConnectable
+          : `${service.label} cannot be connected.`,
+    };
+  }
+
   insertConnector(ports.db, { projectId, service: id, createdAt: ports.clock.now() });
-  return viewOf(ports, serviceById(id), projectId, repoPath);
+  return { outcome: 'connected', view: await viewOf(ports, service, projectId, repoPath) };
 }
 
 export interface DisconnectResult {
@@ -125,6 +149,7 @@ export interface DisconnectResult {
   readonly removed: boolean;
   /** Always `false`, and said out loud rather than left to be assumed. */
   readonly credentialDeleted: boolean;
+  /** The operator's own revocation command, or `null` where there is nothing to revoke. */
   readonly revoke: ConnectorService['credential']['revoke'];
   readonly message: string;
 }
@@ -132,18 +157,20 @@ export interface DisconnectResult {
 /**
  * Removes this project's connector for `id`.
  *
- * **What "removed" means, precisely.** DeFlow's access to GitHub is permission
- * to spawn the operator's own `gh`; it holds no grant of its own, so there is
- * no grant of its own to revoke and no endpoint it could call to revoke one
- * without an OAuth application it does not have. Deleting the row *is* the
- * whole of DeFlow's access ending: nothing is spawned for this project
+ * **What "removed" means, precisely.** DeFlow's access to a service is
+ * permission to spawn the operator's own vendor CLI; it holds no grant of its
+ * own, so there is no grant of its own to revoke and no endpoint it could call
+ * to revoke one without an application it does not have. Deleting the row *is*
+ * the whole of DeFlow's access ending: nothing is spawned for this project
  * afterwards, which is what
- * `packages/daemon/test/integration/connectors-api.test.ts` asserts.
+ * `packages/daemon/test/integration/connectors-api.test.ts` and its KAR-22.6
+ * counterpart both assert, for `gh` and for `acli`.
  *
- * The credential stays the operator's. Running `gh auth logout` on their behalf
- * would sign out every other tool on their machine that uses `gh`, so the
- * command is **named** and not run — the same choice ADR-0003 records for
- * Copilot's login, from the other end.
+ * The credential stays the operator's. Running `gh auth logout` or
+ * `acli jira auth logout` on their behalf would sign out every other tool on
+ * their machine that uses those binaries, so the command is **named** and not
+ * run — the same choice ADR-0003 records for Copilot's login, from the other
+ * end.
  */
 export function disconnect(
   ports: ConnectorPorts,

@@ -33,6 +33,15 @@ function ghSuccess(scopes: string, login = 'octocat'): string {
 const ran = (over: Partial<Parameters<typeof readGithubState>[0]> = {}) =>
   readGithubState({ spawned: true, exitCode: 0, stdout: '', stderr: '', ...over });
 
+/**
+ * GitHub's own login command, taken from the descriptor rather than retyped.
+ *
+ * Narrowed once here because KAR-22.6 made `authorisation` a union — Linear has
+ * no route at all — and the alternative is a type guard in every state branch
+ * below for a string that cannot change.
+ */
+const LOGIN_COMMAND = GITHUB.authorisation.kind === 'command' ? GITHUB.authorisation.command : '';
+
 suite('KAR-22.4 AC1 — gh is not installed', () => {
   it('reports not-installed rather than not-authorised, and names the install page', () => {
     const state = readGithubState({ spawned: false, exitCode: null, stdout: '', stderr: '' });
@@ -57,7 +66,7 @@ suite('KAR-22.4 AC1, AC4 — gh is installed but nobody has authorised it', () =
     });
 
     expect(state.state).toBe('not-authorised');
-    expect(state.action).toBe(GITHUB.authorisation.command);
+    expect(state.action).toBe(LOGIN_COMMAND);
   });
 });
 
@@ -70,7 +79,7 @@ suite('EPIC-22-S52 — an expired token says so', () => {
     // browser tab three weeks ago needs to be told to log in again, not told
     // that authentication failed.
     expect(state.message).toContain('no longer accepted');
-    expect(state.action).toBe(GITHUB.authorisation.command);
+    expect(state.action).toBe(LOGIN_COMMAND);
   });
 });
 

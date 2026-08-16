@@ -128,9 +128,12 @@ Background:
 | EPIC-22-S68  | **The connectors screen has no token field at all, and says whose application authorises**   | KAR-22.4 | Failure    |
 | EPIC-22-S69  | `gh` is not installed: the screen says so and the rest of the page still works               | KAR-22.4 | Edge case  |
 | EPIC-22-S70  | Linear and Jira are rows on the same framework, each naming its own credential holder        | KAR-22.6 | Happy path |
-| EPIC-22-S71  | A connected Linear project's issue search returns key, title and state                       | KAR-22.6 | Happy path |
+| EPIC-22-S71  | **Linear cannot be connected without DeFlow holding a credential, and says so**               | KAR-22.6 | Failure    |
 | EPIC-22-S72  | A connected Jira project's issue search returns key, title and state                         | KAR-22.6 | Happy path |
 | EPIC-22-S73  | One project connected to two services picks from both, and each removes independently        | KAR-22.6 | Edge case  |
+| EPIC-22-S74  | A Jira work item picked from the list actually submits a run                                 | KAR-22.6 | Happy path |
+| EPIC-22-S75  | A service cannot be registered without saying who holds its credential                       | KAR-22.6 | Failure    |
+| EPIC-22-S76  | One screen, one store, one issue-search route, one issue list                                | KAR-22.6 | Edge case  |
 
 ---
 
@@ -1358,6 +1361,12 @@ Feature: a missing CLI is a sentence, not a stack trace
 
 **Inherited 2026-08-16 from EPIC-22-S48**, which named all three services before KAR-22.4 was split.
 
+**Amended 2026-08-16 with what the research found.** Atlassian publishes `acli`, which holds a Jira
+credential exactly the way `gh` holds a GitHub one, so Jira is a connector in full. Linear publishes
+no first-party tool that holds a credential — only a personal API key DeFlow would have to hold and
+an OAuth application DeFlow does not have — so its row is the honest "not yet" this scenario's last
+clause already anticipated. The clause is now load-bearing rather than defensive.
+
 ```gherkin
 Feature: a second and third service prove the framework rather than fork it
 
@@ -1371,19 +1380,32 @@ Feature: a second and third service prove the framework rather than fork it
 
 ---
 
-## EPIC-22-S71 — A connected Linear project's issue search returns key, title and state
+## EPIC-22-S71 — Linear cannot be connected without DeFlow holding a credential, and says so
 
-**Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** integration
+**Verifies:** KAR-22.6 · **Type:** Failure · **Automated at:** integration
+
+**Rewritten 2026-08-16, after the research this story's split existed to force.** As authored this
+scenario assumed a connected Linear project. Linear publishes no first-party command-line tool that
+holds a credential: reaching its API needs either a personal API key, which DeFlow would then hold
+and ADR-0003 forbids, or an OAuth application DeFlow does not have and will not fabricate a client
+id for. `@linear/cli` (`lin`) is Linear-authored but was last published in 2021, keeps an API key in
+its own config file, and has no search or list command at all. So there is no connected Linear
+project to search, and asserting one would have been asserting a fiction. What is asserted instead
+is the answer KAR-22.6 AC2 named in advance as permitted, made real and made refusable.
 
 ```gherkin
-Feature: the same list, a different tracker
+Feature: "not yet, and here is why" is a shipped answer
 
-  Scenario: searching Linear
-    Given a project connected to Linear
-    When the composer's issue input is searched
-    Then each entry shows key, title and state
-    And the entries come from the same route and the same component GitHub's do
-    And pasting a raw reference still submits a run
+  Scenario: the row that says it cannot be connected
+    Given a project
+    Then Linear is listed with the sentence saying DeFlow cannot connect it without holding a
+        credential, and therefore does not
+    And that sentence names what would have to change for it to become connectable
+    And the row carries no command and no authorisation link to follow
+    When connecting Linear is attempted anyway
+    Then it is refused as `connector_unavailable` rather than recorded
+    And no connector row is written for it
+    And asking for its issues is refused, having spawned no child process at all
 ```
 
 ---
@@ -1392,14 +1414,22 @@ Feature: the same list, a different tracker
 
 **Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** integration
 
+**Amended 2026-08-16 on the missing-scope clause.** Atlassian's credentials are not scoped the way a
+GitHub OAuth token is — what governs whether an account may read a work item is that account's own
+Jira project permissions, which `acli` reports as an ordinary failure and not as a named scope. Jira
+therefore declares no required scopes and never reports `missing-scope`, and the state union is
+unmodified: the six states are still the six. GitHub remains the service the missing-scope naming is
+asserted over, in EPIC-22-S53.
+
 ```gherkin
 Feature: Jira is supported in the product, not in a README
 
   Scenario: searching Jira
-    Given a project connected to Jira
+    Given a project connected to Jira through Atlassian's own `acli`
     When the composer's issue input is searched
     Then each entry shows key, title and state
-    And an expired credential, a missing scope and a removal behave exactly as GitHub's do
+    And an expired credential and a removal behave exactly as GitHub's do
+    And the search term reached `acli` rather than being filtered inside DeFlow
 ```
 
 ---
@@ -1408,14 +1438,84 @@ Feature: Jira is supported in the product, not in a README
 
 **Verifies:** KAR-22.6 · **Type:** Edge case · **Automated at:** integration
 
+**Re-pointed 2026-08-16 from Linear to Jira.** The pair this scenario names has to be two services
+that can both actually be connected, and EPIC-22-S71 records why Linear is not one of them. GitHub
+and Jira are, and they are the harder pair anyway: two different binaries, two different issue
+vocabularies and two different credential holders reduced to one list.
+
 ```gherkin
 Feature: connectors compose
 
   Scenario: two at once
-    Given a project connected to both GitHub and Linear
+    Given a project connected to both GitHub and Jira
     Then the composer's issue list says which service each entry came from
     And removing one leaves the other connected
     And removing the second leaves the project working with no connector at all
+```
+
+---
+
+## EPIC-22-S74 — A Jira work item picked from the list actually submits a run
+
+**Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** integration
+
+**Added 2026-08-16 with KAR-22.6's AC5.** KAR-22.4's composer writes the picked issue's reference
+into the box, and intake resolved only `https://github.com/…/issues/<n>` — so every Jira entry would
+have been an entry that submits a run intake then refuses. A picker whose entries are dead ends is
+worse than no picker, because the dead end is discovered after the click.
+
+```gherkin
+Feature: the list's entries are references that work
+
+  Scenario: submitting what the picker wrote
+    Given a project connected to Jira
+    And the reference the picker wrote into the issue box is that work item's browse URL
+    When the run is submitted
+    Then intake resolves it through the same `acli`, at the same one spawn chokepoint `gh` uses
+    And the run is accepted
+  Scenario: `acli` is not installed
+    Given the same submission on a machine with no `acli`
+    Then intake refuses it in its own sentence, naming the resolver and offering the text path
+    And nothing is invented in place of an answer
+```
+
+---
+
+## EPIC-22-S75 — A service cannot be registered without saying who holds its credential
+
+**Verifies:** KAR-22.6 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: the type is the ADR
+
+  Scenario: the registry's own requirement
+    Given the connector registry
+    Then every registered service answers whose application authorises it, where its credential
+        lives, who holds it and what DeFlow itself stores
+    And none of those four answers is empty
+    And a service declared without them does not typecheck
+```
+
+---
+
+## EPIC-22-S76 — One screen, one store, one issue-search route, one issue list
+
+**Verifies:** KAR-22.6 · **Type:** Edge case · **Automated at:** unit
+
+**Added 2026-08-16 with KAR-22.6 AC1.** The failure this story exists to avoid is the second service
+arriving as a copy of the first — a second screen, a second table, a second route — and a copy is
+not something a reviewer reliably notices. It is something a guard notices.
+
+```gherkin
+Feature: a second service proves the framework rather than forks it
+
+  Scenario: the source guard
+    Given the repository
+    Then exactly one connectors screen component exists
+    And exactly one `connector` table is created by exactly one migration
+    And exactly one issue-search route is mounted
+    And exactly one component renders the composer's issue list
+    And the guard is proved non-vacuous by finding each of them at all
 ```
 
 ---

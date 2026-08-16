@@ -30,7 +30,15 @@
  * modules it is supposed to reach, and it runs the detector over synthetic
  * offending sources and requires each to be caught.
  *
- * Verifies: EPIC-22-S49 · KAR-22.4 AC2
+ * **Extended by KAR-22.6 (test plan #9).** The second service is the one that
+ * quietly holds a credential, because by then the rule feels settled and the
+ * guard feels like somebody else's problem. Two rules were widened rather than
+ * duplicated: the credential-store rule now names Atlassian's own store as well
+ * as `gh`'s, and the login-capture rule matches an `auth` verb anywhere in an
+ * argv array rather than only at its head — `acli`'s is `['jira', 'auth',
+ * 'login']`, and the original pattern would have walked straight past it.
+ *
+ * Verifies: EPIC-22-S49 · KAR-22.4 AC2 · KAR-22.6 AC2
  */
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -102,9 +110,9 @@ const RULES: readonly Rule[] = [
     // where their token is — `~/.config/gh/hosts.yml` — and it has to, because
     // AC1 says the screen states where the token lives. What is forbidden is a
     // path expression that ends up in a filesystem call.
-    what: 'reads the GitHub CLI’s own credential store',
+    what: 'reads a vendor CLI’s own credential store',
     pattern:
-      /(?:readFile|readFileSync|open|openSync|createReadStream|join|resolve)\s*\([^)]*(?:hosts\.ya?ml|keyring|keychain)/i,
+      /(?:readFile|readFileSync|open|openSync|createReadStream|join|resolve)\s*\([^)]*(?:hosts\.ya?ml|keyring|keychain|\.acli|atlassian[/\\]|credentials?\.(?:json|ya?ml))/i,
     sabotage: "readFileSync(join(configDir, 'gh', 'hosts.yml'), 'utf8');",
   },
   {
@@ -113,9 +121,27 @@ const RULES: readonly Rule[] = [
     // surfaced. Spawning it — and therefore reading what it prints — is the
     // breach, so the pattern is the argv, not the sentence.
     what: 'captures the output of a login or token-printing command',
-    pattern:
-      /\[\s*['"`]auth['"`]\s*,\s*['"`](?:token|login|refresh)['"`]|spawn\s*\([^)]*auth[^)]*token/,
+    pattern: /['"`]auth['"`]\s*,\s*['"`](?:token|login|refresh)['"`]|spawn\s*\([^)]*auth[^)]*token/,
     sabotage: "const out = await runGh(['auth', 'token'], options);",
+  },
+];
+
+/**
+ * KAR-22.6 — the same rules, run against the way *`acli`* would break them.
+ *
+ * A widened pattern that still only catches the `gh`-shaped violation is a
+ * pattern that has been widened on paper. Each entry here is a line somebody
+ * would plausibly write for the second service, and each must be caught by the
+ * rule that claims to cover it.
+ */
+const ACLI_SABOTAGE: readonly { readonly what: string; readonly source: string }[] = [
+  {
+    what: 'reads a vendor CLI’s own credential store',
+    source: "readFileSync(join(home, '.acli', 'credentials.json'), 'utf8');",
+  },
+  {
+    what: 'captures the output of a login or token-printing command',
+    source: "const out = await runCli('acli', ['jira', 'auth', 'login', '--token'], options);",
   },
 ];
 
@@ -132,6 +158,12 @@ suite('EPIC-22-S49 — the connector’s import graph holds no credential (AC2)'
     expect(reached).toContain('connectors/github.ts');
     expect(reached).toContain('connectors/connectors.ts');
     expect(reached).toContain('gh/run-gh.ts');
+    // KAR-22.6 — the two services added on top of the framework, and the one
+    // seam both of them and `gh` spawn through. A guard that stopped at
+    // `github.ts` would have let the second connector hold anything it liked.
+    expect(reached).toContain('connectors/jira.ts');
+    expect(reached).toContain('connectors/linear.ts');
+    expect(reached).toContain('cli/run-cli.ts');
   });
 
   it.each(RULES)('nothing in the graph $what', (rule) => {
@@ -146,5 +178,11 @@ suite('EPIC-22-S49 — the connector’s import graph holds no credential (AC2)'
     // A guard that cannot go red is a comment. Each pattern is run against the
     // line it exists to forbid.
     expect(rule.pattern.test(codeOnly(rule.sabotage))).toBe(true);
+  });
+
+  it.each(ACLI_SABOTAGE)('the rule for "$what" catches acli’s version of it', (entry) => {
+    const rule = RULES.find((candidate) => candidate.what === entry.what);
+    expect(rule, `no rule named "${entry.what}"`).toBeDefined();
+    expect(rule?.pattern.test(codeOnly(entry.source))).toBe(true);
   });
 });

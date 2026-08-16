@@ -108,6 +108,13 @@ export const API_ERROR_STATUS = {
   empty_text: 422,
   not_applicable: 422,
   apply_unavailable: 422,
+  // KAR-22.6 AC2 — this build registers the service and cannot connect it at
+  // all: no first-party binary holds its credential, so connecting would mean
+  // DeFlow holding one. 422 rather than 404 because the service genuinely
+  // exists and is genuinely listed on the screen — what is unavailable is the
+  // action, not the resource — and rather than 501 because this is a decision
+  // about credentials rather than an unimplemented verb.
+  connector_unavailable: 422,
   // KAR-22.4 AC4 — the connector is connected and cannot serve the request:
   // the CLI is missing, unauthorised, expired, missing a scope, or GitHub was
   // unreachable. 422 rather than 503 for KAR-19.2's reason about retryability:

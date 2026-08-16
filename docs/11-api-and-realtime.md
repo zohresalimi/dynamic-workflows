@@ -354,9 +354,23 @@ and at most one command — for the reason `health` is, and a stored `connected`
 cache of somebody else's credential store. And **`q` is passed to the service**, not applied as a
 filter here, so a repository with three hundred issues is a search rather than three hundred rows.
 
-`connector_not_connected` (409) and `connector_unusable` (422) join the closed error union in §10.
-`connector_unusable` is 422 and not 503 for KAR-19.2's reason: no amount of waiting installs `gh` or
-grants a scope, and a retryable status would train a client to loop over a human's decision.
+`connector_not_connected` (409), `connector_unusable` (422) and `connector_unavailable` (422) join
+the closed error union in §10. `connector_unusable` is 422 and not 503 for KAR-19.2's reason: no
+amount of waiting installs `gh` or grants a scope, and a retryable status would train a client to
+loop over a human's decision.
+
+**Three services, one route family (KAR-22.6).** `:service` is `github`, `jira` or `linear`, and the
+table above is the whole of the connectors API for all three — a second screen, a second store or a
+second issue-search route would be a defect, and `test/one-connector-surface.test.ts` asserts there
+is one of each. GitHub is reached by spawning `gh` and Jira by spawning Atlassian's own `acli`; both
+hold their own credential and DeFlow holds neither.
+
+**Linear is registered and not connectable, deliberately.** Linear publishes no first-party binary
+that holds a credential, so `POST /projects/:id/connectors/linear` answers
+`422 connector_unavailable` and writes no row, and its issue route answers the same. The row is on
+the screen anyway, carrying the sentence that says why — "not yet, and here is why" is a state of
+the product rather than an absence from it. See [ADR-0003](../adr/0003-never-hold-provider-credentials.md)'s
+second amendment of 16 August 2026.
 
 ### Runs
 
