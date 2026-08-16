@@ -48,6 +48,8 @@ interface Recorded {
   readonly posts: PostedRun[];
   /** Every `q` the issue picker asked the connector for (KAR-22.4 AC3). */
   readonly searches: string[];
+  /** KAR-22.6 — the same asks, paired with the service each went to. */
+  readonly searchedServices: string[];
 }
 
 interface IssueRow {
@@ -105,6 +107,16 @@ interface ClientOptions {
   /** KAR-22.4 — whether this project has a connected connector. */
   readonly connected?: boolean;
   readonly issues?: readonly IssueRow[];
+  /**
+   * KAR-22.6 — the services this project has connected, when there is more than
+   * GitHub. Each entry brings its own issues, so the merged list can be checked
+   * for whether it still says where each row came from.
+   */
+  readonly services?: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly issues: readonly IssueRow[];
+  }[];
 }
 
 /**
@@ -112,7 +124,7 @@ interface ClientOptions {
  * it was asked to create.
  */
 function composerClient(options: ClientOptions = {}): ApiClient & { readonly recorded: Recorded } {
-  const recorded: Recorded = { posts: [], searches: [] };
+  const recorded: Recorded = { posts: [], searches: [], searchedServices: [] };
   const answers = [...(options.postAnswers ?? [])];
   let hung = options.hangFirstPost === true;
 
@@ -148,38 +160,48 @@ function composerClient(options: ClientOptions = {}): ApiClient & { readonly rec
             {
               $get: () =>
                 json(200, {
-                  services: [
-                    {
-                      id: 'github',
-                      label: 'GitHub',
-                      connected: options.connected === true,
-                      connectedAt: null,
-                      state: {
-                        state: 'connected',
-                        account: 'octocat',
-                        scopes: ['repo'],
-                        missingScopes: [],
-                        message: 'Connected as octocat.',
-                        action: null,
-                      },
-                      credential: {
-                        authorisedBy: '',
-                        holder: '',
-                        livesIn: '',
-                        deflowStores: '',
-                        revoke: { command: '', affects: '' },
-                      },
-                      authorisation: { command: '', url: '', whyNotOneClick: '' },
+                  services: (
+                    options.services ?? [
+                      { id: 'github', label: 'GitHub', issues: options.issues ?? ISSUES },
+                    ]
+                  ).map((service) => ({
+                    id: service.id,
+                    label: service.label,
+                    connected: options.services === undefined ? options.connected === true : true,
+                    connectedAt: null,
+                    state: {
+                      state: 'connected',
+                      account: 'octocat',
+                      scopes: ['repo'],
+                      missingScopes: [],
+                      message: 'Connected as octocat.',
+                      action: null,
                     },
-                  ],
+                    credential: {
+                      authorisedBy: '',
+                      holder: '',
+                      livesIn: '',
+                      deflowStores: '',
+                      revoke: { command: null, affects: '' },
+                    },
+                    authorisation: {
+                      kind: 'command',
+                      command: '',
+                      url: '',
+                      whyNotOneClick: '',
+                    },
+                  })),
                 }),
             },
             {
               ':service': {
                 issues: {
-                  $get: (args: { query?: { q?: string } }) => {
+                  $get: (args: { param?: { service?: string }; query?: { q?: string } }) => {
+                    const id = args.param?.service ?? 'github';
                     recorded.searches.push(args.query?.q ?? '');
-                    return json(200, { issues: options.issues ?? ISSUES });
+                    recorded.searchedServices.push(id);
+                    const named = options.services?.find((service) => service.id === id);
+                    return json(200, { issues: named?.issues ?? options.issues ?? ISSUES });
                   },
                 },
               },
@@ -764,5 +786,83 @@ suite('EPIC-22-S56 — with no connector, the composer is exactly what it was (A
     await settle();
 
     await expect.poll(() => client.recorded.posts).toHaveLength(1);
+  });
+});
+
+/**
+ * KAR-22.6 AC3, test plan #7 — one project, two connected services, one list.
+ *
+ * The composer KAR-22.4 shipped read *the first* connected service and stopped,
+ * which was correct while there was only one that could be connected. With two,
+ * that shape silently hides half of what the operator connected — and the
+ * failure is invisible, because the list still looks full.
+ *
+ * Verifies: EPIC-22-S73 · KAR-22.6 AC3
+ */
+const JIRA_ISSUES: readonly IssueRow[] = [
+  {
+    key: 'TEAM-41',
+    title: 'Retry the flaky worktree reaper',
+    state: 'in progress',
+    url: 'https://acme.atlassian.net/browse/TEAM-41',
+  },
+];
+
+const twoServices = () => [
+  { id: 'github', label: 'GitHub', issues: ISSUES },
+  { id: 'jira', label: 'Jira', issues: JIRA_ISSUES },
+];
+
+suite('EPIC-22-S73 — a project connected to two services picks from both', () => {
+  it('asks both connectors and offers every entry', async () => {
+    const client = composerClient({ services: twoServices() });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+
+    await expect.poll(() => all('[data-composer-issue]').length).toBe(3);
+    await expect
+      .poll(() => [...client.recorded.searchedServices].sort())
+      .toEqual(['github', 'jira']);
+  });
+
+  it('says which service each entry came from', async () => {
+    const client = composerClient({ services: twoServices() });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    await expect.poll(() => all('[data-composer-issue]').length).toBe(3);
+
+    const labels = all('[data-composer-issue]').map(
+      (element) => element.dataset.composerIssueService,
+    );
+    // Two keys from two trackers can look alike, and a picker that does not say
+    // where a row came from is one an operator has to guess about.
+    expect(labels).toEqual(['github', 'github', 'jira']);
+    expect(all('[data-composer-issue]')[2]?.textContent).toContain('Jira');
+  });
+
+  it('submits the reference the second service gave, unmodified', async () => {
+    const client = composerClient({ services: twoServices() });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    await expect.poll(() => all('[data-composer-issue]').length).toBe(3);
+    all('[data-composer-issue]')[2]?.click();
+    await settle();
+    one('[data-composer-submit]')?.click();
+    await settle();
+
+    await expect.poll(() => client.recorded.posts).toHaveLength(1);
+    expect((client.recorded.posts[0]?.body as { input: unknown }).input).toEqual({
+      kind: 'issue',
+      url: 'https://acme.atlassian.net/browse/TEAM-41',
+    });
   });
 });

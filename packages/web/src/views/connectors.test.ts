@@ -12,7 +12,15 @@
  * problems: a token field appearing to fill the gap, or the screen quietly
  * omitting the fact that connecting takes a command. Both are asserted here.
  *
- * Verifies: EPIC-22-S48, EPIC-22-S68 · KAR-22.4 AC1, AC2, AC5
+ * **Extended by KAR-22.6 (test plan #1).** The screen now renders three
+ * services from one registry, one of which cannot be connected at all — and the
+ * thing a browser is uniquely able to assert about that row is what it does
+ * *not* have. A connect button on a service DeFlow cannot reach is the exact
+ * failure AC2 forbids, and it is a rendering failure: the daemon can refuse the
+ * route perfectly and the page can still offer the click.
+ *
+ * Verifies: EPIC-22-S48, EPIC-22-S68, EPIC-22-S70 · KAR-22.4 AC1, AC2, AC5 ·
+ * KAR-22.6 AC1, AC2
  */
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
@@ -28,17 +36,39 @@ const CREDENTIAL = {
   livesIn: "The GitHub CLI's own credential store on this machine.",
   deflowStores: 'DeFlow stores no credential: one row holding this project and the word "github".',
   revoke: {
-    command: 'gh auth logout --hostname github.com',
+    // `string | null` rather than the inferred literal: KAR-22.6 made the
+    // command nullable, because a service DeFlow was never granted anything by
+    // has nothing to revoke, and the fixtures have to be able to say so.
+    command: 'gh auth logout --hostname github.com' as string | null,
     affects: 'It also signs out anything else on this machine that uses `gh`.',
   },
 };
 
 const AUTHORISATION = {
+  kind: 'command' as const,
   command: 'gh auth login --hostname github.com --web --scopes repo',
   url: 'https://github.com/login/device',
   whyNotOneClick:
     'Connecting takes one command rather than one button because DeFlow does not have a ' +
     'registered OAuth application with GitHub.',
+};
+
+/** KAR-22.6 — a service that has no route to authorisation, and says why. */
+const UNAVAILABLE = {
+  kind: 'unavailable' as const,
+  whyNotConnectable:
+    'DeFlow cannot connect Linear without holding a Linear credential itself, and it does not ' +
+    'hold credentials. Linear publishes no first-party command-line tool that would hold one on ' +
+    'your behalf, so there is nothing here to press yet.',
+};
+
+const LINEAR_CREDENTIAL = {
+  ...CREDENTIAL,
+  holder: 'Nobody. There is no first-party Linear tool for DeFlow to delegate to.',
+  revoke: {
+    command: null,
+    affects: 'There is nothing to revoke: DeFlow was never granted anything and holds nothing.',
+  },
 };
 
 interface StateBody {
@@ -57,7 +87,28 @@ const row = (state: StateBody, connected = false) => ({
   connectedAt: connected ? '2026-08-16T10:11:12.000Z' : null,
   state,
   credential: CREDENTIAL,
-  authorisation: AUTHORISATION,
+  authorisation: AUTHORISATION as typeof AUTHORISATION | typeof UNAVAILABLE,
+});
+
+/** KAR-22.6 — the Linear row, exactly as the daemon sends it. */
+const linearRow = () => ({
+  ...row(UNCONNECTABLE),
+  id: 'linear',
+  label: 'Linear',
+  credential: LINEAR_CREDENTIAL,
+  authorisation: UNAVAILABLE as typeof AUTHORISATION | typeof UNAVAILABLE,
+});
+
+/** KAR-22.6 — the Jira row, which is connectable and therefore ordinary. */
+const jiraRow = (connected = false) => ({
+  ...row(CONNECTED, connected),
+  id: 'jira',
+  label: 'Jira',
+  authorisation: {
+    ...AUTHORISATION,
+    command: 'acli jira auth login --site <your-site>.atlassian.net --web',
+    url: null,
+  } as unknown as typeof AUTHORISATION | typeof UNAVAILABLE,
 });
 
 const CONNECTED: StateBody = {
@@ -76,6 +127,19 @@ const MISSING_SCOPE: StateBody = {
   missingScopes: ['repo'],
   message: 'The credential `gh` holds is missing the repo scope.',
   action: 'gh auth refresh --hostname github.com --scopes repo',
+};
+
+/** KAR-22.6 — what a service DeFlow cannot reach at all reports about itself. */
+const UNCONNECTABLE: StateBody = {
+  state: 'not-installed',
+  account: null,
+  scopes: [],
+  missingScopes: [],
+  message:
+    'DeFlow cannot connect Linear without holding a Linear credential, and it does not hold ' +
+    'credentials. Reaching Linear needs a personal API key or an OAuth application DeFlow has ' +
+    'not registered.',
+  action: null,
 };
 
 const NOT_INSTALLED: StateBody = {
@@ -171,11 +235,13 @@ async function settle(): Promise<void> {
 
 const at = `/projects/${PROJECT_ID}/connectors`;
 
-const githubRow = (): HTMLElement => {
-  const found = shell.container.querySelector<HTMLElement>('[data-connector-row="github"]');
-  if (found === null) throw new Error('the connectors screen rendered no GitHub row');
+const connectorRow = (id: string): HTMLElement => {
+  const found = shell.container.querySelector<HTMLElement>(`[data-connector-row="${id}"]`);
+  if (found === null) throw new Error(`the connectors screen rendered no ${id} row`);
   return found;
 };
+
+const githubRow = (): HTMLElement => connectorRow('github');
 
 suite('EPIC-22-S48 — the connectors screen renders each state (AC1)', () => {
   it('shows the state, the sentence and the one command that resolves it', async () => {
@@ -275,5 +341,84 @@ suite('EPIC-22-S48 — connecting records consent and re-reads the state (AC1)',
 
     expect(client.recorded.posts).toEqual([`${PROJECT_ID}/github`]);
     expect(githubRow().dataset.connectorConnected).toBe('true');
+  });
+});
+
+suite('EPIC-22-S70 — three services, one row component (KAR-22.6 AC1)', () => {
+  it('renders every service the daemon sent, in the order it sent them', async () => {
+    shell = await mountShell({
+      at,
+      client: connectorsClient({ services: [row(CONNECTED, true), linearRow(), jiraRow()] }),
+    });
+    await settle();
+
+    const rendered = [...shell.container.querySelectorAll<HTMLElement>('[data-connector-row]')].map(
+      (element) => element.dataset.connectorRow,
+    );
+    // One registry, one loop, one component — a screen that special-cased a
+    // service would show a different number here or a different order.
+    expect(rendered).toEqual(['github', 'linear', 'jira']);
+  });
+
+  it('still holds no input, textarea or contenteditable with three services on it', async () => {
+    shell = await mountShell({
+      at,
+      client: connectorsClient({ services: [row(CONNECTED, true), linearRow(), jiraRow()] }),
+    });
+    await settle();
+
+    // The token box arrives somewhere nobody was looking, and the likeliest
+    // somewhere is the row that has nothing else to offer.
+    const screen = shell.container.querySelector<HTMLElement>('[data-connectors]');
+    expect(screen?.querySelectorAll('input, textarea, [contenteditable]')).toHaveLength(0);
+  });
+});
+
+suite('EPIC-22-S70 — a service that cannot be connected offers no button (AC2)', () => {
+  it('renders no connect button and no authorisation link on that row', async () => {
+    const client = connectorsClient({ services: [linearRow()] });
+    shell = await mountShell({ at, client });
+    await settle();
+
+    const linear = connectorRow('linear');
+    // AC2's whole point: a button that goes nowhere is worse than no button,
+    // because it makes the product look finished and the operator look wrong.
+    expect(linear.querySelector('[data-connector-connect]')).toBeNull();
+    expect(linear.querySelector('[data-connector-authorise]')).toBeNull();
+    expect(client.recorded.posts).toEqual([]);
+  });
+
+  it('says why there is nothing to press, in the daemon’s own sentence', async () => {
+    shell = await mountShell({ at, client: connectorsClient({ services: [linearRow()] }) });
+    await settle();
+
+    const text = connectorRow('linear').textContent ?? '';
+    expect(text).toContain(UNAVAILABLE.whyNotConnectable);
+    // And it still answers the questions every row answers, because an operator
+    // deciding whether to wait for this deserves to know what it would mean.
+    expect(text).toContain(LINEAR_CREDENTIAL.holder);
+    expect(text).toContain(LINEAR_CREDENTIAL.deflowStores);
+  });
+
+  it('offers a connect button on the services that can be connected', async () => {
+    // Non-vacuity for the assertion above: the absence is about this service,
+    // not about the button having been deleted from the screen.
+    shell = await mountShell({ at, client: connectorsClient({ services: [jiraRow()] }) });
+    await settle();
+
+    expect(connectorRow('jira').querySelector('[data-connector-connect]')).not.toBeNull();
+  });
+});
+
+suite('EPIC-22-S70 — a service whose authorisation page DeFlow cannot name (AC2)', () => {
+  it('shows the command and omits the link rather than inventing a URL', async () => {
+    shell = await mountShell({ at, client: connectorsClient({ services: [jiraRow()] }) });
+    await settle();
+
+    const jira = connectorRow('jira');
+    expect(jira.textContent).toContain('acli jira auth login');
+    // `acli --web` opens Atlassian's own consent page and DeFlow is not in that
+    // conversation, so it does not know the address and does not guess one.
+    expect(jira.querySelector('[data-connector-authorise]')).toBeNull();
   });
 });

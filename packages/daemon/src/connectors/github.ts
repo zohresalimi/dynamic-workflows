@@ -38,8 +38,10 @@
  *
  * Verifies: EPIC-22-S48, EPIC-22-S52, EPIC-22-S53, EPIC-22-S69 · AC1, AC2, AC4
  */
+import { firstLine } from '../cli/run-cli.ts';
 import { runGh } from '../gh/run-gh.ts';
 import type { ConnectorIssue, ConnectorService, ConnectorState, ProbePorts } from './registry.ts';
+import { ISSUE_SEARCH_LIMIT } from './registry.ts';
 
 /**
  * The one scope reading issues needs.
@@ -50,6 +52,15 @@ import type { ConnectorIssue, ConnectorService, ConnectorState, ProbePorts } fro
  */
 const REQUIRED_SCOPES = ['repo'] as const;
 
+/**
+ * The one command that authorises `gh`.
+ *
+ * A constant rather than a read back through `GITHUB.authorisation.command`,
+ * because KAR-22.6 made that field a union and narrowing it inside every state
+ * branch would be four type guards for a string that cannot change.
+ */
+const GITHUB_LOGIN_COMMAND = 'gh auth login --hostname github.com --web --scopes repo';
+
 /** `https://github.com/<owner>/<repo>/issues/<n>` — the shape `gh` returns. */
 const ISSUE_URL = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/\d+$/;
 
@@ -57,9 +68,6 @@ const ISSUE_URL = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/\d+$/;
 export function refreshCommand(missing: readonly string[]): string {
   return `gh auth refresh --hostname github.com --scopes ${missing.join(',')}`;
 }
-
-/** How many issues one search may return. A picker, not a report. */
-export const ISSUE_SEARCH_LIMIT = 25;
 
 export const GITHUB: ConnectorService = {
   id: 'github',
@@ -89,7 +97,10 @@ export const GITHUB: ConnectorService = {
     },
   },
   authorisation: {
-    command: 'gh auth login --hostname github.com --web --scopes repo',
+    // KAR-22.6 made `authorisation` a union, because Linear has no route at
+    // all. GitHub does, and says which one.
+    kind: 'command',
+    command: GITHUB_LOGIN_COMMAND,
     url: 'https://github.com/login/device',
     whyNotOneClick:
       'Connecting takes one command rather than one button because authorising an application ' +
@@ -190,13 +201,6 @@ const splitScopes = (value: string | undefined): readonly string[] =>
         .map((scope) => scope.trim())
         .filter((scope) => scope !== '');
 
-/** The first non-empty line of `gh`'s stderr — what it actually said. */
-const firstLine = (text: string): string =>
-  text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line !== '') ?? '';
-
 /**
  * What `gh` just told us about this machine's GitHub credential.
  *
@@ -231,7 +235,7 @@ export function readGithubState(probe: GhProbe): ConnectorState {
         message:
           'The credential `gh` holds is no longer accepted by GitHub — it expired, or it was ' +
           'revoked. Authorising again replaces it.',
-        action: GITHUB.authorisation.command,
+        action: GITHUB_LOGIN_COMMAND,
       };
     }
     if (/gh auth login|not logged in|GH_TOKEN|authentication token/i.test(stderr)) {
@@ -243,7 +247,7 @@ export function readGithubState(probe: GhProbe): ConnectorState {
         message:
           'The GitHub CLI is installed but has not been authorised on this machine. Authorising ' +
           "opens GitHub's own page in your browser; DeFlow never sees the token.",
-        action: GITHUB.authorisation.command,
+        action: GITHUB_LOGIN_COMMAND,
       };
     }
     return {

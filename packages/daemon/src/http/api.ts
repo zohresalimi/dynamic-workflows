@@ -80,7 +80,8 @@ import {
   disconnect as disconnectService,
   searchIssues,
 } from '../connectors/connectors.ts';
-import { asServiceId, type ConnectorServiceId } from '../connectors/registry.ts';
+import type { ConnectorServiceId } from '../connectors/registry.ts';
+import { asServiceId } from '../connectors/services.ts';
 import { Git } from '../git/git.ts';
 import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
@@ -2207,10 +2208,20 @@ export const api = new Hono()
     const service = connectorService(c);
     if (service === null) return unknownService(c);
 
-    return c.json(
-      { connector: await connectService(project.ports, project.id, service, project.path) },
-      201,
-    );
+    const result = await connectService(project.ports, project.id, service, project.path);
+
+    // KAR-22.6 AC2 — a service DeFlow cannot reach without holding a credential
+    // is refused here rather than recorded. The alternative is a consent row
+    // for a connector that can never work, which the screen would then have to
+    // render as connected, and an operator would reasonably read as a bug in
+    // the connector rather than as a decision about credentials. The sentence
+    // is the service's own, so this refusal and the row on the screen say the
+    // same thing in the same words.
+    if (result.outcome === 'unavailable') {
+      return c.json(...apiError('connector_unavailable', result.message, { detail: { service } }));
+    }
+
+    return c.json({ connector: result.view }, 201);
   })
 
   /**
