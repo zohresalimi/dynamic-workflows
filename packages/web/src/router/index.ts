@@ -59,6 +59,15 @@ export const routes = [
     props: true,
   },
   {
+    // KAR-22.4 — the project's connectors. Lazy like every other non-landing
+    // route, and genuinely cheap: its whole dependency is the typed client the
+    // shell already has. It deliberately mounts nothing from the graph.
+    path: '/projects/:projectId/connectors',
+    name: 'project-connectors',
+    component: () => import('../views/ConnectorsView.vue'),
+    props: true,
+  },
+  {
     // The same workspace, on a run from this project's history (AC4, AC5). A
     // *route* rather than a query parameter or a piece of component state,
     // because "send me what you are looking at" has to survive being pasted

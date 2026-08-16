@@ -70,6 +70,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-15, KAR-22.1 — `project`, the map from a name to a
   // repository, with the realpath unique.
   '0016-projects.ts': 'b7f30e2075036f9adb22bc7d4403f9ea3ca5433659393824ae01f898ada75d34',
+  // Shipped 2026-08-16, KAR-22.4 — `connector`, which services a project may
+  // use. No credential column: ADR-0003, amended the same day.
+  '0017-connectors.ts': 'f0785fba964c87d2265a409574d05359006afd5851243de3438c4b22d7547bb7',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

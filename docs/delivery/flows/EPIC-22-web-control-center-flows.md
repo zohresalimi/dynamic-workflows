@@ -105,13 +105,13 @@ Background:
 | EPIC-22-S45  | A project whose path has gone still shows its history                                      | KAR-22.3 | Edge case  |
 | EPIC-22-S46  | The board is bounded — a plan with two hundred nodes does not unbound memory                | KAR-22.3 | Edge case  |
 | EPIC-22-S47  | A run belonging to no project is still reachable from the run list                         | KAR-22.3 | Recovery   |
-| EPIC-22-S48  | Happy path: a connector is added from the UI, not from a README                            | KAR-22.4 | Happy path |
+| EPIC-22-S48  | Happy path: GitHub is connected from the screen, not from a README                         | KAR-22.4 | Happy path |
 | EPIC-22-S49  | **No model credential is read, written or logged by a connector**                           | KAR-22.4 | Failure    |
 | EPIC-22-S50  | **A connector token never reaches a ledger event or a log line**                            | KAR-22.4 | Failure    |
 | EPIC-22-S51  | Connected: the issue input becomes a list, and pasting still works                          | KAR-22.4 | Happy path |
 | EPIC-22-S52  | An expired token says so before a run is submitted                                         | KAR-22.4 | Failure    |
 | EPIC-22-S53  | A missing scope names the scope                                                            | KAR-22.4 | Failure    |
-| EPIC-22-S54  | Removing a connector revokes rather than hides                                             | KAR-22.4 | Edge case  |
+| EPIC-22-S54  | Removing a connector ends DeFlow's access rather than hiding it                             | KAR-22.4 | Edge case  |
 | EPIC-22-S55  | Connectors are per project                                                                 | KAR-22.4 | Edge case  |
 | EPIC-22-S56  | **Everything in this epic works with no connector at all**                                  | KAR-22.4 | Happy path |
 | EPIC-22-S57  | ADR-0003 is satisfied or amended, in writing                                                | KAR-22.4 | Edge case  |
@@ -125,6 +125,12 @@ Background:
 | EPIC-22-S65  | The conflict is rendered in the daemon's words, and the stale buttons go                    | KAR-22.5 | Failure    |
 | EPIC-22-S66  | A run that is waiting on a person is findable without opening it                            | KAR-22.5 | Happy path |
 | EPIC-22-S67  | A permission escalation uses the same surface as a spec approval                            | KAR-22.5 | Edge case  |
+| EPIC-22-S68  | **The connectors screen has no token field at all, and says whose application authorises**   | KAR-22.4 | Failure    |
+| EPIC-22-S69  | `gh` is not installed: the screen says so and the rest of the page still works               | KAR-22.4 | Edge case  |
+| EPIC-22-S70  | Linear and Jira are rows on the same framework, each naming its own credential holder        | KAR-22.6 | Happy path |
+| EPIC-22-S71  | A connected Linear project's issue search returns key, title and state                       | KAR-22.6 | Happy path |
+| EPIC-22-S72  | A connected Jira project's issue search returns key, title and state                         | KAR-22.6 | Happy path |
+| EPIC-22-S73  | One project connected to two services picks from both, and each removes independently        | KAR-22.6 | Edge case  |
 
 ---
 
@@ -1128,18 +1134,23 @@ Feature: the run list keeps working for runs from before projects
 
 ---
 
-## EPIC-22-S48 — Happy path: a connector is added from the UI
+## EPIC-22-S48 — Happy path: GitHub is connected from the screen, not from a README
 
 **Verifies:** KAR-22.4 · **Type:** Happy path · **Automated at:** browser
 
+**Re-pointed 2026-08-16 by the split of KAR-22.4.** As written this scenario named all three
+services; the two rows that are not GitHub moved to EPIC-22-S70 under KAR-22.6, and what stays here
+is the framework and the one service KAR-22.4 builds.
+
 ```gherkin
-Feature: connecting is a button, not a paragraph in a README
+Feature: connecting is a screen, not a paragraph in a README
 
   Scenario: the connectors screen
     Given a project
-    Then GitHub, Linear and Jira are each listed with a connected state
-    And each has a button that navigates to that service's own authorisation flow
-    And no text field asking for a token is the primary path
+    Then GitHub is listed with exactly one of connected, not-installed, not-authorised,
+        expired, missing-scope or unreachable
+    And that state carries a sentence and the one command or link that resolves it
+    And connecting is started from this screen rather than from documentation
 ```
 
 ---
@@ -1221,18 +1232,28 @@ Feature: "insufficient permissions" is not a diagnosis
 
 ---
 
-## EPIC-22-S54 — Removing a connector revokes rather than hides
+## EPIC-22-S54 — Removing a connector ends DeFlow's access rather than hiding it
 
 **Verifies:** KAR-22.4 · **Type:** Edge case · **Automated at:** integration
 
+**Amended 2026-08-16 with KAR-22.4's credential decision.** DeFlow holds no grant of its own with
+GitHub — its access *is* permission to spawn the operator's `gh` — so there is no revocation call it
+could make, and asserting one would have meant inventing an OAuth application to make it with. What
+is asserted instead is stronger than a hidden row and honest about what DeFlow controls: after
+removal DeFlow spawns nothing at all for that project. The credential is the operator's and is
+shared with every other tool on their machine, so the removal *names* the command that revokes it
+rather than running it behind their back.
+
 ```gherkin
-Feature: "removed" means the access is gone
+Feature: "removed" means DeFlow stops asking
 
   Scenario: removal
     When a connector is removed
-    Then a revocation call was made to that service
-    And the stored credential is gone
-    And a subsequent use fails as unauthenticated rather than succeeding
+    Then the row is gone
+    And a subsequent issue read for that project spawns no child process at all
+    And that read is refused as not connected rather than answered
+    And the removal response names `gh auth logout --hostname github.com` as the operator's own
+        revocation command, and says it affects every tool on the machine that uses `gh`
 ```
 
 ---
@@ -1284,6 +1305,118 @@ Feature: a constraint is not quietly outgrown
 **Notes:** an issue-tracker token is not a model credential, and that distinction is defensible — but
 it has to be written down, because the next person to read ADR-0003 will read it as "no tokens" and
 will be right to.
+
+**Settled 2026-08-16.** The answer turned out not to need the distinction: DeFlow holds no connector
+token either. The token lives in the GitHub CLI's own credential store, put there by `gh auth login`
+against GitHub's own application, and DeFlow reaches GitHub by spawning `gh` — which is ADR-0003's
+own decision, applied to a second class of credential rather than excepted from. ADR-0003 carries
+the dated amendment saying so.
+
+---
+
+## EPIC-22-S68 — The connectors screen has no token field at all
+
+**Verifies:** KAR-22.4 · **Type:** Failure · **Automated at:** browser
+
+**Added 2026-08-16 with KAR-22.4's amended AC1.** DeFlow has no registered OAuth application with
+GitHub, so it cannot own the authorisation button; the temptation that replaces a missing button is
+a token box, and this scenario is what stops one appearing.
+
+```gherkin
+Feature: the missing button is not replaced by a token box
+
+  Scenario: no field to paste a credential into
+    Given the connectors screen for a project
+    Then it holds no input of type text, password, search or textarea for a token
+    And it states whose application authorises GitHub, which is GitHub's own CLI's and not DeFlow's
+    And it states where the token lives and that DeFlow stores only the project and the service name
+    And it says why connecting takes one command rather than one click
+```
+
+---
+
+## EPIC-22-S69 — `gh` is not installed: the screen says so and the rest of the page still works
+
+**Verifies:** KAR-22.4 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: a missing CLI is a sentence, not a stack trace
+
+  Scenario: no gh on PATH
+    Given a machine with no `gh` on PATH
+    Then the connectors screen reports GitHub as not-installed and names how to install it
+    And the projects list, the composer and the workspace are unaffected
+    And a run submitted with a pasted issue reference is refused by intake's own sentence rather
+        than by the connector
+```
+
+---
+
+## EPIC-22-S70 — Linear and Jira are rows on the same framework
+
+**Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** browser
+
+**Inherited 2026-08-16 from EPIC-22-S48**, which named all three services before KAR-22.4 was split.
+
+```gherkin
+Feature: a second and third service prove the framework rather than fork it
+
+  Scenario: three rows, one registry
+    Given a project
+    Then Linear and Jira are listed beside GitHub, rendered by the same row component
+    And each names whose application authorises it, where its credential lives and who holds it
+    And a service DeFlow cannot connect without holding a credential says exactly that, rather
+        than offering a button that goes nowhere
+```
+
+---
+
+## EPIC-22-S71 — A connected Linear project's issue search returns key, title and state
+
+**Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: the same list, a different tracker
+
+  Scenario: searching Linear
+    Given a project connected to Linear
+    When the composer's issue input is searched
+    Then each entry shows key, title and state
+    And the entries come from the same route and the same component GitHub's do
+    And pasting a raw reference still submits a run
+```
+
+---
+
+## EPIC-22-S72 — A connected Jira project's issue search returns key, title and state
+
+**Verifies:** KAR-22.6 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: Jira is supported in the product, not in a README
+
+  Scenario: searching Jira
+    Given a project connected to Jira
+    When the composer's issue input is searched
+    Then each entry shows key, title and state
+    And an expired credential, a missing scope and a removal behave exactly as GitHub's do
+```
+
+---
+
+## EPIC-22-S73 — One project connected to two services
+
+**Verifies:** KAR-22.6 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: connectors compose
+
+  Scenario: two at once
+    Given a project connected to both GitHub and Linear
+    Then the composer's issue list says which service each entry came from
+    And removing one leaves the other connected
+    And removing the second leaves the project working with no connector at all
+```
 
 ---
 

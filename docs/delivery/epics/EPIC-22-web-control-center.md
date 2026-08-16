@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                 |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                 |
 | **Workstream**       | W15 — added 2026-08-13, after the owner asked for "a whole web UI for the solution, a control center" and restated it on 2026-08-14                                                                                                                                 |
-| **Size**             | ~21 days across 5 stories                                                                                                                                                                                                                                          |
+| **Size**             | ~23 days across 6 stories                                                                                                                                                                                                                                          |
 | **Depends on**       | EPIC-16 (app shell, projections, bounded run store, typed API client), EPIC-17 (the P0 views this reuses — the plan graph above all), EPIC-15 (the HTTP API and the multiplexed SSE stream), EPIC-19 (a run that actually executes), EPIC-18 KAR-18.1 (`init`'s workspace bootstrap) |
 | **Blocks**           | Nothing in M1's formal definition of done. It blocks the *use* of everything in it, which is the distinction this epic exists to close                                                                                                                              |
 | **PRD requirements** | F1.1, F1.3, F3.2, F3.5, F3.7, F10.1, F10.3, F10.6, F10.9, NF2, NF4, NF7, NF8, NF10, AR-1                                                                                                                                                                            |
@@ -66,8 +66,9 @@ control center is not polish; it is the difference between a finished project an
 - **Answering the run's human gates from the page** (KAR-22.5): the gate EPIC-13 opened, the option
   set KAR-19.12 already publishes, and the endpoints `deflow answer` already calls — with one
   request builder shared between the two surfaces rather than a second answer path.
-- **Connectors** (GitHub, Linear, Jira) — planned in KAR-22.4, deliberately last, and explicitly not
-  required by anything above it.
+- **Connectors**: the framework and GitHub in KAR-22.4, Linear and Jira in KAR-22.6 — deliberately
+  last, and explicitly not required by anything above them. DeFlow holds no connector credential;
+  see KAR-22.4's credential decision.
 
 **Out of scope:**
 
@@ -105,7 +106,8 @@ control center is not polish; it is the difference between a finished project an
 
 ## Definition of Done (epic level)
 
-- [ ] All five stories are Done, or KAR-22.4 is explicitly deferred with the deferral recorded here.
+- [ ] All six stories are Done, or KAR-22.4 and KAR-22.6 are explicitly deferred with the deferral
+      recorded here.
 - [ ] Every scenario in [the flow file](../flows/EPIC-22-web-control-center-flows.md) is automated at
       the level it declares and passes on `ubuntu-26.04` and `macos-26`, Node 24 and 26.
 - [ ] **Performed, not asserted:** a daemon is started, a browser is opened, a project is created
@@ -344,56 +346,174 @@ gone and the test that proved it goes with it.
 
 ---
 
-### KAR-22.4 — Connectors: GitHub, Linear and Jira, added from the UI
+### KAR-22.4 — Connectors: the framework, and GitHub
 
 |                 |                                                                                                        |
 | --------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Status**      | Not started                                                                                            |
 | **Priority**    | P1                                                                                                     |
-| **Size**        | L                                                                                                      |
+| **Size**        | M                                                                                                      |
 | **Depends on**  | KAR-22.2, KAR-22.3                                                                                     |
 | **PRD**         | F1.1, NF1, NF2, AR-1                                                                                   |
-| **Verified by** | EPIC-22-S48, EPIC-22-S49, EPIC-22-S50, EPIC-22-S51, EPIC-22-S52, EPIC-22-S53, EPIC-22-S54, EPIC-22-S55, EPIC-22-S56, EPIC-22-S57 |
+| **Verified by** | EPIC-22-S48, EPIC-22-S49, EPIC-22-S50, EPIC-22-S51, EPIC-22-S52, EPIC-22-S53, EPIC-22-S54, EPIC-22-S55, EPIC-22-S56, EPIC-22-S57, EPIC-22-S68, EPIC-22-S69 |
 
 **Deferred by the owner on 2026-08-12** — planned now so it is not forgotten, to be built after
 KAR-22.1–22.3 are usable end to end. All three services are wanted.
 
-**As** an operator, **I want** to connect GitHub, Linear and Jira to a project by clicking a button
-and being taken to the right authorisation page, **so that** I can pick a real issue from a list
-instead of pasting a reference into a box.
+**Split on 2026-08-16, before any code was written.** As authored this story carried the connector
+framework *and* three services, at Size L, and the three services are not one problem: they have
+three different authorisation stories, three different credential holders and three different issue
+vocabularies. Building all three on a framework that does not exist yet would have meant designing
+the framework three times, in one branch, with the ADR-0003 question — the only part of this story
+that is genuinely hard — answered once for GitHub and then assumed for the other two. So the
+framework and the one service that DeFlow *already talks to* stay here, and
+[KAR-22.6](#kar-226--connectors-linear-and-jira-on-the-same-framework) takes Linear and Jira onto
+it. Nothing was dropped; one Size L became a Size M and a Size M, and the framework is proved by a
+second service rather than asserted by a first.
+
+**As** an operator, **I want** to connect GitHub to a project from the connectors screen and be told
+plainly what that connection is, **so that** I can pick a real issue from a list instead of pasting
+a reference into a box — and know exactly who holds the credential that makes it work.
+
+#### The credential decision, settled before any code (AC2)
+
+**DeFlow has no registered OAuth application with GitHub, and this story does not invent one.** A
+client id in this repository would be either fabricated or somebody else's, and both are worse than
+the honest design, which is the one ADR-0003 already describes for model providers:
+
+| Question                          | Answer                                                                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Whose application authorises?** | GitHub's own — the GitHub CLI's. Not DeFlow's; DeFlow has none.                                                                                            |
+| **Where does the token live?**    | In the GitHub CLI's own credential store on the operator's machine — the OS keyring, or `~/.config/gh/hosts.yml`, whichever `gh` itself chose.              |
+| **Who put it there?**             | `gh auth login`: GitHub's own device flow, in the operator's own browser, against GitHub's own application.                                                 |
+| **Who holds it?**                 | The GitHub CLI. DeFlow never reads it, never copies it, never transmits it, and has no field anywhere to paste it into.                                     |
+| **What does DeFlow hold?**        | One row: `(projectId, service)` and a timestamp. No token, no secret, no client id, no refresh token, no expiry.                                            |
+| **How does DeFlow reach GitHub?** | By spawning `gh` as a child process on the operator's machine, under the operator's own OS account — exactly as `intake/resolve-issue.ts` has since KAR-10.1. |
+
+**Why this does not violate ADR-0003: it *is* ADR-0003, applied to a second class of credential.**
+The ADR's rule — *"the vendor's own official binary, on the user's own machine, under the user's own
+OS account, using the credentials that binary already stored for itself"* — is followed literally
+here. The ADR is nevertheless **amended with a dated note** (2026-08-16), because its text speaks
+only of *model* credentials and the next person to read it will read "no tokens" and be right to;
+the amendment says that the rule now names issue-tracker credentials too, and that the reason it can
+is that the shape is identical rather than that the credential is less important.
+
+**AC1 is amended, deliberately, and the amendment is on the screen and not only here.** The original
+criterion asked for a button that navigates to the service's own authorisation flow. DeFlow cannot
+own that button for GitHub without an application it does not have. What it can do is stronger in
+one respect and weaker in another, and both are stated out loud:
+
+- **Stronger:** there is *no token field on this screen at all* — not as a secondary path, not
+  behind a disclosure. "Not pasting tokens as the primary path" becomes "not pasting tokens".
+- **Weaker:** connecting is not one click. It is one click plus one command. The screen shows the
+  exact command (`gh auth login --hostname github.com --web --scopes repo`), says that it opens
+  GitHub's own authorisation page in the operator's own browser, and offers a link to
+  `https://github.com/login/device`, which is that page. The screen also says, in words, *why*
+  there is no single button — because DeFlow has no GitHub application and will not use one that is
+  not its own.
+
+**AC5 is amended for the same reason.** DeFlow holds no grant of its own, so it has no grant of its
+own to revoke and no endpoint it could call to revoke one. Removing a connector deletes the row, and
+that row *is* the whole of DeFlow's access: the next issue read for that project spawns no child at
+all and is refused as not connected. That is what the test asserts — a spawn that did not happen,
+not a row that is hidden. The credential itself stays the operator's and is shared with every other
+tool on their machine, so DeFlow never revokes it behind their back; the removal response names
+`gh auth logout --hostname github.com` as the command that does, and says what else on the machine
+that will affect.
 
 **Acceptance criteria**
 
-1. A connectors screen per project: each service shows connected or not, and connecting is a button
-   that navigates to that service's own authorisation flow — no pasting tokens into a text field as
-   the primary path.
-2. Credentials are handled in keeping with ADR-0003 (DeFlow never holds provider credentials): state
-   explicitly in the design where a connector's token lives, who holds it, and why that does not
-   violate the ADR — or amend the ADR deliberately if it must change.
-3. Once connected, the composer's issue input becomes a searchable list of that project's real
-   issues, showing key, title and state; pasting a reference still works.
-4. A connector that is disconnected, expired or lacking a scope says which, and what to do, rather
-   than failing at run time.
-5. Connectors are per project, and removing one revokes DeFlow's access rather than merely hiding
-   it.
-6. No connector is required: everything in EPIC-22 works fully without any of them.
+1. A connectors screen per project. GitHub shows exactly one of six states — `connected`,
+   `not-installed`, `not-authorised`, `expired`, `missing-scope`, `unreachable` — each with a
+   sentence and the one command or link that resolves it. `unreachable` is on the list because the
+   alternative is calling a network failure an authorisation failure, which sends an operator to
+   re-run `gh auth login` about a flight-mode switch. **There is no token input on the screen**, and the screen states
+   whose application authorises, where the token lives and what DeFlow itself stores.
+2. DeFlow stores no credential of any kind for a connector: the row is `(projectId, service)` and a
+   timestamp. The design above states where the token lives, who holds it and why that is
+   ADR-0003's own decision rather than an exception to it, and ADR-0003 carries a dated amendment
+   saying the rule now names issue-tracker credentials.
+3. Once connected, the composer's issue input offers a searchable list of that project's repository's
+   real issues, each showing key, title and state; pasting a raw reference still submits a run, with
+   or without a connector.
+4. A connector that is not installed, not authorised, expired or lacking a scope says **which**, and
+   what to do about it — naming the missing scope by name — on the connectors screen and at run
+   submission, before any framing turn.
+5. Connectors are per project: a connector on project A is not a connector on project B, and each
+   project's issue search reads that project's own repository. Removing one ends DeFlow's access
+   rather than hiding it — the next read spawns nothing — and the response names the operator's own
+   revocation command and what it affects.
+6. No connector is required: everything in EPIC-22 works fully with no connector configured for any
+   project, and the composer's paste path is unchanged.
 
 **Test plan (TDD)**
 
-| #   | Level       | Test                                                                                                                                       | Red when                                                                                                            |
-| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1   | browser     | The connectors screen lists all three services with a connected/not state and a button per service                                         | Connecting means reading a README and exporting an environment variable                                             |
-| 2   | unit        | An AR-1 / ADR-0003 guard over the connector module's source and import graph: no model-provider credential is read, written or logged      | A connector token and a model credential end up in one store, and the ADR is violated by accident                   |
-| 3   | integration | A fake authorisation server; assert the token lands where the design says and nowhere else, and never in a ledger event or a log line       | The token is written into an event payload, which is inspectable on disk by design (NF8)                            |
-| 4   | browser     | Connected: the issue input becomes a searchable list showing key, title and state; and pasting a raw reference still submits               | The list replaces the paste path, and an operator with a URL in their clipboard is stuck                            |
-| 5   | integration | An expired token and a token missing a scope; assert each says which, before a run is submitted rather than during one                     | The failure lands mid-run, and an hour of framing is spent to discover a permissions problem                        |
-| 6   | integration | Remove a connector; assert the revocation call was made, not merely a local delete                                                         | "Removed" means hidden, and DeFlow keeps access to somebody's issue tracker                                         |
-| 7   | integration | The whole of KAR-22.1–22.3's acceptance re-run with no connector configured at all                                                          | Connectors become load-bearing, and the epic's zero-config path stops working                                       |
+| #   | Level       | Test                                                                                                                                                            | Red when                                                                                                            |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | browser     | The connectors screen renders the GitHub row in each of the six states with its sentence and its command, and holds **no** input of type text, password or search for a token | Connecting means reading a README and exporting an environment variable                                             |
+| 2   | unit        | An AR-1 / ADR-0003 guard over the connector module and its import graph: nothing reads `~/.claude`, `~/.codex`, `~/.config/gcloud`, a `*_API_KEY`/`*_TOKEN` variable, or `gh`'s own credential store, and nothing captures a login command's output | A connector credential and a model credential end up in one store, and the ADR is violated by accident               |
+| 3   | integration | A fake `gh` standing in for GitHub's authorisation, holding a distinctive token in a fake credential store; drive connect, search and submit, then search the whole ledger file, every log line and the whole data directory for the token's bytes | The token is written into an event payload, which is inspectable on disk by design (NF8)                            |
+| 4   | browser     | Connected: the issue input becomes a searchable list showing key, title and state; and pasting a raw reference still submits                                     | The list replaces the paste path, and an operator with a URL in their clipboard is stuck                            |
+| 5   | integration | An expired token and a token missing a scope; assert each names which, and that the missing scope is named by name, before a run is submitted rather than during one | The failure lands mid-run, and an hour of framing is spent to discover a permissions problem                        |
+| 6   | integration | Remove a connector, then ask for its issues; assert **no `gh` was spawned** and the read is refused as not connected, and that the removal named the operator's own revocation command | "Removed" means hidden, and DeFlow keeps spawning `gh` for a project the operator disconnected                      |
+| 7   | integration | KAR-22.1–22.3's acceptance re-run with no connector configured at all, on a machine where `gh` is not on `PATH`                                                  | Connectors become load-bearing, and the epic's zero-config path stops working                                       |
+| 8   | unit        | The state parse over `gh api -i user`'s output: exit codes, `HTTP 401`, an absent binary, and the `X-OAuth-Scopes` header folded against the required scopes     | "insufficient permissions" is the diagnosis, and the operator guesses which scope                                    |
+| 9   | integration | Two projects against two repositories, one connected; assert B lists GitHub as not connected and B's issue search is refused                                     | A connector on one project silently connects every project on the machine                                            |
 
-**Notes / risks** — AC2 is the one to settle before any code. ADR-0003 says DeFlow never holds
-provider credentials; an issue-tracker token is not a model credential, but the distinction has to
-be *written down* rather than assumed, because the next person to read the ADR will read it as "no
-tokens" and be right to.
+**Notes / risks** — the temptation this story has to survive is **a token field**, because a token
+field would make the button work. It is not there, and test 1 asserts its absence rather than
+trusting a review. The second temptation is a second `gh` spawn site; there is one
+(`daemon/src/gh/run-gh.ts`, extracted from `intake/resolve-issue.ts` by this story), and the guard
+in test 2 reads its import graph rather than a convention.
+
+---
+
+### KAR-22.6 — Connectors: Linear and Jira on the same framework
+
+|                 |                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                            |
+| **Priority**    | P1                                                                                                     |
+| **Size**        | M                                                                                                      |
+| **Depends on**  | KAR-22.4 (the framework, the screen and the ADR-0003 answer it settles)                                |
+| **PRD**         | F1.1, NF1, NF2, AR-1                                                                                   |
+| **Verified by** | EPIC-22-S70, EPIC-22-S71, EPIC-22-S72, EPIC-22-S73                                                     |
+
+**Created 2026-08-16 by the split of KAR-22.4**, which is recorded in that story above. All three
+services were and are wanted; this is the other two.
+
+**As** an operator, **I want** Linear and Jira on the same connectors screen as GitHub, **so that**
+a project tracked outside GitHub gets the same searchable issue list rather than a paste box.
+
+**Acceptance criteria**
+
+1. Linear and Jira are rows on KAR-22.4's connectors screen, rendered by KAR-22.4's framework — a
+   second screen, a second store or a second issue-search route is a defect, and a guard asserts
+   there is one of each.
+2. Each service states **whose application authorises it, where its credential lives and who holds
+   it**, to the same standard KAR-22.4 sets for GitHub, and neither introduces a token field. Where
+   a service has no first-party CLI that holds a credential the way `gh` does, the honest answer —
+   including "DeFlow cannot connect this service without holding a credential, and therefore does
+   not yet" — is written into the design and onto the screen rather than papered over with a button.
+3. A connected Linear or Jira project's composer offers that service's issues with key, title and
+   state, from the same component GitHub's list uses.
+4. The six states, the missing-scope naming, the per-project isolation and the removal semantics
+   are KAR-22.4's, unmodified, for both services.
+
+**Test plan (TDD)**
+
+| #   | Level       | Test                                                                                                          | Red when                                                                                            |
+| --- | ----------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | browser     | All three services render from one registry and one row component; the screen is asserted to have one issue-list component | A second connectors screen grows beside the first                                                   |
+| 2   | integration | A Linear connector: connect, search, expire, remove — the same table KAR-22.4 runs for GitHub, over the registry rather than over GitHub | The framework fits exactly one service and the second one forks it                                  |
+| 3   | integration | The same table for Jira                                                                                       | Jira is "supported" in a README and nowhere else                                                     |
+| 4   | unit        | The credential-holder statement is required by the registry's own type, so a service cannot be registered without one | A service ships with no answer to "who holds the token", which is the question KAR-22.4 exists to answer |
+
+**Notes / risks** — the risk here is the one KAR-22.4's split was made to avoid: **assuming the
+GitHub answer generalises**. It may not. Neither Linear nor Jira has a first-party CLI that holds a
+credential the way `gh` does, so AC2 explicitly permits "not yet, and here is why" as a shipped
+answer — a screen that says a service is not connectable is honest; a button that goes nowhere is
+not.
 
 ---
 
@@ -499,7 +619,8 @@ ways.
 | R5  | **Destroying an operator's code.** "Remove project" is one click away from `rm -rf`.                                                                                        | KAR-22.1 AC6, test 11 and test 17: the row goes, the files are asserted to remain, and the confirmation says so in words before it is accepted.                                                                                                                                              |
 | R6  | **Path identity.** Trailing slashes, symlinks and `realpath` make one directory into four strings, and a projects table keyed on the raw string holds four rows for it.    | Stored post-`realpath`, uniqueness asserted on the resolved form, and KAR-22.1 test 12 is written against a second create rather than a string comparison.                                                                                                                                   |
 | R7  | **`projectId` becomes required** in a later refactor, and every run already on disk becomes unreadable.                                                                     | KAR-22.1 AC7 and test 15: a payload with no `projectId` is folded in a unit spec, exactly as `cwd`'s own optionality is pinned. A ledger may never make its own history unreadable.                                                                                                          |
-| R8  | **Connectors pull credentials into a system built not to hold them** (ADR-0003, AR-1).                                                                                     | KAR-22.4 AC2 requires the design to state where a token lives and why that is consistent with the ADR — or to amend the ADR deliberately. Test 2 is a source guard over the import graph, and test 3 asserts no token reaches an event or a log.                                              |
+| R8  | **Connectors pull credentials into a system built not to hold them** (ADR-0003, AR-1).                                                                                     | Settled by KAR-22.4's credential decision: DeFlow stores `(projectId, service)` and nothing else, and reaches GitHub by spawning the operator's own `gh`. ADR-0003 carries a dated amendment naming issue-tracker credentials. Test 2 is a source guard over the import graph; test 3 hunts the token's bytes through the ledger, the logs and the whole data directory. |
+| R10 | **A button that goes nowhere.** DeFlow has no registered OAuth application with GitHub, and a connectors screen invites one to be invented.                                | KAR-22.4 AC1 is amended in writing rather than faked: no token field exists at all, the exact `gh auth login` command is on the screen, and the screen says why there is no single button. Test 1 asserts the absence of the field.                                                          |
 | R9  | **A second answer path.** The F1.3 gate answers on four endpoints and every other gate on one, and a page that answered gates would naturally re-make that choice locally.                | KAR-22.5 AC2 and its test 1: the choice is one exported function in `@DeFlow/core`, driven from both `deflow answer` and the panel by a table over every gate/option pair.                                                                                                                    |
 
 ---

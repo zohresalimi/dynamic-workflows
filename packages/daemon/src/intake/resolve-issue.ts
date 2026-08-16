@@ -17,32 +17,15 @@
  * why this stays narrow rather than growing a second, DeFlowd-initiated HTTP
  * client for hosts nobody has asked for yet.
  *
- * `node:child_process.spawn` rather than `execa`: `packages/daemon/test/
- * spawn-chokepoint.test.ts` (KAR-07.1, docs/09-workspace-and-safety.md §1.1)
- * enforces `execa` as `git/run-git.ts`'s alone, the same way probing a vendor
- * agent binary (../../../adapters/src/probe.ts) uses raw `spawn` rather than
- * growing a second `execa` call site.
- *
- * The timeout is `clock.setTimer`, never a raw `setTimeout`:
- * `packages/daemon/test/no-timer-waits.test.ts` (KAR-06.6 AC1) allowlists
- * exactly one file — `../clock.ts` — as the one place a timer global may be
- * named, so a grace window anywhere else in the daemon goes through the
- * injected `Clock` (NF9) like every other wait in the system.
- *
- * A wedged `gh` is signalled through `killTree`, never `child.kill()`:
- * `test/one-kill-site.test.ts` (KAR-08.6 AC1) enforces exactly one process-kill
- * seam across the whole runtime tree, because `child.kill()` is execa's own
- * documented non-answer for a detached group — it signals the direct
- * subprocess only, leaving anything `gh` itself spawned running. `gh` is
- * spawned `detached: true` for the same reason every other daemon-spawned
- * child is: `killTree`'s negated-pid signal reaches a process's *group*, which
- * is only correct when that process leads its own.
+ * **How the child is spawned lives in `../gh/run-gh.ts`**, not here. KAR-22.4
+ * needed a `gh` for a second reason — the connectors screen — and a second
+ * `spawn('gh')` would have been a second door past the process-group, timeout
+ * and kill-seam rules this module was careful about. It is also what makes
+ * ADR-0003's "DeFlow never captures a login command's output" checkable: there
+ * is one call site to check.
  */
-import { killTree } from '@DeFlow/adapters';
 import type { Clock } from '@DeFlow/core';
-import { spawn } from 'node:child_process';
-import process from 'node:process';
-import { text } from 'node:stream/consumers';
+import { GH_TIMEOUT_MS, type GhInvocation, runGh } from '../gh/run-gh.ts';
 
 /** Which resolver answered — carried in `task.submitted.provenance.resolver`. */
 export const GH_RESOLVER = 'gh';
@@ -101,61 +84,6 @@ function describeFailure(exitCode: number | null, signal: string | null, stderr:
   return `gh exited ${exitCode ?? 'null'}`;
 }
 
-interface GhInvocation {
-  readonly exitCode: number | null;
-  readonly signal: NodeJS.Signals | null;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-async function runGh(
-  args: readonly string[],
-  options: Required<Pick<ResolveIssueOptions, 'clock' | 'timeoutMs'>> &
-    Pick<ResolveIssueOptions, 'env'>,
-): Promise<GhInvocation> {
-  const child = spawn('gh', [...args], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    // Its own process group, so the timeout below can negate its pid safely —
-    // see the header note on killTree.
-    detached: true,
-    env: options.env ?? process.env,
-  });
-
-  const started = new Promise<void>((resolve, reject) => {
-    child.once('spawn', resolve);
-    child.once('error', reject);
-  });
-  // Registered at spawn time, not awaited until the end: an exit landing
-  // before then must still be observed (the same reason
-  // ../../../adapters/src/probe.ts registers its own the same way).
-  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
-    child.once('exit', (code, signal) => resolve({ code, signal }));
-  });
-
-  const timer = options.clock.setTimer(options.timeoutMs, () => {
-    const pid = child.pid;
-    if (pid === undefined) return; // Not spawned yet; nothing to signal.
-    try {
-      killTree(pid, 'SIGKILL');
-    } catch {
-      // Already gone, or unsignalable — either way there is nothing more to
-      // do here; `exited` resolves from the child's own 'exit' event.
-    }
-  });
-
-  try {
-    await started;
-    // Drained to the end of the *stream*, not to 'exit': a CLI that calls
-    // process.exit right after writing can leave bytes in the pipe that
-    // 'exit' wins the race against if nothing is already consuming them.
-    const [stdout, stderr] = await Promise.all([text(child.stdout), text(child.stderr)]);
-    const { code, signal } = await exited;
-    return { exitCode: code, signal, stdout, stderr };
-  } finally {
-    timer.cancel();
-  }
-}
-
 /**
  * Resolves a `github.com` issue URL to its raw REST body.
  *
@@ -178,16 +106,21 @@ export async function resolveIssue(
   }
   const [, owner, repo, number] = match;
 
-  let result: GhInvocation;
-  try {
-    result = await runGh(['api', `repos/${owner}/${repo}/issues/${number}`], {
-      clock: options.clock,
-      ...(options.env === undefined ? {} : { env: options.env }),
-      timeoutMs: options.timeoutMs ?? 15_000,
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new IssueResolutionFailed(url, GH_RESOLVER, `gh could not be started: ${detail}`);
+  const result: GhInvocation = await runGh(['api', `repos/${owner}/${repo}/issues/${number}`], {
+    clock: options.clock,
+    ...(options.env === undefined ? {} : { env: options.env }),
+    timeoutMs: options.timeoutMs ?? GH_TIMEOUT_MS,
+  });
+
+  // A missing `gh` is a refusal here, unlike on the connectors screen where it
+  // is a state with an install link: an operator who pasted an issue URL asked
+  // a question, and the honest answer is that it could not be answered.
+  if (!result.spawned) {
+    throw new IssueResolutionFailed(
+      url,
+      GH_RESOLVER,
+      `gh could not be started: ${result.spawnError ?? 'unknown reason'}`,
+    );
   }
 
   if (result.exitCode !== 0) {

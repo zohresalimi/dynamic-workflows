@@ -81,7 +81,10 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // itself creates and are not this migration's own DDL, and
       // `artifact_fts_provenance` is the companion table that maps a search
       // hit back to its handle and sourceEvent; `project` is migration 0016's
-      // map from a name to a repository, with the realpath unique (KAR-22.1).
+      // map from a name to a repository, with the realpath unique (KAR-22.1);
+      // `connector` is migration 0017's record of which services a project may
+      // use — three columns and no credential among them (KAR-22.4, ADR-0003
+      // as amended 2026-08-16).
       expect(tables).toEqual([
         'artifact_fts',
         'artifact_fts_config',
@@ -91,6 +94,7 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         'artifact_fts_idx',
         'artifact_fts_provenance',
         'conflict_probe',
+        'connector',
         'daemon',
         'effect',
         'event',

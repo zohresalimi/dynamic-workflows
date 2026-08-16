@@ -61,6 +61,41 @@ Three consequences follow directly and are not negotiable (PRD §5.3):
    silently shadows subscription auth in Claude Code, DeFlow detects and surfaces that explicitly
    (F3.8) — the failure mode is "you thought you were on your subscription and you were being billed".
 
+## Amendment — 16 August 2026: issue-tracker credentials are named too
+
+**What changed:** nothing about the decision. What changed is the *text*, which said "provider
+credential" and meant "model credential", and was about to be read as "no tokens" by the first
+person to build a connector.
+
+EPIC-22's KAR-22.4 connects a project to GitHub so an operator can pick an issue from a list. That
+needs a GitHub credential, which is not a model credential — and the temptation at that point is to
+decide the ADR does not apply, register an OAuth application, and store a token. **It does apply,
+and the rule is followed literally rather than excepted from:**
+
+- The application that authorises GitHub is **GitHub's own — the GitHub CLI's**. DeFlow has no
+  registered OAuth application with GitHub and does not have a client id.
+- The token lives in **the GitHub CLI's own credential store** on the operator's machine (the OS
+  keyring, or `~/.config/gh/hosts.yml`, whichever `gh` itself chose), put there by `gh auth login` —
+  GitHub's own device flow, in the operator's own browser.
+- DeFlow reaches GitHub by **spawning `gh` as a child process**, on the user's own machine, under the
+  user's own OS account, using the credentials that binary already stored for itself. That is this
+  ADR's own sentence about vendor agents, unmodified.
+- DeFlow stores `(projectId, service)` and a timestamp. No token, no secret, no client id, no
+  refresh token. There is **no field anywhere in the product to paste a connector token into**, and
+  `packages/daemon/test/connector-credential-guard.test.ts` asserts the connector module's import
+  graph reads neither a model credential nor `gh`'s own store.
+
+**The rule, restated to cover both:** DeFlow never possesses a credential belonging to a third-party
+service — model provider or issue tracker. Where it needs one, it launches the service's own
+first-party binary and lets that binary use the credential it already holds.
+
+**What this costs, stated rather than hidden:** connecting is not one click. It is one click plus
+`gh auth login`, because a one-click flow requires an application DeFlow does not have. KAR-22.4's
+AC1 was amended to say so, and the connectors screen says so to the operator rather than only here.
+
+**What it would take to change this:** a superseding ADR. "The button would be nicer" is not an
+argument this amendment accepts, for the reason the Revisit-when section gives about convenience.
+
 ## Consequences
 
 ### Positive

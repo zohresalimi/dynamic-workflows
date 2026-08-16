@@ -83,6 +83,11 @@ export const API_ERROR_STATUS = {
   // confused about the shape of anything, which is exactly what 409 is for and
   // what lets the page say "you already have this one, here it is".
   project_exists: 409,
+  // KAR-22.4 — this project has no connector for the service asked about. A
+  // conflict rather than a 404: the project exists, the service exists, and the
+  // request was well formed — what is missing is the operator's consent, which
+  // is a state they can change from the connectors screen.
+  connector_not_connected: 409,
 
   // 413
   payload_too_large: 413,
@@ -103,6 +108,12 @@ export const API_ERROR_STATUS = {
   empty_text: 422,
   not_applicable: 422,
   apply_unavailable: 422,
+  // KAR-22.4 AC4 — the connector is connected and cannot serve the request:
+  // the CLI is missing, unauthorised, expired, missing a scope, or GitHub was
+  // unreachable. 422 rather than 503 for KAR-19.2's reason about retryability:
+  // no amount of waiting installs `gh` or grants a scope, and a retryable
+  // status would train a client to sit in a loop over a human's decision.
+  connector_unusable: 422,
 
   // 429
   provider_rate_limited: 429,

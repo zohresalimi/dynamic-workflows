@@ -46,6 +46,7 @@ import type {
   InterjectionMode,
   NodeId,
   NodeState,
+  ProjectId,
   RunId,
   RunState,
   TaskSpec,
@@ -63,7 +64,7 @@ import {
   sealTaskSpec,
   VerdictV2Schema,
 } from '@DeFlow/core';
-import { putBlob, runIdsForProject, type SnapshotSeq } from '@DeFlow/ledger';
+import { putBlob, readProject, runIdsForProject, type SnapshotSeq } from '@DeFlow/ledger';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,6 +73,14 @@ import { Hono } from 'hono';
 import { compress } from 'hono/compress';
 import { validator } from 'hono/validator';
 import { loadWorkspaceConfig, writeWorkspaceConfig } from '../config/workspace-config.ts';
+import {
+  type ConnectorPorts,
+  connectorViews,
+  connect as connectService,
+  disconnect as disconnectService,
+  searchIssues,
+} from '../connectors/connectors.ts';
+import { asServiceId, type ConnectorServiceId } from '../connectors/registry.ts';
 import { Git } from '../git/git.ts';
 import { respondToHumanNode } from '../human/gate.ts';
 import { interjectIntoNode } from '../human/interject.ts';
@@ -252,6 +261,44 @@ function projectNotFound(c: Context) {
   const raw = c.req.param('id') ?? '';
   return c.json(
     ...apiError('project_not_found', `no project '${raw}'`, { detail: { projectId: raw } }),
+  );
+}
+
+/**
+ * KAR-22.4 — a connector route's three questions, answered once: is the daemon
+ * up, is this a project this daemon holds, and is this a service it registers.
+ *
+ * Returned as a value rather than thrown, because the caller has to answer with
+ * a different envelope for each — and because the *repository path* the answer
+ * carries is what makes a connector per-project in the way AC5 means it: `gh`
+ * infers which repository it is talking about from the directory it runs in,
+ * so a connector on project A reads project A's issues without DeFlow parsing a
+ * git remote or storing a repository name it would then have to keep true.
+ */
+interface ConnectorProject {
+  readonly ports: ConnectorPorts;
+  readonly id: ProjectId;
+  /** The project's own working tree — see the note above on why. */
+  readonly path: string;
+}
+
+function connectorProject(c: Context): ConnectorProject | null {
+  const ports = projectPorts();
+  if (ports === null) return null;
+  const id = asProjectId(c.req.param('id') ?? '');
+  const record = id === null ? null : readProject(ports.db, id);
+  return id === null || record === null ? null : { ports, id, path: record.path };
+}
+
+/** `:service` as a registered service id, or `null`. */
+const connectorService = (c: Context): ConnectorServiceId | null =>
+  asServiceId(c.req.param('service') ?? '');
+
+/** A service this build does not register — `not_found`, naming what was asked. */
+function unknownService(c: Context) {
+  const raw = c.req.param('service') ?? '';
+  return c.json(
+    ...apiError('not_found', `no connector service '${raw}'`, { detail: { service: raw } }),
   );
 }
 
@@ -2117,6 +2164,126 @@ export const api = new Hono()
     return result.removed
       ? c.json({ id, removed: true, filesDeleted: false, message: result.message }, 200)
       : projectNotFound(c);
+  })
+
+  /**
+   * KAR-22.4 AC1 — `GET /api/projects/:id/connectors`: the connectors screen.
+   *
+   * Every registered service, whether or not it is connected, with its **live**
+   * state probed per request rather than read from a column. A stored
+   * `connected` flag would be a cache of the GitHub CLI's own credential store,
+   * and the failure it produces is a screen that is confidently wrong about
+   * whether a run will work.
+   *
+   * The response carries the whole credential statement — whose application
+   * authorises, where the token lives, who holds it, what DeFlow stores, and
+   * the operator's own revocation command — because AC1 says the *screen* says
+   * those things, and a page that composed that paragraph itself would be a
+   * second description of ADR-0003 free to drift from the first.
+   */
+  .get('/projects/:id/connectors', async (c) => {
+    if (projectPorts() === null) return notReady(c);
+    const project = connectorProject(c);
+    if (project === null) return projectNotFound(c);
+
+    return c.json({ services: await connectorViews(project.ports, project.id, project.path) }, 200);
+  })
+
+  /**
+   * KAR-22.4 AC1 — `POST /api/projects/:id/connectors/:service`: connect.
+   *
+   * **This route obtains no credential and opens no browser.** It records that
+   * this project may use this service and answers with the state that follows,
+   * which is very often "the GitHub CLI has not been authorised yet, run this
+   * command". That is the amendment to AC1, made honest: DeFlow has no
+   * registered OAuth application with GitHub, so it cannot own the
+   * authorisation button, and it says so rather than shipping one that goes
+   * nowhere.
+   */
+  .post('/projects/:id/connectors/:service', async (c) => {
+    if (projectPorts() === null) return notReady(c);
+    const project = connectorProject(c);
+    if (project === null) return projectNotFound(c);
+    const service = connectorService(c);
+    if (service === null) return unknownService(c);
+
+    return c.json(
+      { connector: await connectService(project.ports, project.id, service, project.path) },
+      201,
+    );
+  })
+
+  /**
+   * KAR-22.4 AC5 — `DELETE /api/projects/:id/connectors/:service`: disconnect.
+   *
+   * `credentialDeleted: false` is on the response as a **fact rather than as
+   * reassurance**, exactly as `filesDeleted: false` is on a project's removal:
+   * DeFlow's access was permission to spawn the operator's own `gh`, deleting
+   * the row ends it, and the credential is untouched because it is theirs. The
+   * command that does revoke it travels with the response so the page does not
+   * have to know it.
+   */
+  .delete('/projects/:id/connectors/:service', (c) => {
+    if (projectPorts() === null) return notReady(c);
+    const project = connectorProject(c);
+    if (project === null) return projectNotFound(c);
+    const service = connectorService(c);
+    if (service === null) return unknownService(c);
+
+    return c.json(disconnectService(project.ports, project.id, service), 200);
+  })
+
+  /**
+   * KAR-22.4 AC3, AC4 — `GET /api/projects/:id/connectors/:service/issues`.
+   *
+   * The composer's list. Three answers and no fourth: the issues, a `409`
+   * saying this project is not connected (and that pasting still works), or a
+   * `422` carrying the connector's own state — its sentence and its command,
+   * unmodified — so that a missing scope is discovered *here* rather than an
+   * hour into a run.
+   *
+   * `q` goes to the service, not to a filter on this side: a repository with
+   * three hundred issues must not become three hundred rows on the wire.
+   */
+  .get('/projects/:id/connectors/:service/issues', async (c) => {
+    if (projectPorts() === null) return notReady(c);
+    const project = connectorProject(c);
+    if (project === null) return projectNotFound(c);
+    const service = connectorService(c);
+    if (service === null) return unknownService(c);
+
+    const found = await searchIssues(
+      project.ports,
+      project.id,
+      service,
+      project.path,
+      (c.req.query('q') ?? '').trim(),
+    );
+
+    switch (found.outcome) {
+      case 'issues':
+        return c.json({ issues: found.issues }, 200);
+      case 'not-connected':
+        return c.json(
+          ...apiError('connector_not_connected', found.message, {
+            detail: { service },
+          }),
+        );
+      case 'unusable':
+        // The connector's own sentence, not a second one written here: the
+        // composer and the connectors screen describe one machine with one
+        // set of words (the rule KAR-22.2 AC5 makes for refusals).
+        return c.json(
+          ...apiError('connector_unusable', found.state.message, {
+            detail: {
+              service,
+              state: found.state.state,
+              action: found.state.action,
+              missingScopes: found.state.missingScopes,
+            },
+          }),
+        );
+    }
   })
 
   .get('/providers', (c) => {

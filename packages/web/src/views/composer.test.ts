@@ -46,7 +46,32 @@ interface PostedRun {
 
 interface Recorded {
   readonly posts: PostedRun[];
+  /** Every `q` the issue picker asked the connector for (KAR-22.4 AC3). */
+  readonly searches: string[];
 }
+
+interface IssueRow {
+  readonly key: string;
+  readonly title: string;
+  readonly state: string;
+  readonly url: string;
+}
+
+/** What a connected GitHub answers with, in the one issue vocabulary. */
+const ISSUES: readonly IssueRow[] = [
+  {
+    key: 'acme/checkout#41',
+    title: 'Retry the flaky worktree reaper',
+    state: 'open',
+    url: 'https://github.com/acme/checkout/issues/41',
+  },
+  {
+    key: 'acme/checkout#7',
+    title: 'Document the data directory',
+    state: 'closed',
+    url: 'https://github.com/acme/checkout/issues/7',
+  },
+];
 
 const usable = (over: Partial<PickerRow> = {}): PickerRow => ({
   id: 'mock',
@@ -77,6 +102,9 @@ interface ClientOptions {
   readonly postAnswers?: readonly ({ status: number; body: unknown } | 'network-error')[];
   /** Never resolve the first POST, so a second submit can race it. */
   readonly hangFirstPost?: boolean;
+  /** KAR-22.4 — whether this project has a connected connector. */
+  readonly connected?: boolean;
+  readonly issues?: readonly IssueRow[];
 }
 
 /**
@@ -84,7 +112,7 @@ interface ClientOptions {
  * it was asked to create.
  */
 function composerClient(options: ClientOptions = {}): ApiClient & { readonly recorded: Recorded } {
-  const recorded: Recorded = { posts: [] };
+  const recorded: Recorded = { posts: [], searches: [] };
   const answers = [...(options.postAnswers ?? [])];
   let hung = options.hangFirstPost === true;
 
@@ -95,21 +123,71 @@ function composerClient(options: ClientOptions = {}): ApiClient & { readonly rec
     providers: {
       routes: { $get: () => json(200, { providers: options.providers ?? [usable()] }) },
     },
-    projects: {
-      $get: () =>
-        json(200, {
-          projects: [
+    projects: Object.assign(
+      {
+        $get: () =>
+          json(200, {
+            projects: [
+              {
+                id: PROJECT_ID,
+                name: 'checkout',
+                path: PROJECT_PATH,
+                createdAt: '2026-08-15T10:11:12.000Z',
+                health: { state: 'ok', message: null },
+                lastRun: null,
+              },
+            ],
+          }),
+      },
+      {
+        // KAR-22.4 — the two routes the issue picker reads. A project with no
+        // connector answers the first with `connected: false`, and the composer
+        // then offers nothing but the paste box, which is AC6 in one object.
+        ':id': {
+          connectors: Object.assign(
             {
-              id: PROJECT_ID,
-              name: 'checkout',
-              path: PROJECT_PATH,
-              createdAt: '2026-08-15T10:11:12.000Z',
-              health: { state: 'ok', message: null },
-              lastRun: null,
+              $get: () =>
+                json(200, {
+                  services: [
+                    {
+                      id: 'github',
+                      label: 'GitHub',
+                      connected: options.connected === true,
+                      connectedAt: null,
+                      state: {
+                        state: 'connected',
+                        account: 'octocat',
+                        scopes: ['repo'],
+                        missingScopes: [],
+                        message: 'Connected as octocat.',
+                        action: null,
+                      },
+                      credential: {
+                        authorisedBy: '',
+                        holder: '',
+                        livesIn: '',
+                        deflowStores: '',
+                        revoke: { command: '', affects: '' },
+                      },
+                      authorisation: { command: '', url: '', whyNotOneClick: '' },
+                    },
+                  ],
+                }),
             },
-          ],
-        }),
-    },
+            {
+              ':service': {
+                issues: {
+                  $get: (args: { query?: { q?: string } }) => {
+                    recorded.searches.push(args.query?.q ?? '');
+                    return json(200, { issues: options.issues ?? ISSUES });
+                  },
+                },
+              },
+            },
+          ),
+        },
+      },
+    ),
     runs: Object.assign(
       {
         $get: () => json(200, { runs: [], cursor: null, more: false }),
@@ -579,5 +657,112 @@ suite('AC7 — the composer is reachable from anywhere in the project', () => {
     await openComposer();
     expect(one('[data-composer]')).not.toBeNull();
     expect(all('[data-provider-row]').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * KAR-22.4 AC3 — the issue input becomes a list once a connector is connected,
+ * and stays a paste box either way.
+ *
+ * The failure this guards against is the obvious one: a list that *replaces*
+ * the paste path, leaving an operator with a URL in their clipboard and a
+ * picker that does not contain it — for an issue in another repository, or in
+ * a repository DeFlow's connector cannot see.
+ *
+ * Verifies: EPIC-22-S51 · KAR-22.4 AC3, AC6 · test plan #4
+ */
+suite('EPIC-22-S51 — connected: the issue input is a searchable list', () => {
+  it('offers this project’s issues with key, title and state', async () => {
+    const client = composerClient({ connected: true });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    await expect.poll(() => all('[data-composer-issue]').length).toBe(2);
+
+    const [first] = all('[data-composer-issue]');
+    expect(first?.textContent).toContain('acme/checkout#41');
+    expect(first?.textContent).toContain('Retry the flaky worktree reaper');
+    expect(first?.textContent).toContain('open');
+  });
+
+  it('sends what was typed to the connector rather than filtering in the browser', async () => {
+    const client = composerClient({ connected: true });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    type(one('[data-composer-url]') as HTMLInputElement, 'reaper');
+    await settle();
+
+    // A repository with three hundred issues must not become three hundred
+    // rows on the wire and a filter here.
+    await expect.poll(() => client.recorded.searches).toContain('reaper');
+  });
+
+  it('picking an entry submits that issue, by the reference the service gave', async () => {
+    const client = composerClient({ connected: true });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    await expect.poll(() => all('[data-composer-issue]').length).toBe(2);
+    all('[data-composer-issue]')[0]?.click();
+    await settle();
+    one('[data-composer-submit]')?.click();
+    await settle();
+
+    await expect.poll(() => client.recorded.posts).toHaveLength(1);
+    expect((client.recorded.posts[0]?.body as { input: unknown }).input).toEqual({
+      kind: 'issue',
+      url: 'https://github.com/acme/checkout/issues/41',
+    });
+  });
+
+  it('still submits a pasted reference, connected or not', async () => {
+    const client = composerClient({ connected: true });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+    // A URL from a repository this connector never listed.
+    type(one('[data-composer-url]') as HTMLInputElement, 'https://github.com/other/repo/issues/9');
+    await settle();
+    one('[data-composer-submit]')?.click();
+    await settle();
+
+    await expect.poll(() => client.recorded.posts).toHaveLength(1);
+    expect((client.recorded.posts[0]?.body as { input: unknown }).input).toEqual({
+      kind: 'issue',
+      url: 'https://github.com/other/repo/issues/9',
+    });
+  });
+});
+
+suite('EPIC-22-S56 — with no connector, the composer is exactly what it was (AC6)', () => {
+  it('offers no list, asks the connector for nothing, and still submits a pasted reference', async () => {
+    const client = composerClient({ connected: false });
+    shell = await mountShell({ at: '/', client });
+    await openComposer();
+
+    one('[data-composer-shape="issue"]')?.click();
+    await settle();
+
+    expect(all('[data-composer-issue]')).toHaveLength(0);
+    expect(client.recorded.searches).toEqual([]);
+
+    type(
+      one('[data-composer-url]') as HTMLInputElement,
+      'https://github.com/acme/checkout/issues/1',
+    );
+    await settle();
+    one('[data-composer-submit]')?.click();
+    await settle();
+
+    await expect.poll(() => client.recorded.posts).toHaveLength(1);
   });
 });
