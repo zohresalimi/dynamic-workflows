@@ -1,0 +1,28 @@
+run <run-id> — watching; Ctrl-C detaches
+· task                submitted  from text
+? spec-approval       asking  Goal
+                              Keep the checkout module compiling.
+                              In scope
+                              - src
+                              Non-goals
+                              - Do not touch anything outside src.
+                              Constraints
+                              - (none)
+                              Acceptance criteria
+                              - ac-1: the project typechecks (verified by
+                              typecheck)
+                              Known failure modes
+                              - (none)
+                              Prior decisions
+                              - (none)
+? spec-approval       waiting for you
+    approve   Approve this spec and start planning
+    edit      Edit the spec before approving
+    reject    Reject and re-run the framing interview
+    abandon   Abandon this run
+  answer it with: deflow answer <run-id> --gate
+    spec-approval --option approve
+  or in the browser at http://127.0.0.1:<port>/runs/<run-id>
+run <run-id> waiting — the spec approval gate is open and
+  --no-wait was given
+(no cost recorded, <dur>)
