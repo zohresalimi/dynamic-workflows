@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                  |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                  |
 | **Workstream**       | W14 — added 2026-08-14, after the owner installed DeFlow by hand (see [roadmap §2.2](../../17-roadmap.md) and §2.3)                                                                                                                                                  |
-| **Size**             | ~10 days across 3 stories                                                                                                                                                                                                                                           |
+| **Size**             | ~11 days across 5 stories                                                                                                                                                                                                                                           |
 | **Depends on**       | EPIC-18 (the `bin` map, `doctor`, KAR-18.6's clean-room verifier, KAR-18.8's adapter offer, KAR-18.9's presentation layer), EPIC-19 (`DeFlow run --provider` and the live run the README's first-run section claims), EPIC-01 (the build scripts and the CI matrix)  |
 | **Blocks**           | M2's definition of done — _a colleague installs it unaided and finishes a real task_ (PRD §11). Nothing in M1 is formally blocked, and that is exactly how this went unnoticed for a year of planning                                                                |
 | **PRD requirements** | F3.1, F3.2, F3.5, NF1, NF5, NF6, NF8, AR-1; and PRD §15.6, the open naming question this epic half-closes                                                                                                                                                            |
@@ -726,6 +726,109 @@ AC3 is scoped to user-facing documentation rather than to the tree.
 
 ---
 
+### KAR-20.5 — What gets published is what was tested
+
+|                 |                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                         |
+| **Priority**    | P0                                                                                                  |
+| **Size**        | S                                                                                                   |
+| **Depends on**  | KAR-20.1 (the package name every filter and every publish command now has to use), KAR-20.4 (`REGISTRY_INSTALL_WORKS`, the one place that says whether a reader can install from the registry), EPIC-18 KAR-18.5 (`pack:check`), KAR-18.6 (`verify-install`, whose filters are one of the two holes) |
+| **PRD**         | F3.1, F3.2, NF6, NF8                                                                                |
+| **Verified by** | EPIC-20-S41, EPIC-20-S42, EPIC-20-S43, EPIC-20-S44, EPIC-20-S45, EPIC-20-S46                        |
+
+**As** anybody who installs DeFlow from npm, **I want** the published package to be the one the test
+suite proved works, **so that** `npx deflowai` does not fail on a machine where every test was green.
+
+**What happened, 2026-08-15.** `deflowai@0.1.0` was published and is broken for every user:
+
+```
+$ npx --package=deflowai -- deflow --version
+npm error code EUNSUPPORTEDPROTOCOL
+npm error Unsupported URL Type "catalog:": catalog:
+```
+
+The published manifest carries pnpm's workspace protocol unresolved:
+
+```
+dependencies         = { 'better-sqlite3': 'catalog:' }
+optionalDependencies = { '@lydell/node-pty': 'catalog:' }
+```
+
+`pnpm pack` rewrites `catalog:` to the real versions (`13.0.2`, `1.2.0-beta.14`). `npm publish` does
+not — it has no idea what `catalog:` means. The package was published with `npm publish`.
+
+**The documented release command was never the one that ran, and that is the shape of the defect.**
+[16 §2](../../16-repo-layout.md) and [ADR-0009](../../adr/0009-pnpm-workspaces-single-published-package.md)
+both say the release is `npm version patch && pnpm publish`, and `pnpm publish` would have resolved
+the protocol. Prose in four files is not a release procedure: it is four places to disagree, and
+nothing to run. AC1 replaces it with a script, because the only instruction a person cannot skip is
+one they execute.
+
+**Why every test passed anyway.** Every install test in the repository —
+`e2e/setup-install.test.ts`, `e2e/readme-first-run.test.ts`, `packages/cli/scripts/verify-install/` —
+installs from a **pnpm-packed tarball**, in which the protocol is already resolved. Nothing has ever
+exercised the artefact npm actually publishes, so the one path real users take is the one path with
+no coverage.
+
+**A second, related hole found the same day.** `packages/cli/scripts/verify-install/lib.ts` runs its
+pack checks as `pnpm --filter deflow exec publint` (and the same for `attw`). The package is
+`deflowai`, so pnpm matches no project, exits 0, and **both checks have been passing without ever
+running**. `packaging.test.ts` guards the root `pack:check` script for exactly this mistake but does
+not guard this file — so the guard was written, shipped, and pointed at one of the two places the
+mistake could be.
+
+**Acceptance criteria**
+
+1. There is one scripted way to publish, and it is the only one documented. It resolves the workspace
+   protocol, and it runs `pack:check` before it publishes rather than after.
+2. A test fails if the artefact that would be published carries any unresolved dependency specifier —
+   `catalog:`, `workspace:`, `link:` or `file:` — in `dependencies`, `optionalDependencies` or
+   `peerDependencies`.
+3. That test is proven able to fail, by staging a manifest with an unresolved specifier and observing
+   red, in the manner `build.test.ts`'s "exits non-zero on a deliberately broken exports map" already
+   establishes.
+4. `verify-install/lib.ts` selects the package by the name it is actually published under, and a
+   guard fails if any filter anywhere in the repository names a package that does not exist in the
+   workspace.
+5. `0.1.0` is dealt with deliberately: deprecated on npm with a message naming the fixed version, and
+   a fixed version published. The broken version is not left as `latest`.
+6. The README's install instruction is verified against the **published** package, not only against a
+   locally packed tarball — or, if that cannot run in the suite, the gap is written down where a
+   reader of the test will see it.
+
+**Test plan (TDD)**
+
+| #   | Level       | Test                                                                                                                                                                 | Red when                                                                                                                     |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | `unresolvedSpecifiers` reports `catalog:`, `workspace:`, `link:` and `file:` in the three published dependency blocks and ignores `devDependencies`; the workspace manifest as it stands on disk is reported, which is the 0.1.0 manifest byte for byte | The check is written against a field nobody publishes, or against a protocol list that would have let 0.1.0 through           |
+| 2   | integration | The real `pnpm pack` artefact's own `package.json`, read out of the tarball, carries no unresolved specifier                                                          | The release stops going through `pnpm pack`, or a new dependency is added in a form pnpm does not resolve                     |
+| 3   | integration | The release script's verify mode, run against a staged tarball whose manifest says `catalog:`, exits non-zero and names the package and the protocol                  | The gate is never observed failing and is therefore not a gate — the same argument `build.test.ts`'s broken exports map makes |
+| 4   | unit        | Every `--filter <name>` in the repository names a package the workspace has; asserted over the real tree **and** over a fixture naming a package that does not exist  | A rename leaves a filter behind: pnpm matches nothing, exits 0, and the step it guards has been passing without running       |
+| 5   | unit        | `pnpm release` exists, runs `pack:check` before it publishes, publishes the tarball it verified, and is the only publish command in any **fenced block** of the user-facing documentation | A second route appears — a `npm publish` a reader could copy, or a step order that lints bytes nobody shipped                 |
+| 6   | unit        | The registry install is unverified while `REGISTRY_INSTALL_WORKS` is false, and the spec says so in the assertion; flipping the flag requires a registry-install check | The flag flips on release day and the README's one-command install goes back to being checked against a local tarball only    |
+
+**Notes / risks** — AC5 is the half of this story that cannot be finished in a pull request.
+Deprecating `0.1.0` and publishing its replacement need an npm OTP the owner holds, so the repository
+work is: the version is bumped off `0.1.0`, `pnpm release` is the one command, and the two registry
+operations are named in the handover rather than performed. A story that claimed them would be the
+same defect as the one it is fixing.
+
+AC4's guard has a real false-positive risk and it is worth stating where the line is. `--filter` is
+also a literal in two places that are *about* filters rather than invocations of one: KAR-20.1's
+source guard keeps `'pnpm --filter DeFlow exec publint'` as a sample that must match, and this
+story's own spec carries fixtures naming packages that do not exist. Both are named exemptions with
+their reason beside them, and `docs/delivery/` is out of scope entirely because the authored plan
+quotes the old, broken command as history — including two paragraphs above this one.
+
+AC1's "only one documented" lands on the same boundary and is resolved the same way: the guard reads
+**fenced blocks**, not whole files. §10's new release section has to name `npm publish` in prose — it
+is the command that broke 0.1.0 and the entire reason the script exists — and a rule that forbade
+saying so would force the documentation to stop explaining itself, which is how this defect survived
+in the first place. What a reader copies is a fenced line; what a reader learns from is a sentence.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                     | Mitigation                                                                                                                                                                                                                                                                                                     |
@@ -738,6 +841,7 @@ AC3 is scoped to user-facing documentation rather than to the tree.
 | R6  | **The deprecated alias outlives its argument.** Aliases are removed by nobody.                                                                                                           | KAR-20.1 AC4 puts the removal release in the notice string **and** in a test that fails once the package version passes it. The alias expires by going red, not by being remembered.                                                                                                                           |
 | R7  | **An executed README is a slow test**, and slow tests get skipped.                                                                                                                       | KAR-20.3's clean-room execution rides KAR-18.6's existing `verify-install` job — tags and manual dispatch, not every push — and the fast half (flag cross-check, package-name cross-check, wording guard) is `unit`/`integration` and runs always.                                                              |
 | R8  | **This epic is P0 and is not on M1's critical path**, so schedule pressure will suggest it slips whole.                                                                                  | It is ~10 days, it is the cheapest epic in the plan, and it is the only one that changes whether anybody else can run the product. The reason it was never planned is the reason it must not slip again: nobody had walked the path a new user walks.                                                          |
+| R9  | **The artefact npm publishes is not the artefact anything installs in a test.** Every install spec here packs with `pnpm`, which resolves `catalog:`; `npm publish` does not, and 0.1.0 went to the registry unusable with a green suite behind it.                | KAR-20.5 AC1 makes the release a script that packs with `pnpm` and publishes *that tarball*, so the bytes checked and the bytes published are one object; AC2/AC3 fail on any unresolved specifier and are proven able to fail against a staged manifest.                                                       |
 
 ---
 

@@ -30,6 +30,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { PACKAGE_NAME } from '../../src/command-name.ts';
 import type { DoctorCheck, DoctorReport } from '../../src/index.ts';
 
 export const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -157,8 +158,17 @@ export function packGoodTarball(options: PackOptions = {}): PackedTarball {
     must('pnpm build', run('node', ['packages/cli/scripts/build.ts'], repoRoot));
   }
   if (options.skipPackCheck !== true) {
-    must('pnpm pack:check', run('pnpm', ['--filter', 'deflow', 'exec', 'publint'], repoRoot));
-    must('attw --pack', run('pnpm', ['--filter', 'deflow', 'exec', 'attw', '--pack'], repoRoot));
+    // `PACKAGE_NAME`, not a hand-typed copy of it. KAR-20.1 renamed the package
+    // to `deflowai` and these two lines kept saying `deflow`, which selects no
+    // project — pnpm then prints a line nobody reads and exits 0, so both
+    // checks passed for two stories without ever running (KAR-20.5 AC4).
+    // `checkWorkspaceFilters` is what makes that a red test rather than a
+    // discovery.
+    must('pnpm pack:check', run('pnpm', ['--filter', PACKAGE_NAME, 'exec', 'publint'], repoRoot));
+    must(
+      'attw --pack',
+      run('pnpm', ['--filter', PACKAGE_NAME, 'exec', 'attw', '--pack'], repoRoot),
+    );
   }
   const destDir = options.destDir ?? mkdtempSync(join(tmpdir(), 'DeFlow-pack-'));
   const packed = must(

@@ -43,8 +43,17 @@ at this size: Nx 23 wants plugins, a daemon and generators; moon 2.4 introduces 
 concept. Both are negative value for one developer today.
 
 **No changesets.** With one published package the entire release process is
-`npm version patch && pnpm publish`. `@changesets/cli@2.31.1` is alive and fine — it just solves
+`npm version patch && pnpm release`. `@changesets/cli@2.31.1` is alive and fine — it just solves
 multi-package coordination we deliberately do not have.
+
+**Amended 2026-08-16 (KAR-20.5).** This decision originally named the second command `pnpm publish`.
+It is now `pnpm release`, a script, and the amendment is the whole of what that story found: a
+release procedure written as prose in four files is four places to disagree and nothing to run.
+`deflowai@0.1.0` was published with `npm publish` from `packages/cli`, which sends pnpm's `catalog:`
+protocol to the registry unresolved and produces a package npm refuses to install. `pnpm release`
+builds, runs `pack:check`, packs with pnpm — which resolves the protocol — verifies the packed
+manifest, and publishes *that tarball*. The decision to have one published package is unchanged; only
+the way it leaves the machine is.
 
 Layout, package boundaries and the dependency direction rules are in
 [16-repo-layout.md](../16-repo-layout.md); the commands are in

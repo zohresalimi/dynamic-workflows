@@ -14,6 +14,7 @@
     "dev:replay": "DeFlow_DEV=1 node --watch --watch-path=packages/core --watch-path=packages/ledger --watch-path=packages/daemon --watch-path=packages/web/src packages/daemon/src/replay/main.ts happy-path-12 --speed 20x --port 7777 --dev",
     "build": "node packages/cli/scripts/build.ts",
     "pack:check": "pnpm build && pnpm --filter deflowai exec publint && pnpm --filter deflowai exec attw --pack",
+    "release": "node packages/cli/scripts/release.ts",
     "verify:install": "node packages/cli/scripts/verify-install/run.ts",
     "typecheck": "tsc -b && pnpm --filter @DeFlow/web exec vue-tsc --noEmit",
     "lint": "oxlint --type-aware && biome check . && pnpm lint:graph-facade && pnpm lint:terminal-facade",

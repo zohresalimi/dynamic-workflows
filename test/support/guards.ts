@@ -3319,3 +3319,118 @@ export function checkNoCredentialReads(files: readonly SourceFile[]): Violation[
   }
   return violations;
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-20.5 — a `pnpm --filter` that selects nothing.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The two files that write a filter down in order to be *about* filters.
+ *
+ * `test/command-name.test.ts` keeps a filter naming the pre-rename package as a
+ * sample its own KAR-20.1 pattern must match, and this story's spec carries
+ * fixtures naming packages that do not exist. Both would otherwise be the first
+ * offenders of the guard they exist to exercise. Short and named, with the
+ * reason beside them, for the same argument the epic makes about skip lists.
+ *
+ * Note the shape of the constraint in the other direction: KAR-20.1's own
+ * source guard forbids writing the capitalised literal here, so this comment
+ * cannot quote the sample it is describing. Two guards, each one the other's
+ * boundary.
+ */
+export const FILTER_SAMPLE_FILES: readonly string[] = [
+  'test/command-name.test.ts',
+  'packages/cli/test/publish-integrity.test.ts',
+];
+
+/**
+ * `--filter <name>` as a command line: a bare argument
+ * (`pnpm --filter deflowai build`) or the `=` form (`pnpm --filter=deflowai`).
+ */
+const FILTER_ON_A_COMMAND_LINE = /--filter(?:=|\s+)['"]?([^\s'"`,\])}]+)/g;
+
+/**
+ * `--filter <name>` as two elements of an argv array —
+ * `['--filter', 'deflowai', 'exec', 'publint']`.
+ *
+ * The name must be a **string literal**. `['--filter', PACKAGE_NAME, …]` is
+ * deliberately not a match: an identifier is not a name written down, it is a
+ * reference to the one place the name lives, which is the shape this guard
+ * exists to encourage. Reading it as a literal would report `PACKAGE_NAME` as a
+ * package the workspace does not have — the fix failing its own guard.
+ */
+const FILTER_IN_AN_ARGV_ARRAY = /['"]--filter['"]\s*,\s*['"]([^'"]+)['"]/g;
+
+/**
+ * What can be a package name at all. Anything else was not *written down* —
+ * `${filter}`, a `\S+` inside a regex literal, an ellipsis in prose — and a
+ * guard that cannot read a name cannot check one, which is a limitation worth
+ * stating rather than papering over.
+ */
+const PACKAGE_NAME_SHAPE = /^(?:@[A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/;
+
+export interface WrittenFilter {
+  readonly path: string;
+  readonly line: number;
+  readonly name: string;
+}
+
+/**
+ * Every filter spelled out in these files, in file and line order.
+ *
+ * TypeScript is read with whole-line comments blanked, and nothing else is.
+ * The distinction is not tidiness: a `--filter` in a `.ts` doc comment cannot
+ * run, and without blanking them the only way to document this rule would be to
+ * stop naming the thing it checks — the argument the KAR-01.4 guards above make
+ * for themselves. A `#` line in `scripts/install.sh` or a fenced block in a
+ * `.md` is the opposite case: it is an instruction to a reader, so a wrong
+ * filter there is a person about to run a command that does nothing, and it is
+ * read whole.
+ */
+export function writtenFilters(files: readonly SourceFile[]): WrittenFilter[] {
+  const found: WrittenFilter[] = [];
+  for (const file of files) {
+    const text = file.path.endsWith('.ts') ? codeOnly(file.text) : file.text;
+    for (const [index, line] of text.split('\n').entries()) {
+      for (const pattern of [FILTER_ON_A_COMMAND_LINE, FILTER_IN_AN_ARGV_ARRAY]) {
+        pattern.lastIndex = 0;
+        let match = pattern.exec(line);
+        while (match !== null) {
+          const name = match[1];
+          if (name !== undefined && PACKAGE_NAME_SHAPE.test(name)) {
+            found.push({ path: file.path, line: index + 1, name });
+          }
+          match = pattern.exec(line);
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * AC4 / EPIC-20-S44: every filter written down selects a package the workspace
+ * has.
+ *
+ * `pnpm --filter <nothing> exec publint` matches no project, prints a line
+ * nobody reads and **exits 0**, so the step it guards has been passing without
+ * running. `packages/cli/scripts/verify-install/lib.ts` did exactly that for
+ * two stories after KAR-20.1 renamed the package to `deflowai`, with
+ * `packaging.test.ts` guarding the root `pack:check` script for the identical
+ * mistake — the guard named one script rather than the property.
+ */
+export function checkWorkspaceFilters(
+  files: readonly SourceFile[],
+  workspaceNames: readonly string[],
+): Violation[] {
+  const known = new Set(workspaceNames);
+  return writtenFilters(files)
+    .filter((filter) => !known.has(filter.name))
+    .map((filter) => ({
+      where: `${filter.path}:${String(filter.line)}`,
+      message:
+        `"pnpm --filter ${filter.name}" selects no package: the workspace declares ` +
+        `${workspaceNames.join(', ')}. pnpm matches nothing, says so on a line nobody reads, and ` +
+        'exits 0 — so whatever this filter was guarding has been passing without ever running.',
+    }));
+}
