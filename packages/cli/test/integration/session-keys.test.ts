@@ -253,7 +253,18 @@ suite('a terminal that does have a keyboard is told which keys it has (AC6, AC7)
       },
     });
 
-    await until('the frame to be painted', () => (screen.frames.length > 0 ? true : null));
+    // Not `screen.frames.length > 0`: the pre-attach transcript line
+    // ("run … watching") already does one erase-render round trip of its own
+    // (`session.write` renders `[]` before the frame is ever set), and
+    // `HeadlessScreen` always records the very first `render` call it sees,
+    // content or not. Polling on "any frame at all" is therefore racing the
+    // run's own state arriving over the loopback connection — it wins often
+    // enough to look green and loses often enough to flake, which is worse
+    // than failing outright. Waiting for the hint line itself is the actual
+    // claim this spec makes, so it is what it waits for.
+    await until('the frame to be painted', () =>
+      flatten(lastFrame(screen)).includes(flatten(keyHintLine(STYLE))) ? true : null,
+    );
 
     expect(opened).toBe(1);
     expect(stdin.rawMode).toEqual([true]);
