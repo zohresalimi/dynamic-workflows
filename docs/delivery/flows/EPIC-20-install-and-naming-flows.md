@@ -97,6 +97,12 @@ Background:
 | EPIC-20-S38 | **The install section's own lines, executed in the order it prints them**                  | KAR-20.4 | Happy path  |
 | EPIC-20-S39 | The install script names the route it supports, and no host we do not serve                | KAR-20.4 | Failure     |
 | EPIC-20-S40 | A flag belongs to the program whose command line it sits on                                | KAR-20.4 | Edge case   |
+| EPIC-20-S41 | **The artefact that would be published carries no unresolved specifier**                   | KAR-20.5 | Happy path  |
+| EPIC-20-S42 | **Sabotage: a manifest that says `catalog:` turns the publish gate red**                   | KAR-20.5 | Failure     |
+| EPIC-20-S43 | One scripted way to publish, and it checks before it publishes                             | KAR-20.5 | Happy path  |
+| EPIC-20-S44 | **A filter that names no package is not a passing step**                                   | KAR-20.5 | Failure     |
+| EPIC-20-S45 | `verify-install` runs the two pack checks it has always claimed to run                     | KAR-20.5 | Failure     |
+| EPIC-20-S46 | The registry install is unverified, and the spec says so where a reader will see it        | KAR-20.5 | Edge case   |
 
 ---
 
@@ -1336,6 +1342,218 @@ allow-listing the strings would make the check blind to a real flag someone dele
 deleting the build line would put the README back to promising an install nobody can run. Attributing
 each flag to its own program is the third, and the last scenario is what stops the fix from being a
 weakening — the check still goes fully red against a help text that lists nothing.
+
+---
+
+## EPIC-20-S41 — The artefact that would be published carries no unresolved specifier
+
+**Verifies:** KAR-20.5 · **Type:** Happy path · **Automated at:** unit + integration
+
+```gherkin
+Feature: the bytes that go to the registry are the bytes that were checked
+
+  Scenario: the packed manifest, read out of the tarball
+    Given the tarball "pnpm pack" writes for packages/cli
+    When its own "package.json" is read out of it
+    Then "dependencies", "optionalDependencies" and "peerDependencies" contain no specifier
+         beginning "catalog:", "workspace:", "link:" or "file:"
+
+  Scenario: the workspace manifest is not that artefact, and is reported as such
+    Given "packages/cli/package.json" as it stands on disk
+    When the same check is applied to it
+    Then it reports "better-sqlite3" and "@lydell/node-pty"
+    And that is the manifest npm published as 0.1.0, byte for byte
+
+  Scenario: devDependencies are not the published graph
+    Given a manifest whose devDependencies are all "workspace:*"
+    When the check is applied
+    Then it reports nothing, because nobody installing the package resolves them
+```
+
+**Notes:** the second scenario is the one that keeps this honest. `catalog:` in
+`packages/cli/package.json` is **correct** —
+[ADR-0009](../../adr/0009-pnpm-workspaces-single-published-package.md) puts every shared version in
+one place and this is not it — so a check that ran against the workspace
+manifest would be demanding the wrong thing. What must be resolved is the *packed* manifest, and the
+only way to read that is to pack and open the tarball. That is also why the check does not live in
+`packaging.test.ts` beside the other manifest assertions: those read a file, this one has to produce
+an artefact first.
+
+The protocol list is four rather than one because `catalog:` was simply the one that fired. A
+`workspace:*` runtime dependency reaches the registry as a 404 on a private package, `link:` and
+`file:` as a path that exists on the publisher's machine and nowhere else. All four are the same
+mistake — a specifier only the workspace can resolve — and there is no reason to wait for the other
+three to happen.
+
+---
+
+## EPIC-20-S42 — Sabotage: a manifest that says `catalog:` turns the publish gate red
+
+**Verifies:** KAR-20.5 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: a gate nobody has seen fail is not a gate
+
+  Scenario: the staged manifest
+    Given the real packed tarball, extracted
+    And its "dependencies.better-sqlite3" set back to "catalog:"
+    And the result re-packed
+    When the release script is asked to verify that tarball
+    Then it exits non-zero
+    And it names "better-sqlite3", "catalog:" and "dependencies"
+
+  Scenario: the healthy artefact still passes the same command
+    Given the unmodified tarball
+    When the release script is asked to verify it
+    Then it exits 0
+```
+
+**Notes:** written in the manner of `packages/cli/test/integration/build.test.ts`'s "exits non-zero
+on a deliberately broken exports map", and for the same stated reason. The staged tarball is not a
+fixture invented for the test: it is the real artefact with one field put back to what
+`deflowai@0.1.0` actually shipped, so the red this scenario observes is the exact failure the story
+was opened for.
+
+Asserting on the *reason* rather than only on the exit code matters here as much as it does next
+door. A verifier that could not find the tarball at all would also exit non-zero, and would prove
+nothing.
+
+---
+
+## EPIC-20-S43 — One scripted way to publish, and it checks before it publishes
+
+**Verifies:** KAR-20.5 · **Type:** Happy path · **Automated at:** unit
+
+```gherkin
+Feature: the release is a command, not a paragraph
+
+  Scenario: it exists and it is one command
+    Given the root "package.json"
+    Then "scripts.release" runs the release script
+
+  Scenario: the order is check, pack, verify, publish
+    Given the release script
+    Then it runs "pack:check" before it packs
+    And it packs with pnpm, which is what resolves the workspace protocol
+    And it publishes the tarball it verified, rather than the working directory
+
+  Scenario: nothing else is documented as a way to publish
+    Given "README.md" and every file under "docs/" outside "docs/delivery/"
+    When their fenced code blocks are read
+    Then none of them runs "npm publish" or "pnpm publish"
+    And "pnpm release" appears in the local-development guide
+
+  Scenario: and the wrong way can still be named
+    Given the release section says which command produced the broken 0.1.0
+    Then that prose is not itself a violation, because prose is not a command
+```
+
+**Notes:** the third scenario is the acceptance criterion's word "only", made mechanical. Before this
+story the documented release was `npm version patch && pnpm publish`, written out in
+[16 §2](../../16-repo-layout.md), [02](../../02-tech-stack.md),
+[ADR-0009](../../adr/0009-pnpm-workspaces-single-published-package.md) and a comment in
+`packages/cli/tsdown.config.ts` — four copies, none executable, and the release that happened used
+none of them. Four agreeing paragraphs and one disagreeing operator is exactly the failure mode a
+script removes.
+
+`docs/delivery/` is excluded on purpose and it is not a loophole: the epics record what was done and
+why, including the command that produced the broken release, and a guard that forbade naming it
+would forbid writing this story down.
+
+---
+
+## EPIC-20-S44 — A filter that names no package is not a passing step
+
+**Verifies:** KAR-20.5 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: "pnpm --filter <nothing>" exits 0
+
+  Scenario: every filter in the repository selects something
+    Given every tracked ".ts", ".json", ".yml", ".sh" and ".md" file outside "docs/delivery/"
+    When each "--filter <name>" is collected
+    Then every name is a package the workspace declares
+
+  Scenario: the guard's own red
+    Given a fixture running "pnpm --filter deflow exec publint"
+    And a workspace whose packages are "deflowai" and "@DeFlow/web"
+    When the guard runs
+    Then it reports "deflow"
+    And it says the step has been exiting 0 without running
+
+  Scenario: a template is not a name
+    Given a line containing "pnpm --filter ${filter} exec ${binary}"
+    When the guard runs
+    Then it reports nothing, because no name was written down to check
+```
+
+**Notes:** this is `packaging.test.ts`'s existing `pack:check` assertion, generalised to the place it
+was not looking. That assertion was written for exactly this mistake during KAR-20.1's rename, and
+`packages/cli/scripts/verify-install/lib.ts` kept `--filter deflow` for another two stories with a
+green suite over it, because the guard named one script rather than the property.
+
+The third scenario is the shape of the compromise. A name assembled at runtime cannot be checked from
+here, so the guard skips anything that is not spelled out — which means the guard is about *written*
+filters and says so, rather than pretending to a coverage it does not have.
+
+---
+
+## EPIC-20-S45 — `verify-install` runs the two pack checks it has always claimed to run
+
+**Verifies:** KAR-20.5 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: the release gate's own release gate
+
+  Scenario: the filter names the published package
+    Given "packages/cli/scripts/verify-install/lib.ts"
+    Then its publint and attw invocations select the package by "PACKAGE_NAME"
+    And "PACKAGE_NAME" is the name in "packages/cli/package.json"
+
+  Scenario: it is not spelled out a second time
+    Given the same file
+    Then it contains no string literal naming the package
+```
+
+**Notes:** the fix is one identifier, and the second scenario is what stops it being one identifier
+*again* next time the name moves. `PACKAGE_NAME` already exists in
+`packages/cli/src/command-name.ts` and is already what `scripts/install.sh` and the README's own
+checks read; this file was the last place with a hand-typed copy, and the copy was wrong.
+
+Worth naming plainly: fixing this makes `packGoodTarball` actually run `publint` and `attw` for the
+first time. If either has been failing quietly all along, this story turns that red — which is the
+correct outcome and not a regression this story introduced.
+
+---
+
+## EPIC-20-S46 — The registry install is unverified, and the spec says so where a reader will see it
+
+**Verifies:** KAR-20.5 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: an admitted gap, in the file whose green would otherwise imply it is covered
+
+  Scenario: today
+    Given "REGISTRY_INSTALL_WORKS" is false
+    Then no spec installs this package from the npm registry
+    And the spec that would says so in its own assertion message
+
+  Scenario: the day it flips
+    Given "REGISTRY_INSTALL_WORKS" is true
+    Then the suite requires a check that installs from the registry
+    And it fails until one exists
+```
+
+**Notes:** the honest answer to AC6 is that this repository cannot verify a published package from
+its own test suite. Publishing needs an OTP nobody automates here, the registry is a shared mutable
+resource, and a suite that hits it is a suite that fails when npm is slow. So the gap is written
+down — and written down as a *conditional failure* rather than a comment, because a comment is what
+`verify-install`'s filters had.
+
+The second scenario is the part that makes it more than a note. `REGISTRY_INSTALL_WORKS` is already
+the one place KAR-20.4 keeps the "can a reader install this" answer; hanging the requirement off the
+same flag means the day somebody flips it, the suite asks for the check that flip implies, rather
+than going green on the strength of a local tarball.
 
 ---
 

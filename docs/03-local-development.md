@@ -550,10 +550,10 @@ artefact:
 pnpm build
 pnpm pack:check                       # publint + attw against the built package
 
-cd packages/cli && pnpm pack          # -> deflowai-0.1.0.tgz
+cd packages/cli && pnpm pack          # -> deflowai-<version>.tgz
 cd "$(mktemp -d)"
 git init -b main demo && cd demo
-npx /path/to/deflowai-0.1.0.tgz up      # the exact bytes a user would get
+npx /path/to/deflowai-<version>.tgz up  # the exact bytes a user would get
 ```
 
 What this catches that `pnpm dev` cannot:
@@ -587,6 +587,60 @@ push loop is budgeted at ten minutes and this job installs from npm twice.
 
 You are also the M2 "colleague installs it unaided" test subject, so `docs/CONTRIBUTING.md` should
 open with literally `git clone && pnpm install && pnpm dev` and be re-verified on the same cadence.
+
+### Releasing it — `pnpm release`, and nothing else
+
+**`pnpm release` is the only way this package goes to npm.** Not `npm publish`, not `pnpm publish`
+from `packages/cli`, not a remembered pair of commands. It is a script because a remembered pair of
+commands is what produced `deflowai@0.1.0`, which is on the registry and installs for nobody:
+
+```
+$ npx --package=deflowai -- deflow --version
+npm error code EUNSUPPORTEDPROTOCOL
+npm error Unsupported URL Type "catalog:": catalog:
+```
+
+Its published manifest says `"better-sqlite3": "catalog:"`. `pnpm pack` rewrites pnpm's
+workspace-catalog protocol into the version `pnpm-workspace.yaml` pins (`13.0.2`); `npm publish` has
+never heard of `catalog:` and uploads the field verbatim. Every install spec in this repository
+installs a *pnpm-packed* tarball, in which the protocol is already resolved — so the artefact npm
+serves had no coverage at all, and a fully green suite shipped a package nobody could install.
+
+```bash
+cd packages/cli && npm version patch --no-git-tag-version   # or minor/major
+cd ../.. && pnpm release                                    # npm will ask for the OTP
+```
+
+`--no-git-tag-version` because the tag belongs to the repository, not to one package inside it, and
+`npm version` in a subdirectory of a pnpm workspace would tag the whole tree for a version that only
+`packages/cli` carries. Commit the bump, then tag the commit if you want one.
+
+What it does, in this order, because every other order is wrong:
+
+1. **`pack:check`** — build, then `publint` and `attw --pack`. Before anything leaves the machine;
+   afterwards they would be linting bytes nobody can un-ship.
+2. **`pnpm pack`** — this is the step that resolves `catalog:` and `workspace:`.
+3. **verify** — open that tarball and read the manifest npm would serve. `dependencies`,
+   `optionalDependencies` and `peerDependencies` must contain no `catalog:`, `workspace:`, `link:`
+   or `file:`. `packages/cli/test/integration/publish-artefact.test.ts` runs this against the real
+   artefact on every integration run, and against a deliberately broken one to prove it can fail.
+4. **`npm publish <that tarball>`** — the bytes that were checked are the bytes that go up. There is
+   no second packing step in which they could differ.
+
+`pnpm release --dry-run` runs 1–3 and prints the tarball path. `pnpm release --verify <tgz>` runs
+step 3 alone against a tarball you already have.
+
+**`0.1.0` needs deprecating and this script does not do it**, on purpose — it is a one-off against
+the registry with no artefact to check, and wrapping it would suggest the script is where to think
+about it:
+
+```bash
+npm deprecate deflowai@0.1.0 \
+  "Broken: the published manifest carries pnpm's unresolved catalog: protocol and npm refuses it. Use 0.1.1 or later."
+```
+
+Both commands need an npm one-time password. `--otp <code>` passes one straight through to
+`npm publish` for the non-interactive case.
 
 ---
 

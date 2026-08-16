@@ -54,8 +54,10 @@ can drift (D5). The lockfile is committed and CI installs with `--frozen-lockfil
 | `@arethetypeswrong/cli` | `0.18.5`  | exact             | Release gate: catches type-resolution breakage in the tarball                                        |
 | `turbo`                 | `2.10.8`  | **not installed** | Add only when `pnpm -r typecheck` exceeds ~20 s locally. Drop-in `turbo.json`, no code changes       |
 
-No Nx, no moon, no changesets. With exactly one published package (`deflow`), release is
-`npm version patch && pnpm publish` (D5).
+No Nx, no moon, no changesets. With exactly one published package (`deflowai`), release is
+`npm version patch && pnpm release` (D5) — one script, because the release that used a different
+command shipped an uninstallable 0.1.0. See
+[03-local-development.md §10](./03-local-development.md).
 
 ## 3. Daemon core
 

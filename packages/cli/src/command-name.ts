@@ -152,6 +152,45 @@ export const REGISTRY_INSTALL_WORKS = false;
 export const REGISTRY_INSTALL_COMMAND = `npx --yes --package=${PACKAGE_NAME} -- ${COMMAND} setup`;
 
 /**
+ * The specs that install this package **from the npm registry** (KAR-20.5 AC6).
+ *
+ * It is empty, and the emptiness is the finding. Every install spec in this
+ * repository — `e2e/setup-install.test.ts`, `e2e/readme-first-run.test.ts`,
+ * `packages/cli/scripts/verify-install/` — installs a locally packed tarball,
+ * and a pnpm-packed one at that, in which `catalog:` is already resolved. The
+ * artefact npm serves has never been exercised by anything here, which is
+ * precisely how 0.1.0 shipped uninstallable behind a green suite.
+ *
+ * Closing it inside the suite is not free and is not obviously right: it needs
+ * something published (an OTP nobody automates here), it makes the tests depend
+ * on a shared mutable resource, and it goes red when npm is slow rather than
+ * when this repository is wrong. So the gap is *declared* rather than papered
+ * over — and declared as a value the suite asserts on, because a comment is
+ * exactly what `verify-install`'s filters had.
+ *
+ * `packages/cli/test/publish-integrity.test.ts` requires this list to be empty
+ * while `REGISTRY_INSTALL_WORKS` is false, and to name at least one existing
+ * spec the moment it is true. Flipping the flag therefore asks for the check
+ * the flip implies instead of accepting a local tarball as evidence.
+ */
+export const REGISTRY_INSTALL_VERIFIED_BY: readonly string[] = [];
+
+/**
+ * Versions of this package that reached the registry broken (KAR-20.5 AC5).
+ *
+ * `0.1.0` went up on 2026-08-15 with `"better-sqlite3": "catalog:"` in its
+ * manifest and installs for nobody: npm answers `EUNSUPPORTEDPROTOCOL`. It
+ * cannot be unpublished usefully and it must not be republished, so the version
+ * in `packages/cli/package.json` is checked against this list — `pnpm release`
+ * from this tree cannot be another 0.1.0.
+ *
+ * Deprecating it on the registry is the other half and is not something this
+ * repository can do: `npm deprecate` needs the owner's OTP. The command is in
+ * `docs/03-local-development.md` §10 beside the release procedure.
+ */
+export const BROKEN_RELEASES: readonly string[] = ['0.1.0'];
+
+/**
  * The short alias, installed plainly beside `COMMAND` (owner's decision,
  * 2026-08-15).
  *

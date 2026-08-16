@@ -97,7 +97,7 @@ Three notes on that config, each of which cost a build to find (KAR-18.5):
 - **`clean` names files, not the directory.** The UI arrives in `dist/ui/` between the two build
   steps; `clean: true` deletes it and the symptom is a daemon that starts and serves a blank page.
 
-This deletes the entire multi-package versioning problem. There are no changesets, no release orchestration, no inter-package semver ranges to keep honest: the release is `npm version patch && pnpm publish`. `@changesets/cli@2.31.1` is alive and fine, but it solves coordination you deliberately do not have. (pnpm 11.13+ also ships native release management — `pnpm change`, `pnpm version -r`, `pnpm lane`, configured under a `versioning:` key — which would be the thing to reach for if `@DeFlow/*` ever do get published separately. **Unverified**: confirm the exact command surface against pnpm's docs before adopting.)
+This deletes the entire multi-package versioning problem. There are no changesets, no release orchestration, no inter-package semver ranges to keep honest: the release is `npm version patch && pnpm release` — one script rather than a remembered command, for the reason in [03-local-development.md §10](./03-local-development.md). `@changesets/cli@2.31.1` is alive and fine, but it solves coordination you deliberately do not have. (pnpm 11.13+ also ships native release management — `pnpm change`, `pnpm version -r`, `pnpm lane`, configured under a `versioning:` key — which would be the thing to reach for if `@DeFlow/*` ever do get published separately. **Unverified**: confirm the exact command surface against pnpm's docs before adopting.)
 
 D17 calls `@DeFlow/mock-agent` a first-class shipped package. "Shipped" means it ships **inside the `deflow` tarball as a second bin** (`deflow-mock-agent`), not that it is published separately. Users need it for `deflow doctor`, offline demos and reproducing bug reports; that does not require its own npm entry.
 
@@ -118,7 +118,7 @@ script rather than three `&&`-joined commands, because the order is the load-bea
 `--out-dir` flag lets `packages/cli/test/integration/build.test.ts` run the real thing rather than a
 re-implementation of it.
 
-UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/deflowai-0.1.0.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
+UI assets ship as **plain files** in the tarball, never bundled into JS, and are resolved at runtime with `fileURLToPath(new URL('./ui', import.meta.url))`. `packages/cli/package.json` needs `"files": ["dist"]`; verify the real install with `pnpm pack && cd $(mktemp -d) && npx /path/deflowai-<version>.tgz up`, plus `publint@0.3.22` and `@arethetypeswrong/cli@0.18.5` in the release script. A missing `files` entry is the classic "works locally, broken on npm" failure.
 
 ---
 

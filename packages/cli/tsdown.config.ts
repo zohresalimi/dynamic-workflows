@@ -7,7 +7,9 @@ import { defineConfig } from 'tsdown';
  * into the output is not a slow import — it is a 404 from npm on someone else's
  * machine. Inlining them deletes the whole multi-package versioning problem:
  * no changesets, no inter-package semver, and a release that is
- * `npm version patch && pnpm publish`.
+ * `npm version patch && pnpm release` (docs/03-local-development.md §10 — the
+ * second command is a script rather than `pnpm publish`, because the release
+ * that used a remembered command shipped an uninstallable 0.1.0).
  *
  * **Option names.** docs/16 §2 writes this as `noExternal: [/^@DeFlow\//]` and
  * `external: ['@lydell/node-pty']`. Both spellings are deprecated in

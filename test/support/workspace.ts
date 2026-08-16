@@ -2,11 +2,13 @@
  * Reads the real workspace off disk so the guards in ./guards.ts can be applied
  * to it. Nothing here asserts; it only loads.
  */
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import type { Manifest, PackageJson, SourceFile, TsconfigFile } from './guards.ts';
+import { FILTER_SAMPLE_FILES } from './guards.ts';
 
 export const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -44,6 +46,36 @@ export function readYaml<T>(repoRelativePath: string): T {
 /** Every GitHub Actions workflow file, repo-relative. */
 export function workflowFiles(): string[] {
   return walk('.github/workflows', (path) => path.endsWith('.yml') || path.endsWith('.yaml'));
+}
+
+/**
+ * Every tracked text file from which a `pnpm --filter` could actually be run
+ * (KAR-20.5 AC4) — sources, manifests, workflows, shell scripts and the
+ * user-facing documentation that tells a reader to type one.
+ *
+ * Tracked rather than walked, because that is exactly the set which reaches a
+ * CI runner. Two exclusions, both deliberate:
+ *
+ *   * `docs/delivery/` — the authored plan quotes the broken command as
+ *     history. EPIC-20's own story for this defect names `pnpm --filter deflow`
+ *     twice while explaining it, and a guard that forbade that would forbid
+ *     writing the story down.
+ *   * `FILTER_SAMPLE_FILES` — the two specs that write a filter down in order
+ *     to be about filters. See the constant for which and why.
+ */
+export function filterCommandFiles(): string[] {
+  const extensions = ['.ts', '.json', '.yml', '.yaml', '.sh', '.md'];
+  const samples = new Set(FILTER_SAMPLE_FILES);
+  return execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' })
+    .split('\0')
+    .filter(
+      (path) =>
+        path !== '' &&
+        !path.startsWith('docs/delivery/') &&
+        !samples.has(path) &&
+        extensions.some((extension) => path.endsWith(extension)),
+    )
+    .sort();
 }
 
 /** Every file under docs/, which AC8's corepack grep has to cover in full. */
