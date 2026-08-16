@@ -23,6 +23,22 @@
  * a spec that spells its own copy of a message passes on the day the message
  * changes and the operator's terminal starts saying something else.
  *
+ * > **Amended 2026-08-16, while repairing KAR-21.5.** These four were
+ * > intermittent: on a loaded machine one of them — a different one each time —
+ * > hung to its full timeout, and three neighbouring files this story does not
+ * > touch went red beside it. The cause was neither here nor timing. Each spec
+ * > appends `run.completed` the moment the CLI's first line reaches the
+ * > terminal, and when the machine is slow enough that the append lands
+ * > *inside* the CLI's hydrate, the command reaches its verdict before
+ * > `followRun` has handed the connection back — which `run.ts` then closed
+ * > through a binding still holding `null`. The socket stayed open, the process
+ * > never exited, and one two-minute hang starved the whole slice. That is a
+ * > real leak, which any `deflow run --attach` on a finished run reproduces
+ * > with no load at all: `run-attach-concluded.test.ts` is where it is now
+ * > pinned, red-first, and `run.ts` closes the stream through one flag that is
+ * > set whether or not the connection exists yet. Nothing here was changed to
+ * > accommodate it — these four assert exactly what they always asserted.
+ *
  * Verifies: EPIC-21-S39, EPIC-21-S40, EPIC-21-S43, EPIC-21-S44 · AC3, AC4,
  * AC7, AC8 · test plan #3, #4, #7, #8
  */
@@ -170,21 +186,32 @@ suite('EPIC-21-S40 — a resized window re-lays the frame out (AC4)', () => {
     await untilOnPtyProcess('the first frame to be drawn', live, () =>
       cursorSequences(live?.output() ?? '').length > 0 ? true : null,
     );
-    const before = live.output().length;
-
     live.resize(40, 24);
 
     // The repaint that follows a SIGWINCH is the one under test. It arrives
     // with no event behind it, which is the common case and the one a session
-    // that only re-laid out on the next event would fail.
-    await untilOnPtyProcess('a repaint after the resize', live, () =>
-      cursorSequences((live?.output() ?? '').slice(before)).length > 0 ? true : null,
-    );
+    // that only re-laid out on the next event would fail — so what is waited
+    // for is the terminal going quiet, not an event pushing a frame out.
+    await untilQuiet(live);
 
-    const afterResize = live.output().slice(before);
-    // Every printable line the terminal received after the resize fits 40
-    // columns, or is a single token that could not be broken (KAR-18.9 AC4).
-    for (const line of visibleLines(afterResize)) {
+    // What is *on screen* is the last frame written, and that is the whole of
+    // what this asserts. "Everything since the resize" was the wrong window and
+    // made this spec intermittent: a repaint already in flight when SIGWINCH
+    // arrived is laid out at the **old** width and is correct to be — AC4 and
+    // `render/screen.ts`'s `resize` both say the new width applies from the
+    // next frame on — so including it failed the spec on documented behaviour,
+    // whenever the machine was slow enough for one to be in flight.
+    const onScreen = lastFrame(live.output(), RUN_ID);
+    // Non-vacuity, twice over: nothing to measure would satisfy every width
+    // assertion below, and so would a frame that was only its own top row.
+    expect(onScreen, 'no frame was ever drawn, so there is nothing to re-lay out').not.toBeNull();
+    expect(
+      visibleLines(onScreen ?? '').length,
+      'the frame on screen was one row, which is not a frame',
+    ).toBeGreaterThan(1);
+    // Every printable line of it fits 40 columns, or is a single token that
+    // could not be broken (KAR-18.9 AC4).
+    for (const line of visibleLines(onScreen ?? '')) {
       if (line.length <= 40) continue;
       expect(line.trim().split(/\s+/), `"${line}" ran off a 40-column window`).toHaveLength(1);
     }
@@ -259,4 +286,52 @@ function visibleLines(text: string): string[] {
   return visibleText(text)
     .split('\n')
     .filter((line) => line.trim() !== '');
+}
+
+/**
+ * The frame the terminal is currently showing, or `null` if none was drawn.
+ *
+ * Found by its **first line** — the run id with its status, which is the frame's
+ * top row (KAR-21.1 AC4) — rather than by the erase that precedes a repaint.
+ * The erase looks like the obvious boundary and is not one: a transcript line
+ * is emitted by rendering `[]`, writing the line and rendering the frame again,
+ * and by then the screen is occupying zero rows, so `eraseRows(0)` writes
+ * nothing at all and that frame arrives with no erase in front of it. Anchoring
+ * on the last erase therefore swept the transcript line in with the frame, and
+ * a gate announcement printed at 80 columns — correctly, before the window ever
+ * changed size — read as a frame row that had run off the edge.
+ *
+ * The last occurrence is the frame's, because the frame is the last thing a
+ * settled session writes; the same text earlier in the transcript is the
+ * command's opening line, and it is only reachable here if no frame was ever
+ * drawn — which the caller checks for.
+ */
+function lastFrame(transcript: string, runId: string): string | null {
+  const top = `run ${runId}`;
+  const start = transcript.lastIndexOf(top);
+  return start < 0 ? null : transcript.slice(start);
+}
+
+/**
+ * Waits until the terminal has received nothing at all for `quietMs`.
+ *
+ * The right anchor for a claim about what is *on screen*, and the reason this
+ * exists rather than "wait for one more repaint": a repaint that was already in
+ * flight when the window changed size is still on its way, and a spec that
+ * measured the first thing to arrive after the resize would measure that one.
+ * Quiet means the session has finished reacting and the last frame written is
+ * the frame an operator would be looking at.
+ */
+async function untilQuiet(live: PtyProcess, quietMs = 1_000): Promise<void> {
+  let seen = -1;
+  let unchangedSince = Date.now();
+  await untilOnPtyProcess('the terminal to stop being written to', live, () => {
+    const length = live.output().length;
+    if (length !== seen) {
+      seen = length;
+      unchangedSince = Date.now();
+      return null;
+    }
+    return Date.now() - unchangedSince >= quietMs ? true : null;
+  });
 }

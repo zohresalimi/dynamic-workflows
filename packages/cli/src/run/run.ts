@@ -527,7 +527,32 @@ async function execute(
     ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
   });
 
+  /**
+   * The event stream this command opened, and whether anything has asked yet
+   * for it to be closed.
+   *
+   * The flag is not defensive. **Both orderings genuinely happen**, and a bare
+   * `following?.close()` is silently a no-op in one of them: `followRun`
+   * hydrates *before* it hands the connection back, so a run that is already
+   * over when this command attaches reaches its terminal verdict inside the
+   * hydrate — the close then runs on a `following` that is still `null`, and
+   * the connection that arrives a microtask later is closed by nobody. An open
+   * socket keeps the runtime's loop alive and `bin.ts` deliberately sets
+   * `process.exitCode` rather than forcing an exit, so the command prints its
+   * verdict and then sits there for as long as anyone lets it.
+   * `deflow run --attach` on a finished run reproduces it every time, and
+   * `test/integration/run-attach-concluded.test.ts` is where it is pinned.
+   *
+   * The Ctrl-C path had the second half of the same asymmetry and its own check
+   * for it — a press before the stream opened had nothing to close. One flag
+   * now covers both, which is one rule rather than two that have to agree.
+   */
   let following: FollowRunResult | null = null;
+  let streamClosed = false;
+  const closeStream = (): void => {
+    streamClosed = true;
+    following?.close();
+  };
 
   // KAR-18.3 AC3, and KAR-21.2 AC5: **one** implementation of what Ctrl-C means,
   // reached from both the signal and the decoded byte. In raw mode the terminal
@@ -539,9 +564,7 @@ async function execute(
     runId,
     out,
     stderr: options.stderr,
-    closeStream: () => {
-      following?.close();
-    },
+    closeStream,
     cancel: () => cancelRun(runId, endpoint),
     sleep,
     ...(options.detachWindowMs === undefined ? {} : { windowMs: options.detachWindowMs }),
@@ -679,12 +702,14 @@ async function execute(
     onState: repaint,
     onFollowing: (opened) => {
       following = opened;
-      // A Ctrl-C that landed before the stream was open still detaches: the
-      // press already printed its sentence, and this closes what it could not.
-      if (interrupt.pressed()) opened.close();
+      // A close asked for before the stream existed is honoured here, where
+      // there is finally something to close: a Ctrl-C that landed before the
+      // stream was open still detaches — the press already printed its sentence
+      // — and a verdict reached during the hydrate still ends the command.
+      if (streamClosed) opened.close();
     },
   }).then(async (result): Promise<number> => {
-    following?.close();
+    closeStream();
     // The tail is drained before the verdict is printed: the last bytes of a
     // node are produced in the same instant as the event that ends it, and the
     // end of the output is the part that says what happened.
