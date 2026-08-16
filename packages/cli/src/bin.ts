@@ -32,6 +32,7 @@ import { deprecationNotice } from './command-name.ts';
 import { askOn, runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
+import { createScreen } from './render/screen.ts';
 import { processStyle } from './render/style.ts';
 import { runRun } from './run/run.ts';
 import { parseSetupArgs, runSetup } from './setup/index.ts';
@@ -420,6 +421,15 @@ async function main(argv: readonly string[]): Promise<number> {
       // live transcript.
       isTty: () => process.stdout.isTTY === true,
       style: STYLE,
+      // KAR-21.1 AC8 — the live region, opened here and only here. `runRun`
+      // calls this when stdout is a terminal and `--json` was not given, so a
+      // pipe, a CI log and a machine-readable stream construct no screen at
+      // all rather than constructing one that writes nothing.
+      openScreen: () =>
+        createScreen({ width: STYLE.width, write: (chunk) => process.stdout.write(chunk) }),
+      // AC7's row budget. The width half already came from STYLE; this is the
+      // other half of the same window, and it is read once, here.
+      terminalRows: process.stdout.rows,
     });
   }
 

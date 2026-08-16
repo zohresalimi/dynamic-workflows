@@ -149,8 +149,15 @@ export function formatCost(cost: RenderedCost): string {
   return parts.length === 0 ? 'no cost recorded' : parts.join(', ');
 }
 
-/** The column the second word starts at, so the statuses line up. */
-const NODE_COLUMN = 22;
+/**
+ * The column the second word starts at, so the statuses line up.
+ *
+ * Exported for KAR-21.1's session frame, which sits directly beneath this
+ * transcript: two column schemes on one screen read as two screens, so the
+ * frame lays its node rows out at this column rather than choosing one of its
+ * own.
+ */
+export const NODE_COLUMN = 22;
 
 interface Line {
   readonly glyph: TranscriptGlyph;

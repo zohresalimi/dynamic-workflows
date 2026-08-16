@@ -49,7 +49,8 @@ import {
 } from '@DeFlow/daemon';
 import process from 'node:process';
 import { createRun, type FollowRunResult, followRun, RunTaskRejected } from '../index.ts';
-import type { Style } from '../render/style.ts';
+import type { Screen } from '../render/screen.ts';
+import { createStyle, type Style } from '../render/style.ts';
 import type { ProviderChoice, RunArgs } from './args.ts';
 import { parseRunArgs } from './args.ts';
 import { cancelRun } from './cancel.ts';
@@ -63,6 +64,8 @@ import {
 } from './exit-codes.ts';
 import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
+import { createSession, type Session } from './session/session.ts';
+import { DEFAULT_ROWS, initialSessionState } from './session/state.ts';
 
 /** How long a second Ctrl-C has to arrive before the detach stands (AC3). */
 export const DETACH_WINDOW_MS = 3_000;
@@ -98,6 +101,24 @@ export interface RunCommandOptions {
    * without a process.
    */
   readonly onInterrupt?: (handler: () => void) => () => void;
+  /**
+   * KAR-21.1 AC8 — opens the region the live frame is drawn in, or is absent.
+   *
+   * A **factory** rather than a `Screen`, because the claim AC8 makes is that
+   * on a pipe no screen is *constructed* — which a spec can only observe if
+   * constructing one is something this file decides to do. `bin.ts` passes one
+   * that writes to `process.stdout`; a spec passes one that records.
+   *
+   * It is called only when stdout is a terminal and `--json` was not given.
+   * `--json`'s consumer is a parser, and a repaint is not something a parser
+   * can be asked to skip.
+   */
+  readonly openScreen?: (() => Screen) | undefined;
+  /**
+   * The terminal's height, for AC7's row budget — passed, never derived, for
+   * the same reason `Style.width` is (KAR-18.9 AC7).
+   */
+  readonly terminalRows?: number | undefined;
   /** Test seams for the autostart; see `./daemon.ts`. */
   readonly execPath?: string;
   readonly binPath?: string;
@@ -182,6 +203,9 @@ async function watch(options: {
   /** KAR-19.4 AC3 — every control event is offered here too, so the agent's
    * own bytes reach the terminal while its node is still running. */
   readonly io: IoFollower;
+  /** KAR-21.1 — the reduced state after each event, for the live frame. The
+   * projection is folded here already; a second fold would be a second answer. */
+  readonly onState?: ((state: RunState) => void) | undefined;
 }): Promise<Watched> {
   let state = initialRunState();
   let rendered = 0;
@@ -216,6 +240,8 @@ async function watch(options: {
       } else if (gate === null) {
         announcedGate = null;
       }
+
+      options.onState?.(state);
 
       const verdict = classifyRun(state, { noWait: options.noWait });
       if (verdict.terminal) {
@@ -303,7 +329,45 @@ async function execute(
     baseUrl: endpoint.baseUrl,
     ...(options.style === undefined ? {} : { style: options.style }),
   });
-  if (!args.json) options.stdout(`run ${runId} — watching; Ctrl-C detaches\n`);
+
+  /**
+   * KAR-21.1 AC8 — the live region, or nothing at all.
+   *
+   * Three conditions, and every one of them is a decision this file already
+   * owns: stdout has to be a terminal, the caller has to have handed over a way
+   * to open one, and `--json` has to be absent — that stream's consumer is a
+   * parser and a repaint is not something a parser can be asked to skip. On a
+   * pipe, in CI and under `--json` nothing is constructed, so there is no
+   * screen to have written a byte.
+   */
+  const screen =
+    !args.json && options.isTty() && options.openScreen !== undefined ? options.openScreen() : null;
+  const session: Session | null =
+    screen === null
+      ? null
+      : createSession({
+          screen,
+          stdout: options.stdout,
+          style: options.style ?? createStyle({ isTty: false, env: {} }),
+        });
+
+  /**
+   * AC6 — every transcript byte in this command goes through here.
+   *
+   * With no session it *is* `options.stdout`, so the non-interactive path is
+   * not merely equivalent to what it was, it is the same function. With one, it
+   * is the erase-write-repaint sandwich, and the bytes in the middle are
+   * untouched.
+   */
+  const out = session === null ? options.stdout : (chunk: string) => session.write(chunk);
+
+  /** The session's own state, held here rather than in a module (AC9). */
+  const sessionState = { ...initialSessionState(), rows: options.terminalRows ?? DEFAULT_ROWS };
+  const repaint = (state: RunState): void => {
+    session?.update(state, { ...sessionState, nowMs: clock.now() });
+  };
+
+  if (!args.json) out(`run ${runId} — watching; Ctrl-C detaches\n`);
 
   // KAR-19.10 AC4 — before the first turn, and before anything is watched: one
   // line naming the provider, the resolved binary and the route. The sentence
@@ -311,7 +375,7 @@ async function execute(
   // fields beside it, because nothing downstream should have to parse prose to
   // learn which agent a run is on.
   if (announced !== null) {
-    options.stdout(
+    out(
       args.json
         ? `${JSON.stringify({
             type: 'provider',
@@ -326,7 +390,7 @@ async function execute(
     // AC7 — and what this machine will not be able to do, said now rather than
     // at the first agent node three minutes later.
     if (announced.limitation !== null && !args.json) {
-      options.stdout(`${announced.limitation}\n`);
+      out(`${announced.limitation}\n`);
     }
   }
 
@@ -339,7 +403,7 @@ async function execute(
     baseUrl: endpoint.baseUrl,
     token: endpoint.token,
     onChunk: (node, chunk) => {
-      options.stdout(renderer.io(node, chunk));
+      out(renderer.io(node, chunk));
     },
     ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
   });
@@ -354,7 +418,7 @@ async function execute(
       if (presses === 1) {
         // The viewer stops; the run does not. Printed before anything is
         // awaited, so the sentence is on screen while the window is open.
-        options.stdout(detachSentence(runId));
+        out(detachSentence(runId));
         following?.close();
         void sleep(options.detachWindowMs ?? DETACH_WINDOW_MS).then(() => {
           if (presses === 1) {
@@ -382,10 +446,11 @@ async function execute(
     runId,
     endpoint,
     renderer,
-    stdout: options.stdout,
+    stdout: out,
     stderr: options.stderr,
     noWait: args.noWait,
     io,
+    onState: repaint,
     onFollowing: (opened) => {
       following = opened;
       // A Ctrl-C that landed before the stream was open still detaches: the
@@ -398,6 +463,10 @@ async function execute(
     // node are produced in the same instant as the event that ends it, and the
     // end of the output is the part that says what happened.
     await io.close();
+    // AC6 — the frame comes down before the verdict goes out, so the last line
+    // a run leaves behind is its verdict rather than a footer describing a run
+    // that has already ended.
+    session?.close();
     const totals = {
       costUsd: result.state.budget.run.costUsd,
       wallclockMs: clock.now() - startedAt,
@@ -415,6 +484,7 @@ async function execute(
     // decided.
     interrupted.then(async (code) => {
       await io.close();
+      session?.close();
       return code;
     }),
   ]);
