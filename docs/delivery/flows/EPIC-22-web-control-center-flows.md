@@ -895,6 +895,59 @@ Feature: the epic's own acceptance, performed rather than asserted
 **Notes:** a green suite is not evidence for this scenario. EPIC-19 exists because roughly ten
 thousand tests passed while a live run did nothing.
 
+### Performed — 2026-08-16
+
+Level: **browser**. Real Chromium (Playwright 1.62, headless, 1440×900) driving the UI the daemon
+serves; the daemon was the built artefact (`pnpm build`, then
+`node packages/cli/dist/bin.mjs up --no-open --port 7891` with `DeFlow_DATA_DIR` pointed at a
+scratch directory). The project was a throwaway git repository at `/tmp/s33-scratch/repo` — one
+commit, a README, nothing else. Both were deleted afterwards, and no `deflow up` process was left
+behind.
+
+What was exercised, and what was seen:
+
+- **A project was created from `/projects`.** Name and path typed into the form, `Create project`
+  clicked; the row appeared as `s33-scratch · /private/tmp/s33-scratch/repo` — stored post-`realpath`
+  as KAR-22.1 says — linking to `/projects/prj_20260816T080723Z_24f51a`.
+- **A run was started from the composer** on the project workspace, with `mock` chosen in the
+  adapter picker (the picker listed all six providers with their per-route reasons; only `claude`
+  and `mock` were usable on this machine). Clicking `Start run` navigated straight to
+  `/runs/run_20260816T080816Z_857a35` — **no run id was typed anywhere**.
+- **It progressed.** Within six seconds of submission the page showed the framed spec and the
+  `spec-approval` gate waiting, with the whole `DeFlow.taskspecdraft.v1` document readable above the
+  four options.
+- **The gate was answered in the page.** `approve` was clicked. No navigation and no reload
+  occurred (main-frame navigations after the click: zero), and within five seconds the gate panel
+  was gone and the compiled plan had rendered.
+- **Graph, board and history all showed it.** Graph: three nodes, `implement → verify → review`,
+  with edges and per-node state. Board (`Show the node table`): the same three rows with step, type,
+  state, agent, model, permission, elapsed and cost. History: one entry —
+  *"Carry out the submitted task in this repository, and leave it green." · aborted · 8/16/2026,
+  10:08:16 AM*.
+- **The run reached a terminal state.** `implement` passed, `verify` passed, and the trailing
+  `review` gate failed: the scratch repository carries no gate definition, so the ledger recorded
+  *"no gate definition resolved for review — a gate that does not run is a milestone advancing on a
+  verdict nobody produced"* and the run ended `aborted`. The mock agent edits nothing, so this is
+  the honest outcome for a bare repository rather than a broken pipeline — `e2e/smoke` gets a
+  completed run only because its harness writes `.DeFlow/gates/typecheck.yaml` first.
+
+Two things a human should still eyeball, both found while performing this and neither fixed here:
+
+1. **A fresh daemon lists a run nobody started.** On a brand-new data directory, `GET /api/runs`
+   and the browser's run list show one run — status `created`, *"submitted — waiting to be framed"*
+   — which never progresses. It is the boot-time provider probe: `probeProvidersOnBoot` mints a real
+   run id for its `provider.probed` events, and the run list derives runs from event `run_id`s
+   rather than from `run.created`. `api.ts`'s own comment on the `/providers/doctor` route states
+   the opposite intent ("nothing appends `run.created` for it, so it never becomes a run"). It is
+   the first thing a new operator sees.
+2. **The browser never says why a run failed.** The failure message above is in the ledger, but
+   the workspace shows only `Failed` on the node and `aborted` in history; clicking the failed node
+   changes nothing on the page, and `/runs/:runId` on its own shows no run-level status at all.
+   An operator who stays in the browser cannot learn the reason.
+
+Cosmetic, worth a look but not filed: the graph node cards clip their own body text at 1440 px, and
+the node table's right-hand columns need horizontal scroll at that width.
+
 ---
 
 ## EPIC-22-S34 — Happy path: the project route shows its active run live
