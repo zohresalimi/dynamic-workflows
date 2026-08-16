@@ -25,20 +25,62 @@ export type SessionFocus = 'transcript' | 'plan' | 'gate';
  *
  * `kind` is carried rather than inferred so KAR-21.3's gate answer and
  * KAR-21.4's interjection can share the row without either having to guess
- * which one is open.
+ * which one is open. The gate variant carries the option it was opened *for*
+ * rather than reading the highlighted row back at send time: the highlight is a
+ * cursor and the answer is a decision, and an arrow key pressed while the row
+ * is open must not quietly change which option is about to be rejected.
  */
-export interface SessionInput {
-  readonly kind: 'interject';
-  /** What the session is asking for, in words the operator reads. */
-  readonly prompt: string;
-  /** What has been typed so far. Never `null` — an empty line is a value. */
-  readonly text: string;
+export type SessionInput =
+  | {
+      readonly kind: 'interject';
+      /** What the session is asking for, in words the operator reads. */
+      readonly prompt: string;
+      /** What has been typed so far. Never `null` — an empty line is a value. */
+      readonly text: string;
+    }
+  | {
+      readonly kind: 'gate-text';
+      readonly prompt: string;
+      readonly text: string;
+      /** The gate's own option id, carried from `pendingGate`, never spelled. */
+      readonly optionId: string;
+    };
+
+/**
+ * KAR-21.3 — the gate prompt's own state, and the only three things it has.
+ *
+ * Deliberately not *"which gate is open"*: that is `pendingGate` over the
+ * reduced state and the session holds no second opinion about it, which is why
+ * an answer arriving from the browser, a second gate and a re-delivered event
+ * are already correct here rather than three special cases.
+ */
+export interface GateState {
+  /** Which offered row the keyboard is on, clamped to the gate's own option set. */
+  readonly selected: number;
+  /** The option id whose request is on the wire, or `null` — AC7's inert window. */
+  readonly sending: string | null;
+  /** The last thing that has to be said about an answer, or `null`. */
+  readonly notice: GateNotice | null;
+}
+
+/**
+ * A sentence the frame shows about one gate.
+ *
+ * Carried with the node it is about, so a refusal that arrived for one gate is
+ * not still on screen under the next one's options. It is the daemon's own
+ * words whenever the daemon spoke (AC5).
+ */
+export interface GateNotice {
+  readonly node: string;
+  readonly message: string;
 }
 
 export interface SessionState {
   readonly focus: SessionFocus;
   /** The open input, or `null` when the session is only watching. */
   readonly input: SessionInput | null;
+  /** KAR-21.3 — what the gate prompt is doing. @see `gate.ts` */
+  readonly gate: GateState;
   /** ms epoch, measured by the caller through its injected `Clock` (NF9). */
   readonly nowMs: number;
   /** The terminal's height in rows — passed, never derived (AC1, AC7). */
@@ -62,7 +104,19 @@ export interface SessionState {
 
 /** What a session looks like the instant before anything has happened in it. */
 export function initialSessionState(): SessionState {
-  return { focus: 'transcript', input: null, nowMs: 0, rows: DEFAULT_ROWS, keyboard: false };
+  return {
+    focus: 'transcript',
+    input: null,
+    gate: initialGateState(),
+    nowMs: 0,
+    rows: DEFAULT_ROWS,
+    keyboard: false,
+  };
+}
+
+/** A gate prompt nobody has touched: the first row, nothing in flight. */
+export function initialGateState(): GateState {
+  return { selected: 0, sending: null, notice: null };
 }
 
 /**

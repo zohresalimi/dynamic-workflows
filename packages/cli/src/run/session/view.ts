@@ -22,12 +22,13 @@
  * is one entry and two rows. Wrapping here rather than there is what keeps that
  * count honest — see the note on `occupiedRows`.
  */
-import type { NodeState, NodeStatus, RunState } from '@DeFlow/core';
+import type { NodeState, NodeStatus, PendingGate, RunState } from '@DeFlow/core';
 import { pendingGate, pendingGateSummary, RUN_STATUS_LABELS } from '@DeFlow/core';
 import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../../render/glyphs.ts';
 import { wrapDetail } from '../../render/layout.ts';
 import type { Style, StyleColour } from '../../render/style.ts';
 import { formatCost, formatDuration, NODE_COLUMN } from '../render.ts';
+import { selectedOption } from './gate.ts';
 import { KEY_BINDINGS } from './keys.ts';
 import type { SessionState } from './state.ts';
 
@@ -210,12 +211,84 @@ export function keyHintLine(style: Style): string {
 }
 
 /**
+ * KAR-21.3 AC1 — the caret marking the row the keyboard is on.
+ *
+ * ASCII, and deliberately not from `TRANSCRIPT_GLYPHS`: that vocabulary is
+ * about what a *node* is doing, and borrowing a status glyph for a cursor is
+ * how a second meaning gets attached to a symbol the transcript above is
+ * already using.
+ */
+const GATE_CARET = '>';
+
+/**
+ * KAR-21.3 AC1, AC9 — one row per option the gate offered, and no more.
+ *
+ * The option set is the gate's; this file spells no option id of its own, so a
+ * plan gate declaring `retry` gets a row for it on the day it is declared
+ * rather than on the day somebody remembers to add one.
+ *
+ * Empty where nothing can press a key, which is the same rule the hint line
+ * follows and the same decision `SessionState.keyboard` already carries: a list
+ * of selectable rows in a CI log is a smaller lie than `setRawMode` on a pipe,
+ * but it is still a lie. `pendingGateSummary` still names the gate and its
+ * options there, exactly as it does today (AC9).
+ *
+ * Returned **unwrapped**, one entry per option, so a caller can assert the
+ * count is the option set's own. `renderFrame` wraps them like every other
+ * block, because the frame's lines are what `render/screen.ts` counts.
+ */
+export function gateOptionRows(
+  gate: PendingGate,
+  session: SessionState,
+  style: Style,
+): readonly string[] {
+  if (!session.keyboard) return [];
+  // The caret shows where the keyboard is, so it is absent while the keyboard
+  // is aimed elsewhere, while a row is open and while an answer is on the wire.
+  const aimed = session.focus === 'gate' && session.input === null && session.gate.sending === null;
+  const chosen = selectedOption(gate, session.gate);
+  const separator = PART_SEPARATORS[style.charset];
+  return gate.options.map(
+    (option) =>
+      `${aimed && option === chosen ? GATE_CARET : ' '} ${option.id}${separator}${option.label}`,
+  );
+}
+
+/** AC7 — what the frame says while one gate's answer is on the wire. */
+export function sendingLine(optionId: string): string {
+  return `sending '${optionId}' — the options are inert until the daemon answers`;
+}
+
+/**
+ * The gate's prompt, verbatim, within the rows there are left for it.
+ *
+ * Verbatim is the constraint and it is why this drops whole lines rather than
+ * truncating one: the F1.3 gate's prompt *is* the rendered spec, and a footer
+ * cannot hold it. What is shown is the gate's own words unedited, and what did
+ * not fit is counted exactly — the same choice the plan rows already make, for
+ * the reason EPIC-21-S06 gives. The whole prompt is in the transcript above,
+ * which is where an operator reads it (KAR-19.12 AC1).
+ */
+function promptWithin(prompt: string, style: Style, room: number): string[] {
+  if (room <= 0 || prompt === '') return [];
+  const all = wrapped(prompt, style, 2);
+  if (all.length <= room) return all;
+  const kept = all.slice(0, Math.max(0, room - 1));
+  return [
+    ...kept,
+    ...block(`+${String(all.length - kept.length)} more prompt lines`, style, 'dim'),
+  ];
+}
+
+/**
  * The frame: what the operator sees pinned below the transcript.
  *
  * Assembled as *fixed* lines and *fillable* ones, because AC7's row budget has
  * to be spent in priority order rather than in reading order. The gate sentence
  * is fixed — it is the one line the operator is waiting for, and a plan large
  * enough to push it off the region is exactly the failure EPIC-21-S06 names.
+ * KAR-21.3's option rows are fixed for the same reason and one step stronger:
+ * they are the thing the run has stopped for.
  */
 export function renderFrame(run: RunState, session: SessionState, style: Style): readonly string[] {
   const header = block(
@@ -226,6 +299,22 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
 
   const gate = pendingGate(run);
   const gateLines = gate === null ? [] : block(pendingGateSummary(gate), style, 'yellow');
+  const optionLines =
+    gate === null
+      ? []
+      : gateOptionRows(gate, session, style).flatMap((row) => wrapped(row, style, 4));
+
+  // AC5 — the daemon's own sentence, and only about the gate it was about: a
+  // refusal left standing under the next gate's options would be advice about a
+  // decision that is already made.
+  const notice = session.gate.notice;
+  const noticeLines =
+    notice === null || (gate !== null && gate.node !== notice.node)
+      ? []
+      : block(notice.message, style, 'red');
+
+  const sendingLines =
+    session.gate.sending === null ? [] : block(sendingLine(session.gate.sending), style, 'dim');
 
   const inputLines =
     session.input === null
@@ -236,9 +325,21 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
 
   const hintLines = session.keyboard ? block(keyHintLine(style), style, 'dim') : [];
 
-  const fixed =
-    header.length + gateLines.length + inputLines.length + costLines.length + hintLines.length;
   const budget = frameRowBudget(session.rows);
+  const fixed =
+    header.length +
+    gateLines.length +
+    optionLines.length +
+    noticeLines.length +
+    sendingLines.length +
+    inputLines.length +
+    costLines.length +
+    hintLines.length;
+
+  const promptLines =
+    gate === null || optionLines.length === 0
+      ? []
+      : promptWithin(gate.prompt, style, budget - fixed);
 
   const ids = Object.keys(run.nodes).toSorted((left, right) => {
     const nodes = run.nodes;
@@ -258,7 +359,7 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
     // so the count itself can never be the line that did not fit.
     const remaining = ids.length - shown - 1;
     const reserve = remaining > 0 ? 1 : 0;
-    if (fixed + rows.length + row.length + reserve > budget) break;
+    if (fixed + promptLines.length + rows.length + row.length + reserve > budget) break;
     rows.push(...row);
     shown += 1;
   }
@@ -271,6 +372,10 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
     ...rows,
     ...moreLines,
     ...gateLines,
+    ...promptLines,
+    ...optionLines,
+    ...noticeLines,
+    ...sendingLines,
     ...inputLines,
     ...costLines,
     ...hintLines,
