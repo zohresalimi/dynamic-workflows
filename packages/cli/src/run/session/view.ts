@@ -29,6 +29,7 @@ import { wrapDetail } from '../../render/layout.ts';
 import type { Style, StyleColour } from '../../render/style.ts';
 import { formatCost, formatDuration, NODE_COLUMN } from '../render.ts';
 import { selectedOption } from './gate.ts';
+import { resendOffer } from './interject.ts';
 import { KEY_BINDINGS } from './keys.ts';
 import type { SessionState } from './state.ts';
 
@@ -316,6 +317,22 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
   const sendingLines =
     session.gate.sending === null ? [] : block(sendingLine(session.gate.sending), style, 'dim');
 
+  /**
+   * KAR-21.4 AC3, AC4, AC5, AC8 — what the two verbs have to say.
+   *
+   * The daemon's own sentence whenever the daemon wrote one, and the offer
+   * naming the alternative mode *it* chose. Nothing here is a rendering rule of
+   * its own: they are blocks, wrapped and painted like every other line in the
+   * frame, which is the composition AC4 of KAR-21.1 is about.
+   */
+  const verbLines = [
+    ...(session.interject.notice === null ? [] : block(session.interject.notice, style, 'yellow')),
+    ...(session.interject.resend === null
+      ? []
+      : block(resendOffer(session.interject.resend.mode), style, 'yellow')),
+    ...(session.cancel.notice === null ? [] : block(session.cancel.notice, style, 'yellow')),
+  ];
+
   const inputLines =
     session.input === null
       ? []
@@ -332,6 +349,7 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
     optionLines.length +
     noticeLines.length +
     sendingLines.length +
+    verbLines.length +
     inputLines.length +
     costLines.length +
     hintLines.length;
@@ -376,6 +394,7 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
     ...optionLines,
     ...noticeLines,
     ...sendingLines,
+    ...verbLines,
     ...inputLines,
     ...costLines,
     ...hintLines,

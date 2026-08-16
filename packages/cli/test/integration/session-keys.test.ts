@@ -29,6 +29,7 @@ import { createHeadlessScreen, type HeadlessScreen } from '../../src/render/scre
 import { createStyle } from '../../src/render/style.ts';
 import { RUN_EXIT_CODES } from '../../src/run/exit-codes.ts';
 import { runRun } from '../../src/run/run.ts';
+import { NOTHING_RUNNING } from '../../src/run/session/interject.ts';
 import { openKeyboard, type RawInput } from '../../src/run/session/keyboard.ts';
 import { KEY_BINDINGS } from '../../src/run/session/keys.ts';
 import { keyHintLine } from '../../src/run/session/view.ts';
@@ -278,12 +279,15 @@ suite('a terminal that does have a keyboard is told which keys it has (AC6, AC7)
     await until('a moment to pass', () => true);
     expect(screen.frames.length).toBe(beforeUnbound);
 
-    // …and a bound one does: the interjection row opens. `interject:` rather
-    // than `interject`, because the hint line asserted above names the key by
-    // that word and the shorter string would match a frame with nothing open.
+    // …and a bound one does. This run is parked at the F1.3 gate with nothing
+    // executing, so KAR-21.4 AC4's answer to the interject key is the one line
+    // saying so rather than an open row — either way it is a repaint only a raw
+    // reader could have caused, which is what this assertion is for. The
+    // sentence is imported rather than retyped, so it cannot drift from the
+    // module that prints it.
     stdin.emit('i');
-    await until('the interjection row to open', () =>
-      lastFrame(screen).includes('interject:') ? true : null,
+    await until('the interject key to be answered', () =>
+      lastFrame(screen).includes(NOTHING_RUNNING) ? true : null,
     );
 
     completeRun();

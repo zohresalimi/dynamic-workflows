@@ -65,8 +65,10 @@ import {
 import { createInterrupt } from './interrupt.ts';
 import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
-import { applyIntent } from './session/actions.ts';
+import { applyIntent, applyTyping } from './session/actions.ts';
+import { createCancelSession } from './session/cancel.ts';
 import { createGateSession, type GateSession } from './session/gate.ts';
+import { createInterjectSession } from './session/interject.ts';
 import type { Keyboard, KeyboardRequest } from './session/keyboard.ts';
 import { withKeyboard } from './session/keyboard.ts';
 import { createSession, type Session } from './session/session.ts';
@@ -221,9 +223,16 @@ async function watch(options: {
   /** KAR-19.4 AC3 — every control event is offered here too, so the agent's
    * own bytes reach the terminal while its node is still running. */
   readonly io: IoFollower;
-  /** KAR-21.1 — the reduced state after each event, for the live frame. The
-   * projection is folded here already; a second fold would be a second answer. */
-  readonly onState?: ((state: RunState) => void) | undefined;
+  /**
+   * KAR-21.1 — the reduced state after each event, for the live frame. The
+   * projection is folded here already; a second fold would be a second answer.
+   *
+   * KAR-21.4 AC2 — and the `seq` it was folded at, which is the cursor an
+   * interjection is written against. It is this loop's `rendered` rather than a
+   * second count, because *"the seq this session last rendered"* has to be the
+   * same number as the one this line was rendered from.
+   */
+  readonly onState?: ((state: RunState, seq: number) => void) | undefined;
 }): Promise<Watched> {
   let state = initialRunState();
   let rendered = 0;
@@ -259,7 +268,7 @@ async function watch(options: {
         announcedGate = null;
       }
 
-      options.onState?.(state);
+      options.onState?.(state, event.seq);
 
       const verdict = classifyRun(state, { noWait: options.noWait });
       if (verdict.terminal) {
@@ -407,8 +416,18 @@ async function execute(
    * the second answer KAR-21.1 exists to avoid.
    */
   let lastRun: RunState = initialRunState();
-  const repaint = (state: RunState): void => {
+  /**
+   * KAR-21.4 AC2 — the seq this session last rendered.
+   *
+   * The cursor an interjection is written against, so the daemon can answer
+   * `stale_cursor` when the node moved between the repaint and the keypress. It
+   * moves only when an event was folded into the frame; a repaint caused by a
+   * keypress leaves it where it was, because nothing new was read.
+   */
+  let lastSeq = 0;
+  const repaint = (state: RunState, seq?: number): void => {
     lastRun = state;
+    if (seq !== undefined) lastSeq = seq;
     session?.update(state, { ...sessionState, nowMs: clock.now() });
   };
 
@@ -504,6 +523,43 @@ async function execute(
     : null;
 
   /**
+   * KAR-21.4 — the two verbs, wired to the same daemon and the same projection.
+   *
+   * Constructed only where a key can reach them, exactly as the gate prompt is:
+   * under `--json`, on a pipe and in CI no key is read, so neither of these
+   * exists to have sent anything (AC9).
+   *
+   * `cancelRun` is **handed in** rather than reached for, and it is the same
+   * expression `createInterrupt` above was given — one client for the double
+   * Ctrl-C, `deflow cancel` and this key, which is what AC7 asks for.
+   */
+  const interjectSession = hasKeyboard
+    ? createInterjectSession({
+        runId,
+        endpoint,
+        run: () => lastRun,
+        state: () => sessionState,
+        onState: (next) => {
+          sessionState = next;
+          repaint(lastRun);
+        },
+        lastSeq: () => lastSeq,
+      })
+    : null;
+
+  const cancelSession = hasKeyboard
+    ? createCancelSession({
+        runId,
+        state: () => sessionState,
+        onState: (next) => {
+          sessionState = next;
+          repaint(lastRun);
+        },
+        cancel: () => cancelRun(runId, endpoint),
+      })
+    : null;
+
+  /**
    * KAR-21.2 AC7 — one key, one decision, and no repaint when nothing changed.
    *
    * The reference comparison is the contract rather than an optimisation:
@@ -517,12 +573,27 @@ async function execute(
   // disguise.
   const keyboard: Keyboard | null = hasKeyboard
     ? options.openKeyboard({
-        onIntent: (intent) => {
-          // The gate is offered every key first, and everything it does not
-          // claim falls through to the one `SESSION_ACTIONS` table — so the
-          // arrows move between a gate's options while the keyboard is aimed at
-          // one, and between regions when it is not, without two tables having
-          // to agree about anything.
+        onIntent: (intent, text) => {
+          // KAR-21.4 AC1 — a key that typed a character types it, while a row
+          // is open. First, and ahead of every verb: `c` is the cancel key and
+          // also a letter, and a correction containing one must not end the run
+          // it was correcting. `applyTyping` returns the same object when no
+          // row is open, so an unbound letter is still inert (KAR-21.2 AC7).
+          if (text !== null) {
+            const typed = applyTyping(sessionState, text);
+            if (typed !== sessionState) {
+              sessionState = typed;
+              repaint(lastRun);
+              return;
+            }
+          }
+          // The two verbs claim what they can act on, then the gate, and
+          // everything none of them claims falls through to the one
+          // `SESSION_ACTIONS` table — so the arrows move between a gate's
+          // options while the keyboard is aimed at one, and between regions when
+          // it is not, without the tables having to agree about anything.
+          if (interjectSession?.handle(intent) === true) return;
+          if (cancelSession?.handle(intent) === true) return;
           if (gateSession?.handle(intent) === true) return;
           const outcome = applyIntent(sessionState, intent);
           if (outcome.effect === 'interrupt') interrupt.press();

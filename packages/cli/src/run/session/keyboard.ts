@@ -30,7 +30,7 @@
  * observes after the child has gone is this restore path and not a copy of it.
  */
 import process from 'node:process';
-import type { Intent } from './keys.ts';
+import type { DecodedKey, Intent } from './keys.ts';
 import { createKeyDecoder, ESCAPE_WAIT_MS } from './keys.ts';
 
 /**
@@ -90,7 +90,14 @@ export interface Keyboard {
 /** What a caller asks for when it wants a keyboard — the whole of `run.ts`'s
  * side of the seam, so a test can pass its own `stdin` by spreading this. */
 export interface KeyboardRequest {
-  readonly onIntent: (intent: Intent) => void;
+  /**
+   * One decoded key: what it means, and what it typed.
+   *
+   * KAR-21.4 added the second argument, and both facts travel because which of
+   * them applies depends on whether a row is open — the caller's question, not
+   * this file's. `text` is `null` for every key that typed nothing.
+   */
+  readonly onIntent: (intent: Intent, text: string | null) => void;
 }
 
 export interface KeyboardOptions extends KeyboardRequest {
@@ -155,8 +162,8 @@ export function openKeyboard(options: KeyboardOptions): Keyboard {
     wait = null;
   };
 
-  const emit = (intents: readonly Intent[]): void => {
-    for (const intent of intents) options.onIntent(intent);
+  const emit = (keys: readonly DecodedKey[]): void => {
+    for (const key of keys) options.onIntent(key.intent, key.text);
   };
 
   const listener = (chunk: string): void => {

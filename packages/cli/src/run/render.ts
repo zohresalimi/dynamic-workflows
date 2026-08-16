@@ -347,6 +347,39 @@ function humanLine(event: Event): Line | null {
         detail: '',
       };
 
+    /**
+     * KAR-21.4 AC6 — an interjection made *anywhere* is a line in *this*
+     * terminal, and it appears when the ledger has it rather than when it was
+     * typed.
+     *
+     * The line is derived from the event and from nothing else, which buys two
+     * properties at once. The session prints nothing optimistically, so an
+     * interjection the daemon refused cannot look on screen like one it
+     * accepted; and guidance posted from the browser or a second terminal shows
+     * up here without this command reconnecting to anything — the same property
+     * KAR-19.12 AC7 established for gate answers, and free once the rule is
+     * "render the ledger".
+     *
+     * `delivery` is on the line because `queued` and `unsupported` are
+     * different facts about the same words: one is on its way to the agent, the
+     * other reached the ledger and not the live session. It is the **accept
+     * time** answer, which is why nothing here can say "delivered" — that is a
+     * later, separate event (`human.interjection.delivered`).
+     */
+    case 'human.interjected':
+      return {
+        glyph: 'note',
+        colour: 'yellow',
+        subject: event.payload.node,
+        status: 'interjected',
+        // The operator's own words are last and are the point of the line; the
+        // two vocabulary words in front of them are what the daemon decided.
+        // `parts` rather than `detail` because a `Line` prints one or the
+        // other, and the mode is not worth losing the text for.
+        parts: [event.payload.mode, event.payload.delivery, event.payload.text],
+        detail: '',
+      };
+
     case 'run.paused':
       return {
         glyph: 'paused',

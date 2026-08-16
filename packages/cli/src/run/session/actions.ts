@@ -71,6 +71,42 @@ function moveFocus(state: SessionState, step: 1 | -1): SessionState {
   return next === undefined || next === state.focus ? state : { ...state, focus: next };
 }
 
+/**
+ * KAR-21.4 AC1 — the characters a key typed, into whatever row is open.
+ *
+ * Separate from the intent table rather than an entry in it, because typing is
+ * the one thing a key does that is **not** a meaning: `c` is the cancel key and
+ * also a letter in "checkout", and the difference is not which key was pressed
+ * but whether a row is open. The caller consults this first and falls through
+ * to the table when it changes nothing — which is what makes an unbound letter
+ * inert while watching (KAR-21.2 AC7) and a letter while typing.
+ *
+ * Identity when no row is open, so the reference comparison a caller repaints
+ * on stays the contract it was.
+ */
+export function applyTyping(state: SessionState, text: string): SessionState {
+  if (state.input === null || text === '') return state;
+  return { ...state, input: { ...state.input, text: state.input.text + text } };
+}
+
+/**
+ * One character back. Identity when there is no row, and when it is empty — an
+ * erase at the start of a line is not a dismissal.
+ *
+ * By **grapheme** rather than by code unit, through `Intl.Segmenter`: one press
+ * of Backspace removes the one thing the operator sees, where slicing a string
+ * removes half of a surrogate pair and leaves a replacement character behind.
+ */
+export function applyErase(state: SessionState): SessionState {
+  const input = state.input;
+  if (input === null || input.text === '') return state;
+  const graphemes = [...new Intl.Segmenter().segment(input.text)];
+  return {
+    ...state,
+    input: { ...input, text: input.text.slice(0, graphemes.at(-1)?.index ?? 0) },
+  };
+}
+
 export const SESSION_ACTIONS: Readonly<Record<Intent, SessionAction>> = {
   /** Aim the keyboard at the gate; KAR-21.3 is what answers one. */
   answer: {
@@ -86,6 +122,29 @@ export const SESSION_ACTIONS: Readonly<Record<Intent, SessionAction>> = {
       input: { kind: 'interject', prompt: INTERJECT_PROMPT, text: '' },
     }),
   },
+
+  /**
+   * KAR-21.4 AC3 — accept the alternative mode an `unsupported` answer named.
+   *
+   * Inert **here**, and that is the point: which mode a re-send carries is on
+   * the daemon's response, and the only module holding one is `interject.ts`,
+   * which is offered every key before this table is consulted. A `r` pressed
+   * with no offer on screen therefore arrives here and means nothing, which is
+   * the honest answer to *"re-send what?"*.
+   */
+  resend: { effect: 'none', apply: (state) => state },
+
+  /**
+   * KAR-21.4 AC7 — start the two-step that ends a run.
+   *
+   * Inert here for the same reason `resend` is: the confirmation names the run
+   * id, which this table has never been told, so `cancel.ts` opens it.
+   */
+  cancel: { effect: 'none', apply: (state) => state },
+
+  /** KAR-21.4 AC1 — one character back out of the open row, and nothing at all
+   * when no row is open. */
+  erase: { effect: 'none', apply: applyErase },
 
   'select-up': { effect: 'none', apply: (state) => moveFocus(state, 1) },
   'select-down': { effect: 'none', apply: (state) => moveFocus(state, -1) },
