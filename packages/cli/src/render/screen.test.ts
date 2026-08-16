@@ -113,6 +113,46 @@ suite('EPIC-21-S04 — an unchanged frame writes no bytes at all', () => {
   });
 });
 
+suite('EPIC-21-S40 — a resize erases the height the old frame actually took', () => {
+  it('erases what the previous frame occupied at the width it was drawn at', () => {
+    // The subtle failure the flow file names. A 60-character line is three rows
+    // at 20 columns and six at 10, so a screen that recomputed the *previous*
+    // frame's height at the *new* width would erase six rows where four were
+    // drawn — debris on screen exactly once per resize, and a bug that gets
+    // blamed on the terminal.
+    const written: string[] = [];
+    const screen = createScreen({ width: 20, write: (chunk) => written.push(chunk) });
+
+    screen.render(['short', 'x'.repeat(60)]);
+    screen.resize(10);
+    screen.render(['short']);
+
+    expect(erasedRows(written[1] ?? '')).toBe(4);
+  });
+
+  it('uses the new width for everything drawn after it', () => {
+    const written: string[] = [];
+    const screen = createScreen({ width: 20, write: (chunk) => written.push(chunk) });
+
+    screen.resize(10);
+    // Six rows at ten columns, where the same line was three at twenty.
+    screen.render(['x'.repeat(60)]);
+    screen.render(['short']);
+
+    expect(erasedRows(written[1] ?? '')).toBe(6);
+  });
+
+  it('erases nothing extra when the resize arrives before anything was drawn', () => {
+    const written: string[] = [];
+    const screen = createScreen({ width: 80, write: (chunk) => written.push(chunk) });
+
+    screen.resize(40);
+    screen.render(['one']);
+
+    expect(erasedRows(written[0] ?? '')).toBe(0);
+  });
+});
+
 suite('AC2 — a headless screen is a recording, not a terminal', () => {
   it('records every frame it was given, in order, and writes to no stream', () => {
     const headless = createHeadlessScreen();

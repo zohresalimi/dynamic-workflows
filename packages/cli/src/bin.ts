@@ -33,7 +33,7 @@ import { askOn, runDoctor } from './doctor/run.ts';
 import { runInit } from './index.ts';
 import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
 import { createScreen } from './render/screen.ts';
-import { processStyle } from './render/style.ts';
+import { onProcessResize, processStyle } from './render/style.ts';
 import { runRun } from './run/run.ts';
 import { openKeyboard } from './run/session/keyboard.ts';
 import { parseSetupArgs, runSetup } from './setup/index.ts';
@@ -108,6 +108,19 @@ Options for "run":
 
 Ctrl-C once detaches — the run keeps going and the daemon keeps serving it.
 Ctrl-C twice within three seconds cancels the run.
+
+Keys in the live session. The live view is drawn only where stdout is a
+terminal: piped, redirected or under --json, "run" prints the same plain
+stream it always has, draws no live view and reads no key.
+  a               answer the gate the run has stopped on
+  i               interject into the running node
+  r               resend with the mode the daemon offered instead
+  c               cancel the run, after a confirmation you have to type
+  bksp            erase a character from the open row
+  up, down        move prev and next between the rows
+  enter           confirm what is on the open row
+  esc             dismiss the open row without sending it
+  ctrl-c          detach; a second press within three seconds cancels
 
 Exit codes for "run": 0 completed with every gate passed, 1 a failed gate or a
 failed node, 2 the daemon refused to start, 3 paused on a budget ceiling, 4
@@ -431,6 +444,10 @@ async function main(argv: readonly string[]): Promise<number> {
       // AC7's row budget. The width half already came from STYLE; this is the
       // other half of the same window, and it is read once, here.
       terminalRows: process.stdout.rows,
+      // KAR-21.5 AC4 — SIGWINCH, with the new size already turned into a
+      // `Style` by the one module allowed to derive one. `run.ts` is handed the
+      // answer, exactly as it is at startup.
+      onResize: (handler) => onProcessResize(argv, handler),
       // KAR-21.2 AC3 — the **input** half of the same decision, read once, here.
       // Separate from `isTty` above because the two genuinely differ:
       // `deflow run | less` has a keyboard and no output terminal, and

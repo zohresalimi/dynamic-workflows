@@ -98,6 +98,21 @@ export interface KeyboardRequest {
    * this file's. `text` is `null` for every key that typed nothing.
    */
   readonly onIntent: (intent: Intent, text: string | null) => void;
+  /**
+   * KAR-21.5 AC8 — anything else the caller owes the terminal, given back here.
+   *
+   * Called **after** the terminal is back and **before** the process is allowed
+   * to stop, from the one `close` every path already reaches. `run.ts` passes
+   * the session's own `close`, which erases the frame — and the reason it is
+   * routed through here rather than registered separately is the signal path:
+   * `onFatal` calls `process.exit`, so a `finally` in `run.ts` never runs and a
+   * SIGTERM would leave the shell prompt printed on top of a stale status
+   * region. One restoration site, two things restored.
+   *
+   * Must not throw: it runs inside a signal handler, where there is nobody left
+   * to catch it.
+   */
+  readonly onRestore?: (() => void) | undefined;
 }
 
 export interface KeyboardOptions extends KeyboardRequest {
@@ -188,6 +203,9 @@ export function openKeyboard(options: KeyboardOptions): Keyboard {
     options.stdin.off('data', listener);
     options.stdin.setRawMode(false);
     options.stdin.pause();
+    // After the terminal is back, so whatever this writes goes through a
+    // restored one rather than rendering as a diagonal staircase (AC4).
+    options.onRestore?.();
     for (const remove of removals) remove();
     removals = [];
   };

@@ -51,6 +51,18 @@ export const SHOW_CURSOR = `${CSI}?25h`;
 export interface Screen {
   /** Replace the region with `frame`, erasing exactly what the last one took. */
   render(frame: readonly string[]): void;
+  /**
+   * KAR-21.5 AC4 — the window changed size; lay everything **after this** out
+   * at `width`.
+   *
+   * Deliberately **not** a recount of what is already on screen. A resize
+   * changes how many rows the *previous* frame is occupying, and a screen that
+   * recomputed the old height at the new width would erase the wrong number of
+   * rows exactly once per resize — leaving debris that gets blamed on the
+   * terminal. The rows already drawn were drawn at the old width and are erased
+   * at the old count; the new width applies from the next frame on.
+   */
+  resize(width: number): void;
   /** Erase the region and give the terminal back. Idempotent. */
   close(): void;
 }
@@ -109,6 +121,9 @@ export function createScreen(options: ScreenOptions): Screen {
   let previous: readonly string[] = [];
   /** Rows, not entries. The distinction is the whole of AC5. */
   let occupied = 0;
+  /** The width the *next* frame is measured at. `occupied` above was measured
+   * at whatever it was when that frame was drawn, and stays that way (AC4). */
+  let width = options.width;
   let hidden = false;
   let closed = false;
 
@@ -121,7 +136,11 @@ export function createScreen(options: ScreenOptions): Screen {
       options.write(`${eraseRows(occupied)}${hide}${frame.join('\n')}`);
 
       previous = [...frame];
-      occupied = occupiedRows(previous, options.width);
+      occupied = occupiedRows(previous, width);
+    },
+
+    resize(next) {
+      width = next;
     },
 
     close() {
@@ -168,6 +187,9 @@ export function createHeadlessScreen(options: { readonly width?: number } = {}):
       const last = frames.at(-1);
       if (last === undefined || !sameFrame(last, frame)) frames.push([...frame]);
       inner.render(frame);
+    },
+    resize: (width) => {
+      inner.resize(width);
     },
     close: () => inner.close(),
   };

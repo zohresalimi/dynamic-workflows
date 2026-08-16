@@ -1,0 +1,20 @@
+run
+run_20260816T101500Z_0a0a0a
+— needs a decision
++4 more
+waiting on the
+'n_spec_0' gate —
+approve, edit,
+reject, abandon
+approve · Approve
+this spec and start
+planning
+edit · Edit the spec
+before approving
+reject · Reject and
+re-run the framing
+interview
+abandon · Abandon
+this run
+$1.20 api-key, $0.00
+subscription

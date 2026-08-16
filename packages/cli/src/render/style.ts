@@ -159,3 +159,32 @@ export function processStyle(argv: readonly string[]): Style {
 export function plainStyle(env: NodeJS.ProcessEnv = {}): Style {
   return createStyle({ isTty: false, env });
 }
+
+/**
+ * KAR-21.5 AC4 — the window changed size; here is the `Style` for the new one.
+ *
+ * Node emits `'resize'` on `process.stdout` when the process is sent SIGWINCH,
+ * so this is that signal with the terminal's new size already read. It lives
+ * **here** rather than in `run.ts` for the reason `processStyle` does: the
+ * terminal's width is derived in exactly one place in this package, and
+ * `test/render-guard.test.ts`'s third rule is what keeps that true. A resize
+ * handler that read `stdout.columns` at the call site would be that rule's
+ * first exception, and AC9's 80-column fallback is worth nothing with one.
+ *
+ * `rows` is handed over beside the style rather than folded into it because
+ * height is not a styling decision — nothing about colour, glyphs or wrapping
+ * depends on it — and it is read here only so that it is read in the same place
+ * and at the same instant as the width it has to agree with.
+ */
+export function onProcessResize(
+  argv: readonly string[],
+  handler: (style: Style, rows: number | undefined) => void,
+): () => void {
+  const listener = (): void => {
+    handler(processStyle(argv), process.stdout.rows);
+  };
+  process.stdout.on('resize', listener);
+  return () => {
+    process.stdout.off('resize', listener);
+  };
+}

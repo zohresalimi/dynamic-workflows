@@ -339,3 +339,67 @@ suite('withKeyboard gives the terminal back whatever happens (AC4)', () => {
     expect(input.rawModeCalls).toEqual([true, false]);
   });
 });
+
+suite('KAR-21.5 AC8 — whatever else the caller owes the terminal (EPIC-21-S44)', () => {
+  it('runs onRestore after raw mode is off, so what it writes is readable', () => {
+    const input = recorder();
+    let rawModeWhenRestored: boolean | undefined;
+    const opened = openKeyboard({
+      stdin: input.stdin,
+      onIntent: () => {},
+      onSignal: () => () => {},
+      onRestore: () => {
+        rawModeWhenRestored = input.rawModeCalls.at(-1);
+      },
+    });
+
+    opened.close();
+
+    // `false` is the last `setRawMode` argument by the time the frame is
+    // erased: an erase written through a raw terminal is the staircase again.
+    expect(rawModeWhenRestored).toBe(false);
+  });
+
+  it('runs it on a fatal signal, which no finally in the caller can reach', () => {
+    // The path this exists for. `onFatal` calls `process.exit`, so a `finally`
+    // in `run.ts` never runs — and without this the shell prompt comes back
+    // printed on top of a stale status region.
+    const input = recorder();
+    const registry = signals();
+    let restored = 0;
+    openKeyboard({
+      stdin: input.stdin,
+      onIntent: () => {},
+      onSignal: registry.onSignal,
+      onFatal: () => {},
+      onRestore: () => {
+        restored += 1;
+      },
+    });
+
+    registry.raise('SIGTERM');
+
+    expect(restored).toBe(1);
+  });
+
+  it('runs it exactly once however many times close is called', () => {
+    const input = recorder();
+    const registry = signals();
+    let restored = 0;
+    const opened = openKeyboard({
+      stdin: input.stdin,
+      onIntent: () => {},
+      onSignal: registry.onSignal,
+      onFatal: () => {},
+      onRestore: () => {
+        restored += 1;
+      },
+    });
+
+    opened.close();
+    opened.close();
+    registry.raise('SIGHUP');
+
+    expect(restored).toBe(1);
+  });
+});
