@@ -43,11 +43,26 @@ export interface SessionState {
   readonly nowMs: number;
   /** The terminal's height in rows — passed, never derived (AC1, AC7). */
   readonly rows: number;
+  /**
+   * KAR-21.2 AC3, AC6 — whether anything out there can actually press a key.
+   *
+   * Carried in the state for the same reason `rows` is, and it is KAR-18.9 AC7's
+   * rule applied to input rather than output: the decision is made once, where
+   * the streams are known, and passed. A view that re-derived it would print a
+   * list of keys into a CI log where no key can be pressed — a smaller failure
+   * than calling `setRawMode` on a pipe, but still a lie.
+   *
+   * Deliberately separate from the output half. Piping `deflow run` into a pager
+   * with a keyboard still attached, and running it from a terminal with the
+   * input closed, are both real; one flag standing for both would get one of
+   * them wrong.
+   */
+  readonly keyboard: boolean;
 }
 
 /** What a session looks like the instant before anything has happened in it. */
 export function initialSessionState(): SessionState {
-  return { focus: 'transcript', input: null, nowMs: 0, rows: DEFAULT_ROWS };
+  return { focus: 'transcript', input: null, nowMs: 0, rows: DEFAULT_ROWS, keyboard: false };
 }
 
 /**

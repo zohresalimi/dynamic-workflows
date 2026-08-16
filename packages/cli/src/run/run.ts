@@ -62,13 +62,20 @@ import {
   type RunVerdict,
   rejectionExitCode,
 } from './exit-codes.ts';
+import { createInterrupt } from './interrupt.ts';
 import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
+import { applyIntent } from './session/actions.ts';
+import type { Keyboard, KeyboardRequest } from './session/keyboard.ts';
+import { withKeyboard } from './session/keyboard.ts';
 import { createSession, type Session } from './session/session.ts';
-import { DEFAULT_ROWS, initialSessionState } from './session/state.ts';
+import { DEFAULT_ROWS, initialSessionState, type SessionState } from './session/state.ts';
 
-/** How long a second Ctrl-C has to arrive before the detach stands (AC3). */
-export const DETACH_WINDOW_MS = 3_000;
+// KAR-18.3 AC3's contract moved to `./interrupt.ts` so KAR-21.2's decoded
+// Ctrl-C and this command's SIGINT handler share **one** implementation rather
+// than two that agree today. Re-exported because it is part of this module's
+// published surface and moving a file is not a reason to break a caller.
+export { DETACH_WINDOW_MS, detachSentence } from './interrupt.ts';
 
 export interface RunCommandOptions {
   /** Everything after `run`. */
@@ -81,6 +88,26 @@ export interface RunCommandOptions {
   readonly stderr: (chunk: string) => void;
   /** Consulted per rendered line, never captured (AC7). */
   readonly isTty: () => boolean;
+  /**
+   * KAR-21.2 AC3 — whether the **input** is a terminal. Decided once by
+   * `bin.ts`, passed, never re-derived here.
+   *
+   * A separate decision from `isTty`, which is about output, and the two really
+   * do differ: `deflow run | less` has a keyboard and no output terminal, and
+   * `deflow run < /dev/null` from a shell has the reverse. Absent means no
+   * keyboard, which is the safe answer — `setRawMode` on a pipe throws, so an
+   * omitted flag must not be able to reach it.
+   */
+  readonly stdinIsTty?: boolean | undefined;
+  /**
+   * KAR-21.2 AC3 — opens the keyboard, or is absent.
+   *
+   * A **factory** for the reason `openScreen` is one: AC6's claim is that on a
+   * pipe no keyboard is *constructed*, and a spec can only observe that if
+   * constructing one is something this file decides to do. It is called only
+   * when there is a screen to act on and `stdinIsTty` is true.
+   */
+  readonly openKeyboard?: ((request: KeyboardRequest) => Keyboard) | undefined;
   /** KAR-18.9 — the width and charset half of the styling decision, computed
    * once by `bin.ts`. Absent means 80 columns and no colour. */
   readonly style?: Style;
@@ -134,16 +161,6 @@ const defaultOnInterrupt = (handler: () => void): (() => void) => {
     process.off('SIGINT', handler);
   };
 };
-
-/** AC3's sentence, verbatim. Both alternatives, because detach-by-default is
- * surprising and a message that named only one would leave the operator
- * guessing about the other. */
-export function detachSentence(runId: string): string {
-  return (
-    `detached — run ${runId} continues; 'deflow run --attach ${runId}' to watch, ` +
-    `'deflow cancel ${runId}' to stop\n`
-  );
-}
 
 /**
  * AC6's fifth code, and the only check this command makes about the machine.
@@ -361,9 +378,36 @@ async function execute(
    */
   const out = session === null ? options.stdout : (chunk: string) => session.write(chunk);
 
+  /**
+   * KAR-21.2 AC3 — whether this invocation has a keyboard at all.
+   *
+   * Decided **once**, here, from three facts this file already owns: there is a
+   * frame for keys to act on, the input is a terminal, and the caller handed
+   * over a way to open one. Everything downstream reads this value rather than
+   * asking again — `setRawMode` on a pipe throws, so a second derivation at a
+   * call site is one forgotten guard away from `deflow run` dying at startup in
+   * CI (AC6).
+   */
+  const hasKeyboard =
+    session !== null && options.stdinIsTty === true && options.openKeyboard !== undefined;
+
   /** The session's own state, held here rather than in a module (AC9). */
-  const sessionState = { ...initialSessionState(), rows: options.terminalRows ?? DEFAULT_ROWS };
+  let sessionState: SessionState = {
+    ...initialSessionState(),
+    rows: options.terminalRows ?? DEFAULT_ROWS,
+    keyboard: hasKeyboard,
+  };
+  /**
+   * The last state the projection produced.
+   *
+   * Kept so a key press can repaint the frame without an event to hang it on —
+   * opening the interjection row is a change to the session, not to the run, and
+   * folding a second projection to find out what the run looked like would be
+   * the second answer KAR-21.1 exists to avoid.
+   */
+  let lastRun: RunState = initialRunState();
   const repaint = (state: RunState): void => {
+    lastRun = state;
     session?.update(state, { ...sessionState, nowMs: clock.now() });
   };
 
@@ -409,38 +453,54 @@ async function execute(
   });
 
   let following: FollowRunResult | null = null;
-  let presses = 0;
 
-  const interrupted = new Promise<number>((resolve) => {
-    const remove = (options.onInterrupt ?? defaultOnInterrupt)(() => {
-      presses += 1;
-
-      if (presses === 1) {
-        // The viewer stops; the run does not. Printed before anything is
-        // awaited, so the sentence is on screen while the window is open.
-        out(detachSentence(runId));
-        following?.close();
-        void sleep(options.detachWindowMs ?? DETACH_WINDOW_MS).then(() => {
-          if (presses === 1) {
-            remove();
-            resolve(RUN_EXIT_CODES.interrupted);
-          }
-        });
-        return;
-      }
-
-      if (presses === 2) {
-        void cancelRun(runId, endpoint)
-          .then((outcome) => {
-            options.stderr(`deflow run: ${outcome.message}\n`);
-          })
-          .finally(() => {
-            remove();
-            resolve(RUN_EXIT_CODES.interrupted);
-          });
-      }
-    });
+  // KAR-18.3 AC3, and KAR-21.2 AC5: **one** implementation of what Ctrl-C means,
+  // reached from both the signal and the decoded byte. In raw mode the terminal
+  // stops turning Ctrl-C into SIGINT and sends 0x03 instead, so without this the
+  // session would silently have removed the one interactive verb the command
+  // already had — and with it, the session cannot add a third meaning even by
+  // accident, because there is nowhere left to add one.
+  const interrupt = createInterrupt({
+    runId,
+    out,
+    stderr: options.stderr,
+    closeStream: () => {
+      following?.close();
+    },
+    cancel: () => cancelRun(runId, endpoint),
+    sleep,
+    ...(options.detachWindowMs === undefined ? {} : { windowMs: options.detachWindowMs }),
   });
+
+  const removeSignal = (options.onInterrupt ?? defaultOnInterrupt)(() => {
+    interrupt.press();
+  });
+  void interrupt.exitCode.then(removeSignal, removeSignal);
+
+  /**
+   * KAR-21.2 AC7 — one key, one decision, and no repaint when nothing changed.
+   *
+   * The reference comparison is the contract rather than an optimisation:
+   * `applyIntent` returns the same object when an intent changes nothing, which
+   * is how "an unrecognised key does nothing at all — no beep, no error line, no
+   * repaint" is expressed as code a spec can observe.
+   */
+  // No second `openKeyboard !== undefined` test here: `hasKeyboard` already
+  // carries it and TypeScript narrows through the alias. Repeating it would be
+  // the re-derived decision AC3 forbids, wearing a redundant guard as a
+  // disguise.
+  const keyboard: Keyboard | null = hasKeyboard
+    ? options.openKeyboard({
+        onIntent: (intent) => {
+          const outcome = applyIntent(sessionState, intent);
+          if (outcome.effect === 'interrupt') interrupt.press();
+          if (outcome.state !== sessionState) {
+            sessionState = outcome.state;
+            repaint(lastRun);
+          }
+        },
+      })
+    : null;
 
   const watched = watch({
     runId,
@@ -455,7 +515,7 @@ async function execute(
       following = opened;
       // A Ctrl-C that landed before the stream was open still detaches: the
       // press already printed its sentence, and this closes what it could not.
-      if (presses > 0) opened.close();
+      if (interrupt.pressed()) opened.close();
     },
   }).then(async (result): Promise<number> => {
     following?.close();
@@ -463,6 +523,10 @@ async function execute(
     // node are produced in the same instant as the event that ends it, and the
     // end of the output is the part that says what happened.
     await io.close();
+    // KAR-21.2 AC4 — the terminal goes back **before** the verdict is written,
+    // not after. Restoring last would print the run's last line through a
+    // terminal the command had not finished borrowing.
+    keyboard?.close();
     // AC6 — the frame comes down before the verdict goes out, so the last line
     // a run leaves behind is its verdict rather than a footer describing a run
     // that has already ended.
@@ -477,17 +541,26 @@ async function execute(
     return result.verdict.exitCode;
   });
 
-  return await Promise.race([
-    watched,
-    // A detach or a cancel closes the tail too — the viewer is going, and a
-    // poll left running would keep the process alive after its exit code was
-    // decided.
-    interrupted.then(async (code) => {
-      await io.close();
-      session?.close();
-      return code;
-    }),
-  ]);
+  const settle = async (): Promise<number> =>
+    await Promise.race([
+      watched,
+      // A detach or a cancel closes the tail too — the viewer is going, and a
+      // poll left running would keep the process alive after its exit code was
+      // decided.
+      interrupt.exitCode.then(async (code) => {
+        await io.close();
+        keyboard?.close();
+        session?.close();
+        return code;
+      }),
+    ]);
+
+  // KAR-21.2 AC4 — the restoration is registered in **one place** and covers the
+  // paths above as well as the one none of them mention: a throw. `close` is
+  // idempotent, so the early calls inside `settle` are the tidy path and this is
+  // the guarantee. Without it a bug anywhere under here would leave the operator
+  // with a shell that has no echo and no line editing.
+  return keyboard === null ? await settle() : await withKeyboard(keyboard, settle);
 }
 
 /**
