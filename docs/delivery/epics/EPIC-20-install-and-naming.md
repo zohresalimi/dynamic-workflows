@@ -614,6 +614,116 @@ than noted: `--permission repo` from the old table is refused by the parser with
 line leaves a machine with no `claude`, which `doctor` then says in words the README had just
 contradicted; and `--provider` was documented in neither the usage block nor the README.
 
+**Corrected 2026-08-16 by KAR-20.4.** The sentence above says `npx deflowai setup` "reported five ok
+steps and exited 0". It cannot have: on 2026-08-15 nothing had been published under that name, so
+what the read-through actually ran was the tarball substitution, and the record wrote down the
+README's line instead of the line that ran. That is the same substitution-shaped blind spot
+KAR-20.4 removes from `e2e/readme-first-run.test.ts`, appearing here in prose — a performed
+scenario is only worth its transcript, so the transcript has to be of what happened.
+
+---
+
+### KAR-20.4 — The README promises only what a reader can actually do today
+
+|                 |                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                         |
+| **Priority**    | P0                                                                                                  |
+| **Size**        | S                                                                                                   |
+| **Depends on**  | KAR-20.3 (the README it corrects, and the extraction and execution machinery it changes), KAR-20.2 (`setup`, which is what the honest route still runs) |
+| **PRD**         | F3.1, F3.2, NF6, NF8                                                                                |
+| **Verified by** | EPIC-20-S35, EPIC-20-S36, EPIC-20-S37, EPIC-20-S38, EPIC-20-S39, EPIC-20-S40                        |
+
+**As** somebody reading DeFlow's README for the first time, **I want** every command and every link
+in it to work when I try it, **so that** the first thing the project tells me is not false.
+
+Found by the owner on 2026-08-15: the install section leads with `npx deflowai setup`, but
+`deflowai` had never been published — the registry 404d. Below it, the no-Node path says to
+`curl https://deflow.dev/install.sh`, and `deflow.dev` is not a registered domain. Both were written
+as though the release had happened.
+
+The release then happened, on 2026-08-15 at 22:26 UTC, and **it did not make the sentence true** —
+which is the finding that shapes this story. `deflowai@0.1.0` is on the registry and cannot be
+installed from it, for two independent reasons, both established by running the commands rather
+than by reading them (see the probes below). So there is still exactly one route a reader can walk
+today, it is the local one, and the README has to be that route rather than the route we want.
+
+The second reason is why this story does not simply flip a `published` flag on release day: **being
+published is not the property the README depends on.** The property is *installable from the
+registry*, and 0.1.0 is a counterexample to the two being the same. AC5's one documented place is
+named for the property, not for the event.
+
+**The probes, run 2026-08-16 on node 26.6.0 / npm 11.18.0.**
+
+| Command                                             | Result                                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `npm view deflowai version`                         | `0.1.0` — published, so the 404 the story was written against is gone                                             |
+| `npx --yes deflowai setup`                          | exit 1, `could not determine executable to run`                                                                   |
+| `npx --yes --package=deflowai -- deflow --version`  | exit 1, `EUNSUPPORTEDPROTOCOL — Unsupported URL Type "catalog:"`                                                   |
+| `npm view deflowai --json`                          | the published manifest carries `"better-sqlite3": "catalog:"`                                                     |
+| `cd packages/cli && pnpm pack --out <path>`         | the packed manifest carries `"better-sqlite3": "13.0.2"`                                                          |
+| `dig +short A deflow.dev`                           | `162.255.119.85`, on `dns1/dns2.registrar-servers.com` — the name **is** registered                               |
+| `curl -fsSL https://deflow.dev/install.sh`          | no HTTP response at all — the connection timed out after 25 s                                                     |
+
+The first failure is permanent and has nothing to do with the release: `npx <name>` resolves a
+**package** and then has to choose a **bin**, and it can only do that when the package declares one
+bin or declares one whose name matches the package. This package declares four — `deflow`, `dfl`,
+`deflow-mcp`, `deflow-mock-agent` — and none of them is `deflowai`, because KAR-20.1 deliberately
+moved the package name off the command name. So `npx deflowai setup` was never a command, at any
+point, published or not. The form that works is `npx --package=deflowai -- deflow setup`, which is
+what `scripts/install.sh` has always executed and what the README never showed.
+
+**The domain premise was also wrong, and wrong in the worse direction.** The story above says
+`deflow.dev` "is not a registered domain". It is registered: it resolves, on a registrar's parking
+nameservers, to an address this project does not control and has never controlled. What it does not
+do is serve anything — `curl https://deflow.dev/install.sh` does not 404, it hangs and then times
+out, which is a worse first minute than a 404 and a worse property than a free name. A README that
+tells a reader to pipe a file from a host the project does not own is a supply-chain instruction,
+not a broken link, and that is the reason AC3 deletes the reference rather than fixing the URL. The
+acceptance criteria are unchanged by this — AC3 and AC4 are about the reference, not about who owns
+the name — but the sentence that motivated them is corrected here rather than left standing.
+
+The second failure is the release's: `pnpm pack` resolves pnpm's workspace-catalog protocol into
+real versions and `npm publish` does not, so 0.1.0 went up with `catalog:` where a version belongs
+and npm refuses the package outright. It is a one-line fix in the release procedure and it is
+**not this story's** — this story's job is that the README stops describing it as available until it
+is. That the two failures were found by typing the commands, on a day the plan said the work was
+already done, is the story restated.
+
+**Acceptance criteria**
+
+1. The install section's first command is one a reader can run today against this repository, and a
+   test executes it end to end rather than pattern-matching the text.
+2. No command, URL or package name appears in the README unless it resolves today. Where the eventual
+   published install is worth describing, it is described as not yet available, in words, and is not
+   presented as the way to install.
+3. `deflow.dev` does not appear anywhere in the repository's user-facing documentation or in
+   `scripts/install.sh`; the script documents the local path it actually supports.
+4. A test fails if a future edit reintroduces a reference to an unpublished package or an unregistered
+   domain as something the reader is told to run.
+5. The publish path is not deleted, only made honest: releasing the package must flip the README back
+   to the one-command install by changing one documented place, and that is written down.
+
+**Test plan (TDD)**
+
+| #   | Level | Test                                                                                                                                                   | Red when                                                                                                                                        |
+| --- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit  | `installSectionProblems` reads the install section against `REGISTRY_INSTALL_WORKS`; asserted against the flag **and** against the flag inverted, the second required to fail | The README and the flag drift apart in either direction — a build step described after a release, or a release described before one              |
+| 2   | unit  | `unavailableReferences` over `README.md`, `scripts/install.sh` and every file under `docs/`: no host this repository does not serve, and no fenced command that fetches `deflowai` from a registry | A future edit puts the dead host back, and the suite stays green because nothing mechanical resolves a name                                      |
+| 3   | unit  | A bare `npx <package>` form is refused wherever it appears, published or not, because the package declares four bins and npx can choose none of them     | The release lands, somebody "restores the one-command install" as `npx deflowai setup`, and it fails for the reason it always would have         |
+| 4   | e2e   | The install section's **own** build, pack and install lines, run in that order — the first two in this checkout, the last in the clean room               | The spec packs a tarball of its own and the README's lines are never executed, which is how a 404 survived a green suite for a day               |
+| 5   | unit  | The classification carries `where` per command, and every delegation names a spec file that exists on disk                                              | The skip list grows a delegation to something outside the test suite, like "CI's own build job", which this repository cannot check              |
+| 6   | unit  | `parseFlags` attributes a flag to the program whose command line it sits on: `pnpm --filter`, `npx --package` and everything before an `npx … --` belong to that tool, not to `deflow`, and only the rest is cross-checked against `deflow --help` | The honest route puts another program's command line in the README, and KAR-20.3's flag cross-check reads `--filter` as a `deflow` flag the parser is missing — a false red that can only be cleared by weakening the check or by deleting the build line |
+
+**Notes / risks** — the risk here is a guard so broad that the publish path has to be deleted to
+satisfy it. `deflowai` is a legitimate string in a packed tarball's filename, in a `pnpm --filter`,
+and as `scripts/install.sh`'s `DEFLOW_PACKAGE` default; banning the characters would cost the whole
+release route to catch one sentence. So test 2 is about **registry lookups** — a fenced line whose
+command fetches — and not about characters, and test 3 is about a **form** that is wrong on its own
+terms. The `$id`s in `schemas/*.json` are `https://deflow.dev/schemas/…` and are deliberately left
+alone: a JSON Schema `$id` is a namespace identifier and is not fetched by anything, which is why
+AC3 is scoped to user-facing documentation rather than to the tree.
+
 ---
 
 ## Risks

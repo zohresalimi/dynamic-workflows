@@ -91,6 +91,12 @@ Background:
 | EPIC-20-S32 | Sabotage: a README claim that stops being true turns a test red                            | KAR-20.3 | Failure     |
 | EPIC-20-S33 | **Performed: a person follows the README top to bottom**                                   | KAR-20.3 | Edge case   |
 | EPIC-20-S34 | The short alias `dfl` installs beside `deflow` and shadows nothing                         | KAR-20.1 | Edge case   |
+| EPIC-20-S35 | **Happy path: the install section is a route a reader can walk today**                     | KAR-20.4 | Happy path  |
+| EPIC-20-S36 | **Nothing the README shows is unserved or un-installable**                                 | KAR-20.4 | Failure     |
+| EPIC-20-S37 | A registry install that works flips the README back, and forgetting turns a test red       | KAR-20.4 | Edge case   |
+| EPIC-20-S38 | **The install section's own lines, executed in the order it prints them**                  | KAR-20.4 | Happy path  |
+| EPIC-20-S39 | The install script names the route it supports, and no host we do not serve                | KAR-20.4 | Failure     |
+| EPIC-20-S40 | A flag belongs to the program whose command line it sits on                                | KAR-20.4 | Edge case   |
 
 ---
 
@@ -854,6 +860,15 @@ Feature: the first thing a reader sees is the thing that works
 instructions — they are hints for a reader who already knows the answer, which is the one reader who
 does not need them.
 
+**Amended 2026-08-16 by KAR-20.4** (see EPIC-20-S35). "Exactly one command" was satisfiable only by
+a command that does not run: `npx deflowai setup` cannot choose a bin, because the package declares
+four and none is named `deflowai`. The scenario now reads: the install section **ends** in `setup`,
+run against something that exists; the link step, the `dist/bin.mjs` call and the hand-written
+`alias` are still forbidden; and `pnpm build` is deliberately **allowed inside the install section**,
+because until there is a release that installs, the tarball a reader installs is one they build. The
+one-command form returns the day `REGISTRY_INSTALL_WORKS` does, and EPIC-20-S37 makes that a failing
+build rather than a thing to remember.
+
 ---
 
 ## EPIC-20-S27 — Every command in the README is executed, and exits as the README says
@@ -881,6 +896,13 @@ Feature: the README has a build
 browser is legitimately unrunnable here; a skip list that grows to cover the interesting half turns
 this test into decoration, which is why AC4 asks for it to be enumerated and short rather than a
 pattern.
+
+**Amended 2026-08-16 by KAR-20.4.** The install section is no longer entirely clean-room work — it
+builds and packs in **this repository** first — so "each executable command is run in the clean
+room" splits by `where`, and the two lines that belong to the checkout are run there. KAR-20.3's
+rule that the install section may skip nothing is replaced by a stronger one in EPIC-20-S35: a
+delegation must name a spec **file that exists**. `covered: "CI's own build job runs it on every
+push"`, which is what two entries said, names nothing this repository can check.
 
 ---
 
@@ -1083,6 +1105,237 @@ itself works.
 
 The last scenario exists for the reason EPIC-20-S2 exists: a `bin` key is not a file in this
 repository, so a key dropped from the map is invisible everywhere except an install.
+
+---
+
+## EPIC-20-S35 — Happy path: the install section is a route a reader can walk today
+
+**Verifies:** KAR-20.4 · **Type:** Happy path · **Automated at:** unit
+
+_Added 2026-08-16, after the owner ran the first command in the README KAR-20.3 shipped and npm
+answered `could not determine executable to run`._
+
+```gherkin
+Feature: the shortest install that exists, rather than the shortest one we want to exist
+
+  Scenario: the first command is one this repository can answer
+    Given the root "README.md"
+    Then the install section's first command runs against a clone of this repository
+    And the section's last command is "setup", run against a tarball built by the lines above it
+    And no command in the section fetches a package from a registry
+    And no command in the section names a host this repository does not serve
+
+  Scenario: every line of it is executed by a spec that exists
+    Given each command in the install section
+    Then each one is executed either in the clean room or in this checkout
+    And any command that delegates instead names a spec file
+    And every named spec file exists on disk
+
+  Scenario: the route ends where the published route will end
+    Given the install section followed to its last line
+    Then a "deflow" is on PATH for a shell opened afterwards
+    And the section says so rather than leaving it to be inferred
+```
+
+**Notes:** the second scenario is the one with the teeth, and it is a **strengthening** of
+KAR-20.3's rule rather than a relaxation of it. That story said nothing in the install section may
+be skipped, which was affordable while the section was one `npx` line. An honest section has a build
+in it, and a build is legitimately not a clean-room command — so the rule becomes *a delegation is
+allowed only to a spec file that exists*. What the skip list said before —
+`covered: "CI's own build job runs it on every push"` — names nothing this repository can open.
+
+---
+
+## EPIC-20-S36 — Nothing the README shows is unregistered or un-installable
+
+**Verifies:** KAR-20.4 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: a README that sends a reader to a 404 is a defect, not a rough edge
+
+  Scenario: the two that were wrong on 2026-08-16
+    Given the list of names this project cannot yet send a reader to, each with the date and the
+      command it was checked with
+    Then no unserved host appears in "README.md"
+    And no fenced command in "README.md" fetches the package from a registry
+    And "scripts/install.sh" names neither
+
+  Scenario: the host, across the user-facing set
+    Given "README.md" and every file under "docs/"
+    Then the unserved host appears in none of them
+    And the two EPIC-20 delivery files are the only exemption, named rather than pattern-matched
+
+  Scenario: the guard is about registry lookups, not about characters
+    Given a command reading "npx --yes --package=/tmp/deflow.tgz -- deflow setup"
+    Then it is allowed, because a path is not a registry lookup
+    And a command reading "npx --yes --package=deflowai -- deflow setup" is refused
+    And a shell assignment defaulting DEFLOW_PACKAGE to the package name is allowed
+
+  Scenario: it would catch a restoration
+    Given the README with the registry install put back into a fenced block
+    Then the guard names that line
+```
+
+**Notes:** the third scenario is the whole design of the guard. The package name is a legitimate
+string in a tarball's filename, in a `pnpm --filter`, and as the shell script's `DEFLOW_PACKAGE`
+default — where it is the post-release fallback rather than a promise to anybody. A guard that
+banned the characters would have to be paid for by deleting the publish path, which is the opposite
+of what this story is for. The `$id`s in `schemas/*.json` are out of the scanned set for the same
+reason: a JSON Schema `$id` is a namespace identifier, and nothing fetches it.
+
+---
+
+## EPIC-20-S37 — A registry install that works flips the README back, and forgetting turns a test red
+
+**Verifies:** KAR-20.4 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the promise expires by going red rather than by being remembered
+
+  Scenario: one place, named in the file that owns the package name
+    Given "REGISTRY_INSTALL_WORKS" in "packages/cli/src/command-name.ts"
+    Then it is false
+    And its own documentation says what flipping it requires of the README
+
+  Scenario: it is named for the property, not for the event
+    Given that "deflowai" is published and still cannot be installed
+    Then the flag is not called "published"
+    And the reason is recorded beside it
+
+  Scenario: the README matches the flag as it stands
+    Given the README and the flag as they are
+    Then the install-section check reports no problem
+
+  Scenario: the README does not match the flag flipped
+    Given the same README and the flag inverted
+    Then the install-section check reports at least one problem
+    And the problem names the one-command install the working route would use
+
+  Scenario: the one-command install is the form npx can actually run
+    Given the command the flag's documentation names for that day
+    Then it passes the package to npx with "--package" and names the bin after "--"
+    And a bare "npx <package> setup" is refused whatever the flag says
+```
+
+**Notes:** the fourth scenario is what makes AC5 a mechanism instead of a paragraph. A release day on
+which nobody remembers this file is the normal case; the point is that it is a failing build rather
+than a README that goes on describing a build step for a package anybody could install in one
+command. The same shape KAR-20.1 used to expire its deprecated alias.
+
+The fifth is the correction 0.1.0 bought. `npx <name>` resolves a package and then must choose a
+bin, and it can only do that for a package declaring one bin or a bin matching its own name — this
+package declares four and matches none, deliberately, because KAR-20.1 moved the package name off
+the command name. So the bare form is refused permanently, and the flag governs *whether* a registry
+install is shown, never *which shape* it takes.
+
+---
+
+## EPIC-20-S38 — The install section's own lines, executed in the order it prints them
+
+**Verifies:** KAR-20.4 · **Type:** Happy path · **Automated at:** e2e
+
+```gherkin
+Feature: the sequence, not the shape of the sequence
+
+  Scenario: built and packed in this repository, installed in the clean room
+    Given a checkout of this repository
+    When the install section's build line is run in it
+    And the install section's pack line is run in it
+    Then a tarball exists at the path the section's next line names
+
+  Scenario: and the reader ends with a working command
+    Given the clean room from EPIC-20-S27 and that tarball
+    When the install section's last line is run
+    Then it exits 0
+    And "deflow --version" answers from the prefix that install left behind
+
+  Scenario: the substitution is declared, and it is only the destination
+    Given the pack line as the README prints it
+    Then what the spec runs differs from it only in where the tarball is written
+    And that difference is recorded beside the command rather than in prose
+```
+
+**Notes:** KAR-20.3's e2e already installed from a packed tarball, and that was the substitution
+that hid this defect: the spec packed the tarball **itself**, so the README's line could have said
+anything at all and the suite would have stayed green — which is exactly what happened for a day.
+Running the section's *own* build and pack lines, in this repository, is what makes the tarball the
+reader's tarball rather than the test's.
+
+The third scenario is the honest limit of that. The destination still has to move: the README names
+a fixed path under `/tmp`, and a spec that wrote there would collide with any other project running
+beside it. The difference is one argument, it is recorded on the command's own record, and it is the
+only difference.
+
+---
+
+## EPIC-20-S39 — The install script names the route it supports, and no host we do not serve
+
+**Verifies:** KAR-20.4 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: the first thing a suspicious operator reads is the comment at the top
+
+  Scenario: it documents what it can actually be given
+    Given "scripts/install.sh"
+    Then its header names "DEFLOW_PACKAGE" and a packed tarball as the route that works today
+    And it says the registry route is not available yet
+
+  Scenario: it sends nobody to a host that does not exist
+    Given the same file
+    Then it contains no unserved host
+    And it shows no "curl" of one
+
+  Scenario: the script itself did not have to change
+    Given the handover line at the bottom
+    Then it still passes DEFLOW_PACKAGE through to "deflow setup"
+    And it still names the bin after "--" rather than relying on npx to guess it
+```
+
+**Notes:** the script needed no behaviour change and did not get one — `DEFLOW_PACKAGE` already
+takes a tarball, and the handover line already used the `--package … -- deflow` form the README did
+not. Only its header lied, and only about where the file is served from. The third scenario pins the
+one line that was right all along, because the README's correction is a move **towards** it.
+
+---
+
+## EPIC-20-S40 — A flag belongs to the program whose command line it sits on
+
+**Verifies:** KAR-20.4 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the README's flag cross-check reads only the flags "deflow" is meant to accept
+
+  Scenario: another program's flags are not deflow's
+    Given a fenced line reading "pnpm --filter deflowai pack --out /tmp/deflow.tgz"
+    When the README's flags are parsed
+    Then "--filter" is not among them
+    And "--out" is not among them
+
+  Scenario: the tool's half and the program's half of one line are told apart
+    Given a fenced line reading "npx --yes --package=/tmp/deflow.tgz -- deflow setup --from /tmp/deflow.tgz"
+    When the README's flags are parsed
+    Then "--package" is not among them, because it is npx's
+    And "--from" is among them, because it falls after the "--" that names the bin
+
+  Scenario: a flag a reader is told to type is still collected from prose
+    Given the README documents "--json" in a table rather than in a fenced block
+    When the README's flags are parsed
+    Then "--json" is among them
+
+  Scenario: the check it feeds still fails on a flag the program lost
+    Given the flags the README shows
+    When they are cross-checked against a help text that lists none of them
+    Then every one of them is reported as missing
+```
+
+**Notes:** this is the one place KAR-20.4's honest route collides with a guarantee KAR-20.3 already
+shipped. The route has to name `pnpm` and `npx`, and their flags are not `deflow`'s — so a check
+that regex-scraped `--[a-z]+` from the whole file started reporting `--filter` as a flag the parser
+had dropped. There were three ways out and two of them are the defect this story is about:
+allow-listing the strings would make the check blind to a real flag someone deletes later, and
+deleting the build line would put the README back to promising an install nobody can run. Attributing
+each flag to its own program is the third, and the last scenario is what stops the fix from being a
+weakening — the check still goes fully red against a help text that lists nothing.
 
 ---
 

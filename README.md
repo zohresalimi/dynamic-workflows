@@ -12,11 +12,13 @@ you have already installed and logged into. It never asks for or stores your pro
 
 ## Before you install
 
-You need two things:
+You need three things:
 
 - **Node 24 or newer.** DeFlow is an npm package, and the installer stops with the download link
   if this machine's Node is older or missing.
 - **git**, and a repository to work in — DeFlow refuses to run outside a git working tree.
+- **A clone of this repository, and pnpm**, until there is a release you can install — the install
+  below builds the tarball it installs. Once there is one, the first two are the whole list again.
 
 You do **not** need an agent CLI to start. A bundled agent, `deflow-mock-agent`, ships inside the
 package and runs a whole plan end to end — planning, steps, gates, ledger, the scrubber — on a
@@ -25,35 +27,68 @@ the tool does before deciding whether to point a real agent at it.
 
 ## Install it
 
+**There is no one-line install yet.** A package called `deflowai` exists on the registry and you
+cannot install from it: it was published with its dependency versions unresolved, so npm refuses it
+outright. There is no website to `curl` a script from either. Both are things a release fixes and
+neither is something you can work around, so the route below is the one that works today — it
+builds the same tarball a release would publish, then runs the real installer against it.
+
+Four commands, in a clone of this repository:
+
 ```bash
-npx deflowai setup
+pnpm install
+pnpm build
+pnpm --filter deflowai pack --out /tmp/deflow.tgz
+npx --yes --package=/tmp/deflow.tgz -- deflow setup --from /tmp/deflow.tgz
 ```
 
-That is the install. `setup` fetches the package, puts the `deflow` command — and the shorter
-`dfl`, which is the same program — where your shell can find it, and then **proves it**: it opens
-a shell the way your terminal does and runs the command in there. If your next terminal would not
-find it, `setup` says so and exits non-zero rather than congratulating you.
+The last line is the install, and it is the same `setup` a release will run. It puts the `deflow`
+command — and the shorter `dfl`, which is the same program — where your shell can find it, and then
+**proves it**: it opens a shell the way your terminal does and runs the command in there. If your
+next terminal would not find it, `setup` says so and exits non-zero rather than congratulating you.
 
 It never edits a file in your home directory without asking. When a `PATH` line is needed, it
 names the file, shows you the exact line, and a bare Enter means no.
+
+### Check it worked
+
+In a **new** terminal — a new one, because that is the thing `setup` is claiming:
 
 ```bash
 deflow --version
 deflow --help
 ```
 
+### When there is a release you can install
+
+The first three lines above go away, and the fourth stops naming a tarball and names the package
+instead: one `npx` line, no clone, no build. It is written here as a sentence rather than as a
+command because the command does not work today, and a README that hands you a line that fails is
+worse than one that hands you a build.
+
+Two things have to be true before it comes back, and only the first is a release: the published
+package has to install at all, and the line has to hand `npx` the package rather than the command
+name, then name the `deflow` binary after the `--`. The short form some projects use —
+`npx <package> <subcommand>` — cannot
+work here whatever happens, because this package puts four commands on your `PATH` and `npx` has no
+way to guess which one you meant. Both facts live in one place,
+`REGISTRY_INSTALL_WORKS` in `packages/cli/src/command-name.ts`, and `test/readme-honesty.test.ts`
+fails until this section agrees with it.
+
 ### If this machine has no Node at all
 
-Then it cannot run the command above, and a script is the way in. It checks for Node, tells you
-what to install if there is none, and otherwise hands straight over to the same `deflow setup` —
-it installs nothing of its own, writes no file and never uses `sudo`.
+`scripts/install.sh` is the shape that will answer this: it checks for Node, tells you what to
+install if there is none, and otherwise hands straight over to the same `deflow setup` — it installs
+nothing of its own, writes no file and never uses `sudo`. What it is today, though, is a file in
+this repository and nothing more. Nothing serves it over the network, and the only thing you can
+point it at is a tarball you packed above — which took a Node to build. So it is not yet a way onto
+a machine that has none. It runs:
 
 ```bash
-curl -fsSL https://deflow.dev/install.sh -o install.sh
-sh install.sh
+DEFLOW_PACKAGE=/tmp/deflow.tgz sh scripts/install.sh
 ```
 
-Read it before you run it. It is one screen, and that is the point of downloading it first.
+Read it before you run it. It is one screen, and that is the point.
 
 ## Adding a real agent
 
@@ -219,7 +254,8 @@ quota — that is what exit code 3 means. Budgets and ceilings are set in `.DeFl
 ## Building it from source — the contributor path
 
 This section is for people who want to **work on DeFlow itself**. If you only want to use it, the
-install above is the whole story and this is not a second way to do it.
+install above is the whole story — it builds this repository too, because there is no release yet,
+but it ends with an installed command on your `PATH` and this ends with a dev loop.
 
 ```bash
 pnpm install
