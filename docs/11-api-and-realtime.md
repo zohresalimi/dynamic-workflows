@@ -332,6 +332,32 @@ different things about one directory.
 
 `project_exists` (409) and `project_not_found` (404) join the closed error union in §10.
 
+### Connectors (KAR-22.4)
+
+| Method   | Path                                          | Purpose                                                                     | Req  |
+| -------- | --------------------------------------------- | --------------------------------------------------------------------------- | ---- |
+| `GET`    | `/projects/:id/connectors`                    | Every registered service, its **live** state, and its credential statement   | AR-1 |
+| `POST`   | `/projects/:id/connectors/:service`           | Record that this project may use the service. Obtains **no** credential      | F1.1 |
+| `DELETE` | `/projects/:id/connectors/:service`           | Forget it. Deletes no credential, and names the operator's own revocation command | NF8  |
+| `GET`    | `/projects/:id/connectors/:service/issues?q=` | That project's repository's issues as `{ key, title, state, url }`           | F1.1 |
+
+**DeFlow holds no connector credential, and these routes are shaped by that.** `POST` opens no
+browser, calls no authorisation server, and receives no token: the row it writes is
+`(projectId, service)` and a timestamp. For GitHub the token lives in the GitHub CLI's own
+credential store, put there by the operator's own `gh auth login` against GitHub's own application,
+and DeFlow reads issues by spawning `gh`. See [ADR-0003](../adr/0003-never-hold-provider-credentials.md)
+and its amendment of 16 August 2026.
+
+Two further properties are contracts. **State is derived per request** — six values (`connected`,
+`not-installed`, `not-authorised`, `expired`, `missing-scope`, `unreachable`), each with a sentence
+and at most one command — for the reason `health` is, and a stored `connected` column would be a
+cache of somebody else's credential store. And **`q` is passed to the service**, not applied as a
+filter here, so a repository with three hundred issues is a search rather than three hundred rows.
+
+`connector_not_connected` (409) and `connector_unusable` (422) join the closed error union in §10.
+`connector_unusable` is 422 and not 503 for KAR-19.2's reason: no amount of waiting installs `gh` or
+grants a scope, and a retryable status would train a client to loop over a human's decision.
+
 ### Runs
 
 | Method | Path                           | Purpose                                                   | Req  |

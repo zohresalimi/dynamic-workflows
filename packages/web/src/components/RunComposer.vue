@@ -65,6 +65,14 @@ interface ProjectRow {
   readonly path: string;
 }
 
+/** One issue from a connected service, in the one vocabulary (KAR-22.4 AC3). */
+interface IssueRow {
+  readonly key: string;
+  readonly title: string;
+  readonly state: string;
+  readonly url: string;
+}
+
 /**
  * The two calls this component makes, named.
  *
@@ -75,7 +83,22 @@ interface ProjectRow {
  */
 interface ComposerApi {
   readonly providers: { readonly routes: { readonly $get: () => Promise<HttpAnswer> } };
-  readonly projects: { readonly $get: () => Promise<HttpAnswer> };
+  readonly projects: {
+    readonly $get: () => Promise<HttpAnswer>;
+    readonly ':id': {
+      readonly connectors: {
+        readonly $get: (args: { param: { id: string } }) => Promise<HttpAnswer>;
+        readonly ':service': {
+          readonly issues: {
+            readonly $get: (args: {
+              param: { id: string; service: string };
+              query: { q: string };
+            }) => Promise<HttpAnswer>;
+          };
+        };
+      };
+    };
+  };
   readonly runs: {
     readonly $post: (
       args: { json: unknown },
@@ -104,6 +127,18 @@ const projects = ref<readonly ProjectRow[]>([]);
 const projectId = ref('');
 const providers = ref<readonly ProviderRow[]>([]);
 const providerId = ref('');
+/**
+ * KAR-22.4 AC3 — the connected service for the selected project, and its
+ * issues.
+ *
+ * `null` means "no connector", and that is the state most machines are in: the
+ * picker simply does not appear and the box below it is what it always was.
+ * The list **adds** to the paste path and never replaces it (AC6), because an
+ * operator with a URL in their clipboard may well be pointing at a repository
+ * this connector cannot see at all.
+ */
+const connectedService = ref<string | null>(null);
+const issues = ref<readonly IssueRow[]>([]);
 const error = ref<string | null>(null);
 /**
  * The run a refusal named (AC5).
@@ -162,6 +197,61 @@ async function load(): Promise<void> {
       providerId.value = providers.value.find((r) => r.available)?.id ?? '';
   }
 }
+
+/**
+ * Which service this project has connected, if any.
+ *
+ * Read from the daemon rather than remembered: a connector removed in another
+ * tab must not leave a picker behind that submits against a service DeFlow no
+ * longer uses.
+ */
+async function loadConnector(): Promise<void> {
+  connectedService.value = null;
+  issues.value = [];
+  const target = project.value;
+  if (target === null) return;
+
+  const response = await api.projects[':id'].connectors.$get({ param: { id: target.id } });
+  if (!response.ok) return;
+  const body = (await response.json()) as {
+    services: readonly { id: string; connected: boolean }[];
+  };
+  connectedService.value = body.services.find((service) => service.connected)?.id ?? null;
+  if (connectedService.value !== null) await loadIssues();
+}
+
+/**
+ * This project's issues matching whatever is in the box.
+ *
+ * The term goes to the *service* — the daemon passes it to `gh` — rather than
+ * to a filter here, so a repository with three hundred issues is a search
+ * rather than three hundred rows on the wire.
+ */
+async function loadIssues(): Promise<void> {
+  const target = project.value;
+  const service = connectedService.value;
+  if (target === null || service === null) return;
+
+  const typed = url.value.trim();
+  // A pasted reference is not a search term: an operator who has a URL in the
+  // box has already answered the question the list exists to ask.
+  const q = typed.startsWith('http') ? '' : typed;
+  const response = await api.projects[':id'].connectors[':service'].issues.$get({
+    param: { id: target.id, service },
+    query: { q },
+  });
+  issues.value = response.ok ? ((await response.json()) as { issues: IssueRow[] }).issues : [];
+}
+
+watch(shape, (kind) => {
+  if (kind === 'issue') void loadConnector();
+});
+watch(projectId, () => {
+  if (shape.value === 'issue') void loadConnector();
+});
+watch(url, () => {
+  if (shape.value === 'issue' && connectedService.value !== null) void loadIssues();
+});
 
 watch(open, (isOpen) => {
   if (!isOpen) return;
@@ -338,10 +428,38 @@ function onKeydown(event: KeyboardEvent): void {
         <input v-model="path" data-composer-path type="text" autocomplete="off" spellcheck="false">
       </label>
 
+      <!--
+        AC3, AC6 — the paste box is always here, and the list is *extra*. An
+        operator with a URL in their clipboard is never worse off for having
+        connected a service, including when the URL points somewhere that
+        service cannot see.
+      -->
       <label v-else class="composer__field">
-        <span>An issue reference</span>
+        <span
+          >{{ connectedService === null ? 'An issue reference' : 'Search issues, or paste a reference' }}</span
+        >
         <input v-model="url" data-composer-url type="text" autocomplete="off" spellcheck="false">
       </label>
+
+      <ul
+        v-if="shape === 'issue' && issues.length > 0"
+        class="composer__issues"
+        data-composer-issues
+      >
+        <li v-for="issue in issues" :key="issue.key">
+          <button
+            type="button"
+            class="composer__issue"
+            data-composer-issue
+            :data-composer-issue-key="issue.key"
+            @click="url = issue.url"
+          >
+            <span class="composer__issue-key">{{ issue.key }}</span>
+            <span class="composer__issue-title">{{ issue.title }}</span>
+            <span class="composer__issue-state">{{ issue.state }}</span>
+          </button>
+        </li>
+      </ul>
 
       <label class="composer__field">
         <span>Project</span>
@@ -464,6 +582,51 @@ function onKeydown(event: KeyboardEvent): void {
   display: grid;
   gap: 0.2rem;
   font-size: 0.85em;
+}
+
+.composer__issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.composer__issue {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: var(--surface, transparent);
+  color: inherit;
+  font-size: 0.85em;
+}
+
+.composer__issue:hover,
+.composer__issue:focus-visible {
+  border-color: var(--edge, rgb(0 0 0 / 25%));
+}
+
+.composer__issue-key {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.composer__issue-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer__issue-state {
+  opacity: 0.75;
 }
 
 .composer__providers {

@@ -19,6 +19,7 @@ import { migration0013RateLimitIndex } from './0013-rate-limit-index.ts';
 import { migration0014IntakeKeys } from './0014-intake-keys.ts';
 import { migration0015IntakeKeysIntoEffects } from './0015-intake-keys-into-effects.ts';
 import { migration0016Projects } from './0016-projects.ts';
+import { migration0017Connectors } from './0017-connectors.ts';
 
 export const MIGRATIONS: readonly Migration[] = [
   migration0001InitialSchema,
@@ -37,4 +38,5 @@ export const MIGRATIONS: readonly Migration[] = [
   migration0014IntakeKeys,
   migration0015IntakeKeysIntoEffects,
   migration0016Projects,
+  migration0017Connectors,
 ];

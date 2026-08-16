@@ -1,11 +1,21 @@
 /**
- * A fake `gh` for KAR-10.1's issue-resolution tests
- * (docs/14-testing-strategy.md §3.3's "fake binaries, not mocked modules",
- * applied to `gh` the way `fake-git-bin.ts` applies it to `git`).
+ * A fake `gh` for KAR-10.1's issue-resolution tests and KAR-22.4's connector
+ * tests (docs/14-testing-strategy.md §3.3's "fake binaries, not mocked
+ * modules", applied to `gh` the way `fake-git-bin.ts` applies it to `git`).
  *
- * It never talks to GitHub. It answers `gh api repos/<owner>/<repo>/issues/<n>`
- * exactly as scripted, logging every invocation so a spec can assert what was
- * actually run without touching a real network.
+ * It never talks to GitHub. It answers exactly as scripted, logging every
+ * invocation so a spec can assert what was actually run — and, just as
+ * importantly for KAR-22.4, what was *not*.
+ *
+ * ## `credentialToken` is what makes the ADR-0003 assertion falsifiable
+ *
+ * The real `gh` holds a token in its own credential store and will print it on
+ * demand (`gh auth token`). A fake that held nothing would make "DeFlow never
+ * captures the token" unfalsifiable — there would be no token to capture. So
+ * this fixture writes one into a file beside the binary and lets a spec script
+ * an `auth token` route that prints it. A future implementation that decided to
+ * cache the credential has an obvious way to obtain it, and
+ * `test/integration/connectors-api.test.ts` notices when it does.
  */
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
@@ -13,23 +23,39 @@ import { delimiter, join } from 'node:path';
 export interface FakeGhBin {
   /** `PATH` with the shim's directory prepended, so a bare "gh" finds it. */
   readonly pathEnv: string;
+  /** Where the fake keeps "its own" credential. DeFlow must never read it. */
+  readonly credentialStore: string;
   /** Every `argv.join(' ')` invoked so far, in order. */
   invocations(): Promise<string[]>;
 }
 
-export interface WriteFakeGhOptions {
-  /** Written to stdout, exit 0 — a plausible-shaped issue body. */
+/** One scripted answer, chosen by a substring of the joined argv. */
+export interface FakeGhRoute {
+  /** Matched against `"$*"` — e.g. `'api -i user'`, `'issue list'`. */
+  readonly match: string;
   readonly stdout?: string;
-  /** Written to stderr; exit 1. Mutually exclusive with a 0 `exitCode`. */
   readonly stderr?: string;
   readonly exitCode?: number;
 }
 
+export interface WriteFakeGhOptions {
+  /** The fallback answer, for an argv no route matched. Written to stdout, exit 0. */
+  readonly stdout?: string;
+  /** Written to stderr; exit 1. Mutually exclusive with a 0 `exitCode`. */
+  readonly stderr?: string;
+  readonly exitCode?: number;
+  /** Per-subcommand answers, tried in order before the fallback above. */
+  readonly routes?: readonly FakeGhRoute[];
+  /** A token to write into the fake's own credential store. */
+  readonly credentialToken?: string;
+}
+
 /**
- * Writes an executable `gh` to `<tmp>/fake-gh-bin/gh`. Every invocation logs
- * its argv, then prints `stdout` (default `'{}'`) and exits 0, or — when
- * `stderr`/a non-zero `exitCode` is given — prints `stderr` and exits that
- * code instead.
+ * Writes an executable `gh` to `<tmp>/fake-gh-bin/gh`.
+ *
+ * Every invocation logs its argv, then takes the first `routes` entry whose
+ * `match` appears in the joined argv — or the fallback `stdout`/`stderr`/
+ * `exitCode` when none does.
  */
 export async function writeFakeGh(
   tmp: string,
@@ -41,27 +67,62 @@ export async function writeFakeGh(
   await writeFile(logFile, '');
   const binary = join(binDir, 'gh');
 
+  // Deliberately *not* under the daemon's data directory, and deliberately a
+  // real file: the token-hunting spec reads it back to prove it is searching
+  // for something that exists on this machine.
+  const credentialStore = join(binDir, 'hosts-store.txt');
+  await writeFile(
+    credentialStore,
+    options.credentialToken === undefined
+      ? 'no credential\n'
+      : `github.com\n  oauth_token: ${options.credentialToken}\n`,
+    { mode: 0o600 },
+  );
+
   const exitCode = options.exitCode ?? (options.stderr === undefined ? 0 : 1);
   const stdout = options.stdout ?? '{}';
   const stderr = options.stderr ?? '';
 
+  const answer = (route: Omit<FakeGhRoute, 'match'>): string[] => {
+    const code = route.exitCode ?? (route.stderr === undefined ? 0 : 1);
+    return [
+      route.stdout === undefined || route.stdout === '' ? '' : `printf '%s' ${q(route.stdout)}`,
+      route.stderr === undefined || route.stderr === ''
+        ? ''
+        : `printf '%s' ${q(route.stderr)} 1>&2`,
+      `exit ${code}`,
+    ].filter((line) => line !== '');
+  };
+
+  const cases = (options.routes ?? []).flatMap((route) => [
+    `  *${shellPattern(route.match)}*)`,
+    ...answer(route).map((line) => `    ${line}`),
+    '    ;;',
+  ]);
+
   const script = [
     '#!/bin/sh',
     '# Generated by packages/daemon/test/support/fake-gh-bin.ts -- never real gh.',
-    `printf '%s\\n' "$*" >> ${shellQuote(logFile)}`,
-    stdout === '' ? '' : `printf '%s' ${shellQuote(stdout)}`,
-    stderr === '' ? '' : `printf '%s' ${shellQuote(stderr)} 1>&2`,
-    `exit ${exitCode}`,
+    `printf '%s\\n' "$*" >> ${q(logFile)}`,
+    ...(cases.length === 0
+      ? answer({ stdout, stderr, exitCode })
+      : [
+          'case "$*" in',
+          ...cases,
+          '  *)',
+          ...answer({ stdout, stderr, exitCode }).map((l) => `    ${l}`),
+          '    ;;',
+          'esac',
+        ]),
     '',
-  ]
-    .filter((line) => line !== '')
-    .join('\n');
+  ].join('\n');
 
   await writeFile(binary, script);
   await chmod(binary, 0o755);
 
   return {
     pathEnv: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+    credentialStore,
     async invocations(): Promise<string[]> {
       const contents = await readFile(logFile, 'utf8');
       return contents.split('\n').filter((line) => line !== '');
@@ -69,6 +130,17 @@ export async function writeFakeGh(
   };
 }
 
-function shellQuote(value: string): string {
+function q(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * `match` as a `case` pattern that matches it **literally**.
+ *
+ * Single-quoted, because a `case` pattern is subject to word splitting and
+ * globbing: an unquoted `*api -i user*` is three words and a syntax error, and
+ * an unquoted `*` inside a route would silently match everything.
+ */
+function shellPattern(match: string): string {
+  return q(match);
 }

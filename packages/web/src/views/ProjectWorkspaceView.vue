@@ -193,6 +193,18 @@ function spent(row: HistoryRow): string {
       </h1>
       <code v-if="project" class="workspace__path">{{ project.path }}</code>
       <!--
+        KAR-22.4 — the way in to this project's connectors. A route nothing
+        links to is a route nobody can reach, and the connectors screen is where
+        AC1's whole story about who holds the token is told.
+      -->
+      <RouterLink
+        class="workspace__connectors"
+        data-workspace-connectors
+        :to="{ name: 'project-connectors', params: { projectId } }"
+      >
+        Connectors
+      </RouterLink>
+      <!--
         A project whose directory has gone still shows everything below; it just
         says so, in the daemon's own sentence (EPIC-22-S45).
       -->
@@ -306,6 +318,10 @@ function spent(row: HistoryRow): string {
   gap: 0.75rem;
   height: 100%;
   min-height: 0;
+}
+
+.workspace__connectors {
+  font-size: 0.85em;
 }
 
 .workspace__head,

@@ -151,6 +151,15 @@ export {
   readConflictProbes,
   upsertConflictProbe,
 } from './conflict-probe.ts';
+// KAR-22.4 — the `connector` table: which services a project may use. No
+// credential column exists here, deliberately (ADR-0003, amended 2026-08-16).
+export {
+  type ConnectorRecord,
+  forgetConnector,
+  insertConnector,
+  listConnectors,
+  readConnector,
+} from './connectors.ts';
 // KAR-09.2 — persisting a ContextPacket: the manifest into `context.built`,
 // the segment text into the blob store, and prompt.txt onto disk as a derived,
 // non-authoritative artifact (NF8).
