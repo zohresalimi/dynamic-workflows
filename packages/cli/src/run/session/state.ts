@@ -44,6 +44,20 @@ export type SessionInput =
       readonly text: string;
       /** The gate's own option id, carried from `pendingGate`, never spelled. */
       readonly optionId: string;
+    }
+  | {
+      /**
+       * KAR-21.4 AC7 — the second decision a cancel takes.
+       *
+       * A typed row rather than a one-key confirmation, because the default has
+       * to be **no**: a bare Enter on an empty row cancels nothing. That is the
+       * rule KAR-20.2 AC5 applies to editing a shell profile, and it matters
+       * more here — the thing on the other side of the keypress may have hours
+       * of work in it.
+       */
+      readonly kind: 'cancel-confirm';
+      readonly prompt: string;
+      readonly text: string;
     };
 
 /**
@@ -75,12 +89,48 @@ export interface GateNotice {
   readonly message: string;
 }
 
+/**
+ * KAR-21.4 — what the interject verb is doing, and nothing about what it means.
+ *
+ * `notice` is the daemon's own sentence whenever the daemon spoke: an
+ * `unsupported` delivery, a refusal, or the one thing this session answers by
+ * itself — that no node is running to interject into (AC4). `offer` is what the
+ * daemon named as the mode that *would* work, held so one keypress can re-send
+ * with it; it is never acted on without that keypress (AC3).
+ */
+export interface InterjectState {
+  /** Whether an interjection is on the wire — the rows are inert while it is. */
+  readonly sending: boolean;
+  /** The last thing that has to be said about an interjection, or `null`. */
+  readonly notice: string | null;
+  /** An `unsupported` answer's alternative, waiting for the operator. */
+  readonly resend: ResendOffer | null;
+}
+
+/** What a re-send would send: the daemon's mode, and the operator's own text. */
+export interface ResendOffer {
+  readonly node: string;
+  readonly text: string;
+  /** The `alternative` off the response — never a mode this package spelled. */
+  readonly mode: string;
+}
+
+/** KAR-21.4 AC8 — what `cancelRun` answered, and whether it is still answering. */
+export interface CancelState {
+  readonly sending: boolean;
+  readonly notice: string | null;
+}
+
 export interface SessionState {
   readonly focus: SessionFocus;
   /** The open input, or `null` when the session is only watching. */
   readonly input: SessionInput | null;
   /** KAR-21.3 — what the gate prompt is doing. @see `gate.ts` */
   readonly gate: GateState;
+  /** KAR-21.4 — what the interject verb is doing. @see `interject.ts` */
+  readonly interject: InterjectState;
+  /** KAR-21.4 — what the cancel verb is doing. @see `cancel.ts` */
+  readonly cancel: CancelState;
   /** ms epoch, measured by the caller through its injected `Clock` (NF9). */
   readonly nowMs: number;
   /** The terminal's height in rows — passed, never derived (AC1, AC7). */
@@ -108,10 +158,21 @@ export function initialSessionState(): SessionState {
     focus: 'transcript',
     input: null,
     gate: initialGateState(),
+    interject: initialInterjectState(),
+    cancel: initialCancelState(),
     nowMs: 0,
     rows: DEFAULT_ROWS,
     keyboard: false,
   };
+}
+
+/** Nothing typed, nothing on the wire, nothing to say about either verb. */
+export function initialInterjectState(): InterjectState {
+  return { sending: false, notice: null, resend: null };
+}
+
+export function initialCancelState(): CancelState {
+  return { sending: false, notice: null };
 }
 
 /** A gate prompt nobody has touched: the first row, nothing in flight. */

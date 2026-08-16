@@ -61,6 +61,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
+import { NOTHING_RUNNING } from '../../src/run/session/interject.ts';
 import { CLI_BIN, HERMETIC_PATH } from './support/cli-process.ts';
 import {
   alivePid,
@@ -147,13 +148,15 @@ async function witness(dataDir: string, cwd: string): Promise<{ before: string }
  * only be seen by something reading the terminal in raw mode; in canonical mode
  * it sits in the line buffer and the interjection row never opens.
  *
- * `interject:` rather than `interject`, because the key-hint line names the key
- * by that word and would match from the first frame onwards.
+ * This run is parked at the F1.3 gate with no node executing, so the answer to
+ * the interject key is KAR-21.4 AC4's one explanatory line rather than an open
+ * row. Either way it is a frame only a raw reader could have caused; the
+ * sentence is imported from the module that prints it rather than retyped here.
  */
 async function keyboardIsLive(live: Shell): Promise<void> {
   live.type('i');
-  await untilOnPty('a bare key press to open the interjection row', live, () =>
-    live.output().includes('interject:') ? true : null,
+  await untilOnPty('a bare key press to reach the session', live, () =>
+    live.output().includes(NOTHING_RUNNING) ? true : null,
   );
 }
 

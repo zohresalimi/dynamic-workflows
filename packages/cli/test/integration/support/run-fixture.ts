@@ -27,10 +27,10 @@
  * rather than hand-written rows, so a spec cannot quietly assert a shape the
  * daemon does not produce.
  */
-import type { Db, NodeId, RunId, TaskSpecDraft } from '@DeFlow/core';
-import { NodeIdSchema, RunIdSchema, seededRandom } from '@DeFlow/core';
+import type { Db, NodeId, ProviderId, RunId, TaskSpecDraft } from '@DeFlow/core';
+import { NodeIdSchema, ProviderIdSchema, RunIdSchema, seededRandom } from '@DeFlow/core';
 import { createEffectRunner, executeRun, openSpecApprovalGate } from '@DeFlow/daemon';
-import { appendEvents, listRunIds, readRange } from '@DeFlow/ledger';
+import { appendEvents, listRunIds, readRange, recordProviderCapabilities } from '@DeFlow/ledger';
 import { TestClock } from '@DeFlow/testkit';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -137,6 +137,119 @@ export function plannedRun(
   ]);
 
   return runId;
+}
+
+/* -------------------------------------------------------------------------- *
+ * a node genuinely mid-flight
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The steerable adapter KAR-21.4's specs schedule onto.
+ *
+ * A probed row rather than a provider name: the daemon's delivery answer turns
+ * on `_meta.midSessionSteering` and on nothing else, so a fixture that wants
+ * `queued` has to record one.
+ */
+export const STEERABLE: ProviderId = ProviderIdSchema.parse('mock-steerable');
+
+/**
+ * KAR-21.4 — a run whose one agent node is running on attempt 1.
+ *
+ * Appended rather than driven through the scheduler, for the reason this file
+ * exists: what these specs are about is the interjection path, not the paths
+ * that happen to produce a running node. Every payload goes through
+ * `appendEvents`, which validates, so a fixture that drifted from a schema
+ * fails at the door rather than reducing to nothing.
+ */
+export function runningNodeRun(
+  node: NodeId,
+  at: LedgerAt & { readonly cwd: string; readonly runId: RunId; readonly steering?: boolean },
+): RunId {
+  const runId = plannedRun(node, at);
+  const binarySha256 = 'b'.repeat(64);
+
+  recordProviderCapabilities(at.db, {
+    provider: STEERABLE,
+    version: '0.0.0',
+    binarySha256,
+    binaryPath: '/opt/mock/bin/agent',
+    capsJson: JSON.stringify({
+      protocolVersion: 1,
+      agentCapabilities: {
+        loadSession: false,
+        promptCapabilities: { image: false, audio: false, embeddedContext: false },
+        mcpCapabilities: { http: false, sse: false },
+        _meta: { midSessionSteering: at.steering ?? true },
+      },
+      authMethods: [],
+    }),
+    probedAt: at.ts,
+  });
+
+  appendEvents(at.db, [
+    {
+      runId,
+      ts: at.ts,
+      kind: 'run.started',
+      v: 1,
+      epoch: at.epoch,
+      payload: { planHash: `sha256-${'d'.repeat(64)}` },
+    },
+    {
+      runId,
+      ts: at.ts,
+      kind: 'node.scheduled',
+      v: 1,
+      epoch: at.epoch,
+      payload: { node, provider: STEERABLE, permission: 'worktree' },
+    },
+    {
+      runId,
+      ts: at.ts,
+      kind: 'node.started',
+      v: 2,
+      epoch: at.epoch,
+      nodeId: node,
+      attempt: 1,
+      payload: {
+        node,
+        attempt: 1,
+        ikey: `${runId}/${node}/1/0`,
+        binary: { path: '/opt/mock/bin/agent', version: '0.0.0', sha256: binarySha256 },
+      },
+    },
+  ]);
+
+  return runId;
+}
+
+/** Finishes `node` the way a completed turn does, so a spec can post at a node
+ * that has just stopped being steerable. */
+export function completeNode(node: NodeId, at: LedgerAt & { readonly runId: RunId }): void {
+  appendEvents(at.db, [
+    {
+      runId: at.runId,
+      ts: at.ts,
+      kind: 'node.completed',
+      v: 1,
+      epoch: at.epoch,
+      nodeId: node,
+      attempt: 1,
+      payload: {
+        node,
+        attempt: 1,
+        result: {
+          status: 'completed',
+          output: { ok: true },
+          outputSchemaId: 'DeFlow.finding.v1',
+          usage: { inputTokens: 10, outputTokens: 2, source: 'vendor-reported' },
+          costUsd: 0,
+          producedFacts: [],
+          artifacts: [],
+        },
+      },
+    },
+  ]);
 }
 
 /* -------------------------------------------------------------------------- *

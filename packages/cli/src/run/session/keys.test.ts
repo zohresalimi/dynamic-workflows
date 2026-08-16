@@ -21,7 +21,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, describe as suite } from 'vitest';
-import { createKeyDecoder, type Intent, KEY_BINDINGS } from './keys.ts';
+import { createKeyDecoder, type DecodedKey, type Intent, KEY_BINDINGS } from './keys.ts';
 
 const ESC = String.fromCodePoint(0x1b);
 /** Ctrl-C, as the terminal sends it once raw mode is on: a byte, not a signal. */
@@ -39,10 +39,18 @@ const BEL = String.fromCodePoint(0x07);
  * are about different instants; running them through one helper is what stops
  * the pair being reconciled by weakening either.
  */
-function pressed(bytes: string): readonly Intent[] {
+function pressedKeys(bytes: string): readonly DecodedKey[] {
   const decoder = createKeyDecoder();
   return [...decoder.feed(bytes), ...decoder.flush()];
 }
+
+/** The same press, as the intents alone — what these two scenarios are about. */
+function pressed(bytes: string): readonly Intent[] {
+  return pressedKeys(bytes).map((key) => key.intent);
+}
+
+/** A decoded key's intents, for the assertions made one `data` event at a time. */
+const intentsOf = (keys: readonly DecodedKey[]): readonly Intent[] => keys.map((key) => key.intent);
 
 suite('EPIC-21-S10 — the bytes a terminal actually sends (AC1, AC2)', () => {
   const cases: readonly [string, string, Intent][] = [
@@ -91,10 +99,10 @@ suite('EPIC-21-S11 — one sequence, two data events (AC2)', () => {
   it('holds the escape back and completes it on the next read', () => {
     const decoder = createKeyDecoder();
 
-    expect(decoder.feed(ESC)).toEqual([]);
+    expect(intentsOf(decoder.feed(ESC))).toEqual([]);
     expect(decoder.pending()).toBe(true);
 
-    const second = decoder.feed('[A');
+    const second = intentsOf(decoder.feed('[A'));
 
     expect(second).toEqual(['select-up']);
     // The lone escape byte must not have meant Escape on its way past: over ssh
@@ -107,28 +115,28 @@ suite('EPIC-21-S11 — one sequence, two data events (AC2)', () => {
   it('splits a sequence anywhere, not only after the escape', () => {
     const decoder = createKeyDecoder();
 
-    expect(decoder.feed(`${ESC}[`)).toEqual([]);
-    expect(decoder.feed('B')).toEqual(['select-down']);
+    expect(intentsOf(decoder.feed(`${ESC}[`))).toEqual([]);
+    expect(intentsOf(decoder.feed('B'))).toEqual(['select-down']);
     expect(decoder.pending()).toBe(false);
   });
 
   it('means Escape when the sequence never completes', () => {
     const decoder = createKeyDecoder();
 
-    expect(decoder.feed(ESC)).toEqual([]);
+    expect(intentsOf(decoder.feed(ESC))).toEqual([]);
     // `flush` is what the caller calls when the decoder's stated wait has
     // passed with nothing else arriving. Without it the Escape key stops
     // working entirely, which is the other half of the same bug.
-    expect(decoder.flush()).toEqual(['dismiss']);
+    expect(intentsOf(decoder.flush())).toEqual(['dismiss']);
     expect(decoder.pending()).toBe(false);
     // And the buffer is empty afterwards: a second flush has nothing to say.
-    expect(decoder.flush()).toEqual([]);
+    expect(intentsOf(decoder.flush())).toEqual([]);
   });
 
   it('renders a key that follows a completed sequence in the same event', () => {
     const decoder = createKeyDecoder();
 
-    expect(decoder.feed(`${ESC}[Aa`)).toEqual(['select-up', 'answer']);
+    expect(intentsOf(decoder.feed(`${ESC}[Aa`))).toEqual(['select-up', 'answer']);
   });
 
   it('consumes an unknown escape sequence whole rather than one byte at a time', () => {
@@ -136,7 +144,41 @@ suite('EPIC-21-S11 — one sequence, two data events (AC2)', () => {
 
     // `ESC [ 5 ~` is Page Up. Nothing here handles it, and the wrong answer is
     // `dismiss` followed by `[`, `5` and `~` typed into an input box.
-    expect(decoder.feed(`${ESC}[5~a`)).toEqual(['none', 'answer']);
+    expect(intentsOf(decoder.feed(`${ESC}[5~a`))).toEqual(['none', 'answer']);
+  });
+});
+
+/**
+ * KAR-21.4 AC1 — the bytes that fill an open row.
+ *
+ * A key carries two facts and the session needs both: what it *means* while
+ * nothing is open, and what it *is* while something is. `i` is the interject
+ * key and also the letter in "utils", and a decoder that reported only the
+ * intent would make every correction containing one of the verb letters
+ * unwritable. The decision between them belongs to the session — it is the one
+ * that knows whether a row is open — so the decoder reports both and decides
+ * neither.
+ */
+suite('EPIC-21-S28 — a printable key carries its character too (KAR-21.4 AC1)', () => {
+  it('reports the character alongside the intent, bound or not', () => {
+    expect(pressedKeys('a')).toEqual([{ intent: 'answer', text: 'a' }]);
+    expect(pressedKeys('Z')).toEqual([{ intent: 'none', text: 'Z' }]);
+    expect(pressedKeys(' ')).toEqual([{ intent: 'none', text: ' ' }]);
+    expect(pressedKeys('.')).toEqual([{ intent: 'none', text: '.' }]);
+  });
+
+  it('reports no character for the keys that are not letters', () => {
+    for (const bytes of ['\r', ESC, CTRL_C, BEL, `${ESC}[A`]) {
+      for (const key of pressedKeys(bytes)) expect(key.text).toBeNull();
+    }
+  });
+
+  it('reports a whole typed word one character at a time, in order', () => {
+    expect(
+      pressedKeys('utils')
+        .map((key) => key.text)
+        .join(''),
+    ).toBe('utils');
   });
 });
 

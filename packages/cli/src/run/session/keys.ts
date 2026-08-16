@@ -35,6 +35,17 @@
 const ESC = String.fromCodePoint(0x1b);
 /** Ctrl-C, as a terminal sends it once raw mode is on: a byte, not a signal. */
 const CTRL_C = String.fromCodePoint(0x03);
+/**
+ * KAR-21.4 — what the Backspace key sends.
+ *
+ * `DEL` rather than `BS`: the key labelled Backspace sends 0x7f on every
+ * terminal this ships to, and 0x08 is what Ctrl-H sends. One binding for the
+ * key people press, rather than two rows in the hint line for one idea.
+ */
+const DEL = String.fromCodePoint(0x7f);
+/** The first printable code point. Below it are the control bytes, which are
+ * keys rather than characters however they arrive. */
+const FIRST_PRINTABLE = 0x20;
 
 /**
  * Every meaning a key can carry, as one closed set.
@@ -54,6 +65,9 @@ const CTRL_C = String.fromCodePoint(0x03);
 export const INTENTS = [
   'answer',
   'interject',
+  'resend',
+  'cancel',
+  'erase',
   'select-up',
   'select-down',
   'confirm',
@@ -63,6 +77,26 @@ export const INTENTS = [
 ] as const;
 
 export type Intent = (typeof INTENTS)[number];
+
+/**
+ * KAR-21.4 AC1 — one key press: what it *means*, and what it *is*.
+ *
+ * A key carries both facts and the session needs both. `i` is the interject key
+ * and also the letter in `utils.ts`, so a decoder that reported only the intent
+ * would make every correction containing a verb letter unwritable, and one that
+ * reported only the character would leave the session no keys at all. Which of
+ * the two applies depends on whether a row is open — which this file cannot
+ * know and must not guess — so it reports both and decides neither.
+ *
+ * `text` is `null` for everything that is not a character: the control bytes,
+ * the escape sequences, and the erase key. An empty string would be a
+ * character that happened to be nothing, which is not the same claim.
+ */
+export interface DecodedKey {
+  readonly intent: Intent;
+  /** The bytes this key typed, or `null` when it typed nothing. */
+  readonly text: string | null;
+}
 
 /** An intent a key can actually produce — everything but the empty one. */
 export type BoundIntent = Exclude<Intent, 'none'>;
@@ -97,6 +131,12 @@ export interface KeyBinding {
 export const KEY_BINDINGS: readonly KeyBinding[] = [
   { sequence: 'a', intent: 'answer', label: 'a', describe: 'answer' },
   { sequence: 'i', intent: 'interject', label: 'i', describe: 'interject' },
+  // KAR-21.4. `r` accepts the alternative mode an `unsupported` answer named,
+  // and `c` starts the two-step that ends a run; `bksp` is what makes the row
+  // they both type into an input rather than a one-shot.
+  { sequence: 'r', intent: 'resend', label: 'r', describe: 'resend' },
+  { sequence: 'c', intent: 'cancel', label: 'c', describe: 'cancel' },
+  { sequence: DEL, intent: 'erase', label: 'bksp', describe: 'erase' },
   { sequence: `${ESC}[A`, intent: 'select-up', label: 'up', describe: 'prev' },
   { sequence: `${ESC}[B`, intent: 'select-down', label: 'down', describe: 'next' },
   { sequence: '\r', intent: 'confirm', label: 'enter', describe: 'confirm' },
@@ -124,12 +164,30 @@ export const ESCAPE_WAIT_MS = 50;
 const FINAL_BYTE = /[@-~]/;
 
 export interface KeyDecoder {
-  /** Bytes from one `data` event; the intents they completed, in order. */
-  feed(chunk: string): readonly Intent[];
+  /** Bytes from one `data` event; the keys they completed, in order. */
+  feed(chunk: string): readonly DecodedKey[];
   /** Whether bytes are being held back pending more. */
   pending(): boolean;
   /** The caller's stated wait has passed: decide about whatever is held. */
-  flush(): readonly Intent[];
+  flush(): readonly DecodedKey[];
+}
+
+/** A key that means something but types nothing — every escape sequence, and
+ * every control byte. */
+const keyOf = (intent: Intent): DecodedKey => ({ intent, text: null });
+
+/**
+ * One character off the front of the buffer, as both facts about it.
+ *
+ * A surrogate pair arrives as two of these and is re-joined by the caller
+ * appending them in order, which is why this takes one JS character rather than
+ * one code point: there is nothing to decide about half a character, and
+ * concatenation puts it back together.
+ */
+function readCharacter(byte: string): DecodedKey {
+  const intent = BY_SEQUENCE.get(byte) ?? 'none';
+  const printable = (byte.codePointAt(0) ?? 0) >= FIRST_PRINTABLE && byte !== DEL;
+  return { intent, text: printable ? byte : null };
 }
 
 /**
@@ -170,24 +228,25 @@ function readEscape(buffer: string, final: boolean): { intent: Intent; width: nu
 export function createKeyDecoder(): KeyDecoder {
   let buffer = '';
 
-  const drain = (final: boolean): readonly Intent[] => {
-    const intents: Intent[] = [];
+  const drain = (final: boolean): readonly DecodedKey[] => {
+    const keys: DecodedKey[] = [];
 
     while (buffer !== '') {
       if (buffer.startsWith(ESC)) {
         const read = readEscape(buffer, final);
         if (read === null) break;
-        intents.push(read.intent);
+        // An escape sequence types nothing: `ESC [ 5 ~` is Page Up, and putting
+        // its bytes into an open row is the ssh bug this decoder exists for.
+        keys.push(keyOf(read.intent));
         buffer = buffer.slice(read.width);
         continue;
       }
 
-      const byte = buffer.slice(0, 1);
-      intents.push(BY_SEQUENCE.get(byte) ?? 'none');
+      keys.push(readCharacter(buffer.slice(0, 1)));
       buffer = buffer.slice(1);
     }
 
-    return intents;
+    return keys;
   };
 
   return {
