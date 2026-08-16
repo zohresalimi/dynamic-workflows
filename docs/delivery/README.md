@@ -28,9 +28,9 @@ It is a tool, not a contract. Nobody is holding you to it. See §8.
 ### Identifiers
 
 - **Epics** — `EPIC-00` … `EPIC-22`, one file each in [`epics/`](./epics), mapped onto a roadmap
-  workstream. `EPIC-21` is planned in Linear (`MET-795`) and has no file yet; its markdown is
-  authored under §9 when its first story is picked up, and until then it is absent from the board's
-  totals rather than silently counted.
+  workstream. `EPIC-21` was the one exception until 2026-08-16 — planned in Linear (`MET-795`) with
+  no file, and deliberately absent from the board's totals rather than silently counted. It is now
+  authored under §9, ahead of its first story, and counted like every other epic.
 - **Stories** — `KAR-<epic>.<n>`, e.g. `KAR-03.4` is the fourth story of EPIC-03. They live inside
   the epic file.
 - **Scenarios** — `EPIC-NN-S<m>`, e.g. `EPIC-03-S7`, in the matching file in [`flows/`](./flows).
@@ -243,6 +243,7 @@ P0 because it is interesting.
 | EPIC-18 | [CLI, doctor and packaging](./epics/EPIC-18-cli-packaging.md)                       | W12           | [flows](./flows/EPIC-18-cli-packaging-flows.md)       |
 | EPIC-19 | [The live run pipeline, end to end](./epics/EPIC-19-live-run-pipeline.md)           | W13           | [flows](./flows/EPIC-19-live-run-pipeline-flows.md)   |
 | EPIC-20 | [One-command install and a lowercase command](./epics/EPIC-20-install-and-naming.md) | W14           | [flows](./flows/EPIC-20-install-and-naming-flows.md)  |
+| EPIC-21 | [Interactive CLI: a real terminal app, not a background command](./epics/EPIC-21-interactive-cli.md) | W16           | [flows](./flows/EPIC-21-interactive-cli-flows.md)     |
 | EPIC-22 | [Web control center: projects, chat-driven runs, live boards](./epics/EPIC-22-web-control-center.md) | W15           | [flows](./flows/EPIC-22-web-control-center-flows.md)  |
 
 Live status, sizing rollups and requirement coverage are on the [board](./board.md). This table is
