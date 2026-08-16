@@ -15,17 +15,29 @@
  * nothing else. The first command is the install, and every command after it is
  * the binary that install left behind.
  *
- * The one substitution is the specifier: `npx deflowai setup` is run against a
- * packed tarball rather than against the registry, because the package is not
- * published yet and a release gate cannot verify bytes npm has not seen. It is
- * the same code path — `e2e/setup-install.test.ts` makes the same substitution
- * for the same reason — and `test/command-name.test.ts` is what keeps the name
- * in the README itself honest.
+ * ## What KAR-20.4 corrected here
  *
- * Verifies: EPIC-20-S27 · EPIC-20-S32 · AC1, AC4, AC7
+ * This spec used to pack a tarball **of its own** and run `setup` against it,
+ * recording the outcome under the README's text — so the document and the thing
+ * executed were joined by a string literal and nothing else. The literal said
+ * `npx deflowai setup`, which npm has never been able to run: it resolves a
+ * package and then cannot choose among four bins, none named after the package.
+ * The suite was green over it for a day.
+ *
+ * So the install section's **own** lines run now, in the order it prints them:
+ * `pnpm install` and `pnpm build` and the pack line in this checkout, and the
+ * install line in the clean room, against the tarball those lines produced. The
+ * only substitution left is where the tarball is written — the README names a
+ * fixed path under `/tmp` because a reader needs a string to copy, and a spec
+ * writing there would collide with anything running beside it — plus `--yes
+ * --json` on the install, so an unattended room neither prompts nor has to be
+ * screen-scraped. Both are declared on the command's own record in
+ * `test/support/readme.ts` rather than described in prose here.
+ *
+ * Verifies: EPIC-20-S27 · EPIC-20-S32 · EPIC-20-S38 · AC1, AC4, AC7
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -33,18 +45,17 @@ import process from 'node:process';
 import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 import { PROVIDER_SPECS } from '../packages/adapters/src/provider-registry.ts';
 import {
-  cleanupPackedTarball,
   cleanupSystemToolsDir,
   cliDir,
   gitDir,
-  type PackedTarball,
-  packGoodTarball,
+  repoRoot,
   systemToolsDir,
 } from '../packages/cli/scripts/verify-install/lib.ts';
 import { RUN_EXIT_CODES } from '../packages/cli/src/run/exit-codes.ts';
 import {
   agentPackageMismatches,
   EXECUTED_COMMANDS,
+  type ExecutedCommand,
   exitCodeMismatches,
   flagsMissingFromHelp,
   parseAgentPackages,
@@ -53,9 +64,31 @@ import {
   parseFlags,
   readmeText,
   unclassifiedCommands,
+  type Where,
 } from '../test/support/readme.ts';
 
 const README = readmeText();
+
+/** The README's own lines for one place, in the order it prints them. */
+function readmeLines(where: Where): readonly ExecutedCommand[] {
+  return EXECUTED_COMMANDS.filter((entry) => entry.where === where);
+}
+
+/**
+ * The install section's `n`th line for one place, or a failure naming what it
+ * expected — never a silent skip.
+ *
+ * Positional because the point of this spec after KAR-20.4 is the **sequence**:
+ * build, then pack, then install what was packed. A lookup by string would let
+ * the README reorder its own lines without anything noticing.
+ */
+function readmeLine(where: Where, index: number): ExecutedCommand {
+  const line = readmeLines(where)[index];
+  if (line === undefined) {
+    throw new Error(`the README has no ${where} command at index ${String(index)}`);
+  }
+  return line;
+}
 
 interface Room {
   readonly dir: string;
@@ -65,7 +98,9 @@ interface Room {
   readonly env: NodeJS.ProcessEnv;
 }
 
-let tarball: PackedTarball;
+/** Where the pack line writes — the one substitution left in this spec. */
+let tarballDir: string;
+let tarball: string;
 let room: Room;
 /** What each executed command actually did, keyed by the README's own text. */
 const outcomes = new Map<string, { readonly status: number | null; readonly stdout: string }>();
@@ -151,16 +186,42 @@ function installedPath(): string {
 }
 
 beforeAll(async () => {
-  tarball = packGoodTarball();
+  tarballDir = mkdtempSync(join(tmpdir(), 'DeFlow-readme-pack-'));
+  tarball = join(tarballDir, 'deflow.tgz');
   room = await makeRoom();
 }, 600_000);
 
 afterAll(async () => {
-  cleanupPackedTarball(tarball);
   cleanupSystemToolsDir();
   if (process.env.DeFlow_KEEP_TMP !== undefined) return;
+  await rm(tarballDir, { recursive: true, force: true });
   await rm(room.dir, { recursive: true, force: true });
 });
+
+/**
+ * One README line, run by a real shell in this checkout.
+ *
+ * `sh -c` on the README's own string rather than an argv this spec assembled:
+ * the line a reader copies is the line that runs, including its `&&` and its
+ * flags. The only edit is the pack destination, applied by replacing the path
+ * the README names — so a README that stopped naming that path would fail here
+ * rather than quietly run the unedited line into `/tmp`.
+ */
+function runInCheckout(line: ExecutedCommand): { status: number | null; ran: string } {
+  const ran = line.command.replace('/tmp/deflow.tgz', tarball);
+  if (line.command.includes('/tmp/deflow.tgz') && ran === line.command) {
+    throw new Error(`the pack destination was not substituted in "${line.command}"`);
+  }
+  const child = spawnSync('/usr/bin/env', ['sh', '-c', ran], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 900_000,
+  });
+  record(line.command, child.status, child.stdout);
+  return { status: child.status, ran };
+}
 
 /** One README command, run in the room, from the installed prefix. */
 function runInstalled(command: string, argv: readonly string[]): number | null {
@@ -197,30 +258,48 @@ suite('EPIC-20-S27 — a reader follows the README in a clean room', () => {
     expect(found.stdout.trim()).toBe('');
   });
 
-  it('installs with the one command the install section shows', () => {
-    const line = `npx deflowai setup`;
-    const child = spawnSync(
-      join(dirname(process.execPath), 'npx'),
-      [
-        '--yes',
-        `--package=${tarball.tgz}`,
-        '--',
-        'deflow',
-        'setup',
-        '--yes',
-        '--json',
-        '--from',
-        tarball.tgz,
-      ],
-      {
-        cwd: room.dir,
-        encoding: 'utf8',
-        env: room.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 600_000,
-      },
-    );
-    record(line, child.status, child.stdout);
+  it('runs the install section’s own "pnpm install", in a clone of this repository', () => {
+    const line = readmeLine('checkout', 0);
+    expect([line.command, runInCheckout(line).status]).toEqual([line.command, line.exits[0]]);
+  }, 900_000);
+
+  it('runs the install section’s own build line', () => {
+    const line = readmeLine('checkout', 1);
+    expect([line.command, runInCheckout(line).status]).toEqual([line.command, line.exits[0]]);
+  }, 900_000);
+
+  it('runs the install section’s own pack line, and it writes the tarball', () => {
+    // The line that was never executed before, and the reason a README naming a
+    // package npm cannot install stayed green: the tarball used to be one this
+    // spec packed for itself, so the README's pack line could have said
+    // anything — or nothing.
+    const line = readmeLine('checkout', 2);
+    const { status, ran } = runInCheckout(line);
+    expect([ran, status]).toEqual([ran, line.exits[0]]);
+    expect(existsSync(tarball)).toBe(true);
+  }, 900_000);
+
+  it('installs with the last line of the install section, against that tarball', () => {
+    const line = readmeLine('clean-room', 0);
+    const argv = line.command
+      .split(/\s+/)
+      .slice(1)
+      .map((word) => word.replace('/tmp/deflow.tgz', tarball));
+    // `--yes --json` inserted after the bin and its subcommand — the declared
+    // substitution — so an unattended room neither prompts nor has to be
+    // screen-scraped for its result.
+    const at = argv.indexOf('setup');
+    expect(at).toBeGreaterThan(0);
+    argv.splice(at + 1, 0, '--yes', '--json');
+
+    const child = spawnSync(join(dirname(process.execPath), 'npx'), argv, {
+      cwd: room.dir,
+      encoding: 'utf8',
+      env: room.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 600_000,
+    });
+    record(line.command, child.status, child.stdout);
 
     // The failed steps rather than the bare exit code: `setup` reports five of
     // them and "exit 1" on its own sends the reader of a red build to run the
@@ -236,7 +315,11 @@ suite('EPIC-20-S27 — a reader follows the README in a clean room', () => {
     } catch {
       // Left as the sentence above, which is the more useful failure.
     }
-    expect([line, child.status, failed]).toEqual([line, claimedExits(line)[0], []]);
+    expect([line.command, child.status, failed]).toEqual([
+      line.command,
+      claimedExits(line.command)[0],
+      [],
+    ]);
 
     // And it left a binary behind, which is the claim the section makes and the
     // one that was false.
@@ -426,9 +509,12 @@ suite('EPIC-20-S32 — a claim that stops being true turns a test red', () => {
   });
 
   it('the install command renamed', () => {
-    // The extractor's own red: a README whose first command changed is
+    // The extractor's own red: a README whose install line changed is
     // unclassified, and unclassified is a failure rather than a silent skip.
-    const renamed = README.replace('npx deflowai setup', 'npx deflowai install');
-    expect(unclassifiedCommands(parseCommands(renamed))).toEqual(['npx deflowai install']);
+    const install = readmeLine('clean-room', 0).command;
+    const renamed = README.replace(install, install.replace(' setup ', ' install '));
+    expect(unclassifiedCommands(parseCommands(renamed))).toEqual([
+      install.replace(' setup ', ' install '),
+    ]);
   });
 });

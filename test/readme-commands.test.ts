@@ -47,12 +47,28 @@ const INSTALL = 'Install it';
 const FIRST_RUN = 'Your first run';
 const CONTRIBUTOR = 'Building it from source — the contributor path';
 
-suite('EPIC-20-S26 — the install section is one command (AC1)', () => {
+suite('EPIC-20-S26 — the install section is a route that exists (AC1)', () => {
   const install = section(INSTALL);
   const installCommands = COMMANDS.filter((entry) => entry.section === INSTALL);
 
-  it('leads with the one command KAR-20.2 ships', () => {
-    expect(installCommands[0]?.command).toBe(`npx ${PACKAGE_NAME} setup`);
+  /**
+   * Amended by KAR-20.4. This suite used to assert that the section led with
+   * `npx <package> setup`, and that assertion is what kept a command npm has
+   * never been able to run pinned in place — first because nothing was
+   * published, then because the published 0.1.0 cannot be installed and the
+   * bare `npx` form cannot pick a bin among four. So the rule moves from *one
+   * command* to *a route that ends in `setup`, run against something that
+   * exists*, and `test/readme-honesty.test.ts` owns the harder half: the
+   * tarball the last line installs has to be the one the pack line above it
+   * writes. `pnpm build` is deliberately allowed here now — until there is a
+   * release npm can install, the tarball a reader installs is one they build.
+   */
+  it('ends in the install KAR-20.2 ships, rather than in a build', () => {
+    expect(installCommands.at(-1)?.command).toMatch(/deflow setup/);
+  });
+
+  it('starts in a clone of this repository, which is where the route can start today', () => {
+    expect(installCommands[0]?.command).toBe('pnpm install');
   });
 
   it('names the script as the alternative for a machine with no Node', () => {
@@ -61,10 +77,12 @@ suite('EPIC-20-S26 — the install section is one command (AC1)', () => {
   });
 
   it('has none of the three things a reader followed to "command not found"', () => {
-    // The build-then-link sequence, the direct call into dist, and the
-    // hand-written alias. Each was true and none of them was an install.
-    expect(install).not.toContain('pnpm build');
+    // The link step, the direct call into dist, and the hand-written alias.
+    // Each was true and none of them was an install. `pnpm build` was on this
+    // list until KAR-20.4 — it was only ever wrong as a *substitute* for an
+    // install, and it is the build of the thing being installed here.
     expect(install).not.toContain('npm link');
+    expect(install).not.toContain('pnpm link');
     expect(install).not.toContain('dist/bin.mjs');
     expect(install).not.toMatch(/^\s*alias\s/m);
   });
@@ -113,19 +131,27 @@ suite('EPIC-20-S27 — every command is classified, and the skip list is named (
     for (const entry of SKIPPED_COMMANDS) {
       expect([entry.command, SKIP_REASONS.includes(entry.reason)]).toEqual([entry.command, true]);
       expect([entry.command, entry.why.length > 30]).toEqual([entry.command, true]);
-      expect([entry.command, entry.covered.length > 10]).toEqual([entry.command, true]);
+      expect([entry.command, entry.how.length > 10]).toEqual([entry.command, true]);
     }
   });
 
-  it('skips nothing in the install section or the first-run section', () => {
-    // The rule that keeps the list from covering the interesting half. Every
-    // other section may delegate; the two a new reader actually follows may
-    // not, because they are the ones that were wrong.
+  it('skips nothing in the first-run section, and nothing in the install route', () => {
+    // KAR-20.3's rule was "the install and first-run sections may skip
+    // nothing". KAR-20.4 keeps it for the first run and for everything in the
+    // install section up to and including `setup` — the route itself — and
+    // releases it for what comes *after*, which is where the no-Node
+    // alternative now lives. That alternative reaches the same end state as the
+    // route above it, so running it twice in one room would measure the first
+    // run rather than the second; `e2e/setup-install.test.ts` runs it in a room
+    // of its own. `test/readme-honesty.test.ts` is what makes that delegation
+    // cost something: it has to name a spec file that exists.
     const skipped = new Set(SKIPPED_COMMANDS.map((entry) => entry.command));
-    const unrun = COMMANDS.filter(
-      (entry) =>
-        (entry.section === INSTALL || entry.section === FIRST_RUN) && skipped.has(entry.command),
-    );
+    const installRoute = COMMANDS.filter((entry) => entry.section === INSTALL);
+    const endOfRoute = installRoute.findIndex((entry) => /deflow setup/.test(entry.command));
+    const unrun = [
+      ...installRoute.slice(0, endOfRoute + 1),
+      ...COMMANDS.filter((entry) => entry.section === FIRST_RUN),
+    ].filter((entry) => skipped.has(entry.command));
     expect(unrun.map((entry) => `${entry.section}: ${entry.command}`)).toEqual([]);
   });
 
@@ -135,8 +161,15 @@ suite('EPIC-20-S27 — every command is classified, and the skip list is named (
 
   it('runs every command that installs or starts the tool', () => {
     const executed = new Set(EXECUTED_COMMANDS.map((entry) => entry.command));
+    // The install line is matched on its shape rather than spelled out, because
+    // its tarball path is the README's to choose and `installSectionProblems`
+    // is what holds the path and the pack line together (KAR-20.4).
+    expect(
+      EXECUTED_COMMANDS.filter((entry) => /deflow setup/.test(entry.command)).map(
+        (entry) => entry.where,
+      ),
+    ).toEqual(['clean-room']);
     for (const wanted of [
-      `npx ${PACKAGE_NAME} setup`,
       `${COMMAND} --version`,
       `${COMMAND} doctor`,
       `${COMMAND} init`,

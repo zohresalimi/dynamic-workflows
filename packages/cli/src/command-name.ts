@@ -98,6 +98,60 @@ export const COMMAND = 'deflow';
 export const PACKAGE_NAME = 'deflowai';
 
 /**
+ * Whether a reader can install this from the npm registry today (KAR-20.4 AC5).
+ *
+ * They cannot, and the name of this constant is the finding. It is **not**
+ * `PUBLISHED_ON_NPM`: `deflowai@0.1.0` went to the registry on 2026-08-15 at
+ * 22:26 UTC and that changed nothing for the reader, so being published and
+ * being installable are demonstrably not the same property. The README depends
+ * on the second one, so the flag is named for the second one.
+ *
+ * Two independent failures, both established by running the command on
+ * 2026-08-16 (node 26.6.0, npm 11.18.0) rather than by reading a registry page:
+ *
+ *   * `npx --yes deflowai setup` → `could not determine executable to run`.
+ *     `npx <name>` resolves a package and then has to choose a **bin**, which
+ *     it can only do for a package declaring one bin or a bin named after the
+ *     package. This one declares four — see the `bin` map — and matches none,
+ *     because the package name deliberately moved off the command name above.
+ *     This failure has nothing to do with publishing and does not expire with
+ *     it: `REGISTRY_INSTALL_COMMAND` is the form that works.
+ *   * `npx --yes --package=deflowai -- deflow --version` →
+ *     `EUNSUPPORTEDPROTOCOL — Unsupported URL Type "catalog:"`. The published
+ *     manifest carries `"better-sqlite3": "catalog:"`, pnpm's workspace-catalog
+ *     protocol left unresolved: `pnpm pack` resolves it (the packed manifest
+ *     says `13.0.2`) and `npm publish` does not. npm refuses the package.
+ *
+ * **This is the one place to change when that stops being true.** Flip it and
+ * `test/readme-honesty.test.ts` goes red until `README.md`'s install section is
+ * the one-command install again — no clone, no build, no packed tarball. The
+ * spec runs its check against this flag *and* against this flag inverted and
+ * requires the second to fail, so the two cannot drift in either direction.
+ *
+ * Nothing else keys off it. The publish path was never deleted, only stopped
+ * being presented as something a reader could do today: `scripts/install.sh`
+ * still defaults `DEFLOW_PACKAGE` to `PACKAGE_NAME`, and `setup --from` still
+ * takes either a registry specifier or a tarball. A README that goes on
+ * describing a build step for a package anybody could install in one command is
+ * the same defect as this one pointing the other way, and making it a failing
+ * build is the only mechanism that has ever worked for a promise like this —
+ * the same one `ALIAS_REMOVED_IN` uses above.
+ */
+export const REGISTRY_INSTALL_WORKS = false;
+
+/**
+ * The install line the README shows on the day `REGISTRY_INSTALL_WORKS` does.
+ *
+ * Written down here, beside the flag, because "flip it back to the one-command
+ * install" is only an instruction if the one command is named — and the obvious
+ * guess, `npx deflowai setup`, is the line this story deleted. It cannot work,
+ * published or not: npx has four bins to choose from and no rule that picks
+ * one. The package goes to npx as `--package`, and the **bin** is named after
+ * `--`, which is the form `scripts/install.sh` has executed all along.
+ */
+export const REGISTRY_INSTALL_COMMAND = `npx --yes --package=${PACKAGE_NAME} -- ${COMMAND} setup`;
+
+/**
  * The short alias, installed plainly beside `COMMAND` (owner's decision,
  * 2026-08-15).
  *
