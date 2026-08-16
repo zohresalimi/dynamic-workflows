@@ -66,6 +66,7 @@ import { createInterrupt } from './interrupt.ts';
 import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
 import { applyIntent } from './session/actions.ts';
+import { createGateSession, type GateSession } from './session/gate.ts';
 import type { Keyboard, KeyboardRequest } from './session/keyboard.ts';
 import { withKeyboard } from './session/keyboard.ts';
 import { createSession, type Session } from './session/session.ts';
@@ -478,6 +479,31 @@ async function execute(
   void interrupt.exitCode.then(removeSignal, removeSignal);
 
   /**
+   * KAR-21.3 — the open gate's prompt, wired to the daemon this run is on.
+   *
+   * Constructed only where a key can reach it, for the same reason the keyboard
+   * itself is: under `--json`, on a pipe and in CI nothing is selectable and no
+   * key is read (AC9), so there is nothing here to have sent a request.
+   *
+   * It reads `lastRun` and `sessionState` through closures rather than being
+   * handed a copy, because the projection moves under it — an answer arriving
+   * from the browser while a keypress is in flight is safe in both orders only
+   * because `pendingGate` over the *current* reduced state is the sole reader.
+   */
+  const gateSession: GateSession | null = hasKeyboard
+    ? createGateSession({
+        runId,
+        endpoint,
+        run: () => lastRun,
+        state: () => sessionState,
+        onState: (next) => {
+          sessionState = next;
+          repaint(lastRun);
+        },
+      })
+    : null;
+
+  /**
    * KAR-21.2 AC7 — one key, one decision, and no repaint when nothing changed.
    *
    * The reference comparison is the contract rather than an optimisation:
@@ -492,6 +518,12 @@ async function execute(
   const keyboard: Keyboard | null = hasKeyboard
     ? options.openKeyboard({
         onIntent: (intent) => {
+          // The gate is offered every key first, and everything it does not
+          // claim falls through to the one `SESSION_ACTIONS` table — so the
+          // arrows move between a gate's options while the keyboard is aimed at
+          // one, and between regions when it is not, without two tables having
+          // to agree about anything.
+          if (gateSession?.handle(intent) === true) return;
           const outcome = applyIntent(sessionState, intent);
           if (outcome.effect === 'interrupt') interrupt.press();
           if (outcome.state !== sessionState) {

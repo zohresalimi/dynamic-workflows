@@ -41,6 +41,7 @@
  *
  * Verifies: EPIC-19-S80 · KAR-19.12 AC4
  */
+import type { GateAnswerRequest } from '@DeFlow/core';
 import {
   gateAnswerRequest,
   SPEC_DECISIONS,
@@ -54,6 +55,7 @@ import { type Report, renderReport } from './render/report.ts';
 import { plainStyle, type Style } from './render/style.ts';
 import { type DaemonEndpoint, findDaemon } from './run/daemon.ts';
 import { EX_USAGE, RUN_EXIT_CODES } from './run/exit-codes.ts';
+import { createGateAnswerSender, REJECTION_NEEDS_A_REASON } from './run/gate-answer.ts';
 
 export interface AnswerArgs {
   readonly runId: string;
@@ -165,10 +167,9 @@ export function parseAnswerArgs(argv: readonly string[]): ParsedAnswerArgs {
   if (gate === SPEC_GATE_NODE && option === 'reject' && text === null) {
     return {
       ok: false,
-      message:
-        'deflow answer: a rejection carries a reason — pass --text "<why>". The next framing ' +
-        'attempt is given it as an input, and a rejection with nothing to say sends the agent ' +
-        'back to the same blank page that produced the spec you just refused.',
+      // The rule's own sentence is `run/gate-answer.ts`'s, shared with the
+      // session's inline row: one limitation, one wording (R4).
+      message: `deflow answer: a rejection carries a reason — pass --text "<why>". ${REJECTION_NEEDS_A_REASON}`,
     };
   }
 
@@ -191,18 +192,6 @@ const refuse = (exitCode: number, message: string): CommandResult => ({
   stderr: `${message}\n`,
 });
 
-interface ErrorBody {
-  readonly error?: { readonly code?: string; readonly message?: string };
-}
-
-/** The daemon's sentence, or a description of a body that was not one. */
-async function refusalOf(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => null)) as ErrorBody | null;
-  const code = body?.error?.code ?? 'unknown';
-  const message = body?.error?.message ?? `the daemon answered ${String(response.status)}`;
-  return `${code}: ${message}`;
-}
-
 /**
  * Which route answers this gate, and with what body.
  *
@@ -218,7 +207,7 @@ async function refusalOf(response: Response): Promise<string> {
  * vocabulary it branches on. `null` is unreachable from here: `parseAnswerArgs`
  * has already refused the one pair that has no route.
  */
-function route(args: AnswerArgs): { path: string; body: unknown } {
+function route(args: AnswerArgs): GateAnswerRequest {
   const request = gateAnswerRequest({
     runId: args.runId,
     gate: args.gate,
@@ -268,20 +257,16 @@ export async function runAnswer(options: AnswerCommandOptions): Promise<CommandR
     );
   }
 
-  const { path, body } = route(parsed.args);
-  const send = options.fetch ?? globalThis.fetch;
-  const response = await send(`${endpoint.baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${endpoint.token}`,
-      'content-type': 'application/json',
-      'X-DeFlow-Submitted-By': 'cli',
-    },
-    body: JSON.stringify(body),
-  });
+  // The transport is `run/gate-answer.ts`'s, shared with the live session under
+  // `deflow run` (KAR-21.3 AC2): the bearer token, the `X-DeFlow-Submitted-By`
+  // header and the way a refusal is read off the envelope are one thing, not
+  // one per surface.
+  const send = createGateAnswerSender(endpoint, options.fetch ?? globalThis.fetch);
+  const outcome = await send(route(parsed.args));
 
-  if (!response.ok) {
-    return refuse(RUN_EXIT_CODES.failed, `deflow answer: ${await refusalOf(response)}`);
+  if (!outcome.ok) {
+    const code = outcome.code ?? 'unknown';
+    return refuse(RUN_EXIT_CODES.failed, `deflow answer: ${code}: ${outcome.message ?? ''}`);
   }
 
   return {
