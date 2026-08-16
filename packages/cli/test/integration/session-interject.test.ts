@@ -453,7 +453,17 @@ suite('EPIC-21-S34 — an interjection appears when the ledger has it (AC6)', ()
 
     // The frame said what the *request* did, which is a different claim from
     // what the ledger holds — and it is the daemon's answer, not a guess.
-    expect(framesOf(screen)).toContain('queued');
+    //
+    // Waited for rather than read on the spot, because the two claims travel by
+    // different routes and neither orders the other: the transcript line above
+    // came off the event stream, and the delivery comes off the POST's own 202.
+    // The daemon appends before it answers, so on a machine slow enough for the
+    // stream to win the race the frame has not been told yet — which is what
+    // made this spec intermittent whenever the box was loaded. The wait is the
+    // assertion: it throws with this sentence if the delivery never lands.
+    await until('the frame to report the delivery the daemon answered', () =>
+      framesOf(screen).includes('queued') ? true : null,
+    );
 
     // An interjection made anywhere else produces the same line here, because
     // the line is derived from the event rather than from what this session

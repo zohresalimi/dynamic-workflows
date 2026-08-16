@@ -340,10 +340,8 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
 
   const costLines = block(formatCost(run.budget.run.costUsd), style, 'dim');
 
-  const hintLines = session.keyboard ? block(keyHintLine(style), style, 'dim') : [];
-
   const budget = frameRowBudget(session.rows);
-  const fixed =
+  const essential =
     header.length +
     gateLines.length +
     optionLines.length +
@@ -351,8 +349,28 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
     sendingLines.length +
     verbLines.length +
     inputLines.length +
-    costLines.length +
-    hintLines.length;
+    costLines.length;
+
+  /**
+   * KAR-21.5 AC5 — a reminder may not be half the region.
+   *
+   * `keyHintLine` is one line at any width worth having and eight rows at 20
+   * columns, where the budget is thirteen: the frame would spend most of what
+   * it has telling the operator which keys exist and nothing showing them what
+   * the run is doing. The keys still work and `--help` still names them (AC9),
+   * so what a narrow window loses is a reminder rather than a capability.
+   *
+   * The test is proportional rather than a width threshold, and it is
+   * deliberately **not** *"does the frame still fit"*: at a gate on an
+   * 80-column terminal the fixed lines already fill the budget, and that is
+   * exactly the moment knowing which key answers matters most. What is refused
+   * is the hint costing more than half the region — which only ever happens
+   * when it has wrapped into a paragraph, and a paragraph is not a hint.
+   */
+  const wanted = session.keyboard ? block(keyHintLine(style), style, 'dim') : [];
+  const hintLines = wanted.length * 2 <= budget ? wanted : [];
+
+  const fixed = essential + hintLines.length;
 
   const promptLines =
     gate === null || optionLines.length === 0

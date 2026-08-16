@@ -47,8 +47,14 @@ export interface InterruptOptions {
    * lands above the frame rather than through it. */
   readonly out: (chunk: string) => void;
   readonly stderr: (chunk: string) => void;
-  /** Close the event stream. Called on the first press; a stream that opens
-   * afterwards is closed by its own caller, which is what `pressed()` is for. */
+  /**
+   * Close the event stream. Called on the first press, which may land **before**
+   * the stream exists — so what is handed in has to be something that *records*
+   * the request rather than something that dereferences a connection. `run.ts`
+   * passes exactly that, and closes a stream that opens afterwards when it
+   * opens. A press is not the only caller that arrives early; see the
+   * `streamClosed` note there.
+   */
   readonly closeStream: () => void;
   readonly cancel: () => Promise<{ readonly message: string }>;
   /** A **ref'd** wait. `systemClock.setTimer` unrefs, which is right for a

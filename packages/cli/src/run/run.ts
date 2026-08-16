@@ -67,6 +67,7 @@ import { followNodeOutput, type IoFollower } from './io-follow.ts';
 import { createRenderer, type RunRenderer } from './render.ts';
 import { applyIntent, applyTyping } from './session/actions.ts';
 import { createCancelSession } from './session/cancel.ts';
+import { liveViewDecision } from './session/degrade.ts';
 import { createGateSession, type GateSession } from './session/gate.ts';
 import { createInterjectSession } from './session/interject.ts';
 import type { Keyboard, KeyboardRequest } from './session/keyboard.ts';
@@ -149,6 +150,22 @@ export interface RunCommandOptions {
    * the same reason `Style.width` is (KAR-18.9 AC7).
    */
   readonly terminalRows?: number | undefined;
+  /**
+   * KAR-21.5 AC4 — registers a SIGWINCH handler and returns its deregistration.
+   *
+   * The handler is given the **new `Style`**, computed by `render/style.ts`,
+   * rather than a width this file would have to turn into one. That is the
+   * whole of AC4's second half: the width comes from the one place that derives
+   * it, on a resize exactly as at startup, and no module under `run/session/`
+   * ever sees `stdout.columns`.
+   *
+   * Absent means the frame keeps the size it started at — which is what a spec
+   * driving `runRun` in-process wants, and what a terminal that never changes
+   * size gets anyway.
+   */
+  readonly onResize?:
+    | ((handler: (style: Style, rows: number | undefined) => void) => () => void)
+    | undefined;
   /** Test seams for the autostart; see `./daemon.ts`. */
   readonly execPath?: string;
   readonly binPath?: string;
@@ -358,17 +375,23 @@ async function execute(
   });
 
   /**
-   * KAR-21.1 AC8 — the live region, or nothing at all.
+   * KAR-21.1 AC8, KAR-21.5 AC1, AC3, AC7 — the live region, or nothing at all.
    *
-   * Three conditions, and every one of them is a decision this file already
-   * owns: stdout has to be a terminal, the caller has to have handed over a way
-   * to open one, and `--json` has to be absent — that stream's consumer is a
-   * parser and a repaint is not something a parser can be asked to skip. On a
-   * pipe, in CI and under `--json` nothing is constructed, so there is no
-   * screen to have written a byte.
+   * The four conditions are `liveViewDecision`'s rather than four guards here,
+   * because a guard at a call site is how a fallback stops being a fallback:
+   * the day a fifth condition is added, the place that was missed is a terminal
+   * filling with literal escape text. What this file still owns is the one
+   * condition that is about *this* invocation rather than about the terminal —
+   * whether the caller handed over a way to open a screen at all.
    */
-  const screen =
-    !args.json && options.isTty() && options.openScreen !== undefined ? options.openScreen() : null;
+  const rows = options.terminalRows ?? DEFAULT_ROWS;
+  const live = liveViewDecision({
+    isTty: options.isTty(),
+    json: args.json,
+    env: options.env,
+    rows,
+  });
+  const screen = live.live && options.openScreen !== undefined ? options.openScreen() : null;
   const session: Session | null =
     screen === null
       ? null
@@ -376,6 +399,11 @@ async function execute(
           screen,
           stdout: options.stdout,
           style: options.style ?? createStyle({ isTty: false, env: {} }),
+          // KAR-21.5 AC6 — the repaint window is measured on the same clock
+          // the elapsed times in the frame are (NF9). `systemClock.setTimer`
+          // unrefs, which is exactly right here: a pending repaint must never
+          // be the reason a finished command sits there with nothing to do.
+          clock,
         });
 
   /**
@@ -404,7 +432,7 @@ async function execute(
   /** The session's own state, held here rather than in a module (AC9). */
   let sessionState: SessionState = {
     ...initialSessionState(),
-    rows: options.terminalRows ?? DEFAULT_ROWS,
+    rows,
     keyboard: hasKeyboard,
   };
   /**
@@ -431,7 +459,34 @@ async function execute(
     session?.update(state, { ...sessionState, nowMs: clock.now() });
   };
 
+  /**
+   * KAR-21.5 AC3, AC7 — the step that could not be performed says so.
+   *
+   * One line, before anything about the run, so the operator who expected a
+   * live region learns why in the same breath they stop seeing one. It is
+   * `null` for the two refusals that must stay byte-silent — a pipe and
+   * `--json` — which is what makes this line invisible to AC1's golden.
+   */
+  if (live.line !== null) out(`${live.line}\n`);
+
   if (!args.json) out(`run ${runId} — watching; Ctrl-C detaches\n`);
+
+  /**
+   * KAR-21.5 AC4 — the window the operator has now is the window the frame fits.
+   *
+   * The new `Style` arrives already computed by `render/style.ts`; nothing here
+   * derives a width. `sessionState.rows` moves with it, because the row budget
+   * is the other half of the same window and a frame laid out at the new width
+   * against the old height would be right in one dimension.
+   */
+  const stopResize =
+    session === null || options.onResize === undefined
+      ? null
+      : options.onResize((resized, resizedRows) => {
+          sessionState = { ...sessionState, rows: resizedRows ?? sessionState.rows };
+          session.resize(resized);
+          repaint(lastRun);
+        });
 
   // KAR-19.10 AC4 — before the first turn, and before anything is watched: one
   // line naming the provider, the resolved binary and the route. The sentence
@@ -472,7 +527,32 @@ async function execute(
     ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
   });
 
+  /**
+   * The event stream this command opened, and whether anything has asked yet
+   * for it to be closed.
+   *
+   * The flag is not defensive. **Both orderings genuinely happen**, and a bare
+   * `following?.close()` is silently a no-op in one of them: `followRun`
+   * hydrates *before* it hands the connection back, so a run that is already
+   * over when this command attaches reaches its terminal verdict inside the
+   * hydrate — the close then runs on a `following` that is still `null`, and
+   * the connection that arrives a microtask later is closed by nobody. An open
+   * socket keeps the runtime's loop alive and `bin.ts` deliberately sets
+   * `process.exitCode` rather than forcing an exit, so the command prints its
+   * verdict and then sits there for as long as anyone lets it.
+   * `deflow run --attach` on a finished run reproduces it every time, and
+   * `test/integration/run-attach-concluded.test.ts` is where it is pinned.
+   *
+   * The Ctrl-C path had the second half of the same asymmetry and its own check
+   * for it — a press before the stream opened had nothing to close. One flag
+   * now covers both, which is one rule rather than two that have to agree.
+   */
   let following: FollowRunResult | null = null;
+  let streamClosed = false;
+  const closeStream = (): void => {
+    streamClosed = true;
+    following?.close();
+  };
 
   // KAR-18.3 AC3, and KAR-21.2 AC5: **one** implementation of what Ctrl-C means,
   // reached from both the signal and the decoded byte. In raw mode the terminal
@@ -484,9 +564,7 @@ async function execute(
     runId,
     out,
     stderr: options.stderr,
-    closeStream: () => {
-      following?.close();
-    },
+    closeStream,
     cancel: () => cancelRun(runId, endpoint),
     sleep,
     ...(options.detachWindowMs === undefined ? {} : { windowMs: options.detachWindowMs }),
@@ -573,6 +651,14 @@ async function execute(
   // disguise.
   const keyboard: Keyboard | null = hasKeyboard
     ? options.openKeyboard({
+        // KAR-21.5 AC8 — the frame comes down wherever the terminal goes back,
+        // which is the one place that covers the path a `finally` here cannot:
+        // a fatal signal exits the process from inside the handler.
+        onRestore: () => {
+          // `session` is non-null wherever a keyboard exists — `hasKeyboard`
+          // carries that — so this is the frame, unconditionally.
+          session.close();
+        },
         onIntent: (intent, text) => {
           // KAR-21.4 AC1 — a key that typed a character types it, while a row
           // is open. First, and ahead of every verb: `c` is the cancel key and
@@ -616,12 +702,14 @@ async function execute(
     onState: repaint,
     onFollowing: (opened) => {
       following = opened;
-      // A Ctrl-C that landed before the stream was open still detaches: the
-      // press already printed its sentence, and this closes what it could not.
-      if (interrupt.pressed()) opened.close();
+      // A close asked for before the stream existed is honoured here, where
+      // there is finally something to close: a Ctrl-C that landed before the
+      // stream was open still detaches — the press already printed its sentence
+      // — and a verdict reached during the hydrate still ends the command.
+      if (streamClosed) opened.close();
     },
   }).then(async (result): Promise<number> => {
-    following?.close();
+    closeStream();
     // The tail is drained before the verdict is printed: the last bytes of a
     // node are produced in the same instant as the event that ends it, and the
     // end of the output is the part that says what happened.
@@ -663,7 +751,19 @@ async function execute(
   // idempotent, so the early calls inside `settle` are the tidy path and this is
   // the guarantee. Without it a bug anywhere under here would leave the operator
   // with a shell that has no echo and no line editing.
-  return keyboard === null ? await settle() : await withKeyboard(keyboard, settle);
+  //
+  // KAR-21.5 AC8 applies the same reasoning to the frame, which needed it: the
+  // keyboard's `finally` covered the throw and the session's did not, so a bug
+  // under here left the status region on screen and the shell prompt landed in
+  // the middle of it. Both are idempotent, and the ordering is the one AC4
+  // requires — the terminal goes back first, and only then is anything erased
+  // through it.
+  try {
+    return keyboard === null ? await settle() : await withKeyboard(keyboard, settle);
+  } finally {
+    stopResize?.();
+    session?.close();
+  }
 }
 
 /**

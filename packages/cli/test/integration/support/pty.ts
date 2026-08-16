@@ -83,6 +83,82 @@ export function openShell(options: {
   };
 }
 
+/**
+ * One command on a pty of a stated size, with **no shell in between**.
+ *
+ * `openShell` is right for the three scenarios whose whole question is *"what
+ * did the terminal look like after the child was gone"* — they need a witness
+ * that outlives the suspect. KAR-21.5's are the opposite question: *"what bytes
+ * did the command write"*, and a shell on the same pty answers it with its own
+ * echo of the command line mixed in. Here the master sees the command's output
+ * and nothing else, which is what lets a spec assert that no erase sequence was
+ * written **at all**.
+ */
+export interface PtyProcess {
+  readonly output: () => string;
+  type(bytes: string): void;
+  /** SIGWINCH, as a window manager delivers it: the size changes underneath. */
+  resize(cols: number, rows: number): void;
+  readonly pid: number;
+  readonly exited: Promise<{ readonly exitCode: number; readonly signal: number | undefined }>;
+  kill(signal?: string): void;
+}
+
+export function spawnOnPty(options: {
+  readonly file: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly env: Record<string, string>;
+  readonly cols?: number;
+  readonly rows?: number;
+}): PtyProcess {
+  const child = spawnPty(options.file, [...options.args], {
+    name: options.env.TERM ?? 'xterm-256color',
+    cols: options.cols ?? PTY_COLS,
+    rows: options.rows ?? PTY_ROWS,
+    cwd: options.cwd,
+    env: options.env,
+  });
+
+  const chunks: string[] = [];
+  child.onData((data) => chunks.push(data));
+
+  const exited = new Promise<{ exitCode: number; signal: number | undefined }>((resolve) => {
+    child.onExit(({ exitCode, signal }) => resolve({ exitCode, signal }));
+  });
+
+  return {
+    output: () => chunks.join(''),
+    type: (bytes) => child.write(bytes),
+    resize: (cols, rows) => child.resize(cols, rows),
+    pid: child.pid,
+    exited,
+    kill: (signal) => {
+      try {
+        child.kill(signal);
+      } catch {
+        // Already gone, which is the state the caller wanted anyway.
+      }
+    },
+  };
+}
+
+/** Waits for `read` to answer on a bare pty, or throws with its transcript. */
+export async function untilOnPtyProcess<T>(
+  what: string,
+  live: PtyProcess,
+  read: () => T | null,
+  timeoutMs = 30_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = read();
+    if (value !== null) return value;
+    await sleep(25);
+  }
+  throw new Error(`${what} did not happen within ${timeoutMs} ms. The pty saw:\n${live.output()}`);
+}
+
 /** Waits for `read` to answer, or throws with the pty's whole transcript. */
 export async function untilOnPty<T>(
   what: string,
