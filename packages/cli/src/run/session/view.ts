@@ -28,6 +28,7 @@ import { PART_SEPARATORS, TRANSCRIPT_GLYPHS, type TranscriptGlyph } from '../../
 import { wrapDetail } from '../../render/layout.ts';
 import type { Style, StyleColour } from '../../render/style.ts';
 import { formatCost, formatDuration, NODE_COLUMN } from '../render.ts';
+import { KEY_BINDINGS } from './keys.ts';
 import type { SessionState } from './state.ts';
 
 /**
@@ -187,6 +188,28 @@ function nodeRow(id: string, node: NodeState, session: SessionState, style: Styl
 }
 
 /**
+ * KAR-21.2 AC6, AC8 — the keys, named, built **from the decoder's own table**.
+ *
+ * Built rather than written out, so a key cannot be advertised and unhandled or
+ * handled and undiscoverable: renaming a binding renames the hint in the same
+ * edit. `actions.test.ts` asserts the agreement anyway, because "built from the
+ * table" is exactly the thing a well-meaning edit undoes.
+ *
+ * The separator is `PART_SEPARATORS`', like every other list this command
+ * prints, so the line degrades to ASCII in the C locale along with the rest of
+ * the frame instead of being the one row that arrives as question marks.
+ *
+ * Printed **only where keys work**. `renderFrame` gates it on
+ * `SessionState.keyboard`, which is the decision the caller made once about the
+ * input stream — a list of keys in a log where nothing can press them is a
+ * smaller lie than `setRawMode` on a pipe, but it is still a lie.
+ */
+export function keyHintLine(style: Style): string {
+  const keys = KEY_BINDINGS.map((binding) => `${binding.label} ${binding.describe}`);
+  return `keys: ${keys.join(PART_SEPARATORS[style.charset])}`;
+}
+
+/**
  * The frame: what the operator sees pinned below the transcript.
  *
  * Assembled as *fixed* lines and *fillable* ones, because AC7's row budget has
@@ -211,7 +234,10 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
 
   const costLines = block(formatCost(run.budget.run.costUsd), style, 'dim');
 
-  const fixed = header.length + gateLines.length + inputLines.length + costLines.length;
+  const hintLines = session.keyboard ? block(keyHintLine(style), style, 'dim') : [];
+
+  const fixed =
+    header.length + gateLines.length + inputLines.length + costLines.length + hintLines.length;
   const budget = frameRowBudget(session.rows);
 
   const ids = Object.keys(run.nodes).toSorted((left, right) => {
@@ -240,5 +266,13 @@ export function renderFrame(run: RunState, session: SessionState, style: Style):
   const more = ids.length - shown;
   const moreLines = more > 0 ? block(`+${String(more)} more`, style, 'dim') : [];
 
-  return [...header, ...rows, ...moreLines, ...gateLines, ...inputLines, ...costLines];
+  return [
+    ...header,
+    ...rows,
+    ...moreLines,
+    ...gateLines,
+    ...inputLines,
+    ...costLines,
+    ...hintLines,
+  ];
 }

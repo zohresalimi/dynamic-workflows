@@ -35,6 +35,7 @@ import { parseLedgerArgs, runLedgerSnapshot } from './ledger-snapshot.ts';
 import { createScreen } from './render/screen.ts';
 import { processStyle } from './render/style.ts';
 import { runRun } from './run/run.ts';
+import { openKeyboard } from './run/session/keyboard.ts';
 import { parseSetupArgs, runSetup } from './setup/index.ts';
 import { parseStatusArgs, runStatus } from './status.ts';
 import { parseUpArgs, runUp, type StartedUp } from './up.ts';
@@ -430,6 +431,13 @@ async function main(argv: readonly string[]): Promise<number> {
       // AC7's row budget. The width half already came from STYLE; this is the
       // other half of the same window, and it is read once, here.
       terminalRows: process.stdout.rows,
+      // KAR-21.2 AC3 — the **input** half of the same decision, read once, here.
+      // Separate from `isTty` above because the two genuinely differ:
+      // `deflow run | less` has a keyboard and no output terminal, and
+      // `deflow run < /dev/null` from a terminal has the reverse. `setRawMode`
+      // on a pipe throws, so this is the guard that keeps CI working at all.
+      stdinIsTty: process.stdin.isTTY === true,
+      openKeyboard: (request) => openKeyboard({ ...request, stdin: process.stdin }),
     });
   }
 
