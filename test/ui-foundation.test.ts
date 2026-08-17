@@ -16,6 +16,7 @@
 import { expect, it, describe as suite } from 'vitest';
 import {
   checkNoFocusOutlineNone,
+  checkNoFontCdn,
   checkQueryProjectionBoundary,
   checkRolldownBuildOptions,
   checkStateColoursComeFromThePalette,
@@ -59,6 +60,18 @@ suite('AC7 — the focus ring is never removed (EPIC-16-S4 scenario 2)', () => {
     const theme = readText('packages/web/src/styles/theme.css');
 
     expect(theme).toMatch(/:focus-visible\s*\{[^}]*outline:\s*\d/);
+  });
+});
+
+suite('KAR-24.1 AC8 — no font CDN reference survives in the source (EPIC-24-S04)', () => {
+  it('contains no fonts.googleapis.com or fonts.gstatic.com reference', () => {
+    expect(render(checkNoFontCdn(webSources()))).toBe('');
+  });
+
+  it('declares a local @font-face instead, so there is something the guard is protecting', () => {
+    const fonts = readText('packages/web/src/styles/fonts.css');
+
+    expect(fonts).toMatch(/@font-face\s*\{[^}]*url\(/);
   });
 });
 

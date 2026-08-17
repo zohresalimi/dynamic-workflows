@@ -1,6 +1,6 @@
 /*
- * KAR-16.1 — the whole of theming, in one file
- * (docs/12-frontend-architecture.md §8, §9).
+ * KAR-16.1 / KAR-24.1 — the whole of theming, in one file
+ * (docs/12-frontend-architecture.md §8, §9; docs/delivery/epics/EPIC-24-design-system.md).
  *
  * Tailwind 4 is CSS-first: there is no tailwind.config.js and no PostCSS step,
  * so this stylesheet *is* the configuration. `@theme` declares the design
@@ -12,7 +12,26 @@
  * @vueuse/core (../app/theme.ts). `@custom-variant` is what tells Tailwind 4 to
  * read that class rather than the `prefers-color-scheme` media query it
  * defaults to, so an explicit override actually overrides.
+ *
+ * KAR-24.1 makes this file the **only** place in the application a colour may
+ * be written. `checkStateColoursComeFromThePalette` (test/support/guards.ts)
+ * enforces that repo-wide by scanning every other file for colour literals;
+ * theme.css is the sole entry on its `PALETTE_FILES` exemption list, which is
+ * what makes the guard meaningful rather than a thing every new component has
+ * to remember to route around. Every value below is taken verbatim from the
+ * design prototype at docs/design/prototypes/direction-a-workflow-studio.html
+ * (dark, canonical) and docs/design/prototypes/direction-b-studio-light.html
+ * (light surfaces), except where a prototype literal failed contrast — see the
+ * comments in the `.dark` block for the two places that happens.
  */
+
+/*
+ * Instrument Sans and JetBrains Mono are declared as @font-face rules in
+ * fonts.css, imported first so the font-family tokens below resolve to a
+ * loaded face rather than falling straight through to the system-font
+ * fallback on first paint.
+ */
+@import "./fonts.css";
 
 /*
  * Vue Flow's own sheet is imported **here, first**, rather than from the view
@@ -26,67 +45,217 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * The seven state colours, light theme.
- *
- * oklch because the hues need a *perceptual* gap rather than an RGB one, and
- * because holding lightness roughly constant across the seven is what keeps
- * contrast honest when they sit next to each other on a Gantt row. Every one is
- * ≥ 4.5:1 against the light surface below it.
- *
- * These are the only seven names any view may paint a state with. Adding an
- * eighth without adding it under `.dark` too fails
- * ../lib/state-palette.test.ts.
+ * The light theme: direction B's paper surfaces carrying direction A's
+ * structure (the same surface/ink/edge/state roles, just re-lit). Every ink
+ * and state value is contrast-verified against `--surface-raised`
+ * (`#EDEAE4`), the darkest surface either can sit on — the ratio noted beside
+ * each is that worst case, not the ratio against white.
  */
 :root {
-  --surface: oklch(0.99 0 0);
-  --surface-raised: oklch(0.97 0.002 260);
-  --ink: oklch(0.22 0.01 260);
-  --ink-muted: oklch(0.48 0.01 260);
-  --edge: oklch(0.9 0.005 260);
-  --focus-ring: oklch(0.55 0.18 250);
+  /* Surfaces, darkest to lightest is not the order — canvas sits behind the
+   * raised panels that sit on it, so it is deliberately *not* the darkest. */
+  --surface-canvas: #f4f2ee;
+  --surface: #ffffff;
+  --surface-raised: #edeae4;
+  --surface-inset: #f4f2ee;
+  --surface-code: #f7f5f1;
+  --surface-control: #ffffff;
+  --surface-overlay: rgb(25 26 24 / 0.4);
 
-  --state-pending: oklch(0.55 0.02 260);
-  --state-running: oklch(0.55 0.16 250);
-  --state-blocked: oklch(0.58 0.14 65);
-  --state-passed: oklch(0.52 0.13 155);
-  --state-failed: oklch(0.55 0.2 25);
-  --state-abandoned: oklch(0.63 0.01 285);
-  --state-awaiting-human: oklch(0.55 0.2 300);
+  /* Ink, worst-case ratio against --surface-raised in brackets. */
+  --ink: #191a18; /* 13.27 */
+  --ink-strong: #3e3b36; /* 8.47 */
+  --ink-muted: #5f5b54; /* 5.13 */
+  --ink-dim: #67625a; /* 5.04 */
+  --ink-faint: #6c675e; /* 4.68 */
+
+  /* Edges are decorative — borders and separators, never text — so no 4.5:1
+   * floor applies to them; they are picked for visibility against the
+   * surfaces around them, not for a contrast ratio. */
+  --edge: #dcd7ce;
+  --edge-strong: #d3cec4;
+  --edge-control: #c9c3b8;
+  --edge-hover: #a29c91;
+  --edge-dashed: #c9c3b8;
+
+  --focus-ring: #1d6a57;
+
+  /* The seven state colours (KAR-16.1; names owned by ../lib/state-palette.ts).
+   * Worst-case ratio against --surface-raised in brackets. */
+  --state-pending: #5a6270; /* 4.67 */
+  --state-running: #4f5f10; /* 5.36 */
+  --state-blocked: #855700; /* 5.20 */
+  --state-passed: #12694a; /* 5.07 */
+  --state-failed: #b3261e; /* 4.97 */
+  --state-abandoned: #6a655d; /* 4.82 */
+  --state-awaiting-human: #5b4bd6; /* 4.66 */
+
+  /*
+   * Type and shape are theme-independent — declared once here, not repeated
+   * under `.dark`, because a typeface and a corner radius do not change when
+   * the lights go off. Only colour and shadow (below) do.
+   */
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * NF8 — rem, not px. A ramp expressed in px is deaf to the reader's browser
+   * font-size setting; rem tracks it. The px in each comment is what the
+   * design prototype specifies, kept only as a reading aid.
+   */
+  --text-2xs: 0.53125rem; /* 8.5px  — the mono micro-label */
+  --text-xs: 0.59375rem; /* 9.5px  — mono metrics */
+  --text-sm: 0.65625rem; /* 10.5px */
+  --text-base: 0.71875rem; /* 11.5px — the body size of a dense operator UI */
+  --text-md: 0.78125rem; /* 12.5px */
+  --text-lg: 0.8125rem; /* 13px   — panel titles */
+  --text-xl: 1.1875rem; /* 19px   — screen headings */
+  --text-2xl: 1.5rem; /* 24px   — the one page title */
+
+  --radius-xs: 0.25rem; /* 4px  */
+  --radius-sm: 0.3125rem; /* 5px  */
+  --radius-md: 0.4375rem; /* 7px  */
+  --radius-lg: 0.5625rem; /* 9px  */
+  --radius-xl: 0.6875rem; /* 11px */
+  --radius-2xl: 0.8125rem; /* 13px */
+  --radius-pill: 999px;
+
+  /* Shadows are theme-specific below, but declared here as the light values
+   * because :root is where an un-themed reader (a browser with no `.dark`
+   * class applied yet) needs them to already exist. */
+  --shadow-panel: 0 1px 2px rgb(25 26 24 / 0.06);
+  --shadow-modal: 0 20px 50px rgb(25 26 24 / 0.18);
 }
 
 /*
- * The same seven names, redefined. This block is the entire cost of dark mode:
- * every surface reads `var(--state-…)`, so nothing else in the app has to know
- * which theme is on.
- *
- * They are lighter and slightly less saturated than their light-theme twins
- * because the background moved, not because they are different colours — a dark
- * theme that reuses light-theme hues at the same lightness fails contrast
- * everywhere at once.
+ * The dark theme: direction A, verbatim, with two named exceptions where the
+ * prototype's own literal fails the 4.5:1 floor against its darkest surface
+ * (`--surface-control`, `#14161A`). AC7 requires that a departure from the
+ * design source be written down rather than silently "improved" — the
+ * comments below are that record, not a tidiness pass.
  */
 .dark {
-  --surface: oklch(0.19 0.008 265);
-  --surface-raised: oklch(0.24 0.01 265);
-  --ink: oklch(0.94 0.004 260);
-  --ink-muted: oklch(0.72 0.008 260);
-  --edge: oklch(0.34 0.012 265);
-  --focus-ring: oklch(0.78 0.14 245);
+  --surface-canvas: #0a0b0d;
+  --surface: #0f1114;
+  --surface-raised: #0c0d10;
+  --surface-inset: #101216;
+  --surface-code: #0e0f13;
+  --surface-control: #14161a;
+  --surface-overlay: rgb(5 6 8 / 0.72);
 
-  --state-pending: oklch(0.72 0.03 260);
-  --state-running: oklch(0.75 0.14 245);
-  --state-blocked: oklch(0.8 0.14 75);
-  --state-passed: oklch(0.78 0.15 155);
-  --state-failed: oklch(0.72 0.17 25);
-  --state-abandoned: oklch(0.6 0.02 285);
-  --state-awaiting-human: oklch(0.75 0.16 305);
+  --ink: #e9eaee; /* 15.07 */
+  --ink-strong: #d3d6dc; /* 12.44 */
+  --ink-muted: #9ca2ac; /* 7.05 */
+  /* direction A writes #6B707A here, which scores 3.64 against
+   * --surface-control and fails the 4.5:1 floor; #8E949E (5.93) replaces it. */
+  --ink-dim: #8e949e; /* 5.93 */
+  /* direction A writes #5C616B here, which scores 2.91 against
+   * --surface-control and fails; #7C828C (4.68) replaces it. */
+  --ink-faint: #7c828c; /* 4.68 */
+
+  --edge: #1c1e23;
+  --edge-strong: #1e2128;
+  --edge-control: #24272e;
+  --edge-hover: #3a3e47;
+  --edge-dashed: #282c33;
+
+  --focus-ring: #c9f154;
+
+  /* direction A writes #4A5261 here, which scores 2.30 against
+   * --surface-control and fails; #79839B (4.77) replaces it. */
+  --state-pending: #79839b; /* 4.77 */
+  --state-running: #c9f154; /* 13.97 */
+  --state-blocked: #f2c14e; /* 10.79 */
+  --state-passed: #4fd48a; /* 9.59 */
+  --state-failed: #ff8172; /* 7.45 */
+  --state-abandoned: #8b8794; /* 5.17 */
+  --state-awaiting-human: #8b7bff; /* 5.50 */
+
+  /* A shadow that reads on near-black does not read on paper, so unlike type
+   * and shape these are themed: dark needs more spread and more opacity to
+   * separate a raised panel from a canvas that is already nearly black. */
+  --shadow-panel: 0 18px 40px rgb(0 0 0 / 0.55);
+  --shadow-modal: 0 30px 80px rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-code: var(--surface-code);
+  --color-surface-control: var(--surface-control);
   --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
   --color-ink-muted: var(--ink-muted);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
   --color-edge: var(--edge);
+  --color-edge-strong: var(--edge-strong);
+  --color-edge-control: var(--edge-control);
+  --color-edge-hover: var(--edge-hover);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-pill: var(--radius-pill);
+}
+
+/*
+ * The four animations the prototype defines, declared once here rather than
+ * per-component, for the same reason the state colours are declared once:
+ * KAR-24.2 onward reaches for these by name, and a name declared in two
+ * places drifts. `pulsering` is the one place a colour literal appears
+ * outside the token block above — it is inside `rgb(... / a)` for the glow,
+ * which `color-mix()` against `var(--state-running)` reproduces without a
+ * literal, so that is what it does; nothing else in this file uses a raw
+ * colour outside the light/dark blocks.
+ */
+@keyframes dashrun {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes pulsering {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-running) 35%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--state-running) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-running) 0%, transparent);
+  }
+}
+
+@keyframes caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
 }
 
 html,
@@ -98,7 +267,7 @@ body,
 body {
   background: var(--surface);
   color: var(--ink);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
 }
 
 /*
@@ -196,6 +365,18 @@ body {
   .version-rail__marker,
   .skip-link {
     transition: none;
+    animation: none;
+  }
+
+  /*
+   * KAR-24.1: the four @keyframes above have no component using them yet —
+   * that starts at KAR-24.2 — so there is nothing named here to switch off.
+   * `[data-motion-token]` is the attribute KAR-24.2 onward will attach to
+   * anything that plays `dashrun`/`pulsering`/`caret`/`shimmer`, declared as a
+   * reduced-motion switch now so the off-switch exists before the first
+   * animation does, rather than being added (and inevitably forgotten) after.
+   */
+  [data-motion-token] {
     animation: none;
   }
 }

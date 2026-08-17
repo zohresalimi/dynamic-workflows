@@ -28,6 +28,7 @@ import {
   checkNoDeprecatedAcpPackages,
   checkNoFakeTimers,
   checkNoFocusOutlineNone,
+  checkNoFontCdn,
   checkNoInMemoryDatabases,
   checkNoNodeBuiltinImports,
   checkNoOhashImport,
@@ -1510,6 +1511,31 @@ suite('checkNoFocusOutlineNone (KAR-16.1 AC7)', () => {
     // removing the *focus* indicator, not about the property existing.
     const violations = checkNoFocusOutlineNone([
       { path: 'packages/web/src/App.vue', text: '.plain {\n  outline: none;\n}' },
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+});
+
+suite('checkNoFontCdn (KAR-24.1 AC8, EPIC-24-S04)', () => {
+  it('rejects a Google Fonts @import', () => {
+    const violations = checkNoFontCdn([
+      {
+        path: 'packages/web/src/styles/theme.css',
+        text: '@import url(https://fonts.googleapis.com/css2?family=X);\n',
+      },
+    ]);
+
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain('fonts.googleapis.com');
+  });
+
+  it('accepts a local @font-face', () => {
+    const violations = checkNoFontCdn([
+      {
+        path: 'packages/web/src/styles/fonts.css',
+        text: '@font-face {\n  font-family: "Inter";\n  src: url("../assets/fonts/x.woff2") format("woff2");\n}',
+      },
     ]);
 
     expect(violations).toEqual([]);
