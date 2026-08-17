@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:0; background:#0E0F11; color:#E4E4E2; font-family:'IBM Plex Sans', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#FF6A2B; text-decoration:none; }
+  a:hover { color:#FF8A57; }
+  @keyframes cblink { 0%,49% { opacity:1; } 50%,100% { opacity:.15; } }
+  @keyframes cdash { to { stroke-dashoffset:-20; } }
+</style>
+</helmet>
+
+<div style="display:flex; flex-direction:column; height:100vh; width:100%; overflow:hidden; background:#0E0F11">
+
+  <header style="flex:none; height:44px; display:flex; align-items:center; gap:0; border-bottom:1px solid #232528; background:#131417">
+    <div style="width:210px; flex:none; display:flex; align-items:center; gap:8px; padding:0 14px; border-right:1px solid #232528; height:100%">
+      <div style="width:8px; height:8px; background:#FF6A2B"></div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; letter-spacing:.04em">LOOMLET</div>
+    </div>
+    <div style="display:flex; height:100%">
+      <div style="padding:0 16px; display:flex; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93; border-right:1px solid #232528; cursor:pointer" style-hover="color:#E4E4E2; background:#181A1D">PROJECTS</div>
+      <div style="padding:0 16px; display:flex; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#0E0F11; background:#FF6A2B; font-weight:600; border-right:1px solid #232528; cursor:pointer">FLOW</div>
+      <div style="padding:0 16px; display:flex; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93; border-right:1px solid #232528; cursor:pointer" style-hover="color:#E4E4E2; background:#181A1D">RUNS</div>
+      <div style="padding:0 16px; display:flex; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93; border-right:1px solid #232528; cursor:pointer" style-hover="color:#E4E4E2; background:#181A1D">BUILDER</div>
+      <div style="padding:0 16px; display:flex; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93; border-right:1px solid #232528; cursor:pointer" style-hover="color:#E4E4E2; background:#181A1D">CONFIG</div>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:0; height:100%">
+      <div style="padding:0 14px; height:100%; display:flex; align-items:center; gap:7px; border-left:1px solid #232528; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#B6B8BC">
+        <span style="color:#FF6A2B; animation:cblink 1.1s step-end infinite">●</span>RUN r-4812<span style="color:#5E6167">02:52</span>
+      </div>
+      <div style="padding:0 16px; height:100%; display:flex; align-items:center; border-left:1px solid #232528; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#E4E4E2; cursor:pointer" style-hover="background:#181A1D">HALT</div>
+    </div>
+  </header>
+
+  <div style="flex:1; min-height:0; display:flex">
+
+    <aside style="width:210px; flex:none; border-right:1px solid #232528; background:#111214; display:flex; flex-direction:column; overflow:auto">
+      <div style="padding:11px 14px 8px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.16em; color:#5E6167; border-bottom:1px solid #1D1F22">PROJECT</div>
+      <div style="padding:10px 14px; border-bottom:1px solid #1D1F22; cursor:pointer" style-hover="background:#181A1D">
+        <div style="display:flex; align-items:center; gap:7px">
+          <div style="width:6px; height:6px; background:#FF6A2B"></div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600">payments-platform</div>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#5E6167; margin-top:4px; padding-left:13px">4 flows · LIN-PAY</div>
+      </div>
+      <div style="padding:9px 14px; border-bottom:1px solid #1D1F22; cursor:pointer" style-hover="background:#181A1D"><div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93">support-copilot</div></div>
+      <div style="padding:9px 14px; border-bottom:1px solid #1D1F22; cursor:pointer" style-hover="background:#181A1D"><div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93">docs-rewrite</div></div>
+      <div style="padding:9px 14px; border-bottom:1px solid #1D1F22; cursor:pointer" style-hover="background:#181A1D"><div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8B8E93">infra-guardrails</div></div>
+
+      <div style="padding:14px 14px 8px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.16em; color:#5E6167">PROVIDERS</div>
+      <div style="padding:0 14px 6px; display:flex; flex-direction:column; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10.5px">
+        <div style="display:flex; gap:8px"><span style="color:#4FD48A">[+]</span><span style="color:#B6B8BC; flex:1">anthropic</span><span style="color:#5E6167">4</span></div>
+        <div style="display:flex; gap:8px"><span style="color:#4FD48A">[+]</span><span style="color:#B6B8BC; flex:1">ollama</span><span style="color:#5E6167">6</span></div>
+        <div style="display:flex; gap:8px"><span style="color:#4FD48A">[+]</span><span style="color:#B6B8BC; flex:1">lmstudio</span><span style="color:#5E6167">3</span></div>
+        <div style="display:flex; gap:8px"><span style="color:#F2C14E">[~]</span><span style="color:#B6B8BC; flex:1">llama.cpp</span><span style="color:#5E6167">1</span></div>
+        <div style="display:flex; gap:8px"><span style="color:#5E6167">[ ]</span><span style="color:#5E6167; flex:1">openai-compat</span><span style="color:#5E6167">—</span></div>
+      </div>
+
+      <div style="margin-top:auto; padding:11px 14px; border-top:1px solid #1D1F22; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">sam.rao@acme · admin</div>
+    </aside>
+
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column">
+      <div style="flex:none; height:32px; display:flex; align-items:center; gap:14px; padding:0 16px; border-bottom:1px solid #232528; background:#131417; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93">
+        <span style="color:#E4E4E2">issue-to-pr.flow</span><span style="color:#5E6167">v14</span>
+        <span style="color:#5E6167">|</span><span>trigger PAY-2481</span>
+        <span style="color:#5E6167">|</span><span>node 6/8</span>
+        <span style="margin-left:auto; color:#5E6167">TOPOLOGY: TREE</span>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow:auto; padding:22px 20px 40px; background-image:linear-gradient(#17191C 1px, transparent 1px), linear-gradient(90deg, #17191C 1px, transparent 1px); background-size:36px 36px">
+        <div style="width:560px; position:relative; height:660px">
+          <svg width="560" height="660" style="position:absolute; inset:0; pointer-events:none">
+            <path d="M40 62 V 96" stroke="#4FD48A" stroke-width="1.4" />
+            <path d="M40 142 V 176" stroke="#4FD48A" stroke-width="1.4" />
+            <path d="M40 222 V 244 H 292 V 266 M40 244 V 266" stroke="#4FD48A" stroke-width="1.4" fill="none" />
+            <path d="M40 312 V 334 H 292 V 312 M40 334 V 356" stroke="#4FD48A" stroke-width="1.4" fill="none" />
+            <path d="M40 402 V 436" stroke="#FF6A2B" stroke-width="1.8" stroke-dasharray="4 6" style="animation:cdash 1s linear infinite" />
+            <path d="M40 482 V 516" stroke="#2C2F33" stroke-width="1.4" stroke-dasharray="3 5" />
+            <path d="M40 562 V 596" stroke="#2C2F33" stroke-width="1.4" stroke-dasharray="3 5" />
+          </svg>
+
+          <div style="position:absolute; left:20px; top:22px; width:520px; background:#141619; border:1px solid #262A2E; border-left:2px solid #4FD48A; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167; width:26px">01</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#E4E4E2; flex:1">trigger.issue_assigned</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93">linear</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4FD48A; width:58px; text-align:right">0.4s</div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:102px; width:520px; background:#141619; border:1px solid #262A2E; border-left:2px solid #4FD48A; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167; width:26px">02</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#E4E4E2; flex:1">agent.plan</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93">claude-sonnet-4.5</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4FD48A; width:58px; text-align:right">41s</div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:182px; width:248px; background:#141619; border:1px solid #262A2E; border-left:2px solid #4FD48A; padding:8px 12px">
+            <div style="display:flex; gap:10px"><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">03a</div><div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#E4E4E2; flex:1">retrieval.docs</div></div>
+            <div style="display:flex; gap:10px; margin-top:5px; padding-left:31px"><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93; flex:1">nomic-embed-text</div><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4FD48A">3.1s</div></div>
+          </div>
+
+          <div style="position:absolute; left:292px; top:182px; width:248px; background:#141619; border:1px solid #262A2E; border-left:2px solid #4FD48A; padding:8px 12px">
+            <div style="display:flex; gap:10px"><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">03b</div><div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#E4E4E2; flex:1">agent.scan_repo</div></div>
+            <div style="display:flex; gap:10px; margin-top:5px; padding-left:31px"><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93; flex:1">qwen2.5-coder:32b</div><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4FD48A">1m08s</div></div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:272px; width:520px; background:#141619; border:1px solid #262A2E; border-left:2px solid #4FD48A; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167; width:26px">04</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#E4E4E2; flex:1">agent.implement</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93">deepseek-coder-v2</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#4FD48A; width:58px; text-align:right">2m36s</div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:362px; width:520px; background:#191412; border:1px solid #4A2A17; border-left:2px solid #FF6A2B; padding:9px 12px">
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#FF6A2B; width:26px">05</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#FFF; flex:1">agent.review_and_test</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#C99B7F">claude-opus-4.1</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#FF6A2B; width:58px; text-align:right; animation:cblink 1.1s step-end infinite">0m52s</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:8px; padding-left:38px">
+              <div style="flex:1; height:2px; background:#2C2118"><div style="width:60%; height:100%; background:#FF6A2B"></div></div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#8B8E93">3/5 checks</div>
+            </div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:442px; width:520px; background:#111214; border:1px dashed #2C2F33; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:26px">06</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8B8E93; flex:1">gate.human_approval</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">sam.rao</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:58px; text-align:right">queued</div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:522px; width:520px; background:#111214; border:1px dashed #2C2F33; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:26px">07</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8B8E93; flex:1">action.open_pr</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">github</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:58px; text-align:right">queued</div>
+          </div>
+
+          <div style="position:absolute; left:20px; top:602px; width:520px; background:#111214; border:1px dashed #2C2F33; padding:8px 12px; display:flex; align-items:center; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:26px">08</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8B8E93; flex:1">action.comment_issue</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#5E6167">linear</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#41454A; width:58px; text-align:right">queued</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:392px; flex:none; border-left:1px solid #232528; background:#111214; display:flex; flex-direction:column; min-height:0">
+      <div style="flex:none; height:32px; display:flex; align-items:center; padding:0 14px; border-bottom:1px solid #232528; background:#131417; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:#8B8E93">NODE 05 · agent.review_and_test</div>
+
+      <div style="flex:none; display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid #232528">
+        <div style="padding:10px 11px; border-right:1px solid #1D1F22"><div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:#5E6167">TOK/S</div><div style="font-family:'IBM Plex Mono',monospace; font-size:14px; color:#FF6A2B; margin-top:3px">56.3</div></div>
+        <div style="padding:10px 11px; border-right:1px solid #1D1F22"><div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:#5E6167">IN</div><div style="font-family:'IBM Plex Mono',monospace; font-size:14px; margin-top:3px">18.2k</div></div>
+        <div style="padding:10px 11px; border-right:1px solid #1D1F22"><div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:#5E6167">OUT</div><div style="font-family:'IBM Plex Mono',monospace; font-size:14px; margin-top:3px">2.9k</div></div>
+        <div style="padding:10px 11px"><div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:#5E6167">CTX</div><div style="font-family:'IBM Plex Mono',monospace; font-size:14px; color:#F2C14E; margin-top:3px">61%</div></div>
+      </div>
+
+      <div style="flex:none; display:flex; border-bottom:1px solid #232528">
+        <div style="padding:7px 13px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#0E0F11; background:#E4E4E2; cursor:pointer">STDOUT</div>
+        <div style="padding:7px 13px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93; cursor:pointer" style-hover="color:#E4E4E2">CONFIG</div>
+        <div style="padding:7px 13px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93; cursor:pointer" style-hover="color:#E4E4E2">TRACE</div>
+        <div style="padding:7px 13px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8B8E93; cursor:pointer" style-hover="color:#E4E4E2">DIFF</div>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow:auto; padding:12px 14px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; line-height:1.7; color:#B6B8BC; white-space:pre-wrap">Reviewing 9 changed files against ledger invariants.
+
+<span style="color:#4FD48A">✔</span> double-entry balance holds in postSettlement()
+<span style="color:#4FD48A">✔</span> banker's rounding used throughout
+<span style="color:#4FD48A">✔</span> 47/47 tests pass, 0 snapshots updated
+
+<span style="color:#F2C14E">⚠</span> retrySettlement() is not idempotent — a duplicate
+  webhook delivery would post the entry twice. Key on
+  settlement_id in the dedupe table before insert.
+
+remaining: migration dry-run on shadow table<span style="display:inline-block; width:7px; height:12px; background:#FF6A2B; vertical-align:-2px; animation:cblink 1s step-end infinite"></span></div>
+
+      <div style="flex:none; border-top:1px solid #232528; padding:10px 14px; background:#131417">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; color:#5E6167; margin-bottom:7px">TOOL CALLS</div>
+        <div style="display:flex; flex-direction:column; gap:5px; font-family:'IBM Plex Mono',monospace; font-size:10px">
+          <div style="display:flex; gap:9px"><span style="color:#4FD48A">ok</span><span style="color:#B6B8BC; flex:1">run_tests(suite=ledger)</span><span style="color:#5E6167">8.4s</span></div>
+          <div style="display:flex; gap:9px"><span style="color:#4FD48A">ok</span><span style="color:#B6B8BC; flex:1">read_diff(files=9)</span><span style="color:#5E6167">0.3s</span></div>
+          <div style="display:flex; gap:9px"><span style="color:#FF6A2B">··</span><span style="color:#B6B8BC; flex:1">migration_dry_run()</span><span style="color:#5E6167">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}"></script>
+</body>
+</html>

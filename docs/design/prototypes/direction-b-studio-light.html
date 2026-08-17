@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:0; background:#F4F2EE; color:#191A18; font-family:'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#1D6A57; text-decoration:none; }
+  a:hover { color:#144B3E; }
+  @keyframes bdash { to { stroke-dashoffset:-22; } }
+  @keyframes bfade { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+</style>
+</helmet>
+
+<div style="display:flex; height:100vh; width:100%; overflow:hidden; background:#F4F2EE">
+
+  <aside style="width:232px; flex:none; display:flex; flex-direction:column; background:#EDEAE4; border-right:1px solid #DCD7CE">
+    <div style="padding:18px 16px 14px">
+      <div style="font-family:'Instrument Serif',serif; font-size:21px; letter-spacing:-0.01em">Loomlet</div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.14em; color:#8C877D; margin-top:3px">WORKFLOW STUDIO</div>
+    </div>
+
+    <div style="padding:0 12px 14px">
+      <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:9px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.04); cursor:pointer">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.12em; color:#A29C91">PROJECT</div>
+        <div style="display:flex; align-items:center; gap:7px; margin-top:5px">
+          <div style="font-size:13px; font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Payments Platform</div>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 4L5 6.5L7.5 4" stroke="#8C877D" stroke-width="1.3" stroke-linecap="round" /></svg>
+        </div>
+        <div style="font-size:10.5px; color:#8C877D; margin-top:2px">4 workflows · LIN-PAY</div>
+      </div>
+    </div>
+
+    <nav style="display:flex; flex-direction:column; gap:1px; padding:0 12px">
+      <div style="padding:8px 10px; border-radius:7px; font-size:12.5px; color:#5F5B54; cursor:pointer" style-hover="background:#E4E0D8">Projects</div>
+      <div style="padding:8px 10px; border-radius:7px; font-size:12.5px; font-weight:600; background:#191A18; color:#F4F2EE; display:flex; align-items:center; gap:8px; cursor:pointer">
+        <span style="flex:1">Workflow</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:9px; background:#1D6A57; color:#FFF; border-radius:20px; padding:1px 6px">1</span>
+      </div>
+      <div style="padding:8px 10px; border-radius:7px; font-size:12.5px; color:#5F5B54; cursor:pointer" style-hover="background:#E4E0D8">Runs</div>
+      <div style="padding:8px 10px; border-radius:7px; font-size:12.5px; color:#5F5B54; cursor:pointer" style-hover="background:#E4E0D8">Builder</div>
+      <div style="padding:8px 10px; border-radius:7px; font-size:12.5px; color:#5F5B54; cursor:pointer" style-hover="background:#E4E0D8">Settings</div>
+    </nav>
+
+    <div style="margin-top:20px; padding:0 22px 8px; font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.14em; color:#A29C91">MODEL PROVIDERS</div>
+    <div style="padding:0 14px; display:flex; flex-direction:column; gap:7px">
+      <div style="display:flex; align-items:center; gap:8px"><div style="width:5px; height:5px; border-radius:50%; background:#1D6A57"></div><div style="font-size:11.5px; color:#3E3B36; flex:1">Anthropic · Claude</div><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91">4</div></div>
+      <div style="display:flex; align-items:center; gap:8px"><div style="width:5px; height:5px; border-radius:50%; background:#1D6A57"></div><div style="font-size:11.5px; color:#3E3B36; flex:1">Ollama</div><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91">6</div></div>
+      <div style="display:flex; align-items:center; gap:8px"><div style="width:5px; height:5px; border-radius:50%; background:#1D6A57"></div><div style="font-size:11.5px; color:#3E3B36; flex:1">LM Studio</div><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91">3</div></div>
+      <div style="display:flex; align-items:center; gap:8px"><div style="width:5px; height:5px; border-radius:50%; background:#C9C3B8"></div><div style="font-size:11.5px; color:#8C877D; flex:1">llama.cpp</div><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91">1</div></div>
+    </div>
+
+    <div style="margin-top:auto; padding:14px 16px; border-top:1px solid #DCD7CE; display:flex; align-items:center; gap:9px">
+      <div style="width:24px; height:24px; border-radius:50%; background:#DCD7CE; display:grid; place-items:center; font-size:10px; font-weight:600; color:#5F5B54">SR</div>
+      <div style="font-size:11.5px; color:#3E3B36">Sam Rao</div>
+    </div>
+  </aside>
+
+  <main style="flex:1; min-width:0; display:flex; flex-direction:column">
+    <header style="flex:none; padding:20px 26px 16px; border-bottom:1px solid #DCD7CE; background:#F4F2EE">
+      <div style="display:flex; align-items:flex-end; gap:16px">
+        <div style="min-width:0">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.12em; color:#A29C91">RUN r-4812 · PAY-2481</div>
+          <h1 style="margin:5px 0 0; font-family:'Instrument Serif',serif; font-size:27px; font-weight:400; letter-spacing:-0.01em">Issue → PR pipeline</h1>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:9px; flex:none">
+          <div style="display:flex; align-items:center; gap:7px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:20px; padding:6px 12px">
+            <div style="width:6px; height:6px; border-radius:50%; background:#1D6A57; animation:bfade 1.5s ease-in-out infinite"></div>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#3E3B36">running · step 6 of 8</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#A29C91">02:52</span>
+          </div>
+          <div style="padding:8px 14px; border-radius:20px; background:#191A18; color:#F4F2EE; font-size:12px; font-weight:600; cursor:pointer" style-hover="background:#2C2E2B">Pause run</div>
+        </div>
+      </div>
+    </header>
+
+    <div style="flex:1; min-height:0; display:flex">
+      <div style="flex:1; min-width:0; overflow:auto; padding:26px 26px 40px">
+
+        <div style="width:1180px; position:relative; height:340px">
+          <svg width="1180" height="340" style="position:absolute; inset:0; pointer-events:none">
+            <path d="M186 170 C 206 170, 206 170, 226 170" stroke="#1D6A57" stroke-width="1.4" fill="none" />
+            <path d="M386 170 C 410 170, 402 82, 426 82" stroke="#1D6A57" stroke-width="1.4" fill="none" />
+            <path d="M386 170 C 410 170, 402 258, 426 258" stroke="#1D6A57" stroke-width="1.4" fill="none" />
+            <path d="M586 82 C 610 82, 602 170, 626 170" stroke="#1D6A57" stroke-width="1.4" fill="none" />
+            <path d="M586 258 C 610 258, 602 170, 626 170" stroke="#1D6A57" stroke-width="1.4" fill="none" />
+            <path d="M786 170 C 806 170, 806 170, 826 170" stroke="#1D6A57" stroke-width="2" fill="none" stroke-dasharray="5 6" style="animation:bdash 1s linear infinite" />
+            <path d="M986 170 C 1006 170, 1006 170, 1026 170" stroke="#CFC9BE" stroke-width="1.4" fill="none" stroke-dasharray="3 5" />
+          </svg>
+
+          <div style="position:absolute; left:26px; top:140px; width:160px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.05)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#A29C91">TRIGGER</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Issue assigned</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8C877D; margin-top:5px">linear · LIN-PAY</div>
+          </div>
+
+          <div style="position:absolute; left:226px; top:140px; width:160px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.05)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#1D6A57">DONE · 41s</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Plan the change</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8C877D; margin-top:5px">claude-sonnet-4.5</div>
+          </div>
+
+          <div style="position:absolute; left:426px; top:52px; width:160px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.05)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#1D6A57">DONE · 3.1s</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Retrieve context</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8C877D; margin-top:5px">nomic-embed-text</div>
+          </div>
+
+          <div style="position:absolute; left:426px; top:228px; width:160px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.05)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#1D6A57">DONE · 1m08s</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Scan codebase</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8C877D; margin-top:5px">qwen2.5-coder:32b</div>
+          </div>
+
+          <div style="position:absolute; left:626px; top:140px; width:160px; background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:10px 11px; box-shadow:0 1px 2px rgba(25,26,24,.05)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#1D6A57">DONE · 2m36s</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Implement patch</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8C877D; margin-top:5px">deepseek-coder-v2</div>
+          </div>
+
+          <div style="position:absolute; left:826px; top:132px; width:160px; background:#FFFFFF; border:1.5px solid #1D6A57; border-radius:10px; padding:11px 12px; box-shadow:0 8px 24px rgba(29,106,87,.14)">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#1D6A57; animation:bfade 1.5s ease-in-out infinite">RUNNING · 0m52s</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px">Review &amp; test</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#5F5B54; margin-top:5px">claude-opus-4.1</div>
+            <div style="height:3px; border-radius:2px; background:#E4E0D8; margin-top:8px; overflow:hidden"><div style="width:60%; height:100%; background:#1D6A57"></div></div>
+          </div>
+
+          <div style="position:absolute; left:1026px; top:140px; width:130px; background:#EDEAE4; border:1px dashed #CFC9BE; border-radius:10px; padding:10px 11px">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.1em; color:#A29C91">QUEUED</div>
+            <div style="font-size:12.5px; font-weight:600; margin-top:4px; color:#5F5B54">Approve → ship</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91; margin-top:5px">github · linear</div>
+          </div>
+        </div>
+
+        <div style="max-width:1180px; margin-top:26px; border-top:1px solid #DCD7CE; padding-top:18px">
+          <div style="font-family:'Instrument Serif',serif; font-size:18px">Step output</div>
+          <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:10px; padding:14px 16px; margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.75; color:#3E3B36; white-space:pre-wrap">Reviewing 9 changed files against the ledger invariants.
+
+✔ double-entry balance holds in postSettlement()
+✔ 47/47 existing tests pass, no snapshots updated
+
+⚠ retrySettlement() is not idempotent — a duplicate webhook
+  delivery would post the entry twice.</div>
+        </div>
+      </div>
+
+      <div style="width:300px; flex:none; border-left:1px solid #DCD7CE; background:#EDEAE4; padding:18px 16px; overflow:auto">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.14em; color:#A29C91">RUN LEDGER</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:11px">
+          <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:9px; padding:9px 10px"><div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; color:#A29C91">TOKENS</div><div style="font-family:'Instrument Serif',serif; font-size:19px; margin-top:2px">21.1k</div></div>
+          <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:9px; padding:9px 10px"><div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; color:#A29C91">TOK/SEC</div><div style="font-family:'Instrument Serif',serif; font-size:19px; margin-top:2px">56.3</div></div>
+          <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:9px; padding:9px 10px"><div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; color:#A29C91">STEPS</div><div style="font-family:'Instrument Serif',serif; font-size:19px; margin-top:2px">6/8</div></div>
+          <div style="background:#FFFFFF; border:1px solid #DCD7CE; border-radius:9px; padding:9px 10px"><div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; color:#A29C91">COST</div><div style="font-family:'Instrument Serif',serif; font-size:19px; margin-top:2px">$0.42</div></div>
+        </div>
+
+        <div style="font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.14em; color:#A29C91; margin-top:20px">ACTIVITY</div>
+        <div style="margin-top:10px; display:flex; flex-direction:column; gap:0">
+          <div style="display:flex; gap:9px"><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91; padding-top:2px">14:22</div><div style="border-left:1px solid #DCD7CE; padding:0 0 12px 11px"><div style="font-size:11.5px; color:#191A18">run_tests → 47 passed</div><div style="font-size:10.5px; color:#8C877D">ledger suite · 8.4s</div></div></div>
+          <div style="display:flex; gap:9px"><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91; padding-top:2px">14:22</div><div style="border-left:1px solid #DCD7CE; padding:0 0 12px 11px"><div style="font-size:11.5px; color:#191A18">lint --fix → 2 files rewritten</div><div style="font-size:10.5px; color:#8C877D">1.1s</div></div></div>
+          <div style="display:flex; gap:9px"><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91; padding-top:2px">14:22</div><div style="border-left:1px solid #DCD7CE; padding:0 0 12px 11px"><div style="font-size:11.5px; color:#8A5A16">idempotency gap flagged</div><div style="font-size:10.5px; color:#8C877D">retry path · warning</div></div></div>
+          <div style="display:flex; gap:9px"><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#A29C91; padding-top:2px">14:22</div><div style="padding:0 0 0 12px"><div style="font-size:11.5px; color:#191A18">drafting review comment</div><div style="font-size:10.5px; color:#8C877D">check 4 of 5</div></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}"></script>
+</body>
+</html>
