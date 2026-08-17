@@ -13,7 +13,8 @@
       "!**/__snapshots__/**",
       "!**/__goldens__/**",
       "!schemas/**",
-      "!**/test/fixtures/runs/**"
+      "!**/test/fixtures/runs/**",
+      "!docs/design/prototypes/*.html"
     ]
   },
   "formatter": {

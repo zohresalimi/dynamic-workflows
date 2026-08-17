@@ -51,9 +51,32 @@ async function laidOut(count = 12): Promise<void> {
   await expect.poll(() => bodies().length, { timeout: 15_000 }).toBe(count);
 }
 
-/** The palette's own value for a state, resolved against the live cascade. */
-const paletteColour = (state: DisplayState): string =>
-  getComputedStyle(document.documentElement).getPropertyValue(`--state-${state}`).trim();
+/**
+ * The palette's own value for a state, resolved against the live cascade **and
+ * through the browser's own colour serialisation**.
+ *
+ * KAR-24.1 — the round-trip through a probe element is the whole point. A
+ * custom property's declared text and a computed `border-color` are two
+ * different strings for the same colour: the browser normalises whatever it
+ * was given to `rgb(…)`, while `getPropertyValue` hands back the literal as
+ * written. That went unnoticed while the tokens were `oklch(…)`, which
+ * happened to serialise back to itself; the moment KAR-24.1 moved them to the
+ * prototype's hex, `#5a6270` stopped equalling `rgb(90, 98, 112)` and seven
+ * assertions failed over a formatting difference rather than a colour.
+ *
+ * Comparing what the browser resolved on both sides is format-independent, so
+ * the next change of notation does not cost anybody an afternoon.
+ */
+const paletteColour = (state: DisplayState): string => {
+  const probe = document.createElement('span');
+  probe.style.color = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--state-${state}`)
+    .trim();
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved;
+};
 
 beforeEach(() => {
   // A recording folded into a store that a previous file left open would be a

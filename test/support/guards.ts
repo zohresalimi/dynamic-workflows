@@ -3259,6 +3259,48 @@ function coladaCalls(code: string): { text: string; line: number }[] {
   return found;
 }
 
+/**
+ * KAR-24.1 AC8 / EPIC-24-S04 — no font CDN reference survives in the source.
+ *
+ * A locally-installed daemon UI is meant to work with no network at all (AR-1);
+ * a `@import` or `<link>` pointed at fonts.googleapis.com/fonts.gstatic.com
+ * fetches DeFlow's own chrome from a third party on first paint, which is a
+ * silent dependency on the operator's network reaching Google rather than on
+ * the daemon they just installed. The prototypes under
+ * docs/design/prototypes/ do reference these hosts, deliberately — they are
+ * throwaway HTML mockups, not shipped UI — but they are not part of
+ * `webSources()`, so this guard needs no exemption list for them: exempting a
+ * path here would be a standing invitation to widen it later to something
+ * that does ship.
+ *
+ * The scan runs over `codeOnly()`, the same comment-blanking pass
+ * `checkNoCorepack` uses and for the same reason: fonts.css's own header
+ * comment names both hosts in order to say they are *not* used, and a guard
+ * that fired on that prose would make the only fix "stop documenting why".
+ */
+export const FONT_CDN_MESSAGE =
+  'references a Google Fonts CDN host. A locally-installed daemon UI must not fetch its own ' +
+  'chrome from a third party (AR-1) and must work with no network at all — self-host the font ' +
+  'and declare it with a local @font-face instead (packages/web/src/styles/fonts.css).';
+
+const FONT_CDN_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+
+export function checkNoFontCdn(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    const code = codeOnly(file.text);
+    for (const host of FONT_CDN_HOSTS) {
+      if (code.includes(host)) {
+        violations.push({
+          where: file.path,
+          message: `${file.path} references "${host}". ${FONT_CDN_MESSAGE}`,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
 export const CREDENTIAL_READ_MESSAGE =
   'reads a provider credential. AR-1 is that DeFlow never touches a vendor credential and never ' +
   'captures the output of an auth command: the vendor CLI is already logged in, its own ' +

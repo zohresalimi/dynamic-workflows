@@ -60,7 +60,26 @@ function declarationsUnder(css: string, selector: string): Record<string, string
     end += 1;
   }
 
-  const body = css.slice(start, end - 1);
+  /*
+   * KAR-24.1 — comments are stripped before the split.
+   *
+   * The rest of this function is unchanged and so is every assertion below;
+   * this line fixes a fragility in the *reader*, not a change to the claim.
+   * Splitting on `;` treats a comment as part of whatever follows it, so a
+   * commented declaration silently took the **next** one down with it: the
+   * chunk after `--ink: #e9eaee; /*` … `*` + `/` begins with `/*`, its name
+   * does not start with `--`, and the token is dropped. When theme.css's
+   * token blocks held nothing but bare declarations that never came up.
+   * KAR-24.1 annotates each value with the contrast ratio that chose it,
+   * which is exactly the kind of comment this parser could not see, and
+   * seven state tokens read as zero.
+   *
+   * Blanking comments is the smaller fix than forbidding them, and the
+   * annotations are worth more than the fragility: a ratio recorded beside
+   * the hex it justifies is how the next reader knows why direction A's own
+   * literal is not the value in the file.
+   */
+  const body = css.slice(start, end - 1).replaceAll(/\/\*[\s\S]*?\*\//g, '');
   const declarations: Record<string, string> = {};
   for (const line of body.split(';')) {
     const colon = line.indexOf(':');
