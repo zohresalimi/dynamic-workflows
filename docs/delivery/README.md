@@ -245,6 +245,12 @@ P0 because it is interesting.
 | EPIC-20 | [One-command install and a lowercase command](./epics/EPIC-20-install-and-naming.md) | W14           | [flows](./flows/EPIC-20-install-and-naming-flows.md)  |
 | EPIC-21 | [Interactive CLI: a real terminal app, not a background command](./epics/EPIC-21-interactive-cli.md) | W16           | [flows](./flows/EPIC-21-interactive-cli-flows.md)     |
 | EPIC-22 | [Web control center: projects, chat-driven runs, live boards](./epics/EPIC-22-web-control-center.md) | W15           | [flows](./flows/EPIC-22-web-control-center-flows.md)  |
+| EPIC-24 | [The design system: a component library from the prototype](./epics/EPIC-24-design-system.md) | W17           | [flows](./flows/EPIC-24-design-system-flows.md)       |
+
+**`EPIC-23` is deliberately absent from this table.** It exists in Linear only (`MET-815`, _"Found in
+use: what running it taught us"_) as an open register of defects and costs found by running the
+product after the epic that shipped the surrounding work had already closed. It has no planned scope
+and therefore no epic file and no flow file, which is why the numbering here steps from 22 to 24.
 
 Live status, sizing rollups and requirement coverage are on the [board](./board.md). This table is
 the index; the board is the state.
