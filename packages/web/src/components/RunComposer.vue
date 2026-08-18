@@ -26,6 +26,18 @@
  *
  * ## Why it is a plain section and not a Reka dialog
  *
+ * KAR-24.8 AC1 asked for this to *become* a `UiModal`, and it does not — it
+ * takes the modal's **chrome** without moving into its portal. `UiModal` is
+ * Reka's dialog: it portals to `<body>` and owns Escape itself. Both of those
+ * are the two things the paragraph below says this component deliberately does
+ * not do, and swapping them in would have been a behaviour change dressed as a
+ * restyle, in an epic whose first rule is that it changes no behaviour. So the
+ * header band, the labelled body and the footer with a ghost cancel beside the
+ * primary action are all here, built from the same tokens and the same
+ * `UiButton` every other screen uses, and the shell's own `Esc` still closes it.
+ * The cancel button is the one addition, and it is a second route to a close
+ * that already existed rather than a new one.
+ *
  * `CommandJumper` is a vendored `command` palette because that shape's hard
  * half — roving tabindex, `aria-activedescendant`, filter wiring — is not worth
  * hand-rolling. A compose form has none of that: it is a `<form>` with labelled
@@ -43,6 +55,7 @@ import { useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { COMPOSER_OVERLAY } from '../app/ids.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
+import { UiButton, UiSectionLabel } from './ui/index.ts';
 
 /** The three wire shapes `POST /api/runs` accepts, and no fourth. */
 const SHAPES = ['text', 'file', 'issue'] as const;
@@ -423,158 +436,197 @@ function onKeydown(event: KeyboardEvent): void {
     @keydown="onKeydown"
   >
     <form class="composer__form" @submit.prevent="submit">
-      <h2 id="DeFlow-composer-title" class="composer__title">Start a run</h2>
-
-      <div class="composer__shapes" role="group" aria-label="What this run is about">
+      <!-- KAR-24.8 AC1 — direction A's modal chrome: a titled header band … -->
+      <header class="composer__header">
+        <h2 id="DeFlow-composer-title" class="composer__title">Start a run</h2>
         <button
-          v-for="kind in SHAPES"
-          :key="kind"
           type="button"
-          class="composer__shape"
-          :data-composer-shape="kind"
-          :aria-pressed="shape === kind"
-          @click="shape = kind"
+          class="composer__close"
+          data-composer-close
+          aria-label="Close the composer"
+          @click="ui.closeOverlay(COMPOSER_OVERLAY)"
         >
-          {{ kind }}
+          ✕
         </button>
-      </div>
+      </header>
 
-      <label v-if="shape === 'text'" class="composer__field">
-        <span>Prompt</span>
-        <textarea
-          ref="promptBox"
-          v-model="text"
-          data-composer-text
-          rows="4"
-          spellcheck="false"
-          placeholder="What should this run do?"
-        />
-      </label>
+      <!-- … a body of labelled sections … -->
+      <div class="composer__body">
+        <UiSectionLabel>What this run is about</UiSectionLabel>
+        <div class="composer__shapes" role="group" aria-label="What this run is about">
+          <button
+            v-for="kind in SHAPES"
+            :key="kind"
+            type="button"
+            class="composer__shape"
+            :data-composer-shape="kind"
+            :aria-pressed="shape === kind"
+            @click="shape = kind"
+          >
+            {{ kind }}
+          </button>
+        </div>
 
-      <!--
+        <label v-if="shape === 'text'" class="composer__field">
+          <span>Prompt</span>
+          <textarea
+            ref="promptBox"
+            v-model="text"
+            data-composer-text
+            rows="4"
+            spellcheck="false"
+            placeholder="What should this run do?"
+          />
+        </label>
+
+        <!--
         AC1 — the path the operator typed, sent as typed. Nothing here reads a
         file: `input.path` is resolved and contained by intake, which is the
         boundary that owns that check.
       -->
-      <label v-else-if="shape === 'file'" class="composer__field">
-        <span>A file inside the project</span>
-        <input v-model="path" data-composer-path type="text" autocomplete="off" spellcheck="false">
-      </label>
+        <label v-else-if="shape === 'file'" class="composer__field">
+          <span>A file inside the project</span>
+          <input
+            v-model="path"
+            data-composer-path
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </label>
 
-      <!--
+        <!--
         AC3, AC6 — the paste box is always here, and the list is *extra*. An
         operator with a URL in their clipboard is never worse off for having
         connected a service, including when the URL points somewhere that
         service cannot see.
       -->
-      <label v-else class="composer__field">
-        <span
-          >{{ connectedServices.length === 0 ? 'An issue reference' : 'Search issues, or paste a reference' }}</span
-        >
-        <input v-model="url" data-composer-url type="text" autocomplete="off" spellcheck="false">
-      </label>
-
-      <ul
-        v-if="shape === 'issue' && issues.length > 0"
-        class="composer__issues"
-        data-composer-issues
-      >
-        <li v-for="issue in issues" :key="`${issue.service}:${issue.key}`">
-          <button
-            type="button"
-            class="composer__issue"
-            data-composer-issue
-            :data-composer-issue-key="issue.key"
-            :data-composer-issue-service="issue.service"
-            @click="url = issue.url"
+        <label v-else class="composer__field">
+          <span
+            >{{ connectedServices.length === 0 ? 'An issue reference' : 'Search issues, or paste a reference' }}</span
           >
-            <span class="composer__issue-key">{{ issue.key }}</span>
-            <span class="composer__issue-title">{{ issue.title }}</span>
-            <span class="composer__issue-state">{{ issue.state }}</span>
-            <!--
+          <input v-model="url" data-composer-url type="text" autocomplete="off" spellcheck="false">
+        </label>
+
+        <ul
+          v-if="shape === 'issue' && issues.length > 0"
+          class="composer__issues"
+          data-composer-issues
+        >
+          <li v-for="issue in issues" :key="`${issue.service}:${issue.key}`">
+            <button
+              type="button"
+              class="composer__issue"
+              data-composer-issue
+              :data-composer-issue-key="issue.key"
+              :data-composer-issue-service="issue.service"
+              @click="url = issue.url"
+            >
+              <span class="composer__issue-key">{{ issue.key }}</span>
+              <span class="composer__issue-title">{{ issue.title }}</span>
+              <span class="composer__issue-state">{{ issue.state }}</span>
+              <!--
               KAR-22.6 AC3 — which tracker this came from. Rendered whenever
               there is more than one, because with one it is noise and with two
               it is the difference between picking and guessing.
             -->
-            <span v-if="connectedServices.length > 1" class="composer__issue-service">
-              {{ issue.serviceLabel }}
-            </span>
-          </button>
-        </li>
-      </ul>
+              <span v-if="connectedServices.length > 1" class="composer__issue-service">
+                {{ issue.serviceLabel }}
+              </span>
+            </button>
+          </li>
+        </ul>
 
-      <label class="composer__field">
-        <span>Project</span>
-        <select v-model="projectId" data-composer-project>
-          <option v-for="row in projects" :key="row.id" :value="row.id">
-            {{ row.name }}
-            — {{ row.path }}
-          </option>
-        </select>
-      </label>
+        <label class="composer__field">
+          <span>Project</span>
+          <select v-model="projectId" data-composer-project>
+            <option v-for="row in projects" :key="row.id" :value="row.id">
+              {{ row.name }}
+              — {{ row.path }}
+            </option>
+          </select>
+        </label>
 
-      <!--
+        <!--
         AC2, AC3 — the picker. Every row is the daemon's answer: whether it is
         available, by which route, why not, and what to run about it. Nothing on
         this list is computed in the browser.
       -->
-      <fieldset class="composer__providers" data-composer-providers>
-        <legend>Adapter</legend>
-        <p v-if="providers.length === 0" class="composer__providers-empty">
-          This daemon has not been told which machine it is on, so it cannot say which adapters are
-          usable here. Start it with <code>deflow up</code>.
-        </p>
-        <ul v-else class="composer__provider-rows">
-          <li
-            v-for="row in providers"
-            :key="row.id"
-            class="composer__provider"
-            :data-provider-row="row.id"
-            :data-provider-available="String(row.available)"
-            :data-provider-route="row.route ?? ''"
-          >
-            <label class="composer__provider-head">
-              <input
-                v-model="providerId"
-                data-provider-select
-                type="radio"
-                name="DeFlow-composer-provider"
-                :value="row.id"
-                :disabled="!row.available"
-              >
-              <span class="composer__provider-id">{{ row.id }}</span>
-              <span class="composer__provider-route">
-                {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
-              </span>
-            </label>
-            <p class="composer__provider-reason">{{ row.reason }}</p>
-            <p v-if="row.limitation" class="composer__provider-limit">{{ row.limitation }}</p>
-            <p v-if="row.action" class="composer__provider-action">
-              <code>{{ row.action }}</code>
-            </p>
-          </li>
-        </ul>
-      </fieldset>
+        <fieldset class="composer__providers" data-composer-providers>
+          <legend>Adapter</legend>
+          <p v-if="providers.length === 0" class="composer__providers-empty">
+            This daemon has not been told which machine it is on, so it cannot say which adapters
+            are usable here. Start it with <code>deflow up</code>.
+          </p>
+          <ul v-else class="composer__provider-rows">
+            <li
+              v-for="row in providers"
+              :key="row.id"
+              class="composer__provider"
+              :data-provider-row="row.id"
+              :data-provider-available="String(row.available)"
+              :data-provider-route="row.route ?? ''"
+            >
+              <label class="composer__provider-head">
+                <input
+                  v-model="providerId"
+                  data-provider-select
+                  type="radio"
+                  name="DeFlow-composer-provider"
+                  :value="row.id"
+                  :disabled="!row.available"
+                >
+                <span class="composer__provider-id">{{ row.id }}</span>
+                <span class="composer__provider-route">
+                  {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
+                </span>
+              </label>
+              <p class="composer__provider-reason">{{ row.reason }}</p>
+              <p v-if="row.limitation" class="composer__provider-limit">{{ row.limitation }}</p>
+              <p v-if="row.action" class="composer__provider-action">
+                <code>{{ row.action }}</code>
+              </p>
+            </li>
+          </ul>
+        </fieldset>
 
-      <div class="composer__actions">
-        <button type="submit" data-composer-submit :disabled="submitting">Start run</button>
-        <span class="composer__hint">⌘/Ctrl + Enter</span>
-      </div>
-
-      <!--
+        <!--
         AC5 — the daemon's sentence, rendered as it arrived. `deflow run` and
         this box say the same thing about the same machine because neither of
         them composes it.
       -->
-      <p v-if="error" class="composer__error" data-composer-error role="alert">{{ error }}</p>
-      <p v-if="refusedRunId" class="composer__refused" data-composer-refused-run>
-        The run exists and was aborted: <code>{{ refusedRunId }}</code>
-      </p>
+        <p v-if="error" class="composer__error" data-composer-error role="alert">{{ error }}</p>
+        <p v-if="refusedRunId" class="composer__refused" data-composer-refused-run>
+          The run exists and was aborted: <code>{{ refusedRunId }}</code>
+        </p>
+      </div>
+
+      <!-- … and a footer with a ghost cancel beside the primary action. -->
+      <footer class="composer__actions">
+        <span class="composer__hint">⌘/Ctrl + Enter</span>
+        <UiButton variant="ghost" @click="ui.closeOverlay(COMPOSER_OVERLAY)">Cancel</UiButton>
+        <UiButton type="submit" variant="primary" :disabled="submitting" data-composer-submit
+          >Start run</UiButton
+        >
+      </footer>
     </form>
   </section>
 </template>
 
 <style scoped>
+/*
+ * KAR-24.8 AC1 — direction A's modal, minus its portal.
+ *
+ * The panel is the prototype's: `--surface` behind `--edge-control`, the
+ * largest radius in the ramp, and `--shadow-modal`. It stays `position: fixed`
+ * inside the shell's own DOM rather than moving into a portal, for the reason
+ * the header comment gives — the shell's `Esc` is what closes it.
+ *
+ * The three bands are a grid rather than three margins: the header and the
+ * footer keep their height while the body between them is the only thing that
+ * scrolls, which is what stops a long adapter list from pushing "Start run"
+ * off the bottom of the screen.
+ */
 .composer {
   position: fixed;
   top: 10vh;
@@ -582,23 +634,54 @@ function onKeydown(event: KeyboardEvent): void {
   translate: -50% 0;
   width: min(46rem, 92vw);
   max-height: 80vh;
-  overflow: auto;
   z-index: 40;
-  border: 1px solid var(--edge, rgb(0 0 0 / 20%));
-  border-radius: 0.6rem;
-  background: var(--surface-raised, canvas);
-  box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 25%);
+  overflow: hidden;
+  border: 1px solid var(--edge-control);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
 }
 
 .composer__form {
   display: grid;
-  gap: 0.6rem;
-  padding: 0.9rem 1rem 1.1rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: inherit;
+}
+
+.composer__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 15px 16px 13px; /* geometry, not type */
+  border-bottom: 1px solid var(--edge-strong);
 }
 
 .composer__title {
-  font-size: 1rem;
   margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.composer__close {
+  margin-left: auto;
+  padding: 3px; /* geometry, not type */
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer__close:hover {
+  color: var(--ink);
+}
+
+.composer__body {
+  display: grid;
+  gap: 0.6rem;
+  padding: 15px 16px; /* geometry, not type */
+  overflow: auto;
 }
 
 .composer__shapes {
@@ -606,13 +689,27 @@ function onKeydown(event: KeyboardEvent): void {
   gap: 0.35rem;
 }
 
+/*
+ * The shape pills read as `UiChip`s but are `<button>`s with `aria-pressed`,
+ * which no chip in the library is. Matching the chip's face here is cheaper
+ * and more honest than giving `UiChip` a pressed state it has one caller for —
+ * a shape that appears once is a slot, not a component.
+ */
 .composer__shape {
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--edge, rgb(0 0 0 / 20%));
-  border-radius: 999px;
-  background: var(--surface, transparent);
-  color: inherit;
-  font-size: 0.8em;
+  padding: 2px 6px; /* geometry, not type */
+  border: 1px solid var(--edge-control);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.composer__shape[aria-pressed="true"] {
+  border-color: var(--state-running);
+  background: color-mix(in oklab, var(--state-running) 10%, var(--surface));
+  color: var(--state-running);
 }
 
 .composer__shape[aria-pressed="true"] {
@@ -716,12 +813,20 @@ function onKeydown(event: KeyboardEvent): void {
 .composer__actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 8px; /* geometry, not type */
+  justify-content: flex-end;
+  padding: 13px 16px; /* geometry, not type */
+  border-top: 1px solid var(--edge-strong);
+  background: var(--surface-raised);
 }
 
 .composer__hint {
-  font-size: 0.75em;
-  opacity: 0.65;
+  /* Pushed left so the two buttons sit together at the right, which is where
+     direction A's modal footer puts them. */
+  margin-right: auto;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .composer__error {
