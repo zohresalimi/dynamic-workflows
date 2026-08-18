@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * KAR-16.1 — the shell everything else mounts into.
+ * KAR-24.4 — restyled onto direction A's frame (the rail, the switcher, the
+ * topbar), with no change to what any of it *does*.
  *
- * Four things live here and nowhere else:
+ * Four things live here and nowhere else, and every one of them survives this
+ * restyle unchanged (AC6):
  *
- * 1. **The skip-link**, first in the DOM so it is first in the tab order
- *    (AC7). It is the one piece of a11y that has to be the literally-first
- *    element, so it cannot be a component's business.
+ * 1. **The skip-link**, still the literally first element in the DOM, so it
+ *    is first in the tab order. It is the one piece of a11y that has to be the
+ *    literally-first element, so it cannot be a component's business.
  * 2. **The keyboard map**, installed on `document` for the life of the app and
- *    disposed with it (../app/keyboard.ts). Not in a view: a map bound to a
+ *    disposed with it (./app/keyboard.ts). Not in a view: a map bound to a
  *    component that is not always mounted works on the landing route and stops
  *    everywhere else, which is the failure AC7's spec is written against.
  * 3. **The session gate** (AC3). A tab with no token renders an explicit
@@ -19,20 +22,39 @@
  *
  * The theme is `useDark()` and a class on `<html>`; nothing in this file, or in
  * any view, reads which theme is on.
+ *
+ * ## The rail is not rendered for a tab with no token
+ *
+ * `./components/frame/AppRail.vue` reads `GET /api/providers` on mount, and
+ * its own `ProjectSwitcher.vue` reads `GET /api/projects` on mount — both real
+ * requests, not deferred ones. AC6 says "the rail and topbar must not issue
+ * requests in that state either", and a component that fetches on mount cannot
+ * be told to fetch later just by not showing its data — it has already asked.
+ * So rather than mounting `AppRail` and hoping its markup renders emptily, this
+ * file does not mount it at all while `!session.authenticated`: `v-if`, not a
+ * prop that tells it to hush. That is "do not render the rail at all" from
+ * AC6's own two offered shapes, chosen over "chrome without data" because the
+ * chrome is not the thing that requests — the mount is, and a `v-if` is the
+ * only way to stop one.
+ *
+ * `AppTopBar` stays mounted either way: it takes its `awaitingOperator` count
+ * and `task` as props and asks for nothing itself, and `RunStatusPill` inside
+ * it only reads `useRunStore()`, which is empty rather than absent on a
+ * tokenless tab. Losing the topbar on top of the rail would leave a tab with
+ * no token nothing to look at while it reads the "paste the URL" panel.
  */
-import { BellRing, Moon, Search, Sun } from 'lucide-vue-next';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { RouterView } from 'vue-router';
 import { useApiClient } from './api/provide.ts';
-import { COMPOSER_OVERLAY, MAIN_CONTENT_ID, SEARCH_INPUT_ID } from './app/ids.ts';
+import { COMPOSER_OVERLAY, MAIN_CONTENT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import CommandJumper from './components/CommandJumper.vue';
+import AppRail from './components/frame/AppRail.vue';
+import AppTopBar from './components/frame/AppTopBar.vue';
 import NodeInspector from './components/NodeInspector.vue';
 import RunComposer from './components/RunComposer.vue';
 import RunGateBanner from './components/RunGateBanner.vue';
-import RunProviderBanner from './components/RunProviderBanner.vue';
-import RunTaskBanner from './components/RunTaskBanner.vue';
 import { useRunStore } from './stores/useRunStore.ts';
 import { useSessionStore } from './stores/useSessionStore.ts';
 import { useUiStore } from './stores/useUiStore.ts';
@@ -86,103 +108,50 @@ onUnmounted(() => {
 <template>
   <a class="skip-link" :href="`#${MAIN_CONTENT_ID}`">Skip to main content</a>
 
-  <div class="shell">
-    <header class="shell__bar">
-      <span class="shell__brand">DeFlow</span>
+  <div class="shell" :class="{ 'shell--no-rail': !session.authenticated }">
+    <!-- See the header comment: not rendered at all for a tokenless tab, so
+         its own and `ProjectSwitcher`'s mount-time requests never fire. -->
+    <AppRail v-if="session.authenticated" />
 
-      <button
-        class="shell__theme"
-        type="button"
-        :aria-pressed="isDark"
-        :aria-label="isDark ? 'Switch to the light theme' : 'Switch to the dark theme'"
-        @click="toggleTheme()"
-      >
-        <component :is="isDark ? Sun : Moon" :size="16" aria-hidden="true" />
-      </button>
-
-      <span
-        v-if="awaitingOperator > 0"
-        class="shell__approvals"
-        :data-approvals="awaitingOperator"
-        :aria-label="`${awaitingOperator} waiting on you`"
-      >
-        <BellRing :size="14" aria-hidden="true" />
-        {{ awaitingOperator }}
-      </span>
+    <div class="shell__column">
+      <AppTopBar
+        :awaiting-operator="awaitingOperator"
+        :is-dark="isDark"
+        :task="run.submittedTask"
+        @toggle-theme="toggleTheme()"
+        @open-composer="ui.openOverlay(COMPOSER_OVERLAY)"
+      />
 
       <!--
-        KAR-22.2 AC7 — the composer, for the operator who reached for a mouse.
-        The keyboard route (`c`, from anywhere) is the one the story is written
-        against; this is the same overlay, opened the other way, so there is one
-        composer rather than a button that builds a second one.
-      -->
-      <button
-        class="shell__compose"
-        type="button"
-        data-composer-open
-        @click="ui.openOverlay(COMPOSER_OVERLAY)"
-      >
-        Start a run
-      </button>
+        KAR-19.12 AC6, KAR-22.5 AC1 — what the run is waiting for, and the
+        buttons that answer it.
 
-      <label class="shell__search">
-        <Search class="shell__search-icon" :size="15" aria-hidden="true" />
-        <span class="shell__search-label">Search</span>
-        <input
-          :id="SEARCH_INPUT_ID"
-          class="shell__search-input"
-          type="search"
-          placeholder="Search nodes  ( / )"
-        >
-      </label>
+        Its own band between the bar and the view, rather than an item in the
+        toolbar where KAR-19.12 first put it. Two reasons, and neither is
+        taste: the F1.3 gate's prompt is a whole rendered spec that has to be
+        *read* before it is approved (AC3), which a toolbar cannot hold; and
+        AC1 asks for it in the workspace **and** on the run view, which one
+        band above the router outlet answers once rather than twice.
+
+        The wrapper is always in the DOM — never `v-if`d — so the shell's
+        three rows (bar, gate, view) are always three; the panel inside it
+        renders nothing when no gate is open, and a tab with no token has no
+        run and therefore no gate.
+      -->
+      <div class="shell__gate">
+        <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
+      </div>
 
       <!--
-        KAR-19.10 AC4 — which agent the open run is on, and by which route.
-        In the shell rather than in a view because it is true of the run and not
-        of one panel of it, and because an operator comparing what `deflow
-        doctor` said with what the run did should not have to find the right tab
-        first. It renders nothing when no run is open.
+        `tabindex="-1"` so the skip-link above can actually move focus here:
+        an anchor that scrolls the viewport without moving focus leaves a
+        keyboard user exactly where they were.
       -->
-      <RunProviderBanner />
-
-      <!--
-        KAR-22.2 AC6 — and what the run was asked to do, beside the provider
-        line for the same reason: it is true of the run rather than of one
-        panel, and "what did I ask for?" is a question an operator asks from
-        wherever they happen to be. It renders nothing until the run's first
-        event is folded.
-      -->
-      <RunTaskBanner :task="run.submittedTask" />
-    </header>
-
-    <!--
-      KAR-19.12 AC6, KAR-22.5 AC1 — what the run is waiting for, and the buttons
-      that answer it.
-
-      Its own band between the bar and the view, rather than an item in the
-      toolbar where KAR-19.12 first put it. Two reasons, and neither is taste:
-      the F1.3 gate's prompt is a whole rendered spec that has to be *read*
-      before it is approved (AC3), which a toolbar cannot hold; and AC1 asks for
-      it in the workspace **and** on the run view, which one band above the
-      router outlet answers once rather than twice.
-
-      The wrapper is always in the DOM — never `v-if`d — so the shell's three
-      grid rows are always three; the panel inside it renders nothing when no
-      gate is open, and a tab with no token has no run and therefore no gate.
-    -->
-    <div class="shell__gate">
-      <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
+      <main :id="MAIN_CONTENT_ID" class="shell__main" tabindex="-1">
+        <TokenRequired v-if="!session.authenticated" />
+        <RouterView v-else />
+      </main>
     </div>
-
-    <!--
-      `tabindex="-1"` so the skip-link above can actually move focus here: an
-      anchor that scrolls the viewport without moving focus leaves a keyboard
-      user exactly where they were.
-    -->
-    <main :id="MAIN_CONTENT_ID" class="shell__main" tabindex="-1">
-      <TokenRequired v-if="!session.authenticated" />
-      <RouterView v-else />
-    </main>
   </div>
 
   <CommandJumper />
@@ -191,82 +160,28 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Three rows, always: the bar, the gate band (empty until a run stops to ask)
-   and the view. Stated rather than left implicit so an opening gate takes its
-   own height from the band and never from the view underneath it. */
+/* Two columns: the rail (its own fixed/collapsing width, `AppRail.vue`'s
+   business) and everything else. `--no-rail` collapses to the one column a
+   tokenless tab actually has, rather than leaving an "auto" track to size
+   itself off whatever `.shell__column`'s content happens to be. */
 .shell {
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   height: 100%;
 }
 
-.shell__bar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--edge);
-  background: var(--surface-raised);
+.shell--no-rail {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.shell__brand {
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.shell__compose {
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--edge);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  color: inherit;
-  font-size: 0.8125rem;
-}
-
-.shell__theme {
-  display: inline-flex;
-  padding: 0.35rem;
-  border: 1px solid var(--edge);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  color: inherit;
-}
-
-.shell__approvals {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.15rem 0.5rem;
-  border: 1px solid currentcolor;
-  border-radius: 999px;
-  color: var(--state-awaiting-human);
-  background: color-mix(in oklch, currentcolor 12%, var(--surface));
-  font-size: 0.8125rem;
-}
-
-.shell__search {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-left: auto;
-}
-
-.shell__search-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.shell__search-input {
-  width: min(20rem, 40vw);
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--edge);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  color: inherit;
+/* Three rows, always: the bar, the gate band (empty until a run stops to ask)
+   and the view. Stated rather than left implicit so an opening gate takes its
+   own height from the band and never from the view underneath it. */
+.shell__column {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  min-width: 0;
+  height: 100%;
 }
 
 /* No padding of its own when it is empty, so a shell with no open gate looks
@@ -278,5 +193,6 @@ onUnmounted(() => {
 .shell__main {
   min-height: 0;
   padding: 0.75rem;
+  overflow: auto;
 }
 </style>

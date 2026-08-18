@@ -56,7 +56,13 @@
  * scrubbed position renders from `runState`, and the seven projections re-base
  * at the snapshot's `seq` and fold the tail forward from there.
  */
-import type { Event, EventKind, RunState } from '@DeFlow/core';
+import {
+  type Event,
+  type EventKind,
+  RUN_STATUS_LABELS,
+  type RunState,
+  type RunStatus,
+} from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, markRaw, type Ref, ref, type ShallowRef, shallowRef } from 'vue';
 import type { ApiClient } from '../api/client.ts';
@@ -113,6 +119,7 @@ import {
   shallowUnchanged,
   spanUnchanged,
 } from './memoise.ts';
+import { LIFECYCLE_STATUS } from './useRunListStore.ts';
 
 /**
  * The four counters `../app/leak-assert.ts` prints, and the four candidates
@@ -215,6 +222,23 @@ export const useRunStore = defineStore('run', () => {
   const seq = ref(0);
   const applied = ref(0);
   const runState = shallowRef<RunState | null>(null);
+
+  /*
+   * KAR-24.4 AC5 — the open run's *live* status, which `runState` above is not.
+   *
+   * `runState` is the scrubber's answer and is populated only by `scrubTo`, so
+   * a tab that simply opened a run and is watching it holds `null` there for
+   * the whole run. That is correct for what `runState` is for — rendering a
+   * scrubbed position — and it is why the frame's status pill showed nothing
+   * on exactly the tab it was built for.
+   *
+   * The fold is four event kinds, and the table is `useRunListStore`'s own
+   * `LIFECYCLE_STATUS` imported rather than copied: the run list and the status
+   * pill disagreeing about whether a run is `needs-human` is the failure a
+   * second copy of that table would eventually produce, and it would show up as
+   * two words on the same screen contradicting each other.
+   */
+  const lifecycleStatus = ref<RunStatus | null>(null);
   const hydratedFromSeq = ref(0);
   /**
    * The smallest `seq` folded since the last hydrate, or `null` for none.
@@ -362,6 +386,7 @@ export const useRunStore = defineStore('run', () => {
     scrubbing = null;
     runId.value = null;
     runState.value = null;
+    lifecycleStatus.value = null;
     for (const name of PROJECTION_NAMES) {
       containers[name].value = modules[name].create();
     }
@@ -391,6 +416,8 @@ export const useRunStore = defineStore('run', () => {
     const lowest = lowestSeqAppliedSinceHydrate.value;
     if (lowest === null || event.seq < lowest) lowestSeqAppliedSinceHydrate.value = event.seq;
     for (const name of ownersOf(event.kind)) bump(name);
+    const lifecycle = LIFECYCLE_STATUS[event.kind];
+    if (lifecycle !== undefined) lifecycleStatus.value = lifecycle;
     return true;
   }
 
@@ -515,6 +542,11 @@ export const useRunStore = defineStore('run', () => {
    * mutates in place and the integer beside it is this store's whole change
    * detection.
    */
+  /** The word the daemon uses for that status, never a second vocabulary. */
+  const lifecycleLabel = computed<string | null>(() =>
+    lifecycleStatus.value === null ? null : RUN_STATUS_LABELS[lifecycleStatus.value],
+  );
+
   const submittedTask = computed<SubmittedTask | null>(() => {
     void versions.submission.value;
     return submission.value.task;
@@ -573,6 +605,8 @@ export const useRunStore = defineStore('run', () => {
     seq,
     applied,
     runState,
+    lifecycleStatus,
+    lifecycleLabel,
     hydratedFromSeq,
     lowestSeqAppliedSinceHydrate,
     ring,

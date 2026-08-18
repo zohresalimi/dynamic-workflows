@@ -60,7 +60,7 @@ export interface RunListRow {
  * that has stopped to ask is exactly the run an operator scanning this list is
  * looking for.
  */
-const LIFECYCLE_STATUS: Readonly<Record<string, RunStatus>> = {
+export const LIFECYCLE_STATUS: Readonly<Record<string, RunStatus>> = {
   'run.created': 'created',
   'run.completed': 'completed',
   'run.aborted': 'aborted',
