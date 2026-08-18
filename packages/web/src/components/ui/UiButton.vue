@@ -9,7 +9,7 @@
  * this component stops at appearance and lets the caller's slot carry the
  * meaning.
  *
- * It renders a real `<button type="button">`, not a styled `<div
+ * It renders a real `<button>`, not a styled `<div
  * @click>`: a div has no keyboard activation and no disabled semantics for
  * free, and clawing both back by hand is the reimplementation §9.3 warns
  * against for interactive primitives. `disabled` is passed through as the DOM
@@ -21,18 +21,32 @@ withDefaults(
     readonly variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
     readonly size?: 'sm' | 'md';
     readonly disabled?: boolean;
+    /*
+     * KAR-24.7 — `type` is a prop, and it defaults to `button`.
+     *
+     * The default is the safe one: a `<button>` inside a `<form>` submits it
+     * unless told otherwise, and a toolbar button that quietly submits the
+     * form it happens to sit in is a bug nobody writes on purpose. But
+     * hardcoding it, which is how this component shipped, made the library
+     * unusable for the one case that genuinely needs `submit` — and KAR-24.7's
+     * project-create form went back to a bare `<button>` rather than use it.
+     * A primitive a caller has to step around is a primitive that has started
+     * to shrink the system rather than grow it.
+     */
+    readonly type?: 'button' | 'submit' | 'reset';
   }>(),
   {
     variant: 'secondary',
     size: 'sm',
     disabled: false,
+    type: 'button',
   },
 );
 </script>
 
 <template>
   <button
-    type="button"
+    :type="type"
     class="ui-button"
     :data-variant="variant"
     :data-size="size"
