@@ -616,6 +616,14 @@ instance.
 
 ## 8. Styling
 
+> **Superseded in part by [the design system](./design-system.md) (EPIC-24, 2026-08-18).**
+> The conclusion of §8.1 — vendored component source, in this repository, ours to edit — is what
+> shipped, and `packages/web/src/components/ui/` is it. The route named below is not: `shadcn-vue`'s
+> CLI was **not** used, because it generates a generic light/dark look that would then have to be
+> overridden into the supplied prototype's, which is precisely the specificity war §8.1 warns
+> about. `reka-ui` stays and does exactly what §9.3 credits it with. Read §8.1 for the reasoning
+> and `design-system.md` for what exists.
+
 **`tailwindcss@^4.3.3`** and **`@tailwindcss/vite@^4.3.3`** (both 2026-07-16). v4 is CSS-first: no
 `tailwind.config.js`, no PostCSS step. You write `@import 'tailwindcss'` and a `@theme { --color-… }`
 block in a CSS file, and add the plugin to `vite.config.ts`.

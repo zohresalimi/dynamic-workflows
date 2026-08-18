@@ -60,6 +60,7 @@ the PRD — and it did, in several load-bearing places — the correction is rec
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | [11-api-and-realtime.md](./11-api-and-realtime.md)                       | The HTTP + SSE contract, resumable streams from ledger offsets, and daemon auth. |
 | [12-frontend-architecture.md](./12-frontend-architecture.md)             | The Vue 3 app, the ledger-projection store, and the nine P0 visualisation views. |
+| [design-system.md](./design-system.md)                                   | The tokens, the fifteen vendored components and the two rules they obey. The live half is the dev-only `/gallery` route. |
 | [13-observability-and-telemetry.md](./13-observability-and-telemetry.md) | OTel GenAI emission, the artifact store, and secret redaction.                   |
 
 ### Practice
