@@ -644,7 +644,7 @@ function onKeydown(event: KeyboardEvent): void {
         <!--
           KAR-24.7 gave `UiButton` a real `type` prop, so the primary action is
           a `UiButton` like every other rather than a bare `<button>`. It is
-          not a descendant of `#DeFlow-composer-form`, so `form=` is what
+          not a descendant of the form (id `DeFlow-composer-form`), so `form=` is what
           associates it — the same standard mechanism an external submit
           button always uses, and the one honest way to keep one `<form>`
           rather than reaching for a second submit path.
