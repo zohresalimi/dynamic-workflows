@@ -3476,3 +3476,125 @@ export function checkWorkspaceFilters(
         'exits 0 — so whatever this filter was guarding has been passing without ever running.',
     }));
 }
+
+/**
+ * KAR-24.2 AC2 / EPIC-24-S08 — the component vocabulary cannot grow a screen's
+ * name.
+ *
+ * "The one rule this epic is designed around" (EPIC-24-design-system.md) is
+ * that `packages/web/src/components/ui/` stays a small, closed set of
+ * variants a screen chooses *from*, never one a screen adds *to*. The failure
+ * mode is not a typo, it is a habit: the ProjectsView needs one more shade of
+ * button than `UiButton` offers, so someone adds `variant="project"` rather
+ * than reaching for `accent`, and six screens later the component has as many
+ * variants as there are screens — which means the next screen costs exactly
+ * as much to build as the last one did, and the library has stopped paying
+ * for itself. The story names the epic's own scripted location for this
+ * check, `packages/web/scripts/check-ui-vocabulary.ts`, and then corrects it:
+ * it lives here instead, so it gets the fixture coverage a guard needs to be
+ * trusted (see the file header) rather than running unexercised as a script.
+ */
+export const UI_VOCABULARY_MESSAGE =
+  'a component under packages/web/src/components/ui/ may only use variant/size/tone members from ' +
+  'the fixed vocabulary. A library that grows one variant per screen — variant="project", ' +
+  'variant="gate" — stops being reusable in the only sense that matters, which is that the next ' +
+  'screen costs less to build than the last one did.';
+
+/**
+ * The allowed union members, keyed by the prop name that carries them.
+ *
+ * variant, size and tone are the three vocabularies the story fixes. Nothing
+ * outside this table is policed — a component is free to have other typed
+ * props — and nothing inside it is domain- or screen-shaped: every member
+ * names what something looks like, never what it is next to.
+ */
+export const UI_VARIANT_VOCABULARY: Readonly<Record<string, readonly string[]>> = {
+  variant: [
+    'primary',
+    'secondary',
+    'ghost',
+    'danger',
+    'neutral',
+    'accent',
+    'ok',
+    'warn',
+    'error',
+    'info',
+    'raised',
+    'inset',
+    'flush',
+  ],
+  size: ['sm', 'md', 'lg'],
+  tone: ['default', 'ok', 'warn', 'error', 'accent'],
+};
+
+const UI_COMPONENTS_DIR = 'packages/web/src/components/ui/';
+
+/**
+ * `readonly variant?: 'a' | 'b' | 'c'` (or `size`/`tone`), captured up to the
+ * next `;` or `}` so it also reads the multi-line shape `defineProps<{…}>()`
+ * is often formatted into:
+ *
+ *   readonly variant?:
+ *     'primary' | 'secondary' | 'ghost' | 'danger' | 'neutral' | 'accent' |
+ *     'ok' | 'warn' | 'error' | 'info' | 'raised' | 'inset' | 'flush';
+ *
+ * A character class excluding only `;` and `}` matches across line breaks
+ * without needing a multiline flag, which is what makes that shape readable
+ * in one pass. The `readonly` prefix is load-bearing, not decoration: every
+ * one of these components also assigns a *runtime default* the same shape
+ * as `withDefaults(defineProps<{…}>(), { variant: 'secondary', size: 'sm' })`
+ * — no `readonly`, no `?` — and without the anchor the greedy `[^;}]+` walks
+ * straight through that object's other keys and reports `'sm'` as an
+ * offending *variant* member. Deliberately a regex, not a TypeScript parser:
+ * the story is explicit that the matcher stays blunt and obvious in the same
+ * spirit as the guards next to it, and a string-literal union on a typed prop
+ * is regular enough not to need one.
+ */
+const PROP_UNION = /\breadonly\s+(variant|size|tone)\s*\??\s*:\s*([^;}]+)[;}]/g;
+
+/** Every quoted member of a union type, in source order. */
+function quotedMembers(union: string): string[] {
+  return [...union.matchAll(/'([^']*)'/g)].map((match) => match[1] ?? '');
+}
+
+/**
+ * KAR-24.2 AC2 / EPIC-24-S08 — every `variant`, `size` and `tone` union under
+ * `components/ui/` stays inside the fixed vocabulary.
+ *
+ * Scoped to that one directory, not the whole web tree: a screen-level view is
+ * allowed to have its own narrowly-typed props (they are not reusable by
+ * definition), so the guard would be policing the wrong files if it ran
+ * everywhere. What it protects is specifically the shared library the epic is
+ * about.
+ */
+export function checkUiVocabulary(files: readonly SourceFile[]): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!file.path.startsWith(UI_COMPONENTS_DIR)) continue;
+
+    const code = codeOnly(file.text);
+    PROP_UNION.lastIndex = 0;
+    let match = PROP_UNION.exec(code);
+    while (match !== null) {
+      const prop = match[1] as string;
+      const union = match[2] as string;
+      const allowed = UI_VARIANT_VOCABULARY[prop];
+      if (allowed) {
+        const known = new Set(allowed);
+        for (const member of quotedMembers(union)) {
+          if (!known.has(member)) {
+            violations.push({
+              where: file.path,
+              message:
+                `${file.path} declares ${prop}: '${member}', which is not one of ` +
+                `${allowed.join(', ')}. ${UI_VOCABULARY_MESSAGE}`,
+            });
+          }
+        }
+      }
+      match = PROP_UNION.exec(code);
+    }
+  }
+  return violations;
+}

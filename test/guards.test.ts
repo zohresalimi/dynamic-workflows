@@ -46,6 +46,7 @@ import {
   checkRolldownBuildOptions,
   checkStateColoursComeFromThePalette,
   checkTempDirPrefixes,
+  checkUiVocabulary,
   checkViteImportIsDynamic,
   checkWebImportsDaemonTypesOnly,
   checkWorkflowExecutablesAreDeclared,
@@ -1680,5 +1681,70 @@ suite('checkQueryProjectionBoundary (KAR-16.4 AC10)', () => {
     ]);
 
     expect(render(violations)).toContain('/api/providers');
+  });
+});
+
+suite('checkUiVocabulary (KAR-24.2 AC2, EPIC-24-S08)', () => {
+  it('rejects a variant member named after a screen, naming the file and the member', () => {
+    const violations = checkUiVocabulary([
+      {
+        path: 'packages/web/src/components/ui/UiButton.vue',
+        text: "readonly variant?: 'primary' | 'project' | 'gate';\n",
+      },
+    ]);
+
+    expect(violations).toHaveLength(2);
+    const message = render(violations);
+    expect(message).toContain('packages/web/src/components/ui/UiButton.vue');
+    expect(message).toContain("'project'");
+    expect(message).toContain("'gate'");
+  });
+
+  it('accepts a variant union drawn entirely from the fixed vocabulary', () => {
+    expect(
+      checkUiVocabulary([
+        {
+          path: 'packages/web/src/components/ui/UiButton.vue',
+          text: "readonly variant?: 'primary' | 'ghost';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reads the multi-line union shape defineProps<{…}>() is often formatted into', () => {
+    const violations = checkUiVocabulary([
+      {
+        path: 'packages/web/src/components/ui/UiChip.vue',
+        text:
+          'readonly variant?:\n' +
+          "    'neutral' | 'accent' | 'ok' | 'warn' | 'error' | 'info' |\n" +
+          "    'project';\n",
+      },
+    ]);
+
+    expect(violations).toHaveLength(1);
+    expect(render(violations)).toContain("'project'");
+  });
+
+  it('ignores a component outside components/ui/', () => {
+    expect(
+      checkUiVocabulary([
+        {
+          path: 'packages/web/src/views/ProjectsView.vue',
+          text: "readonly variant?: 'project' | 'gate';\n",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('leaves a prop that is not variant/size/tone alone', () => {
+    expect(
+      checkUiVocabulary([
+        {
+          path: 'packages/web/src/components/ui/UiField.vue',
+          text: "readonly label?: 'project' | 'gate';\n",
+        },
+      ]),
+    ).toEqual([]);
   });
 });
