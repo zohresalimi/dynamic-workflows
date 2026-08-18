@@ -89,6 +89,7 @@ Background:
 | EPIC-24-S31 | Connector rows name the state the button moves them to                                   | KAR-24.8 | Happy path |
 | EPIC-24-S32 | Provider status is the daemon's answer, and no credential reaches the DOM                | KAR-24.8 | Security   |
 | EPIC-24-S33 | A daemon refusal reaches the screen in the daemon's own words                            | KAR-24.8 | Edge case  |
+| EPIC-24-S34 | **The initial chunk is under whatever ceiling NF3 now declares**                          | KAR-24.9 | Contract   |
 
 ---
 
@@ -517,3 +518,22 @@ Scenario: the restyle does not rewrite the message
   Then that sentence is what appears on the screen
   And KAR-22.1's refusalOf is still the only path it travelled
 ```
+
+---
+
+## KAR-24.9 — The frame's weight
+
+### EPIC-24-S34 — The initial chunk is under whatever ceiling NF3 now declares
+
+```gherkin
+Scenario: the budget is a number somebody chose
+  Given a production build
+  When the initial payload is measured the way bundle-budget.test.ts measures it
+  Then it is at or under the ceiling that spec declares
+  And that ceiling and docs/12 section 10 say the same thing
+  And bundle-budget.test.ts's claim about what belongs in the first chunk matches the route table
+      it is describing — no assertion survives whose stated reason is a route that has moved
+```
+
+**Level:** integration, the existing spec. Written as a real test because it is one already; what
+this scenario adds is that its *premise* has to be true as well as its number.
