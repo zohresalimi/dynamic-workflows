@@ -161,6 +161,27 @@ export const routes = [
     component: () => import('../views/MemoryGraphView.vue'),
     props: true,
   },
+  // KAR-24.3. Dev-only, and dev-only two ways at once: the route is only
+  // *registered* under `import.meta.env.DEV`, and — because Vite substitutes
+  // `false` for that expression in a production build and dead-code
+  // elimination removes an unreachable `?` branch's contents — the dynamic
+  // `import()` inside it is never even parsed into that build's module graph.
+  // `../app/create-app.ts`'s dev-only leak assertion is the precedent this
+  // follows: a runtime guard around a static import only stops the route from
+  // being *reached*, and would leave every one of the fifteen `ui/`
+  // components, plus lucide, riding along in a chunk nothing production ever
+  // opens. `packages/web/test/integration/bundle-budget.test.ts` is the proof
+  // that stays true — it is unchanged by this route precisely because the
+  // production build it inspects never has this array entry to begin with.
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/gallery',
+          name: 'gallery',
+          component: () => import('../views/GalleryView.vue'),
+        },
+      ]
+    : []),
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
