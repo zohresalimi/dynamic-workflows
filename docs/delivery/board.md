@@ -13,7 +13,7 @@
 
 |                                 |                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Epics**                       | 24 (EPIC-00 … EPIC-22, EPIC-24)                                                              |
+| **Epics**                       | 25 (EPIC-00 … EPIC-22, EPIC-24, EPIC-25)                                                              |
 | **Stories**                     | 175                                                                                          |
 | **Scenarios**                   | 938                                                                                          |
 | **Estimated size**              | **~406 working days** (sum of the epics' own declared totals)                                |
@@ -172,6 +172,7 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 | **▸** | [EPIC-22](./epics/EPIC-22-web-control-center.md)  | Web control center                           | Done | P0  | M1  | W15                     | 6       | 76   | ~23d  | EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-19                   | An operator creates a project against a repository, starts a run from a chat-style composer choosing the adapter, and watches the graph, the task board and the history — without opening a terminal.    |
 | **▸** | [EPIC-21](./epics/EPIC-21-interactive-cli.md)     | Interactive CLI                              | Done | P1  | M1  | W16                     | 5       | 45   | ~9d   | EPIC-13, EPIC-15, EPIC-18, EPIC-19, EPIC-20, EPIC-22          | `deflow run` becomes something an operator sits in front of: the plan forming, node states, agent output and cost in a region that stays put — with gates answered, runs steered and runs cancelled by a keypress, and none of it when stdout is not a terminal. |
 | **▸** | [EPIC-24](./epics/EPIC-24-design-system.md)       | The design system                            | Done | P0  | M1  | W17                     | 9       | 34   | ~21d  | EPIC-16, EPIC-17, EPIC-19, EPIC-22                            | Every pixel comes from one vocabulary: a vendored component library on one token file, taken from the supplied prototype, with the shell, the graph, the inspector and every list screen rebuilt on it and no behaviour changed. |
+| **▸** | [EPIC-25](./epics/EPIC-25-frame-and-settings.md)  | The frame tells the truth                    | Ready | P0  | M1  | W18                     | 9       | 60   | ~14d  | EPIC-24, EPIC-22, EPIC-19                                     | Settings that apply to the machine live in one global place, work that belongs to a project is only offered inside a project, every announced decision can be answered where it is announced, and the two daemon defects that strand a real run are fixed. |
 
 **Totals:** 24 epics · 175 stories · 938 scenarios · ~407 days.
 
@@ -519,6 +520,15 @@ All 166 stories, in epic order. `Verified by` is the story's own declaration; §
 | [KAR-24.7](./epics/EPIC-24-design-system.md)       | Projects, run history and the workspace boards _(added)_                       | EPIC-24 | Done | P1  | M    | F10.9, F1.1, NF8                                                                              | EPIC-24-S26, EPIC-24-S27, EPIC-24-S28, EPIC-24-S29 |
 | [KAR-24.8](./epics/EPIC-24-design-system.md)       | Settings, connectors and the composer _(added)_                                | EPIC-24 | Done | P1  | M    | F1.1, F3.5, NF8, AR-1                                                                         | EPIC-24-S30, EPIC-24-S31, EPIC-24-S32, EPIC-24-S33 |
 | [KAR-24.9](./epics/EPIC-24-design-system.md)       | The frame's weight, against NF3's ceiling _(added)_                            | EPIC-24 | Done | P0  | S    | NF3                                                                                           | EPIC-24-S34 |
+| [KAR-25.1](./epics/EPIC-25-frame-and-settings.md)  | The nav says what scope it is in _(added)_ | EPIC-25 | Not started | P0  | M    | F10.1, F10.3, NF8, NF10 | EPIC-25-S01 … EPIC-25-S07 |
+| [KAR-25.2](./epics/EPIC-25-frame-and-settings.md)  | `/settings`, and the way home _(added)_ | EPIC-25 | Not started | P0  | M    | F10.1, F10.11, NF8 | EPIC-25-S08 … EPIC-25-S13 |
+| [KAR-25.3](./epics/EPIC-25-frame-and-settings.md)  | Providers & runtimes, managed _(added)_ | EPIC-25 | Not started | P0  | L    | F10.11, F3.5, AR-1 | EPIC-25-S14 … EPIC-25-S21 |
+| [KAR-25.4](./epics/EPIC-25-frame-and-settings.md)  | Connectors stop contradicting themselves _(added)_ | EPIC-25 | Not started | P1  | M    | F3.5, AR-1, NF8 | EPIC-25-S22 … EPIC-25-S29 |
+| [KAR-25.5](./epics/EPIC-25-frame-and-settings.md)  | The new-run page replaces the modal _(added)_ | EPIC-25 | Not started | P0  | L    | F1.1, F10.1, NF8 | EPIC-25-S30 … EPIC-25-S37 |
+| [KAR-25.6](./epics/EPIC-25-frame-and-settings.md)  | A new project is a modal _(added)_ | EPIC-25 | Not started | P1  | S    | F1.1, NF8 | EPIC-25-S38 … EPIC-25-S41 |
+| [KAR-25.7](./epics/EPIC-25-frame-and-settings.md)  | Every announced decision can be answered _(added)_ | EPIC-25 | Not started | P0  | L    | F10.6, F10.9, NF10 | EPIC-25-S42 … EPIC-25-S50 |
+| [KAR-25.8](./epics/EPIC-25-frame-and-settings.md)  | A worktree that already exists is not a dead run _(added)_ | EPIC-25 | Not started | P0  | M    | F2.4, NF1 | EPIC-25-S51 … EPIC-25-S55 |
+| [KAR-25.9](./epics/EPIC-25-frame-and-settings.md)  | The response that was written twice _(added)_ | EPIC-25 | Not started | P1  | S    | NF1 | EPIC-25-S56 … EPIC-25-S60 |
 
 ---
 
