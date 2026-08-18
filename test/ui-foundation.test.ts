@@ -20,6 +20,7 @@ import {
   checkQueryProjectionBoundary,
   checkRolldownBuildOptions,
   checkStateColoursComeFromThePalette,
+  checkUiVocabulary,
   describe as render,
   SANCTIONED_QUERY_PATHS,
 } from './support/guards.ts';
@@ -132,6 +133,23 @@ suite('KAR-16.4 AC10 — the query/projection boundary is a rule, not a habit', 
 
     expect(manifest.dependencies?.['@pinia/colada']).toBe('catalog:');
     expect(readText('packages/web/src/app/create-app.ts')).toContain('PiniaColada');
+  });
+});
+
+suite('KAR-24.2 AC2 — the component vocabulary cannot grow a screen’s name (EPIC-24-S08)', () => {
+  it('has something to protect: at least one component declares a variant union', () => {
+    const sources = webSources();
+
+    expect(
+      sources.some(
+        (file) =>
+          file.path.includes('/components/ui/') && /\bvariant\s*\??\s*:\s*'/.test(file.text),
+      ),
+    ).toBe(true);
+  });
+
+  it('every variant/size/tone member under components/ui/ is in the fixed vocabulary', () => {
+    expect(render(checkUiVocabulary(webSources()))).toBe('');
   });
 });
 
