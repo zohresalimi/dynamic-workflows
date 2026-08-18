@@ -26,8 +26,32 @@ import { afterAll, beforeAll, expect, it, describe as suite } from 'vitest';
 
 const webRoot = fileURLToPath(new URL('../../', import.meta.url));
 
-/** The budget, in bytes of gzip. docs/12 §10: ~200 KB for the initial shell. */
-const INITIAL_CHUNK_BUDGET = 200 * 1024;
+/**
+ * The budget, in bytes of gzip. docs/12 §10.
+ *
+ * **220 KB since KAR-24.9 (2026-08-18), raised from 200 by the owner's
+ * decision, and the reason is worth the paragraph.**
+ *
+ * EPIC-24 gave the application a frame — a rail, a project switcher, a
+ * breadcrumb topbar, a run status pill and fifteen vendored components on a
+ * token layer — and that cost ~23 KB gzip in the initial chunk: 189.6 KB
+ * before the epic, 212.6 KB after. The 200 KB line was drawn when this was a
+ * viewer you reached by typing a run id into the address bar. It is not that
+ * any more, and a ceiling that the shipped shell cannot fit under is not a
+ * budget, it is a permanently red test somebody eventually deletes.
+ *
+ * What did **not** change is what the budget is for. NF3 is "UI interactive
+ * < 1s on localhost", serving is local, and the number is really about parse
+ * and execute rather than transfer. 220 leaves ~7 KB of headroom over what
+ * ships today, which is about what 200 left before the frame — deliberately
+ * tight, so the next feature that wants 20 KB of the first chunk has to come
+ * and argue for it here.
+ *
+ * The bigger saving was considered and deferred: `@vue-flow/core` is 69 KB of
+ * this chunk and is eager for a reason the assertion below no longer states
+ * correctly. See that comment.
+ */
+const INITIAL_CHUNK_BUDGET = 220 * 1024;
 
 /**
  * Modules that must never reach the initial chunk (AC9).
@@ -36,8 +60,8 @@ const INITIAL_CHUNK_BUDGET = 200 * 1024;
  * views arrive with EPIC-17 — and the assertion is written to be true now and
  * load-bearing the moment they land, rather than to be added later by somebody
  * who remembers. `@vue-flow/core` is deliberately **not** on this list: the
- * plan graph is the landing view, so its 345 KB raw is in the initial chunk on
- * purpose.
+ * run's plan graph is an eager route, so its 345 KB raw is in the initial
+ * chunk on purpose.
  */
 const BANNED_FROM_INITIAL = ['elkjs', 'shiki', '@xterm/', '@git-diff-view/', 'echarts'] as const;
 
@@ -214,7 +238,25 @@ suite('EPIC-16-S5 — what is allowed in the first chunk (AC9)', () => {
     ).toEqual([]);
   });
 
-  it('has @vue-flow/core in it, because the plan graph is the landing view', () => {
+  /*
+   * KAR-24.9 — the claim is unchanged and its stated reason is corrected.
+   *
+   * This used to read "because the plan graph is the landing view", which was
+   * true when KAR-16.1 wrote it and stopped being true at KAR-19.1, when the
+   * root route became the run list. Nobody noticed, because the assertion kept
+   * passing on the other half of its reasoning: the run route is still eager,
+   * so `@vue-flow/core` is still in the first chunk.
+   *
+   * That distinction is worth 69 KB. Making the run-plan route lazy would take
+   * the initial chunk from ~213 KB to ~143 KB, at the cost of one load on the
+   * way into a run — a route the operator reaches by clicking a row they were
+   * already reading. It was not done here because raising the ceiling was the
+   * owner's decision on 2026-08-18 and because changing what is eager is an
+   * architecture change with docs/12 §10 and an ADR behind it, not something to
+   * fold into a budget bump. It is the first thing to reach for if this number
+   * needs to come down again.
+   */
+  it('has @vue-flow/core in it, because the run route is eager', () => {
     expect(holds(initial, '@vue-flow/core')).toBe(true);
   });
 

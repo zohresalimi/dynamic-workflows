@@ -738,7 +738,25 @@ For hours-long work this is the accessibility feature you will personally use mo
 NF3 is "UI interactive < 1s on localhost". **Plausible but contingent** — it depends entirely on
 what lands in the initial chunk.
 
-**Budget: ~200 KB gzip for the initial shell.** Everything else is route-split or worker-loaded.
+**Budget: ~220 KB gzip for the initial shell.** Everything else is route-split or worker-loaded.
+
+> **Raised from 200 KB on 2026-08-18 (KAR-24.9), by the owner's decision.** EPIC-24 gave the
+> application a frame — a rail, a project switcher, a breadcrumb topbar, a run status pill and
+> fifteen vendored components on a token layer — and that cost ~23 KB gzip: **189.6 KB before the
+> epic, 212.6 KB after**, measured with the same build on the same machine. The 200 KB line was
+> drawn when this was a viewer you reached by typing a run id into the address bar, and a ceiling
+> the shipped shell cannot fit under is not a budget — it is a permanently red test somebody
+> eventually deletes. 220 leaves ~7 KB of headroom, which is about what 200 left before the frame:
+> deliberately tight, so the next feature that wants 20 KB of the first chunk has to come and argue
+> for it.
+>
+> **The alternative was rejected rather than missed.** `@vue-flow/core` is 69 KB of that chunk and
+> the row below says it is there because "the plan graph *is* the landing view" — which
+> [KAR-19.1](./delivery/epics/EPIC-19-live-run-pipeline.md) falsified when it made the run list the
+> root route. Making the run-plan route lazy takes the initial chunk to roughly **143 KB**, at the
+> cost of one load on the way into a run. That is the first thing to reach for if this number needs
+> to come down again; it was not done here because it is an architecture change and this was a
+> budget decision.
 
 | Cost               | Size                               | Where it goes                                                                             |
 | ------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -746,7 +764,7 @@ what lands in the initial chunk.
 | Shiki grammars     | multi-MB if bundled                | `createHighlighterCore` + ~12 lazily imported langs. Never the bundled `shiki` entry (§7) |
 | `@xterm/*`         | —                                  | Route-split: the terminal view is a lazy route                                            |
 | `@git-diff-view/*` | —                                  | Route-split: the diff/review view is a lazy route                                         |
-| `@vue-flow/core`   | 345 KB raw                         | Initial chunk — the plan graph _is_ the landing view                                      |
+| `@vue-flow/core`   | 345 KB raw                         | Initial chunk — the **run route** is eager. Not the landing view since KAR-19.1; see the note above |
 | `echarts`          | ~150 KB with explicit registration | P1 only, lazy, cross-run dashboard route                                                  |
 
 Serving is local, so transfer time is near zero and the budget is really about **parse and execute**
