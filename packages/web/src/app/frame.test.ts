@@ -435,7 +435,15 @@ suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
 
     button?.click();
     await expect.poll(() => shell.ui.isOverlayOpen('composer')).toBe(true);
-    expect(shell.container.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
+    // `document`, not `shell.container`. KAR-24.8 put the composer inside
+    // `UiModal`, which is Reka's dialog, and a Reka dialog teleports to
+    // `document.body` — so it is a *sibling* of the harness's mount node
+    // rather than a descendant of it. The specs that already assert on the
+    // inspector and the jumper query `document` for exactly this reason
+    // (`project-workspace.test.ts`, `plan-graph.test.ts`); this line was the
+    // holdout from when the composer was a plain, un-portalled `<section>`.
+    // The overlay opens either way — only where it lands in the DOM moved.
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
   });
 });
 
