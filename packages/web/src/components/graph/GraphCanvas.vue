@@ -55,11 +55,13 @@ import {
   type CoordinateExtent,
   MarkerType,
   type NodeMouseEvent,
+  PanelPosition,
   VueFlow,
   type VueFlowStore,
 } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
 import '@vue-flow/minimap/dist/style.css';
+import type { SVGAttributes } from 'vue';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { PlanEdgeVM, PlanNodeVM } from '../../ledger/vm.ts';
 import { GRAPH_DEFAULTS } from './defaults.ts';
@@ -115,6 +117,17 @@ const EXTENT_PADDING = 400;
  */
 const TRAVEL_PADDING = 1000;
 
+/**
+ * KAR-24.5 AC5 — the one DOM attribute a running edge carries beyond its
+ * class, for parity with `PlanNode.vue`'s own `data-motion-token` and for
+ * `canvas-chrome.test.ts` to find without parsing a stroke colour. Built
+ * through a cast at its one declaration rather than as a literal at the call
+ * site below: Vue Flow's `Edge['domAttributes']` has no index signature for a
+ * `data-*` name, so a bare object literal handed to it fails vue-tsc's
+ * excess-property check where an already-typed constant does not.
+ */
+const RUNNING_EDGE_ATTRS = { 'data-motion-token': '' } as SVGAttributes;
+
 // Only the three that have a *value* to default to. `costs`, `positions` and
 // `nodeExtent` are absent-or-given, and `withDefaults` wants a factory rather
 // than a literal `undefined` for an object-typed prop — a default that would
@@ -146,10 +159,16 @@ let engine: LayoutEngine | null = null;
 let generation = 0;
 
 /**
- * The renderer's own store, held only to fit the view — see `fitNow`. It never
- * leaves this file, which is what keeps the facade's surface DeFlow's.
+ * The renderer's own store — held for `fitNow` as before, and now also for
+ * the zoom pill (AC5): both are the same "reach into the store the facade
+ * already holds" rather than a second `useVueFlow()` call. A `shallowRef`
+ * rather than the plain `let` this used to be, because the pill's percentage
+ * has to notice the moment `onInit` hands the store over — a plain variable
+ * can hold the same object, but assigning it is invisible to Vue, so nothing
+ * would ever tell a `computed` to look again. It never leaves this file,
+ * which is what keeps the facade's surface DeFlow's.
  */
-let flow: VueFlowStore | null = null;
+const flow = shallowRef<VueFlowStore | null>(null);
 
 /**
  * Fits the viewport around the graph, once the nodes have been **measured**.
@@ -163,11 +182,43 @@ let flow: VueFlowStore | null = null;
  * be correct.
  */
 function onInit(instance: VueFlowStore): void {
-  flow = instance;
+  flow.value = instance;
 }
 
 function fitNow(): void {
-  if (props.fitViewOnInit) flow?.fitView({ padding: 0.12 });
+  if (props.fitViewOnInit) flow.value?.fitView({ padding: 0.12 });
+}
+
+/**
+ * KAR-24.5 AC5 — the zoom pill's own number, read off the store's `viewport`
+ * rather than tracked separately: the renderer already knows the true zoom
+ * level after every wheel, pinch and button press, and a second number kept
+ * in step by hand is the surest way for a pill to read 100% while the graph
+ * itself sits at 40%. Rounded, because "37.4%" is a number nobody asked for
+ * and a fraction of a percent is not a decision anyone is making from this
+ * label.
+ */
+const zoomPercent = computed<number>(() =>
+  Math.round((flow.value?.viewport.value.zoom ?? 1) * 100),
+);
+const zoomLabel = computed<string>(() => `${zoomPercent.value}%`);
+
+/** Whether zooming further in/out would do nothing — the pill's own bounds. */
+const zoomInDisabled = computed<boolean>(() => {
+  const store = flow.value;
+  return store !== null && store.viewport.value.zoom >= store.maxZoom.value;
+});
+const zoomOutDisabled = computed<boolean>(() => {
+  const store = flow.value;
+  return store !== null && store.viewport.value.zoom <= store.minZoom.value;
+});
+
+function zoomIn(): void {
+  void flow.value?.zoomIn();
+}
+
+function zoomOut(): void {
+  void flow.value?.zoomOut();
 }
 
 /** Where each node goes: the caller's positions, or the layout's, or none yet. */
@@ -239,6 +290,29 @@ const flowNodes = computed(() => {
 const carriedBy = (edge: PlanEdgeVM): string | undefined =>
   edge.kind === 'data' && edge.carries.length > 0 ? edge.carries.join(', ') : undefined;
 
+/** Every node's display state, by id — what an edge's motion is read off. */
+const displayStateById = computed(
+  () => new Map(props.nodes.map((node) => [node.id, node.state] as const)),
+);
+
+/**
+ * KAR-24.5 AC5 — an edge's own motion, direction A's language: `dashrun` into
+ * a node that is actually running, the inert `--edge-dashed` into one that
+ * has not started. `PlanEdgeVM` carries no state of its own (it is a `kind`
+ * and what it `carries`, nothing more) — an edge's motion is a fact about the
+ * node at its far end, so it is read off `displayStateById` rather than added
+ * as a field the view model would then have to keep in step (KAR-24.5 AC2).
+ * Neither case for an edge whose target has already passed, failed or been
+ * otherwise resolved: that edge draws exactly as it did before this story,
+ * which is the "no behaviour change" half of AC2 applied to the canvas.
+ */
+function motionOf(edge: PlanEdgeVM): 'running' | 'pending' | null {
+  const state = displayStateById.value.get(edge.to);
+  if (state === 'running') return 'running';
+  if (state === 'pending') return 'pending';
+  return null;
+}
+
 /**
  * The renderer's edges — and, like the nodes, nothing at all until there is a
  * placement. An edge whose endpoints have not been handed over yet is not
@@ -254,16 +328,24 @@ const flowEdges = computed(() =>
           props.selected !== null &&
           props.selected !== undefined &&
           (edge.from === props.selected || edge.to === props.selected);
+        const motion = motionOf(edge);
         return {
           id: edge.id,
           source: edge.from,
           target: edge.to,
-          class: `plan-edge plan-edge--${edge.kind}${adjacent ? ' is-adjacent' : ''}`,
+          class: `plan-edge plan-edge--${edge.kind}${adjacent ? ' is-adjacent' : ''}${motion === null ? '' : ` plan-edge--${motion}`}`,
+          // Vue Flow's own "animated" — the dashed line drawn moving rather
+          // than still — reserved for the one edge that is actually carrying
+          // work right now. `.graph-canvas`'s own `dashrun` rule below
+          // out-specifies the renderer's default `dashdraw` for this class,
+          // which is *why* it is a class and not a second inline style.
+          animated: motion === 'running',
           // AC1's *"every edge with its direction"*. A DAG drawn without arrow
           // heads is a picture of a graph with no dependencies in it, which is
           // the one thing this drawing exists to show.
           markerEnd: MarkerType.ArrowClosed,
           ...(carries === undefined ? {} : { label: carries }),
+          ...(motion === 'running' ? { domAttributes: RUNNING_EDGE_ATTRS } : {}),
           ariaLabel:
             carries === undefined
               ? `${edge.kind} edge from ${edge.from} to ${edge.to}`
@@ -476,6 +558,7 @@ function onKeydown(event: KeyboardEvent): void {
   <section
     class="graph-canvas"
     data-graph-canvas
+    data-graph-dot-grid
     :data-motion="motion"
     :data-extent="extentAttribute"
     :aria-label="`Plan graph, ${props.nodes.length} nodes`"
@@ -519,8 +602,61 @@ function onKeydown(event: KeyboardEvent): void {
         reaching past the facade, which `packages/web/scripts/check-graph-facade.ts`
         refuses across the whole `@vue-flow/` scope.
       -->
-      <MiniMap pannable zoomable />
-      <Controls :show-interactive="false" />
+      <!--
+        `position="top-right"`, moved off the package's own default
+        (`bottom-right`): KAR-24.5 AC5 puts the zoom pill in that corner to
+        match the prototype, and a minimap sharing it with the pill is a
+        pointer-event fight neither one wins cleanly.
+      -->
+      <MiniMap pannable zoomable :position="PanelPosition.TopRight" />
+      <!--
+        KAR-24.5 AC5 — direction A's zoom pill, restyled from `@vue-flow/controls`
+        rather than replaced by a hand-rolled one: `../graph/live-graph.test.ts`
+        (EPIC-16-S1, not this story's to edit) drives `.vue-flow__controls-zoomin`
+        and asserts `.vue-flow__controls-fitview` is still there afterwards, so
+        both classes and both buttons stay real and load-bearing. Only the
+        zoom-in/out pair is replaced — through `control-zoom-in`/`control-zoom-out`,
+        the slots that hand back the *whole* button rather than only its icon —
+        because the library's own `ControlButton` has no `aria-label` prop to give
+        it one, and AC5 asks for real buttons with accessible names. The fit-view
+        button is left on the library's own default entirely; only its colours are
+        retinted below. `position="bottom-right"` is the one prop that moves,
+        matching the prototype's corner; `show-interactive` was already off.
+      -->
+      <Controls :show-interactive="false" :position="PanelPosition.BottomRight">
+        <template #top>
+          <span class="zoom-pill__label" data-graph-zoom-value>{{ zoomLabel }}</span>
+        </template>
+        <!--
+          Declared here in the order the library actually renders them
+          (zoom-in slot before zoom-out — the opposite of the prototype's
+          minus-then-plus reading order); the scoped style below reorders
+          them visually with flex `order` rather than fighting the library's
+          own template to change where they land in the DOM.
+        -->
+        <template #control-zoom-in>
+          <button
+            type="button"
+            class="vue-flow__controls-zoomin zoom-pill__button"
+            aria-label="Zoom in"
+            :disabled="zoomInDisabled"
+            @click="zoomIn"
+          >
+            +
+          </button>
+        </template>
+        <template #control-zoom-out>
+          <button
+            type="button"
+            class="vue-flow__controls-zoomout zoom-pill__button"
+            aria-label="Zoom out"
+            :disabled="zoomOutDisabled"
+            @click="zoomOut"
+          >
+            −
+          </button>
+        </template>
+      </Controls>
     </VueFlow>
 
     <!--
@@ -620,6 +756,23 @@ function onKeydown(event: KeyboardEvent): void {
   grid-template-rows: 1fr;
   height: 100%;
   min-height: 24rem;
+  /*
+   * KAR-24.5 AC5 — direction A's dot grid, painted here rather than through
+   * `@vue-flow/background`: that package is not already a dependency (unlike
+   * `@vue-flow/controls` and `@vue-flow/minimap`, which are), so drawing it
+   * would mean adding one — touching `package.json` and the lockfile, both
+   * outside this story's file list — for a grid the prototype itself draws as
+   * plain decorative CSS on its scroll container, not as a canvas-tracked
+   * pattern. This is the same trade: the dots sit behind the pane rather than
+   * panning with it, which is the honest cost of the zero-dependency route
+   * and is worth stating rather than quietly accepting. `--edge` rather than a
+   * new token for the dot colour, because a dot is structurally the same kind
+   * of mark as every other faint line this canvas already draws with it.
+   */
+  background-color: var(--surface-canvas);
+  background-image: radial-gradient(var(--edge) 1px, transparent 1px);
+  background-size: 22px 22px; /* geometry — direction A's own grid pitch */
+  background-position: -1px -1px;
 }
 
 /*
@@ -637,7 +790,12 @@ function onKeydown(event: KeyboardEvent): void {
 
 .graph-canvas__table-toggle {
   position: absolute;
-  right: 0.5rem;
+  /*
+   * Left, not right: KAR-24.5 AC5 moved the zoom pill to the bottom-right
+   * corner to match the prototype, and a table toggle sharing that corner is
+   * a pointer-event fight neither button wins cleanly. Left was free.
+   */
+  left: 0.5rem;
   bottom: 0.5rem;
   z-index: 5;
   padding: 0.25rem 0.6rem;
@@ -743,6 +901,122 @@ function onKeydown(event: KeyboardEvent): void {
 
 .graph-canvas :deep(.vue-flow__edge-textbg) {
   fill: var(--surface-raised);
+}
+
+/*
+ * KAR-24.5 AC5 — a running edge: the state's own colour through `stateVar()`
+ * (here spelled `var(--state-running)` directly, since this file has no
+ * component-level `stateVar()` import and does not need one for a single
+ * literal case), moving on `dashrun`. `.vue-flow__edge.animated path` is
+ * `@vue-flow/controls`'s sibling package `@vue-flow/core`'s own built-in rule
+ * for the `animated` class the edge object sets (`../graph/GraphCanvas.vue`'s
+ * `flowEdges`), playing a different keyframe (`dashdraw`) at a different
+ * speed — this rule's two classes plus one element out-specify that one class
+ * plus one element, so `dashrun` wins without `!important`.
+ */
+.graph-canvas :deep(.plan-edge--running .vue-flow__edge-path) {
+  stroke: var(--state-running);
+  stroke-dasharray: 5 7; /* geometry — direction A's own dash rhythm */
+  animation: dashrun 1s linear infinite;
+}
+
+/*
+ * A not-yet-reached edge: inert, and the *structural* dashed token rather
+ * than a state colour — direction A draws every edge feeding a pending node
+ * the same way regardless of which node is downstream, because "not started"
+ * is not one of the seven states `stateVar()` knows.
+ */
+.graph-canvas :deep(.plan-edge--pending .vue-flow__edge-path) {
+  stroke: var(--edge-dashed);
+  stroke-dasharray: 3 5; /* geometry — direction A's own dash rhythm */
+  animation: none;
+}
+
+/*
+ * KAR-24.5 AC5 — the zoom pill. `@vue-flow/controls`'s own stylesheet (a
+ * white toolbar with `border-bottom` dividers, imported above) is reset here
+ * rather than fought rule by rule, because this component restyles the
+ * library's control panel rather than replacing it — see the template
+ * comment above `<Controls>` for why `.vue-flow__controls-zoomin` and
+ * `.vue-flow__controls-fitview` still have to exist as real, clickable
+ * elements under those exact names.
+ */
+.graph-canvas :deep(.vue-flow__controls) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px; /* geometry — direction A's own pill gutter */
+  padding: 4px 6px; /* geometry — direction A's own pill padding */
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: none;
+}
+
+.graph-canvas :deep(.zoom-pill__label) {
+  order: 0; /* first in the pill, ahead of both buttons below */
+  padding: 0 3px; /* geometry — direction A's own label gutter */
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+/*
+ * Both the pill's own `+`/`−` buttons and the library's stock fit-view
+ * button share this sizing and colouring — a real `<button>` in every case,
+ * `disabled` carried as the DOM attribute (never only a class) so assistive
+ * tech and `:disabled` styling agree, exactly as `UiButton` does it.
+ *
+ * Ordered with flex `order` rather than by fighting the DOM position the
+ * library renders them in (the zoom-in slot before the zoom-out slot,
+ * regardless of which order this file's template declares them —
+ * see the template comment), so the pill still reads minus-then-plus.
+ */
+.graph-canvas :deep(.vue-flow__controls-button),
+.graph-canvas :deep(.zoom-pill__button) {
+  box-sizing: border-box;
+  width: 22px; /* geometry — direction A's own control size */
+  height: 22px; /* geometry — direction A's own control size */
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.graph-canvas :deep(.vue-flow__controls-button:hover:not(:disabled)),
+.graph-canvas :deep(.zoom-pill__button:hover:not(:disabled)) {
+  border-color: var(--edge-hover);
+  color: var(--ink);
+  background: transparent;
+}
+
+.graph-canvas :deep(.vue-flow__controls-button:disabled),
+.graph-canvas :deep(.zoom-pill__button:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.graph-canvas :deep(.vue-flow__controls-button svg) {
+  max-width: 10px;
+  max-height: 10px;
+  fill: currentcolor;
+}
+
+.graph-canvas :deep(.vue-flow__controls-zoomout) {
+  order: 1;
+}
+
+.graph-canvas :deep(.vue-flow__controls-zoomin) {
+  order: 2;
+}
+
+.graph-canvas :deep(.vue-flow__controls-fitview) {
+  order: 3;
 }
 
 /*

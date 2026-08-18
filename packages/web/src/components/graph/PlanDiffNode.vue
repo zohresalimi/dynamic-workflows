@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * KAR-17.2 — one node of the union graph, encoded by what happened to it
- * between the two versions being viewed.
+ * KAR-17.2 / KAR-24.5 — one node of the union graph, encoded by what happened
+ * to it between the two versions being viewed, now drawn from `UiCard`.
  *
- * Verifies: EPIC-17-S7 · AC4, AC9
+ * Verifies: EPIC-17-S7 · AC4, AC9; EPIC-24-S19..S22 · AC1
  *
  * ## Four classes, and none of them is a colour
  *
@@ -22,6 +22,15 @@
  * | changed   | solid  | full    | `±`   |
  * | unchanged | solid  | full    | —     |
  *
+ * `UiCard` is the shell for the reason the rest of this story reaches for it:
+ * one raised surface, one radius, one background token, shared with every
+ * other card in the application rather than redrawn here. `UiIconTile`,
+ * `UiStateChip` and `UiMeter` are **not** reached for on this file — the
+ * `+`/`−`/`±` badge is a mark in the diff vocabulary the table above defines,
+ * not a *kind* glyph or a run *state*, and forcing it into `UiStateChip`'s
+ * glyph-plus-label shape would blur a distinction this file's own encoding
+ * depends on being kept separate from `PlanNode.vue`'s.
+ *
  * ## Why a removed node is drawn at all
  *
  * It is drawn **in place**, at its union-layout coordinates. A node that simply
@@ -38,7 +47,9 @@
  * is the whole node — so they get no control, which is also what stops the
  * graph being a field of buttons that mostly do nothing.
  */
+import { computed } from 'vue';
 import type { DiffClass, PlanVersionNodeVM } from '../../lib/plan-diff.ts';
+import { UiCard } from '../ui/index.ts';
 
 const props = defineProps<{
   readonly node: PlanVersionNodeVM;
@@ -63,14 +74,43 @@ const WORDS: Record<DiffClass, string> = {
   changed: 'changed by this patch',
   unchanged: 'unchanged',
 };
+
+/**
+ * The border half of the encoding, per class — and, like `./PlanNode.vue`'s
+ * `cardStyle`, bound as an inline style rather than left to a scoped
+ * `[data-diff-class="…"]` rule. `UiCard`'s own `[data-variant="raised"]` rule
+ * carries one more attribute selector than a scoped rule on this file can, so
+ * it would otherwise win the border this table exists to set — see the note
+ * on `./PlanNode.vue`'s `cardStyle` for the full argument. `unchanged` reads
+ * the plain `--edge` token, matching what the base card looked like before any
+ * class was known.
+ */
+const CLASS_STYLE: Record<
+  DiffClass,
+  { borderStyle: string; borderColor: string; opacity: string }
+> = {
+  added: { borderStyle: 'solid', borderColor: 'var(--state-passed)', opacity: '1' },
+  // Dashed *and* faded. Either alone would be ambiguous against a theme that
+  // dims distant nodes (KAR-17.1 AC7); together they are a removal.
+  removed: { borderStyle: 'dashed', borderColor: 'var(--state-abandoned)', opacity: '0.55' },
+  changed: { borderStyle: 'solid', borderColor: 'var(--state-running)', opacity: '1' },
+  unchanged: { borderStyle: 'solid', borderColor: 'var(--edge)', opacity: '1' },
+};
+
+const cardStyle = computed(() => ({
+  ...CLASS_STYLE[props.diffClass],
+  padding: '8px 10px', // geometry — direction A's card padding, not UiCard's general one
+}));
 </script>
 
 <template>
-  <article
+  <UiCard
+    variant="raised"
     class="diff-node"
     :class="{ 'is-selected': props.selected }"
     :data-diff-node="props.node.id"
     :data-diff-class="props.diffClass"
+    :style="cardStyle"
   >
     <header class="diff-node__head">
       <!--
@@ -125,46 +165,22 @@ const WORDS: Record<DiffClass, string> = {
 
     <!-- The word, for a reader, on every class including the unmarked one. -->
     <span class="visually-hidden">{{ WORDS[props.diffClass] }}</span>
-  </article>
+  </UiCard>
 </template>
 
 <style scoped>
 /*
- * The border, the opacity and the glyph are the encoding; the colour is on top
- * of it. Every rule below that sets a colour also sets something that is not a
- * colour, which is the invariant AC4 turns on.
+ * The border and the opacity live in `cardStyle` above — see its comment for
+ * why a scoped rule cannot carry them here. What is left below is geometry an
+ * inline style cannot usefully express, plus the selection ring, which
+ * `UiCard`'s own rules never touch.
  */
 .diff-node {
   display: grid;
   gap: 0.25rem;
   width: 100%;
   height: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 2px solid var(--edge);
-  border-radius: 0.5rem;
-  background: var(--surface-raised);
-  opacity: 1;
   text-align: left;
-}
-
-.diff-node[data-diff-class="added"] {
-  border-style: solid;
-  border-color: var(--state-passed);
-}
-
-/*
- * Dashed *and* faded. Either alone would be ambiguous against a theme that
- * dims distant nodes (KAR-17.1 AC7); together they are a removal.
- */
-.diff-node[data-diff-class="removed"] {
-  border-style: dashed;
-  border-color: var(--state-abandoned);
-  opacity: 0.55;
-}
-
-.diff-node[data-diff-class="changed"] {
-  border-style: solid;
-  border-color: var(--state-running);
 }
 
 .diff-node.is-selected {
@@ -200,7 +216,8 @@ const WORDS: Record<DiffClass, string> = {
 }
 
 .diff-node__title {
-  font-size: 0.85rem;
+  margin: 0;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -209,8 +226,9 @@ const WORDS: Record<DiffClass, string> = {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+  margin: 0;
   color: var(--ink-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 .diff-node__open {
@@ -220,7 +238,7 @@ const WORDS: Record<DiffClass, string> = {
   border-radius: 999px;
   background: transparent;
   color: inherit;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 /*

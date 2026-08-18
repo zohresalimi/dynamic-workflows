@@ -1,14 +1,24 @@
 <script setup lang="ts">
 /**
- * KAR-17.9 — a node body on the memory graph.
+ * KAR-17.9 / KAR-24.5 — a node body on the memory graph, in direction A's
+ * language.
  *
- * Verifies: EPIC-17-S33 · AC1, AC2, AC4
+ * Verifies: EPIC-17-S33 · AC1, AC2, AC4; EPIC-24-S19..S22 · AC1
  *
  * Two shapes behind one component, because they are two states of the same
  * thing: a **bubble** standing for everything one plan node wrote, and a
  * **fact** the operator expanded that bubble to see. Rendering them as two
  * components would put the expand control and the thing it expands into in
  * different files for no gain.
+ *
+ * KAR-24.5 moves the shell from a hand-rolled `<article>` to `UiCard` +
+ * `UiIconTile` + `UiStateChip` — the same three primitives `./PlanNode.vue`
+ * draws its own card from — so a memory bubble and a plan node read as the
+ * same design system rather than as two applications glued together.
+ * `UiMeter` is not used here for the reason it is not used on `PlanNode.vue`
+ * either: a producer's page position (`memory.page`, "51–100 of 900") is a
+ * position, not a percentage, and there is no fraction in `MemoryNodeVM` to
+ * bind one to.
  *
  * This is the reason Vue Flow was chosen over the canvas-first alternatives at
  * all ([12 §6.1](../../../../../docs/12-frontend-architecture.md)): a custom
@@ -18,13 +28,17 @@
  *
  * **Nothing here is encoded by colour alone.** Invalidated carries a struck
  * label, the word *"invalidated"* and a glyph; tainted carries a glyph and the
- * word. The palette is `--state-*` through `stateVar`, which is where every
- * other view's colours come from.
+ * word; and the producing node's run state — previously carried by the border
+ * colour alone — now also carries `UiStateChip`'s own glyph and word, which is
+ * what closes the one WCAG 1.4.1 gap this file had before KAR-24.5. The
+ * palette is `--state-*` through `stateVar`, which is where every other view's
+ * colours come from.
  */
 import { AlertTriangle, ChevronDown, ChevronRight, Database, FileWarning } from 'lucide-vue-next';
 import { computed } from 'vue';
 import type { MemoryNodeVM } from '../../ledger/projections/memory-graph.ts';
 import { stateVar } from '../../lib/state-palette.ts';
+import { UiCard, UiIconTile, UiStateChip } from '../ui/index.ts';
 
 const props = defineProps<{
   readonly node: MemoryNodeVM;
@@ -40,10 +54,28 @@ const emit = defineEmits<{
 
 const memory = computed(() => props.node.memory);
 const colour = computed(() => stateVar(props.node.state));
+
+/**
+ * The card's own chrome, inline rather than in `<style scoped>` — the same
+ * reason `./PlanNode.vue`'s `cardStyle` is: `UiCard`'s `[data-variant="raised"]`
+ * rule carries one more attribute selector than a scoped class rule on this
+ * component can, so a `border`/`padding`/`width` declared in `<style>` here
+ * would lose the specificity contest rather than override it. An inline style
+ * always wins, which is what "a fact node is dashed, a producer is solid, and
+ * every card is bordered by its own node's run state" needs to actually land.
+ */
+const cardStyle = computed(() => ({
+  borderColor: colour.value,
+  borderStyle: memory.value.kind === 'fact' ? 'dashed' : 'solid',
+  borderWidth: '2px',
+  padding: '0.55rem 0.7rem',
+  width: '15rem',
+}));
 </script>
 
 <template>
-  <article
+  <UiCard
+    variant="raised"
     class="memory-node"
     :data-memory-node="props.node.id"
     :data-memory-kind="memory.kind"
@@ -51,16 +83,25 @@ const colour = computed(() => stateVar(props.node.state));
     :data-tainted="String(memory.tainted)"
     :data-invalid="String(memory.invalid)"
     :data-selected="String(props.selected)"
-    :style="{ '--node-colour': colour }"
+    :style="cardStyle"
   >
     <header class="memory-node__head">
-      <component :is="memory.kind === 'fact' ? FileWarning : Database" class="memory-node__glyph" />
+      <UiIconTile size="sm" :tint="colour">
+        <component :is="memory.kind === 'fact' ? FileWarning : Database" :size="10" />
+      </UiIconTile>
       <h3
         class="memory-node__title"
         :data-struck="String(memory.invalid && memory.kind === 'fact')"
       >
         {{ memory.label }}
       </h3>
+      <!--
+        KAR-24.5 — the producing node's own run state, so the border's colour
+        is never the only place that fact appears. `label` is left to the
+        palette's own word rather than overridden: a memory bubble has no
+        shorter word to say in its place, unlike a plan node's tight header row.
+      -->
+      <UiStateChip :state="props.node.state" class="state-chip memory-node__state" />
     </header>
 
     <p v-if="memory.kind === 'producer'" class="memory-node__counts">
@@ -125,18 +166,20 @@ const colour = computed(() => stateVar(props.node.state));
         </button>
       </template>
     </footer>
-  </article>
+  </UiCard>
 </template>
 
 <style scoped>
+/*
+ * The border and the box geometry live in `cardStyle` above; what is left
+ * here is what an inline style cannot usefully express — text layout, gaps,
+ * and the `[data-memory-kind="fact"]`/`[data-selected]` variants below, none
+ * of which `UiCard`'s own rules touch, so there is no specificity contest to
+ * lose.
+ */
 .memory-node {
   display: grid;
   gap: 0.3rem;
-  width: 15rem;
-  padding: 0.55rem 0.7rem;
-  border: 2px solid var(--node-colour, var(--edge));
-  border-radius: 0.6rem;
-  background: var(--surface-raised);
   text-align: left;
   font-size: 0.8rem;
 }
@@ -146,14 +189,15 @@ const colour = computed(() => stateVar(props.node.state));
   outline-offset: 2px;
 }
 
-.memory-node[data-memory-kind="fact"] {
-  border-style: dashed;
-}
-
 .memory-node__head {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.memory-node__state {
+  margin-left: auto;
+  flex: none;
 }
 
 .memory-node__glyph {
@@ -163,6 +207,8 @@ const colour = computed(() => stateVar(props.node.state));
 }
 
 .memory-node__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
