@@ -24,7 +24,7 @@
  * that mapping, and it is a total `Record` over `NodeStatus` on purpose: a
  * ninth domain status fails the build here.
  */
-import type { NodeStatus } from '@DeFlow/core';
+import type { NodeStatus, RunStatus } from '@DeFlow/core';
 
 /**
  * The seven states F10.1 names, in the order a run moves through them.
@@ -104,3 +104,28 @@ export function displayStateOf(status: NodeStatus): DisplayState {
 export function stateVar(state: DisplayState): string {
   return `var(--state-${state})`;
 }
+
+/**
+ * KAR-24.4 — the same mapping one domain over: a **run**'s status, in the seven
+ * display colours.
+ *
+ * It sits beside `NODE_STATUS_DISPLAY` rather than in the one component that
+ * currently needs it, for the reason that file exists at all: the moment a
+ * second surface paints a run's status — a row in the run list, a tab title, a
+ * notification — a local copy is two tables that drift, and the drift shows up
+ * as two words on one screen disagreeing about whether a run is finished.
+ *
+ * Total over `RunStatus` on purpose: a tenth run status is a compile error
+ * here rather than an uncoloured dot somebody notices in a screenshot.
+ */
+export const RUN_STATUS_DISPLAY: Record<RunStatus, DisplayState> = {
+  created: 'pending',
+  'awaiting-spec-approval': 'awaiting-human',
+  'spec-approved': 'pending',
+  running: 'running',
+  paused: 'blocked',
+  'needs-human': 'awaiting-human',
+  cancelling: 'blocked',
+  completed: 'passed',
+  aborted: 'abandoned',
+};
