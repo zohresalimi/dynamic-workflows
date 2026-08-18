@@ -18,8 +18,18 @@
  * silently: the module graph would pull the layout module, the layout module
  * pulls elkjs, and the only symptom is a bundle budget failing in a test
  * nobody associates with a two-number constant.
+ *
+ * KAR-24.5 AC3 — direction A's card is 200px wide; the height is not a
+ * measurement of the prototype (which draws each card's height off its own
+ * content) but of *this* card, `PlanNode.vue`, rendered with every optional
+ * row present — the gate-verdict chip and the live phase line both showing —
+ * since that is the tallest a real node gets and `.plan-node`'s own
+ * `overflow: hidden` means a shorter box would clip rather than resize.
+ * `PlanNode.vue` reads this constant for its own inline `width`/`height`
+ * rather than restating the two numbers in CSS, so ELK's box and the drawn
+ * one cannot drift apart the way two separately maintained numbers could.
  */
-export const NODE_SIZE = { width: 248, height: 108 } as const;
+export const NODE_SIZE = { width: 200, height: 147 } as const;
 
 /**
  * The vertical stride of the fallback column: a node plus a gap.
