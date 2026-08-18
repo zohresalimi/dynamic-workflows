@@ -436,9 +436,13 @@ suite('KAR-17.3 — the header identifies what actually ran (AC1)', () => {
   it('shows the CLI version and the binary sha256 that produced this work', async () => {
     await openInspector('repair', 'impl-oauth', 0);
 
-    const header = one('[data-inspector-header]');
-    expect(header?.querySelector('[data-field="binary-version"]')?.textContent).toBe('2.1.220');
-    expect(header?.querySelector('[data-field="binary-sha256"]')?.textContent).toMatch(
+    // KAR-24.6 AC3 — binary version/sha256 moved from the header into the
+    // config tab, so the scope this test reads them from moved with it.
+    // `unmount-on-hide="false"` keeps the tab's markup in the DOM whether or
+    // not it is the active tab, so this needs no click on the config tab.
+    const config = one('[data-inspector-config]');
+    expect(config?.querySelector('[data-field="binary-version"]')?.textContent).toBe('2.1.220');
+    expect(config?.querySelector('[data-field="binary-sha256"]')?.textContent).toMatch(
       /^[0-9a-f]{64}$/,
     );
   });
@@ -446,8 +450,10 @@ suite('KAR-17.3 — the header identifies what actually ran (AC1)', () => {
   it('shows the permission level and the path scopes the plan gave it', async () => {
     await openInspector('happy', 'impl-signup');
 
-    const header = one('[data-inspector-header]');
-    expect(header?.querySelector('[data-field="permission"]')?.textContent).toBeTruthy();
-    expect(header?.querySelector('[data-field="path-scopes"]')?.textContent).toContain('src/**');
+    // KAR-24.6 AC3 — same move as above: permission and path scopes are now
+    // config-tab fields.
+    const config = one('[data-inspector-config]');
+    expect(config?.querySelector('[data-field="permission"]')?.textContent).toBeTruthy();
+    expect(config?.querySelector('[data-field="path-scopes"]')?.textContent).toContain('src/**');
   });
 });

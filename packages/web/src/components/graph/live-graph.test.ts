@@ -230,6 +230,26 @@ suite('AC5 — edges say what flows across them, and only when something does', 
       .poll(() => screen.container.querySelector('.plan-edge--data .vue-flow__edge-textwrapper'))
       .not.toBeNull();
 
+    // KAR-24.5 — park the pointer in a corner before reading the *resting*
+    // state.
+    //
+    // The browser's pointer position outlives a spec file: `fileParallelism`
+    // is off, so every file in this project shares one page and inherits
+    // wherever the last `hover` or `click` left the cursor. This test then
+    // asserts what an edge looks like when nothing is hovering it, which is
+    // only true if nothing is. It held for a year because a 248x108 node put
+    // this edge clear of wherever the suite's pointer happened to rest;
+    // KAR-24.5's 200x147 card moved the drawing under it, and the assertion
+    // began failing roughly one run in three under the full component suite
+    // while passing every time on its own — with `:hover` reading `true` on
+    // the edge at the moment of the assertion, which is how we know it is the
+    // cursor and not a selection or a focus ring.
+    //
+    // The top-left corner, specifically: the two nodes sit side by side and
+    // the edge runs through the vertical centre, so the container's *centre*
+    // is the one place guaranteed to be wrong.
+    await userEvent.hover(page.elementLocator(screen.container), { position: { x: 2, y: 2 } });
+
     const wrapper = screen.container.querySelector(
       '.plan-edge--data .vue-flow__edge-textwrapper',
     ) as SVGGElement;

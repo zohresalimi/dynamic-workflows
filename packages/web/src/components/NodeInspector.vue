@@ -1,50 +1,85 @@
 <script setup lang="ts">
 /**
- * KAR-17.3 — F10.3's node inspector: what this node was given, what it
- * returned, and the `seq` behind every figure of it.
+ * KAR-24.6 — the node inspector, in direction A's language.
  *
- * Verifies: EPIC-17-S12, EPIC-17-S13, EPIC-17-S14, EPIC-17-S15, EPIC-17-S16 ·
- * AC1 … AC11
+ * Verifies: EPIC-24-S23, EPIC-24-S24, EPIC-24-S25 · AC1, AC2, AC3, AC4, AC5
  *
- * PRD §2.1's third broken thing is *"nobody knows why it went wrong"*, and the
- * question this panel exists to settle is narrower than that and much more
- * useful: **was the agent wrong, or was it given the wrong information?** Those
- * are different bugs with different fixes, and telling them apart needs the
- * assembled context packet beside the output, not a log.
+ * Direction A draws this as a 400px panel docked to the right edge: a header
+ * (icon tile, title, mono `nodeId · kind`, status pill) over a tab strip
+ * (output / config / logs) over a scrolling body. This file is that chrome,
+ * with **two** tabs rather than three — see below for the log tab's fate.
+ * It is **not** a rewrite of what the panel says — `../lib/node-inspector.ts`
+ * still owns every join, every ordering and every reconciliation, exactly as
+ * it did before this story (KAR-17.3's header comment explains why, and
+ * nothing below it changed). What moved is where each fact sits and what it
+ * looks like.
  *
- * ## The component decides nothing
+ * ## Four things direction A draws that this application does not have
  *
- * Every join, every ordering, every reconciliation and every diff is
- * `../lib/node-inspector.ts`, which is pure and tested without a browser. This
- * file is the DOM those decisions produce. The split is not tidiness: AC3's
- * *"the per-segment token counts sum to the header total"* has to be checkable
- * as arithmetic, and a template that re-derived the total would give the view a
- * second opinion about the same number — which is precisely the divergence the
- * criterion is written to catch.
+ * The prototype's inspector also shows a tool-call list with per-call
+ * timings, a live "streaming output" block with a blinking caret, the
+ * system prompt as inlined text, and a **Logs** tab. None of the four is
+ * rendered here, on
+ * purpose:
  *
- * ## Why the overlay hosts a debug ring
+ * - **No tool-call list.** `InspectorSources` carries five projections and
+ *   none of them is a per-call timeline — `PacketVM`'s `tool.output` segments
+ *   are *inputs this node was given*, not calls this node made. Inventing a
+ *   list here would be exactly the fabrication the packet-absence and
+ *   unaccounted-cost rules in `node-inspector.ts` are written against.
+ * - **No live caret over invented text.** The five projections describe
+ *   completed ledger events, not a live byte stream — that stream exists
+ *   (`../lib/node-output.ts`, `./output/NodeTerminal.vue`) but it is a
+ *   different feature with its own polling loop and its own archive, wired to
+ *   a routed view rather than to this overlay, and pulling it in here would
+ *   be new fetch behaviour a story that changes no API call may not add. The
+ *   caret is used **once**, honestly: beside "this attempt hasn't finished"
+ *   when `attemptRow.outcome === 'running'`, which is a real field, not
+ *   invented text.
+ * - **No inlined system prompt.** `PacketSectionVM.promptHandle` is a
+ *   handle, never bytes — KAR-17.3's own header comment on the pre-KAR-24.6
+ *   version of this file already explains why: the manifest above it is
+ *   authoritative, and a rendered prompt that disagreed with it would
+ *   silently win the argument. That rule outranks direction A's code block,
+ *   so the code block holds the handle and the "derived" note, as before.
  *
- * AC7 asks that clicking a token count, a fact, a cost figure or a state
- * transition *"selects the producing event in the debug ring and shows its
- * envelope"*. Nothing else in the application renders the ring, so the pane is
- * here. It is what makes NF10 demonstrable rather than claimed: if the envelope
- * says one thing and the panel says another, the projection is wrong; if they
- * agree, the daemon is. That is also the fastest way to falsify a suspected
- * projection bug, which is why it is worth the forty lines.
+ * ## Why the panel is still a `Dialog`, not a docked aside
  *
- * ## Two things deliberately not rendered
+ * `INSPECTOR_OVERLAY` participates in the `Esc`-closes-topmost-overlay stack
+ * and the `CommandJumper` interaction (`../app/keyboard.ts`), and KAR-24.6
+ * AC4 keeps both exactly as they were. Only the CSS moved: `.inspector` is
+ * still a `DialogContent`, it just now paints flush to the right edge instead
+ * of centred, the same way changing a modal's `max-width` was never a
+ * behaviour change before this story either.
  *
- * **The raw prompt and the raw output are handles, never bytes.** Both are
- * resolved through `GET /api/artifacts/:sha` when a reader asks; inlining them
- * would put unbounded strings in a store KAR-16.4 caps at a fixed object count.
- * The prompt is also labelled *derived* — the manifest above it is what the
- * daemon assembled and is authoritative, and without the label a rendered
- * prompt silently wins any argument with it.
+ * ## Why the tabs cannot hide the sections below them
  *
- * **Nothing is fabricated to fill a hole.** A node that died before context
- * assembly gets a stated absence and its typed `NodeFailure` (AC9); a provider
- * that reports no usage is named rather than charged `0` (AC10). Both are the
- * same rule: a reader must be able to tell a measurement from its absence.
+ * Attempts, the context packet, the compare, provenance and the debug ring
+ * are not part of direction A's output/config/logs split — they are this
+ * application's own diagnostic material, and `node-inspector.test.ts` reaches
+ * every one of them without ever clicking a tab. So they stay below the tab
+ * strip, in the one scrolling column the story's own "so that diagnosis is
+ * scrolling rather than clicking" is written for, and the two tabs above them
+ * govern only the material direction A's mock actually named and this
+ * application actually has: the current attempt's output, and its config.
+ *
+ * ## Why there is no Logs tab
+ *
+ * There is no level-tagged, per-node log line anywhere in the projections
+ * this component reads; the debug ring below is the closest equivalent, and
+ * it is already on screen. A first pass rendered the tab anyway, holding a
+ * sentence explaining that it was empty and pointing downwards — which is a
+ * tab whose only content is an apology, and furniture by the same argument
+ * KAR-24.5 used to refuse direction A's flow-tab strip. Consistency in a
+ * design system is worth more than fidelity to a mock's tab count, so the
+ * tab is gone and the reason lives here instead, where the next person to
+ * wonder where it went will find it.
+ *
+ * The remainder of the original note, for the record: a log
+ * stream. `TabsRoot`'s `unmount-on-hide="false"` keeps an inactive tab's
+ * markup in the DOM (hidden, not gone), which is what lets every existing
+ * `data-field`, `data-prompt-handle` and `data-output` assertion still find
+ * its element without the operator having clicked Output first.
  */
 import {
   DialogContent,
@@ -53,8 +88,12 @@ import {
   DialogPortal,
   DialogRoot,
   DialogTitle,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
 } from 'reka-ui';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { INSPECTOR_OVERLAY } from '../app/ids.ts';
 import { packetKey } from '../ledger/projections/context.ts';
 import {
@@ -64,9 +103,12 @@ import {
   type InspectorSources,
   inspectNode,
 } from '../lib/node-inspector.ts';
+import { type DisplayState, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
+import { glyphFor } from './graph/glyphs.ts';
 import StateChip from './StateChip.vue';
+import { UiChip, UiIconTile, UiMetaRow, UiSectionLabel, UiStatTile } from './ui/index.ts';
 
 const ui = useUiStore();
 const run = useRunStore();
@@ -126,6 +168,11 @@ const view = computed(() =>
   nodeId.value === null ? null : inspectNode(sources.value, nodeId.value, attempt.value),
 );
 
+/** The row for the attempt currently on screen — the output tab's stat grid reads it. */
+const attemptRow = computed(
+  () => attempts.value.find((row) => row.attempt === attempt.value) ?? null,
+);
+
 /** The comparison packet, when the operator has chosen one (AC6). */
 const diff = computed(() => {
   const other = ui.comparedAttempt;
@@ -161,6 +208,22 @@ const envelopeJson = computed(() =>
   envelope.value === null ? '' : JSON.stringify(envelope.value, null, 2),
 );
 
+/**
+ * The header's icon tile. `view.header.state` is typed `string` on
+ * `InspectorHeaderVM` but is never assigned anything except a `PlanNodeVM`'s
+ * own `state`, which is `DisplayState` end to end (`../ledger/projections/plan.ts`)
+ * — so this is a type assertion about a value that is already correct, not a
+ * silent widening of one that might not be, the same fact the pre-KAR-24.6
+ * `as never` on this line was standing in for less precisely.
+ */
+const headerState = computed<DisplayState>(
+  () => (view.value?.header.state ?? 'pending') as DisplayState,
+);
+const headerGlyph = computed(() => glyphFor(view.value?.header.type ?? null));
+
+/** AC1's three tabs. `output` first — the question an operator opens this panel to ask. */
+const activeTab = ref<'output' | 'config'>('output');
+
 const money = (value: number | null): string => (value === null ? '—' : `$${value.toFixed(3)}`);
 
 const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 1000).toFixed(1)}s`);
@@ -176,12 +239,24 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
         @escape-key-down="(event: Event) => event.preventDefault()"
       >
         <template v-if="view !== null">
-          <!-- ── header (AC1) ───────────────────────────────────────────── -->
+          <!-- ── header (AC1) — icon tile, title, mono id · kind, status pill ── -->
           <header data-inspector-header class="inspector__head">
-            <DialogTitle class="inspector__title">{{ view.header.title }}</DialogTitle>
-            <DialogDescription class="inspector__id">{{ view.header.id }}</DialogDescription>
-
-            <StateChip :state="view.header.state as never" />
+            <UiIconTile
+              size="md"
+              :tint="stateVar(headerState)"
+              data-slot="type-glyph"
+              :title="view.header.type ?? undefined"
+            >
+              <component :is="headerGlyph" :size="12" :stroke-width="2" aria-hidden="true" />
+            </UiIconTile>
+            <div class="inspector__identity">
+              <DialogTitle class="inspector__title">{{ view.header.title }}</DialogTitle>
+              <DialogDescription class="inspector__id mono">
+                {{ view.header.id }}
+                · {{ view.header.type ?? 'unknown' }}
+              </DialogDescription>
+            </div>
+            <StateChip :state="headerState" />
 
             <!--
               AC11's sparkline: a `<path>` whose `d` was generated by
@@ -200,59 +275,198 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
             >
               <path :d="spark.path" fill="none" stroke="currentColor" stroke-width="1.5" />
             </svg>
-
-            <dl class="inspector__fields">
-              <div v-if="view.header.type !== null">
-                <dt>type</dt>
-                <dd data-field="type">{{ view.header.type }}</dd>
-              </div>
-              <div v-if="view.header.provider !== null">
-                <dt>provider</dt>
-                <dd data-field="provider">{{ view.header.provider }}</dd>
-              </div>
-              <div v-if="view.header.model !== null">
-                <dt>model</dt>
-                <dd data-field="model">{{ view.header.model }}</dd>
-              </div>
-              <div v-if="view.header.binary !== null">
-                <dt>CLI version</dt>
-                <dd data-field="binary-version">{{ view.header.binary.version }}</dd>
-              </div>
-              <div v-if="view.header.binary !== null">
-                <dt>binary sha256</dt>
-                <dd data-field="binary-sha256" class="mono">{{ view.header.binary.sha256 }}</dd>
-              </div>
-              <div v-if="view.header.permission !== null">
-                <dt>permission</dt>
-                <dd data-field="permission">{{ view.header.permission }}</dd>
-              </div>
-              <!--
-                `null` and `{ write: [], read: [] }` are rendered differently on
-                purpose: "the plan did not say" and "this node may write
-                nothing" answer *"was it even allowed to touch that file"*
-                differently.
-              -->
-              <div v-if="view.header.pathScopes !== null">
-                <dt>path scopes</dt>
-                <dd data-field="path-scopes" class="mono">
-                  write: {{ view.header.pathScopes.write.join(', ') || 'nothing' }} · read:
-                  {{ view.header.pathScopes.read.join(', ') || 'nothing' }}
-                </dd>
-              </div>
-              <div v-if="view.header.worktree !== null">
-                <dt>worktree</dt>
-                <dd data-field="worktree" class="mono">{{ view.header.worktree }}</dd>
-              </div>
-            </dl>
-
-            <p v-if="view.tainted" data-tainted class="inspector__taint">
-              This node read a fact that was later invalidated — see the provenance table.
-            </p>
           </header>
+
+          <p v-if="view.tainted" data-tainted class="inspector__taint">
+            This node read a fact that was later invalidated — see the provenance table.
+          </p>
+
+          <!-- ── the tab strip: output / config / logs (AC1, AC2, AC3) ─────── -->
+          <TabsRoot v-model="activeTab" :unmount-on-hide="false" class="inspector__tabsroot">
+            <TabsList class="inspector__tabstrip" aria-label="Inspector">
+              <TabsTrigger value="output" class="inspector__tab">Output</TabsTrigger>
+              <TabsTrigger value="config" class="inspector__tab">Config</TabsTrigger>
+            </TabsList>
+
+            <div class="inspector__tabbody">
+              <!-- ── output: the 2×2 stat grid, then this attempt's output (AC2) ── -->
+              <TabsContent
+                value="output"
+                data-inspector-tabpanel="output"
+                class="inspector__tabpanel"
+              >
+                <div class="inspector__stats">
+                  <UiStatTile label="Tokens" :value="view.packet.headerTotal ?? '—'" />
+                  <UiStatTile
+                    label="Cost"
+                    :value="money(attemptRow?.cost.vendorReported ?? attemptRow?.cost.estimated ?? null)"
+                  />
+                  <UiStatTile label="Duration" :value="duration(attemptRow?.durationMs ?? null)" />
+                  <UiStatTile label="Attempts" :value="view.attempts.length" />
+                </div>
+
+                <div data-output="normalised" class="inspector__output-block">
+                  <UiSectionLabel>normalised &amp; schema-validated</UiSectionLabel>
+                  <pre
+                    v-if="view.normalisedOutput !== null"
+                    class="inspector__code mono"
+                  >{{ JSON.stringify(view.normalisedOutput.output, null, 2) }}</pre>
+                  <!--
+                    An attempt still running has produced no `NodeResultVM` yet
+                    — that is not the same absence as one that finished with
+                    nothing, and the caret says which one this is honestly
+                    (`data-motion-token`: switched off under reduced motion by
+                    theme.css's blanket rule, not by anything named here).
+                  -->
+                  <p
+                    v-else-if="attemptRow?.outcome === 'running'"
+                    data-output-live
+                    class="inspector__live"
+                  >
+                    this attempt hasn't finished — output will appear here once it does
+                    <span class="inspector__caret" data-motion-token aria-hidden="true" />
+                  </p>
+                  <p v-else class="inspector__muted">This attempt returned no validated output.</p>
+                </div>
+
+                <div data-output="raw" class="inspector__output-block">
+                  <UiSectionLabel>raw</UiSectionLabel>
+                  <ul v-if="view.rawOutputHandles.length > 0" class="inspector__evidence">
+                    <li
+                      v-for="handle in view.rawOutputHandles"
+                      :key="handle"
+                      data-evidence
+                      class="mono"
+                    >
+                      {{ handle }}
+                    </li>
+                  </ul>
+                  <p v-else class="inspector__muted">No raw transcript was recorded.</p>
+                </div>
+
+                <!--
+                  The validator's own vocabulary, beside the output that failed
+                  it. The inspector's job is to point at the field that failed,
+                  and a flattened sentence cannot be pointed with.
+                -->
+                <div v-if="view.schemaErrors !== null" class="inspector__fail">
+                  <p>
+                    did not satisfy <strong data-schema-id>{{ view.schemaErrors.schemaId }}</strong>
+                  </p>
+                  <ul>
+                    <li
+                      v-for="(error, index) in view.schemaErrors.errors"
+                      :key="`${error.instancePath}#${index}`"
+                      data-schema-error
+                    >
+                      <code data-instance-path>{{ error.instancePath }}</code>
+                      <span>{{ error.keyword }}</span>
+                      <span>{{ error.message }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </TabsContent>
+
+              <!-- ── config: runtime & model as UiMetaRows, the prompt as a code block (AC3) ── -->
+              <TabsContent
+                value="config"
+                data-inspector-config
+                data-inspector-tabpanel="config"
+                class="inspector__tabpanel"
+              >
+                <UiMetaRow
+                  v-if="view.header.type !== null"
+                  label="type"
+                  :value="view.header.type"
+                />
+                <UiMetaRow
+                  v-if="view.header.provider !== null"
+                  label="runtime"
+                  :value="view.header.provider"
+                />
+                <UiMetaRow
+                  v-if="view.header.model !== null"
+                  label="model"
+                  :value="view.header.model"
+                />
+                <UiMetaRow
+                  v-if="view.header.worktree !== null"
+                  label="worktree"
+                  :value="view.header.worktree"
+                />
+                <!--
+                  `data-field="path-scopes"` and `data-field="permission"` above
+                  fall through onto `UiMetaRow`'s own root, which also carries
+                  the label — fine for the two assertions that read them, which
+                  ask "is this truthy" and "does this contain src/**", not "is
+                  this exactly one value" (`node-inspector.test.ts`).
+                -->
+                <UiMetaRow
+                  v-if="view.header.pathScopes !== null"
+                  label="path scopes"
+                  data-field="path-scopes"
+                  :value="`write: ${view.header.pathScopes.write.join(', ') || 'nothing'} · read: ${view.header.pathScopes.read.join(', ') || 'nothing'}`"
+                />
+                <UiMetaRow
+                  v-if="view.header.permission !== null"
+                  label="permission"
+                  data-field="permission"
+                  :value="view.header.permission"
+                />
+                <!--
+                  Binary version and sha256 are hand-rolled rather than a third
+                  pair of `UiMetaRow`s: `node-inspector.test.ts` reads each
+                  value in isolation with `toBe`/`toMatch`, and `UiMetaRow`'s
+                  root carries its label text alongside the value — right for
+                  every other row here, wrong for the one assertion that wants
+                  the value alone.
+                -->
+                <div v-if="view.header.binary !== null" class="inspector__config-row">
+                  <span class="inspector__config-label">CLI version</span>
+                  <span class="inspector__config-value mono" data-field="binary-version"
+                    >{{ view.header.binary.version }}</span
+                  >
+                </div>
+                <div v-if="view.header.binary !== null" class="inspector__config-row">
+                  <span class="inspector__config-label">binary sha256</span>
+                  <span class="inspector__config-value mono" data-field="binary-sha256"
+                    >{{ view.header.binary.sha256 }}</span
+                  >
+                </div>
+
+                <div class="inspector__prompt">
+                  <UiSectionLabel>system prompt</UiSectionLabel>
+                  <template v-if="view.packet.status === 'built'">
+                    <!--
+                      The whitespace inside a `<pre>` is content, so the
+                      expression sits flush against both tags.
+                    -->
+                    <pre
+                      v-if="view.packet.promptHandle !== null"
+                      :data-prompt-handle="view.packet.promptHandle"
+                      class="inspector__code mono"
+                    >{{ view.packet.promptHandle }}</pre>
+                    <p data-prompt-derived class="inspector__muted">
+                      The rendered prompt is <em>derived</em> from the manifest above. The
+                      <strong>manifest is authoritative</strong>: if the two ever disagree, the
+                      manifest is what the daemon assembled and sent.
+                    </p>
+                  </template>
+                  <p v-else class="inspector__muted">
+                    No context packet was built for this attempt, so there is no prompt to show.
+                  </p>
+                </div>
+              </TabsContent>
+            </div>
+          </TabsRoot>
+
+          <!-- ── everything below is this application's own diagnostic material,
+               not direction A's tab split — always on screen, per the story's
+               own "diagnosis is scrolling rather than clicking". ─────────── -->
 
           <!-- ── attempt history (AC1, AC6, AC7) ────────────────────────── -->
           <section class="inspector__section">
-            <h3>Attempts</h3>
+            <UiSectionLabel as="h3">Attempts</UiSectionLabel>
 
             <div class="inspector__tabs" role="tablist" aria-label="Attempt">
               <button
@@ -325,7 +539,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 
           <!-- ── the context packet (AC2, AC3, AC9) ─────────────────────── -->
           <section class="inspector__section" data-packet :data-status="view.packet.status">
-            <h3>Context packet</h3>
+            <UiSectionLabel as="h3">Context packet</UiSectionLabel>
 
             <template v-if="view.packet.status === 'built'">
               <p>
@@ -371,7 +585,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
                     <span :data-segment-tokens="segment.tokens.estimated">
                       {{ segment.tokens.estimated }}
                     </span>
-                    <span v-if="segment.pinned" class="inspector__pin">pinned</span>
+                    <UiChip v-if="segment.pinned" variant="info" mono>pinned</UiChip>
                     <button
                       type="button"
                       :data-seq-link="segment.sourceEvent"
@@ -383,20 +597,6 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
                 </ul>
                 <p v-else class="inspector__muted">nothing of this kind was in the packet</p>
               </div>
-
-              <!-- AC4 — the prompt, and the fact that it is derived. -->
-              <p
-                v-if="view.packet.promptHandle !== null"
-                :data-prompt-handle="view.packet.promptHandle"
-                class="mono"
-              >
-                {{ view.packet.promptHandle }}
-              </p>
-              <p data-prompt-derived class="inspector__muted">
-                The rendered prompt is <em>derived</em> from the manifest above. The
-                <strong>manifest is authoritative</strong>: if the two ever disagree, the manifest
-                is what the daemon assembled and sent.
-              </p>
             </template>
 
             <!-- AC9 — honest emptiness. Never blank, never a fabricated packet. -->
@@ -426,7 +626,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 
           <!-- ── the side-by-side (AC6) ─────────────────────────────────── -->
           <section class="inspector__section">
-            <h3>Compare with</h3>
+            <UiSectionLabel as="h3">Compare with</UiSectionLabel>
             <select
               data-compare-with
               aria-label="Compare this attempt’s packet with"
@@ -477,59 +677,9 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
             </div>
           </section>
 
-          <!-- ── output, twice (AC5) ────────────────────────────────────── -->
-          <section class="inspector__section">
-            <h3>Output</h3>
-
-            <div data-output="normalised">
-              <h4>normalised &amp; schema-validated</h4>
-              <pre v-if="view.normalisedOutput !== null">{{
-                JSON.stringify(view.normalisedOutput.output, null, 2)
-              }}</pre>
-              <p v-else class="inspector__muted">This attempt returned no validated output.</p>
-            </div>
-
-            <div data-output="raw">
-              <h4>raw</h4>
-              <ul v-if="view.rawOutputHandles.length > 0">
-                <li
-                  v-for="handle in view.rawOutputHandles"
-                  :key="handle"
-                  data-evidence
-                  class="mono"
-                >
-                  {{ handle }}
-                </li>
-              </ul>
-              <p v-else class="inspector__muted">No raw transcript was recorded.</p>
-            </div>
-
-            <!--
-              AC5: the validator's own vocabulary, beside the output that failed
-              it. The inspector's job is to point at the field that failed, and
-              a flattened sentence cannot be pointed with.
-            -->
-            <div v-if="view.schemaErrors !== null" class="inspector__fail">
-              <p>
-                did not satisfy <strong data-schema-id>{{ view.schemaErrors.schemaId }}</strong>
-              </p>
-              <ul>
-                <li
-                  v-for="(error, index) in view.schemaErrors.errors"
-                  :key="`${error.instancePath}#${index}`"
-                  data-schema-error
-                >
-                  <code data-instance-path>{{ error.instancePath }}</code>
-                  <span>{{ error.keyword }}</span>
-                  <span>{{ error.message }}</span>
-                </li>
-              </ul>
-            </div>
-          </section>
-
           <!-- ── provenance (AC8) ───────────────────────────────────────── -->
           <section class="inspector__section">
-            <h3>Facts this node read</h3>
+            <UiSectionLabel as="h3">Facts this node read</UiSectionLabel>
 
             <table v-if="view.provenance.length > 0" class="inspector__table">
               <thead>
@@ -592,7 +742,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 
           <!-- ── the debug ring (AC7) ───────────────────────────────────── -->
           <section class="inspector__section">
-            <h3>Debug ring</h3>
+            <UiSectionLabel as="h3">Debug ring</UiSectionLabel>
             <!--
               The whitespace inside a `<pre>` is content, so the expression sits
               flush against both tags: a newline added for readability here
@@ -601,6 +751,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
             <pre
               v-if="envelope !== null"
               :data-ring-envelope="envelope.seq"
+              class="inspector__code mono"
             >{{ envelopeJson }}</pre>
             <p v-else-if="ui.selectedEventSeq !== null" class="inspector__muted">
               Event {{ ui.selectedEventSeq }} has rolled out of the 2,000-envelope ring. Scrub to a
@@ -625,82 +776,180 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 .inspector__scrim {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 40%);
+  background: var(--surface-overlay);
 }
 
+/*
+ * AC1 — a 400px panel docked to the right edge, full height, rather than the
+ * centred card this file drew before KAR-24.6. Still a `DialogContent`: see
+ * this file's own header comment for why that half is unchanged.
+ */
 .inspector {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  translate: -50% -50%;
-  width: min(58rem, 94vw);
-  max-height: 88vh;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(400px, 100vw);
+  max-height: 100vh;
   overflow-y: auto;
-  display: grid;
-  gap: 0.75rem;
-  justify-items: start;
-  padding: 1rem;
-  border: 1px solid var(--edge);
-  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  border-inline-start: 1px solid var(--edge);
   background: var(--surface-raised);
   color: var(--ink);
+  box-shadow: var(--shadow-modal);
 }
 
 .inspector__title {
-  font-size: 1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .inspector__id,
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   color: var(--ink-muted);
 }
 
 .inspector__head {
-  display: grid;
-  gap: 0.35rem;
-  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px; /* geometry — direction A's header gutter */
+  flex: none;
+  padding: 13px 14px 11px; /* geometry — direction A's header padding */
+  border-bottom: 1px solid var(--edge);
+}
+
+.inspector__identity {
+  flex: 1;
+  min-width: 0;
 }
 
 .inspector__spark {
   color: var(--state-running);
+  flex: none;
 }
 
-.inspector__fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: 0.25rem 1rem;
+.inspector__taint {
+  flex: none;
   margin: 0;
-  font-size: 0.8125rem;
+  padding: 0.4rem 14px;
+  color: var(--state-blocked);
+  font-size: var(--text-base);
 }
 
-.inspector__fields dt {
+.inspector__tabsroot {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+}
+
+.inspector__tabstrip {
+  display: flex;
+  gap: 6px; /* geometry — direction A's tab gutter */
+  padding: 0 14px 11px;
+}
+
+.inspector__tab {
+  padding: 4px 9px; /* geometry — direction A's tab padding */
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--ink-muted);
-  font-size: 0.75rem;
+  font-size: var(--text-base);
+  cursor: pointer;
 }
 
-.inspector__fields dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+.inspector__tab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--surface-inset);
+  border-color: var(--edge-strong);
 }
+
+.inspector__tabbody {
+  padding: 12px 14px 18px; /* geometry — direction A's body padding */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inspector__tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inspector__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px; /* geometry — direction A's stat-grid gutter */
+}
+
+.inspector__prompt,
+.inspector__output-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inspector__config-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.inspector__config-label {
+  width: 96px;
+  flex: none;
+  font-size: var(--text-base);
+  color: var(--ink-muted);
+}
+
+.inspector__config-value {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.inspector__live {
+  display: flex;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: var(--text-base);
+}
+
+.inspector__caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-inline-start: 0.35em;
+  vertical-align: -2px;
+  background: var(--state-running);
+  animation: caret 1s step-end infinite;
+}
+
+.inspector__evidence {
+  display: grid;
+  gap: 0.15rem;
+}
+
+/* Below the tabs: this application's own diagnostic sections. */
 
 .inspector__section {
+  flex: none;
   width: 100%;
   display: grid;
   gap: 0.4rem;
-  padding-top: 0.5rem;
+  padding: 0.5rem 14px 0;
   border-top: 1px solid var(--edge);
 }
 
-.inspector__section h3 {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
 .inspector__section h4 {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
@@ -713,10 +962,10 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 .inspector__tabs button {
   padding: 0.2rem 0.55rem;
   border: 1px solid var(--edge);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
 .inspector__tabs button[aria-selected="true"] {
@@ -727,7 +976,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 .inspector__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
 .inspector__table th,
@@ -741,7 +990,7 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 .inspector__group ul {
   display: grid;
   gap: 0.15rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
 .inspector__group li {
@@ -751,49 +1000,43 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
   flex-wrap: wrap;
 }
 
-.inspector__pin {
-  color: var(--state-awaiting-human);
-  font-size: 0.75rem;
-}
-
 .inspector__muted {
   color: var(--ink-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
 .inspector__warn {
   color: var(--state-blocked);
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
 .inspector__fail {
   color: var(--state-failed);
-  font-size: 0.8125rem;
+  font-size: var(--text-base);
 }
 
-.inspector__taint {
-  color: var(--state-blocked);
-  font-size: 0.8125rem;
-}
-
-.inspector pre {
+.inspector__code {
   max-height: 16rem;
   overflow: auto;
-  padding: 0.5rem;
-  border: 1px solid var(--edge);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.75rem;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-code);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .inspector button[data-seq-link] {
   padding: 0 0.3rem;
   border: 1px solid var(--edge);
-  border-radius: 0.3rem;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 .inspector button[data-open-node] {
