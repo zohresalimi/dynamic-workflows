@@ -30,12 +30,16 @@
  *    and holds no array of nodes: the board's rows and the graph's bodies are
  *    one object from `../app/useNodeBodies.ts` (AC3).
  */
+import type { RunStatus } from '@DeFlow/core';
+import { UserRound } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { COMPOSER_OVERLAY } from '../app/ids.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import TaskBoard from '../components/TaskBoard.vue';
+import { UiButton, UiCard, UiChip, UiEmptyState } from '../components/ui/index.ts';
+import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
 import PlanGraphView from './PlanGraphView.vue';
@@ -57,7 +61,7 @@ interface ProjectRow {
 /** One row of `GET /api/projects/:id/runs` — the daemon's own list row. */
 interface HistoryRow {
   readonly runId: string;
-  readonly status: string;
+  readonly status: RunStatus;
   /** `runStatusLabel`'s string: the one sentence every surface prints. */
   readonly label: string;
   readonly title: string;
@@ -180,59 +184,99 @@ function spent(row: HistoryRow): string {
   const costUsd = row.cost?.run?.costUsd;
   return typeof costUsd === 'number' ? `$${costUsd.toFixed(2)}` : 'not priced';
 }
+
+/**
+ * The history row's dot colour, through the same domain-to-display mapping
+ * `RunListView` reads for the run table's own dot (KAR-24.7 AC3, AC4) — never
+ * a colour named in this file, and never a second vocabulary for the same
+ * run statuses.
+ */
+function dotColour(status: RunStatus): string {
+  return stateVar(RUN_STATUS_DISPLAY[status]);
+}
+
+/** `UiChip`'s tone for a health state — the same mapping `ProjectsView` uses
+ * for the same field, so one project reads the same way on both screens. */
+function healthTone(state: string): 'ok' | 'warn' | 'error' {
+  if (state === 'ok') return 'ok';
+  if (state === 'missing') return 'warn';
+  return 'error';
+}
 </script>
 
 <template>
   <div class="workspace" data-project-workspace :data-project="projectId">
-    <header class="workspace__head">
-      <h1 class="workspace__title">
-        <RouterLink to="/projects" class="workspace__back">Projects</RouterLink>
-        <span class="workspace__name" data-workspace-project-name>
-          {{ project?.name ?? projectId }}
-        </span>
-      </h1>
-      <code v-if="project" class="workspace__path">{{ project.path }}</code>
-      <!--
-        KAR-22.4 — the way in to this project's connectors. A route nothing
-        links to is a route nobody can reach, and the connectors screen is where
-        AC1's whole story about who holds the token is told.
-      -->
-      <RouterLink
-        class="workspace__connectors"
-        data-workspace-connectors
-        :to="{ name: 'project-connectors', params: { projectId } }"
-      >
-        Connectors
-      </RouterLink>
-      <!--
-        A project whose directory has gone still shows everything below; it just
-        says so, in the daemon's own sentence (EPIC-22-S45).
-      -->
-      <p
-        v-if="project?.health.message"
-        class="workspace__health"
-        data-workspace-health
-        role="status"
-      >
-        {{ project.health.message }}
-      </p>
-    </header>
+    <!--
+      KAR-24.7 AC4 — the one "card" shape this screen has (the board and the
+      history below are the dense-row table, not a card). Everything else in
+      this header is content, not chrome, so it sits inside `UiCard`'s own
+      slot rather than growing a second bordered box beside it.
+    -->
+    <UiCard variant="raised" class="workspace__head-card">
+      <header class="workspace__head">
+        <h1 class="workspace__title">
+          <RouterLink to="/projects" class="workspace__back">Projects</RouterLink>
+          <span class="workspace__name" data-workspace-project-name>
+            {{ project?.name ?? projectId }}
+          </span>
+        </h1>
+        <code v-if="project" class="workspace__path">{{ project.path }}</code>
+        <!--
+          KAR-22.4 — the way in to this project's connectors. A route nothing
+          links to is a route nobody can reach, and the connectors screen is
+          where AC1's whole story about who holds the token is told.
+        -->
+        <RouterLink
+          class="workspace__connectors"
+          data-workspace-connectors
+          :to="{ name: 'project-connectors', params: { projectId } }"
+        >
+          Connectors
+        </RouterLink>
+        <!--
+          A project whose directory has gone still shows everything below; it
+          just says so, in the daemon's own sentence (EPIC-22-S45). The chip
+          repeats the same fact with a token; the sentence stays the carrier.
+        -->
+        <p
+          v-if="project?.health.message"
+          class="workspace__health"
+          data-workspace-health
+          role="status"
+        >
+          <UiChip :variant="healthTone(project.health.state)" mono
+            >{{ project.health.state }}</UiChip
+          >
+          {{ project.health.message }}
+        </p>
+      </header>
+    </UiCard>
 
     <!--
-      AC6 — a project with no runs says so and points at the composer. There is
-      deliberately no canvas here: an empty graph reads as a broken page rather
-      than as "nothing has run yet".
+      AC6, KAR-24.7 AC5 — a project with no runs says so and points at the
+      composer, through the one component every empty list on this screen
+      routes through. There is deliberately no canvas here: an empty graph
+      reads as a broken page rather than as "nothing has run yet".
     -->
-    <section v-if="nothingHasRun" class="workspace__empty" data-workspace-empty>
-      <p>Nothing has run in this project yet.</p>
-      <p>
-        Start one with the composer — describe the task, pick the agent, and this page will show its
-        graph as it happens.
-      </p>
-      <button type="button" data-workspace-compose @click="ui.openOverlay(COMPOSER_OVERLAY)">
-        Start a run
-      </button>
-    </section>
+    <UiEmptyState
+      v-if="nothingHasRun"
+      class="workspace__empty"
+      data-workspace-empty
+      title="Nothing has run in this project yet"
+      hint="Start one with the composer — describe the task, pick the agent, and this page will show its graph as it happens."
+    >
+      <template #action>
+        <UiButton
+          variant="primary"
+          size="md"
+          data-workspace-compose
+          @click="ui.openOverlay(COMPOSER_OVERLAY)"
+        >
+          <UserRound :size="12" aria-hidden="true" />
+          Start a run
+        </UiButton>
+      </template>
+    </UiEmptyState>
 
     <template v-else-if="currentRun !== null">
       <section class="workspace__graph" aria-label="The run's plan graph">
@@ -253,59 +297,112 @@ function spent(row: HistoryRow): string {
       </aside>
     </template>
 
+    <!--
+      KAR-24.7 AC4 — the history is the run table's own shape: the same dense
+      row, the same dot-plus-mono-figures language `RunListView` draws, rather
+      than the six-column baseline grid this section used to invent on its
+      own.
+    -->
     <section class="workspace__history" aria-labelledby="DeFlow-history-title">
       <h2 id="DeFlow-history-title" class="workspace__history-title">History</h2>
-      <p v-if="history.length === 0" class="workspace__history-empty">
-        Runs you start in this project appear here.
-      </p>
-      <ul v-else class="workspace__history-rows">
-        <li
-          v-for="row in history"
-          :key="row.runId"
-          class="workspace__history-row"
-          :data-history-row="row.runId"
-          :data-current="String(row.runId === currentRun)"
-        >
-          <!--
-            AC5 — the whole of "without knowing a run id": the operator presses
-            a row. The id is in the route this button pushes and nowhere else.
-          -->
-          <button
-            type="button"
-            class="workspace__history-open"
-            :data-history-open="row.runId"
-            @click="openRun(row.runId)"
+
+      <UiEmptyState
+        v-if="history.length === 0"
+        data-workspace-history-empty
+        title="No runs yet"
+        hint="Runs you start in this project appear here."
+      >
+        <template #action>
+          <UiButton
+            variant="ghost"
+            size="sm"
+            data-workspace-history-compose
+            @click="ui.openOverlay(COMPOSER_OVERLAY)"
           >
-            {{ row.title }}
-          </button>
-          <span class="workspace__history-outcome" :data-history-outcome="row.runId">
-            {{ row.label }}
-          </span>
-          <!--
-            AC7 — and which gate it is waiting on, when it is waiting on one.
-            The row already says `needs a decision`; this says *which* decision,
-            which is the difference between a list you can act on and one you
-            have to open row by row.
-          -->
-          <span v-if="row.gate" class="workspace__history-gate" :data-history-gate="row.runId"
-            >waiting on {{ row.gate.node }}</span
+            Start a run
+          </UiButton>
+        </template>
+      </UiEmptyState>
+
+      <div v-else class="workspace__history-table" data-workspace-history-table>
+        <div class="workspace__history-head" role="row">
+          <span class="workspace__history-head-cell">Run</span>
+          <span class="workspace__history-head-cell">Status</span>
+          <span class="workspace__history-head-cell">Cost</span>
+          <span class="workspace__history-head-cell">Time</span>
+          <span class="workspace__history-head-cell">Scrubber</span>
+        </div>
+
+        <ul class="workspace__history-rows">
+          <li
+            v-for="row in history"
+            :key="row.runId"
+            class="workspace__history-row"
+            :data-history-row="row.runId"
+            :data-current="String(row.runId === currentRun)"
           >
-          <span class="workspace__history-when">{{ when(row.createdAt) }}</span>
-          <span class="workspace__history-cost">{{ spent(row) }}</span>
-          <!--
-            AC4 — and the existing scrubber for it, one link away. The plan's
-            version rail is where "what did this run look like at v2" is
-            answered, and it is EPIC-17's surface rather than a second one here.
-          -->
-          <RouterLink
-            class="workspace__history-scrub"
-            :to="`/runs/${row.runId}/evolution`"
-            :data-run-scrubber="row.runId"
-          >
-            Scrubber
-          </RouterLink>
-        </li>
-      </ul>
+            <span class="workspace__history-cell workspace__history-cell--run">
+              <!--
+                A live run's dot animates, same as `RunListView`'s own — the
+                same `pulsering` token, the same reason (KAR-24.7 AC3, AC4).
+              -->
+              <span
+                class="workspace__history-dot"
+                :class="{ 'workspace__history-dot--live': row.status === 'running' }"
+                data-motion-token
+                aria-hidden="true"
+                :style="{ '--history-dot-colour': dotColour(row.status) }"
+              />
+              <!--
+                AC5 — the whole of "without knowing a run id": the operator
+                presses a row. The id is in the route this button pushes and
+                nowhere else.
+              -->
+              <button
+                type="button"
+                class="workspace__history-open"
+                :data-history-open="row.runId"
+                @click="openRun(row.runId)"
+              >
+                {{ row.title }}
+              </button>
+            </span>
+            <span
+              class="workspace__history-cell workspace__history-cell--status"
+              :data-history-outcome="row.runId"
+            >
+              {{ row.label }}
+            </span>
+            <span class="workspace__history-cell workspace__history-cell--cost"
+              >{{ spent(row) }}</span
+            >
+            <span class="workspace__history-cell workspace__history-cell--when"
+              >{{ when(row.createdAt) }}</span
+            >
+            <!--
+              AC4 — and the existing scrubber for it, one link away. The plan's
+              version rail is where "what did this run look like at v2" is
+              answered, and it is EPIC-17's surface rather than a second one here.
+            -->
+            <RouterLink
+              class="workspace__history-cell workspace__history-scrub"
+              :to="`/runs/${row.runId}/evolution`"
+              :data-run-scrubber="row.runId"
+            >
+              Scrubber
+            </RouterLink>
+            <!--
+              AC7 — and which gate it is waiting on, when it is waiting on one.
+              The row already says `needs a decision`; this says *which*
+              decision, which is the difference between a list you can act on
+              and one you have to open row by row.
+            -->
+            <span v-if="row.gate" class="workspace__history-gate" :data-history-gate="row.runId"
+              >waiting on {{ row.gate.node }}</span
+            >
+          </li>
+        </ul>
+      </div>
     </section>
   </div>
 </template>
@@ -315,54 +412,60 @@ function spent(row: HistoryRow): string {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
   grid-template-rows: auto minmax(16rem, 1fr) auto;
-  gap: 0.75rem;
+  gap: 12px; /* geometry — matches the dense sections' own row gap */
   height: 100%;
   min-height: 0;
 }
 
 .workspace__connectors {
-  font-size: 0.85em;
+  font-size: var(--text-sm);
 }
 
-.workspace__head,
+.workspace__head-card,
 .workspace__empty,
 .workspace__history {
   grid-column: 1 / -1;
 }
 
+.workspace__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px; /* geometry — the header's own gutter */
+}
+
 .workspace__title {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  font-size: 1.1rem;
+  gap: 8px; /* geometry — crumb-to-name gutter */
+  font-size: var(--text-lg);
   margin: 0;
 }
 
 .workspace__back {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
 .workspace__path {
-  font-family: var(--font-mono, monospace);
-  font-size: 0.8em;
-  opacity: 0.7;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
 }
 
 /* The message is always a sentence: the colour is an extra cue, never the
-   carrier (docs/12 §9.2). */
+   carrier (docs/12 §9.2). The chip beside it says the same word with a token. */
 .workspace__health {
-  color: var(--ink-warn, inherit);
-  font-size: 0.85em;
-  margin: 0.25rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px; /* geometry — chip-to-message gutter */
+  color: var(--state-blocked);
+  font-size: var(--text-sm);
+  margin: 0;
+  flex-basis: 100%;
 }
 
 .workspace__empty {
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
-  align-content: center;
-  padding: 2rem 0;
   max-width: 40rem;
 }
 
@@ -377,33 +480,92 @@ function spent(row: HistoryRow): string {
 }
 
 .workspace__history-title {
-  font-size: 0.95rem;
-  margin: 0 0 0.4rem;
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0 0 8px; /* geometry — title-to-table gap */
+}
+
+/*
+ * The bordered box direction C's row density lives in — the same shape
+ * `RunListView`'s `.run-list__table` and `TaskBoard`'s `.board__frame` use
+ * (KAR-24.7 AC4), so a run's history does not read as a third table.
+ */
+.workspace__history-table {
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+  max-height: 12rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace__history-head,
+.workspace__history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 90px 150px 90px;
+  align-items: center;
+  gap: 12px; /* geometry — the row's own gutter */
+}
+
+.workspace__history-head {
+  padding: 6px 14px; /* geometry — the head row's own padding */
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--edge-strong);
+  flex: none;
+}
+
+.workspace__history-head-cell {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
 }
 
 .workspace__history-rows {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 12rem;
   overflow: auto;
+  min-height: 0;
 }
 
 .workspace__history-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto auto;
-  gap: 0.75rem;
-  align-items: baseline;
-  padding: 0.3rem 0.25rem;
-  font-size: 0.8125rem;
+  /* ~5px vertical — direction C's row density (KAR-24.7 AC3, AC4). */
+  padding: 5px 14px;
+  font-size: var(--text-sm);
 }
 
 .workspace__history-row + .workspace__history-row {
-  border-top: 1px solid var(--edge, rgb(0 0 0 / 8%));
+  border-top: 1px solid var(--edge);
+}
+
+.workspace__history-row:hover {
+  background: var(--surface-inset);
 }
 
 .workspace__history-row[data-current="true"] {
   background: color-mix(in oklch, var(--state-running) 8%, transparent);
+}
+
+.workspace__history-cell--run {
+  display: flex;
+  align-items: center;
+  gap: 7px; /* geometry — the dot-to-title gutter */
+  min-width: 0;
+}
+
+.workspace__history-dot {
+  width: 5px; /* geometry — direction A's own run-row dot */
+  height: 5px; /* geometry — direction A's own run-row dot */
+  flex: none;
+  border-radius: 50%;
+  background: var(--history-dot-colour);
+}
+
+.workspace__history-dot--live {
+  animation: pulsering 1.8s ease-out infinite;
 }
 
 .workspace__history-open {
@@ -419,15 +581,30 @@ function spent(row: HistoryRow): string {
   white-space: nowrap;
 }
 
-.workspace__history-when,
-.workspace__history-cost {
+.workspace__history-cell--status {
+  font-family: var(--font-mono);
   color: var(--ink-muted);
+}
+
+.workspace__history-cell--when,
+.workspace__history-cell--cost {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.workspace__history-scrub {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
 }
 
 /* A sentence, not a dot: the state is carried by the words (docs/12 §9.2). */
 .workspace__history-gate {
-  color: var(--ink-warn, inherit);
-  white-space: nowrap;
+  grid-column: 1 / -1;
+  margin-top: 4px; /* geometry — the gate line's own offset from the row above it */
+  font-size: var(--text-xs);
+  color: var(--state-awaiting-human);
 }
 </style>

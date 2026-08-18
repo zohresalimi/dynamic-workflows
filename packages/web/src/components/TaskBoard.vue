@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * KAR-22.3 AC2, AC3 — the task board: the plan, as a list of work.
+ * KAR-22.3 AC2, AC3, KAR-24.7 AC3, AC4 — the task board: the plan, as a list
+ * of work, in direction C's row density.
  *
  * Verifies: EPIC-22-S36, EPIC-22-S37, EPIC-22-S38 · AC2, AC3
  *
@@ -30,9 +31,22 @@
  * state through: colour **and** glyph **and** text label, with no prop for
  * turning any of the three off (docs/12 §9.2, WCAG 1.4.1). The row's tint is an
  * additional cue layered on top of a row that already reads without it.
+ *
+ * ## KAR-24.7 — the row this file draws is not a third padding scale
+ *
+ * `RunListView` restyled the run table to direction C's row density — a
+ * ~5px-vertical row on a fixed column grid — and the gallery's "dense table
+ * row" composite (KAR-24.3 AC1) shows the same bordered box: `--edge-strong`,
+ * `--radius-lg`, a sticky mono header row, rows separated by `--edge`. This
+ * file spends exactly that language rather than inventing a second one for
+ * eight columns instead of four: the type scale, the padding rhythm and the
+ * hover/selected treatment below are read straight off those two, not
+ * re-derived. `UiChip` carries the row count next to the title, which is the
+ * same "small tinted label" every crumb and pill on this screen already is.
  */
 import type { NodeBodyVM } from './graph/node-body.ts';
 import StateChip from './StateChip.vue';
+import { UiChip } from './ui/index.ts';
 
 defineProps<{
   /**
@@ -52,10 +66,10 @@ const emit = defineEmits<{ select: [id: string] }>();
 
 <template>
   <section class="board" aria-labelledby="DeFlow-board-title" data-task-board>
-    <h2 id="DeFlow-board-title" class="board__title">
-      Tasks
-      <span class="board__count" data-board-count>{{ bodies.length }}</span>
-    </h2>
+    <div class="board__head">
+      <h2 id="DeFlow-board-title" class="board__title">Tasks</h2>
+      <UiChip variant="neutral" mono data-board-count>{{ bodies.length }}</UiChip>
+    </div>
 
     <!--
       A table, because it is one: eight facts per row, compared down columns.
@@ -63,51 +77,54 @@ const emit = defineEmits<{ select: [id: string] }>();
       headers, which are half of what makes "which model is handling each"
       answerable at all.
     -->
-    <div class="board__scroll">
-      <table class="board__table">
-        <thead>
-          <tr>
-            <th scope="col">Step</th>
-            <th scope="col">Type</th>
-            <th scope="col">State</th>
-            <th scope="col">Agent</th>
-            <th scope="col">Model</th>
-            <th scope="col">Permission</th>
-            <th scope="col">Elapsed</th>
-            <th scope="col">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="body in bodies"
-            :key="body.id"
-            class="board__row"
-            :data-board-row="body.id"
-            :data-state="body.state"
-            :data-selected="String(body.id === selected)"
-            @click="emit('select', body.id)"
-          >
-            <th scope="row" class="board__step">
-              <button type="button" class="board__open" :data-board-open="body.id">
-                <span data-board-title>{{ body.title }}</span>
-              </button>
-            </th>
-            <td data-board-type>{{ body.type }}</td>
-            <td class="board__state" data-board-state>
-              <!--
-                The one component every surface renders a state through, so the
-                board and the node body cannot describe one node two ways.
-              -->
-              <StateChip :state="body.state" />
-            </td>
-            <td data-board-provider>{{ body.provider }}</td>
-            <td data-board-model>{{ body.model }}</td>
-            <td data-board-permission>{{ body.permission }}</td>
-            <td class="board__figure" data-board-elapsed>{{ body.elapsed }}</td>
-            <td class="board__figure" data-board-cost>{{ body.cost }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="board__frame">
+      <div class="board__scroll">
+        <table class="board__table">
+          <thead>
+            <tr>
+              <th scope="col">Step</th>
+              <th scope="col">Type</th>
+              <th scope="col">State</th>
+              <th scope="col">Agent</th>
+              <th scope="col">Model</th>
+              <th scope="col">Permission</th>
+              <th scope="col">Elapsed</th>
+              <th scope="col">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="body in bodies"
+              :key="body.id"
+              class="board__row"
+              :data-board-row="body.id"
+              :data-state="body.state"
+              :data-selected="String(body.id === selected)"
+              @click="emit('select', body.id)"
+            >
+              <th scope="row" class="board__step">
+                <button type="button" class="board__open" :data-board-open="body.id">
+                  <span data-board-title>{{ body.title }}</span>
+                </button>
+              </th>
+              <td class="board__mono" data-board-type>{{ body.type }}</td>
+              <td class="board__state" data-board-state>
+                <!--
+                  The one component every surface renders a state through, so
+                  the board and the node body cannot describe one node two
+                  ways.
+                -->
+                <StateChip :state="body.state" />
+              </td>
+              <td class="board__mono" data-board-provider>{{ body.provider }}</td>
+              <td class="board__mono" data-board-model>{{ body.model }}</td>
+              <td data-board-permission>{{ body.permission }}</td>
+              <td class="board__figure" data-board-elapsed>{{ body.elapsed }}</td>
+              <td class="board__figure" data-board-cost>{{ body.cost }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 </template>
@@ -116,67 +133,84 @@ const emit = defineEmits<{ select: [id: string] }>();
 .board {
   display: grid;
   grid-template-rows: auto 1fr;
+  gap: 8px; /* geometry — title-to-table gap, matching RunListView's own */
   min-height: 0;
 }
 
-.board__title {
+.board__head {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
-  font-size: 0.95rem;
-  margin: 0 0 0.4rem;
+  gap: 8px; /* geometry — title-to-count gutter */
 }
 
-.board__count {
-  font-size: 0.8em;
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums;
+.board__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+/*
+ * The bordered box direction C's row density lives in — the same shape
+ * `RunListView`'s `.run-list__table` and the gallery's `.gallery__table`
+ * composite use, not a third one drawn for eight columns (KAR-24.7 AC4).
+ */
+.board__frame {
+  min-height: 0;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
 }
 
 .board__scroll {
   overflow: auto;
-  min-height: 0;
+  max-height: 100%;
 }
 
 .board__table {
   border-collapse: collapse;
-  font-size: 0.8125rem;
   width: 100%;
-}
-
-.board__table th {
-  text-align: left;
-  font-weight: 600;
 }
 
 .board__table thead th {
   position: sticky;
   top: 0;
-  background: var(--surface-raised, canvas);
-  border-bottom: 1px solid var(--edge, rgb(0 0 0 / 15%));
-  padding: 0.3rem 0.5rem;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--edge-strong);
+  padding: 6px 8px; /* geometry — the head row's own padding */
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
   white-space: nowrap;
 }
 
 .board__table td,
 .board__step {
-  padding: 0.3rem 0.5rem;
+  padding: 5px 8px; /* geometry — direction C's ~5px vertical row density */
   vertical-align: middle;
   white-space: nowrap;
 }
 
 .board__row + .board__row td,
 .board__row + .board__row .board__step {
-  border-top: 1px solid var(--edge, rgb(0 0 0 / 8%));
+  border-top: 1px solid var(--edge);
 }
 
-/*
- * The tint is an *additional* cue: every row already carries the state as a
- * glyph and as a word inside `StateChip`, so a reader who cannot see the hue
- * loses nothing at all here (docs/12 §9.2).
- */
 .board__row {
+  cursor: pointer;
+  /*
+   * The tint is an *additional* cue: every row already carries the state as a
+   * glyph and as a word inside `StateChip`, so a reader who cannot see the hue
+   * loses nothing at all here (docs/12 §9.2).
+   */
   border-left: 3px solid var(--state-pending);
+}
+
+.board__row:hover {
+  background: var(--surface-inset);
 }
 
 .board__row[data-state="running"] {
@@ -210,9 +244,19 @@ const emit = defineEmits<{ select: [id: string] }>();
   padding: 0;
   text-align: left;
   cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.board__mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
 }
 
 .board__figure {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 </style>
