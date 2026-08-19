@@ -95,9 +95,9 @@ const T0 = 1_754_308_400_000;
 const EPOCH = 5;
 
 /**
- * KAR-15.3 AC10 — what `runs=*` delivers, and what it does not.
+ * KAR-15.3 AC10 / KAR-25.7 — what `runs=*` delivers, and what it does not.
  *
- * The same four kinds `packages/daemon/src/http/sse.ts` admits. Kept in step by
+ * The same five kinds `packages/daemon/src/http/sse.ts` admits. Kept in step by
  * `packages/daemon/test/integration/stream-contract.test.ts`, which asserts the
  * membership against a real DeFlowd; this copy exists so a browser spec can
  * watch an idle global tab receive zero `node.progress` frames.
@@ -107,6 +107,7 @@ const GLOBAL_TOPIC_KINDS: readonly string[] = [
   'run.completed',
   'run.aborted',
   'human.requested',
+  'human.responded',
 ];
 
 /** A payload each kind's schema in @DeFlow/core actually accepts. */

@@ -28,6 +28,16 @@ export const RUN_FEED: InjectionKey<RunFeedFactory> = Symbol('DeFlow.runFeed');
 /**
  * The default factory: the real feed, fetched in a chunk of its own.
  *
+ * KAR-25.7 — this is `../ledger/shared-hub.ts`'s `watchRun`, not
+ * `../ledger/feed.ts`'s `openRunFeed`: a run panel opened this way joins the
+ * tab's one shared connection instead of opening a private one, which is what
+ * lets a run screen and the topbar's persistent approvals subscription
+ * (`./useApprovals.ts`) coexist without doubling the tab's socket count. See
+ * `../ledger/shared-hub.ts`'s own header comment for why that is not optional.
+ * `openRunFeed` itself is untouched and still opens a private connection —
+ * `test/integration/gate-answer-fanout.test.ts` uses it to model two separate
+ * browser tabs, which is the one case where a second connection is correct.
+ *
  * ## Why this is a dynamic import
  *
  * The transport is **data-path code, not shell code**. `../ledger/feed.ts`
@@ -60,9 +70,15 @@ export const openLazyRunFeed: RunFeedFactory = (options: RunFeedOptions): RunFee
   let opened: RunFeed | null = null;
   let closed = false;
 
-  const ready = import('../ledger/feed.ts').then(async ({ openRunFeed }) => {
+  const ready = import('../ledger/shared-hub.ts').then(async ({ watchRun }) => {
     if (closed) return;
-    opened = openRunFeed(options);
+    const watch = watchRun(options.runId, options.sink, {
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+      ...(options.token === undefined ? {} : { token: options.token }),
+      ...(options.build === undefined ? {} : { build: options.build }),
+      ...(options.onStatus === undefined ? {} : { onStatus: options.onStatus }),
+    });
+    opened = { runId: watch.runId, ready: watch.ready, close: () => watch.close() };
     await opened.ready;
   });
 

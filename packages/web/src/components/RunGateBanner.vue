@@ -20,21 +20,25 @@
  *    before pressing anything (AC3). Verbatim: re-rendering it from
  *    `run.created.spec` would be a second renderer of one document, and the two
  *    would disagree the first time a run was amended.
- * 2. **Offering every option the daemon offered, in its words.** The labels are
- *    `SPEC_APPROVAL_OPTIONS`' and the plan's; nothing here rewrites them (R4).
- * 3. **Answering through one path.** `answerGate` → `gateAnswerRequest`, which
- *    is the same function `deflow answer` routes with. The F1.3 gate's `edit`
- *    is the one option no surface can answer by naming it, so it is rendered
- *    unsubmittable with `SPEC_EDIT_NEEDS_A_DOCUMENT` beside it rather than
- *    hidden — the daemon offered four, and an operator who read the terminal
- *    block would go looking for the fourth (AC4).
+ * 2. **Offering every option the daemon offered, in its words**, and
+ * 3. **answering through one path** — `./gate/GateOptions.vue`'s job since
+ *    KAR-25.7. The F1.3 gate's `edit` is the one option no surface can answer
+ *    by naming it, rendered unsubmittable with `SPEC_EDIT_NEEDS_A_DOCUMENT`
+ *    beside it rather than hidden — the daemon offered four, and an operator
+ *    who read the terminal block would go looking for the fourth (AC4). This
+ *    file owned both of these alone through KAR-22.5; KAR-25.7 pulled them
+ *    into `GateOptions` so the topbar's approvals control and the node
+ *    inspector could offer the same two things without copying this file's
+ *    ~60 lines twice. Responsibility 4 below is what every extraction still
+ *    inherits.
  * 4. **Nothing about whether the gate is still open.** That is the ledger's:
  *    this renders while `gate` is non-null, and `gate` is
  *    `useRunStore().openGate`, the tab's fold of
  *    `human.requested`/`human.responded`. So an answer from the CLI, from
  *    another tab or from this one clears the panel by exactly the same route —
  *    the `human.responded` frame — and there is no "did my own request
- *    succeed" special case to get wrong (AC5, AC6).
+ *    succeed" special case to get wrong (AC5, AC6). `GateOptions` itself keeps
+ *    no such flag either — see its own header comment on `stale`.
  *
  * Props rather than a store read, unlike the provider banner: the gate is
  * needed by a component test that renders it against four fixed options, and a
@@ -47,10 +51,7 @@
  * Verifies: EPIC-19-S82, EPIC-22-S58, EPIC-22-S59, EPIC-22-S61, EPIC-22-S62,
  * EPIC-22-S65, EPIC-22-S67 · KAR-19.12 AC6 · KAR-22.5 AC1–AC6, AC8
  */
-import { gateAnswerRequest, SPEC_EDIT_NEEDS_A_DOCUMENT } from '@DeFlow/core';
-import { ref, watch } from 'vue';
-import { answerGate } from '../api/answer-gate.ts';
-import { useApiClient } from '../api/provide.ts';
+import GateOptions from './gate/GateOptions.vue';
 
 const props = defineProps<{
   readonly runId: string;
@@ -61,70 +62,6 @@ const props = defineProps<{
     readonly options: readonly { readonly id: string; readonly label: string }[];
   } | null;
 }>();
-
-const api = useApiClient();
-
-/** `reject`'s reason, `inject`'s guidance, or a note on any option. */
-const note = ref('');
-/** The daemon's own sentence when it refused, never a paraphrase of one. */
-const error = ref<string | null>(null);
-/**
- * Whether the daemon has told us this gate is already answered.
- *
- * The options come off the screen when it has (AC6). The panel itself stays,
- * carrying the explanation, until the `human.responded` frame arrives and the
- * store reports no open gate — which is the same thing clearing it for every
- * other tab.
- */
-const stale = ref(false);
-/** The option in flight, so a double-press cannot send a second answer. */
-const sending = ref<string | null>(null);
-
-// A different gate is a different question: nothing about the last one carries
-// over, least of all a refusal that was about a decision already made.
-watch(
-  () => props.gate?.node ?? null,
-  () => {
-    note.value = '';
-    error.value = null;
-    stale.value = false;
-    sending.value = null;
-  },
-);
-
-/** Whether any endpoint answers this gate with this option. @see AC4. */
-const answerable = (optionId: string): boolean =>
-  props.gate !== null &&
-  gateAnswerRequest({ runId: props.runId, gate: props.gate.node, optionId }) !== null;
-
-async function answer(optionId: string): Promise<void> {
-  const gate = props.gate;
-  if (gate === null || stale.value || sending.value !== null || !answerable(optionId)) return;
-
-  sending.value = optionId;
-  error.value = null;
-  try {
-    const outcome = await answerGate(api, {
-      runId: props.runId,
-      gate: gate.node,
-      optionId,
-      // The empty string is passed on rather than withheld: a rejection with no
-      // reason is refused by the route in the route's own words, and a
-      // client-side guess at what it wanted would be a second wording of one
-      // rule (docs/11 §11).
-      text: note.value.trim(),
-    });
-    if (outcome.ok) return;
-    error.value = outcome.message;
-    // A gate somebody already answered is not a retry. The first answer stands,
-    // and every button on this panel is now about a decision that is made.
-    if (outcome.code === 'already_answered') stale.value = true;
-  } catch (thrown) {
-    error.value = thrown instanceof Error ? thrown.message : String(thrown);
-  } finally {
-    sending.value = null;
-  }
-}
 
 /**
  * The command that answers this gate, spelled so it can be selected and pasted.
@@ -157,38 +94,7 @@ const answerCommand = (): string =>
     -->
     <pre v-if="gate.prompt" class="run-gate__prompt" data-run-gate-prompt>{{ gate.prompt }}</pre>
 
-    <ul v-if="!stale" class="run-gate__options">
-      <li v-for="option in gate.options" :key="option.id" class="run-gate__option">
-        <button
-          type="button"
-          class="run-gate__button"
-          :data-gate-option="option.id"
-          :disabled="!answerable(option.id) || sending !== null"
-          @click="answer(option.id)"
-        >
-          <code class="run-gate__id">{{ option.id }}</code>
-          <span>{{ option.label }}</span>
-        </button>
-        <!--
-          AC4 — an option this surface cannot carry says so, in the one exported
-          sentence `deflow answer` prints for it.
-        -->
-        <span
-          v-if="!answerable(option.id)"
-          class="run-gate__why"
-          :data-gate-option-reason="option.id"
-        >
-          {{ SPEC_EDIT_NEEDS_A_DOCUMENT }}
-        </span>
-      </li>
-    </ul>
-
-    <label v-if="!stale" class="run-gate__note">
-      <span class="run-gate__note-label">A note, or the reason for a rejection</span>
-      <textarea v-model="note" class="run-gate__note-box" rows="2" data-gate-text></textarea>
-    </label>
-
-    <p v-if="error" class="run-gate__error" data-gate-error role="alert">{{ error }}</p>
+    <GateOptions :run-id="runId" :gate="gate" />
 
     <p class="run-gate__answer">Or from a terminal: <code>{{ answerCommand() }}</code></p>
   </section>
@@ -230,70 +136,6 @@ const answerCommand = (): string =>
   background: var(--surface-sunken, transparent);
   border-radius: 0.25rem;
   padding: 0.5rem;
-}
-
-.run-gate__options {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.25rem;
-}
-
-.run-gate__option {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.run-gate__button {
-  display: grid;
-  grid-template-columns: 6rem 1fr;
-  gap: 0.5rem;
-  align-items: baseline;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 1px solid var(--edge, rgb(0 0 0 / 12%));
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  cursor: pointer;
-}
-
-.run-gate__button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.run-gate__id {
-  font-family: var(--font-mono, monospace);
-}
-
-/* Always a sentence: the dimmed button is an extra cue, never the carrier
-   (docs/12 §9.2). */
-.run-gate__why {
-  color: var(--ink-muted);
-  padding-left: 0.5rem;
-}
-
-.run-gate__note {
-  display: grid;
-  gap: 0.125rem;
-}
-
-.run-gate__note-label {
-  color: var(--ink-muted);
-}
-
-.run-gate__note-box {
-  font: inherit;
-  width: 100%;
-  resize: vertical;
-}
-
-.run-gate__error {
-  margin: 0;
-  color: var(--ink-warn, inherit);
 }
 
 .run-gate__answer {

@@ -51,15 +51,20 @@ suite('parseRuns — the filter is decided on the server (AC10)', () => {
     expect(filter.kinds).toEqual([]);
   });
 
-  it('maps `*` to the four lifecycle kinds and to no run at all', () => {
+  it('maps `*` to the five lifecycle kinds and to no run at all', () => {
     const filter = parseRuns(GLOBAL_TOPIC);
     expect(filter.global).toBe(true);
     expect(filter.runs).toEqual([]);
+    // KAR-25.7 — `human.responded` joined the topic: a gate that opened
+    // globally has to be able to close globally too, or the approvals
+    // control (and every other cross-run surface) never learns it was
+    // answered. See the module docblock on `GLOBAL_TOPIC_KINDS`.
     expect(filter.kinds).toEqual([
       'run.created',
       'run.completed',
       'run.aborted',
       'human.requested',
+      'human.responded',
     ]);
     expect(filter.kinds).toEqual(GLOBAL_TOPIC_KINDS);
   });

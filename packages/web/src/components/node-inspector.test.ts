@@ -16,6 +16,14 @@
  * `document.body` and is queried from `document` rather than from the mounted
  * container — the same way `../views/plan-graph.test.ts` reaches it.
  */
+import {
+  EVENT_SCHEMAS,
+  type Event,
+  gateAnswerRequest,
+  parseEvent,
+  SPEC_APPROVAL_OPTIONS,
+  SPEC_GATE_NODE,
+} from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { userEvent } from 'vitest/browser';
@@ -26,6 +34,7 @@ import {
   repairAttempts,
 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+import { createClient } from '../api/client.ts';
 
 /** KAR-25.1 — the run views are project-scoped now; the value is never
  * asserted on, only threaded through so the named route resolves. */
@@ -42,6 +51,19 @@ const all = (selector: string): HTMLElement[] => [
 ];
 
 const panel = (): HTMLElement => one('[data-overlay="inspector"]') as HTMLElement;
+
+/**
+ * Scoped to the inspector's own subtree — needed once KAR-25.7's gate section
+ * exists, because `App.vue`'s shell band renders `RunGateBanner` for the
+ * run's own open gate at the same time this panel is open, and it uses the
+ * same `[data-gate-option]` markup (both mount `../gate/GateOptions.vue`).
+ * The global `one`/`all` above would find both.
+ */
+const inGate = (selector: string): HTMLElement | null =>
+  panel().querySelector<HTMLElement>(`[data-inspector-gate] ${selector}`);
+const allInGate = (selector: string): HTMLElement[] => [
+  ...panel().querySelectorAll<HTMLElement>(`[data-inspector-gate] ${selector}`),
+];
 
 /**
  * Folds a recording through the store and opens the inspector on `nodeId`.
@@ -460,5 +482,188 @@ suite('KAR-17.3 — the header identifies what actually ran (AC1)', () => {
     const config = one('[data-inspector-config]');
     expect(config?.querySelector('[data-field="permission"]')?.textContent).toBeTruthy();
     expect(config?.querySelector('[data-field="path-scopes"]')?.textContent).toContain('src/**');
+  });
+});
+
+/**
+ * KAR-25.7 AC4, AC6, AC7, EPIC-25-S46, EPIC-25-S47 — the canvas stops being a
+ * dead end for a node waiting on a human decision.
+ *
+ * Built from hand-written events rather than a fixture recording: what is
+ * under test is a node suspended on the F1.3 spec gate, which is the one
+ * waiting node whose options include the unsubmittable `edit` — exactly
+ * `RunGateBanner.vue`'s own KAR-22.5 AC4 case, on a third surface.
+ */
+const T0 = 1_786_800_000_000;
+
+function gateFrame(kind: string, seq: number, payload: unknown): Event {
+  const result = parseEvent({
+    seq,
+    runId: HAPPY_PATH_RUN,
+    ts: T0,
+    kind,
+    v: (EVENT_SCHEMAS as Record<string, { v: number }>)[kind]?.v ?? 1,
+    epoch: 1,
+    payload,
+  });
+  if (result.status !== 'ok') {
+    throw new Error(`the spec built an envelope this build cannot read: ${JSON.stringify(result)}`);
+  }
+  return result.event;
+}
+
+/** Opens the inspector on the F1.3 spec gate node, waiting with the daemon's
+ * own four options. Not part of `openInspector` above: that helper folds a
+ * whole recording, and this needs exactly the two events that put a node on
+ * an open gate — `node.suspended` (so the node exists on the canvas at all,
+ * KAR-19.12's own reason the spec-approval node appears in no compiled plan)
+ * and `human.requested`. */
+async function openWaitingInspector(): Promise<{ store: ReturnType<typeof useRunStore> }> {
+  shell = await mountShell({
+    at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN } },
+  });
+  setActivePinia(shell.pinia);
+  const store = useRunStore(shell.pinia);
+
+  store.applyEvent(
+    gateFrame('node.suspended', 1, { node: SPEC_GATE_NODE, until: { kind: 'human' } }),
+  );
+  store.applyEvent(
+    gateFrame('human.requested', 2, {
+      node: SPEC_GATE_NODE,
+      prompt: 'The change is ready. Ship it?',
+      options: SPEC_APPROVAL_OPTIONS.map((option) => ({ ...option })),
+    }),
+  );
+
+  shell.ui.setNodes(
+    [...store.plan.nodes.values()].map((node) => ({
+      id: node.id,
+      title: node.title,
+      status: node.status,
+    })),
+  );
+  shell.ui.selectNode(SPEC_GATE_NODE);
+  shell.ui.inspectSelected('inspector');
+
+  await expect.poll(() => one('[data-overlay="inspector"]')).not.toBeNull();
+  return { store };
+}
+
+suite('EPIC-25-S46 — a waiting node is answerable from the inspector', () => {
+  it('offers the gate section for the selected node, once it is waiting', async () => {
+    await openWaitingInspector();
+
+    expect(one('[data-inspector-gate]')).not.toBeNull();
+    expect(allInGate('[data-gate-option]').map((button) => button.dataset.gateOption)).toEqual(
+      SPEC_APPROVAL_OPTIONS.map((option) => option.id),
+    );
+  });
+
+  it('answers through gateAnswerRequest, the same route deflow answer uses', async () => {
+    const sent: { pathname: string; body: unknown }[] = [];
+    shell?.unmount();
+    shell = await mountShell({
+      at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN } },
+      client: createClient({
+        baseUrl: 'http://daemon.test/api',
+        token: () => 'test-token-Aa0_-Bb1',
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = new URL(typeof input === 'string' ? input : String(input));
+          // `AppRail`/`ProjectSwitcher` fetch on mount regardless of route
+          // (their own docblocks) — only the POST this test presses a button
+          // for is what it means by "sent".
+          if ((init?.method ?? 'GET').toUpperCase() === 'POST') {
+            const raw = init?.body;
+            sent.push({
+              pathname: url.pathname,
+              body: typeof raw === 'string' && raw !== '' ? JSON.parse(raw) : null,
+            });
+          }
+          if (url.pathname === '/api/providers') {
+            return new Response(JSON.stringify([]), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          if (url.pathname === '/api/projects') {
+            return new Response(JSON.stringify({ projects: [] }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        },
+      }),
+    });
+    setActivePinia(shell.pinia);
+    const store = useRunStore(shell.pinia);
+    store.applyEvent(
+      gateFrame('node.suspended', 1, { node: SPEC_GATE_NODE, until: { kind: 'human' } }),
+    );
+    store.applyEvent(
+      gateFrame('human.requested', 2, {
+        node: SPEC_GATE_NODE,
+        prompt: 'The change is ready. Ship it?',
+        options: SPEC_APPROVAL_OPTIONS.map((option) => ({ ...option })),
+      }),
+    );
+    shell.ui.setNodes(
+      [...store.plan.nodes.values()].map((node) => ({
+        id: node.id,
+        title: node.title,
+        status: node.status,
+      })),
+    );
+    shell.ui.selectNode(SPEC_GATE_NODE);
+    shell.ui.inspectSelected('inspector');
+    await expect.poll(() => one('[data-overlay="inspector"]')).not.toBeNull();
+
+    const expected = gateAnswerRequest({
+      runId: HAPPY_PATH_RUN,
+      gate: SPEC_GATE_NODE,
+      optionId: 'approve',
+    });
+    await userEvent.click(inGate('[data-gate-option="approve"]') as HTMLElement);
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]?.pathname).toBe(expected?.path);
+    expect(sent[0]?.body).toEqual(expected?.body);
+  });
+});
+
+suite(
+  'EPIC-25-S47 — an option no surface can submit is shown unsubmittable, with its reason',
+  () => {
+    it('shows all four options and disables edit, with the daemon’s own sentence', async () => {
+      await openWaitingInspector();
+
+      expect(allInGate('[data-gate-option]')).toHaveLength(4);
+      const edit = inGate('[data-gate-option="edit"]') as HTMLButtonElement;
+      expect(edit.disabled).toBe(true);
+      expect(inGate('[data-gate-option-reason="edit"]')?.textContent).toContain(
+        'DeFlow.taskspecdraft.v1',
+      );
+    });
+  },
+);
+
+suite('KAR-25.7 AC7 — answering twice is not possible, from the ledger, not a local flag', () => {
+  it('removes the gate section once human.responded arrives, with no flag on this panel', async () => {
+    const { store } = await openWaitingInspector();
+    expect(one('[data-inspector-gate]')).not.toBeNull();
+
+    store.applyEvent(
+      gateFrame('human.responded', 3, {
+        node: SPEC_GATE_NODE,
+        optionId: 'approve',
+        at: new Date(T0 + 60_000).toISOString(),
+        by: 'operator',
+      }),
+    );
+
+    await expect.poll(() => one('[data-inspector-gate]')).toBeNull();
   });
 });

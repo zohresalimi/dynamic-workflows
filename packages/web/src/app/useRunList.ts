@@ -33,14 +33,29 @@ import { type RunListRow, useRunListStore } from '../stores/useRunListStore.ts';
 
 export const RUNS_FEED: InjectionKey<RunsFeedFactory> = Symbol('DeFlow.runsFeed');
 
-/** The default factory: the real global feed, in a chunk of its own. */
+/**
+ * The default factory: the real global feed, in a chunk of its own.
+ *
+ * KAR-25.7 — this is `../ledger/shared-hub.ts`'s `watchLifecycle`, not
+ * `../ledger/runs-feed.ts`'s `openRunsFeed`: a lifecycle listener opened this
+ * way joins the tab's one shared connection rather than opening a private
+ * one. `./useApprovals.ts` injects this exact same factory for exactly that
+ * reason — the run list and the approvals store are two listeners on one
+ * socket, never two sockets. See `../ledger/shared-hub.ts`'s header comment.
+ */
 export const openLazyRunsFeed: RunsFeedFactory = (options): RunsFeed => {
   let opened: RunsFeed | null = null;
   let closed = false;
 
-  const ready = import('../ledger/runs-feed.ts').then(async ({ openRunsFeed }) => {
+  const ready = import('../ledger/shared-hub.ts').then(async ({ watchLifecycle }) => {
     if (closed) return;
-    opened = openRunsFeed(options);
+    const watch = watchLifecycle(options.onLifecycle, {
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+      ...(options.token === undefined ? {} : { token: options.token }),
+      ...(options.build === undefined ? {} : { build: options.build }),
+      ...(options.onStatus === undefined ? {} : { onStatus: options.onStatus }),
+    });
+    opened = { ready: watch.ready, close: () => watch.close() };
     await opened.ready;
   });
 

@@ -40,13 +40,15 @@
  *    and holds no array of nodes: the board's rows and the graph's bodies are
  *    one object from `../app/useNodeBodies.ts` (AC3).
  */
-import type { RunStatus } from '@DeFlow/core';
+import { type PendingGate, type RunStatus, SPEC_GATE_NODE } from '@DeFlow/core';
 import { UserRound } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { computed, inject, onScopeDispose, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
+import { readToken } from '../api/token.ts';
 import { COMPOSER_OVERLAY } from '../app/ids.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
+import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import TaskBoard from '../components/TaskBoard.vue';
 import { UiButton, UiCard, UiChip, UiEmptyState } from '../components/ui/index.ts';
 import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
@@ -78,14 +80,20 @@ interface HistoryRow {
   readonly createdAt: string;
   readonly cost: { readonly run?: { readonly costUsd?: number | null } } | null;
   /**
-   * KAR-22.5 AC7 — the gate this run has stopped on, or `null`.
+   * KAR-22.5 AC7, KAR-25.7 — the gate this run has stopped on, or `null`.
    *
    * `pendingGate`'s own answer, arriving on the row because `runEntry` already
    * carries it for the global run list (KAR-19.12 AC6). No second query and no
    * second vocabulary: a run that wants you is findable here without being
    * opened.
+   *
+   * KAR-25.7 widens this from `{ node: string }` to the daemon's full
+   * `PendingGate`: the options were already on the wire (`runEntry` calls the
+   * same `pendingGate` the run list's row does) and this type simply dropped
+   * them. Carrying them is what lets a waiting row answer through
+   * `../components/gate/GateOptions.vue` without a second request.
    */
-  readonly gate: { readonly node: string } | null;
+  readonly gate: PendingGate | null;
 }
 
 /**
@@ -131,6 +139,106 @@ const nothingHasRun = computed(() => loaded.value && history.value.length === 0)
 /** The bodies — the same object the graph draws (AC3). */
 const bodies = useNodeBodies();
 const rows = computed(() => [...bodies.value.values()]);
+
+/**
+ * KAR-25.7 AC3 — the one place `human.responded` reaches this list.
+ *
+ * `history` has no subscription of any kind before this story — one
+ * `GET /api/projects/:id/runs`, and a waiting row's gate stayed marked
+ * "waiting" for the rest of the tab's life, an answer notwithstanding. The
+ * `RUNS_FEED` factory this calls is the same one `../app/useRunList.ts`
+ * injects and `../app/useApprovals.ts` reuses: in production all three are
+ * listeners on the one shared `?runs=*` connection
+ * (`../ledger/shared-hub.ts`), so this is not a second socket, only a second
+ * fold of a frame that was already arriving.
+ *
+ * Both halves of a gate's life are read here, `human.requested` as well as
+ * `human.responded`. An earlier revision folded only the closing frame, on the
+ * stated grounds that "the other four kinds on the topic say nothing about a
+ * gate" — which is wrong about exactly one of them: `human.requested` *is* the
+ * frame that announces a gate. The effect was a narrower version of the defect
+ * this story exists to remove: an operator sitting on a project's history when
+ * one of its runs stopped for a decision saw nothing, because the row only ever
+ * reflected whatever `GET /api/projects/:id/runs` returned at load. The other
+ * three kinds are run statuses, and this view has no status word of its own to
+ * keep in step — `row.label` is the daemon's.
+ */
+const openRunsFeed = inject(RUNS_FEED, openLazyRunsFeed);
+let closeRunsFeed: (() => void) | null = null;
+
+/**
+ * The gate a `human.requested` frame opened, in the shape the daemon's own
+ * `pendingGate` puts on `GET /api/projects/:id/runs` — so a row updated live
+ * and a row loaded from that fetch are the same shape, and
+ * `../components/gate/GateOptions.vue` cannot tell them apart.
+ *
+ * `prompt`, `requestedSeq` and `reason` come off the frame when it carries
+ * them and default to the empty answer when it does not, rather than being
+ * invented: a live row that renders a shorter prompt than the fetched one
+ * would is a row that is honest about what the frame said.
+ */
+function gateFromFrame(payload: unknown): PendingGate | null {
+  const frame = payload as {
+    readonly node?: unknown;
+    readonly prompt?: unknown;
+    readonly seq?: unknown;
+    readonly reason?: unknown;
+    readonly options?: readonly { readonly id?: unknown; readonly label?: unknown }[];
+  };
+  if (typeof frame.node !== 'string') return null;
+
+  return {
+    node: frame.node as PendingGate['node'],
+    prompt: typeof frame.prompt === 'string' ? frame.prompt : '',
+    options: (frame.options ?? [])
+      .filter(
+        (option): option is { id: string; label: string } =>
+          typeof option.id === 'string' && typeof option.label === 'string',
+      )
+      .map((option) => ({ id: option.id, label: option.label })),
+    requestedSeq: typeof frame.seq === 'number' ? frame.seq : 0,
+    specApproval: frame.node === SPEC_GATE_NODE,
+    reason: (frame.reason ?? null) as PendingGate['reason'],
+  };
+}
+
+/** Replace one row's `gate`, leaving every other row alone. */
+function setHistoryGate(runId: string, at: number, gate: PendingGate | null): void {
+  const next = [...history.value];
+  const current = next[at];
+  if (current === undefined) return;
+  next[at] = { ...current, gate };
+  history.value = next;
+}
+
+function applyHistoryGate(event: {
+  readonly kind: string;
+  readonly runId: string;
+  readonly payload: unknown;
+}): void {
+  if (event.kind === 'human.requested') {
+    const gate = gateFromFrame(event.payload);
+    if (gate === null) return;
+    const at = history.value.findIndex((row) => row.runId === event.runId);
+    if (at === -1) return; // A run this project's list has not fetched yet.
+    setHistoryGate(event.runId, at, gate);
+    return;
+  }
+
+  if (event.kind !== 'human.responded') return;
+  const node = (event.payload as { readonly node?: unknown }).node;
+  if (typeof node !== 'string') return;
+
+  // Matched by node, not just by run: a run with two open gates keeps the one
+  // that was not answered.
+  const at = history.value.findIndex((row) => row.runId === event.runId && row.gate?.node === node);
+  if (at === -1) return;
+  setHistoryGate(event.runId, at, null);
+}
+
+const runsFeed = openRunsFeed({ token: readToken, onLifecycle: applyHistoryGate });
+closeRunsFeed = () => runsFeed.close();
+onScopeDispose(() => closeRunsFeed?.());
 
 async function load(id: string): Promise<void> {
   const [projects, runs] = await Promise.all([

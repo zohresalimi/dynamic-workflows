@@ -12,13 +12,19 @@
  * this component's whole job is new markup and tokenised styling around the
  * same pieces.
  *
- * **It owns no request and no store mutation.** `awaitingOperator` and `task`
- * arrive as props because the fetch behind the first lives in `App.vue` and
- * must stay there — a component that fetches is a component that fetches
- * twice the day something else mounts it (`App.vue`'s own words for
- * `loadApprovals`). `toggle-theme` and `open-composer` are emitted rather than
+ * **It owns no request and no store mutation.** `task` arrives as a prop
+ * because the fetch behind it lives in `App.vue` and must stay there — a
+ * component that fetches is a component that fetches twice the day something
+ * else mounts it. `toggle-theme` and `open-composer` are emitted rather than
  * actioned here, because `useTheme()` and `ui.openOverlay()` are `App.vue`'s
  * to call; this component only says which button was pressed.
+ *
+ * **KAR-25.7 — the approvals chip became `./ApprovalsMenu.vue`.** It used to
+ * be a bare `UiChip` fed an `awaitingOperator` count prop, the way `task` still
+ * arrives. It reads `useApprovalsStore()` for itself instead, the same
+ * exception `RunStatusPill.vue` already makes to "no store mutation" above —
+ * reading a store is not mutating one, and the fetch that fills it is still
+ * `App.vue`'s (`../../app/useApprovals.ts`), not this bar's.
  *
  * **The search field is hand-rolled, not `UiField`.** `UiField` always
  * renders a visible mono label above the input (KAR-24.2's own contract for
@@ -72,7 +78,7 @@
  *   a Vue Router class this stylesheet would otherwise have to reach for by
  *   name.
  */
-import { BellRing, Moon, Search, Sun } from 'lucide-vue-next';
+import { Moon, Search, Sun } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { type RouteLocationRaw, RouterLink, useRoute } from 'vue-router';
 import { SEARCH_INPUT_ID } from '../../app/ids.ts';
@@ -80,12 +86,11 @@ import type { SubmittedTask } from '../../ledger/projections/index.ts';
 import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
 import RunProviderBanner from '../RunProviderBanner.vue';
 import RunTaskBanner from '../RunTaskBanner.vue';
-import { UiButton, UiChip } from '../ui/index.ts';
+import { UiButton } from '../ui/index.ts';
+import ApprovalsMenu from './ApprovalsMenu.vue';
 import RunStatusPill from './RunStatusPill.vue';
 
 const props = defineProps<{
-  /** `App.vue`'s own count — this component renders it and issues no request. */
-  readonly awaitingOperator: number;
   readonly isDark: boolean;
   /** `run.submittedTask`, passed down rather than read here — see the header
    * comment on why `RunProviderBanner`'s sibling reads its own store while
@@ -241,16 +246,7 @@ function isActive(itemName: string): boolean {
       <component :is="isDark ? Sun : Moon" :size="16" aria-hidden="true" />
     </button>
 
-    <UiChip
-      v-if="awaitingOperator > 0"
-      class="topbar__approvals"
-      variant="warn"
-      :data-approvals="awaitingOperator"
-      :aria-label="`${awaitingOperator} waiting on you`"
-    >
-      <BellRing :size="14" aria-hidden="true" />
-      {{ awaitingOperator }}
-    </UiChip>
+    <ApprovalsMenu />
 
     <label class="topbar__search">
       <Search class="topbar__search-icon" :size="15" aria-hidden="true" />

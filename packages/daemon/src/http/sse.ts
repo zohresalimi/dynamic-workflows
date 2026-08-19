@@ -29,14 +29,25 @@ import type { StoredEvent } from '@DeFlow/ledger';
 import { asRunId } from './ledger-view.ts';
 
 /**
- * KAR-13.2 AC5 / KAR-15.3 AC10 — `runs=*`, and what it is *not*.
+ * KAR-13.2 AC5 / KAR-15.3 AC10 / KAR-25.7 — `runs=*`, and what it is *not*.
  *
  * It is not "every event of every run". It is the low-volume global lifecycle
- * topic, membership exactly four kinds, which is what the run list and the
+ * topic, membership exactly five kinds, which is what the run list and the
  * cross-run approval queue need and is deliberately nothing else. An idle tab
  * subscribed to it receives a `human.requested` from any run and not one
  * `node.progress` frame from the noisy run next to it — which is the whole
  * reason one connection per tab is affordable (docs/11 §2).
+ *
+ * `human.responded` joined on 2026-08-19, and it is the fifth and last kind
+ * for a specific reason: `human.requested` was already here, so a gate opens
+ * globally, but before this it could only close on the one tab that had
+ * subscribed the run itself. Every cross-run surface — the topbar's
+ * approvals control, a waiting row in the run list — announces a gate from
+ * this topic and had no way to hear it was answered from anywhere but a
+ * refetch, which is the probe this topic exists to avoid. One response event
+ * per gate, same low volume as the request it closes: this is not an opening
+ * for `node.progress` or any other per-node kind, which is what the test
+ * beside this constant pins down.
  */
 export const GLOBAL_TOPIC = '*';
 
@@ -45,6 +56,7 @@ export const GLOBAL_TOPIC_KINDS: readonly string[] = [
   'run.completed',
   'run.aborted',
   'human.requested',
+  'human.responded',
 ];
 
 /**
