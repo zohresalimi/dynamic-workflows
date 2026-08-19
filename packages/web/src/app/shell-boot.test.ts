@@ -39,9 +39,18 @@ function approvalsDaemon(sent: Sent[], items: number) {
       return Promise.resolve(
         new Response(
           JSON.stringify({
+            // KAR-25.7 — `human-node`, the real `ApprovalKind` a waiting gate
+            // carries, with the `node`/`prompt` fields the approvals control
+            // now reads. `kind: 'human'` (this fixture's shape before this
+            // story) named no real kind at all and would be filtered out by
+            // `useApprovalsStore`'s hydrate, which only keeps the two kinds
+            // `gateAnswerRequest` can answer.
             items: Array.from({ length: items }, (_unused, index) => ({
               runId: `run_${index}`,
-              kind: 'human',
+              kind: 'human-node',
+              node: `node_${index}`,
+              prompt: `node_${index} needs a decision`,
+              options: [{ id: 'approve', label: 'Approve' }],
               seq: index + 1,
             })),
             counts: { total: items },

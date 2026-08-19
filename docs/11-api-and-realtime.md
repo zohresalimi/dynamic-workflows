@@ -59,9 +59,12 @@ GET /api/stream?runs=<runId>,<runId>&since=<seq>
 
 - **One** `EventSource`-shaped connection per browser tab, opened once at app start.
 - The `runs` parameter is a server-side topic filter. `runs=*` subscribes to the low-volume global
-  lifecycle topic only (`run.created`, `run.completed`, `run.aborted`, `human.requested`) — that is
-  what the run list and the cross-run approval queue (F8.3) need, and it does not drag every
-  `node.progress` frame from every run into an idle tab.
+  lifecycle topic only (`run.created`, `run.completed`, `run.aborted`, `human.requested`,
+  `human.responded`) — that is what the run list and the cross-run approval queue (F8.3) need, and
+  it does not drag every `node.progress` frame from every run into an idle tab. `human.responded`
+  joined the topic for KAR-25.7: a gate that announces itself globally (`human.requested`) has to
+  be able to clear itself globally too, or a cross-run surface can only ever learn a gate was
+  answered by refetching — which is the poll this topic exists to replace.
 - The client fans out on arrival: one `applyEvent(e)` dispatcher, which routes by `e.runId` to the
   right projection set. See [frontend architecture](./12-frontend-architecture.md).
 - Adding a run panel must **not** open a second connection and must not require a reconnect. The

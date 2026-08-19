@@ -37,18 +37,33 @@
  * chrome is not the thing that requests — the mount is, and a `v-if` is the
  * only way to stop one.
  *
- * `AppTopBar` stays mounted either way: it takes its `awaitingOperator` count
- * and `task` as props and asks for nothing itself, and `RunStatusPill` inside
- * it only reads `useRunStore()`, which is empty rather than absent on a
- * tokenless tab. Losing the topbar on top of the rail would leave a tab with
- * no token nothing to look at while it reads the "paste the URL" panel.
+ * `AppTopBar` stays mounted either way: it takes its `task` as a prop and
+ * asks for nothing itself, and `RunStatusPill`, like `ApprovalsMenu` inside
+ * it, only reads a store — `useRunStore()`, `useApprovalsStore()` — which is
+ * empty rather than absent on a tokenless tab. Losing the topbar on top of
+ * the rail would leave a tab with no token nothing to look at while it reads
+ * the "paste the URL" panel.
+ *
+ * ## KAR-25.7 — the approvals badge stopped being a `ref` filled once
+ *
+ * `awaitingOperator` used to be a plain `ref(0)`, filled by one
+ * `GET /api/approvals` at `onMounted` and never touched again — a gate that
+ * opened after that first request was invisible until the next reload, and
+ * one answered from another tab or `deflow answer` never cleared it at all.
+ * `./app/useApprovals.ts` replaces both halves: the same one `GET`, plus the
+ * tab's shared `?runs=*` subscription (`./ledger/shared-hub.ts`) folding
+ * `human.requested`/`human.responded` into `useApprovalsStore()` for the
+ * life of the tab. The count on the topbar's control is that store's own
+ * `count`, read directly — there is no prop threading it any more, matching
+ * how `RunStatusPill` has always read `useRunStore()` for itself rather than
+ * being handed a status string.
  */
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 import { RouterView } from 'vue-router';
-import { useApiClient } from './api/provide.ts';
 import { COMPOSER_OVERLAY, MAIN_CONTENT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
+import { useApprovals } from './app/useApprovals.ts';
 import CommandJumper from './components/CommandJumper.vue';
 import AppRail from './components/frame/AppRail.vue';
 import AppTopBar from './components/frame/AppTopBar.vue';
@@ -64,7 +79,6 @@ const ui = useUiStore();
 const session = useSessionStore();
 // KAR-19.12 AC6 — the open run's pending gate, read off the store's own fold.
 const run = useRunStore();
-const client = useApiClient();
 const { isDark, toggleTheme } = useTheme();
 
 /**
@@ -76,27 +90,19 @@ const { isDark, toggleTheme } = useTheme();
  * a different tab"* (KAR-13.2 AC1). A badge inside one view cannot make that
  * promise. It is also the tab's first authenticated request, which is what
  * makes the fragment handoff observable end to end (AC2).
+ *
+ * KAR-25.7 — called unconditionally, in `<script setup>` rather than inside
+ * `onMounted`, matching `useRunList`'s own call site in `RunListView.vue`:
+ * the composable itself is what checks `session.authenticated` before it
+ * fetches or subscribes (see its own docblock), so calling it early costs
+ * nothing on a tokenless tab.
  */
-const awaitingOperator = ref(0);
-
-async function loadApprovals(): Promise<void> {
-  if (!session.authenticated) return;
-  try {
-    const response = await client.approvals.$get({ query: {} });
-    if (!response.ok) return;
-    const queue = (await response.json()) as { items?: readonly unknown[] };
-    awaitingOperator.value = queue.items?.length ?? 0;
-  } catch {
-    // A daemon that is restarting is not something to shout about in a
-    // toolbar; the badge simply does not appear.
-  }
-}
+useApprovals();
 
 let uninstallKeyboardMap: (() => void) | null = null;
 
 onMounted(() => {
   uninstallKeyboardMap = installKeyboardMap(document, ui);
-  void loadApprovals();
 });
 
 onUnmounted(() => {
@@ -115,7 +121,6 @@ onUnmounted(() => {
 
     <div class="shell__column">
       <AppTopBar
-        :awaiting-operator="awaitingOperator"
         :is-dark="isDark"
         :task="run.submittedTask"
         @toggle-theme="toggleTheme()"

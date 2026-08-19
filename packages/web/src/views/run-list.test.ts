@@ -23,10 +23,12 @@
  * Verifies: EPIC-19-S2 · KAR-19.1 AC5, AC6 · KAR-25.1 · test plan #5
  */
 import type { Event } from '@DeFlow/core';
+import { EVENT_SCHEMAS, parseEvent } from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
 import type { ApiClient } from '../api/client.ts';
+import type { RunFeed, RunFeedFactory, RunFeedOptions } from '../ledger/feed.ts';
 import type { RunsFeed, RunsFeedFactory } from '../ledger/runs-feed.ts';
 import { useRunListStore } from '../stores/useRunListStore.ts';
 
@@ -112,6 +114,16 @@ const LISTED_ROW = {
   createdAt: '2026-08-12T14:00:00.000Z',
   headSeq: 1,
   planVersion: 0,
+};
+
+const GATE_NODE = 'review-changes';
+
+/** The same row, but waiting on a gate — `pendingGate`'s own shape. */
+const WAITING_ROW = {
+  ...LISTED_ROW,
+  status: 'needs-human' as const,
+  label: 'needs a decision',
+  gate: { node: GATE_NODE, options: [{ id: 'approve', label: 'Ship it' }] },
 };
 
 const rows = (): NodeListOf<HTMLElement> =>
@@ -209,6 +221,129 @@ suite('EPIC-19-S2 — a run already listed updates in place, with no refetch', (
 
     await expect.poll(() => rows().length).toBe(1);
     expect(shell.container.textContent).toContain('Migrate the checkout module');
+  });
+});
+
+suite('KAR-25.7 AC5, AC7 — a waiting row clears its gate from the ledger, not a refetch', () => {
+  it('clears data-run-gate on the human.responded frame and leaves the status word alone', async () => {
+    const client = listClient([WAITING_ROW]);
+    const feed = pushableFeed();
+    await mountRunList(client, feed.factory);
+    await expect.poll(() => rows().length).toBe(1);
+    const fetchesBefore = client.calls.length;
+
+    expect(shell.container.querySelector(`[data-run-gate="${LISTED_RUN}"]`)).not.toBeNull();
+
+    // The frame this tab never asked for — the CLI or another tab answered it.
+    // No local "I answered" flag exists here to consult; the ledger's own
+    // frame is what clears the row.
+    feed.push(
+      lifecycle('human.responded', LISTED_RUN, 42, {
+        node: GATE_NODE,
+        optionId: 'approve',
+        at: '2026-08-12T14:05:00.000Z',
+        by: 'operator',
+      }),
+    );
+
+    await expect
+      .poll(() => shell.container.querySelector(`[data-run-gate="${LISTED_RUN}"]`))
+      .toBeNull();
+    // `human.responded` is not a `RunStatus` — the word beside the row is
+    // untouched by this frame; only the gate line goes.
+    expect(
+      shell.container
+        .querySelector<HTMLElement>(`[data-run-status="${LISTED_RUN}"]`)
+        ?.textContent?.trim(),
+    ).toBe('needs a decision');
+    expect(rows()).toHaveLength(1);
+    expect(client.calls.length).toBe(fetchesBefore);
+  });
+
+  it('leaves a different run’s gate alone', async () => {
+    const other = { ...WAITING_ROW, runId: NEW_RUN };
+    const feed = pushableFeed();
+    await mountRunList(listClient([WAITING_ROW, other]), feed.factory);
+    await expect.poll(() => rows().length).toBe(2);
+
+    feed.push(
+      lifecycle('human.responded', LISTED_RUN, 42, {
+        node: GATE_NODE,
+        optionId: 'approve',
+        at: '2026-08-12T14:05:00.000Z',
+        by: 'operator',
+      }),
+    );
+
+    await expect
+      .poll(() => shell.container.querySelector(`[data-run-gate="${LISTED_RUN}"]`))
+      .toBeNull();
+    expect(shell.container.querySelector(`[data-run-gate="${NEW_RUN}"]`)).not.toBeNull();
+  });
+});
+
+suite('KAR-25.7 AC3, EPIC-25-S45 — a waiting run row lands on its gate, in view', () => {
+  it('lands on the waiting run and shows its gate panel, without further clicking', async () => {
+    const client = listClient([WAITING_ROW]);
+    const feed = pushableFeed();
+
+    /** The per-run feed the destination view (`PlanGraphView`, through
+     * `useRunFeed`) opens once the row is clicked — the run list itself opens
+     * no per-run feed at all, so this is a second, separate injected factory
+     * from `feed` above, exactly as production has two separate composables. */
+    interface Opened {
+      readonly runId: string;
+      readonly sink: { applyEvent(event: Event): boolean };
+    }
+    const holder: { opened: Opened | null } = { opened: null };
+    const runFeedFactory: RunFeedFactory = (options: RunFeedOptions): RunFeed => {
+      holder.opened = { runId: options.runId, sink: options.sink };
+      return { runId: options.runId, ready: Promise.resolve(), close: () => {} };
+    };
+
+    shell = await mountShell({
+      at: { name: 'project-runs', params: { projectId: PROJECT_ID } },
+      client,
+      runsFeed: feed.factory,
+      feed: runFeedFactory,
+    });
+    setActivePinia(shell.pinia);
+    await expect.poll(() => useRunListStore(shell.pinia).hydrated).toBe(true);
+    await expect.poll(() => rows().length).toBe(1);
+
+    shell.container.querySelector<HTMLElement>(`[data-run-link="${LISTED_RUN}"]`)?.click();
+
+    await expect
+      .poll(() => shell.router.currentRoute.value.path)
+      .toBe(`/projects/${PROJECT_ID}/runs/${LISTED_RUN}`);
+    await expect.poll(() => holder.opened !== null, { timeout: 15_000 }).toBe(true);
+    const opened = holder.opened;
+    if (opened === null) throw new Error('the run screen opened no run feed');
+    expect(opened.runId).toBe(LISTED_RUN);
+
+    // The gate arrives on this run's own feed, the way it does in production —
+    // and the shell band shows it without another click or a scroll: it is
+    // `App.vue`'s own `RunGateBanner`, always mounted above the outlet.
+    const result = parseEvent({
+      seq: 9,
+      runId: LISTED_RUN,
+      ts: 1_754_812_800_000,
+      kind: 'human.requested',
+      v: EVENT_SCHEMAS['human.requested'].v,
+      epoch: 1,
+      payload: {
+        node: GATE_NODE,
+        prompt: 'Ship it?',
+        options: [{ id: 'approve', label: 'Ship it', effect: 'approve' }],
+      },
+    });
+    if (result.status !== 'ok') throw new Error('the spec built an unreadable envelope');
+    opened.sink.applyEvent(result.event);
+
+    await expect
+      .poll(() => shell.container.querySelector('[data-run-gate-banner]'), { timeout: 15_000 })
+      .not.toBeNull();
+    expect(shell.container.querySelector('[data-run-gate-node]')?.textContent).toContain(GATE_NODE);
   });
 });
 

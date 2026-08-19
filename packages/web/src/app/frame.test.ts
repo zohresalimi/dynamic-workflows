@@ -155,10 +155,16 @@ function frameDaemon(options: {
     if (url.includes('/projects')) return json(200, { projects: options.projects ?? [] });
     if (url.includes('/approvals')) {
       const items = options.approvals ?? 0;
+      // KAR-25.7 — `human-node`, the real answerable `ApprovalKind`, with the
+      // fields `useApprovalsStore`'s hydrate keeps: `kind: 'human'` matched no
+      // real kind and would now be filtered out.
       return json(200, {
         items: Array.from({ length: items }, (_unused, index) => ({
           runId: `run_${index}`,
-          kind: 'human',
+          kind: 'human-node',
+          node: `node_${index}`,
+          prompt: `node_${index} needs a decision`,
+          options: [{ id: 'approve', label: 'Approve' }],
           seq: index + 1,
         })),
         counts: { total: items },

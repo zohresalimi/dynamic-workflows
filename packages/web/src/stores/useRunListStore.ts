@@ -90,8 +90,20 @@ export const useRunListStore = defineStore('run-list', () => {
    *
    * Returns whether the list changed, so a caller can tell "this frame was for
    * a run I already knew about at this head" from "nothing arrived".
+   *
+   * `human.responded` is handled first and separately from the table below —
+   * KAR-25.7 AC5, AC7. It is **not** a `RunStatus` (a run that answers a gate
+   * is still whatever it was: `running`, or `awaiting-spec-approval` until the
+   * follow-on event moves it), so it must not go through `LIFECYCLE_STATUS`
+   * and must not touch `status`/`label`. What it clears is `row.gate`, and
+   * only the ledger clears it: there is no "I already answered" flag anywhere
+   * in this store, on this row or in whatever pressed the button — this frame
+   * is the one and only thing that empties it, for an answer sent from this
+   * tab, another tab, or `deflow answer` in a terminal, alike.
    */
   function applyLifecycle(event: Event): boolean {
+    if (event.kind === 'human.responded') return clearGate(event);
+
     const status = LIFECYCLE_STATUS[event.kind];
     if (status === undefined) return false;
 
@@ -129,6 +141,39 @@ export const useRunListStore = defineStore('run-list', () => {
       // `gateOf` answers `null` for every kind that is not a request.
       gate: gateOf(event),
     };
+    rows.value = next;
+    triggerRef(rows);
+    return true;
+  }
+
+  /**
+   * KAR-25.7 AC5, AC7 — the row's gate closing, off the same event the run's
+   * own gate panel closes from (`../ledger/projections/gates.ts`'s escalation
+   * fold).
+   *
+   * Matched on the row's own `node` rather than trusted blind: `row.gate` is
+   * `pendingGate`'s **oldest** open gate, matching the daemon's own rule
+   * (`packages/core/src/pending-gate.ts`), so a `human.responded` for a
+   * *different* node — a run holding two open gates — must not clear the one
+   * still open. A response naming the row's own gate closes it; the row does
+   * not know whether a second, newer gate is now the oldest, and rather than
+   * guess it reports none until the next `GET` or `human.requested` says
+   * otherwise, which is this store's existing, already-accepted simplicity
+   * (one gate per row, exactly what `GET /api/runs` itself carries).
+   */
+  function clearGate(event: Event): boolean {
+    const payload = event.payload as { node?: unknown };
+    if (typeof payload.node !== 'string') return false;
+
+    const at = rows.value.findIndex(
+      (row) => row.runId === event.runId && row.gate?.node === payload.node,
+    );
+    if (at === -1) return false;
+
+    const current = rows.value[at];
+    if (current === undefined) return false;
+    const next = [...rows.value];
+    next[at] = { ...current, gate: null };
     rows.value = next;
     triggerRef(rows);
     return true;

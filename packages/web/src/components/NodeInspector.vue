@@ -106,6 +106,7 @@ import {
 import { type DisplayState, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
+import GateOptions from './gate/GateOptions.vue';
 import { glyphFor } from './graph/glyphs.ts';
 import StateChip from './StateChip.vue';
 import { UiChip, UiIconTile, UiMetaRow, UiSectionLabel, UiStatTile } from './ui/index.ts';
@@ -144,6 +145,38 @@ const sources = computed<InspectorSources>(() => {
 });
 
 const nodeId = computed(() => ui.inspectedNodeId);
+
+/**
+ * KAR-25.7 AC4, AC6 — the gate the inspected node is waiting on, or `null`.
+ *
+ * Read off `run.gates.escalations` directly rather than `run.openGate`: that
+ * selector deliberately answers only the run's **oldest** open gate
+ * (`useRunStore.ts`'s own comment on it, matching `pendingGate`'s rule for the
+ * other surfaces), and a run holding two open gates would make the second
+ * one's node unanswerable from this panel if it were the only source read
+ * here. Matching by node instead finds whichever escalation is open for
+ * *this* node, however many others are open on the run.
+ *
+ * `run.version('gates')` is the same version counter `openGate` reads —
+ * `EVENT_KIND_OWNERS['human.requested'] = ['gates']` and
+ * `['human.responded'] = ['gates', 'timeline']` — so this recomputes on
+ * exactly the two frames that open and close a gate, and on nothing else.
+ */
+const openGateForNode = computed<{
+  readonly node: string;
+  readonly prompt: string;
+  readonly options: readonly { readonly id: string; readonly label: string }[];
+} | null>(() => {
+  void run.version('gates');
+  const id = nodeId.value;
+  if (id === null) return null;
+  const escalation = run.gates.escalations.find(
+    (one) => one.node === id && one.answeredWith === null,
+  );
+  return escalation === undefined
+    ? null
+    : { node: escalation.node, prompt: escalation.prompt, options: escalation.options };
+});
 
 /**
  * The attempt list alone, which is what resolves *"the latest"* below.
@@ -280,6 +313,23 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
           <p v-if="view.tainted" data-tainted class="inspector__taint">
             This node read a fact that was later invalidated — see the provenance table.
           </p>
+
+          <!--
+            KAR-25.7 AC4, AC6 — the canvas stops being a dead end: a node
+            waiting on a human decision offers the daemon's own options here,
+            through the same `GateOptions` `RunGateBanner.vue` and
+            `ApprovalsMenu.vue` mount. Gone the instant `human.responded`
+            closes this node's escalation (AC7) — `openGateForNode` reads the
+            ledger's own fold, never a flag this panel sets on its own POST.
+          -->
+          <section v-if="openGateForNode" class="inspector__gate" data-inspector-gate>
+            <p class="inspector__gate-prompt">{{ openGateForNode.prompt }}</p>
+            <GateOptions
+              v-if="run.runId !== null"
+              :run-id="run.runId"
+              :gate="{ node: openGateForNode.node, options: openGateForNode.options }"
+            />
+          </section>
 
           <!-- ── the tab strip: output / config / logs (AC1, AC2, AC3) ─────── -->
           <TabsRoot v-model="activeTab" :unmount-on-hide="false" class="inspector__tabsroot">
@@ -837,6 +887,22 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
   padding: 0.4rem 14px;
   color: var(--state-blocked);
   font-size: var(--text-base);
+}
+
+.inspector__gate {
+  flex: none;
+  display: grid;
+  gap: 0.375rem;
+  margin: 0 14px 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--ink-warn, var(--edge));
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+}
+
+.inspector__gate-prompt {
+  margin: 0;
+  color: var(--ink-muted);
 }
 
 .inspector__tabsroot {

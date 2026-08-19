@@ -31,6 +31,7 @@ import { userEvent } from 'vitest/browser';
 import { type MountedShell, mountShell, TEST_TOKEN } from '../../test/shell.ts';
 import { createClient } from '../api/client.ts';
 import type { RunFeed, RunFeedFactory, RunFeedOptions } from '../ledger/feed.ts';
+import type { RunsFeed, RunsFeedFactory } from '../ledger/runs-feed.ts';
 
 const PROJECT = 'prj_20260815T101112Z_a1b2c3';
 const GATED_RUN = 'run_20260815T090000Z_b17e55';
@@ -76,9 +77,11 @@ interface Wire {
   readonly sent: SentRequest[];
   /** The next answer for a POST, or `null` for the ordinary `200 {}`. */
   refuseWith: { readonly status: number; readonly body: unknown } | null;
+  /** `GET /api/approvals`'s `items` — KAR-25.7's approvals control suites. */
+  approvals: readonly unknown[];
 }
 
-const wire: Wire = { sent: [], refuseWith: null };
+const wire: Wire = { sent: [], refuseWith: null, approvals: [] };
 
 /** One row of the project's history, as `runEntry` sends it. */
 function historyRow(runId: string, gate: unknown): Record<string, unknown> {
@@ -143,7 +146,9 @@ async function serve(input: RequestInfo | URL, init?: RequestInit): Promise<Resp
     return reply({ runs: [historyRow(GATED_RUN, SPEC_GATE_ROW), historyRow(QUIET_RUN, null)] });
   }
   if (url.pathname === '/api/runs') return reply({ runs: [], cursor: null, more: false });
-  if (url.pathname === '/api/approvals') return reply({ items: [], counts: {}, headSeq: 0 });
+  if (url.pathname === '/api/approvals') {
+    return reply({ items: wire.approvals, counts: {}, headSeq: 0 });
+  }
   if (url.pathname === '/api/providers/routes') return reply({ providers: [], known: false });
   // The hydrate the run feed would make; this file pushes frames itself.
   return reply({ events: [], cursor: 0, more: false, headSeq: 0 });
@@ -153,10 +158,10 @@ async function serve(input: RequestInfo | URL, init?: RequestInit): Promise<Resp
  * frames
  * -------------------------------------------------------------------------- */
 
-function frame(kind: string, seq: number, payload: unknown): Event {
+function frame(kind: string, seq: number, payload: unknown, runId: string = GATED_RUN): Event {
   const result = parseEvent({
     seq,
-    runId: GATED_RUN,
+    runId,
     ts: T0,
     kind,
     v: (EVENT_SCHEMAS as Record<string, { v: number }>)[kind]?.v ?? 1,
@@ -248,6 +253,7 @@ async function openGatedWorkspace(open: () => Event = specGateOpened): Promise<v
 beforeEach(() => {
   wire.sent.length = 0;
   wire.refuseWith = null;
+  wire.approvals = [];
   opened = [];
   setActivePinia(undefined as never);
 });
@@ -433,5 +439,268 @@ suite('EPIC-22-S67 — a permission escalation uses the same surface', () => {
     const sent = posts()[0] as SentRequest;
     expect(sent.pathname).toBe(expected?.path);
     expect(sent.body).toEqual(expected?.body);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * KAR-25.7 — the approvals control (topbar), and the same frame clearing all
+ * of it and the run's own gate panel together.
+ * -------------------------------------------------------------------------- */
+
+/** Portalled to `document.body`, like the inspector — queried from `document`
+ * rather than from `shell.container` for the same reason. */
+const docOne = <T extends Element = HTMLElement>(selector: string): T | null =>
+  document.querySelector<T>(selector);
+const docAll = (selector: string): HTMLElement[] => [
+  ...document.querySelectorAll<HTMLElement>(selector),
+];
+
+/** One row of `GET /api/approvals`, in the shape `useApprovalsStore.hydrate`
+ * reads — `ApprovalRowIn`, copied rather than imported so this file keeps
+ * asserting against the wire shape rather than against the store's own type. */
+function approvalItem(
+  runId: string,
+  node: string,
+  prompt: string,
+  options: readonly { readonly id: string; readonly label: string }[] = [
+    { id: 'approve', label: 'Ship it' },
+  ],
+): Record<string, unknown> {
+  return { runId, kind: 'human-node', node, prompt, options, seq: 7 };
+}
+
+/** A `?runs=*` feed a spec pushes frames into — `../../views/run-list.test.ts`'s
+ * own `pushableFeed()`, copied here rather than imported: it is test-only and
+ * this file already keeps its own small doubles rather than reaching across
+ * suites for one. */
+function pushableRunsFeed(): { factory: RunsFeedFactory; push: (event: Event) => void } {
+  // A set, not one slot: the real shared hub (`../ledger/shared-hub.ts`) fans
+  // one lifecycle frame out to every listener — `App.vue`'s `useApprovals`
+  // always registers one, and a route that also reads the topic (the run
+  // list, the project run history) registers another on the very same
+  // connection. A fake that remembered only the last caller would look
+  // correct with one listener and silently starve every one before it.
+  const listeners = new Set<(event: Event) => void>();
+  const factory: RunsFeedFactory = (options): RunsFeed => {
+    listeners.add(options.onLifecycle);
+    return { ready: Promise.resolve(), close: () => listeners.delete(options.onLifecycle) };
+  };
+  return {
+    factory,
+    push: (event) => {
+      if (listeners.size === 0) throw new Error('the shell opened no ?runs=* subscription');
+      for (const listener of listeners) listener(event);
+    },
+  };
+}
+
+const approvalsTrigger = (): HTMLButtonElement | null =>
+  docOne<HTMLButtonElement>('[data-approvals-trigger]');
+
+suite('EPIC-25-S42, AC1 — a gate announced globally is reached and answered globally', () => {
+  it('reaches the gate through the approvals control and answers it, with no URL and no terminal', async () => {
+    wire.approvals = [approvalItem(GATED_RUN, SPEC_GATE_NODE, 'Ship it?')];
+    const runsFeed = pushableRunsFeed();
+
+    shell = await mountShell({
+      at: '/projects',
+      client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+      runsFeed: runsFeed.factory,
+    });
+    setActivePinia(shell.pinia);
+
+    await expect.poll(() => approvalsTrigger(), { timeout: 15_000 }).not.toBeNull();
+    expect(approvalsTrigger()?.getAttribute('data-approvals')).toBe('1');
+
+    await userEvent.click(approvalsTrigger() as HTMLElement);
+    await expect.poll(() => docOne('[data-approval-entry]'), { timeout: 15_000 }).not.toBeNull();
+
+    const expected = gateAnswerRequest({
+      runId: GATED_RUN,
+      gate: SPEC_GATE_NODE,
+      optionId: 'approve',
+    });
+    await userEvent.click(docOne('[data-gate-option="approve"]') as HTMLElement);
+    await expect.poll(() => posts().length, { timeout: 15_000 }).toBe(1);
+
+    const sent = posts()[0] as SentRequest;
+    expect(sent.pathname).toBe(expected?.path);
+    expect(sent.body).toEqual(expected?.body);
+  });
+});
+
+suite(
+  'EPIC-25-S43, EPIC-25-S44 — the control names every waiting run and node, or is absent',
+  () => {
+    it('lists one entry per waiting gate, each naming its run and its node', async () => {
+      const otherRun = 'run_20260815T091500Z_dd44aa';
+      wire.approvals = [
+        approvalItem(GATED_RUN, SPEC_GATE_NODE, 'Ship it?'),
+        approvalItem(otherRun, 'escalate-write', 'Write outside the worktree?', [
+          { id: 'allow', label: 'Allow once' },
+        ]),
+      ];
+
+      shell = await mountShell({
+        at: '/projects',
+        client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+        runsFeed: pushableRunsFeed().factory,
+      });
+      setActivePinia(shell.pinia);
+
+      await expect.poll(() => approvalsTrigger(), { timeout: 15_000 }).not.toBeNull();
+      await userEvent.click(approvalsTrigger() as HTMLElement);
+
+      await expect.poll(() => docAll('[data-approval-entry]').length, { timeout: 15_000 }).toBe(2);
+      expect(
+        docOne(`[data-approval-entry="${GATED_RUN}"] [data-approval-run]`)?.textContent,
+      ).toContain(GATED_RUN);
+      expect(
+        docOne(`[data-approval-entry="${GATED_RUN}"] [data-approval-node]`)?.textContent,
+      ).toContain(SPEC_GATE_NODE);
+      expect(
+        docOne(`[data-approval-entry="${otherRun}"] [data-approval-node]`)?.textContent,
+      ).toContain('escalate-write');
+    });
+
+    it('renders no control at all when nothing is waiting — never an empty panel', async () => {
+      wire.approvals = [];
+
+      shell = await mountShell({
+        at: '/projects',
+        client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+        runsFeed: pushableRunsFeed().factory,
+      });
+      setActivePinia(shell.pinia);
+
+      // Give the hydrate a turn to land, if it were going to render something.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(approvalsTrigger()).toBeNull();
+      expect(docOne('[data-approvals-list]')).toBeNull();
+    });
+  },
+);
+
+suite(
+  'EPIC-25-S48, EPIC-25-S49 — one human.responded frame clears the run’s panel and the control together',
+  () => {
+    it('leaves the answer’s own POST on screen until the frame arrives, then clears both surfaces, from the ledger', async () => {
+      wire.approvals = [approvalItem(GATED_RUN, SPEC_GATE_NODE, 'Ship it?')];
+      const runsFeed = pushableRunsFeed();
+
+      shell = await mountShell({
+        at: `/projects/${PROJECT}`,
+        client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+        feed: feedFactory,
+        runsFeed: runsFeed.factory,
+      });
+      setActivePinia(shell.pinia);
+      await expect.poll(() => opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+      push(specGateOpened());
+      await expect.poll(() => panel(), { timeout: 15_000 }).not.toBeNull();
+      await expect.poll(() => approvalsTrigger(), { timeout: 15_000 }).not.toBeNull();
+
+      await userEvent.click(optionButton('approve') as HTMLElement);
+      await expect.poll(() => posts().length, { timeout: 15_000 }).toBe(1);
+
+      // AC5 — no "did my own request succeed" special case: both surfaces are
+      // still showing the gate, because the POST resolving is not the ledger
+      // saying the gate is answered.
+      expect(panel()).not.toBeNull();
+      expect(approvalsTrigger()).not.toBeNull();
+
+      // The one frame that closes it — indistinguishable here from one
+      // `deflow answer` in a terminal would produce (AC6): this tab did not
+      // send it, it arrived on both of its subscriptions.
+      const responded = answered(SPEC_GATE_NODE, 'approve');
+      push(responded);
+      runsFeed.push(responded);
+
+      await expect.poll(() => panel(), { timeout: 15_000 }).toBeNull();
+      await expect.poll(() => approvalsTrigger(), { timeout: 15_000 }).toBeNull();
+    });
+  },
+);
+
+suite('KAR-25.7 AC3 — the project run history’s gate opens live, from the ledger', () => {
+  it('marks a quiet row the moment human.requested arrives, with no refetch', async () => {
+    wire.approvals = [];
+    const runsFeed = pushableRunsFeed();
+
+    shell = await mountShell({
+      at: `/projects/${PROJECT}`,
+      client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+      feed: feedFactory,
+      runsFeed: runsFeed.factory,
+    });
+    setActivePinia(shell.pinia);
+
+    // QUIET_RUN is in the fetched history with `gate: null` — the state an
+    // operator is in when a run they are watching has not stopped yet.
+    await expect
+      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
+      .not.toBeNull();
+    expect(one(`[data-history-gate="${QUIET_RUN}"]`)).toBeNull();
+
+    const before = wire.sent.filter((request) => request.pathname.includes('/runs')).length;
+
+    // The announcing half of a gate's life. Before KAR-25.7's correction this
+    // view folded only `human.responded`, so this frame changed nothing and the
+    // row stayed quiet until the page was reloaded.
+    runsFeed.push(
+      frame(
+        'human.requested',
+        9,
+        {
+          node: PERMISSION_NODE,
+          prompt: 'The agent asked to write outside its worktree.',
+          options: [
+            { id: 'allow', label: 'Allow this write once', effect: 'approve' },
+            { id: 'deny', label: 'Refuse it', effect: 'reject' },
+          ],
+          reason: { code: 'path-outside-scope', detail: 'the target resolves outside the worktree' },
+        },
+        QUIET_RUN,
+      ),
+    );
+
+    await expect
+      .poll(() => one(`[data-history-gate="${QUIET_RUN}"]`), { timeout: 15_000 })
+      .not.toBeNull();
+    expect(one(`[data-history-gate="${QUIET_RUN}"]`)?.textContent).toContain(PERMISSION_NODE);
+    // The gated row is somebody else's gate and is left exactly as it was.
+    expect(one(`[data-history-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
+    expect(wire.sent.filter((request) => request.pathname.includes('/runs')).length).toBe(before);
+  });
+});
+
+suite('KAR-25.7 AC3 — the project run history’s gate clears live, from the ledger', () => {
+  it('carries the gate’s options and clears the row on human.responded, with no refetch', async () => {
+    wire.approvals = [];
+    const runsFeed = pushableRunsFeed();
+
+    shell = await mountShell({
+      at: `/projects/${PROJECT}`,
+      client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
+      feed: feedFactory,
+      runsFeed: runsFeed.factory,
+    });
+    setActivePinia(shell.pinia);
+
+    await expect
+      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
+      .not.toBeNull();
+    expect(one(`[data-history-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
+
+    const before = wire.sent.filter((request) => request.pathname.includes('/runs')).length;
+
+    // The frame this view never asked for — no subscription of its own beyond
+    // the shared `?runs=*` topic every `human.responded` now rides.
+    runsFeed.push(answered(SPEC_GATE_NODE, 'approve'));
+
+    await expect
+      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
+      .toBeNull();
+    expect(wire.sent.filter((request) => request.pathname.includes('/runs')).length).toBe(before);
   });
 });
