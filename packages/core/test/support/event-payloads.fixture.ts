@@ -319,6 +319,14 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     detached: false,
     lockReason: `DeFlow run=${RUN_ID} node=${NODE}`,
   },
+  'workspace.worktree_reused': {
+    node: NODE,
+    path: `/tmp/repo/.DeFlow/wt/${RUN_ID}__${NODE}`,
+    branch: `DeFlow/${RUN_ID}__${NODE}`,
+    baseRef: 'main',
+    detached: false,
+    lockReason: `DeFlow run=${RUN_ID} node=${NODE}`,
+  },
   'workspace.branch_occupied': {
     node: NODE,
     branch: 'main',

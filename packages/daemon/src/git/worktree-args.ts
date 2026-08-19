@@ -60,6 +60,18 @@ export const WORKTREE_PRUNE_ARGS: readonly string[] = [
   '2.weeks.ago',
 ];
 
+/**
+ * KAR-25.8 §"the fix", case 3 — the orphan-recovery prune inside `provision`
+ * itself, never the reaper's boot sweep above. No `--expire`: by the time
+ * this runs, `provision` has already read `worktree list --porcelain -z` and
+ * confirmed nothing is registered at the path it is about to reclaim, so
+ * there is no "too young to touch" evidence to be conservative about, the way
+ * there is for a sweep that runs with no such evidence in hand. `prune` never
+ * removes a *locked* entry regardless of age (§4.2), which is what keeps this
+ * safe even though it is unscoped: whatever it clears was already dead.
+ */
+export const WORKTREE_PRUNE_ORPHAN_ARGS: readonly string[] = ['worktree', 'prune', '-v'];
+
 /** A write node owns a branch; a read node owns a detached checkout. */
 export type WorktreeMode = 'write' | 'read';
 

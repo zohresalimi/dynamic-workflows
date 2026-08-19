@@ -1085,6 +1085,28 @@ export const WorkspaceWorktreeCreatedSchema = z.strictObject({
 });
 
 /**
+ * KAR-25.8 — the second `provision` for a run and node that already has a
+ * worktree (docs/delivery/epics/EPIC-25-frame-and-settings.md, KAR-25.8).
+ *
+ * Same shape as `WorkspaceWorktreeCreatedSchema`, deliberately: this is the
+ * same worktree, reported the same way, not a new one. The field that
+ * matters is the event's own `kind` — a node that provisions twice appends
+ * this the second time, never a second `worktree_created`, because two
+ * `_created` events for one node would make the ledger claim two worktrees
+ * where there is one.
+ */
+export const WorkspaceWorktreeReusedSchema = z.strictObject({
+  node: NodeIdSchema,
+  path: z.string().min(1),
+  /** `null` exactly when `detached` is true. */
+  branch: z.string().min(1).nullable(),
+  /** What the worktree started from. Never checked out as a branch. */
+  baseRef: z.string().min(1),
+  detached: z.boolean(),
+  lockReason: z.string().min(1),
+});
+
+/**
  * The refusal that happens **before** `git worktree add` runs (§3.1).
  *
  * There is no `stderr` field, on purpose. The real message is
@@ -2141,6 +2163,7 @@ export const EVENT_SCHEMAS = {
   'node.cancel.stage': { v: 1, payload: NodeCancelStageSchema },
   'node.cancel.failed': { v: 1, payload: NodeCancelFailedSchema },
   'workspace.worktree_created': { v: 1, payload: WorkspaceWorktreeCreatedSchema },
+  'workspace.worktree_reused': { v: 1, payload: WorkspaceWorktreeReusedSchema },
   'workspace.branch_occupied': { v: 1, payload: WorkspaceBranchOccupiedSchema },
   'workspace.included_file': { v: 1, payload: WorkspaceIncludedFileSchema },
   'workspace.setup_cache_hit': { v: 1, payload: WorkspaceSetupCacheHitSchema },
