@@ -33,12 +33,23 @@
  * so a Pinia store would be state with one writer and one reader in one
  * component. When KAR-22.3 gives the workspace a subscription, the store
  * arrives with it.
+ *
+ * KAR-25.6, EPIC-25-S38…S41 — the create form now lives in `UiModal` instead
+ * of being permanently in the DOM. `UiModal` already supplies the focus
+ * trap, `Esc`, outside-click and focus return (`ui/a11y.test.ts` is that
+ * contract); this file adds none of it — `formOpen` is the one flag that
+ * decides whether the dialog and its form are mounted at all, and the three
+ * triggers (the header button, the dashed grid tile, the empty state's
+ * action) all set the same flag rather than each opening something of its
+ * own. What `create()` does on submission — the request, the verbatim
+ * refusal, the row appended to the grid — is unchanged; the only addition is
+ * closing the modal once a project actually exists (AC3).
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
-import { UiButton, UiChip, UiEmptyState, UiIconTile } from '../components/ui/index.ts';
+import { UiButton, UiChip, UiEmptyState, UiIconTile, UiModal } from '../components/ui/index.ts';
 
 interface ProjectHealth {
   readonly state: 'ok' | 'missing' | 'not-a-git-repo';
@@ -79,6 +90,8 @@ const path = ref('');
 const error = ref<string | null>(null);
 const removing = ref<ProjectRow | null>(null);
 const nameInput = ref<HTMLInputElement | null>(null);
+/** AC1 — whether the create-project modal (and therefore the form) is mounted. */
+const formOpen = ref(false);
 
 /** The daemon's own sentence, or a fallback for a failure with no envelope. */
 async function refusalOf(response: { json: () => Promise<unknown> }): Promise<string> {
@@ -116,6 +129,10 @@ async function create(): Promise<void> {
   projects.value = [...projects.value, created.project];
   name.value = '';
   path.value = '';
+  // AC3, EPIC-25-S38 — a project was created, so the form that asked for one
+  // has nothing left to do. A refusal above returns before this line, which
+  // is what keeps the modal open with the typed path on failure (EPIC-25-S40).
+  formOpen.value = false;
 }
 
 async function confirmRemoval(): Promise<void> {
@@ -129,15 +146,35 @@ async function confirmRemoval(): Promise<void> {
 }
 
 /**
- * The dashed grid tile and the empty-state action both open the same form —
- * the form was never hidden (it has to stay in the DOM for `projects.test.ts`
- * to reach it without a click this story does not own), so "open" here means
- * carrying the operator's focus to the first field rather than mounting
- * anything new.
+ * AC1, EPIC-25-S39 — all three triggers (the header button, the dashed grid
+ * tile, the empty state's action) call this one function, so there is one
+ * modal rather than three things that each think they open something.
  */
-function focusCreateForm(): void {
-  nameInput.value?.focus();
+function openCreateForm(): void {
+  formOpen.value = true;
 }
+
+/**
+ * AC4, EPIC-25-S41 — Cancel's own handler. `Esc` and an outside click close
+ * the same way, through `UiModal`'s `close` emit (`onUpdateOpen` in
+ * `UiModal.vue`) — Cancel is not a second dismissal mechanism, it is this
+ * function bound to a button instead of to Reka's dismiss events.
+ */
+function closeCreateForm(): void {
+  formOpen.value = false;
+}
+
+/**
+ * EPIC-25-S38 — the name field is focused the moment the modal has
+ * something to focus, matching what the form did when it was always
+ * mounted. `nextTick` waits for the field to exist; running after Reka's own
+ * open-autofocus (which would otherwise land on the dialog's close button,
+ * the first tabbable element in `UiModal`'s header) is what makes this the
+ * field that ends up focused.
+ */
+watch(formOpen, (open) => {
+  if (open) void nextTick(() => nameInput.value?.focus());
+});
 
 /** Up to two initials for the icon tile, the way `UiIconTile`'s callers do it. */
 function initials(projectName: string): string {
@@ -190,7 +227,9 @@ onMounted(() => {
         <h1 class="projects__title">Projects</h1>
         <p class="projects__subtitle">Each project carries its own workflows and run history.</p>
       </div>
-      <UiButton variant="primary" size="md" @click="focusCreateForm">New project</UiButton>
+      <UiButton variant="primary" size="md" data-project-new-header @click="openCreateForm"
+        >New project</UiButton
+      >
     </header>
 
     <!--
@@ -203,34 +242,61 @@ onMounted(() => {
       Pick a project to start a run in, or create one below.
     </p>
 
-    <form class="projects__form" data-project-form @submit.prevent="create">
-      <label class="projects__field">
-        <span>Name</span>
-        <input ref="nameInput" v-model="name" data-project-name type="text" autocomplete="off">
-      </label>
-      <label class="projects__field">
-        <span>Path to a git repository on this machine</span>
-        <input v-model="path" data-project-path type="text" autocomplete="off" spellcheck="false">
-      </label>
-      <!--
-        KAR-24.7 — the one button in the application that submits a form, and
-        it is a `UiButton` like every other. The primitive shipped with
-        `type` hardcoded to `button`, which is the right default and the wrong
-        constraint: it sent this caller back to a bare `<button>`, and a
-        primitive people step around has started shrinking the system instead
-        of growing it. `type` is a prop now. `@submit.prevent="create"` above
-        is still what makes Enter-to-submit and a real click take one path.
-      -->
-      <UiButton type="submit" variant="primary" class="projects__submit" data-project-create
-        >Create project</UiButton
+    <!--
+      KAR-25.6 AC1 — the form exists only while this is open. `UiModal`
+      supplies the focus trap, `Esc`, outside-click and focus return
+      (`ui/a11y.test.ts`); `closeCreateForm` is this view's own Cancel
+      handler and `UiModal`'s `close` emit, one function either way.
+    -->
+    <UiModal :open="formOpen" title="New project" @close="closeCreateForm">
+      <form
+        id="DeFlow-project-form"
+        class="projects__form"
+        data-project-form
+        @submit.prevent="create"
       >
-      <!--
-        The daemon's sentence, rendered verbatim. `deflow init` and this form
-        refuse the same directory with the same words because neither of them
-        writes those words (AC1).
-      -->
-      <p v-if="error" class="projects__error" data-project-error role="alert">{{ error }}</p>
-    </form>
+        <label class="projects__field">
+          <span>Name</span>
+          <input ref="nameInput" v-model="name" data-project-name type="text" autocomplete="off">
+        </label>
+        <label class="projects__field">
+          <span>Path to a git repository on this machine</span>
+          <input v-model="path" data-project-path type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <!--
+          The daemon's sentence, rendered verbatim. `deflow init` and this
+          form refuse the same directory with the same words because
+          neither of them writes those words (AC1 of KAR-22.1).
+        -->
+        <p v-if="error" class="projects__error" data-project-error role="alert">{{ error }}</p>
+      </form>
+      <template #footer>
+        <UiButton variant="ghost" size="sm" data-project-create-cancel @click="closeCreateForm"
+          >Cancel</UiButton
+        >
+        <!--
+          KAR-24.7 — the one button in the application that submits a form,
+          and it is a `UiButton` like every other. The primitive shipped
+          with `type` hardcoded to `button`, which is the right default and
+          the wrong constraint: it sent this caller back to a bare
+          `<button>`, and a primitive people step around has started
+          shrinking the system instead of growing it. `type` is a prop now.
+          `form="DeFlow-project-form"` is what lets this button live in the
+          modal's footer, outside the `<form>` element itself, and still
+          submit it — the same pattern `RunComposer.vue`'s own submit button
+          uses for the same reason.
+        -->
+        <UiButton
+          type="submit"
+          form="DeFlow-project-form"
+          variant="primary"
+          size="sm"
+          class="projects__submit"
+          data-project-create
+          >Create project</UiButton
+        >
+      </template>
+    </UiModal>
 
     <!-- KAR-24.7 AC5 — a first-run account gets a sentence and an action, not
          a bare "No projects". -->
@@ -241,7 +307,9 @@ onMounted(() => {
       data-projects-empty
     >
       <template #action>
-        <UiButton variant="primary" size="sm" @click="focusCreateForm">New project</UiButton>
+        <UiButton variant="primary" size="sm" data-project-new-empty-action @click="openCreateForm"
+          >New project</UiButton
+        >
       </template>
     </UiEmptyState>
 
@@ -310,7 +378,9 @@ onMounted(() => {
           data-project-new-tile
         >
           <template #action>
-            <UiButton variant="ghost" size="sm" @click="focusCreateForm">Add project</UiButton>
+            <UiButton variant="ghost" size="sm" data-project-new-tile-action @click="openCreateForm"
+              >Add project</UiButton
+            >
           </template>
         </UiEmptyState>
       </li>
