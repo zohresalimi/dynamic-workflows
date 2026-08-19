@@ -69,6 +69,10 @@ const router = useRouter();
 const runId = computed<string | null>(() => props.runId ?? null);
 const { status } = useRunFeed(runId);
 
+/** KAR-25.1 — whether this graph is open at its project-less legacy URL,
+ * decided once here rather than per node. See `PlanNode.vue`'s `legacy` prop. */
+const legacy = computed(() => typeof route.params['projectId'] !== 'string');
+
 const nodes = computed(() => run.planNodes);
 const edges = computed(() => run.planEdges);
 
@@ -164,6 +168,7 @@ watch(
           :body="bodies.get(node.id) as NodeBodyVM"
           :selected="selected"
           :run-id="runId"
+          :legacy="legacy"
         />
       </template>
     </GraphCanvas>

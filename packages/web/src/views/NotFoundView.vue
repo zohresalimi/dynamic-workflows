@@ -13,7 +13,7 @@ import { RouterLink } from 'vue-router';
   <section class="not-found">
     <h1>No such view</h1>
     <p>That address does not name anything this app renders.</p>
-    <RouterLink :to="{ name: 'runs' }">Back to the run list</RouterLink>
+    <RouterLink :to="{ name: 'projects' }">Back to your projects</RouterLink>
   </section>
 </template>
 

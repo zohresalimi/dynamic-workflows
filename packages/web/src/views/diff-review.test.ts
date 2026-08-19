@@ -36,6 +36,11 @@ import {
 } from '../../test/diff-daemon.ts';
 import { gateEvaluated, gateFailureRepair, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { createClient } from '../api/client.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
@@ -61,7 +66,7 @@ async function openDiff(
   shell = await mountShell({
     at: {
       name: 'run-diff',
-      params: { runId: options.runId ?? DIFF_RUN },
+      params: { projectId: PROJECT_ID, runId: options.runId ?? DIFF_RUN },
       query: { scope: 'worktree', worktree: WORKTREE, ...options.query },
     },
     client: createClient({ baseUrl: ORIGIN, fetch: diffFetch(asked) }),

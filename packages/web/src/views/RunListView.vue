@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
- * KAR-19.1 AC5, KAR-24.7 AC3 — the root route: a live list of runs, in
- * direction A's dense run table.
+ * KAR-19.1 AC5, KAR-24.7 AC3 — this project's runs, in direction A's dense run
+ * table.
  *
- * The view's own design is unchanged from KAR-19.1 — it reduces nothing, polls
- * nothing and invents no status word, see `../app/useRunList.ts` and
- * `../stores/useRunListStore.ts` for that whole argument. KAR-24.7 only
- * restyles it: a fixed four-column grid at direction C's row density, with a
- * dot in the run's state colour ahead of the id.
+ * KAR-25.1 moved this route from `/` (a global list) to
+ * `/projects/:projectId/runs`: Runs is project-scoped work, not a machine-wide
+ * concern, and the rail's scope rule (AC1, AC2) has no row for it outside a
+ * project. The view's own design is otherwise unchanged — it reduces nothing,
+ * polls nothing and invents no status word, see `../app/useRunList.ts` and
+ * `../stores/useRunListStore.ts` for that whole argument, and its own header
+ * comment for what changed and what did not in the move.
  *
  * **The table has four columns, not direction A's six.** Direction A draws
  * run / trigger / workflow / progress / tokens / time; `RunListRow` (the shape
@@ -43,8 +45,13 @@ import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunListStore } from '../stores/useRunListStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
 
+const props = defineProps<{
+  /** From `/projects/:projectId/runs` (`props: true`). */
+  readonly projectId: string;
+}>();
+
 const runs = useRunListStore();
-useRunList();
+useRunList(props.projectId);
 const ui = useUiStore();
 
 /** The dot's colour: `RUN_STATUS_DISPLAY` one domain over from the node
@@ -105,7 +112,11 @@ function when(iso: string): string {
 
       <ul class="run-list__rows">
         <li v-for="row in runs.list" :key="row.runId" class="run-list__row" data-run-row>
-          <RouterLink class="run-list__link" :to="`/runs/${row.runId}`" :data-run-link="row.runId">
+          <RouterLink
+            class="run-list__link"
+            :to="{ name: 'project-run', params: { projectId: props.projectId, runId: row.runId } }"
+            :data-run-link="row.runId"
+          >
             <span class="run-list__cell run-list__cell--run">
               <!--
                 EPIC-24-S28 — a live run's dot animates; `data-motion-token` is

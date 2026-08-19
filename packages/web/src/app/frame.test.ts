@@ -274,7 +274,7 @@ suite('EPIC-24-S15 — the nav names only routes this application has', () => {
     const routeNames = new Set(routes.map((route) => route.name as string));
 
     shell = await mountShell({
-      at: { name: 'project-workspace', params: { projectId: PROJECT_ID } },
+      at: { name: 'project-workflows', params: { projectId: PROJECT_ID } },
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
         fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS }),
@@ -420,31 +420,6 @@ suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
       .toContain('Migrate the checkout module');
     expect(shell.container.querySelector('[data-run-provider]')).not.toBeNull();
   });
-
-  it('keeps the composer button, and it still opens the composer overlay', async () => {
-    shell = await mountShell({
-      client: createClient({
-        baseUrl: 'http://127.0.0.1:7777/api',
-        fetch: frameDaemon({}),
-        token: () => 'test-token-Aa0_-Bb1',
-      }),
-    });
-
-    const button = shell.container.querySelector<HTMLButtonElement>('[data-composer-open]');
-    expect(button).not.toBeNull();
-
-    button?.click();
-    await expect.poll(() => shell.ui.isOverlayOpen('composer')).toBe(true);
-    // `document`, not `shell.container`. KAR-24.8 put the composer inside
-    // `UiModal`, which is Reka's dialog, and a Reka dialog teleports to
-    // `document.body` — so it is a *sibling* of the harness's mount node
-    // rather than a descendant of it. The specs that already assert on the
-    // inspector and the jumper query `document` for exactly this reason
-    // (`project-workspace.test.ts`, `plan-graph.test.ts`); this line was the
-    // holdout from when the composer was a plain, un-portalled `<section>`.
-    // The overlay opens either way — only where it lands in the DOM moved.
-    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
-  });
 });
 
 suite('EPIC-24-S17 — the skip-link, and a tab with no token', () => {
@@ -558,5 +533,44 @@ suite('EPIC-24-S18 — the rail across three widths (AC7)', () => {
     const runsLink = shell.container.querySelector<HTMLAnchorElement>('.topbar__nav-item');
     expect(runsLink).not.toBeNull();
     expect((runsLink as HTMLAnchorElement).getBoundingClientRect().width).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * EPIC-24-S16's last case, deliberately last in the *file* rather than in
+ * that suite: opening `RunComposer`'s `UiModal` (a Reka `Dialog`) and leaving
+ * it open — which is what this case is for — leaves a stuck document-level
+ * keydown listener behind (Reka's own focus-trap teardown, not anything this
+ * story owns) that survives `shell.unmount()` and blocks `Tab` from moving
+ * focus in whichever *later* test mounts a fresh shell next. Closing the
+ * dialog before the test ends does not clear it either — only running this
+ * case after everything that depends on a clean `Tab` order does. This is a
+ * test-ordering fix, not a product one: EPIC-24-S17's "is first in the tab
+ * order" case is what exposed it.
+ */
+suite('EPIC-24-S16 — nothing the old shell did is lost (continued)', () => {
+  it('keeps the composer button, and it still opens the composer overlay', async () => {
+    shell = await mountShell({
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({}),
+        token: () => 'test-token-Aa0_-Bb1',
+      }),
+    });
+
+    const button = shell.container.querySelector<HTMLButtonElement>('[data-composer-open]');
+    expect(button).not.toBeNull();
+
+    button?.click();
+    await expect.poll(() => shell.ui.isOverlayOpen('composer')).toBe(true);
+    // `document`, not `shell.container`. KAR-24.8 put the composer inside
+    // `UiModal`, which is Reka's dialog, and a Reka dialog teleports to
+    // `document.body` — so it is a *sibling* of the harness's mount node
+    // rather than a descendant of it. The specs that already assert on the
+    // inspector and the jumper query `document` for exactly this reason
+    // (`project-workflows.test.ts`, `plan-graph.test.ts`); this line was the
+    // holdout from when the composer was a plain, un-portalled `<section>`.
+    // The overlay opens either way — only where it lands in the DOM moved.
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
   });
 });

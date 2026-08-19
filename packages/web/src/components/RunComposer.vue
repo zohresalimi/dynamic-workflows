@@ -412,7 +412,13 @@ async function submit(): Promise<void> {
     url.value = '';
     // AC4 — the operator is taken to the thing they just started, in this same
     // document: the run's feed opens on arrival and the first frame renders.
-    await router.push({ name: 'run-plan', params: { runId: created.runId } });
+    // KAR-25.1 — `run-plan` is project-scoped now; `target.id` is already in
+    // hand above (it is what the POST body's `projectId` was built from), so
+    // this invents no data.
+    await router.push({
+      name: 'run-plan',
+      params: { projectId: target.id, runId: created.runId },
+    });
   } catch (cause) {
     // A draft is not retyped because a socket failed.
     error.value = `the daemon could not be reached: ${

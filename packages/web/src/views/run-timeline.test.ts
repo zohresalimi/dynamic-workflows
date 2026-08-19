@@ -15,6 +15,11 @@ import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { useRunStore } from '../stores/useRunStore.ts';
 
 let shell: MountedShell;
@@ -23,7 +28,9 @@ const one = (selector: string): HTMLElement =>
   shell.container.querySelector<HTMLElement>(selector) as HTMLElement;
 
 async function openTimeline(runId: string, events: readonly unknown[] = []): Promise<void> {
-  shell = await mountShell({ at: { name: 'run-timeline', params: { runId } } });
+  shell = await mountShell({
+    at: { name: 'run-timeline', params: { projectId: PROJECT_ID, runId } },
+  });
   setActivePinia(shell.pinia);
   const run = useRunStore(shell.pinia);
   for (const event of events) run.applyEvent(event as Parameters<typeof run.applyEvent>[0]);
@@ -65,7 +72,7 @@ suite('KAR-17.8 — the route', () => {
   });
 
   it('tells a tab with no run open where a run id goes', async () => {
-    shell = await mountShell({ at: { name: 'runs' } });
+    shell = await mountShell({ at: { name: 'projects' } });
     setActivePinia(shell.pinia);
     await shell.router.push({ path: '/timeline-with-no-run' });
     // The catch-all takes an unroutable path; the timeline route itself is only

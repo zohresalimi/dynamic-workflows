@@ -13,6 +13,11 @@
 import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { createClient } from '../api/client.ts';
 import { ENDED_WITHOUT_RESULT, NO_OUTPUT_AT_ALL } from '../lib/node-output.ts';
 import { forgetTerminalSnapshots, liveTerminalCount } from '../lib/terminal-session.ts';
@@ -112,7 +117,7 @@ let shell: MountedShell;
 
 async function openPanel(body: string, asked: Asked[]): Promise<MountedShell> {
   shell = await mountShell({
-    at: { name: 'run-node-output', params: { runId: RUN, nodeId: NODE } },
+    at: { name: 'run-node-output', params: { projectId: PROJECT_ID, runId: RUN, nodeId: NODE } },
     client: recordingClient(asked, body),
   });
   setActivePinia(shell.pinia);

@@ -251,13 +251,25 @@ suite('EPIC-16-S4 — the map is the application’s, not one component’s', ()
   });
 
   it('still answers after a route change, not only on the landing route', async () => {
-    await shell.router.push({ name: 'plan-evolution', params: { runId: 'r_01JXQ' } });
+    await shell.router.push({
+      name: 'plan-evolution',
+      params: { projectId: 'prj_test', runId: 'r_01JXQ' },
+    });
 
     press('j');
     expect(shell.ui.selectedNodeId).toBe('n_plan');
 
     press('k', { metaKey: true });
     expect(shell.ui.overlays).toEqual([JUMPER_OVERLAY]);
+    // Closed rather than left open: `CommandJumper` is a Reka `Combobox`
+    // with its own focus trap, and leaving it open across `shell.unmount()`
+    // (the next test in this suite unmounts mid-body) was observed to leave
+    // real browser focus in a state where a *later* test's fresh mount could
+    // not move focus with `Tab` at all — the "reaches the skip-link" case in
+    // the suite below, three tests later. Closing what this test opened,
+    // before it ends, is the fix rather than chasing the trap's own
+    // teardown timing across an unrelated test.
+    shell.ui.closeTopOverlay();
   });
 
   it('stops listening once the app is unmounted', () => {

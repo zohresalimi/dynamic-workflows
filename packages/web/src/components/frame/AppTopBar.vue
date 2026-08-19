@@ -48,11 +48,12 @@
  *   wrapper and (the rail's job) `display: none` above it on the rail's own
  *   root.** Neither side reads the other's width; each hides itself at the
  *   same number, so exactly one is ever visible at a given viewport.
- * - **The item set is `runs`, `projects`, and — only when
- *   `route.params.projectId` is set — that project's `project-workspace` and
- *   `project-connectors`.** This mirrors AC2's rule for the rail
- *   (`docs/delivery/epics/EPIC-24-design-system.md` KAR-24.4 AC2) so the two
- *   navs never disagree about which routes exist.
+ * - **The item set is `projects` and `settings` always, and — only when
+ *   `route.params.projectId` is set — that project's `project-workflows` and
+ *   `project-runs` between them.** This mirrors KAR-25.1's scope rule for the
+ *   rail (`docs/delivery/epics/EPIC-25-frame-and-settings.md` KAR-25.1 AC1,
+ *   AC2) so the two navs never disagree about which routes exist or in what
+ *   order.
  * - **Active state is `route.name === item.name`**, the same comparison a
  *   `RouterLink`'s own `router-link-active` class makes, kept explicit here
  *   so the active row's background comes from `data-active` rather than from
@@ -64,6 +65,7 @@ import { computed } from 'vue';
 import { type RouteLocationRaw, RouterLink, useRoute } from 'vue-router';
 import { SEARCH_INPUT_ID } from '../../app/ids.ts';
 import type { SubmittedTask } from '../../ledger/projections/index.ts';
+import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
 import RunProviderBanner from '../RunProviderBanner.vue';
 import RunTaskBanner from '../RunTaskBanner.vue';
 import { UiButton, UiChip } from '../ui/index.ts';
@@ -90,13 +92,17 @@ const route = useRoute();
 /** The view segment's fixed word per route name — see the header comment;
  * this is deliberately total-ish rather than a `route.meta.title` this
  * codebase does not carry, so a new route with no entry here still renders
- * its own name rather than nothing. */
+ * its own name rather than nothing. Keyed by *canonical* name only — a
+ * `legacy-*` route's name has its prefix stripped before the lookup below,
+ * so a project-less run at its bookmark path reads the same word a
+ * project-scoped one does. */
 const VIEW_LABELS: Readonly<Record<string, string>> = {
-  runs: 'Runs',
   projects: 'Projects',
-  'project-workspace': 'Workspace',
+  settings: 'Settings',
+  'project-workflows': 'Workflows',
+  'project-runs': 'Runs',
   'project-connectors': 'Connectors',
-  'project-run': 'Workspace',
+  'project-run': 'Workflows',
   'run-plan': 'Plan',
   'plan-evolution': 'Evolution',
   'run-context': 'Context',
@@ -115,7 +121,9 @@ const projectId = computed<string | null>(() =>
 
 const viewLabel = computed<string>(() => {
   const name = typeof route.name === 'string' ? route.name : null;
-  return name === null ? '' : (VIEW_LABELS[name] ?? name);
+  if (name === null) return '';
+  const canonical = name.startsWith('legacy-') ? name.slice('legacy-'.length) : name;
+  return VIEW_LABELS[canonical] ?? name;
 });
 
 interface NavItem {
@@ -124,27 +132,55 @@ interface NavItem {
   readonly to: RouteLocationRaw;
 }
 
-/** AC2's route set, mirrored — see the header comment's nav contract. */
+/**
+ * KAR-25.1 AC1, AC2, AC8 — the rail's item set, mirrored exactly: Projects
+ * and Settings always, Workflows and Runs only inside a project, in that
+ * order. See the header comment's nav contract.
+ */
 const navItems = computed<readonly NavItem[]>(() => {
-  const items: NavItem[] = [
-    { name: 'runs', label: 'Runs', to: { name: 'runs' } },
-    { name: 'projects', label: 'Projects', to: { name: 'projects' } },
-  ];
+  const items: NavItem[] = [{ name: 'projects', label: 'Projects', to: { name: 'projects' } }];
   const id = projectId.value;
   if (id !== null) {
     items.push({
-      name: 'project-workspace',
-      label: 'Workspace',
-      to: { name: 'project-workspace', params: { projectId: id } },
+      name: 'project-workflows',
+      label: 'Workflows',
+      to: { name: 'project-workflows', params: { projectId: id } },
     });
     items.push({
-      name: 'project-connectors',
-      label: 'Connectors',
-      to: { name: 'project-connectors', params: { projectId: id } },
+      name: 'project-runs',
+      label: 'Runs',
+      to: { name: 'project-runs', params: { projectId: id } },
     });
   }
+  items.push({ name: 'settings', label: 'Settings', to: { name: 'settings' } });
   return items;
 });
+
+/**
+ * The route names that count as "on the Runs item", the topbar's own copy of
+ * `AppRail.vue`'s `RUNS_ROUTE_NAMES` — kept here rather than imported so this
+ * file's `[data-active]` check (below 820px, where this nav is the only one
+ * on screen) does not have to reach into a sibling component's script for a
+ * constant it can build from the same source, `../../router/legacy-run.ts`'s
+ * `RUN_VIEW_NAMES`.
+ */
+const RUNS_ROUTE_NAMES = new Set<string>([
+  'project-runs',
+  ...RUN_VIEW_NAMES,
+  ...RUN_VIEW_NAMES.map((name) => `legacy-${name}`),
+]);
+
+const WORKFLOWS_ROUTE_NAMES = new Set(['project-workflows', 'project-run']);
+
+/** Which nav item's own name this route lights up — distinct from `name ===
+ * item.name` because the Runs and Workflows items each stand for a set of
+ * route names, not one. */
+function isActive(itemName: string): boolean {
+  const current = String(route.name ?? '');
+  if (itemName === 'project-runs') return RUNS_ROUTE_NAMES.has(current);
+  if (itemName === 'project-workflows') return WORKFLOWS_ROUTE_NAMES.has(current);
+  return current === itemName;
+}
 </script>
 
 <template>
@@ -162,7 +198,7 @@ const navItems = computed<readonly NavItem[]>(() => {
         v-for="item in navItems"
         :key="item.name"
         class="topbar__nav-item"
-        :data-active="route.name === item.name || undefined"
+        :data-active="isActive(item.name) || undefined"
         :to="item.to"
       >
         {{ item.label }}

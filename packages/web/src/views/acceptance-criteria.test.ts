@@ -15,6 +15,11 @@ import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { commands, userEvent } from 'vitest/browser';
 import { gateEvaluated, HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { NO_GATE_MESSAGE } from '../lib/criteria-board.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
@@ -29,7 +34,7 @@ const all = (selector: string): HTMLElement[] => [
 
 async function openBoard(query: Record<string, string> = {}): Promise<void> {
   shell = await mountShell({
-    at: { name: 'run-criteria', params: { runId: HAPPY_PATH_RUN }, query },
+    at: { name: 'run-criteria', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN }, query },
   });
   setActivePinia(shell.pinia);
   const run = useRunStore(shell.pinia);

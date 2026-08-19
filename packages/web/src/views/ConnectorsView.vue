@@ -225,7 +225,7 @@ onMounted(() => void load());
       </div>
       <RouterLink
         class="connectors__back"
-        :to="{ name: 'project-workspace', params: { projectId } }"
+        :to="{ name: 'project-workflows', params: { projectId } }"
       >
         Back to the project
       </RouterLink>

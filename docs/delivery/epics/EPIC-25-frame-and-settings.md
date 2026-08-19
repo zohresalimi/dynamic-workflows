@@ -174,8 +174,16 @@ so the route redirects rather than 404s.
 5. The active row still carries a non-colour signal (weight and `aria-current="page"`), unchanged.
 6. The word "Workspace" does not appear in any user-visible string in `packages/web`, asserted by a
    guard over the source.
-7. `/runs/:runId` and `/runs/:runId/*` resolve for a run that exists, by redirecting to the
-   project-scoped equivalent. A run id that does not exist renders the existing not-found view.
+7. `/runs/:runId` and `/runs/:runId/*` still resolve. **Three outcomes, not two** — the second was
+   missed when this AC was written and is recorded here rather than absorbed silently:
+   - the run exists and belongs to a project → redirect to the project-scoped equivalent,
+     replacing the history entry so Back does not return to a link that only pointed at itself;
+   - the run exists and belongs to **no** project → render the legacy route in place. A run
+     submitted before projects existed, or from a terminal that named none, carries no `projectId`
+     and has nowhere to redirect *to*. Every fixture under `test/fixtures/runs/` is exactly this;
+   - the run does not exist → the legacy route renders the existing not-found view **in place**,
+     leaving the URL alone. Redirecting to the catch-all would stringify back to the same
+     `/runs/<id>` path and re-match the same record on the next navigation — a loop, not a fix.
 8. Every `to` in the rail resolves to a route the router registers — KAR-24.4 AC2's rule, unchanged.
 
 ---

@@ -1,7 +1,12 @@
 /**
- * KAR-22.3 — the project workspace, in a real Chromium: the live graph, the
- * task board beside it, the history under both, and what happens when the
- * operator switches project.
+ * KAR-22.3 — this project's workflows view, in a real Chromium: the live
+ * graph, the task board beside it, the history under both, and what happens
+ * when the operator switches project.
+ *
+ * File and route renamed by KAR-25.1 (`ProjectWorkspaceView` →
+ * `ProjectWorkflowsView`, `project-workspace` → `project-workflows`); the
+ * `data-workspace-*` selectors below did not move with it — see
+ * `ProjectWorkflowsView.vue`'s own header comment for why.
  *
  * Verifies: EPIC-22-S34, EPIC-22-S36, EPIC-22-S37, EPIC-22-S38, EPIC-22-S41,
  * EPIC-22-S42, EPIC-22-S43, EPIC-22-S46 · AC1, AC2, AC3, AC6, AC7 ·
@@ -409,9 +414,10 @@ suite('EPIC-22-S41 — a historical run opens without a run id being typed', () 
     await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
     await expect.poll(() => graphBodies().length, { timeout: 15_000 }).toBe(12);
 
-    // And the existing scrubber is one link away, for the same run.
+    // And the existing scrubber is one link away, for the same run —
+    // project-scoped now (KAR-25.1), not the bare legacy path.
     expect(one(`[data-run-scrubber="${EARLIER_RUN}"]`)?.getAttribute('href')).toBe(
-      `/runs/${EARLIER_RUN}/evolution`,
+      `/projects/${PROJECT_A}/runs/${EARLIER_RUN}/evolution`,
     );
 
     // Nothing was typed anywhere: no field in this document ever held a run id.

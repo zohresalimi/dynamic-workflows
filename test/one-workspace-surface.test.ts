@@ -43,7 +43,7 @@ const fileNamed = (path: string): string => {
 };
 
 /** The views and components KAR-22.3 adds, which are the ones at risk. */
-const WORKSPACE_VIEW = 'src/views/ProjectWorkspaceView.vue';
+const WORKSPACE_VIEW = 'src/views/ProjectWorkflowsView.vue';
 const TASK_BOARD = 'src/components/TaskBoard.vue';
 
 suite('EPIC-22-S35 — exactly one canvas, one run store, one client', () => {

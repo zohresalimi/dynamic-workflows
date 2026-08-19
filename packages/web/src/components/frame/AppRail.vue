@@ -8,11 +8,17 @@
  * **The nav is derived, not copied.** Direction A draws five rows, one of
  * which — "Builder" — this application has no route for, and KAR-24.4 AC2
  * exists precisely so that gap is never quietly filled in. `../../router/index.ts`
- * is read here as the list of routes that are real: Runs and Projects always,
- * and the current project's Workspace and Connectors only while a
- * `projectId` route param is in scope. A nav item that pointed at a route the
- * router does not have would be a dead link nobody notices until they click
- * it, so every `to` below is a literal path this file's own reading of
+ * is read here as the list of routes that are real.
+ *
+ * **KAR-25.1 — the scope rule, stated once.** Projects and Settings are
+ * global and never disappear (AC1, AC3): `/projects` and `/settings`. Inside
+ * a project two more rows appear, in this order — Workflows
+ * (`/projects/:id`) and Runs (`/projects/:id/runs`) — so the full set reads
+ * Projects · Workflows · Runs · Settings (AC2). Connectors is not a row here
+ * at all any more: it is neither a global concern nor one of the four names
+ * AC1/AC2 list, and `ProjectWorkflowsView`'s own `[data-workspace-connectors]`
+ * link is what keeps that route reachable until KAR-25.4 moves it into
+ * Settings. Every `to` below is a literal path this file's own reading of
  * `../../router/index.ts` confirms exists, and every "is this row active"
  * check names the matching route's own `name` rather than guessing at a path
  * prefix.
@@ -52,11 +58,12 @@
  * screen reader even though sighted operators see icons only.
  */
 import { useQuery } from '@pinia/colada';
-import { Boxes, Cable, Layers, ListChecks, Workflow } from 'lucide-vue-next';
+import { Boxes, Layers, ListChecks, Settings, Workflow } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useApiClient } from '../../api/provide.ts';
 import { providersQuery } from '../../api/queries.ts';
+import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
 import { useSessionStore } from '../../stores/useSessionStore.ts';
 import { UiChip, UiIconTile, UiSectionLabel } from '../ui/index.ts';
 import ProjectSwitcher from './ProjectSwitcher.vue';
@@ -77,22 +84,18 @@ const projectId = computed<string | null>(() => {
  * matching only looks at the current route's own matched record, so a nested
  * run view (`run-diff`, `run-timeline`, …) would not otherwise light up
  * "Runs", and a run reached through a project (`project-run`) would not light
- * up "Workspace". Both lists are read straight off `../../router/index.ts`'s
- * `name` fields, so a route rename fails type-checking here rather than
- * silently going dark.
+ * up "Workflows". `WORKFLOWS_ROUTE_NAMES` and `RUNS_ROUTE_NAMES` are read
+ * straight off `../../router/index.ts` and `../../router/legacy-run.ts`'s own
+ * `RUN_VIEW_NAMES`, so a route rename fails type-checking here rather than
+ * silently going dark — and a run opened at its legacy `/runs/:runId…`
+ * bookmark still lights up "Runs" rather than nothing.
  */
-const RUN_ROUTE_NAMES = [
-  'runs',
-  'run-plan',
-  'plan-evolution',
-  'run-context',
-  'run-diff',
-  'run-criteria',
-  'run-timeline',
-  'run-node-output',
-  'run-memory',
-] as const;
-const WORKSPACE_ROUTE_NAMES = ['project-workspace', 'project-run'] as const;
+const WORKFLOWS_ROUTE_NAMES = ['project-workflows', 'project-run'] as const;
+const RUNS_ROUTE_NAMES = [
+  'project-runs',
+  ...RUN_VIEW_NAMES,
+  ...RUN_VIEW_NAMES.map((name) => `legacy-${name}`),
+];
 
 interface NavItem {
   readonly key: string;
@@ -102,17 +105,17 @@ interface NavItem {
   readonly active: boolean;
 }
 
-/** AC2 — only routes `../../router/index.ts` actually registers. */
+/**
+ * AC1, AC2, AC3, AC8 — only routes `../../router/index.ts` actually
+ * registers, in exactly the scope rule the header comment states: Projects
+ * and Settings always, Workflows and Runs only inside a project, and always
+ * in that order.
+ */
 const navItems = computed<readonly NavItem[]>(() => {
   const name = String(route.name ?? '');
+  const id = projectId.value;
+
   const items: NavItem[] = [
-    {
-      key: 'runs',
-      to: '/',
-      label: 'Runs',
-      icon: ListChecks,
-      active: (RUN_ROUTE_NAMES as readonly string[]).includes(name),
-    },
     {
       key: 'projects',
       to: '/projects',
@@ -122,23 +125,30 @@ const navItems = computed<readonly NavItem[]>(() => {
     },
   ];
 
-  const id = projectId.value;
   if (id !== null) {
     items.push({
-      key: 'workspace',
+      key: 'workflows',
       to: `/projects/${id}`,
-      label: 'Workspace',
+      label: 'Workflows',
       icon: Layers,
-      active: (WORKSPACE_ROUTE_NAMES as readonly string[]).includes(name),
+      active: (WORKFLOWS_ROUTE_NAMES as readonly string[]).includes(name),
     });
     items.push({
-      key: 'connectors',
-      to: `/projects/${id}/connectors`,
-      label: 'Connectors',
-      icon: Cable,
-      active: name === 'project-connectors',
+      key: 'runs',
+      to: `/projects/${id}/runs`,
+      label: 'Runs',
+      icon: ListChecks,
+      active: (RUNS_ROUTE_NAMES as readonly string[]).includes(name),
     });
   }
+
+  items.push({
+    key: 'settings',
+    to: '/settings',
+    label: 'Settings',
+    icon: Settings,
+    active: name === 'settings',
+  });
 
   return items;
 });
@@ -261,16 +271,34 @@ const { data: providers } = useQuery(providersQuery(client));
   font-weight: 500;
 }
 
-.rail__nav-item:hover {
+/*
+ * KAR-25.1 AC4, EPIC-25-S03 — `:not(.rail__nav-item--active)` rather than a
+ * specificity fight. `.rail__nav-item:hover` (0,2,0) used to outrank
+ * `.rail__nav-item--active` (0,1,0) and win the *background*, while leaving
+ * `--active`'s ink in place — so the active row, hovered, painted
+ * `--surface-canvas` text on a `--surface` fill: 1.12:1 in light, 1.04:1 in
+ * dark. The row was unreadable exactly when an operator's pointer was over
+ * it. Narrowing the selector is not a colour override (AC4's own ban), so the
+ * active row simply keeps its own fill under the pointer instead.
+ */
+.rail__nav-item:not(.rail__nav-item--active):hover {
   background: var(--surface);
 }
 
-/* Active is inverted — ink-on-accent — never colour alone: the row's own
-   position (first, second, …) and its bold weight already carry the state,
-   so an operator who cannot see the fill still reads which row is current. */
+/*
+ * Active is inverted — ink-on-accent — never colour alone: the row's own
+ * position and its bold weight already carry the state, so an operator who
+ * cannot see the fill still reads which row is current (AC5).
+ *
+ * `--accent` / `--accent-ink` (theme.css), not `--state-running` /
+ * `--surface-canvas`: the previous pairing bound an unrelated ink token to a
+ * run-status colour with no ink of its own, which is exactly how it went
+ * unreadable under hover with nothing here declaring a bad value — the fix is
+ * a token pair with a bound ink, not a smarter selector alone (AC4).
+ */
 .rail__nav-item--active {
-  background: var(--state-running);
-  color: var(--surface-canvas);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 

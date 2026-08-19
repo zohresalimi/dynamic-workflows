@@ -58,6 +58,7 @@ import ReviewFinding from '../components/review/ReviewFinding.vue';
 import { diffHighlighter, ensureGrammar } from '../lib/highlighter.ts';
 import { type PatchFileVM, patchSides, splitPatch } from '../lib/patch.ts';
 import { repairLoops, reviewIndex, SEVERITY_STYLE } from '../lib/review-index.ts';
+import { runRouteTo } from '../router/legacy-run.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
 const props = defineProps<{
@@ -113,11 +114,14 @@ const focusLine = computed<number | null>(() => {
  * plan graph reads `?node=` as its selection (KAR-17.1 AC7), so the node this
  * diff is scoped to survives the round trip.
  */
-const backTo = computed(() => ({
-  name: 'run-plan',
-  params: { runId: runId.value },
-  query: node.value === null ? {} : { node: node.value },
-}));
+const backTo = computed(() =>
+  runRouteTo(
+    'run-plan',
+    route.params['projectId'] as string | undefined,
+    { runId: runId.value ?? undefined },
+    node.value === null ? {} : { node: node.value },
+  ),
+);
 const worktree = computed(() =>
   typeof route.query['worktree'] === 'string' ? route.query['worktree'] : null,
 );
