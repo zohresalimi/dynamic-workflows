@@ -60,9 +60,16 @@ interface Surface {
 
 const SURFACES: readonly Surface[] = [
   {
+    // KAR-25.4 moved this from a routed `views/` screen to a panel nested
+    // inside `/settings` (`components/settings/ConnectorsPanel.vue`) — the
+    // pattern widens to match either location, because "one component" is
+    // the claim, not "one component under `views/`".
     what: 'connectors screen component',
-    matches: (path) => /\/views\/.*[Cc]onnectors?.*\.vue$/.test(path),
-    sabotage: { path: '/packages/web/src/views/JiraConnectorsView.vue', source: '<template/>' },
+    matches: (path) => /\/(views|components)\/.*[Cc]onnectors?.*\.vue$/.test(path),
+    sabotage: {
+      path: '/packages/web/src/components/settings/JiraConnectorsPanel.vue',
+      source: '<template/>',
+    },
   },
   {
     // A second table is a second store, which AC1 names as a defect in the same

@@ -5,10 +5,13 @@
  * Verifies: EPIC-25-S08, EPIC-25-S09, EPIC-25-S10, EPIC-25-S11 · AC1, AC2, AC3
  *
  * **It takes no props, reads no `projectId`.** No `defineProps`, no
- * `useRoute()` anywhere in this file — AC1 and EPIC-25-S09 both turn on that,
- * and the two panels this story does not own (*Providers & runtimes*, *Issue
- * tracker*) are real `UiPanel`s with real titles and an
- * `UiEmptyState` body naming the story that fills them, never a styled mock.
+ * `useRoute()` anywhere in this file — AC1 and EPIC-25-S09 both turn on that.
+ * *Providers & runtimes* is still a `UiPanel` with a real title and an
+ * `UiEmptyState` body naming KAR-25.3, the story that fills it, never a
+ * styled mock. *Issue tracker* is filled by
+ * `../components/settings/ConnectorsPanel.vue` (KAR-25.4) — passed
+ * `projects`, the same list this file already loads for *Execution
+ * defaults*' own picker, rather than fetching a second copy.
  *
  * ## *Execution defaults* has no workspace to be default to
  *
@@ -29,10 +32,12 @@
  * starts every mount with nothing chosen. That is what makes the two halves
  * of S08 true at once: the panel's rendering is a function of a picker inside
  * it, not of the route, so it renders identically whichever route got you
- * here. Mirrors the precedent KAR-25.4 AC6 sets for the *Issue tracker*
- * panel: name the workspace being edited, offer an explicit picker, and
- * render an explanatory empty state — not a disabled form — when none is
- * chosen.
+ * here. `../components/settings/ConnectorsPanel.vue` (KAR-25.4) follows the
+ * same shape — its own picker, starting unchosen on every mount — but does
+ * not close down to an empty state the way this one does: a service's
+ * credential facts are not per project, so they still render with nothing
+ * picked (EPIC-25-S28), and it is only the Connect/Disconnect actions that
+ * wait for an explicit choice. See that file's own header comment for why.
  *
  * The picker is a plain `<select>`, not a `ui/` primitive: the library has no
  * select control (fifteen primitives, and `UiField` is a text input), and
@@ -91,6 +96,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useApiClient } from '../api/provide.ts';
 import { configQuery } from '../api/queries.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
+import ConnectorsPanel from '../components/settings/ConnectorsPanel.vue';
 import {
   UiEmptyState,
   UiField,
@@ -365,12 +371,12 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
     </UiPanel>
 
     <div class="settings__row">
-      <!-- KAR-25.4's panel. -->
+      <!-- KAR-25.4's panel — `../components/settings/ConnectorsPanel.vue`'s
+           own header comment carries the design, including why it takes
+           `projects` (already loaded for the picker beside it) rather than
+           fetching its own copy. -->
       <UiPanel title="Issue tracker" data-panel="issue-tracker">
-        <UiEmptyState
-          title="No connectors here yet"
-          hint="This panel is filled by KAR-25.4, which moves the connectors screen into settings."
-        />
+        <ConnectorsPanel :projects="projects" />
       </UiPanel>
 
       <UiPanel title="Execution defaults" data-panel="execution-defaults">
