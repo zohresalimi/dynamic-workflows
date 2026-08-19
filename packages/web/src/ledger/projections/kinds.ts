@@ -129,6 +129,7 @@ export const EVENT_KIND_OWNERS = {
 
   // ── workspace ──────────────────────────────────────────────────────────────
   'workspace.worktree_created': [],
+  'workspace.worktree_reused': [],
   'workspace.branch_occupied': [],
   'workspace.included_file': [],
   'workspace.setup_cache_hit': [],

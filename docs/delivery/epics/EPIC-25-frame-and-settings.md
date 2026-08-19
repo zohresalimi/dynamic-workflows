@@ -443,7 +443,15 @@ The existing branch-occupancy pre-check for a write node is unchanged and still 
    holder. This case gets its own test against a fixture, not just a code path.
 4. An orphan directory that git does not list is pruned and re-added, and the run continues.
 5. A run that failed at `recon` after provisioning advances on the next tick rather than throwing.
-   Asserted end to end, because this is the failure the owner actually hit.
+   Asserted against real git and a real `runReconNode` — a first `provision` standing in for the
+   attempt that crashed before it could remove its own worktree, then a second `runReconNode` call
+   exactly as a retried node would run it, which must resolve rather than throw
+   `WorktreeCreateFailed`. **Not asserted end to end**: this repository has no harness that drives
+   `advanceRun`/`advanceOneRun`/the drive ticker with an injected mid-run failure (the closest
+   thing, `e2e/smoke/`, scripts a single happy path and cannot inject one), so the scheduler layer
+   above `runReconNode` — the retry actually being scheduled after a crash — is not exercised by
+   this story's tests. See `packages/daemon/test/integration/worktree-reprovision.test.ts`'s own
+   module note for the exact boundary.
 6. `--detach` read nodes keep their current behaviour: no branch, no occupancy check, two on one
    commit both succeed.
 
