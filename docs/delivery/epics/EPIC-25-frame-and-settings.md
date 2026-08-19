@@ -456,27 +456,55 @@ The existing branch-occupancy pre-check for a write node is unchanged and still 
 
 Fixes the second terminal defect.
 
-`fromConnect` resolves `false` when Vite's middleware calls `next()`, and Hono then builds a second
-response over the same socket. When Vite has already written to `outgoing` before calling `next()`
-— which its own error and fallback paths do — `responseViaCache` calls `writeHead` on a response
-that is finished, and Node throws.
+The actual cause is in `../http/auth.ts`'s `varyOrigin`, not in `fromConnect`. `varyOrigin` calls
+`c.header('Vary', 'Origin')` after `next()`, and on a finalized context `c.header()` does not
+mutate the existing `Headers` object in place — it **rebuilds** `c.res` as a new `Response`. When
+the response underneath is the `RESPONSE_ALREADY_SENT` sentinel that `../http/connect.ts` returns
+after Vite's middleware has written straight to the socket, the rebuild produces a copy that is no
+longer that singleton. `@hono/node-server` swaps in a `Response` subclass that caches its own
+status/body/headers and checks that cache **before** it checks for the `x-hono-already-sent`
+header, so the rebuilt copy takes the ordinary write path and `writeHead` runs against a socket
+that has already finished — `ERR_HTTP_HEADERS_SENT`.
 
-The fix is one guard, in the adapter, where the fact is knowable: after the promise settles, if
-`outgoing.headersSent` or `outgoing.writableEnded`, the response *was* sent regardless of what the
-middleware signalled — return `RESPONSE_ALREADY_SENT`. The listener cleanup is also moved so it runs
-on every settle path rather than only the `next()` one, which is the leak that let a late `finish`
-resolve an already-settled promise.
+The fix is one guard in `varyOrigin`, at the point the fact is knowable: after `next()` settles, if
+`c.res === RESPONSE_ALREADY_SENT`, return without touching it. Nothing is lost by skipping the
+header there — in dev, the assets Vite serves never had Hono-written headers to vary in the first
+place, and in production the SPA and its assets are built by `serveStatic`/`c.body` and still get
+the header.
+
+`fromConnect`'s own guard is kept as part of this story: trusting `outgoing.headersSent` /
+`outgoing.writableEnded` over whatever a connect middleware's `next()` claims fixes a real bug (a
+middleware that writes a complete response and then calls `next()` anyway, which is what Vite's
+own error and fallback paths do), and the listener cleanup that now runs on every settle path
+fixes a real leak. Both stay in the fall-through branch that `varyOrigin`'s guard now protects.
+Neither one, though, was what the owner hit — see the note below.
+
+> **The original diagnosis was wrong, and here is how that was found.** This story first shipped
+> believing `fromConnect` was the cause, on the write-then-`next()` theory described above. Tested
+> against a live dev daemon with the `fromConnect` guard applied and a temporary `console.error` in
+> its fall-through branch, every Vite-served request (`/`, `/favicon.ico`, `/src/main.ts`,
+> `/gallery`) still produced exactly two `ERR_HTTP_HEADERS_SENT`, and the `console.error` never
+> printed — proof the fall-through branch was never reached and the real cause was upstream of it.
+> With `varyOrigin`'s guard applied instead, the same navigation produced zero.
 
 **Acceptance criteria**
 
-1. A middleware that writes a response **and then** calls `next()` does not produce a second
+1. `varyOrigin` returns the `RESPONSE_ALREADY_SENT` sentinel untouched — asserted by identity
+   (`===`), not by inspecting its headers, because a rebuilt copy can carry the same
+   `x-hono-already-sent` header and still be the object that crashes the write path.
+2. An ordinary response (2xx) still carries `Vary: Origin` after passing through `varyOrigin`,
+   unchanged from before this story.
+3. A refusal response (non-2xx — `requireAuth`'s 401s and 503, an origin rejection) still carries
+   `Vary: Origin`, unchanged. AC4 is specifically about refusals not being exempted from the
+   header, and this story must not quietly narrow that.
+4. A middleware that writes a response **and then** calls `next()` does not produce a second
    response, and does not throw. Tested against a fake connect middleware — no Vite required.
-2. A middleware that calls `next()` without writing still falls through to Hono, unchanged.
-3. A middleware that writes and does not call `next()` still returns `RESPONSE_ALREADY_SENT`,
+5. A middleware that calls `next()` without writing still falls through to Hono, unchanged.
+6. A middleware that writes and does not call `next()` still returns `RESPONSE_ALREADY_SENT`,
    unchanged.
-4. Listeners registered on `outgoing` are removed on every settle path; a test asserts the listener
+7. Listeners registered on `outgoing` are removed on every settle path; a test asserts the listener
    count returns to its starting value.
-5. `packages/daemon`'s existing HTTP suite passes untouched, and the dev daemon serves `/` and
+8. `packages/daemon`'s existing HTTP suite passes untouched, and the dev daemon serves `/` and
    `/gallery` with no `ERR_HTTP_HEADERS_SENT` in its log across a navigation of every route.
 
 ---
