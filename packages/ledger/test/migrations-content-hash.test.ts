@@ -73,6 +73,9 @@ const SHIPPED: Record<string, string> = {
   // Shipped 2026-08-16, KAR-22.4 — `connector`, which services a project may
   // use. No credential column: ADR-0003, amended the same day.
   '0017-connectors.ts': 'f0785fba964c87d2265a409574d05359006afd5851243de3438c4b22d7547bb7',
+  // Shipped 2026-08-19, KAR-25.3 — `provider_setting`, which runtimes this
+  // machine has disabled. One boolean per provider.
+  '0018-provider-settings.ts': '213893e925567100f1ca1faf8902521256bae62aea31ac8a1c670a40c11795c4',
 };
 
 const shippedMigrationFiles = readdirSync(migrationsDir).filter(

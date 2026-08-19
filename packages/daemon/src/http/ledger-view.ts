@@ -48,6 +48,7 @@ import type {
   PlanPatchRow,
   PlanVersionRow,
   ProviderCapabilityRow,
+  ProviderSettingRecord,
   RunOrigin,
   RunSnapshot,
   SnapshotSeq,
@@ -58,6 +59,7 @@ import {
   runHeadSeq as ledgerRunHeadSeq,
   listPlanPatches,
   listPlanVersions,
+  listProviderSettings,
   listRunIds,
   openRead,
   pendingPatchApprovals,
@@ -207,6 +209,13 @@ export interface LedgerView {
    */
   providerCapabilities(provider: string): readonly ProviderCapabilityRow[];
   /**
+   * KAR-25.3 AC3 — every runtime this data directory has an explicit
+   * enable/disable setting for (`provider_setting`, migration 0018). A
+   * provider absent from this list has never been toggled and reads as
+   * enabled everywhere this is consulted (`GET /providers`'s own reducer).
+   */
+  providerSettings(): readonly ProviderSettingRecord[];
+  /**
    * KAR-15.6 AC6 — the verdict *documents* this run's gates produced, which
    * the acceptance board reduces. `RunState.gateVerdicts` carries the ladder's
    * view of the same verdicts and not the documents.
@@ -269,6 +278,7 @@ export function openLedgerView(dataDir: string): OpenedLedgerView {
       amended: readLatestSpecAmendment(db, runId),
     }),
     providerCapabilities: (provider) => readProviderCapabilities(db, provider),
+    providerSettings: () => listProviderSettings(db),
     gateVerdictDocuments: (runId, limit) => readGateVerdicts(db, runId, limit),
     runOrigin: (runId) => readRunOrigin(db, runId),
     planTransition: (runId, toVersion) => {

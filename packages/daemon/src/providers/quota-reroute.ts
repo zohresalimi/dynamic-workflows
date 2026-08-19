@@ -61,6 +61,7 @@ import {
   commitPatchedPlan,
   type NodeRefChecker,
 } from '../plan/validate.ts';
+import { disabledProviderIds } from './settings.ts';
 
 export interface QuotaRouteQuery {
   /** The node's own `provider.requires`, in either vocabulary. */
@@ -80,13 +81,24 @@ export interface QuotaRouteQuery {
  * Both reads are of the whole data directory rather than of this run: a
  * capability row is a fact about a binary, and *"the limit that makes today's
  * plan unroutable was very likely tripped by yesterday's run"*.
+ *
+ * **KAR-25.3 AC3, reader (d).** `chooseQuotaRoute` reduces
+ * `provider_capabilities` rows — a completely different producer from the
+ * one `disabled` lives on (`ProviderResolution`) — so this is the one place a
+ * disabled provider is removed from *its* candidate list rather than
+ * inherited for free the way admission and the picker are. Without this, a
+ * node rerouted mid-run for a quota failure could land on a runtime the
+ * operator disabled in Settings a moment before, which the operator would
+ * have every reason to believe closed off the run rather than just the start
+ * of one.
  */
 export function quotaRouteFor(db: Db, query: QuotaRouteQuery): QuotaRoute {
+  const disabled = disabledProviderIds(db);
   return chooseQuotaRoute({
     requires: query.requires,
     current: query.current,
     prefer: query.prefer,
-    rows: listProviderCapabilities(db),
+    rows: listProviderCapabilities(db).filter((row) => !disabled.has(row.provider)),
     limits: readLatestRateLimits(db),
     now: query.now,
   });

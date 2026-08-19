@@ -88,6 +88,21 @@ export interface ProviderResolution {
    * only when the child said anything at all.
    */
   readonly handshakeStderr?: string;
+  /**
+   * KAR-25.3 AC3 — the operator disabled this provider in `/settings`.
+   *
+   * Optional and absent by default — `resolveProviderState` never sets it,
+   * because resolving a binary knows nothing about a policy stored in the
+   * ledger. It is stamped on afterwards, by whichever daemon-side caller has a
+   * `Db` to read `provider_setting` from (`@DeFlow/daemon`'s
+   * `packages/daemon/src/providers/settings.ts`), and every reducer below
+   * treats it the same way once it is there: `providerRoutes` closes both
+   * routes, which is what makes a disabled provider unusable to
+   * `usableProviders`, `admitRun` and `providerOptions` **without any of them
+   * being told about `provider_setting` directly** — the flag lives on the
+   * value they already reduce, not beside it.
+   */
+  readonly disabled?: boolean;
 }
 
 /** The first root holding an executable called `bin`, or `null`. */
@@ -220,8 +235,17 @@ const ALL_TURNS = Object.keys(TURN_ROUTES) as readonly RunTurn[];
  * instead of removing it. `handshake-failed` closes the ACP route for the same
  * reason at one remove: a bridge that did not answer `initialize` is present
  * and unusable, and only a probe can know it.
+ *
+ * **KAR-25.3 AC3 — a disabled provider has both routes closed, before either
+ * binary is even looked at.** This is the one line the whole toggle stands on:
+ * `usableProviders`, `admitRun`, `providerOptions` and the chain's own
+ * selection all derive from this function and nothing else
+ * (`test/one-provider-route-reducer.test.ts`), so a disabled provider
+ * disappearing from every one of them is a property of this branch existing
+ * once, not four call sites each remembering to check a flag.
  */
 export function providerRoutes(resolution: ProviderResolution): ProviderRoutes {
+  if (resolution.disabled === true) return { acp: 'missing', shim: 'missing' };
   const shim: RouteState = resolution.vendorPath === null ? 'missing' : 'available';
   const acp: RouteState =
     resolution.adapterPath !== null &&
@@ -342,6 +366,20 @@ function trimChildStderr(raw: string): string {
  * moves `doctor`'s exit code (KAR-18.8 AC3).
  */
 export function providerVerdict(resolution: ProviderResolution): ProviderVerdict {
+  // KAR-25.3 AC3 — checked first, and unconditionally, so an installed
+  // provider the operator disabled in Settings never renders the "installed"
+  // sentence below it: that sentence is true about the binary and false about
+  // whether a run may use it, which is the exact confusion this branch exists
+  // to stop before it starts. There is nothing to `npm install`, so `action`
+  // is absent — the fix is a toggle, not a command.
+  if (resolution.disabled === true) {
+    return {
+      state: resolution.state,
+      status: 'warn',
+      detail: `${resolution.provider} is disabled in Settings — enable it there to let DeFlow use it.`,
+    };
+  }
+
   if (resolution.state === 'installed') {
     return {
       state: 'installed',
@@ -579,15 +617,29 @@ function worthNaming(resolutions: readonly ProviderResolution[]): readonly Provi
  */
 export function renderRefusal(resolutions: readonly ProviderResolution[]): string {
   const lines = worthNaming(resolutions).map((entry) => providerVerdict(entry).detail);
+
+  // KAR-25.3 AC3 — a machine where every candidate is disabled rather than
+  // absent needs a different opening line: "restart it with deflow up" is
+  // advice for a binary the daemon has not seen yet, and re-probing a
+  // disabled provider finds exactly what it found before. The per-provider
+  // sentences already say "disabled in Settings" (see the branch above); this
+  // is only the summary line above them, so the two levels agree.
+  const allDisabled =
+    resolutions.length > 0 && resolutions.every((entry) => entry.disabled === true);
+
   return [
-    // The parenthesis is the one thing a reader cannot work out for themselves:
-    // admission is a read of what the daemon found when it started (AC6), so an
-    // adapter installed since then is invisible until it restarts. Without this
-    // sentence the operator's next move after a successful `npm install -g` is
-    // to run the same command again and be refused again.
-    'DeFlow cannot start this run: no agent adapter on this machine can serve it. ' +
-      '(This is what DeFlowd found when it started — if you have installed one since, restart it ' +
-      'with "deflow up".)',
+    allDisabled
+      ? 'DeFlow cannot start this run: every provider registered here is disabled in Settings. ' +
+        'Enable one at /settings to let DeFlow use it — reinstalling or restarting will not change this.'
+      : // The parenthesis is the one thing a reader cannot work out for
+        // themselves: admission is a read of what the daemon found when it
+        // started (AC6), so an adapter installed since then is invisible
+        // until it restarts. Without this sentence the operator's next move
+        // after a successful `npm install -g` is to run the same command
+        // again and be refused again.
+        'DeFlow cannot start this run: no agent adapter on this machine can serve it. ' +
+        '(This is what DeFlowd found when it started — if you have installed one since, restart it ' +
+        'with "deflow up".)',
     ...lines,
     MOCK_AGENT_SENTENCE,
   ].join('\n\n');

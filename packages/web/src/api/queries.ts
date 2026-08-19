@@ -17,7 +17,7 @@
  *
  * | Endpoint                | Changes when                                     |
  * | ----------------------- | ------------------------------------------------ |
- * | `GET /api/providers`    | a vendor CLI is installed, upgraded or re-probed |
+ * | `GET /api/providers`    | a vendor CLI is installed, upgraded or re-probed, or a runtime is enabled/disabled |
  * | `GET /api/config`       | the workspace config file is edited              |
  * | `GET /api/artifacts/:sha` | never — the address *is* the hash of the bytes |
  *
@@ -66,11 +66,28 @@ export interface QueryDefinition<T> {
   readonly query: () => Promise<T>;
 }
 
-/** One provider row, as `GET /api/providers` reports it. */
+/**
+ * One provider row, as `GET /api/providers` reports it.
+ *
+ * KAR-25.3 AC1, AC3 added `enabled`, `source` and `binaryPath` — the settings
+ * panel's own fields, and the rail's `AppRail.vue` reads the same rows through
+ * this one query (AC8), so a field added here is visible to both without
+ * either being told separately.
+ */
 export interface ProviderRow {
   readonly provider: string;
   readonly installed: boolean;
   readonly version?: string | null;
+  /** `false` when the operator disabled this runtime in Settings. Defaults to
+   *  `true` — a provider with no `provider_setting` row has never been
+   *  toggled. */
+  readonly enabled: boolean;
+  /** Always `'detected'` in this build — see KAR-25.3's own scope note on why
+   *  "added" is not a runtime this route can report yet. */
+  readonly source: 'detected' | 'added';
+  /** The resolved binary this daemon would spawn, or `null` when this boot
+   *  was never told which machine it is on (KAR-25.3 AC1). */
+  readonly binaryPath: string | null;
 }
 
 export interface WorkspaceConfigDocument {

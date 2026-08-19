@@ -64,7 +64,13 @@ import {
   sealTaskSpec,
   VerdictV2Schema,
 } from '@DeFlow/core';
-import { putBlob, readProject, runIdsForProject, type SnapshotSeq } from '@DeFlow/ledger';
+import {
+  putBlob,
+  readProject,
+  runIdsForProject,
+  type SnapshotSeq,
+  setProviderDisabled,
+} from '@DeFlow/ledger';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -2031,7 +2037,11 @@ export const api = new Hono()
   .get('/providers/routes', (c) => {
     const ports = intakePorts();
     if (ports === null) return notReady(c);
-    const resolutions = ports.providerResolutions;
+    // KAR-25.3 AC3 — a thunk, not a stored array: it re-reads `provider_setting`
+    // over the cached filesystem resolution on every call, so a runtime
+    // disabled a moment ago has already dropped out of the picker by the time
+    // this answers (`../boot.ts`'s own comment on `currentResolutions`).
+    const resolutions = ports.providerResolutions?.();
     return c.json(
       resolutions === undefined
         ? { providers: [], known: false }
@@ -2297,12 +2307,55 @@ export const api = new Hono()
     }
   })
 
+  /**
+   * KAR-25.3 AC1, AC3, AC8 — `GET /providers`, extended for the settings
+   * panel without becoming a second producer of anything the routes endpoint
+   * already answers.
+   *
+   * Three fields joined on here, each read from the one place that has it:
+   *
+   *  * **`enabled`** — `provider_setting` (migration 0018), read through
+   *    `LedgerView.providerSettings()`. A provider with no row has never been
+   *    toggled and reads `true`, the same default `withDisabled` gives it
+   *    everywhere else this fact is consulted.
+   *  * **`source`** — always `'detected'` in this build: every id iterated
+   *    here came from `PROVIDER_SPECS`, the compile-time registry, and there
+   *    is no way today to register a runtime that did not (KAR-25.3's own
+   *    scope note — "add" is a story of its own). The field is still sent
+   *    rather than inferred client-side, so the panel's detected/added
+   *    branch is a read of the wire rather than a guess about an id's shape.
+   *  * **`binaryPath`** — the one resolution-derived fact this manifest route
+   *    is allowed to carry, and it is optional for a reason: it comes from
+   *    `intakePorts().providerResolutions()`, the boot-time filesystem
+   *    resolution `/providers/routes` also reads, and that thunk is `undefined`
+   *    exactly when this daemon was never told which machine it is on. A
+   *    missing thunk is not a 503 here — the capability manifest above is
+   *    still a complete, honest answer — it is `binaryPath: null` for every
+   *    row, the same "no honest basis to say more" `/providers/routes`
+   *    answers with `known: false`.
+   *
+   * This route still answers no health sentence and no model list: neither
+   * has a producer anywhere in this codebase (see KAR-25.3's own notes) and
+   * `/providers/routes`' `reason` field is where the panel reads the one that
+   * exists — `providerVerdict`'s own sentence, which now has a first branch
+   * for exactly `enabled: false` (`@DeFlow/adapters`' `providerVerdict`).
+   */
   .get('/providers', (c) => {
     const view = ledgerView();
     if (view === null) return notReady(c);
 
+    const settings = new Map(view.providerSettings().map((row) => [row.provider, row.disabled]));
+    const resolutions = intakePorts()?.providerResolutions?.() ?? [];
+    const resolutionOf = new Map(resolutions.map((entry) => [entry.provider, entry]));
+
     return c.json(
       Object.keys(PROVIDER_SPECS).map((provider) => {
+        const resolution = resolutionOf.get(provider);
+        const binaryPath =
+          resolution === undefined ? null : (resolution.adapterPath ?? resolution.vendorPath);
+        const enabled = settings.get(provider) !== true;
+        const source = 'detected' as const;
+
         // The newest row, not the oldest: the history is ordered oldest first,
         // and "what is installed now" is its last entry (see `probedVersion`).
         const row = view.providerCapabilities(provider).at(-1);
@@ -2314,6 +2367,9 @@ export const api = new Hono()
             binarySha256: null,
             probedAt: null,
             capabilities: null,
+            enabled,
+            source,
+            binaryPath,
           };
         }
         return {
@@ -2325,10 +2381,55 @@ export const api = new Hono()
           // The entire `initialize` response, unmodified — the manifest is the
           // vendor's own answer and DeFlow never paraphrases it.
           capabilities: JSON.parse(row.capsJson) as unknown,
+          enabled,
+          source,
+          binaryPath,
         };
       }),
       200,
     );
+  })
+
+  /**
+   * KAR-25.3 AC3 — `PATCH /providers/:provider`: enable or disable a runtime.
+   *
+   * The only route that writes `provider_setting`. Everything downstream of
+   * the write is automatic (`../providers/settings.ts`'s header comment has
+   * the full account): `providerRoutes` closes both routes for a disabled
+   * resolution, so `usableProviders`, `admitRun` and `providerOptions` all
+   * stop offering it the next time anything reads `providerResolutions()` —
+   * which is to say the very next request, since that thunk re-reads this
+   * table rather than a boot-time snapshot.
+   *
+   * `unknown_provider` for an id `PROVIDER_SPECS` never registered — there is
+   * no "added" runtime in this build, so any id outside the compile-time
+   * registry is not a runtime this daemon knows about, never a row worth
+   * creating (KAR-25.3's own scope note).
+   */
+  .patch('/providers/:provider', async (c) => {
+    const ports = intakePorts();
+    if (ports === null) return notReady(c);
+
+    const provider = c.req.param('provider');
+    if (!Object.hasOwn(PROVIDER_SPECS, provider)) {
+      return c.json(
+        ...apiError('unknown_provider', `"${provider}" is not a runtime this daemon knows about`, {
+          detail: { provider },
+        }),
+      );
+    }
+
+    const body = (await c.req.json().catch(() => null)) as { enabled?: unknown } | null;
+    if (typeof body?.enabled !== 'boolean') {
+      return c.json(
+        ...apiError('invalid_request', 'the body is { "enabled": boolean }', {
+          detail: { field: 'enabled' },
+        }),
+      );
+    }
+
+    setProviderDisabled(ports.db, provider, !body.enabled, ports.clock.now());
+    return c.json({ provider, enabled: body.enabled }, 200);
   })
 
   /**

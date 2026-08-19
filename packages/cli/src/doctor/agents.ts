@@ -47,10 +47,12 @@ import { NodeIdSchema, ProviderIdSchema, RunIdSchema, toJsonSchemaDocument } fro
 
 import {
   detectProviders,
+  disabledProviderIds,
   type ProviderDetectionEntry,
   type ProviderDoctorReport,
   runProviderDoctor,
   sqliteLedgerSink,
+  withDisabled,
 } from '@DeFlow/daemon';
 import {
   listProviderCapabilities,
@@ -736,7 +738,7 @@ export async function agentChecks(input: AgentsInput): Promise<AgentsResult> {
   // Capabilities and Conformance sections to describe the adapter that exists
   // when doctor finishes rather than the machine as it was when it started.
   const offered: AdapterInstallResult = await offerAdapterInstalls({
-    resolutions: resolveProviderStates(input.roots),
+    resolutions: withDisabled(resolveProviderStates(input.roots), disabledProviderIds(db)),
     mode: input.install.mode,
     prompt: input.install.prompt,
     roots: input.roots,

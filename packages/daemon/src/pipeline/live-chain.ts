@@ -59,6 +59,7 @@ import { RefFormatChecker } from '../git/ref-format.ts';
 import { WorkspaceManager } from '../git/worktree-manager.ts';
 import { log } from '../logging.ts';
 import { buildChildEnv, createRunTmpdir } from '../proc/env.ts';
+import { disabledProviderIds, withDisabled } from '../providers/settings.ts';
 import { writeRunSchemas } from '../run-schemas.ts';
 import { loadSchemaDirectory } from '../schema-store.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
@@ -171,6 +172,19 @@ export interface Chosen {
  * shook hands with. The `shim.bin` path is the one taken — a pre-execution turn
  * is driven through the vendor's own CLI, not through its ACP bridge, because
  * the return contract rides on a flag only the CLI has.
+ *
+ * **KAR-25.3 AC3 — disabled is checked only when nothing has been admitted
+ * yet.** A run with a recorded admission (`admittedProvider` below) is already
+ * filtered to that one provider by name a few lines down, and it keeps
+ * running on it whether or not the operator disables it afterwards — the same
+ * answer `resolveProviderStates` already gives for a binary the operator
+ * *uninstalls* mid-run, and the one this story's own scope notes call out
+ * explicitly: disabling removes a provider from the picker and from
+ * admission, it does not reach into a run already admitted onto it. Where
+ * there is no recorded admission — a daemon booted without `providerRoots`,
+ * the exact machine reader (c) of this story's plan names — a disabled
+ * provider must not be silently selected either, which is what this filter is
+ * for.
  */
 export function chooseProvider(
   db: Parameters<typeof listProviderCapabilities>[0],
@@ -184,8 +198,10 @@ export function chooseProvider(
   // does not is a run silently spawning an agent nobody was told about. It is
   // also what makes `--provider` mean anything after the 201.
   const admitted = runId === undefined ? null : admittedProvider(db, runId);
+  const disabled = admitted === null ? disabledProviderIds(db) : new Set<string>();
+  const resolutions = withDisabled(resolveProviderStates(roots), disabled);
 
-  for (const candidate of usableProviders(resolveProviderStates(roots))) {
+  for (const candidate of usableProviders(resolutions)) {
     if (admitted !== null && candidate.provider !== admitted) continue;
     const row = rows.get(candidate.provider);
     if (row === undefined) continue;

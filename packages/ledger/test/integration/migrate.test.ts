@@ -84,7 +84,9 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
       // map from a name to a repository, with the realpath unique (KAR-22.1);
       // `connector` is migration 0017's record of which services a project may
       // use — three columns and no credential among them (KAR-22.4, ADR-0003
-      // as amended 2026-08-16).
+      // as amended 2026-08-16); `provider_setting` is migration 0018's record
+      // of whether a runtime is disabled, one row per provider at most
+      // (KAR-25.3).
       expect(tables).toEqual([
         'artifact_fts',
         'artifact_fts_config',
@@ -106,6 +108,7 @@ suite('migration 0001 — the real shipped schema (AC1)', () => {
         'process',
         'project',
         'provider_capabilities',
+        'provider_setting',
         'run',
         'token_calibration',
         'worktrees',
