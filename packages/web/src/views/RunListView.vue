@@ -37,13 +37,12 @@
  * design keeps free of intervals).
  */
 import { UserRound } from 'lucide-vue-next';
-import { RouterLink } from 'vue-router';
-import { COMPOSER_OVERLAY, MAIN_CONTENT_ID } from '../app/ids.ts';
+import { RouterLink, useRouter } from 'vue-router';
+import { MAIN_CONTENT_ID } from '../app/ids.ts';
 import { useRunList } from '../app/useRunList.ts';
 import { UiButton, UiEmptyState } from '../components/ui/index.ts';
 import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunListStore } from '../stores/useRunListStore.ts';
-import { useUiStore } from '../stores/useUiStore.ts';
 
 const props = defineProps<{
   /** From `/projects/:projectId/runs` (`props: true`). */
@@ -52,7 +51,7 @@ const props = defineProps<{
 
 const runs = useRunListStore();
 useRunList(props.projectId);
-const ui = useUiStore();
+const router = useRouter();
 
 /** The dot's colour: `RUN_STATUS_DISPLAY` one domain over from the node
  * palette (KAR-24.4), never a colour named in this file. */
@@ -79,9 +78,9 @@ function when(iso: string): string {
 
     <!--
       AC5 — a real UiEmptyState, with an action this application can actually
-      perform: the composer is mounted globally in App.vue and needs no
-      project context, so "start one" opens the same overlay the keyboard
-      shortcut does rather than pointing at a form this view does not have.
+      perform: the composer is a route now (`/projects/:projectId/new-run`,
+      KAR-25.5), and this view always has a `projectId` prop, so "start one"
+      is a plain push to it rather than a form this view does not have.
     -->
     <UiEmptyState
       v-if="runs.list.length === 0"
@@ -94,7 +93,7 @@ function when(iso: string): string {
           variant="primary"
           size="sm"
           data-run-list-compose
-          @click="ui.openOverlay(COMPOSER_OVERLAY)"
+          @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
         >
           <UserRound :size="12" aria-hidden="true" />
           Start a run

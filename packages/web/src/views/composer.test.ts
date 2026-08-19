@@ -156,6 +156,11 @@ function composerClient(options: ClientOptions = {}): ApiClient & { readonly rec
         // connector answers the first with `connected: false`, and the composer
         // then offers nothing but the paste box, which is AC6 in one object.
         ':id': {
+          // KAR-25.5's `AC7` suite reaches the composer's own route from
+          // `project-workflows` and `project-runs`, both of which read this
+          // on mount — unrelated to the composer, but needed so mounting on
+          // them does not itself reject.
+          runs: { $get: () => json(200, { runs: [], cursor: null, more: false }) },
           connectors: Object.assign(
             {
               $get: () =>
@@ -302,10 +307,17 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 4; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-/** Opens the composer the way the keyboard map does, from wherever we are. */
+/**
+ * Opens the composer the way every entry point now does: a push to its own
+ * route. KAR-25.5 moved the composer off `COMPOSER_OVERLAY` and onto
+ * `/projects/:projectId/new-run`; the keyboard route and the topbar button
+ * both resolve to the same push (`App.vue`'s `openComposer()`), so a direct
+ * `router.push` here is the same destination a `c` keypress reaches from a
+ * project-scoped route — proven separately by the `AC7` suite below, which
+ * presses the actual key.
+ */
 async function openComposer(): Promise<void> {
-  document.body.focus();
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+  await shell.router.push({ name: 'new-run', params: { projectId: PROJECT_ID } });
   await settle();
   await expect.poll(() => one('[data-composer]')).not.toBeNull();
 }
@@ -340,7 +352,13 @@ async function mount(options: {
   readonly feed?: RunFeedFactory;
 }): Promise<void> {
   shell = await mountShell({
-    at: options.at ?? '/projects',
+    // KAR-25.5 — the composer's own route by default now: `openComposer()`
+    // above pushes here regardless of where a spec started, so mounting
+    // directly on it is the same destination with one fewer hop, and avoids
+    // every case that does not care about the *route the composer is reached
+    // from* needing a full `ProjectWorkflowsView` fixture (a different view,
+    // a different request) just to get there.
+    at: options.at ?? `/projects/${PROJECT_ID}/new-run`,
     client: options.client,
     ...(options.feed === undefined ? {} : { feed: options.feed }),
   });
@@ -504,8 +522,10 @@ suite('EPIC-22-S25 — an admission refusal is shown in the CLI’s own words', 
 
     const error = one('[data-composer-error]');
     expect(error?.textContent).toContain(message);
-    // It does not claim the run started, and it did not navigate.
-    expect(shell.router.currentRoute.value.path).toBe('/projects');
+    // It does not claim the run started, and it did not navigate away from
+    // the composer's own page (KAR-25.5 — the mount point moved from
+    // `/projects` to the composer's route).
+    expect(shell.router.currentRoute.value.path).toBe(`/projects/${PROJECT_ID}/new-run`);
     // The run exists and was aborted, so its id is reachable rather than lost.
     expect(one('[data-composer-refused-run]')?.textContent).toContain(RUN_ID);
     // A paragraph is not retyped because a machine is missing an adapter.
@@ -585,7 +605,11 @@ suite('EPIC-22-S27 — what was submitted is still readable afterwards', () => {
 suite('EPIC-22-S28 — keyboard only: reach the composer, type, submit', () => {
   it('submits a run with no pointer event dispatched at any point', async () => {
     const client = composerClient();
-    await mount({ client, at: '/' });
+    // KAR-25.5 — `/` is the project chooser now, with no project open; `c`
+    // there routes to the chooser (AC3), not to the composer. This case is
+    // about the keyboard, not about that new refusal, so it mounts inside a
+    // project — the workflows view, one hop from the composer's own route.
+    await mount({ client, at: `/projects/${PROJECT_ID}` });
 
     const pointerEvents: string[] = [];
     const record = (event: globalThis.Event) => pointerEvents.push(event.type);
@@ -634,7 +658,7 @@ suite('EPIC-22-S29 — a failed submission keeps the draft and says what happene
     expect(one('[data-composer-error]')?.textContent).toMatch(
       /could not be reached|Failed to fetch/,
     );
-    expect(shell.router.currentRoute.value.path).toBe('/projects');
+    expect(shell.router.currentRoute.value.path).toBe(`/projects/${PROJECT_ID}/new-run`);
 
     submitChord();
     await settle();
@@ -677,13 +701,55 @@ suite('EPIC-22-S32 — double submission creates one run', () => {
   });
 });
 
-suite('AC7 — the composer is reachable from anywhere in the project', () => {
-  it.each(['/', '/projects', `/runs/${RUN_ID}`])('opens on %s', async (at) => {
+/** `c`, dispatched exactly as the keyboard map receives it — not a push, so
+ * this suite proves the actual key reaches the actual route. */
+function pressC(): void {
+  document.body.focus();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+}
+
+/**
+ * KAR-25.5 — this is the one suite the story is explicitly permitted to
+ * change what it claims (see the story's own AC2 caveat): under AC3, `c` no
+ * longer opens the same overlay from every route. It now reaches a project's
+ * own composer from *inside* that project, and reaches the chooser — with a
+ * reason, and no request — from a route that names none. Both branches are
+ * `App.vue`'s `openComposer()`, the one function the topbar button and this
+ * key both call.
+ */
+suite('AC7 — the composer is reachable from anywhere inside a project', () => {
+  it.each([
+    `/projects/${PROJECT_ID}`,
+    `/projects/${PROJECT_ID}/runs`,
+    `/projects/${PROJECT_ID}/runs/${RUN_ID}/plan`,
+  ])('reaches the composer with "c" from %s', async (at) => {
     const client = composerClient();
     await mount({ client, at, feed: recordingFeed().factory });
-    await openComposer();
-    expect(one('[data-composer]')).not.toBeNull();
+
+    pressC();
+    await settle();
+
+    await expect.poll(() => shell.router.currentRoute.value.name).toBe('new-run');
+    expect(shell.router.currentRoute.value.params['projectId']).toBe(PROJECT_ID);
+    await expect.poll(() => one('[data-composer]')).not.toBeNull();
     expect(all('[data-provider-row]').length).toBeGreaterThan(0);
+  });
+});
+
+suite('EPIC-25-S35 — with no project open, "c" says a run needs one', () => {
+  it('routes to the chooser, names the reason, and submits nothing', async () => {
+    const client = composerClient();
+    await mount({ client, at: '/projects', feed: recordingFeed().factory });
+
+    pressC();
+    await settle();
+
+    expect(shell.router.currentRoute.value.name).toBe('projects');
+    expect(shell.router.currentRoute.value.query['needsProject']).toBe('1');
+    await expect.poll(() => one('[data-projects-needs-project]')).not.toBeNull();
+    expect(one('[data-projects-needs-project]')?.textContent).toMatch(/project/i);
+    // AC3 — no run is submitted, because there is no submit path here at all.
+    expect(client.recorded.posts).toEqual([]);
   });
 });
 

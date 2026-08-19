@@ -71,15 +71,33 @@ const NODES = [
 suite('EPIC-16-S4 — the map an operator uses for hours (AC7)', () => {
   let ui: ReturnType<typeof freshUiStore>;
   let uninstall: () => void;
+  let composerCalls: number;
 
   beforeEach(() => {
     ui = freshUiStore();
     ui.setNodes(NODES);
     ui.setPlanVersions([1, 2, 3]);
-    uninstall = installKeyboardMap(document, ui);
+    composerCalls = 0;
+    uninstall = installKeyboardMap(document, ui, () => {
+      composerCalls += 1;
+    });
   });
 
   afterEach(() => uninstall());
+
+  /**
+   * KAR-25.5 — `c` calls the seam rather than opening a store overlay: what
+   * "the composer" means now (a project's route, or the chooser with a
+   * reason) is `App.vue`'s decision, not this module's. This is the same
+   * narrow seam `AppTopBar`'s `@open-composer` already uses; this file only
+   * proves the map calls it.
+   */
+  it('calls the composer seam on "c", and claims the key', () => {
+    const event = press('c');
+
+    expect(composerCalls).toBe(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
 
   it('moves selection to the next node on "j"', () => {
     ui.selectNode('n_plan');
@@ -205,7 +223,7 @@ suite('EPIC-16-S4 — the map does not fire while the operator is typing', () =>
   beforeEach(() => {
     ui = freshUiStore();
     ui.setNodes(NODES);
-    uninstall = installKeyboardMap(document, ui);
+    uninstall = installKeyboardMap(document, ui, () => {});
     field = document.createElement('input');
     document.body.append(field);
     field.focus();

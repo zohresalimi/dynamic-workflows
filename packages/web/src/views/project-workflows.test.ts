@@ -121,6 +121,11 @@ function workspaceClient(history: Record<string, readonly HistoryRow[]>): ApiCli
               return json({ runs: history[args.param.id] ?? [] });
             },
           },
+          // KAR-25.5 — the empty state's "Start a run" now navigates to a
+          // real `NewRunView`/`RunComposer` rather than opening an overlay,
+          // and its `onMounted` reads this unconditionally; without it the
+          // page throws where nobody in this file is looking.
+          connectors: { $get: () => json({ services: [] }) },
           $delete: () => json({}),
           $patch: () => json({}),
         },
@@ -128,8 +133,7 @@ function workspaceClient(history: Record<string, readonly HistoryRow[]>): ApiCli
     ),
     runs: { $get: () => json({ runs: [], cursor: null, more: false }) },
     approvals: { $get: () => json({ items: [] }) },
-    // The shell's composer reads this the moment it opens (KAR-22.2 AC2);
-    // without it the overlay throws where nobody is looking.
+    // The composer's own picker reads this the moment its page mounts.
     providers: { routes: { $get: () => json({ providers: [], known: false }) } },
   };
 
@@ -439,10 +443,14 @@ suite('EPIC-22-S42 — a project with no runs says so and points at the composer
     expect(rows()).toHaveLength(0);
 
     // And the next action is the composer itself, not a sentence about it.
+    // KAR-25.5 — the composer is a route now
+    // (`/projects/:projectId/new-run`), not an overlay this view opened; the
+    // button pushes to it rather than setting a store flag.
     const start = one<HTMLElement>('[data-workspace-compose]');
     expect(start).not.toBeNull();
     start?.click();
-    await expect.poll(() => document.querySelector('[data-overlay="composer"]')).not.toBeNull();
+    await expect.poll(() => shell.router.currentRoute.value.name).toBe('new-run');
+    expect(shell.router.currentRoute.value.params['projectId']).toBe(PROJECT_B);
   });
 });
 

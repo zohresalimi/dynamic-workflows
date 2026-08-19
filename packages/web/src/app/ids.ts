@@ -13,20 +13,24 @@
 /** The `<main>` the skip-link jumps to. */
 export const MAIN_CONTENT_ID = 'DeFlow-main';
 
-/** The search field `/` focuses. */
+/** The search field `/` focuses — everywhere except the composer, which has
+ * its own field and outranks it (see `PROMPT_INPUT_ID`). */
 export const SEARCH_INPUT_ID = 'DeFlow-search';
+
+/**
+ * KAR-25.5 AC5 — the composer's prompt box, the other thing `/` can focus.
+ *
+ * Only ever one of this and `SEARCH_INPUT_ID` is in the document at a time:
+ * the composer is a route now (`/projects/:projectId/new-run`), so this id
+ * exists exactly when that route is mounted. `../app/keyboard.ts`'s `/`
+ * handler checks for it first for exactly that reason — on the composer's own
+ * route, `/` should focus the prompt, not a search field the operator cannot
+ * see filled in behind it.
+ */
+export const PROMPT_INPUT_ID = 'DeFlow-prompt';
 
 /** The Cmd-K run/node jumper. */
 export const JUMPER_OVERLAY = 'jumper';
 
 /** The node inspector `Enter` opens for the selected node. */
 export const INSPECTOR_OVERLAY = 'inspector';
-
-/**
- * KAR-22.2 AC7 — the run composer `c` opens.
- *
- * An overlay in the shell rather than a panel in a view, for the same reason
- * the jumper is one: *"reachable from anywhere in the project"* is not a
- * property a component mounted by one route can have.
- */
-export const COMPOSER_OVERLAY = 'composer';

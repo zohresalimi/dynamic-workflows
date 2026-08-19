@@ -19,6 +19,9 @@
  *    a 401 loop — and, importantly, mounts no view that would issue a request.
  * 4. **The overlay hosts.** The jumper and the inspector are rendered once,
  *    here, so `Cmd-K` works from every route and `Esc` has one stack to pop.
+ *    The composer used to be a third one; KAR-25.5 made it a route instead
+ *    (`views/NewRunView.vue`), so it is not mounted here any more — see
+ *    `openComposer()` below for where "Start a run" goes now.
  *
  * The theme is `useDark()` and a class on `<html>`; nothing in this file, or in
  * any view, reads which theme is on.
@@ -59,8 +62,8 @@
  * being handed a status string.
  */
 import { onMounted, onUnmounted } from 'vue';
-import { RouterView } from 'vue-router';
-import { COMPOSER_OVERLAY, MAIN_CONTENT_ID } from './app/ids.ts';
+import { RouterView, useRoute, useRouter } from 'vue-router';
+import { MAIN_CONTENT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import { useApprovals } from './app/useApprovals.ts';
@@ -68,7 +71,6 @@ import CommandJumper from './components/CommandJumper.vue';
 import AppRail from './components/frame/AppRail.vue';
 import AppTopBar from './components/frame/AppTopBar.vue';
 import NodeInspector from './components/NodeInspector.vue';
-import RunComposer from './components/RunComposer.vue';
 import RunGateBanner from './components/RunGateBanner.vue';
 import { useRunStore } from './stores/useRunStore.ts';
 import { useSessionStore } from './stores/useSessionStore.ts';
@@ -77,6 +79,8 @@ import TokenRequired from './views/TokenRequired.vue';
 
 const ui = useUiStore();
 const session = useSessionStore();
+const route = useRoute();
+const router = useRouter();
 // KAR-19.12 AC6 — the open run's pending gate, read off the store's own fold.
 const run = useRunStore();
 const { isDark, toggleTheme } = useTheme();
@@ -99,10 +103,34 @@ const { isDark, toggleTheme } = useTheme();
  */
 useApprovals();
 
+/**
+ * KAR-25.5 AC3 — "Start a run", reached from `c` or the topbar button.
+ *
+ * Reads `route.params.projectId` because that is the one thing both callers
+ * lack and both need: a project scopes a run, and a run started with no
+ * project open is not a state the composer can be in any more — the composer
+ * is `/projects/:projectId/new-run`, and a route with no id in it is not that
+ * route. `AppTopBar.vue` computes the same value for its breadcrumb and could
+ * decide this itself; it emits instead so this decision is made once, in the
+ * one place `../app/keyboard.ts`'s `c` also calls into (that module holds no
+ * router of its own — see its header comment).
+ *
+ * No POST is issued on either branch: `needsProject` names a reason on the
+ * chooser, not a submission the composer skipped.
+ */
+function openComposer(): void {
+  const projectId = route.params.projectId;
+  if (typeof projectId === 'string') {
+    void router.push({ name: 'new-run', params: { projectId } });
+    return;
+  }
+  void router.push({ name: 'projects', query: { needsProject: '1' } });
+}
+
 let uninstallKeyboardMap: (() => void) | null = null;
 
 onMounted(() => {
-  uninstallKeyboardMap = installKeyboardMap(document, ui);
+  uninstallKeyboardMap = installKeyboardMap(document, ui, openComposer);
 });
 
 onUnmounted(() => {
@@ -124,7 +152,7 @@ onUnmounted(() => {
         :is-dark="isDark"
         :task="run.submittedTask"
         @toggle-theme="toggleTheme()"
-        @open-composer="ui.openOverlay(COMPOSER_OVERLAY)"
+        @open-composer="openComposer()"
       />
 
       <!--
@@ -161,7 +189,6 @@ onUnmounted(() => {
 
   <CommandJumper />
   <NodeInspector />
-  <RunComposer />
 </template>
 
 <style scoped>

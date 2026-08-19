@@ -2,14 +2,14 @@
 /**
  * KAR-22.2 — the composer: the thing that makes the control center a control
  * center rather than a viewer.
- * KAR-24.8 AC1 — restyled onto `UiModal`'s chrome (a titled header, a body of
- * labelled sections, a footer with a ghost cancel and a primary action), with
- * no change to what any of it *does*. Every behaviour below predates this
- * story and is untouched by it: the three intake shapes, the picker that
- * reduces `GET /api/providers/routes` and nothing else, the verbatim refusal,
- * the `c` keyboard route and the topbar button that both open `COMPOSER_OVERLAY`,
- * and the close paths. `composer.test.ts` is the contract for that, and it
- * changed only where an assertion named a selector.
+ * KAR-25.5 AC1, AC2, AC8 — moved out of `UiModal` and out of `App.vue`'s
+ * global mount, onto its own route: `/projects/:projectId/new-run`
+ * (`../views/NewRunView.vue` owns the page frame around this file; this file
+ * is the composer bar itself). Every behaviour below predates this story and
+ * is untouched by it: the three intake shapes, the picker that reduces
+ * `GET /api/providers/routes` and nothing else, the verbatim refusal, and the
+ * `⌘/Ctrl+Enter` submit chord. `composer.test.ts` is the contract for that,
+ * and it changed only where an assertion named a selector or a route.
  *
  * Three constraints shape the *behaviour*, and all three come from defects
  * this project has already paid for.
@@ -32,43 +32,44 @@
  * shortens or friendlifies it — a composer that paraphrased would make the same
  * machine describe the same state two ways (AC5).
  *
- * ## Why `UiModal`, and who owns Escape and the focus trap
+ * ## Why not `UiModal` any more, and who owns Escape now
  *
- * The form used to be a plain `<section>` because AC7 only ever asked for
- * "opens by key, focuses itself, submits by chord" — none of which needed a
- * dialog primitive. KAR-24.8 AC1 asks for direction A's modal chrome instead,
- * and takes it from `UiModal`, which is built on Reka UI's dialog and already
- * supplies the focus trap, `Esc`, outside-click and focus return
- * (`./ui/UiModal.vue`'s own header explains the same choice for the
- * new-project form). This file does not lay a second copy of any of that on
- * top: there is no local `role="dialog"`/`aria-modal`/`aria-labelledby` any
- * more — Reka's `DialogContent`/`DialogTitle` wire that pair on their own —
- * and no `Escape` handling of its own. `UiModal`'s dialog owns dismissing on
- * `Esc`, outside-click, and where focus returns; `@close` is the one seam back
- * into `ui.closeOverlay`, which is the same store call every other close path
- * already made. The one keyboard handler this file still installs is
- * `onKeydown` below, and it answers a **different** key — the `⌘/Ctrl+Enter`
- * submit chord — which is not something any primitive already owns.
+ * KAR-24.8 AC1 put this on `UiModal` for its chrome, which brought a focus
+ * trap, `Esc`-to-close and a `role="dialog"` along for free. KAR-25.5 AC1
+ * asks for the opposite: no dialog role, no focus trap, `Esc` does nothing.
+ * There is no local replacement for any of that, and none is needed — a page
+ * has nothing to trap focus inside of and nothing for `Esc` to dismiss. This
+ * file lays no `role="dialog"`/`aria-modal`/`aria-labelledby` and installs no
+ * `Escape` handler; `../app/keyboard.ts:68-73` already returns before
+ * `preventDefault` when `ui.overlays.length === 0`, and the composer stopped
+ * being one of those the moment it stopped being an overlay (`COMPOSER_OVERLAY`
+ * is gone — see `../app/ids.ts`'s history). The one keyboard handler this file
+ * still installs is `onKeydown` below, and it answers a **different** key —
+ * `⌘/Ctrl+Enter` — which no primitive owns.
  *
- * The `c` keyboard route and the topbar button both still do exactly one
- * thing: `ui.openOverlay(COMPOSER_OVERLAY)`. Neither lives in this file (the
- * former is `../app/keyboard.ts`, the latter is `AppTopBar`'s
- * `@open-composer` wired in `App.vue`), and neither changed — both still open
- * the one `open` this component reads off `ui.isOverlayOpen(COMPOSER_OVERLAY)`
- * and hand to `UiModal`, so there is exactly one overlay, however it was
- * reached.
+ * **The project is the route, not a field in this form.** The old `<select
+ * data-composer-project>` is gone: `projectId` arrives as a prop from
+ * `NewRunView.vue`, which took it from `route.params.projectId`. A select
+ * here would be a second source of truth for a fact the URL already carries,
+ * and would let an operator on `/projects/A/new-run` submit against project B.
+ *
+ * **The `c` keyboard route and the topbar button** both still do one thing —
+ * navigate here — but neither lives in this file any more: the former is
+ * `../app/keyboard.ts`, the latter is `AppTopBar`'s `@open-composer`, and both
+ * now go through `App.vue`'s `openComposer()`, which is the one place that
+ * decides "this project" versus "the chooser, with a reason" (AC3).
  *
  * Verifies: EPIC-22-S18, EPIC-22-S19, EPIC-22-S22, EPIC-22-S23, EPIC-22-S25,
- * EPIC-22-S28, EPIC-22-S29, EPIC-22-S30, EPIC-22-S32, EPIC-24-S30 · AC1–AC7 ·
- * KAR-24.8 AC1
+ * EPIC-22-S28, EPIC-22-S29, EPIC-22-S30, EPIC-22-S32, EPIC-24-S30 · AC1, AC2,
+ * AC4, AC5, AC6, AC8 · KAR-25.5
  */
 import { type ProviderRoute, routeLabel } from '@DeFlow/core';
-import { computed, nextTick, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
-import { COMPOSER_OVERLAY } from '../app/ids.ts';
-import { useUiStore } from '../stores/useUiStore.ts';
-import { UiButton, UiModal, UiSectionLabel } from './ui/index.ts';
+import { PROMPT_INPUT_ID } from '../app/ids.ts';
+import { UiButton, UiCard, UiChip, UiSectionLabel } from './ui/index.ts';
 
 /** The three wire shapes `POST /api/runs` accepts, and no fourth. */
 const SHAPES = ['text', 'file', 'issue'] as const;
@@ -152,18 +153,20 @@ interface HttpAnswer {
   readonly json: () => Promise<unknown>;
 }
 
-const ui = useUiStore();
+const props = defineProps<{
+  /** From `/projects/:projectId/new-run` (`NewRunView.vue`, `props: true`). */
+  readonly projectId: string;
+}>();
+
 const router = useRouter();
 const api = useApiClient() as never as ComposerApi;
-
-const open = computed(() => ui.isOverlayOpen(COMPOSER_OVERLAY));
 
 const shape = ref<Shape>('text');
 const text = ref('');
 const path = ref('');
 const url = ref('');
 const projects = ref<readonly ProjectRow[]>([]);
-const projectId = ref('');
+const projectsLoaded = ref(false);
 const providers = ref<readonly ProviderRow[]>([]);
 const providerId = ref('');
 /**
@@ -197,8 +200,28 @@ const submitting = ref(false);
 
 const promptBox = ref<HTMLTextAreaElement | null>(null);
 
-const project = computed(() => projects.value.find((row) => row.id === projectId.value) ?? null);
+const project = computed(() => projects.value.find((row) => row.id === props.projectId) ?? null);
 const chosen = computed(() => providers.value.find((row) => row.id === providerId.value) ?? null);
+
+/**
+ * KAR-25.5 AC4 — usable first, then the rest, which is the one grouping
+ * `GET /api/providers/routes` actually supports: the daemon already orders
+ * usable adapters ahead of the rest (`usableProviders()`'s own order), so
+ * this is that ordering made visible as two labelled sections rather than a
+ * provider/vendor taxonomy the wire shape does not carry. See this file's
+ * companion story notes for what the blueprint's model names, vendor groups
+ * and context-window figures cannot be: none of them are on this row, and
+ * `test/no-context-window-table.test.ts` forbids inventing the last one.
+ */
+const usableProviders = computed(() => providers.value.filter((row) => row.available));
+const unusableProviders = computed(() => providers.value.filter((row) => !row.available));
+
+/** The issue chip's own label: the connected service's name once there is
+ * exactly one, and the generic word otherwise — never a name this component
+ * invented for a service it has not been told about. */
+const issueShapeLabel = computed(() =>
+  connectedServices.value.length === 1 ? (connectedServices.value[0]?.label ?? 'Issue') : 'Issue',
+);
 
 /** The daemon's own sentence, or a fallback for a failure with no envelope. */
 async function refusalOf(response: HttpAnswer): Promise<{ message: string; runId: string | null }> {
@@ -228,8 +251,8 @@ async function load(): Promise<void> {
 
   if (projectsAnswer.ok) {
     projects.value = ((await projectsAnswer.json()) as { projects: ProjectRow[] }).projects;
-    if (projectId.value === '') projectId.value = projects.value[0]?.id ?? '';
   }
+  projectsLoaded.value = true;
   if (providersAnswer.ok) {
     providers.value = ((await providersAnswer.json()) as { providers: ProviderRow[] }).providers;
     // The **first** row, and that is load-bearing: `GET /api/providers` orders
@@ -240,6 +263,7 @@ async function load(): Promise<void> {
     if (providerId.value === '')
       providerId.value = providers.value.find((r) => r.available)?.id ?? '';
   }
+  void loadConnector();
 }
 
 /**
@@ -247,7 +271,10 @@ async function load(): Promise<void> {
  *
  * Read from the daemon rather than remembered: a connector removed in another
  * tab must not leave a picker behind that submits against a service DeFlow no
- * longer uses.
+ * longer uses. Fetched once the project is known — up front, not only once the
+ * operator picks the `issue` shape — because the shape chip itself names the
+ * connected service (KAR-25.5's "Linear ⌄"-style label) and needs the answer
+ * before anything is selected.
  */
 async function loadConnector(): Promise<void> {
   connectedServices.value = [];
@@ -263,7 +290,6 @@ async function loadConnector(): Promise<void> {
   connectedServices.value = body.services
     .filter((service) => service.connected)
     .map((service) => ({ id: service.id, label: service.label }));
-  if (connectedServices.value.length > 0) await loadIssues();
 }
 
 /**
@@ -303,27 +329,35 @@ async function loadIssues(): Promise<void> {
 }
 
 watch(shape, (kind) => {
-  if (kind === 'issue') void loadConnector();
-});
-watch(projectId, () => {
-  if (shape.value === 'issue') void loadConnector();
+  if (kind === 'issue' && connectedServices.value.length > 0) void loadIssues();
 });
 watch(url, () => {
   if (shape.value === 'issue' && connectedServices.value.length > 0) void loadIssues();
 });
 
-watch(open, (isOpen) => {
-  if (!isOpen) return;
+/**
+ * KAR-25.5 AC5 — focus is *in* the box the moment the route is entered, and
+ * again on a project switch that reuses this instance (`NewRunView.vue`'s own
+ * `projectId` prop changes without a remount when only the route param does).
+ * A composer that needs a click before it will take a keystroke is not
+ * keyboard-first.
+ */
+onMounted(() => {
   error.value = null;
   refusedRunId.value = null;
   void load();
-  // Focus is *in* the box the moment it opens (AC7). A composer that needs a
-  // click before it will take a keystroke is not keyboard-first. `UiModal`'s
-  // own dialog moves focus into its content on open (Reka's default), and
-  // this call runs after that: it does not fight the trap, it just says
-  // where inside the trap focus should land.
   void nextTick(() => promptBox.value?.focus());
 });
+
+watch(
+  () => props.projectId,
+  () => {
+    error.value = null;
+    refusedRunId.value = null;
+    void loadConnector();
+    void nextTick(() => promptBox.value?.focus());
+  },
+);
 
 /** The `input` field of the body, or `null` when there is nothing to submit. */
 function inputOf(): { kind: Shape; text?: string; path?: string; url?: string } | null {
@@ -361,6 +395,10 @@ async function submit(): Promise<void> {
 
   const target = project.value;
   if (target === null) {
+    // Belt and braces: the route requires a `:projectId`, but a well-formed id
+    // naming no project on this machine is a real case (a stale bookmark, a
+    // project removed in another tab) and the composer must not pretend it is
+    // the empty-select refusal this line used to be.
     error.value =
       'This run needs a project. Create one on the Projects page and point it at a git ' +
       'repository on this machine.';
@@ -406,15 +444,13 @@ async function submit(): Promise<void> {
     }
 
     const created = (await response.json()) as { runId: string };
-    ui.closeOverlay(COMPOSER_OVERLAY);
     text.value = '';
     path.value = '';
     url.value = '';
-    // AC4 — the operator is taken to the thing they just started, in this same
+    // AC8 — the operator is taken to the thing they just started, in this same
     // document: the run's feed opens on arrival and the first frame renders.
-    // KAR-25.1 — `run-plan` is project-scoped now; `target.id` is already in
-    // hand above (it is what the POST body's `projectId` was built from), so
-    // this invents no data.
+    // `target.id` is already in hand above (it is what the POST body's
+    // `projectId` was built from), so this invents no data.
     await router.push({
       name: 'run-plan',
       params: { projectId: target.id, runId: created.runId },
@@ -440,12 +476,11 @@ const idempotencyKey = (): string =>
   `composer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 /**
- * `⌘/Ctrl+Enter`, from anywhere inside the dialog. Bound in two places in the
- * template — the form and the footer — because `UiModal` renders its footer
- * as a sibling of the body rather than a descendant of the `<form>` (the
- * primary action reaches the form by `form="DeFlow-composer-form"`, not by
- * DOM nesting), and a chord typed while focus sits on a footer button must
- * still submit.
+ * `⌘/Ctrl+Enter`, from anywhere inside the form. One handler is enough now:
+ * the Run button reaches the form by `form="DeFlow-composer-form"` but is
+ * still a descendant of the page, not of a modal footer rendered as the
+ * form's sibling — the reason KAR-24.8's version bound this twice is gone
+ * along with `UiModal`.
  */
 function onKeydown(event: KeyboardEvent): void {
   if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return;
@@ -455,51 +490,46 @@ function onKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <UiModal :open="open" title="Start a run" @close="ui.closeOverlay(COMPOSER_OVERLAY)">
+  <!--
+    KAR-25.5 — a well-formed id naming no project on this machine (a stale
+    bookmark, a project removed in another tab) gets a sentence and a way
+    back, never a composer bar with an empty picker and nothing to submit
+    against.
+  -->
+  <p
+    v-if="projectsLoaded && project === null"
+    class="composer-missing"
+    data-composer-missing-project
+  >
+    No project with that id on this machine.
+    <RouterLink :to="{ name: 'projects' }">Go to the project chooser</RouterLink>
+  </p>
+
+  <UiCard v-else variant="raised" class="composer">
     <form
       id="DeFlow-composer-form"
       class="composer__form"
       data-composer
-      data-overlay="composer"
       @submit.prevent="submit"
       @keydown="onKeydown"
     >
-      <div class="composer__section">
-        <UiSectionLabel as="span" class="composer__caption">What this run is about</UiSectionLabel>
-        <div class="composer__shapes" role="group" aria-label="What this run is about">
-          <button
-            v-for="kind in SHAPES"
-            :key="kind"
-            type="button"
-            class="composer__shape"
-            :data-composer-shape="kind"
-            :aria-pressed="shape === kind"
-            @click="shape = kind"
-          >
-            {{ kind }}
-          </button>
-        </div>
-      </div>
-
-      <label v-if="shape === 'text'" class="composer__section composer__field">
-        <UiSectionLabel as="span" class="composer__caption">Prompt</UiSectionLabel>
-        <textarea
-          ref="promptBox"
-          v-model="text"
-          class="composer__control composer__control--area"
-          data-composer-text
-          rows="4"
-          spellcheck="false"
-          placeholder="What should this run do?"
-        />
-      </label>
+      <textarea
+        :id="PROMPT_INPUT_ID"
+        ref="promptBox"
+        v-model="text"
+        class="composer__prompt"
+        data-composer-text
+        rows="3"
+        spellcheck="false"
+        placeholder="Describe the change — or attach an issue and let the agent scope it."
+      />
 
       <!--
         AC1 — the path the operator typed, sent as typed. Nothing here reads a
         file: `input.path` is resolved and contained by intake, which is the
         boundary that owns that check.
       -->
-      <label v-else-if="shape === 'file'" class="composer__section composer__field">
+      <label v-if="shape === 'file'" class="composer__secondary composer__field">
         <UiSectionLabel as="span" class="composer__caption"
           >A file inside the project</UiSectionLabel
         >
@@ -519,103 +549,203 @@ function onKeydown(event: KeyboardEvent): void {
         connected a service, including when the URL points somewhere that
         service cannot see.
       -->
-      <label v-else class="composer__section composer__field">
-        <UiSectionLabel as="span" class="composer__caption">
-          {{ connectedServices.length === 0 ? 'An issue reference' : 'Search issues, or paste a reference' }}
-        </UiSectionLabel>
-        <input
-          v-model="url"
-          class="composer__control"
-          data-composer-url
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-        >
-      </label>
-
-      <ul
-        v-if="shape === 'issue' && issues.length > 0"
-        class="composer__issues"
-        data-composer-issues
-      >
-        <li v-for="issue in issues" :key="`${issue.service}:${issue.key}`">
-          <button
-            type="button"
-            class="composer__issue"
-            data-composer-issue
-            :data-composer-issue-key="issue.key"
-            :data-composer-issue-service="issue.service"
-            @click="url = issue.url"
+      <div v-else-if="shape === 'issue'" class="composer__secondary">
+        <label class="composer__field">
+          <UiSectionLabel as="span" class="composer__caption">
+            {{ connectedServices.length === 0 ? 'An issue reference' : 'Search issues, or paste a reference' }}
+          </UiSectionLabel>
+          <input
+            v-model="url"
+            class="composer__control"
+            data-composer-url
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
           >
-            <span class="composer__issue-key">{{ issue.key }}</span>
-            <span class="composer__issue-title">{{ issue.title }}</span>
-            <span class="composer__issue-state">{{ issue.state }}</span>
-            <!--
-              KAR-22.6 AC3 — which tracker this came from. Rendered whenever
-              there is more than one, because with one it is noise and with two
-              it is the difference between picking and guessing.
-            -->
-            <span v-if="connectedServices.length > 1" class="composer__issue-service">
-              {{ issue.serviceLabel }}
-            </span>
-          </button>
-        </li>
-      </ul>
+        </label>
 
-      <label class="composer__section composer__field">
-        <UiSectionLabel as="span" class="composer__caption">Project</UiSectionLabel>
-        <select v-model="projectId" class="composer__control" data-composer-project>
-          <option v-for="row in projects" :key="row.id" :value="row.id">
-            {{ row.name }}
-            — {{ row.path }}
-          </option>
-        </select>
-      </label>
-
-      <!--
-        AC2, AC3 — the picker. Every row is the daemon's answer: whether it is
-        available, by which route, why not, and what to run about it. Nothing on
-        this list is computed in the browser.
-      -->
-      <fieldset class="composer__section composer__providers" data-composer-providers>
-        <legend class="composer__caption">
-          <UiSectionLabel as="span">Adapter</UiSectionLabel>
-        </legend>
-        <p v-if="providers.length === 0" class="composer__providers-empty">
-          This daemon has not been told which machine it is on, so it cannot say which adapters are
-          usable here. Start it with <code>deflow up</code>.
-        </p>
-        <ul v-else class="composer__provider-rows">
-          <li
-            v-for="row in providers"
-            :key="row.id"
-            class="composer__provider"
-            :data-provider-row="row.id"
-            :data-provider-available="String(row.available)"
-            :data-provider-route="row.route ?? ''"
-          >
-            <label class="composer__provider-head">
-              <input
-                v-model="providerId"
-                data-provider-select
-                type="radio"
-                name="DeFlow-composer-provider"
-                :value="row.id"
-                :disabled="!row.available"
-              >
-              <span class="composer__provider-id">{{ row.id }}</span>
-              <span class="composer__provider-route">
-                {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
+        <ul v-if="issues.length > 0" class="composer__issues" data-composer-issues>
+          <li v-for="issue in issues" :key="`${issue.service}:${issue.key}`">
+            <button
+              type="button"
+              class="composer__issue"
+              data-composer-issue
+              :data-composer-issue-key="issue.key"
+              :data-composer-issue-service="issue.service"
+              @click="url = issue.url"
+            >
+              <span class="composer__issue-key">{{ issue.key }}</span>
+              <span class="composer__issue-title">{{ issue.title }}</span>
+              <span class="composer__issue-state">{{ issue.state }}</span>
+              <!--
+                KAR-22.6 AC3 — which tracker this came from. Rendered whenever
+                there is more than one, because with one it is noise and with two
+                it is the difference between picking and guessing.
+              -->
+              <span v-if="connectedServices.length > 1" class="composer__issue-service">
+                {{ issue.serviceLabel }}
               </span>
-            </label>
-            <p class="composer__provider-reason">{{ row.reason }}</p>
-            <p v-if="row.limitation" class="composer__provider-limit">{{ row.limitation }}</p>
-            <p v-if="row.action" class="composer__provider-action">
-              <code>{{ row.action }}</code>
-            </p>
+            </button>
           </li>
         </ul>
-      </fieldset>
+      </div>
+
+      <div class="composer__hairline" />
+
+      <div class="composer__row">
+        <!--
+          KAR-25.5 — the source picker, left. `text | file | issue`, exactly the
+          shapes `POST /api/runs` accepts — a compact chip group rather than the
+          modal's pill row, but the same three `data-composer-shape` buttons.
+        -->
+        <div class="composer__source" role="group" aria-label="What this run is about">
+          <button
+            v-for="kind in SHAPES"
+            :key="kind"
+            type="button"
+            class="composer__shape"
+            :data-composer-shape="kind"
+            :aria-pressed="shape === kind"
+            @click="shape = kind"
+          >
+            <UiChip :variant="shape === kind ? 'accent' : 'neutral'">
+              {{ kind === 'issue' ? issueShapeLabel : kind }}
+            </UiChip>
+          </button>
+        </div>
+
+        <div class="composer__actions">
+          <!--
+            AC2, AC4 — the adapter picker. Every row is the daemon's answer:
+            whether it is available, by which route, why not, and what to run
+            about it. Nothing on this list is computed in the browser.
+            `force-mount` keeps the rows in the document even while the popover
+            reads as closed, so a per-row disabled selectable control is always
+            reachable rather than appearing only after an operator opens the
+            trigger — the same shape the picker has always had, now inside a
+            popover instead of always laid out on the page.
+          -->
+          <PopoverRoot>
+            <PopoverTrigger as-child>
+              <UiButton type="button" variant="ghost" size="sm" data-composer-provider-trigger>
+                {{ chosen?.id ?? 'Choose adapter' }}
+              </UiButton>
+            </PopoverTrigger>
+            <PopoverPortal :force-mount="true">
+              <PopoverContent
+                class="composer__providers-panel"
+                align="end"
+                :side-offset="6"
+                :force-mount="true"
+              >
+                <UiCard variant="raised" class="composer__providers-card">
+                  <fieldset class="composer__providers" data-composer-providers>
+                    <legend class="composer__caption">
+                      <UiSectionLabel as="span">Adapter</UiSectionLabel>
+                    </legend>
+                    <p v-if="providers.length === 0" class="composer__providers-empty">
+                      This daemon has not been told which machine it is on, so it cannot say which
+                      adapters are usable here. Start it with <code>deflow up</code>.
+                    </p>
+                    <template v-else>
+                      <UiSectionLabel
+                        v-if="usableProviders.length > 0"
+                        as="p"
+                        class="composer__providers-group"
+                      >
+                        Usable here
+                      </UiSectionLabel>
+                      <ul v-if="usableProviders.length > 0" class="composer__provider-rows">
+                        <li
+                          v-for="row in usableProviders"
+                          :key="row.id"
+                          class="composer__provider"
+                          :data-provider-row="row.id"
+                          :data-provider-available="String(row.available)"
+                          :data-provider-route="row.route ?? ''"
+                        >
+                          <label class="composer__provider-head">
+                            <input
+                              v-model="providerId"
+                              data-provider-select
+                              type="radio"
+                              name="DeFlow-composer-provider"
+                              :value="row.id"
+                              :disabled="!row.available"
+                            >
+                            <span class="composer__provider-id">{{ row.id }}</span>
+                            <span class="composer__provider-route">
+                              {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
+                            </span>
+                          </label>
+                          <p class="composer__provider-reason">{{ row.reason }}</p>
+                          <p v-if="row.limitation" class="composer__provider-limit">
+                            {{ row.limitation }}
+                          </p>
+                          <p v-if="row.action" class="composer__provider-action">
+                            <code>{{ row.action }}</code>
+                          </p>
+                        </li>
+                      </ul>
+
+                      <UiSectionLabel
+                        v-if="unusableProviders.length > 0"
+                        as="p"
+                        class="composer__providers-group"
+                      >
+                        Not usable here
+                      </UiSectionLabel>
+                      <ul v-if="unusableProviders.length > 0" class="composer__provider-rows">
+                        <li
+                          v-for="row in unusableProviders"
+                          :key="row.id"
+                          class="composer__provider"
+                          :data-provider-row="row.id"
+                          :data-provider-available="String(row.available)"
+                          :data-provider-route="row.route ?? ''"
+                        >
+                          <label class="composer__provider-head">
+                            <input
+                              v-model="providerId"
+                              data-provider-select
+                              type="radio"
+                              name="DeFlow-composer-provider"
+                              :value="row.id"
+                              :disabled="!row.available"
+                            >
+                            <span class="composer__provider-id">{{ row.id }}</span>
+                            <span class="composer__provider-route">
+                              {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
+                            </span>
+                          </label>
+                          <p class="composer__provider-reason">{{ row.reason }}</p>
+                          <p v-if="row.limitation" class="composer__provider-limit">
+                            {{ row.limitation }}
+                          </p>
+                          <p v-if="row.action" class="composer__provider-action">
+                            <code>{{ row.action }}</code>
+                          </p>
+                        </li>
+                      </ul>
+                    </template>
+                  </fieldset>
+                </UiCard>
+              </PopoverContent>
+            </PopoverPortal>
+          </PopoverRoot>
+
+          <UiButton
+            type="submit"
+            form="DeFlow-composer-form"
+            variant="primary"
+            size="sm"
+            data-composer-submit
+            :disabled="submitting"
+          >
+            Run <span class="composer__chord" aria-hidden="true">⌘↵</span>
+          </UiButton>
+        </div>
+      </div>
 
       <!--
         AC5 — the daemon's sentence, rendered as it arrived. `deflow run` and
@@ -627,57 +757,47 @@ function onKeydown(event: KeyboardEvent): void {
         The run exists and was aborted: <code>{{ refusedRunId }}</code>
       </p>
     </form>
-
-    <template #footer>
-      <!--
-        KAR-24.8 AC1 — the footer direction A's modal chrome always ends on: a
-        ghost cancel beside a primary action. `@keydown` repeats the chord
-        listener from the form above because a footer button is a sibling of
-        the form in the DOM (`UiModal` renders body and footer as two separate
-        slots), not a descendant of it — a chord typed while focus sits here
-        would otherwise reach nobody.
-      -->
-      <div class="composer__footer" @keydown="onKeydown">
-        <span class="composer__hint">⌘/Ctrl + Enter</span>
-        <UiButton
-          variant="ghost"
-          size="sm"
-          data-composer-cancel
-          @click="ui.closeOverlay(COMPOSER_OVERLAY)"
-        >
-          Cancel
-        </UiButton>
-        <!--
-          KAR-24.7 gave `UiButton` a real `type` prop, so the primary action is
-          a `UiButton` like every other rather than a bare `<button>`. It is
-          not a descendant of the form (id `DeFlow-composer-form`), so `form=` is what
-          associates it — the same standard mechanism an external submit
-          button always uses, and the one honest way to keep one `<form>`
-          rather than reaching for a second submit path.
-        -->
-        <UiButton
-          type="submit"
-          form="DeFlow-composer-form"
-          variant="primary"
-          size="sm"
-          data-composer-submit
-          :disabled="submitting"
-        >
-          Start run
-        </UiButton>
-      </div>
-    </template>
-  </UiModal>
+  </UiCard>
 </template>
 
 <style scoped>
+.composer {
+  width: 100%;
+}
+
+.composer-missing {
+  color: var(--ink-muted);
+}
+
 .composer__form {
   display: flex;
   flex-direction: column;
-  gap: 14px; /* geometry — matches UiModal's own body gap */
+  gap: 12px; /* geometry — the bar's own section gap */
 }
 
-.composer__section {
+.composer__prompt {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-lg);
+  padding: 0;
+  /* AC7 — no `outline: none` here: the repository-wide guard
+     (test/ui-foundation.test.ts, checkNoFocusOutlineNone) forbids it, and the
+     global `:focus-visible` rule (theme.css) already rings this element like
+     every other. */
+}
+
+.composer__secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* geometry — field-to-issue-list gap */
+}
+
+.composer__field {
   display: flex;
   flex-direction: column;
   gap: 6px; /* geometry — matches UiField's caption-to-control gap */
@@ -699,37 +819,38 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: var(--text-md);
 }
 
-.composer__control--area {
-  resize: vertical;
-  font-family: inherit;
+.composer__hairline {
+  border-top: 1px solid var(--edge);
 }
 
-.composer__shapes {
+.composer__row {
   display: flex;
-  gap: 6px; /* geometry — the pill group's own gutter */
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px; /* geometry — source-to-actions gutter */
+}
+
+.composer__source {
+  display: flex;
+  gap: 6px; /* geometry — the chip group's own gutter */
 }
 
 .composer__shape {
-  padding: 5px 11px; /* geometry — matches UiButton's sm padding */
-  border: 1px solid var(--edge-control);
-  border-radius: var(--radius-pill);
+  border: none;
   background: transparent;
-  color: var(--ink-muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
+  padding: 0;
   cursor: pointer;
 }
 
-.composer__shape:hover {
-  border-color: var(--edge-hover);
-  color: var(--ink);
+.composer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* geometry — adapter-trigger-to-run gutter */
 }
 
-.composer__shape[aria-pressed="true"] {
-  border-color: var(--state-running);
-  background: var(--state-running);
-  color: var(--surface-canvas);
-  font-weight: 600;
+.composer__chord {
+  font-size: var(--text-xs);
+  opacity: 0.8;
 }
 
 .composer__issues {
@@ -784,12 +905,38 @@ function onKeydown(event: KeyboardEvent): void {
   white-space: nowrap;
 }
 
+.composer__providers-panel {
+  width: 22rem;
+  max-width: min(22rem, 90vw);
+  z-index: 20;
+}
+
+/*
+ * `force-mount` keeps this content in the document at every popover state, so
+ * the closed state has to actually look closed rather than sitting open on
+ * the page underneath the trigger.
+ */
+.composer__providers-panel[data-state="closed"] {
+  display: none;
+}
+
+.composer__providers-card {
+  padding: 0;
+  box-shadow: var(--shadow-modal);
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
 .composer__providers {
-  border: 1px solid var(--edge-strong);
+  border: none;
   border-radius: var(--radius-lg);
   background: var(--surface);
   padding: 11px 12px; /* geometry — matches UiPanel's own header padding */
   margin: 0;
+}
+
+.composer__providers-group {
+  margin: 10px 0 4px; /* geometry — group-label-to-list gap */
 }
 
 .composer__provider-rows {
@@ -845,18 +992,5 @@ function onKeydown(event: KeyboardEvent): void {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--ink-muted);
-}
-
-.composer__footer {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* geometry — matches UiModal's own footer gap */
-  width: 100%;
-}
-
-.composer__hint {
-  margin-right: auto;
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
 }
 </style>

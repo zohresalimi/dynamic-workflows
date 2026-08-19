@@ -34,8 +34,8 @@
  * component. When KAR-22.3 gives the workspace a subscription, the store
  * arrives with it.
  */
-import { onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
 import { UiButton, UiChip, UiEmptyState, UiIconTile } from '../components/ui/index.ts';
@@ -55,6 +55,23 @@ interface ProjectRow {
 }
 
 const client = useApiClient();
+const route = useRoute();
+
+/**
+ * KAR-25.5 AC3, EPIC-25-S35 — the chooser says why it was reached.
+ *
+ * A query parameter rather than a store flag, for the same reason
+ * `router/index.ts`'s header comment gives for `project-run` being a route
+ * rather than component state: "send me what you are looking at" has to
+ * survive being pasted or reloaded. `App.vue`'s `openComposer()` is the one
+ * writer — `c` or the topbar button, pressed with no project open.
+ *
+ * `computed`, not a plain read at setup: a `c` press that lands here from an
+ * already-mounted `/projects` reuses this component instance (only the query
+ * changed, not the route's name), so a value read once at `setup()` would
+ * carry the tab's *first* query forever, missing every push after it.
+ */
+const needsProject = computed(() => route.query['needsProject'] === '1');
 
 const projects = ref<ProjectRow[]>([]);
 const name = ref('');
@@ -175,6 +192,16 @@ onMounted(() => {
       </div>
       <UiButton variant="primary" size="md" @click="focusCreateForm">New project</UiButton>
     </header>
+
+    <!--
+      AC3, EPIC-25-S35 — "Start a run" was reached with no project open. No
+      run was submitted (there is nothing here to submit): this is the reason
+      line the composer used to render inside its own form, moved to the
+      affordance that actually answers it.
+    -->
+    <p v-if="needsProject" class="projects__needs-project" data-projects-needs-project>
+      Pick a project to start a run in, or create one below.
+    </p>
 
     <form class="projects__form" data-project-form @submit.prevent="create">
       <label class="projects__field">
@@ -331,6 +358,12 @@ onMounted(() => {
   font-size: var(--text-sm);
   color: var(--ink-muted);
   margin: 5px 0 0; /* geometry — title-to-subtitle gap */
+}
+
+.projects__needs-project {
+  color: var(--state-blocked);
+  font-size: var(--text-sm);
+  margin: 0 0 1rem;
 }
 
 .projects__form {

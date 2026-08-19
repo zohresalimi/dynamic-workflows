@@ -334,8 +334,22 @@ has any — "start from a workflow" chips beneath.
    source, the verbatim refusal, the submit chord.
 3. With no project open, the "Start a run" affordance does not submit anything — it routes to the
    project chooser and says a project is needed.
-4. The model picker is grouped by provider, shows each model's context size, and its options come
-   from `GET /api/providers/routes` alone.
+4. The adapter picker's options come from `GET /api/providers/routes` alone — no second probe, no
+   local defaulting, no merge with `GET /api/providers`.
+
+   **Amended after reading the endpoint.** This AC originally said "grouped by provider, shows each
+   model's context size", copied from the blueprint. The blueprint draws three things the daemon
+   does not have: `GET /api/providers/routes` returns one row per **adapter** (`id`, `available`,
+   `route`, `routes`, `reason`, `action`, `limitation`) — there is no model concept on that API at
+   all, no vendor taxonomy to group by, and no context-window figure. The third is not merely
+   absent but **forbidden**: `test/no-context-window-table.test.ts` (KAR-09.7 AC2) fails the build
+   if a context-window table appears anywhere in the source, because a table of vendor limits is a
+   thing that goes stale silently and lies confidently.
+
+   So the picker renders the one grouping the wire actually supports — **usable here** and **not
+   usable here**, in `usableProviders()`'s own order — and a test asserts that no model name, no
+   vendor label and no context-window string appears on the page. Rendering what the daemon has
+   beats rendering what the picture drew.
 5. The prompt field is focused on entering the route, and `/` from anywhere focuses it, matching the
    blueprint's footer hint.
 6. `⌘/Ctrl+Enter` submits from the prompt field, unchanged.

@@ -658,7 +658,10 @@ suite('KAR-25.7 AC3 — the project run history’s gate opens live, from the le
             { id: 'allow', label: 'Allow this write once', effect: 'approve' },
             { id: 'deny', label: 'Refuse it', effect: 'reject' },
           ],
-          reason: { code: 'path-outside-scope', detail: 'the target resolves outside the worktree' },
+          reason: {
+            code: 'path-outside-scope',
+            detail: 'the target resolves outside the worktree',
+          },
         },
         QUIET_RUN,
       ),
