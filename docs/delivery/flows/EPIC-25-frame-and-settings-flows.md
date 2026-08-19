@@ -102,11 +102,12 @@ Background:
 | EPIC-25-S53 | A worktree held by another node is still refused, by name                 | KAR-25.8  | Edge case  |
 | EPIC-25-S54 | An orphan directory git does not know about is pruned and re-added        | KAR-25.8  | Edge case  |
 | EPIC-25-S55 | Read nodes keep detached, unchecked, concurrent provisioning              | KAR-25.8  | Contract   |
-| EPIC-25-S56 | **Happy path: a middleware that writes and calls next does not throw**    | KAR-25.9  | Happy path |
+| EPIC-25-S56 | **Happy path: varyOrigin returns the already-sent sentinel untouched**    | KAR-25.9  | Happy path |
 | EPIC-25-S57 | A middleware that only calls next still falls through                     | KAR-25.9  | Contract   |
 | EPIC-25-S58 | A middleware that writes and does not call next is still already-sent     | KAR-25.9  | Contract   |
 | EPIC-25-S59 | Listeners are removed on every settle path                                | KAR-25.9  | Contract   |
 | EPIC-25-S60 | A navigation of every route logs no ERR_HTTP_HEADERS_SENT                 | KAR-25.9  | Happy path |
+| EPIC-25-S61 | The ordinary and refusal paths still carry Vary: Origin                   | KAR-25.9  | Contract   |
 
 ---
 
@@ -765,16 +766,22 @@ Scenario: §4.1's rule, unchanged
 
 ## KAR-25.9 — The response that was written twice
 
-### EPIC-25-S56 — Happy path: a middleware that writes and calls next does not throw
+### EPIC-25-S56 — Happy path: varyOrigin returns the already-sent sentinel untouched
 
 ```gherkin
-Scenario: the defect, reproduced without Vite
-  Given a connect middleware that writes a complete response and then calls next()
-  When a request goes through the adapter
-  Then the adapter reports the response as already sent
-  And Hono does not build a second response
-  And no ERR_HTTP_HEADERS_SENT is thrown
+Scenario: the defect, reproduced without a live daemon
+  Given a Hono app with varyOrigin mounted first, the way server.ts mounts it
+  And a handler that returns the RESPONSE_ALREADY_SENT sentinel
+  When a request goes through the app
+  Then the response that comes out is that same RESPONSE_ALREADY_SENT object, by identity
+  And varyOrigin has not called c.header on it
 ```
+
+This is the actual defect. `../http/connect.ts`'s adapter (S57–S59) is a real fix for a real
+double-response bug, but a live dev daemon still threw `ERR_HTTP_HEADERS_SENT` twice per
+Vite-served request with that fix alone applied — `c.header()` rebuilds `c.res` as a new
+`Response`, which is enough on its own to turn the sentinel into a copy that no longer satisfies
+`@hono/node-server`'s already-sent check.
 
 ### EPIC-25-S57 — A middleware that only calls next still falls through
 
@@ -816,6 +823,28 @@ Scenario Outline: no listener leak on a long-lived server
 ```gherkin
 Scenario: the log is quiet enough that a real error is visible
   Given the dev daemon is running with Vite in middleware mode
+  And varyOrigin's already-sent guard is in place
   When every route in the application is navigated to in one session
   Then the daemon's log contains no ERR_HTTP_HEADERS_SENT
+```
+
+Performed, not asserted by a unit test: this is the measurement that found the real cause and
+confirmed the fix. `/`, `/favicon.ico`, `/src/main.ts` and `/gallery` each produced exactly two
+`ERR_HTTP_HEADERS_SENT` with only `../http/connect.ts`'s guard applied; zero with `varyOrigin`'s
+guard applied.
+
+### EPIC-25-S61 — The ordinary and refusal paths still carry Vary: Origin
+
+```gherkin
+Scenario: a normal response is unaffected by the already-sent guard
+  Given a Hono app with varyOrigin mounted first
+  And a handler that returns an ordinary 2xx response
+  When a request goes through the app
+  Then the response carries "Vary: Origin"
+
+Scenario: a refusal is unaffected by the already-sent guard
+  Given a Hono app with varyOrigin mounted first
+  And a handler that returns a non-2xx refusal, such as requireAuth's 401
+  When a request goes through the app
+  Then the response carries "Vary: Origin"
 ```

@@ -36,6 +36,7 @@
  * the wrong side of `buildChildEnv()`'s allowlist like every other `*_TOKEN`.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import type { MiddlewareHandler } from 'hono';
 import { isPublicRoute } from './api-routes.ts';
 import { apiError } from './errors.ts';
@@ -287,14 +288,45 @@ export function authorize(request: AuthRequest, auth: DaemonAuth): AuthDecision 
 }
 
 /**
- * `Vary: Origin` on **every** response, refusals included (AC4).
+ * `Vary: Origin` on **every response Hono builds**, refusals included (AC4).
  *
  * Set after `next()` so it lands on whatever the chain produced — including a
  * refusal from the middleware below, and including the SSE stream, whose
  * response object is built by `streamSSE` rather than by `c.json`.
+ *
+ * ## KAR-25.9 — the one response it must not touch
+ *
+ * A response that was written **straight to the socket** is not Hono's to
+ * header, and reaching for it is what made the dev daemon print
+ * `ERR_HTTP_HEADERS_SENT` twice on every request Vite served
+ * (EPIC-25-S56, EPIC-25-S60). The mechanism is worth stating, because the
+ * crash names neither this file nor the line that causes it:
+ *
+ * 1. `../http/connect.ts` runs Vite's connect middleware, which writes the
+ *    whole response itself, and returns `RESPONSE_ALREADY_SENT` — a sentinel
+ *    `Response` carrying the `x-hono-already-sent` header. `@hono/node-server`
+ *    checks for that header and leaves the socket alone.
+ * 2. `c.header()` on a finalized context does not mutate a `Headers` object in
+ *    place; it **rebuilds** `c.res` as a new `Response`.
+ * 3. `@hono/node-server` replaces the global `Response` with a subclass that
+ *    caches its own status/body/headers, and its writer checks for that cache
+ *    **before** it checks for `x-hono-already-sent`. So the rebuilt sentinel
+ *    takes the ordinary write path, `writeHead` is called on a socket that is
+ *    already finished, and Node throws.
+ *
+ * So the sentinel is returned untouched. Nothing is lost by it: in dev, the
+ * assets Vite serves never had Hono-written headers to vary in the first
+ * place, and in production the SPA and its assets are built by
+ * `serveStatic`/`c.body` and still get the header. AC4's claim is about the
+ * responses this application builds, and this is the one response it does not.
+ *
+ * Identity, not a header sniff: `RESPONSE_ALREADY_SENT` is a module-level
+ * singleton, so `===` is exact and cannot be spoofed by a route that happens
+ * to set the same header name.
  */
 export const varyOrigin: MiddlewareHandler = async (c, next) => {
   await next();
+  if (c.res === RESPONSE_ALREADY_SENT) return;
   c.header('Vary', 'Origin');
 };
 
