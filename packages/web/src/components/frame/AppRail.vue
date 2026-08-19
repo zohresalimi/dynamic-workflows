@@ -5,6 +5,28 @@
  * fifteen primitives and declaring no colour of its own (every value below is
  * `var(--…)`).
  *
+ * **KAR-25.2 AC4, AC6 — the brand mark is a link to `/`.** It was a plain
+ * `<div>` with no `href` and no accessible name; it is now a `RouterLink`, so
+ * "from any route, `/` is reachable in one click without browser history"
+ * (AC6) is true because this component is mounted on every authenticated
+ * screen, and keyboard reach and activation come from the anchor `RouterLink`
+ * renders rather than a key handler this file would otherwise have to write.
+ * `color: inherit` and `text-decoration: none` are the only style delta: the
+ * icon glyph and the badge use `currentColor`/their own tokens and would
+ * otherwise pick up the browser's default link blue and underline the moment
+ * the wrapper became an `<a>`. `/` already resolves to `/projects`
+ * (`../../router/index.ts`), and the accessible `aria-label` exists because
+ * the visible name — "DeFlow" plus the "LOCAL" badge — is one word away from
+ * drifting the moment that badge's text changes.
+ *
+ * **Below 820px this rail — and the brand mark with it — is not rendered at
+ * all** (AC7 below). AC6 does not go unmet there: `AppTopBar.vue`'s own nav
+ * stands in below that width and already carries a "Projects" item pointing
+ * at `/projects`, the same place `/` redirects to, so a narrow tab keeps a
+ * one-click way home, just under a different label. Growing a second,
+ * brand-mark-shaped affordance into the topbar for widths where this file
+ * does not render would be a second implementation of the same fact.
+ *
  * **The nav is derived, not copied.** Direction A draws five rows, one of
  * which — "Builder" — this application has no route for, and KAR-24.4 AC2
  * exists precisely so that gap is never quietly filled in. `../../router/index.ts`
@@ -161,13 +183,16 @@ const { data: providers } = useQuery(providersQuery(client));
 
 <template>
   <aside class="rail" data-frame-rail aria-label="Application">
-    <div class="rail__brand">
+    <!-- KAR-25.2 AC4, AC6, EPIC-25-S12 — a real link to `/`, not a div with
+         nowhere to go. See the header comment for the icon-mode gap this
+         closes and the one it does not. -->
+    <RouterLink to="/" class="rail__brand" aria-label="DeFlow — home">
       <UiIconTile size="sm" tint="var(--state-running)" class="rail__brand-mark">
         <Workflow :size="12" aria-hidden="true" />
       </UiIconTile>
       <span class="rail__brand-name">DeFlow</span>
       <UiChip mono class="rail__brand-badge">LOCAL</UiChip>
-    </div>
+    </RouterLink>
 
     <ProjectSwitcher />
 
@@ -238,6 +263,11 @@ const { data: providers } = useQuery(providersQuery(client));
   align-items: center;
   gap: 9px; /* geometry — the prototype's brand row gutter */
   padding: 16px 14px 12px; /* geometry — the brand row's own padding */
+  /* KAR-25.2 AC4 — now a RouterLink; without these two, the browser's
+     default link colour and underline would show through wherever a child
+     does not paint its own (the icon glyph, via `currentColor`). */
+  text-decoration: none;
+  color: inherit;
 }
 
 .rail__brand-name {
