@@ -441,9 +441,10 @@ second amendment of 16 August 2026.
 
 | Method | Path                          | Purpose                                                                                      | Req        |
 | ------ | ----------------------------- | -------------------------------------------------------------------------------------------- | ---------- |
-| `GET`  | `/providers`                  | Installed adapters, versions, capability manifests                                           | F3.5, F3.6 |
+| `GET`  | `/providers`                  | Installed adapters, versions, capability manifests, plus `enabled`/`source`/`binaryPath` (KAR-25.3) | F3.5, F3.6, F10.9 |
 | `GET`  | `/providers/routes`           | Which providers can serve a run here, and by which route — the composer's picker             | F3.2, F3.7 |
 | `POST` | `/providers/doctor`           | Re-probe binaries and run the conformance battery                                            | F3.4       |
+| `PATCH`| `/providers/:provider`        | Enable/disable a runtime (`{ enabled: boolean }`) — the Settings panel                        | F10.9      |
 | `GET`  | `/config` / `PATCH` `/config` | `.DeFlow/config.yaml` as JSON                                                                |            |
 | `GET`  | `/health`                     | `{ apiVersion, build, daemonEpoch, headSeq, uptimeMs }` — **the only unauthenticated route** |            |
 
@@ -460,6 +461,15 @@ and concluding a run could use it.
 daemon booted without provider roots has no honest basis on which to call anything missing, and an
 empty array read as "nothing is installed" would send an operator to npm to fix a machine that is
 fine.
+
+**KAR-25.3 — disabling a runtime is one fact, stamped onto the resolution both routes read.**
+`PATCH /providers/:provider` writes `provider_setting` (migration 0018); everything downstream is a
+reduction of `ProviderResolution.disabled`, so `GET /providers/routes`, admission and
+`GET /providers`' own `enabled` field agree without any of them being told about the settings table
+directly — see `packages/adapters/src/provider-install.ts`'s `providerRoutes` and
+`packages/daemon/src/providers/settings.ts`. A run already admitted onto a provider keeps running on
+it if the operator disables it mid-run; disabling changes what the picker and admission offer next,
+not what an in-flight run is doing.
 
 ### PTY
 

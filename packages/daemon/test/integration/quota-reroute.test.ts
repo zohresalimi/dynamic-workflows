@@ -63,6 +63,7 @@ import {
   readWakes,
   recordProviderCapabilities,
   replayRun,
+  setProviderDisabled,
 } from '@DeFlow/ledger';
 import { CAPABILITY_PROFILES, type CapabilityProfileName } from '@DeFlow/mock-agent';
 import { GIT_ENV, it } from '@DeFlow/testkit';
@@ -401,6 +402,67 @@ suite('EPIC-11-S29 — a quota reroute onto a capability superset (AC2, AC3, AC7
       expect(diff.nodes.removed).toEqual([]);
       const changed = diff.nodes.changed.find((entry) => entry.id === IMPLEMENT);
       expect(changed?.patch.some((op) => op.path.startsWith('/provider'))).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ── KAR-25.3 AC3 — the mid-run reroute is a second, independent filter ───────
+
+suite('KAR-25.3 AC3 — quotaRouteFor never reroutes onto a provider the operator disabled', () => {
+  it('falls back to suspend once the only equivalent candidate is disabled', async ({ tmp }) => {
+    const { db } = await seed(tmp, { probes: ['claude', 'codex'] });
+    try {
+      // Unchanged baseline (EPIC-11-S29's own first assertion): with both
+      // probed and neither disabled, codex is the equivalent superset and the
+      // route is a reroute onto it.
+      expect(
+        quotaRouteFor(db, {
+          requires: ['resumableSessions'],
+          current: CLAUDE,
+          prefer: [CLAUDE],
+          now: T0 + 1000,
+        }),
+      ).toMatchObject({ action: 'reroute', provider: CODEX });
+
+      // The operator disables codex in `/settings` — a policy on
+      // `provider_setting`, a completely different table from the
+      // `provider_capabilities` row `chooseQuotaRoute` reduces. Without
+      // `quotaRouteFor`'s own filter, codex's still-probed row would keep
+      // making it the chosen target here regardless.
+      setProviderDisabled(db, CODEX, true, T0 + 1000);
+
+      // codex was the only other probed adapter, so with it removed from
+      // candidacy there is nothing left to reroute onto — the same "wait
+      // rather than move it onto a runtime with no candidate behind it" as
+      // EPIC-11-S31, one cause further along.
+      const route = quotaRouteFor(db, {
+        requires: ['resumableSessions'],
+        current: CLAUDE,
+        prefer: [CLAUDE],
+        now: T0 + 1000,
+      });
+      expect(route.action).toBe('suspend');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not filter out a disabled provider’s row for a run that stays on it', async ({
+    tmp,
+  }) => {
+    // AC3's own scope note (see `chooseProvider`'s parallel scenario in
+    // `./live-chain-provider.test.ts`): disabling a provider changes what a
+    // *future* reroute may land on, not what `provider_capabilities` still
+    // truthfully records about a binary this machine has. `listProviderCapabilities`
+    // itself is untouched by the filter — only the candidate set `quotaRouteFor`
+    // reduces from it is.
+    const { db } = await seed(tmp, { probes: ['claude', 'codex'] });
+    try {
+      setProviderDisabled(db, CODEX, true, T0 + 1000);
+      const rows = listProviderCapabilities(db);
+      expect(rows.map((row) => row.provider)).toContain('codex');
     } finally {
       db.close();
     }

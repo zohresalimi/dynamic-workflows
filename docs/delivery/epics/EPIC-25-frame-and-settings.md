@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                        |
 | **Milestone**        | M1                                                                                                                                                                                        |
 | **Workstream**       | W18 — added 2026-08-18, after the owner ran the built application against a real project and filed ten defects plus two daemon stack traces                                                 |
-| **Size**             | ~14 days across 9 stories                                                                                                                                                                 |
+| **Size**             | ~14 days across 9 shipped stories, plus KAR-25.10 (split from KAR-25.3 after implementation, not built) |
 | **Depends on**       | EPIC-24 (the token layer and the fifteen `ui/` primitives every screen here is built from), EPIC-22 (projects, connectors, the composer), EPIC-19 (a run with a gate to answer)             |
 | **Blocks**           | Nothing mechanical. It blocks the application being usable without a terminal, which is what EPIC-22 was for                                                                               |
 | **PRD requirements** | F10.1, F10.3, F10.6, F10.9, F10.11, NF8, NF10, AR-1                                                                                                                                       |
@@ -86,7 +86,7 @@ What each one settles:
 | `03-inspector-logs.png`           | The Logs tab: a timestamped, level-coloured stream                                                                                                            |
 | `04-frame-fanout-run.png`         | The workflow tab strip above the canvas, and the phases/agents table below it                                                                                 |
 | `05-frame-fanout-scrolled.png`    | Same, confirming the canvas scrolls independently of the table                                                                                                |
-| `06-settings.png`                 | **The settings page.** Three panels: *Providers & runtimes* (per-row health, model list, enable toggle, a `Rescan` action), *Issue tracker* (Linear · Jira · GitHub, each with one status and one action), *Execution defaults* |
+| `06-settings.png`                 | **The settings page.** Three panels: *Providers & runtimes* (per-row health, model list, enable toggle, a `Rescan` action), *Issue tracker* (Linear · Jira · GitHub, each with one status and one action), *Execution defaults*. **Amended by KAR-25.3**: DeFlow reports no model list anywhere (no ACP `initialize` response advertises one, and `test/no-context-window-table.test.ts` forbids inventing one) and has no "endpoint" concept (adapters are spawned children over stdio) — the row renders the binary path it does have and no model column |
 | `07-new-run-page.png`             | **The new-run page.** A centred prompt — "What do you want me to do?" — a source picker on the left of the composer bar, a model picker on the right, `Run` with `⌘↵`, and "start from a workflow" chips below. A page, not a modal. Note the rail here is the *project-scoped* set: New run · Ongoing runs · History |
 
 ### Two things the screenshots show that this epic does **not** build
@@ -103,22 +103,37 @@ Stated so a future reader does not read the omission as an oversight:
 ## Scope decision recorded: what "manageable runtimes" means
 
 The owner asked for runtimes to be "managable (possible to add, remove, install, etc)". This epic
-delivers four of those verbs and deliberately does not deliver the fifth:
+delivers three of those verbs and deliberately does not deliver the other two:
 
 - **Rescan** — `POST /api/providers/doctor` already exists and is single-flight. The button is a
   caller, not a new probe.
-- **Enable / disable** — persisted daemon-side, so a disabled runtime stops being offered by the
-  composer's picker and by admission. One fact, two readers.
-- **Add** — register an endpoint-shaped runtime (the blueprint's `OpenAI-compatible · not configured`
-  row): a base URL and a name. This is the only kind of runtime that can be *added* rather than
-  detected.
-- **Remove** — unregister an added one. A *detected* runtime cannot be removed, because removing it
-  would mean lying about what is on the machine; it can only be disabled.
+- **Enable / disable** — persisted daemon-side (`provider_setting`, migration 0018), so a disabled
+  runtime stops being offered by the composer's picker and by admission. One fact — a `disabled`
+  flag stamped onto `ProviderResolution` — read by every downstream reducer
+  (`providerRoutes`/`usableProviders`/`admitRun`/`providerOptions`) rather than four separate
+  checks, plus two readers this design does not cover for free and got their own edit:
+  `chooseProvider` (execution-time selection, filtered only when a run has no recorded admission —
+  an admitted run keeps running on its provider even if it is disabled afterwards) and
+  `quotaRouteFor` (the mid-run reroute, a different producer entirely). Shipped, KAR-25.3.
 - **Install — not built.** Installing a runtime means running a global package install. DeFlow
   showing the exact command and a copy button is honest; DeFlow executing an arbitrary global
   install triggered from a browser tab is a shell in a web page. The command is rendered; the
   execution is not. **If the owner wants the execute-button, it is a follow-up story and should be
   a deliberate decision, not a side effect of this one.**
+
+**Amended after implementation (KAR-25.3).** "Add" and "Remove" are **not built**, and are moved to
+KAR-25.10, a new story. Registering an endpoint-shaped runtime is not a form plus a route: every
+provider today is a compile-time entry in `PROVIDER_SPECS`, `POST /api/runs`' `provider` field is
+refined against that same closed set (a name outside it is a 400 before admission is ever
+consulted), a route is one of exactly two values (`acp`/`shim`) with a docblock that says a third
+"would be a change to the adapter layer, not a string added here", and the whole transport is a
+spawned child over stdio — there is no HTTP client anywhere in the adapter layer for an
+endpoint-shaped runtime to use. "Add" is new adapter machinery (a runtime kind, a route kind, an
+HTTP transport, a non-spawn probe, dynamic registry ids, and admission/selection changes in three
+files), not a UI story, and shipping a row that can be added and disabled but can never serve a run
+would be inventing a runtime — the one thing this whole family of stories forbids. KAR-25.3 ships
+list + health + rescan + enable/disable + install-command-with-copy (its AC1–AC4, AC7, AC8); its old
+AC5 and AC6 (add/remove) move to KAR-25.10 unchanged, as that story's AC1/AC2, still unbuilt.
 
 ## Stories
 
@@ -133,6 +148,7 @@ delivers four of those verbs and deliberately does not deliver the fifth:
 | KAR-25.7  | Every announced decision can be answered where it is announced                | L    | —                    |
 | KAR-25.8  | A worktree that already exists is not a dead run                              | M    | —                    |
 | KAR-25.9  | The response that was written twice                                           | S    | —                    |
+| KAR-25.10 | Register an endpoint-shaped runtime (not built)                               | L    | KAR-25.3             |
 
 ---
 
@@ -231,29 +247,97 @@ The way home, in three places:
 **As** an operator, **I want** to see what runtimes this machine has and change which ones DeFlow
 may use, **so that** a runtime I do not want is not silently offered to a run.
 
-Fixes owner defect 3. Blueprint: `06-settings.png`, top panel. Scope is as recorded above — add,
-remove, enable, disable, rescan; **install is rendered as a command, not executed**.
+Fixes owner defect 3. Blueprint: `06-settings.png`, top panel. Scope is as recorded above — enable,
+disable, rescan, and the install command rendered (never executed). **Add/remove are not built —
+see the epic's "Scope decision recorded" amendment and KAR-25.10.**
 
 The rail keeps its RUNTIMES glance (blueprint `01`) and it stays read-only: it is a status line, and
 the management lives here. Both read the same `GET /api/providers`; there is one probe.
 
 **Acceptance criteria**
 
-1. Each row shows: the runtime's name, its endpoint or binary path, the models it reports, its health
-   as the daemon worded it, and an enable toggle. Nothing on the row is computed by the browser.
-2. **Rescan** calls `POST /api/providers/doctor` and re-renders from its result. It does not
-   re-probe locally, and a second click while one is in flight does not start a second probe.
-3. Disabling a runtime persists daemon-side and removes it from `GET /api/providers/routes`, so the
-   composer's picker and admission agree with this page without either being told separately.
+1. Each row shows: the runtime's name, its binary path, and an enable toggle. Its health is the
+   daemon's own sentence — `providerVerdict().detail`, read off `GET /providers/routes` — never a
+   word this page composes. Nothing on the row is computed by the browser.
+
+   **Amended after implementation.** This AC originally also asked for "the models it reports" and
+   "its endpoint … path". Neither is a field DeFlow has anywhere: no ACP `initialize` response
+   advertises a model or a context window (`live-chain.ts`'s `PROVIDER_DEFAULT_MODEL` is the literal
+   string `'provider-default'`, and `test/no-context-window-table.test.ts` fails the build over a
+   model/context table by name), and every adapter is a spawned child over stdio — there is no
+   endpoint, no base URL, no HTTP client anywhere in `packages/adapters`. The row renders what the
+   daemon does have — `binaryPath`, added to `GET /providers` for this story — and no model column.
+   Rendering what the daemon has beats rendering what the picture drew.
+2. **Rescan** calls `POST /api/providers/doctor` and re-renders from its result — specifically, by
+   refetching the shared `GET /api/providers` query the doctor's own writes are read back through,
+   which is "its result" for the same reason a write and the read that confirms it are one fact
+   rather than two. It does not re-probe locally, and a second click while one is in flight does not
+   start a second request: the daemon's own single-flight (`runProviderDoctor`) collapses the
+   *work*, but the HTTP request itself still leaves the tab unless the client also refuses to send
+   it twice, which is what this AC's client-side guard is for.
+3. Disabling a runtime persists daemon-side (`PATCH /api/providers/:provider`, `provider_setting`)
+   and removes it from `GET /api/providers/routes`, so the composer's picker and admission agree
+   with this page without either being told separately. The one design that makes this free without
+   a per-reader edit: `disabled` lives on `ProviderResolution` itself, and `providerRoutes` returns
+   both routes `missing` when it is set — every downstream reducer (`usableProviders`, `admitRun`,
+   `providerOptions`) inherits the change for nothing.
+
+   **Amended after implementation, naming every reader rather than only the two this AC originally
+   called out.** "Read one response" only holds if every place that builds a `ProviderResolution`
+   folds `provider_setting` in — this is the complete list, kept here so a future reader is added to
+   it rather than rediscovering the gap:
+
+   - **Free, via `providerRoutes`:** `usableProviders`, `admitRun`, `providerOptions`, and
+     `GET /api/providers` itself (`http/api.ts`) — all downstream of one resolution that already
+     carries `disabled`.
+   - **Their own edit, each with its own test, because neither is downstream of `providerRoutes`:**
+     `chooseProvider` (execution-time selection — filtered only when a run has no recorded
+     admission, so a run already admitted onto a provider keeps running on it after a mid-run
+     disable) and `quotaRouteFor` (the mid-run quota reroute, a different producer —
+     `provider_capabilities` rows — filtered at the call site).
+   - **Missed at first pass, fixed after review:** `deflow doctor`'s `agentChecks`
+     (`packages/cli/src/doctor/agents.ts`) and `deflow setup`'s adapter-verification step
+     (`packages/cli/src/setup/run.ts`) each built a fresh `resolveProviderStates(roots)` of their
+     own — a third and fourth producer beside `providerRoutes` — and never folded
+     `disabledProviderIds`/`withDisabled` even though the ledger was reachable from both. A disabled
+     runtime read as installed and ready from either command while `POST /api/runs` refused it: two
+     reductions of one machine disagreeing, which is this AC's whole point. Both now call
+     `withDisabled(resolveProviderStates(roots), disabledProviderIds(db))` before building or
+     reading a resolution — `setup`'s step opens the ledger itself (mirroring `doctor/run.ts`'s own
+     `openLedgerOrNull`) since nothing upstream of it had a `db` in scope — and `setup`'s "N ready to
+     route" count and action now also treat a disabled-but-installed entry as not ready, the same
+     answer `POST /api/runs` would give it.
+   - **Deliberately not covered, and why:** `deflow run`'s `providerChoices`
+     (`packages/cli/src/run/run.ts`), the list of registered ids used only to compose the error
+     message for a mistyped `--provider` before any run is attempted. It is the first of `runRun`'s
+     three gates, and by that function's own design runs "without touching the machine" — no ledger
+     is open yet, on purpose, so an argv typo can be caught before anything is created. Folding
+     `disabled` in here would mean opening the ledger earlier than the command otherwise needs to,
+     for a value this gate does not act on: the id stays listed as a legal choice either way, the
+     message is not a promise the run will be admitted, and the actual admission decision is made
+     once, server-side, by `POST /api/runs` — which does fold the flag. The gap this leaves: a
+     disabled provider still prints `usable: true` in this one message, and the operator learns it
+     is disabled only from the daemon's refusal a moment later, one command later than the other two
+     fixes above. Accepted rather than closed, because closing it costs the one property `runRun`'s
+     own doc comment calls out as deliberate.
 4. A runtime that is **detected** cannot be removed — the row offers disable only, and says why in
-   one sentence.
-5. A runtime that was **added** can be removed, and removing it is confirmed first.
-6. Adding a runtime takes a name and a base URL, validates the URL shape before submitting, and
-   renders the daemon's refusal verbatim if the daemon refuses.
+   one sentence. (Every row in this build is detected — see AC5/AC6's amendment below — so this is
+   true of the whole panel, not one branch of it.)
+5. **Not built — moved to KAR-25.10 AC1, unchanged.** A runtime that was *added* can be removed,
+   confirmed first. There is no "added" runtime in this build (AC6's own amendment), so this AC has
+   nothing to be true of yet.
+6. **Not built — moved to KAR-25.10 AC2, unchanged.** Adding a runtime, with URL validation and the
+   daemon's refusal rendered verbatim. See the epic's "Scope decision recorded" amendment for why:
+   registering an endpoint-shaped runtime is new adapter machinery, not a form plus a route.
 7. A runtime the daemon reports as not installed shows its install command with a copy control, and
    **no button that would run it**. This absence is asserted, the way `connectors.test.ts` asserts
-   the absence of a token field.
-8. The rail's RUNTIMES list and this panel never disagree, because both render one response.
+   the absence of a token field. The command is `GET /providers/routes`' own `action` field
+   (`providerVerdict().action`), rendered verbatim — never composed here, and read from the routes
+   endpoint rather than the manifest one, because that is the one route that already owns install
+   sentences (KAR-18.8/KAR-19.2) and `api.ts`'s own rule is that a fact gets one producer.
+8. The rail's RUNTIMES list and this panel never disagree, because both render one response: the
+   same `providersQuery(client)` / `['providers']` Pinia-Colada cache entry, so a change either one
+   causes a refetch of is visible to both without a second request.
 
 ---
 
@@ -539,20 +623,60 @@ Neither one, though, was what the owner hit — see the note below.
 
 ---
 
+### KAR-25.10 — Register an endpoint-shaped runtime (not built)
+
+**As** an operator, **I want** to point DeFlow at an OpenAI-compatible endpoint I run myself, **so
+that** a local server (Ollama, LM Studio, llama.cpp) can serve a run the same way an installed
+vendor CLI does.
+
+Split out of KAR-25.3 after implementation, per that story's own scope-decision discipline
+(`docs/delivery/README.md` §9): the blueprint's `OpenAI-compatible · not configured` row asks for a
+*kind of runtime this codebase does not have*, not a form plus a route. Concretely, what "add" would
+have to become before it could exist:
+
+- A **runtime kind** beside `native`/`adapter` in `PROVIDER_SPECS` — today every provider is a
+  compile-time entry in that table, and `resolveProviderStates`, `detectProviders`,
+  `runProviderDoctor` and `GET /api/providers` all iterate it; a row not in it is invisible to all
+  four.
+- A **request-schema change**: `POST /api/runs`' `provider` field is refined against
+  `REGISTERED_PROVIDER_IDS = Object.keys(PROVIDER_SPECS)`, so naming an added runtime is a 400
+  before admission is ever consulted.
+- An **HTTP transport**: every adapter today is a spawned child speaking stdio ndjson
+  (`packages/adapters/src/transport.ts`); there is no HTTP client anywhere in the adapter layer.
+- A **third route**: `PROVIDER_ROUTES = ['acp', 'shim']` is a closed pair whose own docblock says
+  outright "a third would be a change to the adapter layer, not a string added here".
+- A **non-spawn probe**: `probeProvider` establishes capabilities by spawning a binary and doing an
+  ACP `initialize` over stdio; an endpoint has no way to get a `provider_capabilities` row from that
+  path.
+- **Admission and selection changes in three files**: both execution paths (`live-agents.ts`,
+  `live-nodes.ts`) throw outright for a provider not in `PROVIDER_SPECS`.
+
+That is a story of its own, plausibly bigger than the rest of KAR-25.3 combined, and it is not
+half-built here: KAR-25.3 ships list/health/rescan/enable-disable/install-command and stops.
+
+**Acceptance criteria** (KAR-25.3's original AC5/AC6, carried over unchanged)
+
+1. A runtime that was **added** can be removed, and removing it is confirmed first.
+2. Adding a runtime takes a name and a base URL, validates the URL shape before submitting, and
+   renders the daemon's refusal verbatim if the daemon refuses.
+
+---
+
 ## Risks
 
 | Risk                                                                                                                  | Mitigation                                                                                                                                  |
 | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Making Runs project-scoped breaks every existing run-route spec and every bookmark**                                | KAR-25.1 AC7 makes the old paths redirect rather than 404, and the specs move with the routes in one story rather than leaking across nine   |
 | **The composer becoming a page is a large behavioural change to the product's most important action**                 | `composer.test.ts` is a fixed point (AC2). The story may move the component and change what opens it; it may not change what submitting does |
-| **KAR-25.3's enable/disable adds daemon state that admission and the picker must agree with**                         | AC3 makes them read one response rather than three. If they cannot, the toggle is not shipped — a picker that disagrees with admission is EPIC-19's whole reason for existing |
+| **KAR-25.3's enable/disable adds daemon state that admission and the picker must agree with**                         | AC3 makes them read one response rather than three. **Resolved, shipped**: `disabled` lives on `ProviderResolution` itself, so `providerRoutes` closing both routes is what every downstream reducer inherits for free; `chooseProvider` and `quotaRouteFor` do not come along for free and got their own edit, each with its own test. **Amended after review**: `deflow doctor` and `deflow setup` each build their own resolutions outside `providerRoutes` and were missed by the first pass — see AC3's amendment for the full reader list, including the one reader (`deflow run`'s pre-admission `--provider` message) left deliberately unfolded |
 | **"Install" is the one verb this epic refuses**                                                                       | Recorded above, with the reason, and flagged to the owner rather than quietly dropped                                                       |
+| **"Add"/"Remove" turned out to be adapter machinery, not a form**                                                      | Discovered reading the endpoint, not assumed going in. Split to KAR-25.10 rather than half-built inside KAR-25.3, per `docs/delivery/README.md` §9 |
 | **KAR-25.7 touches the gate path, which has broken twice before**                                                     | One answer path (`gateAnswerRequest`), three renderings. AC5–AC7 assert the ledger clears all three, so no surface gets a local flag         |
-| **The nine stories are sequenced with real dependencies and cannot all be parallelised**                              | The dependency column is honest: 25.7, 25.8 and 25.9 are independent of the frame work and can run alongside it                              |
+| **The ten stories are sequenced with real dependencies and cannot all be parallelised**                               | The dependency column is honest: 25.7, 25.8 and 25.9 are independent of the frame work and can run alongside it; 25.10 depends only on 25.3  |
 
 ## Definition of done
 
-- All nine stories' acceptance criteria pass.
+- All ten stories' acceptance criteria pass.
 - Every existing spec in `packages/web` and `packages/daemon` passes. Where an assertion changed, the
   story's notes name it and say why.
 - The lint guards (UI vocabulary, colour literal) pass, and no fix in this epic was made as a

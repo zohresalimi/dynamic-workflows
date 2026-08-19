@@ -101,6 +101,7 @@ interface ProviderRow {
   readonly provider: string;
   readonly installed: boolean;
   readonly version?: string | null;
+  readonly enabled?: boolean;
 }
 
 const PROJECT: ProjectRow = {
@@ -151,7 +152,16 @@ function frameDaemon(options: {
         })),
       });
     }
-    if (url.includes('/providers')) return json(200, options.providers ?? []);
+    // `enabled` defaults to `true`, matching `GET /api/providers`' own default
+    // for a provider with no `provider_setting` row (`../api/queries.ts`'s
+    // `ProviderRow` doc) — a fixture row that does not care about the toggle
+    // does not have to spell it out.
+    if (url.includes('/providers')) {
+      return json(
+        200,
+        (options.providers ?? []).map((row) => ({ ...row, enabled: row.enabled ?? true })),
+      );
+    }
     // KAR-25.5 — both checked before the general `/projects` catch-all, whose
     // own path (`/projects/:id/connectors`, `/projects/:id/runs`) also
     // `.includes('/projects')`. `ProjectWorkflowsView` and the composer's
@@ -282,6 +292,51 @@ suite('EPIC-24-S14 — the rail and the topbar, on the landing route', () => {
     expect(crumb?.textContent?.trim().length).toBeGreaterThan(0);
   });
 });
+
+suite(
+  'KAR-25.3 AC8 — the RUNTIMES glance names a disabled runtime, not only an installed one',
+  () => {
+    it('reports "disabled" for a runtime that is installed but toggled off', async () => {
+      shell = await mountShell({
+        client: createClient({
+          baseUrl: 'http://127.0.0.1:7777/api',
+          fetch: frameDaemon({
+            projects: [PROJECT],
+            providers: [{ provider: 'claude', installed: true, version: '4.6', enabled: false }],
+          }),
+          token: () => 'test-token-Aa0_-Bb1',
+        }),
+      });
+
+      const row = () => shell.container.querySelector('[data-runtime-row]');
+      await expect.poll(() => row()).not.toBeNull();
+      // The bug this AC forbids: an installed-but-disabled runtime reading
+      // exactly as an installed-and-enabled one, with no signal a run through
+      // it would actually be refused.
+      expect(row()?.textContent).not.toContain('4.6');
+      expect(row()?.textContent).toContain('disabled');
+      expect(row()?.getAttribute('data-runtime-enabled')).toBe('false');
+      expect(row()?.querySelector('.rail__runtime-dot')?.getAttribute('data-enabled')).toBe(
+        'false',
+      );
+    });
+
+    it('shows the version, not "disabled", for an installed runtime that is enabled', async () => {
+      shell = await mountShell({
+        client: createClient({
+          baseUrl: 'http://127.0.0.1:7777/api',
+          fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS }),
+          token: () => 'test-token-Aa0_-Bb1',
+        }),
+      });
+
+      const row = () => shell.container.querySelector('[data-runtime-row]');
+      await expect.poll(() => row()?.textContent).toContain('4.6');
+      expect(row()?.textContent).not.toContain('disabled');
+      expect(row()?.getAttribute('data-runtime-enabled')).toBe('true');
+    });
+  },
+);
 
 suite('EPIC-24-S15 — the nav names only routes this application has', () => {
   it('resolves every rail item to a real route, and none of them is "Builder"', async () => {

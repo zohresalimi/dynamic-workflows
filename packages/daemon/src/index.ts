@@ -625,6 +625,12 @@ export {
 // and its `resetsAt`, with an unknown reset said out loud rather than invented.
 export type { RateLimitReportInput } from './providers/rate-limit-doctor.ts';
 export { rateLimitLines, renderRateLimitReport } from './providers/rate-limit-doctor.ts';
+// KAR-25.3 AC3 — the seam between `provider_setting` and `ProviderResolution`,
+// so every reader that builds resolutions folds the disabled flag the same
+// way instead of re-deriving it. `deflow doctor` and `deflow setup` are
+// callers outside this package, alongside `./boot.ts`, `./pipeline/live-chain.ts`
+// and `./providers/quota-reroute.ts` within it.
+export { disabledProviderIds, withDisabled } from './providers/settings.ts';
 // KAR-15.8 — one live pty per node, its durable `io_chunk` sink, and the
 // registry the upgrade handler looks a node's terminal up in.
 export type { LedgerPtySinkOptions } from './pty/ledger-pty-sink.ts';

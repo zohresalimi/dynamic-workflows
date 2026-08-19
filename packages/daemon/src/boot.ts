@@ -24,7 +24,7 @@
  * unreliable, so the epoch is what makes a daemon that somehow started anyway
  * harmless (see @DeFlow/ledger's epoch.ts).
  */
-import { admitRun } from '@DeFlow/adapters';
+import { admitRun, type ProviderResolution } from '@DeFlow/adapters';
 import type { Clock, StallReport } from '@DeFlow/core';
 import { type Db, describeSkipped, type RunId, type RunState } from '@DeFlow/core';
 import {
@@ -73,6 +73,7 @@ import {
 import { log } from './logging.ts';
 import { admissionResolutions } from './providers/admission.ts';
 import type { ProviderDetectionEntry } from './providers/boot-probe.ts';
+import { disabledProviderIds, withDisabled } from './providers/settings.ts';
 import { clearPtySessions } from './pty/pty-sessions.ts';
 import { daemonRandom } from './random.ts';
 import type { ReapDecision } from './reaper.ts';
@@ -459,10 +460,30 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     // facts about this boot: the probe ran three steps ago, and `PATH` came
     // from the terminal that started the daemon. A submission then costs one
     // reduction over five records and spawns nothing (EPIC-19-S12).
-    const resolutions =
+    const baseResolutions =
       options.providerRoots === undefined
         ? null
         : admissionResolutions({ roots: options.providerRoots, probe: providers });
+
+    /**
+     * KAR-25.3 AC3 — `baseResolutions` is this boot's PATH-and-probe answer,
+     * computed once; `provider_setting` is an operator's toggle, which can
+     * change on any tick this daemon is up. Folding the two into a single
+     * `const` — the way `baseResolutions` itself was folded before this story
+     * — would freeze "disabled" at boot the same way the machine's own PATH is
+     * frozen at boot, and a toggle clicked in Settings would then need a
+     * restart to take effect, which is exactly the picker-vs-admission
+     * disagreement this whole feature exists to prevent one field over.
+     *
+     * So it stays a thunk: `disabledProviderIds` re-reads the (tiny)
+     * settings table on every call, `withDisabled` stamps the flag onto the
+     * cached resolutions, and both `admit` and `providerResolutions` below
+     * call it — one function, so the composer's picker and the admission
+     * decision are still the same reduction of this machine after the flag
+     * exists, not two that happen to agree until a toggle is clicked.
+     */
+    const currentResolutions = (): readonly ProviderResolution[] =>
+      baseResolutions === null ? [] : withDisabled(baseResolutions, disabledProviderIds(db));
 
     setIntakePorts({
       db,
@@ -475,15 +496,15 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       // this boot's; what the request adds is which of them it is allowed to
       // answer with, and refusing it here is what stops a fallback nobody
       // announced.
-      // KAR-22.2 AC2 — and the picker, from the same `const` in the same
-      // spread. Two keys and one source: there is no arrangement of this file
-      // in which the composer's list and the admission decision come from
-      // different reductions of this machine.
-      ...(resolutions === null
+      // KAR-22.2 AC2 — and the picker, from the same thunk. Two keys and one
+      // source: there is no arrangement of this file in which the composer's
+      // list and the admission decision come from different reductions of
+      // this machine.
+      ...(baseResolutions === null
         ? {}
         : {
-            admit: (request) => admitRun(resolutions, request),
-            providerResolutions: resolutions,
+            admit: (request) => admitRun(currentResolutions(), request),
+            providerResolutions: currentResolutions,
           }),
     });
 

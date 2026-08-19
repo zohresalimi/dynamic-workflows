@@ -114,14 +114,23 @@ export interface RunIntakePorts {
    * disagreement KAR-19.10 shipped to end: two reductions written months apart,
    * both defensible, differing on the one machine that matters.
    *
-   * Carried **beside** `admit` and set from the same `const` in `../boot.ts`,
-   * rather than derived from it, because `admit` answers *"may this particular
-   * request run"* and a picker needs the row for every provider including the
-   * ones that cannot. Absent for the same daemon lives `admit` is absent for —
-   * one that was never told which machine it is on — and the route says so
-   * rather than reporting an empty machine.
+   * Carried **beside** `admit` and built from the same thunk in `../boot.ts`,
+   * rather than derived from `admit`, because `admit` answers *"may this
+   * particular request run"* and a picker needs the row for every provider
+   * including the ones that cannot. Absent for the same daemon lives `admit`
+   * is absent for — one that was never told which machine it is on — and the
+   * route says so rather than reporting an empty machine.
+   *
+   * **KAR-25.3 AC3 — a thunk, not a `const` array.** The filesystem-and-probe
+   * half of a resolution is fixed for this daemon's life, but whether the
+   * operator has disabled it in Settings is not: `provider_setting` can change
+   * on any tick, and a submission or a picker read minted from a snapshot
+   * taken at boot would keep offering a provider for as long as the daemon
+   * stayed up after it was disabled. Calling this re-reads the (tiny)
+   * settings table over the cached filesystem resolution — see `../boot.ts`'s
+   * own comment on `currentResolutions`.
    */
-  readonly providerResolutions?: readonly ProviderResolution[];
+  readonly providerResolutions?: () => readonly ProviderResolution[];
 }
 
 export type RunIntakeSubmitter = 'ui' | 'cli';
@@ -517,6 +526,11 @@ function refusalEvents(
       adapterPath: entry.adapterPath,
       package: entry.package,
       ...(entry.handshakeStderr === undefined ? {} : { stderr: entry.handshakeStderr }),
+      // KAR-25.3 AC3, EPIC-25's reader (e) — recorded so a later re-render of
+      // this refusal (`../http/run-refusal.ts`) can tell "disabled in
+      // Settings" from every other reason admission said no, rather than
+      // re-deriving "admitted" for a run the write path refused.
+      ...(entry.disabled === true ? { disabled: true } : {}),
     },
   }));
 

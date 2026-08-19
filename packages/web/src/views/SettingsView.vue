@@ -6,9 +6,11 @@
  *
  * **It takes no props, reads no `projectId`.** No `defineProps`, no
  * `useRoute()` anywhere in this file — AC1 and EPIC-25-S09 both turn on that.
- * *Providers & runtimes* is still a `UiPanel` with a real title and an
- * `UiEmptyState` body naming KAR-25.3, the story that fills it, never a
- * styled mock. *Issue tracker* is filled by
+ * *Providers & runtimes* is `../components/settings/RuntimesPanel.vue`
+ * (KAR-25.3) — that file owns its own `UiPanel` rather than being handed one
+ * here, for the reason its own header comment gives (the Rescan button lives
+ * in the panel's action slot, which only the file rendering `<UiPanel>` can
+ * fill). *Issue tracker* is filled by
  * `../components/settings/ConnectorsPanel.vue` (KAR-25.4) — passed
  * `projects`, the same list this file already loads for *Execution
  * defaults*' own picker, rather than fetching a second copy.
@@ -99,6 +101,7 @@ import { useApiClient } from '../api/provide.ts';
 import { configQuery } from '../api/queries.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
 import ConnectorsPanel from '../components/settings/ConnectorsPanel.vue';
+import RuntimesPanel from '../components/settings/RuntimesPanel.vue';
 import {
   UiEmptyState,
   UiField,
@@ -362,15 +365,10 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
       <p class="settings__subtitle">Everything here applies to this machine, not to one project.</p>
     </header>
 
-    <!-- KAR-25.3's panel. A real title, an honest empty body: see the header
-         comment and `UiEmptyState`'s own docblock for why this never reads as
-         a styled stand-in for the finished panel. -->
-    <UiPanel title="Providers & runtimes" data-panel="providers">
-      <UiEmptyState
-        title="No runtimes listed yet"
-        hint="This panel is filled by KAR-25.3, which reads GET /api/providers."
-      />
-    </UiPanel>
+    <!-- KAR-25.3's panel. It owns its own `UiPanel` — see
+         `../components/settings/RuntimesPanel.vue`'s header comment for why,
+         unlike `ConnectorsPanel` below, this file does not wrap it in one. -->
+    <RuntimesPanel />
 
     <div class="settings__row">
       <!-- KAR-25.4's panel — `../components/settings/ConnectorsPanel.vue`'s

@@ -2041,6 +2041,18 @@ export const ProviderAdmissionProbedSchema = z.strictObject({
   /** The child's own stderr from a handshake that failed. Never paraphrased. */
   stderr: z.string().optional(),
   /**
+   * KAR-25.3 AC3 — the operator had disabled this provider in Settings at the
+   * moment admission read it.
+   *
+   * Optional, and absent on every row written before this story and on every
+   * row for a provider nobody has ever disabled — the same additive shape
+   * `requested` below takes. Present (and always `true`) is what lets
+   * `../http/run-refusal.ts` say *why* a provider was unusable rather than
+   * re-deriving "admitted" from a resolution that no longer says it was
+   * disabled.
+   */
+  disabled: z.literal(true).optional(),
+  /**
    * KAR-19.12 — the provider the *operator named*, when they named one.
    *
    * Optional, and absent on every row written before this story and on every

@@ -54,6 +54,13 @@
  * invents a runtime the endpoint did not report, and an empty list renders no
  * section at all rather than a fabricated placeholder row.
  *
+ * **Amended after review (KAR-25.3 AC8).** The row used to read only
+ * `row.installed` — a runtime the operator disabled in `/settings` looked
+ * identical to one still on, on the one surface visible from every screen.
+ * `row.enabled` (the same field the settings toggle reads and writes) now
+ * drives the dot and the detail text too: the rail stays read-only, this is
+ * one more fact it reports rather than a control it grows.
+ *
  * **The identity footer shows the daemon connection, not a person.**
  * `useSessionStore` has a token and an `authenticated` boolean — DeFlow has no
  * notion of "who is logged in", only "does this tab hold the daemon's token" —
@@ -213,11 +220,31 @@ const { data: providers } = useQuery(providersQuery(client));
     <template v-if="providers && providers.length > 0">
       <UiSectionLabel class="rail__section" as="div">Runtimes</UiSectionLabel>
       <ul class="rail__runtimes">
-        <li v-for="row in providers" :key="row.provider" class="rail__runtime" data-runtime-row>
-          <span class="rail__runtime-dot" :data-installed="row.installed" aria-hidden="true" />
+        <li
+          v-for="row in providers"
+          :key="row.provider"
+          class="rail__runtime"
+          data-runtime-row
+          :data-runtime-enabled="row.enabled"
+        >
+          <!-- AC8, amended after review — `row.enabled` is `GET /api/providers`'
+               own field (KAR-25.3), the same one `RuntimesPanel.vue`'s toggle
+               reads and writes, so an operator who just disabled a runtime does
+               not see this glance still call it installed and say nothing
+               about the toggle: it is one more fact this read-only list
+               reports, not a control it grows. `data-installed` alone used to
+               decide both the dot and the detail text, which is what let a
+               disabled-but-installed runtime render identically to one that
+               was on. -->
+          <span
+            class="rail__runtime-dot"
+            :data-installed="row.installed"
+            :data-enabled="row.enabled"
+            aria-hidden="true"
+          />
           <span class="rail__runtime-name">{{ row.provider }}</span>
           <span class="rail__runtime-detail"
-            >{{ row.installed ? (row.version ?? 'installed') : 'not installed' }}</span
+            >{{ !row.enabled ? 'disabled' : row.installed ? (row.version ?? 'installed') : 'not installed' }}</span
           >
         </li>
       </ul>
@@ -409,6 +436,13 @@ const { data: providers } = useQuery(providersQuery(client));
 
 .rail__runtime-dot[data-installed="true"] {
   background: var(--state-passed);
+}
+
+/* AC8 — a disabled runtime never reads as "on" here, installed or not: two
+   attribute selectors outrank the single-attribute rule above regardless of
+   source order, so this wins for every installed-but-disabled row. */
+.rail__runtime-dot[data-installed="true"][data-enabled="false"] {
+  background: var(--ink-faint);
 }
 
 .rail__runtime-name {

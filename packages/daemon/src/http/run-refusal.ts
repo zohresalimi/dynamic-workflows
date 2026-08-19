@@ -75,6 +75,11 @@ function asResolution(payload: unknown): ProviderResolution | null {
     // refusal happened on six weeks ago (KAR-19.7 AC8).
     bundled: providerSpec(record.provider)?.bundled ?? false,
     ...(typeof record.stderr === 'string' ? { handshakeStderr: record.stderr } : {}),
+    // KAR-25.3 AC3 — reader (e): without this, `admitRun` below re-derives
+    // "admitted" for a provider the write path refused for being disabled,
+    // because a resolution with every other field intact and no `disabled`
+    // flag has an open route again.
+    ...(record.disabled === true ? { disabled: true } : {}),
   };
 }
 

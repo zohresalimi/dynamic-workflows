@@ -24,7 +24,12 @@
  */
 import type { RunId } from '@DeFlow/core';
 import { RunIdSchema } from '@DeFlow/core';
-import { appendEvents, openLedger, recordProviderCapabilities } from '@DeFlow/ledger';
+import {
+  appendEvents,
+  openLedger,
+  recordProviderCapabilities,
+  setProviderDisabled,
+} from '@DeFlow/ledger';
 import { it } from '@DeFlow/testkit';
 import { chmodSync, writeFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -126,6 +131,52 @@ suite('the run obeys the provider it was admitted onto (AC8)', () => {
     // A daemon booted without `providerRoots` records nothing, and a run
     // submitted to it has no choice to obey. That is not a reason to refuse —
     // it is the pre-KAR-19.10 behaviour, unchanged (AC3).
+    expect(chooseProvider(db, [bin], RUN_ID)?.provider).toBe('claude');
+  });
+});
+
+suite('KAR-25.3 AC3 — a disabled provider and the two moments selection asks about it', () => {
+  it('never selects a disabled provider when nothing has been admitted', async ({ tmp }) => {
+    const bin = join(tmp, 'bin');
+    await executable(bin, 'claude');
+    await executable(bin, 'claude-agent-acp');
+
+    await mkdir(join(tmp, 'data'), { recursive: true });
+    const db = openLedger(join(tmp, 'data'));
+    probed(db, 'claude');
+
+    expect(chooseProvider(db, [bin])?.provider).toBe('claude');
+
+    setProviderDisabled(db, 'claude', true, 1_755_000_000_000);
+
+    // The exact machine reader (c) of KAR-25.3's plan names: no admission
+    // record to filter to, so a fresh reduction is what selection uses — and
+    // it must agree with what the picker and admission now say, which is
+    // "nothing usable here" rather than the provider the operator just
+    // turned off.
+    expect(chooseProvider(db, [bin])).toBeNull();
+  });
+
+  it('keeps serving a run already admitted onto a provider disabled afterwards', async ({
+    tmp,
+  }) => {
+    const bin = join(tmp, 'bin');
+    await executable(bin, 'claude');
+    const claudeAdapter = await executable(bin, 'claude-agent-acp');
+
+    await mkdir(join(tmp, 'data'), { recursive: true });
+    const db = openLedger(join(tmp, 'data'));
+    probed(db, 'claude');
+    recordChoice(db, { provider: 'claude', binaryPath: claudeAdapter, route: 'shim' });
+
+    expect(chooseProvider(db, [bin], RUN_ID)?.provider).toBe('claude');
+
+    setProviderDisabled(db, 'claude', true, 1_755_000_000_000);
+
+    // Disabling changes what the picker and admission offer *next*; it does
+    // not reach into a run this ledger already recorded an admission for
+    // (KAR-25.3's own scope note, and the epic's open question about a run
+    // in flight when the operator disables its provider).
     expect(chooseProvider(db, [bin], RUN_ID)?.provider).toBe('claude');
   });
 });

@@ -381,6 +381,14 @@ export {
   readProviderCapabilities,
   recordProviderCapabilities,
 } from './provider-capabilities.ts';
+// KAR-25.3 — the `provider_setting` table: which runtimes this machine has
+// disabled. One boolean per provider; every fact about what is actually
+// installed still comes from `@DeFlow/adapters` or `provider_capabilities`.
+export {
+  listProviderSettings,
+  type ProviderSettingRecord,
+  setProviderDisabled,
+} from './provider-settings.ts';
 // KAR-14.4 AC10 — the most recent rate limit per provider, across every run:
 // a vendor's quota is a fact about a binary on this machine, not about a run.
 export {

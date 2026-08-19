@@ -32,8 +32,15 @@
  * Verifies: EPIC-20-S11 … EPIC-20-S24 · AC1-AC14
  */
 import { installCommand, providerVerdict } from '@DeFlow/adapters';
-import type { Clock } from '@DeFlow/core';
-import { pathRoots, resolveDataDir, systemClock } from '@DeFlow/daemon';
+import type { Clock, Db } from '@DeFlow/core';
+import {
+  disabledProviderIds,
+  pathRoots,
+  resolveDataDir,
+  systemClock,
+  withDisabled,
+} from '@DeFlow/daemon';
+import { openLedger } from '@DeFlow/ledger';
 import { spawn } from 'node:child_process';
 import { accessSync, constants, existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
@@ -244,6 +251,19 @@ function appendCommand(file: string, line: string): string {
  * (AC11). Created and removed around the attempt, exactly as KAR-18.8 does.
  */
 const INSTALL_SCRATCH = 'setup-install';
+
+/** The ledger, or `null` for any reason it could not be opened — mirrors
+ * `doctor/run.ts`'s own `openLedgerOrNull`. Step 5 only ever reads
+ * `provider_setting` through it (KAR-25.3 AC3): a machine with no ledger yet
+ * has nothing disabled, so `null` folds in as an empty set rather than
+ * failing the step. */
+function openLedgerOrNull(dataDir: string): Db | null {
+  try {
+    return openLedger(dataDir);
+  } catch {
+    return null;
+  }
+}
 
 export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   const platform = options.platform ?? process.platform;
@@ -688,7 +708,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
 
   // ---- 5. adapters --------------------------------------------------------
 
-  const resolutions = resolveProviderStates(roots);
+  // KAR-25.3 AC3 — the same fold `deflow doctor` makes: a provider the
+  // operator disabled in `/settings` must read that way here too, or this
+  // step tells them it is "ready to route" while `POST /api/runs` refuses it.
+  const settingsDb = openLedgerOrNull(dataDir);
+  const disabled = settingsDb === null ? new Set<string>() : disabledProviderIds(settingsDb);
+  settingsDb?.close();
+  const resolutions = withDisabled(resolveProviderStates(roots), disabled);
   const offered = await offerAdapterInstalls({
     resolutions,
     // AC10 — KAR-18.8's own rules, called rather than restated. `--yes` is a
@@ -702,8 +728,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
   });
 
   const after = offered.resolutions;
-  const installed = after.filter((entry) => entry.state === 'installed');
-  const missing = after.filter((entry) => entry.state !== 'installed');
+  // KAR-25.3 AC3 — "ready to route" means what `POST /api/runs` would answer,
+  // not only what the binary probe found: an installed adapter the operator
+  // disabled in `/settings` is not ready, and belongs in the same bucket as
+  // one that never resolved, with the same per-provider "disabled in
+  // Settings" sentence `providerVerdict` gives it below.
+  const installed = after.filter((entry) => entry.state === 'installed' && entry.disabled !== true);
+  const missing = after.filter((entry) => entry.state !== 'installed' || entry.disabled === true);
 
   record({
     id: 'adapters',
@@ -718,12 +749,22 @@ export async function runSetup(options: SetupOptions): Promise<SetupResult> {
       (offered.checks.size === 0
         ? ''
         : `\n${[...offered.checks.values()].map((check) => `  ${check.detail}`).join('\n')}`),
-    ...(missing.length === 0
-      ? {}
-      : { action: `${COMMAND} doctor --fix    # ${installCommand(missing[0]?.package ?? '')}` }),
+    // A disabled-but-installed provider needs a toggle in `/settings`, not an
+    // install command — `installActionable` is the first `missing` entry an
+    // install command actually applies to (KAR-25.3 AC3).
+    ...(() => {
+      const installActionable = missing.find((entry) => entry.disabled !== true);
+      return installActionable === undefined
+        ? {}
+        : { action: `${COMMAND} doctor --fix    # ${installCommand(installActionable.package)}` };
+    })(),
     data: {
       ready: installed.map((entry) => entry.provider),
-      missing: missing.map((entry) => ({ provider: entry.provider, state: entry.state })),
+      missing: missing.map((entry) => ({
+        provider: entry.provider,
+        state: entry.state,
+        disabled: entry.disabled === true,
+      })),
     },
   });
 
