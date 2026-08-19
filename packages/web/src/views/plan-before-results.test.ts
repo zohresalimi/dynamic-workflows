@@ -29,6 +29,11 @@ import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { useRunStore } from '../stores/useRunStore.ts';
 
 let shell: MountedShell;
@@ -43,7 +48,9 @@ function upToFirst(kind: string): readonly Event[] {
 
 /** Folds `events` into a freshly mounted run store and lets the layout settle. */
 async function open(events: readonly Event[]): Promise<void> {
-  shell = await mountShell({ at: { name: 'run-plan', params: { runId: HAPPY_PATH_RUN } } });
+  shell = await mountShell({
+    at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN } },
+  });
   setActivePinia(shell.pinia);
   const run = useRunStore(shell.pinia);
   for (const event of events) run.applyEvent(event);

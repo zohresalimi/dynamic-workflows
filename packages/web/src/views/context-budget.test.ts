@@ -32,6 +32,11 @@ import {
   happyPath12,
 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { DARK_CLASS } from '../app/theme.ts';
 import { VENDOR_POST_COUNT_UNAVAILABLE } from '../lib/context-budget.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
@@ -44,7 +49,9 @@ async function openBudget(
   events: readonly ReturnType<typeof happyPath12>[number][],
   bars: number,
 ): Promise<void> {
-  shell = await mountShell({ at: { name: 'run-context', params: { runId } } });
+  shell = await mountShell({
+    at: { name: 'run-context', params: { projectId: PROJECT_ID, runId } },
+  });
   setActivePinia(shell.pinia);
   const run = useRunStore(shell.pinia);
   for (const event of events) run.applyEvent(event);

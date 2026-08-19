@@ -25,6 +25,11 @@ import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { commands } from 'vitest/browser';
 import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { API_BASE, type Asked, daemonFetch, RUN } from '../../test/three-patches.ts';
 import { createClient } from '../api/client.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
@@ -52,7 +57,9 @@ suite('AC8 — the graph stops moving', () => {
     // store this used to call `setNodes` on holds the *selection*, not the
     // plan — feeding it here would draw nothing and the motion assertions
     // below would have no element to be about.
-    shell = await mountShell({ at: { name: 'run-plan', params: { runId: HAPPY_PATH_RUN } } });
+    shell = await mountShell({
+      at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN } },
+    });
     setActivePinia(shell.pinia);
     const run = useRunStore(shell.pinia);
     for (const event of happyPath12()) run.applyEvent(event);
@@ -94,7 +101,7 @@ suite('AC8 — the scrubber steps without animating, and still arrives', () => {
     asked = [];
     await commands.emulateMedia({ reducedMotion: 'reduce' });
     shell = await mountShell({
-      at: { name: 'plan-evolution', params: { runId: RUN } },
+      at: { name: 'plan-evolution', params: { projectId: PROJECT_ID, runId: RUN } },
       client: createClient({ baseUrl: API_BASE, fetch: daemonFetch(asked) }),
     });
     await expect.poll(() => document.querySelector('.version-rail__marker')).not.toBeNull();

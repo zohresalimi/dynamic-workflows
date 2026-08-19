@@ -3,7 +3,7 @@
  *
  * A **plain object table**, not file-based routing: `vue-router@5` merged
  * `unplugin-vue-router` into core, and it is worth exactly nothing for roughly
- * ten routes (docs/12-frontend-architecture.md §2.2). Coming from v4 without
+ * a dozen routes (docs/12-frontend-architecture.md §2.2). Coming from v4 without
  * that plugin, v5 is a version bump only.
  *
  * `createWebHistory`, not `createWebHashHistory`, and that is load-bearing
@@ -13,154 +13,215 @@
  * pattern is anchored for the same reason from the other side.
  *
  * **What is eager and what is lazy is the bundle budget** (AC9,
- * docs/12 §10). The plan graph is the landing view, so `@vue-flow/core` is
+ * docs/12 §10). The plan graph is the run landing view, so `@vue-flow/core` is
  * statically imported and lives in the initial chunk on purpose. Everything
  * that arrives with its own multi-megabyte dependency — the terminal
  * (`@xterm/*`), the diff surface (`@git-diff-view/*`), the cross-run dashboard
  * (`echarts`) — is a lazy route, and `packages/web/test/integration/bundle-budget.test.ts`
- * fails the build if one of them creeps into the first chunk.
+ * fails the build if one of them creeps into the first chunk. Doubling every
+ * run view into a canonical and a legacy record (KAR-25.1 AC7) doubles the
+ * surface that rule inspects rather than the rule itself: `RUN_VIEWS` below
+ * names each view's loader once, and both records for a view are built from
+ * that one loader, so a route that is lazy stays lazy on both paths in.
+ *
+ * ## KAR-25.1 — Runs and Workflows moved under a project
+ *
+ * `/` used to be the global run list (`runs`). It is now a redirect to
+ * `/projects` — the project chooser — because "which runs" stopped being a
+ * question this application can answer without a project the moment Runs
+ * became project-scoped (`/projects/:projectId/runs`, `project-runs`). The
+ * `runs` name is gone outright rather than aliased, so a reference the rename
+ * missed is a type error, not a dead row nobody notices until they click it
+ * (EPIC-25-S05).
+ *
+ * The nine run-*detail* views (the plan graph and its eight siblings) move
+ * under a project too — `/projects/:projectId/runs/:runId…` — and every one of
+ * them keeps its old `/runs/:runId…` path alive as well, because a run
+ * predates this rename the moment it was submitted before projects existed,
+ * or from a terminal that named none. `../router/legacy-run.ts` is the whole
+ * of that: `RUN_VIEWS` below is read once to build both halves of the table,
+ * and `createLegacyRunGuard` (installed in `../app/create-app.ts`) decides at
+ * navigation time whether a `/runs/:runId…` request redirects to its
+ * project-scoped twin, renders in place, or renders `NotFoundView` — see that
+ * module's header comment for the three-way branch in full.
  */
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router';
 import PlanGraphView from '../views/PlanGraphView.vue';
 import RunListView from '../views/RunListView.vue';
+import { lazyWithLegacyRunGuard, type RunViewName, withLegacyRunGuard } from './legacy-run.ts';
+
+/**
+ * The eight run-detail views, named once.
+ *
+ * `canonicalSuffix` and `legacySuffix` are almost always identical — the path
+ * *after* `:runId` does not change shape when a project prefix is added in
+ * front of it. `run-plan` is the one exception: its legacy path is the bare
+ * `/runs/:runId` that has always named the plan graph, so its canonical
+ * counterpart needs a segment (`/plan`) the legacy one does not, to stay
+ * distinct from `project-run` (`/projects/:projectId/runs/:runId`, the
+ * workflows view opened on a past run) which now occupies the path the plan
+ * graph used to.
+ */
+interface RunViewDef {
+  readonly name: RunViewName;
+  readonly canonicalSuffix: string;
+  readonly legacySuffix: string;
+  readonly eager: boolean;
+  readonly load: () => Promise<{ default: unknown }>;
+}
+
+const RUN_VIEWS: readonly RunViewDef[] = [
+  {
+    name: 'run-plan',
+    canonicalSuffix: '/plan',
+    legacySuffix: '',
+    eager: true,
+    load: () => Promise.resolve({ default: PlanGraphView }),
+  },
+  {
+    name: 'plan-evolution',
+    canonicalSuffix: '/evolution',
+    legacySuffix: '/evolution',
+    eager: false,
+    load: () => import('../views/PlanEvolutionView.vue'),
+  },
+  {
+    name: 'run-context',
+    canonicalSuffix: '/context',
+    legacySuffix: '/context',
+    eager: false,
+    load: () => import('../views/ContextBudgetView.vue'),
+  },
+  {
+    name: 'run-diff',
+    canonicalSuffix: '/diff',
+    legacySuffix: '/diff',
+    eager: false,
+    load: () => import('../views/DiffReviewView.vue'),
+  },
+  {
+    name: 'run-criteria',
+    canonicalSuffix: '/criteria',
+    legacySuffix: '/criteria',
+    eager: false,
+    load: () => import('../views/AcceptanceCriteriaView.vue'),
+  },
+  {
+    name: 'run-timeline',
+    canonicalSuffix: '/timeline',
+    legacySuffix: '/timeline',
+    eager: false,
+    load: () => import('../views/RunTimelineView.vue'),
+  },
+  {
+    name: 'run-node-output',
+    canonicalSuffix: '/nodes/:nodeId/output',
+    legacySuffix: '/nodes/:nodeId/output',
+    eager: false,
+    load: () => import('../views/NodeOutputView.vue'),
+  },
+  {
+    name: 'run-memory',
+    canonicalSuffix: '/memory',
+    legacySuffix: '/memory',
+    eager: false,
+    load: () => import('../views/MemoryGraphView.vue'),
+  },
+];
+
+/** Both records for one `RUN_VIEWS` entry: canonical first, legacy second. */
+function runViewRoutes(view: RunViewDef) {
+  const canonical = view.eager
+    ? { component: PlanGraphView }
+    : { component: view.load as () => Promise<{ default: unknown }> };
+  const legacy = view.eager
+    ? { component: withLegacyRunGuard(PlanGraphView) }
+    : { component: lazyWithLegacyRunGuard(view.load as () => Promise<{ default: object }>) };
+
+  return [
+    {
+      path: `/projects/:projectId/runs/:runId${view.canonicalSuffix}`,
+      name: view.name,
+      ...canonical,
+      props: true,
+    },
+    {
+      path: `/runs/:runId${view.legacySuffix}`,
+      name: `legacy-${view.name}`,
+      ...legacy,
+      props: true,
+    },
+  ];
+}
 
 export const routes = [
   {
-    // KAR-19.1 AC5 — the root route is a **list of runs**, not a plan graph
-    // with no run. It used to be the latter, which is why the operator of
-    // 2026-08-12 had to type a run id into the address bar to see the run they
-    // had just submitted: the landing page showed them nothing about it.
-    //
-    // Eager like the graph, and cheap: its whole dependency is the run-list
-    // store and one `RouterLink`. The transport it opens is behind a dynamic
-    // import in `../app/useRunList.ts`, for the reason the run feed's is.
+    // KAR-25.1 AC1 — `/` is the project chooser: a redirect with no component
+    // and no name of its own, so `/projects` is the one route that ever
+    // renders it. `../app/token.ts`'s handoff runs before this router ever
+    // resolves a location (`main.ts` calls `acquireToken()` first), so this
+    // redirect cannot eat a `#token=…` fragment on the way in.
     path: '/',
-    name: 'runs',
-    component: RunListView,
+    redirect: { name: 'projects' },
   },
   {
-    // KAR-22.1 — projects. Lazy, because it is not the landing view and
-    // nothing on it is shared with the graph: its whole dependency is the typed
-    // client the shell already has.
+    // KAR-22.1 — projects, and now the landing screen. Lazy, because it is not
+    // shared with the graph: its whole dependency is the typed client the
+    // shell already has.
     path: '/projects',
     name: 'projects',
     component: () => import('../views/ProjectsView.vue'),
   },
   {
-    // KAR-22.3 — the project workspace: this project's live graph, its task
-    // board and its history. Lazy like the projects list it is reached from,
-    // and cheap to defer despite mounting the plan graph: `PlanGraphView` and
-    // the canvas behind it are in the *initial* chunk already, because the run
-    // route below is eager, so this route's own chunk is the workspace shell
-    // and nothing else.
+    // KAR-25.2 — one global page for everything that applies to this machine.
+    // Lazy like `/projects`, and a placeholder until KAR-25.2 fills it: see
+    // `../views/SettingsView.vue`'s own header comment.
+    path: '/settings',
+    name: 'settings',
+    component: () => import('../views/SettingsView.vue'),
+  },
+  {
+    // KAR-25.1 — this project's live graph, its task board and its history.
+    // Renamed from `project-workspace`: "Workspace" is not user-visible
+    // anywhere in this application any more (EPIC-25-S05). What the view
+    // renders is unchanged; only its file name and this route's name are.
     path: '/projects/:projectId',
-    name: 'project-workspace',
-    component: () => import('../views/ProjectWorkspaceView.vue'),
+    name: 'project-workflows',
+    component: () => import('../views/ProjectWorkflowsView.vue'),
     props: true,
   },
   {
-    // KAR-22.4 — the project's connectors. Lazy like every other non-landing
-    // route, and genuinely cheap: its whole dependency is the typed client the
-    // shell already has. It deliberately mounts nothing from the graph.
+    // KAR-25.1 — this project's run list, project-scoped where it used to be
+    // global. Eager like the graph it sits beside in the rail's order,
+    // and just as cheap: the transport it opens is behind a dynamic import in
+    // `../app/useRunList.ts`, for the reason the run feed's is.
+    path: '/projects/:projectId/runs',
+    name: 'project-runs',
+    component: RunListView,
+    props: true,
+  },
+  {
+    // KAR-22.4 — the project's connectors. No longer a nav row (KAR-25.1 AC1,
+    // AC2 name the rail's item set exactly, and Connectors is in neither
+    // list) — reached from `ProjectWorkflowsView`'s own link instead, until
+    // KAR-25.4 moves the screen into `/settings`.
     path: '/projects/:projectId/connectors',
     name: 'project-connectors',
     component: () => import('../views/ConnectorsView.vue'),
     props: true,
   },
   {
-    // The same workspace, on a run from this project's history (AC4, AC5). A
+    // The same workflows view, on a run from this project's history. A
     // *route* rather than a query parameter or a piece of component state,
     // because "send me what you are looking at" has to survive being pasted
     // into a message — and because the address bar is then somewhere a run id
     // is *read from*, never somewhere one has to be typed.
     path: '/projects/:projectId/runs/:runId',
     name: 'project-run',
-    component: () => import('../views/ProjectWorkspaceView.vue'),
+    component: () => import('../views/ProjectWorkflowsView.vue'),
     props: true,
   },
-  {
-    path: '/runs/:runId',
-    name: 'run-plan',
-    component: PlanGraphView,
-    props: true,
-  },
-  {
-    // F10.2. Lazy because it is not the landing view — not because it is heavy:
-    // it shares the `--state-*` palette and the version rail with the graph,
-    // and its one extra dependency is the diff renderer it asks the daemon for.
-    path: '/runs/:runId/evolution',
-    name: 'plan-evolution',
-    component: () => import('../views/PlanEvolutionView.vue'),
-    props: true,
-  },
-  {
-    // F10.5. Lazy for the same reason the scrubber is — it is not the landing
-    // view — and additionally because it is the first route to pull
-    // `@DeFlow/core`'s compaction module in as a *value*: `compactionChart()`
-    // is KAR-09.6's rendering contract, and the boot chunk has no use for it.
-    path: '/runs/:runId/context',
-    name: 'run-context',
-    component: () => import('../views/ContextBudgetView.vue'),
-    props: true,
-  },
-  {
-    // F10.7. The route the lazy-loading rule was written for: `@git-diff-view/*`
-    // and the Shiki instance behind it are the heaviest thing in the frontend
-    // that is not the plan graph, and neither belongs in the initial chunk —
-    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
-    // either creeps in (KAR-17.6 AC8, docs/12 §10).
-    path: '/runs/:runId/diff',
-    name: 'run-diff',
-    component: () => import('../views/DiffReviewView.vue'),
-    props: true,
-  },
-  {
-    // F10.8. Lazy for the same reason the scrubber and the context view are —
-    // not the landing view — though the board itself pulls in nothing heavier
-    // than the plan graph: it is built from `../ledger/projections/gates.ts`,
-    // which every route already loads.
-    path: '/runs/:runId/criteria',
-    name: 'run-criteria',
-    component: () => import('../views/AcceptanceCriteriaView.vue'),
-    props: true,
-  },
-  {
-    // F10.9. Lazy like the rest of the non-landing views, and cheap besides:
-    // the Gantt's whole dependency is the arithmetic half of d3 — four small
-    // modules of pure functions — and `d3-selection` is not in the graph at all
-    // (KAR-17.8 AC10, `test/no-d3-selection-in-web.test.ts`).
-    path: '/runs/:runId/timeline',
-    name: 'run-timeline',
-    component: () => import('../views/RunTimelineView.vue'),
-    props: true,
-  },
-  {
-    // F10.6. **The route the `@xterm/*` half of the budget rule was written
-    // for**: `test/integration/bundle-budget.test.ts` bans `@xterm/` from the
-    // initial chunk, and the only thing keeping it out is that this route is
-    // lazy. It is also the route with two renderers behind it — the terminal
-    // for CLI-shim nodes and the typed message list for ACP ones — so a build
-    // that eagerly imported it would pay for both on a landing view that needs
-    // neither (KAR-17.5, docs/12 §6.6, §10).
-    path: '/runs/:runId/nodes/:nodeId/output',
-    name: 'run-node-output',
-    component: () => import('../views/NodeOutputView.vue'),
-    props: true,
-  },
-  {
-    // F10.4. **The lazy route AC5 is about.** It is the second Vue Flow surface
-    // in the application, and the one whose node count is unbounded in a way
-    // the plan graph's is not — so it stays out of the landing chunk on
-    // purpose, even though the renderer it shares with the plan graph is
-    // already there. What is deferred is this view, its node body and the
-    // aggregation behind them (KAR-17.9 AC5, docs/12 §10), and
-    // `packages/web/test/integration/bundle-budget.test.ts` fails the build if
-    // any of it creeps into the first chunk.
-    path: '/runs/:runId/memory',
-    name: 'run-memory',
-    component: () => import('../views/MemoryGraphView.vue'),
-    props: true,
-  },
+  ...RUN_VIEWS.flatMap(runViewRoutes),
   // KAR-24.3. Dev-only, and dev-only two ways at once: the route is only
   // *registered* under `import.meta.env.DEV`, and — because Vite substitutes
   // `false` for that expression in a production build and dead-code
@@ -187,7 +248,7 @@ export const routes = [
     name: 'not-found',
     component: () => import('../views/NotFoundView.vue'),
   },
-] as const;
+];
 
 /**
  * The application's router.
@@ -195,6 +256,11 @@ export const routes = [
  * `history` is a parameter so specs can drive a memory history: a browser
  * history in a test iframe rewrites the runner's own URL, and the failure that
  * causes reads as anything but "the spec navigated".
+ *
+ * The legacy-run guard is **not** installed here — it needs the API client the
+ * running application was given, which does not exist until `createDeFlowApp`
+ * has an `app` to resolve it from. See `../router/legacy-run.ts`'s header
+ * comment and `../app/create-app.ts`'s `router.beforeEach` call.
  */
 export function createAppRouter(history: RouterHistory = createWebHistory()): Router {
   return createRouter({ history, routes: [...routes] });

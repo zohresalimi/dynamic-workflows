@@ -1,11 +1,21 @@
 <script setup lang="ts">
 /**
- * KAR-22.3 — the project workspace: what is happening, and what happened.
+ * KAR-22.3 — this project's workflows: what is happening, and what happened.
  *
  * Verifies: EPIC-22-S34, EPIC-22-S36, EPIC-22-S37, EPIC-22-S41, EPIC-22-S42,
  * EPIC-22-S43, EPIC-22-S46 · AC1–AC7
  *
- * This is the screen the epic exists for. Everything on it already existed
+ * Renamed from `ProjectWorkspaceView` by KAR-25.1 (EPIC-25-S05): "Workspace"
+ * is not the word for what this screen shows, and does not appear anywhere a
+ * person can read it in this application any more. The route is
+ * `project-workflows` now; nothing about what this file renders changed — the
+ * `workspace__*` BEM prefix and the `data-workspace-*` hooks below are left
+ * alone on purpose, because they are not user-visible strings and renaming
+ * them costs four selector edits in `project-workflows.test.ts` for nothing
+ * EPIC-25-S05 asks for (see that scenario's own scope: nav label, heading,
+ * breadcrumb, page title — not an internal class name).
+ *
+ * This is the screen EPIC-22 exists for. Everything on it already existed
  * somewhere in the application and none of it was reachable from a project:
  * the graph is EPIC-17's canvas mounted through `PlanGraphView` (not a second
  * one — `test/one-workspace-surface.test.ts` fails the build if it ever
@@ -386,7 +396,7 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
             -->
             <RouterLink
               class="workspace__history-cell workspace__history-scrub"
-              :to="`/runs/${row.runId}/evolution`"
+              :to="{ name: 'plan-evolution', params: { projectId, runId: row.runId } }"
               :data-run-scrubber="row.runId"
             >
               Scrubber

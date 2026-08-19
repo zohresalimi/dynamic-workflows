@@ -8,6 +8,12 @@
  * being asked or of whom. Both halves are asserted against the frames a live
  * daemon emits, pushed through the same subscription the views open.
  *
+ * KAR-25.1 moved the list under a project; the first scenario below now
+ * hydrates the run already listed and pushes the gate frame as an
+ * **update-in-place** rather than an insert, because a project-scoped list
+ * cannot insert a run from a `run.created` frame at all — see
+ * `./run-list.test.ts`'s own header comment for why.
+ *
  * Verifies: EPIC-19-S82 · KAR-19.12 AC6 · test plan #8
  */
 import type { Event } from '@DeFlow/core';
@@ -23,6 +29,7 @@ import { useRunListStore } from '../stores/useRunListStore.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
 const RUN = 'run_20260814T013434Z_c984dd';
+const PROJECT_ID = 'prj_20260815T101112Z_a1b2c3';
 
 let shell: MountedShell;
 
@@ -30,15 +37,21 @@ afterEach(() => {
   shell?.unmount();
 });
 
+/** KAR-25.1 — `GET /api/projects/:id/runs`, project-scoped where the run list
+ * now lives. */
 function listClient(runs: readonly unknown[] = []): ApiClient {
   return {
-    runs: {
-      $get: () =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ runs, cursor: null, more: false }),
-        }),
+    projects: {
+      ':id': {
+        runs: {
+          $get: () =>
+            Promise.resolve({
+              ok: true,
+              status: 200,
+              json: () => Promise.resolve({ runs, cursor: null, more: false }),
+            }),
+        },
+      },
     },
     approvals: {
       $get: () =>
@@ -65,13 +78,6 @@ function pushableFeed(): { factory: RunsFeedFactory; push: (event: Event) => voi
 const frame = (kind: string, seq: number, payload: unknown): Event =>
   ({ seq, runId: RUN, ts: 1_786_670_000_000, kind, v: 1, epoch: 1, payload }) as unknown as Event;
 
-const created = (): Event =>
-  frame('run.created', 4, {
-    spec: { goal: 'Add a hello function' },
-    cwd: '/repo',
-    repo: { head: 'e83c516', branch: 'main' },
-  });
-
 const gateOpened = (): Event =>
   frame('human.requested', 7, {
     node: SPEC_GATE_NODE,
@@ -80,13 +86,30 @@ const gateOpened = (): Event =>
   });
 
 suite('EPIC-19-S82 — the run list names the gate (AC6)', () => {
-  it('shows the gate node beside the status label when a gate opens', async () => {
+  it('shows the gate node beside the status label when a gate opens on a listed run', async () => {
+    // KAR-25.1 — the list is project-scoped now, and a project-scoped list
+    // cannot *insert* a run from a `run.created` frame (`./run-list.test.ts`'s
+    // header comment). So this run arrives already listed, the way a page
+    // load hydrates it, and the gate frame updates it **in place** — which is
+    // the half of `applyLifecycle` this move leaves intact.
     const feed = pushableFeed();
-    shell = await mountShell({ at: '/', client: listClient([]), runsFeed: feed.factory });
+    shell = await mountShell({
+      at: { name: 'project-runs', params: { projectId: PROJECT_ID } },
+      client: listClient([
+        {
+          runId: RUN,
+          status: 'created',
+          label: 'submitted — waiting to be framed',
+          title: 'Add a hello function',
+          createdAt: '2026-08-14T01:34:34.000Z',
+          headSeq: 4,
+          planVersion: 0,
+          gate: null,
+        },
+      ]),
+      runsFeed: feed.factory,
+    });
     setActivePinia(shell.pinia);
-    await expect.poll(() => useRunListStore(shell.pinia).hydrated).toBe(true);
-
-    feed.push(created());
     await expect.poll(() => shell.container.querySelectorAll('[data-run-row]').length).toBe(1);
 
     feed.push(gateOpened());
@@ -105,7 +128,7 @@ suite('EPIC-19-S82 — the run list names the gate (AC6)', () => {
   it('carries the gate a page loaded after the gate opened already knows about', async () => {
     const feed = pushableFeed();
     shell = await mountShell({
-      at: '/',
+      at: { name: 'project-runs', params: { projectId: PROJECT_ID } },
       client: listClient([
         {
           runId: RUN,

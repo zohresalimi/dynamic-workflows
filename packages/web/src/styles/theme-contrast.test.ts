@@ -131,6 +131,34 @@ function stateTokens(declarations: Record<string, string>): [string, string][] {
 
 const AA_NORMAL_TEXT = 4.5;
 
+/**
+ * KAR-25.1 AC4 — `--accent` / `--accent-ink`, asserted by name.
+ *
+ * The three loops below filter on `--ink`, `--state-` and `--surface`
+ * prefixes and will never see this pair — which is exactly why it must not be
+ * spelled `--surface-selected` / `--ink-on-selected` or a name starting with
+ * either of those prefixes: that spelling would be swept into the generic
+ * loops and fail instantly (a light `--ink-on-selected` of `#ffffff` against
+ * `--surface` `#ffffff` is 1.00:1). A pair named `--accent`/`--accent-ink`
+ * needs its own explicit check, so this is it.
+ */
+for (const [themeName, declarations] of [
+  [':root', light],
+  ['.dark', dark],
+] as const) {
+  it(`EPIC-25-S03 — --accent clears AA against --accent-ink in ${themeName}`, () => {
+    const accent = declarations['--accent'];
+    const ink = declarations['--accent-ink'];
+    expect(accent, `${themeName} declares --accent`).toMatch(HEX_RE);
+    expect(ink, `${themeName} declares --accent-ink`).toMatch(HEX_RE);
+    const ratio = contrastRatio(accent as string, ink as string);
+    expect(
+      ratio >= AA_NORMAL_TEXT,
+      `--accent on --accent-ink is ${ratio.toFixed(2)}:1 in ${themeName}`,
+    ).toBe(true);
+  });
+}
+
 for (const [themeName, declarations] of [
   [':root', light],
   ['.dark', dark],

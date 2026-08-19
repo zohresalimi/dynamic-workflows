@@ -91,6 +91,19 @@
   --state-awaiting-human: #5b4bd6; /* 4.66 */
 
   /*
+   * KAR-25.1 AC4 — a fill *and* its own ink, declared together so no caller
+   * ever has to guess which ink goes on the accent fill. Deliberately not an
+   * alias of `--state-running`: that token is a *run status*, owned by
+   * ../lib/state-palette.ts, and reusing a domain colour as the UI's one
+   * "this is selected" accent is the same conflation this token pair exists
+   * to undo. The hexes coincide with `--state-running`/`--surface-canvas`
+   * today and are free to diverge — see AppRail.vue's `.rail__nav-item--active`
+   * for the one caller this story gives it.
+   */
+  --accent: #4f5f10; /* 7.05 against --accent-ink */
+  --accent-ink: #ffffff;
+
+  /*
    * Type and shape are theme-independent — declared once here, not repeated
    * under `.dark`, because a typeface and a corner radius do not change when
    * the lights go off. Only colour and shadow (below) do.
@@ -170,6 +183,10 @@
   --state-failed: #ff8172; /* 7.45 */
   --state-abandoned: #8b8794; /* 5.17 */
   --state-awaiting-human: #8b7bff; /* 5.50 */
+
+  /* KAR-25.1 AC4 — see the `:root` block's own comment on this pair. */
+  --accent: #c9f154; /* 15.18 against --accent-ink */
+  --accent-ink: #0a0b0d;
 
   /* A shadow that reads on near-black does not read on paper, so unlike type
    * and shape these are themed: dark needs more spread and more opacity to

@@ -28,6 +28,11 @@ import {
 import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { memoryStressLedger, STRESS_RUN } from '../../test/memory-stress.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { createClient } from '../api/client.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
@@ -72,7 +77,7 @@ async function openMemory(options: OpenOptions = {}): Promise<number> {
   asked = [];
   const runId = options.runId ?? HAPPY_PATH_RUN;
   shell = await mountShell({
-    at: { name: 'run-memory', params: { runId } },
+    at: { name: 'run-memory', params: { projectId: PROJECT_ID, runId } },
     client: createClient({
       baseUrl: FACTS_API_BASE,
       fetch: consumersFetch(options.consumers ?? new Map(), asked),

@@ -22,8 +22,8 @@
  * jumper/inspector overlays `../../app/keyboard.ts` tracks, so there is only
  * ever the one `Esc` handler Reka UI already wires up.
  *
- * **Selecting a project routes to its workspace** (`/projects/:id`,
- * `project-workspace`) rather than mutating any store — KAR-22.3's route is
+ * **Selecting a project routes to its workflows** (`/projects/:id`,
+ * `project-workflows`) rather than mutating any store — KAR-22.3's route is
  * already the single place "which project am I looking at" lives, so this
  * component reads that fact off `useRoute()` for its own active marker and
  * writes it only through `router.push`.

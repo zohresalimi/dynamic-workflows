@@ -26,6 +26,11 @@ import {
   repairAttempts,
 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { useRunStore } from '../stores/useRunStore.ts';
 
 let shell: MountedShell;
@@ -53,7 +58,7 @@ async function openInspector(
   const runId = run === 'repair' ? REPAIR_ATTEMPTS_RUN : HAPPY_PATH_RUN;
   const events = run === 'repair' ? repairAttempts() : happyPath12();
 
-  shell = await mountShell({ at: { name: 'run-plan', params: { runId } } });
+  shell = await mountShell({ at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId } } });
   setActivePinia(shell.pinia);
   const store = useRunStore(shell.pinia);
   for (const event of events) store.applyEvent(event);

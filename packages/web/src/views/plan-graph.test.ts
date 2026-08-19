@@ -25,6 +25,11 @@ import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
 import { userEvent } from 'vitest/browser';
 import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { NODE_SIZE } from '../components/graph/node-size.ts';
 import { DISPLAY_STATES, type DisplayState, STATE_LABELS } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
@@ -33,7 +38,9 @@ let shell: MountedShell;
 
 /** The whole recording, folded through the store the view renders from. */
 async function openRun(): Promise<void> {
-  shell = await mountShell({ at: { name: 'run-plan', params: { runId: HAPPY_PATH_RUN } } });
+  shell = await mountShell({
+    at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN } },
+  });
   setActivePinia(shell.pinia);
   const run = useRunStore(shell.pinia);
   for (const event of happyPath12()) run.applyEvent(event);
@@ -356,7 +363,7 @@ suite('EPIC-17-S1 — a node is one click from everything else (AC7)', () => {
     shell = await mountShell({
       at: {
         name: 'run-plan',
-        params: { runId: HAPPY_PATH_RUN },
+        params: { projectId: PROJECT_ID, runId: HAPPY_PATH_RUN },
         query: { node: 'impl-login' },
       },
     });

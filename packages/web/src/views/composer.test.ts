@@ -362,8 +362,13 @@ suite('EPIC-22-S18 — a prompt typed in the browser becomes a running run', () 
     await settle();
 
     expect(client.recorded.posts).toHaveLength(1);
-    // AC4 — no manual navigation to /runs/<id>: the router is already there.
-    await expect.poll(() => shell.router.currentRoute.value.path).toBe(`/runs/${RUN_ID}`);
+    // AC4 — no manual navigation: the router is already there. KAR-25.1 —
+    // `run-plan` is project-scoped now, so the landing path carries the
+    // project id `target.id` (this composer's `PROJECT_ID`) built the POST
+    // body from.
+    await expect
+      .poll(() => shell.router.currentRoute.value.path)
+      .toBe(`/projects/${PROJECT_ID}/runs/${RUN_ID}/plan`);
     expect(feed.opened).toEqual([RUN_ID]);
 
     // The first frame off that subscription renders. Until this line the story

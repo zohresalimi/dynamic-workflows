@@ -17,7 +17,9 @@ import { createPinia, type Pinia } from 'pinia';
 import { createApp, type App as VueApp } from 'vue';
 import type { Router, RouterHistory } from 'vue-router';
 import App from '../App.vue';
+import { useApiClient } from '../api/provide.ts';
 import { createAppRouter } from '../router/index.ts';
+import { createLegacyRunGuard } from '../router/legacy-run.ts';
 
 export interface DeFlowApp {
   readonly app: VueApp<Element>;
@@ -32,6 +34,13 @@ export function createDeFlowApp(history?: RouterHistory): DeFlowApp {
 
   app.use(pinia);
   app.use(router);
+  // KAR-25.1 AC7 — the eight `legacy-*` run routes' shared guard.
+  // `app.runWithContext` is what lets `useApiClient()` resolve the *same*
+  // client this application was given (a spec's injected one, or the real
+  // one) from inside a `router.beforeEach`, which runs with no component
+  // instance of its own to `inject()` from otherwise. See
+  // `../router/legacy-run.ts`'s header comment for the guard itself.
+  router.beforeEach(createLegacyRunGuard(() => app.runWithContext(() => useApiClient())));
   // KAR-16.4 AC10 — the query half of the state split, and only that half.
   // Colada caches what changes because a *file on disk* changed
   // (`../api/queries.ts`); anything whose answer changes because an event was

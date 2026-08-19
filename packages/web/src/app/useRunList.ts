@@ -1,6 +1,6 @@
 /**
- * KAR-19.1 AC5 — the root route's lifetime: one list request, one global
- * subscription, no poll.
+ * KAR-19.1 AC5, KAR-25.1 — this project's run list's lifetime: one list
+ * request, one subscription, no poll.
  *
  * The shape mirrors `./useRunFeed.ts` deliberately, including the injected
  * factory and the reason for it: a browser spec that opened the real feed would
@@ -8,10 +8,20 @@
  * daemon — and would then be a spec about a 404. The shipped application injects
  * nothing and gets the real thing.
  *
- * The subscription is `?runs=*`, whose membership is already exactly the four
- * low-volume lifecycle kinds (docs/11 §3). That is what makes a live list cost
- * one connection rather than a poll or a firehose, and it is why this composable
- * has no interval in it at all.
+ * **The hydrate is project-scoped; the subscription is not, and cannot be.**
+ * `GET /api/projects/:id/runs` (KAR-22.3 AC4) is the server-side filter this
+ * list's initial page comes from. The live update after that still rides the
+ * global `?runs=*` topic, whose four lifecycle kinds (docs/11 §3) are what
+ * keep a live list to one connection rather than a poll — but `run.created`
+ * carries no `projectId` (`RunCreatedSchema`, `packages/core/src/event-payloads.ts`),
+ * so `applyLifecycle`'s **update-in-place** path (a frame for a run already on
+ * this page) still works, and its **insert** path cannot: a run started
+ * elsewhere while this page is open is not knowable as "not mine" from the
+ * frame alone, so it is not added, and appears only on the next visit. This is
+ * a known, accepted gap from EPIC-19-S2's original "no refetch, ever" claim —
+ * see `../views/run-list.test.ts`'s own suite for the scenario that documents
+ * it, and KAR-25.1's story notes for why fixing it (adding `projectId` to the
+ * event) is out of this story's scope.
  */
 import { type InjectionKey, inject, onScopeDispose } from 'vue';
 import { useApiClient } from '../api/provide.ts';
@@ -57,7 +67,7 @@ export interface RunListHandle {
  * is in flight is applied on top of it, so the seam produces neither a gap nor a
  * duplicate — `applyLifecycle` updates a run already on the page in place.
  */
-export function useRunList(): RunListHandle {
+export function useRunList(projectId: string): RunListHandle {
   const store = useRunListStore();
   const client = useApiClient();
   const open = inject(RUNS_FEED, openLazyRunsFeed);
@@ -65,18 +75,36 @@ export function useRunList(): RunListHandle {
   const feed = open({
     token: readToken,
     onLifecycle: (event) => {
+      // KAR-25.1 — the update-in-place half of `applyLifecycle` survives the
+      // move to project scope (it matches on `runId`); the insert half
+      // cannot, because `run.created` carries no `projectId` to check against
+      // this list's own scope (see the header comment above). Forwarding
+      // only events for a run this list already hydrated is what keeps a run
+      // started in a *different* project from appearing here live — the
+      // alternative, forwarding everything, would insert it.
+      if (!store.list.some((row) => row.runId === event.runId)) return;
       store.applyLifecycle(event);
     },
   });
 
   const ready = (async (): Promise<void> => {
     try {
-      // The three parameters are stated rather than omitted: `hc<ApiType>` types
-      // the query off the route's own validator, so a parameter this list stops
-      // sending is a compile error rather than a silently unfiltered page.
-      const response = await client.runs.$get({
-        query: { status: undefined, limit: undefined, cursor: undefined },
-      });
+      // KAR-22.3 AC4 — the server's own filter, not a client-side sieve of the
+      // global list: `runIdsForProject` is a `WHERE` over the event table, so
+      // a project with three runs among three hundred is three rows.
+      const response = await (
+        client as unknown as {
+          readonly projects: {
+            readonly ':id': {
+              readonly runs: {
+                readonly $get: (args: {
+                  readonly param: { readonly id: string };
+                }) => Promise<{ readonly ok: boolean; readonly json: () => Promise<unknown> }>;
+              };
+            };
+          };
+        }
+      ).projects[':id'].runs.$get({ param: { id: projectId } });
       if (response.ok) {
         const page = (await response.json()) as { runs?: readonly RunListRow[] };
         store.hydrate(page.runs ?? []);

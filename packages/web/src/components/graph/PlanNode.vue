@@ -55,6 +55,17 @@ const props = defineProps<{
    * and the chip is then plain text rather than a link to nowhere.
    */
   readonly runId?: string | null;
+  /**
+   * KAR-25.1 — whether the graph above this node is open at a project-less
+   * legacy URL (`/runs/:runId…`) rather than its project-scoped one.
+   *
+   * A boolean from the parent rather than a `useRoute()` here: this component
+   * renders once per node — up to four hundred times in the stress fixture
+   * (`e2e/plan-graph-stress.test.ts`) — and the answer is the same for every
+   * node on the page, decided once by whichever route matched. `../../views/PlanGraphView.vue`
+   * computes it once and passes it down.
+   */
+  readonly legacy?: boolean;
 }>();
 
 const glyph = computed(() => glyphFor(props.body.type === 'node' ? null : props.body.type));
@@ -67,11 +78,17 @@ const glyph = computed(() => glyphFor(props.body.type === 'node' ? null : props.
  * finding. Carrying only the file would land the operator at the top of a diff
  * to hunt for what the gate already told them — which is the two-window
  * workflow F7.7 exists to delete.
+ *
+ * KAR-25.1 — `run-diff` needs a `projectId` now; a project-less run reached
+ * at its legacy URL has none to give it, so `props.legacy` picks
+ * `legacy-run-diff` instead. Named pushes inherit a *present* `projectId`
+ * from the current route automatically (vue-router 5's `pickParams`), which
+ * is why the scoped branch below does not have to state one.
  */
 const verdictTo = computed<RouteLocationRaw | null>(() => {
   if (props.runId == null || props.runId === '') return null;
   return {
-    name: 'run-diff',
+    name: props.legacy === true ? 'legacy-run-diff' : 'run-diff',
     params: { runId: props.runId },
     query: {
       scope: 'node',

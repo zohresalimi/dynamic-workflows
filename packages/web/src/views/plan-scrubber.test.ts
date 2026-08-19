@@ -33,6 +33,11 @@ import {
   RUN,
 } from '../../test/scrubber-daemon.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
+
+/** KAR-25.1 — the run views are project-scoped now; the value is never
+ * asserted on, only threaded through so the named route resolves. */
+const PROJECT_ID = 'prj_test';
+
 import { createClient } from '../api/client.ts';
 
 let shell: MountedShell;
@@ -41,7 +46,7 @@ let asked: Asked[];
 const mountAtEvolution = async (): Promise<MountedShell> => {
   asked = [];
   return mountShell({
-    at: { name: 'plan-evolution', params: { runId: RUN } },
+    at: { name: 'plan-evolution', params: { projectId: PROJECT_ID, runId: RUN } },
     client: createClient({ baseUrl: API_BASE, fetch: daemonFetch(asked) }),
   });
 };

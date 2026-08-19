@@ -24,6 +24,7 @@ import { computed } from 'vue';
 import { type LocationQueryRaw, useRoute } from 'vue-router';
 import { API_BASE_PATH } from '../../api/client.ts';
 import { type ReviewFindingVM, SEVERITY_STYLE } from '../../lib/review-index.ts';
+import { runRouteTo } from '../../router/legacy-run.ts';
 
 const props = defineProps<{
   readonly finding: ReviewFindingVM;
@@ -57,11 +58,14 @@ const evidence = computed(() =>
  * criterion id in the URL — `../../views/AcceptanceCriteriaView.vue` reads
  * `?criterion=` on arrival, opens that row and scrolls it into view.
  */
-const criterionTo = computed(() => ({
-  name: 'run-criteria',
-  params: { runId: route.params['runId'] },
-  query: { criterion: props.finding.criterion },
-}));
+const criterionTo = computed(() =>
+  runRouteTo(
+    'run-criteria',
+    route.params['projectId'] as string | undefined,
+    { runId: route.params['runId'] as string },
+    { criterion: props.finding.criterion },
+  ),
+);
 
 /** The ledger position the verdict was written at (AC10). */
 const seqTo = computed(() => ({

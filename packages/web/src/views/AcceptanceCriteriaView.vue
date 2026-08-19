@@ -31,6 +31,7 @@ import {
   criteriaMarkdown,
   NO_GATE_MESSAGE,
 } from '../lib/criteria-board.ts';
+import { runRouteTo } from '../router/legacy-run.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 
 const props = defineProps<{

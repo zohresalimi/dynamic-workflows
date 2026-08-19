@@ -93,10 +93,10 @@ suite('AC3 — pasting the URL is the way out, and it never leaves the tab', () 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(readToken()).toBe('Ab0_-cd12');
-    // KAR-19.1 AC5 — the root route is the run list now, not a plan graph with
-    // no run. What this line asserts is unchanged: the token got the operator
-    // out of the gate and into the application.
-    expect(shell.container.querySelector('[data-run-list]')).not.toBeNull();
+    // KAR-25.1 — `/` is the project chooser now, not the run list (which
+    // moved under a project). What this line asserts is unchanged: the token
+    // got the operator out of the gate and into the application.
+    expect(shell.container.querySelector('[data-projects]')).not.toBeNull();
 
     // The pasted URL is read, never requested: a fragment is not sent to a
     // server, and this one must not become the first one that is.
