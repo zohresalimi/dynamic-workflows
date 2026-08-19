@@ -38,6 +38,18 @@
  * make" from AC3 next door. When the route carries no `projectId` (the runs
  * list, the projects list, `/gallery`) only the view segment renders.
  *
+ * **KAR-25.2 AC5, EPIC-25-S13 — the breadcrumb is a path, not a caption.**
+ * It is a `<nav aria-label="Breadcrumb"><ol>` now, one `<li>` per segment,
+ * rather than a `<p>` of spans: "which segments are links" is then a
+ * structural fact a test reads off the DOM, not a class name. The project
+ * segment is a `RouterLink` to `project-workflows` — the same route
+ * `ProjectSwitcher.select()` already pushes when a project is chosen, so
+ * activating either one lands on the same place. The last segment is never a
+ * link and carries `aria-current="page"`. The project id shown is still the
+ * raw id, not a display name — resolving one needs `GET /api/projects`,
+ * which this component's docblock already refuses to fetch, and `AC5` is
+ * about links, which work fine against an id.
+ *
  * ## The sub-820px nav contract, for whoever builds `AppRail.vue` next
  *
  * AC7 asks the rail to disappear below 820px "with the nav moving into the
@@ -185,11 +197,22 @@ function isActive(itemName: string): boolean {
 
 <template>
   <header class="topbar">
-    <p class="topbar__crumb">
-      <span v-if="projectId !== null" class="topbar__crumb-project">{{ projectId }}</span>
-      <span v-if="projectId !== null" class="topbar__crumb-sep" aria-hidden="true">/</span>
-      <span class="topbar__crumb-view">{{ viewLabel }}</span>
-    </p>
+    <nav class="topbar__crumb" aria-label="Breadcrumb">
+      <ol class="topbar__crumb-list">
+        <li v-if="projectId !== null" class="topbar__crumb-item">
+          <RouterLink
+            :to="{ name: 'project-workflows', params: { projectId } }"
+            class="topbar__crumb-project"
+          >
+            {{ projectId }}
+          </RouterLink>
+          <span class="topbar__crumb-sep" aria-hidden="true">/</span>
+        </li>
+        <li class="topbar__crumb-item">
+          <span class="topbar__crumb-view" aria-current="page">{{ viewLabel }}</span>
+        </li>
+      </ol>
+    </nav>
 
     <!-- KAR-24.4 AC7's contract — visible only below 820px, exactly one of
          this and `AppRail.vue`'s own nav ever showing at a given width. -->
@@ -260,19 +283,36 @@ function isActive(itemName: string): boolean {
 }
 
 .topbar__crumb {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-md);
+}
+
+.topbar__crumb-list {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   margin: 0;
-  min-width: 0;
-  font-size: var(--text-md);
+  padding: 0;
+  list-style: none;
   white-space: nowrap;
+}
+
+.topbar__crumb-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
 .topbar__crumb-project {
   color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* KAR-25.2 AC5 — now a RouterLink; the token colour above already beats the
+     browser's default link blue on specificity, so only the underline needs
+     switching off to keep the visual exactly what it was as plain text. */
+  text-decoration: none;
 }
 
 .topbar__crumb-sep {
