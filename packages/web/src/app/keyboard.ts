@@ -6,7 +6,7 @@
  * | `j` / `k` | Move between nodes in the graph               |
  * | `Enter`   | Open the node inspector for the selected node |
  * | `←` / `→` | Step the plan-version scrubber                |
- * | `/`       | Search                                        |
+ * | `/`       | Search — or the composer's prompt, on its own route |
  * | `c`       | Start a run — the composer (KAR-22.2 AC7)     |
  * | `Cmd-K`   | Run / node jumper                             |
  * | `Esc`     | Close the topmost overlay                     |
@@ -27,7 +27,7 @@
  *    `Escape` and `Cmd-K` reach past it.
  */
 import type { UiStore } from '../stores/useUiStore.ts';
-import { COMPOSER_OVERLAY, INSPECTOR_OVERLAY, JUMPER_OVERLAY, SEARCH_INPUT_ID } from './ids.ts';
+import { INSPECTOR_OVERLAY, JUMPER_OVERLAY, PROMPT_INPUT_ID, SEARCH_INPUT_ID } from './ids.ts';
 
 /** Text-entry contexts, where the map must keep its hands off. */
 function isTyping(target: EventTarget | null): boolean {
@@ -49,8 +49,21 @@ function isTyping(target: EventTarget | null): boolean {
  *
  * `target` is passed in rather than reached for so the same function can be
  * driven against a document in a spec, and so nothing here needs a global.
+ *
+ * `openComposer` is the same narrow seam KAR-25.5 gave `AppTopBar`'s
+ * `@open-composer`: a plain callback rather than the whole `Router`. This
+ * module deliberately holds no component reference and no router of its own
+ * (it lives on `document` for the life of the application, the reason the
+ * whole map is installed once rather than per-component) — widening it to
+ * accept a `Router` would mean the map deciding *where* `c` goes, duplicating
+ * the "project route or chooser" branch `App.vue` already owns for the
+ * topbar button. One decision, one place; this file just calls it.
  */
-export function installKeyboardMap(target: Document, ui: UiStore): () => void {
+export function installKeyboardMap(
+  target: Document,
+  ui: UiStore,
+  openComposer: () => void,
+): () => void {
   function onKeyDown(event: KeyboardEvent): void {
     const modified = event.metaKey || event.ctrlKey;
 
@@ -96,18 +109,27 @@ export function installKeyboardMap(target: Document, ui: UiStore): () => void {
         event.preventDefault();
         ui.stepPlanVersion(1);
         return;
-      // KAR-22.2 AC7 — the composer, from any route. Unmodified, like `/`, and
-      // guarded by the same `isTyping` check above: a `c` typed into the search
-      // box is a `c`, and a `c` typed into the composer's own prompt reaches
-      // the prompt rather than reopening the composer on top of itself.
+      // KAR-22.2 AC7, KAR-25.5 — the composer, from any route. Unmodified, like
+      // `/`, and guarded by the same `isTyping` check above: a `c` typed into
+      // the search box is a `c`, and a `c` typed into the composer's own
+      // prompt reaches the prompt rather than re-navigating to the page it is
+      // already on. What `c` does is `App.vue`'s decision (project route or
+      // chooser, AC3); this file only calls it.
       case 'c':
         event.preventDefault();
-        ui.openOverlay(COMPOSER_OVERLAY);
+        openComposer();
         return;
       case '/': {
         event.preventDefault();
         // By id rather than by a template ref: the map outlives every component
-        // and must not hold one.
+        // and must not hold one. `PROMPT_INPUT_ID` first: it exists only on the
+        // composer's own route, and there `/` means "focus the prompt", not
+        // "focus a search field the operator cannot see behind it" (AC5).
+        const prompt = target.getElementById(PROMPT_INPUT_ID);
+        if (prompt !== null) {
+          prompt.focus();
+          return;
+        }
         target.getElementById(SEARCH_INPUT_ID)?.focus();
         return;
       }

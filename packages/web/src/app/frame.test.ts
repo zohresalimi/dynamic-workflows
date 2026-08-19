@@ -152,6 +152,14 @@ function frameDaemon(options: {
       });
     }
     if (url.includes('/providers')) return json(200, options.providers ?? []);
+    // KAR-25.5 — both checked before the general `/projects` catch-all, whose
+    // own path (`/projects/:id/connectors`, `/projects/:id/runs`) also
+    // `.includes('/projects')`. `ProjectWorkflowsView` and the composer's
+    // page both mount for real now that "Start a run" navigates rather than
+    // opening an overlay, and each reads one of these unconditionally on
+    // mount.
+    if (url.includes('/connectors')) return json(200, { services: [] });
+    if (url.includes('/projects/') && url.includes('/runs')) return json(200, { runs: [] });
     if (url.includes('/projects')) return json(200, { projects: options.projects ?? [] });
     if (url.includes('/approvals')) {
       const items = options.approvals ?? 0;
@@ -549,23 +557,19 @@ suite('EPIC-24-S18 — the rail across three widths (AC7)', () => {
 });
 
 /**
- * EPIC-24-S16's last case, deliberately last in the *file* rather than in
- * that suite: opening `RunComposer`'s `UiModal` (a Reka `Dialog`) and leaving
- * it open — which is what this case is for — leaves a stuck document-level
- * keydown listener behind (Reka's own focus-trap teardown, not anything this
- * story owns) that survives `shell.unmount()` and blocks `Tab` from moving
- * focus in whichever *later* test mounts a fresh shell next. Closing the
- * dialog before the test ends does not clear it either — only running this
- * case after everything that depends on a clean `Tab` order does. This is a
- * test-ordering fix, not a product one: EPIC-24-S17's "is first in the tab
- * order" case is what exposed it.
+ * EPIC-24-S16's last case, deliberately last in the *file*: it navigates the
+ * shell, and running it before anything that depends on a clean `Tab` order
+ * (`EPIC-24-S17`) keeps this file's own ordering concern — described in the
+ * KAR-24.8 era by the composer's now-removed focus trap — from becoming a new
+ * one over a route change instead.
  */
 suite('EPIC-24-S16 — nothing the old shell did is lost (continued)', () => {
-  it('keeps the composer button, and it still opens the composer overlay', async () => {
+  it('keeps the composer button, and it still opens the composer', async () => {
     shell = await mountShell({
+      at: { name: 'project-workflows', params: { projectId: PROJECT_ID } },
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
-        fetch: frameDaemon({}),
+        fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS }),
         token: () => 'test-token-Aa0_-Bb1',
       }),
     });
@@ -573,16 +577,13 @@ suite('EPIC-24-S16 — nothing the old shell did is lost (continued)', () => {
     const button = shell.container.querySelector<HTMLButtonElement>('[data-composer-open]');
     expect(button).not.toBeNull();
 
+    // KAR-25.5 — no `UiModal`, no overlay: the button now navigates to the
+    // composer's own route. AC1 says there is no dialog role for this
+    // assertion to have found any more — the button surviving, and landing
+    // where it says it will, is what "still opens the composer" means now.
     button?.click();
-    await expect.poll(() => shell.ui.isOverlayOpen('composer')).toBe(true);
-    // `document`, not `shell.container`. KAR-24.8 put the composer inside
-    // `UiModal`, which is Reka's dialog, and a Reka dialog teleports to
-    // `document.body` — so it is a *sibling* of the harness's mount node
-    // rather than a descendant of it. The specs that already assert on the
-    // inspector and the jumper query `document` for exactly this reason
-    // (`project-workflows.test.ts`, `plan-graph.test.ts`); this line was the
-    // holdout from when the composer was a plain, un-portalled `<section>`.
-    // The overlay opens either way — only where it lands in the DOM moved.
-    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).not.toBeNull();
+    await expect.poll(() => shell.router.currentRoute.value.name).toBe('new-run');
+    expect(shell.router.currentRoute.value.params['projectId']).toBe(PROJECT_ID);
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
   });
 });

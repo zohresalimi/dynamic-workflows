@@ -46,7 +46,6 @@ import { computed, inject, onScopeDispose, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { readToken } from '../api/token.ts';
-import { COMPOSER_OVERLAY } from '../app/ids.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import TaskBoard from '../components/TaskBoard.vue';
@@ -376,7 +375,7 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
           variant="primary"
           size="md"
           data-workspace-compose
-          @click="ui.openOverlay(COMPOSER_OVERLAY)"
+          @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
         >
           <UserRound :size="12" aria-hidden="true" />
           Start a run
@@ -423,7 +422,7 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
             variant="ghost"
             size="sm"
             data-workspace-history-compose
-            @click="ui.openOverlay(COMPOSER_OVERLAY)"
+            @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
           >
             Start a run
           </UiButton>

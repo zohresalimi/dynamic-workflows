@@ -191,6 +191,18 @@ export const routes = [
     props: true,
   },
   {
+    // KAR-25.5 — the composer, now a page rather than a global overlay
+    // (`RunComposer.vue`'s own header comment has the whole story). Lazy like
+    // `/projects` and `/settings`: its whole dependency is the typed client the
+    // shell already has, so `bundle-budget.test.ts` is unaffected. Between
+    // `project-workflows` and `project-runs`, matching the rail/breadcrumb
+    // order the two of them already sit in.
+    path: '/projects/:projectId/new-run',
+    name: 'new-run',
+    component: () => import('../views/NewRunView.vue'),
+    props: true,
+  },
+  {
     // KAR-25.1 — this project's run list, project-scoped where it used to be
     // global. Eager like the graph it sits beside in the rail's order,
     // and just as cheap: the transport it opens is behind a dynamic import in

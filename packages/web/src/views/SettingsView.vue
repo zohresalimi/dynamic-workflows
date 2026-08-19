@@ -40,9 +40,11 @@
  * wait for an explicit choice. See that file's own header comment for why.
  *
  * The picker is a plain `<select>`, not a `ui/` primitive: the library has no
- * select control (fifteen primitives, and `UiField` is a text input), and
- * `RunComposer.vue`'s own project picker is the same plain `<select>` for the
- * same reason — reported rather than smuggled in as a sixteenth component.
+ * select control (fifteen primitives, and `UiField` is a text input) —
+ * reported rather than smuggled in as a sixteenth component. `RunComposer.vue`
+ * used to have the same plain `<select>`, for a project; KAR-25.5 removed it
+ * (the project is the composer's route now, not a field in its form), so this
+ * one is the library's only remaining example of the gap.
  *
  * ## What renders, and why only that
  *
