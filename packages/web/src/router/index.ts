@@ -201,14 +201,12 @@ export const routes = [
     props: true,
   },
   {
-    // KAR-22.4 — the project's connectors. No longer a nav row (KAR-25.1 AC1,
-    // AC2 name the rail's item set exactly, and Connectors is in neither
-    // list) — reached from `ProjectWorkflowsView`'s own link instead, until
-    // KAR-25.4 moves the screen into `/settings`.
+    // KAR-25.4 AC7 — the connectors screen moved into `/settings`'s "Issue
+    // tracker" panel (`../components/settings/ConnectorsPanel.vue`).
+    // `ConnectorsView.vue` is deleted; this path is kept as a redirect so a
+    // bookmark or an old link still resolves rather than 404ing.
     path: '/projects/:projectId/connectors',
-    name: 'project-connectors',
-    component: () => import('../views/ConnectorsView.vue'),
-    props: true,
+    redirect: { name: 'settings', params: {} },
   },
   {
     // The same workflows view, on a run from this project's history. A

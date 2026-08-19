@@ -37,10 +37,10 @@
  * a project two more rows appear, in this order — Workflows
  * (`/projects/:id`) and Runs (`/projects/:id/runs`) — so the full set reads
  * Projects · Workflows · Runs · Settings (AC2). Connectors is not a row here
- * at all any more: it is neither a global concern nor one of the four names
- * AC1/AC2 list, and `ProjectWorkflowsView`'s own `[data-workspace-connectors]`
- * link is what keeps that route reachable until KAR-25.4 moves it into
- * Settings. Every `to` below is a literal path this file's own reading of
+ * at all: it is neither a global concern nor one of the four names AC1/AC2
+ * list. KAR-25.4 moved it into Settings' own "Issue tracker" panel, so it is
+ * reachable through the Settings row like everything else on that page.
+ * Every `to` below is a literal path this file's own reading of
  * `../../router/index.ts` confirms exists, and every "is this row active"
  * check names the matching route's own `name` rather than guessing at a path
  * prefix.

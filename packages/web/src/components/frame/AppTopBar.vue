@@ -113,7 +113,6 @@ const VIEW_LABELS: Readonly<Record<string, string>> = {
   settings: 'Settings',
   'project-workflows': 'Workflows',
   'project-runs': 'Runs',
-  'project-connectors': 'Connectors',
   'project-run': 'Workflows',
   'run-plan': 'Plan',
   'plan-evolution': 'Evolution',

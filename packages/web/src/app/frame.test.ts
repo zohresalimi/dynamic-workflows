@@ -283,8 +283,8 @@ suite('EPIC-24-S15 — the nav names only routes this application has', () => {
     });
 
     const links = [...shell.container.querySelectorAll<HTMLAnchorElement>('.rail__nav-item')];
-    // Runs, Projects and — because the route above carries a `projectId` —
-    // Workspace and Connectors (AC2's own item set).
+    // Projects, Settings, and — because the route above carries a
+    // `projectId` — Workflows and Runs (AC2's own item set).
     expect(links.length).toBeGreaterThanOrEqual(4);
 
     for (const link of links) {
@@ -299,8 +299,14 @@ suite('EPIC-24-S15 — the nav names only routes this application has', () => {
   it('says the same of the topbar’s own nav, which stands in below 820px', async () => {
     const routeNames = new Set(routes.map((route) => route.name as string));
 
+    // `project-connectors` used to be the route this spec mounted, but
+    // KAR-25.4 turned it into a redirect to `/settings` — a global route
+    // with no project-scoped nav to assert on. `project-workflows` is the
+    // same project-scoped route the spec above already mounts successfully
+    // against this fixture, kept for the same claim this spec has always
+    // made: a project-scoped URL shows the project-scoped nav in the topbar.
     shell = await mountShell({
-      at: { name: 'project-connectors', params: { projectId: PROJECT_ID } },
+      at: { name: 'project-workflows', params: { projectId: PROJECT_ID } },
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
         fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS }),
