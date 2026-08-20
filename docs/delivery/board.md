@@ -3,7 +3,7 @@
 > The state of the backlog: every epic, every story, every scenario, and the audit that says whether
 > the plan actually delivers the product the [PRD](../prd.md) describes.
 
-**Status:** Draft v1.0 · **Last reviewed:** 16 August 2026 · **Reconciled from:** 23 epic files, 23 flow files
+**Status:** Draft v1.0 · **Last reviewed:** 20 August 2026 · **Reconciled from:** 25 epic files, 25 flow files
 
 [Delivery plan](./README.md) · [Architecture index](../README.md) · [Roadmap](../17-roadmap.md)
 
@@ -14,7 +14,7 @@
 |                                 |                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | **Epics**                       | 25 (EPIC-00 … EPIC-22, EPIC-24, EPIC-25)                                                              |
-| **Stories**                     | 175                                                                                          |
+| **Stories**                     | 176                                                                                          |
 | **Scenarios**                   | 938                                                                                          |
 | **Estimated size**              | **~406 working days** (sum of the epics' own declared totals)                                |
 | **Longest dependency chain**    | **~283 days** — EPIC-00 → 01 → 02 → 03 → 05 → 06 → 09 → 10 → 11 → 12 → 15 → 16 → 17 → 19 → 22 → 24 |
@@ -29,9 +29,14 @@
 | Epics   | 24            | 0       | 0             | 0         | 0           | 0      |
 | Stories | 154           | 15      | 0             | 1         | 0           | 0      |
 
-**Size distribution** — `XS` 2 · `S` 45 · `M` 96 · `L` 27 · `XL` **0** (no story is sized `XL`, which is the rule holding). EPIC-21 added two `S` and three `M` on 2026-08-16 and no `L`, deliberately: its epic file states that every story in it must be mergeable on its own branch. EPIC-24 added one `S`, six `M` and one `L` on 2026-08-17 under the same constraint, and for the same reason — its `L` is the primitive layer, which is the one slice that cannot be usefully halved.
+> **These two rows are the 16 August 2026 snapshot and are not maintained.** Linear is the delivery
+> SSOT for status (see `CLAUDE.md`); the per-row `Status` columns in §5 are updated when an epic
+> closes, but this rollup is not recomputed. EPIC-24 and EPIC-25 are both `Done` as of
+> 20 August 2026 and neither is reflected above.
 
-**Priority distribution** — `P0` 154 · `P1` 17 · `P2` 0. Ten of the fifteen `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. The other five are **all of EPIC-21**, and the reason is stated in its epic file rather than assumed: every capability the interactive CLI fronts is already reachable today — by `deflow answer` in a second terminal, by `deflow cancel`, or by the browser — so nothing in it is in M1's definition of done. It changes the cost of reaching them, not whether they can be reached. `MET-795` carries Linear priority Medium, which is the owner's own signal and this mapping's `P1`. EPIC-20's five are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three and KAR-22.5 are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
+**Size distribution** — `XS` 2 · `S` 45 · `M` 96 · `L` 28 · `XL` **0** (no story is sized `XL`, which is the rule holding). EPIC-21 added two `S` and three `M` on 2026-08-16 and no `L`, deliberately: its epic file states that every story in it must be mergeable on its own branch. EPIC-24 added one `S`, six `M` and one `L` on 2026-08-17 under the same constraint, and for the same reason — its `L` is the primitive layer, which is the one slice that cannot be usefully halved.
+
+**Priority distribution** — `P0` 154 · `P1` 18 · `P2` 0. Ten of the fifteen `P1` stories are KAR-08.8, KAR-09.10, KAR-11.6, KAR-12.6, KAR-15.8, KAR-17.9, KAR-18.7, KAR-18.8, KAR-18.9 and KAR-22.4 — they sit inside M1 epics but are not part of M1's definition of done. The other five are **all of EPIC-21**, and the reason is stated in its epic file rather than assumed: every capability the interactive CLI fronts is already reachable today — by `deflow answer` in a second terminal, by `deflow cancel`, or by the browser — so nothing in it is in M1's definition of done. It changes the cost of reaching them, not whether they can be reached. `MET-795` carries Linear priority Medium, which is the owner's own signal and this mapping's `P1`. EPIC-20's five are all `P0`: the install path is NF6, and the tool being uninstallable is not a nicety. EPIC-22's first three and KAR-22.5 are `P0` for the mirror-image reason — a product whose only entry point is a five-flag command line fails the one M1 metric that matters, `≥ 3 real tasks/week` of personal weekly active use.
 
 > **EPIC-21 is authored, and is in this reconciliation as of 2026-08-16.**
 > `MET-795` — _"Interactive CLI: a real terminal app, not a background command"_ — was an epic issue
@@ -172,7 +177,7 @@ Nothing has started. Fifteen stories are `Ready` — their Definition of Ready i
 | **▸** | [EPIC-22](./epics/EPIC-22-web-control-center.md)  | Web control center                           | Done | P0  | M1  | W15                     | 6       | 76   | ~23d  | EPIC-15, EPIC-16, EPIC-17, EPIC-18, EPIC-19                   | An operator creates a project against a repository, starts a run from a chat-style composer choosing the adapter, and watches the graph, the task board and the history — without opening a terminal.    |
 | **▸** | [EPIC-21](./epics/EPIC-21-interactive-cli.md)     | Interactive CLI                              | Done | P1  | M1  | W16                     | 5       | 45   | ~9d   | EPIC-13, EPIC-15, EPIC-18, EPIC-19, EPIC-20, EPIC-22          | `deflow run` becomes something an operator sits in front of: the plan forming, node states, agent output and cost in a region that stays put — with gates answered, runs steered and runs cancelled by a keypress, and none of it when stdout is not a terminal. |
 | **▸** | [EPIC-24](./epics/EPIC-24-design-system.md)       | The design system                            | Done | P0  | M1  | W17                     | 9       | 34   | ~21d  | EPIC-16, EPIC-17, EPIC-19, EPIC-22                            | Every pixel comes from one vocabulary: a vendored component library on one token file, taken from the supplied prototype, with the shell, the graph, the inspector and every list screen rebuilt on it and no behaviour changed. |
-| **▸** | [EPIC-25](./epics/EPIC-25-frame-and-settings.md)  | The frame tells the truth                    | Ready | P0  | M1  | W18                     | 9       | 60   | ~14d  | EPIC-24, EPIC-22, EPIC-19                                     | Settings that apply to the machine live in one global place, work that belongs to a project is only offered inside a project, every announced decision can be answered where it is announced, and the two daemon defects that strand a real run are fixed. |
+| **▸** | [EPIC-25](./epics/EPIC-25-frame-and-settings.md)  | The frame tells the truth                    | Done | P0  | M1  | W18                     | 9       | 60   | ~14d  | EPIC-24, EPIC-22, EPIC-19                                     | Settings that apply to the machine live in one global place, work that belongs to a project is only offered inside a project, every announced decision can be answered where it is announced, and the two daemon defects that strand a real run are fixed. |
 
 **Totals:** 24 epics · 175 stories · 938 scenarios · ~407 days.
 
@@ -520,15 +525,16 @@ All 166 stories, in epic order. `Verified by` is the story's own declaration; §
 | [KAR-24.7](./epics/EPIC-24-design-system.md)       | Projects, run history and the workspace boards _(added)_                       | EPIC-24 | Done | P1  | M    | F10.9, F1.1, NF8                                                                              | EPIC-24-S26, EPIC-24-S27, EPIC-24-S28, EPIC-24-S29 |
 | [KAR-24.8](./epics/EPIC-24-design-system.md)       | Settings, connectors and the composer _(added)_                                | EPIC-24 | Done | P1  | M    | F1.1, F3.5, NF8, AR-1                                                                         | EPIC-24-S30, EPIC-24-S31, EPIC-24-S32, EPIC-24-S33 |
 | [KAR-24.9](./epics/EPIC-24-design-system.md)       | The frame's weight, against NF3's ceiling _(added)_                            | EPIC-24 | Done | P0  | S    | NF3                                                                                           | EPIC-24-S34 |
-| [KAR-25.1](./epics/EPIC-25-frame-and-settings.md)  | The nav says what scope it is in _(added)_ | EPIC-25 | Not started | P0  | M    | F10.1, F10.3, NF8, NF10 | EPIC-25-S01 … EPIC-25-S07 |
-| [KAR-25.2](./epics/EPIC-25-frame-and-settings.md)  | `/settings`, and the way home _(added)_ | EPIC-25 | Not started | P0  | M    | F10.1, F10.11, NF8 | EPIC-25-S08 … EPIC-25-S13 |
-| [KAR-25.3](./epics/EPIC-25-frame-and-settings.md)  | Providers & runtimes, managed _(added)_ | EPIC-25 | Not started | P0  | L    | F10.11, F3.5, AR-1 | EPIC-25-S14 … EPIC-25-S21 |
-| [KAR-25.4](./epics/EPIC-25-frame-and-settings.md)  | Connectors stop contradicting themselves _(added)_ | EPIC-25 | Not started | P1  | M    | F3.5, AR-1, NF8 | EPIC-25-S22 … EPIC-25-S29 |
-| [KAR-25.5](./epics/EPIC-25-frame-and-settings.md)  | The new-run page replaces the modal _(added)_ | EPIC-25 | Not started | P0  | L    | F1.1, F10.1, NF8 | EPIC-25-S30 … EPIC-25-S37 |
-| [KAR-25.6](./epics/EPIC-25-frame-and-settings.md)  | A new project is a modal _(added)_ | EPIC-25 | Not started | P1  | S    | F1.1, NF8 | EPIC-25-S38 … EPIC-25-S41 |
-| [KAR-25.7](./epics/EPIC-25-frame-and-settings.md)  | Every announced decision can be answered _(added)_ | EPIC-25 | Not started | P0  | L    | F10.6, F10.9, NF10 | EPIC-25-S42 … EPIC-25-S50 |
-| [KAR-25.8](./epics/EPIC-25-frame-and-settings.md)  | A worktree that already exists is not a dead run _(added)_ | EPIC-25 | Not started | P0  | M    | F2.4, NF1 | EPIC-25-S51 … EPIC-25-S55 |
-| [KAR-25.9](./epics/EPIC-25-frame-and-settings.md)  | The response that was written twice _(added)_ | EPIC-25 | Not started | P1  | S    | NF1 | EPIC-25-S56 … EPIC-25-S60 |
+| [KAR-25.1](./epics/EPIC-25-frame-and-settings.md)  | The nav says what scope it is in _(added)_ | EPIC-25 | Done | P0  | M    | F10.1, F10.3, NF8, NF10 | EPIC-25-S01 … EPIC-25-S07 |
+| [KAR-25.2](./epics/EPIC-25-frame-and-settings.md)  | `/settings`, and the way home _(added)_ | EPIC-25 | Done | P0  | M    | F10.1, F10.11, NF8 | EPIC-25-S08 … EPIC-25-S13 |
+| [KAR-25.3](./epics/EPIC-25-frame-and-settings.md)  | Providers & runtimes, managed _(added)_ | EPIC-25 | Done | P0  | L    | F10.11, F3.5, AR-1 | EPIC-25-S14 … EPIC-25-S21 |
+| [KAR-25.4](./epics/EPIC-25-frame-and-settings.md)  | Connectors stop contradicting themselves _(added)_ | EPIC-25 | Done | P1  | M    | F3.5, AR-1, NF8 | EPIC-25-S22 … EPIC-25-S29 |
+| [KAR-25.5](./epics/EPIC-25-frame-and-settings.md)  | The new-run page replaces the modal _(added)_ | EPIC-25 | Done | P0  | L    | F1.1, F10.1, NF8 | EPIC-25-S30 … EPIC-25-S37 |
+| [KAR-25.6](./epics/EPIC-25-frame-and-settings.md)  | A new project is a modal _(added)_ | EPIC-25 | Done | P1  | S    | F1.1, NF8 | EPIC-25-S38 … EPIC-25-S41 |
+| [KAR-25.7](./epics/EPIC-25-frame-and-settings.md)  | Every announced decision can be answered _(added)_ | EPIC-25 | Done | P0  | L    | F10.6, F10.9, NF10 | EPIC-25-S42 … EPIC-25-S50 |
+| [KAR-25.8](./epics/EPIC-25-frame-and-settings.md)  | A worktree that already exists is not a dead run _(added)_ | EPIC-25 | Done | P0  | M    | F2.4, NF1 | EPIC-25-S51 … EPIC-25-S55 |
+| [KAR-25.9](./epics/EPIC-25-frame-and-settings.md)  | The response that was written twice _(added)_ | EPIC-25 | Done | P1  | S    | NF1 | EPIC-25-S56 … EPIC-25-S60 |
+| [KAR-25.10](./epics/EPIC-25-frame-and-settings.md) | Register an endpoint-shaped runtime _(added; split out of KAR-25.3, not built)_ | EPIC-25 | Not started | P1  | L    | F10.11, AR-1 | — |
 
 ---
 

@@ -6,7 +6,7 @@
 |                      |                                                                                                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Epic ID**          | EPIC-25                                                                                                                                                                                    |
-| **Status**           | Ready                                                                                                                                                                                      |
+| **Status**           | Done — all nine stories merged to `master` 2026-08-20 (PRs #49–#57). KAR-25.10 remains `Not started`, deliberately split out                                                                |
 | **Priority**         | P0                                                                                                                                                                                        |
 | **Milestone**        | M1                                                                                                                                                                                        |
 | **Workstream**       | W18 — added 2026-08-18, after the owner ran the built application against a real project and filed ten defects plus two daemon stack traces                                                 |
