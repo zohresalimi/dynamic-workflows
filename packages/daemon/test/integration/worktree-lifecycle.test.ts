@@ -245,8 +245,11 @@ suite('EPIC-07-S10: a read node gets a locked detached worktree (AC2)', () => {
         baseRef: 'main',
       });
 
-      expect(s.worktreeCalls()).toHaveLength(1);
-      expect(s.worktreeCalls()[0]?.[1]).toBe('add');
+      // The registry read every provision makes, then the add — and nothing
+      // else. A *branch* pre-check would show up as `workspace.branch_occupied`
+      // on a collision and as a second list here; a read node makes neither,
+      // because `--detach` claims no branch to collide on.
+      expect(s.worktreeCalls().map((argv) => argv[1])).toEqual(['list', 'add']);
     } finally {
       s.close();
     }

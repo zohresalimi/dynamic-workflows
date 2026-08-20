@@ -114,6 +114,17 @@ export interface AdvanceInput {
   readonly now: number;
   readonly db: Db;
   readonly epoch: number;
+  /**
+   * KAR-26.1 — the daemon life's jitter source, handed down for the same reason
+   * `db` and `epoch` are: a turn that has to record a failure needs the retry
+   * ladder, and the ladder takes one draw per decision.
+   *
+   * The driver already owns the generator (`DriverPorts.random`). Handing over
+   * the port rather than letting the chain call `daemonRandom()` is what keeps
+   * one generator per daemon life, so twenty nodes failing at the same instant
+   * take twenty consecutive draws rather than twenty identical ones.
+   */
+  readonly random: Random;
 }
 
 /**
@@ -432,7 +443,7 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
 
   async function advanceOneRun(advance: RunAdvancer, runId: RunId, now: number): Promise<void> {
     try {
-      await advance({ runId, now, db: ports.db, epoch: ports.epoch });
+      await advance({ runId, now, db: ports.db, epoch: ports.epoch, random });
     } catch (error) {
       // One run's failure is not the daemon's — the same rule the framing
       // dispatch follows, and for the same reason.
@@ -499,6 +510,7 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
         now,
         db: ports.db,
         epoch: ports.epoch,
+        random,
         clock: ports.clock,
         daemonStartedAt,
       });

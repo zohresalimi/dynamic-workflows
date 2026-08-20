@@ -116,7 +116,11 @@ suite('EPIC-10-S26 — the worktree is detached and locked at creation (test pla
         reconProvisionRequest({ runId: RUN, nodeId: RECON, path, baseRef: 'main' }),
       );
 
+      // One `add`, and it is §4.1's single invocation — preceded only by the
+      // read of git's own registry every provision starts from, which asks
+      // what is at the node's path and never what holds a branch.
       expect(worktreeCalls(s)).toEqual([
+        ['worktree', 'list', '--porcelain', '-z'],
         [
           'worktree',
           'add',

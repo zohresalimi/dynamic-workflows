@@ -56,8 +56,16 @@
  * environment is not (docs/03-local-development.md §4.3). `deflow up` is the
  * production caller that supplies it.
  *
+ * **A gate-class recon failure stops the chain before the compile (KAR-26.1
+ * AC3).** Every other recon failure still compiles against the facts DeFlow
+ * established for itself — that is KAR-10.5's own rule and unchanged — but a
+ * gate is by definition a failure for which no automatic action is correct, so
+ * the run is escalated and the planner is not prompted. The class is read; the
+ * reason never is.
+ *
  * Verifies: EPIC-19-S16, EPIC-19-S18, EPIC-19-S19, EPIC-19-S20, EPIC-19-S21,
  * EPIC-19-S22 · AC1–AC5, AC8
+ * Verifies: EPIC-26-S04, EPIC-26-S05 · KAR-26.1 AC3
  */
 import type { CapabilityRow } from '@DeFlow/adapters';
 import type {
@@ -101,7 +109,7 @@ import type { ReconAgent } from '../recon/recon.ts';
 import { runReconNode } from '../recon/recon.ts';
 import { FRAMING_NODE } from '../spec/gate.ts';
 import { framingIsPending } from './framing-schedule.ts';
-import { noProviderFailure, unframeableRunFailure } from './turn-failure.ts';
+import { noProviderFailure, recordTurnFailure, unframeableRunFailure } from './turn-failure.ts';
 
 const chain = log.child({ mod: 'chain' });
 
@@ -518,6 +526,37 @@ export function createRunChain(ports: RunChainPorts): RunChain {
     });
 
     if (recon.outcome === 'failed') {
+      // KAR-26.1 AC3 — a `gate` stops the chain here, before the compile. The
+      // class is read and the reason never is (KAR-06.5 AC1): a gate means no
+      // automatic action is correct, so carrying on to spend a planner turn on
+      // a run that cannot move is the opposite of what it asks for.
+      // `recordTurnFailure` is what makes the stop durable — the node is
+      // suspended and `run.needs_human` appended, and both this function and
+      // the driver skip a run whose escalation is newer than its pin, which is
+      // what turns a refusal that no retry can clear into one line rather than
+      // one line per tick.
+      if (recon.failure.deflowFailure.class === 'gate') {
+        recordTurnFailure({
+          db,
+          runId,
+          nodeId: RECON_NODE,
+          epoch,
+          ts: now,
+          error: recon.failure,
+          // `runReconNode` is called once per advance and journalled its own
+          // `node.failed` above, which `recordTurnFailure` reads back rather
+          // than duplicating.
+          attempt: 0,
+          random: input.random,
+        });
+        chain.error(
+          { runId, node: RECON_NODE },
+          `recon for ${runId} hit a gate and the run is waiting for a person: ` +
+            recon.failure.message,
+        );
+        return;
+      }
+
       chain.warn(
         { runId, reason: recon.failure.deflowFailure.reason },
         `recon for ${runId} did not complete; the planner is given the ${recon.facts.length} ` +

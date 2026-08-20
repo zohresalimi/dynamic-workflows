@@ -26,32 +26,66 @@
 import { type Db, RunIdSchema } from '@DeFlow/core';
 import { openLedger, readRange } from '@DeFlow/ledger';
 import { it, TestClock } from '@DeFlow/testkit';
-import { mkdir, readdir, realpath, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, describe as suite } from 'vitest';
+import { runRef } from './branch-name.ts';
 import type { GitResult } from './run-git.ts';
+import { STATUS_ARGS } from './status-porcelain.ts';
 import {
   lockReasonFor,
   WORKTREE_LIST_ARGS,
   worktreeAddArgs,
   worktreePathFor,
+  worktreeRemoveArgs,
+  worktreeUnlockArgs,
 } from './worktree-args.ts';
 import {
   BranchOccupiedError,
+  describeOccupant,
+  occupancyDecision,
   type WorkspaceGit,
   WorkspaceManager,
   WorktreePathOccupiedError,
 } from './worktree-manager.ts';
-import { parseWorktreeList } from './worktree-porcelain.ts';
+import { parseWorktreeList, type WorktreeEntry } from './worktree-porcelain.ts';
+import {
+  salvageAddArgs,
+  salvageBranchArgs,
+  salvageCommitArgs,
+  salvagedRemoveArgs,
+} from './worktree-salvage.ts';
 
 const RUN = RunIdSchema.parse('run_20260819T090000Z_5c1d2e');
 const EPOCH = 3;
 
+/**
+ * Where a detached leftover's salvage commit lands (KAR-07.4 AC6).
+ *
+ * Lowercased, because a `RunId`'s `T` and `Z` are uppercase and `BRANCH_SAFE`
+ * is not — `runRef` is the one sanctioned transformation, and a caller that
+ * forgot it would make every real run's salvage throw `UnsafeRefError` and
+ * leave the worktree present and dirty.
+ */
+const SALVAGE_REF = `DeFlow/salvage/${runRef(RUN)}__recon`;
+
+/**
+ * One row of the fake's worktree registry, in the shape `git worktree list
+ * --porcelain -z` can actually express.
+ *
+ * `locked` and `lockReason` are two fields rather than one because git prints
+ * three different things: `locked <reason>` for a lock taken with `--reason`,
+ * a bare `locked` for one taken without, and **no record at all** for a
+ * worktree that is not locked. A single `lockReason: string | null` collapses
+ * the last two into one shape, which is exactly the collapse that let an
+ * unlocked leftover be read as an operator's own bare lock.
+ */
 interface FakeEntry {
   path: string;
   branch: string | null;
   detached: boolean;
-  lockReason: string;
+  locked: boolean;
+  lockReason: string | null;
 }
 
 /**
@@ -79,6 +113,15 @@ class FakeGit implements WorkspaceGit {
    * whichever worktree happens to be added first at index 0 instead, which
    * `findOccupant` would then misclassify. */
   readonly #mainCheckout: string;
+  /** Path → the `status --porcelain=v2 -z` bytes git would print inside it.
+   * Absent means clean, which is what an empty parse means to `isDirty`. */
+  readonly #dirty = new Map<string, string>();
+  /** Path → the oid `rev-parse HEAD` answers with, once a commit was made. */
+  readonly #head = new Map<string, string>();
+  /** Every ref `branch` or `worktree add -b` created, so `rev-parse --verify`
+   * can answer the tip question `remove()` asks before it removes. */
+  readonly #refs = new Set<string>();
+  #commits = 0;
   addExitCode = 0;
   addStderr = '';
 
@@ -86,22 +129,15 @@ class FakeGit implements WorkspaceGit {
     this.#mainCheckout = mainCheckout;
   }
 
-  async run(args: readonly string[], _opts?: { readonly cwd?: string }): Promise<GitResult> {
+  async run(args: readonly string[], opts?: { readonly cwd?: string }): Promise<GitResult> {
     this.calls.push([...args]);
+    const argv = args.join(' ');
 
     if (args[0] === 'worktree' && args[1] === 'list') {
       const main =
         `worktree ${this.#mainCheckout}\0` +
         `HEAD 0000000000000000000000000000000000000000\0branch refs/heads/main\0\0`;
-      const rest = [...this.#entries.values()]
-        .map((entry) => {
-          const branchRecord = entry.branch === null ? 'detached\0' : `branch ${entry.branch}\0`;
-          return (
-            `worktree ${entry.path}\0HEAD 0000000000000000000000000000000000000000\0` +
-            `${branchRecord}locked ${entry.lockReason}\0\0`
-          );
-        })
-        .join('');
+      const rest = [...this.#entries.values()].map((entry) => this.#render(entry)).join('');
       return { exitCode: 0, stdout: main + rest, stderr: '' };
     }
 
@@ -111,18 +147,57 @@ class FakeGit implements WorkspaceGit {
       }
       const path = args.at(-2) ?? '';
       // Real git: `worktree add` at a path that already has a registered
-      // worktree exits 128 with `fatal: '<path>' already exists` — it does
-      // NOT silently re-register or overwrite. This is the exit the pre-fix
-      // `provision`'s unconditional second `add` actually hit.
+      // worktree exits 128 — it does NOT silently re-register or overwrite.
+      // This is the exit the pre-fix `provision`'s unconditional second `add`
+      // actually hit. Which of the two refusals it is turns on whether the
+      // directory is still there, and the second one is the whole of the
+      // registered-but-deleted case: git offers `prune` or `remove` to clear
+      // it, and `add` alone can never succeed over it.
       if (this.#entries.has(path)) {
-        return { exitCode: 128, stdout: '', stderr: `fatal: '${path}' already exists\n` };
+        const onDisk = await stat(path).then(
+          () => true,
+          () => false,
+        );
+        return {
+          exitCode: 128,
+          stdout: '',
+          stderr: onDisk
+            ? `fatal: '${path}' already exists\n`
+            : `fatal: '${path}' is a missing but already registered worktree;\n` +
+              "use 'add -f' to override, or 'prune' or 'remove' to clear\n",
+        };
       }
       const reasonIdx = args.indexOf('--reason');
       const lockReason = args[reasonIdx + 1] ?? '';
       const bIdx = args.indexOf('-b');
-      const branch = bIdx === -1 ? null : `refs/heads/${args[bIdx + 1] ?? ''}`;
       const detached = args.includes('--detach');
-      this.#entries.set(path, { path, branch, detached, lockReason });
+      const commitish = args.at(-1) ?? '';
+      let branch: string | null = null;
+      if (bIdx === -1) {
+        // No `-b`: git checks the last positional out *as a branch* when it
+        // names one, and only otherwise treats it as a commit-ish. That is the
+        // attach form — a worktree re-entering a branch that already exists.
+        const named = `refs/heads/${commitish}`;
+        branch = !detached && this.#refs.has(named) ? named : null;
+      } else {
+        // `-b <branch>` asks git to *create* the branch, and git refuses when
+        // the name is taken — exit 255, `fatal: a branch named '<b>' already
+        // exists`, verified on git 2.43.0. Without this the fake would let a
+        // node whose teardown was interrupted re-create the branch its own
+        // leftover was checked out on, which is the one thing real git will
+        // not do.
+        const wanted = args[bIdx + 1] ?? '';
+        branch = `refs/heads/${wanted}`;
+        if (this.#refs.has(branch)) {
+          return {
+            exitCode: 255,
+            stdout: `Preparing worktree (new branch '${wanted}')\n`,
+            stderr: `fatal: a branch named '${wanted}' already exists\n`,
+          };
+        }
+        this.#refs.add(branch);
+      }
+      this.#entries.set(path, { path, branch, detached, locked: true, lockReason });
       await mkdir(path, { recursive: true });
       return { exitCode: 0, stdout: '', stderr: '' };
     }
@@ -131,7 +206,115 @@ class FakeGit implements WorkspaceGit {
       return { exitCode: 0, stdout: '', stderr: '' };
     }
 
-    throw new Error(`FakeGit does not implement: ${args.join(' ')}`);
+    // Built here from the argv the manager itself builds, rather than from a
+    // shape spelled twice: a fake that recognised `['worktree','unlock',p]` by
+    // hand would keep answering after `worktreeUnlockArgs` changed.
+    const unlockPath = args[2] ?? '';
+    if (argv === worktreeUnlockArgs(unlockPath).join(' ')) {
+      const entry = await this.#entryAt(unlockPath);
+      // Real git exits 1 for a worktree that is not locked. `remove()` ignores
+      // the code on purpose — unlocked is the state it wanted — and a fake that
+      // always exited 0 would hide that it relies on that.
+      if (entry === undefined || !entry.locked) {
+        return { exitCode: 1, stdout: '', stderr: 'fatal: not locked\n' };
+      }
+      entry.locked = false;
+      entry.lockReason = null;
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+
+    const removeArg = args.at(-1) ?? '';
+    const forced = argv === salvagedRemoveArgs(removeArg).join(' ');
+    if (forced || argv === worktreeRemoveArgs(removeArg).join(' ')) {
+      const entry = await this.#entryAt(removeArg);
+      if (entry === undefined) {
+        return { exitCode: 128, stdout: '', stderr: `fatal: '${removeArg}' is not a worktree\n` };
+      }
+      if (entry.locked && !forced) {
+        return { exitCode: 128, stdout: '', stderr: `fatal: '${removeArg}' is locked\n` };
+      }
+      // Real git refuses a dirty worktree without `--force`, in the words
+      // §4.4's own note warns not to parse. Reproduced so that a `provision`
+      // which reached `remove` on a dirty leftover without deciding from
+      // `status` first would fail here rather than quietly pass.
+      if (this.#dirty.has(entry.path) && !forced) {
+        return {
+          exitCode: 128,
+          stdout: '',
+          stderr: `fatal: '${removeArg}' contains modified or untracked files, use --force to delete it\n`,
+        };
+      }
+      this.#entries.delete(entry.path);
+      this.#dirty.delete(entry.path);
+      // The **entry's** directory, not the argument's: git removes the worktree
+      // it resolved the argument to, so a link handed to `remove` costs the
+      // directory at the other end of it and never merely the link.
+      await rm(entry.path, { recursive: true, force: true });
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+
+    if (argv === STATUS_ARGS.join(' ')) {
+      return { exitCode: 0, stdout: this.#dirty.get(opts?.cwd ?? '') ?? '', stderr: '' };
+    }
+
+    if (argv === salvageAddArgs().join(' ')) return { exitCode: 0, stdout: '', stderr: '' };
+
+    if (argv === salvageCommitArgs().join(' ')) {
+      this.#commits += 1;
+      this.#head.set(opts?.cwd ?? '', `${'c'.repeat(39)}${this.#commits}`);
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+
+    if (argv === salvageBranchArgs(args[2] ?? '', args[3] ?? '').join(' ')) {
+      this.#refs.add(`refs/heads/${args[2] ?? ''}`);
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+
+    if (argv === 'rev-parse HEAD') {
+      const oid = this.#head.get(opts?.cwd ?? '');
+      return oid === undefined
+        ? { exitCode: 128, stdout: '', stderr: 'fatal: no commit\n' }
+        : { exitCode: 0, stdout: `${oid}\n`, stderr: '' };
+    }
+
+    if (args[0] === 'rev-parse' && args[1] === '--verify') {
+      const ref = args.at(-1) ?? '';
+      return this.#refs.has(ref)
+        ? { exitCode: 0, stdout: `${'a'.repeat(40)}\n`, stderr: '' }
+        : { exitCode: 1, stdout: '', stderr: '' };
+    }
+
+    throw new Error(`FakeGit does not implement: ${argv}`);
+  }
+
+  /**
+   * The entry a path argument names, the way git resolves one: registrations
+   * are keyed by resolved path, so `unlock` and `remove` handed a *symlink*
+   * act on the worktree at the other end of it. A fake that looked the raw
+   * string up would report "not a worktree" for a link and hide what a real
+   * `remove` through one costs.
+   */
+  async #entryAt(path: string): Promise<FakeEntry | undefined> {
+    const direct = this.#entries.get(path);
+    if (direct !== undefined) return direct;
+    const real = await realpath(path).catch(() => path);
+    return this.#entries.get(real);
+  }
+
+  /** One entry as `worktree list --porcelain -z` prints it. The `locked`
+   * record is emitted in all three of git's forms, which is the whole reason
+   * this fake exists in this story. */
+  #render(entry: FakeEntry): string {
+    const branchRecord = entry.branch === null ? 'detached\0' : `branch ${entry.branch}\0`;
+    const lockRecord = !entry.locked
+      ? ''
+      : entry.lockReason === null
+        ? 'locked\0'
+        : `locked ${entry.lockReason}\0`;
+    return (
+      `worktree ${entry.path}\0HEAD 0000000000000000000000000000000000000000\0` +
+      `${branchRecord}${lockRecord}\0`
+    );
   }
 
   /** Directly registers an entry, as if a prior `add` had happened — used to
@@ -139,6 +322,46 @@ class FakeGit implements WorkspaceGit {
    * whole first provision. */
   seed(entry: FakeEntry): void {
     this.#entries.set(entry.path, entry);
+    if (entry.branch !== null) this.#refs.add(entry.branch);
+  }
+
+  /** A branch with no worktree — what §4.4 leaves behind on purpose, because
+   * the branch is the deliverable and outlives the worktree that made it. */
+  seedRef(branch: string): void {
+    this.#refs.add(`refs/heads/${branch}`);
+  }
+
+  /** Whether the ref is still there, which is how a test asserts the teardown
+   * did not take the node's work with it. */
+  refExists(branch: string): boolean {
+    return this.#refs.has(`refs/heads/${branch}`);
+  }
+
+  /** What `git worktree unlock <path>` in an operator's own terminal leaves
+   * behind, and what a teardown killed between its unlock and its remove
+   * leaves behind: the entry is still registered, and no `locked` record is
+   * printed for it at all. */
+  unlock(path: string): void {
+    const entry = this.#entries.get(path);
+    if (entry === undefined) throw new Error(`FakeGit has no entry at ${path}`);
+    entry.locked = false;
+    entry.lockReason = null;
+  }
+
+  /** Makes `status --porcelain=v2 -z` inside `path` report one modified file
+   * and one untracked one — real porcelain v2 records, so the manager's own
+   * parser is what decides they mean "dirty". */
+  soil(path: string): void {
+    this.#dirty.set(
+      path,
+      `1 .M N... 100644 100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} src/index.ts\0` +
+        '? scratch.txt\0',
+    );
+  }
+
+  /** Whether git still has a registration at `path`. */
+  registered(path: string): boolean {
+    return this.#entries.has(path);
   }
 }
 
@@ -359,6 +582,7 @@ suite('EPIC-25-S53: a worktree held by another node is still refused, by name', 
         path,
         branch: 'refs/heads/DeFlow/run_other__other-node',
         detached: false,
+        locked: true,
         lockReason: lockReasonFor('run_other', 'other-node'),
       });
       await mkdir(path, { recursive: true });
@@ -395,6 +619,7 @@ suite('EPIC-25-S53: a worktree held by another node is still refused, by name', 
         path,
         branch: 'refs/heads/DeFlow/run_other__other-node',
         detached: false,
+        locked: true,
         lockReason: lockReasonFor('run_other', 'other-node'),
       });
       await mkdir(path, { recursive: true });
@@ -420,7 +645,13 @@ suite('EPIC-25-S53: a worktree held by another node is still refused, by name', 
     const s = scene(tmp);
     try {
       const path = join(tmp, 'humans-own-checkout');
-      s.git.seed({ path, branch: 'refs/heads/main', detached: false, lockReason: 'on holiday' });
+      s.git.seed({
+        path,
+        branch: 'refs/heads/main',
+        detached: false,
+        locked: true,
+        lockReason: 'on holiday',
+      });
       await mkdir(path, { recursive: true });
 
       const thrown = await s.manager
@@ -530,12 +761,16 @@ suite('EPIC-25-S55: read nodes keep detached, unchecked, concurrent provisioning
       expect(second.branch).toBeNull();
       expect(first.detached).toBe(true);
       expect(second.detached).toBe(true);
-      // Neither request triggered a `worktree list`: nothing existed yet at
-      // either path, so the new path-registration check never ran, and a read
-      // node still performs no occupancy check of any kind.
-      expect(s.git.calls.filter((argv) => argv.join(' ') === WORKTREE_LIST_ARGS.join(' '))).toEqual(
-        [],
-      );
+      // Each request read git's registry exactly once and then added: no
+      // branch pre-check ran for either (that is AC6 — a read node claims no
+      // branch, so it has nothing to collide on), and neither refused the
+      // other. Reading the registry is not a check on a *branch*; it is how
+      // `provision` learns whether anything is registered at its own path, and
+      // a registered entry whose directory is gone is invisible without it.
+      expect(
+        s.git.calls.filter((argv) => argv.join(' ') === WORKTREE_LIST_ARGS.join(' ')),
+      ).toHaveLength(2);
+      expect(events(s.db).map((event) => event.kind)).not.toContain('workspace.branch_occupied');
     } finally {
       s.close();
     }
@@ -563,6 +798,371 @@ suite('EPIC-25-S55: read nodes keep detached, unchecked, concurrent provisioning
     }
   });
 });
+
+// ── EPIC-26-S01, EPIC-26-S02, EPIC-26-S03 ────────────────────────────────────
+//
+// KAR-26.1 — an interrupted §4.4 teardown at the node's own path is finished,
+// not refused. `remove()` runs unlock first and ignores its exit code, then
+// `worktree remove` without force; a crash between the two, or a `remove` that
+// git refused because the tree was dirty, leaves the entry **registered and
+// unlocked** at exactly the path this run and node derive for themselves. That
+// is DeFlow's own half-removed worktree, and the pre-KAR-26.1 code read it as a
+// stranger and refused for ever.
+
+/** The argv of every `worktree` subcommand the fake was asked for, in order. */
+const worktreeSubcommands = (git: FakeGit): string[] =>
+  git.calls.filter((argv) => argv[0] === 'worktree').map((argv) => argv[1] ?? '');
+
+const eventKinds = (db: Db): string[] => events(db).map((event) => event.kind);
+
+suite(
+  'EPIC-26-S01: an unlocked registered worktree is a finished teardown, then a fresh one',
+  () => {
+    it('removes without --force, then adds, and lands one _removed before one _created (AC1)', async ({
+      tmp,
+    }) => {
+      const s = scene(tmp);
+      try {
+        const path = s.wt(RUN, 'recon');
+        // What an interrupted teardown leaves: git still lists the entry, and
+        // prints no `locked` record for it at all.
+        s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+        await mkdir(path, { recursive: true });
+
+        const result = await s.manager.provision({
+          mode: 'read',
+          runId: RUN,
+          nodeId: 'recon',
+          path,
+          baseRef: 'main',
+        });
+
+        expect(result.path).toBe(path);
+        expect(result.lockReason).toBe(lockReasonFor(RUN, 'recon'));
+
+        const kinds = eventKinds(s.db);
+        expect(kinds.filter((kind) => kind === 'workspace.worktree_removed')).toHaveLength(1);
+        expect(kinds.filter((kind) => kind === 'workspace.worktree_created')).toHaveLength(1);
+        expect(kinds.indexOf('workspace.worktree_removed')).toBeLessThan(
+          kinds.indexOf('workspace.worktree_created'),
+        );
+        // A clean leftover is removed plainly — the salvage force is for work
+        // that would otherwise be destroyed, and there is none here.
+        expect(s.git.calls).toContainEqual(worktreeRemoveArgs(path));
+        expect(s.git.calls).not.toContainEqual(salvagedRemoveArgs(path));
+        expect(worktreeSubcommands(s.git)).toContain('add');
+        expect(kinds).not.toContain('workspace.dirty_on_remove');
+      } finally {
+        s.close();
+      }
+    });
+
+    it('does not refuse it as somebody else’s worktree', async ({ tmp }) => {
+      const s = scene(tmp);
+      try {
+        const path = s.wt(RUN, 'recon');
+        s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+        await mkdir(path, { recursive: true });
+
+        const thrown = await s.manager
+          .provision({ mode: 'read', runId: RUN, nodeId: 'recon', path, baseRef: 'main' })
+          .catch((error: unknown) => error);
+
+        expect(thrown).not.toBeInstanceOf(WorktreePathOccupiedError);
+        expect(s.git.registered(path)).toBe(true);
+      } finally {
+        s.close();
+      }
+    });
+
+    it('a write node’s unlocked leftover is torn down on its own recorded branch, not the request’s', async ({
+      tmp,
+    }) => {
+      const s = scene(tmp);
+      try {
+        const path = s.wt(RUN, 'n1');
+        // The leftover is on the branch a *previous* attempt checked out. It is
+        // read back from porcelain rather than assumed to be this request's,
+        // because the two genuinely differ after a re-plan.
+        s.git.seed({
+          path,
+          branch: 'refs/heads/DeFlow/older-attempt',
+          detached: false,
+          locked: false,
+          lockReason: null,
+        });
+        await mkdir(path, { recursive: true });
+
+        await s.manager.provision({
+          mode: 'write',
+          runId: RUN,
+          nodeId: 'n1',
+          branch: 'DeFlow/n1',
+          path,
+          baseRef: 'main',
+        });
+
+        const removed = events(s.db).find((event) => event.kind === 'workspace.worktree_removed');
+        expect(removed?.payload.branch).toBe('DeFlow/older-attempt');
+        const created = events(s.db).find((event) => event.kind === 'workspace.worktree_created');
+        expect(created?.payload.branch).toBe('DeFlow/n1');
+      } finally {
+        s.close();
+      }
+    });
+  },
+);
+
+suite('EPIC-26-S02: the dirty variant salvages before it removes', () => {
+  it('runs KAR-07.4’s order — capture, commit, then the single force — and then provisions (AC1)', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'recon');
+      s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+      await mkdir(path, { recursive: true });
+      // An agent's uncommitted work, sitting in the worktree the interrupted
+      // teardown could not remove. This is exactly what git refused to discard.
+      s.git.soil(path);
+
+      await s.manager.provision({
+        mode: 'read',
+        runId: RUN,
+        nodeId: 'recon',
+        path,
+        baseRef: 'main',
+      });
+
+      // Nothing is skipped because *provisioning* triggered the sequence
+      // rather than completion: it is the same `remove()`, so it is the same
+      // four events in the same order.
+      const kinds = eventKinds(s.db).filter((kind) => kind.startsWith('workspace.'));
+      expect(kinds).toEqual([
+        'workspace.dirty_on_remove',
+        'workspace.wip_salvaged',
+        'workspace.worktree_removed',
+        'workspace.worktree_created',
+      ]);
+
+      const argv = s.git.calls.map((call) => call.join(' '));
+      const order = [
+        STATUS_ARGS.join(' '),
+        salvageAddArgs().join(' '),
+        salvageCommitArgs().join(' '),
+        'rev-parse HEAD',
+        // A detached leftover has no branch of its own, so the commit is made
+        // reachable by KAR-07.4 AC6's throwaway ref.
+        salvageBranchArgs(SALVAGE_REF, `${'c'.repeat(39)}1`).join(' '),
+        worktreeUnlockArgs(path).join(' '),
+        salvagedRemoveArgs(path).join(' '),
+      ].map((one) => argv.indexOf(one));
+
+      expect(order).not.toContain(-1);
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+      // The `worktree add` is last: provisioning proceeds as for a fresh path.
+      expect(
+        argv.lastIndexOf(
+          worktreeAddArgs({
+            mode: 'read',
+            runId: RUN,
+            nodeId: 'recon',
+            path,
+            baseRef: 'main',
+          }).join(' '),
+        ),
+      ).toBeGreaterThan(Math.max(...order));
+    } finally {
+      s.close();
+    }
+  });
+
+  it('the salvage commit is reachable, and no plain remove was attempted first', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'recon');
+      s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+      await mkdir(path, { recursive: true });
+      s.git.soil(path);
+
+      await s.manager.provision({
+        mode: 'read',
+        runId: RUN,
+        nodeId: 'recon',
+        path,
+        baseRef: 'main',
+      });
+
+      const salvaged = events(s.db).find((event) => event.kind === 'workspace.wip_salvaged');
+      expect(salvaged?.payload.branch).toBe(SALVAGE_REF);
+      expect(salvaged?.payload.files).toBe(2);
+      // §4.4 decides from `status`, never by running the plain remove and
+      // reading git's refusal — so the plain form is never issued at all.
+      expect(s.git.calls).not.toContainEqual(worktreeRemoveArgs(path));
+    } finally {
+      s.close();
+    }
+  });
+});
+
+suite('EPIC-26-S03: a worktree locked with this node’s own reason is still reused', () => {
+  it('appends workspace.worktree_reused and removes nothing (AC2, KAR-25.8 AC2)', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'recon');
+      s.git.seed({
+        path,
+        branch: null,
+        detached: true,
+        locked: true,
+        lockReason: lockReasonFor(RUN, 'recon'),
+      });
+      await mkdir(path, { recursive: true });
+
+      await s.manager.provision({
+        mode: 'read',
+        runId: RUN,
+        nodeId: 'recon',
+        path,
+        baseRef: 'main',
+      });
+
+      expect(eventKinds(s.db)).toContain('workspace.worktree_reused');
+      // The teardown-completion arm must not have been taken: this worktree is
+      // live, and removing it would destroy a running node's workspace.
+      expect(worktreeSubcommands(s.git)).not.toContain('remove');
+      expect(worktreeSubcommands(s.git)).not.toContain('add');
+      expect(eventKinds(s.db)).not.toContain('workspace.worktree_removed');
+    } finally {
+      s.close();
+    }
+  });
+});
+
+// ── EPIC-26-S06, EPIC-26-S07 ────────────────────────────────────────────────
+
+/** A porcelain entry at `path`, with only the fields these arms read stated. */
+const entryAt = (path: string, over: Partial<WorktreeEntry> = {}): WorktreeEntry => ({
+  path,
+  head: '0'.repeat(40),
+  branch: null,
+  detached: true,
+  bare: false,
+  locked: false,
+  lockReason: null,
+  prunable: false,
+  prunableReason: null,
+  ...over,
+});
+
+const OCCUPIED = '/tmp/wt/run_1__recon';
+
+suite('EPIC-26-S07: the occupant description never points the path at itself', () => {
+  it('names the interrupted removal for an unlocked entry, without naming the path (AC4)', () => {
+    const described = describeOccupant(entryAt(OCCUPIED));
+
+    expect(described).not.toContain(OCCUPIED);
+    expect(described).toMatch(/no lock/i);
+    expect(described).toMatch(/interrupted removal/i);
+  });
+
+  it('names the owner a DeFlow lock reason declares (AC4)', () => {
+    const described = describeOccupant(
+      entryAt(OCCUPIED, { locked: true, lockReason: lockReasonFor('run_other', 'other-node') }),
+    );
+
+    expect(described).not.toContain(OCCUPIED);
+    expect(described).toContain('run run_other');
+    expect(described).toContain('node other-node');
+  });
+
+  it('quotes an operator’s own reason verbatim rather than inventing an owner (AC4)', () => {
+    const described = describeOccupant(
+      entryAt(OCCUPIED, { locked: true, lockReason: 'on holiday' }),
+    );
+
+    expect(described).not.toContain(OCCUPIED);
+    expect(described).toContain('on holiday');
+    expect(described).toMatch(/operator/i);
+  });
+
+  it('says an operator locked it with no reason for a bare lock (AC4)', () => {
+    const described = describeOccupant(entryAt(OCCUPIED, { locked: true, lockReason: null }));
+
+    expect(described).not.toContain(OCCUPIED);
+    expect(described).toMatch(/operator/i);
+    expect(described).toMatch(/no reason/i);
+  });
+
+  it('the refusal message names the occupant and never says the path belongs to itself', () => {
+    const error = new WorktreePathOccupiedError(
+      OCCUPIED,
+      describeOccupant(entryAt(OCCUPIED, { locked: true, lockReason: 'on holiday' })),
+    );
+
+    expect(error.message).toContain('on holiday');
+    // The exact sentence the owner's daemon logged once per tick, for ever.
+    expect(error.message).not.toContain('already belongs to');
+    expect(error.message).not.toContain(`worktree at "${OCCUPIED}", not this run`);
+  });
+});
+
+suite(
+  'EPIC-26-S06: only an unlocked entry is adopted; every lock but this node’s is foreign',
+  () => {
+    const request = { runId: 'r1', nodeId: 'n1' };
+    /** The ordinary site: the node's own derived path, a real directory. */
+    const here = { reachedThroughSymlink: false };
+
+    it('an unlocked entry is the interrupted teardown, and nothing else is', () => {
+      expect(occupancyDecision(request, entryAt(OCCUPIED), here)).toEqual({
+        kind: 'finish-teardown',
+      });
+    });
+
+    it('this run and node’s own lock is reused', () => {
+      const entry = entryAt(OCCUPIED, { locked: true, lockReason: lockReasonFor('r1', 'n1') });
+
+      expect(occupancyDecision(request, entry, here)).toEqual({ kind: 'reuse' });
+    });
+
+    it('another run’s DeFlow lock is refused, naming that owner', () => {
+      const entry = entryAt(OCCUPIED, { locked: true, lockReason: lockReasonFor('r2', 'n9') });
+
+      const decision = occupancyDecision(request, entry, here);
+      expect(decision.kind).toBe('refuse');
+      expect(decision.kind === 'refuse' && decision.occupant).toContain('run r2');
+    });
+
+    it('a bare `locked` record is an operator’s lock, refused — not an unlocked entry', () => {
+      // `git worktree lock <path>` with no `--reason` prints `locked` with no
+      // value, which parses to `{locked: true, lockReason: null}`. Branching on
+      // the reason alone would fold it into the teardown arm and destroy an
+      // operator's own worktree, which is the one thing this story must not do.
+      const entry = entryAt(OCCUPIED, { locked: true, lockReason: null });
+
+      expect(occupancyDecision(request, entry, here).kind).toBe('refuse');
+    });
+
+    it('an operator’s own reason is refused and quoted', () => {
+      const entry = entryAt(OCCUPIED, { locked: true, lockReason: 'on holiday' });
+
+      const decision = occupancyDecision(request, entry, here);
+      expect(decision.kind).toBe('refuse');
+      expect(decision.kind === 'refuse' && decision.occupant).toContain('on holiday');
+    });
+
+    it('the refusal carries a gate-class failure tag, so it is terminal rather than retried (AC3)', () => {
+      const error = new WorktreePathOccupiedError(OCCUPIED, 'run r2 node n9');
+
+      expect(error.deflowFailure).toEqual({ reason: 'safety.execution-boundary', class: 'gate' });
+    });
+  },
+);
 
 // ── Finding 1: a symlinked ancestor must not turn a registered, locked ─────
 // ── worktree into an "orphan" that gets pruned and rm -rf'd ────────────────
@@ -597,6 +1197,7 @@ suite(
           path: registeredPath,
           branch: 'refs/heads/DeFlow/recon',
           detached: false,
+          locked: true,
           lockReason: lockReasonFor(RUN, 'recon'),
         });
 
@@ -649,6 +1250,7 @@ suite('the existing branch-occupancy refusal is unaffected', () => {
         path: occupied,
         branch: 'refs/heads/feature',
         detached: false,
+        locked: true,
         lockReason: 'DeFlow run=r9 node=n9',
       });
       await mkdir(occupied, { recursive: true });
@@ -681,6 +1283,7 @@ suite('FakeGit sanity: parseWorktreeList reads its porcelain back correctly', ()
       path: '/tmp/x',
       branch: 'refs/heads/DeFlow/r__n',
       detached: false,
+      locked: true,
       lockReason: lockReasonFor('r', 'n'),
     });
     const raw = await git.run(WORKTREE_LIST_ARGS as unknown as string[]);
@@ -698,5 +1301,350 @@ suite('FakeGit sanity: parseWorktreeList reads its porcelain back correctly', ()
         prunableReason: null,
       },
     ]);
+  });
+
+  /**
+   * The anti-vacuity harness for KAR-26.1, and the reason the fake was changed
+   * at all.
+   *
+   * Every scenario below turns on *which* of git's three lock shapes an entry
+   * has, and the old fake could express exactly one of them. A fake that
+   * rendered `locked <reason>` unconditionally makes the unlocked case
+   * unreachable and the bare-lock case indistinguishable from it — so the
+   * shapes are parsed back with the real `parseWorktreeList` here, once, rather
+   * than trusted anywhere below.
+   */
+  it('round-trips all four shapes: DeFlow-locked, foreign-locked, bare-locked and unlocked', async () => {
+    const git = new FakeGit('/tmp/repo');
+    git.seed({
+      path: '/tmp/ours',
+      branch: null,
+      detached: true,
+      locked: true,
+      lockReason: lockReasonFor('r1', 'n1'),
+    });
+    git.seed({
+      path: '/tmp/theirs',
+      branch: null,
+      detached: true,
+      locked: true,
+      lockReason: lockReasonFor('r2', 'n9'),
+    });
+    git.seed({ path: '/tmp/bare', branch: null, detached: true, locked: true, lockReason: null });
+    git.seed({ path: '/tmp/free', branch: null, detached: true, locked: false, lockReason: null });
+
+    const raw = await git.run([...WORKTREE_LIST_ARGS]);
+    const shapes = parseWorktreeList(raw.stdout)
+      .filter((entry) => entry.path !== '/tmp/repo')
+      .map((entry) => [entry.path, entry.locked, entry.lockReason] as const);
+
+    expect(shapes).toEqual([
+      ['/tmp/ours', true, 'DeFlow run=r1 node=n1'],
+      ['/tmp/theirs', true, 'DeFlow run=r2 node=n9'],
+      // A lock taken with no `--reason`: git prints the record with no value.
+      ['/tmp/bare', true, null],
+      // Not locked at all: git prints no `locked` record, which is the shape
+      // an interrupted teardown leaves and the one the old fake could not make.
+      ['/tmp/free', false, null],
+    ]);
+  });
+});
+
+// ── EPIC-26-S01, write nodes ────────────────────────────────────────────────
+//
+// A write node's leftover is checked out on the branch `nodeBranch` derives
+// from its own run and node ids — deterministically the branch its next
+// attempt asks for. Finishing the teardown frees the *path* and deliberately
+// keeps the *branch* (§4.4: the branch is the deliverable, F5.5), so a
+// provision that then asked git to create that branch could never succeed:
+// `fatal: a branch named '<b>' already exists`, on this attempt and every
+// later one, with the worktree already destroyed. AC1's "provisioning proceeds
+// as for a fresh path" has to hold for a write node too, and a fresh path
+// whose branch already exists is entered, not re-created.
+
+suite('EPIC-26-S01: a write node’s interrupted teardown can still provision (AC1)', () => {
+  const writeRequest = (path: string, branch: string) => ({
+    mode: 'write' as const,
+    runId: RUN,
+    nodeId: 'n1',
+    branch,
+    path,
+    baseRef: 'main',
+  });
+
+  it('re-enters the branch the leftover was on rather than asking git to create it twice', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'n1');
+      const branch = `DeFlow/${runRef(RUN)}__n1`;
+      // The interrupted teardown, for a write node: registered, unlocked, and
+      // on the very branch this request is about to ask for.
+      s.git.seed({
+        path,
+        branch: `refs/heads/${branch}`,
+        detached: false,
+        locked: false,
+        lockReason: null,
+      });
+      await mkdir(path, { recursive: true });
+
+      const result = await s.manager.provision(writeRequest(path, branch));
+
+      expect(result.path).toBe(path);
+      expect(result.branch).toBe(branch);
+      const kinds = eventKinds(s.db);
+      expect(kinds.indexOf('workspace.worktree_removed')).toBeLessThan(
+        kinds.indexOf('workspace.worktree_created'),
+      );
+      // The add never asks git to create a name it already holds.
+      const add = s.git.calls.find((argv) => argv[0] === 'worktree' && argv[1] === 'add') ?? [];
+      expect(add).not.toContain('-b');
+      expect(add.at(-1)).toBe(branch);
+    } finally {
+      s.close();
+    }
+  });
+
+  it('keeps the branch across the teardown — it is the node’s deliverable, not scratch', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'n1');
+      const branch = `DeFlow/${runRef(RUN)}__n1`;
+      s.git.seed({
+        path,
+        branch: `refs/heads/${branch}`,
+        detached: false,
+        locked: false,
+        lockReason: null,
+      });
+      await mkdir(path, { recursive: true });
+      // Work the agent committed before the daemon died: on the branch, and
+      // the only copy of it there is.
+      s.git.soil(path);
+
+      await s.manager.provision(writeRequest(path, branch));
+
+      // Deleting the branch would be the other way to make `-b` succeed, and
+      // it would take the salvage commit with it.
+      expect(s.git.refExists(branch)).toBe(true);
+      expect(s.git.calls.filter((argv) => argv[0] === 'branch' && argv.includes('-D'))).toEqual([]);
+      const salvaged = events(s.db).find((event) => event.kind === 'workspace.wip_salvaged');
+      expect(salvaged?.payload.branch).toBe(branch);
+    } finally {
+      s.close();
+    }
+  });
+
+  it('provisions on a later attempt too, when only the branch is left', async ({ tmp }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'n1');
+      const branch = `DeFlow/${runRef(RUN)}__n1`;
+      // The state one completed teardown leaves behind: no worktree, no
+      // directory, and the branch §4.4 kept on purpose. Every later drive tick
+      // starts here, so a provision that fails on this shape fails for ever.
+      s.git.seedRef(branch);
+
+      const result = await s.manager.provision(writeRequest(path, branch));
+
+      expect(result.branch).toBe(branch);
+      expect(eventKinds(s.db)).toContain('workspace.worktree_created');
+    } finally {
+      s.close();
+    }
+  });
+
+  it('git itself refuses `-b` on a branch that exists — the fake is not being kind', async ({
+    tmp,
+  }) => {
+    // Anti-vacuity, against `FakeGit` directly: without this refusal every
+    // assertion above would pass over a `provision` that still ran `add -b`
+    // into an occupied name, which is exactly what real git rejects with
+    // exit 255 (verified on git 2.43.0).
+    const s = scene(tmp);
+    try {
+      const spec = {
+        mode: 'write' as const,
+        runId: 'r1',
+        nodeId: 'n1',
+        branch: 'DeFlow/r1__n1',
+        path: join(tmp, 'wt-a'),
+        baseRef: 'main',
+      };
+      await s.git.run(worktreeAddArgs(spec));
+
+      const again = await s.git.run(worktreeAddArgs({ ...spec, path: join(tmp, 'wt-b') }));
+
+      expect(again.exitCode).not.toBe(0);
+      expect(again.stderr).toContain("a branch named 'DeFlow/r1__n1' already exists");
+    } finally {
+      s.close();
+    }
+  });
+});
+
+// ── EPIC-26-S01, the directory already gone ─────────────────────────────────
+//
+// `git worktree remove` deletes the working directory *before* it clears the
+// administrative entry, so a teardown killed inside that window leaves
+// registered + unlocked + no directory — the same interrupted removal as the
+// dirty variant, from the other end. An operator's own `rm -rf` of a stale
+// worktree lands in the identical state. git marks the entry `prunable` and
+// keeps reporting it, and `worktree add` over it can only ever fail.
+
+suite('EPIC-26-S01: an interrupted teardown whose directory is already gone (AC1)', () => {
+  it('finishes the removal from git’s own registry, and provisions over it', async ({ tmp }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'recon');
+      // Registered, unlocked, and no directory — seeded without the mkdir
+      // every other fixture in this file does.
+      s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+
+      const result = await s.manager.provision({
+        mode: 'read',
+        runId: RUN,
+        nodeId: 'recon',
+        path,
+        baseRef: 'main',
+      });
+
+      expect(result.path).toBe(path);
+      const kinds = eventKinds(s.db);
+      expect(kinds.filter((kind) => kind === 'workspace.worktree_removed')).toHaveLength(1);
+      expect(kinds.filter((kind) => kind === 'workspace.worktree_created')).toHaveLength(1);
+      expect(kinds.indexOf('workspace.worktree_removed')).toBeLessThan(
+        kinds.indexOf('workspace.worktree_created'),
+      );
+    } finally {
+      s.close();
+    }
+  });
+
+  it('asks for no status and salvages nothing — there is no working tree to hold work', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const path = s.wt(RUN, 'recon');
+      s.git.seed({ path, branch: null, detached: true, locked: false, lockReason: null });
+
+      await s.manager.provision({
+        mode: 'read',
+        runId: RUN,
+        nodeId: 'recon',
+        path,
+        baseRef: 'main',
+      });
+
+      // `git status` runs *inside* the worktree (§4.4 step 1), and a directory
+      // that is not there cannot be a cwd — asking would fail the provision
+      // rather than complete the teardown.
+      expect(s.git.calls).not.toContainEqual([...STATUS_ARGS]);
+      expect(eventKinds(s.db)).not.toContain('workspace.dirty_on_remove');
+      expect(s.git.calls).not.toContainEqual(salvagedRemoveArgs(path));
+    } finally {
+      s.close();
+    }
+  });
+});
+
+// ── The path is a symlink ───────────────────────────────────────────────────
+//
+// `findRegistered` matches by realpath, on purpose: a symlinked *ancestor*
+// must not make a run's own worktree look unregistered. But the same
+// resolution means a symlink at the node's own path matches whatever it points
+// at, and the justification for adopting an unlocked entry — "this path is
+// derived from the very run and node now asking for it" — is a fact about the
+// path, not about the directory it resolves to. Adopting through one costs an
+// operator the worktree at the other end.
+
+suite('a symlink at the node’s own path is refused, never adopted', () => {
+  it('refuses instead of finishing a teardown of the worktree the link points at', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const operator = join(tmp, 'operator-wt');
+      await mkdir(operator, { recursive: true });
+      await writeFile(join(operator, 'precious.txt'), 'hours of uncommitted work');
+      const path = s.wt(RUN, 'recon');
+      await mkdir(join(path, '..'), { recursive: true });
+      await symlink(operator, path, 'dir');
+      // The operator's own worktree: registered, and unlocked because they
+      // never locked it — indistinguishable, by lock alone, from DeFlow's own
+      // half-removed one.
+      s.git.seed({
+        path: await realpath(operator),
+        branch: null,
+        detached: true,
+        locked: false,
+        lockReason: null,
+      });
+
+      const thrown = await s.manager
+        .provision({ mode: 'read', runId: RUN, nodeId: 'recon', path, baseRef: 'main' })
+        .catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(WorktreePathOccupiedError);
+      // Named by where it really is, which is the one thing that tells an
+      // operator what happened.
+      expect((thrown as WorktreePathOccupiedError).occupiedBy).toContain(operator);
+      expect(worktreeSubcommands(s.git)).not.toContain('remove');
+      expect(worktreeSubcommands(s.git)).not.toContain('add');
+      expect(await exists(join(operator, 'precious.txt'))).toBe(true);
+      expect(eventKinds(s.db)).not.toContain('workspace.worktree_removed');
+    } finally {
+      s.close();
+    }
+  });
+
+  it('refuses a symlink even when the lock reason names this very run and node', async ({
+    tmp,
+  }) => {
+    const s = scene(tmp);
+    try {
+      const elsewhere = join(tmp, 'elsewhere');
+      await mkdir(elsewhere, { recursive: true });
+      const path = s.wt(RUN, 'recon');
+      await mkdir(join(path, '..'), { recursive: true });
+      await symlink(elsewhere, path, 'dir');
+      s.git.seed({
+        path: await realpath(elsewhere),
+        branch: null,
+        detached: true,
+        locked: true,
+        lockReason: lockReasonFor(RUN, 'recon'),
+      });
+
+      const thrown = await s.manager
+        .provision({ mode: 'read', runId: RUN, nodeId: 'recon', path, baseRef: 'main' })
+        .catch((error: unknown) => error);
+
+      // Reuse would return `request.path` as the worktree's path — a lie about
+      // where the node's files are, and the ledger's record of it.
+      expect(thrown).toBeInstanceOf(WorktreePathOccupiedError);
+      expect(eventKinds(s.db)).not.toContain('workspace.worktree_reused');
+    } finally {
+      s.close();
+    }
+  });
+
+  it('the decision itself refuses a symlinked site, whatever the lock says', () => {
+    const request = { runId: 'r1', nodeId: 'n1' };
+    const linked = { reachedThroughSymlink: true };
+
+    for (const entry of [
+      entryAt(OCCUPIED),
+      entryAt(OCCUPIED, { locked: true, lockReason: lockReasonFor('r1', 'n1') }),
+    ]) {
+      const decision = occupancyDecision(request, entry, linked);
+      expect(decision.kind).toBe('refuse');
+      expect(decision.kind === 'refuse' && decision.occupant).toContain(OCCUPIED);
+    }
   });
 });

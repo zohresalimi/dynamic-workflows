@@ -53,10 +53,45 @@
  *   touches a locked entry, so this can only ever clear dead state) and
  *   removed, then provisioned fresh.
  *
+ * **A fourth case: the teardown that never finished (KAR-26.1).** `remove`
+ * unlocks before it removes and ignores the unlock's exit code, so a daemon
+ * killed between the two steps — or a `remove` git refused because the tree was
+ * dirty — leaves the entry **registered and unlocked**. KAR-25.8 read that as an
+ * unidentifiable occupant and refused for ever, once per drive tick. It is not
+ * unidentifiable: the path is `<runRoot>/runs/<runId>/worktrees/<nodeId>`,
+ * derived from the very run and node now asking for it, so a registered entry
+ * sitting there with no lock is DeFlow's own half-removed worktree and the
+ * correct move is to finish the removal — `remove()` again, salvage sequence and
+ * all — and then provision as for a fresh path. "As for a fresh path" includes
+ * the branch: §4.4 keeps it, so a write node re-enters it rather than asking
+ * git to create a name it already holds (@see worktreeAttachArgs).
+ *
+ * That justification is a claim about *the path*, and it holds only for the
+ * literal one. `findRegistered` matches by realpath, so a **symlink** at the
+ * node's own path matches whatever it points at — and `git worktree remove`
+ * through a link removes the worktree at the other end of it. So a symlinked
+ * site is refused, never adopted and never reused (@see isSymlink).
+ *
+ * The discriminator is `entry.locked`, **never** `entry.lockReason === null`.
+ * `git worktree lock <path>` with no `--reason` prints a bare `locked` record,
+ * which parses to `{ locked: true, lockReason: null }` — indistinguishable from
+ * an unlocked entry to anything that branches on the reason, and adopting it
+ * would destroy an operator's own worktree. Not locked is adopted; locked by
+ * anyone but this run and node is refused.
+ *
  * Verifies: EPIC-07-S9 … EPIC-07-S16 · AC1–AC8
  * Verifies: EPIC-25-S51 … EPIC-25-S55 · KAR-25.8 AC1–AC6
+ * Verifies: EPIC-26-S01 … EPIC-26-S08 · KAR-26.1 AC1–AC6
  */
-import type { Clock, Db, EventSeq, NodeId, RunId, WorktreeOccupantKind } from '@DeFlow/core';
+import type {
+  Clock,
+  Db,
+  EventSeq,
+  FailureTag,
+  NodeId,
+  RunId,
+  WorktreeOccupantKind,
+} from '@DeFlow/core';
 import {
   appendEvents,
   type EventDraft,
@@ -65,8 +100,9 @@ import {
   replaceWorktrees,
   type WorktreeRow,
 } from '@DeFlow/ledger';
-import { realpath, rm, stat } from 'node:fs/promises';
-import { salvageBranch } from './branch-name.ts';
+import { lstat, realpath, rm, stat } from 'node:fs/promises';
+import { log } from '../logging.ts';
+import { runRef, salvageBranch } from './branch-name.ts';
 import type { GitResult } from './run-git.ts';
 import {
   isDirty,
@@ -80,6 +116,7 @@ import {
   WORKTREE_LIST_ARGS,
   WORKTREE_PRUNE_ORPHAN_ARGS,
   worktreeAddArgs,
+  worktreeAttachArgs,
   worktreeRemoveArgs,
   worktreeUnlockArgs,
 } from './worktree-args.ts';
@@ -211,22 +248,36 @@ export class BranchOccupiedError extends Error {
 }
 
 /**
- * KAR-25.8 case 2 — the path a `provision` was asked for already has a
- * registered worktree, and it belongs to a different run or a different node.
+ * KAR-25.8 case 2 — the path a `provision` was asked for holds a **locked**
+ * worktree, and the lock is not this run and node's.
  *
  * Decided from `list()` and `parseLockReason` before `git worktree add` is
  * ever tried, the same posture `BranchOccupiedError` takes for a branch: the
  * refusal names the holder from the lock reason §4.1 itself wrote, not from
  * whatever git's own "already exists" happens to say this release.
+ *
+ * **KAR-26.1 AC3 — the refusal is terminal.** The tag is what makes it so: a
+ * `gate` class routes every caller of `provision` through the retry ladder's
+ * escalation arm, which suspends the node and appends `run.needs_human`, and
+ * both the driver and the run chain skip a run whose `run.needs_human` is newer
+ * than its pin. Untagged, this classified as `internal`/`permanent` — a mapping
+ * nobody had written — and the daemon logged the same refusal once per tick for
+ * ever, because nothing recorded the node as failed. `safety.execution-boundary`
+ * because adopting or destroying a worktree DeFlow did not provision is a
+ * guarded operation (F5.6), and only a person can free the path.
  */
 export class WorktreePathOccupiedError extends Error {
   readonly path: string;
   readonly occupiedBy: string;
+  /** @see FAILURE_TAG — the property `toNodeFailure`'s `tagged` recogniser
+   * reads, spelled as the literal @DeFlow/core spells it. */
+  readonly deflowFailure: FailureTag = { reason: 'safety.execution-boundary', class: 'gate' };
 
   constructor(path: string, occupiedBy: string) {
     super(
-      `The worktree at "${path}" already belongs to ${occupiedBy}, not this run and node. ` +
-        'DeFlow will not adopt a worktree it did not provision for this node.',
+      `The worktree at "${path}" is held by ${occupiedBy}, so DeFlow will not provision this ` +
+        'run and node over it. Release the lock, or remove the worktree, and the next attempt ' +
+        'will take the path.',
     );
     this.name = 'WorktreePathOccupiedError';
     this.path = path;
@@ -346,6 +397,27 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
+ * Whether the **last** component of `path` is itself a symlink — `lstat`, so a
+ * symlinked ancestor (the `/var` → `/private/var` case `resolved` exists for)
+ * is not one of these.
+ *
+ * The distinction is the whole of KAR-26.1's adoption rule. Adopting an
+ * unlocked entry is justified by *where the path came from*: `worktreePathFor`
+ * derives it from the very run and node now asking for it, so nothing but
+ * DeFlow can have put a worktree there. A symlink breaks that reasoning and
+ * nothing else does — the name is still derived, but the directory it resolves
+ * to is whatever somebody pointed the link at, and `findRegistered` matches by
+ * realpath, so the entry that comes back is theirs. Verified against real git:
+ * `worktree remove <link>` removes the worktree at the *other end*.
+ */
+async function isSymlink(path: string): Promise<boolean> {
+  return await lstat(path).then(
+    (entry) => entry.isSymbolicLink(),
+    () => false,
+  );
+}
+
+/**
  * Paths as `git worktree list` prints them are realpath-resolved; a path this
  * module builds itself (`worktreePathFor`, a plain `path.join`) is not. When
  * any ancestor is a symlink the two strings differ for the *same* directory,
@@ -387,20 +459,91 @@ async function findRegistered(
   return undefined;
 }
 
-/** KAR-25.8 case 2's holder, described from the lock reason §4.1 itself
- * wrote — `parseLockReason`'s own `runId`/`nodeId`, or the raw reason when it
- * is not one of DeFlow's own (an operator's own `--reason`, or none at all). */
-function pathOccupant(
-  entry: WorktreeEntry,
-  owner: { readonly runId: string; readonly nodeId: string } | null,
-): string {
+/**
+ * What is sitting at a path, in DeFlow's own words — KAR-26.1 AC4.
+ *
+ * **Never the entry's own path.** The sentence this replaces was
+ * *"already belongs to an unlabeled worktree at `<the same path>`"*, which told
+ * an operator that a path belongs to itself and named neither the state nor an
+ * owner. Each arm here names something a person can act on: the interrupted
+ * removal, the run and node a DeFlow lock declares, or the operator's own words
+ * quoted verbatim.
+ *
+ * The unlocked arm is a *description*, not a refusal — it is what the
+ * teardown-completion log line says it is finishing.
+ */
+export function describeOccupant(entry: WorktreeEntry): string {
+  if (!entry.locked) return 'a worktree with no lock, left by an interrupted removal';
+
+  const owner = parseLockReason(entry.lockReason);
   if (owner !== null) return `run ${owner.runId} node ${owner.nodeId}`;
-  return entry.lockReason ?? `an unlabeled worktree at "${entry.path}"`;
+  if (entry.lockReason !== null) return `an operator's own lock, reason "${entry.lockReason}"`;
+  return "an operator's own lock, taken with no reason";
+}
+
+/** What the *path* is, as opposed to what git says is registered at it —
+ * everything the decision needs that the porcelain entry cannot tell it. */
+export interface OccupancySite {
+  /** @see isSymlink — required rather than optional, because a caller that
+   * forgot it would silently get the adopting answer. */
+  readonly reachedThroughSymlink: boolean;
+}
+
+/** What `provision` does about a worktree already registered at its path. */
+export type OccupancyDecision =
+  | { readonly kind: 'reuse' }
+  | { readonly kind: 'finish-teardown' }
+  | { readonly kind: 'refuse'; readonly occupant: string };
+
+/**
+ * KAR-25.8 AC1–AC3 and KAR-26.1 AC1–AC3, as one pure function over the
+ * porcelain entry `list()` reported.
+ *
+ * **`entry.locked` is asked first, and the lock reason second.** git prints
+ * three shapes and they mean three different things: no `locked` record at all
+ * (not locked), `locked` with no value (an operator's `git worktree lock` with
+ * no `--reason`), and `locked <reason>`. `parseLockReason` maps the first two to
+ * the same `null`, so a decision keyed on the reason would adopt — and destroy —
+ * a worktree an operator deliberately locked. Only *not locked* is adopted, and
+ * only at a path this very run and node derive for themselves, which is what
+ * makes adoption a finished teardown rather than a squatter being evicted.
+ */
+export function occupancyDecision(
+  request: { readonly runId: string; readonly nodeId: string },
+  entry: WorktreeEntry,
+  site: OccupancySite,
+): OccupancyDecision {
+  // Neither arm below survives a symlink. Adoption rests on the path being
+  // derived rather than found, and reuse would return `request.path` as the
+  // worktree's own — a ledger record of a directory the node's files are not
+  // in. Refusing is the F5.6 posture the rest of this module takes: DeFlow does
+  // not act on a worktree it cannot show it provisioned.
+  if (site.reachedThroughSymlink) {
+    return {
+      kind: 'refuse',
+      occupant:
+        `the worktree at "${entry.path}", which this path is only a symlink to — ` +
+        describeOccupant(entry),
+    };
+  }
+
+  if (!entry.locked) return { kind: 'finish-teardown' };
+
+  const owner = parseLockReason(entry.lockReason);
+  if (owner !== null && owner.runId === request.runId && owner.nodeId === request.nodeId) {
+    return { kind: 'reuse' };
+  }
+  return { kind: 'refuse', occupant: describeOccupant(entry) };
 }
 
 /** Everything but `refreshedAt`, which changes on every refresh and would make
  * every refresh look like a change. */
 const comparable = (row: WorktreeRow): string => JSON.stringify({ ...row, refreshedAt: 0 });
+
+/** KAR-26.1 — finishing somebody's interrupted teardown is a thing an operator
+ * should be able to find in the log afterwards, and it appends no event of its
+ * own: `workspace.worktree_removed` records the removal, not why it ran now. */
+const workspace = log.child({ mod: 'workspace' });
 
 export class WorkspaceManager {
   readonly #ports: WorkspacePorts;
@@ -426,23 +569,47 @@ export class WorkspaceManager {
    * `--detach` means it claims no branch, so there is nothing for it to
    * collide on. Two read nodes on the same commit both succeed.
    *
-   * **KAR-25.8** — `git worktree add` only runs when the path is not already
-   * there. When it is, `#reuseOrRefuse` decides from `list()` and the lock
-   * reason whether this is the node's own worktree (reused) or somebody
-   * else's (refused); when the path exists but git has no record of it at
-   * all, it is pruned and removed first, and provisioning proceeds exactly as
-   * it would have for a path that was never there. The path-existence check
-   * only runs when a directory is actually there, so the ordinary fresh-path
-   * case — every provision before a node's first failure — makes exactly the
-   * same git calls it always did.
+   * **KAR-25.8** — `git worktree add` only runs against a path nothing holds.
+   * `occupancyDecision` decides from `list()` and the lock reason whether a
+   * registered entry is the node's own worktree (reused) or somebody else's
+   * (refused); a directory git has no record of at all is pruned and removed
+   * first, and provisioning proceeds exactly as it would have for a path that
+   * was never there.
+   *
+   * **KAR-26.1** — and a registered entry that is *not locked* is neither of
+   * those. It is a §4.4 teardown that stopped part-way, at a path namespaced by
+   * this very run and node, so it is finished here and the `worktree add`
+   * below then runs against a path that is genuinely free.
+   *
+   * **git's registry is read first, and the filesystem only after** — never the
+   * other way round, because a registered worktree whose *directory* is gone is
+   * invisible to a filesystem check and fatal to an `add`. That state is not
+   * exotic: `worktree remove` deletes the working directory **before** it
+   * clears the administrative entry, so a kill inside that window leaves
+   * exactly it, and so does an operator's own `rm -rf` of a worktree they were
+   * done with. git keeps listing the entry (marked `prunable`) and refuses
+   * every later `add` with `is a missing but already registered worktree` —
+   * deterministically, for ever. The cost is one `worktree list` per provision,
+   * shared with the branch pre-check rather than read twice.
    */
   async provision(request: ProvisionRequest): Promise<ProvisionResult> {
-    if (request.mode === 'write') await this.#assertBranchFree(request);
+    const entries = await this.list();
+    if (request.mode === 'write') await this.#assertBranchFree(request, entries);
 
-    if (await pathExists(request.path)) {
-      const registered = await findRegistered(await this.list(), request.path);
-      if (registered !== undefined) return this.#reuseOrRefuse(request, registered);
-
+    const registered = await findRegistered(entries, request.path);
+    if (registered !== undefined) {
+      const decision = occupancyDecision(request, registered, {
+        reachedThroughSymlink: await isSymlink(request.path),
+      });
+      if (decision.kind === 'reuse') return this.#reuse(request);
+      if (decision.kind === 'refuse') {
+        throw new WorktreePathOccupiedError(request.path, decision.occupant);
+      }
+      // Falls through to `worktree add`, and deliberately not into the orphan
+      // branch below: `remove` has already taken both the git registration and
+      // the directory, and the prune is for paths git never knew about.
+      await this.#finishInterruptedTeardown(request, registered);
+    } else if (await pathExists(request.path)) {
       // AC4 — on disk, but git's own list never heard of it: a crash between
       // the directory being made and the ledger append landing, not a live
       // worktree. `prune` cannot remove anything locked, so this is safe even
@@ -451,7 +618,7 @@ export class WorkspaceManager {
       await rm(request.path, { recursive: true, force: true });
     }
 
-    const result = await this.#ports.git.run(worktreeAddArgs(request));
+    const result = await this.#ports.git.run(await this.#addArgs(request));
     if (result.exitCode !== 0) throw new WorktreeCreateFailed(request.path, result);
 
     const branch = request.mode === 'write' ? request.branch : null;
@@ -469,24 +636,82 @@ export class WorkspaceManager {
   }
 
   /**
-   * KAR-25.8 AC1-AC3 — the path `provision` was asked for is already a
-   * registered worktree. `parseLockReason` is `lockReasonFor`'s exact inverse
-   * (../git/worktree-args.ts), so this is the same identity §4.1 locked the
-   * worktree with, read back rather than re-derived.
+   * §4.1's argv — `-b <branch>` to make the branch, or the attach form to
+   * re-enter one that is already there (KAR-26.1 AC1).
    *
-   * A match on this run and node is reused — same path, same branch, same
-   * lock reason, `workspace.worktree_reused` instead of a second `_created`
-   * (AC2). Anything else — a different run or node, or a reason that is not
-   * one of DeFlow's own — is refused before `git worktree add` is ever tried,
-   * the same "decide from the porcelain list, not from git's error" posture
-   * `#assertBranchFree` already takes for a branch.
+   * A read node never asks: `--detach` claims no branch, so there is nothing
+   * for it to collide with. A write node's branch, though, is `nodeBranch`'s
+   * deterministic function of its run and node ids, and §4.4 deliberately keeps
+   * a branch when it removes its worktree — so by the time a node provisions a
+   * second time, for any reason, the name `-b` would create is already taken
+   * and git refuses. The alternatives are to delete the branch (which is the
+   * node's deliverable, and after an interrupted teardown holds the WIP salvage
+   * commit as well) or to invent a second name (which leaves the run's work in
+   * two places nobody looks). Re-entering it is the only one that keeps both.
+   *
+   * `branchTip` is the existing question, asked of git rather than of a flag
+   * this code carried down from the decision above: the branch may exist
+   * because the leftover was on it, or because a previous *completed* teardown
+   * kept it and the worktree is long gone.
    */
-  #reuseOrRefuse(request: ProvisionRequest, entry: WorktreeEntry): ProvisionResult {
-    const owner = parseLockReason(entry.lockReason);
-    if (owner === null || owner.runId !== request.runId || owner.nodeId !== request.nodeId) {
-      throw new WorktreePathOccupiedError(request.path, pathOccupant(entry, owner));
-    }
+  async #addArgs(request: ProvisionRequest): Promise<readonly string[]> {
+    if (request.mode === 'read') return worktreeAddArgs(request);
+    const existing = await branchTip(this.#ports.git, request.branch);
+    return existing === null ? worktreeAddArgs(request) : worktreeAttachArgs(request);
+  }
 
+  /**
+   * KAR-26.1 AC1 — the removal §4.4 started and never finished, finished.
+   *
+   * `this.remove()` rather than a second removal sequence written here: the
+   * dirty path's capture-commit-force order, its durability check, and the
+   * single `--force` that is only reachable through it are all KAR-07.4's, and
+   * duplicating them is how the salvage stops being the only way to a force.
+   *
+   * The branch is the **entry's own**, read back out of the porcelain rather
+   * than taken from `request`: a leftover may be checked out on a branch a
+   * previous attempt made, and `remove` uses it both for the tip oid it records
+   * and as the salvage commit's target. A detached leftover (every recon node)
+   * passes none, so `remove`'s AC6 path lands the commit on a throwaway ref.
+   *
+   * `salvageBranch` is composed here and passed in for the reason
+   * `RemoveRequest.salvageBranch` exists at all: a `RunId` is
+   * `run_YYYYMMDDTHHMMSSZ_<hex>`, whose `T` and `Z` are uppercase, and
+   * `BRANCH_SAFE` is lowercase-only — so `remove`'s own fallback throws
+   * `UnsafeRefError` for **every run in existence** and leaves the worktree
+   * present and dirty, which is the loop this story is closing rather than a
+   * safe failure. `runRef` is the one sanctioned transformation
+   * (./branch-name.ts), and this composes the ref exactly as
+   * ../pipeline/live-nodes.ts already does for a completing node.
+   */
+  async #finishInterruptedTeardown(request: ProvisionRequest, entry: WorktreeEntry): Promise<void> {
+    workspace.info(
+      { runId: request.runId, node: request.nodeId, path: request.path },
+      `the path for ${request.nodeId} holds ${describeOccupant(entry)}; finishing that removal ` +
+        'before the node is provisioned again',
+    );
+
+    await this.remove({
+      runId: request.runId,
+      nodeId: request.nodeId,
+      path: request.path,
+      salvageBranch: salvageBranch(runRef(request.runId), request.nodeId),
+      ...(entry.branch === null ? {} : { branch: shortBranch(entry.branch) }),
+    });
+  }
+
+  /**
+   * KAR-25.8 AC1, AC2 — the path `provision` was asked for is this run and
+   * node's own locked worktree. `parseLockReason` is `lockReasonFor`'s exact
+   * inverse (../git/worktree-args.ts), so the identity checked in
+   * `occupancyDecision` is the one §4.1 locked the worktree with, read back
+   * rather than re-derived.
+   *
+   * Same path, same branch, same lock reason, and `workspace.worktree_reused`
+   * instead of a second `_created`: two `_created` events for one node would
+   * make the ledger claim two worktrees where there is one.
+   */
+  #reuse(request: ProvisionRequest): ProvisionResult {
     const branch = request.mode === 'write' ? request.branch : null;
     const lockReason = lockReasonFor(request.runId, request.nodeId);
     this.#append(request.runId, request.nodeId, 'workspace.worktree_reused', {
@@ -524,7 +749,14 @@ export class WorkspaceManager {
    * that is the state this call wanted anyway.
    */
   async remove(request: RemoveRequest): Promise<RemoveResult> {
-    const entries = await this.#captureStatus(request.path);
+    // A worktree whose directory is already gone has no work to salvage, and
+    // `status` cannot be asked about it at all — it runs *inside* the worktree,
+    // and a directory that is not there cannot be a cwd. This is the state a
+    // removal interrupted after git deleted the directory and before it cleared
+    // the registration leaves, and the removal below is what clears it: `git
+    // worktree remove` on a missing-but-registered worktree exits 0 and takes
+    // the administrative entry with it (verified on git 2.43.0).
+    const entries = (await pathExists(request.path)) ? await this.#captureStatus(request.path) : [];
     const salvage = isDirty(entries) ? await this.#salvage(request, entries) : null;
 
     const branch = request.branch ?? null;
@@ -689,8 +921,11 @@ export class WorkspaceManager {
    * every retry of a write node would refuse itself: the branch a prior
    * attempt created is, by construction, still checked out at the path the
    * retry is about to reuse. */
-  async #assertBranchFree(request: ProvisionWrite): Promise<void> {
-    const occupant = findOccupant(await this.list(), request.branch);
+  async #assertBranchFree(
+    request: ProvisionWrite,
+    entries: readonly WorktreeEntry[],
+  ): Promise<void> {
+    const occupant = findOccupant(entries, request.branch);
     if (occupant === null) return;
     const isSelf =
       occupant.path === request.path ||
