@@ -38,8 +38,19 @@
  * worktree could not go back is a failed node, even though its facts are
  * already durable.
  *
+ * **The occupancy refusal returns rather than escapes** (KAR-26.1 AC3): a
+ * `provision` refused because somebody else holds the path is a failed recon
+ * node, journalled and returned, not an exception the driver logs. The
+ * distinction is not stylistic — an escaping throw reached `advanceOneRun`'s
+ * catch, which writes a line to the daemon's own log and returns, leaving
+ * nothing in the ledger to say the node failed and therefore nothing to stop
+ * the next tick trying again. It is scoped to that one refusal because it is
+ * the one no retry can clear; every other provisioning failure still escapes,
+ * and is still the driver's to re-attempt.
+ *
  * Verifies: EPIC-10-S24, EPIC-10-S25, EPIC-10-S26, EPIC-10-S27, EPIC-10-S28 ·
  * AC1-AC6, AC8
+ * Verifies: EPIC-26-S04, EPIC-26-S06 · KAR-26.1 AC3
  */
 
 import type {
@@ -65,7 +76,8 @@ import {
 } from '@DeFlow/core';
 import { appendEvents, headSeq, writeFact } from '@DeFlow/ledger';
 import { createHash } from 'node:crypto';
-import type { ProvisionRead, WorkspaceManager } from '../git/worktree-manager.ts';
+import type { ProvisionRead, ProvisionResult, WorkspaceManager } from '../git/worktree-manager.ts';
+import { WorktreePathOccupiedError } from '../git/worktree-manager.ts';
 import { enforceHandoff, type HandoffSession, type HandoffValidator } from '../handoff/enforce.ts';
 import { type RepoSurveyDocument, surveyRepository } from './survey.ts';
 
@@ -254,14 +266,41 @@ function surveyBytes(document: RepoSurveyDocument): Uint8Array {
  * failure as a value to make it.
  */
 export async function runReconNode(options: ReconNodeOptions): Promise<ReconOutcome> {
-  const provisioned = await options.workspace.provision(
-    reconProvisionRequest({
-      runId: options.runId,
-      nodeId: options.node,
-      path: options.worktree.path,
-      baseRef: options.worktree.baseRef,
-    }),
-  );
+  let provisioned: ProvisionResult;
+  try {
+    provisioned = await options.workspace.provision(
+      reconProvisionRequest({
+        runId: options.runId,
+        nodeId: options.node,
+        path: options.worktree.path,
+        baseRef: options.worktree.baseRef,
+      }),
+    );
+  } catch (thrown) {
+    // KAR-26.1 AC3 — folded into the outcome rather than escaping, and that is
+    // the whole difference between a failure and a haunting. An escaped throw
+    // reached `advanceOneRun`'s catch, which logs and returns: nothing recorded
+    // the node as failed, so the next tick tried again, and a deterministic
+    // refusal — a worktree locked by somebody else, which no retry can free —
+    // printed itself once per second for ever. As a value it reaches
+    // `recordTurnFailure`, which classifies it and, for a gate, suspends the
+    // node and asks a person.
+    //
+    // **Only that one refusal.** Every other way `provision` can fail is a
+    // failure recon might get past next time — a salvage a `pre-commit` hook
+    // refused, a busy index, a base ref that does not resolve — and folding
+    // those into an outcome would hand `advanceRun` a `failed` recon with no
+    // facts in it, which it compiles a plan from. A run permanently committed
+    // to a plan built on nothing is a worse end than a retry, so they stay the
+    // driver's to log and re-attempt.
+    if (!(thrown instanceof WorktreePathOccupiedError)) throw thrown;
+    return {
+      outcome: 'failed',
+      failure: appendFailure(options, thrown),
+      facts: [],
+      survey: null,
+    };
+  }
 
   const outcome = await surveyAndSettle(options, provisioned.path);
 

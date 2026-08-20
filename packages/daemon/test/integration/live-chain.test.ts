@@ -39,7 +39,7 @@ import {
   spillBytes,
 } from '@DeFlow/ledger';
 import { GIT_ENV, it, makeRepo, TestClock } from '@DeFlow/testkit';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, describe as suite } from 'vitest';
@@ -55,6 +55,7 @@ import {
   createRunChain,
   type RunChainContext,
   type RunChainResolver,
+  reconWorktreePath,
 } from '../../src/pipeline/run-chain.ts';
 import type { PlannerAgent } from '../../src/plan/compile.ts';
 import type { ReconAgent } from '../../src/recon/recon.ts';
@@ -705,6 +706,187 @@ suite('EPIC-19-S21 — recon on an unrecognised repository still feeds the plann
       }
     } finally {
       db.close();
+    }
+  });
+});
+
+// ── KAR-26.1 AC3 ────────────────────────────────────────────────────────────
+
+/**
+ * EPIC-26-S04, EPIC-26-S05 — a foreign worktree at the recon node's own path
+ * fails the node **once**, through the driver that actually ticks.
+ *
+ * The owner's daemon logged `WorktreePathOccupiedError` once per drive tick,
+ * for ever, because the refusal escaped `runReconNode` into `advanceOneRun`'s
+ * catch — a line in a log file, and nothing in the ledger for the next tick to
+ * read. What makes it terminal is not a new catch anywhere: it is the failure
+ * being classified `gate`, which suspends the node and appends
+ * `run.needs_human`, which both this driver and the chain already skip a run
+ * for.
+ */
+suite(
+  'EPIC-26-S04, EPIC-26-S05 — an occupied recon path fails the node once, not once a tick',
+  () => {
+    /** Somebody else's locked worktree, exactly where recon derives its own. */
+    async function squat(s: Scene): Promise<void> {
+      const worktree = reconWorktreePath(join(s.dataDir, 'runs', s.runId));
+      await mkdir(join(worktree, '..'), { recursive: true });
+      const seeded = await new Git(s.repoDir, { env: GIT_ENV }).run([
+        'worktree',
+        'add',
+        '--detach',
+        '--lock',
+        '--reason',
+        'DeFlow run=run_20260101T000000Z_ffffff node=n9',
+        worktree,
+        'HEAD',
+      ]);
+      if (seeded.exitCode !== 0) throw new Error(`could not seed the squatter: ${seeded.stderr}`);
+    }
+
+    it('records the node failed, suspends it, asks a human, and compiles no plan (AC3)', async ({
+      tmp,
+    }) => {
+      const s = await scene(tmp);
+      try {
+        await s.driver.tick(s.clock.now());
+        s.clock.advance(1_000);
+        await approveSpec({ db: s.db, runId: s.runId, epoch: EPOCH, ts: s.clock.now(), by: 'cli' });
+        await squat(s);
+
+        s.clock.advance(1_000);
+        await s.driver.tick(s.clock.now());
+
+        const order = kinds(s.db, s.runId);
+        expect(order.filter((kind) => kind === 'node.failed')).toHaveLength(1);
+        expect(order.filter((kind) => kind === 'node.suspended')).toHaveLength(1);
+        expect(order.filter((kind) => kind === 'run.needs_human')).toHaveLength(1);
+        // A gate means a person must act before the run moves, so the planner is
+        // never prompted — spending a planner turn on a run that cannot proceed
+        // is the cost this pays for.
+        expect(order).not.toContain('plan.proposed');
+        expect(s.agents.plannerPrompts).toEqual([]);
+
+        const failure = payloadOf(s.db, s.runId, 'node.failed')?.failure as Record<string, unknown>;
+        expect(failure.class).toBe('gate');
+        expect(String(failure.message)).toContain('node n9');
+      } finally {
+        s.close();
+      }
+    });
+
+    it('the next tick does not re-attempt provisioning, and logs no second refusal (AC3)', async ({
+      tmp,
+    }) => {
+      const s = await scene(tmp);
+      try {
+        await s.driver.tick(s.clock.now());
+        s.clock.advance(1_000);
+        await approveSpec({ db: s.db, runId: s.runId, epoch: EPOCH, ts: s.clock.now(), by: 'cli' });
+        await squat(s);
+
+        s.clock.advance(1_000);
+        const first = await s.driver.tick(s.clock.now());
+        expect(first.advanced).toContain(s.runId);
+
+        // Five more ticks: this is the shape of the loop the owner watched, so
+        // one is not enough to claim it is gone.
+        for (let tick = 0; tick < 5; tick += 1) {
+          s.clock.advance(1_000);
+          const later = await s.driver.tick(s.clock.now());
+          expect(later.advanced).not.toContain(s.runId);
+        }
+
+        // One refusal, one record of it — not six.
+        expect(kinds(s.db, s.runId).filter((kind) => kind === 'node.failed')).toHaveLength(1);
+        expect(kinds(s.db, s.runId).filter((kind) => kind === 'run.needs_human')).toHaveLength(1);
+      } finally {
+        s.close();
+      }
+    });
+
+    it('the run is escalated rather than aborted, so a person can free the path', async ({
+      tmp,
+    }) => {
+      const s = await scene(tmp);
+      try {
+        await s.driver.tick(s.clock.now());
+        s.clock.advance(1_000);
+        await approveSpec({ db: s.db, runId: s.runId, epoch: EPOCH, ts: s.clock.now(), by: 'cli' });
+        await squat(s);
+
+        s.clock.advance(1_000);
+        await s.driver.tick(s.clock.now());
+
+        // `run.aborted` would be the retry ladder giving up; a worktree an
+        // operator holds is theirs to release, and the run waits for them.
+        expect(kinds(s.db, s.runId)).not.toContain('run.aborted');
+        const asked = payloadOf(s.db, s.runId, 'run.needs_human');
+        expect(asked?.reason).toBe('churn');
+        expect(String(asked?.detail)).toContain('recon');
+      } finally {
+        s.close();
+      }
+    });
+  },
+);
+
+/**
+ * The other side of AC3's boundary: a provisioning failure that is **not** the
+ * occupancy gate must not turn into a plan.
+ *
+ * `advanceRun` compiles a plan from whatever facts recon established, and a
+ * recon that never got its worktree established none. Folding every
+ * provisioning throw into a `failed` outcome therefore bought the one-line log
+ * at the price of a run permanently committed to a plan built on nothing —
+ * permanently, because the driver skips a run once its plan is newer than its
+ * pin. Only the refusal no retry can clear is terminal; this one is the
+ * driver's to re-attempt.
+ */
+suite('a non-gate provisioning failure never becomes a plan compiled on no facts', () => {
+  it('proposes no plan, prompts no planner, and the run is still advanced next tick', async ({
+    tmp,
+  }) => {
+    const s = await scene(tmp);
+    try {
+      await s.driver.tick(s.clock.now());
+      s.clock.advance(1_000);
+      await approveSpec({ db: s.db, runId: s.runId, epoch: EPOCH, ts: s.clock.now(), by: 'cli' });
+
+      // An interrupted teardown at recon's own path — registered, unlocked and
+      // dirty, so `provision` finishes the removal (AC1) and the removal takes
+      // KAR-07.4's salvage sequence…
+      const worktree = reconWorktreePath(join(s.dataDir, 'runs', s.runId));
+      await mkdir(join(worktree, '..'), { recursive: true });
+      const git = new Git(s.repoDir, { env: GIT_ENV });
+      const seeded = await git.run(['worktree', 'add', '--detach', worktree, 'HEAD']);
+      if (seeded.exitCode !== 0) throw new Error(`could not seed the leftover: ${seeded.stderr}`);
+      await writeFile(join(worktree, 'left-behind.txt'), 'wip\n', 'utf8');
+      // …and a repository-authored `pre-commit` hook refuses the salvage
+      // commit, which `#salvage`'s own comment calls the expected way to get
+      // here. Nothing is forced and the worktree is left present and dirty.
+      const hooks = join(s.repoDir, '.git', 'hooks');
+      await mkdir(hooks, { recursive: true });
+      await writeFile(join(hooks, 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+
+      s.clock.advance(1_000);
+      await s.driver.tick(s.clock.now());
+
+      const order = kinds(s.db, s.runId);
+      expect(order).not.toContain('plan.proposed');
+      expect(s.agents.plannerPrompts).toEqual([]);
+      // Not a node failure either: this is a condition a person can clear and
+      // the next attempt can get past, so nothing was recorded as final.
+      expect(order).not.toContain('node.failed');
+      expect(order).not.toContain('run.needs_human');
+
+      // And the run is still live: the next tick carries it on rather than
+      // skipping it for ever behind a plan it should never have had.
+      s.clock.advance(1_000);
+      const later = await s.driver.tick(s.clock.now());
+      expect(later.advanced).toContain(s.runId);
+    } finally {
+      s.close();
     }
   });
 });

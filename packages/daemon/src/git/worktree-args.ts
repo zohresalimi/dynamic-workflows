@@ -137,6 +137,29 @@ export function worktreeAddArgs(spec: WorktreeSpec): string[] {
   return ['worktree', 'add', ...modeArgs, spec.path, spec.baseRef];
 }
 
+/**
+ * §4.1 for a write node whose branch **already exists** — the same `add`, with
+ * the branch as the commit-ish instead of a `-b` that would ask git to create
+ * it. `git worktree add <path> <branch>` checks that branch out (verified on
+ * git 2.43.0).
+ *
+ * A branch outliving its worktree is not an accident to be cleaned up: §4.4
+ * removes the worktree and keeps the branch, because the branch is the
+ * deliverable (F5.5) and holds every commit the node made, the WIP salvage
+ * included. So the second time a node provisions — a retry, or a teardown that
+ * was interrupted and then finished — `-b` cannot be right: git refuses a name
+ * it already holds (`fatal: a branch named '<b>' already exists`), and the only
+ * ways to make it succeed are to delete the branch or to invent a second name,
+ * which lose the work and the run's one place to look for it respectively.
+ *
+ * No `baseRef`: a branch that exists has a tip, and that tip *is* the node's
+ * prior work. Starting the retry anywhere else would silently discard it.
+ */
+export function worktreeAttachArgs(spec: WriteWorktreeSpec): string[] {
+  const reason = lockReasonFor(spec.runId, spec.nodeId);
+  return ['worktree', 'add', '--lock', '--reason', reason, spec.path, spec.branch];
+}
+
 /** §4.4's happy path, step one. Run unconditionally: a `remove` on a locked
  * worktree fails, and DeFlow locks every worktree it creates. */
 export function worktreeUnlockArgs(path: string): string[] {
