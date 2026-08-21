@@ -204,6 +204,101 @@ disabled, what Run needs) is test-first. Design change lands in `ui/` or the tok
 primitive needs it — never a per-instance override. Model: **fable** for the design
 implementation; opus for plan and verify.
 
+**Execution notes (recorded on landing, 2026-08-21).**
+
+- **The defect was `force-mount`.** The popover already existed; `PopoverPortal`/`PopoverContent
+  :force-mount` kept its body in `<body>` at every state, hidden only by a per-instance
+  `[data-state="closed"] { display: none }` rule — the owner's floating card was that body,
+  unpositioned. Both `force-mount`s and the rule are gone; the panel now mounts only while open,
+  `v-model:open` + close-on-select, exactly `frame/ProjectSwitcher.vue`'s shape.
+- **Sections are route labels because the wire carries no vendor.** `providerOptions`' field
+  list (`id/state/available/route/routes/reason/action/limitation` + the envelope's `known`) has
+  no vendor, runtime, model, context window or throughput, so the blueprint's `ANTHROPIC · API`
+  labels have no honest counterpart. Available rows group under `routeLabel(route)` (`ACP
+  adapter` / `exec shim` — doctor's own words); every `available: false` row sits under the
+  existing `Not usable here` label regardless of route. `Usable here` survives only as the
+  fallback label for an available row with a null route (unreachable today).
+- **Rows are activation-committed buttons, not radios (review fix).** The first cut kept native
+  radios with `@change="adaptersOpen = false"`, and review showed that shape is broken for a
+  keyboard: radios *select* on arrow, so the first ArrowDown both committed a selection and
+  closed the control, only the checked radio was a tab stop, and the already-selected row
+  (which fires no `change`) never closed at all. The rows are now full-row `<button>`s — the
+  shape `frame/ProjectSwitcher.vue`/`frame/ApprovalsMenu.vue` use — with selection exposed as
+  `aria-pressed` (the same pattern the composer's own shape chips use): click/Enter/Space
+  commits and closes unconditionally, Tab reaches every available row, and ArrowUp/ArrowDown
+  move focus between available rows without committing (more than the house popovers offer,
+  not less). Reka's `ListboxItem` stays rejected for the reason the first cut gave: it
+  swallows clicks on disabled items, which would silently invert EPIC-22-S23's force-click
+  assertion (0 posts + the daemon's reason); a force-enabled plain button still lands on the
+  submit-time refusal. The whole styled row — reason, limitation, action included — is one hit
+  target now (the label used to cover only the head line), and hover lights only rows a click
+  would do something on.
+- **No 17th `ui/` primitive, no new token, no new `UiButton` variant.** The option row exists in
+  two places (this popover, the project switcher) — two is the threshold the `ui/index.ts`
+  barrel's own rule says *not* to promote at. The row is local, built from existing tokens; the
+  selected-row surface is `--surface-inset` (a token surface, not a `color-mix`, so the
+  token-level contrast suite already covers it).
+- **`data-*` hooks:** all existing hooks keep their names
+  (`data-composer-provider-trigger`, `data-composer-providers`, `data-provider-row`,
+  `data-provider-available`, `data-provider-route`, `data-provider-select`). One recorded
+  element-type change: `data-provider-select` sits on the row's `<button>` now, not on an
+  `<input type=radio>` — every existing assertion reads `.disabled`, which both carry, so no
+  test selector changed. Added: `data-composer-bar` (the bottom bar — AC6's containment
+  anchor), `data-composer-adapter-note` (the trigger's visually-hidden accessible description,
+  in the bar, since the unmounted popover body can never be an `aria-describedby` target),
+  `data-composer-adapters-panel` (the portalled panel), `data-provider-tick` on the selected
+  row's check mark, `data-provider-reason` on the row's reason line, and
+  `data-composer-adapters-retry` on the failed-report retry button.
+- **Assertion changes, named per AC6 of the working agreement:**
+  - `new-run.test.ts` AC4 "groups usable adapters": now opens the control first, and asserts the
+    route label `exec shim` where it asserted `Usable here` (the section labels are route labels
+    now). `Not usable here` unchanged.
+  - `new-run.test.ts` AC4 trigger read: `.toBe('alpha')` → `.toContain('alpha')` — the trigger
+    now also renders a chevron.
+  - `new-run.test.ts` AC1 docblock: the "force-mounted so its rows stay reachable" rationale was
+    rewritten — the popover is no longer force-mounted at all.
+  - `composer.test.ts` AC7 (`c` from anywhere): `[data-provider-row].length > 0` → the trigger's
+    text contains the preselected adapter id. Same claim ("the picker loaded after `c` routed
+    here"), new placement — a closed popover renders no rows by design.
+  - `composer.test.ts` EPIC-22-S22 and EPIC-22-S23: unchanged assertions, now preceded by
+    opening the control (`openAdapters()`).
+- **A third routes state, honestly named.** The composer used to render the machine-unknown
+  sentence for *any* empty answer, including a failed request — a claim about the daemon's boot
+  nobody checked. It now keeps the same three-way `RouteReportStatus` as
+  `settings/RuntimesPanel.vue`: `known: false` → the existing sentence verbatim; a failed
+  request → "No route report from the daemon has reached this page…"; `known: true` with zero
+  usable rows → "No adapter on this machine can serve a run right now." as a lead-in above the
+  still-rendered disabled rows.
+- **One deliberate deviation from the implementation plan:** the panel's `z-index: 20` was kept
+  rather than deleted — it is the house popovers' own stacking level (`.approvals__panel`,
+  `.switcher__panel` carry the same line), not part of the force-mount hack.
+- **Review fixes (2026-08-21), each landed test-first in `new-run.test.ts`:**
+  - *Trigger wording.* The empty trigger read `No adapter` in every unselected state — an
+    affirmative claim about a report's contents in the two states where the daemon had not
+    answered (the exact conflation `lib/runtime-state.ts` forbids). It now reads
+    `Adapter unknown` when `routesStatus` is `machine-unknown` or `unavailable`, and earns
+    `No adapter` only from a real report with zero usable rows.
+  - *Run's silence.* Hard-`disabled` Run is out of the tab order and used to carry no reason;
+    it now shares the trigger's `aria-describedby` → `data-composer-adapter-note`, so the
+    honest sentence reaches an AT user at the button as well as at the trigger and in the
+    popover body. The visible rendering stays inside the control per AC3/AC6.
+  - *Retry for a failed report.* A failed `GET /providers/routes` used to hard-block Run until
+    a page reload with nothing to click. The popover's unavailable body now carries an
+    `Ask again` button that re-requests only the route report (`loadProviders()`); the daemon
+    answered (a 500 is an answer), so the state was never permanent.
+  - *Contrast on the dimmed row.* The carried-forward `opacity: 0.6` composite put the
+    unavailable row's reason — the text AC4 exists to make readable — at 2.71:1 light /
+    3.38:1 dark, invisible to the token-level suite (an `opacity` stack is a derived surface,
+    the same blind spot `ui/mixed-surface-contrast.test.ts` was written for). The dimming is
+    now token-only: the id drops `--ink` → `--ink-muted`, nothing composites, and a live-cascade
+    contrast test (ancestor opacity folded in by hand) holds every text line of the disabled
+    row to 4.5:1 in both themes.
+  - *Tick token.* The selection tick painted with `--state-running`, the token theme.css
+    explicitly reserves as a run status; it now uses `--accent`, the declared "this is
+    selected" pair. The hexes coincide in both themes today, so this is semantics, not pixels —
+    and therefore carries no runtime test (no measurement can tell them apart until they
+    diverge).
+
 ---
 
 ### KAR-26.4 — Settings at the blueprint's density
