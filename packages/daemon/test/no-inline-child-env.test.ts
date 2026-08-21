@@ -4,7 +4,7 @@
  *
  * `buildChildEnv()` (../src/proc/env.ts) is the only function that may build
  * an *agent*-reachable child environment by spreading DeFlowd's own
- * `process.env`. Two other builders exist, named here rather than merely
+ * `process.env`. Three other builders exist, named here rather than merely
  * excluded, because a list of exceptions with no reason attached is a list
  * the next refactor is free to grow:
  *
@@ -14,6 +14,16 @@
  *  - `setupChildEnv()` (../src/workspace/run-setup.ts) — `workspace.setup` is
  *    a command line the repository owner authored, run once at worktree
  *    provisioning, before any agent exists to prompt-inject.
+ *  - `daemonEnv` (../src/main.ts) — a composition root, and the only kind of
+ *    file that may decide this at all (KAR-26.2). It binds this process's
+ *    environment once and hands it down: to the chain, and to
+ *    `probeProvidersOnBoot`, which spawns each resolved vendor CLI to ask its
+ *    version. Those children are the daemon's own probes, not the agent's
+ *    session — and the probe has to see the machine the way the operator's
+ *    shell sees it or it reports on a machine nobody is sitting at. `up.ts`
+ *    takes the identical decision one package over, where this scan does not
+ *    reach; the entry point is where the same reasoning has to be written down
+ *    rather than inferred from a variable name.
  *
  * A file outside that allowlist that spreads `process.env` (or assigns it
  * directly) is either a second, undocumented environment builder or a
@@ -34,9 +44,11 @@ const ROOTS = [
   fileURLToPath(new URL('../../adapters/src/', import.meta.url)),
 ];
 
-/** The two deliberate exceptions, as paths relative to their own package's
- * `src/`. Anything else that matches the pattern below is an offender. */
-const ALLOWED = new Set(['git/run-git.ts', 'workspace/run-setup.ts']);
+/** The three deliberate exceptions, as path suffixes. Anything else that
+ * matches the pattern below is an offender. `main.ts` carries its package
+ * because an unqualified `main.ts` would excuse any package's entry point,
+ * and the argument above is about this one. */
+const ALLOWED = new Set(['git/run-git.ts', 'workspace/run-setup.ts', 'daemon/src/main.ts']);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -56,8 +68,22 @@ function codeOnly(source: string): string {
 
 /** A file "builds a child env from process.env" when it spreads it into an
  * object, or assigns it directly to an `env` field or variable — the two
- * shapes `terminal-service.ts` had before this story's fix. */
-const INLINE_PROCESS_ENV = /\.\.\.\s*process\.env\b|\benv\s*[:=]\s*process\.env\b/;
+ * shapes `terminal-service.ts` had before this story's fix.
+ *
+ * A *declared* binding is matched on the ending of its name rather than the
+ * exact spelling: `const daemonEnv = process.env` is the same decision as
+ * `const env = process.env`, and a check that only knew the bare spelling could
+ * be walked past by picking a longer variable name. That is not hypothetical —
+ * `main.ts` binds exactly that, and until KAR-26.2 it sat outside this guard by
+ * nothing but its casing.
+ *
+ * The declaration keyword is what separates that from `resolveDataDir(env:
+ * DataDirEnv = process.env)` in `data-dir.ts` and `random.ts`. Those are
+ * injectable ports whose default is this process's environment — the caller
+ * decides, and a spec hands them a staged one — which is the opposite of a file
+ * quietly deciding for itself. */
+const INLINE_PROCESS_ENV =
+  /\.\.\.\s*process\.env\b|\benv\s*[:=]\s*process\.env\b|\b(?:const|let|var)\s+[\w$]*env\s*(?::[^=;\n]*)?=\s*process\.env\b/i;
 
 /** `.../packages/daemon/src/git/run-git.ts` -> `src/git/run-git.ts`, so a
  * failure message names a file relative to its own package. */
@@ -95,6 +121,16 @@ suite('buildChildEnv() is the only function that builds an agent child env (AC7)
     expect(INLINE_PROCESS_ENV.test('env: process.env,')).toBe(true);
     expect(INLINE_PROCESS_ENV.test('env = process.env;')).toBe(true);
     expect(INLINE_PROCESS_ENV.test('const env = buildChildEnv(options).env;')).toBe(false);
+    // A longer name is the same decision, and was how main.ts sat outside this
+    // check until KAR-26.2 named it above.
+    expect(INLINE_PROCESS_ENV.test('const daemonEnv = process.env;')).toBe(true);
+    expect(INLINE_PROCESS_ENV.test('let childEnv: NodeJS.ProcessEnv = process.env;')).toBe(true);
+    // But an injectable port defaulting to it is not: the caller decides, and
+    // a spec hands it a staged machine. Matching these would push data-dir.ts
+    // and random.ts into the allowlist for doing the right thing.
+    expect(INLINE_PROCESS_ENV.test('function f(env: DataDirEnv = process.env): string {')).toBe(
+      false,
+    );
     // A comment mentioning the pattern must not itself trip the check — that
     // is what codeOnly() is for, and this line proves the fixture is honest
     // about testing the regex the same way the real check does.
