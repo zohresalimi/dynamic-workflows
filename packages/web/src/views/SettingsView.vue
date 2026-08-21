@@ -94,6 +94,17 @@
  * patching local state from the response: the GET this view already trusts
  * is the one source of "what is on disk", and re-reading it after a write
  * that just changed the disk is that same trust, not a second one.
+ *
+ * ## KAR-26.4 — the blueprint's label-value-control rhythm, nothing more
+ *
+ * Every field renders `UiField inline` — label left, control right, one row —
+ * which is the whole of what this story changes here. The field *set* is
+ * untouched (still exactly what `GET /api/config` carries, AC4), the PATCH
+ * shape is untouched, and this panel deliberately gets **no disclosure**:
+ * its fields are editable, and an editable control hidden behind an
+ * interaction is not density, it is a field the operator cannot find —
+ * `settings.test.ts`'s empty-workspace assertion (zero inputs and switches
+ * in the panel) also depends on collapse never being how absence is spelt.
  */
 import { useQuery } from '@pinia/colada';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -418,6 +429,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 data-field="context.inlineThresholdBytes"
                 label="Inline threshold (bytes)"
                 mono
+                inline
                 v-model="draft.inlineThresholdBytes"
                 @focusout="submitContext"
                 @keydown.enter="submitContext"
@@ -431,6 +443,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 data-field="budget.run.costUsd"
                 label="Run cost ceiling (USD)"
                 mono
+                inline
                 v-model="draft.runCostUsd"
                 @focusout="submitBudget('run', 'costUsd')"
                 @keydown.enter="submitBudget('run', 'costUsd')"
@@ -440,6 +453,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 data-field="budget.run.wallclockMs"
                 label="Run wallclock ceiling (ms)"
                 mono
+                inline
                 v-model="draft.runWallclockMs"
                 @focusout="submitBudget('run', 'wallclockMs')"
                 @keydown.enter="submitBudget('run', 'wallclockMs')"
@@ -456,6 +470,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 data-field="budget.node.costUsd"
                 label="Node cost ceiling (USD)"
                 mono
+                inline
                 v-model="draft.nodeCostUsd"
                 @focusout="submitBudget('node', 'costUsd')"
                 @keydown.enter="submitBudget('node', 'costUsd')"
@@ -465,6 +480,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 data-field="budget.node.wallclockMs"
                 label="Node wallclock ceiling (ms)"
                 mono
+                inline
                 v-model="draft.nodeWallclockMs"
                 @focusout="submitBudget('node', 'wallclockMs')"
                 @keydown.enter="submitBudget('node', 'wallclockMs')"
@@ -483,6 +499,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                 :data-field="`providers.${id}.pinReinjectTurns`"
                 label="Pin reinject turns"
                 mono
+                inline
                 v-model="providerDraft[id]!.pinReinjectTurns"
                 @focusout="submitProviderField(id, 'pinReinjectTurns')"
                 @keydown.enter="submitProviderField(id, 'pinReinjectTurns')"
@@ -492,6 +509,7 @@ async function submitProviderToggle(id: string, value: boolean): Promise<void> {
                   :data-field="`providers.${id}.autocompactPct`"
                   label="Autocompaction threshold (%)"
                   mono
+                  inline
                   v-model="providerDraft[id]!.autocompactPct"
                   @focusout="submitProviderField(id, 'autocompactPct')"
                   @keydown.enter="submitProviderField(id, 'autocompactPct')"

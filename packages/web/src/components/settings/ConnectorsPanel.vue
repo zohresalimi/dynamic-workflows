@@ -53,6 +53,7 @@ import { type ConnectorAction, resolveConnectorStatus } from '../../lib/connecto
 import {
   UiButton,
   UiChip,
+  UiDisclosure,
   UiEmptyState,
   UiIconTile,
   UiMetaRow,
@@ -275,6 +276,30 @@ function tint(service: ConnectorRow): string {
   if (t === 'warn') return 'color-mix(in oklab, var(--state-blocked) 22%, var(--surface-control))';
   return 'var(--surface-control)';
 }
+
+/**
+ * KAR-26.4 AC3 — the row's mono subline: the daemon's own `account` (or an
+ * honest dash) and its own scope facts, each carrying its label, never
+ * composed into a new claim. The blueprint's `workspace acme · 3 teams
+ * synced` shape, fed only fields the daemon actually sends.
+ *
+ * The labels are load-bearing: `state.scopes` is the *granted* list, and an
+ * unlabelled `octocat · gist` sitting beside a "missing scope" chip shows the
+ * operator exactly the one scope they already hold — two independent daemon
+ * facts read as one wrong claim, the same class of defect this panel exists
+ * to remove. So a row whose credential is missing scopes names the missing
+ * ones (`missingScopes`, the daemon's own field), and every other row labels
+ * the granted list as granted.
+ */
+function subline(service: ConnectorRow): string {
+  if (service.state.account === null) return '—';
+  const account = service.state.account;
+  if (service.state.missingScopes.length > 0)
+    return `${account} · missing scope: ${service.state.missingScopes.join(', ')}`;
+  if (service.state.scopes.length > 0)
+    return `${account} · scopes: ${service.state.scopes.join(', ')}`;
+  return account;
+}
 </script>
 
 <template>
@@ -325,96 +350,123 @@ function tint(service: ConnectorRow): string {
         :data-connector-status="resolvedFor(service).status"
         :data-connector-action="selectedProjectId === '' ? 'none' : resolvedFor(service).action"
       >
-        <div class="connector__row">
-          <UiIconTile size="md" :tint="tint(service)" class="connector__tile">
-            {{ initials(service.label) }}
-          </UiIconTile>
+        <UiIconTile size="md" :tint="tint(service)" class="connector__tile">
+          {{ initials(service.label) }}
+        </UiIconTile>
 
-          <div class="connector__heading">
-            <div class="connector__heading-top">
-              <h3 class="connector__label">{{ service.label }}</h3>
-              <!-- AC1 — one resolved status word, never state and binding
-                   rendered as two separate claims. -->
-              <UiChip :variant="tone(service)" mono>{{ resolvedFor(service).status }}</UiChip>
-              <span v-if="service.state.account" class="connector__account">
-                {{ service.state.account }}
-              </span>
-            </div>
-            <!-- The daemon's own sentence, rendered as it arrived. -->
-            <p class="connector__detail">{{ service.state.message }}</p>
-          </div>
-
-          <div class="connector__actions">
-            <UiButton
-              v-if="selectedProjectId !== '' && resolvedFor(service).action === 'connect'"
-              variant="primary"
-              size="sm"
-              data-connector-connect
-              @click="connect(service.id)"
-            >
-              Connect
-            </UiButton>
-            <UiButton
-              v-else-if="selectedProjectId !== '' && resolvedFor(service).action === 'disconnect'"
-              variant="secondary"
-              size="sm"
-              data-connector-remove
-              @click="remove(service.id)"
-            >
-              Disconnect
-            </UiButton>
-            <!-- AC2 — no "in use since" line without an explicit, bound
-                 project: the preview project's own timestamp is not this
-                 panel's to show until the operator chose it. -->
-            <span
-              v-if="selectedProjectId !== '' && service.connected && service.connectedAt"
-              class="connector__since"
-            >
-              in use since {{ service.connectedAt }}
-            </span>
-          </div>
+        <div class="connector__heading">
+          <h3 class="connector__label">{{ service.label }}</h3>
+          <!-- KAR-26.4 AC3 — the mono subline: account + scopes, the
+               daemon's own fields. -->
+          <p class="connector__subline" data-connector-subline>{{ subline(service) }}</p>
         </div>
 
-        <p v-if="service.state.scopes.length > 0" class="connector__scopes">
-          Granted scopes: {{ service.state.scopes.join(', ') }}
-        </p>
-        <p v-if="service.state.action" class="connector__action">
-          <code>{{ service.state.action }}</code>
-        </p>
+        <!-- AC1 — one resolved status word, never state and binding
+             rendered as two separate claims. The row's only chip. -->
+        <UiChip class="connector__state" :variant="tone(service)" mono>
+          {{ resolvedFor(service).status }}
+        </UiChip>
 
-        <!-- KAR-22.6 AC2, unchanged by the move: a service with no
-             authorisation route gets its paragraph and no button and no
-             link. -->
-        <section
-          v-if="service.authorisation.kind === 'command'"
-          class="connector__authorise"
-          data-connector-authorisation="command"
-        >
-          <p class="connector__why">{{ service.authorisation.whyNotOneClick }}</p>
-          <p class="connector__command"><code>{{ service.authorisation.command }}</code></p>
-          <a
-            v-if="service.authorisation.url"
-            class="connector__link"
-            data-connector-authorise
-            :href="service.authorisation.url"
-            rel="noreferrer noopener"
-            target="_blank"
+        <!-- Recorded deviation from the blueprint (KAR-26.4 story notes): the
+             blueprint draws no disconnect affordance beside CONNECTED, but
+             `resolveConnectorStatus` resolves `disconnect` there and KAR-25.4
+             requires it reachable — so the row carries one chip plus, when
+             the resolved action is not 'none', one control. -->
+        <div class="connector__actions">
+          <UiButton
+            v-if="selectedProjectId !== '' && resolvedFor(service).action === 'connect'"
+            variant="primary"
+            size="sm"
+            data-connector-connect
+            @click="connect(service.id)"
           >
-            Open {{ service.label }}’s own authorisation page
-          </a>
-        </section>
-        <section v-else class="connector__authorise" data-connector-authorisation="unavailable">
-          <p class="connector__why">{{ service.authorisation.whyNotConnectable }}</p>
-        </section>
-
-        <!-- KAR-22.4 AC1, AC2 — where the token lives and who holds it, in
-             the daemon's own words, unchanged by the move. -->
-        <div class="connector__credential">
-          <UiMetaRow label="Authorised by" :value="service.credential.authorisedBy" :mono="false" />
-          <UiMetaRow label="Held by" :value="service.credential.holder" :mono="false" />
-          <UiMetaRow label="Stored in" :value="service.credential.livesIn" :mono="false" />
-          <UiMetaRow label="DeFlow keeps" :value="service.credential.deflowStores" :mono="false" />
+            Connect
+          </UiButton>
+          <UiButton
+            v-else-if="selectedProjectId !== '' && resolvedFor(service).action === 'disconnect'"
+            variant="secondary"
+            size="sm"
+            data-connector-remove
+            @click="remove(service.id)"
+          >
+            Disconnect
+          </UiButton>
         </div>
+
+        <!-- KAR-26.4 AC3 — everything the row used to explain inline lives
+             behind the disclosure, intact: the daemon's sentence, its
+             resolving command, the authorisation rationale, the credential
+             provenance. Closed content stays in the document (UiDisclosure's
+             own contract), so no fact ever leaves the row's textContent. -->
+        <UiDisclosure compact :label="`Details for ${service.label}`">
+          <!-- The daemon's own sentence, rendered as it arrived. -->
+          <p class="connector__detail">{{ service.state.message }}</p>
+          <!-- KAR-26.4 AC3 — the pre-density page's own labelled line,
+               demoted here verbatim rather than deleted: the subline above
+               compresses the scope facts, this is where the full labelled
+               list still lives. -->
+          <p v-if="service.state.scopes.length > 0" class="connector__scopes" data-connector-scopes>
+            Granted scopes: {{ service.state.scopes.join(', ') }}
+          </p>
+          <p v-if="service.state.action" class="connector__action">
+            <code>{{ service.state.action }}</code>
+          </p>
+
+          <!-- KAR-22.6 AC2, unchanged by the move: a service with no
+               authorisation route gets its paragraph and no button and no
+               link. -->
+          <section
+            v-if="service.authorisation.kind === 'command'"
+            class="connector__authorise"
+            data-connector-authorisation="command"
+          >
+            <p class="connector__why">{{ service.authorisation.whyNotOneClick }}</p>
+            <p class="connector__command"><code>{{ service.authorisation.command }}</code></p>
+            <a
+              v-if="service.authorisation.url"
+              class="connector__link"
+              data-connector-authorise
+              :href="service.authorisation.url"
+              rel="noreferrer noopener"
+              target="_blank"
+            >
+              Open {{ service.label }}’s own authorisation page
+            </a>
+          </section>
+          <section v-else class="connector__authorise" data-connector-authorisation="unavailable">
+            <p class="connector__why">{{ service.authorisation.whyNotConnectable }}</p>
+          </section>
+
+          <!-- KAR-22.4 AC1, AC2 — where the token lives and who holds it, in
+               the daemon's own words, unchanged by the move. -->
+          <div class="connector__credential">
+            <UiMetaRow
+              label="Authorised by"
+              :value="service.credential.authorisedBy"
+              :mono="false"
+            />
+            <UiMetaRow label="Held by" :value="service.credential.holder" :mono="false" />
+            <UiMetaRow label="Stored in" :value="service.credential.livesIn" :mono="false" />
+            <UiMetaRow
+              label="DeFlow keeps"
+              :value="service.credential.deflowStores"
+              :mono="false"
+            />
+          </div>
+
+          <!-- AC2 — no "in use since" line without an explicit, bound
+               project: the preview project's own timestamp is not this
+               panel's to show until the operator chose it. The `v-if` is
+               load-bearing — a collapsed disclosure is still in textContent,
+               so absence has to stay conditional rendering, never mere
+               collapse. -->
+          <span
+            v-if="selectedProjectId !== '' && service.connected && service.connectedAt"
+            class="connector__since"
+          >
+            in use since {{ service.connectedAt }}
+          </span>
+        </UiDisclosure>
       </li>
     </ul>
   </div>
@@ -470,10 +522,15 @@ function tint(service: ConnectorRow): string {
   display: grid;
 }
 
+/* KAR-26.4 — one row of vertical rhythm: tile / label+subline / chip /
+   action / disclosure trigger, the disclosure's content spanning the full
+   width beneath (UiDisclosure's root is `display: contents`). */
 .connector {
   display: grid;
-  gap: 8px; /* geometry — the row's own internal stack gap */
-  padding: 12px 0; /* geometry — matches UiMetaRow's own row padding, minus its own side padding */
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  column-gap: 10px; /* geometry — cell-to-cell gutter */
+  padding: 10px 0; /* geometry — the row's own vertical rhythm */
   border-bottom: 1px solid var(--edge);
 }
 
@@ -481,28 +538,14 @@ function tint(service: ConnectorRow): string {
   border-bottom: none;
 }
 
-.connector__row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px; /* geometry — tile-to-heading gutter */
-}
-
 .connector__tile {
-  margin-top: 1px; /* geometry — optical alignment with the name's cap-height */
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .connector__heading {
-  flex: 1;
   min-width: 0;
-}
-
-.connector__heading-top {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* geometry — name-to-chip gutter */
 }
 
 .connector__label {
@@ -511,24 +554,27 @@ function tint(service: ConnectorRow): string {
   margin: 0;
 }
 
-.connector__account {
+.connector__subline {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-faint);
+  margin: 2px 0 0; /* geometry — label-to-subline gap */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .connector__detail {
   font-size: var(--text-sm);
   color: var(--ink-muted);
-  margin: 3px 0 0; /* geometry — name-to-detail gap */
+  margin: 0;
   max-width: 70ch;
 }
 
 .connector__actions {
-  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px; /* geometry — button-to-timestamp gutter */
+  gap: 8px; /* geometry — button-to-button gutter */
 }
 
 .connector__since {

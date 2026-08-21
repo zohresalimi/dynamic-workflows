@@ -16,6 +16,12 @@
  * cosmetic: it looks associated and a screen reader does not agree.
  * `outline: none` never appears here — the input inherits the global
  * `:focus-visible` ring from theme.css and this component does not touch it.
+ *
+ * KAR-26.4 AC4 — `inline` flips the field to the settings blueprint's
+ * label-value rhythm: label left, control right, one row. The `<label for>` /
+ * `<input id>` association is untouched by it (a11y.test.ts proves the
+ * association survives), and every existing caller — which leaves `inline`
+ * unset — renders byte-identically.
  */
 import { useId } from 'vue';
 
@@ -25,9 +31,10 @@ const props = withDefaults(
     readonly modelValue: string;
     readonly placeholder?: string;
     readonly mono?: boolean;
+    readonly inline?: boolean;
     readonly id?: string;
   }>(),
-  { mono: false },
+  { mono: false, inline: false },
 );
 
 defineEmits<{
@@ -39,7 +46,7 @@ const inputId = props.id ?? `ui-field-${generatedId}`;
 </script>
 
 <template>
-  <div class="ui-field">
+  <div class="ui-field" :data-inline="inline || undefined">
     <label class="ui-field__label" :for="inputId">{{ label }}</label>
     <input
       :id="inputId"
@@ -82,5 +89,25 @@ const inputId = props.id ?? `ui-field-${generatedId}`;
 
 .ui-field__input[data-mono] {
   font-family: var(--font-mono);
+}
+
+/* KAR-26.4 — the blueprint's label-value-control rhythm: one row, label
+   left, control right. */
+.ui-field[data-inline] {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px; /* geometry — label-to-control gutter */
+}
+
+.ui-field[data-inline] .ui-field__label {
+  margin-bottom: 0;
+  flex: none;
+}
+
+.ui-field[data-inline] .ui-field__input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  text-align: right;
 }
 </style>

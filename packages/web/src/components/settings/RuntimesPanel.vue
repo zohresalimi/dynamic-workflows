@@ -32,16 +32,21 @@
  * two-producers-one-endpoint hazard `api.ts` names by name. Toggling refetches
  * both, so the health line and the toggle state move together.
  *
- * ## `known: false` is a third state, not a synonym for "empty"
+ * ## `known: false` is a third state, and a failed request is a fourth
  *
  * `packages/daemon/src/main.ts` — what `pnpm dev` runs — boots with no
  * `providerRoots`, and `GET /providers/routes` answers that honestly:
  * `{ providers: [], known: false }`, never a row this file could read a
- * verdict off. `routesKnown` carries that bit; every row's health line
- * branches on it before falling back to anything, so a daemon that has not
- * been told which machine it is on renders as exactly that — not as "not
- * installed", which `GET /providers`' own `installed: false` would make a
- * false claim about a state nobody actually checked.
+ * verdict off. `routesStatus` carries that as `'machine-unknown'`; every
+ * row's health line branches on it before falling back to anything, so a
+ * daemon that has not been told which machine it is on renders as exactly
+ * that — not as "not installed", which `GET /providers`' own
+ * `installed: false` would make a false claim about a state nobody actually
+ * checked. A request that failed or never answered is yet another fact
+ * (`'unavailable'`): no report exists, so no per-row word may claim one did —
+ * the chips read `unknown`, the failure is surfaced under
+ * `data-runtime-routes-error`, and each row's disclosure names the absence
+ * (`data-runtime-routes-unavailable`) rather than paraphrasing a verdict.
  *
  * ## What AC1 asks for that this row cannot carry
  *
@@ -83,12 +88,33 @@
  * `installCommand`'s `npm install -g` template both spawn a global package
  * manager, and a browser tab triggering that is a shell in a web page, which
  * the epic's own scope note rules out by name.
+ *
+ * ## KAR-26.4 — the blueprint's density, without losing a word
+ *
+ * Each runtime is one row of vertical rhythm — avatar tile, name over a mono
+ * subline, a status chip (dot + `../../lib/runtime-state.ts`'s short word,
+ * a total mapping over `enabled`/`available`/`routes.acp`, never a composed
+ * claim), the toggle, and a `UiDisclosure`. Every sentence this panel used to
+ * render inline — the daemon's health verdict, the routes-unknown sentence,
+ * the detected-cannot-be-removed caveat, the install command — moved into the
+ * disclosure **verbatim**, and because `UiDisclosure` keeps closed content in
+ * the document (see its own header comment), every one of those facts stays
+ * in the row's `textContent` whether the disclosure is open or not.
+ * `limitation` is only rendered when `available` is true: the daemon composes
+ * a degenerate sentence for an unavailable provider (its `unservedTurns` list
+ * is everything), and rendering it would repeat the reason line wrongly.
  */
 import { useQuery } from '@pinia/colada';
 import { computed, onMounted, ref } from 'vue';
 import { useApiClient } from '../../api/provide.ts';
 import { type ProviderRow, providersQuery } from '../../api/queries.ts';
-import { UiButton, UiIconTile, UiPanel, UiToggle } from '../ui/index.ts';
+import {
+  type ResolvedRuntimeState,
+  type RouteReportStatus,
+  type RouteState,
+  resolveRuntimeState,
+} from '../../lib/runtime-state.ts';
+import { UiButton, UiChip, UiDisclosure, UiIconTile, UiPanel, UiToggle } from '../ui/index.ts';
 
 /** One row of `GET /api/providers/routes` — the daemon's own health sentence
  *  and install command, matching `../RunComposer.vue`'s own `ProviderRow`. */
@@ -97,6 +123,11 @@ interface RouteRow {
   readonly available: boolean;
   readonly reason: string;
   readonly action: string | null;
+  /** Per-turn route state; `acp` is the bit `available` does not carry. */
+  readonly routes?: { readonly acp?: string } | null;
+  /** The daemon's own partial-machine sentence — meaningful only when
+   *  `available` is true (see the header comment). */
+  readonly limitation?: string | null;
 }
 
 interface HttpAnswer {
@@ -128,20 +159,45 @@ const api = client as never as RuntimesApi;
 const { data: providers, refetch: refetchProviders } = useQuery(providersQuery(client));
 
 const routes = ref<readonly RouteRow[]>([]);
-// KAR-25.3 AC1 — `GET /providers/routes`' own `known` field, not inferred from
-// whether `routes` came back empty. `known: false` means this daemon booted
-// with no `providerRoots` and has no honest basis for a per-row verdict at
-// all (`../../../daemon/src/http/api.ts`'s own comment on the route) — it is
-// not the same fact as "nothing is installed", and conflating the two is
-// exactly the composed-in-the-browser claim this AC forbids.
-const routesKnown = ref(true);
+// KAR-25.3 AC1 / KAR-26.4 — what became of `GET /providers/routes` itself,
+// carried as its own three-way fact rather than inferred from whether
+// `routes` came back empty:
+//
+// - `'reported'` — a report arrived with `known: true`;
+// - `'machine-unknown'` — a report arrived with `known: false`: this daemon
+//   booted with no `providerRoots` and has no honest basis for a per-row
+//   verdict at all (`../../../daemon/src/http/api.ts`'s own comment on the
+//   route). Not the same fact as "nothing is installed";
+// - `'unavailable'` — no report reached this tab: the request failed or has
+//   not answered yet. Also not the same fact as either of the above, and
+//   painting any per-row status word from it would be exactly the
+//   composed-in-the-browser claim this AC forbids.
+//
+// The ref starts `'unavailable'` because that is literally true before the
+// first response lands.
+const routesStatus = ref<RouteReportStatus>('unavailable');
+const routesError = ref<string | null>(null);
 
 async function loadRoutes(): Promise<void> {
-  const response = await api.providers.routes.$get();
-  if (!response.ok) return;
-  const body = (await response.json()) as { providers?: unknown; known?: unknown };
-  routes.value = Array.isArray(body.providers) ? (body.providers as RouteRow[]) : [];
-  routesKnown.value = body.known !== false;
+  try {
+    const response = await api.providers.routes.$get();
+    if (!response.ok) {
+      routes.value = [];
+      routesStatus.value = 'unavailable';
+      routesError.value = `the daemon answered the route report request with ${response.status}`;
+      return;
+    }
+    const body = (await response.json()) as { providers?: unknown; known?: unknown };
+    routes.value = Array.isArray(body.providers) ? (body.providers as RouteRow[]) : [];
+    routesStatus.value = body.known === false ? 'machine-unknown' : 'reported';
+    routesError.value = null;
+  } catch (error) {
+    routes.value = [];
+    routesStatus.value = 'unavailable';
+    routesError.value = `the route report request failed: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+  }
 }
 
 onMounted(() => void loadRoutes());
@@ -241,6 +297,25 @@ async function copyInstallCommand(provider: string, command: string): Promise<vo
 function initials(id: string): string {
   return id.slice(0, 2).toUpperCase();
 }
+
+/** `routes.acp` narrowed to the closed `RouteState` set — anything else
+ *  (absent field, unrecognised value) is `null`, which the table resolves to
+ *  `unknown` rather than to a composed verdict. */
+function parseRouteState(value: unknown): RouteState | null {
+  return value === 'available' || value === 'missing' ? value : null;
+}
+
+/** The chip's word and tone — `runtime-state.ts`'s total table, fed the
+ *  daemon's own fields and nothing else (KAR-26.4 AC1). */
+function stateFor(row: Row): ResolvedRuntimeState {
+  return resolveRuntimeState({
+    enabled: row.enabled,
+    report: row.route
+      ? { available: row.route.available, acp: parseRouteState(row.route.routes?.acp) }
+      : null,
+    reportStatus: routesStatus.value,
+  });
+}
 </script>
 
 <template>
@@ -268,103 +343,152 @@ function initials(id: string): string {
             :data-runtime-source="row.source"
             :data-runtime-enabled="String(row.enabled)"
           >
-            <div class="runtime__row">
-              <UiIconTile size="md" class="runtime__tile">{{ initials(row.provider) }}</UiIconTile>
+            <UiIconTile size="md" class="runtime__tile">{{ initials(row.provider) }}</UiIconTile>
 
-              <div class="runtime__heading">
-                <h3 class="runtime__name">{{ row.provider }}</h3>
-                <!-- AC1 — the binary path this daemon would spawn, or an
-                     honest dash: there is no endpoint concept to fall back to
-                     (see header comment). -->
-                <p class="runtime__detail">{{ row.binaryPath ?? '—' }}</p>
-                <!-- AC1 — the daemon's own health sentence, verbatim, from the
-                     route reducer's own verdict (`providerVerdict().detail`).
-                     Nothing here composes, shortens or colours a word of it —
-                     the dot is the only presentation this file adds, and it
-                     is derived from the same `available` boolean the sentence
-                     itself explains, never a second fact. -->
-                <p
-                  v-if="row.route"
-                  class="runtime__health"
-                  :data-runtime-available="row.route.available"
-                >
-                  <span class="runtime__health-dot" aria-hidden="true" />
-                  {{ row.route.reason }}
-                </p>
-                <!-- AC1 — `known: false` (`../../../daemon/src/http/api.ts`'s
-                     `GET /providers/routes`): this daemon was never told which
-                     machine it is on, so it has no basis for a verdict on any
-                     row, and saying "not installed" here would be inventing
-                     an answer the daemon itself refuses to give. This is the
-                     one sentence on the panel that names a *client* fact (no
-                     route report reached this tab) rather than paraphrasing a
-                     daemon one, which is why it is worded as an absence of
-                     information rather than as a health verdict. -->
-                <p
-                  v-else-if="!routesKnown"
-                  class="runtime__health"
-                  data-runtime-available="unknown"
-                  data-runtime-routes-unknown
-                >
-                  <span class="runtime__health-dot" aria-hidden="true" />
-                  This daemon started without knowing this machine's PATH, so it cannot say whether
-                  {{ row.provider }}
-                  is installed or usable.
-                </p>
-              </div>
-
-              <!-- AC1 — "enabled"/"disabled" are UI chrome, not a composed
-                   health verdict: `row.enabled` is the daemon's own field
-                   (`GET /providers`), and `UiToggle`'s `aria-checked` binds to
-                   it directly — an assistive-tech user already gets the real
-                   state from that, per WCAG 2.5.3. This label just gives the
-                   same fact a visible word, the same choice
-                   `SettingsView.vue`'s "Disable auto-compaction" toggle makes
-                   for its own boolean, and the words themselves carry no fact
-                   the daemon did not already supply as a boolean. -->
-              <UiToggle
-                :model-value="row.enabled"
-                :label="row.enabled ? 'enabled' : 'disabled'"
-                data-runtime-toggle
-                :disabled="toggling.has(row.provider)"
-                @update:model-value="(value) => setEnabled(row.provider, value)"
-              />
+            <div class="runtime__heading">
+              <h3 class="runtime__name">{{ row.provider }}</h3>
+              <!-- AC1 — the binary path this daemon would spawn, or an
+                   honest dash: there is no endpoint concept to fall back to
+                   (see header comment). -->
+              <p class="runtime__detail" data-runtime-subline>{{ row.binaryPath ?? '—' }}</p>
             </div>
 
-            <!-- AC4 — detected cannot be removed. There is no remove control
-                 on this row at all (see header comment), and this is the one
-                 sentence saying why. -->
-            <p v-if="row.source === 'detected'" class="runtime__note" data-runtime-cannot-remove>
-              Detected on this machine — DeFlow can disable it here but not remove it. Removing a
-              runtime DeFlow can still see installed would misreport what is actually on this
-              machine.
-            </p>
-
-            <!-- AC7 — the install command, verbatim, with a copy control and
-                 no button that would run it. -->
-            <div
-              v-if="!row.installed && row.route?.action"
-              class="runtime__install"
-              data-runtime-install
+            <!-- KAR-26.4 AC1 — the status dot and short word: `stateFor`'s
+                 total mapping over the daemon's own fields, painted by
+                 `UiChip`'s own variant token (the dot inherits
+                 `currentcolor`, so word and dot cannot disagree). -->
+            <UiChip
+              class="runtime__state"
+              :variant="stateFor(row).tone"
+              mono
+              :data-runtime-state="stateFor(row).word"
             >
-              <code class="runtime__command">{{ row.route.action }}</code>
-              <UiButton
-                variant="ghost"
-                size="sm"
-                data-runtime-copy-install
-                @click="copyInstallCommand(row.provider, row.route.action)"
+              <span class="runtime__state-dot" aria-hidden="true" />
+              {{ stateFor(row).word }}
+            </UiChip>
+
+            <!-- AC1 — "enabled"/"disabled" are UI chrome, not a composed
+                 health verdict: `row.enabled` is the daemon's own field
+                 (`GET /providers`), and `UiToggle`'s `aria-checked` binds to
+                 it directly — an assistive-tech user already gets the real
+                 state from that, per WCAG 2.5.3. This label just gives the
+                 same fact a visible word, the same choice
+                 `SettingsView.vue`'s "Disable auto-compaction" toggle makes
+                 for its own boolean, and the words themselves carry no fact
+                 the daemon did not already supply as a boolean. -->
+            <UiToggle
+              :model-value="row.enabled"
+              :label="row.enabled ? 'enabled' : 'disabled'"
+              data-runtime-toggle
+              :disabled="toggling.has(row.provider)"
+              @update:model-value="(value) => setEnabled(row.provider, value)"
+            />
+
+            <!-- KAR-26.4 AC1, AC2 — everything the row used to say inline,
+                 verbatim, one disclosure away. The trigger is compact (no
+                 text), so no caveat word ever becomes a button label. -->
+            <UiDisclosure compact :label="`Details for ${row.provider}`">
+              <!-- AC1 — the daemon's own health sentence, verbatim, from the
+                   route reducer's own verdict (`providerVerdict().detail`).
+                   Nothing here composes, shortens or recolours a word of it. -->
+              <p
+                v-if="row.route"
+                class="runtime__health"
+                :data-runtime-available="row.route.available"
               >
-                Copy
-              </UiButton>
-              <span v-if="copyStatus[row.provider]" class="runtime__copy-status" aria-live="polite">
-                {{ copyStatus[row.provider] }}
-              </span>
-            </div>
+                {{ row.route.reason }}
+              </p>
+              <!-- The daemon's partial-machine sentence — only when
+                   `available` is true, because the daemon composes a
+                   degenerate one otherwise (header comment). -->
+              <p
+                v-if="row.route && row.route.available && row.route.limitation"
+                class="runtime__health"
+                data-runtime-limitation
+              >
+                {{ row.route.limitation }}
+              </p>
+              <!-- AC1 — `known: false` (`../../../daemon/src/http/api.ts`'s
+                   `GET /providers/routes`): this daemon was never told which
+                   machine it is on, so it has no basis for a verdict on any
+                   row, and saying "not installed" here would be inventing
+                   an answer the daemon itself refuses to give. This is the
+                   one sentence on the panel that names a *client* fact (no
+                   route report reached this tab) rather than paraphrasing a
+                   daemon one, which is why it is worded as an absence of
+                   information rather than as a health verdict. -->
+              <p
+                v-if="!row.route && routesStatus === 'machine-unknown'"
+                class="runtime__health"
+                data-runtime-available="unknown"
+                data-runtime-routes-unknown
+              >
+                This daemon started without knowing this machine's PATH, so it cannot say whether
+                {{ row.provider }}
+                is installed or usable.
+              </p>
+              <!-- KAR-26.4 — the *other* absence: no route report reached this
+                   tab at all (the request failed or has not answered). A
+                   different fact from `known: false` — that sentence claims
+                   the daemon booted without PATH, which nobody checked here —
+                   so it gets its own words, still claiming only what this
+                   client actually observed. -->
+              <p
+                v-if="!row.route && routesStatus === 'unavailable'"
+                class="runtime__health"
+                data-runtime-available="unknown"
+                data-runtime-routes-unavailable
+              >
+                No route report has reached this page, so nothing can be said about whether
+                {{ row.provider }}
+                is usable right now.
+              </p>
+
+              <!-- AC4 — detected cannot be removed. There is no remove control
+                   on this row at all (see header comment), and this is the one
+                   sentence saying why. -->
+              <p v-if="row.source === 'detected'" class="runtime__note" data-runtime-cannot-remove>
+                Detected on this machine — DeFlow can disable it here but not remove it. Removing a
+                runtime DeFlow can still see installed would misreport what is actually on this
+                machine.
+              </p>
+
+              <!-- AC7 — the install command, verbatim, with a copy control and
+                   no button that would run it. -->
+              <div
+                v-if="!row.installed && row.route?.action"
+                class="runtime__install"
+                data-runtime-install
+              >
+                <code class="runtime__command">{{ row.route.action }}</code>
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  data-runtime-copy-install
+                  @click="copyInstallCommand(row.provider, row.route.action)"
+                >
+                  Copy
+                </UiButton>
+                <span
+                  v-if="copyStatus[row.provider]"
+                  class="runtime__copy-status"
+                  aria-live="polite"
+                >
+                  {{ copyStatus[row.provider] }}
+                </span>
+              </div>
+            </UiDisclosure>
           </li>
         </ul>
 
         <p v-if="toggleError" class="runtimes__error" role="alert">{{ toggleError }}</p>
         <p v-if="rescanError" class="runtimes__error" role="alert">{{ rescanError }}</p>
+        <!-- KAR-26.4 — a route report that never arrived is surfaced, not
+             swallowed: the chips above honestly read "unknown", and this line
+             says why. -->
+        <p v-if="routesError" class="runtimes__error" role="alert" data-runtime-routes-error>
+          {{ routesError }}
+        </p>
       </template>
 
       <p v-else class="runtimes__empty">No runtimes reported by this machine.</p>
@@ -386,21 +510,21 @@ function initials(id: string): string {
   display: grid;
 }
 
+/* KAR-26.4 — one row of vertical rhythm: tile / name+subline / chip /
+   toggle / disclosure trigger, with the disclosure's content spanning the
+   full width beneath (UiDisclosure's root is `display: contents`, so its
+   trigger and content sit directly in this grid). */
 .runtime {
   display: grid;
-  gap: 6px; /* geometry — row's own internal stack gap */
-  padding: 12px 0; /* geometry — matches ConnectorsPanel's own row padding */
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  column-gap: 10px; /* geometry — cell-to-cell gutter */
+  padding: 10px 0; /* geometry — the row's own vertical rhythm */
   border-bottom: 1px solid var(--edge);
 }
 
 .runtime:last-child {
   border-bottom: none;
-}
-
-.runtime__row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px; /* geometry — tile-to-heading gutter */
 }
 
 .runtime__tile {
@@ -410,7 +534,6 @@ function initials(id: string): string {
 }
 
 .runtime__heading {
-  flex: 1;
   min-width: 0;
 }
 
@@ -425,29 +548,30 @@ function initials(id: string): string {
   font-size: var(--text-xs);
   color: var(--ink-faint);
   margin: 2px 0 0; /* geometry — name-to-detail gap */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime__state {
+  gap: 5px; /* geometry — dot-to-word gutter */
+}
+
+/* The row's one accent of colour: painted by `currentcolor`, which UiChip's
+   own variant token sets — the dot and the word cannot disagree. */
+.runtime__state-dot {
+  flex: none;
+  width: 6px; /* geometry — the status dot */
+  height: 6px; /* geometry — the status dot */
+  border-radius: var(--radius-pill);
+  background: currentcolor;
 }
 
 .runtime__health {
-  display: flex;
-  align-items: baseline;
-  gap: 6px; /* geometry — dot-to-sentence gutter */
   font-size: var(--text-sm);
   color: var(--ink-muted);
-  margin: 4px 0 0; /* geometry — detail-to-health gap */
-  max-width: 60ch;
-}
-
-.runtime__health-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--state-blocked);
-  transform: translateY(-1px); /* geometry — optical alignment with the first line */
-}
-
-.runtime__health[data-runtime-available="true"] .runtime__health-dot {
-  background: var(--state-passed);
+  margin: 0;
+  max-width: 70ch;
 }
 
 .runtime__note {
@@ -467,7 +591,12 @@ function initials(id: string): string {
 .runtime__command {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  background: var(--surface-inset);
+  /* `--surface-control`, not `--surface-inset`: this chip sits inside
+     `UiDisclosure`'s body, which already paints `--surface-inset` — the same
+     token here would erase the chip's inset treatment in both themes and
+     leave only its border. `--surface-control` differs from the body in both
+     themes and is contrast-verified against every ink (theme-contrast.test.ts). */
+  background: var(--surface-control);
   border: 1px solid var(--edge-control);
   border-radius: var(--radius-xs);
   padding: 3px 6px; /* geometry — inline code chip padding */

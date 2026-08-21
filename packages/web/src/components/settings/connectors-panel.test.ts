@@ -856,3 +856,162 @@ suite(
     });
   },
 );
+
+suite('KAR-26.4 / EPIC-26-S27 — an issue-tracker row is one row with one chip', () => {
+  it.each([
+    { name: 'connected', services: [row(CONNECTED, true)], id: 'github', status: 'connected' },
+    { name: 'available', services: [row(CONNECTED, false)], id: 'github', status: 'available' },
+    {
+      name: 'bound · CLI missing',
+      services: [row(NOT_INSTALLED, true)],
+      id: 'github',
+      status: 'bound · CLI missing',
+    },
+    {
+      name: 'not installed',
+      services: [row(NOT_INSTALLED, false)],
+      id: 'github',
+      status: 'not installed',
+    },
+    {
+      name: 'cannot be connected',
+      services: [linearRow()],
+      id: 'linear',
+      status: 'cannot be connected',
+    },
+  ])('"$name" renders exactly one status chip carrying it', async ({ services, id, status }) => {
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: services },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const target = connectorRow(id);
+    const chips = target.querySelectorAll('.ui-chip');
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.textContent?.trim()).toBe(status);
+    // The mono subline: the daemon's own account (or an honest dash) and its
+    // own scope list — never a composed claim.
+    const subline = target.querySelector('[data-connector-subline]');
+    expect(subline).not.toBeNull();
+  });
+
+  it('the subline carries the account and granted scopes for a connected row', async () => {
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: [row(CONNECTED, true)] },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const subline = githubRow().querySelector('[data-connector-subline]');
+    expect(subline?.textContent).toContain('octocat');
+    expect(subline?.textContent).toContain('gist, repo');
+  });
+
+  it('a missing-scope subline names the missing scope, never only the granted one', async () => {
+    // The owner's original defect, guarded against its densified re-entry:
+    // `scopes` is the *granted* list, so an unlabelled `octocat · gist`
+    // beside a "missing scope" chip shows the operator exactly the one scope
+    // they already have. The subline for this state must carry the daemon's
+    // own `missingScopes`, labelled as missing.
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: [row(MISSING_SCOPE, true)] },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const subline = githubRow().querySelector('[data-connector-subline]');
+    expect(subline?.textContent).toContain('octocat');
+    expect(subline?.textContent).toContain('missing scope: repo');
+    // The granted list alone, unlabelled, is the composed claim — it must
+    // not stand beside the "missing scope" chip as the row's only scope name.
+    expect(subline?.textContent).not.toMatch(/·\s*gist\s*$/);
+  });
+
+  it('keeps the labelled granted-scopes line, verbatim, in the disclosure', async () => {
+    // KAR-26.4 AC3 — demoted, not deleted: the pre-density page rendered
+    // "Granted scopes: …" as its own labelled line. That line lives in the
+    // disclosure now, and renders once it opens.
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: [row(CONNECTED, true)] },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const github = githubRow();
+    const scopes = github.querySelector('[data-connector-scopes]') as HTMLElement;
+    expect(scopes).not.toBeNull();
+    expect(scopes.textContent?.replace(/\s+/g, ' ').trim()).toBe('Granted scopes: gist, repo');
+    expect(scopes.checkVisibility()).toBe(false);
+
+    await userEvent.click(github.querySelector('.ui-disclosure__trigger') as HTMLElement);
+    await expect.poll(() => scopes.checkVisibility()).toBe(true);
+  });
+
+  it('the subline is an honest dash when the daemon reports no account', async () => {
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: [row(NOT_INSTALLED, false)] },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const subline = githubRow().querySelector('[data-connector-subline]');
+    expect(subline?.textContent?.trim()).toBe('—');
+  });
+});
+
+suite('KAR-26.4 / EPIC-26-S28 — GitHub’s provenance survives, demoted into the disclosure', () => {
+  it('keeps all four credential facts and the command in the document, rendered only once open', async () => {
+    shell = await mountShell({
+      at: '/settings',
+      client: client({
+        projects: [PROJECT_A],
+        servicesByProject: { [PROJECT_A.id]: [row(NOT_INSTALLED)] },
+      }),
+    });
+    await settle();
+    await chooseProject(PROJECT_A.id);
+
+    const github = githubRow();
+    // Closed: every fact is still in the row's textContent (the disclosure
+    // keeps its content in the document) but none is rendered.
+    for (const fact of [
+      CREDENTIAL.authorisedBy,
+      CREDENTIAL.holder,
+      CREDENTIAL.livesIn,
+      CREDENTIAL.deflowStores,
+      AUTHORISATION.command,
+    ]) {
+      expect(github.textContent).toContain(fact);
+    }
+    const credential = github.querySelector('.connector__credential') as HTMLElement;
+    expect(credential.checkVisibility()).toBe(false);
+
+    // Open: the same facts, intact, now rendered.
+    await userEvent.click(github.querySelector('.ui-disclosure__trigger') as HTMLElement);
+    await expect.poll(() => credential.checkVisibility()).toBe(true);
+    const commandBlock = github.querySelector('.connector__command') as HTMLElement;
+    expect(commandBlock.checkVisibility()).toBe(true);
+    expect(commandBlock.textContent).toContain(AUTHORISATION.command);
+  });
+});

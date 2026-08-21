@@ -5,11 +5,19 @@
 // adding a sixteenth component is a visible decision in this file's diff
 // rather than an import path that quietly appeared somewhere in a screen.
 //
-// Fifteen is a ceiling, not a target: the story's "one rule" is that a shape
+// Fifteen was a ceiling, not a target: the story's "one rule" is that a shape
 // is only promoted here once it recurs across screens with no domain-specific
 // variant name attached. A shape that has shown up twice so far is a slot in
 // an existing component (a named slot, a `data-variant` value drawn from the
 // fixed vocabularies), not a reason to add a sixteenth file.
+//
+// The sixteenth exists, and this comment is the record of the decision it
+// asked for: KAR-26.4 added `UiDisclosure`, the row-level disclosure the
+// settings blueprint demotes its prose behind. It recurs across screens by
+// construction (runtime rows and connector rows on day one), carries no
+// domain-specific variant name (no `variant`/`size`/`tone` at all), and no
+// existing primitive could express it — collapsing is not a slot on any of
+// the fifteen. Sixteen is the new ceiling, on the same rule.
 
 // `DisplayState` is the shared vocabulary UiStateChip's `state` prop is typed
 // against (see src/lib/state-palette.ts) — re-exported here so a caller who
@@ -19,6 +27,7 @@ export type { DisplayState } from '../../lib/state-palette.ts';
 export { default as UiButton } from './UiButton.vue';
 export { default as UiCard } from './UiCard.vue';
 export { default as UiChip } from './UiChip.vue';
+export { default as UiDisclosure } from './UiDisclosure.vue';
 export { default as UiEmptyState } from './UiEmptyState.vue';
 export { default as UiField } from './UiField.vue';
 export { default as UiIconTile } from './UiIconTile.vue';
