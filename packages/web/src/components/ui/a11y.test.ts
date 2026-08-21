@@ -21,7 +21,15 @@ import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-vue';
 import { defineComponent, h, ref } from 'vue';
 import '../../styles/theme.css';
-import { UiButton, UiField, UiMeter, UiModal, UiProgressSplit, UiToggle } from './index.ts';
+import {
+  UiButton,
+  UiDisclosure,
+  UiField,
+  UiMeter,
+  UiModal,
+  UiProgressSplit,
+  UiToggle,
+} from './index.ts';
 
 suite(
   'EPIC-24-S07 — UiModal traps focus, closes on Escape and outside click, returns it on close (AC4)',
@@ -173,6 +181,132 @@ suite('EPIC-24-S07 — UiField associates its label with its input (AC4)', () =>
 
     await userEvent.click(label);
     expect(document.activeElement).toBe(input);
+  });
+
+  it('keeps the association when rendered inline (KAR-26.4 AC4)', async () => {
+    const screen = render(UiField, {
+      props: { label: 'Run cost ceiling (USD)', modelValue: '5', inline: true },
+    });
+
+    const label = screen.container.querySelector('label') as HTMLElement;
+    const input = screen.container.querySelector('input') as HTMLInputElement;
+
+    expect(label.getAttribute('for')).toBe(input.id);
+
+    await userEvent.click(label);
+    expect(document.activeElement).toBe(input);
+  });
+});
+
+suite('KAR-26.4 — UiDisclosure hides content from layout, never from the document (AC1)', () => {
+  /** A trigger plus a probe paragraph in the content slot, so the geometry
+   *  claims below have a concrete descendant to measure. */
+  const Harness = defineComponent({
+    props: { compact: { type: Boolean, default: false } },
+    setup(props) {
+      return () =>
+        h(
+          UiDisclosure,
+          { label: 'Details for mock', compact: props.compact },
+          { default: () => h('p', { 'data-probe': '' }, 'The daemon’s full sentence, verbatim.') },
+        );
+    },
+  });
+
+  const trigger = (): HTMLButtonElement =>
+    document.querySelector('.ui-disclosure__trigger') as HTMLButtonElement;
+  const probe = (): HTMLElement => document.querySelector('[data-probe]') as HTMLElement;
+
+  it('the trigger is a real button whose aria-expanded flips on click', async () => {
+    render(Harness);
+
+    expect(trigger().tagName).toBe('BUTTON');
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+
+    await userEvent.click(trigger());
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('aria-controls resolves to the content element’s own id on a never-touched trigger', async () => {
+    render(Harness);
+
+    // Reka assigns the content id during the content's own setup, *after*
+    // the trigger's first render, and the context field is not reactive — so
+    // a bare CollapsibleTrigger ships `aria-controls=""` (an invalid empty
+    // IDREF) until something re-renders it. The collapsed, untouched state
+    // is the one every user meets first, so UiDisclosure forces that
+    // re-render itself on mount and this spec asserts the binding *without*
+    // clicking anything.
+    await expect.poll(() => trigger().getAttribute('aria-controls')).not.toBe('');
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+
+    const controls = trigger().getAttribute('aria-controls');
+    expect(controls).not.toBeNull();
+    const content = document.getElementById(controls as string);
+    expect(content).not.toBeNull();
+    expect(content?.contains(probe())).toBe(true);
+  });
+
+  it('closed content stays in the document but is not rendered; open content is', async () => {
+    render(Harness);
+
+    // The load-bearing claim: `unmount-on-hide: false` keeps the content
+    // mounted under `hidden="until-found"`, so every `textContent` fact
+    // assertion over a row survives the collapse — absence from the *list*
+    // is a rendering claim, not a document one. `checkVisibility()` is the
+    // honest probe for it: this Chromium *forces* layout when a geometry API
+    // is called on `content-visibility: hidden` content (so
+    // `getClientRects()` reports would-be sizes), but `checkVisibility()`
+    // accounts for the skipped subtree and answers false.
+    expect(document.contains(probe())).toBe(true);
+    expect(probe().textContent).toContain('verbatim');
+    expect(probe().checkVisibility()).toBe(false);
+
+    await userEvent.click(trigger());
+    await expect.poll(() => probe().checkVisibility()).toBe(true);
+  });
+
+  it('Space and Enter both toggle it', async () => {
+    render(Harness);
+
+    trigger().focus();
+    await userEvent.keyboard(' ');
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
+
+    await userEvent.keyboard('{Enter}');
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('compact renders no trigger text and carries the label as the accessible name', async () => {
+    render(Harness, { props: { compact: true } });
+
+    expect(trigger().textContent?.trim()).toBe('');
+    expect(trigger().getAttribute('aria-label')).toBe('Details for mock');
+  });
+
+  it('the default form renders the label as visible text', async () => {
+    render(Harness);
+
+    expect(trigger().textContent).toContain('Details for mock');
+  });
+
+  it('a tabbed-to trigger keeps a real focus outline', async () => {
+    const Focusable = defineComponent({
+      setup() {
+        return () =>
+          h('div', [h('button', { type: 'button' }, 'Before'), h(Harness, { compact: true })]);
+      },
+    });
+    render(Focusable);
+
+    await userEvent.tab();
+    await userEvent.tab();
+
+    const focused = document.activeElement as HTMLElement;
+    expect(focused.classList.contains('ui-disclosure__trigger')).toBe(true);
+    const style = getComputedStyle(focused);
+    expect(style.outlineStyle).not.toBe('none');
+    expect(style.outlineStyle).not.toBe('');
   });
 });
 

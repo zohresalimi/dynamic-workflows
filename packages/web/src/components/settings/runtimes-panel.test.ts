@@ -26,6 +26,9 @@ interface RuntimeFixture {
   binaryPath: string | null;
   enabled: boolean;
   action: string | null;
+  /** `routes.acp` for this row's route report — defaults to `'missing'`,
+   *  matching the original fixture's shape. */
+  acp?: string;
 }
 
 interface Calls {
@@ -86,7 +89,16 @@ function defaultRows(): RuntimeFixture[] {
 function providersDaemon(
   rows: RuntimeFixture[],
   calls: Calls,
-  options: { readonly holdDoctorUntil?: Promise<void>; readonly routesKnown?: boolean } = {},
+  options: {
+    readonly holdDoctorUntil?: Promise<void>;
+    readonly routesKnown?: boolean;
+    /** `GET /providers/routes` answers this status instead of a report —
+     *  the daemon still starting (503) or refusing (500). */
+    readonly routesStatus?: number;
+    /** `GET /providers/routes` rejects outright — the request never got an
+     *  HTTP answer at all (daemon gone, network refused). */
+    readonly routesReject?: boolean;
+  } = {},
 ) {
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -108,6 +120,17 @@ function providersDaemon(
       return json(200, { probedAt: 0, runId: 'run_doctor', providers: [] });
     }
 
+    // KAR-26.4 — a route report that never arrives: the daemon answered with
+    // an error, or the request never resolved at all. Neither is a report.
+    if (options.routesReject === true && url.includes('/providers/routes')) {
+      calls.routesGet += 1;
+      throw new TypeError('Failed to fetch');
+    }
+    if (options.routesStatus !== undefined && url.includes('/providers/routes')) {
+      calls.routesGet += 1;
+      return json(options.routesStatus, { error: { message: 'daemon_starting' } });
+    }
+
     // KAR-25.3 AC1 — `boot()` with no `providerRoots`, exactly what
     // `packages/daemon/src/main.ts` does: no row carries a verdict, and the
     // route says so with `known: false` rather than an empty list.
@@ -124,7 +147,7 @@ function providersDaemon(
           id: row.provider,
           available: row.enabled && row.installed,
           route: row.enabled && row.installed ? 'shim' : null,
-          routes: { acp: 'missing', shim: 'missing' },
+          routes: { acp: row.acp ?? 'missing', shim: 'missing' },
           reason: !row.enabled
             ? `${row.provider} is disabled in Settings — enable it there to let DeFlow use it.`
             : row.installed
@@ -165,7 +188,7 @@ function providersDaemon(
 function client(
   rows: RuntimeFixture[],
   calls: Calls,
-  options?: { readonly holdDoctorUntil?: Promise<void>; readonly routesKnown?: boolean },
+  options?: Parameters<typeof providersDaemon>[2],
 ) {
   return createClient({
     baseUrl: 'http://127.0.0.1:7777/api',
@@ -191,6 +214,28 @@ function all<T extends Element = Element>(selector: string): T[] {
   return [...shell.container.querySelectorAll<T>(selector)];
 }
 
+/** Opens one row's disclosure — KAR-26.4 demoted the health sentence, the
+ *  caveat and the install block behind it. */
+async function openRowDisclosure(provider: string): Promise<void> {
+  const trigger = one(`[data-runtime-row="${provider}"] .ui-disclosure__trigger`);
+  await userEvent.click(trigger as HTMLElement);
+}
+
+/**
+ * A custom property's resolved colour, round-tripped through a probe element —
+ * `../ui/variants.test.ts`'s own `tokenColour()` helper, copied per that
+ * file's stated pattern (comparing declared text to computed style fails for
+ * a formatting reason and teaches nobody anything).
+ */
+function tokenColour(name: string): string {
+  const probe = document.createElement('span');
+  probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  document.body.append(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved;
+}
+
 suite('AC1 — each row is the daemon’s own fields, nothing computed here', () => {
   it('shows the name, the resolved binary path, the health sentence, and a toggle', async () => {
     const rows = defaultRows();
@@ -203,6 +248,14 @@ suite('AC1 — each row is the daemon’s own fields, nothing computed here', ()
     // The daemon's own sentence — `providerVerdict`'s, read off
     // `GET /providers/routes`, never composed by this file.
     await expect.poll(() => row.textContent).toContain('resolves and answered the handshake');
+    // KAR-26.4 tightened this spec's meaning back to what its name claims:
+    // the disclosure keeps closed content in `textContent`, so the poll above
+    // alone would stay green even if the sentence could never be shown.
+    // Opening the disclosure and asserting visibility is what makes "shows"
+    // a rendering claim again, not a document one.
+    await openRowDisclosure('mock');
+    const health = row.querySelector('[data-runtime-available]') as HTMLElement;
+    await expect.poll(() => health.checkVisibility()).toBe(true);
     expect(row.querySelector('[data-runtime-toggle]')).not.toBeNull();
   });
 
@@ -235,6 +288,13 @@ suite('AC1 — known: false is rendered as what it is, never as a composed verdi
       expect(row.textContent).not.toContain('not installed');
       expect(row.querySelector('[data-runtime-routes-unknown]')).not.toBeNull();
     }
+
+    // KAR-26.4 — presence in the document is not reachability: the sentence
+    // has to actually render once the row's disclosure opens, or the spec
+    // above proves only that the words exist somewhere in the DOM.
+    await openRowDisclosure('mock');
+    const sentence = one('[data-runtime-row="mock"] [data-runtime-routes-unknown]') as HTMLElement;
+    await expect.poll(() => sentence.checkVisibility()).toBe(true);
   });
 
   it('still reads the daemon’s installed/enabled fields honestly from GET /providers', async () => {
@@ -252,6 +312,70 @@ suite('AC1 — known: false is rendered as what it is, never as a composed verdi
     const row = one('[data-runtime-row="mock"]') as HTMLElement;
     expect(row.textContent).toContain('/opt/bin/deflow-mock-agent');
     expect(row.getAttribute('data-runtime-enabled')).toBe('true');
+  });
+});
+
+suite('KAR-26.4 — a route report that never arrived is an absence, not a status (AC1)', () => {
+  it('renders "unknown", a reason, and no PATH sentence when GET /providers/routes errors', async () => {
+    const rows = defaultRows();
+    // The daemon answering 503 `daemon_starting` — no report exists, and
+    // nothing about this machine's providers has been claimed by anyone.
+    shell = await mountShell({
+      at: '/settings',
+      client: client(rows, newCalls(), { routesStatus: 503 }),
+    });
+
+    await expect.poll(() => one('[data-runtime-row="mock"]')).not.toBeNull();
+    const chip = () =>
+      one('[data-panel="providers"] [data-runtime-row="mock"] .ui-chip') as HTMLElement | null;
+    // Never "unreported" — that word is documented as "the report carried no
+    // row for this provider", a claim about a report that does not exist
+    // here. "unknown" is the honest absence.
+    await expect.poll(() => chip()?.textContent?.trim()).toBe('unknown');
+
+    // The known:false sentence claims the daemon booted without PATH — a
+    // different fact nobody checked. It must not render for a failed fetch.
+    expect(one('[data-runtime-routes-unknown]')).toBeNull();
+
+    // The failure itself is surfaced, not swallowed.
+    const alert = one('[data-panel="providers"] [data-runtime-routes-error]') as HTMLElement;
+    expect(alert).not.toBeNull();
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert.textContent).toContain('503');
+
+    // And the disclosure carries a sentence backing the chip's word.
+    await openRowDisclosure('mock');
+    const absence = one(
+      '[data-runtime-row="mock"] [data-runtime-routes-unavailable]',
+    ) as HTMLElement;
+    expect(absence).not.toBeNull();
+    await expect.poll(() => absence.checkVisibility()).toBe(true);
+  });
+
+  it('handles a rejected fetch the same way, with no unhandled rejection', async () => {
+    const rows = defaultRows();
+    const rejections: PromiseRejectionEvent[] = [];
+    const record = (event: PromiseRejectionEvent) => rejections.push(event);
+    window.addEventListener('unhandledrejection', record);
+    try {
+      shell = await mountShell({
+        at: '/settings',
+        client: client(rows, newCalls(), { routesReject: true }),
+      });
+
+      await expect.poll(() => one('[data-runtime-row="mock"]')).not.toBeNull();
+      const chip = () =>
+        one('[data-panel="providers"] [data-runtime-row="mock"] .ui-chip') as HTMLElement | null;
+      await expect.poll(() => chip()?.textContent?.trim()).toBe('unknown');
+      expect(one('[data-runtime-routes-unknown]')).toBeNull();
+      expect(one('[data-panel="providers"] [data-runtime-routes-error]')).not.toBeNull();
+
+      // Give any stray rejection a macrotask to reach the listener.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(rejections).toHaveLength(0);
+    } finally {
+      window.removeEventListener('unhandledrejection', record);
+    }
   });
 });
 
@@ -379,9 +503,42 @@ suite(
       shell = await mountShell({ at: '/settings', client: client(rows, newCalls()) });
 
       await expect.poll(() => one('[data-runtime-copy-install]')).not.toBeNull();
+      // KAR-26.4 — updated step, named for the story notes: the install block
+      // lives in the row's disclosure now, so the disclosure is opened before
+      // the copy control is clicked. The clipboard assertion itself is
+      // unchanged.
+      await openRowDisclosure('codex');
       await userEvent.click(one('[data-runtime-copy-install]') as HTMLElement);
 
       await expect.poll(() => navigator.clipboard.readText()).toBe('npm install -g @openai/codex');
+    });
+
+    it('paints the command chip on a surface distinct from the disclosure body, both themes', async () => {
+      // KAR-26.4 — the disclosure body is `--surface-inset`; a command chip
+      // that paints the same token on it stops being an inset chip and reads
+      // as a bare outline. The claim is a computed one: the two backgrounds
+      // must actually differ once the disclosure is open.
+      const rows = defaultRows();
+      shell = await mountShell({ at: '/settings', client: client(rows, newCalls()) });
+
+      await expect
+        .poll(() => one('[data-runtime-row="codex"] [data-runtime-install]'))
+        .not.toBeNull();
+      await openRowDisclosure('codex');
+
+      const command = one('[data-runtime-row="codex"] .runtime__command') as HTMLElement;
+      const body = command.closest('.ui-disclosure__body') as HTMLElement;
+      await expect.poll(() => command.checkVisibility()).toBe(true);
+      try {
+        for (const theme of ['light', 'dark'] as const) {
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          expect(getComputedStyle(command).backgroundColor, theme).not.toBe(
+            getComputedStyle(body).backgroundColor,
+          );
+        }
+      } finally {
+        document.documentElement.classList.remove('dark');
+      }
     });
 
     it('has no button on the whole settings page that would run an install', async () => {
@@ -400,3 +557,155 @@ suite(
     });
   },
 );
+
+suite('KAR-26.4 / EPIC-26-S23 — a runtime row is one row', () => {
+  it('shows tile, name, mono subline, status chip and toggle in the row, with no visible prose', async () => {
+    const rows = defaultRows();
+    shell = await mountShell({ at: '/settings', client: client(rows, newCalls()) });
+
+    await expect.poll(() => one('[data-runtime-row="mock"]')).not.toBeNull();
+    const row = one('[data-runtime-row="mock"]') as HTMLElement;
+
+    // The row's five cells.
+    expect(row.querySelector('.ui-icon-tile')).not.toBeNull();
+    expect(row.querySelector('h3')?.textContent).toBe('mock');
+    expect(row.querySelector('[data-runtime-subline]')?.textContent).toContain(
+      '/opt/bin/deflow-mock-agent',
+    );
+    expect(row.querySelectorAll('.ui-chip')).toHaveLength(1);
+    expect(row.querySelector('[data-runtime-toggle]')).not.toBeNull();
+    expect(row.querySelector('.ui-disclosure__trigger')).not.toBeNull();
+
+    // The demoted prose is in the document (the facts never leave it) but not
+    // rendered while the disclosure is closed.
+    await expect.poll(() => row.querySelector('[data-runtime-available]')).not.toBeNull();
+    const health = row.querySelector('[data-runtime-available]') as HTMLElement;
+    expect(health.checkVisibility()).toBe(false);
+    const caveat = row.querySelector('[data-runtime-cannot-remove]') as HTMLElement;
+    expect(caveat.checkVisibility()).toBe(false);
+  });
+});
+
+suite('KAR-26.4 / EPIC-26-S24 — the full health sentence is one disclosure away, verbatim', () => {
+  it('opens to the daemon’s own sentence, word for word', async () => {
+    const rows = defaultRows();
+    shell = await mountShell({ at: '/settings', client: client(rows, newCalls()) });
+
+    await expect
+      .poll(() => one('[data-runtime-row="mock"] [data-runtime-available]'))
+      .not.toBeNull();
+    await openRowDisclosure('mock');
+
+    const health = one('[data-runtime-row="mock"] [data-runtime-available]') as HTMLElement;
+    await expect.poll(() => health.checkVisibility()).toBe(true);
+    // The fixture's exact string — not a substring of it.
+    expect(health.textContent?.trim()).toBe('"mock" resolves and answered the handshake.');
+  });
+});
+
+suite('KAR-26.4 / EPIC-26-S25 — the state word renders, painted by the token it claims', () => {
+  /** Word → the token `runtime-state.ts` maps its tone to. */
+  const EXPECTED: readonly { provider: string; word: string; token: string }[] = [
+    { provider: 'mock', word: 'ready', token: '--state-passed' },
+    { provider: 'gemini', word: 'partial', token: '--state-blocked' },
+    { provider: 'codex', word: 'unusable', token: '--state-blocked' },
+    { provider: 'claude', word: 'disabled', token: '--ink-muted' },
+  ];
+
+  function wordRows(): RuntimeFixture[] {
+    return [
+      {
+        provider: 'mock',
+        installed: true,
+        version: '1.0.0',
+        binaryPath: '/opt/bin/mock',
+        enabled: true,
+        action: null,
+        acp: 'available',
+      },
+      {
+        provider: 'gemini',
+        installed: true,
+        version: '2.0.0',
+        binaryPath: '/opt/bin/gemini',
+        enabled: true,
+        action: null,
+        acp: 'missing',
+      },
+      {
+        provider: 'codex',
+        installed: false,
+        version: null,
+        binaryPath: null,
+        enabled: true,
+        action: 'npm install -g @openai/codex',
+      },
+      {
+        provider: 'claude',
+        installed: true,
+        version: '3.0.0',
+        binaryPath: '/opt/bin/claude',
+        enabled: false,
+        action: null,
+      },
+    ];
+  }
+
+  it('maps ready / partial / unusable / disabled from the daemon’s own fields, in both themes', async () => {
+    shell = await mountShell({ at: '/settings', client: client(wordRows(), newCalls()) });
+
+    const chip = (provider: string) =>
+      one(`[data-panel="providers"] [data-runtime-row="${provider}"] .ui-chip`) as HTMLElement;
+
+    await expect.poll(() => chip('mock')).not.toBeNull();
+    try {
+      for (const theme of ['light', 'dark'] as const) {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        for (const { provider, word, token } of EXPECTED) {
+          expect(chip(provider).textContent?.trim(), `${provider} in ${theme}`).toBe(word);
+          expect(chip(provider).getAttribute('data-runtime-state')).toBe(word);
+          // EPIC-26-S30 — the chip resolves, through the live cascade, to the
+          // token its tone claims, rather than to a second hard-coded value.
+          expect(getComputedStyle(chip(provider)).color, `${provider} in ${theme}`).toBe(
+            tokenColour(token),
+          );
+        }
+      }
+    } finally {
+      document.documentElement.classList.remove('dark');
+    }
+  });
+
+  it('renders "unknown" — never a verdict — when the daemon has no route report at all', async () => {
+    shell = await mountShell({
+      at: '/settings',
+      client: client(defaultRows(), newCalls(), { routesKnown: false }),
+    });
+
+    const chip = () =>
+      one('[data-panel="providers"] [data-runtime-row="mock"] .ui-chip') as HTMLElement | null;
+    await expect.poll(() => chip()?.textContent?.trim()).toBe('unknown');
+    expect(getComputedStyle(chip() as HTMLElement).color).toBe(tokenColour('--ink-muted'));
+  });
+});
+
+suite('KAR-26.4 / EPIC-26-S26 — detected-cannot-be-removed lives in the disclosure', () => {
+  it('is not rendered closed, and is rendered verbatim open', async () => {
+    const rows = defaultRows();
+    shell = await mountShell({ at: '/settings', client: client(rows, newCalls()) });
+
+    await expect
+      .poll(() => one('[data-runtime-row="mock"] [data-runtime-cannot-remove]'))
+      .not.toBeNull();
+    const caveat = one('[data-runtime-row="mock"] [data-runtime-cannot-remove]') as HTMLElement;
+
+    expect(caveat.checkVisibility()).toBe(false);
+
+    await openRowDisclosure('mock');
+    await expect.poll(() => caveat.checkVisibility()).toBe(true);
+    expect(caveat.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Detected on this machine — DeFlow can disable it here but not remove it. Removing a ' +
+        'runtime DeFlow can still see installed would misreport what is actually on this machine.',
+    );
+  });
+});

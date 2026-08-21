@@ -39,6 +39,7 @@ import {
   UiButton,
   UiCard,
   UiChip,
+  UiDisclosure,
   UiEmptyState,
   UiField,
   UiIconTile,
@@ -261,6 +262,30 @@ const tableRows = DISPLAY_STATES.slice(0, 3).map((state, index) => ({
           >{{ variant }}</UiChip
         >
         <UiChip variant="accent" mono>mono</UiChip>
+      </div>
+    </section>
+
+    <!-- KAR-26.4 — UiDisclosure: closed and open. Closed content is in the
+         document (find-in-page can reveal it) but not rendered. -->
+    <section class="gallery__section" data-gallery-section="disclosure">
+      <UiSectionLabel>UiDisclosure</UiSectionLabel>
+      <div class="gallery__stack">
+        <div class="gallery__disclosure-row">
+          <span>Closed</span>
+          <UiDisclosure label="Details for this row" compact>
+            <p class="gallery__disclosure-body">
+              The daemon’s full sentence lives here, verbatim, one disclosure away.
+            </p>
+          </UiDisclosure>
+        </div>
+        <div class="gallery__disclosure-row">
+          <span>Open, labelled</span>
+          <UiDisclosure label="Details" default-open>
+            <p class="gallery__disclosure-body">
+              The daemon’s full sentence lives here, verbatim, one disclosure away.
+            </p>
+          </UiDisclosure>
+        </div>
       </div>
     </section>
 
@@ -587,6 +612,20 @@ const tableRows = DISPLAY_STATES.slice(0, 3).map((state, index) => ({
 
 .gallery__meter {
   width: 96px; /* geometry — one meter swatch's own track length */
+}
+
+.gallery__disclosure-row {
+  display: grid;
+  grid-template-columns: 120px auto 1fr; /* geometry — label / trigger / spanning content */
+  align-items: center;
+  column-gap: 10px; /* geometry — the row's own gutter */
+  font-size: var(--text-base);
+}
+
+.gallery__disclosure-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
 }
 
 .gallery__meta-list {
