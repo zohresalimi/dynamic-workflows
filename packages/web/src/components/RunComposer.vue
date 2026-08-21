@@ -59,16 +59,24 @@
  * now go through `App.vue`'s `openComposer()`, which is the one place that
  * decides "this project" versus "the chooser, with a reason" (AC3).
  *
+ * KAR-26.3 — the adapter picker is the blueprint's control: a compact
+ * trigger in the bottom bar, options in a popover mounted only while open
+ * (the force-mounted panel that floated below the composer is gone), grouped
+ * by route, the empty/unknown states inside the control. Same daemon facts,
+ * new placement — see `adapterSections`' and `adapterNote`'s own comments.
+ *
  * Verifies: EPIC-22-S18, EPIC-22-S19, EPIC-22-S22, EPIC-22-S23, EPIC-22-S25,
  * EPIC-22-S28, EPIC-22-S29, EPIC-22-S30, EPIC-22-S32, EPIC-24-S30 · AC1, AC2,
- * AC4, AC5, AC6, AC8 · KAR-25.5
+ * AC4, AC5, AC6, AC8 · KAR-25.5 · EPIC-26-S15..S22 · KAR-26.3
  */
 import { type ProviderRoute, routeLabel } from '@DeFlow/core';
+import { Check, ChevronDown } from 'lucide-vue-next';
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { PROMPT_INPUT_ID } from '../app/ids.ts';
+import type { RouteReportStatus } from '../lib/runtime-state.ts';
 import { UiButton, UiCard, UiChip, UiSectionLabel } from './ui/index.ts';
 
 /** The three wire shapes `POST /api/runs` accepts, and no fourth. */
@@ -186,6 +194,23 @@ const providerId = ref('');
  */
 const connectedServices = ref<readonly { readonly id: string; readonly label: string }[]>([]);
 const issues = ref<readonly PickerRow[]>([]);
+/**
+ * KAR-26.3 — the adapter control's popover, a Reka-local `open` ref exactly
+ * like `frame/ProjectSwitcher.vue`'s: it registers nothing on the app's
+ * overlay stack (`check-overlay-ids.ts` — only `jumper`/`inspector` have
+ * hosts), and `v-model:open` exists so selecting a row can close it.
+ */
+const adaptersOpen = ref(false);
+/**
+ * KAR-26.3 AC3 — what became of `GET /providers/routes` itself, the same
+ * three-way fact `settings/RuntimesPanel.vue` keeps: `'reported'` (a report
+ * with `known: true`), `'machine-unknown'` (`known: false` — the daemon
+ * booted without `providerRoots`), `'unavailable'` (no report reached this
+ * tab). The old shape collapsed the last two into one sentence, which made
+ * "the request failed" claim a boot fact nobody checked. Starts
+ * `'unavailable'` because that is literally true before the first response.
+ */
+const routesStatus = ref<RouteReportStatus>('unavailable');
 const error = ref<string | null>(null);
 /**
  * The run a refusal named (AC5).
@@ -204,17 +229,133 @@ const project = computed(() => projects.value.find((row) => row.id === props.pro
 const chosen = computed(() => providers.value.find((row) => row.id === providerId.value) ?? null);
 
 /**
- * KAR-25.5 AC4 — usable first, then the rest, which is the one grouping
- * `GET /api/providers/routes` actually supports: the daemon already orders
- * usable adapters ahead of the rest (`usableProviders()`'s own order), so
- * this is that ordering made visible as two labelled sections rather than a
- * provider/vendor taxonomy the wire shape does not carry. See this file's
- * companion story notes for what the blueprint's model names, vendor groups
- * and context-window figures cannot be: none of them are on this row, and
+ * KAR-25.5 AC4 — usable first, then the rest: the daemon already orders
+ * usable adapters ahead of the rest (`usableProviders()`'s own order).
+ * KAR-26.3 sharpened the *usable* half into per-route sections (see
+ * `adapterSections` below) but the partition itself is unchanged, and so is
+ * the rule it carries: no provider/vendor taxonomy, no model names, no
+ * context-window figures — none of them are on this row, and
  * `test/no-context-window-table.test.ts` forbids inventing the last one.
  */
 const usableProviders = computed(() => providers.value.filter((row) => row.available));
 const unusableProviders = computed(() => providers.value.filter((row) => !row.available));
+
+/**
+ * KAR-26.3 AC1 — the popover's sections. The blueprint groups by runtime
+ * (`ANTHROPIC · API`); the wire carries no vendor, no runtime and no model
+ * (`providerOptions`'s field list is the whole vocabulary — see the epic's
+ * scope decisions), so the closest honest analogue is the route: available
+ * rows under the route label `doctor` prints (`routeLabel`), in the daemon's
+ * own order, then every `available: false` row under 'Not usable here'
+ * regardless of route — an unavailable route is not a group an operator can
+ * act on. Section labels are still only reductions of daemon fields.
+ */
+interface AdapterSection {
+  readonly label: string;
+  readonly rows: readonly ProviderRow[];
+}
+
+const adapterSections = computed<readonly AdapterSection[]>(() => {
+  const sections: { label: string; rows: ProviderRow[] }[] = [];
+  for (const row of usableProviders.value) {
+    const label = row.route === null ? 'Usable here' : routeLabel(row.route);
+    const section = sections.find((entry) => entry.label === label);
+    if (section === undefined) sections.push({ label, rows: [row] });
+    else section.rows.push(row);
+  }
+  if (unusableProviders.value.length > 0)
+    sections.push({ label: 'Not usable here', rows: [...unusableProviders.value] });
+  return sections;
+});
+
+/**
+ * KAR-26.3 AC5 — Run's literal disabled state. The submit-time refusal in
+ * `submit()` stays exactly as it was (it is what EPIC-22-S23/S25 assert and
+ * it guards the `⌘↵` chord, which no button attribute reaches); this is the
+ * same gate surfaced on the button itself.
+ */
+const canRun = computed(() => chosen.value?.available === true);
+
+/**
+ * KAR-26.3 AC3 — the control's empty/unknown states, one string each,
+ * hoisted so the popover body and the trigger's accessible description
+ * cannot drift apart. The machine-unknown sentence is the existing wording,
+ * verbatim; the unavailable one names a *client* fact (no report reached
+ * this tab), the same honesty rule `settings/RuntimesPanel.vue` states.
+ */
+const MACHINE_UNKNOWN_LEAD =
+  'This daemon has not been told which machine it is on, so it cannot say which adapters are ' +
+  'usable here. Start it with';
+const MACHINE_UNKNOWN_COMMAND = 'deflow up';
+const MACHINE_UNKNOWN_NOTE = `${MACHINE_UNKNOWN_LEAD} ${MACHINE_UNKNOWN_COMMAND}.`;
+const ROUTES_UNAVAILABLE_NOTE =
+  'No route report from the daemon has reached this page, so it cannot say which adapters are ' +
+  'usable here.';
+const NONE_USABLE_NOTE = 'No adapter on this machine can serve a run right now.';
+
+/** The one id `aria-describedby` points at — rendered in the bottom bar (not
+ *  portalled), because the popover body is unmounted while closed and can
+ *  never be a description target. */
+const ADAPTER_NOTE_ID = 'DeFlow-composer-adapter-note';
+
+const adapterNote = computed<string | null>(() => {
+  if (routesStatus.value === 'machine-unknown') return MACHINE_UNKNOWN_NOTE;
+  if (routesStatus.value === 'unavailable') return ROUTES_UNAVAILABLE_NOTE;
+  if (usableProviders.value.length === 0) return NONE_USABLE_NOTE;
+  return null;
+});
+
+/**
+ * KAR-26.3 AC1/AC3 — what the trigger reads when nothing is chosen. 'No
+ * adapter' is an affirmative claim about a report's contents, so it is earned
+ * only by a report that actually said so (`reported` with zero usable rows).
+ * In the two states where the daemon has not answered — `known: false`, or no
+ * report reached this tab — the word names the absence of an answer instead,
+ * the same rule `../lib/runtime-state.ts` states for conflating
+ * `machine-unknown` with `unreported`.
+ */
+const triggerLabel = computed<string>(() => {
+  if (chosen.value !== null) return chosen.value.id;
+  return routesStatus.value === 'reported' ? 'No adapter' : 'Adapter unknown';
+});
+
+/**
+ * A row's activation: select and dismiss, unconditionally — the shape
+ * `frame/ProjectSwitcher.vue`'s `select()` has. Close-on-`change` (the first
+ * cut) closed on arrow-key *navigation* (radios select on arrow, so `change`
+ * fired while browsing) and never closed on the already-selected row (an
+ * already-checked radio fires no `change`); activation is the one signal that
+ * means "I choose this", so it is the one that closes.
+ */
+function choose(row: ProviderRow): void {
+  providerId.value = row.id;
+  adaptersOpen.value = false;
+}
+
+/**
+ * KAR-26.3 AC5 — arrow keys browse the list without committing: focus moves
+ * between the available rows (wrapping), and nothing is selected until
+ * Enter/Space/click activates one. This is what the radio rows could not do —
+ * a radio group *selects* on arrow — and it is strictly more than the house
+ * popovers' Tab-only navigation, not less.
+ */
+function onAdapterKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  const root = event.currentTarget as HTMLElement;
+  const options = [
+    ...root.querySelectorAll<HTMLButtonElement>('[data-provider-select]:not(:disabled)'),
+  ];
+  if (options.length === 0) return;
+  event.preventDefault();
+  const index = options.indexOf(document.activeElement as HTMLButtonElement);
+  const next =
+    index === -1
+      ? event.key === 'ArrowDown'
+        ? 0
+        : options.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+  options[next]?.focus();
+}
 
 /** The issue chip's own label: the connected service's name once there is
  * exactly one, and the generic word otherwise — never a name this component
@@ -243,18 +384,19 @@ async function refusalOf(response: HttpAnswer): Promise<{ message: string; runId
   }
 }
 
-async function load(): Promise<void> {
-  const [projectsAnswer, providersAnswer] = await Promise.all([
-    api.projects.$get(),
-    api.providers.routes.$get(),
-  ]);
-
-  if (projectsAnswer.ok) {
-    projects.value = ((await projectsAnswer.json()) as { projects: ProjectRow[] }).projects;
-  }
-  projectsLoaded.value = true;
+/**
+ * The route report, on its own so the popover's retry (rendered when a
+ * request for it failed — the daemon answered, so the state is not permanent)
+ * can re-ask this one question without re-fetching projects and connectors.
+ */
+async function loadProviders(): Promise<void> {
+  const providersAnswer = await api.providers.routes.$get();
   if (providersAnswer.ok) {
-    providers.value = ((await providersAnswer.json()) as { providers: ProviderRow[] }).providers;
+    const body = (await providersAnswer.json()) as { providers: ProviderRow[]; known?: unknown };
+    providers.value = body.providers;
+    // KAR-26.3 AC3 — `known: false` is a real answer, not an empty list, and
+    // a failed request is neither: the same reading `RuntimesPanel.vue` does.
+    routesStatus.value = body.known === false ? 'machine-unknown' : 'reported';
     // The **first** row, and that is load-bearing: `GET /api/providers` orders
     // them the way admission would choose, so preselecting the first is
     // preselecting what a submission with no `provider` field would land on. A
@@ -262,7 +404,18 @@ async function load(): Promise<void> {
     // admission before anybody had touched it.
     if (providerId.value === '')
       providerId.value = providers.value.find((r) => r.available)?.id ?? '';
+  } else {
+    routesStatus.value = 'unavailable';
   }
+}
+
+async function load(): Promise<void> {
+  const [projectsAnswer] = await Promise.all([api.projects.$get(), loadProviders()]);
+
+  if (projectsAnswer.ok) {
+    projects.value = ((await projectsAnswer.json()) as { projects: ProjectRow[] }).projects;
+  }
+  projectsLoaded.value = true;
   void loadConnector();
 }
 
@@ -592,7 +745,10 @@ function onKeydown(event: KeyboardEvent): void {
 
       <div class="composer__hairline" />
 
-      <div class="composer__row">
+      <!-- `data-composer-bar` — KAR-26.3 AC6's anchor: the DOM guard in
+           `../views/new-run.test.ts` asserts the adapter control renders
+           nothing outside this bar. -->
+      <div class="composer__row" data-composer-bar>
         <!--
           KAR-25.5 — the source picker, left. `text | file | issue`, exactly the
           shapes `POST /api/runs` accepts — a compact chip group rather than the
@@ -616,117 +772,133 @@ function onKeydown(event: KeyboardEvent): void {
 
         <div class="composer__actions">
           <!--
-            AC2, AC4 — the adapter picker. Every row is the daemon's answer:
-            whether it is available, by which route, why not, and what to run
-            about it. Nothing on this list is computed in the browser.
-            `force-mount` keeps the rows in the document even while the popover
-            reads as closed, so a per-row disabled selectable control is always
-            reachable rather than appearing only after an operator opens the
-            trigger — the same shape the picker has always had, now inside a
-            popover instead of always laid out on the page.
+            KAR-26.3 AC1, AC2, AC4 — the adapter control: a compact trigger in
+            the bar (mono id + chevron, no vendor glyph — the wire carries no
+            vendor), options in a Reka popover mounted only while open, the
+            same primitives and behaviour as `frame/ProjectSwitcher.vue`.
+            Every row is the daemon's answer: whether it is available, by
+            which route, why not, and what to run about it. Nothing on this
+            list is computed in the browser. The trigger stays enabled in
+            every state — a disabled button would make the popover (and its
+            explanation) unreachable; the gating lives on Run (AC5).
           -->
-          <PopoverRoot>
+          <PopoverRoot v-model:open="adaptersOpen">
             <PopoverTrigger as-child>
-              <UiButton type="button" variant="ghost" size="sm" data-composer-provider-trigger>
-                {{ chosen?.id ?? 'Choose adapter' }}
+              <UiButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-composer-provider-trigger
+                :aria-describedby="adapterNote === null ? undefined : ADAPTER_NOTE_ID"
+              >
+                <span class="composer__trigger-id">{{ triggerLabel }}</span>
+                <ChevronDown :size="12" aria-hidden="true" />
               </UiButton>
             </PopoverTrigger>
-            <PopoverPortal :force-mount="true">
+            <PopoverPortal>
               <PopoverContent
                 class="composer__providers-panel"
+                data-composer-adapters-panel
                 align="end"
                 :side-offset="6"
-                :force-mount="true"
               >
                 <UiCard variant="raised" class="composer__providers-card">
-                  <fieldset class="composer__providers" data-composer-providers>
+                  <!-- The rows are buttons, so the fieldset is a *group* the
+                       legend names, not a radio group: activation (click /
+                       Enter / Space) commits and closes, arrows only move
+                       focus (`onAdapterKeydown`) — the house popovers' shape,
+                       with the selection exposed as `aria-pressed` the same
+                       way the shape chips above expose theirs. -->
+                  <fieldset
+                    class="composer__providers"
+                    data-composer-providers
+                    @keydown="onAdapterKeydown"
+                  >
                     <legend class="composer__caption">
                       <UiSectionLabel as="span">Adapter</UiSectionLabel>
                     </legend>
-                    <p v-if="providers.length === 0" class="composer__providers-empty">
-                      This daemon has not been told which machine it is on, so it cannot say which
-                      adapters are usable here. Start it with <code>deflow up</code>.
+                    <!-- AC3 — the unknown/absent states are the popover's own
+                         body, never a card in page flow. Same strings as the
+                         trigger's accessible description (`adapterNote`). -->
+                    <p v-if="routesStatus === 'machine-unknown'" class="composer__providers-empty">
+                      {{ MACHINE_UNKNOWN_LEAD }} <code>{{ MACHINE_UNKNOWN_COMMAND }}</code>.
                     </p>
+                    <template v-else-if="routesStatus === 'unavailable'">
+                      <p class="composer__providers-empty">
+                        {{ ROUTES_UNAVAILABLE_NOTE }}
+                      </p>
+                      <!-- The daemon answered (a 500 is an answer), so this is
+                           not a permanent state: asking again is a client
+                           act, and cheaper than the page reload it replaces. -->
+                      <UiButton
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        class="composer__providers-retry"
+                        data-composer-adapters-retry
+                        @click="void loadProviders()"
+                      >
+                        Ask again
+                      </UiButton>
+                    </template>
                     <template v-else>
-                      <UiSectionLabel
-                        v-if="usableProviders.length > 0"
-                        as="p"
-                        class="composer__providers-group"
-                      >
-                        Usable here
-                      </UiSectionLabel>
-                      <ul v-if="usableProviders.length > 0" class="composer__provider-rows">
-                        <li
-                          v-for="row in usableProviders"
-                          :key="row.id"
-                          class="composer__provider"
-                          :data-provider-row="row.id"
-                          :data-provider-available="String(row.available)"
-                          :data-provider-route="row.route ?? ''"
-                        >
-                          <label class="composer__provider-head">
-                            <input
-                              v-model="providerId"
+                      <p v-if="usableProviders.length === 0" class="composer__providers-empty">
+                        {{ NONE_USABLE_NOTE }}
+                      </p>
+                      <template v-for="section in adapterSections" :key="section.label">
+                        <UiSectionLabel as="p" class="composer__providers-group">
+                          {{ section.label }}
+                        </UiSectionLabel>
+                        <ul class="composer__provider-rows">
+                          <li
+                            v-for="row in section.rows"
+                            :key="row.id"
+                            class="composer__provider"
+                            :data-provider-row="row.id"
+                            :data-provider-available="String(row.available)"
+                            :data-provider-route="row.route ?? ''"
+                          >
+                            <!-- The whole styled row is the one hit target —
+                                 reason, limitation and action included. A
+                                 disabled row keeps the daemon's reason
+                                 readable (AC4) with real `disabled`
+                                 semantics: unfocusable, inert, and the
+                                 force-click EPIC-22-S23 performs still lands
+                                 on the submit-time refusal. -->
+                            <button
+                              type="button"
+                              class="composer__provider-option"
                               data-provider-select
-                              type="radio"
-                              name="DeFlow-composer-provider"
-                              :value="row.id"
                               :disabled="!row.available"
+                              :aria-pressed="row.id === providerId"
+                              @click="choose(row)"
                             >
-                            <span class="composer__provider-id">{{ row.id }}</span>
-                            <span class="composer__provider-route">
-                              {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
-                            </span>
-                          </label>
-                          <p class="composer__provider-reason">{{ row.reason }}</p>
-                          <p v-if="row.limitation" class="composer__provider-limit">
-                            {{ row.limitation }}
-                          </p>
-                          <p v-if="row.action" class="composer__provider-action">
-                            <code>{{ row.action }}</code>
-                          </p>
-                        </li>
-                      </ul>
-
-                      <UiSectionLabel
-                        v-if="unusableProviders.length > 0"
-                        as="p"
-                        class="composer__providers-group"
-                      >
-                        Not usable here
-                      </UiSectionLabel>
-                      <ul v-if="unusableProviders.length > 0" class="composer__provider-rows">
-                        <li
-                          v-for="row in unusableProviders"
-                          :key="row.id"
-                          class="composer__provider"
-                          :data-provider-row="row.id"
-                          :data-provider-available="String(row.available)"
-                          :data-provider-route="row.route ?? ''"
-                        >
-                          <label class="composer__provider-head">
-                            <input
-                              v-model="providerId"
-                              data-provider-select
-                              type="radio"
-                              name="DeFlow-composer-provider"
-                              :value="row.id"
-                              :disabled="!row.available"
-                            >
-                            <span class="composer__provider-id">{{ row.id }}</span>
-                            <span class="composer__provider-route">
-                              {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
-                            </span>
-                          </label>
-                          <p class="composer__provider-reason">{{ row.reason }}</p>
-                          <p v-if="row.limitation" class="composer__provider-limit">
-                            {{ row.limitation }}
-                          </p>
-                          <p v-if="row.action" class="composer__provider-action">
-                            <code>{{ row.action }}</code>
-                          </p>
-                        </li>
-                      </ul>
+                              <span class="composer__provider-head">
+                                <span class="composer__provider-id">{{ row.id }}</span>
+                                <span class="composer__provider-route">
+                                  {{ row.route === null ? 'unavailable' : `${routeLabel(row.route)} route` }}
+                                </span>
+                                <Check
+                                  v-if="row.id === providerId"
+                                  :size="12"
+                                  class="composer__provider-tick"
+                                  data-provider-tick
+                                  aria-hidden="true"
+                                />
+                              </span>
+                              <span class="composer__provider-reason" data-provider-reason>
+                                {{ row.reason }}
+                              </span>
+                              <span v-if="row.limitation" class="composer__provider-limit">
+                                {{ row.limitation }}
+                              </span>
+                              <span v-if="row.action" class="composer__provider-action">
+                                <code>{{ row.action }}</code>
+                              </span>
+                            </button>
+                          </li>
+                        </ul>
+                      </template>
                     </template>
                   </fieldset>
                 </UiCard>
@@ -734,13 +906,31 @@ function onKeydown(event: KeyboardEvent): void {
             </PopoverPortal>
           </PopoverRoot>
 
+          <!-- AC3's second branch — the same sentence the popover body shows,
+               as the trigger's accessible description. In the bar, not the
+               portal: an unmounted popover can never be a description target.
+               Visually hidden; the visible rendering is the popover body. -->
+          <p
+            v-if="adapterNote !== null"
+            :id="ADAPTER_NOTE_ID"
+            class="composer__adapter-note"
+            data-composer-adapter-note
+          >
+            {{ adapterNote }}
+          </p>
+
+          <!-- A hard-`disabled` button is out of the tab order and says
+               nothing on its own, so it carries the same accessible
+               description the trigger does: an AT user reading past the inert
+               button is told *why* it is dead, not just that it is. -->
           <UiButton
             type="submit"
             form="DeFlow-composer-form"
             variant="primary"
             size="sm"
             data-composer-submit
-            :disabled="submitting"
+            :disabled="submitting || !canRun"
+            :aria-describedby="adapterNote === null ? undefined : ADAPTER_NOTE_ID"
           >
             Run <span class="composer__chord" aria-hidden="true">⌘↵</span>
           </UiButton>
@@ -905,19 +1095,31 @@ function onKeydown(event: KeyboardEvent): void {
   white-space: nowrap;
 }
 
+/* z-index 20 matches `.approvals__panel` and `.switcher__panel` — the house
+   popovers' own stacking level, not a per-instance invention. */
 .composer__providers-panel {
   width: 22rem;
   max-width: min(22rem, 90vw);
   z-index: 20;
 }
 
-/*
- * `force-mount` keeps this content in the document at every popover state, so
- * the closed state has to actually look closed rather than sitting open on
- * the page underneath the trigger.
- */
-.composer__providers-panel[data-state="closed"] {
-  display: none;
+.composer__trigger-id {
+  font-family: var(--font-mono);
+}
+
+/* AC3 — the trigger's accessible description: real text in the document (so
+   `aria-describedby` resolves while the popover is unmounted), visually
+   hidden the standard clipped-box way — never `display: none`, which would
+   empty the description. */
+.composer__adapter-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .composer__providers-card {
@@ -931,27 +1133,58 @@ function onKeydown(event: KeyboardEvent): void {
   border: none;
   border-radius: var(--radius-lg);
   background: var(--surface);
-  padding: 11px 12px; /* geometry — matches UiPanel's own header padding */
+  padding: 7px 8px; /* geometry — matches the switcher popover's row inset */
   margin: 0;
 }
 
 .composer__providers-group {
-  margin: 10px 0 4px; /* geometry — group-label-to-list gap */
+  margin: 8px 6px 2px; /* geometry — group-label-to-list gap, inset to the row padding */
 }
 
 .composer__provider-rows {
   list-style: none;
-  margin: 8px 0 0;
+  margin: 2px 0 0;
   padding: 0;
   display: grid;
-  gap: 10px; /* geometry — the provider list's own row gutter */
+  gap: 2px; /* geometry — the popover list's own row gutter */
+}
+
+/* The row *is* its button: the whole styled box — head, reason, limitation,
+   action — is one hit target, the way `.switcher__row` is. */
+.composer__provider-option {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 6px 8px; /* geometry — the option row's own padding */
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Hover lights only what a click would do something on — a disabled row that
+   lit up like a selectable one was an invitation to a dead end. */
+.composer__provider-option:hover:not(:disabled) {
+  background: var(--surface-inset);
+}
+
+/* The chosen row carries the same surface the switcher's active row does —
+   the tick is the primary cue, the surface an extra one. */
+.composer__provider-option[aria-pressed="true"] {
+  background: var(--surface-inset);
+}
+
+.composer__provider-option:disabled {
+  cursor: not-allowed;
 }
 
 .composer__provider-head {
   display: flex;
   align-items: baseline;
-  gap: 8px; /* geometry — radio-to-label gutter */
-  cursor: pointer;
+  gap: 8px; /* geometry — id-to-route gutter */
 }
 
 .composer__provider-id {
@@ -960,25 +1193,49 @@ function onKeydown(event: KeyboardEvent): void {
   color: var(--ink);
 }
 
+/* AC4/AC5 — the unavailable row is dimmed by *token*, never by an `opacity`
+   composite: stacking 0.6 on `--ink-muted` landed the daemon's reason — the
+   text AC4 exists to make readable — at 2.71:1. `--ink-muted` is a pair the
+   token-level contrast suite (styles/theme-contrast.test.ts) already holds to
+   4.5:1 in both themes, and the id dropping from `--ink` to it is the visible
+   cue; the words ('unavailable', the reason, `cursor: not-allowed`) carry the
+   rest. */
+.composer__provider[data-provider-available="false"] .composer__provider-id {
+  color: var(--ink-muted);
+}
+
 .composer__provider-route {
+  flex: 1;
   font-size: var(--text-sm);
   color: var(--ink-muted);
 }
 
-/* State is carried by words as well as by colour: the route, the reason and
-   the command are always text, and the dimming is an extra cue rather than the
-   only one. */
-.composer__provider[data-provider-available="false"] {
-  opacity: 0.6;
+/* `--accent`, not `--state-running`: theme.css declares that pair as the one
+   "this is selected" accent precisely so a run *status* colour never doubles
+   as one. The hexes coincide today; the day they diverge, this tick must
+   follow the selection accent, not the run state. */
+.composer__provider-tick {
+  flex: none;
+  align-self: center;
+  color: var(--accent);
 }
 
 .composer__provider-reason,
 .composer__provider-limit,
 .composer__provider-action,
 .composer__providers-empty {
-  margin: 4px 0 0 20px; /* geometry — aligns under the radio's label text */
+  display: block;
+  margin: 3px 0 0; /* geometry — head-to-metadata gap */
   font-size: var(--text-sm);
   color: var(--ink-muted);
+}
+
+.composer__providers-empty {
+  margin: 4px 6px; /* geometry — the empty sentence's own inset */
+}
+
+.composer__providers-retry {
+  margin: 2px 6px 4px; /* geometry — sentence-to-retry gap, inset to match */
 }
 
 .composer__error {

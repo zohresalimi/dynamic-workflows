@@ -15,7 +15,8 @@
  *
  * Verifies: EPIC-22-S18, EPIC-22-S19, EPIC-22-S22, EPIC-22-S23, EPIC-22-S24,
  * EPIC-22-S25, EPIC-22-S26, EPIC-22-S27, EPIC-22-S28, EPIC-22-S29,
- * EPIC-22-S30, EPIC-22-S32 · AC1–AC7 · test plan #1, #5, #6, #8, #9, #10
+ * EPIC-22-S30, EPIC-22-S32, EPIC-26-S21 · AC1–AC7 · test plan #1, #5, #6,
+ * #8, #9, #10
  */
 import type { Event } from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
@@ -346,6 +347,18 @@ const providerRow = (id: string): HTMLElement => {
   return row;
 };
 
+/**
+ * KAR-26.3 — the adapter rows live in the trigger's popover now, portalled
+ * and mounted only while open (the force-mounted floating panel is gone), so
+ * every read of a `[data-provider-row]` opens the control first, the way an
+ * operator does. Same pattern as `run-gate-answer.test.ts`'s
+ * `[data-approvals-trigger]` click.
+ */
+async function openAdapters(): Promise<void> {
+  await userEvent.click(one('[data-composer-provider-trigger]') as HTMLElement);
+  await expect.poll(() => one('[data-provider-row]')).not.toBeNull();
+}
+
 async function mount(options: {
   readonly client: ApiClient;
   readonly at?: string;
@@ -457,6 +470,7 @@ suite('EPIC-22-S22 — each provider’s route is named in words', () => {
     });
     await mount({ client });
     await openComposer();
+    await openAdapters();
 
     expect(providerRow('alpha').textContent).toContain('ACP adapter');
     expect(providerRow('beta').textContent).toContain('exec shim');
@@ -471,6 +485,7 @@ suite('EPIC-22-S23 — an unavailable provider is not silently selectable', () =
     const client = composerClient({ providers: [usable(), ABSENT] });
     await mount({ client });
     await openComposer();
+    await openAdapters();
 
     const row = providerRow('gamma');
     expect(row.dataset.providerAvailable).toBe('false');
@@ -732,7 +747,42 @@ suite('AC7 — the composer is reachable from anywhere inside a project', () => 
     await expect.poll(() => shell.router.currentRoute.value.name).toBe('new-run');
     expect(shell.router.currentRoute.value.params['projectId']).toBe(PROJECT_ID);
     await expect.poll(() => one('[data-composer]')).not.toBeNull();
-    expect(all('[data-provider-row]').length).toBeGreaterThan(0);
+    // KAR-26.3 — the same claim ("the picker loaded after `c` routed here"),
+    // read off the trigger rather than off always-mounted rows: the rows live
+    // in the popover now and render only while it is open. The change is
+    // recorded in EPIC-26-run-clean.md's KAR-26.3 notes.
+    await expect.poll(() => one('[data-composer-provider-trigger]')?.textContent).toContain('mock');
+  });
+});
+
+/**
+ * KAR-26.3 AC5, EPIC-26-S21 — Run is gated on an available adapter: the
+ * button carries the literal `disabled`, and the `⌘↵` chord (which no button
+ * attribute reaches) still lands on the same submit-time refusal
+ * EPIC-22-S23/S25 assert, posting nothing.
+ */
+suite('EPIC-26-S21 — Run is disabled until an available adapter is chosen', () => {
+  it('disables Run with no available adapter, and the chord still posts nothing', async () => {
+    const client = composerClient({ providers: [ABSENT] });
+    await mount({ client });
+    await openComposer();
+
+    expect((one('[data-composer-submit]') as HTMLButtonElement).disabled).toBe(true);
+
+    type(prompt(), 'Migrate the checkout module');
+    submitChord();
+    await settle();
+
+    expect(client.recorded.posts).toHaveLength(0);
+    expect(one('[data-composer-error]')?.textContent).toContain('adapter');
+  });
+
+  it('enables Run the moment an available adapter is preselected', async () => {
+    const client = composerClient();
+    await mount({ client });
+    await openComposer();
+
+    expect((one('[data-composer-submit]') as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
