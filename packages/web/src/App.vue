@@ -67,6 +67,7 @@ import { MAIN_CONTENT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
 import { useTheme } from './app/theme.ts';
 import { useApprovals } from './app/useApprovals.ts';
+import { provideProjects } from './app/useProjects.ts';
 import CommandJumper from './components/CommandJumper.vue';
 import AppRail from './components/frame/AppRail.vue';
 import AppTopBar from './components/frame/AppTopBar.vue';
@@ -102,6 +103,14 @@ const { isDark, toggleTheme } = useTheme();
  * nothing on a tokenless tab.
  */
 useApprovals();
+
+/**
+ * KAR-26.5 — the one `GET /api/projects` read, provided here so the switcher
+ * (its one caller) and the topbar's breadcrumb read the same answer. Providing
+ * is not fetching: a tokenless tab never mounts the rail, so the request this
+ * handle owns never fires there (see `./app/useProjects.ts`).
+ */
+provideProjects();
 
 /**
  * KAR-25.5 AC3 — "Start a run", reached from `c` or the topbar button.
@@ -145,11 +154,18 @@ onUnmounted(() => {
   <div class="shell" :class="{ 'shell--no-rail': !session.authenticated }">
     <!-- See the header comment: not rendered at all for a tokenless tab, so
          its own and `ProjectSwitcher`'s mount-time requests never fire. -->
-    <AppRail v-if="session.authenticated" />
+    <!-- KAR-26.5 — `isDark`/`toggle-theme` threaded exactly as the topbar's
+         always were: `useTheme()` stays this file's to call. -->
+    <AppRail v-if="session.authenticated" :is-dark="isDark" @toggle-theme="toggleTheme()" />
 
     <div class="shell__column">
+      <!-- `no-rail` — KAR-26.5: with the toggle's home in the rail footer,
+           the bar must know when no rail exists at any width (this same
+           `!session.authenticated`), or a tokenless tab above 820px has no
+           theme control anywhere. -->
       <AppTopBar
         :is-dark="isDark"
+        :no-rail="!session.authenticated"
         :task="run.submittedTask"
         @toggle-theme="toggleTheme()"
         @open-composer="openComposer()"

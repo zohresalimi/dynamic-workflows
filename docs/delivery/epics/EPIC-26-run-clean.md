@@ -380,6 +380,67 @@ indicator, the inspector's tab treatment, node-card density on the canvas.
 screenshots against the live DOM (screenshot comparison in the browser suite where practical).
 Model: **fable** for audit and design implementation; opus for verify.
 
+**Execution notes (recorded on landing, 2026-08-22).**
+
+- **The audit (AC1)** lands as
+  [`docs/design/expected/EPIC-25/KAR-26.5-frame-audit.md`](../../design/expected/EPIC-25/KAR-26.5-frame-audit.md),
+  linked from that directory's `README.md`. Five gaps closed; every other element is `matches` or
+  carries an out-of-scope reason. Three audit items worth naming here: the **LOCAL chip** stays
+  literal — `GET /api/health` was verified to carry no bind/environment field, so the fact-fed
+  half is out of scope and retiring the KAR-24.4-mandated literal is a plan change, recorded as a
+  standing tension; and **two rows carry a reason outside AC1's standing list**, recorded as a
+  named deviation from AC1 rather than dressed up as standing: the blueprint's **"⏸ Pause run"**
+  button (the daemon's `POST /runs/:id/pause` exists with zero web callers, but run-control UI is
+  a feature no epic's plan contains, and wiring the call is behaviour AC4 bars) and the
+  **inspector's scrim** (every blueprint draws the frame at full brightness around the open
+  panel; the shipped `Dialog` dims it — KAR-24.6's recorded decision, and de-modalising is
+  behaviour AC4 bars). Both rows cite AC4 and name where the decision lives, so a follow-up
+  story has its pointers.
+- **AC4 exceptions, named:** (1) `ProjectsView.vue` reads one new query marker (`?new=1`) and
+  clears it with a `router.replace` when the modal closes — the affordance's own item; (2) the
+  one `GET /api/projects` read moved from `ProjectSwitcher.vue`'s local state into
+  `src/app/useProjects.ts`, an app-level provide/inject handle — the switcher still owns the
+  fetch, the topbar only reads, request count unchanged (provide/inject rather than a cache
+  keyed by client because `useApiClient()` builds a fresh client per call when none is
+  provided, which is exactly the shipped deployment); `ProjectsView.vue` consumes the **same**
+  handle in place of its private `ref` — its mount `GET` (pre-existing) fills the shared rows
+  and its create/remove update them, so a project created in-session names itself in the
+  switcher and breadcrumb rather than rendering as a raw id until the next reload; still zero
+  new requests; (3) `RunStatusPill.vue` gained read-only selectors over
+  `useRunStore.timelineSpans` plus a component-scoped 1s ticker that runs only while a span is
+  open — no fold change, no daemon call; (4) `AppTopBar.vue` gained a `no-rail` prop
+  (`App.vue`'s own `!session.authenticated`, the class `.shell--no-rail` already keys on) so
+  its theme toggle stands in on a tokenless tab at **every** width — the rail never mounts
+  there, and without this the TokenRequired screen above 820px had no theme control at all.
+  Routes, stores and daemon code are otherwise untouched.
+- **One vocabulary kept over the audit's literal wording:** the pill's elapsed figure uses
+  `node-body.ts`'s existing `formatElapsed` rather than the close-list's suggested `mm:ss` — a
+  second duration format on the same screen is the drift `state-palette.ts`'s own rule exists
+  to prevent, and the blueprint's `2m36s` is that formatter's own shape.
+- **Assertion changes, named per the working agreement:**
+  - `app/frame.test.ts` "keeps the theme toggle, working" retargets to `.rail__theme` at
+    1440px (and asserts the topbar's own is hidden there); new sibling cases assert the
+    topbar toggle stands in below 820px **and** on a tokenless tab at 1440px (the state the
+    retarget alone left uncovered: no rail mounts there at any width). Same claim — one
+    working toggle in every state — new home.
+  - `app/frame.test.ts` additions: elapsed-time assertions inside the run-status-pill case —
+    absent before any `node.started`; a **bounded** figure once one exists (the span's
+    `startTs` is anchored to the tab's clock, so 90s of work must read `1m 3Ns` — a `/\d/`
+    match against the file's fixed fixture epoch was satisfied by a year-long figure and
+    could not fail); and the freeze half of the pill's contract (after `node.completed` the
+    figure is exactly the two span facts' difference, which the tab clock cannot produce). A
+    breadcrumb display-name case asserting exactly **two** `GET /api/projects` (the shared
+    handle's and `ProjectWorkflowsView`'s own pre-existing one — the breadcrumb added none);
+    an `EPIC-26-S35` suite driving the switcher's affordance end to end (modal opens, marker
+    spent on close); and a create-names-itself case (create through KAR-25.6's modal, then
+    the new row is in the switcher and its **name** — not its id — in the breadcrumb; the
+    fixture daemon answers `POST /projects` for it).
+  - `views/projects.test.ts` gains an `EPIC-26-S35` suite: `/projects?new=1` opens the one
+    modal, closing clears the marker. No existing assertion changed.
+  - `graph/canvas-chrome.test.ts`'s fixture grows a fourth node so an edge feeds a passed
+    target; a new case asserts `plan-edge--done` (solid, inert, distinct stroke). The two
+    existing edge cases are unchanged.
+
 ---
 
 ## Scope decisions recorded rather than taken quietly

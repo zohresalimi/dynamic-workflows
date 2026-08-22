@@ -64,12 +64,18 @@ const edge = (from: string, to: string): PlanEdgeVM => ({
 });
 
 /**
- * A three-node chain with one edge feeding a running node and one feeding a
- * node that has not started — AC5's two named edge treatments, both present
- * in the one graph a reader has to hold in their head.
+ * A four-node chain with one edge feeding a passed node (KAR-26.5's completed
+ * path), one feeding a running node and one feeding a node that has not
+ * started — the three named edge treatments, all present in the one graph a
+ * reader has to hold in their head.
  */
-const NODES = [node('n0', 'passed'), node('n1', 'running'), node('n2', 'pending')];
-const EDGES = [edge('n0', 'n1'), edge('n1', 'n2')];
+const NODES = [
+  node('n00', 'passed'),
+  node('n0', 'passed'),
+  node('n1', 'running'),
+  node('n2', 'pending'),
+];
+const EDGES = [edge('n00', 'n0'), edge('n0', 'n1'), edge('n1', 'n2')];
 
 function mount() {
   return render(GraphCanvas, {
@@ -185,6 +191,34 @@ suite('AC5 — an edge’s motion', () => {
     const path = element.querySelector('.vue-flow__edge-path') as Element;
     const style = getComputedStyle(path);
     expect(style.animationName).toBe('dashrun');
+  });
+
+  // KAR-26.5 (audit item: the completed path) — the third treatment: solid
+  // `--state-passed` into a node that has passed, still inert.
+  it('tints the edge feeding a passed node as the completed path, solid and inert', async () => {
+    const screen = mount();
+    await laidOut(screen.container);
+
+    await expect
+      .poll(() => edgeElement(screen.container, 'n00->n0'), { timeout: 15_000 })
+      .not.toBeNull();
+    const element = edgeElement(screen.container, 'n00->n0') as Element;
+
+    expect(element.classList.contains('plan-edge--done')).toBe(true);
+    expect(element.classList.contains('animated')).toBe(false);
+    expect(element.hasAttribute('data-motion-token')).toBe(false);
+
+    const path = element.querySelector('.vue-flow__edge-path') as Element;
+    const style = getComputedStyle(path);
+    expect(style.animationName).not.toBe('dashrun');
+
+    // The rule actually painted: the completed path resolves to a different
+    // stroke than the pending edge in the same drawing — two tokens, two
+    // colours, without this file hardcoding either theme's hex.
+    const pendingPath = edgeElement(screen.container, 'n1->n2')?.querySelector(
+      '.vue-flow__edge-path',
+    ) as Element;
+    expect(style.stroke).not.toBe(getComputedStyle(pendingPath).stroke);
   });
 
   it('leaves the edge feeding the not-yet-started node inert and undashed-run', async () => {

@@ -123,6 +123,8 @@ function frameDaemon(options: {
   readonly providers?: readonly ProviderRow[];
   readonly approvals?: number;
   readonly sent?: string[];
+  /** The row a `POST /api/projects` answers with — the in-session create case. */
+  readonly created?: ProjectRow;
 }) {
   const json = (status: number, body: unknown) =>
     Promise.resolve(
@@ -132,9 +134,17 @@ function frameDaemon(options: {
       }),
     );
 
-  return (input: string | URL | Request): Promise<Response> => {
+  return (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
+    const method =
+      init?.method?.toUpperCase() ??
+      (input instanceof Request ? input.method.toUpperCase() : 'GET');
     options.sent?.push(url);
+
+    // KAR-26.5 — the one write this fixture answers: `ProjectsView`'s create.
+    if (method === 'POST' && url.endsWith('/projects') && options.created !== undefined) {
+      return json(201, { project: options.created });
+    }
 
     // `/api/providers/routes` (the composer's picker) before the general
     // `/api/providers` (the rail's runtimes list) — two different shapes off
@@ -197,11 +207,16 @@ function frameDaemon(options: {
  * rather than routed through a feed — `../stores/useRunStore.test.ts`'s own
  * `opened()`/`applyEvent` pattern, which needs no SSE origin and no run route
  * to prove what `RunTaskBanner`/`RunProviderBanner` render off a folded event. */
-function envelope(seq: number, kind: string, payload: Record<string, unknown>): Event {
+function envelope(seq: number, kind: string, payload: Record<string, unknown>, ts?: number): Event {
   return {
     seq,
     runId: RUN_ID,
-    ts: 1_755_500_000_000 + seq,
+    // A fixed epoch by default; span-fact cases pass `ts` anchored to the
+    // tab's own clock instead, because `RunStatusPill` measures an *open* span
+    // to `Date.now()` — against the fixed base the figure would be however old
+    // this literal has grown, and any assertion loose enough to accept that is
+    // an assertion that can no longer fail.
+    ts: ts ?? 1_755_500_000_000 + seq,
     kind,
     v: 1,
     epoch: 1,
@@ -276,6 +291,32 @@ suite('EPIC-24-S14 — the rail and the topbar, on the landing route', () => {
     expect(shell.container.querySelector('[data-run-status-pill]')?.textContent).toContain(
       RUN_STATUS_LABELS['needs-human'],
     );
+
+    // KAR-26.5 (audit item: the running indicator's elapsed time) — the
+    // figure KAR-24.4 AC5 promised, derived from span facts alone: absent
+    // until a node has actually started (no span, nothing to measure), and a
+    // real duration the moment one has. The span's `startTs` is anchored to
+    // the tab's clock (see `envelope`), so the open-span figure is *bounded* —
+    // 90s of work reads as "1m 30s"-ish, never as the fixture's age.
+    expect(shell.container.querySelector('[data-run-status-elapsed]')).toBeNull();
+    const startedAt = Date.now() - 90_000;
+    run.applyEvent(envelope(3, 'node.started', { node: 'n1', attempt: 1 }, startedAt));
+    await nextTick();
+    const elapsed = () => shell.container.querySelector('[data-run-status-elapsed]');
+    expect(elapsed()).not.toBeNull();
+    // A second or three of test scheduling may pass between the anchor and the
+    // render; a broken formatter or an unanchored measurement cannot land in
+    // this window.
+    expect(elapsed()?.textContent?.trim()).toMatch(/^1m 3\ds$/);
+
+    // The other half of the pill's contract: once no span is open the figure
+    // freezes at the latest `endTs`. Exactly "1m 00s" — a value only the two
+    // span facts can produce; any measurement against the tab's clock (i.e. a
+    // ticker that failed to stop mattering) would keep the 90s-and-counting
+    // figure instead.
+    run.applyEvent(envelope(4, 'node.completed', { node: 'n1', attempt: 1 }, startedAt + 60_000));
+    await nextTick();
+    expect(elapsed()?.textContent?.trim()).toBe('1m 00s');
   });
 
   it('shows the breadcrumb in the topbar', async () => {
@@ -290,6 +331,30 @@ suite('EPIC-24-S14 — the rail and the topbar, on the landing route', () => {
     const crumb = shell.container.querySelector('.topbar__crumb');
     expect(crumb).not.toBeNull();
     expect(crumb?.textContent?.trim().length).toBeGreaterThan(0);
+  });
+
+  // KAR-26.5 (audit item: the breadcrumb's project segment) — the display
+  // name the blueprint draws, off the switcher's one `GET /api/projects`
+  // through the shared handle (`../app/useProjects.ts`) — never a second
+  // request.
+  it('renders the project segment as its display name, at no extra request', async () => {
+    const sent: string[] = [];
+    shell = await mountShell({
+      at: { name: 'project-workflows', params: { projectId: PROJECT_ID } },
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS, sent }),
+        token: () => 'test-token-Aa0_-Bb1',
+      }),
+    });
+
+    await expect
+      .poll(() => shell.container.querySelector('.topbar__crumb-project')?.textContent?.trim())
+      .toBe(PROJECT.name);
+    // Exactly the two `GET /api/projects` this route always made — the
+    // switcher's (now the shared handle's) and `ProjectWorkflowsView`'s own,
+    // which predates this story. The breadcrumb added none.
+    expect(sent.filter((url) => url.endsWith('/projects')).length).toBe(2);
   });
 });
 
@@ -394,7 +459,14 @@ suite('EPIC-24-S15 — the nav names only routes this application has', () => {
 });
 
 suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
-  it('keeps the theme toggle, working', async () => {
+  // KAR-26.5 (audit item: the theme toggle's home) — retargeted, not
+  // weakened: blueprint 01 settles the toggle at the bottom of the rail, so
+  // at rail widths the working toggle this spec has always asserted is
+  // `.rail__theme`, and the topbar's own is hidden — one live control for
+  // one fact. The sub-820px half, where the rail is gone and the topbar
+  // stands in, is the next spec.
+  it('keeps the theme toggle, working — in the rail footer at rail widths', async () => {
+    await atViewport(1440);
     shell = await mountShell({
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
@@ -403,8 +475,14 @@ suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
       }),
     });
 
-    const toggle = shell.container.querySelector<HTMLButtonElement>('.topbar__theme');
+    const toggle = shell.container.querySelector<HTMLButtonElement>('.rail__theme');
     expect(toggle).not.toBeNull();
+    expect(getComputedStyle(toggle as HTMLButtonElement).display).not.toBe('none');
+
+    const topbarToggle = shell.container.querySelector<HTMLElement>('.topbar__theme');
+    expect(topbarToggle).not.toBeNull();
+    expect(getComputedStyle(topbarToggle as HTMLElement).display).toBe('none');
+
     const before = toggle?.getAttribute('aria-pressed');
 
     toggle?.click();
@@ -416,6 +494,58 @@ suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
     // cheapest way to leave the page as this test found it, so a colour
     // assertion in a spec the runner picks up next is not quietly run against
     // the wrong theme.
+    toggle?.click();
+    await expect.poll(() => toggle?.getAttribute('aria-pressed')).toBe(before);
+  });
+
+  it('keeps a theme toggle below 820px, in the topbar where the rail is gone', async () => {
+    await atViewport(760);
+    shell = await mountShell({
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({}),
+        token: () => 'test-token-Aa0_-Bb1',
+      }),
+    });
+
+    const toggle = shell.container.querySelector<HTMLButtonElement>('.topbar__theme');
+    expect(toggle).not.toBeNull();
+    expect(getComputedStyle(toggle as HTMLButtonElement).display).not.toBe('none');
+
+    const before = toggle?.getAttribute('aria-pressed');
+    toggle?.click();
+    await expect.poll(() => toggle?.getAttribute('aria-pressed')).not.toBe(before);
+    toggle?.click();
+    await expect.poll(() => toggle?.getAttribute('aria-pressed')).toBe(before);
+  });
+
+  // The state the two specs above leave uncovered between them: a tokenless
+  // tab never mounts the rail *at any width* (`App.vue`'s `v-if`), so "the
+  // rail carries the toggle at rail widths" cannot be true there — the topbar
+  // must stand in above 820px too, or the TokenRequired screen has no theme
+  // control at all. KAR-24.4 AC4's recorded contract ("every element App.vue's
+  // header carries today survives here") is what this asserts survives the
+  // KAR-26.5 retarget.
+  it('keeps the topbar toggle on a tokenless tab at desktop width, where no rail exists', async () => {
+    await atViewport(1440);
+    shell = await mountShell({
+      anonymous: true,
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({}),
+        token: () => null,
+      }),
+    });
+
+    expect(shell.container.querySelector('[data-frame-rail]')).toBeNull();
+
+    const toggle = shell.container.querySelector<HTMLButtonElement>('.topbar__theme');
+    expect(toggle).not.toBeNull();
+    expect(getComputedStyle(toggle as HTMLButtonElement).display).not.toBe('none');
+
+    const before = toggle?.getAttribute('aria-pressed');
+    toggle?.click();
+    await expect.poll(() => toggle?.getAttribute('aria-pressed')).not.toBe(before);
     toggle?.click();
     await expect.poll(() => toggle?.getAttribute('aria-pressed')).toBe(before);
   });
@@ -640,5 +770,109 @@ suite('EPIC-24-S16 — nothing the old shell did is lost (continued)', () => {
     await expect.poll(() => shell.router.currentRoute.value.name).toBe('new-run');
     expect(shell.router.currentRoute.value.params['projectId']).toBe(PROJECT_ID);
     expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
+  });
+});
+
+/**
+ * KAR-26.5, EPIC-26-S35 — the rail's dashed new-project affordance. Also last
+ * in the file, for the same reason as its neighbour above: it navigates the
+ * shell.
+ */
+suite('EPIC-26-S35 — the switcher’s new-project affordance opens the one modal', () => {
+  it('routes to /projects?new=1, opens KAR-25.6’s modal, and spends the marker on close', async () => {
+    // Rail widths: below 820px the rail — and the switcher with it — is not
+    // on screen, and Playwright rightly refuses to click what is not visible.
+    await atViewport(1440);
+    shell = await mountShell({
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS }),
+        token: () => 'test-token-Aa0_-Bb1',
+      }),
+    });
+
+    // The affordance lives in the switcher's popover, which portals to
+    // `document.body` — queries go through `document`, the way
+    // `../views/projects.test.ts` reaches the same portalled modal.
+    await userEvent.click(shell.container.querySelector('[data-project-switcher]') as HTMLElement);
+    await expect.poll(() => document.querySelector('[data-project-switcher-new]')).not.toBeNull();
+
+    await userEvent.click(document.querySelector('[data-project-switcher-new]') as HTMLElement);
+    await expect.poll(() => shell.router.currentRoute.value.name).toBe('projects');
+    expect(shell.router.currentRoute.value.query['new']).toBe('1');
+
+    // KAR-25.6's own form, in its own modal — no second form anywhere.
+    await expect.poll(() => document.querySelector('[data-project-form]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-project-form]').length).toBe(1);
+
+    // Closing spends the marker: the affordance works a second time, and a
+    // reload after closing would not reopen a dismissed dialog.
+    await userEvent.click(document.querySelector('[data-project-create-cancel]') as HTMLElement);
+    await expect.poll(() => document.querySelector('[data-project-form]')).toBeNull();
+    await expect.poll(() => shell.router.currentRoute.value.query['new']).toBeUndefined();
+  });
+});
+
+/**
+ * KAR-26.5 (audit item: the breadcrumb's project segment) — the close's own
+ * worst case. `ProjectsView` and the frame read the *same* projects handle
+ * (`../app/useProjects.ts`), so a project created in this session names
+ * itself in the switcher and the breadcrumb immediately — not only after the
+ * next full reload. Before the view shared the handle, the row the operator
+ * had just made was exactly the one whose breadcrumb fell through to the raw
+ * id. Also last in the file: it navigates the shell.
+ */
+suite('KAR-26.5 — a project created in this session names itself in the frame', () => {
+  it('lists the new project in the switcher and names it in the breadcrumb', async () => {
+    const CREATED: ProjectRow = {
+      id: 'prj_20260822T120000Z_d4e5f6',
+      name: 'billing',
+      path: '/repos/billing',
+      createdAt: '2026-08-22T12:00:00.000Z',
+      health: { state: 'ok', message: null },
+      lastRun: null,
+    };
+
+    await atViewport(1440);
+    shell = await mountShell({
+      at: { name: 'projects' },
+      client: createClient({
+        baseUrl: 'http://127.0.0.1:7777/api',
+        fetch: frameDaemon({ projects: [PROJECT], providers: PROVIDERS, created: CREATED }),
+        token: () => 'test-token-Aa0_-Bb1',
+      }),
+    });
+
+    // KAR-25.6's modal, through the header button; the form portals to
+    // `document.body` (see `../views/projects.test.ts`'s note).
+    await userEvent.click(
+      shell.container.querySelector('[data-project-new-header]') as HTMLElement,
+    );
+    await expect.poll(() => document.querySelector('[data-project-form]')).not.toBeNull();
+    await userEvent.fill(
+      document.querySelector('[data-project-name]') as HTMLInputElement,
+      CREATED.name,
+    );
+    await userEvent.fill(
+      document.querySelector('[data-project-path]') as HTMLInputElement,
+      CREATED.path,
+    );
+    await userEvent.click(document.querySelector('[data-project-create]') as HTMLElement);
+    await expect.poll(() => document.querySelector('[data-project-form]')).toBeNull();
+
+    // The switcher's popover knows the row the operator just made…
+    await userEvent.click(shell.container.querySelector('[data-project-switcher]') as HTMLElement);
+    await expect
+      .poll(() => document.querySelector(`[data-project-switcher-option="${CREATED.id}"]`))
+      .not.toBeNull();
+
+    // …and opening it breadcrumbs the *name*, never the raw id.
+    await userEvent.click(
+      document.querySelector(`[data-project-switcher-option="${CREATED.id}"]`) as HTMLElement,
+    );
+    await expect.poll(() => shell.router.currentRoute.value.name).toBe('project-workflows');
+    await expect
+      .poll(() => shell.container.querySelector('.topbar__crumb-project')?.textContent?.trim())
+      .toBe(CREATED.name);
   });
 });

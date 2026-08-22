@@ -22,3 +22,7 @@ Two things these files show that EPIC-25 does **not** build, recorded so the omi
 an oversight: the **Builder** nav row (no route, no epic behind it — KAR-24.4 AC2's rule) and
 **editable per-node execution fields** in the inspector (the inspector renders what the ledger
 recorded; making those editable is plan authoring, not a frame fix).
+
+KAR-26.5's element-by-element audit of `01`–`05` against the live frame — every visible element
+marked `matches` / `gap closed here` / `out of scope: <standing reason>` — is
+[`KAR-26.5-frame-audit.md`](./KAR-26.5-frame-audit.md), in this directory.

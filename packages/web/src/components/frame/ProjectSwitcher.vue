@@ -5,12 +5,25 @@
  *
  * **It adds no request the application did not already make.** `ProjectsView`
  * already calls `GET /api/projects` and reads `{ projects: ProjectRow[] }`
- * back (`../../views/ProjectsView.vue`); this component's `ProjectsApi` type
- * and `load()` are that same shape, copied rather than reinvented, so a
- * change to the endpoint's response has exactly one other call site to keep
- * in step with. There is still no store behind it for the reason
- * `ProjectsView`'s own docblock gives: this list has no stream topic, so a
- * Pinia store would be one writer and one reader wearing a second name.
+ * back (`../../views/ProjectsView.vue`). KAR-26.5 moved this component's own
+ * copy of that read into `../../app/useProjects.ts` — one shared handle,
+ * provided at the root, because the topbar's breadcrumb now renders the
+ * project's display *name* and must not earn it with a second request. This
+ * component is still the one caller of `load()`, so the request count and its
+ * timing are exactly what they were. There is still no store behind it for
+ * the reason `ProjectsView`'s own docblock gives: this list has no stream
+ * topic, so a Pinia store would be one writer and its readers wearing a
+ * second name.
+ *
+ * **KAR-26.5 (audit item: the dashed "+ New project" affordance, EPIC-26-S35)
+ * — the popover footer carries two rows now.** The blueprint's rail chrome
+ * includes a dashed new-project affordance, and KAR-25.6 already built the
+ * one create-project modal (`ProjectsView.vue`'s `formOpen`). This row opens
+ * *that* modal rather than growing a second form: it routes to
+ * `/projects?new=1`, and `ProjectsView` reads the query marker the same way
+ * it already reads `needsProject` — a query parameter rather than a store
+ * flag, for the same paste-and-reload reason recorded there. "All projects"
+ * survives beneath it unchanged.
  *
  * **The popover is Reka UI's, not hand-rolled.** `CommandJumper.vue` already
  * makes the case for this in the jumper's own docblock — outside-click,
@@ -32,52 +45,19 @@ import { ChevronsUpDown, Plus } from 'lucide-vue-next';
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { useApiClient } from '../../api/provide.ts';
+import { type ProjectRow, useProjects } from '../../app/useProjects.ts';
 import { UiCard, UiChip, UiIconTile } from '../ui/index.ts';
 
-interface ProjectHealth {
-  readonly state: 'ok' | 'missing' | 'not-a-git-repo';
-  readonly message: string | null;
-}
-
-interface ProjectRow {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-  readonly createdAt: string;
-  readonly health: ProjectHealth;
-  readonly lastRun: { readonly runId: string; readonly label: string } | null;
-}
-
-/** `ProjectsView.vue`'s own `ProjectsApi` seam, narrowed to the one call this
- *  component makes. */
-interface ProjectsApi {
-  readonly projects: {
-    readonly $get: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
-  };
-}
-
-const client = useApiClient();
 const route = useRoute();
 const router = useRouter();
 
-const projects = ref<ProjectRow[]>([]);
+// KAR-26.5 — the rows and the fetch both live in the shared handle now (see
+// the header comment); this component is still the one caller of `load()`, so
+// a daemon that is restarting still costs the frame nothing (the handle keeps
+// KAR-24.4 AC6's catch) and a tokenless tab — which never mounts this rail —
+// still issues no request.
+const { rows: projects, load } = useProjects();
 const open = ref(false);
-
-async function load(): Promise<void> {
-  try {
-    const response = await (client as never as ProjectsApi).projects.$get();
-    if (!response.ok) return;
-    projects.value = [...((await response.json()) as { projects: ProjectRow[] }).projects];
-  } catch {
-    // KAR-24.4 AC6 — this rail is mounted on every authenticated screen now,
-    // not one route that opted in, so a daemon that is restarting (or, in a
-    // spec, a test double that only implements the endpoints its own story
-    // cares about) must not take the whole frame down with it. `App.vue`'s
-    // own `loadApprovals` is the precedent: the switcher simply shows no
-    // projects rather than throwing an unhandled rejection out of `onMounted`.
-  }
-}
 
 onMounted(() => {
   void load();
@@ -151,8 +131,19 @@ function select(project: ProjectRow): void {
                 </button>
               </li>
             </ul>
-            <RouterLink to="/projects" class="switcher__new" @click="open = false">
+            <!-- KAR-26.5, EPIC-26-S35 — the blueprint's dashed new-project
+                 affordance, opening KAR-25.6's one modal via the `?new=1`
+                 marker `ProjectsView.vue` reads. See the header comment. -->
+            <RouterLink
+              :to="{ name: 'projects', query: { new: '1' } }"
+              class="switcher__new"
+              data-project-switcher-new
+              @click="open = false"
+            >
               <span class="switcher__new-icon" aria-hidden="true"><Plus :size="11" /></span>
+              <span>New project</span>
+            </RouterLink>
+            <RouterLink to="/projects" class="switcher__all" @click="open = false">
               <span>All projects</span>
             </RouterLink>
           </UiCard>
@@ -283,8 +274,8 @@ function select(project: ProjectRow): void {
 }
 
 .switcher__new {
-  margin-top: 5px;
-  padding-top: 5px;
+  margin-top: 5px; /* geometry — list-to-divider gap; the divider-to-label gap
+                      is the shorthand's own 7px below */
   border-top: 1px solid var(--edge);
   display: flex;
   align-items: center;
@@ -296,7 +287,23 @@ function select(project: ProjectRow): void {
   text-decoration: none;
 }
 
-.switcher__new:hover {
+/* KAR-26.5 — "All projects" keeps the row treatment but not the dashed-plus
+   tile or the divider: the divider separates the list from the footer, and it
+   already sits on the new-project row above. Indented past where the tile
+   would be, so the two footer labels align. */
+.switcher__all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 34px; /* geometry — 8px pad + 18px tile + 8px gap */
+  border-radius: var(--radius-md);
+  color: var(--ink-faint);
+  font-size: var(--text-base);
+  text-decoration: none;
+}
+
+.switcher__new:hover,
+.switcher__all:hover {
   background: var(--surface-inset);
   color: var(--ink);
 }
