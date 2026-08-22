@@ -3,7 +3,7 @@
 > Behavioural specification for [EPIC-19](../epics/EPIC-19-live-run-pipeline.md) ·
 > [Board](../board.md) · [Delivery plan](../README.md)
 
-**Status:** Draft v1.0 · **Last reviewed:** 13 August 2026
+**Status:** Draft v1.0 · **Last reviewed:** 22 August 2026
 
 ## Actors
 
@@ -136,6 +136,18 @@ Background:
 | EPIC-19-S76 | A second refused argument is still named, quoted and not retried                   | KAR-19.11 | Failure     |
 | EPIC-19-S77 | **Every argument of the installed vendor CLI's argv** _(opt-in, manual)_           | KAR-19.11 | Edge case   |
 | EPIC-19-S78 | **Performed, not asserted: a real `claude` frames the run and a plan is produced** | KAR-19.11 | Happy path  |
+| EPIC-19-S79 | **Happy path: the run stops to ask, and the terminal says so and how to answer** | KAR-19.12 | Happy path  |
+| EPIC-19-S80 | **The gate is answered from a terminal, with no browser and no token**          | KAR-19.12 | Happy path  |
+| EPIC-19-S81 | `--no-wait` and `--json` are unchanged by the announcement                      | KAR-19.12 | Edge case   |
+| EPIC-19-S82 | Every surface names the gate, including a run whose status is still `running`   | KAR-19.12 | Edge case   |
+| EPIC-19-S83 | A gate answered elsewhere resolves in the attached session                      | KAR-19.12 | Edge case   |
+| EPIC-19-S84 | **Happy path: a re-advanced pre-execution turn opens its own vendor session**   | KAR-19.13 | Happy path  |
+| EPIC-19-S85 | The attempt comes from the ledger, so the id survives a restart                 | KAR-19.13 | Recovery    |
+| EPIC-19-S86 | A repaired framing turn replays into a new session, not the spent one           | KAR-19.13 | Edge case   |
+| EPIC-19-S87 | **`already in use` is an argument refusal, permanent, and tried once**          | KAR-19.13 | Failure     |
+| EPIC-19-S88 | Native resume is untouched: every attempt still derives from attempt 0          | KAR-19.13 | Edge case   |
+| EPIC-19-S89 | The refusal vocabulary is a table, and every phrasing has a vendor sentence     | KAR-19.13 | Edge case   |
+| EPIC-19-S90 | A create-only session flag is a declaration in the registry, not a vendor name  | KAR-19.13 | Edge case   |
 
 ---
 
@@ -2636,6 +2648,248 @@ attached session sitting exactly as silently as before — the same defect, one 
 The assertion that nothing reconnected is deliberate: the stream is already open and already
 carries `human.responded`, so a fix that re-opened it would be inventing a mechanism to replace one
 that works.
+
+---
+
+## EPIC-19-S84 — Happy path: a re-advanced pre-execution turn opens its own vendor session
+
+**Verifies:** KAR-19.13 · **Type:** Happy path · **Automated at:** integration
+
+```gherkin
+Feature: a pre-execution turn that runs twice does not spend the same session id twice
+
+  Scenario: the second process is not refused
+    Given a temp PATH holding the testkit's fake vendor CLI under the name "claude"
+    And that fake creates a session for a "--session-id" it has not seen and exits 1 writing
+        "Session ID <value> is already in use" for one it has
+    And a run whose ledger already records one planner turn
+    When the planner wake is dispatched again, in a fresh daemon life
+    Then the argv the child received carries a "--session-id" the fake has never seen
+    And that value equals vendorSessionId(runId, "planner", 1)
+    And the child exits 0
+    And a "plan.proposed" event is appended for that run
+
+  Scenario Outline: all three pre-execution turns, not just the one that failed
+    Given a run whose ledger already records one <turn> turn
+    When the <turn> wake is dispatched again
+    Then the session id derives from attempt 1 rather than attempt 0
+    And no value is formatted at the call site, asserted at source
+
+    Examples:
+      | turn    |
+      | framing |
+      | recon   |
+      | planner |
+```
+
+**Notes:** this is the regression test for `run_20260816T194933Z_839b9b`, and the arithmetic is the
+diagnosis rather than colour: `vendorSessionId({ runId: 'run_20260816T194933Z_839b9b', nodeId:
+'planner', attempt: 0 })` is `5f2b8935-25e5-5c1c-83c6-a97d1b151f08`, which is the exact id the vendor
+refused. The load-bearing clause is the **fake that refuses a second presentation** — the same shape
+as EPIC-19-S52's fake, and for the same reason: a double that creates a session for whatever it is
+handed is green on the machine where the product is wedged. The `Scenario Outline` is here because
+the pin is in one shared helper (`sessionFor`) that all three turns call, so a fix applied to the
+planner alone would leave the identical bug one wake away.
+
+---
+
+## EPIC-19-S85 — The attempt comes from the ledger, so the id survives a restart
+
+**Verifies:** KAR-19.13 · **Type:** Recovery · **Automated at:** integration
+
+```gherkin
+Feature: the attempt is a fact in the ledger, not a number in a process
+
+  Scenario: a restarted daemon does not start counting again
+    Given a run whose ledger records two prior framing turns
+    And a daemon that has just booted and has executed nothing this life
+    When the framing wake is dispatched
+    Then the session id derives from attempt 2
+    And it does not derive from attempt 0
+
+  Scenario: every past id is recomputable from the ledger alone
+    Given the ledger for a completed run with three pre-execution turns
+    When each turn's session id is recomputed offline from (runId, nodeId, attempt)
+    Then each recomputed value equals the value recorded on that turn's session field
+    And no clock, environment variable or unseeded random source was an input to any of them
+```
+
+**Notes:** the cheap version of this fix is a counter on the chain's own context object. It passes
+every assertion that can be made inside one process and fails the only situation this defect actually
+occurs in — a daemon that restarted, which is how the reported run reached a second planner turn at
+all. That is why the criterion names the ledger specifically and why this scenario's Given is "a
+daemon that has executed nothing this life". The second scenario is the guard against the *other*
+cheap fix: `randomUUID()` makes the collision go away and quietly makes every transcript under the
+vendor's projects directory unfindable from the ledger, which nothing else in this file would notice.
+
+---
+
+## EPIC-19-S86 — A repaired framing turn replays into a new session, not the spent one
+
+**Verifies:** KAR-19.13 · **Type:** Edge case · **Automated at:** integration
+
+```gherkin
+Feature: repair is a replay, and a replay is a new session
+
+  Scenario: the repair does not present the id the original turn spent
+    Given a framing turn that returned a document failing schema validation
+    And a fake vendor CLI that refuses a "--session-id" it has already created
+    When FramingSession.repair is called with the correction prompt
+    Then the repair's child received a session id different from the original turn's
+    And the child exits 0
+    And both ids are derivable from the ledger
+
+  Scenario: neither transcript overwrites the other
+    Then the original turn's recorded session id is unchanged by the repair
+    And the run's events still name the deflow run and node ids throughout
+```
+
+**Notes:** `replayOnlySession` describes itself as a session "which holds no session between turns;
+an answer is replayed into a fresh packet rather than steered", and `vendorSessionIdFor` already
+writes the matching rule — under `ResumeByReplay` the attempt stays in the tuple, *"so the two
+transcripts remain separately findable"*. The defect is that the pre-execution path opted out of both
+statements by pinning the attempt, on the stated grounds that a repair is a continuation of the same
+conversation. It is a continuation in the packet, which is rebuilt from the ledger; it is not a
+continuation in the vendor's session, because there is no session to continue.
+
+---
+
+## EPIC-19-S87 — `already in use` is an argument refusal, permanent, and tried once
+
+**Verifies:** KAR-19.13 · **Type:** Failure · **Automated at:** integration
+
+```gherkin
+Feature: the vendor's second refusal wording is the same kind of failure as its first
+
+  Scenario: it is named as an argument problem
+    Given a fake vendor CLI that exits 1 writing
+        "Session ID 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use"
+    When a pre-execution turn is dispatched onto it
+    Then the typed failure's detail carries the flag "--session-id" and that value
+    And it carries the child's stderr, trimmed and not paraphrased
+    And the terminal line names the flag and the value
+
+  Scenario: it is permanent, and it is attempted once
+    Then the failure's class is "permanent", not "transient"
+    And exactly one child was spawned for that turn
+    And no further wake for that turn is scheduled
+
+  Scenario: the run ends rather than ticking for ever
+    Given a real daemon whose planner turn hits this refusal
+    Then the run reaches a terminal state
+    And "deflow run" exits non-zero rather than holding the terminal
+    And the ledger holds one "node.failed" naming the flag, not one per tick
+```
+
+**Notes:** `REFUSAL_WORDS` matches `invalid|unknown|unrecognised|unrecognized|unsupported|unexpected|not
+a valid|must be`. *"is already in use"* is none of them, so `rejectedArgument` returns `null` before
+its `SUBJECTS` table — which does match `session[ -]?id` — is ever consulted, and the failure falls
+through to `agentExited`'s `transient`. The third scenario is deliberately about the *run* rather
+than the classifier: KAR-19.9's bound means such a run does eventually end, so a scenario that only
+asserted termination would be green today. What must change is that it ends after one attempt, with a
+sentence naming DeFlow's own argument, instead of after a ceiling's worth of identical rows.
+
+---
+
+## EPIC-19-S88 — Native resume is untouched: every attempt still derives from attempt 0
+
+**Verifies:** KAR-19.13 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the two resume strategies keep their two different answers
+
+  Scenario Outline: a natively resuming adapter derives one id for the node
+    Given a node whose adapter's resume strategy is "ResumeNative"
+    When the vendor session id is derived for attempt <attempt>
+    Then the value equals the value derived for attempt 0
+
+    Examples:
+      | attempt |
+      | 0       |
+      | 1       |
+      | 2       |
+      | 3       |
+
+  Scenario: a replaying adapter derives a different id per attempt
+    Given a node whose adapter's resume strategy is "ResumeByReplay"
+    When ids are derived for attempts 0, 1 and 2
+    Then all three values are distinct
+    And each is a valid UUID
+```
+
+**Notes:** this is the counterweight, and it is written before the change rather than after it. The
+uniform fix — "derive from the attempt everywhere" — makes the reported run work and breaks
+`--resume`, so attempt 2 would open a session that does not contain attempt 1's work and KAR-19.8
+AC4 would be quietly false again. The rule already exists in `vendorSessionIdFor` and is correct;
+this story's whole content is that the pre-execution path stopped routing through it.
+
+---
+
+## EPIC-19-S89 — The refusal vocabulary is a table, and every phrasing has a vendor sentence
+
+**Verifies:** KAR-19.13 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the words a CLI uses when refusing an argument are data, not an incident log
+
+  Scenario Outline: each phrasing is matched against a sentence a vendor actually writes
+    Given the refusal phrasing <phrasing>
+    When it is tested against the vendor sentence recorded beside it
+    Then the sentence is recognised as an argument refusal
+    And the resulting failure's class is "permanent"
+
+    Examples:
+      | phrasing        |
+      | invalid         |
+      | must be         |
+      | unknown         |
+      | unsupported     |
+      | already in use  |
+
+  Scenario: a phrasing with nothing behind it is a failing row
+    Given a phrasing added to the vocabulary with no recorded vendor sentence
+    Then the table-driven test fails rather than passing vacuously
+```
+
+**Notes:** the reason this is its own scenario is that KAR-19.8 fixed *"Invalid session ID"* and this
+report is the same vendor refusing the same flag with a sentence the matcher was never shown. One
+more literal would close today's case and leave the next wording to be found by the next real run,
+which is the pattern this epic has already recorded four times. Making the vocabulary a table whose
+rows each carry the sentence they exist for is what converts "we added a word" into "we can see what
+is covered".
+
+---
+
+## EPIC-19-S90 — A create-only session flag is a declaration in the registry, not a vendor name
+
+**Verifies:** KAR-19.13 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: the difference between vendors is data in PROVIDER_SPECS
+
+  Scenario Outline: every entry that passes a session id declares how the flag behaves
+    Given the PROVIDER_SPECS entry for <provider>
+    Then its session-id declaration states whether the flag creates only or may attach
+    And it carries the form and the provenance note KAR-19.11 requires
+    And the derivation reads that declaration rather than testing the provider's name
+
+    Examples:
+      | provider |
+      | claude   |
+      | gemini   |
+      | codex    |
+      | mock     |
+
+  Scenario: no vendor name reaches the code that derives the id
+    Then a source guard finds no literal "claude" in the session-id derivation or in live-chain.ts
+    And a new entry added to PROVIDER_SPECS is covered by this outline without anyone adding a row
+```
+
+**Notes:** the shortcut is `if (provider === 'claude')` inside the derivation, which is refused for
+the reason KAR-19.10's own risk row states: the registry is the one file allowed to name a vendor,
+and a vendor name anywhere else is the next thing that has to be found by hand. `gemini` also takes a
+session id and nothing today says whether its flag attaches or creates — so the declaration is the
+difference between covering it now and discovering it three minutes into somebody's run.
 
 ---
 
