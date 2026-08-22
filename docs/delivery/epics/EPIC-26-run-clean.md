@@ -6,7 +6,7 @@
 |                      |                                                                                                                                                                             |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Epic ID**          | EPIC-26                                                                                                                                                                     |
-| **Status**           | Ready                                                                                                                                                                       |
+| **Status**           | Done — all five stories merged to `master` 2026-08-22 (PRs #60–#64)                                                                                                         |
 | **Priority**         | P0                                                                                                                                                                          |
 | **Milestone**        | M1                                                                                                                                                                          |
 | **Workstream**       | W19 — added 2026-08-20, after the owner ran EPIC-25's merged result on their own machine and filed a new error loop, a dev daemon that cannot admit a run, and a UI that reads as prose where the blueprint draws rows |
