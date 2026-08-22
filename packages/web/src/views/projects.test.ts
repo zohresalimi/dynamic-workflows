@@ -402,3 +402,26 @@ suite('EPIC-25-S41 — Escape, outside-click and Cancel all close the modal and 
     await expect.poll(() => document.activeElement).toBe(trigger);
   });
 });
+
+suite('EPIC-26-S35 — the ?new=1 marker opens the same modal (KAR-26.5)', () => {
+  // The rail's dashed new-project affordance (`frame/ProjectSwitcher.vue`)
+  // routes here as `/projects?new=1`; this is the view's half of the
+  // contract: the marker opens the one existing modal, and closing it spends
+  // the marker so the affordance works again and a reload after closing does
+  // not reopen a dismissed dialog. The frame's half — the click that gets
+  // here — is `../app/frame.test.ts`'s own EPIC-26-S35 suite.
+  it('opens the create modal on arrival and clears the marker on close', async () => {
+    const client = projectsClient({});
+    shell = await mountShell({ at: '/projects?new=1', client });
+    await settle();
+
+    await expect.poll(() => document.querySelector('[data-project-form]')).not.toBeNull();
+
+    const cancel = document.querySelector<HTMLElement>('[data-project-create-cancel]');
+    if (cancel === null) throw new Error('no Cancel action in the modal');
+    cancel.click();
+
+    await expect.poll(() => document.querySelector('[data-project-form]')).toBeNull();
+    await expect.poll(() => shell.router.currentRoute.value.query['new']).toBeUndefined();
+  });
+});

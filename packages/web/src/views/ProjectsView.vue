@@ -46,27 +46,15 @@
  * closing the modal once a project actually exists (AC3).
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { MAIN_CONTENT_ID } from '../app/ids.ts';
+import { type ProjectHealth, type ProjectRow, useProjects } from '../app/useProjects.ts';
 import { UiButton, UiChip, UiEmptyState, UiIconTile, UiModal } from '../components/ui/index.ts';
-
-interface ProjectHealth {
-  readonly state: 'ok' | 'missing' | 'not-a-git-repo';
-  readonly message: string | null;
-}
-
-interface ProjectRow {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-  readonly createdAt: string;
-  readonly health: ProjectHealth;
-  readonly lastRun: { readonly runId: string; readonly label: string } | null;
-}
 
 const client = useApiClient();
 const route = useRoute();
+const router = useRouter();
 
 /**
  * KAR-25.5 AC3, EPIC-25-S35 — the chooser says why it was reached.
@@ -84,7 +72,17 @@ const route = useRoute();
  */
 const needsProject = computed(() => route.query['needsProject'] === '1');
 
-const projects = ref<ProjectRow[]>([]);
+/**
+ * KAR-26.5 (audit item: the breadcrumb's project segment) — the grid reads and
+ * writes the application's one shared projects handle (`../app/useProjects.ts`)
+ * instead of a private `ref` of its own. Same list, same one `GET` on mount
+ * (`load` below is the handle's), zero extra requests — but a create or a
+ * removal made here now updates the switcher and the breadcrumb in the same
+ * session, instead of leaving the frame to render the raw id for exactly the
+ * project the operator just made. Mounted outside the shell (a component-level
+ * spec), `useProjects()` hands back a private handle that behaves identically.
+ */
+const { rows: projects, load } = useProjects();
 const name = ref('');
 const path = ref('');
 const error = ref<string | null>(null);
@@ -104,12 +102,6 @@ async function refusalOf(response: { json: () => Promise<unknown> }): Promise<st
   } catch {
     return 'the daemon could not be reached';
   }
-}
-
-async function load(): Promise<void> {
-  const response = await (client as never as ProjectsApi).projects.$get();
-  if (!response.ok) return;
-  projects.value = [...((await response.json()) as { projects: ProjectRow[] }).projects];
 }
 
 async function create(): Promise<void> {
@@ -176,6 +168,35 @@ watch(formOpen, (open) => {
   if (open) void nextTick(() => nameInput.value?.focus());
 });
 
+/**
+ * KAR-26.5, EPIC-26-S35 — the rail's dashed new-project affordance
+ * (`frame/ProjectSwitcher.vue`) routes here as `/projects?new=1`, and this
+ * watcher is what makes that the *same* modal every other trigger opens: it
+ * sets the one `formOpen` flag, exactly as `openCreateForm()` does. A query
+ * parameter rather than a store flag for the reason `needsProject` above
+ * already records — the intent has to survive being pasted or reloaded.
+ */
+watch(
+  () => route.query['new'],
+  (marker) => {
+    if (marker === '1') formOpen.value = true;
+  },
+  { immediate: true },
+);
+
+/**
+ * The marker is spent when the modal closes — by Cancel, `Esc`, an outside
+ * click or a successful create, all of which land on `formOpen` becoming
+ * false. Cleared with a `replace` (no history entry) so the affordance works
+ * a second time and a reload after closing does not reopen a dialog the
+ * operator just dismissed. This is the one route write the audit item names.
+ */
+watch(formOpen, (open) => {
+  if (open || route.query['new'] === undefined) return;
+  const { new: _spent, ...rest } = route.query;
+  void router.replace({ query: rest });
+});
+
 /** Up to two initials for the icon tile, the way `UiIconTile`'s callers do it. */
 function initials(projectName: string): string {
   const words = projectName.trim().split(/\s+/).filter(Boolean);
@@ -195,7 +216,9 @@ function healthTone(state: ProjectHealth['state']): 'ok' | 'warn' | 'error' {
 }
 
 /**
- * The three calls this view makes, named.
+ * The calls this view makes itself, named — the list `GET` is the shared
+ * handle's now (KAR-26.5; see `projects` above), leaving this view the two
+ * writes.
  *
  * `hc<ApiType>` types them from the daemon's own chained routes, and this
  * interface is the shape those calls have — declared so the casts above are one
@@ -203,7 +226,6 @@ function healthTone(state: ProjectHealth['state']): 'ok' | 'warn' | 'error' {
  */
 interface ProjectsApi {
   readonly projects: {
-    readonly $get: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
     readonly $post: (args: {
       json: { name: string; path: string };
     }) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;

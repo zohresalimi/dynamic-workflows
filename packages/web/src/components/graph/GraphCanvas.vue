@@ -302,14 +302,20 @@ const displayStateById = computed(
  * and what it `carries`, nothing more) — an edge's motion is a fact about the
  * node at its far end, so it is read off `displayStateById` rather than added
  * as a field the view model would then have to keep in step (KAR-24.5 AC2).
- * Neither case for an edge whose target has already passed, failed or been
- * otherwise resolved: that edge draws exactly as it did before this story,
- * which is the "no behaviour change" half of AC2 applied to the canvas.
+ *
+ * KAR-26.5 (audit item: the completed path) — an edge into a **passed** node
+ * is the third case now: `'done'`, drawn solid and inert in
+ * `var(--state-passed)`, the blueprint's green trail through the work that
+ * has finished. Same derivation, one more branch. Failed, abandoned and the
+ * other resolved states stay unclassed on purpose: the blueprint tints only
+ * the completed path, and an edge is not where a failure is announced — the
+ * node's own border is.
  */
-function motionOf(edge: PlanEdgeVM): 'running' | 'pending' | null {
+function motionOf(edge: PlanEdgeVM): 'running' | 'pending' | 'done' | null {
   const state = displayStateById.value.get(edge.to);
   if (state === 'running') return 'running';
   if (state === 'pending') return 'pending';
+  if (state === 'passed') return 'done';
   return null;
 }
 
@@ -930,6 +936,16 @@ function onKeydown(event: KeyboardEvent): void {
   stroke: var(--edge-dashed);
   stroke-dasharray: 3 5; /* geometry — direction A's own dash rhythm */
   animation: none;
+}
+
+/*
+ * KAR-26.5 — the completed path: solid, still, `--state-passed` — the same
+ * token the node's own border and the timeline's passed bar already use, so
+ * both themes and the contrast bar hold with no new pair. No dasharray and no
+ * animation: done work does not move.
+ */
+.graph-canvas :deep(.plan-edge--done .vue-flow__edge-path) {
+  stroke: var(--state-passed);
 }
 
 /*

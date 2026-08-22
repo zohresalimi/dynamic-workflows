@@ -37,12 +37,28 @@
  * "report rather than add a sixteenth primitive" rule (only `UiField` was a
  * candidate; no *new* component is added anywhere).
  *
- * **The breadcrumb reads the route, and nothing else.** `<project> / <view>`
- * comes from `route.params.projectId` and a fixed label per route name — no
- * request is added to resolve a project id into its display name, matching
- * "the project switcher... adds no request the application did not already
- * make" from AC3 next door. When the route carries no `projectId` (the runs
- * list, the projects list, `/gallery`) only the view segment renders.
+ * **The breadcrumb reads the route — and, since KAR-26.5, the one projects
+ * answer the application already holds.** `<project> / <view>` comes from
+ * `route.params.projectId` and a fixed label per route name. This bar still
+ * adds no request to resolve the id into a display name — the refusal stands
+ * — but the blueprint draws the *name*, and `ProjectSwitcher.vue`'s one
+ * `GET /api/projects` already carries it; `../../app/useProjects.ts` is that
+ * read lifted into a shared handle, which this file only *reads* (the
+ * switcher still owns the fetch, so a tokenless tab still issues nothing
+ * from here). Until the answer lands, the raw id renders, which is the
+ * honest fallback rather than a blank. When the route carries no `projectId`
+ * (the runs list, the projects list, `/gallery`) only the view segment
+ * renders.
+ *
+ * **KAR-26.5 — the theme toggle's home is the rail's footer now** (blueprint
+ * 01 settles it; see `AppRail.vue`). The button here survives *for the states
+ * where the rail does not render*, which are two, not one: below 820px (the
+ * width pairing `.topbar__nav` already keeps) and on a tokenless tab, where
+ * `App.vue` mounts no rail at **any** width (its AC6 `v-if`) — `no-rail`
+ * below is `App.vue` saying so, the same threading `isDark` uses, and without
+ * it the TokenRequired screen at desktop width would have no theme control at
+ * all (the KAR-24.4 AC4 contract above forbids exactly that loss). Its
+ * behaviour, `aria-pressed` and both `aria-label`s are unchanged.
  *
  * **KAR-25.2 AC5, EPIC-25-S13 — the breadcrumb is a path, not a caption.**
  * It is a `<nav aria-label="Breadcrumb"><ol>` now, one `<li>` per segment,
@@ -82,6 +98,7 @@ import { Moon, Search, Sun } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { type RouteLocationRaw, RouterLink, useRoute } from 'vue-router';
 import { SEARCH_INPUT_ID } from '../../app/ids.ts';
+import { useProjects } from '../../app/useProjects.ts';
 import type { SubmittedTask } from '../../ledger/projections/index.ts';
 import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
 import RunProviderBanner from '../RunProviderBanner.vue';
@@ -97,6 +114,10 @@ const props = defineProps<{
    * this value does not: `App.vue` already holds it for the gate band above
    * the outlet, and threading it down is one read instead of a second one. */
   readonly task: SubmittedTask | null;
+  /** True when `App.vue` renders no rail at any width (a tokenless tab) — the
+   * one state where this bar's theme toggle must stand in above 820px too.
+   * See the header comment. */
+  readonly noRail?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -134,6 +155,18 @@ const VIEW_LABELS: Readonly<Record<string, string>> = {
 const projectId = computed<string | null>(() =>
   typeof route.params.projectId === 'string' ? route.params.projectId : null,
 );
+
+// KAR-26.5 — a read of the shared handle, never a fetch; see the header
+// comment. The switcher is the one caller of its `load()`.
+const { rows: projectRows } = useProjects();
+
+/** The project's display name where the answer holds it, the raw id until —
+ * and only until — it does. Never blank: an id is a fact, a blank is not. */
+const projectLabel = computed<string | null>(() => {
+  const id = projectId.value;
+  if (id === null) return null;
+  return projectRows.value.find((row) => row.id === id)?.name ?? id;
+});
 
 const viewLabel = computed<string>(() => {
   const name = typeof route.name === 'string' ? route.name : null;
@@ -200,7 +233,7 @@ function isActive(itemName: string): boolean {
 </script>
 
 <template>
-  <header class="topbar">
+  <header class="topbar" :class="{ 'topbar--no-rail': props.noRail }">
     <nav class="topbar__crumb" aria-label="Breadcrumb">
       <ol class="topbar__crumb-list">
         <li v-if="projectId !== null" class="topbar__crumb-item">
@@ -208,7 +241,7 @@ function isActive(itemName: string): boolean {
             :to="{ name: 'project-workflows', params: { projectId } }"
             class="topbar__crumb-project"
           >
-            {{ projectId }}
+            {{ projectLabel }}
           </RouterLink>
           <span class="topbar__crumb-sep" aria-hidden="true">/</span>
         </li>
@@ -344,13 +377,26 @@ function isActive(itemName: string): boolean {
   flex: none;
 }
 
+/* KAR-26.5 — hidden at rail widths: the toggle's home is the rail's footer
+   now (blueprint 01), and two live toggles for one fact is the drift the
+   emit-only wiring exists to prevent. The 820px block below shows this one
+   exactly where the rail — and its footer — stops rendering; `--no-rail`
+   shows it wherever `App.vue` renders no rail at all (a tokenless tab), for
+   the same reason at every width. This control treatment is deliberately the
+   same declaration list as `AppRail.vue`'s `.rail__theme` — reported there
+   rather than minted as a sixteenth `ui/` primitive for one button skin. */
 .topbar__theme {
-  display: inline-flex;
+  display: none;
   padding: 0.35rem;
   border: 1px solid var(--edge-control);
   border-radius: var(--radius-md);
   background: var(--surface-control);
   color: var(--ink);
+  cursor: pointer;
+}
+
+.topbar--no-rail .topbar__theme {
+  display: inline-flex;
 }
 
 .topbar__search {
@@ -404,6 +450,12 @@ function isActive(itemName: string): boolean {
 @media (max-width: 820px) {
   .topbar__nav {
     display: flex;
+  }
+
+  /* KAR-26.5 — the rail is gone below this width, and the toggle it carries
+     with it; this is the toggle for exactly those widths. */
+  .topbar__theme {
+    display: inline-flex;
   }
 
   .topbar__search {

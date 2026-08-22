@@ -87,7 +87,7 @@
  * screen reader even though sighted operators see icons only.
  */
 import { useQuery } from '@pinia/colada';
-import { Boxes, Layers, ListChecks, Settings, Workflow } from 'lucide-vue-next';
+import { Boxes, Layers, ListChecks, Moon, Settings, Sun, Workflow } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { useApiClient } from '../../api/provide.ts';
@@ -96,6 +96,19 @@ import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
 import { useSessionStore } from '../../stores/useSessionStore.ts';
 import { UiChip, UiIconTile, UiSectionLabel } from '../ui/index.ts';
 import ProjectSwitcher from './ProjectSwitcher.vue';
+
+/**
+ * KAR-26.5 (audit item: the theme toggle's home) — blueprint 01 settles that
+ * the toggle lives at the right edge of this rail's identity footer, and the
+ * design README has said so since EPIC-25. The button here is the same
+ * emit-only shape `AppTopBar.vue`'s was: `useTheme()` stays `App.vue`'s to
+ * call, this file only says which button was pressed. Below 820px this rail
+ * is not rendered at all, so the topbar keeps a toggle for exactly those
+ * widths — the same one-side-or-the-other pairing the nav already uses.
+ */
+defineProps<{ readonly isDark: boolean }>();
+
+const emit = defineEmits<{ (e: 'toggle-theme'): void }>();
 
 const route = useRoute();
 const client = useApiClient();
@@ -262,6 +275,17 @@ const { data: providers } = useQuery(providersQuery(client));
           >{{ session.authenticated ? 'Connected' : 'No session' }}</span
         >
       </div>
+      <!-- KAR-26.5 — the toggle's home per blueprint 01; see the script
+           comment for the 820px pairing with `AppTopBar.vue`'s own. -->
+      <button
+        class="rail__theme"
+        type="button"
+        :aria-pressed="isDark"
+        :aria-label="isDark ? 'Switch to the light theme' : 'Switch to the dark theme'"
+        @click="emit('toggle-theme')"
+      >
+        <component :is="isDark ? Sun : Moon" :size="16" aria-hidden="true" />
+      </button>
     </div>
   </aside>
 </template>
@@ -386,6 +410,19 @@ const { data: providers } = useQuery(providersQuery(client));
     clip-path: inset(50%);
     white-space: nowrap;
   }
+
+  /* KAR-26.5 — the toggle survives icon mode: the 64px column has no row
+     room beside the daemon tile, so the footer stacks instead of clipping a
+     control (the identity *text* is clipped above; a button that vanished
+     from sighted layout would vanish from pointer reach with it). */
+  .rail__identity {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .rail__theme {
+    margin-left: 0;
+  }
 }
 
 /*
@@ -492,5 +529,23 @@ const { data: providers } = useQuery(providersQuery(client));
 .rail__identity-meta {
   font-size: var(--text-xs);
   color: var(--ink-faint);
+}
+
+/* KAR-26.5 — the same control treatment `AppTopBar.vue`'s toggle has always
+   worn, pushed to the footer's right edge the way the blueprint draws it.
+   Declaration-for-declaration a copy of `.topbar__theme` — the duplication is
+   *reported* (KAR-24.4's "report rather than add a sixteenth primitive" rule;
+   see the audit doc and the note on `.topbar__theme` itself) rather than
+   extracted, and the two lists are kept identical so a token change cannot
+   half-apply. */
+.rail__theme {
+  margin-left: auto;
+  display: inline-flex;
+  padding: 0.35rem;
+  border: 1px solid var(--edge-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-control);
+  color: var(--ink);
+  cursor: pointer;
 }
 </style>
