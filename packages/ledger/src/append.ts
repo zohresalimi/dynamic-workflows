@@ -389,3 +389,26 @@ export function lastSeqOfKinds(db: Db, runId: RunId, kinds: readonly string[]): 
     .get(runId, ...kinds);
   return row?.last ?? null;
 }
+
+/**
+ * KAR-19.13 AC1 — how many events of `kind` this run has recorded under
+ * `nodeId`.
+ *
+ * The count of `provider.session_opened` rows for a `(run, pre-execution node)`
+ * is the attempt the next turn's vendor session is derived from, and it has to
+ * come from **here** rather than from a field on a context object: the defect
+ * this closes was a daemon that restarted, and a counter in a process resets on
+ * a restart to exactly the value that collides.
+ *
+ * One aggregate under the `event_run_seq` index rather than a paged scan the
+ * caller reduces, for the same reason `lastSeqOfKinds` is one: the alternative
+ * reads a run's whole history to answer a question about three rows.
+ */
+export function countNodeEventsOfKind(db: Db, runId: RunId, kind: string, nodeId: string): number {
+  const row = db
+    .prepare<{ n: number }>(
+      'SELECT count(*) AS n FROM event WHERE run_id = ? AND kind = ? AND node_id = ?',
+    )
+    .get(runId, kind, nodeId);
+  return row?.n ?? 0;
+}

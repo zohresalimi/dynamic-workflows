@@ -40,16 +40,172 @@ export interface RejectedArgument {
 }
 
 /**
- * The words a CLI uses when it is refusing an argument rather than failing at
- * its work.
+ * KAR-19.13 AC6 — the words a CLI uses when it is refusing an argument rather
+ * than failing at its work, **as a table with a sentence behind every row**.
  *
- * Deliberately short and generic: these are the phrasings of every argument
- * parser in wide use (`clap`, `commander`, `yargs`, hand-rolled), and matching
- * a vendor's *prose* instead would be a table that goes stale the first time
- * somebody rewords an error string.
+ * This shipped as one regex, and the shape was the defect. KAR-19.8 added
+ * `invalid` and `must be` because Claude Code 2.1.220 writes *"Invalid session
+ * ID. Must be a valid UUID."*; three days later the same vendor refused the
+ * same flag with *"Session ID <uuid> is already in use"*, which contains none of
+ * those words, so `rejectedArgument` returned `null` before its `SUBJECTS`
+ * table was ever consulted and the failure fell through to `agentExited`'s
+ * `transient` — a standing instruction to retry the identical id, every tick,
+ * for ever.
+ *
+ * One more literal would close that case and leave the next wording to the next
+ * real run, which is the pattern this epic has already recorded four times. So
+ * every phrasing now carries **the sentence it exists for** and how that
+ * sentence is known, and `test/refusal-vocabulary.test.ts` fails any row whose
+ * phrasing does not actually recognise it. That is the difference between "we
+ * added a word" and "here is what is covered".
+ *
+ * The phrasings stay short and generic — these are the wordings of every
+ * argument parser in wide use (`clap`, `commander`, `yargs`, hand-rolled) —
+ * because matching a vendor's *prose* would go stale the first time somebody
+ * rewords a string. The sentence is evidence for the row, not the matcher.
  */
-const REFUSAL_WORDS =
-  /\b(invalid|unknown|unrecognised|unrecognized|unsupported|unexpected|not a valid|must be)\b/i;
+export interface RefusalPhrasing {
+  /** The phrasing, as a reader would name it. */
+  readonly phrasing: string;
+  /** What actually matches. Anchored on word boundaries, never on prose. */
+  readonly pattern: RegExp;
+  /** A sentence this phrasing must recognise. Never empty — a row with nothing
+   * behind it is a row nobody can check. */
+  readonly sentence: string;
+  /** How the sentence is known. `executed` means a real binary wrote it. */
+  readonly provenance: {
+    readonly how: 'executed' | 'help' | 'bundle' | 'documented';
+    readonly on: string;
+    readonly note?: string;
+  };
+}
+
+// Every sentence below was written by a real CLI or by the argument parser a
+// real CLI is built on. Which vendor wrote which is recorded here rather than in
+// the `note` field on purpose: `test/no-capability-table.test.ts` allows exactly
+// one file under `src/` to name a vendor in executable code, and it is the
+// registry. Claude Code 2.1.220 wrote the four `executed` rows — the session-id
+// refusal of 2026-08-13, the `--json-schema` parse error two minutes later, the
+// JSON-Schema refusal after that, and the `already in use` of 2026-08-16.
+export const REFUSAL_VOCABULARY: readonly RefusalPhrasing[] = [
+  {
+    phrasing: 'invalid',
+    pattern: /\binvalid\b/i,
+    sentence: 'Error: Invalid session ID. Must be a valid UUID.',
+    provenance: {
+      how: 'executed',
+      on: '2026-08-13',
+      note: 'refused on every attempt of a real operator’s run',
+    },
+  },
+  {
+    phrasing: 'must be',
+    pattern: /\bmust be\b/i,
+    sentence: 'Error: Invalid session ID. Must be a valid UUID.',
+    provenance: { how: 'executed', on: '2026-08-13', note: 'the second half of the same sentence' },
+  },
+  {
+    phrasing: 'not a valid',
+    pattern: /\bnot a valid\b/i,
+    sentence:
+      'Error: --json-schema is not a valid JSON Schema: no schema with key or ref ' +
+      '"https://json-schema.org/draft/2020-12/schema"',
+    provenance: {
+      how: 'executed',
+      on: '2026-08-13',
+      note: 'the third argument refused in one evening',
+    },
+  },
+  {
+    phrasing: 'unrecognised',
+    pattern: /\bunrecognised\b/i,
+    sentence: "error: unrecognised option '--output-schema'",
+    provenance: {
+      how: 'documented',
+      on: '2026-08-13',
+      note: 'the en-GB spelling of the row below; no vendor DeFlow drives has been seen to use it',
+    },
+  },
+  {
+    phrasing: 'unrecognized',
+    pattern: /\bunrecognized\b/i,
+    sentence: "Error: --json-schema is not valid JSON: JSON Parse error: Unrecognized token '/'",
+    provenance: {
+      how: 'executed',
+      on: '2026-08-13',
+      note: 'at 19:59, two minutes after the session-id refusal',
+    },
+  },
+  {
+    phrasing: 'unexpected',
+    pattern: /\bunexpected\b/i,
+    sentence: "error: unexpected argument '--output-format' found",
+    provenance: {
+      how: 'documented',
+      on: '2026-08-04',
+      note: 'clap’s own wording; that CLI was not installed on the capture machine',
+    },
+  },
+  {
+    phrasing: 'unknown',
+    pattern: /\bunknown\b/i,
+    sentence: "error: unknown option '--session-id'",
+    provenance: {
+      how: 'documented',
+      on: '2026-08-04',
+      note: 'commander’s own wording, which is what a Node vendor CLI produces',
+    },
+  },
+  {
+    phrasing: 'unsupported',
+    pattern: /\bunsupported\b/i,
+    sentence: 'error: unsupported value for --output-format: stream-json',
+    provenance: {
+      how: 'documented',
+      on: '2026-08-04',
+      note: 'the generic phrasing; no vendor DeFlow drives has been seen to use it',
+    },
+  },
+  // KAR-19.13 — the family the 2026-08-16 run died on. Three rows rather than
+  // one: `already in use` is the sentence that was executed, and the other two
+  // are the neighbouring wordings for the same condition. A vendor that says
+  // "in use" without "already" is one sentence away, and finding that out from
+  // a wedged run is what this table exists to stop.
+  {
+    phrasing: 'already in use',
+    pattern: /\balready in use\b/i,
+    sentence: 'Session ID 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use',
+    provenance: {
+      how: 'executed',
+      on: '2026-08-16',
+      note: 'inside compilePlanV1 on run_20260816T194933Z_839b9b',
+    },
+  },
+  {
+    phrasing: 'already exists',
+    pattern: /\balready exists\b/i,
+    sentence: 'Error: session id 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 already exists',
+    provenance: {
+      how: 'documented',
+      on: '2026-08-16',
+      note: 'the same condition worded as a create conflict; not executed against any binary',
+    },
+  },
+  {
+    phrasing: 'in use',
+    pattern: /\bin use\b/i,
+    sentence: 'Error: that session id is in use by another process',
+    provenance: {
+      how: 'documented',
+      on: '2026-08-16',
+      note: 'the same condition without "already"; not executed against any binary',
+    },
+  },
+];
+
+/** Whether the child was refusing an argument rather than failing at its work. */
+const refusesAnArgument = (stderr: string): boolean =>
+  REFUSAL_VOCABULARY.some((entry) => entry.pattern.test(stderr));
 
 /** Every token on the argv that looks like a flag, longest first — so
  * `--session-id` is preferred over a `-s` that happens to be a prefix. */
@@ -141,7 +297,7 @@ export interface ArgumentRefusalInput {
  */
 export function rejectedArgument(input: ArgumentRefusalInput): RejectedArgument | null {
   const stderr = input.stderr.trim();
-  if (stderr === '' || !REFUSAL_WORDS.test(stderr)) return null;
+  if (stderr === '' || !refusesAnArgument(stderr)) return null;
   const spec = input.spec;
 
   for (const flag of flagsOn(input.argv)) {

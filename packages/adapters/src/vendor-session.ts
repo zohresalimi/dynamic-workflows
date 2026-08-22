@@ -33,7 +33,7 @@
 import type { NodeId, RunId } from '@DeFlow/core';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { type ArgumentForm, UUID_PATTERN } from './argument-forms.ts';
+import { type ArgumentForm, type ArgumentProvenance, UUID_PATTERN } from './argument-forms.ts';
 import { registryRefused } from './failures.ts';
 import type { ResumeStrategyName } from './resume.ts';
 
@@ -62,9 +62,48 @@ export function isUuid(value: string): boolean {
  * session id is a row in the entry's own `arguments` audit rather than a
  * mechanism beside it.
  */
+/**
+ * KAR-19.13 AC7 — what a vendor does when it is handed an id it has **already
+ * seen**.
+ *
+ * Two answers, and the difference is a wedged run:
+ *
+ * - `'create-only'` — the flag *creates* a session and cannot attach to one, so
+ *   an id a previous process spent is refused outright. Claude Code 2.1.220
+ *   exits 1 on `Session ID <uuid> is already in use`, which is how
+ *   `run_20260816T194933Z_839b9b` died at planning. An id may therefore be
+ *   presented **once**, and a second turn of the same kind is a second session.
+ * - `'may-attach'` — presenting the id again continues the conversation the
+ *   first presentation started, so re-presenting it is the *cheaper* answer and
+ *   keeps one transcript per turn kind.
+ *
+ * A declaration rather than a name test: `if (provider === 'claude')` inside the
+ * derivation is the shortcut this exists to refuse, because the registry is the
+ * one file allowed to name a vendor and a vendor name anywhere else is the next
+ * thing that has to be found by hand.
+ */
+export type SessionIdReuse = 'create-only' | 'may-attach';
+
 export interface SessionIdSpec {
   readonly flag: string;
   readonly form: ArgumentForm;
+  /** KAR-19.13 AC7 — whether the flag can only create, or may attach. */
+  readonly reuse: SessionIdReuse;
+  /** How that was established, kept apart from the `form`'s provenance because
+   * the two are separate claims about the same flag and were learned three days
+   * apart. */
+  readonly reuseProvenance: ArgumentProvenance;
+}
+
+/**
+ * Whether an id already presented on this flag may be presented again.
+ *
+ * An **undeclared** flag answers `true`: a fresh session per turn costs one
+ * extra transcript handle, and re-presenting an id a vendor refuses costs the
+ * run. The safe direction is the one nobody has to be right about in advance.
+ */
+export function sessionIdIsSingleUse(spec: SessionIdSpec | undefined): boolean {
+  return spec === undefined || spec.reuse === 'create-only';
 }
 
 /** The tuple a vendor session id is a function of, and nothing else. */

@@ -71,7 +71,10 @@ async function scene(
       binaryPath: agent.binary,
       cwd: tmp,
       schemasDir: writeRunSchemas(tmp),
-      sessionId,
+      // KAR-19.13 — each child opens its own session. This file hands the same
+      // value every time on purpose: what it asserts is the *form* the vendor
+      // validates, and one turn per scene is all it runs.
+      openSession: () => sessionId,
       env: {
         ...childEnv(),
         [DIALECT_ENV]: 'claude-stream-json',

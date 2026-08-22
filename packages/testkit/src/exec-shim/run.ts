@@ -20,6 +20,7 @@
  */
 
 import {
+  claudeSessionInUse,
   type Dialect,
   decideCli,
   type OutputFormat,
@@ -64,6 +65,16 @@ export interface ExecShimPorts {
   cwd(): string;
   /** `resolve(cwd, path)`, kept a port so the runner stays free of node:path. */
   resolvePath(from: string, relative: string): string;
+  /**
+   * KAR-19.13 — claims `sessionId` in the store at `dir`, atomically.
+   *
+   * `true` when this invocation is the one that created it, `false` when some
+   * earlier process already did. A **port**, because the whole point is that
+   * the state outlives the process: the defect this reproduces is one daemon
+   * life presenting an id a previous life already spent, and a fake that held
+   * its sessions in memory would be green for exactly the case that breaks.
+   */
+  claimSession(dir: string, sessionId: string): boolean;
   /** The process environment, read only by the `envEcho` step. A port rather
    * than `process.env` so the runner stays testable without a process. */
   env(): Readonly<Record<string, string | undefined>>;
@@ -88,6 +99,17 @@ export const SEED_ENV = 'DeFlow_FAKE_SEED';
 export const NOW_ENV = 'DeFlow_FAKE_NOW';
 /** Overrides the scenario's exit code, so one scenario serves both S18 cases. */
 export const EXIT_CODE_ENV = 'DeFlow_FAKE_EXIT_CODE';
+/**
+ * KAR-19.13 — the directory the fake records the session ids it has created in.
+ *
+ * **Opt-in, and unset means the rule is not enforced**: every fixture written
+ * before this story hands the same id to one process only, and a fake that
+ * started refusing repeats globally would fail them for a reason that has
+ * nothing to do with what they assert. A fixture that cares about the rule
+ * points this at a directory it owns, and the two processes that share it are
+ * the two daemon lives the defect needs.
+ */
+export const SESSION_STORE_ENV = 'DeFlow_FAKE_SESSION_STORE';
 
 /** Exit codes for the fake's own refusals, distinct from a scripted one. */
 const USAGE_ERROR = 64;
@@ -315,6 +337,21 @@ export async function runExecShim(
   if (!decision.ok) {
     ports.writeErr(`${decision.stderr}\n`);
     return decision.exitCode;
+  }
+
+  // KAR-19.13. **After** the shape check and before any work, which is the
+  // order the real binary uses: an id of the wrong form is refused as a form
+  // error, and only a well-formed one gets as far as being looked up. Only the
+  // claude dialect enforces it, because it is the only vendor whose `--session-id`
+  // has been *executed* and observed to create rather than attach; inventing
+  // the rule for the others would be a double claiming knowledge nobody has.
+  const store = env[SESSION_STORE_ENV];
+  if (dialect.dialect === 'claude-stream-json' && store !== undefined && store !== '') {
+    const presented = sessionIdIn(argv);
+    if (presented !== null && !ports.claimSession(store, presented)) {
+      ports.writeErr(`${claudeSessionInUse(presented)}\n`);
+      return 1;
+    }
   }
 
   // Installed before a byte is written: a SIGTERM that arrived during the

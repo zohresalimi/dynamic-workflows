@@ -52,6 +52,13 @@ const childEnv = (): Record<string, string> => ({
   HOME: process.env.HOME ?? '',
 });
 
+/** One derived id per call, from the tuple and nothing else (KAR-19.13). */
+function nextSession(nodeId: ReturnType<typeof NodeIdSchema.parse>): () => string {
+  const runId = RunIdSchema.parse('run_20260813T110608Z_379fc8');
+  const turns = { count: 0 };
+  return () => vendorSessionId({ runId, nodeId, attempt: turns.count++ });
+}
+
 function turnOptions(over: Partial<LiveTurnOptions> & { cwd: string }): LiveTurnOptions {
   return {
     provider: 'mock',
@@ -60,11 +67,13 @@ function turnOptions(over: Partial<LiveTurnOptions> & { cwd: string }): LiveTurn
     // KAR-19.8 — derived, never spelled: this file spawns a fake vendor CLI
     // that enforces Claude Code 2.1.220's own rule, and `live-agents-spec` is
     // exactly the shape of value the real binary refused on 2026-08-13.
-    sessionId: vendorSessionId({
-      runId: RunIdSchema.parse('run_20260813T110608Z_379fc8'),
-      nodeId: NodeIdSchema.parse('framing'),
-      attempt: 0,
-    }),
+    //
+    // KAR-19.13 — a port rather than a value, because each child opens its own.
+    // The production implementation counts the ledger; here the turn index is
+    // this closure's, which is the same arithmetic without a database, since
+    // what this file is about is the turn rather than where the count comes
+    // from (`test/integration/pre-execution-session.test.ts` owns that).
+    openSession: nextSession(NodeIdSchema.parse('framing')),
     env: childEnv(),
     ...over,
   };

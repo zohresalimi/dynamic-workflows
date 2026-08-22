@@ -474,5 +474,15 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     resetsAt: 1_754_313_093_000,
     raw: { type: 'rate_limit_event' },
   },
+  // KAR-19.13 — the pre-execution turn's own session, with the attempt it was
+  // derived from beside it. The id is the one Claude Code refused on
+  // 2026-08-16, which is `vendorSessionId(run_20260816T194933Z_839b9b,
+  // planner, 0)` — the fixture and the report are the same value on purpose.
+  'provider.session_opened': {
+    node: 'planner',
+    attempt: 1,
+    provider: 'claude-code',
+    session: { id: '5f2b8935-25e5-5c1c-83c6-a97d1b151f08', origin: 'minted' },
+  },
   'export.blocked': { target: 'report', reason: 'redaction-failed', count: 3 },
 };

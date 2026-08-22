@@ -23,7 +23,12 @@
 import { NodeIdSchema, RunIdSchema } from '@DeFlow/core';
 import { readFileSync } from 'node:fs';
 import { expect, it, describe as suite } from 'vitest';
-import { isUuid, VENDOR_SESSION_NAMESPACE, vendorSessionId } from './vendor-session.ts';
+import {
+  isUuid,
+  VENDOR_SESSION_NAMESPACE,
+  vendorSessionId,
+  vendorSessionIdFor,
+} from './vendor-session.ts';
 
 const RUN = RunIdSchema.parse('run_20260813T110608Z_379fc8');
 const node = (id: string): ReturnType<typeof NodeIdSchema.parse> => NodeIdSchema.parse(id);
@@ -106,5 +111,37 @@ suite('KAR-19.8 AC2 — nothing random reaches the derivation', () => {
 
   it('names one namespace, and it is itself a uuid', () => {
     expect(isUuid(VENDOR_SESSION_NAMESPACE)).toBe(true);
+  });
+});
+
+/**
+ * KAR-19.13 AC4 / EPIC-19-S88 — the counterweight, written before the change.
+ *
+ * The uniform fix for the 2026-08-16 collision — *"derive from the attempt
+ * everywhere"* — makes that run work and breaks `--resume`: attempt 2 would
+ * open a session that does not contain attempt 1's work, and KAR-19.8 AC4 would
+ * be quietly false again. The rule already exists in `vendorSessionIdFor` and
+ * is correct; this story's whole content is that the pre-execution path stopped
+ * routing through it.
+ */
+suite('KAR-19.13 AC4 — the two resume strategies keep their two answers', () => {
+  const nodeId = node('implement');
+
+  it.each([0, 1, 2, 3])(
+    'derives attempt 0’s id for attempt %i where the strategy is native',
+    (attempt) => {
+      expect(vendorSessionIdFor({ runId: RUN, nodeId, attempt, strategy: 'ResumeNative' })).toBe(
+        vendorSessionIdFor({ runId: RUN, nodeId, attempt: 0, strategy: 'ResumeNative' }),
+      );
+    },
+  );
+
+  it('derives a distinct, valid uuid per attempt where the strategy is replay', () => {
+    const ids = [0, 1, 2].map((attempt) =>
+      vendorSessionIdFor({ runId: RUN, nodeId, attempt, strategy: 'ResumeByReplay' }),
+    );
+
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) expect(isUuid(id)).toBe(true);
   });
 });

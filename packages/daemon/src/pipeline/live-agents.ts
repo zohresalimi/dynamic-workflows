@@ -120,8 +120,20 @@ export interface LiveTurnOptions {
   readonly cwd: string;
   /** The run's own `.DeFlow/schemas`, absolute. */
   readonly schemasDir: string;
-  /** Client-chosen and echoed back by every vendor that takes one. */
-  readonly sessionId: string;
+  /**
+   * KAR-19.13 — opens the vendor session for **this** child, and returns the id
+   * it derived. Client-chosen, and echoed back by every vendor that takes one.
+   *
+   * A function rather than a value, and the difference is a wedged run.
+   * `--session-id` *creates* a session and cannot attach to one, so a second
+   * child presenting the first's id is refused outright — and on this path
+   * `repair` and every re-advanced wake are second children. A string here
+   * would be one id for the life of a `LiveTurnOptions`, which is exactly the
+   * pin that produced `run_20260816T194933Z_839b9b`. The composition root's
+   * implementation counts the turns the **ledger** already records and derives
+   * from that, so a daemon restart does not start counting again.
+   */
+  openSession(): string;
   /** Built by `buildChildEnv()`. This module never reads `process.env`. */
   readonly env: Readonly<Record<string, string>>;
 }
@@ -279,11 +291,19 @@ export async function structuredTurn(
   const spec = providerSpec(options.provider);
   if (spec === undefined) throw unregistered(options.provider);
 
+  // KAR-19.11 AC1 — read before the session is opened, so a missing schema
+  // fails without having spent a turn's session id on a child that never ran.
+  const schemaDocument = readSchemaDocument(request.schemaPath, options.provider);
+  // KAR-19.13 — one session per child, not one per `LiveTurnOptions`. Opened
+  // here rather than at the call site so `repair` and a re-advanced wake get
+  // their own without either having to remember to ask.
+  const sessionId = options.openSession();
+
   const argv = spec.shim.argv({
     resolved: { provider: spec.id, path: options.binaryPath },
     worktree: options.cwd,
     prompt: request.prompt,
-    sessionId: options.sessionId,
+    sessionId,
     // Every pre-execution turn is a `read` node (`RECON_PERMISSION`, and
     // framing and planning observe rather than edit). A level the vendor's own
     // flags cannot express is refused by the builder above, before a process
@@ -293,9 +313,9 @@ export async function structuredTurn(
     // KAR-19.11 AC1 — the document as well as the path, because the two vendors
     // disagree about which one their flag takes and the registry entry is what
     // decides. The file is written by `writeRunSchemas` before any turn runs, so
-    // reading it here also fails *before* a process exists when it is missing,
+    // reading it above also fails *before* a process exists when it is missing,
     // rather than as an empty contract the child silently ignores.
-    schemaDocument: readSchemaDocument(request.schemaPath, options.provider),
+    schemaDocument,
   });
 
   const result = await spawnTurn(options, argv);
@@ -345,8 +365,17 @@ export async function structuredTurn(
   return readReturn(options, result);
 }
 
-/** A session over a path that holds none: every further turn is a new process,
- * and `steerable: false` is what makes the UI say so. */
+/**
+ * A session over a path that holds none: every further turn is a new process,
+ * and `steerable: false` is what makes the UI say so.
+ *
+ * KAR-19.13 AC3 — and a new process means a **new vendor session**. `repair`
+ * re-enters `structuredTurn`, which opens its own, so the repaired turn's id
+ * differs from the one the turn it is repairing spent. A repair is a
+ * continuation in the *packet*, which is rebuilt from the ledger; it is not a
+ * continuation in the vendor's session, because there is no session to
+ * continue.
+ */
 function replayOnlySession(options: LiveTurnOptions, schemaPath: string): FramingSession {
   return {
     steerable: false,
