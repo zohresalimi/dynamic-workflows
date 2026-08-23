@@ -246,6 +246,9 @@ P0 because it is interesting.
 | EPIC-21 | [Interactive CLI: a real terminal app, not a background command](./epics/EPIC-21-interactive-cli.md) | W16           | [flows](./flows/EPIC-21-interactive-cli-flows.md)     |
 | EPIC-22 | [Web control center: projects, chat-driven runs, live boards](./epics/EPIC-22-web-control-center.md) | W15           | [flows](./flows/EPIC-22-web-control-center-flows.md)  |
 | EPIC-24 | [The design system: a component library from the prototype](./epics/EPIC-24-design-system.md) | W17           | [flows](./flows/EPIC-24-design-system-flows.md)       |
+| EPIC-25 | [The frame tells the truth: global settings, project-scoped work, real decisions](./epics/EPIC-25-frame-and-settings.md) | W18           | [flows](./flows/EPIC-25-frame-and-settings-flows.md)  |
+| EPIC-26 | [Run clean: a teardown that finishes, a dev daemon that knows its machine](./epics/EPIC-26-run-clean.md) | W19           | [flows](./flows/EPIC-26-run-clean-flows.md)           |
+| EPIC-27 | [Operational controls: pause a run for real, and kill what leaked, from the UI](./epics/EPIC-27-operational-controls.md) | W20           | [flows](./flows/EPIC-27-operational-controls-flows.md) |
 
 **`EPIC-23` is deliberately absent from this table.** It exists in Linear only (`MET-815`, _"Found in
 use: what running it taught us"_) as an open register of defects and costs found by running the
