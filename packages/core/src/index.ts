@@ -1030,6 +1030,19 @@ export {
   renderCapabilitySegmentText,
   renderFactSegmentText,
 } from './planner-packet.ts';
+// KAR-27.3 AC1 — when a framing, recon or planner turn is in flight, derived
+// from the ledger. Exported because the web folds the same answer for its own
+// projection, and a second spelling of "concluded" would be a second answer.
+export type {
+  PreExecutionNodeId,
+  PreExecutionTurnState,
+  PreExecutionTurns,
+} from './pre-execution-turn.ts';
+export {
+  foldPreExecutionTurns,
+  inFlightPreExecution,
+  PRE_EXECUTION_NODE_IDS,
+} from './pre-execution-turn.ts';
 // KAR-22.1 — the project a run belongs to.
 export { mintProjectId } from './project-id.ts';
 // KAR-19.10 — the one sentence a run says about the agent it chose, and the

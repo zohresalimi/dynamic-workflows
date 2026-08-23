@@ -238,6 +238,17 @@ const populated: RunState = {
   replans: { flat: 2, completed: 3, versions: [2, 3] },
   epoch: 2,
   staleEpochSkipped: 1,
+  // KAR-27.3 — a framing turn that opened two sessions, spent one attempt, and
+  // is running the second.
+  preExecution: {
+    framing: {
+      running: true,
+      sessions: 2,
+      failures: 1,
+      sinceTs: 1_754_149_500_000,
+      maxAttempts: 3,
+    },
+  },
 };
 
 /** Exactly what the ledger hands the decoder: the row's text, parsed. */

@@ -45,6 +45,7 @@ import {
 } from './no-progress.ts';
 import type { PlanGraph } from './plan-graph.ts';
 import type { ProposedBy } from './plan-patch.ts';
+import { foldPreExecutionTurns } from './pre-execution-turn.ts';
 import {
   initialNodeState,
   type LockState,
@@ -111,13 +112,33 @@ export function reduce(state: RunState, event: Event): RunState {
     return { ...state, staleEpochSkipped: state.staleEpochSkipped + 1 };
   }
 
-  const projected = project(state, event);
-  if (projected === null) {
+  const transitioned = project(state, event);
+  /**
+   * KAR-27.3 AC1 — the pre-execution record, folded once for every kind rather
+   * than inside a dozen arms of `project`.
+   *
+   * Merged here for the reason `epoch` is handled here: it is orthogonal to
+   * what each transition is *about*. `node.failed` is a transition on
+   * `nodes[node]` and, incidentally, the end of a framing turn; threading the
+   * second fact through every arm that carries it would be a dozen places to
+   * forget it and one vocabulary spelled twelve times.
+   *
+   * It returns `null` for an event that moved no field, so an event that
+   * changed nothing still cannot advance the watermark — which is what keeps
+   * F4.7's stall episodes meaningful.
+   */
+  const preExecution = foldPreExecutionTurns(state.preExecution, event);
+  if (transitioned === null && preExecution === null) {
     // Nothing was projected, so the watermark stays where it is. The epoch is
     // envelope bookkeeping rather than part of the projection, which is why it
     // may move on an event that changed nothing else.
     return epoch > state.epoch ? { ...state, epoch } : state;
   }
+
+  const projected =
+    preExecution === null
+      ? (transitioned as RunState)
+      : { ...(transitioned ?? state), preExecution };
 
   const seq = typeof envelope.seq === 'number' ? envelope.seq : state.watermarkSeq;
   const ts = typeof envelope.ts === 'number' ? envelope.ts : state.watermarkTs;
@@ -960,12 +981,23 @@ function project(state: RunState, event: Event): Transition {
     // outcome of F5.9's redaction pass and belongs to the export, not the run.
     case 'provider.probed':
     case 'provider.rate_limited':
-    // KAR-02.11 AC7 — the vendor session a pre-execution turn opened is a record,
-    // not a state change: it exists to be *counted* by the next turn's
-    // derivation and to be recomputed offline. A `running` node here would be
-    // a `framing` node nothing ever completes.
-    case 'provider.session_opened':
     case 'export.blocked':
+      return null;
+
+    /**
+     * KAR-02.11 AC7 said this event was a record and not a state change,
+     * because *"a `running` node here would be a `framing` node nothing ever
+     * completes"*. That was true for as long as there was no vocabulary for a
+     * pre-execution turn concluding.
+     *
+     * KAR-27.3 writes that vocabulary down (./pre-execution-turn.ts), and the
+     * fold below is the only thing that reads this kind: it still does not
+     * touch `nodes`, so a pre-execution turn is still not a plan node. What it
+     * touches is `preExecution`, and the completions are folded by the same
+     * function in the arms of the kinds that carry them — see `reduce` above,
+     * which merges its answer into whatever the transition returned.
+     */
+    case 'provider.session_opened':
       return null;
 
     default:

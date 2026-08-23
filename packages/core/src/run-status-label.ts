@@ -30,6 +30,7 @@
  *
  * Verifies: EPIC-19-S7 · KAR-19.1 AC6
  */
+import { inFlightPreExecution, type PreExecutionTurnState } from './pre-execution-turn.ts';
 import type { RunState, RunStatus } from './run-state.ts';
 
 /**
@@ -68,8 +69,43 @@ function stalled(state: RunState): boolean {
 
 const ENDED: ReadonlySet<RunStatus> = new Set<RunStatus>(['completed', 'aborted']);
 
+/**
+ * KAR-27.3 AC1 — the two statuses a run wears while a pre-execution turn can be
+ * in flight.
+ *
+ * `created` covers framing; `spec-approved` covers recon and the planner.
+ * Everything else takes precedence over the record and keeps its own label: a
+ * run that has stopped for a person, or is cancelling, or has ended, is
+ * describing something the operator has to act on, and a turn shown as running
+ * underneath it would be describing a child that is on its way out.
+ */
+const FRAMEABLE: ReadonlySet<RunStatus> = new Set<RunStatus>(['created', 'spec-approved']);
+
+/**
+ * *"framing — running · attempt 1 of 3 · since 2026-08-23T10:41:41.000Z"*.
+ *
+ * The since-instant is composed **into the label** rather than left for each
+ * caller to render, because the alternative is three surfaces formatting one
+ * ledger instant three ways — which is the defect this whole file exists to
+ * prevent, one field further in. ISO-8601 UTC costs no clock: `sinceTs` is a
+ * recorded fact, and `toISOString` is arithmetic on it.
+ *
+ * The attempt is `failures + 1` and never `sessions`: a `repair` opens a second
+ * vendor session inside one retry attempt, so counting sessions would tell an
+ * operator their first framing turn was on its last life.
+ */
+function runningLabel(node: string, turn: PreExecutionTurnState): string {
+  const attempt = Math.min(turn.failures + 1, turn.maxAttempts);
+  return (
+    `${node} — running · attempt ${String(attempt)} of ${String(turn.maxAttempts)} · ` +
+    `since ${new Date(turn.sinceTs).toISOString()}`
+  );
+}
+
 /** The status string every surface prints for `state`. */
 export function runStatusLabel(state: RunState): string {
-  const label = RUN_STATUS_LABELS[state.status];
+  const live = FRAMEABLE.has(state.status) ? inFlightPreExecution(state.preExecution) : null;
+  const label =
+    live === null ? RUN_STATUS_LABELS[state.status] : runningLabel(live.node, live.turn);
   return stalled(state) ? `${label} — stalled` : label;
 }
