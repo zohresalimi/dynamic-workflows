@@ -46,6 +46,12 @@
  *    the facade, which relays out on the graph's *shape* and not on its
  *    contents (KAR-17.1 AC3).
  */
+// The plain-string form, not the branded `SPEC_GATE_NODE`: this view is in the
+// landing route's eager graph, and `spec-approval.ts` reaches `ids.ts` and
+// through it the whole of zod, which
+// `packages/web/test/integration/bundle-budget.test.ts` forbids in the initial
+// chunk. `spec-gate-node.ts` exists for exactly this comparison.
+import { SPEC_GATE_NODE_ID } from '@DeFlow/core';
 import { computed, watch } from 'vue';
 import { type LocationQueryRaw, useRoute, useRouter } from 'vue-router';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
@@ -76,6 +82,21 @@ const legacy = computed(() => typeof route.params['projectId'] !== 'string');
 
 const nodes = computed(() => run.planNodes);
 const edges = computed(() => run.planEdges);
+
+/**
+ * KAR-27.3 AC4 — which pre-execution state this run is in, for the empty note.
+ *
+ * The same derivation `ProjectWorkflowsView` makes, and it has to be: the two
+ * views mount the same component precisely so an operator moving between them
+ * is not told two different things about one run.
+ */
+const planActivity = computed<'framing' | 'recon' | 'planner' | 'awaiting-spec-approval' | null>(
+  () => {
+    const turn = run.liveTurnInFlight;
+    if (turn !== null) return turn.node;
+    return run.openGate?.node === SPEC_GATE_NODE_ID ? 'awaiting-spec-approval' : null;
+  },
+);
 
 /**
  * The bodies — the shared join, not one of this view's own.
@@ -182,7 +203,7 @@ watch(
       is still this view's own.
     -->
     <p v-if="nodes.length === 0" class="plan-graph__empty">
-      <GraphEmptyNote :run-id="runId" :status="status" />
+      <GraphEmptyNote :run-id="runId" :status="status" :activity="planActivity" />
     </p>
   </section>
 </template>

@@ -50,6 +50,7 @@ import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
 import GraphEmptyNote from '../components/graph/GraphEmptyNote.vue';
+import TurnActivityStrip from '../components/output/TurnActivityStrip.vue';
 import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
 import { UiButton, UiCard, UiEmptyState } from '../components/ui/index.ts';
@@ -349,7 +350,54 @@ const hydratingPlan = computed(
   () => currentRun.value !== null && run.planNodes.length === 0 && openGate.value === null,
 );
 
-const feedStatus = computed(() => (run.hydratedFromSeq === 0 ? 'hydrating' : 'idle'));
+/**
+ * KAR-27.3 AC4 — whether this tab is still *reading* the run, or has read it.
+ *
+ * It was `hydratedFromSeq === 0`, and that was wrong in a way nothing caught:
+ * `hydratedFromSeq` is only ever moved by `scrubTo`, so a live run that nobody
+ * scrubbed reported `hydrating` **for ever** — which is how the 2026-08-23
+ * report got a plan panel stuck on *"Reading the run's ledger…"* under a run
+ * that had been open for ten minutes.
+ *
+ * `applied > 0` is the honest reading: this tab has folded at least one event
+ * for the run on screen, so it is no longer reading the ledger — it is showing
+ * what it read. Every run's first event is its `task.submitted`, so the
+ * sentence is reachable exactly while the first frame is in flight, which is
+ * the one moment it is true.
+ */
+const feedStatus = computed(() =>
+  run.runId === currentRun.value && run.applied > 0 ? 'idle' : 'hydrating',
+);
+
+/**
+ * KAR-27.3 AC3 — the pre-execution turn this run has in flight, or `null`.
+ *
+ * Guarded on `run.runId === currentRun` for the same reason `openGate` is: the
+ * store holds one run at a time, and two sources for one fact is how a previous
+ * run's strip survives a route change.
+ */
+const liveTurn = computed(() =>
+  currentRun.value !== null && run.runId === currentRun.value ? run.liveTurnInFlight : null,
+);
+
+/**
+ * KAR-27.3 AC4 — which of the pre-execution states the plan panel should name.
+ *
+ * Derived from ledger facts and nothing else: a turn in flight names itself,
+ * and an open spec gate is the other state a plan-less run is legitimately in.
+ * `null` is "none of these", which is when *No plan yet* is the true sentence.
+ *
+ * The order matters. A gate is open only while nothing is running, but a run
+ * that has just answered its gate can carry both for a tick, and the honest
+ * answer then is the turn that is actually burning time.
+ */
+const planActivity = computed<'framing' | 'recon' | 'planner' | 'awaiting-spec-approval' | null>(
+  () => {
+    const turn = liveTurn.value;
+    if (turn !== null) return turn.node;
+    return openGate.value?.node === SPEC_GATE_NODE ? 'awaiting-spec-approval' : null;
+  },
+);
 
 /** Either strip state — the layout with no 3fr/2fr split in it. */
 const stripped = computed(() => pendingPlan.value || hydratingPlan.value);
@@ -453,10 +501,29 @@ const startedAt = computed<string | null>(
           class="workspace__strip"
           data-workspace-pending-plan
         >
-          <span v-if="pendingPlan" class="workspace__strip-text">
+          <!--
+            AC3 — while a pre-execution turn is running, the strip stops being a
+            sentence about the future and becomes the evidence that something is
+            happening now. It disappears the moment the projection folds a
+            completion off the feed, with no refresh.
+          -->
+          <TurnActivityStrip
+            v-if="liveTurn !== null && currentRun !== null"
+            :run-id="currentRun"
+            :node="liveTurn.node"
+            :attempt="Math.min(liveTurn.turn.failures + 1, liveTurn.turn.maxAttempts)"
+            :max-attempts="liveTurn.turn.maxAttempts"
+            :since-ts="liveTurn.turn.sinceTs"
+          />
+          <span v-else-if="pendingPlan" class="workspace__strip-text">
             Plan and tasks appear the moment spec-approval passes.
           </span>
-          <GraphEmptyNote v-else :run-id="currentRun" :status="feedStatus" />
+          <GraphEmptyNote
+            v-else
+            :run-id="currentRun"
+            :status="feedStatus"
+            :activity="planActivity"
+          />
           <RouterLink
             class="workspace__strip-link"
             :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"

@@ -103,7 +103,8 @@ exports[`GET /api/runs/:id/snapshot — three scrub positions (test plan #5) > m
         "versions": []
       },
       "epoch": 5,
-      "staleEpochSkipped": 0
+      "staleEpochSkipped": 0,
+      "preExecution": {}
     },
     "planVersion": 0,
     "planHash": null
@@ -209,7 +210,8 @@ exports[`GET /api/runs/:id/snapshot — three scrub positions (test plan #5) > m
         "versions": []
       },
       "epoch": 5,
-      "staleEpochSkipped": 0
+      "staleEpochSkipped": 0,
+      "preExecution": {}
     },
     "planVersion": 0,
     "planHash": null
@@ -315,7 +317,8 @@ exports[`GET /api/runs/:id/snapshot — three scrub positions (test plan #5) > m
         "versions": []
       },
       "epoch": 5,
-      "staleEpochSkipped": 0
+      "staleEpochSkipped": 0,
+      "preExecution": {}
     },
     "planVersion": 0,
     "planHash": null

@@ -50,6 +50,7 @@ import {
 } from './ids.ts';
 import type { ItemIdFrom } from './map-child-id.ts';
 import { NodeFailureReasonSchema } from './node-failure.ts';
+import { DEFAULT_BACKOFF, DEFAULT_MAX_ATTEMPTS } from './retry-defaults.ts';
 
 /** `PlanGraph.schemaId` is a fixed literal, not an open `SchemaId`: this
  * module produces and accepts exactly one document shape at v1, and the
@@ -117,10 +118,14 @@ export type RetryPolicy = z.infer<typeof RetryPolicySchema>;
  * are 05-durable-execution §10.3's. Frozen, and handed to the schema through
  * a factory that clones it, so a caller mutating one parsed node's `retry`
  * cannot reach into the default every other node shares.
+ *
+ * The two numbers come from `./retry-defaults.ts` — a zod-free module — so a
+ * consumer that needs the ceiling and nothing else does not drag this file's
+ * schemas along with it. See that file for what happened when one did.
  */
 export const DEFAULT_RETRY_POLICY: RetryPolicy = Object.freeze({
-  maxAttempts: 3,
-  backoff: Object.freeze({ base: 2000, cap: 300_000, jitter: 'full' as const }),
+  maxAttempts: DEFAULT_MAX_ATTEMPTS,
+  backoff: DEFAULT_BACKOFF,
 });
 
 export const NodeBudgetSchema = z.strictObject({

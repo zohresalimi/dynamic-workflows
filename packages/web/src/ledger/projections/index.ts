@@ -20,6 +20,7 @@ import { applyContext, type ContextProjection, emptyContext } from './context.ts
 import { applyCost, type CostProjection, emptyCost } from './cost.ts';
 import { applyGates, emptyGates, type GatesProjection } from './gates.ts';
 import type { ProjectionName } from './kinds.ts';
+import { applyLiveTurn, emptyLiveTurn, type LiveTurnProjection } from './liveTurn.ts';
 import { applyPlan, emptyPlan, type PlanProjection } from './plan.ts';
 import { applyPlanHistory, emptyPlanHistory, type PlanHistoryProjection } from './planHistory.ts';
 import { applyProvider, emptyProvider, type ProviderProjection } from './provider.ts';
@@ -94,6 +95,17 @@ export const submissionProjection: ProjectionModule<SubmissionProjection> = proj
   applySubmission,
 );
 
+/**
+ * KAR-27.3 AC3 — the tenth. It folds `@DeFlow/core`'s own
+ * `foldPreExecutionTurns`, so the browser and the reducer answer *"is a framing
+ * turn in flight"* with one function rather than two.
+ */
+export const liveTurnProjection: ProjectionModule<LiveTurnProjection> = projection(
+  'liveTurn',
+  emptyLiveTurn,
+  applyLiveTurn,
+);
+
 export const PROJECTIONS = [
   planProjection,
   planHistoryProjection,
@@ -104,6 +116,7 @@ export const PROJECTIONS = [
   timelineProjection,
   providerProjection,
   submissionProjection,
+  liveTurnProjection,
   // eslint-disable-next-line — the cast is the heterogeneity note above.
 ] as unknown as readonly ProjectionModule<never>[];
 
@@ -111,6 +124,8 @@ export type { BlackboardProjection } from './blackboard.ts';
 export type { ContextProjection } from './context.ts';
 export type { CostProjection } from './cost.ts';
 export type { EscalationVM, GatesProjection } from './gates.ts';
+export type { LiveTurnProjection } from './liveTurn.ts';
+export { liveTurnOf } from './liveTurn.ts';
 export type { PlanProjection } from './plan.ts';
 export type { PlanHistoryProjection } from './planHistory.ts';
 export type { ProviderChoiceState, ProviderProjection } from './provider.ts';

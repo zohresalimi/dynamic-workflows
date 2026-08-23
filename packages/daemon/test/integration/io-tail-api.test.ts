@@ -247,3 +247,140 @@ suite('tailing a very large log (EPIC-15-S40)', () => {
     expect(response.headers.get('x-deflow-unversioned')).toContain('stdout.log');
   });
 });
+
+/**
+ * KAR-27.3 AC2 — the same endpoint, for the three turns that run before a plan
+ * exists.
+ *
+ * `framing`, `recon` and `planner` never enter `RunState.nodes`: they have no
+ * plan entry, no `node.scheduled` and no `node.started`, which is why this route
+ * answered `404 node_not_found` for them until this story. AC2 says the io a
+ * pre-execution turn now writes is served *"by the existing io-tail API"* — so
+ * what changes is how the route resolves the node, and not the route.
+ *
+ * Verifies: EPIC-27-S17 · KAR-27.3 AC2
+ */
+const FRAMING = NodeIdSchema.parse('framing');
+
+async function serveFramingTurn(tmp: string, sessions: number): Promise<Served> {
+  const db = openLedger(tmp);
+
+  // The run exists from intake; `run.created` is what framing is *on its way
+  // to* appending, which is the whole state this scenario is about.
+  appendEvents(db, [
+    {
+      runId: RUN,
+      ts: T0,
+      kind: 'task.submitted',
+      v: 1,
+      epoch: 1,
+      payload: {
+        sha256: 'a'.repeat(64),
+        raw: 'Make the run look alive while it is framing',
+        provenance: { kind: 'text', by: 'ui', submittedAt: T0 },
+      },
+    } as EventDraft,
+  ]);
+
+  appendEvents(
+    db,
+    Array.from(
+      { length: sessions },
+      (_unused, attempt): EventDraft =>
+        ({
+          runId: RUN,
+          ts: T0 + attempt,
+          kind: 'provider.session_opened',
+          v: 1,
+          epoch: 1,
+          nodeId: FRAMING,
+          attempt,
+          payload: {
+            node: FRAMING,
+            attempt,
+            provider: 'claude',
+            session: { id: `9d1f0f2a-0000-4000-8000-00000000000${attempt}`, origin: 'minted' },
+          },
+        }) as EventDraft,
+    ),
+  );
+
+  appendIoChunks(
+    db,
+    Array.from({ length: sessions }, (_unused, attempt) => ({
+      runId: RUN,
+      nodeId: FRAMING,
+      // 1-based, the same translation the execution path applies.
+      attempt: attempt + 1,
+      stream: 'stdout' as const,
+      ts: T0 + 100 + attempt,
+      data: new TextEncoder().encode(
+        `{"type":"assistant","turn":${String(attempt)},"text":"reading the repository"}\n`,
+      ),
+    })),
+  );
+
+  const view = openLedgerView(tmp);
+  setLedgerView(view);
+  const started = await startHttp({
+    port: 0,
+    hostname: '127.0.0.1',
+    dev: false,
+    token: TEST_DAEMON_TOKEN,
+  });
+  const address = started.server.address() as AddressInfo;
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    db,
+    async close() {
+      await started.close();
+      clearLedgerView();
+      view.close();
+      db.close();
+    },
+  };
+}
+
+suite('a pre-execution turn is served by the same endpoint (EPIC-27-S17)', () => {
+  it('answers the framing turn’s output rather than 404 node_not_found', async ({ tmp }) => {
+    served = await serveFramingTurn(tmp, 1);
+
+    const response = await fetch(`${served.origin}/api/runs/${RUN}/nodes/framing/io?limit=50`);
+    expect(response.status).toBe(200);
+
+    const lines = ndjson(await response.text());
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.data).toContain('reading the repository');
+  });
+
+  it('defaults to the latest child, so a repair does not serve the turn it repaired', async ({
+    tmp,
+  }) => {
+    served = await serveFramingTurn(tmp, 2);
+
+    const latest = ndjson(
+      await (await fetch(`${served.origin}/api/runs/${RUN}/nodes/framing/io?limit=50`)).text(),
+    );
+    expect(latest.map((entry) => entry.data.includes('"turn":1'))).toEqual([true]);
+
+    // And the earlier transcript is still addressable, on the envelope's own
+    // 0-based numbering.
+    const first = ndjson(
+      await (
+        await fetch(`${served.origin}/api/runs/${RUN}/nodes/framing/io?attempt=0&limit=50`)
+      ).text(),
+    );
+    expect(first.map((entry) => entry.data.includes('"turn":0'))).toEqual([true]);
+  });
+
+  it('still 404s a node the run has never mentioned at all', async ({ tmp }) => {
+    served = await serveFramingTurn(tmp, 1);
+
+    const response = await fetch(`${served.origin}/api/runs/${RUN}/nodes/recon/io`);
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      'node_not_found',
+    );
+  });
+});

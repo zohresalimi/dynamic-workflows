@@ -74,7 +74,7 @@ async function scene(
       // KAR-19.13 — each child opens its own session. This file hands the same
       // value every time on purpose: what it asserts is the *form* the vendor
       // validates, and one turn per scene is all it runs.
-      openSession: () => sessionId,
+      openSession: () => ({ id: sessionId, attempt: 0 }),
       env: {
         ...childEnv(),
         [DIALECT_ENV]: 'claude-stream-json',

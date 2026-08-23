@@ -73,6 +73,7 @@ import {
   type PlanGraph,
   PlanGraphSchema,
 } from './plan-graph.ts';
+import type { PreExecutionTurns } from './pre-execution-turn.ts';
 import { singleLine } from './text.ts';
 import {
   type FindingV2,
@@ -606,6 +607,21 @@ export interface RunState {
   readonly epoch: number;
   /** How many events were skipped for carrying an older epoch (AC8). */
   readonly staleEpochSkipped: number;
+  /**
+   * KAR-27.3 AC1 — which pre-execution turn is in flight, and since when.
+   *
+   * Keyed by the node id the turn's events are recorded under — `framing`,
+   * `recon`, `planner` — and empty for a run that has opened no session yet.
+   * The three are deliberately **not** in `nodes`: they have no plan entry, no
+   * `node.started` and no `NodeState`, and giving them one would put a node in
+   * the graph the planner never proposed.
+   *
+   * The whole point is that it is here rather than in the daemon's memory: a
+   * label derived from a live process cannot survive the restart that so often
+   * follows the wait it explains, and cannot be recomputed by `deflow status`
+   * in another process at all. See ./pre-execution-turn.ts.
+   */
+  readonly preExecution: PreExecutionTurns;
 }
 
 /**
@@ -615,15 +631,14 @@ export interface RunState {
  * **Bump this whenever the shape of `RunState` above changes** — a field
  * added, removed, renamed or retyped, at any depth, including inside
  * `NodeState`, `LockState`, `BudgetState` or anything they reference. It sits
- * here, three lines from the type, because that is the only place the next
- * person to edit the shape will read it.
+ * three lines from the type because that is where the next person to edit the
+ * shape will read it.
  *
- * A mismatch between this number and `run.checkpoint_version` means exactly
- * one thing: ignore the cached state and replay the run's events from zero.
- * That is why forgetting to bump it is the only way the checkpoint can be
- * wrong, and why bumping it costs nothing but a few milliseconds of replay —
- * the cache is a pure optimisation, free to be thrown away and never to be
- * believed when stale.
+ * A mismatch with `run.checkpoint_version` means one thing: ignore the cached
+ * state and replay the run's events from zero.
+ * Forgetting to bump it is the only way the checkpoint can be wrong; bumping
+ * it costs a few milliseconds of replay, because the cache is a pure
+ * optimisation, free to be thrown away and never to be believed when stale.
  *
  * The same applies to how an existing field is *derived*. The bumps: 4
  * `NodeState.wakeAt`; 5 `cancel`; 6 F4.7's no-progress fields; 7 the per-node
@@ -631,9 +646,10 @@ export interface RunState {
  * estimate; 10 `CostRollup.authModes`; 11 `specApproved`; 12 `patchPolicy`;
  * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
  * tell an answered gate from an open one; 15 the approval queue's fields; 16
- * `interjections`, so a restart cannot re-deliver guidance.
+ * `interjections`, so a restart cannot re-deliver guidance; 17
+ * `preExecution`, so a framing turn in flight survives a restart.
  */
-export const CHECKPOINT_VERSION = 16;
+export const CHECKPOINT_VERSION = 17;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -701,6 +717,7 @@ export function initialRunState(): RunState {
     replans: INITIAL_REPLAN_STREAK,
     epoch: 0,
     staleEpochSkipped: 0,
+    preExecution: {},
   };
 }
 
@@ -861,4 +878,14 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
   replans: ReplanStreakSchema,
   epoch: wholeCount,
   staleEpochSkipped: wholeCount,
+  preExecution: z.record(
+    z.string(),
+    z.strictObject({
+      running: z.boolean(),
+      sessions: wholeCount,
+      failures: wholeCount,
+      sinceTs: wholeCount,
+      maxAttempts: z.number().int().positive(),
+    }),
+  ),
 });

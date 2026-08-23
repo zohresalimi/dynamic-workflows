@@ -49,6 +49,10 @@ export const PROJECTION_NAMES = [
   'timeline',
   'provider',
   'submission',
+  // KAR-27.3 AC3 — which pre-execution turn is in flight, so the workflow view
+  // can show that a framing agent is alive rather than a strip that says
+  // nothing while it works.
+  'liveTurn',
 ] as const;
 
 export type ProjectionName = (typeof PROJECTION_NAMES)[number];
@@ -70,7 +74,7 @@ export const EVENT_KIND_OWNERS = {
   // Seeds the criteria board: F7.4 requires every acceptance criterion to map
   // to at least one gate, so a criterion no gate ever speaks to has to be
   // *visible* as `unverifiable` rather than absent (EPIC-16-S19).
-  'run.created': ['gates'],
+  'run.created': ['gates', 'liveTurn'],
   'run.spec.approved': [],
   'spec.amended': [],
   'spec.pinned': [],
@@ -78,19 +82,19 @@ export const EVENT_KIND_OWNERS = {
   'run.paused': [],
   'run.resumed': [],
   'run.cancel.requested': [],
-  'run.completed': [],
-  'run.aborted': [],
+  'run.completed': ['liveTurn'],
+  'run.aborted': ['liveTurn'],
   // KAR-17.8 AC7 — a marker on the Gantt naming the idle time and the nodes
   // that were running. Surfaced and never presented as a kill: from here a long
   // build and a wedged agent are the same picture, and the operator is the one
   // who can tell them apart.
   'run.stalled': ['timeline'],
   'run.kill_failed': [],
-  'run.needs_human': [],
+  'run.needs_human': ['liveTurn'],
 
   // ── planning ───────────────────────────────────────────────────────────────
-  'plan.proposed': ['plan', 'planHistory'],
-  'plan.validation_failed': ['planHistory'],
+  'plan.proposed': ['plan', 'planHistory', 'liveTurn'],
+  'plan.validation_failed': ['planHistory', 'liveTurn'],
   // The *ops* live on the proposal and never on `plan.patched`, so both
   // projections have to see it: `plan.patched` names a `patchId` and nothing
   // else, and "which node did this patch abandon" is answerable only by
@@ -109,12 +113,12 @@ export const EVENT_KIND_OWNERS = {
   'node.started': ['plan', 'timeline'],
   'node.progress': ['plan'],
   'node.completed': ['plan', 'timeline'],
-  'node.failed': ['plan', 'timeline'],
+  'node.failed': ['plan', 'timeline', 'liveTurn'],
   'node.retry.scheduled': ['plan'],
   'node.suspended': ['plan', 'timeline'],
   'node.blocked': ['plan'],
   'node.unschedulable': ['plan'],
-  'node.cancelled': ['plan', 'timeline'],
+  'node.cancelled': ['plan', 'timeline', 'liveTurn'],
   'node.cancel.stage': [],
   'node.cancel.failed': [],
 
@@ -153,7 +157,7 @@ export const EVENT_KIND_OWNERS = {
   'pin.integrity_violated': ['context'],
 
   // ── the blackboard ─────────────────────────────────────────────────────────
-  'fact.written': ['blackboard'],
+  'fact.written': ['blackboard', 'liveTurn'],
   'fact.read': ['blackboard'],
   'fact.invalidated': ['blackboard'],
   'handoff.oversize': [],
@@ -161,7 +165,7 @@ export const EVENT_KIND_OWNERS = {
   // ── gates and humans ───────────────────────────────────────────────────────
   'gates.loaded': ['gates'],
   'gate.evaluated': ['gates'],
-  'human.requested': ['gates'],
+  'human.requested': ['gates', 'liveTurn'],
   // The timeline needs it to close a suspension: six idle hours and six busy
   // hours cost very different things, and the answer is what ends the idle one.
   'human.responded': ['gates', 'timeline'],
@@ -181,12 +185,13 @@ export const EVENT_KIND_OWNERS = {
   // A stall with an external cause, so it can be told apart from one the run
   // caused itself (KAR-17.8 AC6).
   'provider.rate_limited': ['cost', 'timeline'],
-  // KAR-02.11 AC7 — claimed by nothing, and that is the answer rather than a gap.
-  // The vendor session a pre-execution turn opened exists so the *next* turn's
-  // derivation can count it and so a past turn's id can be recomputed offline;
-  // no surface renders it, and every screen still names the run by DeFlow's own
-  // `run_…` id (AC8).
-  'provider.session_opened': [],
+  // KAR-02.11 AC7 left this claimed by nothing, and said so as a decision: the
+  // vendor session existed to be counted by the next turn's derivation, and no
+  // surface rendered it. KAR-27.3 AC3 is the surface — it is the one event that
+  // says a framing turn *started*, and a strip that could not see it was the
+  // whole of the 2026-08-23 report. Every screen still names the run by
+  // DeFlow's own `run_…` id (AC8); the session id is not rendered.
+  'provider.session_opened': ['liveTurn'],
   'export.blocked': [],
 } as const satisfies Record<EventKind, readonly ProjectionName[]>;
 

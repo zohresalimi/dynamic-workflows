@@ -77,6 +77,12 @@ interface Asked {
   readonly historyOf: string[];
 }
 
+/**
+ * The NDJSON body the io tail answers with, as one mutable line so a spec can
+ * change what the "agent" has emitted between polls.
+ */
+const ioTail = { value: '' };
+
 /** A client answering the two routes the workspace reads, recording both. */
 function workspaceClient(history: Record<string, readonly HistoryRow[]>): ApiClient & {
   readonly asked: Asked;
@@ -84,6 +90,21 @@ function workspaceClient(history: Record<string, readonly HistoryRow[]>): ApiCli
   const asked: Asked = { projects: 0, historyOf: [] };
   const json = (body: unknown) =>
     Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+
+  /**
+   * KAR-27.3 AC3 — the io tail the activity strip polls.
+   *
+   * NDJSON over a real `Response`-shaped object rather than JSON, because the
+   * strip reads it through the shipped `parseIoNdjson`: a stub that handed back
+   * parsed objects would skip the line assembly that is the whole risk here.
+   */
+  const ndjson = (body: string) =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'X-DeFlow-Io-More': 'false' }),
+      text: () => Promise.resolve(body),
+    });
 
   const client = {
     projects: Object.assign(
@@ -131,7 +152,20 @@ function workspaceClient(history: Record<string, readonly HistoryRow[]>): ApiCli
         },
       },
     ),
-    runs: { $get: () => json({ runs: [], cursor: null, more: false }) },
+    runs: Object.assign(
+      { $get: () => json({ runs: [], cursor: null, more: false }) },
+      {
+        ':id': {
+          nodes: {
+            ':nodeId': {
+              io: {
+                $get: () => ndjson(ioTail.value),
+              },
+            },
+          },
+        },
+      },
+    ),
     approvals: { $get: () => json({ items: [] }) },
     // The composer's own picker reads this the moment its page mounts.
     providers: { routes: { $get: () => json({ providers: [], known: false }) } },
@@ -576,6 +610,149 @@ suite('a run with no plan yet gets a strip, not an empty split', () => {
     await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
     expect(one('[data-workspace-pending-plan]')).toBeNull();
     expect(feeds.opened).toHaveLength(1);
+  });
+});
+
+/**
+ * KAR-27.3 AC3, AC4 — a run whose framing turn is in flight looks alive.
+ *
+ * The 2026-08-23 report, exactly: an operator watched this strip for minutes
+ * while a framing agent made Linear queries and read the repository, and the
+ * strip said *"No plan yet"* over a status chip that said *"waiting to be
+ * framed"*. Both were the truth about DeFlow's bookkeeping and neither was an
+ * answer to *"is anything happening?"*.
+ *
+ * Verifies: EPIC-27-S18, EPIC-27-S19 · KAR-27.3 AC3, AC4
+ */
+const PRE_EXEC_TS = 1_786_438_000_000;
+
+/** An envelope on the pre-execution run, before any plan exists. */
+const preExec = (seq: number, kind: string, payload: Record<string, unknown>): Event =>
+  ({
+    seq,
+    runId: HAPPY_PATH_RUN,
+    ts: PRE_EXEC_TS + seq,
+    kind,
+    v: 1,
+    epoch: 1,
+    payload,
+  }) as unknown as Event;
+
+const sessionOpened = (seq: number, node: string, attempt: number): Event =>
+  preExec(seq, 'provider.session_opened', {
+    node,
+    attempt,
+    provider: 'claude',
+    session: { id: `9d1f0f2a-0000-4000-8000-00000000000${attempt}`, origin: 'minted' },
+  });
+
+/** One `stream-json` assistant frame carrying a tool call, as NDJSON. */
+const toolFrame = (seq: number, name: string): string =>
+  `${JSON.stringify({
+    seq,
+    stream: 'stdout',
+    ts: PRE_EXEC_TS + seq,
+    data: `${JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: `tu_${name}`, name, input: {} }] },
+    })}\n`,
+  })}\n`;
+
+/** The workspace open on a run with nothing folded yet. */
+async function openPreExecutionRun(): Promise<void> {
+  ioTail.value = '';
+  await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
+  await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  // Hydrated: `hydratedFromSeq` moves off zero, so the panel is past the one
+  // branch that is allowed to say "Reading the run's ledger…".
+  push([
+    preExec(1, 'task.submitted', {
+      sha256: 'a'.repeat(64),
+      raw: 'Migrate the checkout module',
+      provenance: { kind: 'text', by: 'ui', submittedAt: PRE_EXEC_TS },
+    }),
+  ]);
+}
+
+const stripText = (): string => one('[data-workspace-pending-plan]')?.textContent?.trim() ?? '';
+
+suite('EPIC-27-S18 — the activity strip shows life and goes away', () => {
+  it('appears on a session_opened, naming the node, the attempt and the elapsed', async () => {
+    await openPreExecutionRun();
+
+    push([sessionOpened(2, 'framing', 0)]);
+
+    await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).not.toBeNull();
+    expect(one('[data-turn-node-name]')?.textContent?.trim()).toBe('framing');
+    expect(one('[data-turn-attempt]')?.textContent?.trim()).toBe('attempt 1 of 3');
+    expect(one('[data-turn-elapsed]')?.textContent).toContain('running');
+  });
+
+  it('shows the tool calls the agent is making, off the io stream', async () => {
+    await openPreExecutionRun();
+    ioTail.value = toolFrame(11, 'mcp__linear__list_issues');
+
+    push([sessionOpened(2, 'framing', 0)]);
+
+    await expect
+      .poll(() => one('[data-turn-calls]')?.textContent ?? '', { timeout: 15_000 })
+      .toContain('mcp__linear__list_issues');
+  });
+
+  it('goes away when the turn concludes, with no refresh', async () => {
+    await openPreExecutionRun();
+    push([sessionOpened(2, 'framing', 0)]);
+    await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).not.toBeNull();
+
+    push([
+      preExec(3, 'human.requested', {
+        node: 'framing',
+        prompt: 'Which repository did you mean?',
+        options: [{ id: 'this-one', label: 'This one', effect: 'approve' }],
+      }),
+    ]);
+
+    await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).toBeNull();
+  });
+});
+
+suite('EPIC-27-S19 — the plan panel names the actual state', () => {
+  it('says the framing agent is working rather than "No plan yet"', async () => {
+    await openPreExecutionRun();
+    // No turn in flight yet: the honest sentence is still the old one.
+    await expect.poll(() => stripText(), { timeout: 15_000 }).toContain('No plan yet');
+
+    push([sessionOpened(2, 'framing', 0)]);
+    await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).not.toBeNull();
+
+    // The strip is now the live one. The empty note is still mounted inside
+    // the collapsed canvas — the canvas is never unmounted, because it owns
+    // the run's subscription — but it is not what this strip is showing.
+    expect(
+      one('[data-workspace-pending-plan]')?.querySelector('[data-graph-empty]') ?? null,
+    ).toBeNull();
+    expect(stripText()).not.toContain('No plan yet');
+  });
+
+  it('names recon and the planner in the note when their turn runs', async () => {
+    await openPreExecutionRun();
+
+    push([sessionOpened(2, 'recon', 0)]);
+    await expect
+      .poll(() => one('[data-turn-node-name]')?.textContent?.trim(), { timeout: 15_000 })
+      .toBe('recon');
+
+    push([sessionOpened(3, 'planner', 0)]);
+    await expect
+      .poll(() => one('[data-turn-node-name]')?.textContent?.trim(), { timeout: 15_000 })
+      .toBe('planner');
+  });
+
+  it('never leaves "Reading the run\u2019s ledger…" on a hydrated feed', async () => {
+    await openPreExecutionRun();
+
+    await expect.poll(() => stripText(), { timeout: 15_000 }).not.toBe('');
+    expect(stripText()).not.toContain("Reading the run's ledger");
   });
 });
 

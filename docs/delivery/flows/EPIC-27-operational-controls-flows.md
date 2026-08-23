@@ -77,3 +77,35 @@
 - **Given** the same process table as S09
 - **When** the doctor's kill-orphans path runs headless
 - **Then** the same attribution decides, the same sweep runs, and the same per-pid report prints.
+
+## KAR-27.3 — A run that is framing looks alive (added 2026-08-23)
+
+**EPIC-27-S15 — an in-flight framing attempt is never labeled "waiting"**
+- **Given** a ledger holding `provider.session_opened` for framing attempt 0 and no completion for it
+- **When** the run's status label is derived (UI projection and `deflow status` both)
+- **Then** it names the node and that it is running — `framing — running · attempt 1 of 3` with the since-instant — and not `submitted — waiting to be framed`.
+
+**EPIC-27-S16 — "waiting to be framed" is reserved for actual waiting**
+- **Given** a run submitted with no `provider.session_opened` yet, or whose last attempt concluded and the retry wake is in the future
+- **When** the label is derived
+- **Then** it reads `submitted — waiting to be framed`, unchanged.
+
+**EPIC-27-S17 — a pre-execution turn's stdout lands incrementally**
+- **Given** a framing child that emits stream frames over 30 seconds before exiting
+- **When** the io store is read mid-turn (before the child exits)
+- **Then** the frames emitted so far are present under the run/node/attempt, served by the existing io-tail API, and the store's content at exit equals what the buffered path would have captured.
+
+**EPIC-27-S18 — the activity strip shows life and goes away**
+- **Given** the workflow view open on a run whose framing turn is in flight
+- **When** the agent makes a tool call
+- **Then** the strip shows elapsed, time-since-last-output, attempt number, and the call, without a refresh; **and when** the turn concludes, the strip is gone.
+
+**EPIC-27-S19 — the plan panel names the actual state, never a stuck loading line**
+- **Given** a hydrated feed and no plan
+- **When** the plan panel renders during framing, during an open spec gate, and during planner compilation
+- **Then** each state shows its own named copy derived from ledger facts, and "Reading the run's ledger…" appears only while the feed is genuinely hydrating.
+
+**EPIC-27-S20 — empty stderr no longer hides the cause**
+- **Given** a pre-execution turn that exits 1 with empty stderr after emitting a rate-limit frame on stdout
+- **When** the node failure is recorded
+- **Then** the failure evidence includes the persisted stdout tail, and the ledger message names the vendor's stated cause rather than an empty string.
