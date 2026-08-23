@@ -115,6 +115,19 @@ export {
   runProviderConformance,
   UNADVERTISED_METHOD,
 } from './conformance.ts';
+// The connector tool policy: what a spawned agent may touch on the operator's
+// connected systems without asking, and what no level may ever touch. Closes
+// the 2026-08-23 framing defect where a headless auto-denial was recorded as
+// "operator declined" and the spec framed a story Linear had already Done.
+export type { ConnectorPermissionRules } from './connector-policy.ts';
+export {
+  CONNECTOR_DESTRUCTIVE_VERBS,
+  CONNECTOR_READ_VERBS,
+  connectorPermissionRules,
+  connectorSettingsArgument,
+  mcpServerToolPrefix,
+  parseMcpListOutput,
+} from './connector-policy.ts';
 export type { AcpRateLimitContext } from './failures.ts';
 export {
   ACP_ASSIGNED_ERROR_CODES,

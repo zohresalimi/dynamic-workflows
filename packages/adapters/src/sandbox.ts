@@ -45,6 +45,7 @@ import {
 } from '@DeFlow/core';
 import { accessSync, constants, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { connectorPermissionRules } from './connector-policy.ts';
 import { sandboxUnavailable } from './failures.ts';
 import type { ProviderSpec, ShimContext, ShimPlan } from './provider-registry.ts';
 import { shimPlan } from './provider-registry.ts';
@@ -84,6 +85,14 @@ export interface SandboxInvocation {
   /** Relaxes an unmet version gate from refusing to degrading. Explicit, per
    * AC6 — the credential default is to refuse. */
   readonly onGateUnmet?: GateDisposition;
+  /**
+   * The connected MCP servers this machine actually has, by display name
+   * (`connector-policy.ts`'s discovery vocabulary). Optional because a caller
+   * that has not discovered any owes the policy nothing — absent means the
+   * settings document carries no `permissions` key and every connector call
+   * stays denied, which is the safe direction.
+   */
+  readonly connectorServers?: readonly string[];
 }
 
 export interface SandboxedShimPlan extends ShimPlan {
@@ -177,12 +186,19 @@ export function sandboxedShimPlan(
       return { ...base, strategy, degraded: [], runtimeConfig: null };
     }
 
+    const connectorServers = sandbox.connectorServers ?? [];
     const policy = injection.build({
       level: ctx.permission,
       worktree: ctx.worktree,
       version: sandbox.version,
       ...(sandbox.allowedDomains === undefined ? {} : { allowedDomains: sandbox.allowedDomains }),
       ...(sandbox.onGateUnmet === undefined ? {} : { onGateUnmet: sandbox.onGateUnmet }),
+      // KAR-08.5's document is also where the connector rules ride: one
+      // `--settings` flag, one complete document. An empty server list emits
+      // no `permissions` key at all rather than an empty one.
+      ...(connectorServers.length === 0
+        ? {}
+        : { connectorPermissions: connectorPermissionRules(ctx.permission, connectorServers) }),
     });
 
     return {

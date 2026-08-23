@@ -59,6 +59,7 @@ import { RefFormatChecker } from '../git/ref-format.ts';
 import { WorkspaceManager } from '../git/worktree-manager.ts';
 import { log } from '../logging.ts';
 import { buildChildEnv, createRunTmpdir } from '../proc/env.ts';
+import { discoverConnectorServers } from '../providers/connector-servers.ts';
 import { disabledProviderIds, withDisabled } from '../providers/settings.ts';
 import { writeRunSchemas } from '../run-schemas.ts';
 import { loadSchemaDirectory } from '../schema-store.ts';
@@ -260,11 +261,21 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
         tmpdir: await runTmpdir(runId),
       });
 
+      // The connected MCP servers this binary has, for the connector policy —
+      // cached per daemon life, so only the first turn of the first run pays
+      // the CLI's own health-check. An empty answer just means no
+      // `permissions` document: the safe direction, never a refusal.
+      const connectorServers = await discoverConnectorServers({
+        binaryPath: chosen.binaryPath,
+        env,
+      });
+
       const turn = {
         provider: chosen.provider,
         binaryPath: chosen.binaryPath,
         schemasDir,
         env,
+        connectorServers,
       } as const;
 
       /**
