@@ -42,6 +42,25 @@ async function openBoard(query: Record<string, string> = {}): Promise<void> {
   await expect.poll(() => all('[data-criterion-row]').length).toBe(3);
 }
 
+/**
+ * The same board at its **legacy**, project-less address (KAR-25.1 AC7).
+ *
+ * Every fixture under `test/fixtures/runs/` is a ledger that starts at
+ * `run.created` with no `task.submitted`, so it belongs to no project and
+ * `/runs/:runId/criteria` renders in place rather than redirecting — that is
+ * the case `createLegacyRunGuard` exists for, and it is also the one an
+ * operator with an old bookmark is in.
+ */
+async function openLegacyBoard(): Promise<void> {
+  shell = await mountShell({
+    at: { name: 'legacy-run-criteria', params: { runId: HAPPY_PATH_RUN } },
+  });
+  setActivePinia(shell.pinia);
+  const run = useRunStore(shell.pinia);
+  for (const event of happyPath12()) run.applyEvent(event);
+  await expect.poll(() => all('[data-criterion-row]').length).toBe(3);
+}
+
 beforeEach(async () => {
   setActivePinia(undefined as never);
   await commands.emulateMedia({ reducedMotion: 'no-preference' });
@@ -122,6 +141,33 @@ suite('KAR-17.7 test 5 — expanding a criterion shows the evidence behind it (A
     expect(link?.getAttribute('href')).toContain('node=impl-signup');
     expect(link?.getAttribute('href')).toContain('file=src/api/contract.ts');
     expect(link?.getAttribute('href')).toContain('line=31');
+  });
+
+  it('expands at the legacy address too, and its diff link stays legacy', async () => {
+    // The defect: `diffTo` named the project-scoped `run-diff` route and passed
+    // it only a `runId`. Resolving a `RouterLink` happens while the detail is
+    // rendering, so on a project-less run the whole expansion threw
+    // `Missing required param "projectId"` — the criterion never opened, and
+    // `e2e/five-minute-diagnosis.test.ts` timed out at "the criterion expanded"
+    // rather than saying which link it was. A finding's line is F7.4's
+    // "and back again", so this is the operator losing the walk, not a cosmetic
+    // href.
+    await openLegacyBoard();
+
+    const row = one('[data-criterion-row="no-v-model-regression"]');
+    await userEvent.click(row?.querySelector('[data-criterion-toggle]') as HTMLElement);
+
+    const detail = one('[data-criterion-detail="no-v-model-regression"]');
+    expect(detail, 'the criterion did not expand at its legacy address').not.toBeNull();
+
+    const link = detail
+      ?.querySelector('[data-finding-id="f-contract-1"]')
+      ?.querySelector<HTMLAnchorElement>('[data-diff-link]');
+    // Legacy in, legacy out: a link that jumped to `/projects/…` from a run
+    // that has no project is the same missing param one navigation later.
+    expect(link?.getAttribute('href')).toContain(`/runs/${HAPPY_PATH_RUN}/diff`);
+    expect(link?.getAttribute('href')).not.toContain('/projects/');
+    expect(link?.getAttribute('href')).toContain('node=impl-signup');
   });
 
   it('collapses again on a second click', async () => {
